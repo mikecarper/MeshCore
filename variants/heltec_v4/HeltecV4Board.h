@@ -10,6 +10,7 @@
 #endif
 
 class HeltecV4Board : public ESP32Board {
+  KeyValueStore* _prefs = NULL;
 
 protected:
   float adc_mult = ADC_MULTIPLIER;
@@ -20,6 +21,9 @@ public:
   HeltecV4Board() : periph_power(PIN_VEXT_EN,PIN_VEXT_EN_ACTIVE) { }
 
   void begin();
+  void attachDynamicPrefs(KeyValueStore* prefs);
+  bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply) override;
+
   void onBeforeTransmit(void) override;
   void onAfterTransmit(void) override;
   void powerOff() override;

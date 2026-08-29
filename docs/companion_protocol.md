@@ -234,19 +234,38 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x3E` | `CMD_SEND_CHANNEL_DATA` | Send a channel binary datagram. |
 | `0x3F` / `0x40` | `CMD_SET_DEFAULT_FLOOD_SCOPE` / `CMD_GET_DEFAULT_FLOOD_SCOPE` | Write or read the default flood scope. |
 | `0x41` | `CMD_SEND_RAW_PACKET` | Queue a fully encoded raw mesh packet. |
-| `0x42` / `0x43` | `CMD_GET_RADIO_FEM_RXGAIN` / `CMD_SET_RADIO_FEM_RXGAIN` | Read or set FEM receive gain. |
-| `0x44` / `0x45` | `CMD_GET_RADIO_RXGAIN` / `CMD_SET_RADIO_RXGAIN` | Read or set the radio chip's boosted receive-gain mode. |
-| `0x46` / `0x47` | `CMD_GET_WIFI_POWER_SAVE` / `CMD_SET_WIFI_POWER_SAVE` | Read or set ESP32 Companion WiFi modem sleep. |
-| `0x48` / `0x49` | `CMD_GET_BLUETOOTH_NAME` / `CMD_SET_BLUETOOTH_NAME` | Read or set the independent Bluetooth device name. |
+| `0x42` | `CMD_RUN_CLI_COMMAND` | Run a local CLI command (protocol v14+). |
 | `0x4A` | `CMD_EXEC_LOCAL_OTA_CONTROL` | Run one bounded local TempRadio or OTA command on a Full Companion. |
 | `0x4B` | `CMD_BLE_MOTA_SOURCE` | Query, start, or stop an nRF52 Full Companion's Bluetooth-backed LoRa mOTA source. |
+| `0x78` / `0x79` | `CMD_GET_RADIO_FEM_RXGAIN` / `CMD_SET_RADIO_FEM_RXGAIN` | Fork extension: read or set FEM receive gain. |
+| `0x7A` / `0x7B` | `CMD_GET_RADIO_RXGAIN` / `CMD_SET_RADIO_RXGAIN` | Fork extension: read or set the radio chip's boosted receive-gain mode. |
+| `0x7C` / `0x7D` | `CMD_GET_WIFI_POWER_SAVE` / `CMD_SET_WIFI_POWER_SAVE` | Fork extension: read or set ESP32 Companion WiFi modem sleep. |
+| `0x7E` / `0x7F` | `CMD_GET_BLUETOOTH_NAME` / `CMD_SET_BLUETOOTH_NAME` | Fork extension: read or set the independent Bluetooth device name. |
 
 The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.
 
-The additive hardware-setting commands `0x42`-`0x47` do not change any existing
-legacy frame layout. Clients should probe the command they need and treat
+`CMD_RUN_CLI_COMMAND` is followed by the local CLI text without a terminating
+NUL. The device returns `RESP_CODE_CLI_REPLY` (`0x1D`) followed by the reply
+text. This is separate from sending a remote on-air CLI command with
+`CMD_SEND_TXT_MSG` and `TXT_TYPE_CLI_COMMAND`. The body must contain at least
+one byte and must not contain an embedded NUL. An unknown command is returned
+as the normal CLI reply text `Unknown command`, not as an error frame.
+
+The fork-specific hardware-setting commands occupy the host-to-device range
+`0x78`-`0x7F`, the highest currently unused block below the push-frame bit.
+Command IDs must stay below `0x80`; IDs with bit 7 set identify asynchronous
+device-to-host push frames. These commands do not change any existing frame
+layout. Clients should probe the command they need and treat
 `ERR_CODE_UNSUPPORTED_CMD` as feature absence.
+
+Firmware from this fork predating the upstream `0x42` allocation used
+`0x42`-`0x49` for these eight settings. This firmware accepts those values as
+deprecated aliases so existing clients continue to work. A one-byte `0x42`
+frame is the legacy FEM-gain GET; `0x42` followed by text is the official
+`CMD_RUN_CLI_COMMAND`. New clients should use `0x78`-`0x7F` (or send the
+equivalent text through `0x42`) because future upstream commands may reuse the
+remaining legacy IDs.
 
 Both gain-command pairs can be used over the normal binary Companion
 connection; USB does not need to enter terminal mode. Inside the transport's
@@ -257,7 +276,9 @@ SET command followed by one byte (`0` for off, `1` for on). A GET reply is
 busy radio returns `ERR_CODE_BAD_STATE`; unsupported boosted gain returns
 `ERR_CODE_UNSUPPORTED_CMD`. The FEM pair also returns
 `ERR_CODE_UNSUPPORTED_CMD` when the board cannot control its external LNA. Raw
-text such as `set radio.rxgain off` still requires the USB terminal start token.
+unframed text such as `set radio.rxgain off` still requires the USB terminal
+start token; the same text may instead be carried as a framed `0x42` command
+over USB, BLE, or TCP.
 
 The WiFi power-save pair is available on ESP32 WiFi Companion builds over the
 normal binary USB, BLE, or TCP port 5000 transport. `CMD_GET_WIFI_POWER_SAVE`
@@ -868,6 +889,7 @@ Byte values are authoritative; names are aliases. When reading firmware source, 
 | `0x1A` | `RESP_ALLOWED_REPEAT_FREQ` | Allowed repeat-frequency ranges. |
 | `0x1B` | `RESP_CODE_CHANNEL_DATA_RECV` | Queued channel datagram. |
 | `0x1C` | `RESP_CODE_DEFAULT_FLOOD_SCOPE` | Default flood-scope data. |
+| `0x1D` | `RESP_CODE_CLI_REPLY` | Text returned by `CMD_RUN_CLI_COMMAND`. |
 
 ### Asynchronous push types
 

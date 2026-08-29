@@ -44,3 +44,95 @@ bool StationG3Board::canControlLoRaFemPaGain() const {
 bool StationG3Board::isLoRaFemPaGainEnabled() const {
   return loRaFEMControl.isPAGainEnabled();
 }
+
+void StationG3Board::attachDynamicPrefs(KeyValueStore* prefs) {
+  _prefs = prefs;
+  if (_prefs == nullptr) {
+    return;
+  }
+
+  char gain[8];
+
+  gain[0] = 0;
+  _prefs->getByKey("fem_rxgain", gain, 7);  // get initial values
+  setLoRaFemLnaEnabled(strcmp(gain, "1") == 0);
+
+  gain[0] = 0;
+  _prefs->getByKey("fem_txgain", gain, 7);  // get initial values
+  setLoRaFemPaGainEnabled(strcmp(gain, "1") == 0);
+}
+
+bool StationG3Board::handleCommand(const char* command, uint32_t sender_timestamp, char* reply) {
+  (void)sender_timestamp;
+  if (command == nullptr || reply == nullptr) {
+    return false;
+  }
+
+  if (strcmp(command, "get radio.fem.rxgain") == 0) {
+    if (!loRaFEMControl.canControlLNA()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      sprintf(reply, "> %s", isLoRaFemLnaEnabled() ? "on" : "off");
+    }
+    return true;
+  }
+  if (strncmp(command, "set radio.fem.rxgain ", 21) == 0) {
+    if (!loRaFEMControl.canControlLNA()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (_prefs == nullptr) {
+      strcpy(reply, "Error: preferences unavailable");
+    } else if (strcmp(&command[21], "on") == 0) {
+      if (setLoRaFemLnaEnabled(true)) {
+        _prefs->setByKey("fem_rxgain", "1");
+        strcpy(reply, "OK - LoRa FEM RX gain on");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    } else if (strcmp(&command[21], "off") == 0) {
+      if (setLoRaFemLnaEnabled(false)) {
+        _prefs->setByKey("fem_rxgain", "0");
+        strcpy(reply, "OK - LoRa FEM RX gain off");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    } else {
+      strcpy(reply, "Error: state must be on or off");
+    }
+    return true;
+  }
+
+  if (strcmp(command, "get radio.fem.txgain") == 0) {
+    if (!loRaFEMControl.canControlPAGain()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      sprintf(reply, "> %s", isLoRaFemPaGainEnabled() ? "on" : "off");
+    }
+    return true;
+  }
+  if (strncmp(command, "set radio.fem.txgain ", 21) == 0) {
+    if (!loRaFEMControl.canControlPAGain()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (_prefs == nullptr) {
+      strcpy(reply, "Error: preferences unavailable");
+    } else if (strcmp(&command[21], "on") == 0) {
+      if (setLoRaFemPaGainEnabled(true)) {
+        _prefs->setByKey("fem_txgain", "1");
+        strcpy(reply, "OK - LoRa FEM TX gain on");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM TX gain");
+      }
+    } else if (strcmp(&command[21], "off") == 0) {
+      if (setLoRaFemPaGainEnabled(false)) {
+        _prefs->setByKey("fem_txgain", "0");
+        strcpy(reply, "OK - LoRa FEM TX gain off");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM TX gain");
+      }
+    } else {
+      strcpy(reply, "Error: state must be on or off");
+    }
+    return true;
+  }
+
+  return false; // not handled
+}

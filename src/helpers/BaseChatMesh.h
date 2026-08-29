@@ -3,9 +3,16 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/AdvertDataHelpers.h>
+#include <helpers/RemoteCliRequest.h>
 #include <helpers/TxtDataHelpers.h>
 
 #define MAX_TEXT_LEN    (10*CIPHER_BLOCK_SIZE)  // must be LESS than (MAX_PACKET_PAYLOAD - 4 - CIPHER_MAC_SIZE - 1)
+
+static constexpr size_t MAX_CORRELATED_CLI_TEXT_LEN =
+    MAX_PACKET_PAYLOAD - CIPHER_MAC_SIZE - (CIPHER_BLOCK_SIZE - 1)
+    - 5 - mesh::RemoteCliRequest::EXTENSION_SIZE;
+static_assert(MAX_CORRELATED_CLI_TEXT_LEN <= MAX_TEXT_LEN,
+              "correlated CLI text must fit the encrypted datagram");
 
 #include "ContactInfo.h"
 
@@ -139,6 +146,7 @@ protected:
   virtual bool onContactPathRecv(ContactInfo& from, uint8_t* in_path, uint8_t in_path_len, uint8_t* out_path, uint8_t out_path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len);
   virtual void onMessageRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text) = 0;
   virtual void onCommandDataRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text) = 0;
+  virtual void onCLICommandRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text, char* reply) = 0;
   virtual void onSignedMessageRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t sender_timestamp, const uint8_t *sender_prefix, const char *text) = 0;
   virtual uint32_t calcFloodTimeoutMillisFor(uint32_t pkt_airtime_millis) const = 0;
   virtual uint32_t calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8_t path_len) const = 0;
@@ -185,7 +193,7 @@ public:
                    const uint8_t* replace_retry_key = NULL,
                    const uint8_t* message_retry_key = NULL);
   int  sendCommandData(const ContactInfo& recipient, uint32_t timestamp,
-                       uint8_t attempt, const char* text,
+                       uint8_t attempt, uint8_t txt_type, const char* text,
                        uint32_t& est_timeout,
                        uint32_t logical_request_id = 0);
   bool sendGroupMessage(uint32_t timestamp, mesh::GroupChannel& channel, const char* sender_name, const char* text, int text_len);

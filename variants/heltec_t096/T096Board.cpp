@@ -138,3 +138,57 @@ bool T096Board::canControlLoRaFemLna() const {
 bool T096Board::isLoRaFemLnaEnabled() const {
   return loRaFEMControl.isLNAEnabled();
 }
+
+void T096Board::attachDynamicPrefs(KeyValueStore* prefs) {
+  _prefs = prefs;
+  if (_prefs == nullptr) {
+    return;
+  }
+
+  char radio_fem_rxgain[8] = { 0 };
+  _prefs->getByKey("fem_rxgain", radio_fem_rxgain, 7);  // get initial values
+
+  setLoRaFemLnaEnabled(strcmp(radio_fem_rxgain, "1") == 0);
+}
+
+bool T096Board::handleCommand(const char* command, uint32_t sender_timestamp, char* reply) {
+  (void)sender_timestamp;
+  if (command == nullptr || reply == nullptr) {
+    return false;
+  }
+
+  if (strcmp(command, "get radio.fem.rxgain") == 0) {
+    if (!loRaFEMControl.isLnaCanControl()) {
+      strcpy(reply, "Error: unsupported");
+    } else {
+      sprintf(reply, "> %s", isLoRaFemLnaEnabled() ? "on" : "off");
+    }
+    return true;
+  }
+  if (strncmp(command, "set radio.fem.rxgain ", 21) == 0) {
+    if (!loRaFEMControl.isLnaCanControl()) {
+      strcpy(reply, "Error: unsupported");
+    } else if (_prefs == nullptr) {
+      strcpy(reply, "Error: preferences unavailable");
+    } else if (strcmp(&command[21], "on") == 0) {
+      if (setLoRaFemLnaEnabled(true)) {
+        _prefs->setByKey("fem_rxgain", "1");
+        strcpy(reply, "OK - LoRa FEM RX gain on");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    } else if (strcmp(&command[21], "off") == 0) {
+      if (setLoRaFemLnaEnabled(false)) {
+        _prefs->setByKey("fem_rxgain", "0");
+        strcpy(reply, "OK - LoRa FEM RX gain off");
+      } else {
+        strcpy(reply, "Error: failed to apply LoRa FEM RX gain");
+      }
+    } else {
+      strcpy(reply, "Error: state must be on or off");
+    }
+    return true;
+  }
+
+  return false; // not handled
+}

@@ -263,7 +263,7 @@ role-specific terminal on TCP port 5002. Credential writes reply before
 restarting the WiFi station, so a TCP client should expect to reconnect at the
 new address; USB password input is masked. Binary
 Companion clients can use command bytes
-`0x46` and `0x47` over USB, BLE, or TCP port 5000 without the terminal-start
+`0x7C` and `0x7D` over USB, BLE, or TCP port 5000 without the terminal-start
 token. WiFi-only Companions accept all three modes. Full Companion rejects
 `none` because its simultaneous BLE transport requires modem sleep. Companion
 device `powersaving` and LoRa `radio.rxps` remain independent. On an ESP32 Full

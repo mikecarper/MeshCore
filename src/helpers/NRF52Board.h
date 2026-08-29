@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <MeshCore.h>
+#include <helpers/KeyValueStore.h>
 
 #if defined(NRF52_PLATFORM)
 
@@ -72,6 +73,8 @@ public:
   bool isExternalPowered() override;
   bool isUsbDataConnected() override;
   bool isUsbHostConnected() override;
+
+  void attachDynamicPrefs(KeyValueStore* prefs) { (void)prefs; }  // no-op
 
 #ifdef NRF52_POWER_MANAGEMENT
   uint16_t getBootVoltage() override { return boot_voltage_mv; }

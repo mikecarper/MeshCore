@@ -25,6 +25,7 @@
 #if !defined(LIGHTWEIGHT_WIFI_OTA)
 class AsyncWebServer;
 #endif
+#include <helpers/KeyValueStore.h>
 
 class ESP32Board : public mesh::MainBoard {
 protected:
@@ -71,6 +72,8 @@ public:
     Wire.begin();
   #endif    
   }
+
+  void attachDynamicPrefs(KeyValueStore* prefs) { (void)prefs; }  // no-op
 
   // Temperature from ESP32 MCU
   float getMCUTemperature() override {

@@ -800,7 +800,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     memcpy(&sender_timestamp, data, 4); // timestamp (by sender's RTC clock - which could be wrong)
     uint8_t flags = (data[4] >> 2);        // message attempt number, and other flags
 
-    if (!(flags == TXT_TYPE_PLAIN || flags == TXT_TYPE_CLI_DATA)) {
+    if (!(flags == TXT_TYPE_PLAIN || flags == TXT_TYPE_CLI_DATA || flags == TXT_TYPE_CLI_COMMAND)) {
       MESH_DEBUG_PRINTLN("onPeerDataRecv: unsupported command flags received: flags=%02x", (uint32_t)flags);
       return;
     }
@@ -845,7 +845,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         // advanced this client's room-post replay timestamp.
         send_ack = true;
       }
-    } else { // TXT_TYPE_CLI_DATA
+    } else { // TXT_TYPE_CLI_DATA or TXT_TYPE_CLI_COMMAND
       uint32_t request_id = sender_timestamp;
       mesh::RemoteCliRequest::parse(data, len, 5, request_id);
       const uint32_t command_fingerprint =
@@ -1315,6 +1315,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
   }
   board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
+
+  board.attachDynamicPrefs(_prefs.getCustom());
 
   updateAdvertTimer();
   updateFloodAdvertTimer();

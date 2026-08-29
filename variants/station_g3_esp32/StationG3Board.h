@@ -6,6 +6,8 @@
 #include "LoRaFEMControl.h"
 
 class StationG3Board : public ESP32Board {
+  KeyValueStore* _prefs = NULL;
+
 public:
   LoRaFEMControl loRaFEMControl;
 
@@ -24,6 +26,10 @@ public:
       rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
     }
   }
+
+  void attachDynamicPrefs(KeyValueStore* prefs);
+
+  bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply) override;
 
   void setPrimaryLNAEnable(bool enabled) {
     loRaFEMControl.setLNAEnable(enabled);

@@ -14,6 +14,16 @@ static bool enqueue(TestFrame queue[], size_t& count, size_t capacity,
   return mesh::enqueueCompanionFrame(queue, count, capacity, &code, 1);
 }
 
+TEST(CompanionFrameQueue, HighBitSeparatesResponsesFromPushes) {
+  const uint8_t highest_command_or_response = 0x7F;
+  const uint8_t first_push = 0x80;
+  const uint8_t unknown_high_code = 0x98;
+
+  EXPECT_FALSE(mesh::isCompanionPushFrame(&highest_command_or_response, 1));
+  EXPECT_TRUE(mesh::isCompanionPushFrame(&first_push, 1));
+  EXPECT_TRUE(mesh::isCompanionPushFrame(&unknown_high_code, 1));
+}
+
 TEST(CompanionFrameQueue, PushTrafficLeavesOneResponseSlot) {
   TestFrame queue[4] = {};
   size_t count = 0;

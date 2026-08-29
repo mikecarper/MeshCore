@@ -121,14 +121,31 @@ static const uint32_t COMMAND_RADIO_APPLY_TIMEOUT_MS = 5000UL;
 #define CMD_SET_DEFAULT_FLOOD_SCOPE   63
 #define CMD_GET_DEFAULT_FLOOD_SCOPE   64
 #define CMD_SEND_RAW_PACKET           65
-#define CMD_GET_RADIO_FEM_RXGAIN      66
-#define CMD_SET_RADIO_FEM_RXGAIN      67
-#define CMD_GET_RADIO_RXGAIN          68
-#define CMD_SET_RADIO_RXGAIN          69
-#define CMD_GET_WIFI_POWER_SAVE       70
-#define CMD_SET_WIFI_POWER_SAVE       71
-#define CMD_GET_BLUETOOTH_NAME        72
-#define CMD_SET_BLUETOOTH_NAME        73
+#define CMD_RUN_CLI_COMMAND           66  // v14+
+
+// Fork-specific host-to-device commands use the highest currently unused
+// block below 0x80. Bit 7 is reserved by the transport for device-to-host
+// push frames, so command IDs must remain in the low half of the byte range.
+#define CMD_GET_RADIO_FEM_RXGAIN      0x78
+#define CMD_SET_RADIO_FEM_RXGAIN      0x79
+#define CMD_GET_RADIO_RXGAIN          0x7A
+#define CMD_SET_RADIO_RXGAIN          0x7B
+#define CMD_GET_WIFI_POWER_SAVE       0x7C
+#define CMD_SET_WIFI_POWER_SAVE       0x7D
+#define CMD_GET_BLUETOOTH_NAME        0x7E
+#define CMD_SET_BLUETOOTH_NAME        0x7F
+
+// Compatibility aliases used by this fork before upstream assigned 0x42 to
+// CMD_RUN_CLI_COMMAND. A one-byte 0x42 frame remains distinguishable from the
+// official command, whose frame always includes CLI text.
+#define LEGACY_CMD_GET_RADIO_FEM_RXGAIN  0x42
+#define LEGACY_CMD_SET_RADIO_FEM_RXGAIN  0x43
+#define LEGACY_CMD_GET_RADIO_RXGAIN      0x44
+#define LEGACY_CMD_SET_RADIO_RXGAIN      0x45
+#define LEGACY_CMD_GET_WIFI_POWER_SAVE   0x46
+#define LEGACY_CMD_SET_WIFI_POWER_SAVE   0x47
+#define LEGACY_CMD_GET_BLUETOOTH_NAME    0x48
+#define LEGACY_CMD_SET_BLUETOOTH_NAME    0x49
 
 #if defined(RADIO_FEM_RXGAIN) && (RADIO_FEM_RXGAIN == 0)
 static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 0;
@@ -170,6 +187,7 @@ static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 1;
 #define RESP_ALLOWED_REPEAT_FREQ      26
 #define RESP_CODE_CHANNEL_DATA_RECV   27
 #define RESP_CODE_DEFAULT_FLOOD_SCOPE 28
+#define RESP_CODE_CLI_REPLY           29  // v14+, a reply to CMD_RUN_CLI_COMMAND
 
 #define MAX_CHANNEL_DATA_LENGTH       (MAX_FRAME_SIZE - 9)
 
@@ -943,8 +961,7 @@ void MyMesh::onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t 
   queueMessage(from, TXT_TYPE_PLAIN, pkt, sender_timestamp, NULL, 0, text);
 }
 
-void MyMesh::onCommandDataRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
-                               const char *text) {
+void MyMesh::onCommandDataRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp, const char *text) {
   markConnectionActive(from); // in case this is from a server, and we have a connection
   bool terminal_command_reply = false;
   uint32_t terminal_command_elapsed_millis = 0;
@@ -955,6 +972,18 @@ void MyMesh::onCommandDataRecv(const ContactInfo &from, mesh::Packet *pkt, uint3
 #endif
   queueMessage(from, TXT_TYPE_CLI_DATA, pkt, sender_timestamp, NULL, 0, text,
                terminal_command_reply, terminal_command_elapsed_millis);
+}
+
+void MyMesh::onCLICommandRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
+                               const char *text, char* reply) {
+  markConnectionActive(from); // in case this is from a server, and we have a connection
+  if (from.isRemoteCLIAllowed()) {
+    if (!handleCommand(text, sender_timestamp, reply)) {
+      strcat(reply, "Unknown command");   // reply may have cmd prefix from 'text'
+    }
+  } else {
+    queueMessage(from, TXT_TYPE_CLI_COMMAND, pkt, sender_timestamp, NULL, 0, text);
+  }
 }
 
 void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
@@ -1739,6 +1768,8 @@ void MyMesh::begin(bool has_display, bool radio_available) {
 }
 
 void MyMesh::configureRadioFromPrefs() {
+  board.attachDynamicPrefs(_prefs.getCustom());
+
   if (!_radio_available) {
     saved_radio_apply_pending = false;
     board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);
@@ -2038,6 +2069,81 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   while (*command == ' ') command++;
 
   if (handleCadCommand(command, reply, reply_size)) return true;
+
+  if (strcmp(command, "get radio.rxgain") == 0) {
+    if (!radio_driver.supportsRxBoostedGainMode()) {
+      snprintf(reply, reply_size, "Error: unsupported");
+    } else {
+      snprintf(reply, reply_size, "> %s",
+               _prefs.rx_boosted_gain ? "on" : "off");
+    }
+    return true;
+  }
+
+  if (strncmp(command, "set radio.rxgain ", 17) == 0) {
+    const char* value = command + 17;
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      snprintf(reply, reply_size,
+               "Error: use set radio.rxgain on|off");
+    } else if (!radio_driver.supportsRxBoostedGainMode()) {
+      snprintf(reply, reply_size, "Error: unsupported");
+    } else if (!applyAndSaveRxBoostedGain(strcmp(value, "on") == 0)) {
+      snprintf(reply, reply_size, "Error: radio busy or save failed");
+    } else {
+      snprintf(reply, reply_size, "OK - radio.rxgain %s", value);
+    }
+    return true;
+  }
+
+  if (strcmp(command, "get radio.fem.rxgain") == 0) {
+    if (!board.canControlLoRaFemLna()) {
+      snprintf(reply, reply_size, "Error: unsupported");
+    } else {
+      snprintf(reply, reply_size, "> %s",
+               board.isLoRaFemLnaEnabled() ? "on" : "off");
+    }
+    return true;
+  }
+
+  if (strncmp(command, "set radio.fem.rxgain ", 21) == 0) {
+    const char* value = command + 21;
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      snprintf(reply, reply_size,
+               "Error: use set radio.fem.rxgain on|off");
+    } else if (!board.canControlLoRaFemLna()) {
+      snprintf(reply, reply_size, "Error: unsupported");
+    } else if (!applyAndSaveFemRxGain(strcmp(value, "on") == 0)) {
+      snprintf(reply, reply_size, "Error: failed to apply or save FEM RX gain");
+    } else {
+      snprintf(reply, reply_size, "OK - radio.fem.rxgain %s", value);
+    }
+    return true;
+  }
+
+  if (strcmp(command, "get radio.fem.txgain") == 0) {
+    if (!board.canControlLoRaFemPaGain()) {
+      snprintf(reply, reply_size, "Error: unsupported");
+    } else {
+      snprintf(reply, reply_size, "> %s",
+               board.isLoRaFemPaGainEnabled() ? "on" : "off");
+    }
+    return true;
+  }
+
+  if (strncmp(command, "set radio.fem.txgain ", 21) == 0) {
+    const char* value = command + 21;
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      snprintf(reply, reply_size,
+               "Error: use set radio.fem.txgain on|off");
+    } else if (!board.canControlLoRaFemPaGain()) {
+      snprintf(reply, reply_size, "Error: unsupported");
+    } else if (!applyAndSaveFemTxGain(strcmp(value, "on") == 0)) {
+      snprintf(reply, reply_size, "Error: failed to apply or save FEM TX gain");
+    } else {
+      snprintf(reply, reply_size, "OK - radio.fem.txgain %s", value);
+    }
+    return true;
+  }
 
   if (strcmp(command, "get display.rotation") == 0) {
     if (_ui == NULL || !_ui->supportsDisplayRotation()) {
@@ -3099,6 +3205,24 @@ void MyMesh::handleCmdFrame(size_t len) {
     memcpy(&out_frame[i], _prefs.node_name, tlen);
     i += tlen;
     _serial->writeFrame(out_frame, i);
+  } else if (cmd_frame[0] == CMD_RUN_CLI_COMMAND && len >= 2) { // V14+
+    int i = 1;
+    char *text = (char *)&cmd_frame[i];
+    int tlen = len - i;
+    if (memchr(text, 0, tlen) != NULL) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else {
+      text[tlen] = 0; // ensure null
+
+      reply_buf[0] = 0;
+      if (!handleCommand(text, 0, reply_buf)) {
+        strcat(reply_buf, "Unknown command");   // reply_buf may have cmd prefix from 'text'
+      }
+      out_frame[0] = RESP_CODE_CLI_REPLY;
+      int rlen = strlen(reply_buf);
+      memcpy(&out_frame[1], reply_buf, rlen);
+      _serial->writeFrame(out_frame, 1 + rlen);
+    }
   } else if (cmd_frame[0] == CMD_SEND_TXT_MSG && len >= 14) {
     int i = 1;
     uint8_t txt_type = cmd_frame[i++];
@@ -3109,7 +3233,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint8_t *pub_key_prefix = &cmd_frame[i];
     i += 6;
     ContactInfo *recipient = lookupContactByPubKey(pub_key_prefix, 6);
-    if (recipient && (txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_CLI_DATA)) {
+    if (recipient && (txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)) {
       char *text = (char *)&cmd_frame[i];
       int tlen = len - i;
       uint32_t est_timeout;
@@ -3126,11 +3250,11 @@ void MyMesh::handleCmdFrame(size_t len) {
 
       int result;
       uint32_t expected_ack;
-      if (txt_type == TXT_TYPE_CLI_DATA) {
+      if (txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND) {
         const uint32_t logical_request_id = msg_timestamp;
         msg_timestamp = getRTCClock()->getCurrentTimeUnique(); // Use node's RTC instead of app timestamp to avoid tripping replay protection
-        result = sendCommandData(*recipient, msg_timestamp, attempt, text,
-                                 est_timeout, logical_request_id);
+        result = sendCommandData(*recipient, msg_timestamp, attempt, txt_type,
+                                 text, est_timeout, logical_request_id);
         expected_ack = 0; // no Ack expected
       } else {
         const uint32_t app_timestamp = msg_timestamp;
@@ -3989,8 +4113,11 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
-  } else if (cmd_frame[0] == CMD_GET_RADIO_FEM_RXGAIN) {
-    if (!board.canControlLoRaFemLna()) {
+  } else if (cmd_frame[0] == CMD_GET_RADIO_FEM_RXGAIN
+             || cmd_frame[0] == LEGACY_CMD_GET_RADIO_FEM_RXGAIN) {
+    if (len != 1) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (!board.canControlLoRaFemLna()) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
     } else {
       out_frame[0] = RESP_CODE_OK;
@@ -3998,30 +4125,37 @@ void MyMesh::handleCmdFrame(size_t len) {
       memcpy(&out_frame[1], &value, 1);
       _serial->writeFrame(out_frame, 2);
     }
-  } else if (cmd_frame[0] == CMD_SET_RADIO_FEM_RXGAIN && len >= 2) {
-    uint8_t value = cmd_frame[1];
-    if (!board.canControlLoRaFemLna()) {
+  } else if (cmd_frame[0] == CMD_SET_RADIO_FEM_RXGAIN
+             || cmd_frame[0] == LEGACY_CMD_SET_RADIO_FEM_RXGAIN) {
+    uint8_t value = len >= 2 ? cmd_frame[1] : 0;
+    if (len != 2) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (!board.canControlLoRaFemLna()) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
     } else if (value <= 1) {
       if (applyAndSaveFemRxGain(value != 0)) {
         writeOKFrame();
       } else {
-        writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+        writeErrFrame(ERR_CODE_BAD_STATE);
       }
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
-  } else if (cmd_frame[0] == CMD_GET_RADIO_RXGAIN) {
-    if (!radio_driver.supportsRxBoostedGainMode()) {
+  } else if (cmd_frame[0] == CMD_GET_RADIO_RXGAIN
+             || cmd_frame[0] == LEGACY_CMD_GET_RADIO_RXGAIN) {
+    if (len != 1) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (!radio_driver.supportsRxBoostedGainMode()) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
     } else {
       out_frame[0] = RESP_CODE_OK;
       out_frame[1] = _prefs.rx_boosted_gain ? 1 : 0;
       _serial->writeFrame(out_frame, 2);
     }
-  } else if (cmd_frame[0] == CMD_SET_RADIO_RXGAIN && len >= 2) {
-    uint8_t value = cmd_frame[1];
-    if (value > 1) {
+  } else if (cmd_frame[0] == CMD_SET_RADIO_RXGAIN
+             || cmd_frame[0] == LEGACY_CMD_SET_RADIO_RXGAIN) {
+    uint8_t value = len >= 2 ? cmd_frame[1] : 0;
+    if (len != 2 || value > 1) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else if (!radio_driver.supportsRxBoostedGainMode()) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
@@ -4030,41 +4164,57 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else {
       writeOKFrame();
     }
-  } else if (cmd_frame[0] == CMD_GET_WIFI_POWER_SAVE) {
-#if defined(ESP32) && defined(WIFI_SSID)
-    out_frame[0] = RESP_CODE_OK;
-    out_frame[1] = getCompanionWiFiPowerSave();
-    _serial->writeFrame(out_frame, 2);
-#else
-    writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
-#endif
-  } else if (cmd_frame[0] == CMD_SET_WIFI_POWER_SAVE && len >= 2) {
-#if defined(ESP32) && defined(WIFI_SSID)
-    const uint8_t value = cmd_frame[1];
-    if (value > mesh::wifi::kPowerSaveMax) {
+  } else if (cmd_frame[0] == CMD_GET_WIFI_POWER_SAVE
+             || cmd_frame[0] == LEGACY_CMD_GET_WIFI_POWER_SAVE) {
+    if (len != 1) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
-      char reply[160];
-      if (applyAndSaveWiFiPowerSaving(
-              companionWiFiPowerSaveName(value), reply, sizeof(reply))) {
-        writeOKFrame();
-      } else {
-        writeErrFrame(ERR_CODE_BAD_STATE);
-      }
-    }
+#if defined(ESP32) && defined(WIFI_SSID)
+      out_frame[0] = RESP_CODE_OK;
+      out_frame[1] = getCompanionWiFiPowerSave();
+      _serial->writeFrame(out_frame, 2);
 #else
-    writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+      writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
 #endif
-  } else if (cmd_frame[0] == CMD_GET_BLUETOOTH_NAME) {
-    out_frame[0] = RESP_CODE_OK;
-    out_frame[1] = mesh::companion::hasCustomBluetoothName(
-        _prefs.bluetooth_name) ? 1 : 0;
-    char* effective_name = reinterpret_cast<char*>(&out_frame[2]);
-    mesh::companion::formatBluetoothName(
-        effective_name, MAX_FRAME_SIZE - 1, _prefs.bluetooth_name,
-        BLE_NAME_PREFIX, _prefs.node_name);
-    _serial->writeFrame(out_frame, 2 + strlen(effective_name));
-  } else if (cmd_frame[0] == CMD_SET_BLUETOOTH_NAME) {
+    }
+  } else if (cmd_frame[0] == CMD_SET_WIFI_POWER_SAVE
+             || cmd_frame[0] == LEGACY_CMD_SET_WIFI_POWER_SAVE) {
+    if (len != 2) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else {
+#if defined(ESP32) && defined(WIFI_SSID)
+      const uint8_t value = cmd_frame[1];
+      if (value > mesh::wifi::kPowerSaveMax) {
+        writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+      } else {
+        char reply[160];
+        if (applyAndSaveWiFiPowerSaving(
+                companionWiFiPowerSaveName(value), reply, sizeof(reply))) {
+          writeOKFrame();
+        } else {
+          writeErrFrame(ERR_CODE_BAD_STATE);
+        }
+      }
+#else
+      writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+#endif
+    }
+  } else if (cmd_frame[0] == CMD_GET_BLUETOOTH_NAME
+             || cmd_frame[0] == LEGACY_CMD_GET_BLUETOOTH_NAME) {
+    if (len != 1) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else {
+      out_frame[0] = RESP_CODE_OK;
+      out_frame[1] = mesh::companion::hasCustomBluetoothName(
+          _prefs.bluetooth_name) ? 1 : 0;
+      char* effective_name = reinterpret_cast<char*>(&out_frame[2]);
+      mesh::companion::formatBluetoothName(
+          effective_name, MAX_FRAME_SIZE - 1, _prefs.bluetooth_name,
+          BLE_NAME_PREFIX, _prefs.node_name);
+      _serial->writeFrame(out_frame, 2 + strlen(effective_name));
+    }
+  } else if (cmd_frame[0] == CMD_SET_BLUETOOTH_NAME
+             || cmd_frame[0] == LEGACY_CMD_SET_BLUETOOTH_NAME) {
     const size_t name_len = len - 1;
     if (name_len > mesh::companion::BLUETOOTH_NAME_MAX_BYTES
         || memchr(&cmd_frame[1], 0, name_len) != NULL) {
@@ -4362,22 +4512,37 @@ void MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact) {
 bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
   if (!board.canControlLoRaFemLna()) return false;
 
-  const bool changed = board.isLoRaFemLnaEnabled() != enabled;
+  const bool previous_hardware = board.isLoRaFemLnaEnabled();
+  const uint8_t previous_pref = _prefs.radio_fem_rxgain;
+  const uint8_t previous_override = _prefs.radio_fem_rxgain_override;
+  const bool changed = previous_hardware != enabled;
   if (!board.setLoRaFemLnaEnabled(enabled)) return false;
 
   if (changed && _radio_available) _radio->recalibrateNoiseFloor();
   _prefs.radio_fem_rxgain = enabled ? 1 : 0;
   _prefs.radio_fem_rxgain_override = 1;
-  savePrefs();
+  if (!savePrefs()) {
+    _prefs.radio_fem_rxgain = previous_pref;
+    _prefs.radio_fem_rxgain_override = previous_override;
+    board.setLoRaFemLnaEnabled(previous_hardware);
+    if (changed && _radio_available) _radio->recalibrateNoiseFloor();
+    return false;
+  }
   return true;
 }
 
 bool MyMesh::applyAndSaveFemTxGain(bool enabled) {
   if (!board.canControlLoRaFemPaGain()) return false;
+  const bool previous_hardware = board.isLoRaFemPaGainEnabled();
+  const uint8_t previous_pref = _prefs.radio_fem_txgain;
   if (!board.setLoRaFemPaGainEnabled(enabled)) return false;
 
   _prefs.radio_fem_txgain = enabled ? 1 : 0;
-  savePrefs();
+  if (!savePrefs()) {
+    _prefs.radio_fem_txgain = previous_pref;
+    board.setLoRaFemPaGainEnabled(previous_hardware);
+    return false;
+  }
   return true;
 }
 
@@ -4387,8 +4552,15 @@ bool MyMesh::applyAndSaveRxBoostedGain(bool enabled) {
     return false;
   }
 
+  const uint8_t previous_pref = _prefs.rx_boosted_gain;
   _prefs.rx_boosted_gain = enabled ? 1 : 0;
-  savePrefs();
+  if (!savePrefs()) {
+    _prefs.rx_boosted_gain = previous_pref;
+    if (_radio_available) {
+      radio_driver.setRxBoostedGainMode(previous_pref != 0);
+    }
+    return false;
+  }
   return true;
 }
 
@@ -5140,9 +5312,9 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
 
   const size_t command_len =
       on_air_command == NULL ? 0 : strlen(on_air_command);
-  if (command_len == 0 || command_len > MAX_TEXT_LEN) {
+  if (command_len == 0 || command_len > MAX_CORRELATED_CLI_TEXT_LEN) {
     terminalOutput().printf("  ERROR: remote command must be 1-%u UTF-8 bytes\r\n",
-                  (unsigned)MAX_TEXT_LEN);
+                  (unsigned)MAX_CORRELATED_CLI_TEXT_LEN);
     return;
   }
 
@@ -5151,7 +5323,16 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
   const uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
   const uint32_t command_started_at = _ms->getMillis();
   uint32_t est_timeout = 0;
-  const int result = sendCommandData(recipient, timestamp, 0, on_air_command,
+  // Legacy server roles used CLI_DATA for requests as well as replies. Keep
+  // that interoperable request form for deployed Repeaters, Rooms, and
+  // Sensors; Chat/Companion nodes need the explicit CLI_COMMAND direction.
+  const bool is_server_role = recipient.type == ADV_TYPE_REPEATER
+      || recipient.type == ADV_TYPE_ROOM
+      || recipient.type == ADV_TYPE_SENSOR;
+  const uint8_t txt_type = is_server_role
+      ? TXT_TYPE_CLI_DATA : TXT_TYPE_CLI_COMMAND;
+  const int result = sendCommandData(recipient, timestamp, 0,
+                                     txt_type, on_air_command,
                                      est_timeout, logical_request_id);
   if (result == MSG_SEND_FAILED) {
     terminalOutput().print("  ERROR: unable to send remote command\r\n");
@@ -5891,6 +6072,176 @@ void MyMesh::enterCLIRescue() {
   Serial.println("========= CLI Rescue =========");
 }
 
+static bool isCompanionRadioPrefsCommand(const char* command) {
+  if (command == NULL) return false;
+
+  static const char* const exact_commands[] = {
+    "get radio", "get freq", "get af", "get dutycycle", "get tx",
+    "get rxdelay", "get path.hash.mode", "get multi.acks"
+  };
+  for (const char* candidate : exact_commands) {
+    if (strcmp(command, candidate) == 0) return true;
+  }
+
+  static const char* const set_prefixes[] = {
+    "set radio ", "set af ", "set dutycycle ", "set rxdelay ",
+    "set path.hash.mode ", "set multi.acks "
+  };
+  for (const char* prefix : set_prefixes) {
+    if (strncmp(command, prefix, strlen(prefix)) == 0) return true;
+  }
+  return false;
+}
+
+bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
+                           char* reply) {
+  if (command == NULL || reply == NULL) return false;
+  size_t reply_capacity = 160;
+  while (*command == ' ' || *command == '\t') command++;
+
+  if (strlen(command) > 3 && command[2] == '|') {
+    // Optional two-character request prefix used by Companion CLI clients.
+    memcpy(reply, command, 3);
+    reply += 3;
+    reply_capacity -= 3;
+    *reply = 0;
+    command += 3;
+    while (*command == ' ' || *command == '\t') command++;
+  }
+
+  if (handleLocalControlCommand(command, reply, reply_capacity)) return true;
+
+  if (strncmp(command, "set tx ", 7) == 0) {
+    int32_t parsed = 0;
+    if (!mesh::cli::parseIntegerStrict(command + 7, parsed)) {
+      strcpy(reply, "Error: invalid TX power");
+    } else if (parsed < -9 || parsed > MAX_LORA_TX_POWER) {
+      snprintf(reply, reply_capacity, "Error: TX power must be -9 to %d",
+               MAX_LORA_TX_POWER);
+    } else {
+      const int8_t previous = _prefs.tx_power_dbm;
+      const int8_t requested = static_cast<int8_t>(parsed);
+      if (_radio_available && !radio_driver.setTxPower(requested)) {
+        strcpy(reply, "Error: radio busy or TX power rejected");
+      } else {
+        _prefs.tx_power_dbm = requested;
+        if (!savePrefs()) {
+          _prefs.tx_power_dbm = previous;
+          if (_radio_available) radio_driver.setTxPower(previous);
+          strcpy(reply, "Error: TX power changed but save failed");
+        } else {
+          strcpy(reply, "OK");
+        }
+      }
+    }
+    return true;
+  }
+
+  if (isCompanionRadioPrefsCommand(command)) {
+    const float previous_freq = _prefs.freq;
+    const float previous_bw = _prefs.bw;
+    const uint8_t previous_sf = _prefs.sf;
+    const uint8_t previous_cr = _prefs.cr;
+    const float previous_af = _prefs.airtime_factor;
+    const float previous_rxdelay = _prefs.rx_delay_base;
+    const uint8_t previous_hash_mode = _prefs.path_hash_mode;
+    const uint8_t previous_multi_acks = _prefs.multi_acks;
+    const uint32_t previous_rx_us = _prefs.rx_ps_rx_us;
+    const uint32_t previous_sleep_us = _prefs.rx_ps_sleep_us;
+
+    if (!_prefs.getRadioPrefs()->handleCommand(
+            command, sender_timestamp, reply)) {
+      return false;
+    }
+    if (_prefs.getRadioPrefs()->isDirty()) {
+      if (strncmp(command, "set radio ", 10) == 0) {
+        recalcRxPowerSavingFromLevel(
+            _prefs.rx_ps_level, _prefs.sf, _prefs.bw,
+            _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
+            &_prefs.rx_ps_sleep_us);
+      }
+      if (!savePrefs()) {
+        _prefs.freq = previous_freq;
+        _prefs.bw = previous_bw;
+        _prefs.sf = previous_sf;
+        _prefs.cr = previous_cr;
+        _prefs.airtime_factor = previous_af;
+        _prefs.rx_delay_base = previous_rxdelay;
+        _prefs.path_hash_mode = previous_hash_mode;
+        _prefs.multi_acks = previous_multi_acks;
+        _prefs.rx_ps_rx_us = previous_rx_us;
+        _prefs.rx_ps_sleep_us = previous_sleep_us;
+        _prefs.clearDirty();
+        strcpy(reply, "Error: setting changed but save failed");
+      }
+    }
+    return true;
+  }
+
+  // Hook for future variant-specific commands not covered by the shared,
+  // runtime-aware FEM handlers above.
+  if (board.handleCommand(command, sender_timestamp, reply)) {
+    if (_prefs.isDirty() && !savePrefs()) {
+      strcpy(reply, "Error: board setting changed but save failed");
+    }
+    return true;
+  }
+
+  if (strncmp(command, "set name ", 9) == 0) {
+    const char* name = command + 9;
+    if (!AdvertDataParser::isValidName(name)) {
+      strcpy(reply, "Error, bad chars");
+    } else {
+      char previous[sizeof(_prefs.node_name)];
+      memcpy(previous, _prefs.node_name, sizeof(previous));
+      StrHelper::strncpy(_prefs.node_name, name, sizeof(_prefs.node_name));
+      if (!savePrefs()) {
+        memcpy(_prefs.node_name, previous, sizeof(_prefs.node_name));
+        strcpy(reply, "Error: name changed but save failed");
+      } else {
+        strcpy(reply, "OK");
+      }
+    }
+    return true;
+  }
+  if (strcmp(command, "get name") == 0) {
+    snprintf(reply, reply_capacity, "> %s", _prefs.node_name);
+    return true;
+  }
+
+  if (strncmp(command, "set pin ", 8) == 0) {
+    int32_t parsed = 0;
+    if (!mesh::cli::parseIntegerStrict(command + 8, parsed)
+        || parsed < 0 || parsed > 999999) {
+      strcpy(reply, "Error: pin must be 0-999999");
+    } else {
+      const uint32_t previous = _prefs.ble_pin;
+      _prefs.ble_pin = static_cast<uint32_t>(parsed);
+      if (!savePrefs()) {
+        _prefs.ble_pin = previous;
+        strcpy(reply, "Error: pin changed but save failed");
+      } else {
+        snprintf(reply, reply_capacity, "> pin is now %06lu",
+                 (unsigned long)_prefs.ble_pin);
+      }
+    }
+    return true;
+  }
+
+  if (strcmp(command, "board") == 0) {
+    snprintf(reply, reply_capacity, "%s", board.getManufacturerName());
+    return true;
+  }
+
+  if (strcmp(command, "ver") == 0) {
+    snprintf(reply, reply_capacity, "%s (Build: %s)", FIRMWARE_VERSION,
+             FIRMWARE_BUILD_DATE);
+    return true;
+  }
+
+  return false;
+}
+
 void MyMesh::checkCLIRescueCmd() {
   int len = strlen(cli_command);
   while (Serial.available() && len < sizeof(cli_command)-1) {
@@ -5908,15 +6259,10 @@ void MyMesh::checkCLIRescueCmd() {
   if (len > 0 && cli_command[len - 1] == '\r') {  // received complete line
     cli_command[len - 1] = 0;  // replace newline with C string null terminator
 
-    if (memcmp(cli_command, "set ", 4) == 0) {
-      const char* config = &cli_command[4];
-      if (memcmp(config, "pin ", 4) == 0) {
-        _prefs.ble_pin = atoi(&config[4]);
-        savePrefs();
-        Serial.printf("  > pin is now %06d\n", _prefs.ble_pin);
-      } else {
-        Serial.printf("  Error: unknown config: %s\n", config);
-      }
+    reply_buf[0] = 0;
+    if (handleCommand(cli_command, 0, reply_buf)) {
+      // command was handled, print reply output
+      Serial.print("  "); Serial.print(reply_buf); Serial.println();
     } else if (strcmp(cli_command, "rebuild") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {

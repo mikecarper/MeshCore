@@ -2352,6 +2352,7 @@ void CommonCLI::savePrefs(PrefsSaveRouting::Scope scope) {
     _callbacks->updateAdvertTimer();
   }
   _callbacks->savePrefs(scope);
+  _prefs->clearDirty();
 }
 
 void CommonCLI::saveObserverPrefs() {
@@ -2854,6 +2855,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _callbacks->formatRadioStatsReply(reply);
     } else if (sender_timestamp == 0 && memcmp(command, "stats-core", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
       _callbacks->formatStatsReply(reply);
+    } else if (_board->handleCommand(command, sender_timestamp, reply)) {
+      if (_prefs->isDirty()) savePrefs();
     } else {
       strcpy(reply, "Unknown command");
     }
@@ -4054,16 +4057,6 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     *dp = 0;
     savePrefs();
     strcpy(reply, "OK");
-  } else if (memcmp(config, "path.hash.mode ", 15) == 0) {
-    config += 15;
-    uint8_t mode = atoi(config);
-    if (mode < 3) {
-      _prefs->path_hash_mode = mode;
-      savePrefs();
-      strcpy(reply, "OK");
-    } else {
-      strcpy(reply, "Error, must be 0,1, or 2");
-    }
   } else if (memcmp(config, "loop.detect ", 12) == 0) {
     config += 12;
     uint8_t mode;

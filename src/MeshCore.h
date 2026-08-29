@@ -159,6 +159,13 @@ public:
   virtual bool isPowerManagementInitialized() const { return false; }
   virtual bool supportsVoltageWake() const { return false; }
 
+  virtual bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply) {
+    (void)command;
+    (void)sender_timestamp;
+    (void)reply;
+    return false;
+  }
+
   inline static uint32_t n_cad_busy = 0;
 };
 

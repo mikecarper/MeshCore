@@ -774,7 +774,7 @@ void SensorMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_i
             sendAckTo(*from, ack_hash, packet->getPathHashSize());
           }
         }
-      } else if (flags == TXT_TYPE_CLI_DATA) {  
+      } else if (flags == TXT_TYPE_CLI_DATA || flags == TXT_TYPE_CLI_COMMAND) {
         from->last_timestamp = sender_timestamp;
         from->last_activity = getRTCClock()->getCurrentTime();
 
@@ -1003,6 +1003,8 @@ void SensorMesh::begin(FILESYSTEM* fs) {
   }
   board.setLoRaFemPaGainEnabled(_prefs.radio_fem_txgain);
   setRxPowerSaving(_prefs.rx_powersaving_enabled, _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us);
+
+  board.attachDynamicPrefs(_prefs.getCustom());
 
   updateAdvertTimer();
   updateFloodAdvertTimer();

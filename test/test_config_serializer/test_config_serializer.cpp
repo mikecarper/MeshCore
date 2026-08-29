@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "helpers/ConfigSerializer.h"
+#include "helpers/DynamicConfigSerializer.h"
 
 class NativeFileSystem {
 public:
@@ -314,6 +315,90 @@ TEST(NodePrefs, ExplicitWrappedBridgeFormatReplacesRawInMemoryValue) {
     EXPECT_EQ(mesh::bridge::ESPNOW_FORMAT_WRAPPED, loaded.bridge_format);
 }
 
+TEST(DynamicConfigSerializer, GetSet_Basic) {
+    DynamicConfigSerializer data;
+
+    bool s1 = data.setByKey("age", "11");
+    bool s2 = data.setByKey("name", "Scott");
+    EXPECT_TRUE(s1 && s2);
+
+    char tmp[32];
+    bool g1 = data.getByKey("age", tmp, 31);
+    EXPECT_TRUE(g1);
+    EXPECT_STREQ("11", tmp);
+
+    bool g2 = data.getByKey("name", tmp, 31);
+    EXPECT_TRUE(g2);
+    EXPECT_STREQ("Scott", tmp);
+}
+
+TEST(DynamicConfigSerializer, Set_Replaces) {
+    DynamicConfigSerializer data;
+
+    bool s1 = data.setByKey("age", "11");
+    bool s2 = data.setByKey("name", "Scott");
+    EXPECT_TRUE(s1 && s2);
+
+    bool s3 = data.setByKey("age", "333");
+    EXPECT_TRUE(s3);
+
+    char tmp[32];
+    bool g1 = data.getByKey("age", tmp, 31);
+    EXPECT_TRUE(g1);
+    EXPECT_STREQ("333", tmp);
+
+    bool g2 = data.getByKey("name", tmp, 31);
+    EXPECT_TRUE(g2);
+    EXPECT_STREQ("Scott", tmp);
+}
+
+TEST(DynamicConfigSerializer, GetUnknown_Fail) {
+    DynamicConfigSerializer data;
+
+    bool s1 = data.setByKey("age", "11");
+    EXPECT_TRUE(s1);
+
+    char tmp[32];
+    bool g2 = data.getByKey("name", tmp, 31);
+    EXPECT_FALSE(g2);
+}
+
+TEST(DynamicConfigSerializer, SaveCustom_Basic) {
+    MockPrintStream s;
+    DynamicConfigSerializer data;
+
+    bool s1 = data.setByKey("age", "11");
+    bool s2 = data.setByKey("name", "Scott");
+    EXPECT_TRUE(s1 && s2);
+
+    bool success = data.saveSerial(s);
+    EXPECT_TRUE(success);
+
+    auto l = s.getLength();
+    char tmp[128];
+    memcpy(tmp, s.getBytes(), l);
+    tmp[l] = 0;
+
+    const char* expect = "{age:\"11\",name:\"Scott\"}";
+    EXPECT_STREQ(expect, tmp);
+}
+
+TEST(DynamicConfigSerializer, LoadCustom_Basic) {
+    MockInputStream s("{age:\"" TEST_INT_S "\",name:\"Scott\"}");
+    DynamicConfigSerializer data;
+
+    bool success = data.loadSerial(s);
+    EXPECT_TRUE(success);
+
+    char tmp[32];
+    bool g1 = data.getByKey("age", tmp, 31);
+    EXPECT_TRUE(g1);
+    EXPECT_STREQ(TEST_INT_S, tmp);
+
+    bool g2 = data.getByKey("name", tmp, 31);
+    EXPECT_TRUE(g2);
+    EXPECT_STREQ("Scott", tmp);
+}
 
 // ── main ───────────────────────────────────────────────────────
 
