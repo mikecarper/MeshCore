@@ -1,11 +1,11 @@
 # SenseCAP Indicator controls
 
-The Indicator uses its full 480x480 panel resolution while preserving the
-existing 160x160 UI coordinate system. A 4-bit internal canvas avoids PSRAM
-contention with RGB scanout; text and icons are rendered directly at 3x detail
-instead of enlarging a completed 160x160 frame. The screen blanks after five
-minutes on USB power; the hardware button or a touch wakes it without
-selecting anything.
+The Indicator preserves the existing 160x160 UI coordinate system in a
+320x320, 4-bit internal canvas and scales it 1.5x onto the 480x480 panel. The
+canvas avoids PSRAM contention with RGB scanout while reserving enough internal
+RAM for Bluetooth and WiFi to operate together. The screen blanks after five
+minutes on USB power; the hardware button or a touch wakes it without selecting
+anything.
 
 ## Touch navigation
 
