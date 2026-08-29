@@ -268,6 +268,21 @@ require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
 # aliases remain directly buildable, but canonical release resolution must
 # replace each with that exact board's Full target.
 init_project_context >/dev/null
+
+# Arduino-ESP32 3.x OTA-only targets that have always declared larger A/B
+# slots must be checked against their real partition table, not the legacy
+# 1.25 MiB portable ceiling. Keep that exception OTA-only so ordinary RC32
+# standard artifacts still retain the portable release contract.
+for rc32_ota_env in \
+    heltec_rc32_repeater_lora_ota_no_external_sensors \
+    heltec_rc32_without_display_repeater_lora_ota_no_external_sensors; do
+  if requires_esp32_portable_size_ceiling "$rc32_ota_env"; then
+    fail "$rc32_ota_env incorrectly inherited the legacy portable size ceiling"
+  fi
+done
+requires_esp32_portable_size_ceiling heltec_rc32_repeater \
+  || fail "ordinary RC32 repeater lost the portable size ceiling"
+
 while IFS='|' read -r source_env full_env build_base; do
   [ "${PIO_ENV_PLATFORM_BY_NAME[$full_env]:-}" = ESP32_PLATFORM ] \
     || fail "$full_env was not registered as ESP32 Full Companion"

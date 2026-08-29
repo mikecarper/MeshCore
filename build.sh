@@ -2637,21 +2637,21 @@ requires_esp32_portable_app_slot() {
     && ! is_esp32_companion_build "$1"
 }
 
-is_esp32_c6_target() {
-  [[ "${PIO_ENV_BOARD_BY_NAME[$1]:-}" == esp32-c6-* ]]
-}
-
 requires_esp32_portable_size_ceiling() {
   local env_name=$1
 
   requires_esp32_portable_app_slot "$env_name" || return 1
 
-  # Arduino 3.x pulls substantially more WiFi runtime into ESP32-C6 images.
-  # These target-specific OTA siblings already used 1920 KiB or larger A/B app
-  # slots before the compact browser uploader was enabled, so retain their
-  # established partition contract and enforce the actual partition below.
-  if is_lora_ota_only_target "$env_name" && is_esp32_c6_target "$env_name"; then
-    return 1
+  # Arduino 3.x pulls substantially more WiFi runtime into ESP32-C6 and RC32
+  # images. These target-specific OTA siblings already use larger A/B slots:
+  # C6 boards declared at least 1920 KiB slots, while RC32 has always declared
+  # the two 0x640000 slots in default_16MB.csv. Retain those established
+  # partition contracts and enforce each image against its actual partition
+  # below instead of the unrelated legacy 1.25 MiB ceiling.
+  if is_lora_ota_only_target "$env_name"; then
+    case "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" in
+      esp32-c6-*|heltec-rc32) return 1 ;;
+    esac
   fi
 
   return 0
