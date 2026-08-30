@@ -15,6 +15,7 @@ pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_indicator_display_profile.py  # Indicator RAM/scale contract
 python3 test/test_companion_terminal_profile.py  # Companion CLI capability gates
+python3 test/test_esp32_full_partition.py       # Full partition-preservation policy
 ```
 
 A green `[PASSED]` per suite means GoogleTest returned 0 (all assertions

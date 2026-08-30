@@ -2808,6 +2808,11 @@ declare_build_capability_contract() {
       record_build_expectation "companion.wifi_ota_seeder" \
         "OTA seeder listening on :"
       record_build_expectation "web.webconfig" "start webconfig"
+      # This branch is constant-folded away when the expanded-profile marker
+      # is missing. Make artifact qualification prove that canonical Full
+      # Companion images really contain the bounded first-boot WiFi policy.
+      record_build_expectation "web.unconfigured_setup_cutoff" \
+        "WiFi still unconfigured after"
       pio_env_name=$(get_pio_build_env "$env_name")
       if pio_env_option_contains "$pio_env_name" build_flags \
           "WITH_MQTT_BRIDGE"; then
@@ -3257,6 +3262,7 @@ apply_companion_radio_full_profile() {
   local env_name=$1
   local pio_env_name=$2
 
+  unset MESHCORE_ESP32_FULL_PARTITION_TABLE
   is_companion_radio_full_target "$env_name" || return 0
 
   # Every full Companion is a LoRa mOTA source, never an update destination.
@@ -3289,7 +3295,24 @@ apply_companion_radio_full_profile() {
   # ESP32 keeps both source transports. TCP remains the normal unattended
   # path; a host may explicitly hold the native USB port in Companion terminal
   # mode when WiFi is unavailable and serve the same folder protocol there.
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1"
+  # The canonical Full Companion target is already built with an expanded
+  # partition table even when it is selected from the ordinary Companion
+  # release matrix (ESP32_FULL_BUILD remains 0 in that path). Mark that
+  # layout explicitly so Full-only runtime policies, including the bounded
+  # first-boot WebConfig window, cannot silently compile with legacy defaults.
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1 -DMESHCORE_EXPANDED_PARTITION_PROFILE=1"
+
+  # Both Indicator radio layouts share the same original NVS/SPIFFS data
+  # placement. The LoRa WiFi base names that map directly; the ESP-NOW USB
+  # base does not, so pass the physical-board requirement to the partition
+  # hook from the canonical target identity rather than guessing from flash
+  # size or the generic esp32-s3-devkitc manifest.
+  case "${env_name,,}" in
+    sensecapindicator-espnow_companion_radio_full|\
+    sensecapindicator-lora_companion_radio_full)
+      export MESHCORE_ESP32_FULL_PARTITION_TABLE="variants/sensecap_indicator-espnow/dual_ota_2560k_preserve_spiffs.csv"
+      ;;
+  esac
 
   # ESP-NOW is the primary mesh radio on these two layouts, so conventional
   # Companion WiFi must share its protocol mask and fixed channel instead of
@@ -3864,6 +3887,7 @@ build_firmware() {
   restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
   unset MESHCORE_ESP32_FULL_BUILD
   unset MESHCORE_COMPANION_RADIO_FULL
+  unset MESHCORE_ESP32_FULL_PARTITION_TABLE
   unset MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE
   unset MESHCORE_FORCE_LORA_OTA
   if [ "$had_platformio_build_unflags" -eq 1 ]; then

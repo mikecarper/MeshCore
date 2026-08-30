@@ -12,6 +12,18 @@ fail() {
 [ "$OPTION3_BUILD_WORKERS" -eq 1 ] \
   || fail "logging matrix permits concurrent PlatformIO target builds"
 
+# The expanded-profile marker applied below must select a real, nonzero
+# boot-local setup window. Keep the build overlay, WebConfig compile-time
+# mapping, and pure timing policy tied together.
+grep -Fq \
+  'static const uint32_t kFullSetupApWindowMs = 30UL * 60UL * 1000UL;' \
+  src/helpers/WebConfigBatch.h \
+  || fail "Full setup-AP window is no longer exactly 30 minutes"
+grep -Fq \
+  '#define WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS WebConfigBatch::kFullSetupApWindowMs' \
+  src/helpers/esp32/WebConfigServer.h \
+  || fail "expanded Full profile no longer enables the unconfigured-WiFi cutoff"
+
 requires_esp32_arduino3_framework \
   heltec_rc32_repeater heltec_rc32_repeater \
   || fail "RC32 omitted its Arduino-ESP32 3.x package preflight"
@@ -331,6 +343,20 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
   fi
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"WIFI_OTA_SEEDER=1"* ]] \
     || fail "$full_env Full Companion omitted its WiFi runtime overlay"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESHCORE_EXPANDED_PARTITION_PROFILE=1"* ]] \
+    || fail "$full_env Full Companion omitted its expanded runtime profile"
+  case "${full_env,,}" in
+    sensecapindicator-espnow_companion_radio_full|\
+    sensecapindicator-lora_companion_radio_full)
+      [ "${MESHCORE_ESP32_FULL_PARTITION_TABLE:-}" \
+          = "variants/sensecap_indicator-espnow/dual_ota_2560k_preserve_spiffs.csv" ] \
+        || fail "$full_env omitted the Indicator preserve-SPIFFS table"
+      ;;
+    *)
+      [ -z "${MESHCORE_ESP32_FULL_PARTITION_TABLE:-}" ] \
+        || fail "$full_env inherited another board's required partition table"
+      ;;
+  esac
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"CONFIG_ASYNC_TCP_STACK_SIZE=4096"* ]] \
     || fail "$full_env Full Companion omitted its bounded AsyncTCP stack"
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"CONFIG_ASYNC_TCP_RUNNING_CORE=1"* ]] \
@@ -351,7 +377,7 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
   esac
 done
 unset PLATFORMIO_BUILD_FLAGS PLATFORMIO_BUILD_UNFLAGS \
-  PLATFORMIO_BUILD_SRC_FILTER
+  PLATFORMIO_BUILD_SRC_FILTER MESHCORE_ESP32_FULL_PARTITION_TABLE
 
 # The bounded AsyncTCP task stack belongs to every ESP32 Full profile, including
 # expanded non-Companion builds, but must not leak into ordinary or nRF52
@@ -785,6 +811,8 @@ expectations=" ${BUILD_EXPECTATIONS[*]} "
   || fail "ESP32 Full contract uses no stable network-terminal evidence"
 [[ "$expectations" == *"companion.wifi_ota_seeder=OTA seeder listening on :"* ]] \
   || fail "ESP32 Full contract omitted the WiFi seeder"
+[[ "$expectations" == *"web.unconfigured_setup_cutoff=WiFi still unconfigured after"* ]] \
+  || fail "ESP32 Full contract omitted the bounded unconfigured-WiFi window"
 [[ "$expectations" != *"Full Companion terminal listening"* ]] \
   || fail "ESP32 Full contract still depends on optional debug logging"
 
