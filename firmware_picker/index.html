@@ -1589,8 +1589,9 @@ Ethernet transports.
 Normal repeater firmware includes runtime-controlled RS-232 support where the
 board has room; use <code>set bridge.enabled on</code> after configuring <code>bridge.uart</code> and
 <code>bridge.baud</code>. The Wio-E5 remains the capacity exception and offers a separate
-RS-232 image. Repeaters may also offer separate ESP-NOW, Ethernet, or MQTT
-observer modes.</p>
+RS-232 image. Choose Wi-Fi MQTT under <strong>Logging / MQTT</strong>; it is an output mode,
+not a second connection choice. Repeaters may still offer separate ESP-NOW or
+Ethernet bridge firmware because those paths use different compiled drivers.</p>
 <p>An ESP-NOW bridge target keeps LoRa as its primary mesh radio. Its runtime
 <code>bridge.format</code> setting chooses the peer protocol: <code>wrapped</code> (the
 backward-compatible bridge-to-bridge default using <code>bridge.secret</code>) or <code>raw</code>
