@@ -26,6 +26,7 @@
 
 #include "WebConfigHtml.h"
 #include "helpers/CLICommandUtils.h"
+#include "helpers/UsbLogging.h"
 #include "helpers/WebConfigKeys.h"
 #include "helpers/WiFiPowerSave.h"
 #include "helpers/esp32/WiFiRadioPolicy.h"
@@ -389,8 +390,11 @@ WebConfigServer::~WebConfigServer() {
 
 bool WebConfigServer::loadEnabled(bool default_value) {
   Preferences nvs;
-  if (!nvs.begin("mesh-webui", true)) return default_value;
-  bool enabled = nvs.getBool("enabled", default_value);
+  // A missing namespace is the normal erased-device state. Read-write creates
+  // it once instead of making Arduino Preferences log NOT_FOUND to Serial.
+  if (!nvs.begin("mesh-webui", false)) return default_value;
+  bool enabled = nvs.isKey("enabled")
+      ? nvs.getBool("enabled", default_value) : default_value;
   nvs.end();
   return enabled;
 }
@@ -405,8 +409,9 @@ bool WebConfigServer::saveEnabled(bool enabled) {
 
 bool WebConfigServer::loadCliEnabled(bool default_value) {
   Preferences nvs;
-  if (!nvs.begin("mesh-webui", true)) return default_value;
-  bool enabled = nvs.getBool("cli", default_value);
+  if (!nvs.begin("mesh-webui", false)) return default_value;
+  bool enabled = nvs.isKey("cli")
+      ? nvs.getBool("cli", default_value) : default_value;
   nvs.end();
   return enabled;
 }
@@ -426,11 +431,16 @@ bool WebConfigServer::loadStandaloneWiFi(char* ssid, size_t ssid_len,
   ssid[0] = 0;
   password[0] = 0;
   Preferences nvs;
-  if (!nvs.begin("mesh-wifi", true)) return false;
-  String stored_ssid = nvs.getString("ssid", "");
-  String stored_password = nvs.getString("password", "");
-  uint8_t stored_ps = nvs.getUChar(
-      "powersave", mesh::wifi::kDefaultPowerSave);
+  if (!nvs.begin("mesh-wifi", false)) return false;
+  // Preferences::getString() logs an error for a missing key even when the
+  // caller supplied a default. Missing credentials are expected on first boot.
+  String stored_ssid = nvs.isKey("ssid")
+      ? nvs.getString("ssid", "") : String();
+  String stored_password = nvs.isKey("password")
+      ? nvs.getString("password", "") : String();
+  uint8_t stored_ps = nvs.isKey("powersave")
+      ? nvs.getUChar("powersave", mesh::wifi::kDefaultPowerSave)
+      : mesh::wifi::kDefaultPowerSave;
   nvs.end();
   if (stored_ssid.length() >= ssid_len
       || stored_password.length() >= password_len
@@ -779,12 +789,13 @@ bool WebConfigServer::startSetupMode(char reply[]) {
       const esp_err_t sta_protocol_result = esp_wifi_set_protocol(
           WIFI_IF_STA, mesh::wifi::kProtocolMask);
       if (ap_protocol_result == ESP_OK && sta_protocol_result == ESP_OK) break;
-      Serial.printf("WebConfig protocol reset failed: AP=%d STA=%d\n",
-                    (int)ap_protocol_result, (int)sta_protocol_result);
+      mesh::usbLoggingPort().printf(
+          "WebConfig protocol reset failed: AP=%d STA=%d\n",
+          (int)ap_protocol_result, (int)sta_protocol_result);
       ap_ok = false;
     }
 
-    Serial.printf(
+    mesh::usbLoggingPort().printf(
         "WebConfig AP attempt %u failed: mode_ok=%d disconnect_ok=%d mode=%d heap=%u largest=%u\n",
         (unsigned)attempt, mode_ok, disconnect_ok, (int)WiFi.getMode(),
         (unsigned)ESP.getFreeHeap(),
@@ -969,8 +980,9 @@ void WebConfigServer::tick(uint32_t now) {
         break;
       case WebConfigBatch::StopAction::Warn:
         _stop_warned = true;
-        Serial.printf("WC: stop waiting for %lu handler(s); retaining session safely\n",
-                      (unsigned long)refs);
+        mesh::usbLoggingPort().printf(
+            "WC: stop waiting for %lu handler(s); retaining session safely\n",
+            (unsigned long)refs);
         break;
       case WebConfigBatch::StopAction::Wait:
         break;
@@ -993,9 +1005,12 @@ void WebConfigServer::tick(uint32_t now) {
       createServer();
       _connect_deadline = 0;
       _last_activity = now;
-      Serial.printf("WebConfig ready: http://%s/\n", WiFi.localIP().toString().c_str());
+      mesh::usbLoggingPort().printf(
+          "WebConfig ready: http://%s/\n",
+          WiFi.localIP().toString().c_str());
     } else if (_connect_deadline && (int32_t)(now - _connect_deadline) >= 0) {
-      Serial.printf("WebConfig: WiFi '%s' unavailable; opening setup AP\n", _wifi_ssid);
+      mesh::usbLoggingPort().printf(
+          "WebConfig: WiFi '%s' unavailable; opening setup AP\n", _wifi_ssid);
       const bool retry_saved_wifi = _wifi_ssid[0] != 0;
       // Keep the WiFi driver running while changing from STA to AP+STA.
       // Powering it off here and starting an AP immediately can race the
@@ -1008,7 +1023,7 @@ void WebConfigServer::tick(uint32_t now) {
       if (startSetupMode(ignored)) {
         _retry_saved_wifi_in_setup = retry_saved_wifi;
       }
-      Serial.println(ignored);
+      mesh::usbLoggingPort().println(ignored);
     }
     return;
   }
@@ -1024,8 +1039,9 @@ void WebConfigServer::tick(uint32_t now) {
       _wifi_reconnect_tracker.noteDisconnected(now);
       if (_wifi_reconnect_tracker.retryDue(now)) {
         _wifi_reconnect_tracker.noteAttempt(now);
-        Serial.printf("WebConfig: WiFi still unavailable; retrying '%s'\n",
-                      _wifi_ssid);
+        mesh::usbLoggingPort().printf(
+            "WebConfig: WiFi still unavailable; retrying '%s'\n",
+            _wifi_ssid);
         WiFi.mode(WIFI_STA);
         mesh::wifi::setStationAutoReconnect(true);
         WiFi.disconnect(false, false);
@@ -1061,20 +1077,23 @@ void WebConfigServer::tick(uint32_t now) {
       _wifi_reconnect_tracker.noteConnected();
       _mode = MODE_LAN;
       _last_activity = now;
-      Serial.printf("WebConfig: saved WiFi recovered; ready at http://%s/\n",
-                    WiFi.localIP().toString().c_str());
+      mesh::usbLoggingPort().printf(
+          "WebConfig: saved WiFi recovered; ready at http://%s/\n",
+          WiFi.localIP().toString().c_str());
     } else if (_owns_wifi && _setup_reconnect_in_progress
                && (int32_t)(now - _setup_reconnect_deadline) >= 0) {
       WiFi.disconnect(false, false);
       _setup_reconnect_in_progress = false;
       _setup_reconnect_deadline = 0;
-      Serial.println("WebConfig: saved WiFi still unavailable; setup AP remains active");
+      mesh::usbLoggingPort().println(
+          "WebConfig: saved WiFi still unavailable; setup AP remains active");
     } else if (_owns_wifi && !_setup_reconnect_in_progress
                && _wifi_reconnect_tracker.retryDue(now)) {
       _wifi_reconnect_tracker.noteAttempt(now);
       _setup_reconnect_in_progress = true;
       _setup_reconnect_deadline = now + 20000UL;
-      Serial.printf("WebConfig: retrying saved WiFi '%s'\n", _wifi_ssid);
+      mesh::usbLoggingPort().printf(
+          "WebConfig: retrying saved WiFi '%s'\n", _wifi_ssid);
       mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
     }
   }
@@ -1087,15 +1106,18 @@ void WebConfigServer::tick(uint32_t now) {
   }
 
   if (WebConfigBatch::rebootDue(_reboot_at, now)) {
-    Serial.printf("WC: rebooting now (%s)\n", _batch_reboot_armed ? "confirmed" : "fallback");
+    mesh::usbLoggingPort().printf(
+        "WC: rebooting now (%s)\n",
+        _batch_reboot_armed ? "confirmed" : "fallback");
     _cb->rebootNow();  // does not return
   }
 
   if ((int32_t)(_diag_until - now) > 0 && (now - _diag_last) >= 1000) {
     _diag_last = now;
-    Serial.printf("WC: diag sta=%d heap=%u batch=%d/%d state=%d\n",
-                  (int)WiFi.softAPgetStationNum(), (unsigned)ESP.getFreeHeap(),
-                  (int)_batch_next, (int)_batch_count, (int)_batch_state);
+    mesh::usbLoggingPort().printf(
+        "WC: diag sta=%d heap=%u batch=%d/%d state=%d\n",
+        (int)WiFi.softAPgetStationNum(), (unsigned)ESP.getFreeHeap(),
+        (int)_batch_next, (int)_batch_count, (int)_batch_state);
   }
 
   // Refresh the stats snapshot only while a client is actually polling.
@@ -1113,7 +1135,7 @@ void WebConfigServer::tick(uint32_t now) {
           _mode == MODE_SETUP, _wifi_ssid[0] != 0, now,
           _setup_started_at,
           (uint32_t)WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS)) {
-    Serial.printf(
+    mesh::usbLoggingPort().printf(
         "WebConfig: WiFi still unconfigured after %lu minutes; powering off until reboot or explicit restart\n",
         (unsigned long)((uint32_t)WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS / 60000UL));
     requestStop();
@@ -1144,7 +1166,8 @@ void WebConfigServer::tick(uint32_t now) {
       _setup_reconnect_deadline = 0;
       _mode = MODE_LAN;
       _last_activity = now;
-      Serial.println("WebConfig: setup AP idle; saved WiFi recovery continues");
+      mesh::usbLoggingPort().println(
+          "WebConfig: setup AP idle; saved WiFi recovery continues");
     } else {
       requestStop();
     }
@@ -1179,8 +1202,9 @@ void WebConfigServer::serviceSetupWiFiHandoff(uint32_t now) {
       _setup_wifi_handoff_pending = false;
       _setup_wifi_handoff_deadline = 0;
     }
-    Serial.printf("WebConfig: joined '%s' at %s; waiting for browser handoff\n",
-                  _wifi_ssid, ip);
+    mesh::usbLoggingPort().printf(
+        "WebConfig: joined '%s' at %s; waiting for browser handoff\n",
+        _wifi_ssid, ip);
     finishBatch(now);
     return;
   }
@@ -1207,8 +1231,9 @@ void WebConfigServer::serviceSetupWiFiHandoff(uint32_t now) {
     _setup_wifi_handoff_deadline = 0;
     _setup_wifi_handoff_ip[0] = 0;
   }
-  Serial.printf("WebConfig: could not join '%s'; setup AP remains active\n",
-                _wifi_ssid);
+  mesh::usbLoggingPort().printf(
+      "WebConfig: could not join '%s'; setup AP remains active\n",
+      _wifi_ssid);
   finishBatch(now);
 }
 
@@ -1314,11 +1339,14 @@ void WebConfigServer::drainBatch(uint32_t now) {
     // `set wifi.pwd` or `password` from the terminal must not reach the serial
     // log, which is a different audience from the browser session.
     if (_batch_kind == BATCH_CLI) {
-      Serial.printf("WC: cli %d/%d took %lums\n", (int)_batch_next, (int)_batch_count,
-                    (unsigned long)(_batch_last_cmd - t0));
+      mesh::usbLoggingPort().printf(
+          "WC: cli %d/%d took %lums\n", (int)_batch_next,
+          (int)_batch_count, (unsigned long)(_batch_last_cmd - t0));
     } else {
-      Serial.printf("WC: cmd %d/%d '%s' took %lums\n", (int)_batch_next, (int)_batch_count,
-                    e.key, (unsigned long)(_batch_last_cmd - t0));
+      mesh::usbLoggingPort().printf(
+          "WC: cmd %d/%d '%s' took %lums\n", (int)_batch_next,
+          (int)_batch_count, e.key,
+          (unsigned long)(_batch_last_cmd - t0));
     }
     if (!WebConfigBatch::drainFinished(_batch_next, _batch_count)) {
       return;  // more commands next tick
@@ -1368,8 +1396,8 @@ void WebConfigServer::drainBatch(uint32_t now) {
     // that will be shown to the operator before the setup AP is shut down.
     WiFi.mode(WIFI_AP_STA);
     WiFi.setAutoReconnect(false);
-    Serial.printf("WebConfig: testing saved WiFi '%s' before reboot\n",
-                  _wifi_ssid);
+    mesh::usbLoggingPort().printf(
+        "WebConfig: testing saved WiFi '%s' before reboot\n", _wifi_ssid);
     mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
     return;
   }
@@ -1384,7 +1412,8 @@ void WebConfigServer::drainBatch(uint32_t now) {
 // Distinguishes "client stopped sending" from "server stopped accepting" when
 // a save's confirmation polls go missing on hardware.
 static void wcLogReq(AsyncWebServerRequest* r) {
-  Serial.printf("WC: http %s %s\n", r->methodToString(), r->url().c_str());
+  mesh::usbLoggingPort().printf(
+      "WC: http %s %s\n", r->methodToString(), r->url().c_str());
 }
 
 void WebConfigServer::attachRoutes() {
@@ -1943,7 +1972,9 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   uint32_t du = millis() + 60000;
   if (du == 0) du = 1;
   _diag_until = du;
-  Serial.printf("WC: config POST accepted, %d cmds, reboot=%d\n", count, (int)reboot_after);
+  mesh::usbLoggingPort().printf(
+      "WC: config POST accepted, %d cmds, reboot=%d\n",
+      count, (int)reboot_after);
 
   StaticJsonDocument<96> ack;
   ack["state"] = "pending";
@@ -1955,8 +1986,16 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
 }
 
 void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
-  if (_mode == MODE_OFF) { Serial.println("WC: result read -> 503 (mode off)"); req->send(503); return; }
-  if (!checkAuth(req)) { Serial.println("WC: result read -> 401"); req->send(401, "application/json", "{\"error\":\"auth\"}"); return; }
+  if (_mode == MODE_OFF) {
+    mesh::usbLoggingPort().println("WC: result read -> 503 (mode off)");
+    req->send(503);
+    return;
+  }
+  if (!checkAuth(req)) {
+    mesh::usbLoggingPort().println("WC: result read -> 401");
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
   if (!req->hasParam("reqid")) {
     req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
     return;
@@ -1969,7 +2008,9 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
 
   // Entry print BEFORE the lock (racy state read is fine for diag): if this
   // fires but no branch print follows, the handler is blocked on _mux.
-  Serial.printf("WC: result entry mode=%d state=%d\n", (int)_mode, (int)_batch_state);
+  mesh::usbLoggingPort().printf(
+      "WC: result entry mode=%d state=%d\n",
+      (int)_mode, (int)_batch_state);
   WCLock lock(_mux);
   // A CLI sequence occupying the shared slot is not a config save, whatever the
   // reqid says: its entries have no `key` and its results belong to the
@@ -1979,7 +2020,7 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
   const WebConfigBatch::ResultOutcome outcome =
       WebConfigBatch::classifyResult(toSpecState(_batch_state), mine);
   if (outcome == WebConfigBatch::ResultOutcome::Idle) {
-    Serial.println("WC: result read -> idle");
+    mesh::usbLoggingPort().println("WC: result read -> idle");
     StaticJsonDocument<64> idle;
     idle["state"] = "idle";
     idle["reqid"] = requested_reqid;
@@ -2001,9 +2042,10 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
     req->send(200, "application/json", out);
     return;
   }
-  Serial.printf("WC: result read -> done (reboot=%d armed=%d all_ok=%d)\n",
-                (int)_batch_reboot, (int)_batch_reboot_armed,
-                (int)_batch_all_ok);
+  mesh::usbLoggingPort().printf(
+      "WC: result read -> done (reboot=%d armed=%d all_ok=%d)\n",
+      (int)_batch_reboot, (int)_batch_reboot_armed,
+      (int)_batch_all_ok);
   DynamicJsonDocument doc(6144);
   doc["state"] = "done";
   doc["reboot"] =
@@ -2206,7 +2248,9 @@ void WebConfigServer::handleCliPost(AsyncWebServerRequest* req) {
   strncpy(_batch_reqid, reqid, sizeof(_batch_reqid) - 1);
   _batch_reqid[sizeof(_batch_reqid) - 1] = 0;
   _batch_state = BATCH_PENDING;         // tick() picks it up on the loop task
-  Serial.printf("WC: cli POST accepted, %d cmds, reboot=%d\n", count, (int)defer_reboot);
+  mesh::usbLoggingPort().printf(
+      "WC: cli POST accepted, %d cmds, reboot=%d\n",
+      count, (int)defer_reboot);
 
   StaticJsonDocument<96> ack;
   ack["state"] = "running";

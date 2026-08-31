@@ -133,7 +133,9 @@ bool ota_installed_bootloader_identity(OtaBootloaderIdentity& out);
 
 inline uint8_t ota_nrf52_boot_result_or_zero(uint8_t value) {
   return ((value >= 0x90u && value <= 0x9Fu) ||
-          (value >= 0xB0u && value <= 0xBCu) ||
+          // B0..BC are the ordinary apply progress/failure/success results;
+          // SD-backed OTAFIX additionally uses BD for an authorization failure.
+          (value >= 0xB0u && value <= 0xBDu) ||
           (value >= 0xC0u && value <= 0xCFu)) ? value : 0u;
 }
 

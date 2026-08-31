@@ -128,13 +128,23 @@ established target-specific 1920 KiB or larger A/B app layout and are checked ag
 partition. For standalone ESP32 and nRF52 repeaters that need a lean staging
 profile, `build.sh` also exposes an explicit `*_lora_ota_no_external_sensors`
 artifact: the ordinary repeater remains sensor-enabled, while that sibling
-disables optional external environmental-sensor drivers for LoRa distribution. SolarXiao 30S and 33S use
+trims selected optional environmental/ranging drivers for LoRa distribution. SolarXiao 30S and 33S use
 matched external QSPI staging, so their ordinary full-sensor repeater is already install-capable and no
 redundant lean sibling is generated. Integrated GPS and other
-board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. The RAK3401
-OTA repeater also retains RAK12501 GPS support; install that module in sensor slot A because slot D conflicts
-with the RAK13302 radio's BUSY/DIO1 lines. RAK4631 OTA repeaters retain GPS and default the runtime RS-232
-bridge to UART 2; do not enable GPS and an explicitly selected UART 1 bridge at the same time.
+board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. The legacy
+suffix describes a driver trim, not removal of the generic I2C bus. Reduced RAK3401 and RAK4631 profiles
+retain INA219, INA226, INA260, and INA3221 voltage/current monitors. These are retained optional-sensor-table
+drivers, not the only I2C consumers: SSD1306 display, supported autodiscovered RTCs, and RAK12500 GPS remain
+separate I2C peripherals where selected by the board recipe. The RAK3401 OTA repeater also retains RAK12500
+I2C and RAK12501/L76K UART GPS support; install either GPS module in sensor slot A because slot D conflicts
+with the RAK13302 radio's BUSY/DIO1 lines. The plain RAK4631 OTA repeater and its Serial2 bridge retain GPS.
+RAK12501 uses Serial1. Its explicitly compiled Serial1 bridge therefore omits the combined GPS provider,
+including RAK12500, even though RAK12500 itself does not use the UART.
+
+The firmware-configured INA3221 address and RAK12500 address are both `0x42`, so those devices cannot share
+one bus at those addresses. Keep RAK12500 at `0x42`, strap INA3221 A0 to SCL for `0x43`, and use firmware
+built with `-DTELEM_INA3221_ADDRESS=0x43` when both are installed.
+
 ESP32 siblings retain the compact browser WiFi updater and use the full
 254-entry neighbor table. RP2040 and STM32 targets are not offered because
 those platforms do not yet have a safe bootloader/apply path.
@@ -149,8 +159,8 @@ promotes every ESP32 MQTT observer and ESP-NOW bridge to the expanded FULL parti
 retain the complete role CLI, WebConfig where supported, display and optional sensor support, full timezone
 and TLS behavior, and the board's normal power-management implementation. The compact CLI is not compiled
 into any build. Ordinary repeater builds remain sensor-enabled; only explicitly named
-`*_lora_ota_no_external_sensors` siblings omit sensors for LoRa distribution, and those siblings retain the
-complete CLI.
+`*_lora_ota_no_external_sensors` siblings trim selected optional environmental/ranging drivers for LoRa
+distribution, and those siblings retain the complete CLI and target-declared I2C peripherals.
 
 MQTT observer radio and bridge preferences use verified temporary files plus a recoverable backup. A reset
 during a settings save restores the last committed common preference image or publishes the completed new

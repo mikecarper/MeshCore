@@ -37,6 +37,7 @@ TEST(OtaBootResult, AcceptsOnlyOtafixApplyDiagnostics) {
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB0), 0xB0);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB8), 0xB8);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBC), 0xBC);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBD), 0xBD); // SD authorization failure
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xC0), 0xC0);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xC8), 0xC8);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xCF), 0xCF);
@@ -50,7 +51,7 @@ TEST(OtaBootResult, AcceptsOnlyOtafixApplyDiagnostics) {
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xD4), 0x00); // legacy handoff
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xED), 0x00); // expanded handoff
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xE0), 0x00); // retired handoff remains non-result
-  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBD), 0x00);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBE), 0x00);
 }
 
 TEST(OtaPolicy, TrustedAutoInstallIsStrictlyForwardOnly) {

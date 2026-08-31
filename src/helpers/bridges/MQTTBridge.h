@@ -10,6 +10,7 @@
 #include <WiFiUdp.h>
 #include <Timezone.h>
 #include "helpers/JWTHelper.h"
+#include "helpers/MQTTConnectionPolicy.h"
 #include "helpers/MQTTPacketFilter.h"
 #include "helpers/MQTTPresets.h"
 #include "helpers/MQTTLifecycle.h"
@@ -221,8 +222,12 @@ private:
   WiFiUDP _ntp_udp;
   NTPClient _ntp_client;
   unsigned long _last_ntp_sync;
-  volatile bool _ntp_synced;
-  bool _ntp_sync_pending;  // Flag to trigger NTP sync from loop() instead of event handler
+  unsigned long _ntp_refresh_retry_at;
+  unsigned long _ntp_refresh_started_at;
+  bool _ntp_refresh_pending;
+  std::atomic<bool> _ntp_synced;
+  bool _ntp_sync_pending;  // Owned by the MQTT task; the WiFi callback only records a GOT_IP edge
+  MQTTConnectionPolicy::NtpReconnectLatch _ntp_reconnect_latch;
   bool _slots_setup_done;  // Deferred: slots set up after NTP sync
   // WiFi.onEvent() handler registered once and never removed by end(); the bridge
   // object is reused across restarts, so re-registering would leak handlers and
@@ -507,7 +512,8 @@ private:
   void queuePacket(mesh::Packet* packet, bool is_tx);
   void dequeuePacket();
   bool isAnySlotConnected();
-  void refreshNTP();  // Lightweight periodic NTP refresh (non-blocking)
+  void refreshNTP();  // Start a lightweight daily/reconnect NTP refresh (non-blocking)
+  void pollNtpRefresh(uint32_t now);  // Copy a completed async refresh into MeshCore's RTC
   void runNtpDiagProbe();  // Probe every server for connectivity; never sets the clock. Core 0 only.
   void runNtpEstimateProbe();  // Query the first usable server without changing any clock. Core 0 only.
   // Populates dst_out/std_out with TimeChangeRules for the given IANA or
@@ -700,10 +706,12 @@ public:
    *  Performs blocking NTP I/O and must only be called from the MQTT task (Core 0).
    *  Other tasks (e.g. the CLI on Core 1) must use requestForcedNtpSync() instead. */
   bool syncTimeWithNTP(bool force = false, bool primary_only = false);
-  /** Request a forced NTP sync from another task (e.g. CLI on Core 1). Marshals the
-   *  work onto the MQTT task so all NTP I/O stays on Core 0, then blocks up to
-   *  timeout_ms for the result. Returns true if the sync succeeded, false on failure,
-   *  timeout, or if the bridge is not running. */
+  /** Request a forced clock refresh from another task (e.g. CLI on Core 1).
+   *  Marshals NTP I/O onto the MQTT task, then blocks up to timeout_ms for the
+   *  result. This validation request tests only the configured primary server
+   *  and never accepts a retained RTC/system clock as success, so a true result
+   *  from a nonzero-timeout call proves a fresh NTP response. A zero timeout is
+   *  fire-and-forget and proves only that the request was queued. */
   bool requestForcedNtpSync(uint32_t timeout_ms = 30000);
   /** Probe every configured NTP server (custom primary + built-in fallbacks) for
    *  connectivity and report each server's reported time WITHOUT touching the system
@@ -716,8 +724,11 @@ public:
   bool requestNtpTimeEstimate();
   /** Poll/consume the queued estimate. finished=false means it is still pending. */
   bool takeNtpTimeEstimate(uint32_t& epoch, bool& finished);
-  /** True after this bridge has successfully set the RTC from NTP this boot. */
-  bool hasNtpTime() const { return _ntp_synced; }
+  /** True after the bridge established a usable clock this boot. This may be a
+   *  plausible retained RTC/system clock accepted after NTP was unavailable. */
+  bool hasNtpTime() const {
+    return _ntp_synced.load(std::memory_order_acquire);
+  }
   static void formatMqttStatusReply(char* buf, size_t bufsize, const MQTTPrefs* obs);
   /** On-demand publish-health + heap snapshot for `get mqtt.stats` (per-slot ok/err,
    *  outbox size, free/max heap, queue depth). */

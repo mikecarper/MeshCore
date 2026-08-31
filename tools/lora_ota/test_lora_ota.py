@@ -117,6 +117,7 @@ def prepare_args(package: Path, motatool: str, base: Path | None = None) -> argp
         inplace_memory=None,
         sign_key=None,
         public_key=None,
+        package_build_timeout=ota.DEFAULT_PACKAGE_BUILD_TIMEOUT_SECONDS,
     )
 
 
@@ -235,6 +236,60 @@ class FormatTests(unittest.TestCase):
             )
         )
 
+    def test_optional_participant_version_probes_are_bounded(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.relay_calls = 0
+
+            @staticmethod
+            def get_firmware_version() -> tuple[str, int]:
+                return "v1.17.1.5", ota.parse_version("v1.17.1.5")
+
+            def remote_command(
+                self,
+                _target: str,
+                command: str,
+                *,
+                retry: bool = True,
+                **_kwargs: object,
+            ) -> str:
+                if command != "ver":
+                    raise AssertionError(command)
+                if retry:
+                    raise AssertionError("optional relay probe was unbounded")
+                self.relay_calls += 1
+                raise ota.TransmissionError("synthetic relay version loss")
+
+        args = argparse.Namespace(
+            source_shares_controller=False,
+            source_already_temp=False,
+            source_cli_serial="/dev/source",
+            source_cli_tcp=None,
+            relay_values=[("relay", "secret")],
+        )
+        controller = Controller()
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                side_effect=ota.TransmissionError(
+                    "synthetic source version loss"
+                ),
+            ) as source_command,
+            mock.patch.object(ota.time, "sleep"),
+        ):
+            versions = ota.read_lora_ota_participant_versions(
+                controller,
+                args,
+                target(current_version="v1.17.1.5"),
+            )
+        source_command.assert_called_once_with(args, "ver", bounded=True)
+        self.assertEqual(
+            controller.relay_calls, ota.TRANSMISSION_RETRY_LIMIT + 1
+        )
+        self.assertIsNone(versions["source"])
+        self.assertIsNone(versions["relay:relay"])
+
     def test_rxps_config_parser_keeps_legacy_compatibility(self) -> None:
         self.assertEqual(
             ota.parse_rxps_settings("> on,65625,60000", "remote"),
@@ -302,6 +357,28 @@ class FormatTests(unittest.TestCase):
         self.assertEqual(generic.temp_radio, "909.950,250,5,5,120")
         self.assertEqual(chain.temp_radio, "909.950,250,5,5,120")
         self.assertFalse(chain.legacy_full_airtime)
+
+    def test_package_build_timeout_is_configurable_and_positive(self) -> None:
+        parser = ota.build_parser()
+        default = parser.parse_args(["release.mota", "remote"])
+        self.assertEqual(
+            default.package_build_timeout,
+            ota.DEFAULT_PACKAGE_BUILD_TIMEOUT_SECONDS,
+        )
+
+        custom = parser.parse_args([
+            "release.zip", "offline", "--prepare-only", "--platform", "esp32",
+            "--target-id", f"{TARGET:08X}", "--package-build-timeout", "7200",
+        ])
+        ota.validate_args(custom, parser)
+        self.assertEqual(custom.package_build_timeout, 7200)
+
+        invalid = parser.parse_args([
+            "release.zip", "offline", "--prepare-only", "--platform", "esp32",
+            "--target-id", f"{TARGET:08X}", "--package-build-timeout", "0",
+        ])
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            ota.validate_args(invalid, parser)
 
     def test_airtime_estimator_uses_forward_preamble_contract(self) -> None:
         expected_preambles = (
@@ -542,6 +619,155 @@ class DebugTests(unittest.TestCase):
         rendered = output.getvalue()
         self.assertNotIn("top-secret", rendered)
         self.assertIn("reply <REDACTED>", rendered)
+
+    def test_redact_text_handles_overlapping_sensitive_values_once(self) -> None:
+        rendered = ota.redact_text(
+            "short secret and longer secret-suffix",
+            ("secret", "secret-suffix", "RED"),
+        )
+        self.assertEqual(
+            rendered,
+            "short <REDACTED> and longer <REDACTED>",
+        )
+
+    def test_persistent_meshcli_exit_redacts_exception_and_debug_tail(self) -> None:
+        ota.DEBUG = True
+        secret = "admin-secret"
+        session = ota.PersistentMeshcliSession(["meshcli"])
+        session.pending = bytearray(
+            f"script output: login remote {secret}\nfatal {secret}".encode()
+        )
+        session.output_queue = mock.Mock()
+        session.output_queue.get.side_effect = ota.queue.Empty
+        session.process = mock.Mock()
+        session.process.poll.return_value = 17
+        output = io.StringIO()
+        with (
+            mock.patch.object(session, "close"),
+            contextlib.redirect_stdout(output),
+            self.assertRaisesRegex(
+                ota.OtaError, "persistent meshcli session exited"
+            ) as raised,
+        ):
+            session._read_frame(
+                "FRAME_START", "FRAME_END", 5, (secret,)
+            )
+        rendered = f"{raised.exception}\n{output.getvalue()}"
+        self.assertNotIn(secret, rendered)
+        self.assertIn("login remote <REDACTED>", rendered)
+
+    def test_persistent_meshcli_close_redacts_exception_and_debug_tail(self) -> None:
+        ota.DEBUG = True
+        secret = "admin-secret"
+        session = ota.PersistentMeshcliSession(["meshcli"])
+        session.pending = bytearray(f"closed after {secret}".encode())
+        session.output_queue = mock.Mock()
+        session.output_queue.get.return_value = None
+        output = io.StringIO()
+        with (
+            mock.patch.object(session, "close"),
+            contextlib.redirect_stdout(output),
+            self.assertRaisesRegex(
+                ota.OtaError, "persistent meshcli session closed"
+            ) as raised,
+        ):
+            session._read_frame(
+                "FRAME_START", "FRAME_END", 5, (secret,)
+            )
+        rendered = f"{raised.exception}\n{output.getvalue()}"
+        self.assertNotIn(secret, rendered)
+        self.assertIn("closed after <REDACTED>", rendered)
+
+    def test_persistent_meshcli_timeout_redacts_before_tail_truncation(self) -> None:
+        ota.DEBUG = True
+        secret = "boundary-secret"
+        session = ota.PersistentMeshcliSession(["meshcli"])
+        # Put the secret across the old 4096-byte raw-tail boundary. Redacting
+        # only after slicing would expose its suffix in debug output.
+        session.pending = bytearray(
+            ("x" * 10 + secret + "y" * 4090).encode()
+        )
+        output = io.StringIO()
+        with (
+            mock.patch.object(ota.time, "monotonic", side_effect=(1.0, 3.0)),
+            mock.patch.object(session, "close"),
+            contextlib.redirect_stdout(output),
+            self.assertRaisesRegex(
+                ota.OtaError, "persistent meshcli command timed out"
+            ),
+        ):
+            session._read_frame(
+                "FRAME_START", "FRAME_END", 1, (secret,)
+            )
+        self.assertNotIn(secret, output.getvalue())
+        self.assertNotIn(secret[-6:], output.getvalue())
+
+    def test_persistent_meshcli_output_limit_closes_without_leaking_detail(
+        self,
+    ) -> None:
+        secret = "admin-secret"
+        session = ota.PersistentMeshcliSession(["meshcli"])
+        session.pending = bytearray(b"FRAME_START\n")
+        session.pending.extend(b"x" * (8 * 1024 * 1024))
+        session.pending.extend(secret.encode())
+        with (
+            mock.patch.object(session, "close") as close,
+            self.assertRaisesRegex(
+                ota.OtaError, "persistent meshcli output exceeded 8 MiB"
+            ) as raised,
+        ):
+            session._read_frame(
+                "FRAME_START", "FRAME_END", 5, (secret,)
+            )
+        close.assert_called_once_with()
+        self.assertNotIn(secret, str(raised.exception))
+
+    def test_persistent_meshcli_success_redacts_frame_and_debug_output(self) -> None:
+        ota.DEBUG = True
+        secret = "admin-secret"
+        session = ota.PersistentMeshcliSession(["meshcli"])
+        session.pending = bytearray(
+            f"FRAME_START\nlogin remote {secret}\nFRAME_END\n".encode()
+        )
+        session.process = mock.Mock()
+        session.process.poll.return_value = None
+        session.process.stdin = mock.Mock()
+        output = io.StringIO()
+        with (
+            tempfile.NamedTemporaryFile() as script,
+            contextlib.redirect_stdout(output),
+        ):
+            result = session.run_script(
+                Path(script.name),
+                "FRAME_START",
+                "FRAME_END",
+                5,
+                (secret,),
+            )
+        rendered = f"{result}\n{output.getvalue()}"
+        self.assertNotIn(secret, rendered)
+        self.assertIn("login remote <REDACTED>", rendered)
+
+    def test_persistent_meshcli_input_error_redacts_exception(self) -> None:
+        secret = "admin-secret"
+        session = ota.PersistentMeshcliSession(["meshcli"])
+        session.process = mock.Mock()
+        session.process.poll.return_value = None
+        session.process.stdin.write.side_effect = BrokenPipeError(
+            f"echoed login remote {secret}"
+        )
+        with (
+            tempfile.NamedTemporaryFile() as script,
+            mock.patch.object(session, "close"),
+            self.assertRaisesRegex(
+                ota.OtaError,
+                "persistent meshcli input failed: echoed login remote <REDACTED>",
+            ) as raised,
+        ):
+            session.run_script(
+                Path(script.name), "FRAME_START", "FRAME_END", 5, (secret,)
+            )
+        self.assertNotIn(secret, str(raised.exception))
 
     def test_meshcli_debug_redacts_admin_password(self) -> None:
         ota.DEBUG = True
@@ -873,9 +1099,22 @@ class SourceCliTests(unittest.TestCase):
             ota.source_rxps_busy_retry_delay(1)
         )
 
-    def test_failure_cleanup_restores_source_rxps_once(self) -> None:
+    def test_read_only_target_failure_does_not_mutate_source_rxps(self) -> None:
         saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
-        disabled = ota.RxpsSettings(False, 18205, 20423, 8, 16)
+        events: list[str] = []
+
+        def source_clock_gate(_args: argparse.Namespace) -> tuple[int, int]:
+            events.append("source-clock-gate")
+            return (1_800_000_000, 1_800_000_059)
+
+        def controller_clock_gate(_controller: object) -> int:
+            events.append("controller-clock-gate")
+            return 1_800_000_000
+
+        def fail_target_query(*_args: object) -> ota.TargetInfo:
+            events.append("target-query")
+            raise ota.OtaError("synthetic failure")
+
         with tempfile.TemporaryDirectory() as directory:
             work_dir = Path(directory) / "work"
             argv = [
@@ -892,19 +1131,23 @@ class SourceCliTests(unittest.TestCase):
                 mock.patch.object(ota, "preflight_source_cli"),
                 mock.patch.object(
                     ota,
-                    "read_source_rxps",
-                    side_effect=(saved, disabled, disabled, saved),
-                ) as read_source,
+                    "ensure_source_clock_gate_safe",
+                    side_effect=source_clock_gate,
+                ),
                 mock.patch.object(
                     ota,
-                    "source_cli_command",
-                    side_effect=(
-                        "OK - off,18205,20423",
-                        "OK - level 8,on,18205,20423,preamble=16",
-                    ),
-                ) as source_command,
+                    "ensure_controller_clock_safe",
+                    side_effect=controller_clock_gate,
+                ),
                 mock.patch.object(
-                    ota, "query_target", side_effect=ota.OtaError("synthetic failure")
+                    ota,
+                    "read_source_rxps",
+                    side_effect=(saved, saved, saved),
+                ) as read_source,
+                mock.patch.object(ota, "source_cli_command") as source_command,
+                mock.patch.object(ota, "disable_source_rxps") as disable_source,
+                mock.patch.object(
+                    ota, "query_target", side_effect=fail_target_query
                 ),
                 contextlib.redirect_stdout(io.StringIO()),
                 contextlib.redirect_stderr(io.StringIO()),
@@ -916,13 +1159,12 @@ class SourceCliTests(unittest.TestCase):
 
         self.assertEqual(result, 2)
         self.assertFalse(recovery_exists)
-        self.assertEqual(read_source.call_count, 4)
+        self.assertEqual(read_source.call_count, 1)
+        disable_source.assert_not_called()
+        source_command.assert_not_called()
         self.assertEqual(
-            [call.args[1] for call in source_command.call_args_list],
-            [
-                "set radio.rxps off",
-                "set radio.rxps level 8 preamble 16",
-            ],
+            events,
+            ["source-clock-gate", "controller-clock-gate", "target-query"],
         )
 
     def test_rerun_uses_persisted_source_rxps_instead_of_temporary_off(self) -> None:
@@ -954,6 +1196,12 @@ class SourceCliTests(unittest.TestCase):
                 mock.patch.object(ota, "preflight_inputs"),
                 mock.patch.object(ota, "preflight_source_cli"),
                 mock.patch.object(
+                    ota,
+                    "ensure_source_clock_gate_safe",
+                    return_value=(1_800_000_000, 1_800_000_059),
+                ),
+                mock.patch.object(ota, "ensure_controller_clock_safe"),
+                mock.patch.object(
                     ota, "read_source_rxps", return_value=currently_off
                 ),
                 mock.patch.object(
@@ -969,8 +1217,296 @@ class SourceCliTests(unittest.TestCase):
                 result = ota.main(argv, controller_override=mock.Mock())
 
         self.assertEqual(result, 2)
-        disable.assert_called_once_with(mock.ANY, currently_off)
+        disable.assert_not_called()
         restore.assert_called_once_with(mock.ANY, original)
+
+    def test_package_and_confirmation_precede_fresh_source_rxps_disable(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        image = firmware(b"phase ordering" * 500, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        controller = mock.Mock()
+        controller.get_radio.return_value = normal
+        events: list[str] = []
+        read_count = 0
+
+        def read_source(_args: argparse.Namespace) -> ota.RxpsSettings:
+            nonlocal read_count
+            read_count += 1
+            events.append(f"source-read-{read_count}")
+            return saved
+
+        def prepare(
+            _args: argparse.Namespace,
+            _target: ota.TargetInfo,
+            _work_dir: Path,
+        ) -> tuple[Path, ota.MotaInfo, bytes]:
+            events.append("package")
+            return Path("release.mota"), package, ota.parse_endf(image).body_hash
+
+        def confirm(
+            _args: argparse.Namespace,
+            _target: ota.TargetInfo,
+            _package: ota.MotaInfo,
+        ) -> None:
+            events.append("confirm")
+
+        def rehearse(*_args: object) -> None:
+            events.append("three-minute-preflight")
+
+        def disable(
+            _args: argparse.Namespace,
+            current: ota.RxpsSettings,
+        ) -> bool:
+            self.assertEqual(current, saved)
+            events.append("disable")
+            raise ota.OtaError("stop after ordering assertion")
+
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.zip", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(ota, "ensure_controller_clock_safe"),
+                mock.patch.object(
+                    ota,
+                    "ensure_source_clock_gate_safe",
+                    return_value=(1_800_000_000, 1_800_000_059),
+                ),
+                mock.patch.object(ota, "read_source_rxps", side_effect=read_source),
+                mock.patch.object(ota, "query_target", return_value=target()),
+                mock.patch.object(ota, "prepare_package", side_effect=prepare),
+                mock.patch.object(
+                    ota, "read_lora_ota_participant_versions", return_value={}
+                ),
+                mock.patch.object(
+                    ota,
+                    "read_remote_rxps",
+                    return_value=ota.RxpsSettings(False, 18205, 20423, 8, 16),
+                ),
+                mock.patch.object(ota, "confirm_update", side_effect=confirm),
+                mock.patch.object(
+                    ota, "run_temp_radio_preflight", side_effect=rehearse
+                ),
+                mock.patch.object(ota, "disable_source_rxps", side_effect=disable),
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        self.assertEqual(
+            events,
+            [
+                "source-read-1",
+                "package",
+                "confirm",
+                "three-minute-preflight",
+                "source-read-2",
+                "disable",
+            ],
+        )
+        restore.assert_called_once_with(mock.ANY, saved)
+
+    def test_package_timeout_never_disables_source_rxps(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        controller = mock.Mock()
+        controller.get_radio.return_value = normal
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.zip", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(ota, "ensure_controller_clock_safe"),
+                mock.patch.object(ota, "read_source_rxps", return_value=saved),
+                mock.patch.object(ota, "query_target", return_value=target()),
+                mock.patch.object(
+                    ota,
+                    "prepare_package",
+                    side_effect=ota.OtaError("timed out while running build mOTA"),
+                ),
+                mock.patch.object(ota, "disable_source_rxps") as disable,
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        disable.assert_not_called()
+        restore.assert_not_called()
+
+    def test_confirmation_cancellation_never_disables_source_rxps(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        image = firmware(b"confirmation cancellation" * 300, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        controller = mock.Mock()
+        controller.get_radio.return_value = normal
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.mota", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(ota, "ensure_controller_clock_safe"),
+                mock.patch.object(ota, "verify_shared_source_identity"),
+                mock.patch.object(ota, "read_source_rxps", return_value=saved),
+                mock.patch.object(ota, "query_target", return_value=target()),
+                mock.patch.object(
+                    ota,
+                    "prepare_package",
+                    return_value=(Path("release.mota"), package, None),
+                ),
+                mock.patch.object(
+                    ota, "read_lora_ota_participant_versions", return_value={}
+                ),
+                mock.patch.object(
+                    ota,
+                    "read_remote_rxps",
+                    return_value=ota.RxpsSettings(False, 18205, 20423, 8, 16),
+                ),
+                mock.patch.object(
+                    ota,
+                    "confirm_update",
+                    side_effect=ota.OtaError("operator cancelled"),
+                ),
+                mock.patch.object(ota, "disable_source_rxps") as disable,
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        disable.assert_not_called()
+        restore.assert_not_called()
+
+    def test_external_source_rxps_change_before_disable_is_preserved(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        changed = ota.RxpsSettings(True, 12520, 16400, 9, 32)
+        image = firmware(b"external RXPS change" * 300, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        controller = mock.Mock()
+        controller.get_radio.return_value = ota.RadioSettings(
+            910.525, 62.5, 7, 5, False
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.mota", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(ota, "ensure_controller_clock_safe"),
+                mock.patch.object(ota, "verify_shared_source_identity"),
+                mock.patch.object(
+                    ota, "read_source_rxps", side_effect=(saved, changed)
+                ),
+                mock.patch.object(ota, "query_target", return_value=target()),
+                mock.patch.object(
+                    ota,
+                    "prepare_package",
+                    return_value=(Path("release.mota"), package, None),
+                ),
+                mock.patch.object(
+                    ota, "read_lora_ota_participant_versions", return_value={}
+                ),
+                mock.patch.object(
+                    ota,
+                    "read_remote_rxps",
+                    return_value=ota.RxpsSettings(False, 18205, 20423, 8, 16),
+                ),
+                mock.patch.object(ota, "confirm_update"),
+                mock.patch.object(ota, "disable_source_rxps") as disable,
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        disable.assert_not_called()
+        restore.assert_not_called()
+
+    def test_fresh_source_rxps_read_failure_does_not_restore(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        image = firmware(b"fresh RXPS read failure" * 300, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        controller = mock.Mock()
+        controller.get_radio.return_value = ota.RadioSettings(
+            910.525, 62.5, 7, 5, False
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.mota", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(ota, "ensure_controller_clock_safe"),
+                mock.patch.object(ota, "verify_shared_source_identity"),
+                mock.patch.object(
+                    ota,
+                    "read_source_rxps",
+                    side_effect=(saved, ota.OtaError("fresh read failed")),
+                ),
+                mock.patch.object(ota, "query_target", return_value=target()),
+                mock.patch.object(
+                    ota,
+                    "prepare_package",
+                    return_value=(Path("release.mota"), package, None),
+                ),
+                mock.patch.object(
+                    ota, "read_lora_ota_participant_versions", return_value={}
+                ),
+                mock.patch.object(
+                    ota,
+                    "read_remote_rxps",
+                    return_value=ota.RxpsSettings(False, 18205, 20423, 8, 16),
+                ),
+                mock.patch.object(ota, "confirm_update"),
+                mock.patch.object(ota, "disable_source_rxps") as disable,
+                mock.patch.object(ota, "restore_source_rxps") as restore,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        disable.assert_not_called()
+        restore.assert_not_called()
 
     def test_source_recovery_file_inside_attempt_is_rejected_before_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -988,6 +1524,7 @@ class SourceCliTests(unittest.TestCase):
             with (
                 mock.patch.object(ota, "preflight_inputs"),
                 mock.patch.object(ota, "preflight_source_cli") as source_preflight,
+                mock.patch.object(ota, "ensure_controller_clock_safe"),
                 mock.patch.object(ota, "read_source_rxps") as read_source,
                 mock.patch.object(ota, "disable_source_rxps") as disable_source,
                 contextlib.redirect_stdout(io.StringIO()),
@@ -1024,9 +1561,13 @@ class SourceCliTests(unittest.TestCase):
                 for name in (
                     "preflight_inputs",
                     "preflight_source_cli",
+                    "ensure_source_clock_gate_safe",
+                    "ensure_controller_clock_safe",
                     "verify_shared_source_identity",
                     "confirm_update",
+                    "run_temp_radio_preflight",
                     "arm_target_temp_radio",
+                    "arm_source_temp_radio_once",
                     "switch_controller_to_temp_radio",
                     "find_and_start_pull",
                     "monitor_download",
@@ -1113,6 +1654,8 @@ class SourceCliTests(unittest.TestCase):
         normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
         controller = mock.Mock()
         controller.get_radio.return_value = normal
+        current_epoch = int(ota.time.time())
+        controller.get_clock.return_value = current_epoch
         package = mock.Mock(
             version="1.17.1.5",
             kind="full",
@@ -1133,6 +1676,11 @@ class SourceCliTests(unittest.TestCase):
             with (
                 mock.patch.object(ota, "preflight_inputs"),
                 mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(
+                    ota,
+                    "ensure_source_clock_gate_safe",
+                    return_value=(current_epoch, current_epoch),
+                ),
                 mock.patch.object(ota, "verify_shared_source_identity"),
                 mock.patch.object(
                     ota,
@@ -1151,6 +1699,7 @@ class SourceCliTests(unittest.TestCase):
                 ),
                 mock.patch.object(ota, "read_remote_rxps", return_value=None),
                 mock.patch.object(ota, "confirm_update"),
+                mock.patch.object(ota, "run_temp_radio_preflight"),
                 mock.patch.object(
                     ota,
                     "arm_target_temp_radio",
@@ -1169,7 +1718,11 @@ class SourceCliTests(unittest.TestCase):
 
         self.assertEqual(result, 2)
         self.assertIn(
-            mock.call(mock.ANY, "tempradio 909.950,250,5,5,120"),
+            mock.call(
+                mock.ANY,
+                "tempradio 909.950,250,5,5,120",
+                retry=False,
+            ),
             source_cli.call_args_list,
         )
         controller.set_radio.assert_not_called()
@@ -1197,6 +1750,65 @@ class SourceCliTests(unittest.TestCase):
         create_connection.assert_called_once_with(("192.0.2.10", 5002), timeout=10)
         connection.sendall.assert_called_once_with(b"ota status\r\n")
         self.assertEqual(output, "OTA seeder | install:disabled | serving:1")
+
+    def test_shared_full_terminal_banner_binds_supported_ver_to_binary_key(
+        self,
+    ) -> None:
+        key = "A5" * 32
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.recv.side_effect = [
+            (
+                "===== MeshCore Full Companion Terminal =====\r\n\r\n"
+                f"WELCOME  V4\r\n{key}\r\nCompanion v1.17.1.5\r\n> "
+            ).encode("ascii"),
+            b"Companion v1.17.1.5 (protocol 1, build test)\r\n> ",
+        ]
+        args = argparse.Namespace(
+            source_cli_serial=None,
+            source_serial=None,
+            source_cli_tcp="192.0.2.10:5002",
+            meshcli="meshcli",
+            source_baud=115200,
+            shared_source_public_key=key.lower(),
+        )
+        with mock.patch.object(
+            ota.socket, "create_connection", return_value=connection
+        ):
+            output = ota.source_cli_command(args, "ver")
+        self.assertEqual(
+            output, "Companion v1.17.1.5 (protocol 1, build test)"
+        )
+        connection.sendall.assert_called_once_with(b"ver\r\n")
+
+    def test_shared_full_terminal_rejects_banner_for_a_different_key(self) -> None:
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.recv.side_effect = [
+            (
+                "===== MeshCore Full Companion Terminal =====\r\n\r\n"
+                f"WELCOME  V4\r\n{'B6' * 32}\r\n"
+                "Companion v1.17.1.5\r\n> "
+            ).encode("ascii"),
+            b"Companion v1.17.1.5\r\n> ",
+        ]
+        args = argparse.Namespace(
+            source_cli_serial=None,
+            source_serial=None,
+            source_cli_tcp="192.0.2.10:5002",
+            meshcli="meshcli",
+            source_baud=115200,
+            shared_source_public_key="A5" * 32,
+        )
+        with (
+            mock.patch.object(
+                ota.socket, "create_connection", return_value=connection
+            ),
+            self.assertRaisesRegex(
+                ota.OtaError, "terminal identity mismatch"
+            ),
+        ):
+            ota.source_cli_command(args, "ver")
 
     def test_legacy_tcp_ota_console_reply_is_still_accepted(self) -> None:
         connection = mock.MagicMock()
@@ -1323,7 +1935,7 @@ class SourceCliTests(unittest.TestCase):
         )
         with mock.patch.object(ota, "run_checked", return_value=completed) as run:
             output = ota.source_cli_command(
-                args, "tempradio 909.95,250,5,5,120"
+                args, "tempradio 909.95,250,5,5,120", retry=False
             )
 
         wire_command = run.call_args.args[0][-1]
@@ -1335,6 +1947,13 @@ class SourceCliTests(unittest.TestCase):
             "+++MESHCORE-TERM-STOP\r",
         )
         self.assertIn("OK - temp params", output)
+
+    def test_source_relative_tempradio_requires_one_shot_handling(self) -> None:
+        with self.assertRaisesRegex(ota.OtaError, "state-aware"):
+            ota.source_cli_command(
+                argparse.Namespace(),
+                "tempradio 909.95,250,5,5,120",
+            )
 
     def test_serial_companion_seeder_uses_direct_mota_preamble(self) -> None:
         args = argparse.Namespace(
@@ -1495,6 +2114,48 @@ class CompatibilityTests(unittest.TestCase):
                 )
         self.assertIsNotNone(selected)
         self.assertFalse(selected[0].is_full)
+
+    def test_raw_package_build_uses_configured_timeout(self) -> None:
+        image = firmware(b"configured build timeout" * 300, VERSION_NEW)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive_path = root / "release.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("firmware.bin", image)
+            args = prepare_args(archive_path, "motatool")
+            args.package_build_timeout = 4321
+            work = root / "work"
+            work.mkdir()
+
+            def run_tool(
+                command: list[str], *, label: str, timeout: float | None = None,
+                **_kwargs: object,
+            ) -> subprocess.CompletedProcess[str]:
+                if label == "build mOTA":
+                    output = Path(command[command.index("--out") + 1])
+                    output.write_bytes(mota_blob(image))
+                return subprocess.CompletedProcess(
+                    args=command, returncode=0, stdout="OK", stderr=""
+                )
+
+            with mock.patch.object(
+                ota, "run_checked", side_effect=run_tool
+            ) as run:
+                _path, package, _expected = ota.prepare_package(
+                    args, target(), work
+                )
+
+        self.assertTrue(package.is_full)
+        build_call = next(
+            call for call in run.call_args_list
+            if call.kwargs["label"] == "build mOTA"
+        )
+        self.assertEqual(build_call.kwargs["timeout"], 4321)
+        verify_call = next(
+            call for call in run.call_args_list
+            if call.kwargs["label"].startswith("verify ")
+        )
+        self.assertEqual(verify_call.kwargs["timeout"], 120)
 
     def test_base_zip_selects_running_hash_not_newest_file(self) -> None:
         other = firmware(b"other" * 1300, VERSION_NEW)
@@ -1864,6 +2525,2020 @@ class DownloadSessionTests(unittest.TestCase):
         sleep.assert_called_once_with(args.discovery_interval)
 
 
+class TempRadioClockSafetyTests(unittest.TestCase):
+    HOST_EPOCH = 1_800_000_000
+
+    class Controller:
+        def __init__(self, epochs: list[int]) -> None:
+            self.epochs = iter(epochs)
+            self.sync_calls = 0
+            self.read_calls = 0
+
+        def get_clock(self, *, timeout: float | None = None) -> int:
+            if timeout is None or timeout <= 0:
+                raise AssertionError("clock read was not bounded")
+            self.read_calls += 1
+            return next(self.epochs)
+
+        def sync_clock_forward(self, *, timeout: float | None = None) -> None:
+            if timeout is None or timeout <= 0:
+                raise AssertionError("clock sync was not bounded")
+            self.sync_calls += 1
+
+    def test_rebooted_controller_months_behind_is_advanced_before_use(
+        self,
+    ) -> None:
+        controller = self.Controller([
+            1_700_000_000,
+            self.HOST_EPOCH,
+        ])
+        with mock.patch.object(
+            ota.time, "time", return_value=float(self.HOST_EPOCH)
+        ):
+            result = ota.ensure_controller_clock_safe(controller)
+
+        self.assertEqual(result, self.HOST_EPOCH)
+        self.assertEqual(controller.sync_calls, 1)
+        self.assertEqual(controller.read_calls, 2)
+
+    def test_controller_at_ten_minute_lead_is_preserved(self) -> None:
+        controller = self.Controller([
+            self.HOST_EPOCH + ota.TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS
+        ])
+        with mock.patch.object(
+            ota.time, "time", return_value=float(self.HOST_EPOCH)
+        ):
+            result = ota.ensure_controller_clock_safe(controller)
+
+        self.assertEqual(
+            result,
+            self.HOST_EPOCH + ota.TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS,
+        )
+        self.assertEqual(controller.sync_calls, 0)
+
+    def test_controller_beyond_ten_minute_lead_fails_closed(self) -> None:
+        controller = self.Controller([
+            self.HOST_EPOCH
+            + ota.TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS
+            + 1
+        ])
+        with (
+            mock.patch.object(
+                ota.time, "time", return_value=float(self.HOST_EPOCH)
+            ),
+            self.assertRaisesRegex(ota.OtaError, "ahead"),
+        ):
+            ota.ensure_controller_clock_safe(controller)
+        self.assertEqual(controller.sync_calls, 0)
+
+    def test_controller_forward_sync_rejects_backward_readback(self) -> None:
+        controller = self.Controller([
+            self.HOST_EPOCH - 3_600,
+            self.HOST_EPOCH - 3_601,
+        ])
+        with (
+            mock.patch.object(
+                ota.time, "time", return_value=float(self.HOST_EPOCH)
+            ),
+            self.assertRaisesRegex(ota.OtaError, "moved backward"),
+        ):
+            ota.ensure_controller_clock_safe(controller)
+
+    def test_source_lost_set_reply_is_resolved_by_forward_readback(self) -> None:
+        args = argparse.Namespace()
+        host_epoch = self.HOST_EPOCH + 50
+        replies: list[object] = [
+            "07:30 - 15/1/2027 UTC",
+            ota.TransmissionError("serial reply lost"),
+            "08:03 - 15/1/2027 UTC",
+        ]
+        with (
+            mock.patch.object(
+                ota, "source_cli_command", side_effect=replies
+            ) as source_command,
+            mock.patch.object(
+                ota.time, "time", return_value=float(host_epoch)
+            ),
+        ):
+            window = ota.ensure_source_clock_safe(args)
+
+        guarded_minimum = (
+            host_epoch + ota.TEMP_RADIO_SOURCE_CLOCK_PIN_LEAD_SECONDS
+        )
+        requested = ((guarded_minimum + 59) // 60) * 60
+        self.assertEqual(requested % 60, 0)
+        self.assertEqual(window, (requested, requested + 59))
+        self.assertEqual(
+            [call.args[1] for call in source_command.call_args_list],
+            ["clock", f"time {requested}", "clock"],
+        )
+        self.assertFalse(source_command.call_args_list[1].kwargs["retry"])
+
+    def test_source_host_inside_displayed_minute_never_writes_backward(
+        self,
+    ) -> None:
+        # Physical regression: terminal showed 09:38, while host time was
+        # 09:38:50. The old code wrote that exact host epoch even though the
+        # hidden source seconds could already be 51-59.
+        minute_start = 1_788_082_680
+        expected_window = (minute_start, minute_start + 59)
+        args = argparse.Namespace()
+        for hidden_second in (0, 50, 59):
+            with self.subTest(hidden_second=hidden_second):
+                host_epoch = minute_start + hidden_second
+                with (
+                    mock.patch.object(
+                        ota,
+                        "source_cli_command",
+                        return_value="09:38 - 30/8/2026 UTC",
+                    ) as source_command,
+                    mock.patch.object(
+                        ota.time, "time", return_value=float(host_epoch)
+                    ),
+                ):
+                    window = ota.ensure_source_clock_safe(args)
+
+                self.assertEqual(window, expected_window)
+                source_command.assert_called_once_with(
+                    args, "clock", bounded=True
+                )
+
+    def test_source_known_future_minute_is_preserved_without_write(self) -> None:
+        args = argparse.Namespace()
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                return_value="08:01 - 15/1/2027 UTC",
+            ) as source_command,
+            mock.patch.object(
+                ota.time, "time", return_value=float(self.HOST_EPOCH)
+            ),
+        ):
+            window = ota.ensure_source_clock_safe(args)
+
+        self.assertEqual(
+            window, (self.HOST_EPOCH + 60, self.HOST_EPOCH + 119)
+        )
+        source_command.assert_called_once_with(args, "clock", bounded=True)
+
+    def test_source_backward_rejection_is_read_back_once_not_replayed(
+        self,
+    ) -> None:
+        args = argparse.Namespace()
+        requested = (
+            self.HOST_EPOCH
+            + ota.TEMP_RADIO_SOURCE_CLOCK_PIN_LEAD_SECONDS
+        )
+        for rejection in (
+            "(ERR: clock cannot go backwards)",
+            ota.OtaError(
+                "source rejected fixed time: ERR: clock cannot go backwards"
+            ),
+        ):
+            with self.subTest(rejection=type(rejection).__name__):
+                replies: list[object] = [
+                    "07:30 - 15/1/2027 UTC",
+                    rejection,
+                    "08:03 - 15/1/2027 UTC",
+                ]
+                with (
+                    mock.patch.object(
+                        ota, "source_cli_command", side_effect=replies
+                    ) as source_command,
+                    mock.patch.object(
+                        ota.time, "time", return_value=float(self.HOST_EPOCH)
+                    ),
+                ):
+                    window = ota.ensure_source_clock_safe(args)
+
+                self.assertEqual(
+                    [call.args[1] for call in source_command.call_args_list],
+                    ["clock", f"time {requested}", "clock"],
+                )
+                self.assertEqual(
+                    window, (self.HOST_EPOCH + 180, self.HOST_EPOCH + 239)
+                )
+
+    def test_source_forward_write_must_reach_guarded_epoch(self) -> None:
+        args = argparse.Namespace()
+        replies = [
+            "07:30 - 15/1/2027 UTC",
+            "OK - clock set: 08:02 - 15/1/2027 UTC",
+            "08:01 - 15/1/2027 UTC",
+        ]
+        with (
+            mock.patch.object(ota, "source_cli_command", side_effect=replies),
+            mock.patch.object(
+                ota.time, "time", return_value=float(self.HOST_EPOCH)
+            ),
+            self.assertRaisesRegex(ota.OtaError, "requested guarded epoch"),
+        ):
+            ota.ensure_source_clock_safe(args)
+
+    def test_source_host_backward_step_cannot_reduce_guarded_base(self) -> None:
+        args = argparse.Namespace()
+        replies = ["07:30 - 15/1/2027 UTC"]
+        with (
+            mock.patch.object(
+                ota, "source_cli_command", side_effect=replies
+            ) as source_command,
+            mock.patch.object(
+                ota.time,
+                "time",
+                side_effect=(
+                    float(self.HOST_EPOCH),
+                    float(self.HOST_EPOCH - 600),
+                ),
+            ),
+            self.assertRaisesRegex(ota.OtaError, "ten-minute drift policy"),
+        ):
+            ota.ensure_source_clock_safe(args)
+
+        # The host stepped backward too far to prove a policy-safe guarded
+        # epoch, so no state-changing command was attempted.
+        source_command.assert_called_once_with(args, "clock", bounded=True)
+
+    def test_source_clock_gate_inspects_temp_work_before_clock(self) -> None:
+        args = argparse.Namespace(
+            source_serial="/dev/source",
+            source_cli_serial=None,
+            source_cli_tcp=None,
+        )
+        events: list[str] = []
+
+        def status(*_args: object, **_kwargs: object) -> tuple[str, None]:
+            events.append("immediate-status")
+            return "inactive", None
+
+        def schedule(*_args: object, **_kwargs: object) -> str:
+            events.append("fixed-schedule")
+            return "  -> > -none-\r\n> "
+
+        def clock(*_args: object, **_kwargs: object) -> tuple[int, int]:
+            events.append("clock")
+            return self.HOST_EPOCH, self.HOST_EPOCH + 59
+
+        with (
+            mock.patch.object(
+                ota, "read_source_temp_radio_status", side_effect=status
+            ),
+            mock.patch.object(
+                ota, "optional_source_cli_command", side_effect=schedule
+            ),
+            mock.patch.object(
+                ota, "ensure_source_clock_safe", side_effect=clock
+            ),
+        ):
+            result = ota.ensure_source_clock_gate_safe(args)
+
+        self.assertEqual(result, (self.HOST_EPOCH, self.HOST_EPOCH + 59))
+        self.assertEqual(events, ["immediate-status", "fixed-schedule", "clock"])
+
+    def test_source_clock_gate_refuses_active_or_pending_work(self) -> None:
+        args = argparse.Namespace(
+            source_serial="/dev/source",
+            source_cli_serial=None,
+            source_cli_tcp=None,
+        )
+        for state in ("active", "pending"):
+            with self.subTest(state=state):
+                with (
+                    mock.patch.object(
+                        ota,
+                        "read_source_temp_radio_status",
+                        return_value=(state, mock.Mock()),
+                    ),
+                    mock.patch.object(
+                        ota, "optional_source_cli_command"
+                    ) as schedule,
+                    mock.patch.object(ota, "ensure_source_clock_safe") as clock,
+                    self.assertRaisesRegex(
+                        ota.OtaError, "active or pending TempRadio work"
+                    ),
+                ):
+                    ota.ensure_source_clock_gate_safe(args)
+                schedule.assert_not_called()
+                clock.assert_not_called()
+
+    def test_source_clock_gate_refuses_existing_fixed_schedule(self) -> None:
+        args = argparse.Namespace(
+            source_serial="/dev/source",
+            source_cli_serial=None,
+            source_cli_tcp=None,
+        )
+        with (
+            mock.patch.object(
+                ota,
+                "read_source_temp_radio_status",
+                return_value=("inactive", None),
+            ),
+            mock.patch.object(
+                ota,
+                "optional_source_cli_command",
+                return_value="  -> > 1:909.95,250,5,5@100-200\r\n> ",
+            ),
+            mock.patch.object(ota, "ensure_source_clock_safe") as clock,
+            self.assertRaisesRegex(ota.OtaError, "scheduled TempRadio work"),
+        ):
+            ota.ensure_source_clock_gate_safe(args)
+        clock.assert_not_called()
+
+    def test_source_ten_minute_display_is_too_ambiguous_to_accept(self) -> None:
+        args = argparse.Namespace()
+        with (
+            mock.patch.object(
+                ota,
+                "source_cli_command",
+                return_value="08:10 - 15/1/2027 UTC",
+            ) as source_command,
+            mock.patch.object(
+                ota.time, "time", return_value=float(self.HOST_EPOCH)
+            ),
+            self.assertRaisesRegex(ota.OtaError, "minute resolution"),
+        ):
+            ota.ensure_source_clock_safe(args)
+        source_command.assert_called_once_with(args, "clock", bounded=True)
+
+    def test_invalid_or_ambiguous_text_clock_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ota.OtaError, "2 unambiguous"):
+            ota.parse_source_clock_window(
+                "08:00 - 15/1/2027 UTC\n08:01 - 15/1/2027 UTC",
+                "source",
+            )
+
+    def test_remote_clock_pin_loss_is_read_back_without_replay(self) -> None:
+        class Controller:
+            reply_timeout = 20
+
+            def __init__(self) -> None:
+                self.epochs = iter((1_000, 1_120))
+                self.commands: list[tuple[str, bool | None]] = []
+
+            def get_contact_clock(
+                self,
+                _target: str,
+                _key: str,
+                *,
+                timeout: float | None = None,
+            ) -> int:
+                if timeout is None or timeout <= 0:
+                    raise AssertionError("unbounded clock read")
+                return next(self.epochs)
+
+            def remote_command(
+                self,
+                _target: str,
+                command: str,
+                **kwargs: object,
+            ) -> str:
+                self.commands.append((command, kwargs.get("retry")))
+                raise ota.TransmissionError("lost one-shot fixed reply")
+
+        controller = Controller()
+        with (
+            mock.patch.object(ota.time, "time", return_value=1_000.0),
+            mock.patch.object(ota.time, "monotonic", return_value=0.0),
+            mock.patch.object(ota.time, "sleep") as sleep,
+        ):
+            sample = ota.pin_remote_clock_forward(
+                controller, "remote", "AA" * 32
+            )
+
+        self.assertEqual(sample.epoch, 1_120)
+        self.assertEqual(
+            controller.commands,
+            [("time 1120", False)],
+        )
+        sleep.assert_not_called()
+
+    def test_remote_clock_pin_does_not_add_lead_to_existing_lead(self) -> None:
+        controller = mock.Mock()
+        controller.reply_timeout = 20
+        controller.get_contact_clock.side_effect = (1_300, 1_301)
+        controller.remote_command.return_value = (
+            "OK - clock set: 08:00 - 15/1/2027 UTC"
+        )
+        with (
+            mock.patch.object(ota.time, "time", return_value=1_000.0),
+            mock.patch.object(ota.time, "monotonic", return_value=0.0),
+        ):
+            sample = ota.pin_remote_clock_forward(
+                controller, "remote", "AA" * 32
+            )
+
+        self.assertEqual(sample.epoch, 1_301)
+        self.assertEqual(
+            controller.remote_command.call_args.args[1], "time 1301"
+        )
+
+    def test_unreconciled_remote_clock_write_is_never_replayed(self) -> None:
+        controller = mock.Mock()
+        controller.reply_timeout = 20
+        controller.get_contact_clock.side_effect = (1_000, 1_001)
+        controller.remote_command.side_effect = ota.TransmissionError(
+            "lost without delivery"
+        )
+        with (
+            mock.patch.object(ota.time, "time", return_value=1_000.0),
+            mock.patch.object(ota.time, "monotonic", return_value=0.0),
+            self.assertRaisesRegex(ota.OtaError, "was not replayed"),
+        ):
+            ota.pin_remote_clock_forward(
+                controller, "remote", "AA" * 32
+            )
+        controller.remote_command.assert_called_once()
+
+    def test_remote_clock_over_ten_minutes_ahead_is_not_mutated(self) -> None:
+        controller = mock.Mock()
+        controller.get_contact_clock.return_value = 1_601
+        with (
+            mock.patch.object(ota.time, "time", return_value=1_000.0),
+            mock.patch.object(ota.time, "monotonic", return_value=0.0),
+            self.assertRaisesRegex(ota.OtaError, "maximum allowed"),
+        ):
+            ota.pin_remote_clock_forward(
+                controller, "remote", "AA" * 32
+            )
+        controller.remote_command.assert_not_called()
+
+
+class TempRadioNormalBaselineBudgetTests(unittest.TestCase):
+    class Clock:
+        def __init__(self) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.sleeps.append(seconds)
+            self.now += seconds
+
+    def test_read_only_baseline_survives_four_consecutive_reply_losses(
+        self,
+    ) -> None:
+        clock = self.Clock()
+        expected = target(base_hash=b"\x01\x23\x45\x67\x89\xAB\xCD\xEF")
+
+        class Controller:
+            reply_timeout = 20
+
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+                self.status_attempts = 0
+
+            def remote_command(
+                self,
+                _target: str,
+                command: str,
+                **kwargs: object,
+            ) -> str:
+                self.calls.append((command, kwargs))
+                if command == "ota status":
+                    self.status_attempts += 1
+                    if self.status_attempts <= 4:
+                        # Model the physical 20-second reply wait before each
+                        # missed read-only response.
+                        clock.now += 20
+                        raise ota.TransmissionError("missed status reply")
+                    return (
+                        "OTA | no download | "
+                        f"target:{expected.target_id:08X} hw={expected.hw_id}"
+                    )
+                if command == "ota self":
+                    return (
+                        "self body=1 image=2 "
+                        f"base_hash={expected.base_hash.hex().upper()}"
+                    )
+                raise AssertionError(command)
+
+        controller = Controller()
+        with (
+            mock.patch.object(
+                ota.time, "monotonic", side_effect=clock.monotonic
+            ),
+            mock.patch.object(ota.time, "sleep", side_effect=clock.sleep),
+        ):
+            ota.require_destination_preflight_identity(
+                controller,
+                argparse.Namespace(target="remote"),
+                expected,
+                "normal-channel baseline",
+                deadline=(
+                    clock.monotonic()
+                    + ota.TEMP_RADIO_NORMAL_BASELINE_TIMEOUT_SECONDS
+                ),
+                retry_limit=ota.TEMP_RADIO_NORMAL_BASELINE_RETRY_LIMIT,
+                deadline_label="normal-channel baseline proof budget",
+            )
+
+        self.assertEqual(controller.status_attempts, 5)
+        self.assertEqual(
+            [command for command, _kwargs in controller.calls],
+            ["ota status"] * 5 + ["ota self"],
+        )
+        self.assertTrue(
+            all(
+                kwargs.get("retry") is False
+                for _command, kwargs in controller.calls
+            )
+        )
+        self.assertTrue(
+            all(
+                float(kwargs["operation_timeout"])
+                <= ota.TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+                for _command, kwargs in controller.calls
+            )
+        )
+        self.assertLess(
+            clock.now, ota.TEMP_RADIO_NORMAL_BASELINE_TIMEOUT_SECONDS
+        )
+
+    def test_baseline_deadline_fails_without_a_state_changing_command(
+        self,
+    ) -> None:
+        clock = self.Clock()
+
+        class Controller:
+            reply_timeout = 20
+
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+
+            def remote_command(
+                self,
+                _target: str,
+                command: str,
+                **kwargs: object,
+            ) -> str:
+                self.calls.append((command, kwargs))
+                clock.now += 30
+                raise ota.TransmissionError("still unreachable")
+
+        controller = Controller()
+        with (
+            mock.patch.object(
+                ota.time, "monotonic", side_effect=clock.monotonic
+            ),
+            mock.patch.object(ota.time, "sleep", side_effect=clock.sleep),
+            self.assertRaisesRegex(
+                ota.TransmissionError,
+                "normal-channel baseline proof budget",
+            ),
+        ):
+            ota.require_destination_preflight_identity(
+                controller,
+                argparse.Namespace(target="remote"),
+                target(),
+                "normal-channel baseline",
+                deadline=65.0,
+                retry_limit=ota.TEMP_RADIO_NORMAL_BASELINE_RETRY_LIMIT,
+                deadline_label="normal-channel baseline proof budget",
+            )
+
+        self.assertEqual(
+            [command for command, _kwargs in controller.calls],
+            ["ota status", "ota status"],
+        )
+        self.assertTrue(
+            all(
+                kwargs.get("retry") is False
+                for _command, kwargs in controller.calls
+            )
+        )
+
+    def test_reply_completing_after_deadline_is_not_accepted(self) -> None:
+        clock = self.Clock()
+
+        class Controller:
+            reply_timeout = 20
+
+            def remote_command(
+                self,
+                _target: str,
+                _command: str,
+                **_kwargs: object,
+            ) -> str:
+                clock.now = 10.0
+                return "late success"
+
+        with (
+            mock.patch.object(
+                ota.time, "monotonic", side_effect=clock.monotonic
+            ),
+            self.assertRaisesRegex(
+                ota.TransmissionError,
+                "completed at or after.*expired",
+            ),
+        ):
+            ota.bounded_remote_command(
+                Controller(),
+                "remote",
+                "ota status",
+                deadline=10.0,
+                deadline_label="normal-channel baseline proof budget",
+            )
+
+    def test_status_and_self_share_one_deadline(self) -> None:
+        clock = self.Clock()
+        expected = target()
+
+        class Controller:
+            reply_timeout = 20
+
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+
+            def remote_command(
+                self,
+                _target: str,
+                command: str,
+                **kwargs: object,
+            ) -> str:
+                self.calls.append((command, kwargs))
+                if command == "ota status":
+                    clock.now = 225.0
+                    return (
+                        "OTA | no download | "
+                        f"target:{expected.target_id:08X} hw={expected.hw_id}"
+                    )
+                if command == "ota self":
+                    return "self body=1 image=2 base_hash=0000000000000000"
+                raise AssertionError(command)
+
+        controller = Controller()
+        with mock.patch.object(
+            ota.time, "monotonic", side_effect=clock.monotonic
+        ):
+            ota.require_destination_preflight_identity(
+                controller,
+                argparse.Namespace(target="remote"),
+                expected,
+                "normal-channel baseline",
+                deadline=240.0,
+                retry_limit=ota.TEMP_RADIO_NORMAL_BASELINE_RETRY_LIMIT,
+                deadline_label="normal-channel baseline proof budget",
+            )
+
+        self.assertEqual(
+            controller.calls[1][1]["operation_timeout"], 15.0
+        )
+
+    def test_live_lease_keeps_the_smaller_default_retry_limit(self) -> None:
+        clock = self.Clock()
+
+        class Controller:
+            reply_timeout = 20
+
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def remote_command(
+                self,
+                _target: str,
+                _command: str,
+                **kwargs: object,
+            ) -> str:
+                self.calls.append(kwargs)
+                raise ota.TransmissionError("missed live-lease reply")
+
+        controller = Controller()
+        with (
+            mock.patch.object(
+                ota.time, "monotonic", side_effect=clock.monotonic
+            ),
+            mock.patch.object(ota.time, "sleep", side_effect=clock.sleep),
+            self.assertRaisesRegex(
+                ota.TransmissionError,
+                rf"failed after {ota.TRANSMISSION_RETRY_LIMIT} retries",
+            ),
+        ):
+            ota.bounded_remote_command(
+                controller,
+                "remote",
+                "ota self",
+                deadline=1_000.0,
+            )
+
+        self.assertEqual(
+            len(controller.calls), ota.TRANSMISSION_RETRY_LIMIT + 1
+        )
+        self.assertTrue(
+            all(call.get("retry") is False for call in controller.calls)
+        )
+
+
+class TempRadioPreflightTests(unittest.TestCase):
+    NORMAL = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+    TEMP = ota.RadioSettings(909.95, 250.0, 5, 5, False)
+    CONTROLLER_KEY = "AA" * 32
+    SOURCE_KEY = "BB" * 32
+    NODE_KEYS = {
+        "remote": "11" * 32,
+        "far": "22" * 32,
+        "near": "33" * 32,
+        "source": SOURCE_KEY,
+    }
+
+    class Clock:
+        def __init__(self, *, interrupt_count: int = 0) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+            self.interrupts_remaining = interrupt_count
+            self.expiry_wait_started = False
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.sleeps.append(seconds)
+            # The fixed-window design also has a deliberate pre-activation
+            # wait. Interrupt only the later owned-lease expiry wait.
+            if seconds > 150:
+                self.expiry_wait_started = True
+            if (
+                self.interrupts_remaining > 0
+                and self.expiry_wait_started
+                and seconds > 0
+            ):
+                self.interrupts_remaining -= 1
+                # First leave five seconds, then half of any smaller tail.
+                # Cleanup must keep using the same absolute deadline through
+                # every interrupt rather than restarting or returning early.
+                tail = 5.0 if seconds > 30 else max(0.5, seconds / 2.0)
+                self.now += max(0.0, seconds - tail)
+                raise KeyboardInterrupt("synthetic interrupted expiry wait")
+            self.now += seconds
+
+    class Controller:
+        def __init__(
+            self,
+            clock: "TempRadioPreflightTests.Clock",
+            failure: str | None = None,
+            *,
+            shared: bool = False,
+        ) -> None:
+            self.clock = clock
+            self.failure = failure
+            self.shared = shared
+            self.password = "secret"
+            self.reply_timeout = 20
+            self.radio = TempRadioPreflightTests.NORMAL
+            self.remote_calls: list[tuple[str, str, dict[str, object]]] = []
+            self.source_challenges: list[tuple[str, str, float | None]] = []
+            self.radio_calls: list[tuple[ota.RadioSettings, float | None]] = []
+            self.temp_until = {
+                name: 0.0 for name in TempRadioPreflightTests.NODE_KEYS
+            }
+            self.scheduled_temp: dict[str, tuple[float, float]] = {}
+            self.delayed_temp_delivery: dict[
+                str, tuple[float, float, float]
+            ] = {}
+            self.clock_adjustment = {
+                name: 0 for name in TempRadioPreflightTests.NODE_KEYS
+            }
+            self.source_tuple = TempRadioPreflightTests.TEMP
+            self.lost_ack_sent = False
+            self.lost_source_ack_sent = False
+            self.controller_restore_interrupt_sent = False
+            self.slow_recovery_restore_completed_at: float | None = None
+
+        def node_on_temp(self, name: str) -> bool:
+            delayed = self.delayed_temp_delivery.get(name)
+            if delayed is not None and self.clock.now >= delayed[0]:
+                _delivery_at, start_at, end_at = delayed
+                self.scheduled_temp[name] = (start_at, end_at)
+                del self.delayed_temp_delivery[name]
+            scheduled = self.scheduled_temp.get(name)
+            scheduled_active = bool(
+                scheduled is not None
+                and scheduled[0] <= self.clock.now < scheduled[1]
+            )
+            return self.clock.now < self.temp_until[name] or scheduled_active
+
+        def controller_on_temp(self) -> bool:
+            if self.shared:
+                return self.node_on_temp("source")
+            return self.radio.matches(TempRadioPreflightTests.TEMP)
+
+        def all_nodes_normal(self) -> bool:
+            return not any(self.node_on_temp(name) for name in self.temp_until)
+
+        def get_radio(self, timeout: float | None = None) -> ota.RadioSettings:
+            if timeout is not None:
+                self.assert_bounded_timeout(timeout)
+            return self.radio
+
+        @staticmethod
+        def assert_bounded_timeout(timeout: float) -> None:
+            if not 0 < timeout <= ota.TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS:
+                raise AssertionError(f"unbounded rehearsal timeout: {timeout}")
+
+        def get_public_key(self, timeout: float | None = None) -> str:
+            if timeout is not None:
+                self.assert_bounded_timeout(timeout)
+            if self.failure == "temp_controller_identity" and self.controller_on_temp():
+                return "CC" * 32
+            return TempRadioPreflightTests.CONTROLLER_KEY.lower()
+
+        def get_clock(self, timeout: float | None = None) -> int:
+            if timeout is not None:
+                self.assert_bounded_timeout(timeout)
+            return 1_800_000_000 + int(self.clock.now)
+
+        def get_contact_clock(
+            self,
+            name: str,
+            expected_public_key: str,
+            *,
+            timeout: float | None = None,
+        ) -> int:
+            if timeout is not None:
+                self.assert_bounded_timeout(timeout)
+            if expected_public_key.lower() != (
+                TempRadioPreflightTests.NODE_KEYS[name].lower()
+            ):
+                raise ota.OtaError("synthetic clock identity mismatch")
+            if self.failure == "clock_read_rtt":
+                # Exercise distinct complete request/response intervals. The
+                # returned epoch is sampled at completion, while production
+                # scheduling must conservatively own any point in the RTT.
+                self.clock.now += {
+                    "remote": 17.0,
+                    "far": 5.0,
+                    "near": 23.0,
+                }.get(name, 0.0)
+            # Deliberately model minutes of inter-node offset within the
+            # ten-minute safety policy. Projection into each local RTC must
+            # still yield one common monotonic window.
+            offsets = {"remote": 300, "far": -300, "near": 180}
+            return (
+                1_800_000_000
+                + offsets.get(name, 0)
+                + self.clock_adjustment[name]
+                + int(self.clock.now)
+            )
+
+        def prove_contact_ack(
+            self,
+            name: str,
+            expected_public_key: str,
+            label: str,
+            *,
+            timeout: float | None = None,
+        ) -> None:
+            if timeout is not None:
+                self.assert_bounded_timeout(timeout)
+            self.source_challenges.append((name, label, timeout))
+            if name != "source":
+                raise ota.OtaError(f"unexpected challenge contact {name}")
+            if self.node_on_temp(name) != self.controller_on_temp():
+                raise ota.TransmissionError(
+                    "synthetic source is not on the controller tuple"
+                )
+            on_temp = self.controller_on_temp()
+            if (
+                self.failure == "baseline_source_air"
+                and not on_temp
+                and self.clock.now == 0
+            ):
+                raise ota.OtaError(
+                    f"{label} contact key mismatch for source"
+                )
+            if self.failure == "temp_source_air" and on_temp:
+                raise ota.TransmissionError(
+                    f"{label} received no matching ACK from source"
+                )
+            if (
+                self.failure == "normal_source_air"
+                and not on_temp
+                and bool(self.scheduled_temp)
+            ):
+                raise ota.TransmissionError(
+                    f"{label} received no matching ACK from source"
+                )
+            if expected_public_key.lower() != (
+                TempRadioPreflightTests.SOURCE_KEY.lower()
+            ):
+                raise ota.OtaError(
+                    f"{label} contact key mismatch for source"
+                )
+
+        def set_radio(
+            self,
+            settings: ota.RadioSettings,
+            _label: str,
+            timeout: float | None = None,
+        ) -> None:
+            if timeout is not None:
+                self.assert_bounded_timeout(timeout)
+            self.radio_calls.append((settings, timeout))
+            if (
+                self.failure == "controller_restore_interrupt"
+                and settings.matches(TempRadioPreflightTests.NORMAL)
+                and not self.controller_restore_interrupt_sent
+            ):
+                self.controller_restore_interrupt_sent = True
+                raise KeyboardInterrupt(
+                    "synthetic second interrupt during controller restore"
+                )
+            self.radio = settings
+            if (
+                self.failure == "controller_handoff"
+                and settings.matches(TempRadioPreflightTests.TEMP)
+            ):
+                raise ota.OtaError("synthetic controller handoff failure")
+            if (
+                self.failure == "controller_restore_interrupt"
+                and settings.matches(TempRadioPreflightTests.TEMP)
+            ):
+                raise KeyboardInterrupt(
+                    "synthetic first interrupt during controller handoff"
+                )
+
+        def remote_command(
+            self,
+            name: str,
+            command: str,
+            **kwargs: object,
+        ) -> str:
+            self.remote_calls.append((name, command, dict(kwargs)))
+            operation_timeout = kwargs.get("operation_timeout")
+            if operation_timeout is not None:
+                self.assert_bounded_timeout(float(operation_timeout))
+            on_temp = self.controller_on_temp()
+            if self.node_on_temp(name) != on_temp:
+                raise ota.TransmissionError(
+                    f"synthetic {name} is not on the controller tuple"
+                )
+            if command.startswith("time "):
+                requested = int(command.split(" ", 1)[1])
+                offsets = {"remote": 300, "far": -300, "near": 180}
+                current = (
+                    1_800_000_000
+                    + offsets.get(name, 0)
+                    + self.clock_adjustment[name]
+                    + int(self.clock.now)
+                )
+                if requested <= current:
+                    return "(ERR: clock cannot go backwards)"
+                self.clock_adjustment[name] += requested - current
+                return "OK - clock set: 08:00 - 15/1/2027 UTC"
+            if command.startswith("set tempradioat "):
+                values = command.split(" ", 2)[2].split(",")
+                start_epoch = int(values[-2])
+                end_epoch = int(values[-1])
+                offsets = {"remote": 300, "far": -300, "near": 180}
+                node_epoch = (
+                    1_800_000_000 + offsets.get(name, 0)
+                    + self.clock_adjustment[name]
+                    + int(self.clock.now)
+                )
+                start_at = self.clock.now + (start_epoch - node_epoch)
+                end_at = self.clock.now + (end_epoch - node_epoch)
+                if self.failure == "lease_deadline":
+                    self.clock.now += 70.0
+                    node_epoch = (
+                        1_800_000_000 + offsets.get(name, 0)
+                        + self.clock_adjustment[name]
+                        + int(self.clock.now)
+                    )
+                    if node_epoch >= start_epoch:
+                        return "Error: start is in the past"
+                if self.failure == "wrong_duration" and name == "remote":
+                    end_at = start_at + 30 * 60
+                if self.failure == "target_arm" and name == "remote":
+                    return "Error, invalid params"
+                if self.failure == "relay_arm" and name == "far":
+                    return "Error, invalid params"
+                if (
+                    self.failure == "lost_target_ack_without_delivery"
+                    and name == "remote"
+                    and not self.lost_ack_sent
+                ):
+                    self.lost_ack_sent = True
+                    raise ota.TransmissionError("synthetic lost acknowledgement")
+                if (
+                    self.failure == "lost_target_ack_slow"
+                    and name == "remote"
+                    and not self.lost_ack_sent
+                ):
+                    self.lost_ack_sent = True
+                    self.clock.now += 30.0
+                    self.scheduled_temp[name] = (start_at, end_at)
+                    raise ota.TransmissionError(
+                        "synthetic slow lost acknowledgement"
+                    )
+                if (
+                    self.failure == "lost_target_ack_delayed"
+                    and name == "remote"
+                    and not self.lost_ack_sent
+                ):
+                    self.lost_ack_sent = True
+                    self.delayed_temp_delivery[name] = (
+                        self.clock.now + 10.0, start_at, end_at
+                    )
+                    raise ota.TransmissionError("synthetic lost acknowledgement")
+                self.scheduled_temp[name] = (
+                    start_at,
+                    float("inf")
+                    if self.failure in (
+                        "stuck_remote_return",
+                        "stuck_remote_slow_restore",
+                        "late_recovery_source",
+                        "wrong_recovery_duration",
+                        "wrong_duration",
+                    ) and name == "remote"
+                    else end_at,
+                )
+                if (
+                    self.failure == "lost_target_ack"
+                    and name == "remote"
+                    and not self.lost_ack_sent
+                ):
+                    self.lost_ack_sent = True
+                    raise ota.TransmissionError("synthetic lost acknowledgement")
+                return "OK - tempradioat 1 in 2m"
+            if command == "normalradio":
+                if (
+                    self.failure == "stuck_remote_slow_restore"
+                    and name == "remote"
+                ):
+                    self.clock.now += 30.0
+                    self.slow_recovery_restore_completed_at = self.clock.now
+                    self.scheduled_temp.pop(name, None)
+                    self.temp_until[name] = self.clock.now + 1.5
+                    raise ota.TransmissionError(
+                        "synthetic slow lost recovery acknowledgement"
+                    )
+                self.scheduled_temp.pop(name, None)
+                self.temp_until[name] = self.clock.now + 1.5
+                return "OK - normal radio restore scheduled"
+            if command == "get public.key":
+                key = TempRadioPreflightTests.NODE_KEYS[name]
+                if self.failure == "temp_remote_identity" and on_temp and name == "far":
+                    return "> " + "44" * 32
+                if self.failure == "normal_remote_identity" and not on_temp and self.scheduled_temp and name == "remote":
+                    return "> " + "44" * 32
+                return f"> {key}"
+            if command == "get tempradioat":
+                if self.failure == "baseline_schedule" and name == "far":
+                    return "> 1:909.95,250,5,5@100-200"
+                schedule_checks = sum(
+                    1
+                    for call_name, call_command, _options in self.remote_calls
+                    if call_name == name and call_command == "get tempradioat"
+                )
+                if (
+                    self.failure == "remote_schedule_appears_during_baseline"
+                    and name == "remote"
+                    and schedule_checks >= 2
+                ):
+                    return "> 1:909.95,250,5,5@100-200"
+                if (
+                    self.failure == "baseline_scheduleless"
+                    and name == "remote"
+                ):
+                    return "Unknown command"
+                return "> -none-"
+            if command == "ota status":
+                if self.failure == "baseline_destination" and not on_temp and self.clock.now == 0:
+                    return "OTA | no download | target:DEADBEEF hw=TestBoard"
+                return "OTA | no download | target:1234ABCD hw=TestBoard"
+            if command == "ota self":
+                if self.failure == "temp_destination" and on_temp:
+                    return "self body=1 image=2 base_hash=DEADBEEFDEADBEEF"
+                return "self body=1 image=2 base_hash=0000000000000000"
+            raise AssertionError(f"unexpected remote command {name}: {command}")
+
+    @staticmethod
+    def args(*, shared: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(
+            target="remote",
+            relay_values=[("far", "far-secret"), ("near", "near-secret")],
+            temp_values=(909.95, 250.0, 5, 5, 120),
+            source_already_temp=False,
+            source_shares_controller=shared,
+            source_serial=None if shared else "/dev/source",
+            source_cli_serial=None,
+            source_cli_tcp="192.0.2.1:5002" if shared else None,
+            source_contact_value=None,
+            shared_source_public_key=(
+                TempRadioPreflightTests.CONTROLLER_KEY if shared else None
+            ),
+        )
+
+    def run_rehearsal(
+        self,
+        *,
+        failure: str | None = None,
+        shared: bool = False,
+        capture_error: bool = False,
+    ) -> tuple[
+        "TempRadioPreflightTests.Controller",
+        list[tuple[str, dict[str, object]]],
+        "TempRadioPreflightTests.Clock",
+        dict[str, object],
+        BaseException | None,
+    ]:
+        clock = self.Clock(
+            interrupt_count=(
+                2 if failure == "double_interrupt_wait"
+                else 1 if failure == "interrupt_wait"
+                else 0
+            )
+        )
+        controller = self.Controller(clock, failure, shared=shared)
+        source_calls: list[tuple[str, dict[str, object]]] = []
+        source_state: dict[str, object] = {"tuple": self.TEMP}
+        args = self.args(shared=shared)
+        if failure == "late_recovery_source":
+            args.relay_values = []
+
+        def source_active() -> bool:
+            return controller.node_on_temp("source")
+
+        def source_command(
+            _args: argparse.Namespace,
+            command: str,
+            check: bool = True,
+            **kwargs: object,
+        ) -> str:
+            source_calls.append((command, {"check": check, **kwargs}))
+            if command == "get public.key":
+                if shared:
+                    raise ota.OtaError(
+                        "source rejected 'get public.key': "
+                        "ERROR: unknown command: get public.key"
+                    )
+                if failure == "baseline_source_identity" and len(
+                    [call for call, _options in source_calls if call == command]
+                ) == 1:
+                    return "not a key"
+                if failure == "temp_source_identity" and source_active():
+                    return "> " + "DD" * 32
+                source_key = self.CONTROLLER_KEY if shared else self.SOURCE_KEY
+                return f"  -> > {source_key}\r\n> "
+            if command == "get name":
+                return "  -> > source\r\n> "
+            if command == "ver":
+                return "Companion v1.17.1.5"
+            if command == "get tempradioat":
+                if failure == "source_schedule_transport":
+                    raise ota.TransmissionError("synthetic source schedule link loss")
+                schedule_checks = sum(
+                    1
+                    for call, _options in source_calls
+                    if call == "get tempradioat"
+                )
+                if (
+                    failure == "source_schedule_appears_during_baseline"
+                    and schedule_checks >= 2
+                ):
+                    return "  -> > 1:909.95,250,5,5@100-200\r\n> "
+                return "  -> > -none-\r\n> "
+            if command.startswith("tempradio "):
+                minutes = int(command.rsplit(",", 1)[1])
+                if failure == "source_arm":
+                    raise ota.OtaError("synthetic source arm failure")
+                if (
+                    failure == "lost_source_ack_without_delivery"
+                    and not controller.lost_source_ack_sent
+                ):
+                    controller.lost_source_ack_sent = True
+                    raise ota.TransmissionError(
+                        "synthetic lost source acknowledgement"
+                    )
+                if failure == "late_recovery_source" and minutes == 1:
+                    clock.now += 30.0
+                    controller.temp_until["source"] = clock.now + 60.0
+                    raise ota.TransmissionError(
+                        "synthetic late accepted recovery re-arm"
+                    )
+                if failure == "wrong_recovery_duration" and minutes == 1:
+                    source_state["recovery_accepted_at"] = clock.now
+                    controller.temp_until["source"] = clock.now + 30 * 60
+                    return "  -> OK - temp params for 30 mins\r\n> "
+                controller.temp_until["source"] = (
+                    float("inf")
+                    if failure in (
+                        "normal_source_return",
+                        "stuck_source_return",
+                        "legacy_stuck_source",
+                    )
+                    else clock.now + minutes * 60
+                )
+                if (
+                    failure == "lost_source_ack"
+                    and not controller.lost_source_ack_sent
+                ):
+                    controller.lost_source_ack_sent = True
+                    raise ota.TransmissionError(
+                        "synthetic lost source acknowledgement"
+                    )
+                return (
+                    f"  -> OK - temp params for {minutes} mins\r\n> "
+                )
+            if command == "tempradio":
+                if failure == "source_status_transport":
+                    raise ota.TransmissionError("synthetic source status link loss")
+                if failure == "source_status_empty":
+                    return ""
+                if failure in ("legacy_source", "legacy_stuck_source"):
+                    raise ota.OtaError("source rejected 'tempradio': Unknown command")
+                if failure == "preexisting_source_active" and not source_active():
+                    return "TempRadio active: 908.000,125.00,7,5 80s left\r\n> "
+                if failure == "preexisting_source_pending" and not source_active():
+                    return "TempRadio pending: 908.000,125.00,7,5 80s left\r\n> "
+                if source_active():
+                    if failure == "temp_source_tuple":
+                        return "TempRadio active: 908.000,250.00,5,5 170s left"
+                    return "  -> TempRadio active: 909.950,250.00,5,5 170s left\r\n> "
+                return "TempRadio inactive\r\n> "
+            if command == "normalradio":
+                if failure in (
+                    "late_recovery_source",
+                    "wrong_recovery_duration",
+                ) and clock.now >= 180:
+                    raise ota.TransmissionError(
+                        "synthetic lost source recovery restore"
+                    )
+                controller.temp_until["source"] = clock.now
+                return "  -> OK - normal radio restore scheduled\r\n> "
+            raise AssertionError(f"unexpected source command: {command}")
+
+        error: BaseException | None = None
+        with (
+            mock.patch.object(ota, "source_cli_command", side_effect=source_command),
+            mock.patch.object(
+                ota,
+                "ensure_controller_clock_safe",
+                return_value=1_800_000_000,
+            ),
+            mock.patch.object(
+                ota,
+                "ensure_source_clock_safe",
+                return_value=(1_800_000_000, 1_800_000_059),
+            ),
+            mock.patch.object(ota.time, "monotonic", side_effect=clock.monotonic),
+            mock.patch.object(
+                ota.time,
+                "time",
+                side_effect=lambda: 1_800_000_000 + clock.now,
+            ),
+            mock.patch.object(ota.time, "sleep", side_effect=clock.sleep),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            try:
+                ota.run_temp_radio_preflight(
+                    controller,
+                    args,
+                    target(base_hash=b"\0" * 8),
+                    self.NORMAL,
+                    self.TEMP,
+                )
+            except BaseException as exc:
+                if not capture_error:
+                    raise
+                error = exc
+        source_state["active"] = source_active()
+        return controller, source_calls, clock, source_state, error
+
+    def test_raw_serial_source_reply_parsers(self) -> None:
+        key = "A5" * 32
+        self.assertEqual(
+            ota.parse_cli_public_key(f"  -> > {key}\r\n> ", "source"),
+            key.lower(),
+        )
+        self.assertEqual(
+            ota.parse_cli_value("  -> > source node\r\n> ", "name"),
+            "source node",
+        )
+        ota.require_no_existing_temp_schedule(
+            "  -> > -none-\r\n> ", "source"
+        )
+        self.assertEqual(
+            ota.require_temp_radio_reply(
+                "source", "  -> OK - temp params for 3 mins\r\n> ", 3
+            ),
+            3,
+        )
+        self.assertEqual(
+            ota.parse_source_temp_radio_status("TempRadio inactive\r\n> "),
+            ("inactive", None),
+        )
+        state, radio = ota.parse_source_temp_radio_status(
+            "  -> TempRadio active: 909.950,250.00,5,5 170s left\r\n> "
+        ) or ("", None)
+        self.assertEqual(state, "active")
+        self.assertIsNotNone(radio)
+        self.assertTrue(self.TEMP.matches(radio))
+        with self.assertRaisesRegex(ota.OtaError, "exact public key"):
+            ota.parse_cli_public_key(
+                f"  -> > {key}\r\n  -> > {'B6' * 32}\r\n> ",
+                "source",
+            )
+        with self.assertRaisesRegex(ota.OtaError, "already has scheduled"):
+            ota.require_no_existing_temp_schedule(
+                "  -> > -none-\r\n  -> > 1:909.95,250,5,5@1-2\r\n> ",
+                "source",
+            )
+        with self.assertRaisesRegex(ota.OtaError, "invalid TempRadio status"):
+            ota.parse_source_temp_radio_status(
+                "TempRadio inactive\r\n"
+                "TempRadio active: 909.950,250.00,5,5 170s left\r\n> "
+            )
+
+    def test_optional_source_command_never_hides_transport_or_silence(self) -> None:
+        args = self.args()
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            side_effect=ota.TransmissionError("link failed"),
+        ):
+            with self.assertRaisesRegex(ota.TransmissionError, "link failed"):
+                ota.optional_source_cli_command(args, "tempradio")
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            side_effect=ota.OtaError("source rejected: Unknown command"),
+        ):
+            self.assertIsNone(
+                ota.optional_source_cli_command(args, "tempradio")
+            )
+        with mock.patch.object(ota, "source_cli_command", return_value=""):
+            with self.assertRaisesRegex(ota.OtaError, "empty reply"):
+                ota.optional_source_cli_command(args, "tempradio")
+
+    def test_generic_source_challenge_requires_exact_contact_key_and_ack(self) -> None:
+        controller = ota.Controller.__new__(ota.Controller)
+        valid = [
+            {"adv_name": "source", "public_key": self.SOURCE_KEY},
+            {"expected_ack": "12AB34CD"},
+            {"code": "12ab34cd"},
+        ]
+        with (
+            mock.patch.object(
+                controller,
+                "_run_marked",
+                return_value=([], valid),
+            ) as run,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            controller.prove_contact_ack(
+                "source", self.SOURCE_KEY, "source challenge", timeout=25
+            )
+        commands = run.call_args.args[0]
+        self.assertEqual(commands[0], "echo")
+        self.assertEqual(commands[2:5], ["contact_info", "source", "msg"])
+        self.assertRegex(commands[6], r"^mOTA-preflight-[0-9a-f]{16}$")
+        self.assertEqual(
+            commands.count("wait_ack"),
+            ota.TEMP_RADIO_PREFLIGHT_ACK_WAITS,
+        )
+        self.assertEqual(run.call_args.args[-1], 25)
+
+        cases = {
+            "contact key mismatch": [
+                {"adv_name": "source", "public_key": "CC" * 32},
+                {"expected_ack": "12AB34CD"},
+                {"code": "12AB34CD"},
+            ],
+            "no matching ACK": [
+                {"adv_name": "source", "public_key": self.SOURCE_KEY},
+                {"expected_ack": "12AB34CD"},
+                {"code": "DEADBEEF"},
+            ],
+        }
+        for pattern, objects in cases.items():
+            with self.subTest(pattern=pattern), mock.patch.object(
+                controller, "_run_marked", return_value=([], objects)
+            ), self.assertRaisesRegex(ota.OtaError, pattern):
+                controller.prove_contact_ack(
+                    "source", self.SOURCE_KEY, "source challenge"
+                )
+
+    def test_contact_clock_binds_exact_identity_and_one_raw_epoch(self) -> None:
+        controller = ota.Controller.__new__(ota.Controller)
+
+        def output_for(
+            commands: list[str], _label: str, _timeout: float | None = None
+        ) -> subprocess.CompletedProcess[str]:
+            marker = commands[1]
+            return subprocess.CompletedProcess(
+                [], 0,
+                stdout=(
+                    f"{marker}\n"
+                    + json.dumps({
+                        "adv_name": "remote",
+                        "public_key": self.NODE_KEYS["remote"],
+                    })
+                    + "\n1800000123\n"
+                ),
+                stderr="",
+            )
+
+        controller._execute = output_for
+        self.assertEqual(
+            controller.get_contact_clock(
+                "remote", self.NODE_KEYS["remote"], timeout=30
+            ),
+            1_800_000_123,
+        )
+
+        def ambiguous(
+            commands: list[str], _label: str, _timeout: float | None = None
+        ) -> subprocess.CompletedProcess[str]:
+            result = output_for(commands, _label, _timeout)
+            result.stdout += "1800000124\n"
+            return result
+
+        controller._execute = ambiguous
+        with self.assertRaisesRegex(ota.TransmissionError, "2 unambiguous"):
+            controller.get_contact_clock(
+                "remote", self.NODE_KEYS["remote"], timeout=30
+            )
+
+        controller._execute = output_for
+        with self.assertRaisesRegex(ota.OtaError, "exact contact identity"):
+            controller.get_contact_clock("remote", "FF" * 32, timeout=30)
+
+    def test_rehearsal_uses_exact_three_minutes_and_farthest_first(self) -> None:
+        controller, source_calls, clock, source_state, error = self.run_rehearsal()
+        self.assertIsNone(error)
+
+        armed = [
+            (name, command)
+            for name, command, _kwargs in controller.remote_calls
+            if command.startswith("set tempradioat ")
+        ]
+        self.assertEqual([name for name, _command in armed], [
+            "remote", "far", "near"
+        ])
+        projected_starts = []
+        offsets = {"remote": 300, "far": -300, "near": 180}
+        for name, scheduled_command in armed:
+            fields = scheduled_command.split(" ", 2)[2].split(",")
+            start_epoch, end_epoch = map(int, fields[-2:])
+            self.assertEqual(end_epoch - start_epoch, 3 * 60)
+            projected_starts.append(
+                start_epoch
+                - (
+                    1_800_000_000
+                    + offsets[name]
+                    + controller.clock_adjustment[name]
+                )
+            )
+        self.assertEqual(projected_starts, [120, 120, 120])
+        clock_pins = [
+            (name, command, options)
+            for name, command, options in controller.remote_calls
+            if command.startswith("time ")
+        ]
+        self.assertEqual([name for name, _command, _options in clock_pins], [
+            "remote", "far", "near"
+        ])
+        self.assertTrue(all(options["retry"] is False for _, _, options in clock_pins))
+        source_arm_options = next(
+            options for command, options in source_calls
+            if command == "tempradio 909.95,250,5,5,3"
+        )
+        self.assertTrue(source_arm_options["bounded"])
+        self.assertEqual(source_arm_options["deadline"], 297.0)
+        self.assertFalse(source_arm_options["retry"])
+        self.assertNotIn("120", " ".join(command for command, _ in source_calls))
+        self.assertEqual(
+            clock.sleeps,
+            [
+                115.0,
+                8.0,
+                ota.TEMP_RADIO_SWITCH_DELAY_SECONDS,
+                192.0,
+            ],
+        )
+        self.assertEqual(
+            [radio for radio, _timeout in controller.radio_calls],
+            [self.TEMP, self.NORMAL],
+        )
+        self.assertTrue(
+            all(
+                timeout is not None
+                and timeout <= ota.TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+                for _radio, timeout in controller.radio_calls
+            )
+        )
+        self.assertEqual(len(controller.source_challenges), 3)
+        self.assertTrue(controller.radio.matches(self.NORMAL))
+        self.assertTrue(controller.all_nodes_normal())
+        self.assertFalse(bool(source_state["active"]))
+
+    def test_clock_read_rtt_expands_activation_and_cleanup_bounds(self) -> None:
+        controller, _source_calls, clock, source_state, error = (
+            self.run_rehearsal(
+                failure="clock_read_rtt",
+                capture_error=True,
+            )
+        )
+        self.assertIsNone(error)
+        # The slowest 23-second read moves the earliest possible remote start
+        # 23 seconds before the latest one. Source arming therefore waits 92s,
+        # not the zero-RTT 115s, and cleanup owns the corresponding late end.
+        self.assertEqual(clock.sleeps[0], 92.0)
+        self.assertGreaterEqual(clock.now, 408.0)
+        self.assertTrue(controller.all_nodes_normal())
+        self.assertFalse(bool(source_state["active"]))
+
+    def test_shared_source_uses_bounded_local_tuple_not_binary_set(self) -> None:
+        controller, source_calls, _clock, source_state, error = (
+            self.run_rehearsal(shared=True)
+        )
+        self.assertIsNone(error)
+
+        self.assertEqual(controller.radio_calls, [])
+        source_arm_options = next(
+            options for command, options in source_calls
+            if command == "tempradio 909.95,250,5,5,3"
+        )
+        self.assertTrue(source_arm_options["bounded"])
+        self.assertEqual(source_arm_options["deadline"], 297.0)
+        self.assertFalse(source_arm_options["retry"])
+        self.assertNotIn(
+            "get public.key", [command for command, _options in source_calls]
+        )
+        self.assertGreaterEqual(
+            [command for command, _options in source_calls].count("ver"), 3
+        )
+        self.assertTrue(controller.radio.matches(self.NORMAL))
+        self.assertFalse(bool(source_state["active"]))
+
+    def test_lost_fixed_schedule_ack_is_bounded_without_replay(self) -> None:
+        for failure, succeeds in (
+            ("lost_target_ack", True),
+            ("lost_target_ack_without_delivery", False),
+            ("lost_target_ack_delayed", True),
+            ("lost_target_ack_slow", True),
+        ):
+            with self.subTest(failure=failure):
+                controller, _calls, clock, _state, error = self.run_rehearsal(
+                    failure=failure,
+                    capture_error=True,
+                )
+                self.assertEqual(error is None, succeeds)
+                target_arms = [
+                    call for call in controller.remote_calls
+                    if call[0] == "remote"
+                    and call[1].startswith("set tempradioat ")
+                ]
+                self.assertEqual(len(target_arms), 1)
+                # Even a lost reply returns after the one fixed rehearsal
+                # interval; it never pays the multi-hour controller retry
+                # horizon and never submits a second mutation.
+                self.assertLess(clock.now, 6 * 60)
+                self.assertTrue(controller.all_nodes_normal())
+
+    def test_lost_source_ack_is_resolved_without_replay(self) -> None:
+        for failure, succeeds in (
+            ("lost_source_ack", True),
+            ("lost_source_ack_without_delivery", False),
+        ):
+            with self.subTest(failure=failure):
+                controller, source_calls, _clock, _state, error = self.run_rehearsal(
+                    failure=failure,
+                    capture_error=True,
+                )
+                self.assertEqual(error is None, succeeds)
+                source_arms = [
+                    call for call in source_calls
+                    if call[0].startswith("tempradio ")
+                ]
+                self.assertEqual(len(source_arms), 1)
+                self.assertTrue(controller.all_nodes_normal())
+
+    def test_source_must_be_proven_over_lora(self) -> None:
+        for failure, pattern in (
+            ("baseline_source_air", "contact key mismatch"),
+            ("temp_source_air", "matching ACK"),
+            ("normal_source_air", "matching ACK"),
+        ):
+            with self.subTest(failure=failure):
+                controller, _calls, _clock, _state, error = self.run_rehearsal(
+                    failure=failure,
+                    capture_error=True,
+                )
+                self.assertIsNotNone(error)
+                self.assertRegex(str(error), pattern)
+                self.assertTrue(controller.all_nodes_normal())
+
+    def test_legacy_source_return_is_proven_over_lora(self) -> None:
+        controller, _calls, _clock, _state, error = self.run_rehearsal(
+            failure="legacy_source",
+        )
+        self.assertIsNone(error)
+        self.assertEqual(len(controller.source_challenges), 3)
+        self.assertTrue(controller.all_nodes_normal())
+
+    def test_stuck_source_and_remote_are_actively_normalized(self) -> None:
+        for failure in (
+            "stuck_source_return",
+            "legacy_stuck_source",
+            "stuck_remote_return",
+        ):
+            with self.subTest(failure=failure):
+                controller, source_calls, clock, state, error = (
+                    self.run_rehearsal(
+                        failure=failure,
+                        capture_error=True,
+                    )
+                )
+                self.assertIsNotNone(error)
+                self.assertTrue(controller.all_nodes_normal())
+                self.assertFalse(bool(state["active"]))
+                self.assertTrue(controller.radio.matches(self.NORMAL))
+                self.assertGreaterEqual(
+                    clock.now,
+                    ota.remote_cli_mutation_drain_seconds(self.TEMP)
+                    + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+                )
+                if failure in ("stuck_source_return", "legacy_stuck_source"):
+                    self.assertIn(
+                        "normalradio",
+                        [command for command, _options in source_calls],
+                    )
+                else:
+                    self.assertIn(
+                        ("remote", "normalradio"),
+                        [
+                            (name, command)
+                            for name, command, _options in controller.remote_calls
+                        ],
+                    )
+
+    def test_late_shared_recovery_rearm_is_owned_from_completion(self) -> None:
+        controller, source_calls, clock, state, error = self.run_rehearsal(
+            failure="late_recovery_source",
+            shared=True,
+            capture_error=True,
+        )
+        self.assertIsNotNone(error)
+        self.assertFalse(bool(state["active"]))
+        self.assertTrue(controller.all_nodes_normal())
+        recovery_arms = [
+            command
+            for command, _options in source_calls
+            if command.endswith(",1")
+        ]
+        self.assertEqual(
+            recovery_arms,
+            ["tempradio 909.95,250,5,5,1"],
+        )
+        self.assertGreaterEqual(
+            clock.now,
+            30.0
+            + ota.TEMP_RADIO_RETURN_MINUTES * 60
+            + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+        )
+
+    def test_shared_recovery_owns_an_explicit_unexpected_duration(self) -> None:
+        controller, _source_calls, clock, state, error = self.run_rehearsal(
+            failure="wrong_recovery_duration",
+            shared=True,
+            capture_error=True,
+        )
+        self.assertIsNotNone(error)
+        accepted_at = float(state["recovery_accepted_at"])
+        self.assertGreaterEqual(
+            clock.now,
+            accepted_at + 30 * 60 + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+        )
+        self.assertFalse(bool(state["active"]))
+        self.assertTrue(controller.all_nodes_normal())
+
+    def test_slow_ambiguous_remote_restore_drains_from_completion(self) -> None:
+        controller, _source_calls, clock, _state, error = self.run_rehearsal(
+            failure="stuck_remote_slow_restore",
+            capture_error=True,
+        )
+        self.assertIsNotNone(error)
+        completed_at = controller.slow_recovery_restore_completed_at
+        self.assertIsNotNone(completed_at)
+        assert completed_at is not None
+        self.assertGreaterEqual(
+            clock.now,
+            completed_at
+            + ota.remote_cli_mutation_drain_seconds(self.TEMP)
+            + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+        )
+        self.assertTrue(controller.all_nodes_normal())
+
+    def test_second_interrupt_during_controller_restore_cannot_escape_wait(
+        self,
+    ) -> None:
+        controller, _calls, clock, _state, error = self.run_rehearsal(
+            failure="controller_restore_interrupt",
+            capture_error=True,
+        )
+        self.assertIsInstance(error, KeyboardInterrupt)
+        self.assertTrue(controller.controller_restore_interrupt_sent)
+        self.assertGreaterEqual(
+            clock.now,
+            ota.TEMP_RADIO_PREFLIGHT_MINUTES * 60
+            + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+        )
+        self.assertTrue(controller.radio.matches(self.NORMAL))
+        self.assertTrue(controller.all_nodes_normal())
+
+    def test_preexisting_source_work_and_uncertain_status_block_mutation(self) -> None:
+        cases = {
+            "preexisting_source_active": "already has active",
+            "preexisting_source_pending": "already has active or pending",
+            "source_status_transport": "status link loss",
+            "source_status_empty": "empty reply",
+            "source_schedule_transport": "schedule link loss",
+        }
+        for failure, pattern in cases.items():
+            with self.subTest(failure=failure):
+                controller, source_calls, _clock, _state, error = self.run_rehearsal(
+                    failure=failure,
+                    capture_error=True,
+                )
+                self.assertIsNotNone(error)
+                self.assertRegex(str(error), pattern)
+                self.assertFalse(
+                    any(command.startswith("tempradio ") for command, _ in source_calls)
+                )
+                self.assertFalse(
+                    any(command.startswith("tempradio ") for _, command, _ in controller.remote_calls)
+                )
+
+    def test_unmanaged_source_is_rejected_before_any_mutation(self) -> None:
+        controller = self.Controller(self.Clock())
+        args = self.args()
+        args.source_already_temp = True
+        args.source_serial = None
+        with self.assertRaisesRegex(ota.OtaError, "unmanaged"):
+            ota.run_temp_radio_preflight(
+                controller,
+                args,
+                target(base_hash=b"\0" * 8),
+                self.NORMAL,
+                self.TEMP,
+            )
+        self.assertEqual(controller.remote_calls, [])
+        self.assertEqual(controller.radio_calls, [])
+
+    def test_identical_temp_modulation_is_rejected_before_any_mutation(self) -> None:
+        controller = self.Controller(self.Clock())
+        args = self.args()
+        same_modulation = ota.RadioSettings(
+            self.NORMAL.frequency,
+            self.NORMAL.bandwidth,
+            self.NORMAL.spreading_factor,
+            self.NORMAL.coding_rate,
+            not self.NORMAL.repeat,
+        )
+        with self.assertRaisesRegex(ota.OtaError, "requires --temp-radio"):
+            ota.run_temp_radio_preflight(
+                controller,
+                args,
+                target(base_hash=b"\0" * 8),
+                self.NORMAL,
+                same_modulation,
+            )
+        self.assertEqual(controller.remote_calls, [])
+        self.assertEqual(controller.radio_calls, [])
+
+    def test_duplicate_hop_names_are_rejected_before_any_mutation(self) -> None:
+        controller = self.Controller(self.Clock())
+        args = self.args()
+        args.relay_values = [("REMOTE", "other-password")]
+        with self.assertRaisesRegex(ota.OtaError, "must be unique"):
+            ota.run_temp_radio_preflight(
+                controller,
+                args,
+                target(base_hash=b"\0" * 8),
+                self.NORMAL,
+                self.TEMP,
+            )
+        self.assertEqual(controller.remote_calls, [])
+        self.assertEqual(controller.radio_calls, [])
+
+    def test_failed_rehearsal_blocks_every_long_transfer_mutation(self) -> None:
+        image = firmware(b"preflight integration" * 300, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        controller = mock.Mock()
+        controller.get_radio.return_value = self.NORMAL
+        controller.get_clock.return_value = int(ota.time.time()) + 1
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "release.mota", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret",
+                "--work-dir", str(Path(directory) / "work"),
+                "--yes",
+            ]
+            with (
+                mock.patch.object(ota, "preflight_inputs"),
+                mock.patch.object(ota, "preflight_source_cli"),
+                mock.patch.object(
+                    ota,
+                    "ensure_source_clock_gate_safe",
+                    return_value=(1_800_000_000, 1_800_000_059),
+                ),
+                mock.patch.object(ota, "read_source_rxps", return_value=saved),
+                mock.patch.object(ota, "query_target", return_value=target()),
+                mock.patch.object(
+                    ota,
+                    "prepare_package",
+                    return_value=(Path("release.mota"), package, None),
+                ),
+                mock.patch.object(
+                    ota,
+                    "read_lora_ota_participant_versions",
+                    return_value={"destination": VERSION_NEW},
+                ),
+                mock.patch.object(
+                    ota,
+                    "read_remote_rxps",
+                    return_value=ota.RxpsSettings(False, 18205, 20423, 8, 16),
+                ),
+                mock.patch.object(ota, "confirm_update"),
+                mock.patch.object(
+                    ota,
+                    "run_temp_radio_preflight",
+                    side_effect=ota.OtaError("synthetic rehearsal failure"),
+                ) as rehearsal,
+                mock.patch.object(ota, "disable_source_rxps") as disable_source,
+                mock.patch.object(ota, "apply_remote_rxps_policy") as mutate_target,
+                mock.patch.object(ota, "arm_target_temp_radio") as arm_long_target,
+                mock.patch.object(ota, "switch_controller_to_temp_radio") as switch_long,
+                mock.patch.object(ota, "SeederProcess") as seeder,
+                mock.patch.object(ota, "find_and_start_pull") as pull,
+                mock.patch.object(ota, "request_install") as install,
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        rehearsal.assert_called_once()
+        disable_source.assert_not_called()
+        mutate_target.assert_not_called()
+        arm_long_target.assert_not_called()
+        switch_long.assert_not_called()
+        seeder.assert_not_called()
+        pull.assert_not_called()
+        install.assert_not_called()
+
+    def test_schedule_appearing_during_baseline_blocks_every_mutation(
+        self,
+    ) -> None:
+        for failure in (
+            "source_schedule_appears_during_baseline",
+            "remote_schedule_appears_during_baseline",
+        ):
+            with self.subTest(failure=failure):
+                controller, source_calls, _clock, _state, error = (
+                    self.run_rehearsal(
+                        failure=failure,
+                        capture_error=True,
+                    )
+                )
+
+                self.assertIsNotNone(error)
+                self.assertRegex(str(error), "scheduled TempRadio work")
+                remote_commands = [
+                    command
+                    for _name, command, _options in controller.remote_calls
+                ]
+                self.assertFalse(
+                    any(
+                        command.startswith("time ")
+                        or command.startswith("set tempradioat ")
+                        or command == "normalradio"
+                        for command in remote_commands
+                    )
+                )
+                self.assertFalse(
+                    any(
+                        command.startswith("tempradio ")
+                        or command.startswith("time ")
+                        or command == "normalradio"
+                        for command, _options in source_calls
+                    )
+                )
+                self.assertEqual(controller.radio_calls, [])
+
+    def test_failures_at_each_rehearsal_stage_leave_normal_state(self) -> None:
+        failure_patterns = {
+            "baseline_source_identity": "exact public key",
+            "baseline_destination": "normal-channel baseline identity",
+            "baseline_schedule": "already has scheduled TempRadio work",
+            "baseline_scheduleless": "does not support fixed `tempradioat`",
+            "target_arm": "did not accept one exact fixed TempRadio schedule",
+            "relay_arm": "did not accept one exact fixed TempRadio schedule",
+            "source_arm": "source arm failure",
+            "controller_handoff": "controller handoff failure",
+            "temp_source_tuple": "tuple mismatch",
+            "temp_controller_identity": "controller on TempRadio public key changed",
+            "temp_source_identity": "OTA source on TempRadio public key changed",
+            "temp_remote_identity": "far on TempRadio public key changed",
+            "temp_destination": "destination on TempRadio identity",
+            "normal_source_return": "did not return automatically",
+            "normal_remote_identity": "remote after natural return public key changed",
+        }
+        for failure, pattern in failure_patterns.items():
+            with self.subTest(failure=failure):
+                controller, source_calls, clock, source_state, error = (
+                    self.run_rehearsal(
+                        failure=failure,
+                        capture_error=True,
+                    )
+                )
+                self.assertIsNotNone(error)
+                self.assertRegex(str(error), pattern)
+                self.assertTrue(controller.radio.matches(self.NORMAL))
+                self.assertTrue(controller.all_nodes_normal())
+                self.assertFalse(bool(source_state["active"]))
+                all_commands = [
+                    command
+                    for _name, command, _kwargs in controller.remote_calls
+                ] + [command for command, _kwargs in source_calls]
+                self.assertFalse(
+                    any(
+                        command.rstrip().endswith(",120")
+                        for command in all_commands
+                    )
+                )
+                if failure.startswith("baseline_"):
+                    self.assertNotIn(
+                        ota.TEMP_RADIO_PREFLIGHT_MINUTES * 60
+                        + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+                        clock.sleeps,
+                    )
+                else:
+                    self.assertGreaterEqual(
+                        clock.now,
+                        ota.TEMP_RADIO_PREFLIGHT_MINUTES * 60
+                        + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+                    )
+
+    def test_sequential_arming_deadline_fails_without_leaking_leases(self) -> None:
+        controller, _calls, clock, _state, error = self.run_rehearsal(
+            failure="lease_deadline",
+            capture_error=True,
+        )
+        self.assertIsNotNone(error)
+        self.assertRegex(str(error), "fixed TempRadio schedule")
+        self.assertGreaterEqual(clock.now, 300)
+        self.assertTrue(controller.radio.matches(self.NORMAL))
+        self.assertTrue(controller.all_nodes_normal())
+
+    def test_interrupted_expiry_wait_resumes_absolute_deadline(self) -> None:
+        controller, _calls, clock, _state, error = self.run_rehearsal(
+            failure="interrupt_wait",
+            capture_error=True,
+        )
+        self.assertIsInstance(error, KeyboardInterrupt)
+        long_sleeps = [value for value in clock.sleeps if value > 30]
+        self.assertEqual(len(long_sleeps), 2)
+        self.assertIn(5.0, clock.sleeps)
+        self.assertLess(sum(clock.sleeps), 330)
+        self.assertTrue(controller.all_nodes_normal())
+
+    def test_repeated_interrupts_cannot_escape_owned_lease_cleanup(self) -> None:
+        controller, _calls, clock, _state, error = self.run_rehearsal(
+            failure="double_interrupt_wait",
+            capture_error=True,
+        )
+        self.assertIsInstance(error, KeyboardInterrupt)
+        self.assertEqual(clock.interrupts_remaining, 0)
+        self.assertGreaterEqual(
+            clock.now,
+            ota.TEMP_RADIO_PREFLIGHT_MINUTES * 60
+            + ota.TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS,
+        )
+        self.assertLess(sum(clock.sleeps), 335)
+        self.assertTrue(controller.radio.matches(self.NORMAL))
+        self.assertTrue(controller.all_nodes_normal())
+
+    def test_fixed_schedule_formatter_cannot_extend_three_minutes(self) -> None:
+        command = ota.scheduled_temp_radio_command(
+            self.args(), 1_800_000_120, 1_800_000_300
+        )
+        self.assertEqual(
+            command,
+            "set tempradioat 909.95,250,5,5,1800000120,1800000300",
+        )
+        with self.assertRaisesRegex(ota.OtaError, "interval"):
+            ota.scheduled_temp_radio_command(
+                self.args(), 1_800_000_120, 1_800_000_120
+            )
+
+
 class ReliabilityTests(unittest.TestCase):
     def test_target_version_falls_back_to_ver(self) -> None:
         class Controller:
@@ -1947,6 +4622,57 @@ class ReliabilityTests(unittest.TestCase):
             controller.commands,
             ["ota status", "get bootloader.ver", "ota self", "ota stats"],
         )
+
+    def test_optional_ota_stats_loss_is_bounded_then_falls_back_to_ver(
+        self,
+    ) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.commands: list[tuple[str, bool]] = []
+                self.stats_calls = 0
+
+            def remote_command(
+                self,
+                _target: str,
+                command: str,
+                *,
+                retry: bool = True,
+                **_kwargs: object,
+            ) -> str:
+                self.commands.append((command, retry))
+                if command == "ota status":
+                    return "OTA | no download | target:1234ABCD hw=RAK_3401"
+                if command == "get bootloader.ver":
+                    return "> 0.9.2-OTAFIX2.4"
+                if command == "ota self":
+                    return (
+                        "self body=1 image=2 base_hash=0011223344556677 | "
+                        "bootloader: apply OK (abi=2 codecs=0x4)"
+                    )
+                if command == "ota stats":
+                    self.stats_calls += 1
+                    self.assert_optional_probe(retry)
+                    raise ota.TransmissionError("synthetic unsupported/lost stats")
+                if command == "ver":
+                    return "v1.16.7"
+                raise AssertionError(command)
+
+            @staticmethod
+            def assert_optional_probe(retry: bool) -> None:
+                if retry:
+                    raise AssertionError("optional stats used unbounded retry")
+
+        controller = Controller()
+        with mock.patch.object(ota.time, "sleep"):
+            result = ota.query_target(
+                controller, argparse.Namespace(target="remote")
+            )
+        self.assertEqual(
+            controller.stats_calls, ota.TRANSMISSION_RETRY_LIMIT + 1
+        )
+        self.assertEqual(result.current_version, "v1.16.7")
+        self.assertEqual(result.current_version_source, "ver")
+        self.assertEqual(controller.commands[-1], ("ver", True))
 
     def test_target_detects_qspi_staging(self) -> None:
         class Controller:
@@ -2032,18 +4758,53 @@ class ReliabilityTests(unittest.TestCase):
         self.assertIsNone(result.bootloader_version)
         self.assertIn("legacy `ota self` platform markers", output.getvalue())
 
-    def test_unattended_prompt_waits_ten_seconds_and_continues(self) -> None:
+    def test_unattended_prompt_stops_without_another_retry_cycle(self) -> None:
         output = io.StringIO()
         with (
             mock.patch.object(sys, "stdin", io.StringIO()),
             mock.patch.object(ota.time, "sleep") as sleep,
             contextlib.redirect_stdout(output),
         ):
-            self.assertTrue(ota.prompt_after_transmission_failure(
+            self.assertFalse(ota.prompt_after_transmission_failure(
                 "test", ota.TransmissionError("lost")
             ))
-        sleep.assert_called_once_with(10)
+        sleep.assert_not_called()
+        self.assertIn("stopping (non-interactive)", output.getvalue())
+
+    def test_interactive_prompt_timeout_still_continues(self) -> None:
+        interactive_stdin = mock.Mock()
+        interactive_stdin.isatty.return_value = True
+        output = io.StringIO()
+        with (
+            mock.patch.object(sys, "stdin", interactive_stdin),
+            mock.patch.object(ota.os, "name", "posix"),
+            mock.patch("select.select", return_value=([], [], [])),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertTrue(
+                ota.prompt_after_transmission_failure(
+                    "test", ota.TransmissionError("lost")
+                )
+            )
         self.assertIn("continuing in 10s", output.getvalue())
+
+    def test_unattended_retry_is_finite(self) -> None:
+        calls = 0
+
+        def action() -> str:
+            nonlocal calls
+            calls += 1
+            raise ota.TransmissionError("lost")
+
+        with (
+            mock.patch.object(sys, "stdin", io.StringIO()),
+            mock.patch.object(ota.time, "sleep"),
+            self.assertRaisesRegex(
+                ota.TransmissionStopped, "stopped after transmission"
+            ),
+        ):
+            ota.retry_transmission(action, "unattended probe")
+        self.assertEqual(calls, ota.TRANSMISSION_RETRY_LIMIT + 1)
 
     def test_retry_prompt_continues_by_default_choice(self) -> None:
         calls = 0
@@ -2203,6 +4964,49 @@ class ReliabilityTests(unittest.TestCase):
         reply = controller._remote_command_once("remote", "ota status", "secret")
         self.assertTrue(reply.startswith("OTA |"))
 
+    def test_matching_admin_reply_recovers_lost_login_acknowledgement(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.reply_timeout = 20
+        controller._authenticated_targets = set()
+        key = "A1" * 32
+        controller._run_marked = lambda _commands, _label, _marker: (
+            [{"adv_name": "remote", "public_key": key}],
+            [{
+                "txt_type": 1,
+                "text": "OTA | no download | target:1234ABCD",
+                "pubkey_prefix": key[:12],
+            }],
+        )
+
+        reply = controller._remote_command_once(
+            "remote", "ota status", "secret"
+        )
+
+        self.assertTrue(reply.startswith("OTA |"))
+        self.assertEqual(controller._authenticated_targets, {"remote"})
+
+    def test_explicit_admin_login_failure_overrides_matching_reply(self) -> None:
+        controller = object.__new__(ota.Controller)
+        controller.reply_timeout = 20
+        controller._authenticated_targets = set()
+        key = "A1" * 32
+        controller._run_marked = lambda _commands, _label, _marker: (
+            [
+                {"adv_name": "remote", "public_key": key},
+                {"login_success": False},
+            ],
+            [{
+                "txt_type": 1,
+                "text": "OTA | no download | target:1234ABCD",
+                "pubkey_prefix": key[:12],
+            }],
+        )
+
+        with self.assertRaisesRegex(ota.OtaError, "admin login failed"):
+            controller._remote_command_once("remote", "ota status", "wrong")
+
+        self.assertEqual(controller._authenticated_targets, set())
+
     def test_remote_admin_login_is_reused_until_explicit_refresh(self) -> None:
         controller = object.__new__(ota.Controller)
         controller.reply_timeout = 20
@@ -2290,8 +5094,15 @@ class ReliabilityTests(unittest.TestCase):
     def test_generic_retry_rejects_state_changing_ota_commands(self) -> None:
         controller = object.__new__(ota.Controller)
         controller.password = "secret"
-        with self.assertRaisesRegex(ota.OtaError, "state-aware"):
-            controller.remote_command("remote", "ota install")
+        for command in (
+            "ota install",
+            "ota pull 1",
+            "tempradio 909.95,250,5,5,120",
+        ):
+            with self.subTest(command=command), self.assertRaisesRegex(
+                ota.OtaError, "state-aware"
+            ):
+                controller.remote_command("remote", command)
 
     def test_unknown_contact_is_not_retried_as_packet_loss(self) -> None:
         controller = object.__new__(ota.Controller)
@@ -2326,11 +5137,13 @@ class ReliabilityTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.commands: list[str] = []
                 self.radios: list[ota.RadioSettings] = []
+                self.retries: list[object] = []
 
             def remote_command(
                 self, _target: str, command: str, **_kwargs: object
             ) -> str:
                 self.commands.append(command)
+                self.retries.append(_kwargs.get("retry"))
                 if command.startswith("tempradio "):
                     raise ota.TransmissionError("lost reply")
                 return "self body=1 image=2 base_hash=0011223344556677"
@@ -2350,7 +5163,43 @@ class ReliabilityTests(unittest.TestCase):
             controller.commands,
             ["tempradio 909.95,250,5,5,120", "ota self"],
         )
+        self.assertEqual(controller.retries, [False, False])
         self.assertEqual(controller.radios, [temporary, normal])
+
+    @mock.patch.object(ota.time, "sleep")
+    def test_lost_target_temp_reply_uses_later_bounded_probe(
+        self, sleep: mock.Mock
+    ) -> None:
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        temporary = ota.RadioSettings(909.95, 250.0, 5, 5, False)
+        controller = mock.Mock()
+        controller.remote_command.side_effect = (
+            ota.TransmissionError("lost command reply"),
+            ota.TransmissionError("missed first temp proof"),
+            "self body=1 image=2 base_hash=0011223344556677",
+        )
+
+        ota.arm_target_temp_radio(
+            controller,
+            argparse.Namespace(target="remote"),
+            "tempradio 909.95,250,5,5,120",
+            temporary,
+            normal,
+        )
+
+        self.assertEqual(controller.remote_command.call_count, 3)
+        self.assertEqual(
+            [
+                call.kwargs.get("retry")
+                for call in controller.remote_command.call_args_list
+            ],
+            [False, False, False],
+        )
+        sleep.assert_called_once_with(ota.transmission_retry_delay(1))
+        controller.set_radio.assert_has_calls([
+            mock.call(temporary, "switch controller to TempRadio"),
+            mock.call(normal, "restore controller after TempRadio probe"),
+        ])
 
     def test_shared_lost_target_temp_probe_preserves_saved_controller_tuple(self) -> None:
         normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
@@ -2399,7 +5248,7 @@ class ReliabilityTests(unittest.TestCase):
         self.assertEqual(
             source_command.call_args_list,
             [
-                mock.call(args, command),
+                mock.call(args, command, retry=False),
                 mock.call(args, "normalradio", check=True),
                 mock.call(args, "tempradio", check=True),
             ],
@@ -2440,7 +5289,10 @@ class ReliabilityTests(unittest.TestCase):
             normal, "restore controller after TempRadio probe"
         )
 
-    def test_ambiguous_target_temp_probe_is_not_replayed(self) -> None:
+    @mock.patch.object(ota.time, "sleep")
+    def test_ambiguous_target_temp_probe_is_not_replayed(
+        self, sleep: mock.Mock
+    ) -> None:
         normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
         temporary = ota.RadioSettings(909.95, 250.0, 5, 5, False)
 
@@ -2469,9 +5321,10 @@ class ReliabilityTests(unittest.TestCase):
             )
         self.assertEqual(
             controller.commands,
-            ["tempradio 909.95,250,5,5,120", "ota self", "ota self"],
+            ["tempradio 909.95,250,5,5,120"] + ["ota self"] * 8,
         )
         self.assertEqual(controller.radios, [temporary, normal])
+        self.assertEqual(sleep.call_count, ota.TRANSMISSION_RETRY_LIMIT * 2)
 
     @mock.patch.object(ota.time, "sleep")
     def test_target_temp_retries_only_after_exact_normal_identity(
@@ -2484,12 +5337,17 @@ class ReliabilityTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.commands: list[str] = []
                 self.radios: list[ota.RadioSettings] = []
-                self.replies = iter([
-                    ota.TransmissionError("lost command reply"),
-                    ota.TransmissionError("not on temporary channel"),
-                    "self body=1 image=2 base_hash=0011223344556677",
-                    "OK - temp params for 120 mins",
-                ])
+                self.replies = iter(
+                    [ota.TransmissionError("lost command reply")]
+                    + [
+                        ota.TransmissionError("not on temporary channel")
+                        for _ in range(4)
+                    ]
+                    + [
+                        "self body=1 image=2 base_hash=0011223344556677",
+                        "OK - temp params for 120 mins",
+                    ]
+                )
 
             def remote_command(
                 self, _target: str, command: str, **_kwargs: object
@@ -2517,11 +5375,22 @@ class ReliabilityTests(unittest.TestCase):
                 "tempradio 909.95,500,5,5,120",
                 "ota self",
                 "ota self",
+                "ota self",
+                "ota self",
+                "ota self",
                 "tempradio 909.95,500,5,5,120",
             ],
         )
         self.assertEqual(controller.radios, [temporary, normal])
-        sleep.assert_called_once_with(ota.transmission_retry_delay(1))
+        self.assertEqual(
+            sleep.call_args_list,
+            [
+                mock.call(ota.transmission_retry_delay(1)),
+                mock.call(ota.transmission_retry_delay(2)),
+                mock.call(ota.transmission_retry_delay(3)),
+                mock.call(ota.transmission_retry_delay(1)),
+            ],
+        )
 
     def test_install_retries_only_after_still_ready_is_confirmed(self) -> None:
         image = firmware(b"install" * 900, VERSION_NEW)
@@ -2559,6 +5428,41 @@ class ReliabilityTests(unittest.TestCase):
             [
                 "ota status", "tempradio 909.95,250,5,5,3", "ota install",
                 "ota status", "tempradio 909.95,250,5,5,3", "ota install",
+            ],
+        )
+
+    def test_lost_install_window_reply_is_reconciled_without_replay(self) -> None:
+        image = firmware(b"install-window" * 700, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+
+        class Controller:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, bool | None]] = []
+
+            def remote_command(
+                self, _target: str, command: str, **kwargs: object
+            ) -> str:
+                self.calls.append((command, kwargs.get("retry")))
+                if command.startswith("tempradio "):
+                    raise ota.TransmissionError("lost window reply")
+                if command == "ota status":
+                    return (
+                        "OTA | download: ready to install 9/9 "
+                        f"id={package.manifest_id} 2s"
+                    )
+                raise AssertionError(command)
+
+        controller = Controller()
+        args = argparse.Namespace(
+            target="remote",
+            temp_values=(909.95, 250.0, 5, 5, 120),
+        )
+        ota.arm_target_install_window(controller, args, package)
+        self.assertEqual(
+            controller.calls,
+            [
+                ("tempradio 909.95,250,5,5,3", False),
+                ("ota status", False),
             ],
         )
 
@@ -2815,13 +5719,17 @@ class ReliabilityTests(unittest.TestCase):
     def test_stage_cleanup_shortens_target_and_relays(self) -> None:
         class Controller:
             def __init__(self) -> None:
-                self.commands: list[tuple[str, str, str | None]] = []
+                self.commands: list[
+                    tuple[str, str, str | None, bool | None]
+                ] = []
 
             def remote_command(
                 self, target_name: str, command: str, **kwargs: object
             ) -> str:
                 password = kwargs.get("password")
-                self.commands.append((target_name, command, password))
+                self.commands.append(
+                    (target_name, command, password, kwargs.get("retry"))
+                )
                 return "OK - temp params for 1 mins"
 
         controller = Controller()
@@ -2835,10 +5743,113 @@ class ReliabilityTests(unittest.TestCase):
         self.assertEqual(
             controller.commands,
             [
-                ("remote", "tempradio 909.95,250,5,5,1", None),
-                ("relay", "tempradio 909.95,250,5,5,1", "relay-secret"),
+                ("remote", "tempradio 909.95,250,5,5,1", None, False),
+                (
+                    "relay",
+                    "tempradio 909.95,250,5,5,1",
+                    "relay-secret",
+                    False,
+                ),
             ],
         )
+
+    def test_relay_arm_owns_lost_ack_before_one_shot_send(self) -> None:
+        ownership: list[tuple[str, str]] = []
+
+        class Controller:
+            owned_during_send = False
+            calls = 0
+
+            def remote_command(
+                self, target: str, command: str, **kwargs: object
+            ) -> str:
+                self.calls += 1
+                self.owned_during_send = (target, "secret") in ownership
+                self.retry = kwargs.get("retry")
+                raise ota.TransmissionError("lost acknowledgement")
+
+        controller = Controller()
+        confirmed = ota.arm_relay_temp_radio_once(
+            controller,
+            "relay",
+            "secret",
+            "tempradio 909.95,250,5,5,120",
+            ownership,
+            120,
+        )
+        self.assertFalse(confirmed)
+        self.assertTrue(controller.owned_during_send)
+        self.assertEqual(controller.calls, 1)
+        self.assertIs(controller.retry, False)
+        self.assertEqual(ownership, [("relay", "secret")])
+
+    def test_relay_cleanup_attempts_every_node_after_failure(self) -> None:
+        class Controller:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, bool | None]] = []
+
+            def remote_command(
+                self, target: str, command: str, **kwargs: object
+            ) -> str:
+                if command.startswith("tempradio "):
+                    self.calls.append((target, kwargs.get("retry")))
+                    if target == "offline":
+                        raise ota.OtaError("unreachable")
+                    return "OK - temp params for 1 mins"
+                raise AssertionError(command)
+
+        controller = Controller()
+        args = argparse.Namespace(
+            relay_values=[
+                ("offline", "offline-secret"),
+                ("online", "online-secret"),
+            ],
+            temp_values=(909.95, 250.0, 5, 5, 120),
+        )
+        with self.assertRaisesRegex(
+            ota.OtaError, "offline: unreachable"
+        ):
+            ota.shorten_relay_temp_windows(controller, args)
+        self.assertEqual(
+            controller.calls,
+            [("offline", False), ("online", False)],
+        )
+
+    def test_lost_relay_cleanup_reconciles_identity_without_replay(self) -> None:
+        key = "AB" * 32
+
+        class Controller:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str, bool | None]] = []
+
+            def remote_command(
+                self, target: str, command: str, **kwargs: object
+            ) -> str:
+                self.calls.append((target, command, kwargs.get("retry")))
+                if command.startswith("tempradio "):
+                    raise ota.TransmissionError("lost cleanup reply")
+                if command == "get public.key":
+                    return f"> {key}"
+                raise AssertionError(command)
+
+        controller = Controller()
+        args = argparse.Namespace(
+            relay_values=[("relay", "secret")],
+            temp_values=(909.95, 250.0, 5, 5, 120),
+        )
+        ota.shorten_relay_temp_windows(
+            controller,
+            args,
+            expected_public_keys={"relay": key.lower()},
+        )
+        relative_writes = [
+            call for call in controller.calls if call[1].startswith("tempradio ")
+        ]
+        self.assertEqual(
+            relative_writes,
+            [("relay", "tempradio 909.95,250,5,5,1", False)],
+        )
+        self.assertIn(("relay", "get public.key", False), controller.calls)
 
     def test_managed_relay_timing_is_saved_guarded_and_restored(self) -> None:
         class Controller:
@@ -2975,11 +5986,15 @@ class ReliabilityTests(unittest.TestCase):
         controller = mock.Mock()
         temporary = ota.RadioSettings(909.95, 500.0, 5, 5, False)
         command = "tempradio 909.95,500,5,5,120"
-        with mock.patch.object(ota, "source_cli_command") as source_command:
+        with mock.patch.object(
+            ota,
+            "source_cli_command",
+            return_value="OK - temp params for 120 mins",
+        ) as source_command:
             ota.switch_controller_to_temp_radio(
                 controller, args, command, temporary
             )
-        source_command.assert_called_once_with(args, command)
+        source_command.assert_called_once_with(args, command, retry=False)
         controller.set_radio.assert_not_called()
 
     def test_separate_controller_temp_switch_uses_binary_tuple(self) -> None:

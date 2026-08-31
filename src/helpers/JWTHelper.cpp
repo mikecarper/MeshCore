@@ -10,6 +10,7 @@
 #include <string.h>
 #include "ed_25519.h"
 #include "mbedtls/base64.h"
+#include "UsbLogging.h"
 
 // Base64 URL encoding table (without padding)
 static const char base64url_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -87,7 +88,11 @@ bool JWTHelper::createAuthToken(
 #if !defined(PORTABLE_MQTT_OBSERVER)
   int verify_result = ed25519_verify(signature, (const unsigned char*)signingInput, signingInputLen, public_key);
   if (verify_result != 1) {
-    if (Serial.availableForWrite() > 0) Serial.println("JWTHelper: Signature verification failed!");
+    if (mesh::isUsbLoggingEnabled()
+        && mesh::usbLoggingPort().availableForWrite() > 0) {
+      mesh::usbLoggingPort().println(
+          "JWTHelper: Signature verification failed!");
+    }
     return false;
   }
 #endif

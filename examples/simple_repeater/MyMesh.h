@@ -95,6 +95,8 @@
 #endif
 #include <helpers/RemoteCliReplyCache.h>
 #include <helpers/RemoteCliRequest.h>
+#include <helpers/TempRadioReplyBarrier.h>
+#include <helpers/TempRadioLeaseDeadline.h>
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
 #include <helpers/UserGpioReplyTracker.h>
 #endif
@@ -281,6 +283,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint8_t cr;
     uint32_t start_time;
     uint32_t end_time;
+    uint64_t hard_end_uptime_millis;
   };
 
   FILESYSTEM* _fs;
@@ -289,6 +292,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   unsigned long next_local_advert, next_flood_advert;
   mesh::DeferredCliCommand deferred_cli_command;
   mesh::RemoteCliReplyCache remote_cli_reply_cache;
+  mesh::TempRadioReplyBarrier temp_radio_reply_barrier;
   TransportKey deferred_cli_reply_scope;
   bool deferred_cli_reply_scoped;
 #if MESH_ENABLE_HOST_CLI
@@ -462,6 +466,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   unsigned long pending_discover_until;
   bool region_load_active;
   unsigned long dirty_contacts_expiry;
+  uint8_t contacts_save_failures;
 #if MAX_NEIGHBOURS
   NeighbourInfo neighbours[MAX_NEIGHBOURS];
 #endif
@@ -501,6 +506,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   MQTTBridge* mqtt_bridge;
 #elif defined(WITH_RS232_BRIDGE)
   RS232Bridge* bridge;
+  uint8_t active_rs232_bridge_uart = 0;
 #elif defined(WITH_ESPNOW_BRIDGE)
   ESPNowBridge bridge;
 #endif
@@ -636,12 +642,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #if MESH_ENABLE_HOST_CLI
   bool completeHostCliRequest(const char* service_reply);
 #endif
-  void sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
+  bool sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
                           uint8_t path_hash_size, uint32_t sender_timestamp,
-                          const char* reply, const TransportKey* fallback_scope);
-  void sendClientReplyWithFallbackScope(ClientInfo* client, mesh::Packet* packet,
+                          const char* reply, const TransportKey* fallback_scope,
+                          mesh::Packet** queued_packet = NULL);
+  bool sendClientReplyWithFallbackScope(ClientInfo* client, mesh::Packet* packet,
                                         unsigned long delay_millis, uint8_t path_hash_size,
-                                        const TransportKey* fallback_scope);
+                                        const TransportKey* fallback_scope,
+                                        bool allow_redundant_copies = true);
   void servicePostMeshLoop();
 #if MESH_ENABLE_TELEMETRY_HISTORY
   void sampleTelemetryHistory();
@@ -1007,7 +1015,73 @@ public:
                            WITH_RS232_BRIDGE_RX, WITH_RS232_BRIDGE_TX,
                            _mgr, getRTCClock());
   }
+
+  bool beginRS232Bridge() {
+    if (!bridge) return false;
+    const uint8_t selected_uart = _prefs.bridge_uart;
+    bool gps_uart_blocked = false;
+#if ENV_INCLUDE_GPS == 1
+    if (sensors.gpsSerialTransportMayConflict(selected_uart)) {
+      if (!sensors.gpsUsesSerialUart(selected_uart)
+          || !sensors.gpsSerialTransportCanYield(selected_uart)) {
+        return false;
+      }
+      if (!sensors.setGpsSerialTransportBlocked(selected_uart, true)) {
+        return false;
+      }
+      gps_uart_blocked = true;
+      // Record ownership as soon as the GPS yields. If bridge startup then
+      // fails and the first release attempt also fails, normal bridge cleanup
+      // still knows which UART must be released and can retry safely.
+      active_rs232_bridge_uart = selected_uart;
+    }
 #endif
+    bridge->begin();
+    if (!bridge->isRunning()) {
+#if ENV_INCLUDE_GPS == 1
+      if (gps_uart_blocked) {
+        if (sensors.setGpsSerialTransportBlocked(selected_uart, false)) {
+          active_rs232_bridge_uart = 0;
+        }
+      }
+#else
+      (void)gps_uart_blocked;
+#endif
+      return false;
+    }
+    active_rs232_bridge_uart = selected_uart;
+    return true;
+  }
+
+  bool endRS232Bridge() {
+    const uint8_t released_uart = active_rs232_bridge_uart;
+    bool stopped = true;
+    // A fail-closed preflight can reject this object before begin() touches
+    // its UART. Adafruit nRF Uart::end() is not safe as a generic cleanup for
+    // an unstarted peripheral: it can stop a GPS-owned Serial1 and wait on
+    // hardware events which will never arrive. End only a bridge which proved
+    // that it reached running state.
+    if (bridge && bridge->isRunning()) {
+      bridge->end();
+      stopped = !bridge->isRunning();
+    }
+    bool gps_released = true;
+#if ENV_INCLUDE_GPS == 1
+    // Release the bridge first, then restore a UART GPS. I2C GPS providers do
+    // not claim any UART and therefore never enter this path.
+    if (released_uart != 0 && sensors.gpsUsesSerialUart(released_uart)) {
+      gps_released = sensors.setGpsSerialTransportBlocked(released_uart, false);
+    }
+#endif
+    if (stopped && gps_released) active_rs232_bridge_uart = 0;
+    return stopped && gps_released;
+  }
+#endif
+
+  bool isBridgeRunning() const override {
+    const AbstractBridge* active_bridge = activeBridge();
+    return active_bridge != nullptr && active_bridge->isRunning();
+  }
 
   bool setBridgeState(bool enable) override {
     // Disabling an already-absent heap-backed bridge is successful and must
@@ -1034,16 +1108,18 @@ public:
       bridge = createRS232Bridge();
       if (!bridge) return false;
     }
+    if (!enable) {
+      const bool stopped = endRS232Bridge();
+      if (stopped) {
+        delete bridge;
+        bridge = nullptr;
+      }
+      return stopped;
+    }
 #endif
     AbstractBridge* active_bridge = activeBridge();
     if (!active_bridge) return false;
     if (enable == active_bridge->isRunning()) {
-#ifdef WITH_RS232_BRIDGE
-      if (!enable) {
-        delete bridge;
-        bridge = nullptr;
-      }
-#endif
       return true;
     }
     if (enable)
@@ -1059,28 +1135,47 @@ public:
       mqtt_bridge->setBuildDate(getBuildDate());
       mqtt_bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #endif
+#ifdef WITH_RS232_BRIDGE
+      const bool started = beginRS232Bridge();
+#else
       active_bridge->begin();
+      const bool started = active_bridge->isRunning();
+#endif
 #ifdef WITH_MQTT_BRIDGE
       _alerter.setBridge(mqtt_bridge);
 #endif
+      return started;
     }
     else
     {
-      active_bridge->end();
-      const bool stopped = !active_bridge->isRunning();
 #ifdef WITH_RS232_BRIDGE
+      const bool stopped = endRS232Bridge();
       delete bridge;
       bridge = nullptr;
+#else
+      active_bridge->end();
+      const bool stopped = !active_bridge->isRunning();
 #endif
 #ifdef WITH_MQTT_BRIDGE
       _alerter.setBridge(nullptr);
 #endif
       return stopped;
     }
-    return active_bridge->isRunning();
   }
 
   bool restartBridge() override {
+#ifdef WITH_RS232_BRIDGE
+    // RS-232 changes must be applied synchronously so the CLI can commit or
+    // roll back the selected pins/baud. This branch also reconstructs a bridge
+    // after a prior allocation/start failure and is not WebConfig-coalesced.
+    if (bridge && (bridge->isRunning() || active_rs232_bridge_uart != 0)
+        && !endRS232Bridge()) {
+      return false;
+    }
+    delete bridge;
+    bridge = createRS232Bridge();
+    return bridge && beginRS232Bridge();
+#else
     AbstractBridge* active_bridge = activeBridge();
     if (!active_bridge) return false;
 #ifdef WITH_WEBCONFIG
@@ -1090,12 +1185,6 @@ public:
     }
 #endif
     if (active_bridge->isRunning()) active_bridge->end();
-#ifdef WITH_RS232_BRIDGE
-    delete bridge;
-    bridge = createRS232Bridge();
-    if (bridge) bridge->begin();
-    return bridge && bridge->isRunning();
-#endif
 #ifdef WITH_MQTT_BRIDGE
     // Set device metadata before restarting bridge (same as in begin())
     char device_id[65];
@@ -1109,6 +1198,7 @@ public:
 #endif
     active_bridge->begin();
     return active_bridge->isRunning();
+#endif
   }
 
   void restartBridgeSlot(int slot) override {

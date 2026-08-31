@@ -142,10 +142,22 @@ stable release uses `0xFF`, and low-byte zero or all-ones values are rejected.
 There is no remote rollback/migration override; intentional rollback uses
 USB/BLE DFU or SWD.
 
-The `no_external_sensors` profiles omit optional/add-on sensor packages to
-preserve flash headroom. A board recipe can retain GPS. The RAK3401 OTA
-repeater retains RAK12501 GPS in sensor slot A, and the RAK4631 OTA repeater
-retains GPS except where a Serial1 RS232 bridge owns the same UART.
+The legacy `no_external_sensors` profiles trim selected optional environmental
+and ranging drivers to preserve flash headroom; they do not generally disable
+the I2C bus. Reduced RAK3401 and RAK4631 recipes retain INA219, INA226, INA260,
+and INA3221 voltage/current monitors. Those are entries in the optional sensor
+table, not the complete set of I2C consumers: the SSD1306 OLED, supported
+autodiscovered RTCs, and RAK12500 GPS remain separate I2C peripherals where the
+exact board recipe enables them. RAK3401 retains its compatible RAK12500 I2C
+and RAK12501/L76K UART GPS paths in sensor slot A. The plain RAK4631 repeater
+and Serial2 bridge retain GPS. Its RAK12501 path uses Serial1; the explicitly
+compiled Serial1 RS232 bridge therefore omits the combined GPS provider,
+including RAK12500, even though RAK12500 itself is I2C rather than UART.
+
+The firmware-configured INA3221 and RAK12500 addresses are both `0x42`. They
+cannot coexist on the same bus at those addresses. Leave RAK12500 at `0x42`,
+strap INA3221 A0 to SCL for `0x43`, and use firmware built with
+`-DTELEM_INA3221_ADDRESS=0x43` when both modules are installed.
 
 Boards with onboard external flash are not silently redirected to internal
 staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo

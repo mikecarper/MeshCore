@@ -17,6 +17,7 @@ from pathlib import Path
 import os
 import struct
 import sys
+import warnings
 import requests
 from io import open
 
@@ -26,11 +27,28 @@ try:
     from cryptography import x509
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import serialization
+    from cryptography.utils import CryptographyDeprecationWarning
 except ImportError:
     env.Execute("$PYTHONEXE -m pip install cryptography")
     from cryptography import x509
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import serialization
+    from cryptography.utils import CryptographyDeprecationWarning
+
+
+# Common platform trust stores still contain serial-zero roots. ESP-IDF's
+# bundle generator suppresses this narrowly while pyca retains parsing support:
+# https://github.com/espressif/esp-idf/blob/master/components/mbedtls/esp_crt_bundle/gen_crt_bundle.py
+# https://github.com/pyca/cryptography/issues/12948
+warnings.filterwarnings(
+    "ignore",
+    message=(
+        r"^Parsed a serial number which wasn't positive \(i.e., it was negative or zero\), "
+        r"which is disallowed by RFC 5280\. "
+        r"Loading this certificate will cause an exception in a future release of cryptography\.$"
+    ),
+    category=CryptographyDeprecationWarning,
+)
 
 
 ca_bundle_bin_file = 'x509_crt_bundle.bin'

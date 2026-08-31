@@ -316,6 +316,18 @@ static bool parseUint8Strict(const char* value, uint8_t min_value, uint8_t max_v
   return true;
 }
 
+static bool parseOnOffStrict(const char* value, bool& enabled) {
+  if (strcmp(value, "on") == 0) {
+    enabled = true;
+    return true;
+  }
+  if (strcmp(value, "off") == 0) {
+    enabled = false;
+    return true;
+  }
+  return false;
+}
+
 static bool bwMatches(float bw, float allowed) {
   float diff = bw - allowed;
   if (diff < 0.0f) diff = -diff;
@@ -915,7 +927,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
   File file = fs->open(filename);
 #endif
   if (file) {
-#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED)
+#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED) \
+    && !defined(RS232_BRIDGE_DEFAULT_ON)
     bool has_runtime_bridge_uart = false;
 #endif
     // Every supported layout contains the fixed 290-byte common core. Reject
@@ -1280,7 +1293,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
           if (file.available() >= (int)sizeof(_prefs->bridge_uart)) {
             file.read((uint8_t *)&_prefs->bridge_uart,
                       sizeof(_prefs->bridge_uart));
-#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED)
+#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED) \
+    && !defined(RS232_BRIDGE_DEFAULT_ON)
             has_runtime_bridge_uart = true;
 #endif
             if (file.available() >= (int)sizeof(_prefs->bridge_format)) {
@@ -1345,7 +1359,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->loop_detect = constrain(_prefs->loop_detect, 0, 3);          // LOOP_DETECT_OFF..LOOP_DETECT_STRICT
 
     // sanitise bad bridge pref values
-#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED)
+#if defined(WITH_RS232_BRIDGE) && defined(RS232_BRIDGE_MERGED) \
+    && !defined(RS232_BRIDGE_DEFAULT_ON)
     if (!has_runtime_bridge_uart) {
       // Pre-merge normal repeaters persisted bridge_enabled=1 even though no
       // bridge was compiled. Fail safe on the first merged boot instead of
@@ -2722,13 +2737,6 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       } else if (!valid_gps_toggle) {
         strcpy(reply, "gps must be 0 or 1");
       }
-#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
-      else if (is_gps_toggle && strcmp(value, "1") == 0
-               && _prefs->bridge_enabled
-               && _prefs->bridge_uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART) {
-        strcpy(reply, "turn the RS232 bridge off or select another UART first");
-      }
-#endif
       else if (_sensors->setSettingValue(key, value)) {
         if (is_gps_interval) {
           _prefs->gps_interval = gps_interval;
@@ -2737,7 +2745,16 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
           _prefs->gps_enabled = strcmp(value, "1") == 0 ? 1 : 0;
           savePrefs();
         }
-        strcpy(reply, "ok");
+#ifdef WITH_RS232_BRIDGE
+        if (is_gps_toggle && strcmp(value, "1") == 0
+            && _callbacks->isBridgeRunning()
+            && _sensors->gpsUsesSerialUart(_prefs->bridge_uart)) {
+          strcpy(reply, "saved; UART GPS paused while bridge is enabled");
+        } else
+#endif
+        {
+          strcpy(reply, "ok");
+        }
       } else {
         strcpy(reply, "can't find custom var");
       }
@@ -2770,17 +2787,19 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       handleRegionCmd(command, reply);
 #if ENV_INCLUDE_GPS == 1
     } else if (memcmp(command, "gps on", 6) == 0) {
-#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
-      if (_prefs->bridge_enabled
-          && _prefs->bridge_uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART) {
-        strcpy(reply, "turn the RS232 bridge off or select another UART first");
-      } else
-#endif
       if (_sensors->setSettingValue("gps", "1")) {
         _prefs->gps_enabled = 1;
         savePrefs();
 
-        if (_prefs->powersaving_enabled) { // Power Saving
+        if (_callbacks->isBridgeRunning()
+#ifdef WITH_RS232_BRIDGE
+            && _sensors->gpsUsesSerialUart(_prefs->bridge_uart)
+#else
+            && false
+#endif
+        ) {
+          strcpy(reply, "saved; UART GPS paused while bridge is enabled");
+        } else if (_prefs->powersaving_enabled) { // Power Saving
           strcpy(reply, "on (powersaving)");
         } else { // Normal mode
           strcpy(reply, "ok");
@@ -2800,6 +2819,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       LocationProvider * l = _sensors->getLocationProvider();
       if (!_prefs->gps_enabled) {
         strcpy(reply, "gps is off");
+#ifdef WITH_RS232_BRIDGE
+      } else if (_callbacks->isBridgeRunning()
+                 && _sensors->gpsUsesSerialUart(_prefs->bridge_uart)) {
+        strcpy(reply, "gps paused by RS232 bridge");
+#endif
       } else if (l != NULL) {
         l->syncTime();
         strcpy(reply, "scheduled");
@@ -4231,35 +4255,73 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
 #ifdef WITH_BRIDGE
   } else if (memcmp(config, "bridge.enabled ", 15) == 0) {
-    const bool enable = memcmp(&config[15], "on", 2) == 0;
-#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
-    if (enable && _prefs->gps_enabled
-        && _prefs->bridge_uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART) {
-      strcpy(reply, "Error: turn GPS off or select another UART first");
-    } else
-#endif
-    {
-      _prefs->bridge_enabled = enable;
-      const bool applied = _callbacks->setBridgeState(_prefs->bridge_enabled);
-      savePrefs();
-      if (applied) {
-        strcpy(reply, "OK");
-      } else {
-        strcpy(reply, enable ? "Error: bridge failed to start; setting saved"
-                             : "Error: bridge failed to stop; setting saved");
+    bool enable = false;
+    if (!parseOnOffStrict(&config[15], enable)) {
+      strcpy(reply, "Error: usage set bridge.enabled on|off");
+    } else {
+      #ifdef WITH_RS232_BRIDGE
+      if (enable
+          && _sensors->gpsSerialTransportMayConflict(_prefs->bridge_uart)
+          && (!_sensors->gpsUsesSerialUart(_prefs->bridge_uart)
+              || !_sensors->gpsSerialTransportCanYield(_prefs->bridge_uart))) {
+        strcpy(reply, "Error: UART may be driven by GPS; use UART 2 or a no-GPS build");
+        return;
       }
+      const uint8_t previous_enabled = _prefs->bridge_enabled;
+      const bool previous_running = _callbacks->isBridgeRunning();
+      _prefs->bridge_enabled = enable;
+      const bool applied = _callbacks->setBridgeState(enable);
+      if (applied) {
+        savePrefs();
+#ifdef WITH_RS232_BRIDGE
+        if (enable && _sensors->gpsUsesSerialUart(_prefs->bridge_uart)) {
+          strcpy(reply, "OK - UART GPS paused");
+        } else
+#endif
+        {
+          strcpy(reply, "OK");
+        }
+      } else {
+        _prefs->bridge_enabled = previous_enabled;
+        bool restored = true;
+        if (_callbacks->isBridgeRunning() != previous_running
+            || !previous_running) {
+          // The false/false case still calls disable to delete a failed,
+          // non-running heap-backed bridge instance.
+          restored = _callbacks->setBridgeState(previous_running);
+        }
+        strcpy(reply, restored
+            ? "Error: bridge state change failed; setting unchanged"
+            : "Error: bridge state change failed; previous runtime state could not be restored");
+      }
+#else
+      // MQTT and ESP-NOW preserve configured intent across missing WiFi
+      // credentials or transient initialization failure. Their runtime can be
+      // retried later, so do not apply the stricter RS-232 rollback policy.
+      _prefs->bridge_enabled = enable;
+      const bool applied = _callbacks->setBridgeState(enable);
+      savePrefs();
+      strcpy(reply, applied ? "OK"
+                            : "Error: bridge runtime change failed; setting saved");
+#endif
     }
   } else if (memcmp(config, "bridge.delay ", 13) == 0) {
-    int delay = _atoi(&config[13]);
-    if (delay >= 0 && delay <= 10000) {
-      _prefs->bridge_delay = (uint16_t)delay;
+    int32_t bridge_delay = 0;
+    if (mesh::cli::parseIntegerStrict(&config[13], bridge_delay)
+        && bridge_delay >= 0 && bridge_delay <= 10000) {
+      _prefs->bridge_delay = (uint16_t)bridge_delay;
       savePrefs();
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Error: delay must be between 0-10000 ms");
     }
   } else if (memcmp(config, "bridge.source ", 14) == 0) {
-    _prefs->bridge_pkt_src = memcmp(&config[14], "rx", 2) == 0;
+    const char* source = &config[14];
+    if (strcmp(source, "rx") != 0 && strcmp(source, "tx") != 0) {
+      strcpy(reply, "Error: usage set bridge.source rx|tx");
+      return;
+    }
+    _prefs->bridge_pkt_src = strcmp(source, "rx") == 0;
 #ifdef WITH_MQTT_BRIDGE
     if (_prefs->bridge_pkt_src == 1) {
       _mqtt_prefs.mqtt_rx_enabled = 1;
@@ -4276,24 +4338,37 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
 #ifdef WITH_RS232_BRIDGE
   } else if (memcmp(config, "bridge.baud ", 12) == 0) {
-    uint32_t baud = atoi(&config[12]);
-    if (baud >= 9600 && baud <= BRIDGE_MAX_BAUD) {
-      _prefs->bridge_baud = (uint32_t)baud;
+    uint32_t baud = 0;
+    if (mesh::cli::parseUnsignedIntegerStrict(&config[12], baud)
+        && baud >= 9600 && baud <= BRIDGE_MAX_BAUD) {
+      const uint32_t previous_baud = _prefs->bridge_baud;
+      const bool previous_running = _callbacks->isBridgeRunning();
+      _prefs->bridge_baud = baud;
       const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
-      savePrefs();
-      strcpy(reply, applied ? "OK"
-                            : "Error: setting saved; bridge failed to restart");
+      if (applied) {
+        savePrefs();
+        strcpy(reply, "OK");
+      } else {
+        _prefs->bridge_baud = previous_baud;
+        const bool restored = previous_running
+            ? _callbacks->restartBridge()
+            : _callbacks->setBridgeState(false);
+        strcpy(reply, restored
+            ? "Error: bridge failed to restart; baud unchanged"
+            : "Error: bridge failed to restart; previous baud could not be restored");
+      }
     } else {
       sprintf(reply, "Error: baud rate must be between 9600-%d",BRIDGE_MAX_BAUD);
     }
   } else if (memcmp(config, "bridge.uart ", 12) == 0) {
-    const int uart = atoi(&config[12]);
+    int32_t uart = 0;
+    const bool parsed = mesh::cli::parseIntegerStrict(&config[12], uart);
     const bool supported = uart == WITH_RS232_BRIDGE_UART
 #ifdef WITH_RS232_BRIDGE_ALT
         || uart == WITH_RS232_BRIDGE_ALT_UART
 #endif
         ;
-    if (!supported) {
+    if (!parsed || !supported) {
 #ifdef WITH_RS232_BRIDGE_ALT
       sprintf(reply, "Error: UART must be %d or %d",
               WITH_RS232_BRIDGE_UART, WITH_RS232_BRIDGE_ALT_UART);
@@ -4301,18 +4376,34 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "Error: UART is fixed at %d", WITH_RS232_BRIDGE_UART);
 #endif
     }
-#if defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
-    else if (uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART
-             && _prefs->gps_enabled && _prefs->bridge_enabled) {
-      strcpy(reply, "Error: turn GPS or the bridge off first");
-    }
-#endif
     else {
+      if (_prefs->bridge_enabled
+          && _sensors->gpsSerialTransportMayConflict((uint8_t)uart)
+          && (!_sensors->gpsUsesSerialUart((uint8_t)uart)
+              || !_sensors->gpsSerialTransportCanYield((uint8_t)uart))) {
+        strcpy(reply, "Error: UART may be driven by GPS; keep UART 2 or use a no-GPS build");
+        return;
+      }
+      const uint8_t previous_uart = _prefs->bridge_uart;
+      const bool previous_running = _callbacks->isBridgeRunning();
       _prefs->bridge_uart = (uint8_t)uart;
       const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
-      savePrefs();
-      strcpy(reply, applied ? "OK"
-                            : "Error: setting saved; bridge failed to restart");
+      if (!applied) {
+        _prefs->bridge_uart = previous_uart;
+        const bool restored = previous_running
+            ? _callbacks->restartBridge()
+            : _callbacks->setBridgeState(false);
+        strcpy(reply, restored
+            ? "Error: bridge failed to restart; UART unchanged"
+            : "Error: bridge failed to restart; previous UART could not be restored");
+      } else if (_prefs->bridge_enabled
+                 && _sensors->gpsUsesSerialUart(_prefs->bridge_uart)) {
+        savePrefs();
+        strcpy(reply, "OK - UART GPS paused");
+      } else {
+        savePrefs();
+        strcpy(reply, "OK");
+      }
     }
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
@@ -4740,10 +4831,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #ifdef WITH_BRIDGE
   } else if (configKeyEquals(config, "bridge.enabled")) {
     sprintf(reply, "> %s", _prefs->bridge_enabled ? "on" : "off");
+  } else if (configKeyEquals(config, "bridge.running")) {
+    sprintf(reply, "> %s", _callbacks->isBridgeRunning() ? "on" : "off");
   } else if (configKeyEquals(config, "bridge.delay")) {
     sprintf(reply, "> %d", (uint32_t)_prefs->bridge_delay);
   } else if (configKeyEquals(config, "bridge.source")) {
-    sprintf(reply, "> %s", _prefs->bridge_pkt_src ? "logRx" : "logTx");
+    sprintf(reply, "> %s", _prefs->bridge_pkt_src ? "rx" : "tx");
 #endif
 #ifdef WITH_RS232_BRIDGE
   } else if (configKeyEquals(config, "bridge.baud")) {

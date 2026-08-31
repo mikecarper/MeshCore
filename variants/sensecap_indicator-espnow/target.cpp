@@ -3,7 +3,7 @@
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/ESP32TrueRandom.h>
 
-ESP32Board board;
+SenseCapIndicatorBoard board;
 
 #ifdef SENSECAP_INDICATOR_LORA
 static SPIClass radio_spi(FSPI);

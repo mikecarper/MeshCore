@@ -183,6 +183,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   UserGpioReplyTracker _gpio_reply_tracker;
 #endif
   unsigned long dirty_contacts_expiry;
+  uint8_t contacts_save_failures;
   uint8_t reply_data[MAX_PACKET_PAYLOAD];
   unsigned long next_push;
   uint16_t _num_posted, _num_post_pushes;
@@ -481,6 +482,10 @@ public:
   void loop();
 
 #if defined(WITH_BRIDGE)
+  bool isBridgeRunning() const override {
+    return bridge != nullptr && bridge->isRunning();
+  }
+
   bool setBridgeState(bool enable) override {
     // An absent MQTT bridge is already stopped. Do not allocate one solely to
     // satisfy an idempotent disable request.

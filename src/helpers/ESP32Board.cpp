@@ -2,6 +2,7 @@
 
 #include "ESP32Board.h"
 #include <target.h>
+#include "UsbLogging.h"
 #include "UserGpioPinPolicy.h"
 
 namespace {
@@ -414,15 +415,112 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
 #include <WiFiClientSecure.h>
 #include <Update.h>
 #include <ArduinoJson.h>
+#include <atomic>
+#include <helpers/esp32/SntpOperationCoordinator.h>
+#include <helpers/esp32/TlsClockValidity.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_partition.h>
+#include <esp_sntp.h>
 #include <strings.h>
+#include <time.h>
 
 // Embedded CA bundle (produced by board_build.embed_files). Weak so non-bundle
 // builds still link; we check for presence at runtime.
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_src_certs_x509_crt_bundle_bin_start") __attribute__((weak));
 extern const uint8_t rootca_crt_bundle_end[] asm("_binary_src_certs_x509_crt_bundle_bin_end") __attribute__((weak));
+
+static constexpr uint32_t OTA_NTP_SYNC_WAIT_MS = 15000UL;
+static constexpr uint32_t OTA_TLS_PROOF_MAX_AGE_MS = 300000UL;
+static std::atomic<bool> ota_tls_fresh_ntp_received{false};
+static std::atomic<uint32_t> ota_tls_proof_millis{0};
+static std::atomic<uint32_t> ota_tls_proof_generation{0};
+static std::atomic<uint32_t> ota_tls_expected_generation{0};
+static std::atomic<uint32_t> ota_sntp_operation_generation{0};
+
+static void ota_clearNtpCallback() {
+  // OperationLease invokes this before publishing the global coordinator as
+  // free, so a stale OTA teardown cannot erase another service's callback.
+  ota_sntp_operation_generation.store(0, std::memory_order_release);
+  sntp_set_time_sync_notification_cb(nullptr);
+}
+
+static void ota_noteNtpTime(struct timeval* value) {
+  const uint32_t generation =
+      ota_sntp_operation_generation.load(std::memory_order_acquire);
+  if (!mesh::sntp_coord::processWideCoordinator().owns(generation)) return;
+  if (value != nullptr && mesh::tls_clock::timeIsValid(value->tv_sec)) {
+    ota_tls_proof_millis.store(millis(), std::memory_order_release);
+    ota_tls_proof_generation.store(generation, std::memory_order_release);
+    ota_tls_fresh_ntp_received.store(true, std::memory_order_release);
+  }
+}
+
+static bool ota_tlsClockProofValid() {
+  const bool fresh = ota_tls_fresh_ntp_received.load(std::memory_order_acquire);
+  const uint32_t proven_at =
+      ota_tls_proof_millis.load(std::memory_order_acquire);
+  const uint32_t proof_generation =
+      ota_tls_proof_generation.load(std::memory_order_acquire);
+  const uint32_t expected_generation =
+      ota_tls_expected_generation.load(std::memory_order_acquire);
+  return mesh::tls_clock::proofGenerationIsValid(
+             fresh, proof_generation, expected_generation)
+      && mesh::tls_clock::proofIsValid(
+             fresh, WiFi.status() == WL_CONNECTED, time(nullptr))
+      && mesh::tls_clock::proofAgeIsValid(
+             fresh, millis(), proven_at, OTA_TLS_PROOF_MAX_AGE_MS);
+}
+
+static bool ota_prepareTlsClock(char reply[]) {
+  if (WiFi.status() != WL_CONNECTED) {
+    strcpy(reply, "ERR: WiFi disconnected before NTP");
+    return false;
+  }
+
+  mesh::sntp_coord::OperationLease sntp_operation(
+      mesh::sntp_coord::processWideCoordinator(), ota_clearNtpCallback);
+  if (!sntp_operation.tryAcquire()) {
+    strcpy(reply, "ERR: NTP busy in another firmware service");
+    return false;
+  }
+
+  // The MQTT bridge has stopped for an actual update, but other firmware
+  // services can still need SNTP. The process-wide lease makes this callback
+  // and configTime() sequence exclusive. A plausible retained RTC is
+  // intentionally not enough: observe a response during this operation.
+  ota_tls_fresh_ntp_received.store(false, std::memory_order_release);
+  ota_tls_proof_millis.store(0, std::memory_order_release);
+  ota_tls_proof_generation.store(0, std::memory_order_release);
+  ota_tls_expected_generation.store(
+      sntp_operation.generation(), std::memory_order_release);
+  ota_sntp_operation_generation.store(
+      sntp_operation.generation(), std::memory_order_release);
+  sntp_set_time_sync_notification_cb(ota_noteNtpTime);
+  sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
+  mesh::usbLoggingPort().println(
+      "OTA: requesting fresh NTP time before HTTPS");
+  configTime(0, 0, "time.cloudflare.com", "time.google.com", "pool.ntp.org");
+
+  const uint32_t started = millis();
+  while (millis() - started < OTA_NTP_SYNC_WAIT_MS) {
+    if (WiFi.status() != WL_CONNECTED) {
+      strcpy(reply, "ERR: WiFi disconnected during NTP");
+      return false;
+    }
+    const time_t now = time(nullptr);
+    if (ota_tlsClockProofValid()) {
+      mesh::usbLoggingPort().printf(
+          "OTA: fresh NTP time %lld received in %lu ms\n",
+          (long long)now, (unsigned long)(millis() - started));
+      return true;
+    }
+    delay(100);
+  }
+
+  strcpy(reply, "ERR: fresh NTP time unavailable");
+  return false;
+}
 
 struct OtaHttpResponse {
   int status;
@@ -513,6 +611,10 @@ static bool ota_openHttp(Client& client, const char* url, bool require_tls,
   }
 
   client.setTimeout(20000);
+  if (require_tls && !ota_tlsClockProofValid()) {
+    strcpy(reply, "ERR: TLS clock proof invalid");
+    return false;
+  }
   if (!client.connect(host, port)) {
     strcpy(reply, "ERR: HTTP connect failed");
     return false;
@@ -647,7 +749,7 @@ static bool ota_streamFirmware(Client& client, size_t content_length, char reply
     int decile = (int)((received_total * 10U) / content_length);
     if (decile != progress_decile) {
       progress_decile = decile;
-      Serial.printf("OTA: %d%%\n", decile * 10);
+      mesh::usbLoggingPort().printf("OTA: %d%%\n", decile * 10);
     }
   }
 
@@ -788,6 +890,9 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
     strcpy(reply, "ERR: no embedded cert bundle");
     return false;
   }
+  if (!dry_run && !ota_prepareTlsClock(reply)) {
+    return false;
+  }
 
   // --- Fetch this variant's slim manifest ----------------------------------
   // <OTA_MANIFEST_BASE>/<OTA_VARIANT>.json - a ~180 byte per-variant file, not the
@@ -822,12 +927,11 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
     mclient.setCACertBundle(rootca_crt_bundle_start);
 #endif
     snprintf(murl, sizeof(murl), "%s/%s.json", OTA_MANIFEST_BASE, OTA_VARIANT);
+    mesh::usbLoggingPort().printf("OTA: downloading manifest %s\n", murl);
     if (!ota_fetchManifest(mclient, murl, true, doc, reply)) {
       return false;
     }
   }
-
-  if (!dry_run) { Serial.print("OTA: checking manifest "); Serial.println(murl); }
 
   // Copy fields out before the document is reused/cleared.
   char file_url[200] = {0}, avail_version[40] = {0}, avail_base[40] = {0}, avail_hash[24] = {0};
@@ -931,8 +1035,9 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
   }
 
   // --- Stream the .bin (the manifest's full URL) into the inactive OTA slot -
-  Serial.printf("OTA: update %s -> %s\n", own_disp, avail_disp);
-  Serial.print("OTA: downloading "); Serial.println(file_url);
+  mesh::usbLoggingPort().printf(
+      "OTA: update %s -> %s\n", own_disp, avail_disp);
+  mesh::usbLoggingPort().printf("OTA: downloading %s\n", file_url);
   inhibit_sleep = true;  // keep awake through the flash
 
   WiFiClientSecure uclient;
@@ -945,32 +1050,32 @@ bool ESP32Board::otaFromManifestImpl(const char* current_ver, bool dry_run, char
   OtaHttpResponse response;
   if (!ota_openHttp(uclient, file_url, true, response, reply)) {
     inhibit_sleep = false;
-    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    mesh::usbLoggingPort().printf("OTA: FAILED - %s\n", reply);
     return false;
   }
   if (response.status != 200) {
     inhibit_sleep = false;
     snprintf(reply, 160, "ERR: firmware HTTP %d", response.status);
     uclient.stop();
-    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    mesh::usbLoggingPort().printf("OTA: FAILED - %s\n", reply);
     return false;
   }
   if (!response.has_content_length) {
     inhibit_sleep = false;
     strcpy(reply, "ERR: firmware size missing");
     uclient.stop();
-    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    mesh::usbLoggingPort().printf("OTA: FAILED - %s\n", reply);
     return false;
   }
   if (!ota_streamFirmware(uclient, response.content_length, reply)) {
     inhibit_sleep = false;
     uclient.stop();
-    Serial.print("OTA: FAILED - "); Serial.println(reply);
+    mesh::usbLoggingPort().printf("OTA: FAILED - %s\n", reply);
     return false;
   }
 
   uclient.stop();
-  Serial.println("OTA: write complete, rebooting...");
+  mesh::usbLoggingPort().println("OTA: write complete, rebooting...");
   delay(250);
   esp_restart();
   return true;  // unreachable

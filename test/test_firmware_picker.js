@@ -572,12 +572,91 @@ const mergedRs232 = [
     installKinds: ["uf2"],
   });
 });
+const mergedRs232Visible = picker.applyMergedRak4631RepeaterCapabilities(
+  picker.omitTransportsReplacedByFull(mergedRs232)
+);
 assert.deepStrictEqual(
-  picker.omitTransportsReplacedByFull(mergedRs232).map(function (item) {
+  mergedRs232Visible.map(function (item) {
     return item.target;
   }),
   ["RAK_4631_repeater"]
 );
+assert.deepStrictEqual(
+  picker.profileFieldValues(mergedRs232Visible[0], "mode"),
+  ["standard", "rs232"]
+);
+assert(picker.profileMatches(
+  mergedRs232Visible[0],
+  { mode: "standard" },
+  ["mode"]
+));
+assert(picker.profileMatches(
+  mergedRs232Visible[0],
+  { mode: "rs232" },
+  ["mode"]
+));
+
+// Exact legacy target rows must stay attached to their own compatibility
+// downloads. They disappear only from recommendations when the canonical
+// merged image is present; advertising RS232 on that image must not rewrite
+// or coalesce the legacy files into the canonical profile.
+const rakCompatibilityCatalog = picker.buildCatalog([
+  release(family, "2026-08-23T13:00:02Z", []),
+  release("repeater-room-" + family, "2026-08-23T13:00:01Z", [
+    asset("RAK_4631_repeater-" + family + ".uf2"),
+    asset(
+      "RAK_4631_repeater_bridge_rs232_serial1-" + family + ".uf2"
+    ),
+    asset(
+      "RAK_4631_repeater_bridge_rs232_serial2-" + family + ".uf2"
+    ),
+  ]),
+  release("lora-ota-" + family, "2026-08-23T13:00:00Z", [
+    asset(
+      "RAK_4631_repeater_lora_ota_no_external_sensors-ota-" +
+        family + ".zip"
+    ),
+    asset(
+      "RAK_4631_repeater_bridge_rs232_serial1_" +
+        "lora_ota_no_external_sensors-ota-" + family + ".zip"
+    ),
+    asset(
+      "RAK_4631_repeater_bridge_rs232_serial2_" +
+        "lora_ota_no_external_sensors-ota-" + family + ".zip"
+    ),
+  ]),
+]);
+const expectedCompatibilityTargets = [
+  "RAK_4631_repeater_bridge_rs232_serial1",
+  "RAK_4631_repeater_bridge_rs232_serial2",
+  "RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors",
+  "RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors",
+];
+expectedCompatibilityTargets.forEach(function (target) {
+  assert(rakCompatibilityCatalog.rows.some(function (row) {
+    return row.target === target;
+  }), "missing exact compatibility row " + target);
+  assert(!rakCompatibilityCatalog.profiles.some(function (item) {
+    return item.target === target;
+  }), "legacy compatibility target was recommended " + target);
+});
+[
+  "RAK_4631_repeater",
+  "RAK_4631_repeater_lora_ota_no_external_sensors",
+].forEach(function (target) {
+  const canonical = rakCompatibilityCatalog.profiles.find(function (item) {
+    return item.target === target;
+  });
+  assert(canonical, "missing canonical RAK4631 profile " + target);
+  assert.deepStrictEqual(
+    picker.profileFieldValues(canonical, "mode"),
+    ["standard", "rs232"]
+  );
+  assert(canonical.files.every(function (file) {
+    return file.target === target;
+  }), "legacy compatibility file was mapped to " + target);
+});
+
 const constrainedRs232 = [
   "wio-e5_repeater",
   "wio-e5-repeater_bridge_rs232",

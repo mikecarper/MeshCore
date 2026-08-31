@@ -10,6 +10,7 @@
 #include <freertos/task.h>
 #include <helpers/MQTTDefaults.h>
 #include <helpers/MQTTPresets.h>
+#include <helpers/UsbLogging.h>
 #include <strings.h>
 
 namespace {
@@ -553,8 +554,9 @@ bool CompanionMqttSetupPortal::begin(MQTTPrefs* prefs) {
     impl->task = nullptr;
     return false;
   }
-  Serial.printf("MQTT setup: reconnect to the joined WiFi and open http://%s/\n",
-                WiFi.localIP().toString().c_str());
+  mesh::usbLoggingPort().printf(
+      "MQTT setup: reconnect to the joined WiFi and open http://%s/\n",
+      WiFi.localIP().toString().c_str());
   return true;
 }
 
@@ -580,9 +582,13 @@ bool CompanionMqttSetupPortal::loop() {
 
 bool CompanionMqttSetupPortal::loadStoredConfig(MQTTPrefs& prefs) {
   Preferences nvs;
-  if (!nvs.begin(NVS_NAMESPACE, true)) return false;
-  const uint16_t version = nvs.getUShort(NVS_VERSION_KEY, 0);
-  const size_t length = nvs.getBytesLength(NVS_PREFS_KEY);
+  // The namespace and blob legitimately do not exist on a fresh install.
+  // Avoid Arduino Preferences turning that state into UART error output.
+  if (!nvs.begin(NVS_NAMESPACE, false)) return false;
+  const uint16_t version = nvs.isKey(NVS_VERSION_KEY)
+      ? nvs.getUShort(NVS_VERSION_KEY, 0) : 0;
+  const size_t length = nvs.isKey(NVS_PREFS_KEY)
+      ? nvs.getBytesLength(NVS_PREFS_KEY) : 0;
   // Companion stores this struct directly rather than using the observer's
   // versioned file header. Accept the previously shipped pre-display size and
   // default its append-only display tail so adding observer UI preferences

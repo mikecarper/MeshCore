@@ -42,22 +42,41 @@ preserves the RX benefit without risking missed packets from a legacy
 > install-capable image nor OTAFIX. Check the bootloader release for an exact board match before attempting an update.
 
 The following nRF52 repeater families gained firmware-side LoRa OTA targets in
-this release. Their ordinary repeater remains the full-sensor build; the
-install-capable `lora_ota_no_external_sensors` sibling is smaller:
+this release. Their ordinary repeater keeps its complete declared sensor recipe;
+the install-capable `lora_ota_no_external_sensors` sibling is smaller:
 
 - Heltec Mesh Solar, T1, and Tower V2
 - Keepteen LT1, LilyGo T-Impulse Plus, Mesh Pocket, and Nano G2 Ultra
 - Minewsemi ME25LS01, RAK3401, SenseCAP Solar, and Wio WM1110
 
-The RAK3401 `RAK_3401_repeater_lora_ota_no_external_sensors` image retains
-RAK12501 GPS while omitting the other optional environmental sensors. Install
-the GPS in sensor slot A. Slot D's reset/PPS lines conflict with the RAK13302
-radio's BUSY/DIO1 lines.
+The RAK3401 `RAK_3401_repeater_lora_ota_no_external_sensors` image trims selected
+optional environmental/ranging drivers but does not disable I2C. It retains the
+INA219, INA226, INA260, and INA3221 voltage/current monitors, board display and
+RTC support, and both RAK12500 I2C and RAK12501/L76K UART GPS paths. The four
+INA drivers are only the retained voltage/current entries in the optional
+environmental-sensor table; they are not the only I2C users. The SSD1306 OLED,
+autodiscovered DS3231/RV3028/PCF8563/RX8130CE RTCs, and RAK12500 GPS use I2C as
+separate board peripherals. Install one GPS module in sensor slot A. Slot D's
+reset/PPS lines conflict with the RAK13302 radio's BUSY/DIO1 lines.
 
-The RAK4631 internal-flash OTA repeater likewise retains GPS. A RAK12501 can
-use sensor slot A or D; a RAK12500 can use slot A or C. Its runtime RS-232
-bridge defaults to Serial2 so GPS can retain Serial1. If you explicitly select
-Serial1 with `set bridge.uart 1`, turn GPS off before enabling the bridge.
+The firmware-configured INA3221 address and the RAK12500 address are both
+`0x42`, so those devices cannot share one bus at those addresses. To install
+both, leave the RAK12500 at `0x42`, strap INA3221 A0 to SCL for `0x43`, and use
+a firmware build with `-DTELEM_INA3221_ADDRESS=0x43`.
+
+The reduced RAK4631 profiles likewise retain the four INA monitors. The plain
+repeater and Serial2 bridge retain GPS: a RAK12501 can use sensor slot A or D,
+and a RAK12500 can use slot A or C. The runtime RS-232 bridge defaults to
+Serial2 so the UART RAK12501 can retain Serial1. The merged runtime image always
+reserves Serial1: a bounded silent probe cannot prove that a cold RAK12501 is
+absent, and turning the GPS setting off cannot stop a fitted module from driving
+the shared UART while WB_IO2/3V3_S remains powered. Use Serial2. Serial1 requires
+an explicit no-GPS/dedicated image. The reservation remains fail-closed even
+when an I2C RAK12500 is detected. The explicitly compiled
+`RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors` target
+omits the combined GPS provider because its bridge owns the UART used by
+RAK12501; consequently that legacy image does not expose the I2C RAK12500 path
+either, even though RAK12500 itself does not use the UART.
 
 Selected nRF52 repeaters with dedicated external QSPI can now stage the
 complete package off-chip, so their normal full-sensor repeater build can
@@ -69,9 +88,10 @@ RAK15001 slot-C target. These require the corresponding QSPI-aware OTAFIX bootlo
 
 The ordinary full-sensor `RAK_4631_repeater` image remains too large for the
 safe internal in-place update limit. Without external flash, use
-`RAK_4631_repeater_lora_ota_no_external_sensors`; it removes optional external
-environmental/GPS packages but retains battery monitoring. A RAK4631 fitted
-with RAK15001 in sensor slot C can instead use
+`RAK_4631_repeater_lora_ota_no_external_sensors`; it trims selected optional
+environmental/ranging drivers while retaining generic I2C, battery monitoring,
+the four INA monitors, and target-compatible GPS. A RAK4631 fitted with
+RAK15001 in sensor slot C can instead use
 `RAK_4631_repeater_rak15001_slot_c_lora_ota` to retain the full sensor/GPS set
 and stage full images or deltas off-chip.
 

@@ -12,6 +12,30 @@ fail() {
 [ "$OPTION3_BUILD_WORKERS" -eq 1 ] \
   || fail "logging matrix permits concurrent PlatformIO target builds"
 
+# Reduced RAK profiles all retain the compact INA set, but GPS depends on
+# whether the bridge already owns Serial1. Keep those independent contracts so
+# a valid Serial1 image cannot fail release qualification for an absent GPS
+# marker, and so its manifest never advertises impossible hardware support.
+for rak_target in \
+  RAK_3401_repeater_lora_ota_no_external_sensors \
+  RAK_4631_repeater_lora_ota_no_external_sensors \
+  RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors \
+  RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors; do
+  is_rak_i2c_voltage_monitor_ota_target "$rak_target" \
+    || fail "$rak_target lost the retained INA contract"
+done
+for rak_target in \
+  RAK_3401_repeater_lora_ota_no_external_sensors \
+  RAK_4631_repeater_lora_ota_no_external_sensors \
+  RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors; do
+  is_rak_gps_retaining_ota_target "$rak_target" \
+    || fail "$rak_target lost its compatible GPS contract"
+done
+if is_rak_gps_retaining_ota_target \
+    RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors; then
+  fail "RAK4631 Serial1 RS-232 target incorrectly promises GPS"
+fi
+
 # The expanded-profile marker applied below must select a real, nonzero
 # boot-local setup window. Keep the build overlay, WebConfig compile-time
 # mapping, and pure timing policy tied together.
@@ -351,6 +375,8 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
       [ "${MESHCORE_ESP32_FULL_PARTITION_TABLE:-}" \
           = "variants/sensecap_indicator-espnow/dual_ota_2560k_preserve_spiffs.csv" ] \
         || fail "$full_env omitted the Indicator preserve-SPIFFS table"
+      [[ "$PLATFORMIO_BUILD_FLAGS" == *"INDICATOR_WIFI_FONT_RECOVERY=1"* ]] \
+        || fail "$full_env omitted WiFi font recovery"
       ;;
     *)
       [ -z "${MESHCORE_ESP32_FULL_PARTITION_TABLE:-}" ] \
@@ -550,6 +576,60 @@ if uses_merged_standard_usb_logging nrf_companion_radio_ble; then
 fi
 uses_merged_standard_usb_logging esp_repeater \
   || fail "standard ESP32 target omitted logging because FULL also exists"
+
+# A standard ESP32 field image may omit LoRa OTA for size, but it must never
+# also omit the compact browser updater. This is the exact profile combination
+# that previously produced Heltec V4 repeaters where both `ota` and `start ota`
+# were dead ends.
+verify_esp32_field_browser_ota() {
+  local env_name=$1
+  local PLATFORMIO_BUILD_FLAGS=""
+  local PLATFORMIO_BUILD_UNFLAGS=""
+  local BUILD_PROFILE_FOR_TARGET=standard
+  local ESP32_FULL_BUILD=0
+  local -a BUILD_CAPABILITIES=()
+  local -a BUILD_REDUCTIONS=()
+  local -a BUILD_EXPECTATIONS=()
+  local capabilities reductions expectations
+
+  PIO_ENV_PLATFORM_BY_NAME[$env_name]=ESP32_PLATFORM
+  PIO_ENV_OTA_BY_NAME[$env_name]=0
+  apply_esp32_lora_ota_size_profile "$env_name"
+
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *-DLIGHTWEIGHT_WIFI_OTA=1* ]] \
+    || fail "$env_name omitted its browser OTA fail-safe"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *-UDISABLE_WIFI_OTA* ]] \
+    || fail "$env_name did not remove a board-level WiFi OTA disable"
+  [[ "$PLATFORMIO_BUILD_FLAGS" != *-DDISABLE_WIFI_OTA=1* ]] \
+    || fail "$env_name still explicitly disables browser OTA"
+  capabilities=" ${BUILD_CAPABILITIES[*]} "
+  [[ "$capabilities" == *" web.lightweight_browser_ota "* ]] \
+    || fail "$env_name did not declare browser OTA"
+  reductions=" ${BUILD_REDUCTIONS[*]} "
+  [[ "$reductions" != *"web.browser_ota omitted"* ]] \
+    || fail "$env_name still records browser OTA as omitted"
+
+  declare_build_capability_contract "$env_name" ESP32_PLATFORM
+  expectations=" ${BUILD_EXPECTATIONS[*]} "
+  [[ "$expectations" == *"web.lightweight_browser_ota=MeshCore firmware update"* ]] \
+    || fail "$env_name does not verify browser OTA in the linked image"
+}
+
+verify_esp32_field_browser_ota heltec_v4_repeater
+verify_esp32_field_browser_ota heltec_v4_room_server
+verify_esp32_field_browser_ota heltec_v4_sensor
+
+# Personal/attached roles can retain their established transport policy; the
+# fail-safe is deliberately scoped to remotely installed field/server images.
+PIO_ENV_PLATFORM_BY_NAME[heltec_v4_terminal_chat]=ESP32_PLATFORM
+PLATFORMIO_BUILD_FLAGS=""
+PLATFORMIO_BUILD_UNFLAGS=""
+BUILD_PROFILE_FOR_TARGET=standard
+BUILD_CAPABILITIES=()
+BUILD_REDUCTIONS=()
+apply_esp32_lora_ota_size_profile heltec_v4_terminal_chat
+[[ "$PLATFORMIO_BUILD_FLAGS" == *-DDISABLE_WIFI_OTA=1* ]] \
+  || fail "attached terminal unexpectedly changed its WiFi policy"
 
 PLATFORMIO_BUILD_FLAGS=""
 MESHDEBUG_OVERRIDE=""
@@ -815,6 +895,17 @@ expectations=" ${BUILD_EXPECTATIONS[*]} "
   || fail "ESP32 Full contract omitted the bounded unconfigured-WiFi window"
 [[ "$expectations" != *"Full Companion terminal listening"* ]] \
   || fail "ESP32 Full contract still depends on optional debug logging"
+
+BUILD_CAPABILITIES=()
+BUILD_REDUCTIONS=()
+BUILD_EXPECTATIONS=()
+declare_build_capability_contract \
+  SenseCapIndicator-LoRa_companion_radio_full ESP32_PLATFORM
+expectations=" ${BUILD_EXPECTATIONS[*]} "
+[[ "$expectations" == *"indicator.font_recovery_ntp_gate=requesting fresh NTP time before download"* ]] \
+  || fail "Indicator Full contract omitted the fresh-NTP font-download gate"
+[[ "$expectations" == *"indicator.font_recovery_tls=opening TLS connection to"* ]] \
+  || fail "Indicator Full contract omitted the TLS font-recovery marker"
 
 pio_env_option_contains() {
   [ "$1" = Heltec_v3_companion_radio_full ] \

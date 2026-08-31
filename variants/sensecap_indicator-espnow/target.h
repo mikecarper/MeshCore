@@ -20,7 +20,14 @@
   #include <helpers/ui/MomentaryButton.h>
 #endif
 
-extern ESP32Board board;
+class SenseCapIndicatorBoard : public ESP32Board {
+ public:
+  const char* getManufacturerName() const override {
+    return "Seeed SenseCAP Indicator";
+  }
+};
+
+extern SenseCapIndicatorBoard board;
 #ifdef SENSECAP_INDICATOR_LORA
   extern WRAPPER_CLASS radio_driver;
 #else

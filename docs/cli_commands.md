@@ -3427,12 +3427,16 @@ still overrides the first-boot default after an update.
 #### View or change the bridge enabled flag
 **Usage:**
 - `get bridge.enabled`
+- `get bridge.running`
 - `set bridge.enabled <state>`
 
 **Parameters:**
 - `state`: `on`|`off`
 
-**Default:** `off`
+`bridge.enabled` is the saved intent. `bridge.running` reports whether the
+bridge actually started in this boot; they can differ after a hardware conflict,
+missing credentials, or a transient initialization failure. Normal merged
+repeater images default to `off`; dedicated bridge images may default to `on`.
 
 ---
 
@@ -3455,10 +3459,10 @@ still overrides the first-boot default after an update.
 
 **Parameters:**
 - `source`:
-  - `logRx`: bridges received packets
-  - `logTx`: bridges transmitted packets
+  - `rx`: bridges received packets
+  - `tx`: bridges transmitted packets
 
-**Default:** `logTx`
+**Default:** `tx`
 
 > **Note:** For MQTT bridges, use `mqtt.rx` and `mqtt.tx` instead of `bridge.source`. These provide independent per-direction control and support both RX and TX simultaneously. `bridge.source` still works as a convenience alias for MQTT (setting `bridge.source rx` sets `mqtt.rx on` + `mqtt.tx off`, and vice versa), but `mqtt.rx`/`mqtt.tx` are preferred.
 
@@ -3579,11 +3583,20 @@ Requires WiFi connected and the MQTT bridge running.
 **Parameters:**
 - `port`: Hardware UART number compiled for the board. Most boards expose one
   fixed UART. RAK4631 accepts `1` or `2`; UART 2 is the default so UART 1 can
-  remain available to GPS.
+  remain available to the RAK12501/L76K GPS. RAK12500 GPS uses I2C rather than
+  this UART, but the explicit legacy Serial1 bridge omits the combined GPS
+  provider and therefore does not expose either GPS path.
 
 The setting is persistent and restarts an enabled bridge immediately. Normal
 repeater artifacts start with `bridge.enabled off`; configure the UART and baud
-rate before running `set bridge.enabled on`.
+rate before running `set bridge.enabled on`. On the canonical RAK4631 runtime
+image, UART 1 is reserved even if the bounded boot probe hears no RAK12501.
+Silence cannot prove that a cold L76K is physically absent, and that module
+remains powered by the shared WB_IO2/3V3_S rail. Use UART 2. UART 1 requires an
+explicit no-GPS/dedicated Serial1 bridge image. This fail-closed reservation
+also applies when the detected GPS is an I2C RAK12500; that receiver does not
+electrically use UART 1, but its presence cannot rule out another silent UART
+module.
 
 ---
 

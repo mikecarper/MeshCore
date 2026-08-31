@@ -16,6 +16,7 @@ class SensorManager {
 #if ENV_INCLUDE_GPS
   bool gps_cache_valid = false;
   bool gps_location_access_available = false;
+  bool gps_transport_available = true;
   bool gps_user_enabled = false;
   bool gps_acquiring = false;
   bool gps_acquire_has_fix = false;
@@ -52,7 +53,12 @@ protected:
   void processGpsTelemetryFix(float lat, float lon, float altitude, unsigned long now);
   void loopGpsTelemetry(unsigned long now);
   void setGpsTelemetryUserEnabled(bool enabled);
+  void setGpsTelemetryTransportAvailable(bool available);
+  void resetGpsTelemetryTransportState();
   bool isGpsTelemetryUserEnabled() const { return gps_user_enabled; }
+  bool isGpsTelemetryTransportAvailable() const {
+    return gps_transport_available;
+  }
   bool gpsTelemetryReceiverRequired(unsigned long now) const {
     return gps_acquiring || gpsTelemetryHoldActive(now);
   }
@@ -109,6 +115,31 @@ public:
   }
   virtual LocationProvider* getLocationProvider() { return NULL; }
   virtual void setPowerSavingEnabled(bool enabled) { powersaving_enabled = enabled; }
+  // Runtime bridges may temporarily own the UART used by a GPS receiver. A
+  // sensor manager that actually detected a GPS on that UART overrides these
+  // hooks; I2C GPS providers and boards without GPS remain unaffected.
+  virtual bool gpsUsesSerialUart(uint8_t uart) const {
+    (void)uart;
+    return false;
+  }
+  // A universal image may need to reserve a UART even when a receiver did not
+  // speak during its bounded boot probe. The default has no such uncertainty;
+  // hardware-specific managers can fail closed for a known shared connector.
+  virtual bool gpsSerialTransportMayConflict(uint8_t uart) const {
+    return gpsUsesSerialUart(uart);
+  }
+  // True only when the detected receiver can be made electrically silent on
+  // the selected UART. Stopping the MCU UART alone is not sufficient when a
+  // still-powered GPS continues driving its TX pin.
+  virtual bool gpsSerialTransportCanYield(uint8_t uart) const {
+    (void)uart;
+    return false;
+  }
+  virtual bool setGpsSerialTransportBlocked(uint8_t uart, bool blocked) {
+    (void)uart;
+    (void)blocked;
+    return false;
+  }
 
   // Helper functions to manage setting by keys (useful in many places ...)
   const char* getSettingByKey(const char* key) {

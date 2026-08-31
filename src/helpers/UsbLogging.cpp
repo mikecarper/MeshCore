@@ -4,6 +4,10 @@
 #include <Arduino.h>
 #include <atomic>
 
+#if defined(NRF52_PLATFORM)
+  #include "NonBlockingWriteStream.h"
+#endif
+
 #if defined(MESH_DUAL_CDC_LOGGING)
   #if !defined(COMPANION_FEATURE_DEDICATED_USB_LOGGING) || \
       !COMPANION_FEATURE_DEDICATED_USB_LOGGING
@@ -42,11 +46,30 @@ class NullUsbLoggingStream : public Stream {
 
 static NullUsbLoggingStream null_usb_logging_stream;
 
+static void setPlatformDebugOutputEnabled(bool enabled) {
+#if defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+  // Arduino-ESP32 log_e()/ESP-IDF diagnostics otherwise write straight to
+  // the same UART/CDC stream used by Binary Companion. Keep that low-level
+  // route under the same runtime gate as MeshCore's own diagnostics.
+  Serial.setDebugOutput(enabled);
+#else
+  (void)enabled;
+#endif
+}
+
 #if defined(MESH_DUAL_CDC_LOGGING)
 static bool dedicated_usb_logging_port_configured = false;
 static bool dedicated_usb_logging_port_started = false;
 static bool dedicated_usb_logging_port_connected = false;
 static Adafruit_USBD_CDC dedicated_usb_logging_port;
+static WholeRecordNonBlockingStream<>
+    nonblocking_dedicated_usb_logging_port(dedicated_usb_logging_port);
+#elif defined(NRF52_PLATFORM)
+// Single-CDC nRF52 roles need the same protection. In particular, BLE debug
+// callbacks and packet logging write through usbLoggingPort() without going
+// through MeshCore's formatted-debug helper.
+static WholeRecordNonBlockingStream<>
+    nonblocking_primary_usb_logging_port(Serial);
 #endif
 
 bool isUsbLoggingEnabled() {
@@ -56,6 +79,7 @@ bool isUsbLoggingEnabled() {
 void setUsbLoggingEnabled(bool enabled) {
   usb_logging_enabled.store(enabled, std::memory_order_relaxed);
   usb_logging_preference_known.store(true, std::memory_order_relaxed);
+  setPlatformDebugOutputEnabled(enabled);
 }
 
 bool saveUsbLoggingBootPreference(bool enabled) {
@@ -64,6 +88,11 @@ bool saveUsbLoggingBootPreference(bool enabled) {
 }
 
 void beginUsbLoggingPort() {
+  // setup() calls this once before role preferences are loaded and again
+  // afterwards. The first call silences framework diagnostics on a protected
+  // ESP32 Companion stream; setUsbLoggingEnabled() restores them only when the
+  // saved setting explicitly enables logging.
+  setPlatformDebugOutputEnabled(isUsbLoggingEnabled());
 #if defined(MESH_DUAL_CDC_LOGGING)
   if (dedicated_usb_logging_port_started
       || !usb_logging_preference_known.load(std::memory_order_relaxed)
@@ -109,12 +138,16 @@ void serviceUsbLoggingPort() {
 Stream& usbLoggingPort() {
 #if defined(MESH_DUAL_CDC_LOGGING)
   if (isUsbLoggingEnabled() && dedicated_usb_logging_port_started) {
-    return dedicated_usb_logging_port;
+    return nonblocking_dedicated_usb_logging_port;
   }
   return null_usb_logging_stream;
 #else
   if (!isUsbLoggingEnabled()) return null_usb_logging_stream;
-  return Serial;
+  #if defined(NRF52_PLATFORM)
+    return nonblocking_primary_usb_logging_port;
+  #else
+    return Serial;
+  #endif
 #endif
 }
 

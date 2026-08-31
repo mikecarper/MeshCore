@@ -1,5 +1,7 @@
 #include "EnvironmentSensorManager.h"
+#include "I2CAddressClaimPolicy.h"
 #include "EnvironmentI2CConfig.h"
+#include "NmeaSentenceProbe.h"
 
 #include <Wire.h>
 
@@ -9,7 +11,122 @@
 #define TELEM_WIRE &Wire  // Use default I2C bus for Environment Sensors
 #endif
 
+#ifdef NRF52_PLATFORM
+static bool isValidNrfI2cPinPair(int32_t sda, int32_t scl) {
+  if (!mesh::isValidI2cPinPair(sda, scl, PINS_COUNT)) return false;
+#ifdef NRF_P1
+  static const uint32_t MAX_PHYSICAL_NRF_PIN = 48;
+#else
+  static const uint32_t MAX_PHYSICAL_NRF_PIN = 32;
+#endif
+  return digitalPinToPinName(static_cast<uint32_t>(sda))
+             < MAX_PHYSICAL_NRF_PIN
+      && digitalPinToPinName(static_cast<uint32_t>(scl))
+             < MAX_PHYSICAL_NRF_PIN;
+}
+#endif
+
+// The pinned Adafruit nRF52 Wire core has no transaction timeout. Reject a
+// bus which is already held low, and make one bounded standard nine-clock
+// recovery attempt, before entering this manager's blocking transaction loops.
+// This cannot protect I2C users which ran earlier in boot or cure a peripheral
+// which wedges mid-transaction, but it prevents discovery from entering a bus
+// which is already visibly stuck and limits the number of exposed transactions.
+static bool ensureI2cBusReleased(TwoWire* wire) {
+#ifdef NRF52_PLATFORM
+  // Board::begin() may remap the primary Wire instance away from the variant's
+  // PIN_WIRE_* defaults (ProMicro is one example). Use the same board-level
+  // pins first so recovery never probes or drives an unrelated GPIO.
+  int32_t sda = -1;
+  int32_t scl = -1;
+#if ENV_HAS_SECONDARY_I2C
+  if (wire == &Wire1) {
+    sda = ENV_PIN_SDA;
+    scl = ENV_PIN_SCL;
+  } else
+#endif
+  {
+#if defined(PIN_BOARD_SDA) && defined(PIN_BOARD_SCL)
+    sda = PIN_BOARD_SDA;
+    scl = PIN_BOARD_SCL;
+#elif defined(PIN_WIRE_SDA) && defined(PIN_WIRE_SCL)
+    sda = PIN_WIRE_SDA;
+    scl = PIN_WIRE_SCL;
+#endif
+  }
+
+  if (!isValidNrfI2cPinPair(sda, scl)) return false;
+
+  if (digitalRead(sda) == HIGH && digitalRead(scl) == HIGH) return true;
+
+  wire->end();
+  auto releaseLine = [](int32_t pin) {
+    // OUTPUT_S0D1 is nRF open drain: drive zero, disconnect for one. The input
+    // pull-up then observes the external bus without ever driving it high.
+    digitalWrite(pin, HIGH);
+    pinMode(pin, INPUT_PULLUP);
+  };
+  auto driveLineLow = [](int32_t pin) {
+    // Prime the output latch before enabling an output, avoiding a brief
+    // push-pull high pulse if the previous latch happened to contain one.
+    digitalWrite(pin, LOW);
+    pinMode(pin, OUTPUT_S0D1);
+  };
+  auto waitLineHigh = [](int32_t pin) {
+    for (uint8_t wait = 0; wait < 20; wait++) {
+      if (digitalRead(pin) == HIGH) return true;
+      delayMicroseconds(5);
+    }
+    return digitalRead(pin) == HIGH;
+  };
+
+  releaseLine(sda);
+  releaseLine(scl);
+  delayMicroseconds(10);
+
+  // A secondary may have stopped halfway through a byte. Clock it to a byte
+  // boundary while never driving either open-drain line high.
+  if (digitalRead(scl) == HIGH) {
+    for (uint8_t pulse = 0; pulse < 9 && digitalRead(sda) == LOW; pulse++) {
+      driveLineLow(scl);
+      delayMicroseconds(5);
+      releaseLine(scl);
+      if (!waitLineHigh(scl)) break;
+    }
+
+    if (waitLineHigh(scl)) {
+      // Generate a STOP (SDA low-to-high while SCL is confirmed high).
+      driveLineLow(sda);
+      delayMicroseconds(5);
+      releaseLine(scl);
+      if (waitLineHigh(scl)) {
+        releaseLine(sda);
+        delayMicroseconds(10);
+      }
+    }
+  }
+
+#if ENV_HAS_SECONDARY_I2C
+  if (wire == &Wire1) {
+    Wire1.setPins(static_cast<uint8_t>(sda), static_cast<uint8_t>(scl));
+    Wire1.begin();
+    Wire1.setClock(100000);
+  } else
+#endif
+  {
+    Wire.setPins(static_cast<uint8_t>(sda), static_cast<uint8_t>(scl));
+    Wire.begin();
+  }
+  delayMicroseconds(10);
+  return digitalRead(sda) == HIGH && digitalRead(scl) == HIGH;
+#else
+  (void)wire;
+  return true;
+#endif
+}
+
 bool EnvironmentSensorManager::i2c_probe(TwoWire& wire, uint8_t addr) {
+  if (!mesh::isValidI2cPeripheralAddress(addr)) return false;
   wire.beginTransmission(addr);
   uint8_t error = wire.endTransmission();
   return error == 0;
@@ -189,10 +306,104 @@ static uint32_t gpsResetPin = -1;
 static bool i2cGPSFlag = false;
 static bool serialGPSFlag = false;
 #ifndef TELEM_RAK12500_ADDRESS
+#ifdef GPS_ADDRESS
+#define TELEM_RAK12500_ADDRESS   GPS_ADDRESS
+#else
 #define TELEM_RAK12500_ADDRESS   0x42     //RAK12500 Ublox GPS via i2c
+#endif
 #endif
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 static SFE_UBLOX_GNSS ublox_GNSS;
+
+#ifndef RAK_UART_GPS_PROBE_TIMEOUT_MS
+#define RAK_UART_GPS_PROBE_TIMEOUT_MS 1200UL
+#endif
+
+static uint8_t rakGpsControlActiveLevel() {
+#ifdef PIN_GPS_EN_ACTIVE
+  return PIN_GPS_EN_ACTIVE;
+#else
+  return HIGH;
+#endif
+}
+
+static void setRakGpsControl(uint8_t pin, bool shared_power_rail,
+                             bool enabled) {
+  pinMode(pin, OUTPUT);
+  if (shared_power_rail) {
+    // WB_IO2 controls every 3V3_S peripheral, not just the GPS. It must never
+    // be dropped as a GPS power-saving operation.
+    digitalWrite(pin, HIGH);
+    return;
+  }
+  const uint8_t active = rakGpsControlActiveLevel();
+  digitalWrite(pin, enabled ? active : static_cast<uint8_t>(!active));
+}
+
+static bool serialHasValidGpsSentence(Stream& serial, uint32_t timeout_ms) {
+  mesh::NmeaSentenceProbe probe;
+  const uint32_t started = millis();
+  do {
+    while (serial.available()) {
+      if (probe.ingest(static_cast<uint8_t>(serial.read()))) return true;
+    }
+    delay(5);
+  } while (static_cast<uint32_t>(millis() - started) < timeout_ms);
+  return false;
+}
+
+#if ENV_INCLUDE_INA3221
+static mesh::I2cRegisterProbeStatus readI2cRegister16(TwoWire* wire,
+                                                       uint8_t address,
+                                                       uint8_t reg,
+                                                       uint16_t& value) {
+  wire->beginTransmission(address);
+  if (wire->write(reg) != 1) {
+    return mesh::I2cRegisterProbeStatus::Inconclusive;
+  }
+  const uint8_t error = wire->endTransmission(false);
+  if (error == 2) return mesh::I2cRegisterProbeStatus::NoResponse;
+  if (error != 0) return mesh::I2cRegisterProbeStatus::Inconclusive;
+  if (wire->requestFrom(address, static_cast<uint8_t>(2)) != 2) {
+    return mesh::I2cRegisterProbeStatus::Inconclusive;
+  }
+  value = static_cast<uint16_t>(wire->read()) << 8;
+  value |= static_cast<uint8_t>(wire->read());
+  return mesh::I2cRegisterProbeStatus::Success;
+}
+
+static mesh::I2cIdentityProbeResult probeIna3221Identity(TwoWire* wire,
+                                                         uint8_t address) {
+  uint16_t manufacturer = 0;
+  const mesh::I2cRegisterProbeStatus manufacturer_result = readI2cRegister16(
+      wire, address, INA3221_REG_MANUFACTURER_ID, manufacturer);
+  if (manufacturer_result != mesh::I2cRegisterProbeStatus::Success) {
+    return mesh::classifyIna3221Identity(
+        manufacturer_result, manufacturer,
+        mesh::I2cRegisterProbeStatus::Inconclusive, 0,
+        INA3221_MANUFACTURER_ID, INA3221_DIE_ID);
+  }
+  if (manufacturer != INA3221_MANUFACTURER_ID) {
+    // Require two successful non-INA reads. The bytes exposed by u-blox at
+    // 0xFE/0xFF are dynamic, so their values need not equal one another. This
+    // still cannot make a physical address collision safe.
+    uint16_t repeated_manufacturer = 0;
+    const mesh::I2cRegisterProbeStatus repeated_result = readI2cRegister16(
+        wire, address, INA3221_REG_MANUFACTURER_ID, repeated_manufacturer);
+    return mesh::classifyIna3221Identity(
+        manufacturer_result, manufacturer,
+        repeated_result, repeated_manufacturer,
+        INA3221_MANUFACTURER_ID, INA3221_DIE_ID);
+  }
+
+  uint16_t die = 0;
+  const mesh::I2cRegisterProbeStatus die_result = readI2cRegister16(
+      wire, address, INA3221_REG_DIE_ID, die);
+  return mesh::classifyIna3221Identity(
+      manufacturer_result, manufacturer, die_result, die,
+      INA3221_MANUFACTURER_ID, INA3221_DIE_ID);
+}
+#endif
 
 class RAK12500LocationProvider : public LocationProvider {
   long _lat = 0;
@@ -221,7 +432,23 @@ public:
   bool isValid() override { return _fix; }
   long getTimestamp() override { return _epoch; }
   void sendSentence(const char * sentence) override { }
-  void reset() override { }
+  void reset() override {
+    // Discovery can replace and later reselect this singleton provider. Never
+    // expose the previous receiver's fix or time samples while the new device
+    // is still acquiring.
+    _lat = 0;
+    _lng = 0;
+    _alt = 0;
+    _sats = 0;
+    _epoch = 0;
+    _fix = false;
+    _next_time_check = 0;
+    _last_time_sync = 0;
+    _valid_time_samples = 0;
+    _time_sync_needed = true;
+    _time_sync_applied = false;
+    _last_valid_time_sync = 0;
+  }
   void begin() override { }
   void stop() override { }
   void loop() override {
@@ -270,20 +497,6 @@ public:
 
 static RAK12500LocationProvider RAK12500_provider;
 #endif
-
-// ============================================================
-// I2C bus scanner
-// Probes every valid address and records which ones ACK.
-// This runs before any sensor library is touched, so a missing
-// or misbehaving device cannot stall or crash the boot sequence.
-// ============================================================
-
-static void scanI2CBus(TwoWire* wire, bool found[128]) {
-  for (uint8_t addr = 0x08; addr < 0x78; addr++) {
-    wire->beginTransmission(addr);
-    found[addr] = (wire->endTransmission() == 0);
-  }
-}
 
 // ============================================================
 // Per-sensor init and query functions
@@ -630,14 +843,15 @@ static void query_bme680_bsec(uint8_t ch, uint8_t, CayenneLPP& lpp) {
 // ============================================================
 
 struct SensorDef {
-  uint8_t     address;
+  uint32_t    address;  // preserve invalid build overrides until validation
   const char* name;
   uint8_t   (*init)(TwoWire* wire, uint8_t address);
   void      (*query)(uint8_t channel, uint8_t sub_channel, CayenneLPP& telemetry);
   bool      (*query_voltage)(uint8_t sub_channel, float& voltage);
 };
 
-#define TELEM_BOSCH_ALT_ADDR(addr) ((uint8_t)((addr) == 0x76 ? 0x77 : 0x76))
+#define TELEM_BOSCH_ALT_ADDR(addr) \
+  ((addr) == 0x76 ? 0x77U : ((addr) == 0x77 ? 0x76U : (addr)))
 
 static const SensorDef SENSOR_TABLE[] = {
 #if ENV_INCLUDE_AHTX0
@@ -704,13 +918,15 @@ static const SensorDef SENSOR_TABLE[] = {
 static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TABLE[0])) - 1;
 
 // ============================================================
-// begin() - scan the I2C bus, then initialize only what was
-// found. A sensor whose address does not ACK during the scan
-// is never touched by a library call, preventing hangs or
-// crashes caused by absent or misbehaving hardware.
+// begin() - initialize an optional board GPS, then scan the I2C bus and invoke
+// only table-driven sensor initializers whose address ACKed. GPS uses a
+// device-specific probe outside SENSOR_TABLE; an address it positively claims
+// is not handed to another driver.
 // ============================================================
 
 bool EnvironmentSensorManager::begin() {
+  _active_sensor_count = 0;
+
   #if ENV_INCLUDE_GPS
   #ifdef RAK_WISBLOCK_GPS
   // A volatile read anchors the externally linked marker even under LTO.
@@ -725,45 +941,82 @@ bool EnvironmentSensorManager::begin() {
 
   #if ENV_HAS_SECONDARY_I2C
     #ifdef NRF52_PLATFORM
-  Wire1.setPins(ENV_PIN_SDA, ENV_PIN_SCL);
-  Wire1.setClock(100000);
+  if (!isValidNrfI2cPinPair(ENV_PIN_SDA, ENV_PIN_SCL)) {
+    MESH_DEBUG_PRINTLN("Second I2C skipped: invalid SDA/SCL pin pair");
+    return true;
+  }
+  Wire1.setPins(static_cast<uint8_t>(ENV_PIN_SDA),
+                static_cast<uint8_t>(ENV_PIN_SCL));
   Wire1.begin();
+  Wire1.setClock(100000);
     #else
   Wire1.begin(ENV_PIN_SDA, ENV_PIN_SCL, 100000);
     #endif
   MESH_DEBUG_PRINTLN("Second I2C initialized on pins SDA: %d SCL: %d", ENV_PIN_SDA, ENV_PIN_SCL);
   #endif
 
-  _active_sensor_count = 0;
   // Avoid touching a shared I2C bus when no environmental drivers were built.
   if (SENSOR_TABLE_SIZE == 0) {
     return true;
   }
 
-  // Scan the I2C bus before touching any sensor library.
+  if (!ensureI2cBusReleased(TELEM_WIRE)) {
+    MESH_DEBUG_PRINTLN(
+        "I2C discovery skipped: bus pins unavailable or SDA/SCL remained low");
+    return true;
+  }
+
+  // Probe only unique addresses compiled into this image before invoking any
+  // table-driven sensor library. The old all-address scan performed 112
+  // blocking Wire transactions even when only a few drivers were present.
   bool detected[128] = {};
-  scanI2CBus(TELEM_WIRE, detected);
+  bool probed[128] = {};
+  for (size_t i = 0; i < SENSOR_TABLE_SIZE; i++) {
+    const uint32_t configured_address = SENSOR_TABLE[i].address;
+    if (!mesh::isValidI2cPeripheralAddress(configured_address)) {
+      MESH_DEBUG_PRINTLN("Skipping invalid I2C sensor address %lX",
+                         (unsigned long)configured_address);
+      continue;
+    }
+    const uint8_t address = static_cast<uint8_t>(configured_address);
+    if (!probed[address]) {
+      probed[address] = true;
+      detected[address] = i2c_probe(*TELEM_WIRE, address);
+    }
+  }
 
   // Walk the sensor table and initialize only detected devices.
   for (size_t i = 0; i < SENSOR_TABLE_SIZE && _active_sensor_count < MAX_ACTIVE_SENSORS; i++) {
     const SensorDef& def = SENSOR_TABLE[i];
+    if (!mesh::isValidI2cPeripheralAddress(def.address)) continue;
+    const uint8_t address = static_cast<uint8_t>(def.address);
+#ifdef RAK_WISBLOCK_GPS
+    if (mesh::shouldSkipSensorAtClaimedGpsAddress(
+            i2cGPSFlag, TELEM_WIRE == &Wire,
+            address, TELEM_RAK12500_ADDRESS)) {
+      MESH_DEBUG_PRINTLN(
+          "Skipping %s at I2C address %02X: address is claimed by RAK12500 GPS",
+          def.name, address);
+      continue;
+    }
+#endif
     // One static driver instance per type: an alternate address is a fallback, not a second device.
     bool already_active = false;
     for (int j = 0; j < _active_sensor_count; j++) {
       if (_active_sensors[j].query == def.query) { already_active = true; break; }
     }
     if (already_active) continue;
-    if (!detected[def.address]) {
-      MESH_DEBUG_PRINTLN("%s not detected at I2C address %02X", def.name, def.address);
+    if (!detected[address]) {
+      MESH_DEBUG_PRINTLN("%s not detected at I2C address %02X", def.name, address);
       continue;
     }
-    uint8_t n = def.init(TELEM_WIRE, def.address);
+    uint8_t n = def.init(TELEM_WIRE, address);
     if (n == 0) {
-      MESH_DEBUG_PRINTLN("%s found at %02X but failed to initialize", def.name, def.address);
+      MESH_DEBUG_PRINTLN("%s found at %02X but failed to initialize", def.name, address);
       continue;
     }
-    MESH_DEBUG_PRINTLN("Found %s at address: %02X", def.name, def.address);
-    detected[def.address] = false;  // consumed; later entries must not re-claim this device
+    MESH_DEBUG_PRINTLN("Found %s at address: %02X", def.name, address);
+    detected[address] = false;  // consumed; later entries must not re-claim this device
     for (uint8_t sub = 0; sub < n && _active_sensor_count < MAX_ACTIVE_SENSORS; sub++) {
       _active_sensors[_active_sensor_count++] = {
         def.query, def.query_voltage, sub
@@ -858,16 +1111,13 @@ bool EnvironmentSensorManager::setSettingValue(const char* name, const char* val
   if (gps_detected && strcmp(name, "gps") == 0) {
     bool enabled = strcmp(value, "0") != 0;
 #if defined(RAK_WISBLOCK_GPS) && defined(FORCE_GPS_ALIVE)
-    // RAK3401 must keep 3V3_S on for its radio FEM. RAK12501/L76K has no
-    // separately wired standby control, so claiming it is off would only stop
-    // parsing while the receiver continued drawing full power.
-    if (!enabled && serialGPSFlag) {
-      setGpsTelemetryUserEnabled(true);
-      return false;
-    }
-    if (enabled && serialGPSFlag) {
+    // A UART L76K cannot remove power from the shared 3V3_S rail. "Off" stops
+    // parsing and releases the MCU UART, but the still-powered receiver keeps
+    // driving its TX pin. It therefore does not make that pin safe for an
+    // external UART bridge.
+    if (serialGPSFlag) {
       _location->setGPSPowerSaving(false);
-      setGpsTelemetryUserEnabled(true);
+      setGpsTelemetryUserEnabled(enabled);
       return true;
     }
 #endif
@@ -893,7 +1143,11 @@ void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
 #if defined(RAK_WISBLOCK_GPS) && defined(FORCE_GPS_ALIVE)
   if (serialGPSFlag) {
     _location->setGPSPowerSaving(false);
-    if (!gps_active) start_gps();
+    if (gps_user_enabled) {
+      if (!gps_active) start_gps();
+    } else if (gps_active) {
+      stop_gps();
+    }
     return;
   }
 #endif
@@ -915,6 +1169,17 @@ void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
 
 #if ENV_INCLUDE_GPS
 void EnvironmentSensorManager::initBasicGPS() {
+
+  // A repeated discovery pass must not steal a UART which an active bridge
+  // already owns. The bridge release path explicitly restores availability.
+  if (gps_serial_transport_blocked) {
+    MESH_DEBUG_PRINTLN("GPS discovery skipped: serial transport is owned by bridge");
+    return;
+  }
+
+  resetGpsTelemetryTransportState();
+  gps_serial_transport = false;
+  gps_serial_transport_blocked = false;
 
   Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
 
@@ -943,6 +1208,7 @@ void EnvironmentSensorManager::initBasicGPS() {
 #endif
 
   if (gps_detected) {
+    gps_serial_transport = true;
     MESH_DEBUG_PRINTLN("GPS detected");
     #ifdef PERSISTANT_GPS
       gps_active = true;
@@ -960,6 +1226,26 @@ void EnvironmentSensorManager::initBasicGPS() {
 // or make a new location provider ...
 #ifdef RAK_WISBLOCK_GPS
 void EnvironmentSensorManager::rakGPSInit() {
+  // Preserve the established owner across repeated begin() calls. Clearing
+  // this flag and starting Serial1 here would silently take UART1 back from an
+  // active bridge.
+  if (gps_serial_transport_blocked) {
+    MESH_DEBUG_PRINTLN("RAK GPS discovery skipped: UART1 is owned by bridge");
+    return;
+  }
+
+  // A repeated begin() must not retain ownership or a provider from an older
+  // hardware probe.
+  i2cGPSFlag = false;
+  serialGPSFlag = false;
+  resetGpsTelemetryTransportState();
+  gpsResetPin = static_cast<uint32_t>(-1);
+  gps_active = false;
+  gps_detected = false;
+  gps_serial_transport = false;
+  gps_serial_transport_blocked = false;
+  _location = _configured_location;
+
   Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
 
 #ifdef GPS_BAUD_RATE
@@ -968,9 +1254,18 @@ void EnvironmentSensorManager::rakGPSInit() {
   Serial1.begin(9600);
 #endif
 
-  // search for the correct IO standby pin depending on socket used
-  if (gpsIsAwake(WB_IO2)) {
-    _location->setPinEn(WB_IO2); // WB_IO2 is the power switch for all sensor and IO slots
+  // A RAK-derived board with a real GPS-enable pin must use it. Stock WisBlock
+  // bases have no dedicated GPS switch, so their fallback is shared WB_IO2.
+#if defined(PIN_GPS_EN) && PIN_GPS_EN >= 0
+  const uint8_t gps_control_pin = PIN_GPS_EN;
+  const bool shared_power_rail = false;
+#else
+  const uint8_t gps_control_pin = WB_IO2;
+  const bool shared_power_rail = true;
+#endif
+
+  if (gpsIsAwake(gps_control_pin, shared_power_rail)) {
+    _location->setPinEn(gps_control_pin);
   } else {
     MESH_DEBUG_PRINTLN("No GPS found");
     gps_active = false;
@@ -993,28 +1288,69 @@ void EnvironmentSensorManager::rakGPSInit() {
 #endif
 }
 
-bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin) {
-#if defined(ETHERNET_ENABLED) && defined(RAK_BOARD)
-  if (ioPin == WB_IO2) {
-    // WB_IO2 powers the Ethernet module on RAK baseboards.
-    return false;
+bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin,
+                                          bool shared_power_rail) {
+  if (!shared_power_rail) {
+    setRakGpsControl(ioPin, false, false);
+    delay(500);
   }
-#endif
-
-  // RAK3401 shares WB_IO2 with the radio PA supply. Probing a GPS must never
-  // pulse that rail low or turn the pin back into an input.
-#ifndef RAK_3401
-  // set initial waking state
-  pinMode(ioPin, OUTPUT);
-  digitalWrite(ioPin, LOW);
-  delay(500);
-  digitalWrite(ioPin, HIGH);
-#endif
+  setRakGpsControl(ioPin, shared_power_rail, true);
   // give the receiver time to become responsive
   delay(500);
 
-  // Try to init RAK12500 on I2C
-  if (ublox_GNSS.begin(Wire) == true) {
+  // Prove the UART device with a complete checksum-valid GPS sentence. This
+  // must precede I2C probing so a UART GPS can coexist with INA3221 at 0x42.
+  if (serialHasValidGpsSentence(Serial1, RAK_UART_GPS_PROBE_TIMEOUT_MS)) {
+    MESH_DEBUG_PRINTLN("RAK12501 UART GPS identified with pin %i", ioPin);
+    gpsResetPin = ioPin;
+    serialGPSFlag = true;
+    gps_serial_transport = true;
+    gps_active = true;
+    gps_detected = true;
+    return true;
+  }
+
+  if (!ensureI2cBusReleased(&Wire)) {
+    MESH_DEBUG_PRINTLN(
+        "Skipping RAK12500 probe: I2C pins unavailable or bus remains low");
+    setRakGpsControl(ioPin, shared_power_rail, false);
+    return false;
+  }
+
+  const uint32_t configured_gps_address =
+      static_cast<uint32_t>(TELEM_RAK12500_ADDRESS);
+  if (!mesh::isValidI2cPeripheralAddress(configured_gps_address)) {
+    MESH_DEBUG_PRINTLN("Skipping invalid RAK12500 I2C address");
+    setRakGpsControl(ioPin, shared_power_rail, false);
+    return false;
+  }
+  const uint8_t gps_i2c_address =
+      static_cast<uint8_t>(configured_gps_address);
+  bool probe_i2c_gps = true;
+#if ENV_INCLUDE_INA3221
+  // Inspect the actual device at the GPS address. This must not depend on the
+  // configured INA address or telemetry bus: an unstrapped INA3221 can still
+  // physically remain at 0x42 when firmware expects it at 0x43.
+  const mesh::I2cIdentityProbeResult ina_identity =
+      probeIna3221Identity(&Wire, gps_i2c_address);
+  probe_i2c_gps = mesh::shouldProbeI2cGps(ina_identity);
+  if (!probe_i2c_gps) {
+    if (ina_identity == mesh::I2cIdentityProbeResult::Match) {
+      MESH_DEBUG_PRINTLN(
+          "Skipping RAK12500 probe at I2C address %02X: INA3221 identity confirmed",
+          gps_i2c_address);
+    } else {
+      MESH_DEBUG_PRINTLN(
+          "Skipping RAK12500 probe at I2C address %02X: INA identity read was inconclusive",
+          gps_i2c_address);
+    }
+  }
+#endif
+
+  // After two successful non-INA manufacturer reads, use the u-blox-specific
+  // probe. No software can make two physical devices at one address safe.
+  if (probe_i2c_gps
+      && ublox_GNSS.begin(Wire, gps_i2c_address) == true) {
     MESH_DEBUG_PRINTLN("RAK12500 GPS init correctly with pin %i", ioPin);
     ublox_GNSS.setI2COutput(COM_TYPE_UBX);
     ublox_GNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS);
@@ -1028,24 +1364,17 @@ bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin) {
     ublox_GNSS.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT);
     gpsResetPin = ioPin;
     i2cGPSFlag = true;
+    gps_serial_transport = false;
     gps_active = true;
     gps_detected = true;
 
     RAK12500_provider.setRTCClock(_location->getRTCClock());
+    RAK12500_provider.reset();
     _location = &RAK12500_provider;
-    return true;
-  } else if (Serial1.available()) { // RAK12501 (L76K) on UART
-    MESH_DEBUG_PRINTLN("Serial GPS init correctly and is turned on");
-    gpsResetPin = ioPin;
-    serialGPSFlag = true;
-    gps_active = true;
-    gps_detected = true;
     return true;
   }
 
-#ifndef RAK_3401
-  pinMode(ioPin, INPUT);
-#endif
+  setRakGpsControl(ioPin, shared_power_rail, false);
   MESH_DEBUG_PRINTLN("GPS did not init with this IO pin... try the next");
   return false;
 }
@@ -1059,7 +1388,15 @@ void EnvironmentSensorManager::armGpsPowerSavingCycle() {
 }
 
 void EnvironmentSensorManager::start_gps() {
-  if (gps_active) return;
+  if (gps_active || gps_serial_transport_blocked) return;
+  if (gps_serial_transport) {
+    Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
+#ifdef GPS_BAUD_RATE
+    Serial1.begin(GPS_BAUD_RATE);
+#else
+    Serial1.begin(9600);
+#endif
+  }
   gps_active = true;
 #ifdef RAK_WISBLOCK_GPS
 #ifdef FORCE_GPS_ALIVE
@@ -1067,8 +1404,7 @@ void EnvironmentSensorManager::start_gps() {
   // an I2C u-blox receiver can also be explicitly returned to full power.
   if (i2cGPSFlag) ublox_GNSS.powerSaveMode(false);
 #else
-  pinMode(gpsResetPin, OUTPUT);
-  digitalWrite(gpsResetPin, HIGH); // WB_IO2 is the shared sensor power rail
+  setRakGpsControl(gpsResetPin, false, true);
 #endif
 #else
   _location->begin();
@@ -1095,12 +1431,15 @@ void EnvironmentSensorManager::stop_gps() {
 #ifdef RAK_WISBLOCK_GPS
 #ifdef FORCE_GPS_ALIVE
   // Keep the shared rail alive for the RAK3401 radio FEM. The I2C u-blox can
-  // still enter its internal power-save mode. UART L76K builds reject GPS off
-  // above because that module has no independent standby connection.
-  if (i2cGPSFlag) ublox_GNSS.powerSaveMode(true);
+  // still enter its internal power-save mode. Ending Serial1 stops the MCU
+  // parser, but a UART L76K remains powered and continues driving its TX pin.
+  if (i2cGPSFlag) {
+    ublox_GNSS.powerSaveMode(true);
+  } else if (serialGPSFlag) {
+    Serial1.end();
+  }
 #else
-  pinMode(gpsResetPin, OUTPUT);
-  digitalWrite(gpsResetPin, LOW); // WB_IO2
+  setRakGpsControl(gpsResetPin, false, false);
 #endif
 #else
   _location->stop();
@@ -1111,6 +1450,83 @@ void EnvironmentSensorManager::stop_gps() {
 #endif
 }
 #endif // ENV_INCLUDE_GPS
+
+bool EnvironmentSensorManager::gpsUsesSerialUart(uint8_t uart) const {
+#if ENV_INCLUDE_GPS
+  return uart == 1 && gps_detected && gps_serial_transport;
+#else
+  (void)uart;
+  return false;
+#endif
+}
+
+bool EnvironmentSensorManager::gpsSerialTransportMayConflict(
+    uint8_t uart) const {
+#if ENV_INCLUDE_GPS
+#if defined(RAK_WISBLOCK_GPS) \
+    && defined(WITH_RS232_BRIDGE_GPS_CONFLICT_UART)
+  // Silence is not proof of physical absence: a cold RAK12501/L76K can start
+  // emitting NMEA after the bounded boot probe. Reserve the declared shared
+  // connector in the merged image. Exact legacy Serial1 bridge targets omit
+  // GPS support and this reservation; the merged image retains UART2.
+  if (uart == WITH_RS232_BRIDGE_GPS_CONFLICT_UART) return true;
+#endif
+  return gpsUsesSerialUart(uart);
+#else
+  (void)uart;
+  return false;
+#endif
+}
+
+bool EnvironmentSensorManager::gpsSerialTransportCanYield(uint8_t uart) const {
+#if ENV_INCLUDE_GPS
+  if (!gpsUsesSerialUart(uart)) return false;
+#if defined(RAK_WISBLOCK_GPS) && defined(FORCE_GPS_ALIVE)
+  // RAK12501 exposes no independently controlled standby/power pin. WB_IO2 is
+  // the shared 3V3_S rail and must remain high, so its L76K keeps transmitting
+  // NMEA after Serial1.end(). Two TX drivers on UART1 would electrically
+  // contend; require UART2 or physical removal/isolation of this GPS instead.
+  return false;
+#elif defined(RAK_WISBLOCK_GPS)
+  // This profile is allowed to remove power with its validated GPS control.
+  return true;
+#endif
+  // Generic NMEA receivers may share the same serial API but are safe to hand
+  // off only when the provider has a real enable pin that stop() deasserts.
+  return _location != NULL && _location->getPinEn() >= 0;
+#else
+  (void)uart;
+  return false;
+#endif
+}
+
+bool EnvironmentSensorManager::setGpsSerialTransportBlocked(uint8_t uart,
+                                                             bool blocked) {
+#if ENV_INCLUDE_GPS
+  if (!gpsUsesSerialUart(uart)) return false;
+  if (gps_serial_transport_blocked == blocked) return true;
+  if (blocked && !gpsSerialTransportCanYield(uart)) return false;
+
+  if (blocked) {
+    // Cancel remote-query acquisition/hold state before releasing the UART.
+    setGpsTelemetryTransportAvailable(false);
+    gps_serial_transport_blocked = true;
+    if (gps_active) stop_gps();
+    Serial1.end();
+  } else {
+    gps_serial_transport_blocked = false;
+    // Restoring availability restarts the receiver only when the user's GPS
+    // preference is on. Otherwise a future authorized location query may
+    // acquire it on demand.
+    setGpsTelemetryTransportAvailable(true);
+  }
+  return true;
+#else
+  (void)uart;
+  (void)blocked;
+  return false;
+#endif
+}
 
 #if ENV_INCLUDE_GPS || defined(ENV_INCLUDE_BME680_BSEC)
 void EnvironmentSensorManager::loop() {

@@ -72,6 +72,12 @@ void RAK4631Board::begin() {
 
   Wire.begin();
 
+  // WB_IO2 is the shared 3V3_S supply for WisBlock sensor/interface slots.
+  // Keep it enabled before GPS and environmental discovery; treating it as a
+  // GPS-only switch makes the subsequent I2C scan see an unpowered bus.
+  pinMode(WB_IO2, OUTPUT);
+  digitalWrite(WB_IO2, HIGH);
+
   pinMode(SX126X_POWER_EN, OUTPUT);
 #ifdef NRF52_POWER_MANAGEMENT
   // Boot voltage protection check (may not return if voltage too low)

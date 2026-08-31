@@ -10,6 +10,7 @@
 #include <freertos/task.h>
 #include <strings.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/UsbLogging.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
 #include <helpers/esp32/WiFiStationPolicy.h>
 
@@ -173,7 +174,8 @@ static void handleSave(PortalImpl* impl, WiFiClient& client, const char* body) {
   // A submitted configuration takes priority over a background retry of the
   // previously saved network.
   impl->recovery_connecting = false;
-  Serial.printf("WiFi setup: connecting to '%s'...\n", ssid);
+  mesh::usbLoggingPort().printf(
+      "WiFi setup: connecting to '%s'...\n", ssid);
   mesh::wifi::beginStation(ssid, password);
   uint32_t deadline = millis() + CONNECT_TIMEOUT_MS;
   while (impl->active && *impl->active && WiFi.status() != WL_CONNECTED
@@ -187,7 +189,8 @@ static void handleSave(PortalImpl* impl, WiFiClient& client, const char* body) {
     sendResponse(client, 200, "OK", "text/html",
                  "<!doctype html><meta name=viewport content='width=device-width'><h2>Connection failed</h2>"
                  "<p>Check the SSID and password, then <a href='/'>try again</a>.</p>");
-    Serial.println("WiFi setup: connection failed; setup AP remains active");
+    mesh::usbLoggingPort().println(
+        "WiFi setup: connection failed; setup AP remains active");
     return;
   }
 
@@ -195,7 +198,8 @@ static void handleSave(PortalImpl* impl, WiFiClient& client, const char* body) {
     WiFi.disconnect();
     sendResponse(client, 500, "Internal Server Error", "text/plain",
                  "Connected, but the credentials could not be saved.");
-    Serial.println("WiFi setup: connected, but credential persistence failed");
+    mesh::usbLoggingPort().println(
+        "WiFi setup: connected, but credential persistence failed");
     return;
   }
 
@@ -218,7 +222,8 @@ static void handleSave(PortalImpl* impl, WiFiClient& client, const char* body) {
            ip.c_str());
 #endif
   sendResponse(client, 200, "OK", "text/html", response);
-  Serial.printf("WiFi setup: connected; IP %s\n", ip.c_str());
+  mesh::usbLoggingPort().printf(
+      "WiFi setup: connected; IP %s\n", ip.c_str());
   impl->close_ap_at = millis() + AP_CLOSE_DELAY_MS;
 }
 
@@ -272,18 +277,22 @@ static void portalTask(void* arg) {
     if (impl->recovery_connecting) {
       if (WiFi.status() == WL_CONNECTED) {
         String ip = WiFi.localIP().toString();
-        Serial.printf("WiFi setup: saved network recovered; IP %s\n", ip.c_str());
+        mesh::usbLoggingPort().printf(
+            "WiFi setup: saved network recovered; IP %s\n", ip.c_str());
         impl->recovery_connecting = false;
         break;
       }
       if (static_cast<int32_t>(now - impl->recovery_deadline) >= 0) {
         WiFi.disconnect();
         impl->recovery_connecting = false;
-        Serial.println("WiFi setup: saved network still unavailable; setup AP remains active");
+        mesh::usbLoggingPort().println(
+            "WiFi setup: saved network still unavailable; setup AP remains active");
       }
     } else if (impl->recovery_ssid[0] && impl->recovery_interval_ms
                && static_cast<int32_t>(now - impl->next_recovery_at) >= 0) {
-      Serial.printf("WiFi setup: retrying saved network '%s'...\n", impl->recovery_ssid);
+      mesh::usbLoggingPort().printf(
+          "WiFi setup: retrying saved network '%s'...\n",
+          impl->recovery_ssid);
       mesh::wifi::beginStation(
           impl->recovery_ssid, impl->recovery_password);
       impl->recovery_connecting = true;
@@ -358,8 +367,9 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
     impl->task = nullptr;
     return false;
   }
-  Serial.printf("WiFi setup: join open AP '%s' and open http://%s/\n",
-                impl->ap_name, SETUP_IP.toString().c_str());
+  mesh::usbLoggingPort().printf(
+      "WiFi setup: join open AP '%s' and open http://%s/\n",
+      impl->ap_name, SETUP_IP.toString().c_str());
   return true;
 }
 
@@ -394,9 +404,14 @@ bool WiFiSetupPortal::loadStoredCredentials(char* ssid, size_t ssid_size,
                                             char* password, size_t password_size) {
   if (!ssid || ssid_size == 0 || !password || password_size == 0) return false;
   Preferences prefs;
-  if (!prefs.begin("mesh-wifi", true)) return false;
-  String stored_ssid = prefs.getString("ssid", "");
-  String stored_password = prefs.getString("password", "");
+  // Opening read-only reports ESP_ERR_NVS_NOT_FOUND on a normal fresh install.
+  // Read-write creates the namespace once; guard absent String keys because
+  // Preferences::getString() also logs NOT_FOUND instead of returning quietly.
+  if (!prefs.begin("mesh-wifi", false)) return false;
+  String stored_ssid = prefs.isKey("ssid")
+      ? prefs.getString("ssid", "") : String();
+  String stored_password = prefs.isKey("password")
+      ? prefs.getString("password", "") : String();
   prefs.end();
   if (stored_ssid.length() == 0 || stored_ssid.length() >= ssid_size
       || stored_password.length() >= password_size

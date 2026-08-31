@@ -556,6 +556,8 @@ public:
     return false;
   };
 
+  virtual bool isBridgeRunning() const { return false; }
+
   virtual void restartBridgeSlot(int slot) {
     // Default: fall back to full restart
     restartBridge();

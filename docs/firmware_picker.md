@@ -257,10 +257,21 @@ Hardware families with multiple released targets get a second hardware-variant
 menu. It separates revisions, display type, expansion kit, radio/PA layout,
 pin map, and other physical differences without crowding the first menu. The
 firmware-variant menu separately exposes choices that still require different
-code or wiring, such as serial port or no-external-sensors. Companion power
-saving, controllable FEM receive gain, and radio-chip receive gain are saved
-settings rather than separate recommended firmware files. Do not substitute a
-similarly named physical target.
+code or wiring, such as serial port or the legacy `no_external_sensors` target
+suffix. The picker labels that suffix **Reduced optional environmental/ranging drivers**:
+it does not disable generic I2C or unrelated board-integrated peripherals.
+Reduced RAK3401 and RAK4631 targets retain INA219/INA226/INA260/INA3221 as
+voltage/current entries in the optional sensor table. They are not the only I2C
+users: the SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS remain
+separate I2C peripherals in compatible recipes. RAK12501/L76K GPS uses Serial1
+instead. The explicit RAK4631 Serial1 bridge omits the combined GPS provider
+because its bridge owns the RAK12501 UART, so that legacy image does not expose
+RAK12500 either. The firmware-configured INA3221 and RAK12500 addresses are both
+`0x42`; to install both, keep RAK12500 at `0x42`, strap INA3221 A0 to SCL for
+`0x43`, and use a build with `-DTELEM_INA3221_ADDRESS=0x43`. Companion power saving,
+controllable FEM receive gain, and radio-chip receive gain are saved settings
+rather than separate recommended firmware files. Do not substitute a similarly
+named physical target.
 
 The picker recommends one Full Companion image instead of separate USB, BLE,
 ordinary WiFi, and USB-logging images. On ESP32, logging is off by default so

@@ -79,6 +79,36 @@ LEGACY_COMPANION_ARTIFACT_SUFFIXES = (
     "-ota",
 )
 
+REDUCED_PROFILE_MARKER = "_lora_ota_no_external_sensors"
+REDUCED_PROFILE_DESCRIPTION = (
+    "PROFILE - Compact LoRa OTA: can install LoRa OTA while retaining this "
+    "exact target's board functions. To fit update staging, it omits selected "
+    "optional environmental/ranging drivers; I2C remains available and is not "
+    "globally disabled. USB debug/packet logging is OFF."
+)
+REDUCED_PROFILE_SELECTION = "selected optional sensor drivers omitted"
+RAK_INA_RETENTION_NOTE = (
+    "RAK SENSOR RETENTION - This reduced RAK build retains INA219, INA226, "
+    "INA260, and INA3221 I2C current/voltage monitor drivers."
+)
+RAK3401_GPS_RETENTION_NOTE = (
+    "GPS RETENTION - Compatible RAK3401 GPS options remain available: "
+    "RAK12500 over I2C and RAK12501 over UART."
+)
+RAK4631_GPS_RETENTION_NOTE = (
+    "GPS RETENTION - Compatible RAK4631 GPS options remain available: "
+    "RAK12500 over I2C and RAK12501 over Serial1."
+)
+RAK4631_SERIAL1_GPS_OMISSION_NOTE = (
+    "GPS / RS-232 - GPS is omitted from this RAK4631 build because the "
+    "RS-232 bridge owns Serial1."
+)
+REDUCED_PROFILE_SPECIAL_NOTE_PREFIXES = (
+    "RAK SENSOR RETENTION ",
+    "GPS RETENTION ",
+    "GPS / RS-232 ",
+)
+
 
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
@@ -89,19 +119,18 @@ def parse_args() -> argparse.Namespace:
         default=script_dir / "keymind-cascade-v1.16.0-provider.json",
         help="existing curated provider catalog",
     )
-    parser.add_argument("--release-dir", type=Path, required=True)
+    parser.add_argument("--release-dir", type=Path)
     parser.add_argument(
         "--artifact-version",
-        required=True,
         help="filename version token, for example v1.17.1.1-759a35fc",
     )
-    parser.add_argument("--main-tag", required=True)
-    parser.add_argument("--advanced-tag", required=True)
+    parser.add_argument("--main-tag")
+    parser.add_argument("--advanced-tag")
     parser.add_argument(
         "--full-tag",
         help="FULL-profile release tag (defaults to --advanced-tag for compatibility)",
     )
-    parser.add_argument("--utility-tag", required=True)
+    parser.add_argument("--utility-tag")
     parser.add_argument("--repo", default="mikecarper/MeshCore")
     parser.add_argument("--output", type=Path)
     parser.add_argument(
@@ -117,8 +146,41 @@ def parse_args() -> argparse.Namespace:
             "all unaffected roles"
         ),
     )
+    parser.add_argument(
+        "--normalize-reduced-metadata-only",
+        action="store_true",
+        help=(
+            "normalize Compact LoRa OTA descriptions in an existing catalog "
+            "without changing versions, files, or release URLs"
+        ),
+    )
     args = parser.parse_args()
-    if not args.full_tag:
+    if args.normalize_reduced_metadata_only:
+        if args.companion_only:
+            parser.error(
+                "--companion-only cannot be combined with "
+                "--normalize-reduced-metadata-only"
+            )
+    else:
+        required = (
+            "release_dir",
+            "artifact_version",
+            "main_tag",
+            "advanced_tag",
+            "utility_tag",
+        )
+        missing = [
+            f"--{name.replace('_', '-')}"
+            for name in required
+            if not getattr(args, name)
+        ]
+        if missing:
+            parser.error(
+                "the following arguments are required unless "
+                "--normalize-reduced-metadata-only is used: "
+                + ", ".join(missing)
+            )
+    if not args.full_tag and args.advanced_tag:
         args.full_tag = args.advanced_tag
     return args
 
@@ -166,6 +228,99 @@ def ordered_catalog_identities(firmware: dict) -> list[str]:
             if identity not in identities:
                 identities.append(identity)
     return identities
+
+
+def is_reduced_lora_ota_profile(identities: list[str]) -> bool:
+    return any(
+        REDUCED_PROFILE_MARKER in identity.lower()
+        for identity in identities
+    )
+
+
+def reduced_profile_special_notes(identities: list[str]) -> list[str]:
+    lowered = [identity.lower() for identity in identities]
+    is_rak3401 = any(identity.startswith("rak_3401_") for identity in lowered)
+    is_rak4631 = any(identity.startswith("rak_4631_") for identity in lowered)
+    if not (is_rak3401 or is_rak4631):
+        return []
+
+    notes = [RAK_INA_RETENTION_NOTE]
+    if is_rak3401:
+        notes.append(RAK3401_GPS_RETENTION_NOTE)
+    elif any(
+        "_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors"
+        in identity
+        for identity in lowered
+    ):
+        notes.append(RAK4631_SERIAL1_GPS_OMISSION_NOTE)
+    else:
+        notes.append(RAK4631_GPS_RETENTION_NOTE)
+    return notes
+
+
+def normalize_reduced_profile_metadata(
+    firmware: dict,
+    notes: str,
+    identities: list[str],
+) -> str:
+    """Describe reduced LoRa OTA profiles without claiming I2C is absent."""
+    if not is_reduced_lora_ota_profile(identities):
+        return notes
+
+    subtitle = firmware.get("subTitle")
+    if isinstance(subtitle, str):
+        firmware["subTitle"] = re.sub(
+            r"no external sensors",
+            REDUCED_PROFILE_SELECTION,
+            subtitle,
+            flags=re.IGNORECASE,
+        )
+
+    paragraphs: list[str] = []
+    profile_found = False
+    for paragraph in notes.split("\n\n"):
+        if paragraph.startswith(REDUCED_PROFILE_SPECIAL_NOTE_PREFIXES):
+            continue
+        if paragraph.startswith("PROFILE ") and "Compact LoRa OTA" in paragraph:
+            paragraphs.append(REDUCED_PROFILE_DESCRIPTION)
+            paragraphs.extend(reduced_profile_special_notes(identities))
+            profile_found = True
+            continue
+        if paragraph.startswith("SELECTION "):
+            paragraph = re.sub(
+                r"no external sensors",
+                REDUCED_PROFILE_SELECTION,
+                paragraph,
+                flags=re.IGNORECASE,
+            )
+        paragraphs.append(paragraph)
+
+    if not profile_found:
+        raise ValueError(
+            "reduced LoRa OTA catalog entry has no Compact LoRa OTA profile: "
+            + ", ".join(identities)
+        )
+    return "\n\n".join(paragraphs)
+
+
+def normalize_reduced_catalog_metadata(catalog: dict) -> int:
+    """Normalize every reduced entry in place and return its entry count."""
+    normalized = 0
+    for device in catalog["device"]:
+        for firmware in device["firmware"]:
+            identities = ordered_catalog_identities(firmware)
+            if not is_reduced_lora_ota_profile(identities):
+                continue
+            for version in firmware["version"].values():
+                version["notes"] = normalize_reduced_profile_metadata(
+                    firmware,
+                    version["notes"],
+                    identities,
+                )
+            normalized += 1
+    if normalized == 0:
+        raise ValueError("catalog has no reduced LoRa OTA entries to normalize")
+    return normalized
 
 
 def canonical_runtime_identity(identity: str) -> str:
@@ -868,6 +1023,12 @@ def update_catalog(catalog: dict, release_files: dict[str, list[Path]], args: ar
                     notes = replace_legacy_companion_ota_notes(notes)
                 notes = append_partition_warning(notes, resolved_identities)
 
+            notes = normalize_reduced_profile_metadata(
+                firmware,
+                notes,
+                resolved_identities,
+            )
+
             if firmware["role"].startswith("companion"):
                 notes = append_companion_power_saving_note(notes, display_version)
                 notes = normalize_runtime_companion_metadata(firmware, notes)
@@ -936,12 +1097,27 @@ def main() -> int:
     args = parse_args()
     output = args.output or args.catalog
     try:
-        if not args.artifact_version.startswith("v"):
-            raise ValueError("--artifact-version must start with 'v'")
         with args.catalog.open(encoding="utf-8") as handle:
             catalog = json.load(handle)
-        release_files = index_release_files(args.release_dir, args.artifact_version)
-        catalog = update_catalog(catalog, release_files, args)
+        if args.normalize_reduced_metadata_only:
+            normalized = normalize_reduced_catalog_metadata(catalog)
+            print(
+                json.dumps(
+                    {
+                        "normalized_reduced_entries": normalized,
+                        "update_mode": "reduced-metadata-only",
+                    },
+                    sort_keys=True,
+                )
+            )
+        else:
+            if not args.artifact_version.startswith("v"):
+                raise ValueError("--artifact-version must start with 'v'")
+            release_files = index_release_files(
+                args.release_dir,
+                args.artifact_version,
+            )
+            catalog = update_catalog(catalog, release_files, args)
         if not args.check_only:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(

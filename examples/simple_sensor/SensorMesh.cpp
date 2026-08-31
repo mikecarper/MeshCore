@@ -1,5 +1,8 @@
 #include "SensorMesh.h"
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ClientLoginPersistence.h>
+#include <helpers/ClientPathPersistence.h>
+#include <helpers/LazyPersistence.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
@@ -444,15 +447,17 @@ int SensorMesh::getAGCResetInterval() const {
 }
 
 uint8_t SensorMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood) {
-  ClientInfo* client;
+  ClientInfo* existing_client = acl.getClient(sender.pub_key, PUB_KEY_SIZE);
+  ClientInfo* client = existing_client;
+  uint8_t role_permissions;
   if (data[0] == 0) {   // blank password, just check if sender is in ACL
-    client = acl.getClient(sender.pub_key, PUB_KEY_SIZE);
     if (client == NULL) {
     #if MESH_DEBUG
       MESH_DEBUG_PRINTLN("Login, sender not in ACL");
     #endif
       return 0;
     }
+    role_permissions = client->permissions & PERM_ACL_ROLE_MASK;
   } else {
     if (strcmp((char *) data, _prefs.password) != 0) {  // check for valid admin password
     #if MESH_DEBUG
@@ -460,30 +465,45 @@ uint8_t SensorMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* 
     #endif
       return 0;
     }
+    role_permissions = PERM_ACL_ADMIN;
+  }
 
-    client = acl.putClient(sender, PERM_RECV_ALERTS_HI | PERM_RECV_ALERTS_LO);  // add to contacts (if not already known)
+  const bool client_existed = existing_client != NULL;
+  const uint32_t previous_timestamp =
+      client_existed ? existing_client->last_timestamp : 0;
+  if (!acl.authorizeLoginTimestamp(
+          sender.pub_key, sender_timestamp, previous_timestamp,
+          role_permissions)) {
+    MESH_DEBUG_PRINTLN(
+        "Login rejected: replayed timestamp or replay state unavailable");
+    return 0;
+  }
+
+  if (client == NULL) {
+    client = acl.putClient(
+        sender, PERM_RECV_ALERTS_HI | PERM_RECV_ALERTS_LO);
     if (client == NULL) {
       MESH_DEBUG_PRINTLN("Login rejected: ACL is full of protected contacts");
       return 0;
     }
-    if (sender_timestamp <= client->last_timestamp) {
-      MESH_DEBUG_PRINTLN("Possible login replay attack!");
-      return 0;  // FATAL: client table is full -OR- replay attack
-    }
-
-    MESH_DEBUG_PRINTLN("Login success!");
-    client->last_timestamp = sender_timestamp;
-    client->last_activity = getRTCClock()->getCurrentTime();
-    client->permissions |= PERM_ACL_ADMIN;
-    memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
-
-    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
-    updateGpsTelemetryPolicy();
   }
 
-  if (is_flood) {
-    client->out_path_len = OUT_PATH_UNKNOWN;  // need to rediscover out_path
+  MESH_DEBUG_PRINTLN("Login success!");
+  const uint8_t previous_permissions = client->permissions;
+  const bool reset_out_path = is_flood
+      && client->out_path_len != OUT_PATH_FORCE_FLOOD;
+  const bool persisted_changed = mesh::applySuccessfulClientLogin(
+      *client, client_existed, role_permissions, PERM_ACL_ROLE_MASK,
+      secret, sender_timestamp, getRTCClock()->getCurrentTime(),
+      reset_out_path, OUT_PATH_UNKNOWN);
+  if (mesh::successfulClientLoginNeedsPersistence(
+          client_existed, previous_permissions, client->permissions,
+          PERM_ACL_ROLE_MASK, PERM_ACL_GUEST, persisted_changed)) {
+    mesh::scheduleLazyPersistenceMutation(
+        dirty_contacts_expiry, contacts_save_failures,
+        futureMillis(LAZY_CONTACTS_WRITE_DELAY));
   }
+  updateGpsTelemetryPolicy();
 
   uint32_t now = getRTCClock()->getCurrentTimeUnique();
   memcpy(reply_data, &now, 4);   // response packets always prefixed with timestamp
@@ -590,7 +610,9 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
           && mesh::Utils::fromHex(pubkey, (int)(hex_len / 2), hex)) {
         uint8_t perms = atoi(sp);
         if (acl.applyPermissions(self_id, pubkey, (int)(hex_len / 2), perms)) {
-          dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // trigger acl.save()
+          mesh::scheduleLazyPersistenceMutation(
+              dirty_contacts_expiry, contacts_save_failures,
+              futureMillis(LAZY_CONTACTS_WRITE_DELAY));
           updateGpsTelemetryPolicy();
           strcpy(reply, "OK");
         } else {
@@ -651,6 +673,10 @@ void SensorMesh::onGroupPacketRecv(mesh::Packet* packet) {
 
 void SensorMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) {  // received an initial request by a possible admin client (unknown at this stage)
+    if (len < 4) {
+      MESH_DEBUG_PRINTLN("Rejected incomplete anonymous request");
+      return;
+    }
     uint32_t timestamp;
     memcpy(&timestamp, data, 4);
 
@@ -871,16 +897,15 @@ bool SensorMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint
   ClientInfo* from = acl.getClientByIdx(i);
 
   MESH_DEBUG_PRINTLN("PATH to contact, path_len=%d", (uint32_t) path_len);
-  // NOTE: for this impl, we just replace the current 'out_path' regardless, whenever sender sends us a new out_path.
-  // FUTURE: could store multiple out_paths per contact, and try to find which is the 'best'(?)
-  from->out_path_len = mesh::Packet::copyPath(from->out_path, path, path_len);  // store a copy of path, for sendDirect()
+  // PATH has an authenticated sender but no timestamp/request nonce. Keep the
+  // learned route in RAM only so an old replay cannot become durable.
+  const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
+      from->permissions != 0, false /* no durable replay proof */);
+  const mesh::ClientPathUpdateResult path_update =
+      mesh::applyReceivedClientPath(
+          *from, path, path_len, persistence_allowed, OUT_PATH_FORCE_FLOOD);
+  (void)path_update;
   from->last_activity = getRTCClock()->getCurrentTime();
-
-  // REVISIT: maybe make ALL out_paths non-persisted to minimise flash writes??
-  if (from->isAdmin()) {
-    // only do saveContacts() (of this out_path change) if this is an admin
-    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
-  }
 
   // NOTE: no reciprocal path send!!
   return false;
@@ -909,6 +934,7 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
 {
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
+  contacts_save_failures = 0;
   last_read_time = 0;
   num_alert_tasks = 0;
   set_radio_at = revert_radio_at = 0;
@@ -1298,8 +1324,21 @@ void SensorMesh::loop() {
 
   // is there are pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
-    acl.save(_fs);
-    dirty_contacts_expiry = 0;
+    const bool saved = acl.save(_fs);
+    if (saved) {
+      mesh::resetLazyPersistenceAfterSuccess(
+          dirty_contacts_expiry, contacts_save_failures);
+    } else {
+      const uint32_t retry_delay =
+          mesh::recordLazyPersistenceSaveFailure(
+              contacts_save_failures, LAZY_CONTACTS_WRITE_DELAY,
+              mesh::LAZY_PERSISTENCE_MAX_RETRY_DELAY_MILLIS);
+      mesh::completeLazyPersistenceSave(
+          dirty_contacts_expiry, false, futureMillis(retry_delay));
+      MESH_DEBUG_PRINTLN(
+          "ERROR: contacts save failed; retry in %lu ms",
+          (unsigned long)retry_delay);
+    }
   }
 }
 

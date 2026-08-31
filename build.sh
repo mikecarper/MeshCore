@@ -128,7 +128,7 @@ Commands:
   build-sensor-firmwares: Build all sensor firmwares for all build targets.
   build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
   get-companion-firmwares-to-build: List canonical attached companion targets for release automation; Full Companion replaces separate transport artifacts where qualified.
-  get-repeater-firmwares-to-build: List standard and specialized external-storage repeater targets for release automation.
+  get-repeater-firmwares-to-build: List canonical, specialized external-storage, and deployed-target OTA compatibility repeaters for release automation.
   get-room-server-firmwares-to-build: List standard room-server targets for release automation.
 
 Options:
@@ -1887,6 +1887,27 @@ get_pio_envs_ending_with_string() {
   shopt -u nocasematch
 }
 
+get_deployed_lora_ota_compatibility_targets() {
+  # These exact target names have distinct OTA IDs embedded in already
+  # deployed RAK4631 Serial1/Serial2 bridge images. The merged repeater is the
+  # recommended image for new installs, but it cannot address those nodes.
+  # Continue publishing an image bearing each legacy ID unless a future,
+  # explicitly compatible protocol migrates the installed identity.
+  printf '%s\n' \
+    RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors \
+    RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors
+}
+
+is_deployed_lora_ota_compatibility_target() {
+  case "${1,,}" in
+    rak_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|\
+    rak_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 print_release_firmware_targets() {
   case "$1" in
     get-companion-firmwares-to-build)
@@ -1912,6 +1933,16 @@ print_release_firmware_targets() {
       if is_supported_build_env "RAK_4631_repeater_rak15001_slot_c_lora_ota"; then
         printf '%s\n' "RAK_4631_repeater_rak15001_slot_c_lora_ota"
       fi
+      # Functional consolidation does not change an installed image's mOTA
+      # target ID. Keep exact Serial1/Serial2 bridge identities publishable as
+      # compatibility assets while recommending the merged image for USB/new
+      # installs and hiding these legacy profiles in the firmware picker.
+      local compatibility_target
+      while IFS= read -r compatibility_target; do
+        if is_supported_build_env "$compatibility_target"; then
+          printf '%s\n' "$compatibility_target"
+        fi
+      done < <(get_deployed_lora_ota_compatibility_targets)
       ;;
     get-room-server-firmwares-to-build)
       get_pio_envs_ending_with_string "_room_server"
@@ -2009,6 +2040,24 @@ is_rak_i2c_voltage_monitor_ota_target() {
 
   case "$target_lc" in
     rak_3401_*lora_ota_no_external_sensors|rak_4631_*lora_ota_no_external_sensors)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_rak_gps_retaining_ota_target() {
+  local target_lc=${1,,}
+
+  # Serial1 is the RAK12501 UART on RAK4631. The Serial1 RS-232 bridge owns
+  # that port instead, so its reduced profile intentionally uses the INA-only
+  # recipe and must not promise or require the WisBlock GPS provider.
+  case "$target_lc" in
+    rak_3401_repeater_lora_ota_no_external_sensors|\
+    rak_4631_repeater_lora_ota_no_external_sensors|\
+    rak_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors)
       return 0
       ;;
     *)
@@ -2606,6 +2655,21 @@ is_room_server_role_target() {
   esac
 }
 
+is_sensor_role_target() {
+  case "${1,,}" in
+    *_sensor|*_sensor_) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+requires_esp32_field_browser_ota() {
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] \
+    && ! is_esp32_companion_build "$1" \
+    && { is_repeater_role_target "$1" \
+         || is_room_server_role_target "$1" \
+         || is_sensor_role_target "$1"; }
+}
+
 get_reduced_lora_ota_target() {
   local target=$1
   local candidate
@@ -2763,14 +2827,30 @@ declare_build_capability_contract() {
     record_build_expectation "ota.cli" "OTA: status"
   fi
 
-  if is_rak_i2c_voltage_monitor_ota_target "$env_name"; then
-    # These two reduced RAK OTA profiles deliberately retain their board GPS
-    # provider as well as the compact INA monitor set. Keep the release
-    # manifest honest so a space-oriented target name is not mistaken for a
-    # GPS-less image. This evidence is emitted only by the linked WisBlock GPS
-    # provider; generic CLI command text is not sufficient proof.
+  # A field-installed ESP32 must never leave the release pipeline with every
+  # self-update path compiled out. Standard field/server profiles retain the
+  # lightweight browser uploader below; prove that its linked HTML is really
+  # present rather than trusting build flags or a generic `start ota` command
+  # whose board implementation may still be the unsupported stub.
+  if [ "$env_platform" = "ESP32_PLATFORM" ] \
+      && [ "$BUILD_PROFILE_FOR_TARGET" = "standard" ] \
+      && requires_esp32_field_browser_ota "$env_name"; then
+    record_build_expectation \
+      "web.lightweight_browser_ota" "MeshCore firmware update"
+  fi
+
+  if is_rak_gps_retaining_ota_target "$env_name"; then
+    # GPS-compatible reduced RAK OTA profiles retain the WisBlock provider.
+    # The Serial1 RS-232 profile is deliberately excluded because that UART
+    # cannot simultaneously carry the RAK12501 protocol. This evidence is
+    # emitted only by the linked provider; generic CLI text is insufficient.
     record_build_expectation \
       "sensor.gps" "meshcore.capability.rak_wisblock_gps.v1"
+  fi
+
+  if is_rak_i2c_voltage_monitor_ota_target "$env_name"; then
+    # Every reduced RAK profile retains this compact monitor set, including
+    # the Serial1 RS-232 profile that intentionally omits GPS.
     record_build_expectation "sensor.ina219" "INA219"
     record_build_expectation "sensor.ina226" "INA226"
     record_build_expectation "sensor.ina260" "INA260"
@@ -2835,6 +2915,19 @@ declare_build_capability_contract() {
       record_build_expectation "web.webconfig" "start webconfig"
       ;;
   esac
+
+  case "$env_name_lc" in
+    *sensecapindicator*companion_radio_full*)
+      # A Full Indicator promises self-repair of the RP2040 font asset. Keep
+      # the release manifest from treating an HTTPS downloader without the
+      # fresh-time gate as equivalent: these stable messages are emitted on
+      # the fail-closed NTP-before-TLS path and survive release builds.
+      record_build_expectation "indicator.font_recovery_ntp_gate" \
+        "requesting fresh NTP time before download"
+      record_build_expectation "indicator.font_recovery_tls" \
+        "opening TLS connection to"
+      ;;
+  esac
 }
 
 apply_esp32_lora_ota_size_profile() {
@@ -2847,8 +2940,11 @@ apply_esp32_lora_ota_size_profile() {
 
   # All non-companion ESP32 artifacts must remain installable into the legacy
   # 0x10000..0x150000 app slot. The WebConfig portal is deliberately omitted.
-  # Lean LoRa-OTA repeaters retain the compact browser updater; other radio-only
-  # roles avoid linking WiFi solely for that updater. MQTT observers and ESP-NOW
+  # Every field/server role retains the compact browser updater. Publishing a
+  # repeater, room server, or sensor with both LoRa OTA and browser OTA absent
+  # strands it until someone reaches it with a cable. If the updater pushes a
+  # constrained target over its slot ceiling, fail that target instead of
+  # silently reducing away its last recovery path. MQTT observers and ESP-NOW
   # bridges are always promoted to the expanded FULL profile so they retain the
   # complete CLI and feature set.
   # Companions retain their target defaults because they are installed over USB.
@@ -2857,7 +2953,8 @@ apply_esp32_lora_ota_size_profile() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWEBCONFIG_DISABLED=1"
   record_build_reduction \
     "web.webconfig omitted to preserve the legacy portable ESP32 app slot"
-  if is_lora_ota_only_target "$env_name"; then
+  if is_lora_ota_only_target "$env_name" \
+      || requires_esp32_field_browser_ota "$env_name"; then
     # The no-external-sensors image is also the self-updatable field image. Keep
     # manual browser OTA available on every ESP32 family through the compact
     # uploader, the complete role CLI, and the full one-byte neighbor-index
@@ -3032,12 +3129,14 @@ apply_lora_ota_no_external_sensors_profile() {
     return 0
   fi
 
-  # The explicit LoRa-OTA sibling additionally drops optional external sensors.
+  # The explicit LoRa-OTA sibling drops selected optional environmental and
+  # ranging drivers; it does not globally disable I2C or board peripherals.
   # RAK3401/RAK4631 keep the compact INA voltage/current monitor set because it
   # costs less than 5 KiB and covers their most common external telemetry use.
   # The ordinary sibling remains fully sensor-enabled.
-  # Keep board-integrated GPS support. Several target implementations require
-  # their location provider even when optional external I2C sensors are absent.
+  # GPS availability follows the exact target recipe. In particular, the
+  # RAK4631 Serial1 RS-232 bridge intentionally omits GPS because both need the
+  # same UART; other reduced RAK profiles below retain compatible GPS paths.
   if ! is_rak_i2c_voltage_monitor_ota_target "$env_name"; then
     omitted_sensor_flags+=" ${voltage_monitor_flags}"
   fi
@@ -3052,12 +3151,17 @@ apply_lora_ota_no_external_sensors_profile() {
       retain_overrides+=" -D${flag}=1"
     done
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS}${omit_overrides}${retain_overrides}"
-    record_build_reduction \
-      "sensors.external omitted except INA219/INA226/INA260/INA3221 I2C voltage monitors"
+    if is_rak_gps_retaining_ota_target "$env_name"; then
+      record_build_reduction \
+        "selected optional environmental/ranging drivers omitted; INA219/INA226/INA260/INA3221 and board display/RTC/GPS retained; RAK12500 and INA3221 require distinct configured I2C addresses"
+    else
+      record_build_reduction \
+        "selected optional environmental/ranging drivers and GPS omitted; INA219/INA226/INA260/INA3221 and board display/RTC retained; GPS conflicts with RS-232 on Serial1"
+    fi
   else
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS}${omit_overrides}"
     record_build_reduction \
-      "sensors.external omitted by the explicitly named no_external_sensors target"
+      "selected optional environmental/ranging drivers omitted; generic I2C and exact-target board peripherals remain unchanged"
   fi
 }
 
@@ -3311,6 +3415,10 @@ apply_companion_radio_full_profile() {
     sensecapindicator-espnow_companion_radio_full|\
     sensecapindicator-lora_companion_radio_full)
       export MESHCORE_ESP32_FULL_PARTITION_TABLE="variants/sensecap_indicator-espnow/dual_ota_2560k_preserve_spiffs.csv"
+      # Both physical Indicator radio layouts gain ordinary WiFi in their Full
+      # overlay. Keep font recovery tied to that effective capability rather
+      # than to whichever historical USB/WiFi environment supplies the recipe.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DINDICATOR_WIFI_FONT_RECOVERY=1"
       ;;
   esac
 
@@ -3585,8 +3693,15 @@ collect_build_artifacts() {
   local pio_env_name=$3
   local firmware_filename=$4
 
+  # Qualify the linked image before copying anything into out/. A failed
+  # capability contract must not leave an apparently publishable firmware
+  # binary behind (in particular, an ESP32 field image with no update path).
+  write_build_capability_manifest \
+    "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename" \
+    || return $?
+
   # Post-build outputs differ by platform, so dispatch to the matching
-  # collector after the main firmware build succeeds.
+  # collector after the main firmware build and capability checks succeed.
   case "$env_platform" in
     ESP32_PLATFORM)
       collect_esp32_artifacts "$env_name" "$pio_env_name" "$firmware_filename" || return $?
@@ -3606,8 +3721,6 @@ collect_build_artifacts() {
       ;;
   esac
 
-  write_build_capability_manifest \
-    "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename"
 }
 
 get_firmware_filename() {
@@ -4248,7 +4361,12 @@ is_redundant_bulk_build_target() {
   # `build-matching-firmwares`, but do not republish binaries that differ only
   # by a saved/default setting, or roles already supplied by Full Companion.
   # Its text terminal supersedes standalone Terminal Chat on the same exact
-  # hardware, in addition to its combined attached transports.
+  # hardware, in addition to its combined attached transports. Deployed mOTA
+  # IDs are wire compatibility contracts, so their exact targets are the one
+  # intentional exception to functional artifact consolidation.
+  if is_deployed_lora_ota_compatibility_target "$1"; then
+    return 1
+  fi
   if is_runtime_setting_alias_target "$1" \
       || is_firmware_role_replaced_by_canonical_artifact "$1"; then
     return 0
@@ -4526,8 +4644,9 @@ configure_effective_build_profile() {
             AUTO_PREFER_FULL_BUILD=1
             AUTO_REDUCED_FALLBACK_TARGET=$(get_reduced_lora_ota_target "$target" || true)
           elif is_lora_ota_no_external_sensors_target "$target"; then
-            # An explicitly selected reduced target means exactly what its
-            # name says; do not silently put omitted sensors back into it.
+            # An explicitly selected legacy-named reduced target keeps its
+            # exact declared driver trim; do not silently put omitted optional
+            # environmental/ranging drivers back into it.
             BUILD_PROFILE_EFFECTIVE="standard"
           elif reduced_target=$(get_reduced_lora_ota_target "$target"); then
             RESOLVED_BUILD_TARGETS[0]=$reduced_target

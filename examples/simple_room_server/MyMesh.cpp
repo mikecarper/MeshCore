@@ -1,6 +1,9 @@
 #include "MyMesh.h"
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ClientLoginPersistence.h>
+#include <helpers/ClientPathPersistence.h>
+#include <helpers/LazyPersistence.h>
 #if MESH_PACKET_LOGGING
 #include <helpers/SerialPacketLog.h>
 #endif
@@ -642,23 +645,29 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
                             uint8_t *data, size_t len) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) { // received an initial request by a possible admin
                                                            // client (unknown at this stage)
+    if (len < 8) {
+      MESH_DEBUG_PRINTLN("Rejected incomplete anonymous request");
+      return;
+    }
     uint32_t sender_timestamp, sender_sync_since;
     memcpy(&sender_timestamp, data, 4);
     memcpy(&sender_sync_since, &data[4], 4); // sender's "sync messags SINCE x" timestamp
 
     data[len] = 0;                                        // ensure null terminator
 
-    ClientInfo* client = NULL;
+    ClientInfo* existing_client =
+        acl.getClient(sender.pub_key, PUB_KEY_SIZE);
+    ClientInfo* client = existing_client;
+    uint8_t perm;
     if (data[8] == 0) {   // blank password, just check if sender is in ACL
-      client = acl.getClient(sender.pub_key, PUB_KEY_SIZE);
       if (client == NULL) {
       #if MESH_DEBUG
         MESH_DEBUG_PRINTLN("Login, sender not in ACL");
       #endif
+        return;
       }
-    }
-    if (client == NULL) {
-      uint8_t perm;
+      perm = client->permissions & PERM_ACL_ROLE_MASK;
+    } else {
       if (strcmp((char *)&data[8], _prefs.password) == 0) { // check for valid admin password
         perm = PERM_ACL_ADMIN;
       } else {
@@ -671,33 +680,46 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
           return; // no response. Client will timeout
         }
       }
+    }
 
+    const bool client_existed = existing_client != NULL;
+    const uint32_t previous_timestamp =
+        client_existed ? existing_client->last_timestamp : 0;
+    if (!acl.authorizeLoginTimestamp(
+            sender.pub_key, sender_timestamp, previous_timestamp, perm)) {
+      MESH_DEBUG_PRINTLN(
+          "Login rejected: replayed timestamp or replay state unavailable");
+      return;
+    }
+
+    if (client == NULL) {
       client = acl.putClient(sender, 0);  // add to known clients (if not already known)
       if (client == NULL) {
         MESH_DEBUG_PRINTLN("Login rejected: ACL is full of protected contacts");
         return;
       }
-      if (sender_timestamp <= client->last_timestamp) {
-        MESH_DEBUG_PRINTLN("possible replay attack!");
-        return;
-      }
-
-      MESH_DEBUG_PRINTLN("Login success!");
-      client->last_timestamp = sender_timestamp;
-      client->extra.room.sync_since = sender_sync_since;
-      client->extra.room.pending_ack = 0;
-      client->extra.room.push_failures = 0;
-
-      client->last_activity = getRTCClock()->getCurrentTime();
-      client->permissions &= ~0x03;
-      client->permissions |= perm;
-      memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
-
-      dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
     }
 
-    if (packet->isRouteFlood()) {
-      client->out_path_len = OUT_PATH_UNKNOWN;  // need to rediscover out_path
+    MESH_DEBUG_PRINTLN("Login success!");
+    const uint8_t previous_permissions = client->permissions;
+    const uint32_t previous_sync_since = client->extra.room.sync_since;
+    const bool reset_out_path = packet->isRouteFlood()
+        && client->out_path_len != OUT_PATH_FORCE_FLOOD;
+    bool persisted_changed = mesh::applySuccessfulClientLogin(
+        *client, client_existed, perm, PERM_ACL_ROLE_MASK,
+        secret, sender_timestamp, getRTCClock()->getCurrentTime(),
+        reset_out_path, OUT_PATH_UNKNOWN);
+    client->extra.room.sync_since = sender_sync_since;
+    client->extra.room.pending_ack = 0;
+    client->extra.room.push_failures = 0;
+    persisted_changed = persisted_changed
+        || previous_sync_since != sender_sync_since;
+    if (mesh::successfulClientLoginNeedsPersistence(
+            client_existed, previous_permissions, client->permissions,
+            PERM_ACL_ROLE_MASK, PERM_ACL_GUEST, persisted_changed)) {
+      mesh::scheduleLazyPersistenceMutation(
+          dirty_contacts_expiry, contacts_save_failures,
+          futureMillis(LAZY_CONTACTS_WRITE_DELAY));
     }
 
     uint32_t now = getRTCClock()->getCurrentTimeUnique();
@@ -705,7 +727,9 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     // TODO: maybe reply with count of messages waiting to be synced for THIS client?
     reply_data[4] = RESP_SERVER_LOGIN_OK;
     reply_data[5] = 0; // Legacy: was recommended keep-alive interval (secs / 16)
-    reply_data[6] = (client->isAdmin() ? 1 : (client->permissions == 0 ? 2 : 0));
+    reply_data[6] = (client->isAdmin() ? 1
+        : ((client->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST
+            ? 2 : 0));
     // LEGACY: reply_data[7] = getUnsyncedCount(client);
     reply_data[7] = client->permissions; // NEW
     getRNG()->random(&reply_data[8], 4);   // random blob to help packet-hash uniqueness
@@ -1033,7 +1057,15 @@ bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t 
   if (i >= 0 && i < acl.getNumClients()) { // get from our known_clients table (sender SHOULD already be known in this context)
     MESH_DEBUG_PRINTLN("PATH to client, path_len=%d", (uint32_t)path_len);
     auto client = acl.getClientByIdx(i);
-    client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len); // store a copy of path, for sendDirect()
+    // PATH has no durable replay freshness signal. Keep it RAM-only and do not
+    // let a replay replace an operator-selected force-flood route.
+    const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
+        MyMesh::saveFilter(client), false /* no durable replay proof */);
+    const mesh::ClientPathUpdateResult path_update =
+        mesh::applyReceivedClientPath(
+            *client, path, path_len, persistence_allowed,
+            OUT_PATH_FORCE_FLOOD);
+    (void)path_update;
     client->last_activity = getRTCClock()->getCurrentTime();
   } else {
     MESH_DEBUG_PRINTLN("onPeerPathRecv: invalid peer idx: %d", i);
@@ -1175,6 +1207,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
+  contacts_save_failures = 0;
   _logging = false;
   region_load_active = false;
   set_radio_at = revert_radio_at = 0;
@@ -2196,7 +2229,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
           && mesh::Utils::fromHex(pubkey, (int)(hex_len / 2), hex)) {
         uint8_t perms = atoi(sp);
         if (acl.applyPermissions(self_id, pubkey, (int)(hex_len / 2), perms)) {
-          dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // trigger acl.save()
+          mesh::scheduleLazyPersistenceMutation(
+              dirty_contacts_expiry, contacts_save_failures,
+              futureMillis(LAZY_CONTACTS_WRITE_DELAY));
           strcpy(reply, "OK");
         } else {
           strcpy(reply, "Err - invalid params");
@@ -2481,8 +2516,21 @@ void MyMesh::loop() {
 
   // is pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
-    acl.save(_fs, MyMesh::saveFilter);
-    dirty_contacts_expiry = 0;
+    const bool saved = acl.save(_fs, MyMesh::saveFilter);
+    if (saved) {
+      mesh::resetLazyPersistenceAfterSuccess(
+          dirty_contacts_expiry, contacts_save_failures);
+    } else {
+      const uint32_t retry_delay =
+          mesh::recordLazyPersistenceSaveFailure(
+              contacts_save_failures, LAZY_CONTACTS_WRITE_DELAY,
+              mesh::LAZY_PERSISTENCE_MAX_RETRY_DELAY_MILLIS);
+      mesh::completeLazyPersistenceSave(
+          dirty_contacts_expiry, false, futureMillis(retry_delay));
+      MESH_DEBUG_PRINTLN(
+          "ERROR: contacts save failed; retry in %lu ms",
+          (unsigned long)retry_delay);
+    }
   }
 
   // TODO: periodically check for OLD/inactive entries in known_clients[], and evict

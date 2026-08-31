@@ -2233,6 +2233,29 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
+  if (strncmp(command, "set pin", 7) == 0
+      && (command[7] == 0 || command[7] == ' '
+          || command[7] == '\t')) {
+    const char* value = command + 7;
+    while (*value == ' ' || *value == '\t') value++;
+    int32_t parsed = 0;
+    if (!mesh::cli::parseIntegerStrict(value, parsed)
+        || parsed < 0 || parsed > 999999) {
+      snprintf(reply, reply_size, "Error: pin must be 0-999999");
+    } else {
+      const uint32_t previous = _prefs.ble_pin;
+      _prefs.ble_pin = static_cast<uint32_t>(parsed);
+      if (!savePrefs()) {
+        _prefs.ble_pin = previous;
+        snprintf(reply, reply_size, "Error: pin changed but save failed");
+      } else {
+        snprintf(reply, reply_size, "> pin is now %06lu",
+                 (unsigned long)_prefs.ble_pin);
+      }
+    }
+    return true;
+  }
+
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
   if (strcmp(command, "get espnow.channel") == 0) {
     formatEspNowChannel(reply, reply_size);
@@ -5999,7 +6022,17 @@ void MyMesh::handleTerminalCommand(char* command) {
         terminalOutput().printf("  OK - FEM TX gain %s\r\n", value);
       }
     } else {
-      terminalOutput().printf("  ERROR: unknown setting: %s\r\n", config);
+      // The terminal has a few presentation-specific setters above, while
+      // handleCommand() owns the shared radio-pref and board-specific command
+      // surface used by framed/rescue clients.  Use it only as the fallback so
+      // Full Companion does not develop holes such as `set radio ...` without
+      // changing the established terminal behavior of `set tx`, `set name`,
+      // or the WiFi commands.
+      if (handleCommand(command, 0, local_reply)) {
+        terminalOutput().printf("  %s\r\n", local_reply);
+      } else {
+        terminalOutput().printf("  ERROR: unknown setting: %s\r\n", config);
+      }
     }
   } else if (strcmp(command, "reboot") == 0) {
     terminalOutput().print("  OK - rebooting in 1 second\r\n");
@@ -6018,6 +6051,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
     terminalOutput().print("  get bluetooth.name\r\n");
     terminalOutput().print("  set bluetooth.name <name|default>\r\n");
+    terminalOutput().print("  set pin <0-999999>\r\n");
     terminalOutput().print("  powersaving [on|off]\r\n");
 #if MESH_USB_LOGGING_AVAILABLE
     terminalOutput().print("  get usb.logging\r\n");
@@ -6086,6 +6120,11 @@ void MyMesh::handleTerminalCommand(char* command) {
     } else {
       terminalOutput().print("  disconnect (closes the TCP terminal)\r\n");
     }
+  } else if (handleCommand(command, 0, local_reply)) {
+    // Fill the same safe shared-command surface for getters (`get name`,
+    // `get radio`, `get tx`, and variant commands).  Terminal-only commands
+    // above still win, including the richer `ver` response and reboot flow.
+    terminalOutput().printf("  %s\r\n", local_reply);
   } else {
     terminalOutput().printf("  ERROR: unknown command: %s\r\n", command);
   }
@@ -6232,25 +6271,6 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   }
   if (strcmp(command, "get name") == 0) {
     snprintf(reply, reply_capacity, "> %s", _prefs.node_name);
-    return true;
-  }
-
-  if (strncmp(command, "set pin ", 8) == 0) {
-    int32_t parsed = 0;
-    if (!mesh::cli::parseIntegerStrict(command + 8, parsed)
-        || parsed < 0 || parsed > 999999) {
-      strcpy(reply, "Error: pin must be 0-999999");
-    } else {
-      const uint32_t previous = _prefs.ble_pin;
-      _prefs.ble_pin = static_cast<uint32_t>(parsed);
-      if (!savePrefs()) {
-        _prefs.ble_pin = previous;
-        strcpy(reply, "Error: pin changed but save failed");
-      } else {
-        snprintf(reply, reply_capacity, "> pin is now %06lu",
-                 (unsigned long)_prefs.ble_pin);
-      }
-    }
     return true;
   }
 

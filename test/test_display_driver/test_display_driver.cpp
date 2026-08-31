@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <helpers/ui/DisplayDriver.h>
+#include <helpers/ui/DisplayTextLayout.h>
 
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -32,7 +34,16 @@ bool isValidUTF8(const char* text) {
 
 class TestDisplay : public DisplayDriver {
 public:
+  struct DrawnText {
+    int x;
+    int y;
+    std::string text;
+  };
+
   std::string printed;
+  std::vector<DrawnText> rows;
+  int cursor_x = 0;
+  int cursor_y = 0;
 
   TestDisplay() : DisplayDriver(100, 100) {}
 
@@ -43,8 +54,14 @@ public:
   void startFrame(ColorVal) override {}
   void setTextSize(int) override {}
   void setColor(ColorVal) override {}
-  void setCursor(int, int) override {}
-  void print(const char* str) override { printed = str; }
+  void setCursor(int x, int y) override {
+    cursor_x = x;
+    cursor_y = y;
+  }
+  void print(const char* str) override {
+    printed = str;
+    rows.push_back({cursor_x, cursor_y, str});
+  }
   void fillRect(int, int, int, int) override {}
   void drawRect(int, int, int, int) override {}
   void drawXbm(int, int, const uint8_t*, int, int) override {}
@@ -75,6 +92,43 @@ TEST(DisplayDriver, FixedBufferDoesNotSplitUTF8Codepoint) {
   display.drawTextEllipsized(0, 0, 255, text.c_str());
   EXPECT_EQ(std::string(254, 'A'), display.printed);
   EXPECT_TRUE(isValidUTF8(display.printed.c_str()));
+}
+
+TEST(DisplayDriver, WrapsCompleteTextAcrossAvailableRows) {
+  TestDisplay display;
+  EXPECT_EQ(3, mesh::ui::drawTextWrapped(
+      display, 4, 10, 3, 9, 3, "ABCDEFG"));
+  ASSERT_EQ(3U, display.rows.size());
+  EXPECT_EQ(4, display.rows[0].x);
+  EXPECT_EQ(10, display.rows[0].y);
+  EXPECT_EQ("ABC", display.rows[0].text);
+  EXPECT_EQ(4, display.rows[1].x);
+  EXPECT_EQ(19, display.rows[1].y);
+  EXPECT_EQ("DEF", display.rows[1].text);
+  EXPECT_EQ(28, display.rows[2].y);
+  EXPECT_EQ("G", display.rows[2].text);
+}
+
+TEST(DisplayDriver, WrappedTextKeepsUTF8CodepointsIntact) {
+  TestDisplay display;
+  EXPECT_EQ(2, mesh::ui::drawTextWrapped(
+      display, 0, 0, 3, 10, 2, "AB\xF0\x9F\x98\x80" "CDE"));
+  ASSERT_EQ(2U, display.rows.size());
+  EXPECT_EQ("AB\xF0\x9F\x98\x80", display.rows[0].text);
+  EXPECT_EQ("CDE", display.rows[1].text);
+  EXPECT_TRUE(isValidUTF8(display.rows[0].text.c_str()));
+  EXPECT_TRUE(isValidUTF8(display.rows[1].text.c_str()));
+}
+
+TEST(DisplayDriver, KeepsMaximumLengthSSIDWithoutEllipsis) {
+  TestDisplay display;
+  const std::string ssid = "1234567890ABCDEF1234567890ABCDEF";
+  EXPECT_EQ(3, mesh::ui::drawTextWrapped(
+      display, 0, 0, 12, 10, 3, ssid.c_str()));
+  ASSERT_EQ(3U, display.rows.size());
+  EXPECT_EQ(ssid,
+            display.rows[0].text + display.rows[1].text
+                + display.rows[2].text);
 }
 
 int main(int argc, char** argv) {

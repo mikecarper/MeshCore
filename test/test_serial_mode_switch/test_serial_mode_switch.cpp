@@ -555,6 +555,27 @@ TEST(SerialFlowControl, FinishesAnUnexpectedShortWriteBeforeNextFrame) {
   EXPECT_FALSE(interface.hasPendingIO());
 }
 
+TEST(SerialFlowControl, RetriesAZeroLengthWriteWithoutLosingTheFrame) {
+  BufferStream stream;
+  stream.write_capacity = MAX_FRAME_SIZE + 3;
+  stream.max_write = 0;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enableFlowControl(true);
+  interface.enable();
+
+  const uint8_t payload[] = {0x88, 0x11, 0x22};
+  EXPECT_EQ(interface.writeFrame(payload, sizeof(payload)), sizeof(payload));
+  EXPECT_TRUE(stream.output.empty());
+  EXPECT_TRUE(interface.hasPendingIO());
+
+  stream.max_write = std::numeric_limits<size_t>::max();
+  interface.loop();
+  const std::vector<uint8_t> expected = {'>', 3, 0, 0x88, 0x11, 0x22};
+  EXPECT_EQ(stream.output, expected);
+  EXPECT_FALSE(interface.hasPendingIO());
+}
+
 TEST(SerialFlowControl, DrainsFramesThroughAFifoSmallerThanTheFrame) {
   BufferStream stream;
   stream.write_capacity = 4;

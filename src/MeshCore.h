@@ -23,25 +23,98 @@
 #define MAX_PATH_SIZE        64
 #define MAX_TRANS_UNIT      255
 
+#if defined(ARDUINO) && defined(NRF52_PLATFORM) && \
+    ((defined(MESH_DEBUG) && MESH_DEBUG) || \
+     (defined(BRIDGE_DEBUG) && BRIDGE_DEBUG) || \
+     (defined(POWERSAVING_DEBUG) && POWERSAVING_DEBUG))
+  #include <Arduino.h>
+  #include <atomic>
+  #include <stdarg.h>
+  #include <stdio.h>
+  #include <string.h>
+  #include "helpers/NonBlockingWriteStream.h"
+
+namespace mesh {
+
+// Adafruit_USBD_CDC::write() waits until the complete buffer has entered the
+// TinyUSB FIFO. That is normally convenient, but it can wait forever when a
+// host has opened the dedicated logging CDC without draining it. Keep debug
+// output best-effort on nRF52: format into one bounded record, preserve a
+// visible truncation marker, and submit it only when the whole record fits in
+// the FIFO snapshot. The atomic flag also prevents two debug callers from both
+// relying on the same availableForWrite() result.
+inline size_t nrf52DebugPrintf(const char* format, ...) {
+  if (format == nullptr || !isUsbLoggingEnabled()) return 0;
+
+  static std::atomic_flag writer_busy = ATOMIC_FLAG_INIT;
+  if (writer_busy.test_and_set(std::memory_order_acquire)) return 0;
+
+  char output[256];
+  va_list args;
+  va_start(args, format);
+  const int required = vsnprintf(output, sizeof(output), format, args);
+  va_end(args);
+
+  size_t length = 0;
+  if (required > 0) {
+    length = static_cast<size_t>(required);
+    if (length >= sizeof(output)) {
+      length = sizeof(output) - 1;
+      const size_t format_length = strlen(format);
+      const bool preserve_newline = format_length > 0
+          && format[format_length - 1] == '\n';
+      const size_t marker_length = preserve_newline ? 4 : 3;
+      memcpy(output + length - marker_length, "...", 3);
+      if (preserve_newline) output[length - 1] = '\n';
+    }
+  }
+
+  size_t written = 0;
+  if (length > 0) {
+    Stream& port = usbLoggingPort();
+    written = port.write(reinterpret_cast<const uint8_t*>(output), length);
+  }
+
+  writer_busy.clear(std::memory_order_release);
+  return written;
+}
+
+}  // namespace mesh
+#endif
+
 #if MESH_DEBUG && ARDUINO
   #include <Arduino.h>
-  #define MESH_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("DEBUG: " F, ##__VA_ARGS__); } } while(0)
-  #define MESH_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("DEBUG: " F "\n", ##__VA_ARGS__); } } while(0)
+  #if defined(NRF52_PLATFORM)
+    #define MESH_DEBUG_PRINT(F, ...) do { mesh::nrf52DebugPrintf("DEBUG: " F, ##__VA_ARGS__); } while(0)
+    #define MESH_DEBUG_PRINTLN(F, ...) do { mesh::nrf52DebugPrintf("DEBUG: " F "\n", ##__VA_ARGS__); } while(0)
+  #else
+    #define MESH_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("DEBUG: " F, ##__VA_ARGS__); } } while(0)
+    #define MESH_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("DEBUG: " F "\n", ##__VA_ARGS__); } } while(0)
+  #endif
 #else
   #define MESH_DEBUG_PRINT(...) {}
   #define MESH_DEBUG_PRINTLN(...) {}
 #endif
 
 #if BRIDGE_DEBUG && ARDUINO
-#define BRIDGE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } } while(0)
+  #if defined(NRF52_PLATFORM)
+    #define BRIDGE_DEBUG_PRINTLN(F, ...) do { mesh::nrf52DebugPrintf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } while(0)
+  #else
+    #define BRIDGE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } } while(0)
+  #endif
 #else
-#define BRIDGE_DEBUG_PRINTLN(...) {}
+  #define BRIDGE_DEBUG_PRINTLN(...) {}
 #endif
 
 #if POWERSAVING_DEBUG && ARDUINO
   #include <Arduino.h>
-  #define POWERSAVING_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("POWERSAVING: " F, ##__VA_ARGS__); } } while(0)
-  #define POWERSAVING_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("POWERSAVING: " F "\n", ##__VA_ARGS__); } } while(0)
+  #if defined(NRF52_PLATFORM)
+    #define POWERSAVING_DEBUG_PRINT(F, ...) do { mesh::nrf52DebugPrintf("POWERSAVING: " F, ##__VA_ARGS__); } while(0)
+    #define POWERSAVING_DEBUG_PRINTLN(F, ...) do { mesh::nrf52DebugPrintf("POWERSAVING: " F "\n", ##__VA_ARGS__); } while(0)
+  #else
+    #define POWERSAVING_DEBUG_PRINT(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("POWERSAVING: " F, ##__VA_ARGS__); } } while(0)
+    #define POWERSAVING_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled()) { mesh::usbLoggingPort().printf("POWERSAVING: " F "\n", ##__VA_ARGS__); } } while(0)
+  #endif
 #else
   #define POWERSAVING_DEBUG_PRINT(...) {}
   #define POWERSAVING_DEBUG_PRINTLN(...) {}

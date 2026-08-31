@@ -787,6 +787,29 @@ the PIN page until Bluetooth connects or the two-minute pairing window expires.
 8. The device is erased and newest firmware is installed
 9. You might need to remove the pairing in Bluetooth System Settings in order to re-pair the app again.
 
+An erase application or ordinary application ZIP/UF2 does **not** repair a
+damaged or partially overwritten SoftDevice. This can happen after flashing an
+nRF52 image for a different board or SoftDevice layout. A characteristic
+failure is that the application can boot and read its filesystem, but reboots
+or hangs when it writes or formats internal flash. Repeating `Erase Flash` is
+not a recovery for that condition.
+
+Recover it with a combined **bootloader + SoftDevice** package for the exact
+board (including XIAO Sense versus non-Sense), installed through serial/BLE DFU
+or SWD. With `adafruit-nrfutil`, the serial form is:
+
+```bash
+adafruit-nrfutil dfu serial -p <port> \
+  -pkg <exact-board-bootloader-with-softdevice>.zip -sb -t 1200
+```
+
+Then install the exact-board MeshCore application. Do not use an application-
+only UF2, filesystem formatter, or a similarly named package from another
+nRF52 board as a substitute. See the confirmed XIAO recovery in
+[issue #3284](https://github.com/meshcore-dev/MeshCore/issues/3284) and obtain
+the matching package from the
+[OTAFIX releases](https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX/releases).
+
 Separately, starting in firmware version 1.7.0, there is a CLI Rescue mode. If your device has a user button (e.g. some RAK, T114), you can activate the rescue mode by holding down the user button of the device within 8 seconds of boot. Then you can use the 'Console' on <https://flasher.meshcore.io>
 
 ### 6.8. Q: WebFlasher fails on Linux with failed to open

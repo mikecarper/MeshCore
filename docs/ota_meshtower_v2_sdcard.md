@@ -46,7 +46,7 @@ trailer is `0xC7000` bytes (815,104 bytes). To package a full self-update:
 
 ```bash
 motatool build --fw ./Heltec_tower_v2_sdcard-new.hex \
-  --sign-key ./trusted-signer.key --out-dir ./motas
+  --sign ./trusted-signer.key --out-dir ./motas
 motatool verify ./motas/*.mota
 ```
 
@@ -60,7 +60,7 @@ motatool build \
   --fw ./Heltec_tower_v2_sdcard-new.hex \
   --patch-type in-place \
   --inplace-memory 0xC7000 \
-  --sign-key ./trusted-signer.key \
+  --sign ./trusted-signer.key \
   --out-dir ./motas
 motatool verify ./motas/*.mota
 ```

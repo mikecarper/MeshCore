@@ -195,6 +195,7 @@ private:
 #endif
   uint8_t reply_data[MAX_PACKET_PAYLOAD];
   unsigned long dirty_contacts_expiry;
+  uint8_t contacts_save_failures;
   CayenneLPP telemetry;
   TransportKeyStore key_store;
   RegionMap region_map;

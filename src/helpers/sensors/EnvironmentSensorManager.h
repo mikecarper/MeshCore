@@ -22,9 +22,12 @@ protected:
 
   bool     gps_detected = false;
   bool     gps_active = false;
+  bool     gps_serial_transport = false;
+  bool     gps_serial_transport_blocked = false;
 
   #if ENV_INCLUDE_GPS
   LocationProvider* _location;
+  LocationProvider* _configured_location;
   void armGpsPowerSavingCycle();
   void start_gps();
   void stop_gps();
@@ -35,13 +38,14 @@ protected:
   void initBasicGPS();
   #ifdef RAK_BOARD
   void rakGPSInit();
-  bool gpsIsAwake(uint8_t ioPin);
+  bool gpsIsAwake(uint8_t ioPin, bool shared_power_rail);
   #endif
   #endif
 
 public:
   #if ENV_INCLUDE_GPS
-  EnvironmentSensorManager(LocationProvider &location): _location(&location){};
+  EnvironmentSensorManager(LocationProvider &location):
+      _location(&location), _configured_location(&location) {};
   LocationProvider* getLocationProvider() { return _location; }
   #else
   EnvironmentSensorManager(){};
@@ -61,4 +65,8 @@ public:
   const char* getSettingValue(int i) const override;
   bool setSettingValue(const char* name, const char* value) override;
   void setPowerSavingEnabled(bool enabled) override;
+  bool gpsUsesSerialUart(uint8_t uart) const override;
+  bool gpsSerialTransportMayConflict(uint8_t uart) const override;
+  bool gpsSerialTransportCanYield(uint8_t uart) const override;
+  bool setGpsSerialTransportBlocked(uint8_t uart, bool blocked) override;
 };

@@ -100,3 +100,68 @@ the panel framebuffer so the full-color cell is not replaced and redrawn once
 per second. See
 [`../../tools/sensecap_indicator_rp2040/README.md`](../../tools/sensecap_indicator_rp2040/README.md)
 for installation and diagnostics.
+
+Both Full Companion layouts, `SenseCapIndicator-LoRa_companion_radio_full` and
+`SenseCapIndicator-ESPNow_companion_radio_full`, can repair a missing, corrupt,
+or older font after station WiFi connects. The LoRa USB/WiFi base profile has
+the same recovery support; USB-only images omit it. Startup never waits for the
+network: the UI uses its built-in font while a bounded background task fetches
+the 1,302,608-byte asset from GitHub's official, content-addressed Git Blob REST
+API:
+
+`https://api.github.com/repos/mikecarper/MeshCore/git/blobs/45dfe8acac20974f53648ef71a31efefa1333fea`
+
+Before each bounded download attempt, the client must receive a fresh SNTP
+response in that attempt (waiting at most 15 seconds) before it opens TLS or
+downloads any bytes; a plausible retained clock is not enough. The initial
+request and every validated Range reconnect recheck that the proof is still
+younger than five minutes, WiFi is connected, and the signed wall clock is
+valid immediately before their TLS handshakes. The request uses GitHub's
+documented raw media type and then requires CA-verified TLS (never an insecure
+client), an exact `Content-Length`, and SHA-256
+`61bce9662db314054e7bcfaa26147a28ad7b500b51baac4cae1caacce90b7421`
+before it tells the RP2040 to publish the staged file. The RP2040 independently
+checks the 1,302,608-byte size and CRC32 `0x19f80d64`, and uses separate stage,
+temporary, backup, and live paths. An interrupted download or reset therefore
+cannot replace the last valid font. A missing/corrupt font activates live after
+recovery; a valid older font stays active until the next boot to avoid holding
+two large runtime font buffers in PSRAM.
+
+The ESP32-S3 and RP2040 do not always finish reset together. If the startup
+`MCFONT INFO` exchange is unavailable rather than explicitly missing, the WiFi
+image waits for station WiFi and re-probes the font service in the same
+background worker. A current font found by that probe is installed without a
+network download. A confirmed missing, corrupt, or older font enters normal
+recovery; four still-unavailable probes (immediate, then after 2, 5, and 15
+seconds) stop until the next boot.
+
+Recovery retries at most four times per boot (immediately, then after 30
+seconds, 2 minutes, and 10 minutes). A later reboot starts a fresh bounded set.
+The recovery client uses a per-client PEM trust anchor for Sectigo Public
+Server Authentication Root E46, so it does not replace the process-global CA
+bundle. That root expires on 2046-03-21; future firmware must still review and
+retest GitHub's certificate chain because an origin can change chains before a
+root expires. GitHub permits 60 unauthenticated REST requests per hour per
+source IP. Devices behind one public IP share that allowance, so the network
+request runs only after a missing, corrupt, or older font is confirmed; a
+current font performs no GitHub request.
+
+After `MCFONT COMMIT` is sent, a transient INFO/GET failure does not authorize
+another download of the same immutable blob. A missing or malformed COMMIT
+reply is also treated as ambiguous rather than failed, because the RP2040 may
+already have completed its durable rename; only an explicit `ERROR ...` reply
+can return to the network retry path. The ESP32 instead performs at most four
+local-only probes (immediate, then after 2, 5, and 15 seconds). If fallback text
+is active, that probe streams and verifies the exact size, CRC32, and SHA-256
+before live activation. If a valid older font remains active until reboot, an
+exact INFO size/CRC32 check relies on COMMIT's full stored-file CRC pass and
+avoids allocating a second 1.3 MiB runtime font.
+If the display's runtime parser nevertheless rejects a buffer that already
+passed the exact size, CRC32, and SHA-256 checks, recovery stops for that boot
+and keeps the built-in fallback; downloading the same immutable bytes again
+cannot repair a parser or memory-state failure.
+
+Automatic recovery requires the matching RP2040 font-service image with the
+two-phase `MCFONT STAGE` / `MCFONT COMMIT` protocol. An older RP2040 service
+safely rejects the commands, leaves the existing font untouched, and can still
+be updated over its own USB connector as described below.

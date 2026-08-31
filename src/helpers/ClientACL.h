@@ -20,10 +20,11 @@ struct ClientInfo {
   uint8_t permissions;
   uint8_t out_path_len;
   uint8_t out_path[MAX_PATH_SIZE];
+  bool out_path_is_persistable;  // live route may replace, but not erase, durable route
   uint8_t alt_path_len;
   uint8_t alt_path[MAX_PATH_SIZE];
   uint8_t shared_secret[PUB_KEY_SIZE];
-  uint32_t last_timestamp;   // by THEIR clock  (transient)
+  uint32_t last_timestamp;   // by THEIR clock (exact live floor; reserved ceiling after load)
   uint32_t last_activity;    // by OUR clock    (transient)
   union  {
     struct {
@@ -50,15 +51,31 @@ class ClientACL {
   FILESYSTEM* _fs;
   ClientInfo clients[MAX_CLIENTS];
   int num_clients;
+  bool login_replay_store_available;
 
 public:
-  ClientACL() { 
+  ClientACL() {
+    _fs = NULL;
     memset(clients, 0, sizeof(clients));
     num_clients = 0;
+    login_replay_store_available = false;
   }
   void load(FILESYSTEM* _fs, const mesh::LocalIdentity& self_id);
-  void save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
+  bool save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
   bool clear();
+
+  // Authenticate the sender/password first, then call this before allocating
+  // or mutating a client.  A true result means any required replay high-water
+  // reservation was durably published.  runtime_last_timestamp is zero when
+  // this boot has no live state for the identity (including after eviction or
+  // revocation), in which case the durable tombstone is authoritative.
+  // login_permissions selects whether a missing identity may allocate durable
+  // state.  Guest/read-only sessions still enforce and advance an existing
+  // tombstone, but otherwise use only their exact in-boot floor.
+  bool authorizeLoginTimestamp(const uint8_t* pubkey,
+                               uint32_t sender_timestamp,
+                               uint32_t runtime_last_timestamp,
+                               uint8_t login_permissions);
 
   ClientInfo* getClient(const uint8_t* pubkey, int key_len);
   ClientInfo* putClient(const mesh::Identity& id, uint8_t init_perms);

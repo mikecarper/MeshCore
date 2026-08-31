@@ -241,9 +241,31 @@ public:
     setBacklight(true);
     size_t fontSize;
     uint8_t* fontData = IndicatorFontClient::load(fontSize);
-    if (fontData != nullptr) installRuntimeFont(fontData, fontSize);
+    if (fontData != nullptr) {
+      const bool installed = installRuntimeFont(fontData, fontSize);
+#ifdef INDICATOR_WIFI_FONT_RECOVERY
+      if (installed) {
+        IndicatorFontClient::noteRuntimeFontInstalled();
+      } else {
+        IndicatorFontClient::noteRuntimeFontInvalid();
+      }
+#endif
+    }
     return true;
   }
+
+#ifdef INDICATOR_WIFI_FONT_RECOVERY
+  void serviceFontRecovery() {
+    size_t fontSize = 0;
+    uint8_t* fontData = IndicatorFontClient::serviceRecovery(fontSize);
+    if (fontData == nullptr) return;
+    if (installRuntimeFont(fontData, fontSize)) {
+      IndicatorFontClient::noteRuntimeFontInstalled();
+    } else {
+      IndicatorFontClient::noteRecoveredFontInvalid();
+    }
+  }
+#endif
 
   void turnOn() override {
     setBacklight(true);

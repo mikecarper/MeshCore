@@ -49,14 +49,15 @@ void SensorManager::updateGpsTelemetryCache(float lat, float lon, float altitude
 }
 
 void SensorManager::maybeStopGpsForTelemetry(unsigned long now) {
-  if (telemetryGpsActive() && !gps_user_enabled && !gps_acquiring && !gpsTelemetryHoldActive(now)) {
+  if (gps_transport_available && telemetryGpsActive() && !gps_user_enabled
+      && !gps_acquiring && !gpsTelemetryHoldActive(now)) {
     telemetryGpsStop();
     gps_next_cache_update_at = now + GPS_TELEMETRY_CACHE_INTERVAL_SEC * 1000UL;
   }
 }
 
 void SensorManager::beginGpsTelemetryAcquisition(unsigned long now) {
-  if (!telemetryGpsDetected() || gps_acquiring) return;
+  if (!gps_transport_available || !telemetryGpsDetected() || gps_acquiring) return;
 
   gps_acquiring = true;
   gps_acquire_has_fix = false;
@@ -83,9 +84,19 @@ void SensorManager::finishGpsTelemetryAcquisition(unsigned long now, bool use_we
 }
 
 bool SensorManager::queryGpsTelemetry(uint8_t requester_permissions, CayenneLPP& telemetry) {
-  if (!(requester_permissions & TELEM_PERM_LOCATION) || !telemetryGpsDetected()) return false;
+  if (!(requester_permissions & TELEM_PERM_LOCATION)
+      || !telemetryGpsDetected()) return false;
 
   unsigned long now = millis();
+  if (!gps_transport_available) {
+    // A bridge may temporarily own the GPS UART. Authorized callers can still
+    // receive the last good fix while it is inside the normal freshness bound,
+    // but the query must not create a hold or try to reclaim the UART.
+    if (!gpsTelemetryCacheFresh(now)) return false;
+    telemetry.addGPS(TELEM_CHANNEL_SELF, gps_cache_lat, gps_cache_lon,
+                     gps_cache_altitude);
+    return true;
+  }
   gps_hold_until = now + GPS_TELEMETRY_HOLD_SEC * 1000UL;
   if (!telemetryGpsActive()) telemetryGpsStart();
   if (!gpsTelemetryCacheFresh(now) && !gps_acquiring) beginGpsTelemetryAcquisition(now);
@@ -96,6 +107,7 @@ bool SensorManager::queryGpsTelemetry(uint8_t requester_permissions, CayenneLPP&
 }
 
 void SensorManager::processGpsTelemetryFix(float lat, float lon, float altitude, unsigned long now) {
+  if (!gps_transport_available) return;
   if (!gps_acquiring) {
     if (gps_user_enabled || gpsTelemetryHoldActive(now)) {
       updateGpsTelemetryCache(lat, lon, altitude, now);
@@ -129,6 +141,7 @@ void SensorManager::processGpsTelemetryFix(float lat, float lon, float altitude,
 }
 
 void SensorManager::loopGpsTelemetry(unsigned long now) {
+  if (!gps_transport_available) return;
   if (!gps_user_enabled && !gpsTelemetryHoldActive(now) && !gps_acquiring) {
     maybeStopGpsForTelemetry(now);
   }
@@ -146,10 +159,56 @@ void SensorManager::setGpsTelemetryUserEnabled(bool enabled) {
   gps_user_enabled = enabled;
   unsigned long now = millis();
   if (enabled) {
-    if (telemetryGpsDetected() && !telemetryGpsActive()) telemetryGpsStart();
+    if (gps_transport_available && telemetryGpsDetected()
+        && !telemetryGpsActive()) telemetryGpsStart();
   } else {
     maybeStopGpsForTelemetry(now);
   }
+}
+
+void SensorManager::setGpsTelemetryTransportAvailable(bool available) {
+  if (gps_transport_available == available) return;
+
+  gps_transport_available = available;
+  if (!available) {
+    // The UART is no longer ours. Cancel both the short acquisition and the
+    // two-hour remote-query hold so neither can silently reclaim it from a
+    // bridge. Preserve the user's preference and last good cache.
+    gps_acquiring = false;
+    gps_acquire_has_fix = false;
+    gps_hold_until = 0;
+    gps_acquire_started_at = 0;
+    gps_stable_started_at = 0;
+    gps_weighted_lat = 0;
+    gps_weighted_lon = 0;
+    gps_weighted_altitude = 0;
+    gps_weight_sum = 0;
+    gps_weight_count = 0;
+    return;
+  }
+
+  gps_next_cache_update_at = 0;
+  if (gps_user_enabled && telemetryGpsDetected() && !telemetryGpsActive()) {
+    telemetryGpsStart();
+  }
+}
+
+void SensorManager::resetGpsTelemetryTransportState() {
+  // Hardware discovery may be rerun after a bridge-owned UART was blocked.
+  // Reset transient ownership without invoking a provider callback before the
+  // new probe has established which provider, if any, is present.
+  gps_transport_available = true;
+  gps_acquiring = false;
+  gps_acquire_has_fix = false;
+  gps_hold_until = 0;
+  gps_acquire_started_at = 0;
+  gps_stable_started_at = 0;
+  gps_weighted_lat = 0;
+  gps_weighted_lon = 0;
+  gps_weighted_altitude = 0;
+  gps_weight_sum = 0;
+  gps_weight_count = 0;
+  gps_next_cache_update_at = 0;
 }
 #endif
 

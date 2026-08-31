@@ -501,6 +501,26 @@
     });
   }
 
+  function applyMergedRak4631RepeaterCapabilities(profiles) {
+    return (profiles || []).map(function (profile) {
+      const target = String(profile && profile.target || "").toLowerCase();
+      if (
+        target !== "rak_4631_repeater" &&
+        target !== "rak_4631_repeater_lora_ota_no_external_sensors"
+      ) {
+        return profile;
+      }
+
+      // The canonical RAK4631 repeater contains both the ordinary interface
+      // and the runtime-selectable RS232 bridge. Legacy Serial1/Serial2 target
+      // rows remain exact OTA compatibility assets; do not attach their files
+      // to this profile merely to expose the merged image's second mode.
+      profile.mode = "standard";
+      profile.connectionModes = ["standard", "rs232"];
+      return profile;
+    });
+  }
+
   function applyMergedStandardUsbLoggingCapabilities(profiles) {
     return (profiles || []).map(function (profile) {
       const safeRole = [
@@ -619,8 +639,10 @@
       return !isHiddenLegacyProfile(profile);
     });
     const profiles = applyMergedStandardUsbLoggingCapabilities(
-      omitTransportsReplacedByFull(
-        applyFullCompanionCapabilities(visibleProfiles)
+      applyMergedRak4631RepeaterCapabilities(
+        omitTransportsReplacedByFull(
+          applyFullCompanionCapabilities(visibleProfiles)
+        )
       )
     ).sort(function (a, b) {
       return a.target.localeCompare(b.target, undefined, {
@@ -655,6 +677,9 @@
   }
 
   function profileFieldValues(profile, field) {
+    if (field === "mode" && Array.isArray(profile.connectionModes)) {
+      return profile.connectionModes;
+    }
     if (field === "logging" && Array.isArray(profile.loggingModes)) {
       return profile.loggingModes;
     }
@@ -714,10 +739,27 @@
       rak15001: "RAK15001",
       qspi: "QSPI",
     };
-    return value.split("-").map(function (token) {
-      return tokenLabels[token] ||
-        token.charAt(0).toUpperCase() + token.slice(1);
-    }).join(" ");
+    const tokens = value.split("-");
+    const labels = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (
+        tokens[index] === "no" &&
+        tokens[index + 1] === "external" &&
+        tokens[index + 2] === "sensors"
+      ) {
+        // The legacy target token is an OTA identity, not a literal statement
+        // that the I2C bus and every external peripheral have been removed.
+        labels.push("Reduced optional environmental/ranging drivers");
+        index += 2;
+        continue;
+      }
+      const token = tokens[index];
+      labels.push(
+        tokenLabels[token] ||
+        token.charAt(0).toUpperCase() + token.slice(1)
+      );
+    }
+    return labels.join(" ");
   }
 
   function labelFor(field, value) {
@@ -860,7 +902,12 @@
     facts.className = "firmware-picker-facts";
     const factRows = [
       ["Target", profile.target],
-      ["Connection / mode", labelFor("mode", profile.mode)],
+      [
+        "Connection / mode",
+        profileFieldValues(profile, "mode").map(function (mode) {
+          return labelFor("mode", mode);
+        }).join(" / "),
+      ],
       ["Logging", labelFor("logging", profile.logging)],
       ["OTA", labelFor("ota", profile.ota)],
       ["Feature profile", labelFor("feature", profile.feature)],
@@ -1203,6 +1250,8 @@
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
     applyFullCompanionCapabilities: applyFullCompanionCapabilities,
+    applyMergedRak4631RepeaterCapabilities:
+      applyMergedRak4631RepeaterCapabilities,
     applyMergedStandardUsbLoggingCapabilities:
       applyMergedStandardUsbLoggingCapabilities,
     applyDualCdcFullCompanionCapabilities: applyFullCompanionCapabilities,

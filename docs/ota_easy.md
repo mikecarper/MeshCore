@@ -19,7 +19,8 @@ complete container stays off-chip. See [nRF52 repeater OTA with external QSPI](o
 [MeshTower V2 microSD LoRa OTA](ota_meshtower_v2_sdcard.md).
 
 MeshTower V2 microSD application and bootloader containers must be Ed25519-signed by a key in the device
-allowlist; pass `--sign-key` when building one. Its BLM2-capable SD-aware bootloader is also required before
+allowlist; pass `--sign` to `motatool build` (or `--sign-key` to the end-to-end
+runner) when building one. Its BLM2-capable SD-aware bootloader is also required before
 ordinary application or bootloader OTA can use the reset-retained authorization record. Upgrade preview.12
 locally over USB/BLE DFU or SWD first; there is no raw-card compatibility handoff.
 
@@ -85,13 +86,25 @@ payload. If any required window closes, the transfer stops making progress and c
 overlapping window.
 
 `build.sh` provides a `*_repeater_lora_ota_no_external_sensors` build for standalone ESP32 and nRF52 repeater
-targets that need a smaller internal update workspace. Those siblings omit optional external I2C
-environmental sensors while retaining board-native features such as displays, buttons, battery monitoring,
+targets that need a smaller internal update workspace. Those siblings omit selected optional environmental
+and ranging drivers while retaining board-native features such as displays, buttons, battery monitoring,
 and GPS where the target uses the GPS-preserving lean profile. RAK3401 and RAK4631 reduced builds also
-retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors; together these drivers add 4,808
-bytes over the otherwise reduced image. The RAK3401 OTA repeater retains RAK12501 support in sensor slot A;
-slot D conflicts with the RAK13302 radio's BUSY/DIO1 lines. The RAK4631 OTA repeater retains GPS and defaults
-its runtime RS-232 bridge to Serial2; Serial1 and GPS use the same UART and must not be enabled together.
+retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors; together these drivers cost less
+than 5 KiB in the measured profile. Those four monitor drivers are not the only retained I2C support: the
+board's SSD1306 OLED, supported autodiscovered RTCs, and the RAK12500 GPS remain separate I2C peripherals in
+GPS-compatible RAK recipes. RAK12501/L76K GPS instead uses UART Serial1. The RAK3401 OTA repeater supports
+either GPS module in sensor slot A; slot D conflicts with the RAK13302 radio's BUSY/DIO1 lines. The RAK4631
+OTA repeater defaults its runtime RS-232 bridge to Serial2 so the UART RAK12501 can retain Serial1. The
+runtime guard always reserves Serial1 because a bounded silent probe cannot prove a cold RAK12501 is absent;
+the shared WB_IO2/3V3_S rail keeps a fitted module powered and driving the UART. Use Serial2. Serial1 requires
+an explicit no-GPS/dedicated image. The merged image remains fail-closed even when it detects an I2C RAK12500.
+The explicit legacy Serial1 bridge omits the combined GPS provider, including the otherwise non-UART
+RAK12500 path.
+
+The firmware-configured INA3221 address and the RAK12500 address are both `0x42`; they cannot coexist on one
+bus at those addresses. Keep RAK12500 at `0x42`, strap INA3221 A0 to SCL for `0x43`, and use a build with
+`-DTELEM_INA3221_ADDRESS=0x43` when both are installed.
+
 Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater install-capable; those targets do not need to reserve internal flash
@@ -283,8 +296,10 @@ running application. The hash check in the next step proves that it is the right
 
 On RAK4631 repeaters, use the
 `RAK_4631_repeater_lora_ota_no_external_sensors` environment. It retains built-in battery monitoring but
-omits optional external environmental sensor packages so the delta fits the safe in-place workspace. INA219,
+omits selected optional environmental/ranging drivers so the delta fits the safe in-place workspace. INA219,
 INA226, INA260, and INA3221 I2C voltage/current monitors remain supported despite the legacy target name.
+That trim does not remove the SSD1306 OLED, autodiscovered I2C RTCs, or GPS-compatible RAK12500 I2C path.
+The `0x42` RAK12500/INA3221 addressing rule above still applies.
 If the device has a RAK15001 installed in sensor slot C and the matching
 RAK15001 OTAFIX bootloader, use
 `RAK_4631_repeater_rak15001_slot_c_lora_ota` instead. That target retains the

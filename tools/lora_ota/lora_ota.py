@@ -36,7 +36,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, TypeVar
 import zipfile
 
@@ -66,6 +66,49 @@ TRANSMISSION_PROMPT_SECONDS = 10
 SOURCE_RXPS_BUSY_RETRY_LIMIT = 32
 ADAPTIVE_POLL_MAX_FACTOR = 3
 TEMP_RADIO_SWITCH_DELAY_SECONDS = 3
+# Before a long OTA window, every participant must survive one complete,
+# independently bounded TempRadio lease.  Three minutes is deliberately long
+# enough to expose an unreachable hop or a broken automatic return without
+# risking the two-hour maintenance window requested for the transfer itself.
+TEMP_RADIO_PREFLIGHT_MINUTES = 3
+TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS = 15
+TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS = 30
+# Remote rehearsal nodes use their existing absolute ``tempradioat`` command.
+# A common host deadline is projected into each node's independently drifting
+# RTC, so an old controller retry can only request the same fixed start/end and
+# can never create a fresh three-minute lease after cleanup.  The scheduler
+# carries the complete measured clock-read RTT into each projected host window;
+# the small guard below covers only integer-second quantization and handoff
+# scheduling, not transport uncertainty.
+TEMP_RADIO_PREFLIGHT_SCHEDULE_GUARD_SECONDS = 3
+TEMP_RADIO_PREFLIGHT_SOURCE_ARM_LEAD_SECONDS = 5
+TEMP_RADIO_PREFLIGHT_ARM_BASE_SECONDS = 30
+# Normal-channel destination identity is read-only and happens before any
+# rehearsal lease or radio mutation. A marginal but usable link can lose four
+# consecutive replies, so give this exact proof a larger finite budget without
+# relaxing the much smaller retry limit inside the live temporary window.
+TEMP_RADIO_NORMAL_BASELINE_TIMEOUT_SECONDS = 4 * 60
+TEMP_RADIO_NORMAL_BASELINE_RETRY_LIMIT = 8
+# Remote replay guards depend on the controller's signed timestamps.  A
+# rebooted companion can be months behind even though its radio and ACL are
+# otherwise healthy.  Advance stale managed clocks before any remote packet;
+# never move a clock backward, and fail closed when a future clock exceeds the
+# project's ten-minute drift policy.
+TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS = 10 * 60
+TEMP_RADIO_CLOCK_READ_TOLERANCE_SECONDS = 60
+# A text terminal exposes only whole minutes. When its complete minute window
+# is behind the host, request a value far enough ahead that the hidden seconds
+# and one bounded CLI operation cannot turn the nominally forward write into a
+# backward write. This remains comfortably inside the ten-minute policy.
+TEMP_RADIO_SOURCE_CLOCK_PIN_LEAD_SECONDS = 2 * 60
+# A fixed remote `time` value must still be in the future after ordinary
+# normal-channel CLI latency. Two minutes remains inside the ten-minute drift
+# policy and, unlike `clock sync`, also works when the target began ahead.
+TEMP_RADIO_REMOTE_CLOCK_PIN_LEAD_SECONDS = 2 * 60
+# ``meshcli wait_ack`` waits five seconds.  Four consecutive waits keep the
+# generic source challenge inside the 30-second rehearsal operation bound,
+# while accepting an ACK that arrives behind unrelated event traffic.
+TEMP_RADIO_PREFLIGHT_ACK_WAITS = 4
 TEMP_RADIO_RETURN_MINUTES = 1
 TEMP_RADIO_RETURN_MARGIN_SECONDS = 15
 SHARED_SOURCE_NORMAL_TIMEOUT_SECONDS = 30
@@ -79,6 +122,10 @@ INSTALL_TARGET_WINDOW_MINUTES = 3
 # when the exact installed identity replies.
 DEFAULT_POST_INSTALL_READY_WAIT_SECONDS = 300
 POST_INSTALL_READY_PROBE_INTERVAL_SECONDS = 10
+# In-place detools patch generation is CPU-bound and belongs on a workstation
+# or build VM. Keep the explicit preparation workflow bounded; Pi-class radio
+# hosts should serve an already-built, hash-verified package instead.
+DEFAULT_PACKAGE_BUILD_TIMEOUT_SECONDS = 60 * 60
 COMPANION_TERMINAL_START = "+++MESHCORE-TERM-START"
 COMPANION_TERMINAL_STOP = "+++MESHCORE-TERM-STOP"
 # Firmware may hold the apply reboot for up to 15 seconds while its reply
@@ -223,6 +270,36 @@ class RelayTimingSettings:
 
 
 @dataclass(frozen=True)
+class RemoteClockSample:
+    """One authenticated remote epoch with complete host-time uncertainty."""
+
+    epoch: int
+    monotonic_started_at: float
+    monotonic_completed_at: float
+    host_started_at: float
+    host_completed_at: float
+
+    @property
+    def round_trip_seconds(self) -> float:
+        return self.monotonic_completed_at - self.monotonic_started_at
+
+    def projected_host_bounds(self, remote_epoch: int) -> tuple[float, float]:
+        """Map a remote epoch to every possible host-monotonic instant.
+
+        The binary reply does not expose where inside the request/response RTT
+        the sampled second was read.  If ``epoch`` occurred at any instant in
+        that complete interval, a later remote epoch can occur at the same
+        offset from either endpoint.  Keeping both endpoints prevents a slow
+        hop from starting early or expiring late outside cleanup ownership.
+        """
+        delta = remote_epoch - self.epoch
+        return (
+            self.monotonic_started_at + delta,
+            self.monotonic_completed_at + delta,
+        )
+
+
+@dataclass(frozen=True)
 class RxpsSettings:
     enabled: bool
     rx_us: int
@@ -242,7 +319,21 @@ def prompt_after_transmission_failure(
     error: TransmissionError,
     timeout: int = TRANSMISSION_PROMPT_SECONDS,
 ) -> bool:
-    """Return True to continue; timeout and blank input deliberately continue."""
+    """Return True to continue an interactive replay-safe retry cycle.
+
+    A non-interactive process has nobody who can make the safety decision, so
+    it stops after the finite automatic retry cycle. Interactive timeout and
+    blank input deliberately keep the existing persistent behavior.
+    """
+    if not sys.stdin.isatty():
+        print(
+            f"\n[transmission] {label} is still failing after "
+            f"{TRANSMISSION_RETRY_LIMIT} retries or "
+            f"{TRANSMISSION_RETRY_WINDOW_SECONDS} seconds: {error}\n"
+            "Stop or continue? stopping (non-interactive)."
+        )
+        return False
+
     prompt = (
         f"\n[transmission] {label} is still failing after "
         f"{TRANSMISSION_RETRY_LIMIT} retries or "
@@ -250,11 +341,6 @@ def prompt_after_transmission_failure(
         f"Stop or continue? [s/C] (continuing in {timeout}s): "
     )
     print(prompt, end="", flush=True)
-
-    if not sys.stdin.isatty():
-        time.sleep(timeout)
-        print("continue")
-        return True
 
     answer = ""
     if os.name == "nt":
@@ -325,6 +411,85 @@ def retry_transmission(action: Callable[[], T], label: str) -> T:
                 ) from exc
             cycle_started = time.monotonic()
             retries = 0
+
+
+def retry_transmission_bounded(action: Callable[[], T], label: str) -> T:
+    """Retry a replay-safe proof without an operator continuation loop."""
+    cycle_started = time.monotonic()
+    retries = 0
+    while True:
+        try:
+            return action()
+        except TransmissionError as exc:
+            elapsed = time.monotonic() - cycle_started
+            if (
+                retries >= TRANSMISSION_RETRY_LIMIT
+                or elapsed >= TRANSMISSION_RETRY_WINDOW_SECONDS
+            ):
+                raise TransmissionError(
+                    f"{label} failed after {retries} retries and "
+                    f"{elapsed:.1f} seconds: {exc}"
+                ) from exc
+            retries += 1
+            print(
+                f"[transmission] {label} failed; bounded retry "
+                f"{retries}/{TRANSMISSION_RETRY_LIMIT}: {exc}"
+            )
+            time.sleep(transmission_retry_delay(retries))
+
+
+def retry_transmission_before_deadline(
+    action: Callable[[], T],
+    label: str,
+    deadline: float,
+    *,
+    retry_limit: int = TRANSMISSION_RETRY_LIMIT,
+    deadline_label: str = "three-minute rehearsal lease",
+) -> T:
+    """Retry a replay-safe proof within one named absolute deadline."""
+    if retry_limit < 0:
+        raise ValueError("retry_limit must be non-negative")
+    retries = 0
+    last_error: TransmissionError | None = None
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            detail = f": {last_error}" if last_error is not None else ""
+            raise TransmissionError(
+                f"{label} exceeded the {deadline_label}{detail}"
+            ) from last_error
+        try:
+            result = action()
+        except TransmissionError as exc:
+            last_error = exc
+            if retries >= retry_limit:
+                raise TransmissionError(
+                    f"{label} failed after {retries} retries: {exc}"
+                ) from exc
+            retries += 1
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TransmissionError(
+                    f"{label} exceeded the {deadline_label}: {exc}"
+                ) from exc
+            delay = min(transmission_retry_delay(retries), remaining)
+            if delay >= remaining:
+                raise TransmissionError(
+                    f"{label} cannot retry before the {deadline_label} "
+                    f"expires: {exc}"
+                ) from exc
+            print(
+                f"[transmission] {label} failed; deadline-bounded retry "
+                f"{retries}/{retry_limit}: {exc}"
+            )
+            time.sleep(delay)
+        else:
+            if time.monotonic() >= deadline:
+                raise TransmissionError(
+                    f"{label} completed at or after the {deadline_label} "
+                    "expired"
+                )
+            return result
 
 
 def transmission_retry_delay(retry_number: int) -> int:
@@ -439,6 +604,30 @@ def lora_airtime_seconds(
         0,
     )
     return (preamble_symbols + 4.25 + payload_symbols) * symbol_seconds
+
+
+def remote_cli_mutation_drain_seconds(radio: RadioSettings) -> float:
+    """Conservative lifetime of an ambiguously queued remote CLI mutation.
+
+    A host-side ``trywait_msg`` timeout does not cancel the controller
+    firmware's outbound packet or its type-2 text retry sequence.  Use the
+    firmware's hard maxima rather than the host timeout: 21 direct retries,
+    maximum configurable retry/CAD/duty delays, one radio-driver retry per
+    transmission, and a full 16-packet companion queue ahead of the command.
+    CR8 is deliberate because adaptive direct retries may be slower than the
+    saved tuple's coding rate.  This bound is only paid after an ambiguous
+    state-changing command; an exact application reply cancels the risk.
+    """
+    packet_airtime = lora_airtime_seconds(
+        184,
+        radio.bandwidth,
+        radio.spreading_factor,
+        8,
+    )
+    # The derivation's exact upper estimate is roughly 6,000 + 1,250 packet
+    # airtimes.  Round both terms upward so scheduler, serial, and clock
+    # quantization cannot make cleanup return on the boundary.
+    return 7200.0 + 1500.0 * packet_airtime
 
 
 def ota_path_transmissions(args: argparse.Namespace) -> int:
@@ -1025,10 +1214,18 @@ def load_base_image(path: Path, target: TargetInfo) -> EndFInfo:
 
 
 def redact_text(value: str, sensitive_values: tuple[str, ...] = ()) -> str:
-    for sensitive in sensitive_values:
-        if sensitive:
-            value = value.replace(sensitive, "<REDACTED>")
-    return value
+    sensitive = sorted(
+        {item for item in sensitive_values if item},
+        key=len,
+        reverse=True,
+    )
+    if not sensitive:
+        return value
+    # Replace all secrets in one pass. Sequential str.replace() calls can
+    # expose the suffix of a longer password when another password is its
+    # prefix, and can accidentally rewrite the redaction marker itself.
+    pattern = re.compile("|".join(re.escape(item) for item in sensitive))
+    return pattern.sub("<REDACTED>", value)
 
 
 def _debug_text(
@@ -1215,7 +1412,11 @@ def prepare_package(
             command.extend(["--inplace-memory", inplace_memory])
         if args.sign_key:
             command.extend(["--sign", str(args.sign_key.resolve())])
-        result = run_checked(command, label="build mOTA", timeout=600)
+        result = run_checked(
+            command,
+            label="build mOTA",
+            timeout=args.package_build_timeout,
+        )
         print(result.stdout.strip())
         selected = parse_mota(
             read_bounded_file(output, MAX_ARCHIVE_MEMBER_SIZE, "mOTA file"), output
@@ -1432,6 +1633,17 @@ class PersistentMeshcliSession:
             rb"(?:^|\r?\n)" + re.escape(marker.encode("ascii")) + rb"\r?\n"
         )
 
+    def _redacted_pending_tail(
+        self,
+        sensitive_values: tuple[str, ...],
+        limit: int = 4096,
+    ) -> str:
+        # Redact before truncating. If a password crosses the tail boundary,
+        # truncating first would leave an unrecognizable (and printable)
+        # password suffix in debug output or an exception.
+        detail = bytes(self.pending).decode("utf-8", "replace")
+        return redact_text(detail, sensitive_values)[-limit:]
+
     def _read_frame(
         self,
         start: str,
@@ -1454,13 +1666,13 @@ class PersistentMeshcliSession:
                 del self.pending[:-64 * 1024]
 
             if len(self.pending) > 8 * 1024 * 1024:
+                self.close()
                 raise OtaError("persistent meshcli output exceeded 8 MiB")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 debug_stream(
                     "persistent meshcli pending output",
-                    self.pending[-4096:],
-                    sensitive_values,
+                    self._redacted_pending_tail(sensitive_values),
                 )
                 self.close()
                 raise OtaError("persistent meshcli command timed out")
@@ -1468,11 +1680,8 @@ class PersistentMeshcliSession:
                 chunk = self.output_queue.get(timeout=min(remaining, 1.0))
             except queue.Empty:
                 if self.process is not None and self.process.poll() is not None:
-                    detail = bytes(self.pending[-4096:]).decode("utf-8", "replace")
-                    debug_stream(
-                        "persistent meshcli final output", detail,
-                        sensitive_values,
-                    )
+                    detail = self._redacted_pending_tail(sensitive_values)
+                    debug_stream("persistent meshcli final output", detail)
                     self.close()
                     raise OtaError(
                         "persistent meshcli session exited"
@@ -1480,11 +1689,8 @@ class PersistentMeshcliSession:
                     )
                 continue
             if chunk is None:
-                detail = bytes(self.pending[-4096:]).decode("utf-8", "replace")
-                debug_stream(
-                    "persistent meshcli final output", detail,
-                    sensitive_values,
-                )
+                detail = self._redacted_pending_tail(sensitive_values)
+                debug_stream("persistent meshcli final output", detail)
                 self.close()
                 raise OtaError(
                     "persistent meshcli session closed"
@@ -1512,7 +1718,10 @@ class PersistentMeshcliSession:
             self.process.stdin.flush()
         except (BrokenPipeError, OSError) as exc:
             self.close()
-            raise OtaError(f"persistent meshcli input failed: {exc}") from exc
+            detail = redact_text(str(exc), sensitive_values)
+            raise OtaError(
+                f"persistent meshcli input failed: {detail}"
+            ) from exc
         output = self._read_frame(
             start_marker, end_marker, timeout, sensitive_values
         )
@@ -1606,7 +1815,10 @@ class Controller:
         self._authenticated_targets.add(target)
 
     def _execute(
-        self, commands: list[str], label: str
+        self,
+        commands: list[str],
+        label: str,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         # Keep admin passwords out of the child process command line. meshcli's
         # script parser uses POSIX shlex on every platform, so shlex.join gives
@@ -1637,10 +1849,14 @@ class Controller:
                 print(f"[debug] meshcli script: {script_path}")
             if os.name != "nt":
                 script_path.chmod(0o600)
-            timeout = max(90, self.reply_timeout + 60)
+            operation_timeout = (
+                max(90, self.reply_timeout + 60)
+                if timeout is None
+                else max(1.0, timeout)
+            )
             if self._meshcli_session is not None:
                 stdout = self._meshcli_session.run_script(
-                    script_path, frame_start, frame_end, timeout,
+                    script_path, frame_start, frame_end, operation_timeout,
                     sensitive_values,
                 )
                 result = subprocess.CompletedProcess(
@@ -1654,7 +1870,7 @@ class Controller:
                 result = run_checked(
                     command,
                     label=label,
-                    timeout=timeout,
+                    timeout=operation_timeout,
                     sensitive_values=sensitive_values,
                 )
         finally:
@@ -1674,17 +1890,34 @@ class Controller:
         )
         return OtaError(f"{label} returned no JSON: {detail or 'no output'}")
 
-    def _run(self, commands: list[str], label: str) -> list[dict]:
-        result = self._execute(commands, label)
+    def _run(
+        self,
+        commands: list[str],
+        label: str,
+        timeout: float | None = None,
+    ) -> list[dict]:
+        result = (
+            self._execute(commands, label)
+            if timeout is None
+            else self._execute(commands, label, timeout)
+        )
         objects = json_objects(result.stdout)
         if not objects:
             raise self._no_json_error(result, label)
         return objects
 
     def _run_marked(
-        self, commands: list[str], label: str, marker: str
+        self,
+        commands: list[str],
+        label: str,
+        marker: str,
+        timeout: float | None = None,
     ) -> tuple[list[dict], list[dict]]:
-        result = self._execute(commands, label)
+        result = (
+            self._execute(commands, label)
+            if timeout is None
+            else self._execute(commands, label, timeout)
+        )
         before, found, after = result.stdout.partition(marker)
         if not found:
             detail = "\n".join(
@@ -1695,8 +1928,14 @@ class Controller:
             )
         return json_objects(before + after), json_objects(after)
 
-    def get_radio(self) -> RadioSettings:
-        objects = self._run(["get", "radio"], "read controller radio")
+    def get_radio(self, timeout: float | None = None) -> RadioSettings:
+        objects = (
+            self._run(["get", "radio"], "read controller radio")
+            if timeout is None
+            else self._run(
+                ["get", "radio"], "read controller radio", timeout
+            )
+        )
         for value in reversed(objects):
             if all(key in value for key in (
                 "radio_freq", "radio_bw", "radio_sf", "radio_cr"
@@ -1710,8 +1949,12 @@ class Controller:
                 )
         raise OtaError("meshcli did not return the controller radio settings")
 
-    def get_public_key(self) -> str:
-        objects = self._run(["infos"], "read controller identity")
+    def get_public_key(self, timeout: float | None = None) -> str:
+        objects = (
+            self._run(["infos"], "read controller identity")
+            if timeout is None
+            else self._run(["infos"], "read controller identity", timeout)
+        )
         for value in reversed(objects):
             public_key = value.get("public_key")
             if (
@@ -1720,6 +1963,186 @@ class Controller:
             ):
                 return public_key.lower()
         raise OtaError("meshcli did not return the controller public key")
+
+    def get_clock(self, timeout: float | None = None) -> int:
+        objects = (
+            self._run(["clock"], "read controller clock")
+            if timeout is None
+            else self._run(
+                ["clock"], "read controller clock", timeout
+            )
+        )
+        epochs = [
+            value["time"]
+            for value in objects
+            if isinstance(value.get("time"), int)
+            and not isinstance(value.get("time"), bool)
+        ]
+        if len(epochs) != 1 or not 0 < epochs[0] <= 0xFFFFFFFF:
+            raise OtaError(
+                "meshcli did not return one unambiguous controller epoch"
+            )
+        return int(epochs[0])
+
+    def sync_clock_forward(self, timeout: float | None = None) -> None:
+        objects = (
+            self._run(["clock", "sync"], "advance controller clock")
+            if timeout is None
+            else self._run(
+                ["clock", "sync"], "advance controller clock", timeout
+            )
+        )
+        errors = [value.get("error") for value in objects if "error" in value]
+        if errors:
+            raise OtaError(
+                "meshcli could not advance the controller clock: "
+                + "; ".join(str(value) for value in errors)
+            )
+        if not any("ok" in value for value in objects):
+            raise OtaError(
+                "meshcli returned no acknowledgement for controller clock sync"
+            )
+
+    def get_contact_clock(
+        self,
+        target: str,
+        expected_public_key: str,
+        *,
+        timeout: float | None = None,
+    ) -> int:
+        """Read one contact's authenticated identity and binary clock reply.
+
+        meshcore-cli 1.6 emits ``req_clock`` as one raw decimal line even in
+        JSON mode.  Frame it with a random marker, bind the selected contact to
+        its complete already-verified key, and reject extra decimal lines so
+        unrelated asynchronous output can never choose a schedule epoch.
+        """
+        marker = f"MESHCORE_OTA_CLOCK_{secrets.token_hex(16)}"
+        commands = [
+            "echo", marker,
+            "contact_info", target,
+            "req_clock", target,
+        ]
+        result = (
+            self._execute(commands, f"read clock from {target}")
+            if timeout is None
+            else self._execute(
+                commands, f"read clock from {target}", timeout
+            )
+        )
+        _before, found, after = result.stdout.partition(marker)
+        if not found:
+            raise TransmissionError(
+                f"meshcli did not reach the clock marker for {target}"
+            )
+        contact_keys = [
+            value["public_key"].lower()
+            for value in json_objects(after)
+            if value.get("adv_name") == target
+            and isinstance(value.get("public_key"), str)
+            and re.fullmatch(r"[0-9A-Fa-f]{64}", value["public_key"])
+        ]
+        if contact_keys != [expected_public_key.lower()]:
+            raise OtaError(
+                f"clock query did not expose one exact contact identity for "
+                f"{target}"
+            )
+        clock_lines = [
+            line.strip()
+            for line in after.replace("\r", "").split("\n")
+            if re.fullmatch(r"[0-9]{1,10}", line.strip())
+        ]
+        if len(clock_lines) != 1:
+            raise TransmissionError(
+                f"clock query for {target} returned {len(clock_lines)} "
+                "unambiguous epoch values"
+            )
+        epoch = int(clock_lines[0])
+        if epoch <= 0 or epoch > 0xFFFFFFFF:
+            raise OtaError(f"clock query for {target} returned invalid {epoch}")
+        return epoch
+
+    def prove_contact_ack(
+        self,
+        target: str,
+        expected_public_key: str,
+        label: str,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        """Prove a contact can receive and ACK on the controller's tuple.
+
+        A direct-message ACK works for Companion, repeater, and room-server
+        roles without changing telemetry access or requiring remote-admin
+        support. The random, fixed-alphabet probe cannot be interpreted as a
+        CLI command. Both the contact's complete key and the message-specific
+        ACK code must match inside one marked meshcli frame.
+        """
+        marker = f"MESHCORE_OTA_ACK_{secrets.token_hex(16)}"
+        challenge = f"mOTA-preflight-{secrets.token_hex(8)}"
+        commands = [
+            "echo", marker,
+            "contact_info", target,
+            "msg", target, challenge,
+            *("wait_ack" for _ in range(TEMP_RADIO_PREFLIGHT_ACK_WAITS)),
+        ]
+        try:
+            if timeout is None:
+                _objects, post_objects = self._run_marked(
+                    commands, label, marker
+                )
+            else:
+                _objects, post_objects = self._run_marked(
+                    commands, label, marker, timeout
+                )
+        except TransmissionError:
+            raise
+        except OtaError as exc:
+            raise TransmissionError(
+                f"meshcli could not run the on-air challenge for {target}: {exc}"
+            ) from exc
+        contact_keys = [
+            value["public_key"].lower()
+            for value in post_objects
+            if value.get("adv_name") == target
+            and isinstance(value.get("public_key"), str)
+            and re.fullmatch(r"[0-9A-Fa-f]{64}", value["public_key"])
+        ]
+        if len(contact_keys) != 1:
+            if any(
+                value.get("error") in ("contact unknown", "unknown destination")
+                for value in post_objects
+            ):
+                raise OtaError(f"controller has no contact named {target!r}")
+            raise OtaError(
+                f"{label} did not expose one exact contact identity for {target}"
+            )
+        if contact_keys[0] != expected_public_key.lower():
+            raise OtaError(
+                f"{label} contact key mismatch for {target}: expected "
+                f"{expected_public_key.lower()}, got {contact_keys[0]}"
+            )
+        expected_codes = [
+            value["expected_ack"].lower()
+            for value in post_objects
+            if isinstance(value.get("expected_ack"), str)
+            and re.fullmatch(r"[0-9A-Fa-f]{8}", value["expected_ack"])
+        ]
+        if len(expected_codes) != 1:
+            raise TransmissionError(
+                f"{label} did not return one message-specific ACK challenge"
+            )
+        acknowledgements = {
+            value["code"].lower()
+            for value in post_objects
+            if isinstance(value.get("code"), str)
+            and re.fullmatch(r"[0-9A-Fa-f]{8}", value["code"])
+        }
+        if expected_codes[0] not in acknowledgements:
+            raise TransmissionError(
+                f"{label} received no matching ACK from {target}"
+            )
+        print(f"[preflight] {target} returned the exact on-air ACK challenge")
 
     def get_firmware_version(self) -> tuple[str, int]:
         objects = self._run(["ver"], "read controller firmware version")
@@ -1732,11 +2155,30 @@ class Controller:
                 return version_text, version
         raise OtaError("meshcli did not return the controller firmware version")
 
-    def set_radio(self, settings: RadioSettings, label: str) -> None:
+    def set_radio(
+        self,
+        settings: RadioSettings,
+        label: str,
+        timeout: float | None = None,
+    ) -> None:
+        started_at = time.monotonic()
+
+        def remaining_timeout() -> float | None:
+            if timeout is None:
+                return None
+            remaining = timeout - (time.monotonic() - started_at)
+            if remaining <= 0:
+                raise OtaError(f"{label} exceeded its {timeout:.1f}s timeout")
+            return remaining
+
         command_error: OtaError | None = None
         try:
-            objects = self._run(
-                ["set", "radio", settings.meshcli_value()], label
+            commands = ["set", "radio", settings.meshcli_value()]
+            mutation_timeout = remaining_timeout()
+            objects = (
+                self._run(commands, label)
+                if mutation_timeout is None
+                else self._run(commands, label, mutation_timeout)
             )
             for value in objects:
                 if "error" in value or "error_code" in value:
@@ -1746,7 +2188,12 @@ class Controller:
             command_error = exc
 
         try:
-            actual = self.get_radio()
+            verify_timeout = remaining_timeout()
+            actual = (
+                self.get_radio()
+                if verify_timeout is None
+                else self.get_radio(verify_timeout)
+            )
         except OtaError as verify_error:
             if command_error is not None:
                 raise OtaError(
@@ -1766,6 +2213,7 @@ class Controller:
         command_text: str,
         password: str,
         reply_timeout: int | None = None,
+        operation_timeout: float | None = None,
     ) -> str:
         command_reply_timeout = (
             self.reply_timeout if reply_timeout is None else reply_timeout
@@ -1785,11 +2233,19 @@ class Controller:
             "sync_msgs",
         ])
         try:
-            objects, post_objects = self._run_marked(
-                commands,
-                f"remote command on {target}",
-                marker,
-            )
+            if operation_timeout is None:
+                objects, post_objects = self._run_marked(
+                    commands,
+                    f"remote command on {target}",
+                    marker,
+                )
+            else:
+                objects, post_objects = self._run_marked(
+                    commands,
+                    f"remote command on {target}",
+                    marker,
+                    operation_timeout,
+                )
         except TransmissionError:
             raise
         except OtaError as exc:
@@ -1801,15 +2257,6 @@ class Controller:
             for item in objects
         ):
             raise OtaError(f"controller has no contact named {target!r}")
-        login_results = [item for item in objects if "login_success" in item]
-        if login_required:
-            if login_results and not login_results[-1].get("login_success"):
-                raise OtaError(f"admin login failed for {target}")
-            if not login_results:
-                raise TransmissionError(f"no admin-login result from {target}")
-            self._cache_remote_auth(target)
-            print(f"[auth] remote admin session established for {target}")
-
         target_key = None
         for item in objects:
             if (
@@ -1829,6 +2276,26 @@ class Controller:
             and target_key.startswith(item["pubkey_prefix"].lower())
             and reply_matches_command(command_text, item["text"])
         ]
+        login_results = [item for item in objects if "login_success" in item]
+        if login_required:
+            if login_results and not login_results[-1].get("login_success"):
+                raise OtaError(f"admin login failed for {target}")
+            if not login_results and not messages:
+                raise TransmissionError(f"no admin-login result from {target}")
+            self._cache_remote_auth(target)
+            if login_results:
+                print(f"[auth] remote admin session established for {target}")
+            else:
+                # A Companion can retain a valid repeater-admin session across
+                # host meshcli processes. In that state a redundant login may
+                # time out even though the immediately following authenticated
+                # command succeeds. A command-matched private reply, filtered
+                # to the selected contact key above, is stronger evidence than
+                # the lost login acknowledgement and is safe to cache.
+                print(
+                    f"[auth] {target} accepted the authenticated command; "
+                    "login acknowledgement was not repeated"
+                )
         if not messages:
             raise TransmissionError(
                 f"no matching CLI reply from {target} for {command_text!r}; "
@@ -1847,17 +2314,24 @@ class Controller:
         password: str | None = None,
         retry: bool = True,
         reply_timeout: int | None = None,
+        operation_timeout: float | None = None,
     ) -> str:
         login_password = self.password if password is None else password
         normalized = command_text.strip().lower()
         if retry and (
-            normalized == "ota install" or normalized.startswith("ota pull ")
+            normalized == "ota install"
+            or normalized.startswith("ota pull ")
+            or normalized.startswith("tempradio ")
         ):
             raise OtaError(
                 f"{command_text!r} requires state-aware retry handling"
             )
         action = lambda: self._remote_command_once(
-            target, command_text, login_password, reply_timeout
+            target,
+            command_text,
+            login_password,
+            reply_timeout,
+            operation_timeout,
         )
         if retry:
             return retry_transmission(
@@ -1966,15 +2440,21 @@ def query_target(
     current_version = None
     current_version_source = None
     try:
-        stats = controller.remote_command(args.target, "ota stats")
+        stats = retry_transmission_bounded(
+            lambda: controller.remote_command(
+                args.target, "ota stats", retry=False
+            ),
+            f"optional `ota stats` version probe on {args.target}",
+        )
         version_match = re.search(r"\bfw (v\d+\.\d+\.\d+(?:\.\d+)?)\b", stats)
         if version_match:
             current_version = version_match.group(1)
             current_version_source = "ota stats"
-    except TransmissionStopped:
-        raise
     except OtaError as exc:
-        print(f"[warn] could not query current OTA version: {exc}")
+        print(
+            f"[warn] optional `ota stats` version probe failed; "
+            f"falling back directly to `ver`: {exc}"
+        )
     if current_version is None:
         version_reply = controller.remote_command(args.target, "ver")
         version_value = extract_reply_version(version_reply)
@@ -2024,7 +2504,19 @@ def parse_temp_radio(value: str) -> tuple[float, float, int, int, int]:
     return freq, bandwidth, sf, cr, minutes
 
 
-def source_cli_command(args: argparse.Namespace, command_text: str, check: bool = True) -> str:
+def source_cli_command(
+    args: argparse.Namespace,
+    command_text: str,
+    check: bool = True,
+    *,
+    bounded: bool = False,
+    deadline: float | None = None,
+    retry: bool = True,
+) -> str:
+    if retry and command_text.strip().lower().startswith("tempradio "):
+        raise OtaError(
+            f"{command_text!r} requires state-aware retry handling"
+        )
     serial_port = args.source_cli_serial or args.source_serial
     tcp_console = args.source_cli_tcp
     if not serial_port and not tcp_console:
@@ -2035,13 +2527,34 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
         return ""
 
     def run_once() -> str:
+        operation_timeout = 30.0
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TransmissionError(
+                    f"source command {command_text!r} exceeded the "
+                    "three-minute rehearsal lease"
+                )
+            operation_timeout = min(operation_timeout, remaining)
         if tcp_console:
             host, port = split_host_port(tcp_console, 5002)
+            socket_deadline = time.monotonic() + operation_timeout
+
+            def remaining_socket_timeout() -> float:
+                remaining = socket_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"source TCP command {command_text!r} timed out"
+                    )
+                return min(10.0, remaining)
+
             try:
-                with socket.create_connection((host, port), timeout=10) as connection:
-                    connection.settimeout(10)
+                with socket.create_connection(
+                    (host, port), timeout=remaining_socket_timeout()
+                ) as connection:
                     greeting = bytearray()
                     while b"\r\n> " not in greeting and len(greeting) < 4096:
+                        connection.settimeout(remaining_socket_timeout())
                         chunk = connection.recv(512)
                         if not chunk:
                             break
@@ -2049,12 +2562,34 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
                     connection.sendall(command_text.encode("utf-8") + b"\r\n")
                     response = bytearray()
                     while b"\r\n> " not in response and len(response) < 4096:
+                        connection.settimeout(remaining_socket_timeout())
                         chunk = connection.recv(512)
                         if not chunk:
                             break
                         response.extend(chunk)
             except (OSError, UnicodeError) as exc:
                 raise TransmissionError(f"source TCP console failed: {exc}") from exc
+            expected_terminal_key = getattr(
+                args, "shared_source_public_key", None
+            )
+            if expected_terminal_key is not None:
+                greeting_text = greeting.decode("utf-8", "replace")
+                banner_keys = re.findall(
+                    r"(?:^|\r?\n)([0-9A-Fa-f]{64})(?=\r?\n)",
+                    greeting_text,
+                )
+                if len(banner_keys) != 1:
+                    raise OtaError(
+                        "shared Full Companion terminal banner did not expose "
+                        "one exact public key"
+                    )
+                actual_terminal_key = banner_keys[0].lower()
+                if actual_terminal_key != str(expected_terminal_key).lower():
+                    raise OtaError(
+                        "shared Full Companion terminal identity mismatch: "
+                        f"expected {str(expected_terminal_key).lower()}, got "
+                        f"{actual_terminal_key}"
+                    )
             text = response.decode("utf-8", "replace")
             # Legacy port 5002 prefixes its bounded OTA reply with `->`.
             # Full Companion now exposes the same terminal as USB and writes
@@ -2096,7 +2631,7 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
                 result = run_checked(
                     command,
                     label=f"source command {command_text.split()[0]}",
-                    timeout=30,
+                    timeout=operation_timeout,
                 )
             except OtaError as exc:
                 raise TransmissionError(f"source CLI link failed: {exc}") from exc
@@ -2116,11 +2651,64 @@ def source_cli_command(args: argparse.Namespace, command_text: str, check: bool 
         return output
 
     if check:
-        return retry_transmission(run_once, f"{command_text!r} on OTA source")
+        label = f"{command_text!r} on OTA source"
+        if not retry:
+            return run_once()
+        if deadline is not None:
+            return retry_transmission_before_deadline(run_once, label, deadline)
+        retry = retry_transmission_bounded if bounded else retry_transmission
+        return retry(run_once, label)
     try:
         return run_once()
     except OtaError:
         return ""
+
+
+def source_cli_reply_is_unsupported(value: str) -> bool:
+    """Recognize only an explicit legacy/unsupported-command response."""
+    lowered = value.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "unknown command",
+            "command not found",
+            "unknown setting",
+            "not supported",
+            "unsupported",
+        )
+    )
+
+
+def optional_source_cli_command(
+    args: argparse.Namespace,
+    command_text: str,
+    *,
+    deadline: float | None = None,
+) -> str | None:
+    """Run an optional source command without hiding transport failures.
+
+    ``None`` means that the source explicitly rejected the command as a legacy
+    or unsupported operation.  A silent reply, timeout, broken serial/TCP link,
+    or any other rejection is unsafe and remains an error.
+    """
+    try:
+        reply = source_cli_command(
+            args, command_text, bounded=True, deadline=deadline
+        )
+    except TransmissionError:
+        raise
+    except OtaError as exc:
+        if source_cli_reply_is_unsupported(str(exc)):
+            return None
+        raise
+    if source_cli_reply_is_unsupported(reply):
+        return None
+    if not reply.strip():
+        raise OtaError(
+            f"OTA source returned an empty reply to optional command "
+            f"{command_text!r}"
+        )
+    return reply
 
 
 def preflight_source_cli(args: argparse.Namespace) -> None:
@@ -2163,6 +2751,225 @@ def has_managed_source_cli(args: argparse.Namespace) -> bool:
     )
 
 
+def ensure_controller_clock_safe(
+    controller: Controller,
+    *,
+    timeout: float = TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS,
+) -> int:
+    """Advance a stale controller clock without ever moving it backward.
+
+    Remote login and CLI replay guards authenticate the companion's packet
+    timestamp.  Radio reachability therefore cannot be tested safely until the
+    local controller is on a credible clock.  The firmware's binary set-time
+    command rejects backward changes; readback proves that property and catches
+    a transport reporting success for the wrong endpoint.
+    """
+    host_before = int(time.time())
+    before = controller.get_clock(timeout=timeout)
+    lead = before - host_before
+    if lead > TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS:
+        raise OtaError(
+            "controller clock is "
+            f"{lead}s ahead of this host (maximum allowed is "
+            f"{TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS}s); refusing to move it "
+            "backward or send replay-sensitive LoRa commands"
+        )
+
+    if before < host_before:
+        controller.sync_clock_forward(timeout=timeout)
+        after = controller.get_clock(timeout=timeout)
+        host_after = int(time.time())
+        if after < before:
+            raise OtaError(
+                "controller clock moved backward during forward-only sync"
+            )
+        if after < host_before:
+            raise OtaError(
+                "controller clock sync did not advance to the host clock"
+            )
+        if after - host_after > TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS:
+            raise OtaError(
+                "controller clock readback is more than ten minutes ahead of "
+                "this host"
+            )
+        print(
+            f"[clock] advanced controller from {before} to {after}; exact "
+            "readback passed"
+        )
+        return after
+
+    if lead > 0:
+        print(
+            f"[clock] controller is {lead}s ahead of this host; preserving "
+            "its monotonic clock"
+        )
+    else:
+        print(f"[clock] controller epoch {before} matches this host")
+    return before
+
+
+def parse_source_clock_window(reply: str, label: str) -> tuple[int, int]:
+    """Parse the minute-resolution UTC clock exposed by text CLIs."""
+    matches = re.findall(
+        r"(?<!\d)(\d{1,2}):(\d{2})\s*-\s*"
+        r"(\d{1,2})/(\d{1,2})/(\d{4})\s+UTC(?!\w)",
+        reply,
+        re.IGNORECASE,
+    )
+    if len(matches) != 1:
+        raise OtaError(
+            f"{label} clock returned {len(matches)} unambiguous UTC values"
+        )
+    hour, minute, day, month, year = (int(value) for value in matches[0])
+    try:
+        start = int(
+            datetime(
+                year, month, day, hour, minute, tzinfo=timezone.utc
+            ).timestamp()
+        )
+    except ValueError as exc:
+        raise OtaError(f"{label} returned an invalid UTC clock") from exc
+    return start, start + 59
+
+
+def read_source_clock_window(
+    args: argparse.Namespace,
+) -> tuple[int, int]:
+    reply = source_cli_command(args, "clock", bounded=True)
+    return parse_source_clock_window(reply, "OTA source")
+
+
+def ensure_source_clock_safe(
+    args: argparse.Namespace,
+) -> tuple[int, int]:
+    """Forward-sync a managed text-CLI source and verify minute readback.
+
+    The terminal does not reveal seconds.  A displayed minute which contains
+    the host epoch is therefore neither known-behind nor known-ahead and must
+    not receive an exact-host ``time`` write: by command arrival, that value
+    can already be backward. Only a source whose *entire* minute window is
+    behind is advanced, using a guarded future value and one readback.
+    """
+    host_before = int(time.time())
+    before_start, before_end = read_source_clock_window(args)
+    # The terminal exposes only a minute.  Use the end of that uncertainty
+    # window: accepting solely from the displayed minute's first second could
+    # silently admit a clock up to 59 seconds beyond the ten-minute limit.
+    if before_end - host_before > TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS:
+        raise OtaError(
+            "OTA source clock cannot be proven within ten minutes of this "
+            "host at minute resolution; refusing to move it backward"
+        )
+
+    # Advance only when every possible second represented by the terminal is
+    # behind the host sample. If the windows overlap, preserve the source: an
+    # exact-host request could be backward even before it reaches firmware.
+    if before_end < host_before:
+        request_sample = int(time.time())
+        guarded_minimum = (
+            max(host_before, request_sample, before_end)
+            + TEMP_RADIO_SOURCE_CLOCK_PIN_LEAD_SECONDS
+        )
+        # Ask for a whole-minute boundary. A subsequent minute-only readback
+        # can then prove the write by its lower bound. With an arbitrary
+        # seconds value, a display of the same minute would not prove whether
+        # firmware reached the requested second.
+        requested = ((guarded_minimum + 59) // 60) * 60
+        if (
+            requested + 59 - request_sample
+            > TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS
+        ):
+            raise OtaError(
+                "safe OTA source forward-clock request would exceed the "
+                "ten-minute drift policy"
+            )
+        reply_lost = False
+        backward_rejected = False
+        try:
+            reply = source_cli_command(
+                args,
+                f"time {requested}",
+                bounded=True,
+                retry=False,
+            )
+        except TransmissionError as exc:
+            reply_lost = True
+            print(
+                "[clock] OTA source time acknowledgement was unavailable "
+                f"({exc}); resolving with readback"
+            )
+        except OtaError as exc:
+            if "cannot go backwards" not in str(exc).lower():
+                raise
+            backward_rejected = True
+            print(
+                "[clock] OTA source rejected the guarded fixed epoch as "
+                "backward; resolving once with readback"
+            )
+        else:
+            lowered = reply.lower()
+            backward_rejected = "cannot go backwards" in lowered
+            if "clock set" not in lowered and not backward_rejected:
+                raise OtaError(
+                    "OTA source returned no forward-sync acknowledgement: "
+                    f"{reply or 'empty reply'}"
+                )
+        after_start, after_end = read_source_clock_window(args)
+        host_after = int(time.time())
+        if after_end < before_start:
+            raise OtaError(
+                "OTA source clock moved backward during forward-only sync"
+            )
+        if after_start < requested:
+            raise OtaError(
+                "OTA source clock readback did not reach the requested "
+                "guarded epoch"
+            )
+        if after_end - host_after > TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS:
+            raise OtaError(
+                "OTA source clock readback cannot be proven within ten "
+                "minutes of this host at minute resolution"
+            )
+        if reply_lost:
+            outcome = "lost acknowledgement; "
+        elif backward_rejected:
+            outcome = "backward rejection resolved; "
+        else:
+            outcome = ""
+        print(
+            f"[clock] {outcome}OTA source forward-sync readback passed "
+            f"({after_start}-{after_end})"
+        )
+        return after_start, after_end
+
+    if before_start <= host_before <= before_end:
+        print(
+            "[clock] OTA source minute contains the host epoch; preserving "
+            "its monotonic clock without an ambiguous seconds-level write"
+        )
+    else:
+        print(
+            f"[clock] OTA source is {before_start - host_before}s ahead at "
+            "minute resolution; preserving its monotonic clock"
+        )
+    return before_start, before_end
+
+
+def require_shared_clock_agreement(
+    controller_epoch: int,
+    source_window: tuple[int, int],
+) -> None:
+    """Bind the shared Binary and terminal views to the same device RTC."""
+    lower, upper = source_window
+    tolerance = TEMP_RADIO_CLOCK_READ_TOLERANCE_SECONDS
+    if controller_epoch < lower - tolerance or controller_epoch > upper + tolerance:
+        raise OtaError(
+            "shared source terminal clock does not agree with the Binary "
+            f"controller clock: controller={controller_epoch}, "
+            f"terminal={lower}-{upper}"
+        )
+
+
 def read_lora_ota_participant_versions(
     controller: Controller,
     args: argparse.Namespace,
@@ -2197,7 +3004,7 @@ def read_lora_ota_participant_versions(
         print("[rxps] source version unavailable (--source-already-temp)")
     else:
         try:
-            source_reply = source_cli_command(args, "ver")
+            source_reply = source_cli_command(args, "ver", bounded=True)
             source_version = extract_reply_version(source_reply)
             versions["source"] = source_version
             if source_version is None:
@@ -2211,8 +3018,14 @@ def read_lora_ota_participant_versions(
     for relay_name, relay_password in getattr(args, "relay_values", []):
         label = f"relay:{relay_name}"
         try:
-            reply = controller.remote_command(
-                relay_name, "ver", password=relay_password
+            reply = retry_transmission_bounded(
+                lambda: controller.remote_command(
+                    relay_name,
+                    "ver",
+                    password=relay_password,
+                    retry=False,
+                ),
+                f"optional `ver` probe on relay {relay_name}",
             )
             versions[label] = extract_reply_version(reply)
             if versions[label] is None:
@@ -2261,7 +3074,7 @@ def verify_shared_source_identity(
         controller_baud=args.controller_baud,
         reply_timeout=args.reply_timeout,
     )
-    controller_key = controller.get_public_key()
+    controller_key = controller.get_public_key().lower()
     if controller.connection == ["-t", source_host, "-p", "5000"]:
         source_key = controller_key
     else:
@@ -2272,7 +3085,21 @@ def verify_shared_source_identity(
             "--source-shares-controller identity mismatch: controller is "
             f"{controller_key}, source host is {source_key}"
         )
-    print(f"[source] verified shared Full Companion {source_key}")
+    # Port 5002's fresh terminal banner exposes the same complete node key.
+    # Bind it to the already-proven Binary key, then use supported `ver` as a
+    # live terminal challenge. Full Companion intentionally does not implement
+    # the repeater-only `get public.key` command.
+    args.shared_source_public_key = source_key
+    version_reply = source_cli_command(args, "ver", bounded=True)
+    if extract_reply_version(version_reply) is None:
+        raise OtaError(
+            "shared Full Companion terminal did not answer supported `ver`: "
+            f"{version_reply or 'no output'}"
+        )
+    print(
+        f"[source] verified shared Full Companion Binary and terminal "
+        f"identity {source_key}"
+    )
 
 
 class SeederProcess:
@@ -3519,9 +4346,1526 @@ def monitor_download(
     )
 
 
-def require_temp_radio_reply(node: str, reply: str) -> None:
-    if not reply.lower().startswith("ok - temp params for "):
+def parse_temp_radio_reply_minutes(node: str, reply: str) -> int:
+    """Return the lease length from normalized or raw serial CLI output."""
+    matches = re.findall(
+        r"(?:^|\n)\s*(?:->\s*)?OK\s+-\s+temp params for\s+"
+        r"(\d+)\s+mins\b",
+        reply.replace("\r", ""),
+        re.IGNORECASE,
+    )
+    if not matches:
         raise OtaError(f"{node} did not accept TempRadio: {reply}")
+    if len(matches) != 1:
+        raise OtaError(
+            f"{node} did not return one exact TempRadio acknowledgement: {reply}"
+        )
+    return int(matches[0])
+
+
+def require_temp_radio_reply(
+    node: str,
+    reply: str,
+    expected_minutes: int | None = None,
+) -> int:
+    actual_minutes = parse_temp_radio_reply_minutes(node, reply)
+    if expected_minutes is not None and actual_minutes != expected_minutes:
+        raise OtaError(
+            f"{node} acknowledged a {actual_minutes}-minute TempRadio lease; "
+            f"the reachability rehearsal requires exactly {expected_minutes} minutes"
+        )
+    return actual_minutes
+
+
+def temp_radio_command_minutes(command: str) -> int:
+    match = re.fullmatch(r"\s*tempradio\s+[^\r\n]*,(\d+)\s*", command)
+    if match is None:
+        raise OtaError(f"invalid relative TempRadio command: {command!r}")
+    return int(match.group(1))
+
+
+def require_normal_radio_reply(node: str, reply: str) -> None:
+    matches = re.findall(
+        r"(?:^|\n)\s*(?:->\s*)?OK\s+-\s+normal radio restore "
+        r"scheduled\b",
+        reply.replace("\r", ""),
+        re.IGNORECASE,
+    )
+    if len(matches) != 1:
+        raise OtaError(
+            f"{node} did not accept one exact normal-radio restore: {reply}"
+        )
+
+
+def parse_cli_public_key(reply: str, label: str) -> str:
+    matches = re.findall(
+        r"(?:^|\n)\s*(?:->\s*)?>\s*([0-9A-Fa-f]{64})\s*(?=$|\n)",
+        reply.replace("\r", ""),
+    )
+    if len(matches) != 1:
+        raise OtaError(f"{label} did not return an exact public key: {reply}")
+    return matches[0].lower()
+
+
+def parse_cli_value(reply: str, label: str) -> str:
+    """Read one ``get`` value from normalized or raw ``meshcli -r`` output."""
+    matches = re.findall(
+        r"(?:^|\n)\s*(?:->\s*)?>\s*(\S(?:.*?\S)?)\s*(?=$|\n)",
+        reply.replace("\r", ""),
+    )
+    if len(matches) != 1:
+        raise OtaError(f"{label} did not return one exact CLI value: {reply}")
+    return matches[0]
+
+
+def require_no_existing_temp_schedule(reply: str | None, label: str) -> bool:
+    """Refuse existing work and report whether scheduling is supported."""
+    if reply is None:
+        return False
+    text = reply.strip()
+    if not text:
+        raise OtaError(
+            f"could not prove {label} has no scheduled TempRadio work: "
+            "empty reply"
+        )
+    lowered = text.lower()
+    if (
+        lowered.startswith(("unknown command", "command not found"))
+        or "unknown setting" in lowered
+        or "unsupported" in lowered
+    ):
+        # Older firmware exposes only the bounded immediate `tempradio`
+        # command. It has no user-managed scheduled-entry table to preserve.
+        return False
+    schedule_values = re.findall(
+        r"(?:^|\n)\s*(?:->\s*)?>\s*(\S(?:.*?\S)?)\s*(?=$|\n)",
+        text.replace("\r", ""),
+    )
+    if len(schedule_values) == 1 and schedule_values[0].casefold() == "-none-":
+        return True
+    if schedule_values:
+        raise OtaError(
+            f"{label} already has scheduled TempRadio work; the rehearsal "
+            f"would replace it: {text}"
+        )
+    raise OtaError(
+        f"could not prove {label} has no scheduled TempRadio work: {text}"
+    )
+
+
+def require_scheduled_temp_radio_reply(node: str, reply: str) -> None:
+    matches = re.findall(
+        r"(?:^|\n)\s*(?:->\s*)?OK\s+-\s+tempradioat\s+"
+        r"\d+\s+in\s+\S+",
+        reply.replace("\r", ""),
+        re.IGNORECASE,
+    )
+    if len(matches) != 1:
+        raise OtaError(
+            f"{node} did not accept one exact fixed TempRadio schedule: {reply}"
+        )
+
+
+def scheduled_temp_radio_command(
+    args: argparse.Namespace,
+    start_epoch: int,
+    end_epoch: int,
+) -> str:
+    if start_epoch <= 0 or end_epoch <= start_epoch or end_epoch > 0xFFFFFFFF:
+        raise OtaError("invalid fixed TempRadio rehearsal interval")
+    freq, bandwidth, sf, cr, _configured_minutes = args.temp_values
+    return (
+        f"set tempradioat {format_decimal(freq)},"
+        f"{format_decimal(bandwidth)},{sf},{cr},{start_epoch},{end_epoch}"
+    )
+
+
+def sample_remote_clock(
+    controller: Controller,
+    target: str,
+    expected_public_key: str,
+    *,
+    timeout: float,
+) -> RemoteClockSample:
+    """Bracket an authenticated clock read with host monotonic/wall samples."""
+    monotonic_started_at = time.monotonic()
+    host_started_at = time.time()
+    epoch = controller.get_contact_clock(
+        target, expected_public_key, timeout=timeout
+    )
+    host_completed_at = time.time()
+    monotonic_completed_at = time.monotonic()
+    if monotonic_completed_at < monotonic_started_at:
+        raise OtaError("host monotonic clock moved backward during remote read")
+    return RemoteClockSample(
+        epoch=epoch,
+        monotonic_started_at=monotonic_started_at,
+        monotonic_completed_at=monotonic_completed_at,
+        host_started_at=host_started_at,
+        host_completed_at=host_completed_at,
+    )
+
+
+def require_remote_clock_within_host_policy(
+    sample: RemoteClockSample,
+    target: str,
+) -> None:
+    """Reject a remote clock that might be over ten minutes ahead of host."""
+    # The returned epoch may have been sampled at the beginning of the complete
+    # request/response interval.  Advance it through the full measured RTT and
+    # compare it with the earliest wall-clock sample, which is the conservative
+    # upper lead when the host clock changed during the operation.
+    remote_completed_upper = sample.epoch + math.ceil(
+        sample.round_trip_seconds
+    )
+    host_lower = math.floor(
+        min(sample.host_started_at, sample.host_completed_at)
+    )
+    lead = remote_completed_upper - host_lower
+    if lead > TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS:
+        raise OtaError(
+            f"{target} clock may be {lead}s ahead of this host after its "
+            f"{sample.round_trip_seconds:.1f}s clock-read RTT (maximum allowed "
+            f"is {TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS}s); refusing a remote "
+            "clock mutation"
+        )
+
+
+def pin_remote_clock_forward(
+    controller: Controller,
+    target: str,
+    expected_public_key: str,
+    *,
+    password: str | None = None,
+) -> RemoteClockSample:
+    """Freeze automatic backward mesh sync using a replay-safe fixed epoch.
+
+    Current firmware has a monotonic hard end for scheduled TempRadio. Older
+    scheduling-capable firmware does not, so a later backward RTC correction
+    could otherwise postpone a pending window. `time N` is forward-only and
+    suppresses mesh clock consensus for this boot. The fixed write is sent
+    exactly once. A missing acknowledgement is reconciled through an
+    authenticated clock readback, never by adding another per-target lead.
+    """
+    timeout = float(TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS)
+    before = sample_remote_clock(
+        controller, target, expected_public_key, timeout=timeout
+    )
+    require_remote_clock_within_host_policy(before, target)
+
+    host_now = math.ceil(
+        max(before.host_started_at, before.host_completed_at, time.time())
+    )
+    remote_now_upper = before.epoch + math.ceil(before.round_trip_seconds)
+    # Bring a stale node to one common host-relative lead. If it is already
+    # farther ahead, advance only one second so repeated rehearsals cannot add
+    # two minutes on every run merely to disable automatic backward sync.
+    requested = max(
+        host_now + TEMP_RADIO_REMOTE_CLOCK_PIN_LEAD_SECONDS,
+        remote_now_upper + 1,
+    )
+    if requested > 0xFFFFFFFF:
+        raise OtaError(f"{target} clock is too near the epoch limit to pin")
+    if requested - host_now > TEMP_RADIO_CLOCK_MAX_AHEAD_SECONDS:
+        raise OtaError(
+            f"safe forward-clock request for {target} would be "
+            f"{requested - host_now}s ahead of this host, beyond the ten-minute "
+            "drift policy"
+        )
+
+    acknowledgement_lost = False
+    backward_rejected = False
+    try:
+        reply = controller.remote_command(
+            target,
+            f"time {requested}",
+            password=password,
+            retry=False,
+            reply_timeout=min(
+                int(getattr(controller, "reply_timeout", 20)),
+                TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS,
+            ),
+            operation_timeout=TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS,
+        )
+    except TransmissionError as exc:
+        acknowledgement_lost = True
+        print(
+            f"[clock] {target} forward-clock acknowledgement was lost ({exc}); "
+            "resolving the one-shot fixed write by authenticated readback"
+        )
+    else:
+        lowered = reply.lower()
+        backward_rejected = "cannot go backwards" in lowered
+        if "clock set" not in lowered and not backward_rejected:
+            raise OtaError(
+                f"{target} did not acknowledge a forward-only clock pin: "
+                f"{reply}"
+            )
+
+    after = retry_transmission_bounded(
+        lambda: sample_remote_clock(
+            controller, target, expected_public_key, timeout=timeout
+        ),
+        f"forward-clock readback from {target}",
+    )
+    require_remote_clock_within_host_policy(after, target)
+    if after.epoch < requested:
+        outcome = (
+            "lost acknowledgement"
+            if acknowledgement_lost
+            else "backward rejection"
+            if backward_rejected
+            else "acknowledged write"
+        )
+        raise OtaError(
+            f"{target} {outcome} could not be reconciled: clock readback "
+            f"{after.epoch} did not reach the one-shot fixed value {requested}; "
+            "the command was not replayed"
+        )
+    print(
+        f"[clock] {target} forward-only clock pin verified at {after.epoch} "
+        f"with {after.round_trip_seconds:.1f}s RTT; automatic backward mesh "
+        "sync is suppressed for this boot"
+    )
+    return after
+
+
+def bounded_remote_command(
+    controller: Controller,
+    target_name: str,
+    command: str,
+    *,
+    password: str | None = None,
+    deadline: float | None = None,
+    retry_limit: int = TRANSMISSION_RETRY_LIMIT,
+    deadline_label: str = "three-minute rehearsal lease",
+) -> str:
+    label = f"{command!r} reachability proof on {target_name}"
+
+    def run_once() -> str:
+        options: dict[str, object] = {
+            "password": password,
+            "retry": False,
+        }
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 1.0:
+                raise TransmissionError(
+                    f"{label} has no safe operation window left in the "
+                    f"{deadline_label}"
+                )
+            base_reply_timeout = int(getattr(controller, "reply_timeout", 20))
+            options["reply_timeout"] = max(
+                1, min(base_reply_timeout, int(max(1.0, remaining)))
+            )
+            options["operation_timeout"] = max(
+                1.0,
+                min(
+                    TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS,
+                    remaining,
+                ),
+            )
+        return controller.remote_command(target_name, command, **options)
+
+    if deadline is not None:
+        return retry_transmission_before_deadline(
+            run_once,
+            label,
+            deadline,
+            retry_limit=retry_limit,
+            deadline_label=deadline_label,
+        )
+    return retry_transmission_bounded(run_once, label)
+
+
+def read_remote_public_key_bounded(
+    controller: Controller,
+    target_name: str,
+    *,
+    password: str | None = None,
+    deadline: float | None = None,
+) -> str:
+    reply = bounded_remote_command(
+        controller,
+        target_name,
+        "get public.key",
+        password=password,
+        deadline=deadline,
+    )
+    return parse_cli_public_key(reply, target_name)
+
+
+def read_source_public_key_bounded(
+    args: argparse.Namespace,
+    *,
+    deadline: float | None = None,
+) -> str:
+    reply = source_cli_command(
+        args,
+        "get public.key",
+        bounded=True,
+        deadline=deadline,
+    )
+    return parse_cli_public_key(reply, "OTA source")
+
+
+def prove_shared_source_terminal_bounded(
+    args: argparse.Namespace,
+    expected_public_key: str,
+    *,
+    deadline: float | None = None,
+) -> None:
+    """Prove the shared Full terminal bound to its verified Binary key."""
+    verified_key = getattr(args, "shared_source_public_key", None)
+    if (
+        not isinstance(verified_key, str)
+        or not re.fullmatch(r"[0-9A-Fa-f]{64}", verified_key)
+        or verified_key.lower() != expected_public_key.lower()
+    ):
+        raise OtaError(
+            "shared Full Companion terminal is not bound to the already "
+            "verified Binary Companion public key"
+        )
+    reply = source_cli_command(
+        args,
+        "ver",
+        bounded=True,
+        deadline=deadline,
+    )
+    if extract_reply_version(reply) is None:
+        raise OtaError(
+            "shared Full Companion terminal did not answer supported `ver`: "
+            f"{reply or 'no output'}"
+        )
+
+
+def read_source_name_bounded(
+    args: argparse.Namespace,
+    *,
+    deadline: float | None = None,
+) -> str:
+    reply = source_cli_command(
+        args, "get name", bounded=True, deadline=deadline
+    )
+    return parse_cli_value(reply, "OTA source name")
+
+
+def require_destination_preflight_identity(
+    controller: Controller,
+    args: argparse.Namespace,
+    target: TargetInfo,
+    phase: str,
+    *,
+    deadline: float | None = None,
+    retry_limit: int = TRANSMISSION_RETRY_LIMIT,
+    deadline_label: str = "three-minute rehearsal lease",
+) -> None:
+    status = bounded_remote_command(
+        controller,
+        args.target,
+        "ota status",
+        deadline=deadline,
+        retry_limit=retry_limit,
+        deadline_label=deadline_label,
+    )
+    target_match = re.search(r"\btarget:([0-9A-Fa-f]{8})\b", status)
+    if target_match is None or int(target_match.group(1), 16) != target.target_id:
+        raise OtaError(
+            f"destination {phase} identity did not report target "
+            f"{target.target_id:08X}: {status}"
+        )
+    if target.hw_id is not None:
+        hw_match = re.search(r"\bhw=([^ |]+)", status)
+        if hw_match is None or hw_match.group(1) != target.hw_id:
+            raise OtaError(
+                f"destination {phase} identity did not report hardware "
+                f"{target.hw_id}: {status}"
+            )
+
+    identity = bounded_remote_command(
+        controller,
+        args.target,
+        "ota self",
+        deadline=deadline,
+        retry_limit=retry_limit,
+        deadline_label=deadline_label,
+    )
+    hash_match = re.search(r"\bbase_hash=([0-9A-Fa-f]{16})\b", identity)
+    if (
+        hash_match is None
+        or bytes.fromhex(hash_match.group(1)) != target.base_hash
+    ):
+        raise OtaError(
+            f"destination {phase} identity did not report running body "
+            f"{target.base_hash.hex().upper()}: {identity}"
+        )
+
+
+def parse_source_temp_radio_status(
+    reply: str,
+) -> tuple[str, RadioSettings | None] | None:
+    """Parse a Full Companion TempRadio status; legacy text CLIs return None."""
+    text = reply.replace("\r", "").strip()
+    if not text:
+        raise OtaError("OTA source returned an empty TempRadio status")
+    prefix = r"(?:^|\n)\s*(?:->\s*)?(?:>\s*)?"
+    suffix = r"\s*(?=$|\n)"
+    inactive_matches = re.findall(
+        prefix + r"TempRadio inactive" + suffix,
+        text,
+        re.IGNORECASE,
+    )
+    active_matches = re.findall(
+        prefix + r"TempRadio (active|pending):\s*"
+        r"([0-9]+(?:\.[0-9]+)?),([0-9]+(?:\.[0-9]+)?),"
+        r"(\d+),(\d+)(?:\s+\d+s left)?" + suffix,
+        text,
+        re.IGNORECASE,
+    )
+    if len(inactive_matches) + len(active_matches) != 1:
+        raise OtaError(f"OTA source returned an invalid TempRadio status: {reply}")
+    if inactive_matches:
+        return "inactive", None
+    match = active_matches[0]
+    return (
+        match[0].lower(),
+        RadioSettings(
+            float(match[1]),
+            float(match[2]),
+            int(match[3]),
+            int(match[4]),
+            False,
+        ),
+    )
+
+
+def read_source_temp_radio_status(
+    args: argparse.Namespace,
+    *,
+    deadline: float | None = None,
+) -> tuple[str, RadioSettings | None] | None:
+    # Bare `tempradio` is available on Full Companions. Older repeater CLIs
+    # reject it. Only that explicit rejection maps to None; a transport failure
+    # or silent reply must never masquerade as a safe legacy source.
+    reply = optional_source_cli_command(args, "tempradio", deadline=deadline)
+    return None if reply is None else parse_source_temp_radio_status(reply)
+
+
+def ensure_source_clock_gate_safe(
+    args: argparse.Namespace,
+) -> tuple[int, int] | None:
+    """Prove a managed source has no TempRadio work, then gate its clock.
+
+    Advancing a stale RTC can make an absolute schedule become due. Inspect
+    both the immediate-override status and the fixed schedule first, while the
+    endpoint is still local-only. An explicit legacy rejection proves that the
+    corresponding scheduled feature does not exist; transport ambiguity never
+    does. The clock operation itself remains forward-only with exact readback.
+    """
+    if not has_managed_source_cli(args):
+        return None
+    source_status = read_source_temp_radio_status(args)
+    if source_status is not None and source_status[0] != "inactive":
+        raise OtaError(
+            "OTA source already has active or pending TempRadio work; its "
+            f"clock will not be changed: {source_status[0]}"
+        )
+    require_no_existing_temp_schedule(
+        optional_source_cli_command(args, "get tempradioat"),
+        "OTA source",
+    )
+    return ensure_source_clock_safe(args)
+
+
+def require_radio_settings(
+    actual: RadioSettings,
+    expected: RadioSettings,
+    label: str,
+) -> None:
+    if not expected.matches(actual):
+        raise OtaError(
+            f"{label} tuple mismatch: expected {expected.meshcli_value()}, "
+            f"got {actual.meshcli_value()}"
+        )
+
+
+def run_temp_radio_preflight(
+    controller: Controller,
+    args: argparse.Namespace,
+    target: TargetInfo,
+    normal_radio: RadioSettings,
+    temp_radio: RadioSettings,
+) -> None:
+    """Qualify every OTA hop with an independent three-minute lease.
+
+    This rehearsal owns only its short leases and controller handoff. It never
+    touches the long-window ownership flags used by the transfer cleanup, and
+    it never starts a seeder, pull, download, or install. Every possibly sent
+    short lease is allowed to expire before this function returns or raises.
+    """
+    if getattr(args, "source_already_temp", False):
+        raise OtaError(
+            "the required three-minute TempRadio rehearsal cannot qualify an "
+            "unmanaged --source-already-temp source; provide its local CLI"
+        )
+    if not has_managed_source_cli(args):
+        raise OtaError(
+            "the required three-minute TempRadio rehearsal needs a managed "
+            "source CLI so its identity and automatic return can be checked"
+        )
+    same_modulation = (
+        abs(normal_radio.frequency - temp_radio.frequency) <= 0.001
+        and abs(normal_radio.bandwidth - temp_radio.bandwidth) <= 0.001
+        and normal_radio.spreading_factor == temp_radio.spreading_factor
+        and normal_radio.coding_rate == temp_radio.coding_rate
+    )
+    if same_modulation:
+        raise OtaError(
+            "the three-minute rehearsal requires --temp-radio frequency, "
+            "bandwidth, spreading factor, or coding rate to differ from the "
+            "normal tuple; otherwise on-air reachability cannot prove that "
+            "TempRadio was armed"
+        )
+
+    shared_controller = bool(
+        getattr(args, "source_shares_controller", False)
+    )
+    relay_values: list[tuple[str, str]] = list(
+        getattr(args, "relay_values", [])
+    )
+    remote_nodes: list[tuple[str, str | None]] = [
+        (args.target, None),
+        *((name, password) for name, password in relay_values),
+    ]
+    remote_names = [name.casefold() for name, _password in remote_nodes]
+    if len(set(remote_names)) != len(remote_names):
+        raise OtaError(
+            "the destination and controlled --relay contact names must be "
+            "unique for the three-minute rehearsal"
+        )
+
+    # Local source reads are deliberately before any LoRa mutation. A separate
+    # source must also be a controller contact so the rehearsal proves that its
+    # antenna/radio—not merely its USB or TCP console—works on both tuples.
+    require_radio_settings(
+        controller.get_radio(), normal_radio, "preflight controller normal"
+    )
+    controller_key = controller.get_public_key().lower()
+    if shared_controller:
+        # verify_shared_source_identity already bound port 5002's banner to
+        # this exact port-5000 Binary key. Re-prove the supported terminal
+        # surface instead of issuing repeater-only `get public.key`.
+        source_key = controller_key
+        prove_shared_source_terminal_bounded(args, source_key)
+    else:
+        source_key = read_source_public_key_bounded(args)
+    configured_source_contact = getattr(args, "source_contact_value", None)
+    source_name = None
+    if not shared_controller and configured_source_contact is None:
+        source_name = read_source_name_bounded(args)
+    if shared_controller:
+        source_contact: str | None = None
+    elif configured_source_contact is not None:
+        source_contact = str(configured_source_contact)
+    else:
+        source_contact = str(source_name)
+    if source_contact is not None and not source_contact.strip():
+        raise OtaError(
+            "the separate OTA source on-air proof needs a non-empty contact "
+            "name; use --source-contact NAME"
+        )
+
+    # No remote packet may leave a stale participant: the destination's replay
+    # guard will silently reject an old controller timestamp even when RF and
+    # ACL are healthy. Inspect the source's local TempRadio state before a
+    # forward clock correction can make absolute work due, then complete both
+    # clock gates before the first on-air challenge or admin login.
+    source_clock_window = ensure_source_clock_gate_safe(args)
+    assert source_clock_window is not None
+    controller_epoch = ensure_controller_clock_safe(controller)
+    if shared_controller:
+        # The terminal sync above can advance the shared RTC after the first
+        # Binary read. Re-read exact seconds and bind both transport views.
+        controller_epoch = controller.get_clock(
+            timeout=float(TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS)
+        )
+        require_shared_clock_agreement(
+            controller_epoch, source_clock_window
+        )
+
+    participant_names = [name for name, _password in remote_nodes]
+    if source_contact is not None:
+        participant_names.append(source_contact)
+    normalized_names = [name.casefold() for name in participant_names]
+    if len(set(normalized_names)) != len(normalized_names):
+        raise OtaError(
+            "the destination, separate OTA source, and controlled --relay "
+            "contact names must be unique for the three-minute rehearsal"
+        )
+
+    # Controller.remote_command filters each admin reply to the selected
+    # contact key. The separate source instead uses a plain-message ACK because
+    # Full Companions do not expose repeater admin commands; its complete
+    # contact key plus message-specific ACK still proves the exact identity.
+    remote_keys = {
+        name: read_remote_public_key_bounded(
+            controller, name, password=password
+        )
+        for name, password in remote_nodes
+    }
+    if source_contact is None and source_key != controller_key:
+        raise OtaError(
+            "shared Full Companion local CLI identity differs from the "
+            f"controller: source={source_key}, controller={controller_key}"
+        )
+
+    def require_remote_schedule_empty(
+        name: str,
+        password: str | None,
+    ) -> None:
+        schedule_supported = require_no_existing_temp_schedule(
+            bounded_remote_command(
+                controller,
+                name,
+                "get tempradioat",
+                password=password,
+            ),
+            name,
+        )
+        if not schedule_supported:
+            raise OtaError(
+                f"{name} does not support fixed `tempradioat` windows; "
+                "the mandatory rehearsal will not use an immediate mutation "
+                "whose controller retry can arrive after cleanup"
+            )
+
+    def require_source_temp_work_absent() -> None:
+        source_status = read_source_temp_radio_status(args)
+        if source_status is not None and source_status[0] != "inactive":
+            raise OtaError(
+                "OTA source acquired active or pending TempRadio work during "
+                f"the read-only preflight: {source_status[0]}"
+            )
+        require_no_existing_temp_schedule(
+            optional_source_cli_command(args, "get tempradioat"),
+            "OTA source",
+        )
+
+    for name, password in remote_nodes:
+        require_remote_schedule_empty(name, password)
+    # This is still a wholly read-only phase: no fixed schedule, immediate
+    # TempRadio override, seeder, or transfer has been armed. Give a marginal
+    # normal link more chances than an operation inside the live three-minute
+    # lease, while retaining one absolute deadline and exact status/body proof.
+    normal_baseline_deadline = (
+        time.monotonic() + TEMP_RADIO_NORMAL_BASELINE_TIMEOUT_SECONDS
+    )
+    require_destination_preflight_identity(
+        controller,
+        args,
+        target,
+        "normal-channel baseline",
+        deadline=normal_baseline_deadline,
+        retry_limit=TEMP_RADIO_NORMAL_BASELINE_RETRY_LIMIT,
+        deadline_label="normal-channel baseline proof budget",
+    )
+
+    # The larger read-only loss budget may have taken four minutes. Refresh
+    # every no-work proof now so a schedule introduced during that wait cannot
+    # be activated by the forward clock pins or overwritten by the rehearsal.
+    require_source_temp_work_absent()
+
+    command = temp_radio_command_for_minutes(
+        args, TEMP_RADIO_PREFLIGHT_MINUTES
+    )
+    short_leases_may_be_active = False
+    controller_may_need_restore = False
+    natural_expiry_waited = False
+    normal_proven = False
+    earliest_lease_expiry: float | None = None
+    latest_lease_expiry: float | None = None
+    primary_error: BaseException | None = None
+    cleanup_errors: list[str] = []
+
+    def record_possible_lease(
+        started_at: float,
+        completed_at: float,
+        minutes: int = TEMP_RADIO_PREFLIGHT_MINUTES,
+    ) -> None:
+        nonlocal earliest_lease_expiry, latest_lease_expiry
+        # Start is the earliest instant the mutation could have reached the
+        # node. Completion is the latest instant an acknowledged/retried local
+        # command could have done so. The two bounds prevent both false temp
+        # proofs and an early cleanup return.
+        earliest = started_at + minutes * 60
+        latest = completed_at + minutes * 60
+        earliest_lease_expiry = (
+            earliest
+            if earliest_lease_expiry is None
+            else min(earliest_lease_expiry, earliest)
+        )
+        latest_lease_expiry = (
+            latest
+            if latest_lease_expiry is None
+            else max(latest_lease_expiry, latest)
+        )
+
+    def record_fixed_lease(
+        earliest_expiry: float,
+        latest_expiry: float,
+    ) -> None:
+        nonlocal earliest_lease_expiry, latest_lease_expiry
+        if latest_expiry < earliest_expiry:
+            raise OtaError("fixed TempRadio lease bounds are inverted")
+        earliest_lease_expiry = (
+            earliest_expiry
+            if earliest_lease_expiry is None
+            else min(earliest_lease_expiry, earliest_expiry)
+        )
+        latest_lease_expiry = (
+            latest_expiry
+            if latest_lease_expiry is None
+            else max(latest_lease_expiry, latest_expiry)
+        )
+
+    def wait_until(deadline: float, label: str) -> None:
+        seconds = max(0.0, deadline - time.monotonic())
+        if seconds > 0:
+            print(f"[preflight] waiting {seconds:.1f}s for {label}")
+            time.sleep(seconds)
+
+    def temp_proof_deadline(label: str, reserve: float = 0.0) -> float:
+        if earliest_lease_expiry is None:
+            raise OtaError(f"{label}: no three-minute lease was armed")
+        remaining = earliest_lease_expiry - time.monotonic()
+        if remaining <= reserve:
+            raise OtaError(
+                f"{label} cannot finish before the first three-minute lease "
+                f"expires ({max(0.0, remaining):.1f}s remain, "
+                f"{reserve:.1f}s required)"
+            )
+        return earliest_lease_expiry
+
+    def controller_timeout(deadline: float | None = None) -> float:
+        if deadline is None:
+            return float(TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise OtaError("controller operation exceeded the rehearsal lease")
+        return min(
+            float(TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS),
+            remaining,
+        )
+
+    def prove_source_on_air(
+        phase: str,
+        *,
+        deadline: float | None = None,
+    ) -> None:
+        if source_contact is None:
+            return
+        label = f"OTA source {phase} on-air ACK"
+
+        def run_once() -> None:
+            controller.prove_contact_ack(
+                source_contact,
+                source_key,
+                label,
+                timeout=controller_timeout(deadline),
+            )
+
+        if deadline is None:
+            retry_transmission_bounded(run_once, label)
+        else:
+            retry_transmission_before_deadline(run_once, label, deadline)
+
+    def prove_remote_identities(
+        phase: str,
+        *,
+        deadline: float | None = None,
+    ) -> None:
+        for name, password in remote_nodes:
+            actual = read_remote_public_key_bounded(
+                controller,
+                name,
+                password=password,
+                deadline=deadline,
+            )
+            if actual != remote_keys[name]:
+                raise OtaError(
+                    f"{name} {phase} public key changed: expected "
+                    f"{remote_keys[name]}, got {actual}"
+                )
+        prove_source_on_air(phase, deadline=deadline)
+        require_destination_preflight_identity(
+            controller, args, target, phase, deadline=deadline
+        )
+
+    def prove_source_identity(
+        phase: str,
+        *,
+        deadline: float | None = None,
+    ) -> None:
+        if shared_controller:
+            prove_shared_source_terminal_bounded(
+                args, source_key, deadline=deadline
+            )
+            return
+        actual = read_source_public_key_bounded(args, deadline=deadline)
+        if actual != source_key:
+            raise OtaError(
+                f"OTA source {phase} public key changed: expected "
+                f"{source_key}, got {actual}"
+            )
+
+    def prove_controller_identity(
+        phase: str,
+        *,
+        deadline: float | None = None,
+    ) -> None:
+        actual = controller.get_public_key(
+            timeout=controller_timeout(deadline)
+        ).lower()
+        if actual != controller_key:
+            raise OtaError(
+                f"controller {phase} public key changed: expected "
+                f"{controller_key}, got {actual}"
+            )
+
+    def wait_for_natural_expiry() -> None:
+        nonlocal natural_expiry_waited
+        if natural_expiry_waited or not short_leases_may_be_active:
+            return
+        if latest_lease_expiry is None:
+            raise OtaError(
+                "rehearsal mutation ownership is armed without a lease deadline"
+            )
+        wait_until = latest_lease_expiry + TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS
+        seconds = max(0.0, wait_until - time.monotonic())
+        print(
+            "[preflight] waiting "
+            f"{seconds:.1f}s for every independent lease and possible "
+            "fixed rehearsal window to expire"
+        )
+        while True:
+            remaining = wait_until - time.monotonic()
+            if remaining <= 0:
+                break
+            # If interrupted, the finally block calls this function again and
+            # resumes from the same absolute deadline instead of restarting a
+            # complete three-minute wait.
+            time.sleep(remaining)
+        natural_expiry_waited = True
+
+    def restore_controller_if_needed(label: str) -> None:
+        nonlocal controller_may_need_restore
+        if shared_controller:
+            # Its bounded local override never overwrote the Binary saved tuple.
+            controller_may_need_restore = False
+            return
+        if controller_may_need_restore:
+            controller.set_radio(
+                normal_radio,
+                label,
+                timeout=controller_timeout(),
+            )
+        else:
+            actual = controller.get_radio(timeout=controller_timeout())
+            if not normal_radio.matches(actual):
+                controller.set_radio(
+                    normal_radio,
+                    label,
+                    timeout=controller_timeout(),
+                )
+        controller_may_need_restore = False
+
+    def recover_participants_on_temp() -> None:
+        """Actively normalize every rehearsal-owned participant.
+
+        A broken auto-return leaves the node unreachable from the normal
+        tuple. Rejoin the exact rehearsal tuple, send the idempotent restore to
+        every scripted node once, restore the local source last, and then put
+        the controller back. Nodes which already returned simply cannot hear
+        the temporary-channel restore and are validated by the later normal
+        proof.
+        """
+        nonlocal controller_may_need_restore
+        print(
+            "[preflight] normal-path proof failed; attempting bounded "
+            "temporary-channel recovery"
+        )
+        recovery_source_expiry: float | None = None
+        recovery_retry_expiry: float | None = None
+        recovery_diagnostics: list[str] = []
+        recovery_interrupt: BaseException | None = None
+        try:
+            if shared_controller:
+                try:
+                    status = read_source_temp_radio_status(args)
+                except (OtaError, OSError) as exc:
+                    recovery_diagnostics.append(
+                        f"source tuple read before recovery: {exc}"
+                    )
+                    status = None
+                source_on_expected_temp = bool(
+                    status is not None
+                    and status[0] == "active"
+                    and status[1] is not None
+                    and RadioSettings(
+                        temp_radio.frequency,
+                        temp_radio.bandwidth,
+                        temp_radio.spreading_factor,
+                        temp_radio.coding_rate,
+                        False,
+                    ).matches(status[1])
+                )
+                if not source_on_expected_temp:
+                    recovery_started = time.monotonic()
+                    recovery_minutes = TEMP_RADIO_RETURN_MINUTES
+                    # Record ownership before the write: a lost local reply can
+                    # still mean the one-minute cleanup lease was accepted.
+                    recovery_source_expiry = (
+                        recovery_started + recovery_minutes * 60
+                    )
+                    try:
+                        recovery_reply = source_cli_command(
+                            args,
+                            temp_radio_command_for_minutes(
+                                args, TEMP_RADIO_RETURN_MINUTES
+                            ),
+                            bounded=True,
+                            retry=False,
+                        )
+                        # An unexpected but explicit duration is still a real
+                        # lease. Own that full interval before rejecting it.
+                        recovery_minutes = parse_temp_radio_reply_minutes(
+                            "OTA source recovery", recovery_reply
+                        )
+                        require_temp_radio_reply(
+                            "OTA source recovery",
+                            recovery_reply,
+                            TEMP_RADIO_RETURN_MINUTES,
+                        )
+                    except (OtaError, OSError) as exc:
+                        recovery_diagnostics.append(
+                            f"source temporary rejoin: {exc}"
+                        )
+                    finally:
+                        # The local operation may consume most of its 30-second
+                        # bound before a reply is lost. Bound from completion,
+                        # not merely from the pre-write timestamp.
+                        recovery_source_expiry = max(
+                            recovery_source_expiry,
+                            time.monotonic()
+                            + recovery_minutes * 60,
+                        )
+                    time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
+            else:
+                controller_may_need_restore = True
+                try:
+                    controller.set_radio(
+                        temp_radio,
+                        "rejoin temporary tuple for rehearsal recovery",
+                        timeout=controller_timeout(),
+                    )
+                except (OtaError, OSError) as exc:
+                    recovery_diagnostics.append(
+                        f"controller temporary rejoin: {exc}"
+                    )
+                time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
+
+            for name, password in remote_nodes:
+                restore_started = time.monotonic()
+                restore_reply_proven = False
+                try:
+                    reply = controller.remote_command(
+                        name,
+                        "normalradio",
+                        password=password,
+                        retry=False,
+                        reply_timeout=min(
+                            int(getattr(controller, "reply_timeout", 20)),
+                            TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS,
+                        ),
+                        operation_timeout=(
+                            TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+                        ),
+                    )
+                except TransmissionError as exc:
+                    # Ambiguity is safe for a restore command: never replay it,
+                    # and let the exact normal-channel proof decide whether it
+                    # arrived. A node which already returned is expected here.
+                    print(
+                        f"[preflight] {name} recovery reply unavailable: {exc}"
+                    )
+                except OtaError as exc:
+                    recovery_diagnostics.append(f"{name}: {exc}")
+                else:
+                    try:
+                        require_normal_radio_reply(name, reply)
+                        restore_reply_proven = True
+                    except OtaError as exc:
+                        recovery_diagnostics.append(str(exc))
+                finally:
+                    if not restore_reply_proven:
+                        possible_retry_expiry = (
+                            # The host operation itself can consume its full
+                            # timeout while firmware retains the mutation.
+                            # Start the independent retry horizon only after
+                            # host completion so no queued restore survives.
+                            max(restore_started, time.monotonic())
+                            + remote_cli_mutation_drain_seconds(temp_radio)
+                        )
+                        recovery_retry_expiry = (
+                            possible_retry_expiry
+                            if recovery_retry_expiry is None
+                            else max(
+                                recovery_retry_expiry,
+                                possible_retry_expiry,
+                            )
+                        )
+        except BaseException as exc:
+            recovery_interrupt = exc
+        finally:
+            # The local source is always restored last, including legacy
+            # sources whose bare TempRadio status command is unsupported.
+            try:
+                source_reply = source_cli_command(
+                    args,
+                    "normalradio",
+                    bounded=True,
+                )
+                require_normal_radio_reply("OTA source", source_reply)
+            except (OtaError, OSError) as exc:
+                recovery_diagnostics.append(f"OTA source: {exc}")
+            except BaseException as exc:
+                if recovery_interrupt is None:
+                    recovery_interrupt = exc
+            try:
+                time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
+            except BaseException as exc:
+                if recovery_interrupt is None:
+                    recovery_interrupt = exc
+            if not shared_controller:
+                try:
+                    restore_controller_if_needed(
+                        "restore controller after rehearsal recovery"
+                    )
+                except (OtaError, OSError) as exc:
+                    recovery_diagnostics.append(
+                        f"controller normal restore: {exc}"
+                    )
+                except BaseException as exc:
+                    if recovery_interrupt is None:
+                        recovery_interrupt = exc
+
+        # Drain an ambiguously queued remote restore before another run can
+        # arm a new lease which that harmless-but-late normalradio would
+        # cancel. Also honor a shared source's independent one-minute safety
+        # net even after an explicit normalradio reply.
+        recovery_deadlines = [
+            value
+            for value in (recovery_source_expiry, recovery_retry_expiry)
+            if value is not None
+        ]
+        if recovery_deadlines:
+            recovery_wait_until = (
+                max(recovery_deadlines)
+                + TEMP_RADIO_PREFLIGHT_MARGIN_SECONDS
+            )
+            while True:
+                remaining = recovery_wait_until - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    time.sleep(remaining)
+                except BaseException as exc:
+                    if recovery_interrupt is None:
+                        recovery_interrupt = exc
+        if recovery_diagnostics:
+            print(
+                "[preflight] recovery diagnostics (normal proof remains "
+                "authoritative): " + "; ".join(recovery_diagnostics)
+            )
+        if recovery_interrupt is not None:
+            raise recovery_interrupt
+
+    def prove_normal_path() -> None:
+        nonlocal normal_proven
+        require_radio_settings(
+            controller.get_radio(timeout=controller_timeout()),
+            normal_radio,
+            "preflight controller return",
+        )
+        prove_controller_identity("after natural return")
+        source_status = read_source_temp_radio_status(args)
+        if source_status is not None and source_status[0] != "inactive":
+            raise OtaError(
+                "OTA source did not return automatically after its independent "
+                f"three-minute lease: {source_status[0]}"
+            )
+        prove_source_identity("after natural return")
+        prove_remote_identities("after natural return")
+        normal_proven = True
+
+    try:
+        print(
+            "[preflight] starting independent three-minute TempRadio "
+            "reachability rehearsal"
+        )
+        prove_source_on_air("normal-channel baseline")
+
+        # Pin and sample each independently drifting remote RTC before choosing
+        # the common host activation instant. The explicit forward-only set
+        # suppresses automatic backward mesh correction even on older
+        # scheduling-capable firmware; current firmware also enforces an
+        # independent monotonic hard end. Every duplicate scheduled command
+        # still asks for one fixed epoch interval and can never extend it.
+        clock_samples: dict[str, RemoteClockSample] = {}
+        for name, password in remote_nodes:
+            require_remote_schedule_empty(name, password)
+            clock_sample = pin_remote_clock_forward(
+                controller,
+                name,
+                remote_keys[name],
+                password=password,
+            )
+            clock_samples[name] = clock_sample
+
+        # Clock pinning is read-only with respect to radio work but can itself
+        # take time on a lossy path. Make the last source/remote schedule
+        # snapshot immediately before choosing and arming the fixed window.
+        require_source_temp_work_absent()
+        for name, password in remote_nodes:
+            require_remote_schedule_empty(name, password)
+
+        activation_at = (
+            time.monotonic()
+            + TEMP_RADIO_PREFLIGHT_ARM_BASE_SECONDS
+            + len(remote_nodes)
+            * TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+        )
+        schedule_plan: dict[
+            str,
+            tuple[str, int, int, float, float, float, float],
+        ] = {}
+        for name, _password in remote_nodes:
+            sample = clock_samples[name]
+            seconds_to_activation = max(
+                1, math.ceil(activation_at - sample.monotonic_completed_at)
+            )
+            start_epoch = sample.epoch + seconds_to_activation
+            end_epoch = (
+                start_epoch + TEMP_RADIO_PREFLIGHT_MINUTES * 60
+            )
+            projected_start_earliest, projected_start_latest = (
+                sample.projected_host_bounds(start_epoch)
+            )
+            projected_end_earliest, projected_end_latest = (
+                sample.projected_host_bounds(end_epoch)
+            )
+            schedule_plan[name] = (
+                scheduled_temp_radio_command(
+                    args, start_epoch, end_epoch
+                ),
+                start_epoch,
+                end_epoch,
+                projected_start_earliest,
+                projected_start_latest,
+                projected_end_earliest,
+                projected_end_latest,
+            )
+
+        remote_activation_earliest = min(
+            plan[3] for plan in schedule_plan.values()
+        )
+        remote_activation_latest = max(
+            plan[4] for plan in schedule_plan.values()
+        )
+        print(
+            "[preflight] fixed remote activation host window "
+            f"{remote_activation_earliest:.1f}-"
+            f"{remote_activation_latest:.1f}; complete clock-read RTT "
+            "uncertainty is owned"
+        )
+
+        # Destination first, followed by controlled relays in the documented
+        # farthest-to-nearest order, while the controller remains normal.
+        for name, password in remote_nodes:
+            short_leases_may_be_active = True
+            (
+                scheduled_command,
+                start_epoch,
+                end_epoch,
+                _projected_start_earliest,
+                _projected_start_latest,
+                projected_end_earliest,
+                projected_end_latest,
+            ) = schedule_plan[name]
+            record_fixed_lease(
+                projected_end_earliest
+                - TEMP_RADIO_PREFLIGHT_SCHEDULE_GUARD_SECONDS,
+                projected_end_latest
+                + TEMP_RADIO_PREFLIGHT_SCHEDULE_GUARD_SECONDS,
+            )
+            try:
+                reply = controller.remote_command(
+                    name,
+                    scheduled_command,
+                    password=password,
+                    retry=False,
+                    reply_timeout=min(
+                        int(getattr(controller, "reply_timeout", 20)),
+                        TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS,
+                    ),
+                    operation_timeout=(
+                        TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+                    ),
+                )
+            except TransmissionError as exc:
+                # Do not replay.  A delayed firmware retry is safe: it can
+                # only install this same fixed interval before start_epoch;
+                # at/after start_epoch the node rejects it as past work.
+                print(
+                    f"[preflight] {name} fixed TempRadio acknowledgement was "
+                    f"lost ({exc}); outcome will be proven on air; window "
+                    f"{start_epoch}-{end_epoch} cannot be extended"
+                )
+            else:
+                require_scheduled_temp_radio_reply(name, reply)
+
+        wait_until(
+            remote_activation_earliest
+            - TEMP_RADIO_PREFLIGHT_SOURCE_ARM_LEAD_SECONDS,
+            "the earliest possible fixed remote TempRadio activation",
+        )
+
+        # The local source is armed last. Like each remote mutation, this is a
+        # single attempt: a lost acknowledgement is resolved by its exact
+        # on-air identity after handoff, never by extending the lease through a
+        # blind replay.
+        source_arm_deadline = temp_proof_deadline(
+            "arming OTA source",
+            TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+            + TEMP_RADIO_SWITCH_DELAY_SECONDS,
+        )
+        source_started_at = time.monotonic()
+        source_minutes = TEMP_RADIO_PREFLIGHT_MINUTES
+        short_leases_may_be_active = True
+        try:
+            try:
+                source_reply = source_cli_command(
+                    args,
+                    command,
+                    bounded=True,
+                    deadline=source_arm_deadline,
+                    retry=False,
+                )
+            except TransmissionError:
+                print(
+                    "[preflight] OTA source TempRadio acknowledgement was "
+                    "lost; the exact on-air identity proof will resolve it"
+                )
+            else:
+                source_minutes = parse_temp_radio_reply_minutes(
+                    "OTA source", source_reply
+                )
+                require_temp_radio_reply(
+                    "OTA source", source_reply, TEMP_RADIO_PREFLIGHT_MINUTES
+                )
+        finally:
+            record_possible_lease(
+                source_started_at,
+                time.monotonic(),
+                source_minutes,
+            )
+
+        wait_until(
+            remote_activation_latest
+            + TEMP_RADIO_PREFLIGHT_SCHEDULE_GUARD_SECONDS,
+            "every RTT-bounded remote RTC to enter its fixed window",
+        )
+        handoff_deadline = temp_proof_deadline(
+            "controller temporary handoff",
+            TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+            + TEMP_RADIO_SWITCH_DELAY_SECONDS,
+        )
+        if not shared_controller:
+            controller_may_need_restore = True
+            controller.set_radio(
+                temp_radio,
+                "three-minute preflight controller handoff",
+                timeout=controller_timeout(handoff_deadline),
+            )
+        temp_proof_deadline(
+            "controller temporary handoff", TEMP_RADIO_SWITCH_DELAY_SECONDS
+        )
+        time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
+        proof_deadline = temp_proof_deadline("temporary path proof")
+
+        source_status = read_source_temp_radio_status(
+            args, deadline=proof_deadline
+        )
+        if shared_controller and source_status is None:
+            raise OtaError(
+                "shared Full Companion did not expose its TempRadio tuple "
+                "during the three-minute rehearsal"
+            )
+        if source_status is not None:
+            state, source_tuple = source_status
+            if state != "active" or source_tuple is None:
+                raise OtaError(
+                    "OTA source did not report an active TempRadio tuple "
+                    f"during rehearsal: {state}"
+                )
+            expected_source_tuple = RadioSettings(
+                temp_radio.frequency,
+                temp_radio.bandwidth,
+                temp_radio.spreading_factor,
+                temp_radio.coding_rate,
+                False,
+            )
+            require_radio_settings(
+                source_tuple,
+                expected_source_tuple,
+                "preflight OTA source",
+            )
+        if not shared_controller:
+            require_radio_settings(
+                controller.get_radio(
+                    timeout=controller_timeout(proof_deadline)
+                ),
+                temp_radio,
+                "preflight controller temporary",
+            )
+        prove_controller_identity("on TempRadio", deadline=proof_deadline)
+        prove_source_identity("on TempRadio", deadline=proof_deadline)
+        prove_remote_identities("on TempRadio", deadline=proof_deadline)
+        temp_proof_deadline("temporary path proof completion")
+
+        if not shared_controller:
+            # Binary `set radio` persists its tuple. Restore it immediately
+            # after the temporary-path proof instead of leaving a controller
+            # vulnerable to a host crash during the three-minute wait. The
+            # destination/relay/source leases remain independently bounded and
+            # are still required to expire naturally before normal proof.
+            restore_controller_if_needed(
+                "restore controller during three-minute preflight"
+            )
+        wait_for_natural_expiry()
+        restore_controller_if_needed(
+            "restore controller after three-minute preflight"
+        )
+        prove_normal_path()
+        print(
+            "[preflight] PASS: destination, controlled relays, source, and "
+            "controller reached the exact tuple and returned to normal"
+        )
+    except BaseException as exc:  # cleanup must also run after Ctrl-C
+        primary_error = exc
+    finally:
+        # These flags are local to the rehearsal. The long transfer has not
+        # started and its cleanup ownership remains completely unarmed.
+        if short_leases_may_be_active:
+            if controller_may_need_restore and not shared_controller:
+                try:
+                    restore_controller_if_needed(
+                        "restore controller after failed three-minute preflight"
+                    )
+                except KeyboardInterrupt as exc:
+                    # A second Ctrl-C during early controller restoration must
+                    # not bypass the absolute owned-lease wait below.
+                    if primary_error is None:
+                        primary_error = exc
+                except (OtaError, OSError) as exc:
+                    cleanup_errors.append(f"controller early restore: {exc}")
+            while not natural_expiry_waited:
+                try:
+                    wait_for_natural_expiry()
+                except KeyboardInterrupt as exc:
+                    # Remember Ctrl-C, but do not let repeated interrupts make
+                    # a script-owned lease survive this process. Each retry
+                    # uses the same absolute expiry deadline.
+                    if primary_error is None:
+                        primary_error = exc
+                    continue
+                except BaseException as exc:
+                    cleanup_errors.append(
+                        f"bounded-lease expiry wait: {exc}"
+                    )
+                    break
+            try:
+                restore_controller_if_needed(
+                    "restore controller after failed three-minute preflight"
+                )
+            except KeyboardInterrupt as exc:
+                if primary_error is None:
+                    primary_error = exc
+            except (OtaError, OSError) as exc:
+                cleanup_errors.append(f"controller restore: {exc}")
+            if not normal_proven:
+                first_normal_error: BaseException | None = None
+                try:
+                    prove_normal_path()
+                except KeyboardInterrupt as exc:
+                    if primary_error is None:
+                        primary_error = exc
+                    first_normal_error = exc
+                except (OtaError, OSError) as exc:
+                    first_normal_error = exc
+                if first_normal_error is not None:
+                    recovery_error: BaseException | None = None
+                    try:
+                        recover_participants_on_temp()
+                    except (OtaError, OSError) as exc:
+                        recovery_error = exc
+                    except KeyboardInterrupt as exc:
+                        if primary_error is None:
+                            primary_error = exc
+                        recovery_error = exc
+                    try:
+                        prove_normal_path()
+                    except KeyboardInterrupt as exc:
+                        if primary_error is None:
+                            primary_error = exc
+                        cleanup_errors.append(
+                            "normal-path proof after active recovery was "
+                            f"interrupted: {exc}"
+                        )
+                    except (OtaError, OSError) as exc:
+                        detail = (
+                            f"; active recovery: {recovery_error}"
+                            if recovery_error is not None
+                            else ""
+                        )
+                        cleanup_errors.append(
+                            f"normal-path proof: {first_normal_error}{detail}; "
+                            f"normal-path proof after active recovery: {exc}"
+                        )
+                    else:
+                        # Exact identities on the normal tuple are
+                        # authoritative even if a best-effort cleanup command
+                        # reported an error. Keep any earlier independent
+                        # cleanup diagnostics, but do not let them suppress the
+                        # recovery attempt itself.
+                        if recovery_error is not None:
+                            print(
+                                "[preflight] active recovery diagnostic "
+                                f"after proven normal return: {recovery_error}"
+                            )
+
+    if primary_error is not None:
+        if cleanup_errors:
+            raise OtaError(
+                f"three-minute TempRadio rehearsal failed: {primary_error}; "
+                "cleanup also failed: " + "; ".join(cleanup_errors)
+            ) from primary_error
+        raise primary_error
+    if cleanup_errors:
+        raise OtaError(
+            "three-minute TempRadio rehearsal cleanup failed: "
+            + "; ".join(cleanup_errors)
+        )
 
 
 def arm_target_temp_radio(
@@ -3551,8 +5895,15 @@ def arm_target_temp_radio(
                 )
                 if shared_controller:
                     time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
-                identity = controller.remote_command(
-                    args.target, "ota self", retry=False
+                # Identity reads are idempotent, but this proof must never
+                # enter the operator-continuation retry loop. Both leases are
+                # bounded, so exhaust a fixed set of attempts and then check
+                # the normal channel instead of waiting through lease expiry.
+                identity = retry_transmission_bounded(
+                    lambda: controller.remote_command(
+                        args.target, "ota self", retry=False
+                    ),
+                    f"temporary-channel identity proof for {args.target}",
                 )
                 if re.search(r"\bbase_hash=[0-9A-Fa-f]{16}\b", identity) is None:
                     raise OtaError(
@@ -3589,8 +5940,11 @@ def arm_target_temp_radio(
             # on the normal channel therefore proves that the target did not
             # remain on TempRadio, making a bounded replay safe.
             try:
-                identity = controller.remote_command(
-                    args.target, "ota self", retry=False
+                identity = retry_transmission_bounded(
+                    lambda: controller.remote_command(
+                        args.target, "ota self", retry=False
+                    ),
+                    f"normal-channel identity proof for {args.target}",
                 )
                 if re.search(r"\bbase_hash=[0-9A-Fa-f]{16}\b", identity) is None:
                     raise OtaError(
@@ -3618,7 +5972,9 @@ def arm_target_temp_radio(
             )
             time.sleep(delay)
             continue
-        require_temp_radio_reply(args.target, reply)
+        require_temp_radio_reply(
+            args.target, reply, temp_radio_command_minutes(command)
+        )
         return
 
 
@@ -3633,15 +5989,123 @@ def temp_radio_command_for_minutes(
     )
 
 
+def arm_relay_temp_radio_once(
+    controller: Controller,
+    relay_name: str,
+    relay_password: str,
+    command: str,
+    armed_relay_values: list[tuple[str, str]],
+    expected_minutes: int,
+) -> bool:
+    """Send one relative relay lease, owning ambiguity before transmission.
+
+    ``False`` means the command may have arrived but its acknowledgement did
+    not. The caller must switch to the declared tuple and reconcile the exact
+    relay identity; it must never replay this relative-duration write.
+    """
+    owned = (relay_name, relay_password)
+    if owned not in armed_relay_values:
+        # Arm cleanup first: remote_command can raise after firmware accepted
+        # the lease but before meshcli returned its private reply.
+        armed_relay_values.append(owned)
+    try:
+        reply = controller.remote_command(
+            relay_name,
+            command,
+            password=relay_password,
+            retry=False,
+        )
+    except TransmissionError as exc:
+        print(
+            f"[relays] {relay_name} TempRadio acknowledgement was lost ({exc}); "
+            "the relative command will not be replayed"
+        )
+        return False
+    require_temp_radio_reply(relay_name, reply, expected_minutes)
+    return True
+
+
+def arm_source_temp_radio_once(
+    args: argparse.Namespace,
+    command: str,
+) -> bool:
+    """Send one managed-source relative lease without a blind CLI retry."""
+    try:
+        reply = source_cli_command(args, command, retry=False)
+    except TransmissionError as exc:
+        print(
+            "[source] TempRadio acknowledgement was lost "
+            f"({exc}); the relative command will not be replayed"
+        )
+        return False
+    require_temp_radio_reply(
+        "OTA source", reply, temp_radio_command_minutes(command)
+    )
+    return True
+
+
+def require_source_on_temp_after_uncertain_arm(
+    args: argparse.Namespace,
+    temp_radio: RadioSettings,
+) -> None:
+    """Resolve a lost local source acknowledgement through exact tuple state."""
+    status = read_source_temp_radio_status(args)
+    if status is None:
+        raise OtaError(
+            "OTA source TempRadio outcome is ambiguous and this legacy source "
+            "does not expose a state query; the relative command was not replayed"
+        )
+    state, actual = status
+    expected = RadioSettings(
+        temp_radio.frequency,
+        temp_radio.bandwidth,
+        temp_radio.spreading_factor,
+        temp_radio.coding_rate,
+        False,
+    )
+    if state != "active" or actual is None:
+        raise OtaError(
+            "OTA source TempRadio acknowledgement was lost and readback did "
+            f"not prove an active tuple: {state}"
+        )
+    require_radio_settings(actual, expected, "OTA source TempRadio readback")
+    print(
+        "[source] lost TempRadio acknowledgement reconciled by exact active "
+        "tuple readback"
+    )
+
+
 def arm_target_install_window(
     controller: Controller,
     args: argparse.Namespace,
+    package: MotaInfo,
 ) -> None:
-    reply = controller.remote_command(
-        args.target,
-        temp_radio_command_for_minutes(args, INSTALL_TARGET_WINDOW_MINUTES),
+    command = temp_radio_command_for_minutes(
+        args, INSTALL_TARGET_WINDOW_MINUTES
     )
-    require_temp_radio_reply(args.target, reply)
+    try:
+        reply = controller.remote_command(
+            args.target,
+            command,
+            retry=False,
+        )
+    except TransmissionError as exc:
+        # The existing download lease remains bounded if this one-shot write
+        # did not arrive. An exact staged-session read proves the same target is
+        # still reachable, which is sufficient to proceed to the separately
+        # state-reconciled install request without extending the lease again.
+        status = controller.remote_command(
+            args.target, "ota status", retry=False
+        )
+        require_package_session(status, package, ready=True)
+        print(
+            "[install] three-minute TempRadio acknowledgement was lost "
+            f"({exc}); exact staged-session state reconciled it without replay"
+        )
+        return
+    require_temp_radio_reply(
+        args.target, reply, INSTALL_TARGET_WINDOW_MINUTES
+    )
 
 
 def confirm_ready_to_install(
@@ -3679,7 +6143,7 @@ def request_install(
     while True:
         # If an install reply is lost and the target also stops replying, this
         # short window gets it back onto the normal channel for verification.
-        arm_target_install_window(controller, args)
+        arm_target_install_window(controller, args, package)
         if getattr(args, "require_system_watchdog_off", False):
             require_system_watchdog_off(controller, args)
         try:
@@ -3733,6 +6197,7 @@ def shorten_relay_temp_windows(
     controller: Controller,
     args: argparse.Namespace,
     relay_values: list[tuple[str, str]] | None = None,
+    expected_public_keys: dict[str, str] | None = None,
 ) -> None:
     values = args.relay_values if relay_values is None else relay_values
     if not values:
@@ -3742,11 +6207,63 @@ def shorten_relay_temp_windows(
         f"[relays] scheduling return to the normal channel in "
         f"{TEMP_RADIO_RETURN_MINUTES} minute"
     )
+    errors: list[str] = []
+    interrupted: KeyboardInterrupt | None = None
     for relay_name, relay_password in values:
-        reply = controller.remote_command(
-            relay_name, command, password=relay_password
-        )
-        require_temp_radio_reply(relay_name, reply)
+        try:
+            try:
+                reply = controller.remote_command(
+                    relay_name,
+                    command,
+                    password=relay_password,
+                    retry=False,
+                )
+            except TransmissionError as exc:
+                # Never replay a relative lease. Prove which authenticated
+                # relay remained reachable on this tuple; its original window
+                # is still bounded if the one-minute write did not arrive.
+                actual_key = read_remote_public_key_bounded(
+                    controller,
+                    relay_name,
+                    password=relay_password,
+                )
+                expected_key = (
+                    expected_public_keys.get(relay_name)
+                    if expected_public_keys is not None
+                    else None
+                )
+                if expected_key is not None and actual_key != expected_key:
+                    raise OtaError(
+                        f"identity changed after lost cleanup reply: expected "
+                        f"{expected_key}, got {actual_key}"
+                    )
+                print(
+                    f"[relays] {relay_name} one-minute TempRadio reply was "
+                    f"lost ({exc}); exact identity reconciled the one-shot "
+                    "request, and its original lease remains bounded"
+                )
+            else:
+                require_temp_radio_reply(
+                    relay_name, reply, TEMP_RADIO_RETURN_MINUTES
+                )
+        except KeyboardInterrupt as exc:
+            # Continue through the remaining independently owned relays. The
+            # interrupt is re-raised only after each has received one attempt.
+            if interrupted is None:
+                interrupted = exc
+            errors.append(f"{relay_name}: interrupted")
+        except (OtaError, OSError) as exc:
+            errors.append(f"{relay_name}: {exc}")
+    if errors:
+        detail = "; ".join(errors)
+        if interrupted is not None:
+            print(
+                "WARNING: relay cleanup continued after interruption: "
+                + detail,
+                file=sys.stderr,
+            )
+            raise interrupted
+        raise OtaError("could not shorten every relay TempRadio lease: " + detail)
 
 
 def shorten_target_temp_window(
@@ -3758,8 +6275,31 @@ def shorten_target_temp_window(
         f"[destination] scheduling return to the normal channel in "
         f"{TEMP_RADIO_RETURN_MINUTES} minute"
     )
-    reply = controller.remote_command(args.target, command)
-    require_temp_radio_reply(args.target, reply)
+    try:
+        reply = controller.remote_command(
+            args.target, command, retry=False
+        )
+    except TransmissionError as exc:
+        identity = retry_transmission_bounded(
+            lambda: controller.remote_command(
+                args.target, "ota self", retry=False
+            ),
+            f"cleanup identity reconciliation for {args.target}",
+        )
+        if re.search(r"\bbase_hash=[0-9A-Fa-f]{16}\b", identity) is None:
+            raise OtaError(
+                "destination replied after a lost cleanup request but did not "
+                "return a valid running EndF identity"
+            )
+        print(
+            "[destination] one-minute TempRadio reply was lost "
+            f"({exc}); exact identity reconciled the one-shot request, and the "
+            "original lease remains bounded"
+        )
+        return
+    require_temp_radio_reply(
+        args.target, reply, TEMP_RADIO_RETURN_MINUTES
+    )
 
 
 def shorten_source_temp_window(
@@ -3832,7 +6372,9 @@ def shorten_source_temp_window(
         f"[source] scheduling return to the normal channel in "
         f"{TEMP_RADIO_RETURN_MINUTES} minute"
     )
-    output = source_cli_command(args, command, check=check)
+    output = source_cli_command(
+        args, command, check=check, retry=False
+    )
     if not output and not check:
         print(
             "[warn] could not shorten the OTA source TempRadio window; "
@@ -3858,7 +6400,8 @@ def switch_controller_to_temp_radio(
         # This local command changes only the bounded live radio tuple. A Binary
         # `set radio` would persist the temporary tuple, leaving `normalradio`
         # with no saved normal tuple to restore.
-        source_cli_command(args, temp_command)
+        if not arm_source_temp_radio_once(args, temp_command):
+            require_source_on_temp_after_uncertain_arm(args, temp_radio)
         return
     controller.set_radio(temp_radio, "switch controller to TempRadio")
 
@@ -3894,7 +6437,12 @@ def verify_installed(
 
     installed_version = None
     try:
-        stats_reply = controller.remote_command(args.target, "ota stats")
+        stats_reply = retry_transmission_bounded(
+            lambda: controller.remote_command(
+                args.target, "ota stats", retry=False
+            ),
+            f"optional post-reboot `ota stats` probe on {args.target}",
+        )
         version_match = re.search(
             r"\bfw (v\d+\.\d+\.\d+(?:\.\d+)?)\b", stats_reply
         )
@@ -4060,6 +6608,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional relay, ordered farthest-to-nearest; repeat as needed",
     )
     parser.add_argument(
+        "--source-contact",
+        metavar="NAME",
+        help=(
+            "controller contact for a separate OTA source, used for the "
+            "three-minute on-air proof; defaults to the source's local name "
+            "(no remote-admin password is required)"
+        ),
+    )
+    parser.add_argument(
         "--relay-txdelay",
         type=float,
         default=DEFAULT_RELAY_TX_DELAY,
@@ -4098,6 +6655,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--meshcli", default="meshcli")
     parser.add_argument("--motatool", default="motatool")
+    parser.add_argument(
+        "--package-build-timeout",
+        type=int,
+        default=DEFAULT_PACKAGE_BUILD_TIMEOUT_SECONDS,
+        help=(
+            "maximum seconds for a locally generated mOTA; low-power hosts "
+            "can take many minutes to build an in-place delta"
+        ),
+    )
     parser.add_argument(
         "--debug",
         action="store_true",
@@ -4258,6 +6824,8 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
             parser.error("--nrf-sd and --nrf-qspi are mutually exclusive")
         if (args.nrf_sd or args.nrf_qspi) and args.platform != "nrf52":
             parser.error("--nrf-sd/--nrf-qspi require --platform nrf52")
+        if args.source_contact is not None:
+            parser.error("--source-contact is only valid during a live run")
     else:
         if any((args.platform, args.target_id, args.target_base_hash,
                 args.target_hw, args.nrf_sd, args.nrf_qspi)):
@@ -4301,6 +6869,14 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
                 "managed source because source RXPS must be restored only "
                 "after its normal radio is verified"
             )
+        if args.source_shares_controller and args.source_contact is not None:
+            parser.error(
+                "--source-contact is not used when the source shares the controller"
+            )
+        if args.source_already_temp and args.source_contact is not None:
+            parser.error(
+                "--source-contact cannot qualify an unmanaged --source-already-temp source"
+            )
         if args.controller_serial and args.source_serial:
             if serial_paths_match(args.controller_serial, args.source_serial):
                 parser.error("controller and source must be separate nodes/serial ports")
@@ -4311,6 +6887,7 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         "TARGET_NODE": args.target,
         "--password": args.password,
         "--target-hw": args.target_hw,
+        "--source-contact": args.source_contact,
         **{f"--relay #{index}": value for index, value in enumerate(args.relay, 1)},
     }
     for label, value in unsafe_text.items():
@@ -4319,6 +6896,7 @@ def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
     for name in (
         "reply_timeout", "discovery_timeout", "discovery_interval", "poll_seconds",
         "transfer_timeout_minutes", "seeder_start_wait", "reboot_wait",
+        "package_build_timeout",
     ):
         if getattr(args, name) <= 0:
             parser.error(f"--{name.replace('_', '-')} must be positive")
@@ -4467,6 +7045,7 @@ def main(
     seeder: SeederProcess | None = None
     seeder_attempted = False
     source_temp_owned = False
+    source_temp_cleanup_attempted = False
     source_rxps_saved: RxpsSettings | None = None
     source_rxps_changed = False
     source_rxps_recovery_path: Path | None = None
@@ -4474,6 +7053,7 @@ def main(
     target_rxps_saved: RxpsSettings | None = None
     target_rxps_changed = False
     armed_relay_values: list[tuple[str, str]] = []
+    relay_public_keys: dict[str, str] = {}
     relay_timing_settings: list[RelayTimingSettings] = []
     password = args.password or os.environ.get("MESHCORE_ADMIN_PASSWORD", "")
     temp_command = f"tempradio {args.temp_radio}"
@@ -4521,6 +7101,7 @@ def main(
         if any(char in password for char in "\r\n\0"):
             raise OtaError("admin password contains an unsupported control character")
         args.relay_values = [parse_relay(value, password) for value in args.relay]
+        args.source_contact_value = args.source_contact
         # Retain recovery state before any source mutation. A hard kill after
         # RXPS is disabled must not erase the only copy of its saved setting.
         work_dir = make_work_dir(args.work_dir)
@@ -4564,21 +7145,43 @@ def main(
                         "[rxps] source recovery settings: "
                         f"{source_rxps_recovery_path}"
                     )
-                # Arm cleanup before the mutating command. The command may
-                # reach the source even if its acknowledgement is lost. A
-                # retained record can also differ because a killed prior run
-                # left the source off; restore that original at cleanup.
+                # Before this run's first mutation, cleanup is needed only
+                # when a retained record proves an interrupted earlier run
+                # left the source different from its original setting. Do
+                # not arm a no-op restore merely because RXPS is enabled:
+                # package preparation can take a long time, and a read-only
+                # failure must not overwrite an external setting change made
+                # during that interval. The flag is armed for a potentially
+                # lost disable acknowledgement immediately before disable.
                 source_rxps_changed = (
                     current_source_rxps != source_rxps_saved
-                    or source_rxps_saved.enabled
                 )
-                disabled_now = disable_source_rxps(
-                    args, current_source_rxps
-                )
-                source_rxps_changed = source_rxps_changed or disabled_now
             if controller is None:
                 controller = Controller(args, password)
             verify_shared_source_identity(controller, args)
+            # These gates are intentionally before query_target() or any other
+            # on-air remote operation. First prove that advancing the managed
+            # source clock cannot trigger active/pending TempRadio work. A
+            # companion which rebooted onto a stale fallback RTC otherwise
+            # emits valid packets that the destination replay guard drops.
+            source_clock_window = ensure_source_clock_gate_safe(args)
+            controller_epoch = ensure_controller_clock_safe(controller)
+            if args.source_shares_controller:
+                if source_clock_window is None:
+                    raise OtaError(
+                        "shared source has no managed terminal clock gate"
+                    )
+                # The terminal gate may have advanced this shared RTC after a
+                # prior Binary read. Bind both local transport views exactly
+                # before the first LoRa packet.
+                controller_epoch = controller.get_clock(
+                    timeout=float(
+                        TEMP_RADIO_PREFLIGHT_OPERATION_TIMEOUT_SECONDS
+                    )
+                )
+                require_shared_clock_agreement(
+                    controller_epoch, source_clock_window
+                )
             target = query_target(controller, args)
             original_radio = controller.get_radio()
             print(f"[controller] saved radio {original_radio.meshcli_value()}")
@@ -4647,10 +7250,59 @@ def main(
         args.target_rxps_saved = target_rxps_saved
         args.target_rxps_profile = target_rxps_profile
         confirm_update(args, target, package)
+
         freq, bandwidth, sf, cr, _minutes = args.temp_values
         temp_radio = RadioSettings(
             freq, bandwidth, sf, cr, original_radio.repeat
         )
+
+        # Qualify the entire path before source RXPS, destination RXPS, the
+        # long TempRadio window, relay timing, seeding, pull, or install can be
+        # mutated. The rehearsal owns only independent three-minute leases and
+        # proves their natural return before handing control back to this run.
+        run_temp_radio_preflight(
+            controller,
+            args,
+            target,
+            original_radio,
+            temp_radio,
+        )
+
+        # Package generation above belongs on a workstation/build VM; a
+        # Pi-class radio host should receive only the completed hash-verified
+        # artifact. Regardless of where preparation ran, keep the source in
+        # its original RXPS mode through package verification, all read-only
+        # compatibility checks, and operator confirmation. Re-read immediately
+        # before the first mutation so an external setting change cannot make
+        # this decision from a stale snapshot. The durable original remains
+        # armed for exact cleanup if a prior interrupted run left the source
+        # off.
+        if has_managed_source_cli(args):
+            assert source_rxps_saved is not None
+            try:
+                current_source_rxps = read_source_rxps(args)
+            except TransmissionStopped:
+                raise
+            except OtaError as exc:
+                raise OtaError(
+                    "cannot safely disable OTA source RXPS because its current "
+                    f"state is unavailable: {exc}"
+                ) from exc
+            if (
+                not source_rxps_changed
+                and current_source_rxps != source_rxps_saved
+            ):
+                raise OtaError(
+                    "OTA source RXPS changed during read-only package "
+                    "preparation; leaving the new external setting unchanged"
+                )
+            source_rxps_changed = (
+                source_rxps_changed
+                or current_source_rxps != source_rxps_saved
+                or source_rxps_saved.enabled
+            )
+            disabled_now = disable_source_rxps(args, current_source_rxps)
+            source_rxps_changed = source_rxps_changed or disabled_now
 
         if target_rxps_saved is not None and target_rxps_saved.enabled:
             recovery_path = write_target_rxps_recovery(
@@ -4677,6 +7329,18 @@ def main(
         # can process TempRadio even when its reply is lost, so resolve that
         # ambiguity by probing its exact identity on the temporary channel
         # instead of replaying the command from the normal channel.
+        # Bind every managed relay before any long relative lease is sent. A
+        # lost acknowledgement is later reconciled against this exact key on
+        # the temporary tuple instead of blindly extending the lease.
+        relay_public_keys = {
+            relay_name: read_remote_public_key_bounded(
+                controller,
+                relay_name,
+                password=relay_password,
+            )
+            for relay_name, relay_password in args.relay_values
+        }
+
         target_temp_owned = True
         if args.source_shares_controller:
             # A lost-reply probe can schedule the shared local source onto the
@@ -4686,17 +7350,27 @@ def main(
         arm_target_temp_radio(
             controller, args, temp_command, temp_radio, original_radio
         )
+        uncertain_relay_arms: list[tuple[str, str]] = []
         for relay_name, relay_password in args.relay_values:
-            temp_reply = controller.remote_command(
-                relay_name, temp_command, password=relay_password
-            )
-            require_temp_radio_reply(relay_name, temp_reply)
-            armed_relay_values.append((relay_name, relay_password))
+            if not arm_relay_temp_radio_once(
+                controller,
+                relay_name,
+                relay_password,
+                temp_command,
+                armed_relay_values,
+                int(args.temp_values[-1]),
+            ):
+                uncertain_relay_arms.append(
+                    (relay_name, relay_password)
+                )
+        uncertain_source_arm = False
         if not args.source_already_temp and not args.source_shares_controller:
             # Arm cleanup before the mutating command because the source can
             # enter TempRadio even when its acknowledgement is lost.
             source_temp_owned = True
-            source_cli_command(args, temp_command)
+            uncertain_source_arm = not arm_source_temp_radio_once(
+                args, temp_command
+            )
 
         if args.source_shares_controller:
             # Arm cleanup before the local command. Its reply can be lost after
@@ -4711,6 +7385,25 @@ def main(
         # the normal radio configuration.
         controller_changed = True
         time.sleep(TEMP_RADIO_SWITCH_DELAY_SECONDS)
+
+        for relay_name, relay_password in uncertain_relay_arms:
+            actual_key = read_remote_public_key_bounded(
+                controller,
+                relay_name,
+                password=relay_password,
+            )
+            expected_key = relay_public_keys[relay_name]
+            if actual_key != expected_key:
+                raise OtaError(
+                    f"{relay_name} TempRadio identity changed after a lost "
+                    f"acknowledgement: expected {expected_key}, got {actual_key}"
+                )
+            print(
+                f"[relays] {relay_name} lost TempRadio acknowledgement "
+                "reconciled by exact identity on the declared tuple"
+            )
+        if uncertain_source_arm:
+            require_source_on_temp_after_uncertain_arm(args, temp_radio)
 
         for relay_name, relay_password in args.relay_values:
             saved_timing = read_relay_timing(
@@ -4741,10 +7434,19 @@ def main(
                     "--leave-controller-radio was requested"
                 )
             else:
-                shorten_target_temp_window(controller, args)
+                # Retire one-shot ownership before the write. If its reply is
+                # lost, reconciliation is read-only and outer cleanup must not
+                # send the relative duration a second time.
                 target_temp_owned = False
-                shorten_relay_temp_windows(controller, args)
+                shorten_target_temp_window(controller, args)
+                relays_to_shorten = list(armed_relay_values)
                 armed_relay_values.clear()
+                shorten_relay_temp_windows(
+                    controller,
+                    args,
+                    relays_to_shorten,
+                    relay_public_keys,
+                )
             if target_rxps_changed and target_rxps_saved is not None:
                 if args.leave_controller_radio:
                     print(
@@ -4766,6 +7468,7 @@ def main(
                 not args.leave_controller_radio
                 or not args.source_shares_controller
             ):
+                source_temp_cleanup_attempted = True
                 if shorten_source_temp_window(args):
                     source_temp_owned = False
             if controller_changed and not args.leave_controller_radio:
@@ -4794,8 +7497,14 @@ def main(
         # bounded window, then verify through the restored normal route.
         restore_relay_timings(controller, relay_timing_settings)
         relay_timing_settings.clear()
-        shorten_relay_temp_windows(controller, args)
+        relays_to_shorten = list(armed_relay_values)
         armed_relay_values.clear()
+        shorten_relay_temp_windows(
+            controller,
+            args,
+            relays_to_shorten,
+            relay_public_keys,
+        )
 
         # Stop seeding before returning the controller to its ordinary channel.
         seeder.stop()
@@ -4804,6 +7513,7 @@ def main(
             not args.leave_controller_radio
             or not args.source_shares_controller
         ):
+            source_temp_cleanup_attempted = True
             if shorten_source_temp_window(args):
                 source_temp_owned = False
         controller.set_radio(original_radio, "restore controller radio for verification")
@@ -4894,9 +7604,12 @@ def main(
                                 file=sys.stderr,
                             )
                     if target_temp_owned and not args.leave_controller_radio:
+                        # This relative cleanup write is one-shot even when its
+                        # acknowledgement is lost; retire ownership first so a
+                        # later finally path cannot extend it again.
+                        target_temp_owned = False
                         try:
                             shorten_target_temp_window(controller, args)
-                            target_temp_owned = False
                         except (OtaError, OSError) as exc:
                             print(
                                 "WARNING: could not shorten the destination "
@@ -4904,11 +7617,18 @@ def main(
                                 file=sys.stderr,
                             )
                     if armed_relay_values and not args.leave_controller_radio:
+                        # Give every independently owned relay exactly one
+                        # cleanup attempt. Clear before transmission so neither
+                        # an aggregate error nor Ctrl-C can replay a duration.
+                        relays_to_shorten = list(armed_relay_values)
+                        armed_relay_values.clear()
                         try:
                             shorten_relay_temp_windows(
-                                controller, args, armed_relay_values
+                                controller,
+                                args,
+                                relays_to_shorten,
+                                relay_public_keys,
                             )
-                            armed_relay_values.clear()
                         except (OtaError, OSError) as exc:
                             print(
                                 "WARNING: could not shorten every relay TempRadio "
@@ -4940,7 +7660,8 @@ def main(
             if source_temp_owned and (
                 not args.leave_controller_radio
                 or not args.source_shares_controller
-            ):
+            ) and not source_temp_cleanup_attempted:
+                source_temp_cleanup_attempted = True
                 if shorten_source_temp_window(args, check=False):
                     source_temp_owned = False
             if (

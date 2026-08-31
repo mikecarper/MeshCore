@@ -14,8 +14,13 @@ pio test -e native                      # all suites except KISS modem
 pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_indicator_display_profile.py  # Indicator RAM/scale contract
+python3 test/test_indicator_font_recovery.py  # Indicator TLS/SD font recovery contract
 python3 test/test_companion_terminal_profile.py  # Companion CLI capability gates
+python3 test/test_client_login_profile_contract.py  # ACL login ordering/role contract
 python3 test/test_esp32_full_partition.py       # Full partition-preservation policy
+python3 test/test_esp32_usb_serial_hygiene.py   # Single-TTY diagnostics/NVS contract
+python3 test/test_temp_radio_reply_delivery_contract.py  # TempRadio ACK path/barrier integration
+python3 test/test_tls_download_clock_gates.py   # Fresh-NTP/TLS download integration contract
 ```
 
 A green `[PASSED]` per suite means GoogleTest returned 0 (all assertions
@@ -44,6 +49,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_mqtt_prefs_atomic_store` | `src/helpers/MQTTPrefsAtomicStore.h` | transactional MQTT writes and legacy `/node_prefs` handoff; exact short-write detection; begin/finish/rename failure cleanup; original-file preservation |
 | `test_mqtt_prefs_json_import` | `src/helpers/MQTTPrefsJsonImport.h`, `src/helpers/MQTTPrefsSerializer.h` | one-time observer `/mqtt.json` v1 import grammar, strict schema/repair rules, binary-first precedence, future/artifact preservation, display-tail encoding, and atomic commit failure routing |
 | `test_display_viewport` | `src/helpers/ui/DisplayViewport.h`, `src/helpers/ui/DisplayFrameSignature.h` | portrait logical-to-physical mapping, span coverage, fitted-width conversion, text scaling, and visible-frame signatures |
+| `test_indicator_font_stage_v2_protocol` | `src/helpers/IndicatorFontStageV2Protocol.h` | fail-closed STAGEV2 negotiation and legacy fallback; exact cumulative ACK parsing; 512-byte block boundaries, short final blocks, and real font-asset transfer geometry |
 | `test_radio_activity_window` | `src/helpers/RadioActivityWindow.h` | rolling minute buckets, derived rates, expiry, warm-up, silence, saturation, and `millis()` rollover |
 | `test_observer_dashboard` | `src/helpers/ui/ObserverDashboard.h` | landscape and portrait dashboard layout bounds, compact formatting, graph scaling, row signatures, and partial repaint policy |
 | `test_touch_tap_detector` | `src/helpers/ui/TouchTapDetector.h` | debounced one-shot taps, bounce and long-press handling, minimum gaps, reset, and `millis()` rollover |
@@ -55,6 +61,8 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_cli_command_utils` | `src/helpers/CLICommandUtils.h`, `src/helpers/ContactListOrder.h`, `src/helpers/TerminalCommandTracker.h`, `src/helpers/TerminalDisplayFilter.h`, `src/helpers/WiFiChannelPolicy.h`, `src/helpers/bridges/ESPNowBridgeFormat.h` | terminal verb/argument/path parsing; routed receive labels; quiet display defaults and independent emergency filtering; favorite-first contact ordering; standalone WiFi validation including 64-hex WPA/WPA2 PSKs; strict ESP-NOW channel and bridge-format parsing/range/fallback; single-command reply matching, round-trip timing, and rollover-safe expiration |
 | `test_espnow_raw_fragmentation` | `src/helpers/ESPNowRawFragmentation.h` | byte-exact legacy raw frames; 251-255-byte two-frame encoding; CRC-32 integrity; source-MAC-keyed bounded reassembly; malformed, duplicate, out-of-order, timeout, rollover, and capacity handling |
 | `test_gps_time_validation` | `src/helpers/sensors/GpsTimeValidation.h` | complete NMEA UTC validation; leap years and calendar bounds; rejection of receiver-default and signed-32-bit-out-of-range dates |
+| `test_i2c_address_claim_policy` | `src/helpers/sensors/I2CAddressClaimPolicy.h`, `src/helpers/sensors/NmeaSentenceProbe.h` | a positively identified I2C GPS owns only its address on its bus; an INA3221 identity match blocks conflicting u-blox writes; UART GPS detection requires a complete checksum-valid GPS NMEA sentence |
+| `test_gps_transport_ownership` | `src/helpers/SensorManager.cpp` | temporary bridge ownership cancels GPS acquisition/holds, preserves user preference/cache, and restores GPS only after the UART is released |
 | `test_identity_generation` | `src/helpers/IdentityGeneration.h` | reserved-prefix rejection; bounded retries; final provisioned attempt; fail-closed exhaustion |
 | `test_remote_cli_reply_cache` | `src/helpers/RemoteCliReplyCache.h`, `src/helpers/RemoteCliRequest.h`, `src/helpers/RemoteCliTimeout.h` | authenticated logical-request matching; bounded recent-reply history; backward-compatible retry identity; 300% response timeout; empty-response completion; on-air truncation and clearing |
 | `test_companion_frame_queue` | `src/helpers/CompanionFrameQueue.h`, `src/helpers/CompanionHardwareCommandCompat.h` | response/required/best-effort classification; reserved capacity; stable priority; safe eviction; message-waiting coalescing; command `0x42` framed-CLI disambiguation and deprecated hardware-alias mapping |
@@ -64,6 +72,11 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_ble_tx_stall_watchdog` | `src/helpers/BleTxStallWatchdog.h` | exact BLE fragment progress; blocked-reply timeout; rollover-safe elapsed time; disconnect recovery retry and completion |
 | `test_ble_mota_control` | `src/helpers/BleMotaStream.h`, `CompanionMotaControl.h` | encrypted mOTA channel ring buffering, overflow fail-closed behavior, request gating, and strict rejection of injected or USB-ownership control commands |
 | `test_atomic_file_writer` | `src/helpers/AtomicFileWriter.h` | verified temporary-file commit; short-write, readback, validation, and rename failures; preservation of the live file and stale-temp cleanup |
+| `test_client_login_persistence` | `src/helpers/ClientLoginPersistence.h`, `LazyPersistence.h` | pre-allocation durable replay reservations; reboot, ACL-eviction, and revoked-admin tombstones; bounded-store policy (low-trust no-insert, privileged fail-closed); atomic replay-file recovery, including post-commit cleanup failure; preauthorized transient refresh; admin/guest promotion and downgrade; force-flood preservation; role masking and fixed-size secret copy |
+| `test_client_path_persistence` | `src/helpers/ClientPathPersistence.h`, `LazyPersistence.h` | encoded path identity and byte lengths; unknown, zero-hop, force-flood, and nonpersistent clients; replay-unqualified RAM-only routes preserve an earlier operator route across unrelated save/reload |
+| `test_temp_radio_reply_barrier` | `src/helpers/TempRadioReplyBarrier.h`, `TempRadioLeaseDeadline.h` | exact single-copy queued reply completion/failure handoff; suppression of untracked alternate/retry copies; rejection of foreign callbacks; cancellation; monotonic hard expiry that a backward wall-clock correction cannot extend; bounded remaining-time reporting |
+| `test_lazy_persistence` | `src/helpers/LazyPersistence.h` | first-write scheduling without postponement, zero-sentinel rollover preservation, capped exponential save-failure backoff that mutations cannot defeat, and reset only after success |
+| `test_client_acl_file_transaction` | `src/helpers/ClientACLFileTransaction.h` | verified temp publication, preservation of the prior ACL on verification/rename failure, post-commit cleanup-failure handling, and recovery at every temp/backup/primary boundary |
 | `test_cad_timing` | `src/helpers/radiolib/CadTiming.h`, `LR2021SideDetectorConfig.h`, `RadioAirtime.h` | Cascade and slow-profile CAD deadlines; invalid airtime handling; bounded LR2021 side-detector parsing and LDRO recomputation |
 | `test_companion_node_prefs` | `examples/companion_radio/NodePrefs.h` | independent device power saving, RXPS, Wi-Fi, and FEM preferences; one-time migration of the regressed power-saving default |
 | `test_config_serializer` | `src/helpers/ConfigSerializer.cpp`, Companion `NodePrefs` | escaped config save/load, whitespace and malformed input, unknown fields, and FEM/ESP-NOW bridge-format preference round trips |
@@ -88,6 +101,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_user_gpio` | `src/helpers/UserGpio.cpp`, `UserGpioReplyTracker.h` | board-approved pins, get/set/reset, timed nonblocking transitions, duplicate suppression, rollover, and completion-reply routing |
 | `test_utf8_helpers` | `src/helpers/UTF8Helpers.h` | byte-limit truncation at complete code-point boundaries and rejection of malformed or truncated UTF-8 |
 | `test_wifi_ota_seeder_policy` | `src/helpers/WiFiOtaSeederPolicy.h`, `WiFiOtaSeederStatus.h` | listener state versus network availability, serial/TCP folder ownership, detach detection, and bounded status formatting |
+| `test_tls_clock_validity` | `src/helpers/esp32/TlsClockValidity.h` | signed wall-clock minimum and the fresh-proof/WiFi/time conjunction required before certificate-validating downloads |
 | `test_ota` | `src/helpers/ota/` | v2 application/v3 bootloader parser separation; legacy XIAO, generic internal, and exact MeshTower V2 SD embedded identity, vector, capability, explicit-confirmation, codec-isolation, scratch-headroom/shared-slot no-EndF gates, and no-autofetch gates; container and EndF integrity; protocol codecs; transfer, resume, and layered apply safety; adaptive 2-to-4 block-request window growth and stall contraction; active-transfer priority classification |
 | `test_trace_retry` | `src/Mesh.cpp`, `RTCClock`, `ClockSyncUtils.h`, retry and relay policy | app-v2 and boot-v3 traffic sharing `PAYLOAD_TYPE_OTA=0x0C` and the TempRadio suspend policy; opaque OTA relay behavior; background discovery priority; immediate primary transfer relay, receive-delay bypass, fast CAD retry, and no generic flood retry; trace and non-OTA flood retry timing; backward RTC correction; clock consensus/path policy and the 10-minute default drift threshold |
 | `test_utils` | `src/Utils.cpp` | `Utils::toHex` (upstream) |

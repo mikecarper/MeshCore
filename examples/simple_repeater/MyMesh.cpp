@@ -5,8 +5,11 @@
 #include <stdlib.h>  // for qsort()
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ClockSyncUtils.h>
+#include <helpers/ClientLoginPersistence.h>
+#include <helpers/ClientPathPersistence.h>
 #include <helpers/DatagramPayloadLimits.h>
 #include <helpers/FloodFilterPolicy.h>
+#include <helpers/LazyPersistence.h>
 #include <helpers/RegionNameUtils.h>
 #if MESH_PACKET_LOGGING
 #include <helpers/SerialPacketLog.h>
@@ -525,18 +528,23 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
 }
 
 uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood) {
-  ClientInfo* client = NULL;
-  if (strcmp((char *)data, _prefs.password) != 0) {  // admin pw bypasses ACL (allows upgrade)
-    client = acl.getClient(sender.pub_key, PUB_KEY_SIZE);
-    if (client == NULL) {
+  ClientInfo* existing_client =
+      acl.getClient(sender.pub_key, PUB_KEY_SIZE);
+  const bool admin_password =
+      strcmp((char *)data, _prefs.password) == 0;
+  ClientInfo* client = admin_password ? NULL : existing_client;
+  uint8_t perms;
+  if (client != NULL) {
+    // A preauthorized ACL identity is authenticated by the anonymous packet's
+    // ECDH MAC and does not need to repeat a password. Preserve its role.
+    perms = client->permissions & PERM_ACL_ROLE_MASK;
+  } else {
+    if (!admin_password && existing_client == NULL) {
     #if MESH_DEBUG
       MESH_DEBUG_PRINTLN("Login, sender not in ACL");
     #endif
     }
-  }
-  if (client == NULL) {
-    uint8_t perms;
-    if (strcmp((char *)data, _prefs.password) == 0) { // check for valid admin password
+    if (admin_password) { // valid admin password bypasses ACL (allows upgrade)
       perms = PERM_ACL_ADMIN;
     } else if (strcmp((char *)data, _prefs.guest_password) == 0) { // check guest password
       perms = PERM_ACL_GUEST;
@@ -546,31 +554,46 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
 #endif
       return 0;
     }
+  }
 
+  const bool client_existed = existing_client != NULL;
+  const uint32_t previous_timestamp =
+      client_existed ? existing_client->last_timestamp : 0;
+  if (!acl.authorizeLoginTimestamp(
+          sender.pub_key, sender_timestamp, previous_timestamp, perms)) {
+    MESH_DEBUG_PRINTLN(
+        "Login rejected: replayed timestamp or replay state unavailable");
+    return 0;
+  }
+
+  if (client == NULL) {
     client = acl.putClient(sender, 0);  // add to contacts (if not already known)
     if (client == NULL) {
       MESH_DEBUG_PRINTLN("Login rejected: ACL is full of protected contacts");
       return 0;
     }
-    if (sender_timestamp <= client->last_timestamp) {
-      MESH_DEBUG_PRINTLN("Possible login replay attack!");
-      return 0;  // FATAL: client table is full -OR- replay attack
-    }
-
-    MESH_DEBUG_PRINTLN("Login success!");
-    client->last_timestamp = sender_timestamp;
-    client->last_activity = getRTCClock()->getCurrentTime();
-    client->permissions &= ~PERM_ACL_ROLE_MASK;
-    client->permissions |= perms;
-    memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
-
-    if (perms != PERM_ACL_GUEST) {   // keep number of FS writes to a minimum
-      dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
-    }
   }
 
-  if (is_flood) {
-    client->out_path_len = OUT_PATH_UNKNOWN;  // need to rediscover out_path
+  MESH_DEBUG_PRINTLN("Login success!");
+  const uint8_t previous_permissions = client->permissions;
+  const bool reset_out_path = is_flood
+      && client->out_path_len != OUT_PATH_FORCE_FLOOD;
+  const bool persisted_changed = mesh::applySuccessfulClientLogin(
+      *client, client_existed, perms, PERM_ACL_ROLE_MASK,
+      secret, sender_timestamp,
+      getRTCClock()->getCurrentTime(), reset_out_path, OUT_PATH_UNKNOWN);
+
+  const bool persistence_needed =
+      mesh::successfulClientLoginNeedsPersistence(
+          client_existed, previous_permissions, client->permissions,
+          PERM_ACL_ROLE_MASK, PERM_ACL_GUEST,
+          persisted_changed);
+  if (persistence_needed) {
+    // Keep writes bounded: replay/activity timestamps are transient, so an
+    // unchanged preauthorized/admin login does not rewrite the complete ACL.
+    mesh::scheduleLazyPersistenceMutation(
+        dirty_contacts_expiry, contacts_save_failures,
+        futureMillis(LAZY_CONTACTS_WRITE_DELAY));
   }
 
   uint32_t now = getRTCClock()->getCurrentTimeUnique();
@@ -671,9 +694,9 @@ uint8_t MyMesh::handleAnonClockReq(const mesh::Identity& sender, uint32_t sender
     memcpy(&reply_data[4], &now, 4);     // include our clock (for easy clock sync, and packet hash uniqueness)
     reply_data[8] = 0;  // features
 #ifdef WITH_RS232_BRIDGE
-    if (_prefs.bridge_enabled) reply_data[8] |= 0x01;  // is bridge, type UART
+    if (isBridgeRunning()) reply_data[8] |= 0x01;  // is bridge, type UART
 #elif WITH_ESPNOW_BRIDGE
-    reply_data[8] |= 0x03;  // is bridge, type ESP-NOW
+    if (isBridgeRunning()) reply_data[8] |= 0x03;  // is bridge, type ESP-NOW
 #endif
     if (_prefs.disable_fwd) {   // is this repeater currently disabled
       reply_data[8] |= 0x80;  // is disabled
@@ -933,23 +956,30 @@ void MyMesh::sendClientReply(ClientInfo* client, mesh::Packet* packet, unsigned 
                                    fallback_scope_ptr);
 }
 
-void MyMesh::sendClientReplyWithFallbackScope(ClientInfo* client, mesh::Packet* packet,
+bool MyMesh::sendClientReplyWithFallbackScope(ClientInfo* client, mesh::Packet* packet,
                                               unsigned long delay_millis, uint8_t path_hash_size,
-                                              const TransportKey* fallback_scope) {
+                                              const TransportKey* fallback_scope,
+                                              bool allow_redundant_copies) {
   if (packet == NULL) {
-    return;
+    return false;
   }
   if (client == NULL || !mesh::Packet::isValidPathLen(client->out_path_len)) {
+    const uint8_t flood_retry_attempts = _prefs.flood_retry_attempts;
+    if (!allow_redundant_copies) _prefs.flood_retry_attempts = 0;
+    bool queued;
     if (fallback_scope != NULL) {
-      sendFloodScoped(*fallback_scope, packet, delay_millis, path_hash_size);
+      queued = sendFloodScoped(*fallback_scope, packet, delay_millis,
+                               path_hash_size);
     } else {
-      sendFlood(packet, delay_millis, path_hash_size);
+      queued = sendFlood(packet, delay_millis, path_hash_size);
     }
-    return;
+    _prefs.flood_retry_attempts = flood_retry_attempts;
+    return queued;
   }
 
   mesh::Packet* alt = NULL;
-  if (mesh::Packet::isValidPathLen(client->alt_path_len)
+  if (allow_redundant_copies
+      && mesh::Packet::isValidPathLen(client->alt_path_len)
       && !directPathsEqual(client->out_path, client->out_path_len, client->alt_path, client->alt_path_len)) {
     alt = obtainNewPacket();
     if (alt != NULL) {
@@ -959,13 +989,17 @@ void MyMesh::sendClientReplyWithFallbackScope(ClientInfo* client, mesh::Packet* 
     }
   }
 
-  sendDirect(packet, client->out_path, client->out_path_len, delay_millis);
+  const uint8_t direct_retry_enabled = _prefs.direct_retry_enabled;
+  if (!allow_redundant_copies) _prefs.direct_retry_enabled = 0;
+  const bool primary_queued =
+      sendDirect(packet, client->out_path, client->out_path_len, delay_millis);
+  _prefs.direct_retry_enabled = direct_retry_enabled;
   if (alt != NULL) {
-    uint8_t direct_retry_enabled = _prefs.direct_retry_enabled;
     _prefs.direct_retry_enabled = 0;
     sendDirect(alt, client->alt_path, client->alt_path_len, delay_millis);
     _prefs.direct_retry_enabled = direct_retry_enabled;
   }
+  return primary_queued;
 }
 
 bool MyMesh::floodChannelDataHopApplies(const mesh::Packet* packet) const {
@@ -1088,8 +1122,10 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
   if (mqtt_bridge) mqtt_bridge->onPacketReceived(pkt);
 #elif defined(WITH_BRIDGE)
   // Non-MQTT bridge: use bridge.source setting
-  if (_prefs.bridge_pkt_src == 1) {
-    activeBridge()->sendPacket(pkt);
+  AbstractBridge* active_bridge = activeBridge();
+  if (_prefs.bridge_pkt_src == 1 && active_bridge
+      && active_bridge->isRunning()) {
+    active_bridge->sendPacket(pkt);
   }
 #endif
 
@@ -1131,8 +1167,10 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
   if (mqtt_bridge) mqtt_bridge->sendPacket(pkt);
 #elif defined(WITH_BRIDGE)
   // Non-MQTT bridge: use bridge.source setting
-  if (_prefs.bridge_pkt_src == 0) {
-    activeBridge()->sendPacket(pkt);
+  AbstractBridge* active_bridge = activeBridge();
+  if (_prefs.bridge_pkt_src == 0 && active_bridge
+      && active_bridge->isRunning()) {
+    active_bridge->sendPacket(pkt);
   }
 #endif
 
@@ -2503,6 +2541,10 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
                             uint8_t *data, size_t len) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) { // received an initial request by a possible admin
                                                            // client (unknown at this stage)
+    if (len < 4) {
+      MESH_DEBUG_PRINTLN("Rejected incomplete anonymous request");
+      return;
+    }
     uint32_t timestamp;
     memcpy(&timestamp, data, 4);
 
@@ -2750,10 +2792,22 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
             && region_map.getTransportKeysFor(*recv_pkt_region, &reply_scope, 1) > 0;
 
         if (cached_retry) {
-          MESH_DEBUG_PRINTLN("onPeerDataRecv: replaying cached remote CLI reply");
-          sendRemoteCliReply(client, secret, packet->getPathHashSize(),
-                             sender_timestamp, cached_response,
-                             reply_scoped ? &reply_scope : NULL);
+          const bool cached_temp_radio_success =
+              strncmp(command, "tempradio ", 10) == 0
+              && strncmp(cached_response, "OK - temp params for ", 21) == 0;
+          if (cached_temp_radio_success) {
+            // The original acknowledgement is the only packet allowed to
+            // release its radio-mutation barrier. Replaying this success would
+            // create another untracked copy, including after a TX failure
+            // cancelled the handoff.
+            MESH_DEBUG_PRINTLN(
+                "onPeerDataRecv: TempRadio acknowledgement is already authoritative");
+          } else {
+            MESH_DEBUG_PRINTLN("onPeerDataRecv: replaying cached remote CLI reply");
+            sendRemoteCliReply(client, secret, packet->getPathHashSize(),
+                               sender_timestamp, cached_response,
+                               reply_scoped ? &reply_scope : NULL);
+          }
         } else if (deferred_cli_command.matches(i, request_id, command,
                                                 command_len)) {
           // The original request is already queued. Let it produce the one
@@ -2787,10 +2841,12 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
   }
 }
 
-void MyMesh::sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
+bool MyMesh::sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
                                 uint8_t path_hash_size, uint32_t sender_timestamp,
-                                const char* reply, const TransportKey* fallback_scope) {
-  if (client == NULL || secret == NULL || reply == NULL) return;
+                                const char* reply, const TransportKey* fallback_scope,
+                                mesh::Packet** queued_packet) {
+  if (queued_packet != NULL) *queued_packet = NULL;
+  if (client == NULL || secret == NULL || reply == NULL) return false;
   if (reply[0] == 0) reply = "OK";
 
   size_t text_len = strlen(reply);
@@ -2811,8 +2867,17 @@ void MyMesh::sendRemoteCliReply(ClientInfo* client, const uint8_t* secret,
 
   mesh::Packet* packet = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret,
                                         reply_data, 5 + text_len);
-  sendClientReplyWithFallbackScope(client, packet, CLI_REPLY_DELAY_MILLIS,
-                                   path_hash_size, fallback_scope);
+  // A caller which requests the exact queued packet is going to make a state
+  // transition depend on that packet's TX result.  Keep one authoritative
+  // copy: an untracked alternate or retry could report success after primary
+  // failure cancelled the transition, or still be queued when primary success
+  // lets the radio tuple change. Ordinary replies retain redundant delivery.
+  const bool allow_redundant_copies = queued_packet == NULL;
+  const bool queued = sendClientReplyWithFallbackScope(
+      client, packet, CLI_REPLY_DELAY_MILLIS, path_hash_size, fallback_scope,
+      allow_redundant_copies);
+  if (queued && queued_packet != NULL) *queued_packet = packet;
+  return queued;
 }
 
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
@@ -3059,13 +3124,31 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
       mesh::RemoteCliReplyCache::fingerprint(
           deferred_cli_command.command,
           strlen(deferred_cli_command.command));
+  const bool arms_temp_radio =
+      strncmp(deferred_cli_command.command, "tempradio ", 10) == 0
+      && strncmp(reply, "OK - temp params for ", 21) == 0;
   remote_cli_reply_cache.remember(client->id.pub_key,
                                   deferred_cli_command.request_id,
                                   command_fingerprint, reply);
-  sendRemoteCliReply(client, deferred_cli_command.secret,
-                     deferred_cli_command.path_hash_size,
-                     deferred_cli_command.sender_timestamp, reply,
-                     deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL);
+  mesh::Packet* queued_reply = NULL;
+  const bool reply_queued = sendRemoteCliReply(
+      client, deferred_cli_command.secret,
+      deferred_cli_command.path_hash_size,
+      deferred_cli_command.sender_timestamp, reply,
+      deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL,
+      arms_temp_radio ? &queued_reply : NULL);
+  if (arms_temp_radio) {
+    if (reply_queued && queued_reply != NULL) {
+      // The old two-RTC-second delay could expire while this exact packet was
+      // still parked behind CAD/duty/queue work.  Do not change modulation
+      // until Dispatcher confirms that the reply physically transmitted.
+      temp_radio_reply_barrier.arm(queued_reply);
+    } else {
+      // A command which cannot queue its acknowledgement must never strand
+      // the administrator on an unconfirmed tuple.
+      scheduleNormalRadio();
+    }
+  }
   clearDeferredCliCommand();
 }
 
@@ -3078,10 +3161,16 @@ bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t 
     MESH_DEBUG_PRINTLN("PATH to client, path_len=%d", (uint32_t)path_len);
     auto client = acl.getClientByIdx(i);
 
-    // store a copy of path, for sendDirect()
-    if (client->out_path_len != OUT_PATH_FORCE_FLOOD) {
-      client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len);
-    }
+    // PATH packets authenticate the sender and are de-duplicated in RAM, but
+    // the protocol carries no timestamp or request nonce. Keep a learned route
+    // useful for this boot without making an arbitrarily old replay durable.
+    const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
+        client->permissions != 0, false /* no durable replay proof */);
+    const mesh::ClientPathUpdateResult path_update =
+        mesh::applyReceivedClientPath(
+            *client, path, path_len, persistence_allowed,
+            OUT_PATH_FORCE_FLOOD);
+    (void)path_update;
     client->last_activity = getRTCClock()->getCurrentTime();
   } else {
     MESH_DEBUG_PRINTLN("onPeerPathRecv: invalid peer idx: %d", i);
@@ -3207,6 +3296,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   pending_battery_alert_packet = NULL;
   battery_alert_sent = false;
   dirty_contacts_expiry = 0;
+  contacts_save_failures = 0;
   active_bw = 0.0f;
   active_sf = 0;
   active_cr = 0;
@@ -3501,7 +3591,17 @@ void MyMesh::begin(FILESYSTEM *fs) {
     if (!bridge) {
       bridge = createRS232Bridge();
     }
-#endif
+    if (!bridge || !beginRS232Bridge()) {
+      // Keep configured intent for a later explicit retry, but clean any
+      // partial object/GPS ownership. Advertisements and bridge.running report
+      // the actual stopped state rather than the saved preference.
+      MESH_DEBUG_PRINTLN("RS232 bridge configured on but failed to start");
+      if (!setBridgeState(false)) {
+        MESH_DEBUG_PRINTLN(
+            "RS232 bridge cleanup failed; UART/GPS ownership remains tracked");
+      }
+    }
+#else
     AbstractBridge* active_bridge = activeBridge();
     if (active_bridge) {
 #ifdef WITH_MQTT_BRIDGE
@@ -3534,6 +3634,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
       active_bridge->begin();
     }
+#endif
   }
 #endif
 
@@ -3754,6 +3855,7 @@ bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope,
 
 void MyMesh::onSendComplete(mesh::Packet* packet) {
   mesh::Mesh::onSendComplete(packet);
+  temp_radio_reply_barrier.complete(packet);
   if (packet == pending_battery_alert_packet) {
     pending_battery_alert_packet = NULL;
     battery_alert_sent = true;
@@ -3763,6 +3865,12 @@ void MyMesh::onSendComplete(mesh::Packet* packet) {
 
 void MyMesh::onSendFail(mesh::Packet* packet) {
   mesh::Mesh::onSendFail(packet);
+  if (temp_radio_reply_barrier.fail(packet)) {
+    // Failure of the exact acknowledgement packet cancels the unconfirmed
+    // handoff. A later cached-command retry may replay the reply, but it does
+    // not re-run the mutation.
+    scheduleNormalRadio();
+  }
   if (packet == pending_battery_alert_packet) {
     pending_battery_alert_packet = NULL;
   }
@@ -4075,6 +4183,7 @@ void MyMesh::clearScheduledRadioSetting(int idx, bool restore_if_started) {
       && scheduled_radio_settings[idx].started;
   scheduled_radio_settings[idx].active = false;
   scheduled_radio_settings[idx].started = false;
+  scheduled_radio_settings[idx].hard_end_uptime_millis = 0;
   refreshScheduledRadioState();
   if (scheduled_radio_settings[idx].temporary && temp_radio_handoff_pending
       && countScheduledRadioSettings(true) == 0) {
@@ -4197,6 +4306,12 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
   scheduled_radio_settings[slot].cr = cr;
   scheduled_radio_settings[slot].start_time = start_time;
   scheduled_radio_settings[slot].end_time = temporary ? end_time : 0;
+  const uint64_t current_uptime_millis =
+      uptime_millis + (uint32_t)(millis() - last_millis);
+  scheduled_radio_settings[slot].hard_end_uptime_millis = temporary
+      ? mesh::TempRadioLeaseDeadline::fromEpochEnd(
+            current_uptime_millis, now, end_time)
+      : 0;
   // A newly requested schedule must not inherit the backoff of an older radio
   // apply failure, especially when its deadline is sooner than that retry.
   scheduled_radio_retry_at = 0;
@@ -4275,6 +4390,7 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
         restore_radio = restore_radio || (setting.temporary && setting.started);
         setting.active = false;
         setting.started = false;
+        setting.hard_end_uptime_millis = 0;
         deleted++;
       }
     }
@@ -4306,7 +4422,40 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
 }
 
 void MyMesh::processScheduledRadioSettings() {
-  if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) return;
+  const uint64_t current_uptime_millis =
+      uptime_millis + (uint32_t)(millis() - last_millis);
+  bool hard_temp_end_due = false;
+  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+    const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
+    if (setting.active && setting.temporary
+        && mesh::TempRadioLeaseDeadline::expired(
+            current_uptime_millis, setting.hard_end_uptime_millis)) {
+      hard_temp_end_due = true;
+      break;
+    }
+  }
+
+  if (temp_radio_reply_barrier.waiting() && !hard_temp_end_due) {
+    // The exact parameterized-TempRadio reply is queued or on air.  Unlike a
+    // fixed RTC delay, this remains correct under CAD, duty throttling, and
+    // unrelated queue pressure.  TX completion/failure releases the barrier.
+    scheduled_radio_retry_at = futureMillis(RADIO_APPLY_RETRY_INTERVAL_MILLIS);
+    return;
+  }
+  if (hard_temp_end_due) {
+    // Expiry is stronger than reply delivery.  This matters when a new
+    // immediate TempRadio command arrives while an older temporary tuple is
+    // already active: a permanently queued acknowledgement must not preserve
+    // that old tuple beyond the newly accepted hard lease.  The late reply can
+    // still leave on the restored channel, but it can no longer cause a switch.
+    temp_radio_reply_barrier.clear();
+  }
+  // A radio-apply backoff must not turn into a lease extension.  Bypass it
+  // only for an expired temporary window; ordinary starts and permanent
+  // changes retain their existing bounded retry behavior.
+  if (scheduled_radio_retry_at
+      && !millisHasNowPassed(scheduled_radio_retry_at)
+      && !hard_temp_end_due) return;
 
   const bool schedule_check_due = next_scheduled_radio_time != 0
       && (next_scheduled_radio_check_at == 0
@@ -4320,7 +4469,7 @@ void MyMesh::processScheduledRadioSettings() {
   }
   bool saved_apply_due = saved_radio_apply_pending && !temp_radio_handoff_pending
       && !scheduled_temp_radio_started;
-  if (!schedule_due && !saved_apply_due) return;
+  if (!schedule_due && !saved_apply_due && !hard_temp_end_due) return;
 
   // Never touch modulation registers while a packet is still on air. Back off
   // this check too; a long packet should not make the scheduler poll every loop.
@@ -4331,6 +4480,28 @@ void MyMesh::processScheduledRadioSettings() {
 
   bool apply_failed = false;
   bool saved_params_changed = false;
+
+  if (hard_temp_end_due) {
+    // This applies to pending as well as active windows.  A backward wall-clock
+    // correction can therefore neither postpone activation into the future nor
+    // keep an already-active node on the temporary tuple past the accepted
+    // monotonic lease bound.
+    for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+      ScheduledRadioSetting& setting = scheduled_radio_settings[i];
+      if (setting.active && setting.temporary
+          && mesh::TempRadioLeaseDeadline::expired(
+              current_uptime_millis, setting.hard_end_uptime_millis)) {
+        const bool was_started = setting.started;
+        setting.active = false;
+        setting.started = false;
+        setting.hard_end_uptime_millis = 0;
+        if (was_started || temp_radio_handoff_pending) {
+          temp_radio_handoff_pending = false;
+          queueSavedRadioApply();
+        }
+      }
+    }
+  }
 
   while (schedule_due) {
     int due_idx = -1;
@@ -4374,6 +4545,7 @@ void MyMesh::processScheduledRadioSettings() {
       if (setting.active && setting.temporary && setting.started && now >= setting.end_time) {
         setting.active = false;
         setting.started = false;
+        setting.hard_end_uptime_millis = 0;
         queueSavedRadioApply();
       }
     }
@@ -4383,6 +4555,7 @@ void MyMesh::processScheduledRadioSettings() {
       if (setting.active && setting.temporary && !setting.started && now >= setting.start_time) {
         if (now >= setting.end_time) {
           setting.active = false;
+          setting.hard_end_uptime_millis = 0;
           if (temp_radio_handoff_pending) {
             temp_radio_handoff_pending = false;
             queueSavedRadioApply();
@@ -4431,6 +4604,18 @@ bool MyMesh::isMillisTimerDue(unsigned long timestamp) const {
 }
 
 bool MyMesh::hasScheduledRadioWorkDue() const {
+  const uint64_t current_uptime_millis =
+      uptime_millis + (uint32_t)(millis() - last_millis);
+  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+    const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
+    if (setting.active && setting.temporary
+        && mesh::TempRadioLeaseDeadline::expired(
+            current_uptime_millis, setting.hard_end_uptime_millis)) return true;
+  }
+  // The monotonic lease end above is authoritative even while an ordinary
+  // radio-apply retry is backed off.  Checking the retry first could let the
+  // power manager sleep through the hard end and extend TempRadio by up to a
+  // complete retry interval.
   if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) return false;
   if (saved_radio_apply_pending && !temp_radio_handoff_pending
       && !scheduled_temp_radio_started) return true;
@@ -4453,10 +4638,21 @@ uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep
 }
 
 uint32_t MyMesh::limitSleepToScheduledRadioWork(uint32_t sleep_secs) const {
-  if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) {
-    return limitSleepToMillisTimer(scheduled_radio_retry_at, sleep_secs);
+  sleep_secs = limitSleepToMillisTimer(next_scheduled_radio_check_at, sleep_secs);
+  const uint64_t current_uptime_millis =
+      uptime_millis + (uint32_t)(millis() - last_millis);
+  for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
+    const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
+    if (!setting.active || !setting.temporary) continue;
+    const uint32_t hard_end_seconds =
+        mesh::TempRadioLeaseDeadline::secondsUntil(
+            current_uptime_millis, setting.hard_end_uptime_millis);
+    if (hard_end_seconds < sleep_secs) sleep_secs = hard_end_seconds;
   }
-  return limitSleepToMillisTimer(next_scheduled_radio_check_at, sleep_secs);
+  if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) {
+    sleep_secs = limitSleepToMillisTimer(scheduled_radio_retry_at, sleep_secs);
+  }
+  return sleep_secs;
 }
 
 uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
@@ -4487,6 +4683,10 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
+  // A newer TempRadio command supersedes the reply barrier belonging to the
+  // old schedule. processDeferredCliCommand() arms the new exact reply after
+  // it has been composed and successfully queued.
+  temp_radio_reply_barrier.clear();
   scheduled_radio_retry_at = 0;
   scheduled_radio_retry_failures = 0;
   bool cancelled_started_temp = false;
@@ -4495,6 +4695,7 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
       cancelled_started_temp = cancelled_started_temp || scheduled_radio_settings[i].started;
       scheduled_radio_settings[i].active = false;
       scheduled_radio_settings[i].started = false;
+      scheduled_radio_settings[i].hard_end_uptime_millis = 0;
     }
   }
   if (cancelled_started_temp) {
@@ -4524,6 +4725,12 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
   scheduled_radio_settings[slot].cr = cr;
   scheduled_radio_settings[slot].start_time = start_time;
   scheduled_radio_settings[slot].end_time = start_time + ((uint32_t)timeout_mins * 60);
+  const uint64_t current_uptime_millis =
+      uptime_millis + (uint32_t)(millis() - last_millis);
+  scheduled_radio_settings[slot].hard_end_uptime_millis =
+      mesh::TempRadioLeaseDeadline::fromEpochEnd(
+          current_uptime_millis, getRTCClock()->getCurrentTime(),
+          scheduled_radio_settings[slot].end_time);
   refreshScheduledRadioState();
 }
 
@@ -4531,10 +4738,12 @@ bool MyMesh::scheduleNormalRadio() {
   // Cancel every pending/active temporary entry, but leave permanent radioat
   // changes intact. The saved apply waits for the CLI reply to leave the
   // outbound queue before changing modulation parameters.
+  temp_radio_reply_barrier.clear();
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     if (!scheduled_radio_settings[i].temporary) continue;
     scheduled_radio_settings[i].active = false;
     scheduled_radio_settings[i].started = false;
+    scheduled_radio_settings[i].hard_end_uptime_millis = 0;
   }
   temp_radio_handoff_pending = false;
   refreshScheduledRadioState();
@@ -10435,13 +10644,33 @@ bool MyMesh::handleClientPathCommand(ClientInfo* sender, char* command, char* re
     return true;
   }
 
+  const uint8_t previous_path_len = *stored_path_len;
+  uint8_t previous_path[MAX_PATH_SIZE];
+  memcpy(previous_path, stored_path, sizeof(previous_path));
+  const bool previous_out_path_persistable =
+      sender->out_path_is_persistable;
   if (path_len == OUT_PATH_UNKNOWN || path_len == OUT_PATH_FORCE_FLOOD) {
     memset(stored_path, 0, MAX_PATH_SIZE);
     *stored_path_len = path_len;
   } else {
     *stored_path_len = mesh::Packet::copyPath(stored_path, path, path_len);
   }
-  dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+  if (!is_alt) sender->out_path_is_persistable = true;
+
+  // Explicit operator routes are rare and must become durable before the CLI
+  // acknowledges them.  Otherwise a replay-unproven PATH arriving during the
+  // lazy-write window could replace the only RAM copy.  ClientACL::save also
+  // preserves durable routes for any *other* client currently using a newer
+  // transient route.
+  if (!acl.save(_fs)) {
+    *stored_path_len = previous_path_len;
+    memcpy(stored_path, previous_path, sizeof(previous_path));
+    sender->out_path_is_persistable = previous_out_path_persistable;
+    strcpy(reply, "Err - path save failed");
+    return true;
+  }
+  mesh::resetLazyPersistenceAfterSuccess(
+      dirty_contacts_expiry, contacts_save_failures);
   formatPathReply(stored_path, *stored_path_len, reply, 160);
   return true;
 }
@@ -11173,7 +11402,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
           && mesh::Utils::fromHex(pubkey, (int)(hex_len / 2), hex)) {
         uint8_t perms = atoi(sp);
         if (acl.applyPermissions(self_id, pubkey, (int)(hex_len / 2), perms)) {
-          dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);   // trigger acl.save()
+          mesh::scheduleLazyPersistenceMutation(
+              dirty_contacts_expiry, contacts_save_failures,
+              futureMillis(LAZY_CONTACTS_WRITE_DELAY));
           strcpy(reply, "OK");
         } else {
           strcpy(reply, "Err - invalid params");
@@ -11751,8 +11982,21 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
 
   // is pending dirty contacts write needed?
   if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
-    acl.save(_fs);
-    dirty_contacts_expiry = 0;
+    const bool saved = acl.save(_fs);
+    if (saved) {
+      mesh::resetLazyPersistenceAfterSuccess(
+          dirty_contacts_expiry, contacts_save_failures);
+    } else {
+      const uint32_t retry_delay =
+          mesh::recordLazyPersistenceSaveFailure(
+              contacts_save_failures, LAZY_CONTACTS_WRITE_DELAY,
+              mesh::LAZY_PERSISTENCE_MAX_RETRY_DELAY_MILLIS);
+      mesh::completeLazyPersistenceSave(
+          dirty_contacts_expiry, false, futureMillis(retry_delay));
+      MESH_DEBUG_PRINTLN(
+          "ERROR: contacts save failed; retry in %lu ms",
+          (unsigned long)retry_delay);
+    }
   }
 
   // update uptime

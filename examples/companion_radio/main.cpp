@@ -67,6 +67,7 @@ MultiSerialInterface interface_manager;
     #include <helpers/CLICommandUtils.h>
     #include <helpers/WiFiReconnectPolicy.h>
     #include <helpers/WiFiPowerSave.h>
+    #include <helpers/ui/DisplayTextLayout.h>
     #include <helpers/esp32/WiFiRadioPolicy.h>
     #include <helpers/esp32/WiFiStationPolicy.h>
     #include <Preferences.h>
@@ -946,6 +947,47 @@ void halt() {
     static DisplayDriver* companion_setup_display = nullptr;
     static unsigned long companion_setup_display_refresh = 0;
 
+    static bool hasLargeCompanionSetupDisplay() {
+      return companion_setup_display->width() >= 128
+          && companion_setup_display->height() >= 128;
+    }
+
+    static int drawCompanionSetupValue(int y, int max_lines,
+                                       const char* value) {
+      static constexpr int margin = 6;
+      static constexpr int line_height = 13;
+      return mesh::ui::drawTextWrapped(
+          *companion_setup_display, margin, y,
+          companion_setup_display->width() - margin * 2, line_height,
+          max_lines, value != nullptr && value[0] != 0 ? value : "(not set)");
+    }
+
+    static void renderLargeCompanionSetupDisplay(const char* title,
+                                                  const char* wifi_label,
+                                                  const char* wifi_name,
+                                                  const char* address,
+                                                  bool connecting) {
+      static constexpr int line_height = 13;
+      companion_setup_display->drawTextCentered(
+          companion_setup_display->width() / 2, 4, title);
+      companion_setup_display->setCursor(6, 24);
+      companion_setup_display->print(wifi_label);
+      const int wifi_lines = drawCompanionSetupValue(38, 3, wifi_name);
+
+      int next_y = 38 + (wifi_lines > 0 ? wifi_lines : 1) * line_height + 8;
+      if (connecting) {
+        companion_setup_display->drawTextCentered(
+            companion_setup_display->width() / 2, next_y, "Please wait...");
+        return;
+      }
+
+      companion_setup_display->setCursor(6, next_y);
+      companion_setup_display->print("Open in browser:");
+      char url[32];
+      snprintf(url, sizeof(url), "http://%s/", address ? address : "");
+      drawCompanionSetupValue(next_y + 14, 2, url);
+    }
+
     static void renderCompanionSetupDisplay() {
       if (!companion_setup_display
           || static_cast<int32_t>(millis() - companion_setup_display_refresh) < 0) return;
@@ -960,37 +1002,54 @@ void halt() {
       char setup_ip[16] = {0};
       if (WebConfigServer::getSetupInfo(setup_ssid, sizeof(setup_ssid),
                                         setup_ip, sizeof(setup_ip))) {
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 0, "WebUI setup");
-        companion_setup_display->setCursor(0, 14);
-        companion_setup_display->print("Join open WiFi:");
-        companion_setup_display->drawTextEllipsized(
-            0, 25, companion_setup_display->width(), setup_ssid);
-        companion_setup_display->setCursor(0, 39);
-        companion_setup_display->print("Open in browser:");
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 51, setup_ip);
+        if (hasLargeCompanionSetupDisplay()) {
+          renderLargeCompanionSetupDisplay(
+              "WebUI setup", "Join open WiFi:", setup_ssid, setup_ip, false);
+        } else {
+          companion_setup_display->drawTextCentered(
+              companion_setup_display->width() / 2, 0, "WebUI setup");
+          companion_setup_display->setCursor(0, 14);
+          companion_setup_display->print("Join open WiFi:");
+          companion_setup_display->drawTextEllipsized(
+              0, 25, companion_setup_display->width(), setup_ssid);
+          companion_setup_display->setCursor(0, 39);
+          companion_setup_display->print("Open in browser:");
+          companion_setup_display->drawTextCentered(
+              companion_setup_display->width() / 2, 51, setup_ip);
+        }
       } else if (WiFi.status() == WL_CONNECTED) {
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 0, "WebUI");
-        companion_setup_display->setCursor(0, 14);
-        companion_setup_display->print("Join WiFi:");
-        companion_setup_display->drawTextEllipsized(
-            0, 25, companion_setup_display->width(), configured_wifi_ssid);
-        companion_setup_display->setCursor(0, 39);
-        companion_setup_display->print("Open in browser:");
         const String ip = WiFi.localIP().toString();
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 51, ip.c_str());
+        if (hasLargeCompanionSetupDisplay()) {
+          renderLargeCompanionSetupDisplay(
+              "WebUI ready", "Join WiFi:", configured_wifi_ssid, ip.c_str(),
+              false);
+        } else {
+          companion_setup_display->drawTextCentered(
+              companion_setup_display->width() / 2, 0, "WebUI");
+          companion_setup_display->setCursor(0, 14);
+          companion_setup_display->print("Join WiFi:");
+          companion_setup_display->drawTextEllipsized(
+              0, 25, companion_setup_display->width(), configured_wifi_ssid);
+          companion_setup_display->setCursor(0, 39);
+          companion_setup_display->print("Open in browser:");
+          companion_setup_display->drawTextCentered(
+              companion_setup_display->width() / 2, 51, ip.c_str());
+        }
       } else {
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 8, "WiFi connecting");
-        companion_setup_display->setCursor(0, 25);
-        companion_setup_display->print("SSID:");
-        companion_setup_display->drawTextEllipsized(
-            0, 38, companion_setup_display->width(), configured_wifi_ssid);
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 52, "Please wait...");
+        if (hasLargeCompanionSetupDisplay()) {
+          renderLargeCompanionSetupDisplay(
+              "WiFi connecting", "WiFi name:", configured_wifi_ssid, nullptr,
+              true);
+        } else {
+          companion_setup_display->drawTextCentered(
+              companion_setup_display->width() / 2, 8, "WiFi connecting");
+          companion_setup_display->setCursor(0, 25);
+          companion_setup_display->print("SSID:");
+          companion_setup_display->drawTextEllipsized(
+              0, 38, companion_setup_display->width(), configured_wifi_ssid);
+          companion_setup_display->drawTextCentered(
+              companion_setup_display->width() / 2, 52, "Please wait...");
+        }
       }
       companion_setup_display->endFrame();
     }
@@ -1698,6 +1757,13 @@ void loop() {
 #endif
   sensors.loop();
 #ifdef DISPLAY_CLASS
+  #ifdef INDICATOR_WIFI_FONT_RECOVERY
+  // The Indicator keeps rendering with its built-in fallback while a missing
+  // SD font is recovered by a background TLS task.  This poll only launches
+  // work after station Wi-Fi connects and installs a completed font on the
+  // main/UI task.
+  display.serviceFontRecovery();
+  #endif
   #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG)
   if (isCompanionWiFiEnabled() && (the_mesh.isWebConfigSetupActive()
   #ifdef WITH_MQTT_BRIDGE

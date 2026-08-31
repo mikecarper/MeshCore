@@ -15,14 +15,27 @@ Build columns mean:
   filename marker. Safe plaintext-USB roles embed runtime USB logging.
 - **Logging** - the legacy `-logging-` profile, now represented by the same
   ordinary artifact and retained as a comparison column only.
-- **LoRa OTA** - the explicit `-ota-` repeater or repeater-bridge artifact. Its
-  optional external-sensor drivers are removed, but onboard GPS is retained.
+- **LoRa OTA** - the explicit `-ota-` repeater or repeater-bridge artifact. A
+  legacy `no_external_sensors` profile trims selected optional environmental
+  and ranging drivers; it does not disable the generic I2C bus or unrelated
+  board-integrated peripherals. Reduced RAK3401 and RAK4631 profiles retain
+  INA219/INA226/INA260/INA3221 as voltage/current entries in the optional sensor
+  table. The SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS are
+  separate I2C peripherals in compatible recipes. RAK12501/L76K GPS instead
+  uses UART Serial1. The plain RAK profiles and RAK4631 Serial2 bridge retain
+  the combined GPS provider; the explicit RAK4631 Serial1 bridge omits that
+  provider, including RAK12500, because the bridge owns the RAK12501 UART.
 - **FULL unified** - the expanded-partition ESP32 artifact with LoRa OTA, the
   complete parser, USB packet logging, and direct WiFi MQTT. Its saved output
   mode can be off, USB, WiFi, or both. MQTT observers use this profile.
 - **FULL fallback** - the expanded-partition ESP32 non-MQTT artifact used only
   where there is no MQTT sibling. It has the complete parser and a saved
   USB-logging on/off gate. ESP-NOW bridges use this profile.
+
+The firmware-configured INA3221 and RAK12500 addresses are both `0x42`; they
+cannot coexist on one bus at those addresses. Leave RAK12500 at `0x42`, strap
+INA3221 A0 to SCL for `0x43`, and use a build with
+`-DTELEM_INA3221_ADDRESS=0x43` when both are installed.
 
 Cell values mean:
 
@@ -165,11 +178,11 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | GPS | [`gps setloc`](cli_commands.md#set-this-nodes-location-based-on-the-gps-coordinates) | Compiled GPS | Feature | Feature | Feature |
 | GPS | [`gps advert [none/share/prefs]`](cli_commands.md#view-or-change-the-gps-advert-policy) | Compiled GPS | Feature | Feature | Feature |
 | Sensors | [`get/set telemetry.access`](cli_commands.md#view-or-change-telemetry-access-mode) | Sensor-capable role | Feature | Feature | Limited |
-| Sensors | [`sensor list [start]`](cli_commands.md#view-the-list-of-sensors-on-this-node) | Compiled sensor manager; OTA omits external sensors | Feature | Feature | Limited |
-| Sensors | [`sensor get`; `sensor set`](cli_commands.md#view-or-change-the-value-of-a-sensor) | Compiled sensor setting; OTA omits external sensors | Feature | Feature | Limited |
+| Sensors | [`sensor list [start]`](cli_commands.md#view-the-list-of-sensors-on-this-node) | Compiled sensor manager; reduced OTA trims target-selected optional environmental/ranging drivers | Feature | Feature | Limited |
+| Sensors | [`sensor get`; `sensor set`](cli_commands.md#view-or-change-the-value-of-a-sensor) | Compiled sensor setting; reduced OTA trims target-selected optional environmental/ranging drivers | Feature | Feature | Limited |
 | Sensors | [`io [r/s/t]<hex>`](#sensor-io) | Simple sensor role with board GPIO support | Feature | Feature | No |
 | Bridge | [`get bridge.type`](cli_commands.md#view-the-compiled-bridge-type) | Compiled bridge | Feature | Feature | Feature |
-| Bridge | [`get/set bridge.enabled`](cli_commands.md#view-or-change-the-bridge-enabled-flag) | Compiled bridge | Feature | Feature | Feature |
+| Bridge | [`get/set bridge.enabled`; `get bridge.running`](cli_commands.md#view-or-change-the-bridge-enabled-flag) | Compiled bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.delay`](cli_commands.md#add-a-delay-to-packets-routed-through-this-bridge) | Compiled bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.source`](cli_commands.md#view-or-change-the-source-of-packets-bridged-to-the-external-interface) | Compiled bridge | Feature | Feature | Feature |
 | Bridge | [`get/set bridge.baud`](cli_commands.md#view-or-change-the-speed-of-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature |
@@ -332,11 +345,11 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | GPS | [`gps setloc`](cli_commands.md#set-this-nodes-location-based-on-the-gps-coordinates) | Compiled onboard GPS | Feature | Feature | Feature | Feature | Feature |
 | GPS | [`gps advert [none/share/prefs]`](cli_commands.md#view-or-change-the-gps-advert-policy) | Compiled onboard GPS | Feature | Feature | Feature | Feature | Feature |
 | Sensors | [`get/set telemetry.access`](cli_commands.md#view-or-change-telemetry-access-mode) | Sensor-capable full parser | Feature | Feature | Limited | Feature | Feature |
-| Sensors | [`sensor list [start]`](cli_commands.md#view-the-list-of-sensors-on-this-node) | Compiled sensor manager; `no_external_sensors` omits optional drivers | Feature | Feature | Limited | Feature | Feature |
-| Sensors | [`sensor get`; `sensor set`](cli_commands.md#view-or-change-the-value-of-a-sensor) | Compiled sensor setting; `no_external_sensors` omits optional drivers | Feature | Feature | Limited | Feature | Feature |
+| Sensors | [`sensor list [start]`](cli_commands.md#view-the-list-of-sensors-on-this-node) | Compiled sensor manager; `no_external_sensors` trims target-selected environmental/ranging drivers, not generic I2C | Feature | Feature | Limited | Feature | Feature |
+| Sensors | [`sensor get`; `sensor set`](cli_commands.md#view-or-change-the-value-of-a-sensor) | Compiled sensor setting; `no_external_sensors` trims target-selected environmental/ranging drivers, not generic I2C | Feature | Feature | Limited | Feature | Feature |
 | Sensors | [`io [r/s/t]<hex>`](#sensor-io) | Simple sensor role with board GPIO support | Feature | Feature | No | No | Feature |
 | Bridge | [`get bridge.type`](cli_commands.md#view-the-compiled-bridge-type) | Compiled bridge | Feature | Feature | Feature | Yes | Feature |
-| Bridge | [`get/set bridge.enabled`](cli_commands.md#view-or-change-the-bridge-enabled-flag) | Compiled bridge | Feature | Feature | Feature | Yes | Feature |
+| Bridge | [`get/set bridge.enabled`; `get bridge.running`](cli_commands.md#view-or-change-the-bridge-enabled-flag) | Compiled bridge | Feature | Feature | Feature | Yes | Feature |
 | Bridge | [`get/set bridge.delay`](cli_commands.md#add-a-delay-to-packets-routed-through-this-bridge) | Compiled bridge | Feature | Feature | Feature | Yes | Feature |
 | Bridge | [`get/set bridge.source`](cli_commands.md#view-or-change-the-source-of-packets-bridged-to-the-external-interface) | Compiled bridge | Feature | Feature | Feature | Yes | Feature |
 | Bridge | [`get/set bridge.baud`](cli_commands.md#view-or-change-the-speed-of-the-bridge-rs-232-only) | RS-232 bridge | Feature | Feature | Feature | No | Feature |

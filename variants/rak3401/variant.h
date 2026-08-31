@@ -135,6 +135,13 @@ static const uint8_t AREF = PIN_AREF;
 #define PIN_WIRE_SDA (WB_I2C1_SDA)
 #define PIN_WIRE_SCL (WB_I2C1_SCL)
 
+// Keep the board-level aliases in the variant rather than duplicating the
+// physical pin numbers in each PlatformIO environment.  MeshCore board and
+// sensor helpers use PIN_BOARD_* when they need to select the WisBlock I2C
+// bus explicitly; Wire itself uses the equivalent PIN_WIRE_* definitions.
+#define PIN_BOARD_SDA PIN_WIRE_SDA
+#define PIN_BOARD_SCL PIN_WIRE_SCL
+
 // The RAK3401 has no on-board QSPI flash. These pads are the WisBlock SPI bus
 // and are used by the external RAK13300/RAK13302 radio module.
 #define PIN_QSPI_SCK 3
@@ -183,6 +190,8 @@ static const uint8_t AREF = PIN_AREF;
 // Power is on the controllable 3V3_S rail
 #define PIN_GPS_PPS (17) // Pulse per second input from the GPS
 
+// PIN_GPS_RX/TX name the pins from the GPS module's perspective.  GPS RX is
+// connected to the MCU UART TX pin, and GPS TX to the MCU UART RX pin.
 #define PIN_GPS_RX PIN_SERIAL1_TX
 #define PIN_GPS_TX PIN_SERIAL1_RX
 

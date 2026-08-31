@@ -8,6 +8,7 @@
 
 #include <helpers/WiFiOtaSeederPolicy.h>
 #include <helpers/WiFiOtaSeederStatus.h>
+#include <helpers/UsbLogging.h>
 #include <helpers/ota/FolderMotaStore.h>
 #include <helpers/ota/MotaSourceSerial.h>
 #include <helpers/ota/OtaContext.h>
@@ -60,8 +61,9 @@ void WiFiOtaSeeder::loop() {
     case ListenerAction::Start:
       seeder_server.begin();
       listener_active = true;
-      Serial.printf("OTA seeder listening on :%u (motatool serve --tcp)\n",
-                    static_cast<unsigned>(OTA_SEEDER_TCP_PORT));
+      mesh::usbLoggingPort().printf(
+          "OTA seeder listening on :%u (motatool serve --tcp)\n",
+          static_cast<unsigned>(OTA_SEEDER_TCP_PORT));
       break;
     case ListenerAction::Stop:
       stop();
@@ -90,7 +92,8 @@ void WiFiOtaSeeder::loop() {
   if (!WiFiOtaSeederPolicy::canAttachTcpFolder(context.folder_active,
                                                 tcp_folder_attached)) {
     incoming.stop();
-    Serial.println("OTA seeder rejected TCP client: another folder link is active");
+    mesh::usbLoggingPort().println(
+        "OTA seeder rejected TCP client: another folder link is active");
     return;
   }
 
@@ -99,7 +102,8 @@ void WiFiOtaSeeder::loop() {
   if (!context.attach_folder_source(&seeder_source, OtaContext::FOLDER_LINK_TCP,
                                     "tcp", attach_reply, sizeof(attach_reply))) {
     seeder_client.stop();
-    Serial.printf("OTA seeder rejected TCP client: %s\n", attach_reply);
+    mesh::usbLoggingPort().printf(
+        "OTA seeder rejected TCP client: %s\n", attach_reply);
     return;
   }
 
@@ -114,7 +118,8 @@ void WiFiOtaSeeder::loop() {
     context.manager.resumeStaged(context.manager.fetchManifestId());
   }
   context.manager.announce();
-  Serial.printf("OTA seeder client connected (%s)\n", link_info);
+  mesh::usbLoggingPort().printf(
+      "OTA seeder client connected (%s)\n", link_info);
 }
 
 void WiFiOtaSeeder::stop() {

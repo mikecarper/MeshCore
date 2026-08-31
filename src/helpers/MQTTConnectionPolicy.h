@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <stdint.h>
 
 // Pure timing and state-transition policy used by MQTTBridge's connection
@@ -13,6 +14,8 @@ static const uint32_t kStableResetMs = 120000UL;
 static const uint32_t kCircuitBreakerProbeMs = 1800000UL;
 static const uint32_t kRenewalThrottleMs = 60000UL;
 static const uint32_t kSlotStaggerMs = 3000UL;
+static const uint32_t kNtpRefreshIntervalMs = 86400000UL; // 24 hours
+static const uint32_t kNtpRetryMs = 5000UL;
 static const uint8_t kMaxFailuresAtMaxBackoff = 3;
 static const uint32_t kDefaultJwtLifetimeSecs = 86400UL;
 static const uint32_t kMaxJwtStaggerSecs = 300UL;
@@ -29,6 +32,53 @@ static const uint32_t kSyncedClockEpoch = kJwtClockThreshold;
 static inline uint32_t elapsedMs(uint32_t now, uint32_t then) {
   return now - then;
 }
+
+// A pending short retry takes precedence over the normal daily schedule. The
+// signed deadline comparison is safe because the retry is only five seconds
+// away; the daily path uses unsigned elapsed time and therefore survives one
+// millis() rollover as well.
+static inline bool ntpRefreshDue(uint32_t now, uint32_t last_sync,
+                                 uint32_t retry_at) {
+  if (retry_at != 0) {
+    return static_cast<int32_t>(now - retry_at) >= 0;
+  }
+  return elapsedMs(now, last_sync) >= kNtpRefreshIntervalMs;
+}
+
+static inline uint32_t ntpRetryAt(uint32_t now) {
+  const uint32_t retry_at = now + kNtpRetryMs;
+  // Zero is the "no retry scheduled" sentinel, so move that one rollover
+  // collision forward by one millisecond.
+  return retry_at == 0 ? 1 : retry_at;
+}
+
+static inline uint32_t ntpReconnectRefreshAt(uint32_t now) {
+  // Reconnection invalidates any old short deadline. Schedule the refresh for
+  // the current task loop while preserving zero as the unscheduled sentinel.
+  return now == 0 ? 1 : now;
+}
+
+// WiFi events can run on a different task from MQTT maintenance. Keep the
+// callback to a single atomic edge latch: the MQTT task consumes the edge only
+// after WiFi is connected and makes every clock/scheduler decision itself.
+// Coalescing multiple GOT_IP events is intentional; one fresh sample after the
+// latest reconnect is sufficient.
+class NtpReconnectLatch {
+public:
+  NtpReconnectLatch() : _pending(false) {}
+
+  void noteGotIp() {
+    _pending.store(true, std::memory_order_release);
+  }
+
+  bool consumeIfConnected(bool wifi_connected) {
+    if (!wifi_connected) return false;
+    return _pending.exchange(false, std::memory_order_acq_rel);
+  }
+
+private:
+  std::atomic<bool> _pending;
+};
 
 static inline bool reconnectGuardActive(uint32_t now, uint32_t last_reconnect) {
   return elapsedMs(now, last_reconnect) < kReconnectGuardMs;
@@ -237,6 +287,25 @@ enum class ClockSource : uint8_t {
   System,
   Rtc,
 };
+
+// RTCClock carries Unix seconds in a uint32_t. Validate the signed system
+// time before converting it: time(nullptr) uses -1 for failure, which would
+// otherwise become UINT32_MAX and look newer than every minimum-epoch check.
+// Reject values beyond the RTC wire/storage range as well instead of wrapping
+// them into an apparently plausible earlier date.
+static inline bool checkedRtcEpoch(int64_t candidate,
+                                   uint32_t min_valid_epoch,
+                                   uint32_t& accepted) {
+  accepted = 0;
+  if (candidate < 0
+      || static_cast<uint64_t>(candidate) > UINT32_MAX) {
+    return false;
+  }
+  const uint32_t converted = static_cast<uint32_t>(candidate);
+  if (converted < min_valid_epoch) return false;
+  accepted = converted;
+  return true;
+}
 
 // Prefer a plausible system clock, then an RTC. Server validation may not use
 // a local clock as evidence that the requested NTP host answered.

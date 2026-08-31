@@ -22,7 +22,9 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_wifi.h>
+#include <time.h>
 #include "WiFiPowerSave.h"
+#include "esp32/TlsClockValidity.h"
 #include "esp32/WiFiRadioPolicy.h"
 #endif
 #if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
@@ -1166,12 +1168,21 @@ bool CommonCLI::handleObserverCommand(uint32_t sender_timestamp, char* command, 
           client.setCACertBundle(rootca_crt_bundle_start);
 #endif
           client.setTimeout(8000);
-          bool ok = client.connect(host, port);
-          if (ok) {
-            client.stop();
-            snprintf(reply, 160, "OK: TLS bundle verified %s:%u", host, (unsigned)port);
+          // This diagnostic must distinguish a bad CA bundle from a clock that
+          // cannot validate any certificate yet. It does not mutate the global
+          // SNTP client while the MQTT task is live; normal bridge NTP supplies
+          // the signed wall clock checked here.
+          const time_t tls_now = time(nullptr);
+          if (!mesh::tls_clock::timeIsValid(tls_now)) {
+            strcpy(reply, "ERR: TLS clock is not synchronized");
           } else {
-            snprintf(reply, 160, "ERR: TLS bundle failed %s:%u", host, (unsigned)port);
+            bool ok = client.connect(host, port);
+            if (ok) {
+              client.stop();
+              snprintf(reply, 160, "OK: TLS bundle verified %s:%u", host, (unsigned)port);
+            } else {
+              snprintf(reply, 160, "ERR: TLS bundle failed %s:%u", host, (unsigned)port);
+            }
           }
         }
       }
@@ -1193,8 +1204,9 @@ bool CommonCLI::handleObserverCommand(uint32_t sender_timestamp, char* command, 
     } else if (memcmp(command, "ota check", 9) == 0) {
       // Check is synchronous so its result lands in this reply, and runs with the
       // MQTT bridge UP: the slim per-variant manifest is tiny, so the fetch only
-      // costs a single TLS handshake (no large JSON doc) - which fits alongside
-      // the live MQTT sessions even on no-PSRAM boards. No bridge bounce needed.
+      // costs one plain-HTTP request (no cert-bundle allocation or large JSON
+      // document). The later update path refetches it over verified HTTPS after
+      // the bridge is down. No bridge bounce is needed for this advisory check.
       _board->otaFromManifest(_callbacks->getFirmwareVer(), true, reply);
     } else {
       // `ota update`: cheap pre-check first (plain HTTP, bridge stays up). Only

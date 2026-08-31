@@ -13,6 +13,74 @@ TEST(MQTTConnectionPolicy, ElapsedTimeHandlesNormalAndWrappedClocks) {
   EXPECT_EQ(150U, Policy::elapsedMs(50U, before_wrap));
 }
 
+TEST(MQTTConnectionPolicy, NtpRefreshHasExactDailyBoundaryAndHandlesRollover) {
+  EXPECT_EQ(86400000U, Policy::kNtpRefreshIntervalMs);
+  EXPECT_FALSE(Policy::ntpRefreshDue(
+      Policy::kNtpRefreshIntervalMs - 1U, 0U, 0U));
+  EXPECT_TRUE(Policy::ntpRefreshDue(
+      Policy::kNtpRefreshIntervalMs, 0U, 0U));
+
+  const uint32_t last = std::numeric_limits<uint32_t>::max() - 999U;
+  EXPECT_FALSE(Policy::ntpRefreshDue(
+      last + Policy::kNtpRefreshIntervalMs - 1U, last, 0U));
+  EXPECT_TRUE(Policy::ntpRefreshDue(
+      last + Policy::kNtpRefreshIntervalMs, last, 0U));
+}
+
+TEST(MQTTConnectionPolicy, NtpShortRetryOverridesDailySchedule) {
+  const uint32_t retry_at = Policy::kNtpRefreshIntervalMs + 100U;
+  EXPECT_FALSE(Policy::ntpRefreshDue(
+      Policy::kNtpRefreshIntervalMs + 99U, 0U, retry_at));
+  EXPECT_TRUE(Policy::ntpRefreshDue(retry_at, 0U, retry_at));
+}
+
+TEST(MQTTConnectionPolicy, NtpRetryDeadlineHandlesZeroSentinelAtRollover) {
+  EXPECT_EQ(5000U, Policy::kNtpRetryMs);
+  EXPECT_EQ(5000U, Policy::ntpRetryAt(0U));
+
+  const uint32_t now = std::numeric_limits<uint32_t>::max() - 4999U;
+  const uint32_t retry_at = Policy::ntpRetryAt(now);
+  EXPECT_EQ(1U, retry_at);
+  EXPECT_FALSE(Policy::ntpRefreshDue(
+      std::numeric_limits<uint32_t>::max(), 0U, retry_at));
+  EXPECT_FALSE(Policy::ntpRefreshDue(0U, 0U, retry_at));
+  EXPECT_TRUE(Policy::ntpRefreshDue(1U, 0U, retry_at));
+}
+
+TEST(MQTTConnectionPolicy, NtpReconnectRefreshDiscardsOldDeadlineSafely) {
+  EXPECT_EQ(1U, Policy::ntpReconnectRefreshAt(0U));
+  EXPECT_FALSE(Policy::ntpRefreshDue(
+      0U, Policy::kNtpRefreshIntervalMs - 1U,
+      Policy::ntpReconnectRefreshAt(0U)));
+  EXPECT_TRUE(Policy::ntpRefreshDue(
+      1U, Policy::kNtpRefreshIntervalMs - 1U,
+      Policy::ntpReconnectRefreshAt(0U)));
+
+  const uint32_t reconnected_at = 123456U;
+  EXPECT_EQ(reconnected_at,
+            Policy::ntpReconnectRefreshAt(reconnected_at));
+  EXPECT_TRUE(Policy::ntpRefreshDue(
+      reconnected_at, reconnected_at - 1000U,
+      Policy::ntpReconnectRefreshAt(reconnected_at)));
+}
+
+TEST(MQTTConnectionPolicy, NtpReconnectLatchPreservesEdgesUntilConnected) {
+  Policy::NtpReconnectLatch latch;
+
+  EXPECT_FALSE(latch.consumeIfConnected(true));
+  latch.noteGotIp();
+  EXPECT_FALSE(latch.consumeIfConnected(false));
+  EXPECT_TRUE(latch.consumeIfConnected(true));
+  EXPECT_FALSE(latch.consumeIfConnected(true));
+
+  // An edge arriving after one exchange remains available to the next task
+  // tick, which is the short-flap/store-after-exchange case.
+  latch.noteGotIp();
+  EXPECT_TRUE(latch.consumeIfConnected(true));
+  latch.noteGotIp();
+  EXPECT_TRUE(latch.consumeIfConnected(true));
+}
+
 TEST(MQTTConnectionPolicy, CrossSlotReconnectGuardHasExactBoundary) {
   EXPECT_TRUE(Policy::reconnectGuardActive(14999U, 0U));
   EXPECT_FALSE(Policy::reconnectGuardActive(15000U, 0U));
@@ -294,6 +362,30 @@ TEST(StaleToken, FailedMintAlwaysDefers) {
 }
 
 using Policy::ClockSource;
+
+TEST(FallbackClock, RejectsSignedFailureAndRtcRangeOverflow) {
+  const uint32_t floor = 1767225600UL;
+  uint32_t accepted = 1234U;
+
+  EXPECT_FALSE(Policy::checkedRtcEpoch(-1, floor, accepted));
+  EXPECT_EQ(0U, accepted);
+  EXPECT_FALSE(Policy::checkedRtcEpoch(
+      static_cast<int64_t>(UINT32_MAX) + 1, floor, accepted));
+  EXPECT_EQ(0U, accepted);
+}
+
+TEST(FallbackClock, AcceptsOnlyPlausibleValuesWithinRtcRange) {
+  const uint32_t floor = 1767225600UL;
+  uint32_t accepted = 0;
+
+  EXPECT_FALSE(Policy::checkedRtcEpoch(
+      static_cast<int64_t>(floor) - 1, floor, accepted));
+  EXPECT_EQ(0U, accepted);
+  EXPECT_TRUE(Policy::checkedRtcEpoch(floor, floor, accepted));
+  EXPECT_EQ(floor, accepted);
+  EXPECT_TRUE(Policy::checkedRtcEpoch(UINT32_MAX, floor, accepted));
+  EXPECT_EQ(UINT32_MAX, accepted);
+}
 
 TEST(FallbackClock, PrefersSystemThenRtcAndRejectsInvalidSources) {
   const uint32_t floor = 1767225600U;

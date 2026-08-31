@@ -54,8 +54,12 @@ struct EspNowBootChannelState {
 inline uint8_t loadConfiguredEspNowChannel() {
   uint8_t channel = kDefaultEspNowChannel;
   Preferences prefs;
-  if (prefs.begin("mesh-wifi", true)) {
-    channel = prefs.getUChar("espnow_ch", kDefaultEspNowChannel);
+  // A missing namespace is the normal first-boot state. Read-write creates it
+  // without Arduino Preferences emitting ESP_ERR_NVS_NOT_FOUND on Serial.
+  if (prefs.begin("mesh-wifi", false)) {
+    if (prefs.isKey("espnow_ch")) {
+      channel = prefs.getUChar("espnow_ch", kDefaultEspNowChannel);
+    }
     prefs.end();
   }
   return validEspNowChannelOrDefault(channel, kDefaultEspNowChannel);
