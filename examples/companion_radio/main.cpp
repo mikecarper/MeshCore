@@ -1182,19 +1182,19 @@ void halt() {
           && companion_setup_display->height() >= 128;
     }
 
-    static bool hasNativeIndicatorSetupTypography() {
+    static bool hasIndicatorSetupTypography() {
 #if defined(INDICATOR_TRANSPORT_RENDER_PROFILE)
-      return mesh::ui::usesNativeIndicatorTypography(
-          companion_setup_display->width(),
-          companion_setup_display->height(),
-          companion_setup_display->renderWidth(),
-          companion_setup_display->renderHeight());
+      // This flag is emitted only for the two SenseCAP Indicator Full builds.
+      // Runtime canvas dimensions may differ after allocation fallback (and
+      // across historical UI macro ordering), but the physical panel remains
+      // 480x480. Never send this board through the generic size-1 setup page.
+      return true;
 #else
       return false;
 #endif
     }
 
-    static int drawNativeIndicatorSetupValue(int y, const char* value) {
+    static int drawIndicatorSetupValue(int y, const char* value) {
       companion_setup_display->setTextSize(2);
       // The setup AP has a stable prefix. Split on its semantic boundary so
       // the two large centered rows read cleanly instead of wrapping midway
@@ -1204,18 +1204,18 @@ void halt() {
         companion_setup_display->drawTextCentered(
             companion_setup_display->width() / 2, y, "MeshCore-");
         companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, y + 21, value + 9);
+            companion_setup_display->width() / 2, y + 17, value + 9);
         return 2;
       }
       const int max_width = companion_setup_display->width() - 12;
-      int line_height = 21;
+      int line_height = 17;
       // A configured SSID can contain 32 bytes. Keep ordinary names at the
       // large size, but let the longest legal value use two complete size-1
       // rows instead of silently losing its tail.
       if (value != nullptr
           && companion_setup_display->getTextWidth(value) > max_width * 2) {
         companion_setup_display->setTextSize(1);
-        line_height = 11;
+        line_height = 9;
       }
       return mesh::ui::drawTextWrapped(
           *companion_setup_display, 6, y,
@@ -1223,7 +1223,7 @@ void halt() {
           value != nullptr && value[0] != 0 ? value : "(not set)");
     }
 
-    static void drawNativeIndicatorSetupAddress(int y, const char* address) {
+    static void drawIndicatorSetupAddress(int y, const char* address) {
       const char* value = address != nullptr && address[0] != 0
           ? address : "(not set)";
       companion_setup_display->setTextSize(2);
@@ -1235,33 +1235,36 @@ void halt() {
           companion_setup_display->width() / 2, y, value);
     }
 
-    static void renderNativeIndicatorSetupDisplay(const char* title,
-                                                   const char* wifi_name,
-                                                   const char* address,
-                                                   bool connecting) {
-      companion_setup_display->setTextSize(3);
+    static void renderIndicatorSetupDisplay(const char* title,
+                                            const char* wifi_name,
+                                            const char* address,
+                                            bool connecting) {
+      // Keep the requested sizes physically identical on a native canvas and
+      // the 320-to-480 emergency canvas.  This page is sparse enough to use
+      // genuinely large type instead of relying on the global 480 boost.
+      companion_setup_display->setCompactText(true);
+      companion_setup_display->setTextSize(4);
       companion_setup_display->drawTextCentered(
-          companion_setup_display->width() / 2, 2, title);
+          companion_setup_display->width() / 2, 0, title);
 
-      companion_setup_display->setTextSize(2);
+      companion_setup_display->setTextSize(4);
       companion_setup_display->drawTextCentered(
-          companion_setup_display->width() / 2, 34,
-          connecting ? "CONNECTING" : "JOIN WIFI");
-      drawNativeIndicatorSetupValue(56, wifi_name);
+          companion_setup_display->width() / 2, 35, "JOIN");
+      drawIndicatorSetupValue(70, wifi_name);
 
       if (connecting) {
-        companion_setup_display->setTextSize(2);
+        companion_setup_display->setTextSize(4);
         companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 126, "WAIT...");
+            companion_setup_display->width() / 2, 108, "WAIT");
         return;
       }
 
-      companion_setup_display->setTextSize(2);
+      companion_setup_display->setTextSize(4);
       companion_setup_display->drawTextCentered(
-          companion_setup_display->width() / 2, 101, "BROWSE");
+          companion_setup_display->width() / 2, 105, "OPEN");
       // The scheme is implicit here so the address itself can remain nearly
       // panel-wide at size 2. Long DHCP addresses fall back to size 1.
-      drawNativeIndicatorSetupAddress(124, address);
+      drawIndicatorSetupAddress(140, address);
     }
 
     static int drawCompanionSetupValue(int y, int max_lines,
@@ -1315,8 +1318,8 @@ void halt() {
       char setup_ip[16] = {0};
       if (WebConfigServer::getSetupInfo(setup_ssid, sizeof(setup_ssid),
                                         setup_ip, sizeof(setup_ip))) {
-        if (hasNativeIndicatorSetupTypography()) {
-          renderNativeIndicatorSetupDisplay(
+        if (hasIndicatorSetupTypography()) {
+          renderIndicatorSetupDisplay(
               "SETUP", setup_ssid, setup_ip, false);
         } else if (hasLargeCompanionSetupDisplay()) {
           renderLargeCompanionSetupDisplay(
@@ -1335,8 +1338,8 @@ void halt() {
         }
       } else if (WiFi.status() == WL_CONNECTED) {
         const String ip = WiFi.localIP().toString();
-        if (hasNativeIndicatorSetupTypography()) {
-          renderNativeIndicatorSetupDisplay(
+        if (hasIndicatorSetupTypography()) {
+          renderIndicatorSetupDisplay(
               "READY", configured_wifi_ssid, ip.c_str(), false);
         } else if (hasLargeCompanionSetupDisplay()) {
           renderLargeCompanionSetupDisplay(
@@ -1355,8 +1358,8 @@ void halt() {
               companion_setup_display->width() / 2, 51, ip.c_str());
         }
       } else {
-        if (hasNativeIndicatorSetupTypography()) {
-          renderNativeIndicatorSetupDisplay(
+        if (hasIndicatorSetupTypography()) {
+          renderIndicatorSetupDisplay(
               "WIFI", configured_wifi_ssid, nullptr, true);
         } else if (hasLargeCompanionSetupDisplay()) {
           renderLargeCompanionSetupDisplay(
@@ -1373,6 +1376,9 @@ void halt() {
               companion_setup_display->width() / 2, 52, "Please wait...");
         }
       }
+      // Do not leak the setup page's fixed physical text scale into the normal
+      // UI after WebConfig exits.
+      companion_setup_display->setCompactText(false);
       companion_setup_display->endFrame();
     }
   #endif
