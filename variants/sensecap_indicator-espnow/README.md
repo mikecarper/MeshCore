@@ -1,5 +1,22 @@
 # SenseCAP Indicator controls
 
+The primary mesh radio is selected by the firmware image, not by the WiFi/BLE
+screen. Use `SenseCapIndicator-LoRa_companion_radio_full` for a LoRa-equipped
+D1L or D1Pro. Build a fresh image explicitly with:
+
+```sh
+bash build.sh build-firmware SenseCapIndicator-LoRa_companion_radio_full \
+  --radio-preset usa-cascadia --profile cascade --clean
+```
+
+The build uses the live USA/Canada preset when the settings service is
+available; its offline USA Cascadia fallback is 910.525 MHz, BW 62.5, SF7,
+CR5. The Cascade profile also supplies its fresh-install defaults, including
+RX delay 2. `SenseCapIndicator-ESPNow_companion_radio_full` remains the image
+for an Indicator without the LoRa assembly. An application-only update
+preserves the previously saved numeric radio tuple; erase/install the LoRa
+merged image when the compiled fresh defaults must replace it.
+
 The Indicator preserves the existing 160x160 UI coordinate system. Ordinary
 images use a 320x320, 4-bit internal canvas scaled 1.5x onto the 480x480 panel.
 Full Companion images first request a native 480x480 canvas, then normally
@@ -16,6 +33,9 @@ wakes it without selecting anything.
   side performs Previous or Next; horizontal swipes remain available anywhere.
 - A gesture is committed after a stable release. Brief missing touch samples
   are ignored so one swipe cannot become a second, opposite endpoint tap.
+- The SenseCAP controller reports a mirrored physical X coordinate. The board
+  profile corrects stationary visual left/right taps independently from its
+  existing swipe-direction correction.
 - The transport page is the exception for a very quick stationary contact:
   either tall, outlined WiFi/BLE box can accept one sampled point after the
   same stable-release debounce. Taps in the title, center gap, or footer stay
@@ -117,10 +137,12 @@ available in both modes for recovery.
 
 The Indicator transport page presents WiFi and BLE as full-height side-by-side
 choices. Tapping either choice saves it and reboots only when it differs from
-the active mode. Its size-3 choice labels render at the same physical size in
+the active mode. WiFi is split over two size-4 rows, BLE uses size 4, and the
+short `ON`/`NEXT` state uses size 3; all render at the same physical size in
 the 320 and 480 profiles. On a retained native 480 canvas, the first home page
-also reflows its inbox heading and short status labels at larger sizes; long IP
-addresses automatically fall back to the smaller row size instead of clipping.
+uses separate full-width size-4 `INBOX` and count rows plus a large lower
+action or BLE-status block. Long IP addresses retain a smaller bounded row
+instead of clipping.
 
 LoRa remains the primary radio in both LoRa modes. On the ESP-NOW layout,
 selecting BLE leaves the primary ESP-NOW WiFi radio and its fixed channel

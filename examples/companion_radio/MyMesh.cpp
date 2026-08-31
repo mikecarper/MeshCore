@@ -1490,7 +1490,9 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.autoadd_config = DEFAULT_AUTOADD_CONFIG;
   _prefs.path_hash_mode = DEFAULT_PATH_HASH_MODE;
   _prefs.radio_fem_txgain = 0;
-  //_prefs.rx_delay_base = 10.0f;  enable once new algo fixed
+#ifdef DEFAULT_RX_DELAY_BASE
+  _prefs.rx_delay_base = DEFAULT_RX_DELAY_BASE;
+#endif
   _prefs.setRepeatEn(false);
 #if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LR1110) \
     || defined(USE_LR2021) || defined(SX126X_RX_BOOSTED_GAIN) \

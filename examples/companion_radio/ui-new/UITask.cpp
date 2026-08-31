@@ -86,18 +86,28 @@ static void drawCompanionTransportChoice(DisplayDriver& display,
   }
 
   const bool large_transport_text = display.height() >= 96;
-  display.setTextSize(large_transport_text ? 3 : 1);
   const bool show_status_label = height >= 44;
-  const int label_y = show_status_label
-      ? y + (large_transport_text ? 17 : 12)
-      : y + (height - 8) / 2;
-  display.drawTextCentered(x + width / 2, label_y, label);
+  if (large_transport_text) {
+    display.setTextSize(4);
+    if (strcmp(label, "WiFi") == 0) {
+      // A single size-4 "WiFi" row is wider than one half of the screen.
+      // Reflow it into two large rows instead of shrinking both choices.
+      display.drawTextCentered(x + width / 2, y + 2, "Wi");
+      display.drawTextCentered(x + width / 2, y + 36, "Fi");
+    } else {
+      display.drawTextCentered(x + width / 2, y + 25, label);
+    }
+  } else {
+    display.setTextSize(1);
+    const int label_y = show_status_label ? y + 12 : y + (height - 8) / 2;
+    display.drawTextCentered(x + width / 2, label_y, label);
+  }
   if (show_status_label && (active || selected)) {
-    display.setTextSize(large_transport_text ? 2 : 1);
+    display.setTextSize(large_transport_text ? 3 : 1);
     display.drawTextCentered(
         x + width / 2,
         y + height - (large_transport_text ? 25 : 17),
-        active ? "ACTIVE"
+        active ? (large_transport_text ? "ON" : "ACTIVE")
                : (large_transport_text ? "NEXT" : "NEXT BOOT"));
   }
 }
@@ -381,17 +391,19 @@ public:
           mesh::ui::usesExpandedCompanionHomeTypography(
               display.width(), display.height(),
               display.renderWidth(), display.renderHeight());
-      sprintf(tmp, expanded_home ? "INBOX %d" : "INBOX: %d",
-              _task->getPreviewCount());
-      display.setTextSize(expanded_home ? 3 : 2);
-      if (expanded_home && display.getTextWidth(tmp) > display.width() - 4) {
+      if (expanded_home) {
+        display.setTextSize(4);
+        display.drawTextCentered(display.width() / 2, 20, "INBOX");
+      } else {
+        sprintf(tmp, "INBOX: %d", _task->getPreviewCount());
         display.setTextSize(2);
+        display.drawTextCentered(display.width() / 2, 22, tmp);
       }
 #else
       display.setTextSize(2);
       sprintf(tmp, "INBOX: %d", _task->getPreviewCount());
-#endif
       display.drawTextCentered(display.width() / 2, 22, tmp);
+#endif
 #ifdef UI_DEDICATED_PAIRING_BLOCK
       const mesh::ui::CompanionHomeLayout layout =
           mesh::ui::makeLargeCompanionHomeLayout(display.width(),
@@ -405,27 +417,35 @@ public:
       mesh::ui::clearDisplayRegion(display, layout.info);
       mesh::ui::clearDisplayRegion(display, layout.pairing);
 
-      display.setTextSize(expanded_home ? 2 : 1);
-      display.setColor(UIColor::secondary_txt);
-      mesh::ui::drawTextCenteredEllipsized(
-          display, layout.info, layout.instruction_y,
-          expanded_home ? "tap inbox" : "tap center: inbox");
-
-      #ifdef WIFI_SSID
-        if (isCompanionWiFiEnabled()) {
-          IPAddress ip = WiFi.localIP();
-          snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d",
-                   ip[0], ip[1], ip[2], ip[3]);
-        } else {
-          strcpy(tmp, "WiFi: OFF");
-        }
-        display.setTextSize(expanded_home ? 2 : 1);
+      if (expanded_home) {
+        snprintf(tmp, sizeof(tmp), "%d", _task->getPreviewCount());
+        display.setTextSize(4);
         if (display.getTextWidth(tmp) > layout.info.width) {
-          display.setTextSize(1);
+          display.setTextSize(3);
         }
+        display.setColor(UIColor::primary_txt);
         mesh::ui::drawTextCenteredEllipsized(
-            display, layout.info, layout.network_y, tmp);
-      #endif
+            display, layout.info, layout.instruction_y, tmp);
+      } else {
+        display.setTextSize(1);
+        display.setColor(UIColor::secondary_txt);
+        mesh::ui::drawTextCenteredEllipsized(
+            display, layout.info, layout.instruction_y,
+            "tap center: inbox");
+
+        #ifdef WIFI_SSID
+          if (isCompanionWiFiEnabled()) {
+            IPAddress ip = WiFi.localIP();
+            snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d",
+                     ip[0], ip[1], ip[2], ip[3]);
+          } else {
+            strcpy(tmp, "WiFi: OFF");
+          }
+          display.setTextSize(1);
+          mesh::ui::drawTextCenteredEllipsized(
+              display, layout.info, layout.network_y, tmp);
+        #endif
+      }
 
       const bool bluetooth_enabled = _task->isBluetoothEnabled();
       const bool bluetooth_connected = _task->hasBluetoothConnection();
@@ -436,10 +456,11 @@ public:
       char pairing_pin[16];
       if (bluetooth_connected) {
         pairing_label = expanded_home ? "BLE" : "BLUETOOTH";
-        pairing_value = "CONNECTED";
+        pairing_value = expanded_home ? "LINKED" : "CONNECTED";
+        if (expanded_home) pairing_value_size = 3;
       } else if (mesh::ui::shouldDisplayBluetoothPairingPin(
                      bluetooth_enabled, bluetooth_connected, bluetooth_pin)) {
-        pairing_label = expanded_home ? "BLE PIN" : "BLUETOOTH PIN";
+        pairing_label = expanded_home ? "PIN" : "BLUETOOTH PIN";
         snprintf(pairing_pin, sizeof(pairing_pin), "%06u",
                  (unsigned int)bluetooth_pin);
         pairing_value = pairing_pin;
@@ -450,12 +471,30 @@ public:
         display.setColor(UIColor::title_bkg);
         mesh::ui::clearDisplayRegion(display, layout.pairing);
         display.setColor(UIColor::title_txt);
-        display.setTextSize(expanded_home ? 2 : 1);
+        display.setTextSize(expanded_home ? 3 : 1);
         mesh::ui::drawTextCenteredEllipsized(
             display, layout.pairing, layout.pairing_label_y, pairing_label);
         display.setTextSize(pairing_value_size);
         mesh::ui::drawTextCenteredEllipsized(
             display, layout.pairing, layout.pairing_value_y, pairing_value);
+      } else if (expanded_home) {
+        display.setColor(UIColor::secondary_txt);
+        display.setTextSize(3);
+        mesh::ui::drawTextCenteredEllipsized(
+            display, layout.pairing, layout.pairing_label_y, "TAP");
+#ifdef WIFI_SSID
+        if (isCompanionWiFiEnabled()) {
+          IPAddress ip = WiFi.localIP();
+          snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d",
+                   ip[0], ip[1], ip[2], ip[3]);
+          display.setTextSize(1);
+        } else {
+          strcpy(tmp, "OFF");
+          display.setTextSize(3);
+        }
+        mesh::ui::drawTextCenteredEllipsized(
+            display, layout.pairing, layout.pairing_value_y, tmp);
+#endif
       }
 #else
       const bool bluetooth_enabled = _task->isBluetoothEnabled();
@@ -611,16 +650,15 @@ public:
           mesh::ui::makeCompanionTransportSelectorLayout(
               display.width(), display.height());
 
-      // Keep this page independent of the additional native-480 text boost:
-      // the size-3 choice names and size-2 status already consume nearly the
-      // full half-screen width, and should remain equally readable in the
-      // memory-saving 320 profile.
+      // Keep this page independent of the additional native-480 text boost.
+      // Its deliberately reflowed size-4 choices then retain the same large
+      // physical dimensions in the 320 and 480 render profiles.
       display.setCompactText(true);
       if (layout.show_title) {
         display.setColor(UIColor::primary_txt);
-        display.setTextSize(2);
+        display.setTextSize(3);
         display.drawTextCentered(
-            display.width() / 2, layout.title_y, "TRANSPORT");
+            display.width() / 2, layout.title_y, "MODE");
       }
       drawCompanionTransportChoice(
           display, layout.wifi.x, layout.wifi.y,
@@ -632,10 +670,11 @@ public:
           "BLE", !wifi_active, !wifi_selected);
 
       display.setColor(UIColor::secondary_txt);
-      display.setTextSize(1);
+      display.setTextSize(layout.show_title ? 2 : 1);
 #ifdef HAS_TOUCH
       display.drawTextCentered(
-          display.width() / 2, layout.prompt_y, "tap a box");
+          display.width() / 2, layout.prompt_y,
+          layout.show_title ? "TAP SIDE" : "tap a box");
 #else
       display.drawTextCentered(
           display.width() / 2, layout.prompt_y, PRESS_LABEL);

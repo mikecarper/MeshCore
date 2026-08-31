@@ -135,24 +135,34 @@ class IndicatorDisplayProfileTest(unittest.TestCase):
             self.assertLessEqual(height, 30)
 
         # Native 480 reflows the spacious home page instead of globally
-        # enlarging every dense UI row. Its prominent strings fit at their
-        # requested sizes, while a two-digit inbox count takes the deliberate
-        # size-2 fallback.
-        native_title = dimensions("INBOX 0", 3, 3, 1.2)
-        native_two_digit_title = dimensions("INBOX 10", 3, 3, 1.2)
-        native_two_digit_fallback = dimensions("INBOX 10", 2, 3, 1.2)
+        # enlarging every dense UI row. The title, count, action, and pairing
+        # state each occupy their own large row.
+        native_title = dimensions("INBOX", 4, 3, 1.2)
+        native_count = dimensions("9999", 4, 3, 1.2)
+        native_count_fallback = dimensions("99999", 3, 3, 1.2)
         self.assertLessEqual(native_title[0], 156)
-        self.assertGreater(native_two_digit_title[0], 156)
-        self.assertLessEqual(native_two_digit_fallback[0], 156)
+        self.assertLessEqual(native_title[1], 39)
+        self.assertLessEqual(native_count[0], 156)
+        self.assertLessEqual(native_count_fallback[0], 156)
 
-        for text, region_width in (
-            ("tap inbox", 156),
-            ("WiFi: OFF", 156),
-            ("BLE PIN", 144),
+        for text, requested_size, region_width in (
+            ("TAP", 3, 144),
+            ("OFF", 3, 144),
+            ("PIN", 3, 144),
+            ("LINKED", 3, 144),
+            ("123456", 3, 144),
+            ("IP: 192.168.100.200", 1, 144),
         ):
-            width, height = dimensions(text, 2, 3, 1.2)
+            width, height = dimensions(text, requested_size, 3, 1.2)
             self.assertLessEqual(width, region_width)
-            self.assertLessEqual(height, 20)
+            self.assertLessEqual(height, 29 if requested_size == 3 else 10)
+
+        # The two lower size-3 rows must not depend on blank pixels inside the
+        # checked-in VLW: the built-in fallback font can fill its whole cell.
+        pairing_label_y = 102
+        pairing_value_y = 131
+        self.assertLessEqual(pairing_label_y + 29, pairing_value_y)
+        self.assertLessEqual(pairing_value_y + 29, 160)
 
 
 if __name__ == "__main__":

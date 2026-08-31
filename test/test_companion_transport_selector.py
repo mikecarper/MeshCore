@@ -20,8 +20,8 @@ int main() {
   if (!layout.show_title) return 1;
   if (layout.wifi.x != 2 || layout.wifi.width != 76) return 2;
   if (layout.bluetooth.x != 82 || layout.bluetooth.width != 76) return 3;
-  if (layout.wifi.y != 36 || layout.wifi.height != 98) return 4;
-  if (layout.title_y != 17 || layout.prompt_y != 140) return 5;
+  if (layout.wifi.y != 40 || layout.wifi.height != 100) return 4;
+  if (layout.title_y != 14 || layout.prompt_y != 143) return 5;
 
   const auto small = mesh::ui::makeCompanionTransportSelectorLayout(128, 64);
   if (small.show_title) return 6;
@@ -56,21 +56,25 @@ int main() {
             )
             self.assertEqual(run_result.returncode, 0, run_result.stderr)
 
-        choice_glyph_width = 6 * 3
-        choice_glyph_height = 8 * 3
-        for text in ("WiFi", "BLE"):
+        choice_glyph_width = 6 * 4
+        choice_glyph_height = 8 * 4
+        for text in ("Wi", "Fi", "BLE"):
             self.assertLessEqual(len(text) * choice_glyph_width, 76)
-        status_glyph_width = 6 * 2
-        status_glyph_height = 8 * 2
-        for text in ("ACTIVE", "NEXT"):
+        status_glyph_width = 6 * 3
+        status_glyph_height = 8 * 3
+        for text in ("ON", "NEXT"):
             self.assertLessEqual(len(text) * status_glyph_width, 76)
-        title_glyph_width = 6 * 2
-        for text in ("TRANSPORT", "tap a box"):
-            self.assertLessEqual(len(text) * title_glyph_width, 160)
-        self.assertLessEqual(17 + 8 * 2, 36)
-        self.assertLessEqual(53 + choice_glyph_height, 134)
-        self.assertLessEqual(109 + status_glyph_height, 134)
-        self.assertLessEqual(140 + 8, 160)
+        self.assertLessEqual(len("MODE") * 6 * 3, 160)
+        self.assertLessEqual(len("TAP SIDE") * 6 * 2, 160)
+        self.assertLessEqual(14 + 8 * 3, 40)
+        wifi_first_row_y = 42
+        wifi_second_row_y = 76
+        self.assertLessEqual(wifi_first_row_y + choice_glyph_height,
+                             wifi_second_row_y)
+        self.assertLessEqual(wifi_first_row_y + choice_glyph_height, 140)
+        self.assertLessEqual(76 + choice_glyph_height, 140)
+        self.assertLessEqual(115 + status_glyph_height, 140)
+        self.assertLessEqual(143 + 8 * 2, 160)
 
     def test_touch_split_selector_distinguishes_taps_from_swipes(self):
         source = r'''
@@ -88,19 +92,19 @@ static TouchAction release(TouchInput& input,
 }
 
 int main() {
-  TouchInput input(true, true, 70);
+  TouchInput input(true, true, 70, true);
   const auto layout = mesh::ui::makeCompanionTransportSelectorLayout(160, 160);
   const TouchSplitSelector selector{
       layout.wifi.x, layout.wifi.width,
       layout.bluetooth.x, layout.bluetooth.width,
       layout.wifi.y, layout.wifi.height};
 
-  input.update(true, 30, 70, 160, 160, false, &selector);
-  input.update(true, 31, 70, 160, 160, false, &selector);
+  input.update(true, 129, 70, 160, 160, false, &selector);
+  input.update(true, 128, 70, 160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::SelectLeft) return 1;
 
-  input.update(true, 130, 70, 160, 160, false, &selector);
-  input.update(true, 129, 70, 160, 160, false, &selector);
+  input.update(true, 30, 70, 160, 160, false, &selector);
+  input.update(true, 31, 70, 160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::SelectRight) return 2;
 
   input.update(true, 80, 70, 160, 160, false, &selector);
@@ -121,10 +125,10 @@ int main() {
 
   // A quick selector tap may occupy only one 25 ms poll. Its bounded target
   // remains unambiguous after the normal two-sample release debounce.
-  input.update(true, 30, 120, 160, 160, false, &selector);
+  input.update(true, 129, 120, 160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::SelectLeft) return 7;
 
-  input.update(true, 130, 120, 160, 160, false, &selector);
+  input.update(true, 30, 120, 160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::SelectRight) return 8;
 
   // The gap, title, and exclusive bottom edge remain inert even for a quick
@@ -132,14 +136,14 @@ int main() {
   input.update(true, 80, 120, 160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::None) return 9;
 
-  input.update(true, 30, layout.wifi.y - 1, 160, 160, false, &selector);
+  input.update(true, 129, layout.wifi.y - 1, 160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::None) return 10;
 
-  input.update(true, 30, layout.wifi.y + layout.wifi.height,
+  input.update(true, 129, layout.wifi.y + layout.wifi.height,
                160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::None) return 11;
 
-  input.update(true, 30, layout.wifi.y + layout.wifi.height - 1,
+  input.update(true, 129, layout.wifi.y + layout.wifi.height - 1,
                160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::SelectLeft) return 12;
 
@@ -182,12 +186,16 @@ int main() {
         self.assertIn('"WiFi", wifi_active, wifi_selected', source)
         self.assertIn('"BLE", !wifi_active, !wifi_selected', source)
         self.assertIn("display.fillRect(x, y, width, height);", source)
-        self.assertIn('"ACTIVE"', source)
-        self.assertIn('large_transport_text ? 3 : 1', source)
+        self.assertIn('large_transport_text ? "ON" : "ACTIVE"', source)
+        self.assertIn('display.setTextSize(4);', source)
+        self.assertIn('display.drawTextCentered(x + width / 2, y + 2, "Wi");', source)
+        self.assertIn('display.drawTextCentered(x + width / 2, y + 36, "Fi");', source)
         self.assertIn("const bool show_status_label = height >= 44;", source)
-        self.assertIn('active ? "ACTIVE"', source)
+        self.assertIn('active ? (large_transport_text ? "ON" : "ACTIVE")', source)
         self.assertIn('large_transport_text ? "NEXT" : "NEXT BOOT"', source)
-        self.assertIn('display.setTextSize(2);', source)
+        self.assertIn('display.setTextSize(3);', source)
+        self.assertIn('display.width() / 2, layout.title_y, "MODE"', source)
+        self.assertIn('layout.show_title ? "TAP SIDE" : "tap a box"', source)
         self.assertIn("makeCompanionTransportSelectorLayout", source)
 
         handler_start = source.index(
@@ -221,6 +229,10 @@ int main() {
 
     def test_only_split_page_maps_box_taps_to_transport_keys(self):
         source = UI.read_text(encoding="utf-8")
+        profile = (
+            ROOT / "variants" / "sensecap_indicator-espnow" / "platformio.ini"
+        ).read_text(encoding="utf-8")
+        self.assertIn("-D TOUCH_MIRROR_TAP_X", profile)
         self.assertIn(
             "curr == home\n"
             "        && static_cast<HomeScreen*>(home)"

@@ -48,16 +48,26 @@ class UITask : public AbstractUITask {
   #ifndef TOUCH_CENTER_ZONE_PERCENT
     #define TOUCH_CENTER_ZONE_PERCENT 34
   #endif
-  #if defined(TOUCH_REVERSE_SWIPE) \
-      && defined(TOUCH_SEPARATE_VERTICAL_SWIPES)
-  mesh::ui::TouchInput touch_input{true, true, TOUCH_CENTER_ZONE_PERCENT};
-  #elif defined(TOUCH_REVERSE_SWIPE)
-  mesh::ui::TouchInput touch_input{true, false, TOUCH_CENTER_ZONE_PERCENT};
-  #elif defined(TOUCH_SEPARATE_VERTICAL_SWIPES)
-  mesh::ui::TouchInput touch_input{false, true, TOUCH_CENTER_ZONE_PERCENT};
+  #ifdef TOUCH_REVERSE_SWIPE
+  static constexpr bool TOUCH_REVERSE_SWIPE_ENABLED = true;
   #else
-  mesh::ui::TouchInput touch_input{false, false, TOUCH_CENTER_ZONE_PERCENT};
+  static constexpr bool TOUCH_REVERSE_SWIPE_ENABLED = false;
   #endif
+  #ifdef TOUCH_SEPARATE_VERTICAL_SWIPES
+  static constexpr bool TOUCH_SEPARATE_VERTICAL_SWIPES_ENABLED = true;
+  #else
+  static constexpr bool TOUCH_SEPARATE_VERTICAL_SWIPES_ENABLED = false;
+  #endif
+  #ifdef TOUCH_MIRROR_TAP_X
+  static constexpr bool TOUCH_MIRROR_TAP_X_ENABLED = true;
+  #else
+  static constexpr bool TOUCH_MIRROR_TAP_X_ENABLED = false;
+  #endif
+  mesh::ui::TouchInput touch_input{
+      TOUCH_REVERSE_SWIPE_ENABLED,
+      TOUCH_SEPARATE_VERTICAL_SWIPES_ENABLED,
+      TOUCH_CENTER_ZONE_PERCENT,
+      TOUCH_MIRROR_TAP_X_ENABLED};
   unsigned long next_touch_check = 0;
 #endif
 #ifdef PIN_STATUS_LED

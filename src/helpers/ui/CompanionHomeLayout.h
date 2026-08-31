@@ -70,13 +70,17 @@ inline CompanionHomeLayout makeLargeCompanionHomeLayout(int width,
                                                         int height,
                                                         bool expanded = false) {
   if (expanded && width == 160 && height == 160) {
+    // Native 480 uses three large vertical bands: an INBOX title above this
+    // count region, then one lower region that is either the BLE state or a
+    // large tap/network hint. Reusing the lower region conditionally gives
+    // the prominent text room to grow without overlapping another status.
     return {
-        {2, 51, 156, 46},
-        {8, 100, 144, 58},
-        52,
-        76,
+        {2, 61, 156, 39},
+        {8, 102, 144, 58},
+        61,
+        61,
         102,
-        126,
+        131,
     };
   }
 

@@ -218,6 +218,47 @@ TEST(TouchInput, CanReverseSwipesWithoutReversingTapZones) {
   EXPECT_EQ(release(input), TouchAction::Next);
 }
 
+TEST(TouchInput, CanMirrorStationaryTapZonesIndependentlyOfSwipes) {
+  TouchInput input(true, true, 70, true);
+  const TouchSplitSelector selector{2, 76, 82, 76, 40, 100};
+
+  // The controller's raw-right coordinate is the visual-left WiFi box.
+  input.update(true, 129, 80, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::SelectLeft);
+
+  // The controller's raw-left coordinate is the visual-right BLE box.
+  input.update(true, 30, 80, 160, 160, false, &selector);
+  input.update(true, 31, 80, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::SelectRight);
+
+  // Generic side taps and the message footer arrows use the same visual-X
+  // correction, while their center zones stay centered.
+  input.update(true, 150, 60, 160, 160);
+  input.update(true, 150, 60, 160, 160);
+  EXPECT_EQ(release(input, 160, 160), TouchAction::Previous);
+
+  input.update(true, 10, 140, 160, 160, true);
+  input.update(true, 10, 140, 160, 160, true);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, true),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, true),
+            TouchAction::VerticalNext);
+
+  // Swipe direction remains governed only by reverse_swipes.
+  input.update(true, 130, 70, 160, 160, false, &selector);
+  input.update(true, 30, 72, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::Previous);
+}
+
 TEST(TouchInput, KeepsGestureAcrossOneMissingTouchSample) {
   TouchInput input;
 

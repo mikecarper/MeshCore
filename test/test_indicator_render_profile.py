@@ -9,6 +9,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build.sh"
 MAIN = ROOT / "examples" / "companion_radio" / "main.cpp"
+MESH = ROOT / "examples" / "companion_radio" / "MyMesh.cpp"
+DATA_STORE = ROOT / "examples" / "companion_radio" / "DataStore.cpp"
+PROFILE = ROOT / "variants" / "sensecap_indicator-espnow" / "platformio.ini"
 
 
 class IndicatorRenderProfileTest(unittest.TestCase):
@@ -116,6 +119,74 @@ int main() {
         self.assertIn("selectIndicatorTextScale(", display)
         self.assertIn("static_cast<uint16_t>(renderWidth()), _compactText", display)
         self.assertIn("* profile_scale;", display)
+
+    def test_lora_fresh_install_uses_compiled_cascade_defaults(self):
+        profile = PROFILE.read_text(encoding="utf-8")
+        lora = profile[profile.index("[SenseCapIndicator-LoRa]") :]
+        lora = lora[: lora.index("[env:")]
+        self.assertIn("-UMESH_PRIMARY_ESPNOW", lora)
+        self.assertIn("-D SENSECAP_INDICATOR_LORA", lora)
+        self.assertIn("-D USE_SX1262", lora)
+        self.assertIn("-<helpers/esp32/ESPNOWRadio.cpp>", lora)
+
+        mesh = MESH.read_text(encoding="utf-8")
+        self.assertIn("_prefs.freq = LORA_FREQ;", mesh)
+        self.assertIn("_prefs.sf = LORA_SF;", mesh)
+        self.assertIn("_prefs.bw = LORA_BW;", mesh)
+        self.assertIn("_prefs.cr = LORA_CR;", mesh)
+        guarded_rx_delay = (
+            "#ifdef DEFAULT_RX_DELAY_BASE\n"
+            "  _prefs.rx_delay_base = DEFAULT_RX_DELAY_BASE;\n"
+            "#endif"
+        )
+        self.assertIn(guarded_rx_delay, mesh)
+
+        # Saved preferences load after constructor defaults, so an app-only
+        # update remains non-destructive while an erased install uses them.
+        begin = mesh[mesh.index("void MyMesh::begin(") :]
+        self.assertIn("_store->loadPrefs(_prefs", begin)
+        store = DATA_STORE.read_text(encoding="utf-8")
+        self.assertIn('if (_fs->exists("/new_prefs"))', store)
+        self.assertIn('loadPrefsInt("/new_prefs", prefs', store)
+
+    def test_explicit_usa_cascadia_and_cascade_build_flags(self):
+        command = r'''
+set -e
+source "$1"
+PLATFORMIO_BUILD_FLAGS=""
+RADIO_FREQ_OVERRIDE=910.525
+RADIO_BW_OVERRIDE=62.5
+RADIO_SF_OVERRIDE=7
+RADIO_CR_OVERRIDE=5
+FIRMWARE_PROFILE_OVERRIDE=cascade
+apply_radio_overrides
+apply_firmware_profile_overrides
+printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
+'''
+        result = subprocess.run(
+            ["bash", "-c", command, "test", str(BUILD)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        flags = result.stdout.split()
+        for expected in (
+            "-DLORA_FREQ=910.525",
+            "-DLORA_BW=62.5",
+            "-DLORA_SF=7",
+            "-DLORA_CR=5",
+            "-DCASCADE_PROFILE=1",
+            "-DDEFAULT_RX_DELAY_BASE=2.0f",
+        ):
+            self.assertIn(expected, flags)
+
+        build = BUILD.read_text(encoding="utf-8")
+        self.assertIn(
+            "'SenseCapIndicator-LoRa_comp_radio_usb_wifi|"
+            "SenseCapIndicator-LoRa_companion_radio_full'",
+            build,
+        )
 
 
 if __name__ == "__main__":

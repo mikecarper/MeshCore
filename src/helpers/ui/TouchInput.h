@@ -32,6 +32,7 @@ class TouchInput {
   bool _active = false;
   bool _reverse_swipes;
   bool _separate_vertical_swipes;
+  bool _mirror_tap_x;
   uint8_t _center_zone_percent;
   uint8_t _touch_samples = 0;
   uint8_t _release_samples = 0;
@@ -57,9 +58,11 @@ class TouchInput {
 public:
   explicit TouchInput(bool reverse_swipes = false,
                       bool separate_vertical_swipes = false,
-                      uint8_t center_zone_percent = 34)
+                      uint8_t center_zone_percent = 34,
+                      bool mirror_tap_x = false)
       : _reverse_swipes(reverse_swipes),
         _separate_vertical_swipes(separate_vertical_swipes),
+        _mirror_tap_x(mirror_tap_x),
         _center_zone_percent(center_zone_percent > 100
                                  ? 100
                                  : center_zone_percent) {}
@@ -113,15 +116,21 @@ public:
       return verticalSwipeAction(dy < 0);
     }
 
+    // Some panels report a mirrored X axis. Swipe direction has its own
+    // independent policy because gesture direction and stationary screen
+    // coordinates are different concerns. Apply the panel correction only
+    // after movement has been ruled out so it cannot alter swipe detection.
+    const int tap_x = _mirror_tap_x ? width - 1 - _start_x : _start_x;
+
     // Message screens may reserve the otherwise empty ends of their bottom
     // status bar as forgiving arrow buttons. Keep the label in the middle
     // inert so an imprecise arrow tap cannot accidentally close the screen.
     if (bottom_selector && _separate_vertical_swipes
         && _start_y >= (height * 3) / 4) {
-      if (_start_x < width / 4) {
+      if (tap_x < width / 4) {
         return TouchAction::VerticalPrevious;
       }
-      if (_start_x >= (width * 3) / 4) {
+      if (tap_x >= (width * 3) / 4) {
         return TouchAction::VerticalNext;
       }
       return TouchAction::None;
@@ -135,13 +144,13 @@ public:
           || _start_y >= split_selector->top_y + split_selector->height) {
         return TouchAction::None;
       }
-      if (_start_x >= split_selector->left_x
-          && _start_x < split_selector->left_x
+      if (tap_x >= split_selector->left_x
+          && tap_x < split_selector->left_x
               + split_selector->left_width) {
         return TouchAction::SelectLeft;
       }
-      if (_start_x >= split_selector->right_x
-          && _start_x < split_selector->right_x
+      if (tap_x >= split_selector->right_x
+          && tap_x < split_selector->right_x
               + split_selector->right_width) {
         return TouchAction::SelectRight;
       }
@@ -156,8 +165,8 @@ public:
     const int side_percent = (100 - _center_zone_percent) / 2;
     const int center_left = (width * side_percent) / 100;
     const int center_right = width - center_left;
-    if (_start_x < center_left) return TouchAction::Previous;
-    if (_start_x >= center_right) return TouchAction::Next;
+    if (tap_x < center_left) return TouchAction::Previous;
+    if (tap_x >= center_right) return TouchAction::Next;
     return TouchAction::Select;
   }
 

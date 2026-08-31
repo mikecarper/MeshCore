@@ -23,10 +23,10 @@ inline CompanionTransportSelectorLayout makeCompanionTransportSelectorLayout(
   const bool tall_display = height >= 96;
   const int margin = 2;
   const int gap = 4;
-  const int box_y = tall_display ? 36 : 20;
-  const int prompt_y = height - (tall_display ? 20 : 11);
-  int box_height = prompt_y - box_y - (tall_display ? 6 : 8);
-  if (box_height > 98) box_height = 98;
+  const int box_y = tall_display ? 40 : 20;
+  const int prompt_y = height - (tall_display ? 17 : 11);
+  int box_height = prompt_y - box_y - (tall_display ? 3 : 8);
+  if (box_height > 100) box_height = 100;
   if (box_height < 20) box_height = 20;
   const int box_width = (width - margin * 2 - gap) / 2;
   const int bluetooth_x = margin + box_width + gap;
@@ -34,7 +34,7 @@ inline CompanionTransportSelectorLayout makeCompanionTransportSelectorLayout(
   return {
       {margin, box_y, box_width, box_height},
       {bluetooth_x, box_y, box_width, box_height},
-      tall_display ? 17 : 0,
+      tall_display ? 14 : 0,
       prompt_y,
       tall_display,
   };
