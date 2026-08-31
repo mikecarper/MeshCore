@@ -11,6 +11,16 @@ struct IndicatorRenderProfile {
   uint16_t canvas_size;
 };
 
+// Full-size Indicator builds retain the established 160x160 logical
+// coordinate system even when the backing canvas is the panel's native
+// 480x480. Screens with enough room to reflow can use this distinction to
+// choose substantially larger text without changing the 320px BLE fallback.
+inline bool usesNativeIndicatorTypography(
+    int width, int height, int render_width, int render_height) {
+  return width == 160 && height == 160
+      && render_width == 480 && render_height == 480;
+}
+
 // ESP-NOW and BLE are the Indicator's tightest internal-RAM combination.
 // Every other exclusive Full-Companion combination can use a native 480px
 // internal canvas while preserving the established 160px UI coordinates.

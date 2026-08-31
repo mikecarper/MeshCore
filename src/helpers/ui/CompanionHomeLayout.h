@@ -1,6 +1,7 @@
 #pragma once
 
 #include <helpers/ui/DisplayDriver.h>
+#include <helpers/ui/IndicatorRenderProfile.h>
 
 namespace mesh {
 namespace ui {
@@ -37,8 +38,8 @@ struct CompactCompanionPairingLayout {
 // unrelated displays that happen to have a tall viewport.
 inline bool usesExpandedCompanionHomeTypography(
     int width, int height, int render_width, int render_height) {
-  return width == 160 && height == 160
-      && render_width == 480 && render_height == 480;
+  return usesNativeIndicatorTypography(
+      width, height, render_width, render_height);
 }
 
 // The common Companion OLED/TFT viewport is 128x64.  Its normal instruction

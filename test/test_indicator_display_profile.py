@@ -164,6 +164,32 @@ class IndicatorDisplayProfileTest(unittest.TestCase):
         self.assertLessEqual(pairing_label_y + 29, pairing_value_y)
         self.assertLessEqual(pairing_value_y + 29, 160)
 
+        # Native setup mode intentionally uses most of the panel: a size-3
+        # title and size-2 action/value rows replace the legacy size-1 page.
+        for text, requested_size in (
+            ("SETUP", 3),
+            ("READY", 3),
+            ("WIFI", 3),
+            ("CONNECTING", 2),
+            ("JOIN WIFI", 2),
+            ("BROWSE", 2),
+            ("192.168.4.1", 2),
+        ):
+            width, _height = dimensions(text, requested_size, 3, 1.2)
+            self.assertLessEqual(width, 160)
+
+        title_height = dimensions("SETUP", 3, 3, 1.2)[1]
+        row_height = dimensions("JOIN WIFI", 2, 3, 1.2)[1]
+        self.assertLessEqual(2 + title_height, 34)
+        self.assertLessEqual(34 + row_height, 56)
+        self.assertLessEqual(56 + row_height, 77)
+        self.assertLessEqual(77 + row_height, 101)
+        self.assertLessEqual(101 + row_height, 124)
+        self.assertLessEqual(124 + row_height, 160)
+
+        long_ssid = dimensions("ABCDEFGHIJKLMNOPQRSTUVWXYZ123456", 1, 3, 1.2)
+        self.assertLessEqual(long_ssid[0], 2 * 148)
+
 
 if __name__ == "__main__":
     unittest.main()

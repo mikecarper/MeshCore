@@ -36,6 +36,9 @@ int main() {
   if (mesh::ui::selectIndicatorTextScale(480, false) != 1.2f) return 5;
   if (mesh::ui::selectIndicatorTextScale(480, true) != 1.0f) return 6;
   if (mesh::ui::selectIndicatorTextScale(320, false) != 1.0f) return 7;
+  if (!mesh::ui::usesNativeIndicatorTypography(160, 160, 480, 480)) return 8;
+  if (mesh::ui::usesNativeIndicatorTypography(160, 160, 320, 320)) return 9;
+  if (mesh::ui::usesNativeIndicatorTypography(128, 128, 480, 480)) return 10;
   return 0;
 }
 '''
@@ -119,6 +122,27 @@ int main() {
         self.assertIn("selectIndicatorTextScale(", display)
         self.assertIn("static_cast<uint16_t>(renderWidth()), _compactText", display)
         self.assertIn("* profile_scale;", display)
+
+    def test_native_setup_page_uses_large_reflow(self):
+        main = MAIN.read_text(encoding="utf-8")
+        start = main.index("static bool hasNativeIndicatorSetupTypography()")
+        end = main.index("static bool saveCompanionWiFi", start)
+        setup = main[start:end]
+        self.assertIn("usesNativeIndicatorTypography", setup)
+        self.assertIn("renderNativeIndicatorSetupDisplay", setup)
+        self.assertIn('setTextSize(3);', setup)
+        self.assertIn('connecting ? "CONNECTING" : "JOIN WIFI"', setup)
+        self.assertIn('drawNativeIndicatorSetupValue(56, wifi_name);', setup)
+        self.assertIn('strncmp(value, "MeshCore-Setup-", 15) == 0', setup)
+        self.assertIn('y, "MeshCore-"', setup)
+        self.assertIn('y + 21, value + 9', setup)
+        self.assertIn('getTextWidth(value) > max_width * 2', setup)
+        self.assertIn('line_height = 11;', setup)
+        self.assertIn('101, "BROWSE"', setup)
+        self.assertIn('drawNativeIndicatorSetupAddress(124, address);', setup)
+        self.assertIn('"SETUP", setup_ssid, setup_ip, false', setup)
+        self.assertIn('"READY", configured_wifi_ssid, ip.c_str(), false', setup)
+        self.assertIn('"WIFI", configured_wifi_ssid, nullptr, true', setup)
 
     def test_lora_fresh_install_uses_compiled_cascade_defaults(self):
         profile = PROFILE.read_text(encoding="utf-8")

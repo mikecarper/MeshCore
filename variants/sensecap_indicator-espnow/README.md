@@ -144,6 +144,11 @@ uses separate full-width size-4 `INBOX` and count rows plus a large lower
 action or BLE-status block. Long IP addresses retain a smaller bounded row
 instead of clipping.
 
+The native-480 WiFi setup/status screen is reflowed separately: its title is
+size 3, its join/browse instructions and setup SSID are size 2, and the IP
+address remains size 2 whenever it fits. The legacy 320 and other display
+layouts keep their existing compact setup page.
+
 LoRa remains the primary radio in both LoRa modes. On the ESP-NOW layout,
 selecting BLE leaves the primary ESP-NOW WiFi radio and its fixed channel
 running; it disables only infrastructure WiFi. Rendering follows the memory
