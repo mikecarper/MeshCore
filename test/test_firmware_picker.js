@@ -492,6 +492,27 @@ assert.strictEqual(
   picker.canonicalAsset(standardRepeater.files, "merged-bin").name,
   "Station_G2_repeater-" + family + "-merged.bin"
 );
+assert.strictEqual(picker.CANDIDATE_RESULT_LIMIT, 5);
+assert(picker.shouldShowCandidateResults(new Array(5).fill(standardRepeater)));
+assert(!picker.shouldShowCandidateResults(new Array(6).fill(standardRepeater)));
+assert.deepStrictEqual(
+  picker.resolveProfileAssets([standardRepeater], "merged-bin").map(
+    function (entry) {
+      return [entry.profile.target, entry.asset.name, entry.installKind];
+    }
+  ),
+  [[
+    "Station_G2_repeater",
+    "Station_G2_repeater-" + family + "-merged.bin",
+    "merged-bin",
+  ]]
+);
+assert.deepStrictEqual(
+  picker.resolveProfileAssets([standardRepeater], "").map(function (entry) {
+    return entry.installKind;
+  }),
+  ["merged-bin", "bin"]
+);
 
 const fullLogging = profile("Generic_ESPNOW_repeatr-full-logging");
 assert.strictEqual(fullLogging.logging, "usb-runtime");

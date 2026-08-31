@@ -98,8 +98,9 @@ from the published firmware assets.
   </div>
 
   <section class="firmware-picker-result" data-role="result" aria-live="polite" hidden>
-    <p class="firmware-picker-eyebrow">Exact firmware match</p>
-    <h2>Recommended download</h2>
+    <p class="firmware-picker-eyebrow" data-role="result-eyebrow">Exact firmware match</p>
+    <h2 data-role="result-title">Recommended download</h2>
+    <p data-role="result-note" hidden></p>
     <div data-role="result-list"></div>
   </section>
 
