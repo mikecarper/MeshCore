@@ -524,9 +524,26 @@ assert.strictEqual(fullLogging.variant, "default");
 const mqtt = profile("Station_G2_repeater_observer_mqtt-full-usb-wifi");
 assert.strictEqual(mqtt.logging, "runtime");
 assert.deepStrictEqual(mqtt.loggingModes, ["none", "usb", "wifi", "both"]);
-assert.strictEqual(mqtt.mode, "mqtt");
+assert.strictEqual(mqtt.mode, "standard");
 assert.strictEqual(mqtt.ota, "lora-receiver");
 assert.strictEqual(mqtt.variant, "default");
+assert.strictEqual(
+  picker.parseTargetProfile("Station_G2_repeater_observer_mqtt").mode,
+  "standard"
+);
+assert.strictEqual(
+  picker.MODE_LABELS.standard,
+  "Standard / no separate bridge"
+);
+assert(!Object.prototype.hasOwnProperty.call(picker.MODE_LABELS, "mqtt"));
+assert(!picker.uniqueValues(catalog.profiles, "mode").includes("mqtt"));
+assert(picker.profileMatchesFacets(mqtt, {
+  role: "repeater",
+  logging: "wifi",
+  ota: "lora-receiver",
+  mode: "standard",
+  feature: "full",
+}));
 
 const fullCompanionSteps = picker.installSteps(v4Full, "merged-bin");
 assert(fullCompanionSteps.some(function (step) {

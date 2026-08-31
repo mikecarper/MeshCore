@@ -49,7 +49,7 @@
   });
 
   const MODE_LABELS = Object.freeze({
-    standard: "Standard",
+    standard: "Standard / no separate bridge",
     full: "Full Companion transports",
     ble: "Bluetooth LE",
     usb: "USB",
@@ -57,7 +57,6 @@
     wifi: "Wi-Fi",
     serial: "Serial / UART",
     ethernet: "Ethernet",
-    mqtt: "MQTT observer",
     espnow: "ESP-NOW bridge",
     rs232: "RS-232 bridge",
   });
@@ -285,7 +284,11 @@
       if (/^ethernet(?:$|[_-])/.test(value)) return "ethernet";
       return "standard";
     }
-    if (value.includes("observer_mqtt")) return "mqtt";
+    // MQTT is an output capability selected under Logging / MQTT. Keeping it
+    // out of the connection facet avoids asking for the same choice twice.
+    // ESP-NOW, RS-232, and Ethernet remain here because they select distinct
+    // bridge firmware or hardware paths.
+    if (value.includes("observer_mqtt")) return "standard";
     if (value.includes("bridge_espnow")) return "espnow";
     if (value.includes("bridge_rs232")) return "rs232";
     if (value.includes("ethernet")) return "ethernet";
@@ -822,7 +825,7 @@
     const loggingOrder = ["none", "usb", "wifi", "both"];
     const otaOrder = ["none", "lora-receiver", "lora-source"];
     const featureOrder = ["standard", "full"];
-    const modeOrder = ["standard", "full", "ble", "usb", "wifi", "serial", "ethernet", "mqtt", "espnow", "rs232"];
+    const modeOrder = ["standard", "full", "ble", "usb", "wifi", "serial", "ethernet", "espnow", "rs232"];
     const orders = {
       role: roleOrder,
       logging: loggingOrder,
