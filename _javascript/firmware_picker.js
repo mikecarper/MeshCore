@@ -83,6 +83,8 @@
     "hex",
   ]);
 
+  const CANDIDATE_RESULT_LIMIT = 5;
+
   const HARDWARE_ALIASES = Object.freeze({
     // Generated Full Companion artifact name. It uses the standard Heltec V4
     // board definition and auto-detects the V4.2 and V4.3 FEM hardware.
@@ -601,6 +603,31 @@
     })[0] || null;
   }
 
+  function resolveProfileAssets(profiles, installKind) {
+    const resolved = [];
+    (Array.isArray(profiles) ? profiles : []).forEach(function (profile) {
+      const installKinds = installKind
+        ? [installKind]
+        : profile.installKinds || [];
+      installKinds.forEach(function (kind) {
+        const asset = canonicalAsset(profile.files, kind);
+        if (asset) {
+          resolved.push({
+            profile: profile,
+            asset: asset,
+            installKind: kind,
+          });
+        }
+      });
+    });
+    return resolved;
+  }
+
+  function shouldShowCandidateResults(profiles) {
+    return Array.isArray(profiles) && profiles.length > 0 &&
+      profiles.length <= CANDIDATE_RESULT_LIMIT;
+  }
+
   function buildCatalog(releases) {
     const releaseSet = selectReleaseSet(releases);
     if (!releaseSet) {
@@ -955,6 +982,9 @@
     const status = root.querySelector('[data-role="status"]');
     const releaseSetStatus = root.querySelector('[data-role="release-set"]');
     const result = root.querySelector('[data-role="result"]');
+    const resultEyebrow = root.querySelector('[data-role="result-eyebrow"]');
+    const resultTitle = root.querySelector('[data-role="result-title"]');
+    const resultNote = root.querySelector('[data-role="result-note"]');
     const resultList = root.querySelector('[data-role="result-list"]');
     const missing = root.querySelector('[data-role="missing"]');
     const search = root.querySelector('[data-field="asset-search"]');
@@ -1104,18 +1134,31 @@
             "Choose " + missingFields.length + " more option" +
             (missingFields.length === 1 ? "" : "s") + " in any order.";
         }
+        if (shouldShowCandidateResults(matches)) {
+          const candidates = resolveProfileAssets(matches, filters.install);
+          if (candidates.length) {
+            status.textContent += " Possible files are shown below.";
+            resultEyebrow.textContent = "Narrowed firmware candidates";
+            resultTitle.textContent = "Possible firmware files";
+            resultNote.textContent =
+              "Confirm the remaining choices and the exact hardware before downloading.";
+            resultNote.hidden = false;
+            candidates.forEach(function (entry) {
+              renderProfileCard(
+                resultList,
+                entry.profile,
+                entry.asset,
+                entry.installKind
+              );
+            });
+            result.hidden = false;
+          }
+        }
         return;
       }
 
       const installKind = filters.install;
-      const resolved = matches.map(function (profile) {
-        return {
-          profile: profile,
-          asset: canonicalAsset(profile.files, installKind),
-        };
-      }).filter(function (entry) {
-        return Boolean(entry.asset);
-      });
+      const resolved = resolveProfileAssets(matches, installKind);
       if (!resolved.length) {
         missing.hidden = false;
         root.querySelector('[data-role="missing-text"]').textContent =
@@ -1126,12 +1169,16 @@
 
       status.textContent = resolved.length + " exact firmware configuration" +
         (resolved.length === 1 ? " matched." : "s matched.");
+      resultEyebrow.textContent = "Exact firmware match";
+      resultTitle.textContent = "Recommended download";
+      resultNote.textContent = "";
+      resultNote.hidden = true;
       resolved.forEach(function (entry) {
         renderProfileCard(
           resultList,
           entry.profile,
           entry.asset,
-          installKind
+          entry.installKind
         );
       });
       result.hidden = false;
@@ -1245,6 +1292,7 @@
     MODE_LABELS: MODE_LABELS,
     FEATURE_LABELS: FEATURE_LABELS,
     INSTALL_LABELS: INSTALL_LABELS,
+    CANDIDATE_RESULT_LIMIT: CANDIDATE_RESULT_LIMIT,
     selectReleaseSet: selectReleaseSet,
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
@@ -1272,6 +1320,8 @@
     facetValues: facetValues,
     uniqueValues: uniqueValues,
     canonicalAsset: canonicalAsset,
+    resolveProfileAssets: resolveProfileAssets,
+    shouldShowCandidateResults: shouldShowCandidateResults,
     installSteps: installSteps,
     humanizeHardware: humanizeHardware,
     humanizeVariant: humanizeVariant,
