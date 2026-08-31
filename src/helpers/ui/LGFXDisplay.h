@@ -44,10 +44,14 @@ protected:
   bool _hasTransparentEmojiPixels = false;
   uint32_t _lastFrameHash = 0;
   bool _hasLastFrame = false;
+  int _logicalTextSize = 1;
+  bool _compactText = false;
+  uint8_t _coordinateScale = UI_COORD_SCALE;
+  float _outputZoom = UI_ZOOM;
 
   String mapText(const char* str) const;
   uint32_t renderColor(ColorVal color) const;
-  void configurePalette();
+  bool configurePalette();
   uint32_t frameHash() const;
   bool wasEmojiPresented(const EmojiOverlay& overlay) const;
   void drawEmojiMask(int32_t x, int32_t y, int32_t size,
@@ -58,6 +62,8 @@ protected:
                      uint32_t codepoint, int32_t font_height);
   static int32_t drawEmoji(lgfx::v1::LGFXBase* gfx, int32_t x, int32_t y,
                            uint32_t codepoint, int32_t font_height);
+  void applyTextSize();
+  bool createRenderBuffer();
 
 public:
   LGFXDisplay(int w, int h, LGFX_Device &disp)
@@ -70,6 +76,10 @@ public:
   void clear() override;
   void startFrame(ColorVal bkg = UIColor::window_bkg) override;
   void setTextSize(int sz) override;
+  void setCompactText(bool compact) override;
+  bool setRenderScale(uint8_t coordinate_scale, float output_zoom) override;
+  int renderWidth() const override { return width() * _coordinateScale; }
+  int renderHeight() const override { return height() * _coordinateScale; }
   void setColor(ColorVal c) override;
   void setCursor(int x, int y) override;
   void print(const char* str) override;

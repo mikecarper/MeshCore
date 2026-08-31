@@ -411,7 +411,7 @@ public:
   void onManualClockSet() override { _clock_sync.onManualClockSet(); }
   bool hasAuthoritativeClock() const override {
 #ifdef WITH_MQTT_BRIDGE
-    return bridge != nullptr && bridge->hasNtpTime();
+    return bridge != nullptr && bridge->hasFreshNtpThisBoot();
 #else
     return false;
 #endif

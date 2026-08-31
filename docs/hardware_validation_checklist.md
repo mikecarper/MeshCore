@@ -9,12 +9,22 @@ exit code when the tool has a documented false-success mode.
 
 | Hardware | Stable identity | Current state | Next blocking check |
 | --- | --- | --- | --- |
-| Seeed XIAO nRF52840 | `B35E71C1C3726CE7` | Exact Full Companion application and latency-disable bootloader candidate installed. An exact bonded B-A-B link-profile test passed at 6.225, 3.343, and 6.231 kB/s for 15 ms, untouched 30 ms control, and 15 ms repeat; CRC, activation, target disconnect, and stable USB return passed three times | Power-removal cold test, then exercise BLE-controlled LoRa OTA |
-| Seeed Tracker T1000-E | `34A9141999729D5D` | Later connection-policy-reapply OTAFIX candidate and temporary Full Companion are running; the exact bonded warm baseline passed at 3.34 kB/s. Two lab-only pre-START 15 ms/latency-0 DFUs with `0/0` no-preference event-length hints passed at 6.23 and 6.52 kB/s; a 10 ms event-length control timed out before START | Prove installed bootloader bytes by readback, exercise a physical cold 20-to-244-byte readiness transition, restore the protected Repeater identity, cold boot, then force LR1110 reset |
-| RAK3401 | `0B81C9C68D8D01B4`; FICR `8D8D01B4 0B81C9C6` | Direct V4 LoRa OTA from `bf092b24` to exact `3caf9dcf` passed. OTAFIX test version `0x02040403` is installed; bidirectional application UF2, exact SWD application/bootloader readback, and unchanged UICR all pass | Add RF packet counters, then repeat bandwidth and routed-hop matrix |
+| Seeed XIAO nRF52840 | `B35E71C1C3726CE7` | A stalled Companion transport survived the stop token and exact USB reset, then recovered after a 36-second exact application DFU. Current Full Companion USB, bonded BLE, clock sync, terminal/Binary switching, serial-mOTA folder attach, and reversible dual-CDC logging all pass | Prove current-build cold persistence; separately reproduce the stall before using a power cut to test whether power alone clears it; then transfer an actual image through BLE-controlled LoRa OTA |
+| Seeed Tracker T1000-E | `34A9141999729D5D` | A temporary Full Companion and one of two same-visible-version OTAFIX candidates are running; the exact candidate bytes are not yet proven. The bonded warm baseline passed at 3.34 kB/s. Two lab-only pre-START 15 ms/latency-0 DFUs with `0/0` no-preference event-length hints passed at 6.23 and 6.52 kB/s; a 10 ms event-length control timed out before START | Prove installed bootloader bytes by readback, exercise a physical cold 20-to-244-byte readiness transition, restore the protected Repeater identity, cold boot, then force LR1110 reset |
+| RAK3401 | `0B81C9C68D8D01B4`; FICR `8D8D01B4 0B81C9C6` | OTAFIX test version `0x02040403` passes bidirectional application UF2, exact SWD application/bootloader readback, unchanged UICR, and a 74-block direct V4 LoRa apply from exact `3caf9dcf` to current HEAD `9fd580c8`. Post-apply USB and LoRa identity/hash checks pass and the temporary 0 dBm bench setting is restored to 22 dBm | Add exact RF packet counters, then repeat the supported-bandwidth and controlled/passive/mixed routed-hop matrix |
 | Heltec MeshTower V2 with SD | `9352162A72082314` | Exact SD LoRa-OTA Repeater `e26d48e4` is running after identity-gated BLE recovery. Card format/cooldown/forced-format/raw-erase/remount pass; live bootloader contract reports ABI 3, FULL+INPLACE, and SD apply | Signed interrupted-download resume, corruption/signature rejection, then full/delta apply |
 | Heltec V4 | USB MAC `44:1B:F6:6A:E8:44`; BLE `44:1B:F6:6A:E8:45` | USB/BLE/Wi-Fi and all three TCP services pass on hardware. The final fresh-NTP-gated Full Companion image builds with 4.31 MB app space free | Flash the exact final NTP build, prove NTP-before-TLS success/failure ordering, then OTA seeding |
-| SenseCAP Indicator LoRa | CH340 plus USB MAC `D8:3B:DA:75:23:AC`; BLE `D8:3B:DA:75:23:AD` | Exact 2,145,640-byte Full Companion font-recovery application, SHA-256 `88d8d8ae138b297fc7841005ab40c303e1efe9d27a2bb4a89a30735748a073c4`, is installed; identity-gated flash, USB ASCII/Binary switching, runtime logging, configured Wi-Fi, BLE, all three TCP services, fresh-NTP-gated HTTPS recovery, strict Range resume, STAGEV2 install, and exact RP USB readback pass | Physical display-wrap check, LoRa/TempRadio, and OTA seeding |
+| SenseCAP Indicator LoRa | CH340 plus USB MAC `D8:3B:DA:75:23:AC`; BLE `D8:3B:DA:75:23:AD` | The current dark-layout application is SHA-256 `81bebdc07b6a8349c1c975cb5a0e30c5f6019d35bcac641e5f3d4df951f7406b`; identity-gated flash, USB ASCII/Binary switching, runtime logging, and separate configured-Wi-Fi, BLE, and TCP checks pass. Fresh-NTP HTTPS recovery, strict Range resume, STAGEV2 install, and RP USB readback passed on earlier exact artifacts; the final coordinator source still needs its blocked-UDP/123 hardware gate | Physical display-wrap and four-mode render/heap checks, exact-final blocked-NTP recovery gate, LoRa/TempRadio, and non-empty OTA seeding |
+
+The current source checkpoint passes 1,132/1,132 native cases, 68/68 host
+broker/endpoint cases, all 318 LoRa-OTA chain/route/bundle cases, and 41/41
+MOTA format/signature/delta cases under the documented pipx `detools`
+interpreter. Indicator geometry, dark-theme, and font-recovery contracts pass
+4/4, 6/6, and 25/25. A serialized real Indicator ESP32-S3 Wi-Fi/USB profile
+also compiles at 95,944 bytes RAM and 1,589,433 bytes flash. The direct
+system-Python MOTA invocation predictably lacks `detools`; that environment
+boundary is not a firmware failure and must not be worked around by installing
+the package globally.
 
 The RAK failure log is
 `/home/mikec/hwtest/runs/rak3401-syncidle-clean-tSp7PLgA/result.txt` on
@@ -93,6 +103,27 @@ After SWD reset-halt/resume, USB again reported the expected application,
 identity, name, radio, 22 dBm, no TempRadio lease, and `blrc:00` (the retained
 success diagnostic is intentionally cleared by the next normal boot).
 
+The current `0x02040403` bootloader candidate then passed a second direct V4
+LoRa qualification using a materially larger application change. The unsigned
+in-place package was 75,614 bytes with 75,108 payload bytes and 74 transfer
+blocks. Its mandatory fixed three-minute rehearsal passed, including natural
+TempRadio expiry and exact normal-channel recovery; one lost read-only
+`ota status` reply was reconciled by its bounded exact retry. The transfer
+reached 74/74 and READY in 122 seconds, the explicit unsigned install was
+accepted, and reboot produced exact HEAD `9fd580c8` with body
+`744BC4443891ED10`. The complete safety-wrapped run took 589.487 seconds,
+including rehearsal, recovery, and final verification. The first postboot
+`ver` reply was lost and its exact read-only retry passed. Independent USB
+checks then confirmed target `2FA509C1`, hardware `RAK_3401`, unchanged
+identity/name/radio/RXPS/watchdog state, bootloader CRC `6683C066`, ABI 3,
+apply result `blrc:B8`, and no active TempRadio/download/seeder/key state.
+After the separate host-recovery exercise, the near-field TX setting was
+restored from 0 dBm to its exact original 22 dBm and read back over an
+authenticated LoRa session. The sanitized authoritative log is
+`/home/mikec/hwtest/runs/rak3401-02040403-head-vzWOXVxT/qualification-redacted.log`
+with SHA-256
+`3e53dcaa5922c7c18a7890963b8fc092311d2db01caa5603640f43f1482802f6`.
+
 A serialized VM build of the six connected-board qualification profiles then
 completed 6/6 in 136.122 seconds: XIAO nRF52 BLE Companion, T1000-E BLE
 Companion, RAK3401 LoRa-OTA Repeater, SenseCAP Indicator LoRa USB/Wi-Fi
@@ -105,25 +136,25 @@ RTC handoff, and daily refresh policy were added, the complete native matrix
 passed 1,102/1,102 cases in 93.953 seconds. The scheduler is host-tested at
 24-hours-minus-one-millisecond, the exact 24-hour boundary, normal and wrapped
 `millis()` values, a short retry that overrides the daily cadence, the zero
-deadline sentinel, and a Wi-Fi reconnect. A reconnect schedules one fresh
-sample and clears an arbitrarily old short-retry deadline; while continuously
-connected, successful samples are requested only once per day. All current
+deadline sentinel, and a Wi-Fi event latch. A reconnect after a successful
+sample preserves the existing deadline, so successful samples are requested
+after boot and then only once per day. All current
 Python and shell contract suites passed, and the expanded LoRa-OTA automation
 suite passed 317/317 cases.
 
 Serialized real builds also passed after that change. The final event-safe
-implementation uses an atomic `GOT_IP` latch so even a disconnect/reconnect
-shorter than the 10-second MQTT status sample cannot skip the required fresh
-NTP request. The final Heltec V4 MQTT Observer application is 1,853,304 bytes
+implementation uses an atomic `GOT_IP` latch so even a short initial connection
+before the 10-second MQTT status sample cannot skip the required boot NTP
+request. The final Heltec V4 MQTT Observer application is 1,853,304 bytes
 with SHA-256
 `1938ae88fcdbe601cf8698df44b548656079562d899801886b808af913e5f9ac`.
-The consolidated Full V4 image used 2,247,757/6,553,600 flash bytes and left
-4,305,368 bytes of app-image space. Its 2,248,232-byte application image has
+The consolidated Full V4 image used 2,250,801/6,553,600 flash bytes and left
+4,302,799 bytes of app-image space. Its 2,251,272-byte application image has
 SHA-256
-`2547bb245349a500b7c9a112ac25bcec91ce70733c648ee0ff9ac7de3176da1a`;
-the 2,313,768-byte merged image has SHA-256
-`1f89ff127d50f06c3e3ce11c642611e079dae74772f169da9f2e4643da55a797`.
-The focused daily-NTP policy suite passed all 38 cases after the latch was
+`05131eac29164be46d1bcceeb4f03455f5ea8d61c8d4f529b77d8adfe25fdb6a`;
+the 2,316,808-byte merged image has SHA-256
+`c4c1fc639b6d0087c795a81aca79c07eba56dc4e071eb374dc70da0bec81815e`.
+The focused daily-NTP policy suites passed all 42 cases after the latch was
 added, and the Full capability manifest verified all ten expected features.
 The reduced RAK3401 LoRa-OTA Repeater also compiled with the verified WisBlock
 I2C aliases. At that source state its link used 471,344/815,104 flash bytes; the
@@ -184,6 +215,25 @@ The RAK3401 simultaneously uses the same VID/PID, which confirms that every
 continuation must resolve the stable serial/by-id identity rather than VID/PID.
 The T1000-E remained in the exact bonded Full Companion application; no stale
 DFU, scanner, `meshcli`, or HCI-capture process was running.
+
+The post-reboot seven-TTY inventory was also resolved without assuming that
+one board owned adjacent device names. `ttyUSB0` is the SenseCAP Indicator's
+ESP32-S3 CH340 UART and `ttyACM5` is its RP2040; their sibling physical USB
+paths and the Indicator's live TCP board reply agree. The separately attached
+`ttyACM4` is the MeshTower V2 native `HT-n5262` endpoint and returned the
+qualified MeshTower build over its own console. The remaining ACM endpoints
+independently identify the RAK3401, XIAO nRF52840, Heltec V4, and T1000-E.
+
+ModemManager had restarted after the Pi reboot and could probe otherwise idle
+radio consoles. Six serial-bearing boards now use stable-serial-only
+`ID_MM_DEVICE_IGNORE` rules. Because the Indicator CH340 has no stable serial,
+its separate rule requires the exact current physical port chain *and* exact
+`1a86:7523` identity; there is no broad CH340, product, or VID/PID-only rule.
+A controlled ModemManager restart reported zero modems, displaced no TTY owner,
+caused no USB disconnect/re-enumeration, and left all seven endpoints ignored.
+The same mctomqtt process retained sole ownership of the RAK, while a subsequent
+Indicator TCP query still returned the expected board and build. Reversible
+root-only backups were retained on the Pi before each rule update.
 
 ## Run-wide gates
 
@@ -314,6 +364,57 @@ DFU, scanner, `meshcli`, or HCI-capture process was running.
       as permission to generate artifacts there. Use the explicit Python from
       the relevant pipx environment when a probe needs one of its dependencies;
       the Pi system Python did not contain `pyserial` during the RAK run.
+
+### LoRa-controlled host recovery gate
+
+- [x] The privileged recovery boundary is a root-owned, group-restricted
+      AF_UNIX broker with a fixed command grammar and fixed `systemctl` argv.
+      The unprivileged MQTT endpoint cannot gain privileges under
+      `NoNewPrivileges`, cannot select an executable or unit, and commits an
+      action only after its signed challenge/reply has been published and
+      confirmed. The installed broker passed its cold activation, peer
+      credential, socket owner/mode, injection, duplicate, timeout, durable
+      reservation, and ambiguous-outcome checks.
+- [x] A signed `host network restart` was accepted exactly once in 4.088
+      seconds. The broker retained one `network-restart` record at sequence 1,
+      and the fixed unit journal had exactly one start/finish pair. Independent
+      management probing measured 7.184 seconds from last successful probe to
+      first recovered success and 6.314 seconds from first failure to recovery.
+      Pi-local loopback MQTT delivered 107/107 samples; mosquitto, mctomqtt,
+      and the endpoint retained their exact PIDs, and mctomqtt remained the sole
+      owner of the RAK USB port. One read-only LoRa status reply was lost at the
+      temporary 0 dBm bench setting, then authenticated status returned
+      `scheduled`; no mutation was replayed. One monitor parsed two
+      `systemctl --value` columns in reverse order, so its boolean labels are
+      discarded; its PID/MQTT trace and the independent postchecks remain
+      valid.
+- [x] A signed `host reboot` was accepted exactly once in 3.312 seconds and
+      armed the fixed 10-second timer. A changed boot ID and one observed
+      outage prove one reboot; management recovery took 35.763 seconds from
+      the last pre-outage success and 31.276 seconds from the first failed
+      probe. Postboot signed LoRa uptime replied in 3.651 seconds. All seven
+      exact USB identities returned, only the RAK port was owned, the deployed
+      configuration hashes were unchanged, and NetworkManager, Tailscale,
+      mosquitto, mctomqtt, the endpoint, and both privileged sockets were
+      active. Broker action state is intentionally under `/run` and persistent
+      journaling was unavailable, so exactly-once evidence is the accepted
+      reply, one boot-ID transition, one outage, an inactive timer, and no
+      second outage; do not claim a durable postboot operation record.
+- [x] Reboot auto-started the still-enabled ModemManager service, but all seven
+      exact devices retained `ID_MM_DEVICE_IGNORE=1`, zero modems appeared,
+      and no TTY was probed or claimed. The service was returned to its
+      pretest inactive state without disabling or masking it. The RAK then
+      passed exact identity/body/radio gates; an explicit radio-busy rejection
+      left TX at 0 dBm, one bounded idempotent retry after idle returned OK,
+      and authenticated readback proved exact restoration to 22 dBm. V4
+      identity, power-saving, RXPS, TempRadio, and seeder state also matched
+      their pretest values.
+
+The sanitized host-recovery evidence bundle is under
+`out/host-actions-live-20260831/`. Its `SHA256SUMS` manifest has SHA-256
+`5acff71ed98f483bb769e8c99c577bf358d0491355ac72855ee7093cd658bf21`,
+and `sha256sum -c` verifies every deployed-hash, pre/post-state, radio, OTA,
+network, and reboot record in that manifest.
 
 ### Mercerwood Pi USB power-cycle gate
 
@@ -504,6 +605,41 @@ DFU, scanner, `meshcli`, or HCI-capture process was running.
 - [ ] Warm app-to-bootloader handoff is tested with the application watchdog
       active; cold recovery is tested separately.
 - [ ] BLE Companion/recovery behavior and radio-reset recovery are exercised.
+- [x] The post-Pi-recovery application still enumerated as exact
+      `2886:8044` / `B35E71C1C3726CE7`, but one identity-gated, bounded USB
+      Binary Companion attempt received no protocol response. `meshcore-cli`
+      1.6.0 printed both of its no-response error lines and nevertheless exited
+      zero; the supervisor treated the attempt as a failure and independently
+      proved that no process retained the serial port. The exact terminal-stop
+      token and an identity/path-gated USB bus reset also failed, which excludes
+      an ordinary startup Terminal-mode hold and host USB endpoint state. The
+      external tool defect remains in upstream `meshcore-cli` 1.6.3: its serial
+      creation failure returns normally, so callers must validate command output
+      instead of trusting exit zero. The LoRa-OTA controller has an exact
+      three-diagnostic regression and continues to fail closed.
+- [x] An exact hash-recorded Full Companion application DFU erased/replaced only
+      the application and completed in 36 seconds. The transferred ZIP was
+      440,083 bytes with SHA-256
+      `9946b8417c389784ac92c20e4ce5cf0b6a0123a58136627c0689815637f96992`.
+      The same stable USB serial returned as interface `00`; USB and the existing
+      bonded BLE identity both reported `Seeed Xiao-nrf52`, the 31-Aug-2026
+      build, and Companion role. Preserved settings included a roughly six-month
+      stale clock, which Binary Companion `clock sync` advanced to one second of
+      the Pi without changing the role.
+- [x] The recovered application passed explicit Terminal start/stop, exact board
+      query, saved `usb.logging off`, source-only OTA status, and a real serial
+      `motatool serve` attach/detach with an empty folder (`COUNT -> 0`). Binary
+      Companion returned after both terminal and mOTA ownership. Enabling USB
+      logging and rebooting produced exact interfaces `00` and `02`; interface
+      `02` emitted 123 bytes of entirely printable log data while Binary
+      Companion stayed usable on `00`. Disabling and rebooting removed `02`,
+      restored the single-interface descriptor, and read back logging off.
+- [ ] A physical power-removal cold test is still needed to prove persistence of
+      the current application. It cannot retrospectively determine whether a
+      power cycle alone would have cleared the original stall. Answer that only
+      after reproducing the stall under a bounded stress loop, capturing state,
+      and power-cycling before any DFU. The application DFU proves recovery but
+      intentionally does not claim the underlying stall trigger is fixed.
 
 ## Seeed Tracker T1000-E
 
@@ -512,6 +648,11 @@ DFU, scanner, `meshcli`, or HCI-capture process was running.
       product ID `239a:8029`. Application is `239a:8029`; the exercised
       bootloader is `2886:0057`, with the same stable serial and exact
       `T1000-E`/`T1KE_DFU` model/name gates.
+- [x] A post-Pi-recovery, identity-gated, read-only USB Companion query returned
+      the exact T1000-E model, non-repeater Full Companion role, 22 dBm maximum,
+      and `910.525/62.5/SF7/CR5`. Its clock readback was within the query's
+      few-second host interval. No clock, radio, role, key, or settings write
+      was issued.
 - [ ] Board, version, repeater role, bootloader status, and USA radio tuple are
       correct after erase/install and after reboot. The live baseline and a
       2,184 ms software reboot passed: `3caf9dcf`, `Seeed Tracker T1000-E`, 22 dBm,
@@ -746,6 +887,16 @@ DFU, scanner, `meshcli`, or HCI-capture process was running.
       60-second reboot probe, and 514 seconds for the complete safety-wrapped
       run. Log:
       `/home/mikec/hwtest/runs/rak3401-0dbm-final-9KWjey61/run.log`.
+- [x] The current OTAFIX test version `0x02040403` independently passes a
+      74-block direct LoRa update from exact `3caf9dcf` body
+      `27A223DDFC3A8F47` to HEAD `9fd580c8` body `744BC4443891ED10`.
+      READY took 122 seconds and the complete three-minute-rehearsal,
+      transfer, install, reboot, recovery, and restore wrapper took 589.487
+      seconds. Lost read-only preflight and postboot replies were reconciled by
+      bounded exact retries. USB confirmed the target/hardware/body and
+      bootloader success result, and authenticated LoRa readback confirmed the
+      final 22 dBm restoration. Sanitized log:
+      `/home/mikec/hwtest/runs/rak3401-02040403-head-vzWOXVxT/qualification-redacted.log`.
 - [ ] Add exact RF packet sent/confirmed counters to the device/host telemetry.
       The qualified run records two payload blocks, all seeder reads, command
       retries, and final success, but those are not equivalent to LoRa packet
@@ -805,6 +956,13 @@ DFU, scanner, `meshcli`, or HCI-capture process was running.
       `910.525/62.5/SF7/CR5`. `ota self` reports SD apply ABI 3 with codec mask
       `0x5`; `ota bootloader` reports board `239A0071`, target `1150F50E`, name
       `TOWER_V2_OTA`, and capability byte `09`.
+- [x] A post-Pi-recovery identity-gated serial audit reconfirmed the exact
+      Tower V2 model, Repeater role, build, `910.525/62.5/SF7/CR5`, target
+      `0A9DBBF0`, body `E9282D47`, SD ABI 3/codecs `0x5`, and installed
+      bootloader identity/capability `239A0071`/`09`. The card reported
+      959.6 MiB free and no active download. This profile exposes the local
+      text console but deliberately has no runtime `usb.logging` setting; the
+      unknown-setting reply is a capability result, not a transport failure.
 - [x] Card detection and destructive maintenance pass. Normal format took
       3,927 ms; an immediate repeat was rejected by the five-minute cooldown;
       forced format took 3,933 ms; and raw erase plus format took 3,947 ms.
@@ -863,6 +1021,13 @@ DFU, scanner, `meshcli`, or HCI-capture process was running.
       `df08b770313ca8776436456525681cf286cd9b5b40e05e7cf55f21ef097f338a`;
       its ELF, map, manifest, and partition signature are archived beside it on
       the Mercerwood Pi.
+- [x] The current dark-layout Full Companion application was flashed app-only
+      with exact CH340/MAC/partition gates, preserving identity, Wi-Fi, and
+      settings. The 2,147,800-byte application has SHA-256
+      `81bebdc07b6a8349c1c975cb5a0e30c5f6019d35bcac641e5f3d4df951f7406b`;
+      esptool verified its flash hash in 134.2 seconds. USB Binary/terminal,
+      saved logging-off state, configured Wi-Fi, BLE, TCP ports 5000/5001/5002,
+      and an empty-folder Wi-Fi mOTA `COUNT -> 0` exchange all pass afterward.
 - [x] Keep one identity-gated CH340 descriptor open with DTR/RTS deasserted
       through startup. On the valid-current-font path, the Indicator streams a
       1,302,608-byte font from its RP2040 at 1 Mbps before registering the USB
@@ -953,7 +1118,27 @@ DFU, scanner, `meshcli`, or HCI-capture process was running.
       Repeat the negative UDP/123-blocked hardware gate on this exact final
       source before treating the coordinator refinement as hardware-qualified.
 - [ ] Full Wi-Fi SSID, setup address, and related status text wrap without
-      clipping on the physical display.
+      clipping on the physical display. The new dark palette and exclusive
+      lower pairing block are installed; a fresh bond removal held the random
+      PIN request on-screen for 30 seconds and then an immediate second attempt
+      paired, trusted, and returned the exact Indicator identity over BLE. A
+      human physical-readability confirmation is still required; the automated
+      geometry tests prove the PIN block is centered at four-fifths height and
+      cannot overlap IP, inbox, or status text.
+- [ ] Boot the exact current LoRa and ESP-NOW Full artifacts in both saved
+      secondary-transport modes and capture the `Indicator render` line. Require
+      LoRa + WiFi, LoRa + BLE, and ESP-NOW + infrastructure WiFi to retain
+      480x480, and ESP-NOW + BLE to select 320x320 scaled to the panel. A logged
+      emergency 320x320 fallback keeps the unit recoverable but does not pass a
+      native-480 gate.
+- [ ] For all four boots, record free heap and largest internal block before
+      interfaces and after the selected interface is usable. In WiFi mode prove
+      BLE never starts; in BLE mode prove infrastructure WiFi, WebConfig, MQTT,
+      and TCP never start. Keep the primary LoRa or ESP-NOW radio exchanging
+      traffic throughout. For both BLE modes pair/encrypt, negotiate MTU,
+      subscribe, exchange repeated Companion requests, disconnect/reconnect,
+      and repeat after bond removal; exercise network/TCP traffic in both WiFi
+      modes and record the lowest heap/largest-block values.
 - [x] With no saved SSID, setup Wi-Fi powers down after the absolute 30-minute
       window even if queried or used.
 - [x] A software reboot starts a fresh unconfigured setup window.

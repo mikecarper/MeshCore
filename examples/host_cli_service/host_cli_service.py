@@ -14,17 +14,20 @@ import argparse
 import base64
 from collections import OrderedDict
 from dataclasses import dataclass
+import hashlib
 import hmac
 import json
 import logging
 import os
 from pathlib import Path
+import queue
 import re
 import secrets
 import shlex
 import shutil
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import threading
@@ -39,6 +42,34 @@ MAX_REQUEST_BYTES = 155
 MAX_REQUEST_ENCODED_BYTES = (MAX_REQUEST_BYTES * 4 + 2) // 3
 MAX_REPLY_BYTES = 162
 CHALLENGE_TIMEOUT_SECONDS = 4.0
+MIN_CLOCK_EPOCH = 1577836800  # 2020-01-01T00:00:00Z
+MAX_CLOCK_EPOCH = 4102444799  # 2099-12-31T23:59:59Z
+CLOCK_CONTROL_SOCKET = Path("/run/meshcore-clock-control.sock")
+CLOCK_CONTROL_TIMEOUT_SECONDS = 5.0
+CLOCK_CONTROL_MAX_RESPONSE_BYTES = 192
+CLOCK_STATUS_CHILD_TIMEOUT_SECONDS = 1.5
+HOST_ACTIONS_SOCKET = Path("/run/meshcore-host-actions.sock")
+HOST_ACTION_TOTAL_TIMEOUT_SECONDS = 5.0
+HOST_ACTION_PUBLISH_TIMEOUT_SECONDS = 2.0
+HOST_ACTION_MAX_RESPONSE_BYTES = 128
+HOST_ACTION_QUEUE_DEPTH = 1
+HOST_ACTION_REBOOT_DELAY_SECONDS = 10
+HOST_ACTION_OPERATION_RE = re.compile(r"[0-9A-F]{32}")
+HOST_ACTION_NAMES = frozenset(("network-restart", "reboot"))
+HOST_ACTION_ERROR_RESPONSES = frozenset(
+    (
+        "ERR action disabled",
+        "ERR operation not prepared",
+        "ERR reboot pending",
+        "ERR state full",
+        "ERR state unavailable",
+        "ERR operation conflict",
+        "ERR invalid request",
+        "ERR request timed out",
+        "ERR unauthorized peer",
+        "ERR server error",
+    )
+)
 REQUEST_RE = re.compile(
     r"^DEBUG (HOSTCLI/1 REQUEST "
     r"([0-9A-Fa-f]{8}) "
@@ -89,7 +120,15 @@ class ServiceKey:
 @dataclass(frozen=True)
 class HostResult:
     text: str
-    reboot_requested: bool = False
+    host_action: str | None = None
+    operation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class VerifiedHostAction:
+    request: HostRequest
+    action: str
+    operation_id: str
 
 
 @dataclass(frozen=True)
@@ -393,6 +432,372 @@ def read_disk_free(path: Path) -> str:
     return f"Disk {usage.free / gib:.1f}/{usage.total / gib:.1f} GiB free"
 
 
+def read_clock_status() -> str:
+    epoch = int(time.time())
+    synchronized = "unknown"
+    try:
+        completed = subprocess.run(
+            [
+                "/usr/bin/timedatectl", "show",
+                "--property=NTPSynchronized", "--value",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=CLOCK_STATUS_CHILD_TIMEOUT_SECONDS,
+            check=False,
+            shell=False,
+            cwd="/",
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+        )
+        value = completed.stdout.strip().lower()
+        if completed.returncode == 0 and value in ("yes", "no"):
+            synchronized = value
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # systemd's NTPSynchronized marker can remain "no" when chrony owns the
+    # clock. Prefer chrony's own bounded tracking state in that case instead of
+    # falsely reporting an unsynchronized recovery host.
+    if synchronized != "yes":
+        chronyc = Path("/usr/bin/chronyc")
+        if chronyc.is_file() and os.access(chronyc, os.X_OK):
+            try:
+                tracking = subprocess.run(
+                    [str(chronyc), "-n", "tracking"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=CLOCK_STATUS_CHILD_TIMEOUT_SECONDS,
+                    check=False,
+                    shell=False,
+                    cwd="/",
+                    env={
+                        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                        "LANG": "C.UTF-8",
+                    },
+                )
+                leap = re.search(
+                    r"^\s*Leap status\s*:\s*(.*?)\s*$",
+                    tracking.stdout,
+                    flags=re.IGNORECASE | re.MULTILINE,
+                )
+                if tracking.returncode == 0 and leap is not None:
+                    state = leap.group(1).casefold()
+                    if state == "normal":
+                        synchronized = "yes (chrony)"
+                    elif state in ("not synchronised", "not synchronized"):
+                        synchronized = "no (chrony)"
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return f"Clock epoch {epoch}; NTP synchronized {synchronized}"
+
+
+def validate_clock_control_socket(
+    path: Path = CLOCK_CONTROL_SOCKET,
+    *,
+    expected_gid: int | None = None,
+) -> None:
+    """Require the systemd socket's documented privilege boundary."""
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise ValueError(f"host clock control socket is missing: {path}") from exc
+    if not stat.S_ISSOCK(metadata.st_mode):
+        raise ValueError(f"host clock control path must be a socket: {path}")
+    if metadata.st_uid != 0:
+        raise ValueError(f"host clock control socket must be root-owned: {path}")
+    if stat.S_IMODE(metadata.st_mode) != 0o660:
+        raise ValueError(f"host clock control socket must have mode 0660: {path}")
+    if expected_gid is not None and metadata.st_gid != expected_gid:
+        raise ValueError(
+            "host clock control socket group must match the endpoint's "
+            f"primary group: {path}"
+        )
+
+
+def _remaining_clock_control_time(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("clock control deadline expired")
+    return remaining
+
+
+def _read_clock_control_response(
+    connection: socket.socket,
+    deadline: float,
+) -> str:
+    response = bytearray()
+    while True:
+        connection.settimeout(_remaining_clock_control_time(deadline))
+        chunk = connection.recv(CLOCK_CONTROL_MAX_RESPONSE_BYTES + 1 - len(response))
+        if not chunk:
+            break
+        response.extend(chunk)
+        if len(response) > CLOCK_CONTROL_MAX_RESPONSE_BYTES:
+            raise ValueError("clock control response is too long")
+    if not response or not response.endswith(b"\n") or response.count(b"\n") != 1:
+        raise ValueError("clock control response framing is invalid")
+    try:
+        line = response[:-1].decode("ascii", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("clock control response is not ASCII") from exc
+    if not line or any(ord(character) < 0x20 for character in line):
+        raise ValueError("clock control response contains control characters")
+    return line
+
+
+def _exchange_clock_control(request: str) -> str:
+    """Send one exact request to the fixed, root-authenticated local socket."""
+    request_bytes = (request + "\n").encode("ascii")
+    deadline = time.monotonic() + CLOCK_CONTROL_TIMEOUT_SECONDS
+    validate_clock_control_socket(
+        CLOCK_CONTROL_SOCKET,
+        expected_gid=os.getegid(),
+    )
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(_remaining_clock_control_time(deadline))
+        connection.connect(str(CLOCK_CONTROL_SOCKET))
+        credentials = connection.getsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_PEERCRED,
+            struct.calcsize("3i"),
+        )
+        _server_pid, server_uid, _server_gid = struct.unpack("3i", credentials)
+        if server_uid != 0:
+            raise PermissionError("clock control peer is not root")
+        connection.settimeout(_remaining_clock_control_time(deadline))
+        connection.sendall(request_bytes)
+        connection.shutdown(socket.SHUT_WR)
+        return _read_clock_control_response(connection, deadline)
+
+
+def _clock_control_result(
+    wire_response: str,
+    action: str,
+    epoch: int | None,
+) -> HostResult:
+    common_failures = {
+        "invalid request",
+        "request timed out",
+        "unauthorized peer",
+        "server error",
+    }
+    if wire_response.startswith("ERR "):
+        detail = wire_response[4:]
+        action_failures = (
+            {"NTP enable request failed"}
+            if action == "sync"
+            else {"clock set failed"}
+        )
+        if detail not in common_failures | action_failures:
+            return HostResult("Err - invalid clock control response")
+        return HostResult(f"Err - {detail}")
+    if action == "sync":
+        if wire_response == "OK NTP sync requested":
+            return HostResult("OK - NTP sync requested")
+        partial = re.fullmatch(
+            r"PARTIAL NTP enabled; (chrony step request failed|"
+            r"systemd-timesyncd restart failed)",
+            wire_response,
+        )
+        if partial is not None:
+            return HostResult(f"Warning - NTP enabled; {partial.group(1)}")
+        return HostResult("Err - invalid clock control response")
+
+    assert epoch is not None
+    if wire_response == f"OK clock set to {epoch}; NTP sync requested":
+        return HostResult(f"OK - clock set to {epoch}; NTP sync requested")
+    ntp_enable_failure = (
+        f"PARTIAL clock set to {epoch}; NTP enable request failed"
+    )
+    if wire_response == ntp_enable_failure:
+        return HostResult(
+            f"Warning - clock set to {epoch}; NTP enable request failed"
+        )
+    for failure in (
+        "chrony step request failed",
+        "systemd-timesyncd restart failed",
+    ):
+        if wire_response == (
+            f"PARTIAL clock set to {epoch}; NTP enabled; {failure}"
+        ):
+            return HostResult(
+                f"Warning - clock set to {epoch}; NTP enabled; {failure}"
+            )
+    return HostResult("Err - invalid clock control response")
+
+
+def run_clock_control(action: str, epoch: int | None = None) -> HostResult:
+    if action not in ("set", "sync"):
+        return HostResult("Err - unsupported clock action")
+    if action == "set":
+        if epoch is None or not MIN_CLOCK_EPOCH <= epoch <= MAX_CLOCK_EPOCH:
+            return HostResult("Err - clock epoch must be from 2020 through 2099")
+        request = f"set {epoch}"
+    else:
+        if epoch is not None:
+            return HostResult("Err - invalid clock sync request")
+        request = "sync"
+    try:
+        response = _exchange_clock_control(request)
+    except (TimeoutError, socket.timeout):
+        return HostResult("Err - clock control timed out")
+    except PermissionError:
+        return HostResult("Err - clock control peer authentication failed")
+    except (OSError, ValueError):
+        return HostResult("Err - clock control unavailable")
+    return _clock_control_result(response, action, epoch)
+
+
+def validate_host_actions_socket(
+    path: Path = HOST_ACTIONS_SOCKET,
+    *,
+    expected_gid: int,
+) -> None:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise ValueError(f"host actions socket is missing: {path}") from exc
+    if not stat.S_ISSOCK(metadata.st_mode):
+        raise ValueError(f"host actions path must be a socket: {path}")
+    if metadata.st_uid != 0:
+        raise ValueError(f"host actions socket must be root-owned: {path}")
+    if stat.S_IMODE(metadata.st_mode) != 0o660:
+        raise ValueError(f"host actions socket must have mode 0660: {path}")
+    if metadata.st_gid != expected_gid:
+        raise ValueError(
+            "host actions socket group must match the endpoint's primary group"
+        )
+
+
+def _remaining_host_action_time(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("host action deadline expired")
+    return remaining
+
+
+def _read_host_action_response(
+    connection: socket.socket,
+    deadline: float,
+) -> str:
+    response = bytearray()
+    while True:
+        connection.settimeout(_remaining_host_action_time(deadline))
+        chunk = connection.recv(HOST_ACTION_MAX_RESPONSE_BYTES + 1 - len(response))
+        if not chunk:
+            break
+        response.extend(chunk)
+        if len(response) > HOST_ACTION_MAX_RESPONSE_BYTES:
+            raise ValueError("host action response is too long")
+    if not response.endswith(b"\n") or response.count(b"\n") != 1:
+        raise ValueError("host action response framing is invalid")
+    try:
+        line = response[:-1].decode("ascii", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("host action response is not ASCII") from exc
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in line):
+        raise ValueError("host action response contains control characters")
+    return line
+
+
+def _validate_host_action_response(
+    response: str,
+    verb: str,
+    action: str | None,
+    operation_id: str,
+) -> str:
+    if response in HOST_ACTION_ERROR_RESPONSES:
+        return response
+    if verb == "status" and response == f"UNKNOWN {operation_id}":
+        return response
+    states = (
+        ("PREPARED", "IN-PROGRESS", "SCHEDULED", "AMBIGUOUS")
+        if verb in ("prepare", "status")
+        else ("IN-PROGRESS", "SCHEDULED", "AMBIGUOUS")
+    )
+    actions = HOST_ACTION_NAMES if verb == "status" else (action,)
+    if any(
+        response == f"{state_name} {candidate_action} {operation_id}"
+        for state_name in states
+        for candidate_action in actions
+    ):
+        return response
+    raise ValueError("invalid host action response")
+
+
+def exchange_host_action(
+    verb: str,
+    operation_id: str,
+    action: str | None = None,
+    *,
+    deadline: float | None = None,
+) -> str:
+    if HOST_ACTION_OPERATION_RE.fullmatch(operation_id) is None:
+        raise ValueError("invalid host action operation ID")
+    if verb == "status":
+        if action is not None:
+            raise ValueError("status must not include an action")
+        request = f"status {operation_id}\n"
+    elif verb in ("prepare", "commit") and action in HOST_ACTION_NAMES:
+        request = f"{verb} {action} {operation_id}\n"
+    else:
+        raise ValueError("invalid host action request")
+    deadline = (
+        time.monotonic() + HOST_ACTION_TOTAL_TIMEOUT_SECONDS
+        if deadline is None else deadline
+    )
+    validate_host_actions_socket(
+        HOST_ACTIONS_SOCKET,
+        expected_gid=os.getegid(),
+    )
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(_remaining_host_action_time(deadline))
+        connection.connect(str(HOST_ACTIONS_SOCKET))
+        encoded_credentials = connection.getsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_PEERCRED,
+            struct.calcsize("3i"),
+        )
+        _pid, peer_uid, _peer_gid = struct.unpack("3i", encoded_credentials)
+        # With socket activation this authenticates the root-created listening
+        # socket (normally PID 1), while the root-owned path protects connect().
+        if peer_uid != 0:
+            raise PermissionError("host action peer is not root")
+        connection.settimeout(_remaining_host_action_time(deadline))
+        connection.sendall(request.encode("ascii"))
+        connection.shutdown(socket.SHUT_WR)
+        response = _read_host_action_response(connection, deadline)
+    return _validate_host_action_response(
+        response, verb, action, operation_id
+    )
+
+
+def host_action_operation_id(
+    repeater_public_key: str,
+    request: HostRequest,
+) -> str:
+    normalized_key = normalize_key(
+        repeater_public_key, 32, "repeater public key"
+    )
+    if re.fullmatch(r"[0-9A-Fa-f]{8}", request.request_id) is None:
+        raise ValueError("invalid host request ID")
+    if re.fullmatch(r"[0-9A-Fa-f]{16}", request.request_nonce) is None:
+        raise ValueError("invalid host request nonce")
+    digest = hashlib.sha256()
+    digest.update(b"MeshCore HOSTCLI/1 host action operation\x00")
+    digest.update(bytes.fromhex(normalized_key))
+    digest.update(bytes.fromhex(request.request_id))
+    digest.update(bytes.fromhex(request.request_nonce))
+    return digest.digest()[:16].hex().upper()
+
+
 def _safe_config_text(value: Any, label: str, max_bytes: int = 128) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{label} must be a nonempty string")
@@ -635,7 +1040,8 @@ def handle_request(
     temperature_path: Path,
     *,
     allow_reboot: bool = False,
-    reboot_delay: int = 5,
+    allow_network_restart: bool = False,
+    allow_clock_control: bool = False,
     uptime_path: Path = Path("/proc/uptime"),
     load_path: Path = Path("/proc/loadavg"),
     memory_path: Path = Path("/proc/meminfo"),
@@ -648,7 +1054,9 @@ def handle_request(
     if request_text == "help":
         program_aliases = ",".join(sorted(programs or {})) or "off"
         return HostResult(
-            "Commands: cpu-temp,hostname,uptime,load,memory,disk-free; "
+            "Commands: cpu-temp,hostname,uptime,load,memory,disk-free,clock; "
+            f"clock-control={'on' if allow_clock_control else 'off'}; "
+            f"network={'on' if allow_network_restart else 'off'}; "
             f"reboot={'on' if allow_reboot else 'off'}; run={program_aliases}"
         )
     if request_text == "cpu-temp":
@@ -663,48 +1071,42 @@ def handle_request(
         return HostResult(read_memory(memory_path))
     if request_text == "disk-free":
         return HostResult(read_disk_free(disk_path))
+    if request_text == "clock status":
+        return HostResult(read_clock_status())
+    if request_text == "clock sync":
+        if not allow_clock_control:
+            return HostResult("Err - host clock control is disabled")
+        return run_clock_control("sync")
+    if request_text.startswith("clock set"):
+        match = re.fullmatch(r"clock set (0|[1-9][0-9]*)", request_text)
+        if match is None:
+            return HostResult("Err - use: clock set <unix_epoch>")
+        epoch = int(match.group(1))
+        if not MIN_CLOCK_EPOCH <= epoch <= MAX_CLOCK_EPOCH:
+            return HostResult("Err - clock epoch must be from 2020 through 2099")
+        if not allow_clock_control:
+            return HostResult("Err - host clock control is disabled")
+        return run_clock_control("set", epoch)
     if request_text == "reboot":
         if not allow_reboot:
             return HostResult("Err - host reboot is disabled")
+        return HostResult("", host_action="reboot")
+    if request_text == "network restart":
+        if not allow_network_restart:
+            return HostResult("Err - host network restart is disabled")
+        return HostResult("", host_action="network-restart")
+    if request_text.startswith("action status"):
+        match = re.fullmatch(r"action status ([0-9A-F]{32})", request_text)
+        if match is None:
+            return HostResult("Err - use: action status <operation_id>")
+        if not (allow_reboot or allow_network_restart):
+            return HostResult("Err - host recovery actions are disabled")
         return HostResult(
-            f"OK - host reboot scheduled in {reboot_delay}s",
-            reboot_requested=True,
+            "", host_action="status", operation_id=match.group(1)
         )
     if request_text == "run" or request_text.startswith("run "):
         return run_configured_program(request_text, programs or {})
     return HostResult("Err - unsupported host request")
-
-
-def schedule_host_reboot(delay_seconds: int) -> None:
-    # Fixed absolute paths and argv are intentional. Never substitute request
-    # text into this action and never enable shell=True.
-    command = [
-        "/usr/bin/sudo", "-n", "/usr/bin/systemctl", "reboot"
-    ]
-
-    def reboot() -> None:
-        try:
-            completed = subprocess.run(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=15,
-                check=False,
-            )
-            if completed.returncode != 0:
-                LOGGER.error(
-                    "Host reboot failed with code %d: %s",
-                    completed.returncode,
-                    completed.stderr.strip(),
-                )
-        except (OSError, subprocess.SubprocessError) as exc:
-            LOGGER.error("Host reboot failed: %s", exc)
-
-    timer = threading.Timer(delay_seconds, reboot)
-    timer.daemon = True
-    timer.start()
 
 
 def bounded_line_text(text: str, max_bytes: int = MAX_REPLY_BYTES) -> str:
@@ -780,8 +1182,9 @@ class HostCliEndpoint:
         command_topic: str,
         temperature_path: Path,
         allow_reboot: bool = False,
-        reboot_delay: int = 5,
-        reboot_scheduler: Callable[[int], None] = schedule_host_reboot,
+        allow_network_restart: bool = False,
+        allow_clock_control: bool = False,
+        host_action_exchange: Callable[..., str] | None = None,
         programs: dict[str, ProgramDefinition] | None = None,
         dedupe_seconds: float = 60.0,
         challenge_timeout_seconds: float = CHALLENGE_TIMEOUT_SECONDS,
@@ -796,8 +1199,12 @@ class HostCliEndpoint:
         self.command_topic = command_topic
         self.temperature_path = temperature_path
         self.allow_reboot = allow_reboot
-        self.reboot_delay = reboot_delay
-        self.reboot_scheduler = reboot_scheduler
+        self.allow_network_restart = allow_network_restart
+        self.allow_clock_control = allow_clock_control
+        self.host_action_exchange = (
+            exchange_host_action
+            if host_action_exchange is None else host_action_exchange
+        )
         self.programs = programs or {}
         self.dedupe_seconds = dedupe_seconds
         self.challenge_timeout_seconds = challenge_timeout_seconds
@@ -805,6 +1212,227 @@ class HostCliEndpoint:
         self.monotonic = monotonic
         self.seen: OrderedDict[tuple[str, str], float] = OrderedDict()
         self.pending: PendingHostAction | None = None
+        self._action_queue: queue.Queue[VerifiedHostAction] = queue.Queue(
+            maxsize=HOST_ACTION_QUEUE_DEPTH
+        )
+        self._action_worker_lock = threading.Lock()
+        self._action_worker_started = False
+        self._action_slot = threading.BoundedSemaphore(value=1)
+
+    def _start_action_worker(self) -> None:
+        with self._action_worker_lock:
+            if self._action_worker_started:
+                return
+            worker = threading.Thread(
+                target=self._action_worker_loop,
+                name="meshcore-host-actions",
+                daemon=True,
+            )
+            worker.start()
+            self._action_worker_started = True
+
+    def _enqueue_host_action(self, work: VerifiedHostAction) -> bool:
+        if not self._action_slot.acquire(blocking=False):
+            self._publish_serial_reply(
+                work.request,
+                "Err - another host action is active; action was not reserved",
+            )
+            return False
+        try:
+            self._action_queue.put_nowait(work)
+        except queue.Full:
+            self._action_slot.release()
+            self._publish_serial_reply(
+                work.request,
+                "Err - host action queue is full; action was not reserved",
+            )
+            return False
+        self._start_action_worker()
+        return True
+
+    def _action_worker_loop(self) -> None:
+        while True:
+            work = self._action_queue.get()
+            try:
+                self._process_host_action(work)
+            except Exception:
+                # The worker must remain available for later status checks. A
+                # failed or ambiguous operation is deliberately never retried.
+                LOGGER.exception(
+                    "Host action worker failed for operation %s; not retrying",
+                    work.operation_id,
+                )
+            finally:
+                self._action_queue.task_done()
+                self._action_slot.release()
+
+    def _broker_request(
+        self,
+        verb: str,
+        operation_id: str,
+        action: str | None,
+        deadline: float,
+    ) -> str:
+        response = self.host_action_exchange(
+            verb,
+            operation_id,
+            action,
+            deadline=deadline,
+        )
+        return _validate_host_action_response(
+            response, verb, action, operation_id
+        )
+
+    def _publish_action_status(
+        self,
+        work: VerifiedHostAction,
+        deadline: float,
+    ) -> None:
+        try:
+            response = self._broker_request(
+                "status", work.operation_id, None, deadline
+            )
+        except (OSError, PermissionError, TimeoutError, ValueError, socket.timeout):
+            reply = (
+                "Err - host action status unavailable for "
+                + work.operation_id
+            )
+        else:
+            if response == f"UNKNOWN {work.operation_id}":
+                reply = f"Host action {work.operation_id} is unknown"
+            elif response in HOST_ACTION_ERROR_RESPONSES:
+                reply = f"Err - host action status failed for {work.operation_id}"
+            else:
+                state_name, action, _operation_id = response.split(" ")
+                reply = (
+                    f"Host action {work.operation_id}: {action} "
+                    f"{state_name.lower()}"
+                )
+        self._publish_serial_reply(work.request, reply)
+
+    @staticmethod
+    def _prepare_failure_reply(
+        action: str,
+        operation_id: str,
+        response: str,
+    ) -> str:
+        if response == "ERR action disabled":
+            return f"Err - {action} is disabled by root policy; {operation_id}"
+        if response == "ERR operation conflict":
+            return f"Err - operation {operation_id} conflicts; not retried"
+        if response == "ERR reboot pending":
+            return f"Err - another reboot is pending; {operation_id} not reserved"
+        if response == "ERR state full":
+            return f"Err - host action state is full; {operation_id} not reserved"
+        return f"Err - host action unavailable; {operation_id} not retried"
+
+    def _process_host_action(self, work: VerifiedHostAction) -> None:
+        deadline = time.monotonic() + HOST_ACTION_TOTAL_TIMEOUT_SECONDS
+        if work.action == "status":
+            self._publish_action_status(work, deadline)
+            return
+
+        try:
+            prepared = self._broker_request(
+                "prepare", work.operation_id, work.action, deadline
+            )
+        except (TimeoutError, socket.timeout):
+            self._publish_serial_reply(
+                work.request,
+                f"Warning - {work.action} state unknown; "
+                f"{work.operation_id} not retried",
+            )
+            return
+        except (OSError, PermissionError, ValueError):
+            self._publish_serial_reply(
+                work.request,
+                f"Err - {work.action} broker unavailable; "
+                f"{work.operation_id} not retried",
+            )
+            return
+
+        if prepared in HOST_ACTION_ERROR_RESPONSES:
+            self._publish_serial_reply(
+                work.request,
+                self._prepare_failure_reply(
+                    work.action, work.operation_id, prepared
+                ),
+            )
+            return
+        state_name = prepared.split(" ", 1)[0]
+        if state_name == "SCHEDULED":
+            self._publish_serial_reply(
+                work.request,
+                f"OK - {work.action} {work.operation_id} already scheduled",
+            )
+            return
+        if state_name in ("IN-PROGRESS", "AMBIGUOUS"):
+            self._publish_serial_reply(
+                work.request,
+                f"Warning - {work.action} {work.operation_id} outcome unknown; "
+                "not retried",
+            )
+            return
+        if state_name != "PREPARED":
+            raise ValueError("unexpected host action prepare result")
+
+        reply = (
+            f"OK - reboot {work.operation_id} accepted; fixed "
+            f"{HOST_ACTION_REBOOT_DELAY_SECONDS}s timer follows reply"
+            if work.action == "reboot"
+            else f"OK - network restart {work.operation_id} accepted after reply"
+        )
+        try:
+            publish_result = self._publish_serial_reply(work.request, reply)
+            wait_for_publish = getattr(publish_result, "wait_for_publish", None)
+            is_published = getattr(publish_result, "is_published", None)
+            if not callable(wait_for_publish) or not callable(is_published):
+                LOGGER.error(
+                    "MQTT client lacks publish confirmation for %s; not committing",
+                    work.operation_id,
+                )
+                return
+            wait_timeout = min(
+                HOST_ACTION_PUBLISH_TIMEOUT_SECONDS,
+                _remaining_host_action_time(deadline),
+            )
+            wait_for_publish(timeout=wait_timeout)
+            if not is_published():
+                LOGGER.error(
+                    "Reply was not MQTT-confirmed for %s; not committing",
+                    work.operation_id,
+                )
+                return
+        except Exception:
+            LOGGER.exception(
+                "Reply publish failed for %s; not committing",
+                work.operation_id,
+            )
+            return
+
+        try:
+            _remaining_host_action_time(deadline)
+            committed = self._broker_request(
+                "commit", work.operation_id, work.action, deadline
+            )
+        except (OSError, PermissionError, TimeoutError, ValueError, socket.timeout):
+            LOGGER.exception(
+                "Commit outcome is unknown for %s; not retrying",
+                work.operation_id,
+            )
+            return
+        if committed != f"SCHEDULED {work.action} {work.operation_id}":
+            LOGGER.error(
+                "Host action %s commit returned %r; not retrying",
+                work.operation_id,
+                committed,
+            )
+            return
+        LOGGER.info(
+            "Scheduled verified host action %s (%s)",
+            work.operation_id,
+            work.action,
+        )
 
     def _already_seen(self, request: HostRequest) -> bool:
         now = self.monotonic()
@@ -897,15 +1525,27 @@ class HostCliEndpoint:
             request.text,
             self.temperature_path,
             allow_reboot=self.allow_reboot,
-            reboot_delay=self.reboot_delay,
+            allow_network_restart=self.allow_network_restart,
+            allow_clock_control=self.allow_clock_control,
             programs=self.programs,
         )
-        result = self._publish_serial_reply(request, response.text)
-        if response.reboot_requested:
-            wait_for_publish = getattr(result, "wait_for_publish", None)
-            if callable(wait_for_publish):
-                wait_for_publish(timeout=2.0)
-            self.reboot_scheduler(self.reboot_delay)
+        if response.host_action is not None:
+            operation_id = (
+                response.operation_id
+                if response.host_action == "status"
+                else host_action_operation_id(self.repeater_public_key, request)
+            )
+            if operation_id is None:
+                raise ValueError("host action is missing its operation ID")
+            self._enqueue_host_action(
+                VerifiedHostAction(
+                    request=request,
+                    action=response.host_action,
+                    operation_id=operation_id,
+                )
+            )
+        else:
+            self._publish_serial_reply(request, response.text)
         LOGGER.info(
             "Replied to verified host request %s (%r)",
             request.request_id,
@@ -974,16 +1614,16 @@ def run_endpoint(args: argparse.Namespace) -> None:
     if args.tls:
         client.tls_set(ca_certs=str(args.ca_cert) if args.ca_cert else None)
 
-    if args.allow_reboot:
-        required_binaries = (Path("/usr/bin/sudo"), Path("/usr/bin/systemctl"))
-        missing_binaries = [
-            str(path) for path in required_binaries
-            if not path.is_file() or not os.access(path, os.X_OK)
-        ]
-        if missing_binaries:
-            raise ValueError(
-                "host reboot needs executable " + ", ".join(missing_binaries)
-            )
+    if args.allow_clock_control:
+        validate_clock_control_socket(
+            CLOCK_CONTROL_SOCKET,
+            expected_gid=os.getegid(),
+        )
+    if args.allow_reboot or args.allow_network_restart:
+        validate_host_actions_socket(
+            HOST_ACTIONS_SOCKET,
+            expected_gid=os.getegid(),
+        )
 
     programs = (
         load_programs_file(args.programs_file)
@@ -997,7 +1637,8 @@ def run_endpoint(args: argparse.Namespace) -> None:
         command_topic=command_topic,
         temperature_path=args.temperature_path,
         allow_reboot=args.allow_reboot,
-        reboot_delay=args.reboot_delay,
+        allow_network_restart=args.allow_network_restart,
+        allow_clock_control=args.allow_clock_control,
         programs=programs,
     )
 
@@ -1058,8 +1699,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="allow the exact 'reboot' request for the attached host",
     )
     parser.add_argument(
-        "--reboot-delay", type=int, default=5,
-        help="seconds to wait after publishing the reply before rebooting (3-60)",
+        "--allow-network-restart", action="store_true",
+        help="allow the exact 'network restart' request for the attached host",
+    )
+    parser.add_argument(
+        "--allow-clock-control", action="store_true",
+        help="allow clock set/sync through the root-authenticated Unix socket",
     )
     parser.add_argument(
         "--programs-file", type=Path,
@@ -1094,8 +1739,6 @@ def main(argv: list[str] | None = None) -> int:
         missing = [name for name, value in required.items() if value is None]
         if missing:
             parser.error("required for service mode: " + ", ".join(missing))
-        if not 3 <= args.reboot_delay <= 60:
-            parser.error("--reboot-delay must be from 3 through 60 seconds")
         run_endpoint(args)
         return 0
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:

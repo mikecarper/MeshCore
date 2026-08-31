@@ -1,4 +1,5 @@
 #include "ST7789LCDDisplay.h"
+#include "ColorTheme.h"
 
 #ifdef ST7789_PORTRAIT_PROFILE
   #include "DisplayViewport.h"
@@ -51,15 +52,15 @@ bool ST7789LCDDisplay::i2c_probe(TwoWire& wire, uint8_t addr) {
 }
 
 // Color scheme
-ColorVal UIColor::window_bkg = ST77XX_WHITE;
-ColorVal UIColor::title_bkg = ST77XX_BLUE;
-ColorVal UIColor::title_txt = ST77XX_WHITE;
-ColorVal UIColor::primary_txt = ST77XX_BLACK;
-ColorVal UIColor::secondary_txt = (18 << 11) | (36 << 5) | 18;  // mid-gray
-ColorVal UIColor::warning_txt = ST77XX_ORANGE;
-ColorVal UIColor::popup_bkg = ST77XX_CYAN;
-ColorVal UIColor::popup_txt = ST77XX_BLACK;
-ColorVal UIColor::corp_blue = 0x001A;
+ColorVal UIColor::window_bkg = mesh::ui::color_theme::WINDOW_BACKGROUND;
+ColorVal UIColor::title_bkg = mesh::ui::color_theme::TITLE_BACKGROUND;
+ColorVal UIColor::title_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::primary_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::secondary_txt = mesh::ui::color_theme::SECONDARY_TEXT;
+ColorVal UIColor::warning_txt = mesh::ui::color_theme::WARNING_TEXT;
+ColorVal UIColor::popup_bkg = mesh::ui::color_theme::POPUP_BACKGROUND;
+ColorVal UIColor::popup_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::corp_blue = mesh::ui::color_theme::ACCENT;
 
 bool ST7789LCDDisplay::begin() {
   if (!_isOn) {

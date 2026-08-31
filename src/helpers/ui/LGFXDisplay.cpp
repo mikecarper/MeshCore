@@ -1,4 +1,6 @@
 #include "LGFXDisplay.h"
+#include "ColorTheme.h"
+#include "IndicatorRenderProfile.h"
 
 #ifndef DISPLAY_ROTATION
   #define DISPLAY_ROTATION 1
@@ -86,8 +88,14 @@ bool validateVlw(const uint8_t* data, size_t size) {
 LGFXDisplay* activeEmojiDisplay = nullptr;
 
 static const uint32_t UI_PALETTE[16] = {
-  0x000000, 0xFFFFFF, 0x0000FF, 0x929292,
-  0xFFAA00, 0x00FFFF, 0x0000D6, 0xE53935,
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::WINDOW_BACKGROUND),
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::TEXT),
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::TITLE_BACKGROUND),
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::SECONDARY_TEXT),
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::WARNING_TEXT),
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::POPUP_BACKGROUND),
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::ACCENT),
+  0xE53935,
   0x43A047, 0x1E88E5, 0x8E24AA, 0xFDD835,
   0x6D4C41, 0x00ACC1, 0xF06292, 0xFF00FF,
 };
@@ -104,15 +112,15 @@ bool isSequence(const uint8_t* text, size_t remaining,
 }  // namespace
 
 // Color scheme
-ColorVal UIColor::window_bkg = 0xFFFF;
-ColorVal UIColor::title_bkg = 0x001F;
-ColorVal UIColor::title_txt = 0xFFFF;
-ColorVal UIColor::primary_txt = 0x0000;
-ColorVal UIColor::secondary_txt = (18 << 11) | (36 << 5) | 18;  // mid-gray
-ColorVal UIColor::warning_txt = 0xFD20;
-ColorVal UIColor::popup_bkg =  0x07FF;  // CYAN
-ColorVal UIColor::popup_txt = 0x0000;
-ColorVal UIColor::corp_blue = 0x001A;
+ColorVal UIColor::window_bkg = mesh::ui::color_theme::WINDOW_BACKGROUND;
+ColorVal UIColor::title_bkg = mesh::ui::color_theme::TITLE_BACKGROUND;
+ColorVal UIColor::title_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::primary_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::secondary_txt = mesh::ui::color_theme::SECONDARY_TEXT;
+ColorVal UIColor::warning_txt = mesh::ui::color_theme::WARNING_TEXT;
+ColorVal UIColor::popup_bkg = mesh::ui::color_theme::POPUP_BACKGROUND;
+ColorVal UIColor::popup_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::corp_blue = mesh::ui::color_theme::ACCENT;
 
 bool LGFXDisplay::begin() {
   if (!display->init()) return false;
@@ -123,17 +131,74 @@ bool LGFXDisplay::begin() {
   display->setTextColor(TFT_WHITE);
 
   buffer.setColorDepth(UI_BUFFER_COLOR_DEPTH);
-  // The RGB scanout framebuffer must live in PSRAM. Keep this much smaller
-  // logical UI sprite in internal DMA-capable RAM so page redraws do not
-  // compete with scanout and permanently shift the panel after an underflow.
+  // The RGB scanout framebuffer must live in PSRAM. Keep the UI sprite in
+  // internal DMA-capable RAM so page redraws do not compete with scanout and
+  // permanently shift the panel after an underflow.
   buffer.setPsram(false);
-  if (buffer.createSprite(width() * UI_COORD_SCALE,
-                          height() * UI_COORD_SCALE) == nullptr) {
+  if (createRenderBuffer()) return true;
+
+#if defined(INDICATOR_TRANSPORT_RENDER_PROFILE)
+  // Full Indicator images allocate the largest possible canvas before the
+  // radio and companion stacks can fragment internal RAM. If that early
+  // native allocation is unavailable, keep the device usable at the proven
+  // 320px profile; setup() may retry the selected profile after preferences
+  // have been loaded.
+  buffer.deleteSprite();
+  _coordinateScale = 2;
+  _outputZoom = 1.5f;
+  if (createRenderBuffer()) return true;
+#endif
+
+  return false;
+}
+
+bool LGFXDisplay::createRenderBuffer() {
+  if (buffer.createSprite(width() * _coordinateScale,
+                          height() * _coordinateScale) == nullptr) {
     return false;
   }
-  configurePalette();
-
+  if (!configurePalette()) {
+    buffer.deleteSprite();
+    return false;
+  }
+  applyTextSize();
+  _emojiOverlayCount = 0;
+  _presentedEmojiOverlayCount = 0;
+  _hasTransparentEmojiPixels = false;
+  _hasLastFrame = false;
   return true;
+}
+
+bool LGFXDisplay::setRenderScale(uint8_t coordinate_scale,
+                                 float output_zoom) {
+  if (coordinate_scale == 0 || output_zoom <= 0.0f) return false;
+
+  const float target_width = width() * coordinate_scale * output_zoom;
+  const float target_height = height() * coordinate_scale * output_zoom;
+  if (target_width < display->width() - 0.5f
+      || target_width > display->width() + 0.5f
+      || target_height < display->height() - 0.5f
+      || target_height > display->height() + 0.5f) {
+    return false;
+  }
+  if (_coordinateScale == coordinate_scale && _outputZoom == output_zoom) {
+    return true;
+  }
+
+  const uint8_t previous_scale = _coordinateScale;
+  const float previous_zoom = _outputZoom;
+  buffer.deleteSprite();
+  _coordinateScale = coordinate_scale;
+  _outputZoom = output_zoom;
+  if (createRenderBuffer()) return true;
+
+  // A requested larger DMA-capable block may be unavailable after another
+  // subsystem fragmented internal RAM. Restore the known-good canvas rather
+  // than leaving the display unusable for this boot.
+  _coordinateScale = previous_scale;
+  _outputZoom = previous_zoom;
+  createRenderBuffer();
+  return false;
 }
 
 void LGFXDisplay::turnOn() {
@@ -175,24 +240,50 @@ void LGFXDisplay::startFrame(ColorVal bkg) {
   setColor(UIColor::primary_txt);
 }
 
-void LGFXDisplay::setTextSize(int sz) {
-  int scaled = (sz * UI_COORD_SCALE + _fontNativeScale / 2)
+void LGFXDisplay::applyTextSize() {
+  float profile_scale = 1.0f;
+#if defined(INDICATOR_TRANSPORT_RENDER_PROFILE)
+  profile_scale = mesh::ui::selectIndicatorTextScale(
+      static_cast<uint16_t>(renderWidth()), _compactText);
+#endif
+  if (_compactText || profile_scale != 1.0f
+      || _coordinateScale % _fontNativeScale != 0) {
+    // LovyanGFX accepts fractional smooth-font scaling. Preserve the loaded
+    // Unicode/emoji font at the exact coordinate/native-scale ratio, then
+    // apply the native-480 legibility increase for non-compact text.
+    float scaled = static_cast<float>(_logicalTextSize * _coordinateScale)
+        / static_cast<float>(_fontNativeScale) * profile_scale;
+    buffer.setTextSize(scaled);
+    return;
+  }
+
+  int sz = _logicalTextSize;
+  int scaled = (sz * _coordinateScale + _fontNativeScale / 2)
       / _fontNativeScale;
   if (scaled < 1) scaled = 1;
   buffer.setTextSize(scaled);
 }
 
+void LGFXDisplay::setTextSize(int sz) {
+  _logicalTextSize = sz < 1 ? 1 : sz;
+  applyTextSize();
+}
+
+void LGFXDisplay::setCompactText(bool compact) {
+  _compactText = compact;
+  applyTextSize();
+}
+
 void LGFXDisplay::setColor(ColorVal c) {
   _color = renderColor(c);
   // Every frame starts from a freshly cleared canvas, so transparent glyph
-  // backgrounds are both sufficient and unambiguous. In particular,
-  // primary_txt and popup_txt are both black and cannot be distinguished by
-  // their RGB565 value alone.
+  // backgrounds are both sufficient and unambiguous. Semantic text slots use
+  // the same light RGB565 value and intentionally share one indexed entry.
   buffer.setTextColor(_color);
 }
 
 void LGFXDisplay::setCursor(int x, int y) {
-  buffer.setCursor(x * UI_COORD_SCALE, y * UI_COORD_SCALE);
+  buffer.setCursor(x * _coordinateScale, y * _coordinateScale);
 }
 
 void LGFXDisplay::print(const char* str) {
@@ -202,30 +293,30 @@ void LGFXDisplay::print(const char* str) {
 }
 
 void LGFXDisplay::fillRect(int x, int y, int w, int h) {
-  buffer.fillRect(x * UI_COORD_SCALE, y * UI_COORD_SCALE,
-                  w * UI_COORD_SCALE, h * UI_COORD_SCALE, _color);
+  buffer.fillRect(x * _coordinateScale, y * _coordinateScale,
+                  w * _coordinateScale, h * _coordinateScale, _color);
 }
 
 void LGFXDisplay::drawRect(int x, int y, int w, int h) {
   if (w <= 0 || h <= 0) return;
-  if (UI_COORD_SCALE == 1) {
+  if (_coordinateScale == 1) {
     buffer.drawRect(x, y, w, h, _color);
     return;
   }
-  int left = x * UI_COORD_SCALE;
-  int top = y * UI_COORD_SCALE;
-  int scaled_width = w * UI_COORD_SCALE;
-  int scaled_height = h * UI_COORD_SCALE;
-  buffer.fillRect(left, top, scaled_width, UI_COORD_SCALE, _color);
-  buffer.fillRect(left, top + scaled_height - UI_COORD_SCALE,
-                  scaled_width, UI_COORD_SCALE, _color);
-  buffer.fillRect(left, top, UI_COORD_SCALE, scaled_height, _color);
-  buffer.fillRect(left + scaled_width - UI_COORD_SCALE, top,
-                  UI_COORD_SCALE, scaled_height, _color);
+  int left = x * _coordinateScale;
+  int top = y * _coordinateScale;
+  int scaled_width = w * _coordinateScale;
+  int scaled_height = h * _coordinateScale;
+  buffer.fillRect(left, top, scaled_width, _coordinateScale, _color);
+  buffer.fillRect(left, top + scaled_height - _coordinateScale,
+                  scaled_width, _coordinateScale, _color);
+  buffer.fillRect(left, top, _coordinateScale, scaled_height, _color);
+  buffer.fillRect(left + scaled_width - _coordinateScale, top,
+                  _coordinateScale, scaled_height, _color);
 }
 
 void LGFXDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
-  if (UI_COORD_SCALE == 1) {
+  if (_coordinateScale == 1) {
     buffer.drawBitmap(x, y, bits, w, h, _color);
     return;
   }
@@ -245,10 +336,10 @@ void LGFXDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
         ++column;
       }
       if (first != column) {
-        buffer.fillRect((x + first) * UI_COORD_SCALE,
-                        (y + row) * UI_COORD_SCALE,
-                        (column - first) * UI_COORD_SCALE,
-                        UI_COORD_SCALE, _color);
+        buffer.fillRect((x + first) * _coordinateScale,
+                        (y + row) * _coordinateScale,
+                        (column - first) * _coordinateScale,
+                        _coordinateScale, _color);
       }
     }
   }
@@ -256,8 +347,8 @@ void LGFXDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
 
 uint16_t LGFXDisplay::getTextWidth(const char* str) {
   String mapped = mapText(str);
-  return (buffer.textWidth(mapped.c_str()) + UI_COORD_SCALE - 1)
-      / UI_COORD_SCALE;
+  return (buffer.textWidth(mapped.c_str()) + _coordinateScale - 1)
+      / _coordinateScale;
 }
 
 void LGFXDisplay::translateUTF8ToBlocks(char* dest, const char* src,
@@ -305,14 +396,16 @@ void LGFXDisplay::endFrame() {
   _hasLastFrame = true;
 
   display->startWrite();
-  if (UI_ZOOM != 1) {
+  if (_outputZoom != 1.0f) {
     if (_hasTransparentEmojiPixels) {
       buffer.pushRotateZoom(display, display->width() / 2,
-                            display->height() / 2, 0, UI_ZOOM, UI_ZOOM,
+                            display->height() / 2, 0,
+                            _outputZoom, _outputZoom,
                             TRANSPARENT_EMOJI_COLOR);
     } else {
       buffer.pushRotateZoom(display, display->width() / 2,
-                            display->height() / 2, 0, UI_ZOOM, UI_ZOOM);
+                            display->height() / 2, 0,
+                            _outputZoom, _outputZoom);
     }
   } else {
     if (_hasTransparentEmojiPixels) {
@@ -328,11 +421,11 @@ void LGFXDisplay::endFrame() {
       const EmojiOverlay& overlay = _emojiOverlays[i];
       const uint8_t* pixels = _emojiAtlas.glyph(overlay.codepoint);
       if (pixels == nullptr) continue;
-      float size = overlay.size * UI_ZOOM;
+      float size = overlay.size * _outputZoom;
       float zoom_x = size / _emojiAtlas.width();
       float zoom_y = size / _emojiAtlas.height();
-      float x = overlay.x * UI_ZOOM + (size - 1) * 0.5f;
-      float y = overlay.y * UI_ZOOM + (size - 1) * 0.5f;
+      float x = overlay.x * _outputZoom + (size - 1) * 0.5f;
+      float y = overlay.y * _outputZoom + (size - 1) * 0.5f;
       display->pushImageRotateZoom(
           x, y, source_x, source_y, 0, zoom_x, zoom_y,
           _emojiAtlas.width(), _emojiAtlas.height(),
@@ -350,9 +443,9 @@ void LGFXDisplay::endFrame() {
 bool LGFXDisplay::getTouch(int* x, int* y) {
   lgfx::v1::touch_point_t point = {};
   if (display->getTouch(&point) == 0) return false;
-  if (UI_ZOOM * UI_COORD_SCALE != 1) {
-    *x = point.x / (UI_ZOOM * UI_COORD_SCALE);
-    *y = point.y / (UI_ZOOM * UI_COORD_SCALE);
+  if (_outputZoom * _coordinateScale != 1.0f) {
+    *x = point.x / (_outputZoom * _coordinateScale);
+    *y = point.y / (_outputZoom * _coordinateScale);
   } else {
     *x = point.x;
     *y = point.y;
@@ -390,24 +483,27 @@ bool LGFXDisplay::installRuntimeFont(uint8_t* data, size_t size) {
 
 uint32_t LGFXDisplay::renderColor(ColorVal color) const {
 #if UI_BUFFER_COLOR_DEPTH < 8
-  if (color == UIColor::primary_txt) return 0;
-  if (color == UIColor::window_bkg || color == UIColor::title_txt) return 1;
-  if (color == UIColor::title_bkg) return 2;
-  if (color == UIColor::secondary_txt) return 3;
-  if (color == UIColor::warning_txt) return 4;
-  if (color == UIColor::popup_bkg) return 5;
-  if (color == UIColor::popup_txt) return 0;
-  if (color == UIColor::corp_blue) return 6;
+  using namespace mesh::ui::color_theme;
+  if (color == UIColor::window_bkg) return INDEX_BACKGROUND;
+  if (color == UIColor::primary_txt || color == UIColor::title_txt
+      || color == UIColor::popup_txt) return INDEX_TEXT;
+  if (color == UIColor::title_bkg) return INDEX_TITLE_BACKGROUND;
+  if (color == UIColor::secondary_txt) return INDEX_SECONDARY_TEXT;
+  if (color == UIColor::warning_txt) return INDEX_WARNING_TEXT;
+  if (color == UIColor::popup_bkg) return INDEX_POPUP_BACKGROUND;
+  if (color == UIColor::corp_blue) return INDEX_ACCENT;
   return color & 0x0F;
 #else
   return color;
 #endif
 }
 
-void LGFXDisplay::configurePalette() {
+bool LGFXDisplay::configurePalette() {
 #if UI_BUFFER_COLOR_DEPTH < 8
-  buffer.createPalette(UI_PALETTE,
-                       sizeof(UI_PALETTE) / sizeof(UI_PALETTE[0]));
+  return buffer.createPalette(UI_PALETTE,
+                              sizeof(UI_PALETTE) / sizeof(UI_PALETTE[0]));
+#else
+  return true;
 #endif
 }
 

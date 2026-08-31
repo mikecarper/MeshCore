@@ -138,6 +138,11 @@ public:
   CompanionNodePrefs *getNodePrefs();
   uint32_t getBLEPin();
   int getOfflineQueueCapacity() const;
+  void noteInternetClockSet() {
+#ifdef COMPANION_MESH_CLOCK_SYNC
+    _clock_sync.onInternetClockSet();
+#endif
+  }
   void setMotaSourceControl(mesh::companion::MotaSourceControl* control) {
     _mota_source_control = control;
   }
@@ -146,6 +151,14 @@ public:
   void serviceMQTT(const char* wifi_ssid, const char* wifi_password);
   void stopMQTT();
   bool isMQTTConfigured() const { return _mqtt_configured; }
+  bool isMQTTRunning() const {
+    return _mqtt_started && _mqtt_bridge != nullptr
+        && _mqtt_bridge->isRunning();
+  }
+  bool hasFreshMQTTNtpThisBoot() const {
+    return _mqtt_bridge != nullptr
+        && _mqtt_bridge->hasFreshNtpThisBoot();
+  }
 #endif
 
 #ifdef WITH_WEBCONFIG

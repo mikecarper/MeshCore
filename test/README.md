@@ -14,6 +14,10 @@ pio test -e native                      # all suites except KISS modem
 pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_indicator_display_profile.py  # Indicator RAM/scale contract
+python3 test/test_indicator_render_profile.py   # four-mode Indicator canvas matrix/fallback contract
+python3 test/test_indicator_exclusive_transport.py  # Indicator secondary-transport ownership contract
+python3 test/test_companion_transport_selector.py  # Indicator transport-selector touch/UI contract
+python3 test/test_color_theme.py                # shared color-display dark-palette contract
 python3 test/test_indicator_font_recovery.py  # Indicator TLS/SD font recovery contract
 python3 test/test_companion_terminal_profile.py  # Companion CLI capability gates
 python3 test/test_client_login_profile_contract.py  # ACL login ordering/role contract
@@ -49,6 +53,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_mqtt_prefs_atomic_store` | `src/helpers/MQTTPrefsAtomicStore.h` | transactional MQTT writes and legacy `/node_prefs` handoff; exact short-write detection; begin/finish/rename failure cleanup; original-file preservation |
 | `test_mqtt_prefs_json_import` | `src/helpers/MQTTPrefsJsonImport.h`, `src/helpers/MQTTPrefsSerializer.h` | one-time observer `/mqtt.json` v1 import grammar, strict schema/repair rules, binary-first precedence, future/artifact preservation, display-tail encoding, and atomic commit failure routing |
 | `test_display_viewport` | `src/helpers/ui/DisplayViewport.h`, `src/helpers/ui/DisplayFrameSignature.h` | portrait logical-to-physical mapping, span coverage, fitted-width conversion, text scaling, and visible-frame signatures |
+| `test_display_driver` | `src/helpers/ui/DisplayDriver.h`, `DisplayTextLayout.h`, `CompanionHomeLayout.h` | UTF-8-safe ellipsis/wrapping; maximum SSID and long setup-address bounds; Indicator home info/pairing separation and 4/5-height PIN placement; compact 128x64 pairing replacement; stale-region clearing |
 | `test_indicator_font_stage_v2_protocol` | `src/helpers/IndicatorFontStageV2Protocol.h` | fail-closed STAGEV2 negotiation and legacy fallback; exact cumulative ACK parsing; 512-byte block boundaries, short final blocks, and real font-asset transfer geometry |
 | `test_radio_activity_window` | `src/helpers/RadioActivityWindow.h` | rolling minute buckets, derived rates, expiry, warm-up, silence, saturation, and `millis()` rollover |
 | `test_observer_dashboard` | `src/helpers/ui/ObserverDashboard.h` | landscape and portrait dashboard layout bounds, compact formatting, graph scaling, row signatures, and partial repaint policy |

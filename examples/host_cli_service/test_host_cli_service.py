@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from pathlib import Path
+import socket
+import stat
+import struct
+import subprocess
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
 import host_cli_service as service
+import meshcore_clock_control as clock_helper
 
 
 PUBLIC_KEY = "11" * 32
@@ -154,7 +161,7 @@ class RequestHandlerTests(unittest.TestCase):
                                       "not-a-terminal-control"),
         )
 
-    def test_exact_fixed_commands_and_opt_in_reboot(self) -> None:
+    def test_exact_fixed_commands_and_opt_in_recovery_actions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             uptime = root / "uptime"
@@ -192,17 +199,305 @@ class RequestHandlerTests(unittest.TestCase):
 
         disabled = service.handle_request("reboot", Path("/unused"))
         self.assertEqual("Err - host reboot is disabled", disabled.text)
-        self.assertFalse(disabled.reboot_requested)
         enabled = service.handle_request(
-            "reboot", Path("/unused"), allow_reboot=True, reboot_delay=7
+            "reboot", Path("/unused"), allow_reboot=True
         )
-        self.assertEqual("OK - host reboot scheduled in 7s", enabled.text)
-        self.assertTrue(enabled.reboot_requested)
+        self.assertEqual(service.HostResult("", host_action="reboot"), enabled)
+        self.assertEqual(
+            "Err - host network restart is disabled",
+            service.handle_request("network restart", Path("/unused")).text,
+        )
+        self.assertEqual(
+            service.HostResult("", host_action="network-restart"),
+            service.handle_request(
+                "network restart",
+                Path("/unused"),
+                allow_network_restart=True,
+            ),
+        )
+        operation_id = "A1" * 16
+        self.assertEqual(
+            service.HostResult(
+                "", host_action="status", operation_id=operation_id
+            ),
+            service.handle_request(
+                f"action status {operation_id}",
+                Path("/unused"),
+                allow_reboot=True,
+            ),
+        )
         self.assertEqual(
             service.HostResult("Err - unsupported host request"),
             service.handle_request("reboot now", Path("/unused"),
                                    allow_reboot=True),
         )
+        for injected in (
+            "network restart now",
+            "network restart\nreboot",
+            f"action status {operation_id};reboot",
+            f"action status {operation_id.lower()}",
+        ):
+            with self.subTest(injected=injected):
+                self.assertIsNone(
+                    service.handle_request(
+                        injected,
+                        Path("/unused"),
+                        allow_reboot=True,
+                        allow_network_restart=True,
+                    ).host_action
+                )
+
+    def test_clock_status_is_read_only_and_strictly_bounded(self) -> None:
+        status_result = mock.Mock(returncode=0, stdout="yes\n")
+        with mock.patch.object(service.time, "time", return_value=1788147000), \
+             mock.patch.object(
+                 service.subprocess, "run", return_value=status_result
+             ) as run:
+            status = service.handle_request("clock status", Path("/unused"))
+        self.assertEqual(
+            "Clock epoch 1788147000; NTP synchronized yes", status.text
+        )
+        self.assertEqual(
+            [
+                "/usr/bin/timedatectl", "show",
+                "--property=NTPSynchronized", "--value",
+            ],
+            run.call_args.args[0],
+        )
+        self.assertFalse(run.call_args.kwargs["shell"])
+        self.assertEqual(
+            service.CLOCK_STATUS_CHILD_TIMEOUT_SECONDS,
+            run.call_args.kwargs["timeout"],
+        )
+
+        disabled = service.handle_request(
+            "clock set 1788147000", Path("/unused")
+        )
+        self.assertEqual("Err - host clock control is disabled", disabled.text)
+        disabled_sync = service.handle_request("clock sync", Path("/unused"))
+        self.assertEqual(
+            "Err - host clock control is disabled", disabled_sync.text
+        )
+
+        rejected = (
+            "clock set",
+            "clock set ",
+            "clock set +1788147000",
+            "clock set -1",
+            "clock set 01788147000",
+            "clock set 1788147000 extra",
+            "clock set 1788147000\nreboot",
+            "clock set 999999999999999999999999999999999999",
+        )
+        with mock.patch.object(service, "_exchange_clock_control") as exchange:
+            for request in rejected:
+                with self.subTest(request=request):
+                    result = service.handle_request(
+                        request, Path("/unused"), allow_clock_control=True
+                    )
+                    self.assertTrue(result.text.startswith("Err -"))
+        exchange.assert_not_called()
+
+    def test_clock_control_uses_only_the_fixed_unix_socket_protocol(self) -> None:
+        with mock.patch.object(
+            service,
+            "_exchange_clock_control",
+            return_value=(
+                "OK clock set to 1788147000; NTP sync requested"
+            ),
+        ) as exchange, mock.patch.object(service.subprocess, "run") as run:
+            result = service.handle_request(
+                "clock set 1788147000",
+                Path("/unused"),
+                allow_clock_control=True,
+            )
+        self.assertEqual(
+            "OK - clock set to 1788147000; NTP sync requested", result.text
+        )
+        exchange.assert_called_once_with("set 1788147000")
+        run.assert_not_called()
+
+        with mock.patch.object(
+            service,
+            "_exchange_clock_control",
+            return_value="OK NTP sync requested",
+        ) as exchange, mock.patch.object(service.subprocess, "run") as run:
+            result = service.handle_request(
+                "clock sync", Path("/unused"), allow_clock_control=True
+            )
+        self.assertEqual("OK - NTP sync requested", result.text)
+        exchange.assert_called_once_with("sync")
+        run.assert_not_called()
+
+    def test_clock_status_uses_chrony_when_systemd_marker_is_wrong(self) -> None:
+        systemd = mock.Mock(returncode=0, stdout="no\n")
+        chrony = mock.Mock(
+            returncode=0,
+            stdout=(
+                "Stratum         : 4\n"
+                "System time     : 0.000000000 seconds fast of NTP time\n"
+                "Leap status     : Normal\n"
+            ),
+        )
+        with mock.patch.object(service.time, "time", return_value=1788147000), \
+             mock.patch.object(
+                 service.subprocess, "run", side_effect=[systemd, chrony]
+             ) as run, mock.patch.object(Path, "is_file", return_value=True), \
+             mock.patch.object(service.os, "access", return_value=True):
+            result = service.handle_request("clock status", Path("/unused"))
+        self.assertEqual(
+            "Clock epoch 1788147000; NTP synchronized yes (chrony)",
+            result.text,
+        )
+        self.assertEqual(
+            ["/usr/bin/chronyc", "-n", "tracking"],
+            run.call_args.args[0],
+        )
+        self.assertEqual(1.5, run.call_args.kwargs["timeout"])
+
+    def test_clock_epoch_boundaries_in_both_layers(self) -> None:
+        for epoch in (service.MIN_CLOCK_EPOCH, service.MAX_CLOCK_EPOCH):
+            with self.subTest(epoch=epoch), mock.patch.object(
+                service,
+                "_exchange_clock_control",
+                return_value=f"OK clock set to {epoch}; NTP sync requested",
+            ) as exchange:
+                result = service.handle_request(
+                    f"clock set {epoch}",
+                    Path("/unused"),
+                    allow_clock_control=True,
+                )
+            self.assertEqual(
+                f"OK - clock set to {epoch}; NTP sync requested", result.text
+            )
+            exchange.assert_called_once_with(f"set {epoch}")
+
+        with mock.patch.object(service, "_exchange_clock_control") as exchange:
+            for epoch in (
+                service.MIN_CLOCK_EPOCH - 1,
+                service.MAX_CLOCK_EPOCH + 1,
+            ):
+                with self.subTest(epoch=epoch):
+                    result = service.handle_request(
+                        f"clock set {epoch}",
+                        Path("/unused"),
+                        allow_clock_control=True,
+                    )
+                    self.assertIn("2020 through 2099", result.text)
+        exchange.assert_not_called()
+
+        for epoch in (
+            clock_helper.MIN_CLOCK_EPOCH,
+            clock_helper.MAX_CLOCK_EPOCH,
+        ):
+            self.assertEqual(
+                ("set", epoch),
+                clock_helper.parse_request(f"set {epoch}\n".encode()),
+            )
+        for epoch in (
+            clock_helper.MIN_CLOCK_EPOCH - 1,
+            clock_helper.MAX_CLOCK_EPOCH + 1,
+        ):
+            with self.assertRaises(ValueError):
+                clock_helper.parse_request(f"set {epoch}\n".encode())
+
+    def test_clock_helper_timeouts_are_bounded_and_fail_closed(self) -> None:
+        self.assertLess(
+            2 * clock_helper.CHILD_TIMEOUT_SECONDS,
+            service.CLOCK_CONTROL_TIMEOUT_SECONDS,
+        )
+        self.assertLess(service.CLOCK_CONTROL_TIMEOUT_SECONDS, 6)
+        timeout = subprocess.TimeoutExpired(["timedatectl"], 1.5)
+        with mock.patch.object(
+            clock_helper.subprocess, "run", side_effect=timeout
+        ) as run:
+            self.assertEqual(
+                "NTP enable request failed", clock_helper.request_ntp_sync()
+            )
+        self.assertEqual(1, run.call_count)
+        self.assertEqual(
+            clock_helper.CHILD_TIMEOUT_SECONDS,
+            run.call_args.kwargs["timeout"],
+        )
+
+        enabled = mock.Mock(returncode=0)
+        with mock.patch.object(
+            clock_helper.subprocess,
+            "run",
+            side_effect=[enabled, timeout],
+        ) as run, mock.patch.object(
+            clock_helper.Path, "is_file", return_value=False
+        ):
+            self.assertEqual(
+                "systemd-timesyncd restart failed",
+                clock_helper.request_ntp_sync(),
+            )
+        self.assertEqual(2, run.call_count)
+        self.assertEqual(
+            [
+                "/usr/bin/systemctl",
+                "restart",
+                "systemd-timesyncd.service",
+            ],
+            run.call_args.args[0],
+        )
+
+        with mock.patch.object(
+            clock_helper.subprocess, "run", side_effect=FileNotFoundError
+        ) as run:
+            self.assertEqual(
+                "NTP enable request failed", clock_helper.request_ntp_sync()
+            )
+        self.assertEqual(1, run.call_count)
+
+    def test_clock_set_never_disables_ntp_and_reports_partial_success(
+        self,
+    ) -> None:
+        with mock.patch.object(clock_helper.time, "clock_settime") as settime, \
+             mock.patch.object(
+                 clock_helper,
+                 "request_ntp_sync",
+                 return_value="chrony step request failed",
+             ) as sync, \
+             mock.patch.object(clock_helper, "run_fixed") as run_fixed:
+            self.assertEqual(
+                (True, "chrony step request failed"),
+                clock_helper.set_clock(1788147000),
+            )
+        settime.assert_called_once_with(
+            clock_helper.time.CLOCK_REALTIME, 1788147000.0
+        )
+        sync.assert_called_once_with()
+        run_fixed.assert_not_called()
+
+        with mock.patch.object(
+            clock_helper,
+            "set_clock",
+            return_value=(True, clock_helper.CHRONY_STEP_ERROR),
+        ):
+            self.assertEqual(
+                "PARTIAL clock set to 1788147000; NTP enabled; "
+                "chrony step request failed",
+                clock_helper.process_request(b"set 1788147000\n"),
+            )
+        self.assertEqual(
+            "Warning - clock set to 1788147000; NTP enabled; "
+            "chrony step request failed",
+            service._clock_control_result(
+                "PARTIAL clock set to 1788147000; NTP enabled; "
+                "chrony step request failed",
+                "set",
+                1788147000,
+            ).text,
+        )
+
+        with mock.patch.object(
+            clock_helper.time, "clock_settime", side_effect=OSError
+        ), mock.patch.object(clock_helper, "request_ntp_sync") as sync:
+            self.assertEqual(
+                (False, None), clock_helper.set_clock(1788147000)
+            )
+        sync.assert_not_called()
 
     def test_reply_is_utf8_bounded(self) -> None:
         text = "x" * 161 + "\N{EURO SIGN}"
@@ -332,6 +627,411 @@ class RequestHandlerTests(unittest.TestCase):
                 service.load_programs_file(config)
 
 
+class ClockControlServiceTests(unittest.TestCase):
+    def test_daemon_protocol_rejects_injection_before_mutation(self) -> None:
+        rejected = (
+            b"",
+            b"sync",
+            b"sync\r\n",
+            b" sync\n",
+            b"sync \n",
+            b"sync\nset 1788147000\n",
+            b"set\n",
+            b"set +1788147000\n",
+            b"set -1788147000\n",
+            b"set 01788147000\n",
+            b"set 1788147000 extra\n",
+            b"set 1788147000\x00\n",
+            b"set 1788147000\nreboot",
+            b"set 999999999999999999999999\n",
+            b"\xff\n",
+            b"x" * (clock_helper.MAX_REQUEST_BYTES + 1),
+        )
+        with mock.patch.object(clock_helper, "set_clock") as set_clock, \
+             mock.patch.object(clock_helper, "request_ntp_sync") as sync:
+            for request in rejected:
+                with self.subTest(request=request):
+                    with self.assertRaises(ValueError):
+                        clock_helper.process_request(request)
+        set_clock.assert_not_called()
+        sync.assert_not_called()
+
+        self.assertEqual(
+            ("sync", None), clock_helper.parse_request(b"sync\n")
+        )
+        self.assertEqual(
+            ("set", 1788147000),
+            clock_helper.parse_request(b"set 1788147000\n"),
+        )
+
+    def test_daemon_reports_success_failure_and_partial_outcomes(self) -> None:
+        with mock.patch.object(
+            clock_helper, "request_ntp_sync", return_value=None
+        ):
+            self.assertEqual(
+                "OK NTP sync requested",
+                clock_helper.process_request(b"sync\n"),
+            )
+        with mock.patch.object(
+            clock_helper,
+            "request_ntp_sync",
+            return_value=clock_helper.NTP_ENABLE_ERROR,
+        ):
+            self.assertEqual(
+                "ERR NTP enable request failed",
+                clock_helper.process_request(b"sync\n"),
+            )
+        with mock.patch.object(
+            clock_helper,
+            "request_ntp_sync",
+            return_value=clock_helper.CHRONY_STEP_ERROR,
+        ):
+            self.assertEqual(
+                "PARTIAL NTP enabled; chrony step request failed",
+                clock_helper.process_request(b"sync\n"),
+            )
+
+        outcomes = (
+            ((False, None), "ERR clock set failed"),
+            (
+                (True, None),
+                "OK clock set to 1788147000; NTP sync requested",
+            ),
+            (
+                (True, clock_helper.NTP_ENABLE_ERROR),
+                "PARTIAL clock set to 1788147000; "
+                "NTP enable request failed",
+            ),
+            (
+                (True, clock_helper.TIMESYNCD_RESTART_ERROR),
+                "PARTIAL clock set to 1788147000; NTP enabled; "
+                "systemd-timesyncd restart failed",
+            ),
+        )
+        for outcome, expected in outcomes:
+            with self.subTest(outcome=outcome), mock.patch.object(
+                clock_helper, "set_clock", return_value=outcome
+            ):
+                self.assertEqual(
+                    expected,
+                    clock_helper.process_request(b"set 1788147000\n"),
+                )
+
+    def test_peer_credentials_reject_wrong_uid_or_primary_gid(self) -> None:
+        for credentials in ((123, 999, 456), (123, 123, 999)):
+            connection = mock.Mock()
+            with self.subTest(credentials=credentials), mock.patch.object(
+                clock_helper, "peer_credentials", return_value=credentials
+            ), mock.patch.object(
+                clock_helper, "process_request"
+            ) as process:
+                self.assertFalse(
+                    clock_helper.handle_connection(
+                        connection, allowed_uid=123, allowed_gid=456
+                    )
+                )
+            process.assert_not_called()
+            connection.sendall.assert_called_once_with(
+                b"ERR unauthorized peer\n"
+            )
+
+    def test_authorized_peer_gets_one_bounded_request(self) -> None:
+        connection = mock.Mock()
+        with mock.patch.object(
+            clock_helper, "peer_credentials", return_value=(99, 123, 456)
+        ), mock.patch.object(
+            clock_helper, "receive_request", return_value=b"sync\n"
+        ) as receive, mock.patch.object(
+            clock_helper, "process_request", return_value="OK NTP sync requested"
+        ) as process:
+            self.assertTrue(
+                clock_helper.handle_connection(
+                    connection, allowed_uid=123, allowed_gid=456
+                )
+            )
+        receive.assert_called_once_with(connection)
+        process.assert_called_once_with(b"sync\n")
+        connection.sendall.assert_called_once_with(b"OK NTP sync requested\n")
+
+    def test_client_and_daemon_require_root_group_mode_0660_socket(self) -> None:
+        safe = mock.Mock(
+            st_mode=stat.S_IFSOCK | 0o660,
+            st_uid=0,
+            st_gid=456,
+        )
+        with mock.patch.object(Path, "lstat", return_value=safe):
+            service.validate_clock_control_socket(
+                Path("/run/test.sock"), expected_gid=456
+            )
+        clock_helper.validate_socket_metadata(safe, 456)
+
+        listener = mock.Mock(family=socket.AF_UNIX)
+        listener.getsockopt.side_effect = (socket.SOCK_STREAM, 1)
+        listener.getsockname.return_value = "/run/test.sock"
+        with mock.patch.object(Path, "lstat", return_value=safe):
+            clock_helper.validate_listening_socket(
+                listener,
+                path=Path("/run/test.sock"),
+                expected_gid=456,
+            )
+
+        wrong_type = mock.Mock(family=socket.AF_UNIX)
+        wrong_type.getsockopt.return_value = socket.SOCK_SEQPACKET
+        with self.assertRaisesRegex(ValueError, "SOCK_STREAM"):
+            clock_helper.validate_listening_socket(
+                wrong_type,
+                path=Path("/run/test.sock"),
+                expected_gid=456,
+            )
+
+        unsafe = (
+            mock.Mock(st_mode=stat.S_IFREG | 0o660, st_uid=0, st_gid=456),
+            mock.Mock(st_mode=stat.S_IFSOCK | 0o660, st_uid=1, st_gid=456),
+            mock.Mock(st_mode=stat.S_IFSOCK | 0o666, st_uid=0, st_gid=456),
+            mock.Mock(st_mode=stat.S_IFSOCK | 0o660, st_uid=0, st_gid=999),
+        )
+        for metadata in unsafe:
+            with self.subTest(metadata=metadata), mock.patch.object(
+                Path, "lstat", return_value=metadata
+            ):
+                with self.assertRaises(ValueError):
+                    service.validate_clock_control_socket(
+                        Path("/run/test.sock"), expected_gid=456
+                    )
+                with self.assertRaises(ValueError):
+                    clock_helper.validate_socket_metadata(metadata, 456)
+
+    def test_endpoint_sends_exact_line_and_authenticates_root_server(self) -> None:
+        class Connection:
+            def __init__(self, server_uid: int = 0) -> None:
+                self.server_uid = server_uid
+                self.response = [b"OK NTP sync requested\n", b""]
+                self.sent = b""
+                self.connected = ""
+                self.shutdown_how: int | None = None
+
+            def __enter__(self) -> "Connection":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def settimeout(self, _timeout: float) -> None:
+                pass
+
+            def connect(self, path: str) -> None:
+                self.connected = path
+
+            def getsockopt(self, *_args: object) -> bytes:
+                return struct.pack("3i", 99, self.server_uid, 0)
+
+            def sendall(self, value: bytes) -> None:
+                self.sent += value
+
+            def shutdown(self, how: int) -> None:
+                self.shutdown_how = how
+
+            def recv(self, _size: int) -> bytes:
+                return self.response.pop(0)
+
+        connection = Connection()
+        with mock.patch.object(
+            service, "validate_clock_control_socket"
+        ) as validate, mock.patch.object(
+            service.socket, "socket", return_value=connection
+        ) as constructor:
+            self.assertEqual(
+                "OK NTP sync requested",
+                service._exchange_clock_control("sync"),
+            )
+        constructor.assert_called_once_with(socket.AF_UNIX, socket.SOCK_STREAM)
+        validate.assert_called_once_with(
+            service.CLOCK_CONTROL_SOCKET,
+            expected_gid=os.getegid(),
+        )
+        self.assertEqual(str(service.CLOCK_CONTROL_SOCKET), connection.connected)
+        self.assertEqual(b"sync\n", connection.sent)
+        self.assertEqual(socket.SHUT_WR, connection.shutdown_how)
+
+        with mock.patch.object(
+            service, "validate_clock_control_socket"
+        ), mock.patch.object(
+            service.socket, "socket", return_value=Connection(server_uid=1000)
+        ):
+            with self.assertRaises(PermissionError):
+                service._exchange_clock_control("sync")
+
+    def test_endpoint_fails_closed_on_timeout_errors_and_bad_responses(self) -> None:
+        failures = (
+            (TimeoutError(), "Err - clock control timed out"),
+            (socket.timeout(), "Err - clock control timed out"),
+            (PermissionError(), "Err - clock control peer authentication failed"),
+            (FileNotFoundError(), "Err - clock control unavailable"),
+            (ValueError(), "Err - clock control unavailable"),
+        )
+        for failure, expected in failures:
+            with self.subTest(failure=failure), mock.patch.object(
+                service, "_exchange_clock_control", side_effect=failure
+            ):
+                self.assertEqual(
+                    expected,
+                    service.run_clock_control("sync").text,
+                )
+
+        invalid = (
+            "OK clock set to 1788147001; NTP sync requested",
+            "OK NTP sync requested; reboot",
+            "PARTIAL clock set to 1788147001; NTP enable request failed",
+            "PARTIAL clock set to 1788147000; NTP enabled; "
+            "NTP enable request failed",
+            "PARTIAL clock set to 1788147000; chrony step request failed",
+            "PARTIAL clock set to 1788147000; "
+            "systemd-timesyncd restart failed",
+            "ERR attacker supplied text",
+        )
+        for response in invalid:
+            with self.subTest(response=response):
+                self.assertEqual(
+                    "Err - invalid clock control response",
+                    service._clock_control_result(
+                        response, "set", 1788147000
+                    ).text,
+                )
+
+    def test_request_timeout_returns_error_without_mutation(self) -> None:
+        connection = mock.Mock()
+        with mock.patch.object(
+            clock_helper, "peer_credentials", return_value=(99, 123, 456)
+        ), mock.patch.object(
+            clock_helper, "receive_request", side_effect=socket.timeout
+        ), mock.patch.object(clock_helper, "process_request") as process:
+            self.assertFalse(
+                clock_helper.handle_connection(
+                    connection, allowed_uid=123, allowed_gid=456
+                )
+            )
+        process.assert_not_called()
+        connection.sendall.assert_called_once_with(b"ERR request timed out\n")
+
+        trickle = mock.Mock()
+        trickle.recv.return_value = b"s"
+        with mock.patch.object(
+            clock_helper.time,
+            "monotonic",
+            side_effect=(0.0, 0.2, 1.1),
+        ):
+            with self.assertRaises(socket.timeout):
+                clock_helper.receive_request(trickle)
+        trickle.recv.assert_called_once()
+
+    def test_child_commands_are_exact_bounded_argv_without_a_shell(self) -> None:
+        success = mock.Mock(returncode=0)
+        with mock.patch.object(
+            clock_helper.subprocess, "run", return_value=success
+        ) as run, mock.patch.object(
+            clock_helper.Path, "is_file", return_value=True
+        ), mock.patch.object(clock_helper.os, "access", return_value=True):
+            self.assertIsNone(clock_helper.request_ntp_sync())
+        self.assertEqual(2, run.call_count)
+        self.assertEqual(
+            ["/usr/bin/timedatectl", "set-ntp", "true"],
+            run.call_args_list[0].args[0],
+        )
+        self.assertEqual(
+            [
+                "/usr/bin/systemctl",
+                "start",
+                clock_helper.CHRONY_STEP_SERVICE,
+            ],
+            run.call_args_list[1].args[0],
+        )
+        self.assertNotIn(
+            "/usr/bin/chronyc",
+            (argument for call in run.call_args_list for argument in call.args[0]),
+        )
+        for call in run.call_args_list:
+            self.assertFalse(call.kwargs["shell"])
+            self.assertEqual(
+                clock_helper.CHILD_TIMEOUT_SECONDS, call.kwargs["timeout"]
+            )
+            self.assertEqual("/", call.kwargs["cwd"])
+
+    def test_systemd_examples_pin_socket_owner_group_and_mode(self) -> None:
+        directory = Path(__file__).resolve().parent
+        socket_unit = (directory / "meshcore-clock-control.socket").read_text(
+            encoding="utf-8"
+        )
+        service_unit = (directory / "meshcore-clock-control.service").read_text(
+            encoding="utf-8"
+        )
+        chrony_unit = (directory / "meshcore-chrony-step.service").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("ListenStream=/run/meshcore-clock-control.sock", socket_unit)
+        self.assertIn("SocketUser=root", socket_unit)
+        self.assertIn("SocketGroup=mctomqtt", socket_unit)
+        self.assertIn("SocketMode=0660", socket_unit)
+        self.assertIn("User=root", service_unit)
+        self.assertIn("--service-user mctomqtt", service_unit)
+        self.assertIn("--service-group mctomqtt", service_unit)
+        self.assertIn("CapabilityBoundingSet=CAP_SYS_TIME", service_unit)
+        self.assertNotIn("CAP_DAC_OVERRIDE", service_unit)
+
+        self.assertIn("Type=oneshot", chrony_unit)
+        self.assertIn("User=_chrony", chrony_unit)
+        self.assertIn("Group=_chrony", chrony_unit)
+        self.assertIn("ExecStart=/usr/bin/chronyc -a makestep", chrony_unit)
+        self.assertIn("TimeoutStartSec=1s", chrony_unit)
+        self.assertIn("NoNewPrivileges=yes", chrony_unit)
+        self.assertIn("\nCapabilityBoundingSet=\n", chrony_unit)
+        self.assertIn("\nAmbientCapabilities=\n", chrony_unit)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", chrony_unit)
+        self.assertIn("ProtectClock=yes", chrony_unit)
+        self.assertIn("ProtectSystem=strict", chrony_unit)
+        self.assertNotIn("CAP_", chrony_unit)
+        self.assertNotIn("[Install]", chrony_unit)
+
+    def test_activation_requires_one_named_systemd_descriptor_and_root(self) -> None:
+        listener = mock.Mock()
+        environment = {
+            "LISTEN_PID": "4242",
+            "LISTEN_FDS": "1",
+            "LISTEN_FDNAMES": "clock-control",
+        }
+        with mock.patch.object(
+            clock_helper.os, "getpid", return_value=4242
+        ), mock.patch.object(
+            clock_helper.socket, "socket", return_value=listener
+        ) as constructor:
+            self.assertIs(listener, clock_helper.activation_socket(environment))
+        constructor.assert_called_once_with(
+            fileno=clock_helper.SYSTEMD_LISTEN_FDS_START
+        )
+
+        invalid = (
+            {**environment, "LISTEN_PID": "7"},
+            {**environment, "LISTEN_FDS": "2"},
+            {**environment, "LISTEN_FDNAMES": "other"},
+        )
+        with mock.patch.object(clock_helper.os, "getpid", return_value=4242):
+            for variables in invalid:
+                with self.subTest(variables=variables), self.assertRaises(
+                    ValueError
+                ):
+                    clock_helper.activation_socket(variables)
+
+        with mock.patch.object(clock_helper.os, "geteuid", return_value=1000), \
+             mock.patch.object(clock_helper, "activation_socket") as activate, \
+             mock.patch("builtins.print"):
+            self.assertEqual(
+                1,
+                clock_helper.main(
+                    ["--service-user", "mctomqtt", "--service-group", "mctomqtt"]
+                ),
+            )
+        activate.assert_not_called()
+
+
 class TokenTests(unittest.TestCase):
     def test_signed_remote_serial_token_has_required_claims(self) -> None:
         key = service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY)
@@ -366,14 +1066,26 @@ class TokenTests(unittest.TestCase):
 
 
 class EndpointTests(unittest.TestCase):
-    def test_request_needs_matching_live_claim_before_reboot(self) -> None:
+    def test_reboot_pending_broker_error_is_specific_and_validated(self) -> None:
+        operation_id = "A1" * 16
+        self.assertEqual(
+            "ERR reboot pending",
+            service._validate_host_action_response(
+                "ERR reboot pending", "prepare", "reboot", operation_id
+            ),
+        )
+        self.assertEqual(
+            f"Err - another reboot is pending; {operation_id} not reserved",
+            service.HostCliEndpoint._prepare_failure_reply(
+                "reboot", operation_id, "ERR reboot pending"
+            ),
+        )
+
+    def test_request_needs_matching_live_claim_before_action_is_queued(self) -> None:
         events: list[object] = []
 
         class PublishResult:
             rc = 0
-
-            def wait_for_publish(self, timeout: float) -> None:
-                events.append(("wait", timeout))
 
         class Client:
             def publish(self, topic: str, token: str, qos: int) -> PublishResult:
@@ -387,11 +1099,10 @@ class EndpointTests(unittest.TestCase):
             command_topic="serial/commands",
             temperature_path=Path("/unused"),
             allow_reboot=True,
-            reboot_delay=7,
-            reboot_scheduler=lambda delay: events.append(("reboot", delay)),
             challenge_generator=lambda: "A1B2C3D4E5F60718",
             monotonic=lambda: 100.0,
         )
+        endpoint._enqueue_host_action = mock.Mock(return_value=True)
         request = service.HostRequest(
             "12345678", "FEDCBA9876543210", "reboot"
         )
@@ -407,18 +1118,13 @@ class EndpointTests(unittest.TestCase):
             events.append(("token", claims["command"]))
             return "signed"
 
-        reboot_result = service.HostResult(
-            "OK - host reboot scheduled in 7s", reboot_requested=True
-        )
         with mock.patch.object(
             service, "parse_and_verify_request", return_value=request
         ), mock.patch.object(
             service, "create_auth_token", side_effect=make_token
-        ), mock.patch.object(
-            service, "handle_request", return_value=reboot_result
-        ) as handler:
+        ), mock.patch.object(service, "exchange_host_action") as broker:
             self.assertTrue(endpoint.handle_mqtt_message(b"request"))
-            handler.assert_not_called()
+            broker.assert_not_called()
 
             with mock.patch.object(
                 service, "parse_and_verify_request", return_value=None
@@ -436,17 +1142,386 @@ class EndpointTests(unittest.TestCase):
             events[0],
         )
         self.assertEqual("publish", events[1][0])
-        self.assertEqual(
-            (
-                "token",
-                "host.reply 12345678 FEDCBA9876543210 "
-                "OK - host reboot scheduled in 7s",
-            ),
-            events[2],
+        self.assertEqual(2, len(events))
+        expected_operation_id = service.host_action_operation_id(
+            "44" * 32, request
         )
-        self.assertEqual("publish", events[3][0])
-        self.assertEqual(("wait", 2.0), events[4])
-        self.assertEqual(("reboot", 7), events[5])
+        endpoint._enqueue_host_action.assert_called_once_with(
+            service.VerifiedHostAction(
+                request=request,
+                action="reboot",
+                operation_id=expected_operation_id,
+            )
+        )
+        broker.assert_not_called()
+
+    def test_real_action_worker_keeps_mqtt_callback_nonblocking(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+
+        class PublishResult:
+            rc = 0
+
+            def wait_for_publish(self, timeout: float) -> None:
+                self.timeout = timeout
+
+            def is_published(self) -> bool:
+                return True
+
+        class Client:
+            def publish(
+                self, _topic: str, _token: str, qos: int
+            ) -> PublishResult:
+                self.qos = qos
+                return PublishResult()
+
+        def exchange(
+            verb: str,
+            operation_id: str,
+            action: str | None,
+            *,
+            deadline: float,
+        ) -> str:
+            del deadline
+            if verb == "prepare":
+                started.set()
+                self.assertTrue(release.wait(timeout=2.0))
+                return f"PREPARED {action} {operation_id}"
+            finished.set()
+            return f"SCHEDULED {action} {operation_id}"
+
+        endpoint = service.HostCliEndpoint(
+            client=Client(),
+            repeater_public_key="44" * 32,
+            service_key=service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY),
+            command_topic="serial/commands",
+            temperature_path=Path("/unused"),
+            allow_reboot=True,
+            host_action_exchange=exchange,
+            challenge_generator=lambda: "A1B2C3D4E5F60718",
+            monotonic=lambda: 100.0,
+        )
+        request = service.HostRequest(
+            "12345678", "FEDCBA9876543210", "reboot"
+        )
+        claim = service.HostClaim(
+            request.request_id,
+            request.request_nonce,
+            "A1B2C3D4E5F60718",
+        )
+        with mock.patch.object(
+            service, "create_auth_token", return_value="signed"
+        ):
+            endpoint._handle_request(request)
+            self.assertTrue(endpoint._handle_claim(claim))
+            self.assertTrue(started.wait(timeout=1.0))
+            self.assertFalse(release.is_set())
+            release.set()
+            self.assertTrue(finished.wait(timeout=2.0))
+            endpoint._action_queue.join()
+
+    def test_action_worker_orders_prepare_publish_confirmation_then_commit(
+        self,
+    ) -> None:
+        events: list[object] = []
+        operation_id = "A1" * 16
+
+        class PublishResult:
+            rc = 0
+
+            def wait_for_publish(self, timeout: float) -> None:
+                events.append(("wait", timeout))
+
+            def is_published(self) -> bool:
+                events.append("is-published")
+                return True
+
+        class Client:
+            def publish(self, topic: str, token: str, qos: int) -> PublishResult:
+                events.append(("publish", topic, token, qos))
+                return PublishResult()
+
+        def exchange(
+            verb: str,
+            sent_operation_id: str,
+            action: str | None,
+            *,
+            deadline: float,
+        ) -> str:
+            self.assertGreater(deadline, service.time.monotonic())
+            events.append((verb, sent_operation_id, action))
+            state_name = "PREPARED" if verb == "prepare" else "SCHEDULED"
+            return f"{state_name} {action} {sent_operation_id}"
+
+        endpoint = service.HostCliEndpoint(
+            client=Client(),
+            repeater_public_key="44" * 32,
+            service_key=service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY),
+            command_topic="serial/commands",
+            temperature_path=Path("/unused"),
+            allow_reboot=True,
+            host_action_exchange=exchange,
+        )
+        request = service.HostRequest(
+            "12345678", "FEDCBA9876543210", "reboot"
+        )
+        with mock.patch.object(
+            service, "create_auth_token", return_value="signed"
+        ):
+            endpoint._process_host_action(
+                service.VerifiedHostAction(request, "reboot", operation_id)
+            )
+
+        self.assertEqual(
+            [
+                ("prepare", operation_id, "reboot"),
+                ("publish", "serial/commands", "signed", 1),
+                ("wait", service.HOST_ACTION_PUBLISH_TIMEOUT_SECONDS),
+                "is-published",
+                ("commit", operation_id, "reboot"),
+            ],
+            events,
+        )
+
+    def test_action_worker_fails_closed_without_mqtt_confirmation(self) -> None:
+        operation_id = "A2" * 16
+        request = service.HostRequest(
+            "12345678", "FEDCBA9876543210", "network restart"
+        )
+
+        class Client:
+            def __init__(self, publish_result: object) -> None:
+                self.publish_result = publish_result
+
+            def publish(self, _topic: str, _token: str, qos: int) -> object:
+                self.qos = qos
+                return self.publish_result
+
+        class Result:
+            rc = 0
+
+            def __init__(self, outcome: str) -> None:
+                self.outcome = outcome
+
+            def wait_for_publish(self, timeout: float) -> None:
+                self.timeout = timeout
+                if self.outcome == "raise":
+                    raise RuntimeError("disconnected")
+
+            def is_published(self) -> bool:
+                return self.outcome == "published"
+
+        for label, publish_result in (
+            ("missing-methods", mock.Mock(rc=0, spec=["rc"])),
+            ("wait-error", Result("raise")),
+            ("unpublished", Result("unpublished")),
+        ):
+            calls: list[str] = []
+
+            def exchange(
+                verb: str,
+                sent_operation_id: str,
+                action: str | None,
+                *,
+                deadline: float,
+            ) -> str:
+                del deadline
+                calls.append(verb)
+                return f"PREPARED {action} {sent_operation_id}"
+
+            endpoint = service.HostCliEndpoint(
+                client=Client(publish_result),
+                repeater_public_key="44" * 32,
+                service_key=service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY),
+                command_topic="serial/commands",
+                temperature_path=Path("/unused"),
+                allow_network_restart=True,
+                host_action_exchange=exchange,
+            )
+            with self.subTest(label=label), mock.patch.object(
+                service, "create_auth_token", return_value="signed"
+            ):
+                endpoint._process_host_action(
+                    service.VerifiedHostAction(
+                        request, "network-restart", operation_id
+                    )
+                )
+                self.assertEqual(["prepare"], calls)
+
+    def test_action_worker_never_retries_an_ambiguous_commit(self) -> None:
+        operation_id = "A3" * 16
+        calls: list[str] = []
+
+        class PublishResult:
+            rc = 0
+
+            def wait_for_publish(self, timeout: float) -> None:
+                self.timeout = timeout
+
+            def is_published(self) -> bool:
+                return True
+
+        client = mock.Mock()
+        client.publish.return_value = PublishResult()
+
+        def exchange(
+            verb: str,
+            sent_operation_id: str,
+            action: str | None,
+            *,
+            deadline: float,
+        ) -> str:
+            del deadline
+            calls.append(verb)
+            if verb == "commit":
+                raise socket.timeout("reply lost")
+            return f"PREPARED {action} {sent_operation_id}"
+
+        endpoint = service.HostCliEndpoint(
+            client=client,
+            repeater_public_key="44" * 32,
+            service_key=service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY),
+            command_topic="serial/commands",
+            temperature_path=Path("/unused"),
+            allow_reboot=True,
+            host_action_exchange=exchange,
+        )
+        with mock.patch.object(
+            service, "create_auth_token", return_value="signed"
+        ):
+            endpoint._process_host_action(
+                service.VerifiedHostAction(
+                    service.HostRequest(
+                        "12345678", "FEDCBA9876543210", "reboot"
+                    ),
+                    "reboot",
+                    operation_id,
+                )
+            )
+        self.assertEqual(["prepare", "commit"], calls)
+
+    def test_action_worker_does_not_commit_after_total_deadline(self) -> None:
+        operation_id = "A6" * 16
+        calls: list[str] = []
+
+        class PublishResult:
+            rc = 0
+
+            def wait_for_publish(self, timeout: float) -> None:
+                self.timeout = timeout
+
+            def is_published(self) -> bool:
+                return True
+
+        client = mock.Mock()
+        client.publish.return_value = PublishResult()
+
+        def exchange(
+            verb: str,
+            sent_operation_id: str,
+            action: str | None,
+            *,
+            deadline: float,
+        ) -> str:
+            del deadline
+            calls.append(verb)
+            return f"PREPARED {action} {sent_operation_id}"
+
+        endpoint = service.HostCliEndpoint(
+            client=client,
+            repeater_public_key="44" * 32,
+            service_key=service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY),
+            command_topic="serial/commands",
+            temperature_path=Path("/unused"),
+            allow_reboot=True,
+            host_action_exchange=exchange,
+        )
+        with mock.patch.object(
+            service, "create_auth_token", return_value="signed"
+        ), mock.patch.object(
+            service.time, "monotonic", side_effect=(0.0, 1.0, 6.0)
+        ), self.assertLogs(service.LOGGER, level="ERROR"):
+            endpoint._process_host_action(
+                service.VerifiedHostAction(
+                    service.HostRequest(
+                        "12345678", "FEDCBA9876543210", "reboot"
+                    ),
+                    "reboot",
+                    operation_id,
+                )
+            )
+        self.assertEqual(["prepare"], calls)
+
+    def test_action_status_reports_exact_broker_state_without_commit(self) -> None:
+        operation_id = "A4" * 16
+        calls: list[str] = []
+        client = mock.Mock()
+        client.publish.return_value = mock.Mock(rc=0)
+
+        def exchange(
+            verb: str,
+            sent_operation_id: str,
+            action: str | None,
+            *,
+            deadline: float,
+        ) -> str:
+            del deadline
+            calls.append(verb)
+            self.assertIsNone(action)
+            return f"AMBIGUOUS reboot {sent_operation_id}"
+
+        endpoint = service.HostCliEndpoint(
+            client=client,
+            repeater_public_key="44" * 32,
+            service_key=service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY),
+            command_topic="serial/commands",
+            temperature_path=Path("/unused"),
+            allow_reboot=True,
+            host_action_exchange=exchange,
+        )
+        request = service.HostRequest(
+            "12345678",
+            "FEDCBA9876543210",
+            f"action status {operation_id}",
+        )
+        with mock.patch.object(
+            service, "create_auth_token", return_value="signed"
+        ) as token:
+            endpoint._process_host_action(
+                service.VerifiedHostAction(request, "status", operation_id)
+            )
+        self.assertEqual(["status"], calls)
+        self.assertIn(
+            f"Host action {operation_id}: reboot ambiguous",
+            token.call_args.args[1]["command"],
+        )
+
+    def test_overlapping_action_is_rejected_before_broker_reservation(self) -> None:
+        endpoint = service.HostCliEndpoint(
+            client=mock.Mock(),
+            repeater_public_key="44" * 32,
+            service_key=service.ServiceKey(PUBLIC_KEY, PRIVATE_KEY),
+            command_topic="serial/commands",
+            temperature_path=Path("/unused"),
+            allow_reboot=True,
+        )
+        self.assertTrue(endpoint._action_slot.acquire(blocking=False))
+        work = service.VerifiedHostAction(
+            service.HostRequest(
+                "12345678", "FEDCBA9876543210", "reboot"
+            ),
+            "reboot",
+            "A5" * 16,
+        )
+        endpoint._publish_serial_reply = mock.Mock()
+        self.assertFalse(endpoint._enqueue_host_action(work))
+        endpoint._publish_serial_reply.assert_called_once_with(
+            work.request,
+            "Err - another host action is active; action was not reserved",
+        )
+        self.assertFalse(endpoint._action_worker_started)
+        endpoint._action_slot.release()
 
     def test_mismatched_expired_and_replayed_claims_do_not_execute(self) -> None:
         now = [10.0]

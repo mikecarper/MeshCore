@@ -3422,6 +3422,27 @@ apply_companion_radio_full_profile() {
       ;;
   esac
 
+  # Both Indicator Full layouts select exactly one secondary Companion
+  # transport per boot. On the ESP-NOW layout, BLE mode leaves the primary
+  # ESP-NOW WiFi radio running while omitting only infrastructure WiFi; WiFi
+  # mode can release Bluetooth memory without disturbing ESP-NOW.
+  case "${env_name,,}" in
+    sensecapindicator-espnow_companion_radio_full|\
+    sensecapindicator-lora_companion_radio_full)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DINDICATOR_TRANSPORT_RENDER_PROFILE=1"
+      ;;
+  esac
+
+  # Allocate the native canvas while internal RAM is least fragmented. After
+  # preferences load, ESP-NOW+BLE shrinks it to 320x320 before BLE starts;
+  # every other combination retains native 480x480 rendering.
+  case "${env_name,,}" in
+    sensecapindicator-espnow_companion_radio_full|\
+    sensecapindicator-lora_companion_radio_full)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UUI_ZOOM -DUI_ZOOM=1.0f -UUI_COORD_SCALE -DUI_COORD_SCALE=3"
+      ;;
+  esac
+
   # ESP-NOW is the primary mesh radio on these two layouts, so conventional
   # Companion WiFi must share its protocol mask and fixed channel instead of
   # resetting the driver to B/G/N on an arbitrary access-point channel. The

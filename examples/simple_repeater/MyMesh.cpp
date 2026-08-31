@@ -9825,7 +9825,8 @@ bool MyMesh::applyClockEstimate(uint32_t estimate, uint8_t source, uint8_t sampl
 #ifdef WITH_MQTT_BRIDGE
   // Close the normal cross-core race where NTP can finish after checkClockSync()
   // selected mesh fallback but before that estimate reaches the RTC.
-  if (source == CLOCK_SYNC_SOURCE_MESH && mqtt_bridge != NULL && mqtt_bridge->hasNtpTime()) {
+  if (source == CLOCK_SYNC_SOURCE_MESH && mqtt_bridge != NULL
+      && mqtt_bridge->hasFreshNtpThisBoot()) {
     suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_INTERNET);
     return true;
   }
@@ -9879,7 +9880,7 @@ void MyMesh::checkClockSync() {
   // MQTT/WiFi builds already set the RTC as soon as an NTP server answers.
   // Once that authoritative source succeeds, LoRa remains only a next-boot
   // fallback and must not replace internet time later in this boot.
-  if (mqtt_bridge != NULL && mqtt_bridge->hasNtpTime()) {
+  if (mqtt_bridge != NULL && mqtt_bridge->hasFreshNtpThisBoot()) {
     suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_INTERNET);
   }
 #endif
@@ -11583,6 +11584,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 }
 
 void MyMesh::loop() {
+#ifdef WITH_MQTT_BRIDGE
+  if (mqtt_bridge) mqtt_bridge->servicePendingClockCorrection();
+#endif
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();

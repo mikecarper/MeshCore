@@ -339,6 +339,10 @@ void MeshClockSync::onManualClockSet() {
   suppressForBoot(SUPPRESS_CLI);
 }
 
+void MeshClockSync::onInternetClockSet() {
+  suppressForBoot(SUPPRESS_INTERNET);
+}
+
 void MeshClockSync::checkGpsOverride() {
   LocationProvider* location = _sensors->getLocationProvider();
   if (location != nullptr && location->consumeTimeSyncApplied()) {

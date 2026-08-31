@@ -7,6 +7,7 @@
 #include "../RadioActivityWindow.h"
 #include "DisplayDriver.h"
 #include "DisplayFrameSignature.h"
+#include "ColorTheme.h"
 
 // Observer analytics dashboard for the Heltec V4 R8 TFT targets.
 //
@@ -18,24 +19,25 @@
 namespace ObserverDashboard {
 
 // ---------------------------------------------------------------- palette ---
-// Kept local to the dashboard. applyDarkPalette() retunes the shared UIColor
-// slots at runtime, which is why no display driver needs editing for the theme.
+// applyDarkPalette() retunes the shared UIColor slots at runtime. Its base
+// semantic colours come from the same default used by the colour drivers, so
+// observer and ordinary companion/repeater screens cannot drift apart.
 
 constexpr ColorVal rgb565(uint8_t r, uint8_t g, uint8_t b) {
-  return (ColorVal)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+  return mesh::ui::color_theme::rgb565(r, g, b);
 }
 
-constexpr ColorVal BG         = rgb565(10, 12, 16);
-constexpr ColorVal HEADER_BG  = rgb565(18, 38, 74);
+constexpr ColorVal BG         = mesh::ui::color_theme::WINDOW_BACKGROUND;
+constexpr ColorVal HEADER_BG  = mesh::ui::color_theme::TITLE_BACKGROUND;
 constexpr ColorVal HEADER_SUB = rgb565(130, 170, 214);
-constexpr ColorVal TEXT       = rgb565(232, 238, 246);
-constexpr ColorVal MUTED      = rgb565(122, 134, 150);
-constexpr ColorVal ACCENT     = rgb565(64, 176, 240);
+constexpr ColorVal TEXT       = mesh::ui::color_theme::TEXT;
+constexpr ColorVal MUTED      = mesh::ui::color_theme::SECONDARY_TEXT;
+constexpr ColorVal ACCENT     = mesh::ui::color_theme::ACCENT;
 constexpr ColorVal BAR        = rgb565(38, 116, 168);
 constexpr ColorVal BAR_NOW    = rgb565(96, 208, 255);
 constexpr ColorVal GRID       = rgb565(38, 46, 60);
 constexpr ColorVal GOOD       = rgb565(72, 208, 136);
-constexpr ColorVal WARN       = rgb565(248, 176, 72);
+constexpr ColorVal WARN       = mesh::ui::color_theme::WARNING_TEXT;
 
 // Retunes the shared colour slots so every screen this UITask draws - boot,
 // setup portal, reboot, power-off and the dashboard - is coherently dark.
@@ -46,7 +48,7 @@ inline void applyDarkPalette() {
   UIColor::primary_txt  = TEXT;
   UIColor::secondary_txt = MUTED;
   UIColor::warning_txt  = WARN;
-  UIColor::popup_bkg    = HEADER_BG;
+  UIColor::popup_bkg    = mesh::ui::color_theme::POPUP_BACKGROUND;
   UIColor::popup_txt    = TEXT;
   UIColor::corp_blue    = ACCENT;
 }

@@ -1,5 +1,6 @@
 #include "UITask.h"
 #include <helpers/TxtDataHelpers.h>
+#include <helpers/ui/BluetoothPairingUiPolicy.h>
 #include "../MyMesh.h"
 #include "target.h"
 #include "u8g2_icons.h"
@@ -184,15 +185,19 @@ public:
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, 54, tmp);
       #endif
-      if (_task->hasBluetoothConnection()) {
+      const bool bluetooth_connected = _task->hasBluetoothConnection();
+      const uint32_t bluetooth_pin = the_mesh.getBLEPin();
+      if (bluetooth_connected) {
         display.setColor(UIColor::warning_txt);
         display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, display.height()-8, "< Connected >");
 
-      } else if (the_mesh.getBLEPin() != 0) { // BT pin
+      } else if (mesh::ui::shouldDisplayBluetoothPairingPin(
+                     _task->isBluetoothEnabled(), bluetooth_connected,
+                     bluetooth_pin)) { // BT pin
         display.setColor(UIColor::warning_txt);
         display.setTextSize(2);
-        sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
+        sprintf(tmp, "Pin:%u", (unsigned int)bluetooth_pin);
         display.drawTextCentered(display.width() / 2, display.height()-8, tmp);
       }
     } else if (_page == HomePage::RECENT) {
@@ -563,12 +568,15 @@ void UITask::setCurrScreen(UIScreen* c) {
 }
 
 bool UITask::isPairingScreenActive() const {
-  return _pairing_screen_until != 0
-      && !hasBluetoothConnection()
-      && static_cast<int32_t>(millis() - _pairing_screen_until) < 0;
+  return mesh::ui::isBluetoothPairingPromptActive(
+      isBluetoothEnabled(), hasBluetoothConnection(),
+      static_cast<uint32_t>(_pairing_screen_until),
+      static_cast<uint32_t>(millis()));
 }
 
 void UITask::showPairingPin() {
+  if (!isBluetoothEnabled()) return;
+
   const unsigned long now = millis();
   _pairing_screen_until = now + BLE_PAIRING_DISPLAY_MILLIS;
   static_cast<HomeScreen*>(home)->showFirstPage();
@@ -633,7 +641,7 @@ void UITask::loop() {
 
   if (_pairing_screen_until != 0) {
     const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
-    if (hasBluetoothConnection() || timed_out) {
+    if (!isPairingScreenActive()) {
       finishPairingScreen(timed_out);
     }
   }

@@ -4,6 +4,7 @@
 
 using mesh::ui::TouchAction;
 using mesh::ui::TouchInput;
+using mesh::ui::TouchSplitSelector;
 
 namespace {
 
@@ -117,6 +118,58 @@ TEST(TouchInput, BottomSelectorHasLargeArrowTapTargets) {
             TouchAction::None);
   EXPECT_EQ(input.update(false, -1, -1, 137, 137, true),
             TouchAction::None);
+}
+
+TEST(TouchInput, SplitSelectorMapsTapHalvesToExplicitChoices) {
+  TouchInput input(true, true, 70);
+  const TouchSplitSelector selector{8, 68, 84, 68, 38, 72};
+
+  input.update(true, 30, 70, 160, 160, false, &selector);
+  input.update(true, 31, 70, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::SelectLeft);
+
+  input.update(true, 130, 70, 160, 160, false, &selector);
+  input.update(true, 129, 70, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::SelectRight);
+
+  input.update(true, 80, 70, 160, 160, false, &selector);
+  input.update(true, 80, 70, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+
+  input.update(true, 30, 20, 160, 160, false, &selector);
+  input.update(true, 30, 20, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+}
+
+TEST(TouchInput, SplitSelectorKeepsSwipesAsNavigation) {
+  TouchInput input(true, true, 70);
+  const TouchSplitSelector selector{8, 68, 84, 68, 38, 72};
+
+  input.update(true, 130, 70, 160, 160, false, &selector);
+  input.update(true, 30, 72, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::Previous);
+
+  input.update(true, 30, 70, 160, 160, false, &selector);
+  input.update(true, 130, 68, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::Next);
 }
 
 TEST(TouchInput, CanReverseSwipesWithoutReversingTapZones) {

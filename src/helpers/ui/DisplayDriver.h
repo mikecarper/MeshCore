@@ -47,6 +47,19 @@ public:
   virtual void clear() = 0;
   virtual void startFrame(ColorVal bkg = UIColor::window_bkg) = 0;
   virtual void setTextSize(int sz) = 0;
+  // Optional fractional small-text mode for dense status chrome. Drivers that
+  // only support integer bitmap scales retain their normal size.
+  virtual void setCompactText(bool compact) { (void)compact; }
+  // Optional runtime canvas scaling. Large RGB panels can retain one logical
+  // UI geometry while selecting a different internal render resolution based
+  // on the active transport's RAM cost.
+  virtual bool setRenderScale(uint8_t coordinate_scale, float output_zoom) {
+    (void)coordinate_scale;
+    (void)output_zoom;
+    return false;
+  }
+  virtual int renderWidth() const { return width(); }
+  virtual int renderHeight() const { return height(); }
   virtual void setColor(ColorVal c) = 0;
   virtual void setCursor(int x, int y) = 0;
   virtual void print(const char* str) = 0;

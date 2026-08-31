@@ -47,23 +47,6 @@ TEST(MQTTConnectionPolicy, NtpRetryDeadlineHandlesZeroSentinelAtRollover) {
   EXPECT_TRUE(Policy::ntpRefreshDue(1U, 0U, retry_at));
 }
 
-TEST(MQTTConnectionPolicy, NtpReconnectRefreshDiscardsOldDeadlineSafely) {
-  EXPECT_EQ(1U, Policy::ntpReconnectRefreshAt(0U));
-  EXPECT_FALSE(Policy::ntpRefreshDue(
-      0U, Policy::kNtpRefreshIntervalMs - 1U,
-      Policy::ntpReconnectRefreshAt(0U)));
-  EXPECT_TRUE(Policy::ntpRefreshDue(
-      1U, Policy::kNtpRefreshIntervalMs - 1U,
-      Policy::ntpReconnectRefreshAt(0U)));
-
-  const uint32_t reconnected_at = 123456U;
-  EXPECT_EQ(reconnected_at,
-            Policy::ntpReconnectRefreshAt(reconnected_at));
-  EXPECT_TRUE(Policy::ntpRefreshDue(
-      reconnected_at, reconnected_at - 1000U,
-      Policy::ntpReconnectRefreshAt(reconnected_at)));
-}
-
 TEST(MQTTConnectionPolicy, NtpReconnectLatchPreservesEdgesUntilConnected) {
   Policy::NtpReconnectLatch latch;
 

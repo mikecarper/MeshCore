@@ -1,0 +1,20 @@
+[Unit]
+Description=MeshCore root clock-control service
+Requires=meshcore-clock-control.socket
+After=meshcore-clock-control.socket
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/sbin/meshcore-clock-control --service-user mctomqtt --service-group mctomqtt
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectClock=no
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_SYS_TIME
+AmbientCapabilities=CAP_SYS_TIME
+UMask=0077

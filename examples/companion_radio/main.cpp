@@ -67,10 +67,16 @@ MultiSerialInterface interface_manager;
     #include <helpers/CLICommandUtils.h>
     #include <helpers/WiFiReconnectPolicy.h>
     #include <helpers/WiFiPowerSave.h>
+    #include <helpers/CompanionWiFiNtpPolicy.h>
     #include <helpers/ui/DisplayTextLayout.h>
+    #include <helpers/ui/IndicatorRenderProfile.h>
+    #include <helpers/esp32/SntpOperationCoordinator.h>
+    #include <helpers/esp32/TlsClockValidity.h>
     #include <helpers/esp32/WiFiRadioPolicy.h>
     #include <helpers/esp32/WiFiStationPolicy.h>
     #include <Preferences.h>
+    #include <atomic>
+    #include <esp_sntp.h>
     #include <esp_wifi.h>
     SerialWifiInterface wifi_interface;
     #ifndef WIFI_PWD
@@ -817,8 +823,215 @@ void halt() {
   static bool companion_wifi_power_save_loaded = false;
   static uint8_t companion_wifi_power_save = mesh::wifi::kDefaultPowerSave;
 
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  static CompanionTransportMode companion_transport_boot_mode =
+      CompanionTransportMode::WiFi;
+  static bool companion_transport_boot_mode_loaded = false;
+
+  CompanionTransportMode getCompanionTransportMode() {
+    return the_mesh.getNodePrefs()->wifi_enabled != 0
+        ? CompanionTransportMode::WiFi
+        : CompanionTransportMode::Bluetooth;
+  }
+
+  bool selectCompanionTransportMode(CompanionTransportMode mode) {
+    if (mode != CompanionTransportMode::Bluetooth
+        && mode != CompanionTransportMode::WiFi) {
+      return false;
+    }
+
+    CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
+    const uint8_t previous = prefs->wifi_enabled;
+    const uint8_t selected = mode == CompanionTransportMode::WiFi ? 1 : 0;
+    if (previous == selected) return true;
+
+    prefs->wifi_enabled = selected;
+    if (the_mesh.savePrefs()) return true;
+    prefs->wifi_enabled = previous;
+    return false;
+  }
+
+  static bool companionTransportWiFiActiveAtBoot() {
+    return companion_transport_boot_mode == CompanionTransportMode::WiFi;
+  }
+
+  static void loadCompanionTransportModeForBoot() {
+    companion_transport_boot_mode = getCompanionTransportMode();
+    companion_transport_boot_mode_loaded = true;
+    companion_wifi_requested = companionTransportWiFiActiveAtBoot();
+    mesh::usbLoggingPort().printf(
+        "Companion transport: exclusive %s selected for this boot\r\n",
+        companion_wifi_requested ? "WiFi" : "Bluetooth");
+  }
+
+  static void releaseCompanionBluetoothMemoryForWiFi() {
+    const esp_err_t result = esp_bt_mem_release(ESP_BT_MODE_BTDM);
+    if (result == ESP_OK) {
+      mesh::usbLoggingPort().println(
+          "Companion transport: released Bluetooth memory for exclusive WiFi mode");
+    } else {
+      mesh::usbLoggingPort().printf(
+          "Companion transport: Bluetooth memory release failed: %s\r\n",
+          esp_err_to_name(result));
+    }
+  }
+#endif
+
+  static constexpr uint32_t COMPANION_WIFI_NTP_TIMEOUT_MS = 15000UL;
+  static mesh::wifi::CompanionWiFiNtpPolicy companion_wifi_ntp_policy;
+  static std::atomic<uint32_t> companion_wifi_ntp_operation_generation{0};
+  static std::atomic<uint32_t> companion_wifi_ntp_proof_generation{0};
+  static std::atomic<uint32_t> companion_wifi_ntp_epoch{0};
+  static std::atomic<uint32_t> companion_wifi_ntp_proven_at{0};
+  static bool companion_wifi_ntp_pending = false;
+  static uint32_t companion_wifi_ntp_started = 0;
+  static uint32_t companion_wifi_ntp_previous_epoch = 0;
+
+  static void clearCompanionWiFiNtpCallback() {
+    companion_wifi_ntp_operation_generation.store(
+        0, std::memory_order_release);
+    esp_sntp_set_time_sync_notification_cb(nullptr);
+    // The policy below owns the cadence. Leave no SDK-default (three-hour in
+    // the current ESP32 toolchain) background poll running between the boot
+    // request and the explicit 24-hour refresh.
+    esp_sntp_stop();
+  }
+
+  static mesh::sntp_coord::OperationLease companion_wifi_ntp_operation(
+      mesh::sntp_coord::processWideCoordinator(),
+      clearCompanionWiFiNtpCallback);
+
+  static void noteCompanionWiFiNtpTime(struct timeval* value) {
+    const uint32_t generation =
+        companion_wifi_ntp_operation_generation.load(
+            std::memory_order_acquire);
+    if (!mesh::sntp_coord::processWideCoordinator().owns(generation)) return;
+    if (value == nullptr || !mesh::tls_clock::timeIsValid(value->tv_sec)
+        || static_cast<uint64_t>(value->tv_sec) > UINT32_MAX) {
+      return;
+    }
+    companion_wifi_ntp_epoch.store(
+        static_cast<uint32_t>(value->tv_sec), std::memory_order_release);
+    companion_wifi_ntp_proven_at.store(millis(), std::memory_order_release);
+    companion_wifi_ntp_proof_generation.store(
+        generation, std::memory_order_release);
+  }
+
+  static bool companionWiFiMqttOwnsNtp() {
+#ifdef WITH_MQTT_BRIDGE
+    const bool running = the_mesh.isMQTTRunning();
+    if (running && the_mesh.hasFreshMQTTNtpThisBoot()) {
+      the_mesh.noteInternetClockSet();
+    }
+    return running;
+#else
+    return false;
+#endif
+  }
+
+  static void cancelCompanionWiFiNtp(bool retry_on_reconnect) {
+    if (!companion_wifi_ntp_pending) return;
+    companion_wifi_ntp_pending = false;
+    companion_wifi_ntp_operation.release();
+    if (retry_on_reconnect) companion_wifi_ntp_policy.requestNow();
+  }
+
+  static void serviceCompanionWiFiNtp() {
+    // Configured MQTT builds already perform a fresh startup NTP sync and a
+    // daily refresh. The common Companion owner covers every non-MQTT or
+    // runtime-unconfigured WiFi node without racing MQTT's SNTP proof.
+    if (companionWiFiMqttOwnsNtp()) {
+      cancelCompanionWiFiNtp(false);
+      companion_wifi_ntp_policy.requestNow();
+      return;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+      cancelCompanionWiFiNtp(true);
+      return;
+    }
+
+    const uint32_t now = millis();
+    if (companion_wifi_ntp_pending) {
+      const uint32_t proof_epoch = companion_wifi_ntp_epoch.load(
+          std::memory_order_acquire);
+      const uint32_t proof_generation =
+          companion_wifi_ntp_proof_generation.load(
+              std::memory_order_acquire);
+      const uint32_t proven_at = companion_wifi_ntp_proven_at.load(
+          std::memory_order_acquire);
+      if (proof_epoch != 0 && companion_wifi_ntp_operation.owns()
+          && proof_generation == companion_wifi_ntp_operation.generation()
+          && proven_at - companion_wifi_ntp_started <=
+              COMPANION_WIFI_NTP_TIMEOUT_MS) {
+        // The callback's epoch is freshness proof, not the value to install:
+        // the main loop may consume it one or more seconds later. Copy the
+        // current ESP system clock so an external RTC is not immediately
+        // written behind the time that SNTP established.
+        const time_t raw_system_time = time(nullptr);
+        if (mesh::tls_clock::timeIsValid(raw_system_time)
+            && static_cast<uint64_t>(raw_system_time) <= UINT32_MAX) {
+          const uint32_t epoch = static_cast<uint32_t>(raw_system_time);
+          const bool moved_backward =
+              epoch < companion_wifi_ntp_previous_epoch;
+          rtc_clock.setCurrentTime(epoch);
+          if (moved_backward) rtc_clock.resetUniqueTime(epoch);
+          the_mesh.noteInternetClockSet();
+
+          const int64_t adjustment = static_cast<int64_t>(epoch)
+              - static_cast<int64_t>(companion_wifi_ntp_previous_epoch);
+          mesh::usbLoggingPort().printf(
+              "Companion WiFi NTP: clock synchronized (%lu, adjustment %+lld seconds)\r\n",
+              (unsigned long)epoch, (long long)adjustment);
+          companion_wifi_ntp_pending = false;
+          companion_wifi_ntp_operation.release();
+          companion_wifi_ntp_policy.noteSuccess(now);
+          return;
+        }
+      }
+
+      if (now - companion_wifi_ntp_started >=
+          COMPANION_WIFI_NTP_TIMEOUT_MS) {
+        mesh::usbLoggingPort().println(
+            "Companion WiFi NTP: timed out; retrying in 5 minutes");
+        companion_wifi_ntp_pending = false;
+        companion_wifi_ntp_operation.release();
+        companion_wifi_ntp_policy.noteFailure(now);
+      }
+      return;
+    }
+
+    if (!companion_wifi_ntp_policy.attemptDue(now)) return;
+    if (!companion_wifi_ntp_operation.tryAcquire()) {
+      companion_wifi_ntp_policy.noteBusy(now);
+      return;
+    }
+
+    companion_wifi_ntp_epoch.store(0, std::memory_order_release);
+    companion_wifi_ntp_proven_at.store(0, std::memory_order_release);
+    companion_wifi_ntp_proof_generation.store(0, std::memory_order_release);
+    companion_wifi_ntp_operation_generation.store(
+        companion_wifi_ntp_operation.generation(),
+        std::memory_order_release);
+    companion_wifi_ntp_started = now;
+    companion_wifi_ntp_previous_epoch = rtc_clock.getCurrentTime();
+    companion_wifi_ntp_pending = true;
+    esp_sntp_set_time_sync_notification_cb(noteCompanionWiFiNtpTime);
+    esp_sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
+    configTime(0, 0, "time.cloudflare.com", "time.google.com",
+               "pool.ntp.org");
+    mesh::usbLoggingPort().println(
+        "Companion WiFi NTP: requesting fresh UTC time");
+  }
+
   static bool companionWiFiBluetoothActive() {
-#if defined(BLE_PIN_CODE)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    const CompanionTransportMode active_mode =
+        companion_transport_boot_mode_loaded
+            ? companion_transport_boot_mode
+            : getCompanionTransportMode();
+    return active_mode == CompanionTransportMode::Bluetooth;
+#elif defined(BLE_PIN_CODE)
     return true;
 #else
     return false;
@@ -932,6 +1145,22 @@ void halt() {
   }
 
   bool toggleCompanionWiFi() {
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    const CompanionTransportMode current = getCompanionTransportMode();
+    const CompanionTransportMode selected =
+        current == CompanionTransportMode::WiFi
+            ? CompanionTransportMode::Bluetooth
+            : CompanionTransportMode::WiFi;
+    if (!selectCompanionTransportMode(selected)) {
+      WIFI_DEBUG_PRINTLN(
+          "Companion transport selection could not be saved");
+      return current == CompanionTransportMode::WiFi;
+    }
+    WIFI_DEBUG_PRINTLN(
+        "Companion transport %s saved; reboot required",
+        selected == CompanionTransportMode::WiFi ? "WiFi" : "Bluetooth");
+    return selected == CompanionTransportMode::WiFi;
+#else
     companion_wifi_requested = !companion_wifi_requested;
     the_mesh.getNodePrefs()->wifi_enabled = companion_wifi_requested ? 1 : 0;
     the_mesh.savePrefs();
@@ -941,6 +1170,7 @@ void halt() {
     WIFI_DEBUG_PRINTLN("BOOT/GPIO 0 click requested WiFi %s",
                        companion_wifi_requested ? "on" : "off");
     return companion_wifi_requested;
+#endif
   }
 
   #if defined(WITH_WEBCONFIG) && defined(DISPLAY_CLASS)
@@ -1330,6 +1560,7 @@ void halt() {
   }
 
   static bool finishStoppingCompanionWiFi() {
+    cancelCompanionWiFiNtp(false);
     stopCompanionWiFiServices();
 #ifdef WITH_WEBCONFIG
     if (the_mesh.isWebConfigActiveOrStopping()) {
@@ -1570,7 +1801,36 @@ void setup() {
   // platforms have no separate port, so this is a harmless no-op there.
   mesh::beginUsbLoggingPort();
 
-// Load WiFi state before bringing up either wireless stack.
+// Lock the saved transport selection before bringing up either wireless stack.
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  loadCompanionTransportModeForBoot();
+  if (companionTransportWiFiActiveAtBoot()) {
+    // This boot will never initialize Bluetooth. Reclaim both the controller
+    // and host allocations before WiFi starts; the release is irreversible
+    // until reboot, which is why transport changes are next-boot-only.
+    releaseCompanionBluetoothMemoryForWiFi();
+  }
+#if defined(INDICATOR_TRANSPORT_RENDER_PROFILE) && defined(DISPLAY_CLASS)
+  if (disp != nullptr) {
+    const mesh::ui::IndicatorRenderProfile render_profile =
+        mesh::ui::selectIndicatorRenderProfile(
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+            true,
+#else
+            false,
+#endif
+            companionTransportWiFiActiveAtBoot());
+    const bool selected = disp->setRenderScale(
+        render_profile.coordinate_scale, render_profile.output_zoom);
+    mesh::usbLoggingPort().printf(
+        "Indicator render: %dx%d internal canvas%s\r\n",
+        disp->renderWidth(), disp->renderHeight(),
+        selected ? "" : " (requested profile unavailable; restored fallback)");
+  }
+#endif
+#endif
+
+// Load WiFi credentials without starting the radio.
 #ifdef WIFI_SSID
   loadCompanionWiFiCredentials();
 #endif
@@ -1579,15 +1839,21 @@ void setup() {
   logFullCompanionMemory("before interfaces");
 #endif
 
-// NimBLE must reserve its internal controller/host memory before WiFi starts
-// its AP and WebConfig services. Starting WiFi first can leave plenty of total
-// heap but no internal block large enough for nimble_port_init().
+// Generic WiFi+BLE builds reserve NimBLE first. The Indicator exclusive
+// profile instead starts Bluetooth only when it was selected for this boot.
 #if defined(BLE_PIN_CODE) && defined(ESP32) && defined(WIFI_SSID)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (!companionTransportWiFiActiveAtBoot()) startCompanionBluetooth();
+#else
   startCompanionBluetooth();
+#endif
 #endif
 
 // add wifi interface
 #ifdef WIFI_SSID
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (companionTransportWiFiActiveAtBoot()) {
+#endif
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
       if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
@@ -1619,7 +1885,9 @@ void setup() {
   });
 
   interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+#if !defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   companion_wifi_requested = the_mesh.getNodePrefs()->wifi_enabled != 0;
+#endif
   if (companion_wifi_requested) {
     startCompanionWiFi();
   } else {
@@ -1627,6 +1895,9 @@ void setup() {
     board.setInhibitSleep(false);
     WIFI_DEBUG_PRINTLN("WiFi remains off from the saved BOOT/GPIO 0 setting");
   }
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  }
+#endif
 #endif
 
 #if defined(ESP32_PLATFORM) && COMPANION_FEATURE_MEMORY_DIAGNOSTICS
@@ -1937,10 +2208,19 @@ void loop() {
   }
 #ifdef WITH_MQTT_BRIDGE
   the_mesh.serviceMQTT(configured_wifi_ssid, configured_wifi_password);
+  serviceCompanionWiFiNtp();
+#else
+  serviceCompanionWiFiNtp();
 #endif
   }
 #endif
 #if defined(BLE_PIN_CODE)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (!companionTransportWiFiActiveAtBoot()) {
+    serviceDeferredCompanionBluetooth();
+  }
+#else
   serviceDeferredCompanionBluetooth();
+#endif
 #endif
 }

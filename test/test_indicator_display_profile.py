@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+import struct
 from pathlib import Path
 import unittest
 
@@ -8,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "variants" / "sensecap_indicator-espnow" / "platformio.ini"
 DISPLAY = ROOT / "src" / "helpers" / "ui" / "LGFXDisplay.cpp"
+FONT = ROOT / "variants" / "sensecap_indicator-espnow" / "sd" / "ui-font.vlw"
 
 
 def base_profile() -> str:
@@ -60,6 +62,72 @@ class IndicatorDisplayProfileTest(unittest.TestCase):
         self.assertEqual(canvas_bytes, 51_200)
         self.assertGreaterEqual(old_canvas_bytes - canvas_bytes, 64_000)
         self.assertIn("buffer.setPsram(false);", DISPLAY.read_text())
+
+    def test_uses_dedicated_pairing_block(self):
+        self.assertIn("-D UI_DEDICATED_PAIRING_BLOCK=1", base_profile())
+
+        logical_height = 160
+        block_height = 48
+        block_center = logical_height * 4 // 5
+        block_top = block_center - block_height // 2
+        info_top = 40
+        info_bottom = block_top - 12
+
+        self.assertEqual(block_center, 128)
+        self.assertEqual(block_top, 104)
+        self.assertLess(info_top, info_bottom)
+        self.assertLessEqual(info_bottom + 12, block_top)
+
+    def test_recovered_font_pairing_values_fit_reserved_block(self):
+        data = FONT.read_bytes()
+        glyph_count = struct.unpack_from(">I", data, 0)[0]
+        advances = {}
+        heights = {}
+        for index in range(glyph_count):
+            offset = 24 + index * 28
+            codepoint, height, _width, advance = struct.unpack_from(
+                ">IIII", data, offset
+            )
+            advances[codepoint] = advance
+            heights[codepoint] = height
+
+        footer = data[-40:]
+        self.assertEqual(b"MCEMAP2\0", footer[:8])
+        atlas_offset = struct.unpack_from("<I", footer, 20)[0]
+        native_scale = data[atlas_offset + 9]
+        coordinate_scale = 2
+
+        def dimensions(text, requested_size, coordinate_scale=2,
+                       profile_scale=1.0):
+            render_scale = (
+                requested_size * coordinate_scale / native_scale
+                * profile_scale
+            )
+            width = sum(advances[ord(char)] for char in text)
+            height = max(heights[ord(char)] for char in text)
+            return (
+                int((width * render_scale + coordinate_scale - 1)
+                    // coordinate_scale),
+                int((height * render_scale + coordinate_scale - 1)
+                    // coordinate_scale),
+            )
+
+        self.assertEqual((108, 24), dimensions("123456", 3))
+        self.assertEqual((108, 16), dimensions("CONNECTED", 2))
+        for width, height in (
+            dimensions("123456", 3), dimensions("CONNECTED", 2)
+        ):
+            self.assertLessEqual(width, 144)
+            self.assertLessEqual(height, 24)
+
+        # This continuous-scale model rounds outward and is deliberately a
+        # conservative fit bound; LovyanGFX applies fixed-point rounding while
+        # laying out individual glyphs.
+        native_pin = dimensions("123456", 3, 3, 1.2)
+        native_connected = dimensions("CONNECTED", 2, 3, 1.2)
+        for width, height in (native_pin, native_connected):
+            self.assertLessEqual(width, 144)
+            self.assertLessEqual(height, 30)
 
 
 if __name__ == "__main__":

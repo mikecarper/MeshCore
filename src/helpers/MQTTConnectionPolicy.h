@@ -52,17 +52,11 @@ static inline uint32_t ntpRetryAt(uint32_t now) {
   return retry_at == 0 ? 1 : retry_at;
 }
 
-static inline uint32_t ntpReconnectRefreshAt(uint32_t now) {
-  // Reconnection invalidates any old short deadline. Schedule the refresh for
-  // the current task loop while preserving zero as the unscheduled sentinel.
-  return now == 0 ? 1 : now;
-}
-
 // WiFi events can run on a different task from MQTT maintenance. Keep the
 // callback to a single atomic edge latch: the MQTT task consumes the edge only
 // after WiFi is connected and makes every clock/scheduler decision itself.
-// Coalescing multiple GOT_IP events is intentional; one fresh sample after the
-// latest reconnect is sufficient.
+// Coalescing multiple GOT_IP events is intentional. Once the boot sync has
+// succeeded, reconnects leave the explicit 24-hour deadline unchanged.
 class NtpReconnectLatch {
 public:
   NtpReconnectLatch() : _pending(false) {}

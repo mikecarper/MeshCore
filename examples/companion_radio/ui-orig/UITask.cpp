@@ -1,6 +1,7 @@
 #include "UITask.h"
 #include <Arduino.h>
 #include <helpers/TxtDataHelpers.h>
+#include <helpers/ui/BluetoothPairingUiPolicy.h>
 #include "../MyMesh.h"
 
 #define AUTO_OFF_MILLIS     15000   // 15 seconds
@@ -287,11 +288,14 @@ void UITask::renderCurrScreen() {
     _display->print(tmp);
 
     // BT pin
-    if (!hasBluetoothConnection() && the_mesh.getBLEPin() != 0) {
+    const bool bluetooth_connected = hasBluetoothConnection();
+    const uint32_t bluetooth_pin = the_mesh.getBLEPin();
+    if (mesh::ui::shouldDisplayBluetoothPairingPin(
+            isBluetoothEnabled(), bluetooth_connected, bluetooth_pin)) {
       _display->setColor(UIColor::warning_txt);
       _display->setTextSize(2);
       _display->setCursor(0, 43);
-      sprintf(tmp, "Pin:%d", the_mesh.getBLEPin());
+      sprintf(tmp, "Pin:%u", (unsigned int)bluetooth_pin);
       _display->print(tmp);
       _display->setColor(UIColor::primary_txt);
     } else {
@@ -459,12 +463,15 @@ void UITask::shutdown(bool restart){
 }
 
 bool UITask::isPairingScreenActive() const {
-  return _pairing_screen_until != 0
-      && !hasBluetoothConnection()
-      && static_cast<int32_t>(millis() - _pairing_screen_until) < 0;
+  return mesh::ui::isBluetoothPairingPromptActive(
+      isBluetoothEnabled(), hasBluetoothConnection(),
+      static_cast<uint32_t>(_pairing_screen_until),
+      static_cast<uint32_t>(millis()));
 }
 
 void UITask::showPairingPin() {
+  if (!isBluetoothEnabled()) return;
+
   const unsigned long now = millis();
   _pairing_screen_until = now + BLE_PAIRING_DISPLAY_MILLIS;
   _need_refresh = true;
@@ -494,7 +501,7 @@ void UITask::loop() {
 
   if (_pairing_screen_until != 0) {
     const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
-    if (hasBluetoothConnection() || timed_out) {
+    if (!isPairingScreenActive()) {
       finishPairingScreen(timed_out);
     }
   }

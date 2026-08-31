@@ -14,6 +14,14 @@ local = source[local_start:local_end]
 
 assert local.count('strcmp(command, "board") == 0') == 1
 assert 'board.getManufacturerName()' in local
+assert local.count('strcmp(command, "version") == 0') == 1
+assert re.search(
+    r'if \(strcmp\(command, "version"\) == 0\).*?'
+    r'"Companion %s \(protocol %u, build %s\)".*?'
+    r'FIRMWARE_VERSION.*?FIRMWARE_VER_CODE.*?FIRMWARE_BUILD_DATE',
+    local,
+    re.DOTALL,
+)
 assert re.search(
     r"#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS\s+"
     r'if \(strcmp\(command, "memory"\) == 0\).*?'
@@ -40,6 +48,7 @@ assert terminal.index("handleLocalControlCommand(") < terminal.index(
     'strncmp(command, "set ", 4) == 0'
 )
 assert 'terminalOutput().print("  board\\r\\n")' in terminal
+assert 'terminalOutput().print("  version\\r\\n")' in terminal
 assert 'terminalOutput().print("  set pin <0-999999>\\r\\n")' in terminal
 assert re.search(
     r"#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS\s+"

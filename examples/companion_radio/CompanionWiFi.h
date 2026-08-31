@@ -2,7 +2,25 @@
 
 #include <stdint.h>
 
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE) \
+    && !(defined(ESP32) && defined(WIFI_SSID) && defined(BLE_PIN_CODE))
+#error "COMPANION_EXCLUSIVE_WIFI_BLE requires ESP32, WIFI_SSID, and BLE_PIN_CODE"
+#endif
+
 #if defined(ESP32) && defined(WIFI_SSID)
+
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+enum class CompanionTransportMode : uint8_t {
+  Bluetooth,
+  WiFi,
+};
+
+// The selected transport is persisted immediately but is deliberately applied
+// only on the next boot. This keeps Bluetooth memory release irreversible only
+// within the boot that selected exclusive WiFi.
+CompanionTransportMode getCompanionTransportMode();
+bool selectCompanionTransportMode(CompanionTransportMode mode);
+#endif
 
 enum class CompanionWiFiPowerSaveResult : uint8_t {
   Applied,

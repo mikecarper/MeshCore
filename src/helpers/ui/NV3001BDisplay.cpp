@@ -1,4 +1,5 @@
 #include "NV3001BDisplay.h"
+#include "ColorTheme.h"
 #include <Arduino.h>
 #include <string.h>
 
@@ -97,15 +98,15 @@
 #endif
 
 // Color scheme
-ColorVal UIColor::window_bkg = 0xFFFF;
-ColorVal UIColor::title_bkg = 0x001F;
-ColorVal UIColor::title_txt = 0xFFFF;
-ColorVal UIColor::primary_txt = 0x0000;
-ColorVal UIColor::secondary_txt = (18 << 11) | (36 << 5) | 18;  // mid-gray
-ColorVal UIColor::warning_txt = 0xFD20;
-ColorVal UIColor::popup_bkg =  0x07FF;  // CYAN
-ColorVal UIColor::popup_txt = 0x0000;
-ColorVal UIColor::corp_blue = 0x001A;
+ColorVal UIColor::window_bkg = mesh::ui::color_theme::WINDOW_BACKGROUND;
+ColorVal UIColor::title_bkg = mesh::ui::color_theme::TITLE_BACKGROUND;
+ColorVal UIColor::title_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::primary_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::secondary_txt = mesh::ui::color_theme::SECONDARY_TEXT;
+ColorVal UIColor::warning_txt = mesh::ui::color_theme::WARNING_TEXT;
+ColorVal UIColor::popup_bkg = mesh::ui::color_theme::POPUP_BACKGROUND;
+ColorVal UIColor::popup_txt = mesh::ui::color_theme::TEXT;
+ColorVal UIColor::corp_blue = mesh::ui::color_theme::ACCENT;
 
 static int scaleX(int x) {
   return (int)(x * DISPLAY_SCALE_X);

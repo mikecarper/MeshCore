@@ -176,6 +176,7 @@ class TlsDownloadClockGateTest(unittest.TestCase):
         )
 
     def test_every_mqtt_sntp_mutation_is_coordinator_leased(self):
+        header = source(MQTT_BRIDGE)
         implementation = source(MQTT_BRIDGE_IMPL)
         refresh = section(
             implementation,
@@ -189,7 +190,7 @@ class TlsDownloadClockGateTest(unittest.TestCase):
         )
 
         self.assertIn("SntpOperationCoordinator.h", implementation)
-        self.assertEqual(len(re.findall(r"(?m)^\s*configTime\(", implementation)), 3)
+        self.assertEqual(len(re.findall(r"(?m)^\s*configTime\(", implementation)), 2)
         self.assertEqual(
             len(re.findall(r"(?m)^\s*sntp_set_sync_status\(", implementation)),
             2,
@@ -198,12 +199,39 @@ class TlsDownloadClockGateTest(unittest.TestCase):
             len(re.findall(r"sntp_get_sync_status\(", implementation)),
             2,
         )
+        self.assertNotIn("esp_sntp_set_sync_interval(", implementation)
+        self.assertIn("OperationLease _ntp_refresh_operation", header)
+        cleanup = section(
+            implementation,
+            "static void stopMqttSntpOperation()",
+            "static void formatRadioInfo",
+        )
+        self.assertIn("esp_sntp_stop();", cleanup)
+        self.assertIn(
+            "_ntp_refresh_operation(mesh::sntp_coord::processWideCoordinator(),",
+            implementation,
+        )
+        self.assertIn("stopMqttSntpOperation)", implementation)
 
-        refresh_lease = refresh.index("OperationLease sntp_operation")
-        refresh_acquire = refresh.index("if (!sntp_operation.tryAcquire())")
+        refresh_acquire = refresh.index(
+            "if (!_ntp_refresh_operation.tryAcquire())"
+        )
         refresh_configure = refresh.index("configTime(")
-        self.assertLess(refresh_lease, refresh_acquire)
         self.assertLess(refresh_acquire, refresh_configure)
+        poll = section(
+            implementation,
+            "void MQTTBridge::pollNtpRefresh",
+            "bool MQTTBridge::syncTimeWithNTP",
+        )
+        owns = poll.index("_ntp_refresh_operation.owns()")
+        completed = poll.index("SNTP_SYNC_STATUS_COMPLETED", owns)
+        self.assertLess(owns, completed)
+        cancel = section(
+            implementation,
+            "void MQTTBridge::cancelNtpRefresh()",
+            "bool MQTTBridge::servicePendingClockCorrection()",
+        )
+        self.assertIn("_ntp_refresh_operation.release()", cancel)
 
         fallback_start = sync.index(
             "// Fallback: use ESP32 built-in SNTP (configTime)"
@@ -221,18 +249,9 @@ class TlsDownloadClockGateTest(unittest.TestCase):
         self.assertLess(fallback_acquire, reset)
         self.assertLess(reset, configure)
         self.assertLess(configure, completed)
-
-        final_rearm = section(
-            sync,
-            "if (ntp_server_used && !sntp_fallback_configured)",
-            "if (_rtc)",
+        self.assertEqual(
+            len(re.findall(r"(?m)^\s*configTime\(", sync)), 1
         )
-        final_lease = final_rearm.index("OperationLease sntp_operation")
-        final_acquire = final_rearm.index("if (sntp_operation.tryAcquire())")
-        final_configure = final_rearm.index("configTime(0, 0, ntp_server_used)")
-        self.assertLess(final_lease, final_acquire)
-        self.assertLess(final_acquire, final_configure)
-        self.assertIn("else if (sntp_fallback_configured)", final_rearm)
 
     def test_mqtt_async_sntp_contention_uses_a_wrap_safe_bounded_retry(self):
         header = source(MQTT_BRIDGE)
@@ -254,15 +273,10 @@ class TlsDownloadClockGateTest(unittest.TestCase):
         self.assertIn(
             "elapsedMs(now, last_sync) >= kNtpRefreshIntervalMs", policy
         )
-        self.assertIn("ntpReconnectRefreshAt", policy)
-        self.assertEqual(
-            implementation.count(
-                "MQTTConnectionPolicy::ntpReconnectRefreshAt("
-            ),
-            2,
-        )
+        self.assertNotIn("ntpReconnectRefreshAt", policy)
+        self.assertNotIn("ntpReconnectRefreshAt", implementation)
         self.assertGreaterEqual(implementation.count("mqttNtpRefreshDue("), 4)
-        busy = refresh.index("if (!sntp_operation.tryAcquire())")
+        busy = refresh.index("if (!_ntp_refresh_operation.tryAcquire())")
         retry = refresh.index("mqttNtpRetryAt(now)", busy)
         leave = refresh.index("return;", retry)
         configure = refresh.index(
@@ -278,14 +292,9 @@ class TlsDownloadClockGateTest(unittest.TestCase):
             "bool MQTTBridge::syncTimeWithNTP",
             "bool MQTTBridge::requestForcedNtpSync",
         )
-        final_rearm = section(
-            sync,
-            "if (ntp_server_used && !sntp_fallback_configured)",
-            "if (_rtc)",
-        )
         self.assertIn(
-            "_ntp_refresh_retry_at = mqttNtpRetryAt(millis())",
-            final_rearm,
+            "fresh_ntp ? 0 : mqttNtpRetryAt(_last_ntp_sync)",
+            sync,
         )
 
     def test_mqtt_periodic_refresh_updates_rtc_only_after_sntp_completion(self):
@@ -305,6 +314,7 @@ class TlsDownloadClockGateTest(unittest.TestCase):
         self.assertIn("unsigned long _ntp_refresh_started_at", header)
         self.assertIn("bool _ntp_refresh_pending", header)
         self.assertIn("std::atomic<bool> _ntp_synced", header)
+        self.assertIn("OperationLease _ntp_refresh_operation", header)
         self.assertIn(
             "MQTTConnectionPolicy::NtpReconnectLatch "
             "_ntp_reconnect_latch",
@@ -338,6 +348,7 @@ class TlsDownloadClockGateTest(unittest.TestCase):
         self.assertLess(valid, rtc)
         self.assertLess(rtc, success)
         self.assertEqual(poll.count("_last_ntp_sync ="), 1)
+        self.assertIn("_ntp_refresh_operation.owns()", poll)
 
         timeout = poll.index("elapsed >= MQTT_NTP_REFRESH_TIMEOUT_MS")
         retry = poll.index("mqttNtpRetryAt(now)", timeout)
@@ -364,6 +375,7 @@ class TlsDownloadClockGateTest(unittest.TestCase):
             "_ntp_reconnect_latch.consumeIfConnected(wifi_connected)"
         )
         self.assertLess(connected, consume)
+        self.assertNotIn("ntpReconnectRefreshAt", task_loop)
         begin = section(
             implementation,
             "void MQTTBridge::begin()",

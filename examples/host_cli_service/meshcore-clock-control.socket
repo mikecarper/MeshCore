@@ -1,0 +1,14 @@
+[Unit]
+Description=MeshCore root clock-control socket
+
+[Socket]
+ListenStream=/run/meshcore-clock-control.sock
+FileDescriptorName=clock-control
+SocketUser=root
+SocketGroup=mctomqtt
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

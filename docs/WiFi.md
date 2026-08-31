@@ -196,11 +196,15 @@ A `*_companion_radio_wifi` build replaces the BLE or USB companion link with
 the MeshCore companion protocol over TCP port 5000. The phone or computer must
 be able to reach the device on the same LAN.
 
-An ESP32 `*_companion_radio_full` target keeps all three Companion links at
-once: USB, BLE, and TCP port 5000. It also provides a source-only LoRa mOTA
-service on ports 5001 and 5002. See the
-[full Companion guide](./companion_radio_full.md) for its build, terminal mode,
-and complete update-source workflow.
+Most ESP32 `*_companion_radio_full` targets keep all three Companion links at
+once: USB, BLE, and TCP port 5000. The two SenseCAP Indicator Full targets are
+the exception: USB remains available, while a saved next-boot selector starts
+exactly one secondary wireless Companion transport, either BLE or
+infrastructure WiFi/TCP. On the ESP-NOW Indicator, this selector never stops the
+primary ESP-NOW mesh radio. Full ESP32 images also provide a source-only LoRa
+mOTA service on ports 5001 and 5002 whenever their WiFi transport is active.
+See the [full Companion guide](./companion_radio_full.md) for its build,
+terminal mode, and complete update-source workflow.
 
 The LilyGo T-Beam 1W Full Companion maps one press of the physical `BOOT` button
 (GPIO0) to a persistent WiFi on/off toggle. Turning WiFi off closes WebConfig,
@@ -231,6 +235,18 @@ password as it is entered; `get wifi.pwd` is intentionally unavailable. The
 standalone credential store accepts an empty password, ordinary passphrases up
 to 63 characters, or an exact 64-character hexadecimal WPA/WPA2 PSK. A
 non-hexadecimal 64-character value and every longer value are rejected.
+
+After the saved station first connects following boot, every ESP32 WiFi
+Companion requests a fresh UTC time from NTP. A verified reply updates both the
+MeshCore clock and any detected hardware RTC; the next explicit refresh is due
+24 hours after that success. A failed request times out without blocking the
+radio loop and retries after five minutes. While WiFi is disconnected or only
+the setup AP is available, the request waits for a station connection. Builds
+with a configured MQTT bridge use its boot-and-daily NTP owner instead, so two
+firmware services never reconfigure the ESP32 SNTP client at the same time. A
+later WiFi reconnect does not add another successful-sync request; it preserves
+the existing 24-hour deadline. Until a fresh internet reply succeeds, LoRa
+clock consensus remains available as the fallback.
 
 On Full Companion targets whose primary mesh radio is ESP-NOW, ESP-NOW, the
 setup AP, and the infrastructure-WiFi station must share one 2.4 GHz channel.
@@ -303,16 +319,20 @@ WiFi card in Companion WebConfig exposes `none`, `min`, and `max`. Fresh
 Cascade-profile builds select `min`; target-default builds select `none`.
 A saved setting takes precedence after an upgrade.
 
-WiFi-only Companions can use all three modes. Full Companion also runs BLE, so
-ESP32 WiFi/Bluetooth coexistence requires at least minimum modem sleep. It
-reports `min` when an old or target-default `none` value is found and rejects a
-new `none` selection while Bluetooth is compiled in. When ESP-NOW is also the
-Full Companion's primary mesh radio, `max` is unavailable: the access point does
-not buffer ESP-NOW broadcasts for a sleeping station, so maximum modem sleep can
-lose them. Firmware caps a previously saved `max` value to and reports it as
-`min`, and rejects a new `max` selection. Thus a WiFi/BLE/primary-ESP-NOW Full
-Companion uses `min`. Device power saving can still be turned on or off without
-changing the selected WiFi modem policy.
+WiFi-only Companions can use all three modes. A Full Companion that runs WiFi
+and BLE simultaneously requires at least minimum modem sleep. It reports `min`
+when an old or target-default `none` value is found and rejects a new `none`
+selection. When ESP-NOW is also the primary mesh radio, `max` is unavailable:
+the access point does not buffer ESP-NOW broadcasts for a sleeping station, so
+maximum modem sleep can lose them. Firmware caps a previously saved `max` value
+to and reports it as `min`, and rejects a new `max` selection.
+
+The SenseCAP Indicator Full targets select BLE or infrastructure WiFi instead
+of running both. On a WiFi-selected boot, the LoRa layout accepts
+`none|min|max`, while the ESP-NOW layout accepts `none|min` and still rejects
+`max`. On a BLE-selected boot infrastructure WiFi is off; the LoRa layout
+accepts `min|max` for the saved WiFi setting, while ESP-NOW + BLE requires
+`min`. Device power saving remains independent of this modem policy.
 
 WiFi companions do not have the repeater/room-server admin CLI password model,
 so their LAN WebConfig page is intentionally unauthenticated. Use them only on
@@ -547,13 +567,14 @@ reliability on busy nodes. A saved operator setting takes precedence on an
 upgrade. ESP32 WiFi Companions expose the same values in their WebConfig WiFi
 card and USB text terminal. Full Companion also accepts the text commands from
 TCP port 5002. The normal binary Companion protocol can read or write the
-setting over USB, BLE, or TCP port 5000 without entering terminal mode. Full
-Companion rejects `none` because its simultaneous BLE transport requires WiFi
-modem sleep. An ESP32 Full Companion whose primary mesh radio is ESP-NOW also
-rejects `max`; maximum
+setting over USB, BLE, or TCP port 5000 without entering terminal mode. A Full
+Companion that runs BLE and infrastructure WiFi simultaneously rejects `none`
+because coexistence requires WiFi modem sleep. An ESP32 Full Companion whose
+primary mesh radio is ESP-NOW also rejects `max`; maximum
 modem sleep can cause the station to miss ESP-NOW broadcasts because the access
 point does not buffer them. A previously saved `max` value is capped to and
-reported as `min`. Such a primary-ESP-NOW Full Companion therefore uses `min`.
+reported as `min`. The SenseCAP Indicator exception uses the active-mode rules
+above rather than assuming BLE and infrastructure WiFi are active together.
 ESP-NOW and
 infrastructure WiFi still must use the same fixed channel.
 

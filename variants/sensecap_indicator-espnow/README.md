@@ -1,11 +1,12 @@
 # SenseCAP Indicator controls
 
-The Indicator preserves the existing 160x160 UI coordinate system in a
-320x320, 4-bit internal canvas and scales it 1.5x onto the 480x480 panel. The
-canvas avoids PSRAM contention with RGB scanout while reserving enough internal
-RAM for Bluetooth and WiFi to operate together. The screen blanks after five
-minutes on USB power; the hardware button or a touch wakes it without selecting
-anything.
+The Indicator preserves the existing 160x160 UI coordinate system. Ordinary
+images use a 320x320, 4-bit internal canvas scaled 1.5x onto the 480x480 panel.
+Full Companion images first request a native 480x480 canvas, then normally
+shrink to 320x320 only for the tight ESP-NOW + BLE combination before Bluetooth
+starts. The canvas stays out of PSRAM to avoid contention with RGB scanout. The
+screen blanks after five minutes on USB power; the hardware button or a touch
+wakes it without selecting anything.
 
 ## Touch navigation
 
@@ -20,6 +21,15 @@ anything.
 
 The message preview is a non-destructive local inbox, newest first:
 
+- A seventh home page, immediately after the status page, shows the newest
+  retained message for each heard channel. Each two-line row contains the
+  channel name, rollover-safe relative age, and a one-line ellipsized message
+  preview. Direct messages are grouped by contact and labelled `Direct`.
+- The summary retains up to 32 received messages in RAM even after a connected
+  Companion drains its unread queue. The oldest history is overwritten and a
+  reboot starts with an empty list; messages are not written to flash.
+- Tap the center of the message-summary page to open the existing full message
+  view. Horizontal swipes continue to move among the seven home pages.
 - The first home page shows the retained local `INBOX` count, which remains
   useful when a USB host has already drained the protocol's unread count. Tap
   the center to open the inbox and channel selector even when the count is 0.
@@ -27,15 +37,18 @@ The message preview is a non-destructive local inbox, newest first:
 - Each preview retains the complete 160-byte maximum chat payload. Long UTF-8
   messages wrap through the available middle of the screen instead of being
   cut at the small-display 78-byte limit.
-- When a USB host drains the radio queue, the displayed preview is retained
-  for five minutes rather than disappearing immediately.
+- When a USB host drains the radio queue, the detailed message screen remains
+  visible for five minutes before returning home; its recent-message history
+  remains available from the summary page and inbox.
 - Swipe left for an older preview and right for a newer preview. Navigation
   stops at the oldest and newest entries instead of wrapping.
 - The bottom bar shows the active inbox filter. Its large `<` and `>` end
   buttons select the previous or next filter; swipe up or down does the same.
   Filters include `All channels`, `Direct`, and configured channels such as
   `Ch 1 #testing`. A newly received message automatically selects its source
-  channel.
+  channel. On the 480x480 Indicator, the full inbox's top status strip and
+  bottom selector use a compact 24-physical-pixel font; their visual heights
+  are 27 and 42 pixels while the forgiving arrow touch regions remain 120x120.
 - Tap the center to return home without deleting the previews.
 - On the first home page, tap the wide center target to reopen the previews,
   including when `INBOX` is zero.
@@ -78,6 +91,41 @@ unavailable. TCP port `5001` serves host-backed LoRa OTA files, while port
 accepts `get wifi.status`, `get wifi.ssid`, `get wifi.cli`, and
 `start webconfig ap`; enter it with `+++MESHCORE-TERM-START` and return to the
 framed Companion protocol with `+++MESHCORE-TERM-STOP`.
+
+### Full Companion transport selection
+
+Both Full Indicator layouts run exactly one secondary wireless Companion
+transport per boot. Select infrastructure WiFi or BLE from the Indicator UI,
+or use the USB/TCP text terminal:
+
+```text
+get companion.transport
+set companion.transport wifi
+set companion.transport ble
+```
+
+The getter replies `wifi` or `ble`. A setter saves the next-boot choice and
+replies that a reboot is required; it does not restart either radio in the
+current session. WiFi mode never initializes BLE and releases the ESP32
+Bluetooth controller and host memory. BLE mode does not start infrastructure
+WiFi, WebConfig, MQTT, OTA networking, or TCP Companion services. USB remains
+available in both modes for recovery.
+
+LoRa remains the primary radio in both LoRa modes. On the ESP-NOW layout,
+selecting BLE leaves the primary ESP-NOW WiFi radio and its fixed channel
+running; it disables only infrastructure WiFi. Rendering follows the memory
+cost of each combination:
+
+- LoRa + WiFi: targets a native 480x480 canvas.
+- LoRa + BLE: targets a native 480x480 canvas.
+- ESP-NOW + infrastructure WiFi: targets a native 480x480 canvas.
+- ESP-NOW + BLE: 320x320 canvas scaled 1.5x to the panel.
+
+If the early native allocation or a later profile retry cannot obtain a
+contiguous DMA-capable block, any mode requesting 480x480 keeps or restores the
+320x320 emergency canvas instead of disabling the display. The startup log
+reports the canvas actually retained; an emergency fallback does not change the
+saved Companion transport or stop the primary LoRa/ESP-NOW radio.
 
 If a Companion client does not supply device time over USB or WiFi, this build
 starts evaluating LoRa time after two minutes. It requires three independent,

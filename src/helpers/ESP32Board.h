@@ -263,8 +263,12 @@ public:
   }
 };
 
-static RTC_NOINIT_ATTR uint32_t _rtc_backup_time;
-static RTC_NOINIT_ATTR uint32_t _rtc_backup_magic;
+namespace mesh {
+namespace esp32_clock {
+extern uint32_t rtc_backup_time;
+extern uint32_t rtc_backup_magic;
+}  // namespace esp32_clock
+}  // namespace mesh
 #define RTC_BACKUP_MAGIC  0xAA55CC33
 #define RTC_TIME_MIN      1772323200  // 1 Mar 2026
 
@@ -279,8 +283,9 @@ public:
     // All other resets (power-on, crash, WDT, brownout) lose system time.
     // Restore from RTC backup if valid, otherwise use hardcoded seed.
     struct timeval tv;
-    if (_rtc_backup_magic == RTC_BACKUP_MAGIC && _rtc_backup_time > RTC_TIME_MIN) {
-      tv.tv_sec = _rtc_backup_time;
+    if (mesh::esp32_clock::rtc_backup_magic == RTC_BACKUP_MAGIC
+        && mesh::esp32_clock::rtc_backup_time > RTC_TIME_MIN) {
+      tv.tv_sec = mesh::esp32_clock::rtc_backup_time;
     } else {
       tv.tv_sec = RTC_TIME_MIN;
     }
@@ -297,15 +302,16 @@ public:
     tv.tv_sec = time;
     tv.tv_usec = 0;
     settimeofday(&tv, NULL);
-    _rtc_backup_time = time;
-    _rtc_backup_magic = RTC_BACKUP_MAGIC;
+    mesh::esp32_clock::rtc_backup_time = time;
+    mesh::esp32_clock::rtc_backup_magic = RTC_BACKUP_MAGIC;
   }
   void tick() override {
     time_t now;
     time(&now);
-    if (now > RTC_TIME_MIN && (uint32_t)now != _rtc_backup_time) {
-      _rtc_backup_time = (uint32_t)now;
-      _rtc_backup_magic = RTC_BACKUP_MAGIC;
+    if (now > RTC_TIME_MIN
+        && (uint32_t)now != mesh::esp32_clock::rtc_backup_time) {
+      mesh::esp32_clock::rtc_backup_time = (uint32_t)now;
+      mesh::esp32_clock::rtc_backup_magic = RTC_BACKUP_MAGIC;
     }
   }
 };

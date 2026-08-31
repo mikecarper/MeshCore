@@ -2317,6 +2317,9 @@ bool MyMesh::saveFilter(ClientInfo* client) {
 }
 
 void MyMesh::loop() {
+#ifdef WITH_MQTT_BRIDGE
+  if (bridge) bridge->servicePendingClockCorrection();
+#endif
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing can take time, so we prioritize radio reception
   mesh::Mesh::loop();

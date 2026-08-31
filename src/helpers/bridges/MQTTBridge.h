@@ -22,6 +22,7 @@ class MeshSNMPAgent;  // Forward declaration
 #endif
 
 #ifdef ESP_PLATFORM
+#include "helpers/esp32/SntpOperationCoordinator.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
@@ -224,8 +225,14 @@ private:
   unsigned long _last_ntp_sync;
   unsigned long _ntp_refresh_retry_at;
   unsigned long _ntp_refresh_started_at;
+  unsigned long _ntp_refresh_previous_epoch;
+#ifdef ESP_PLATFORM
+  mesh::sntp_coord::OperationLease _ntp_refresh_operation;
+#endif
   bool _ntp_refresh_pending;
   std::atomic<bool> _ntp_synced;
+  std::atomic<bool> _fresh_ntp_this_boot;
+  std::atomic<uint32_t> _backward_clock_reset_epoch;
   bool _ntp_sync_pending;  // Owned by the MQTT task; the WiFi callback only records a GOT_IP edge
   MQTTConnectionPolicy::NtpReconnectLatch _ntp_reconnect_latch;
   bool _slots_setup_done;  // Deferred: slots set up after NTP sync
@@ -512,8 +519,9 @@ private:
   void queuePacket(mesh::Packet* packet, bool is_tx);
   void dequeuePacket();
   bool isAnySlotConnected();
-  void refreshNTP();  // Start a lightweight daily/reconnect NTP refresh (non-blocking)
+  void refreshNTP();  // Start a lightweight scheduled NTP refresh (non-blocking)
   void pollNtpRefresh(uint32_t now);  // Copy a completed async refresh into MeshCore's RTC
+  void cancelNtpRefresh();
   void runNtpDiagProbe();  // Probe every server for connectivity; never sets the clock. Core 0 only.
   void runNtpEstimateProbe();  // Query the first usable server without changing any clock. Core 0 only.
   // Populates dst_out/std_out with TimeChangeRules for the given IANA or
@@ -729,6 +737,14 @@ public:
   bool hasNtpTime() const {
     return _ntp_synced.load(std::memory_order_acquire);
   }
+  /** True only after a real NTP/SNTP reply was accepted this boot. */
+  bool hasFreshNtpThisBoot() const {
+    return _fresh_ntp_this_boot.load(std::memory_order_acquire);
+  }
+  /** Apply a queued backward-clock uniqueness repair from the role's main
+   *  loop. MQTT performs network work on another core on ESP32, while
+   *  RTCClock::getCurrentTimeUnique() is main-loop owned. */
+  bool servicePendingClockCorrection();
   static void formatMqttStatusReply(char* buf, size_t bufsize, const MQTTPrefs* obs);
   /** On-demand publish-health + heap snapshot for `get mqtt.stats` (per-slot ok/err,
    *  outbox size, free/max heap, queue depth). */

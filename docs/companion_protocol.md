@@ -251,6 +251,12 @@ as the normal CLI reply text `Unknown command`, not as an error frame. Clients
 may prefix the CLI text with any two-character correlation tag and `|` (for
 example, `A7|get radio.rxgain`); the reply preserves that prefix.
 
+Full Companion clients can send `version` through this command to receive the
+untruncated build identity, for example `Companion 1.17.1.5-... (protocol 14,
+build 31-Aug-2026)`. This deliberately supplements rather than changes the
+20-byte legacy version field in `RESP_CODE_DEVICE_INFO`, so existing clients
+keep the same frame layout.
+
 Firmware from this fork predating the upstream `0x42` allocation used
 `0x42`-`0x49` for these eight settings. This firmware accepts those values as
 deprecated inbound aliases so existing clients continue to work. A one-byte
@@ -296,11 +302,22 @@ WiFi power-save modes are:
 | `1` | `none` - no modem sleep |
 | `2` | `max` - maximum modem sleep |
 
-Full Companion rejects WiFi mode `none` because simultaneous BLE transport
-requires modem sleep. A Full Companion using ESP-NOW as its primary mesh radio
-also rejects `max`, because maximum modem sleep can miss broadcasts that the
-access point cannot buffer. If an older image saved `max`, the effective mode
-is capped to and reported as `min`. Device `powersaving` remains independent.
+A Full Companion that runs BLE and infrastructure WiFi simultaneously rejects
+WiFi mode `none` because coexistence requires modem sleep. A Full Companion
+using ESP-NOW as its primary mesh radio also rejects `max`, because maximum
+modem sleep can miss broadcasts that the access point cannot buffer. If an
+older image saved a conflicting value, the effective mode is capped to and
+reported as `min`. Device `powersaving` remains independent.
+
+The SenseCAP Indicator Full profiles run exactly one secondary wireless
+Companion transport per boot. Their active-mode constraints are:
+
+| Indicator mode | Accepted `wifi.powersave` values |
+|---|---|
+| LoRa + infrastructure WiFi | `none`, `min`, `max` |
+| LoRa + BLE | `min`, `max`; infrastructure WiFi is not started |
+| ESP-NOW + infrastructure WiFi | `none`, `min`; `max` conflicts with primary ESP-NOW |
+| ESP-NOW + BLE | `min`; infrastructure WiFi is not started and primary ESP-NOW remains active |
 
 The Bluetooth name can be configured over USB, BLE, or TCP. Use
 `set bluetooth.name default` to restore `MeshCore-<advert name>`; an empty CLI

@@ -95,6 +95,7 @@ public:
     _msg_preview_until = 0;
     _pairing_screen_until = 0;
     _deferred_msg_preview = false;
+    _msgcount = 0;
     ui_started_at = 0;
     curr = NULL;
   }
@@ -106,6 +107,7 @@ public:
   void showAlert(const char* text, int duration_millis);
   int  getMsgCount() const { return _msgcount; }
   int getPreviewCount() const;
+  void renderMessageSummary(DisplayDriver& display) const;
   bool hasDisplay() const { return _display != NULL; }
   bool supportsDisplayRotation() const override {
     return _display != NULL && _display->supportsRotation();

@@ -5,6 +5,13 @@
 #include "UsbLogging.h"
 #include "UserGpioPinPolicy.h"
 
+namespace mesh {
+namespace esp32_clock {
+RTC_NOINIT_ATTR uint32_t rtc_backup_time;
+RTC_NOINIT_ATTR uint32_t rtc_backup_magic;
+}  // namespace esp32_clock
+}  // namespace mesh
+
 namespace {
 
 bool isEsp32SystemPin(uint8_t pin) {

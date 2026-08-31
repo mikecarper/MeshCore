@@ -35,6 +35,7 @@ public:
   void loop();
 
   void onManualClockSet();
+  void onInternetClockSet();
 
   // Edge mode observes valid packets even when this node does not forward
   // them. Normal/path mode observes only packets accepted for forwarding.

@@ -4540,6 +4540,34 @@ class TempRadioPreflightTests(unittest.TestCase):
 
 
 class ReliabilityTests(unittest.TestCase):
+    def test_controller_rejects_meshcli_zero_exit_no_response(self) -> None:
+        """Do not trust meshcore-cli's exit status without protocol output."""
+        diagnostic = (
+            "ERROR:meshcore:No response from meshcore node, disconnecting\n"
+            "ERROR:meshcore:Are you sure your node is a serial companion ?\n"
+            "ERROR:meshcore:To connect to a repeater, use -r option.\n"
+        )
+        controller = object.__new__(ota.Controller)
+        controller._execute = mock.Mock(
+            return_value=subprocess.CompletedProcess(
+                [], 0, stdout="", stderr=diagnostic
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ota.OtaError, "returned no JSON"
+        ) as unmarked:
+            controller._run(["infos", "ver", "clock"], "XIAO probe")
+        self.assertIn("No response from meshcore node", str(unmarked.exception))
+
+        with self.assertRaisesRegex(
+            ota.TransmissionError, "did not reach the command marker"
+        ) as marked:
+            controller._run_marked(
+                ["infos", "ver", "clock"], "XIAO probe", "NEVER_REACHED"
+            )
+        self.assertIn("No response from meshcore node", str(marked.exception))
+
     def test_target_version_falls_back_to_ver(self) -> None:
         class Controller:
             def __init__(self) -> None:

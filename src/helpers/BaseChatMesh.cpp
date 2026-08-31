@@ -100,8 +100,11 @@ void BaseChatMesh::bootstrapRTCfromContacts() {
       latest = contacts[i].lastmod;
     }
   }
-  if (latest != 0) {
-    getRTCClock()->setCurrentTime(latest + 1);
+  if (latest != 0 && latest != UINT32_MAX) {
+    const uint32_t contact_floor = latest + 1;
+    if (contact_floor > getRTCClock()->getCurrentTime()) {
+      getRTCClock()->setCurrentTime(contact_floor);
+    }
   }
 }
 

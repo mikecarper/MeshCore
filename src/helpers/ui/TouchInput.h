@@ -10,11 +10,22 @@ enum class TouchAction : uint8_t {
   Previous,
   Next,
   Select,
+  SelectLeft,
+  SelectRight,
   VerticalPrevious,
   VerticalNext,
 };
 
-// Converts one-finger touch samples into the three actions understood by the
+struct TouchSplitSelector {
+  int left_x;
+  int left_width;
+  int right_x;
+  int right_width;
+  int top_y;
+  int height;
+};
+
+// Converts one-finger touch samples into actions understood by the
 // button-oriented companion UI. An action is emitted only after release so a
 // drag cannot activate the page under the user's finger.
 class TouchInput {
@@ -54,7 +65,8 @@ public:
                                  : center_zone_percent) {}
 
   TouchAction update(bool touched, int x, int y, int width, int height,
-                     bool bottom_selector = false) {
+                     bool bottom_selector = false,
+                     const TouchSplitSelector* split_selector = nullptr) {
     if (touched) {
       _release_samples = 0;
       if (!_active) {
@@ -107,6 +119,27 @@ public:
       }
       if (_start_x >= (width * 3) / 4) {
         return TouchAction::VerticalNext;
+      }
+      return TouchAction::None;
+    }
+
+    // A two-choice page can turn stationary taps into explicit left/right
+    // selections. Swipe detection above retains priority, so page navigation
+    // gestures cannot accidentally activate either choice.
+    if (split_selector != nullptr) {
+      if (_start_y < split_selector->top_y
+          || _start_y >= split_selector->top_y + split_selector->height) {
+        return TouchAction::None;
+      }
+      if (_start_x >= split_selector->left_x
+          && _start_x < split_selector->left_x
+              + split_selector->left_width) {
+        return TouchAction::SelectLeft;
+      }
+      if (_start_x >= split_selector->right_x
+          && _start_x < split_selector->right_x
+              + split_selector->right_width) {
+        return TouchAction::SelectRight;
       }
       return TouchAction::None;
     }

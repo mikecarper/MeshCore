@@ -161,7 +161,11 @@ public:
 };
 
 static bool bluetoothWiFiCoexistenceRequired() {
-#if defined(BLE_PIN_CODE) && defined(WIFI_SSID)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  // This server is never constructed on the exclusive profile's BLE boot.
+  // Any running WebConfig instance therefore has no active Bluetooth stack.
+  return false;
+#elif defined(BLE_PIN_CODE) && defined(WIFI_SSID)
   return true;
 #else
   return false;

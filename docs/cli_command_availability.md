@@ -61,6 +61,7 @@ over the normal binary USB, BLE, or TCP connection:
 | Command | Availability |
 |---|---|
 | [`board`](cli_commands.md#show-the-hardware-name) | Every Companion text terminal and command `0x42` |
+| [`version`](cli_commands.md#get-the-version) | Every Companion text terminal and protocol-v14 command `0x42`; returns the untruncated build identity |
 | [`memory`](#memory) | ESP32 Full Companion text terminal and command `0x42` |
 | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Companion with a supported radio |
 | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Companion on a board with controllable LoRa FEM LNA |

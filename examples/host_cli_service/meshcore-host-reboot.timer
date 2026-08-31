@@ -1,0 +1,9 @@
+[Unit]
+Description=MeshCore fixed delayed host reboot timer
+
+[Timer]
+OnActiveSec=10s
+AccuracySec=1s
+Persistent=no
+RemainAfterElapse=no
+Unit=meshcore-host-reboot.service

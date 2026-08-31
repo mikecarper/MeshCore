@@ -1708,6 +1708,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   configureRadioFromPrefs();
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (_prefs.wifi_enabled != 0) {
+#endif
   applyMQTTDefaults(&_mqtt_prefs);
   _mqtt_configured = CompanionMqttSetupPortal::loadStoredConfig(_mqtt_prefs);
   if (!_mqtt_configured) applyMQTTDefaults(&_mqtt_prefs);
@@ -1734,9 +1737,15 @@ void MyMesh::begin(bool has_display, bool radio_available) {
     _mqtt_bridge->setBuildDate(FIRMWARE_BUILD_DATE);
     _mqtt_bridge->setStatsSources(this, _radio, &board, _ms);
   }
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  }
+#endif
 #endif
 
 #ifdef WITH_WEBCONFIG
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (_prefs.wifi_enabled != 0) {
+#endif
   void* web_mqtt_prefs = nullptr;
 #ifdef WITH_MQTT_BRIDGE
   web_mqtt_prefs = &_mqtt_prefs;
@@ -1745,6 +1754,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
                                    self_id.pub_key, FIRMWARE_VERSION,
                                    FIRMWARE_BUILD_DATE,
                                    "companion", board.getManufacturerName());
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  }
+#endif
 #endif
 }
 
@@ -2055,6 +2067,13 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
+  if (strcmp(command, "version") == 0) {
+    snprintf(reply, reply_size, "Companion %s (protocol %u, build %s)",
+             FIRMWARE_VERSION, (unsigned)FIRMWARE_VER_CODE,
+             FIRMWARE_BUILD_DATE);
+    return true;
+  }
+
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
   if (strcmp(command, "memory") == 0) {
     const mesh::CompanionMemoryDiagnostics diagnostics = {
@@ -2273,6 +2292,40 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 #endif
 
 #if defined(ESP32) && defined(WIFI_SSID)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (strcmp(command, "get companion.transport") == 0) {
+    snprintf(reply, reply_size, "%s",
+             getCompanionTransportMode() == CompanionTransportMode::WiFi
+                 ? "wifi" : "ble");
+    return true;
+  }
+
+  if (strncmp(command, "set companion.transport", 23) == 0
+      && (command[23] == 0 || command[23] == ' '
+          || command[23] == '\t')) {
+    const char* value = command + 23;
+    while (*value == ' ' || *value == '\t') value++;
+    CompanionTransportMode selected;
+    if (strcmp(value, "wifi") == 0) {
+      selected = CompanionTransportMode::WiFi;
+    } else if (strcmp(value, "ble") == 0) {
+      selected = CompanionTransportMode::Bluetooth;
+    } else {
+      snprintf(reply, reply_size,
+               "Error: use set companion.transport <wifi|ble>");
+      return true;
+    }
+    if (!selectCompanionTransportMode(selected)) {
+      snprintf(reply, reply_size,
+               "Error: failed to save companion transport");
+    } else {
+      snprintf(reply, reply_size,
+               "OK - companion transport %s saved; reboot required", value);
+    }
+    return true;
+  }
+#endif
+
 #ifdef WITH_WEBCONFIG
   if (strncmp(command, "get ", 4) == 0) {
     const mesh::cli::StandaloneWiFiKey wifi_key =
@@ -2695,6 +2748,13 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
 }
 
 bool MyMesh::startWebConfig(bool force_ap, char* reply) {
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (!isCompanionWiFiEnabled()) {
+    strcpy(reply,
+           "Err: WebUI unavailable while Bluetooth transport is active; select WiFi and reboot");
+    return false;
+  }
+#endif
   if (!_webconfig) {
     strcpy(reply, "Err: WebUI unavailable (not enough memory)");
     return false;
@@ -6043,6 +6103,7 @@ void MyMesh::handleTerminalCommand(char* command) {
   } else if (strcmp(command, "help") == 0) {
     terminalOutput().print("Commands:\r\n");
     terminalOutput().print("  board\r\n");
+    terminalOutput().print("  version\r\n");
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
     terminalOutput().print("  memory\r\n");
 #endif
@@ -6058,6 +6119,10 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  set usb.logging <on|off> [reboot]\r\n");
 #endif
 #if defined(ESP32) && defined(WIFI_SSID)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    terminalOutput().print("  get companion.transport\r\n");
+    terminalOutput().print("  set companion.transport <wifi|ble>\r\n");
+#endif
     terminalOutput().print("  get wifi.powersave\r\n");
     terminalOutput().print("  set wifi.powersave <none|min|max>\r\n");
 #ifdef WITH_WEBCONFIG
@@ -6484,6 +6549,9 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
+#if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  if (_mqtt_bridge) _mqtt_bridge->servicePendingClockCorrection();
+#endif
   if (_scheduled_reboot_at != 0
       && millisHasNowPassed(_scheduled_reboot_at)) {
     _scheduled_reboot_at = 0;

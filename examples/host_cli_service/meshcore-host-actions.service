@@ -1,0 +1,36 @@
+[Unit]
+Description=MeshCore privileged host recovery action broker
+Requires=meshcore-host-actions.socket
+After=meshcore-host-actions.socket
+
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=MESHCORE_HOST_ACTIONS=
+ExecStart=/usr/local/sbin/meshcore-host-actions --service-user mctomqtt --service-group mctomqtt
+RuntimeDirectory=meshcore-host-actions
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=/run/meshcore-host-actions
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0077

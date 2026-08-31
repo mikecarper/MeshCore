@@ -1,7 +1,11 @@
 # Full Companion
 
-`companion_radio_full` combines every Companion transport available on its
-platform and acts as a host-backed LoRa mOTA source for updating other nodes.
+`companion_radio_full` combines every qualified Companion transport for its
+platform into one artifact and acts as a host-backed LoRa mOTA source for
+updating other nodes. Most targets can run those transports simultaneously;
+the SenseCAP Indicator exception selects one secondary wireless transport per
+boot as described below.
+
 The full Companion is deliberately not a LoRa OTA destination: it has no
 firmware staging store, refuses `ota install`, and never advertises its own
 firmware as an mOTA image.
@@ -17,6 +21,31 @@ firmware as an mOTA image.
 | Hardware serial Companion | On targets with assigned serial pins | On targets with assigned serial pins |
 | Ethernet Companion | On targets with an Ethernet module | On RAK4631 with RAK13800 |
 | LoRa self-update | No | No |
+
+### SenseCAP Indicator transport and rendering exception
+
+Both SenseCAP Indicator Full layouts keep USB available and start exactly one
+secondary wireless Companion transport per boot: BLE or infrastructure WiFi.
+The saved `companion.transport` selection takes effect after reboot. BLE mode
+does not start infrastructure WiFi, WebConfig, MQTT, TCP Companion, or network
+OTA services. WiFi mode never initializes BLE and releases its controller and
+host memory. LoRa remains the primary radio on the LoRa layout. ESP-NOW remains
+the primary mesh radio in both ESP-NOW modes, including BLE mode; only the
+infrastructure-WiFi services are omitted.
+
+The requested 4-bit internal render profiles are:
+
+| Primary radio | Secondary Companion transport | Canvas |
+|---|---|---:|
+| LoRa | Infrastructure WiFi | Native 480x480 |
+| LoRa | BLE | Native 480x480 |
+| ESP-NOW | Infrastructure WiFi | Native 480x480 |
+| ESP-NOW | BLE | 320x320, scaled 1.5x to the 480x480 panel |
+
+All four modes retain the same 160x160 logical UI. If a contiguous native
+DMA-capable block is unavailable, startup keeps the device usable with the
+320x320 emergency fallback and reports the canvas actually retained. Such a
+fallback is not a successful native-480 validation result.
 
 ## Build and install
 
@@ -49,6 +78,15 @@ to 1. Configure the router's 2.4 GHz radio and every other primary ESP-NOW node
 for that same fixed channel. Turning Companion WiFi off stops its TCP/AP
 services but deliberately leaves the ESP-NOW mesh radio running on the
 selected channel.
+
+Every ESP32 Full Companion with a station connection synchronizes its UTC clock
+from NTP after boot and explicitly refreshes it every 24 hours. The common WiFi
+path owns this for non-MQTT and runtime-unconfigured nodes; a configured MQTT
+bridge owns the same boot-and-daily schedule. Successful sync updates an
+attached hardware RTC as well as the ESP32 clock and suppresses LoRa clock
+fallback for that boot. Reconnecting WiFi preserves the existing daily
+deadline. A timeout leaves the existing clock and fallback intact and retries
+without blocking radio work.
 
 Inspect or change the shared channel from the Full Companion text terminal:
 
@@ -195,14 +233,16 @@ all longer values are rejected.
 The normal binary Companion connection can also read or write this setting over
 USB, BLE, or TCP port 5000 without entering terminal mode. The mode values are
 `0` for `min`, `1` for `none`, and `2` for `max`; see the
-[Companion protocol](./companion_protocol.md#commands). Full Companion rejects
-`none` because simultaneous WiFi and BLE require modem sleep. The two
-primary-ESP-NOW Full targets also reject `max`; unlike infrastructure traffic,
-peer ESP-NOW
-broadcasts cannot be buffered by the access point while the station sleeps. If
-an older image saved `max`, firmware applies and reports `min` instead. Fresh
-Cascade builds select `min`, and an existing valid saved selection takes
-precedence.
+[Companion protocol](./companion_protocol.md#commands). A Full Companion that
+runs WiFi and BLE simultaneously rejects `none` because coexistence requires
+modem sleep. A primary-ESP-NOW Full target also rejects `max`; unlike
+infrastructure traffic, peer ESP-NOW broadcasts cannot be buffered by the
+access point while the station sleeps. If an older image saved a conflicting
+value, firmware applies and reports `min` instead. The SenseCAP Indicator uses
+the active-mode constraints in the exception above: LoRa + WiFi accepts all
+three values, ESP-NOW + WiFi accepts `none|min`, LoRa + BLE accepts `min|max`
+for the inactive WiFi setting, and ESP-NOW + BLE requires `min`. Fresh Cascade
+builds select `min`, and an existing valid saved selection takes precedence.
 
 On radios with RX duty-cycle support, WebConfig and the text terminal also
 expose the persisted RXPS setting:
@@ -226,10 +266,12 @@ migration, an explicit `powersaving off` selection remains persistent.
 
 On ESP32, enabling it lowers the CPU clock to 80 MHz, enables idle yielding,
 and enables the configured GPS duty cycle. Disabling it restores the normal CPU
-clock and keeps GPS awake. Full Companion transports remain available in both
-states; WiFi modem sleep stays enabled when BLE is present because coexistence
-requires it. Changing device power saving does not overwrite the saved WiFi
-power-save mode. While a native-USB host is enumerated, the platform sleep
+clock and keeps GPS awake. Active Full Companion transports remain available in
+both states; on the SenseCAP Indicator this means USB plus the selected BLE or
+infrastructure-WiFi secondary transport. WiFi modem sleep stays enabled when
+BLE and the ESP32 WiFi radio are active together because coexistence requires
+it. Changing device power saving does not overwrite the saved WiFi power-save
+mode. While a native-USB host is enumerated, the platform sleep
 attempt is held off so USB CDC remains responsive; detaching the host releases
 that guard. CPU, radio-modem, and GPS power-saving settings remain active, and
 USB power from a charger alone does not create a Companion session. The
@@ -250,20 +292,22 @@ TempRadio, the OTA CLI, the TCP terminal, USB folder seeding, and memory
 diagnostics. The legacy `COMPANION_RADIO_FULL` flag remains an input for older
 target recipes, but application behavior no longer uses that umbrella as an
 unrelated compile guard. In particular, ESP32 WiFi/WebConfig terminal controls
-are compiled from their actual WiFi/WebConfig capability, and BLE is always
-started before WiFi on any combined ESP32 WiFi+BLE Companion to avoid heap
-fragmentation. Compile-time prerequisite checks reject inconsistent feature
-flags. After linking, the capability sidecar verifies USB, BLE, the OTA CLI,
+are compiled from their actual WiFi/WebConfig capability. On targets that run
+ESP32 WiFi and BLE simultaneously, BLE is started first to avoid heap
+fragmentation. The SenseCAP Indicator starts only its selected secondary
+transport. Compile-time prerequisite checks reject inconsistent feature flags.
+After linking, the capability sidecar verifies USB, BLE, the OTA CLI,
 TempRadio, and each platform's host-folder transport; it also verifies the TCP
 terminal, WebConfig, and WiFi seeder on ESP32, plus dedicated logging on
 nRF52.
 
 On 4 MB ESP32 boards, the full target uses a single 3 MB application partition
-so WiFi, BLE, WebConfig, and source-only mOTA fit together. The T-Beam 1W Full
-Companion uses that same LilyGo factory-compatible boot layout on its 16 MB
-flash because this source-only role does not install updates into a second app
-slot. Flash the generated `-merged.bin` when first installing this partition
-layout. Other boards with 8 MB or more retain dual application partitions.
+so WiFi, BLE, WebConfig, and source-only mOTA fit in one artifact. The T-Beam 1W
+Full Companion uses that same LilyGo factory-compatible boot layout on its 16
+MB flash because this source-only role does not install updates into a second
+app slot. Flash the generated `-merged.bin` when first installing this
+partition layout. Other boards with 8 MB or more retain dual application
+partitions.
 Heltec V2 and TLora V2 use 100 contacts, 8 group channels, and a 16-frame offline
 queue in this combined profile because of internal DRAM limits. Meshadventurer
 SX1262 and SX1268 retain 160 contacts, use 30 group channels, and use a
@@ -392,7 +436,9 @@ the logs, and leaves that TTY in the normal ASCII terminal, matching a fresh
 Full installation. Send `+++MESHCORE-TERM-STOP`, or let a Companion app send a
 valid framed probe, to switch it to Binary Companion afterward. A saved
 logging-on preference boots directly into this input-capable logging terminal.
-BLE and Wi-Fi Companion remain available while USB is logging.
+BLE and Wi-Fi Companion remain available while USB is logging on simultaneous
+targets. On the SenseCAP Indicator, only the selected BLE or Wi-Fi Companion
+transport remains available alongside the logging terminal.
 
 ESP32 Full Companion uses the repository's Arduino-ESP32 2.x platform base
 where the board supports it. RC32 and ESP32-C6 retain their board-required

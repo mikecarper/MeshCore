@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <helpers/ui/DisplayDriver.h>
+#include <helpers/ui/CompanionHomeLayout.h>
 #include <helpers/ui/DisplayTextLayout.h>
 
 #include <string>
@@ -40,19 +41,30 @@ public:
     std::string text;
   };
 
+  struct FilledRect {
+    int x;
+    int y;
+    int width;
+    int height;
+  };
+
   std::string printed;
   std::vector<DrawnText> rows;
+  std::vector<FilledRect> fills;
   int cursor_x = 0;
   int cursor_y = 0;
+  int text_size = 1;
+  int glyph_width = 1;
 
-  TestDisplay() : DisplayDriver(100, 100) {}
+  TestDisplay(int width = 100, int height = 100, int glyph_width = 1)
+      : DisplayDriver(width, height), glyph_width(glyph_width) {}
 
   bool isOn() override { return true; }
   void turnOn() override {}
   void turnOff() override {}
   void clear() override {}
   void startFrame(ColorVal) override {}
-  void setTextSize(int) override {}
+  void setTextSize(int size) override { text_size = size > 0 ? size : 1; }
   void setColor(ColorVal) override {}
   void setCursor(int x, int y) override {
     cursor_x = x;
@@ -62,7 +74,9 @@ public:
     printed = str;
     rows.push_back({cursor_x, cursor_y, str});
   }
-  void fillRect(int, int, int, int) override {}
+  void fillRect(int x, int y, int width, int height) override {
+    fills.push_back({x, y, width, height});
+  }
   void drawRect(int, int, int, int) override {}
   void drawXbm(int, int, const uint8_t*, int, int) override {}
   uint16_t getTextWidth(const char* str) override {
@@ -70,7 +84,7 @@ public:
     for (size_t i = 0; str[i] != 0; ++i) {
       if (((uint8_t)str[i] & 0xC0) != 0x80) ++width;
     }
-    return width;
+    return width * glyph_width * text_size;
   }
   void endFrame() override {}
 };
@@ -129,6 +143,163 @@ TEST(DisplayDriver, KeepsMaximumLengthSSIDWithoutEllipsis) {
   EXPECT_EQ(ssid,
             display.rows[0].text + display.rows[1].text
                 + display.rows[2].text);
+}
+
+TEST(DisplayDriver, LongSetupAddressStaysInsideItsRows) {
+  TestDisplay display(160, 160);
+  const std::string address =
+      "http://very-long-indicator-hostname-for-a-setup-page.example.invalid/"
+      "path/that/remains/longer/than/one/logical/display/row/and/continues/"
+      "through/the/second/bounded/row/without/reaching/the/pairing/status";
+  EXPECT_EQ(2, mesh::ui::drawTextWrapped(
+      display, 6, 99, 148, 13, 2, address.c_str()));
+  ASSERT_EQ(2U, display.rows.size());
+  for (const auto& row : display.rows) {
+    EXPECT_GE(row.x, 6);
+    EXPECT_LE(row.x + display.getTextWidth(row.text.c_str()), 154);
+    EXPECT_GE(row.y, 99);
+    EXPECT_LT(row.y, 125);
+  }
+}
+
+TEST(DisplayDriver, IndicatorHomeSeparatesInfoAndPairingGeometry) {
+  const mesh::ui::CompanionHomeLayout layout =
+      mesh::ui::makeLargeCompanionHomeLayout(160, 160);
+
+  EXPECT_EQ(128, layout.pairing.y + layout.pairing.height / 2);
+  EXPECT_EQ(48, layout.pairing.height);
+  EXPECT_FALSE(mesh::ui::displayRegionsOverlap(layout.info,
+                                               layout.pairing));
+  EXPECT_LE(layout.info.bottom() + 12, layout.pairing.y);
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.info, layout.instruction_y, 12));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.info, layout.network_y, 12));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.pairing, layout.pairing_label_y, 12));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.pairing, layout.pairing_value_y, 24));
+}
+
+TEST(DisplayDriver, IndicatorPairingValuesFitAtRenderedTextSizes) {
+  // Model the fallback font's fixed six-logical-pixel cell. It is the wider
+  // of the two paths for CONNECTED; the profile test reads the recovered
+  // VLW's real advances and independently checks that path.
+  TestDisplay display(160, 160, 6);
+  const mesh::ui::CompanionHomeLayout layout =
+      mesh::ui::makeLargeCompanionHomeLayout(display.width(),
+                                             display.height());
+
+  display.setTextSize(3);
+  EXPECT_EQ(108, display.getTextWidth("123456"));
+  EXPECT_LE(display.getTextWidth("123456"), layout.pairing.width);
+  mesh::ui::drawTextCenteredEllipsized(
+      display, layout.pairing, layout.pairing_value_y, "123456");
+  ASSERT_EQ(1U, display.rows.size());
+  EXPECT_EQ("123456", display.rows.back().text);
+  EXPECT_GE(display.rows.back().x, layout.pairing.x);
+  EXPECT_LE(display.rows.back().x + display.getTextWidth("123456"),
+            layout.pairing.right());
+
+  display.setTextSize(2);
+  EXPECT_EQ(108, display.getTextWidth("CONNECTED"));
+  EXPECT_LE(display.getTextWidth("CONNECTED"), layout.pairing.width);
+  mesh::ui::drawTextCenteredEllipsized(
+      display, layout.pairing, layout.pairing_value_y, "CONNECTED");
+  ASSERT_EQ(2U, display.rows.size());
+  EXPECT_EQ("CONNECTED", display.rows.back().text);
+  EXPECT_GE(display.rows.back().x, layout.pairing.x);
+  EXPECT_LE(display.rows.back().x + display.getTextWidth("CONNECTED"),
+            layout.pairing.right());
+}
+
+TEST(DisplayDriver, CompactPairingOwnsBounded128x64LowerRegion) {
+  EXPECT_TRUE(mesh::ui::usesCompactCompanionPairingLayout(128, 64));
+  EXPECT_FALSE(mesh::ui::usesCompactCompanionPairingLayout(160, 160));
+  EXPECT_FALSE(mesh::ui::usesCompactCompanionPairingLayout(128, 65));
+
+  const mesh::ui::CompactCompanionPairingLayout layout =
+      mesh::ui::makeCompactCompanionPairingLayout(128, 64);
+  const mesh::ui::DisplayRegion inbox = {0, 22, 128, 16};
+
+  EXPECT_EQ(4, layout.pairing.x);
+  EXPECT_EQ(38, layout.pairing.y);
+  EXPECT_EQ(120, layout.pairing.width);
+  EXPECT_EQ(26, layout.pairing.height);
+  EXPECT_FALSE(mesh::ui::displayRegionsOverlap(inbox, layout.pairing));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.pairing, layout.pairing_label_y, 8));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.pairing, layout.pairing_value_y, 16));
+
+  // The old instruction and Wi-Fi rows are entirely replaced while pairing
+  // is active, so neither can remain behind or overprint the new value.
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(layout.pairing, 43, 8));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(layout.pairing, 54, 8));
+}
+
+TEST(DisplayDriver, CompactPairingValuesFitAtSizeTwo) {
+  TestDisplay display(128, 64, 6);
+  const mesh::ui::CompactCompanionPairingLayout layout =
+      mesh::ui::makeCompactCompanionPairingLayout(
+          display.width(), display.height());
+
+  display.setTextSize(2);
+  for (const char* value : {"123456", "CONNECTED"}) {
+    EXPECT_LE(display.getTextWidth(value), layout.pairing.width);
+    mesh::ui::drawTextCenteredEllipsized(
+        display, layout.pairing, layout.pairing_value_y, value);
+    EXPECT_EQ(value, display.rows.back().text);
+    EXPECT_GE(display.rows.back().x, layout.pairing.x);
+    EXPECT_LE(display.rows.back().x + display.getTextWidth(value),
+              layout.pairing.right());
+  }
+}
+
+TEST(DisplayDriver, LongHomeStatusCannotEnterPairingBlock) {
+  TestDisplay display(160, 160);
+  const mesh::ui::CompanionHomeLayout layout =
+      mesh::ui::makeLargeCompanionHomeLayout(display.width(),
+                                             display.height());
+  const std::string instruction(240, 'I');
+  const std::string network_status =
+      "Connected to a maximum-length-wireless-network-name at an "
+      "unexpectedly-long-address.example.invalid";
+
+  mesh::ui::drawTextCenteredEllipsized(
+      display, layout.info, layout.instruction_y, instruction.c_str());
+  mesh::ui::drawTextCenteredEllipsized(
+      display, layout.info, layout.network_y, network_status.c_str());
+
+  ASSERT_EQ(2U, display.rows.size());
+  for (const auto& row : display.rows) {
+    EXPECT_GE(row.x, layout.info.x);
+    EXPECT_LE(row.x + display.getTextWidth(row.text.c_str()),
+              layout.info.right());
+    EXPECT_LT(row.y, layout.pairing.y);
+  }
+}
+
+TEST(DisplayDriver, PairingRegionIsClearedBeforeStatusReplacement) {
+  TestDisplay display(160, 160);
+  const mesh::ui::CompanionHomeLayout layout =
+      mesh::ui::makeLargeCompanionHomeLayout(display.width(),
+                                             display.height());
+
+  mesh::ui::clearDisplayRegion(display, layout.pairing);
+  mesh::ui::drawTextCenteredEllipsized(
+      display, layout.pairing, layout.pairing_value_y, "123456");
+  mesh::ui::clearDisplayRegion(display, layout.pairing);
+  mesh::ui::drawTextCenteredEllipsized(
+      display, layout.pairing, layout.pairing_value_y, "CONNECTED");
+
+  ASSERT_EQ(2U, display.fills.size());
+  for (const auto& fill : display.fills) {
+    EXPECT_EQ(layout.pairing.x, fill.x);
+    EXPECT_EQ(layout.pairing.y, fill.y);
+    EXPECT_EQ(layout.pairing.width, fill.width);
+    EXPECT_EQ(layout.pairing.height, fill.height);
+  }
 }
 
 int main(int argc, char** argv) {
