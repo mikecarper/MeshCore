@@ -2656,6 +2656,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -8131,10 +8158,14 @@ still overrides the first-boot default after an update.</p>
 <h4 id="view-or-change-the-bridge-enabled-flag">View or change the bridge enabled flag</h4>
 <p><strong>Usage:</strong>
 - <code>get bridge.enabled</code>
+- <code>get bridge.running</code>
 - <code>set bridge.enabled &lt;state&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>state</code>: <code>on</code>|<code>off</code></p>
-<p><strong>Default:</strong> <code>off</code></p>
+<p><code>bridge.enabled</code> is the saved intent. <code>bridge.running</code> reports whether the
+bridge actually started in this boot; they can differ after a hardware conflict,
+missing credentials, or a transient initialization failure. Normal merged
+repeater images default to <code>off</code>; dedicated bridge images may default to <code>on</code>.</p>
 <hr />
 <h4 id="add-a-delay-to-packets-routed-through-this-bridge">Add a delay to packets routed through this bridge</h4>
 <p><strong>Usage:</strong>
@@ -8150,9 +8181,9 @@ still overrides the first-boot default after an update.</p>
 - <code>set bridge.source &lt;source&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>source</code>:
-  - <code>logRx</code>: bridges received packets
-  - <code>logTx</code>: bridges transmitted packets</p>
-<p><strong>Default:</strong> <code>logTx</code></p>
+  - <code>rx</code>: bridges received packets
+  - <code>tx</code>: bridges transmitted packets</p>
+<p><strong>Default:</strong> <code>tx</code></p>
 <blockquote>
 <p><strong>Note:</strong> For MQTT bridges, use <code>mqtt.rx</code> and <code>mqtt.tx</code> instead of <code>bridge.source</code>. These provide independent per-direction control and support both RX and TX simultaneously. <code>bridge.source</code> still works as a convenience alias for MQTT (setting <code>bridge.source rx</code> sets <code>mqtt.rx on</code> + <code>mqtt.tx off</code>, and vice versa), but <code>mqtt.rx</code>/<code>mqtt.tx</code> are preferred.</p>
 </blockquote>
@@ -8246,10 +8277,19 @@ non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>.</p>
 <p><strong>Parameters:</strong>
 - <code>port</code>: Hardware UART number compiled for the board. Most boards expose one
   fixed UART. RAK4631 accepts <code>1</code> or <code>2</code>; UART 2 is the default so UART 1 can
-  remain available to GPS.</p>
+  remain available to the RAK12501/L76K GPS. RAK12500 GPS uses I2C rather than
+  this UART, but the explicit legacy Serial1 bridge omits the combined GPS
+  provider and therefore does not expose either GPS path.</p>
 <p>The setting is persistent and restarts an enabled bridge immediately. Normal
 repeater artifacts start with <code>bridge.enabled off</code>; configure the UART and baud
-rate before running <code>set bridge.enabled on</code>.</p>
+rate before running <code>set bridge.enabled on</code>. On the canonical RAK4631 runtime
+image, UART 1 is reserved even if the bounded boot probe hears no RAK12501.
+Silence cannot prove that a cold L76K is physically absent, and that module
+remains powered by the shared WB_IO2/3V3_S rail. Use UART 2. UART 1 requires an
+explicit no-GPS/dedicated Serial1 bridge image. This fail-closed reservation
+also applies when the detected GPS is an I2C RAK12500; that receiver does not
+electrically use UART 1, but its presence cannot rule out another silent UART
+module.</p>
 <hr />
 <h4 id="view-or-change-the-channel-used-for-bridging-espnow-only">View or change the channel used for bridging (ESPNow only)</h4>
 <p><strong>Usage:</strong>

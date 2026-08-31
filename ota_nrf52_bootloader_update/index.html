@@ -664,6 +664,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1596,10 +1623,21 @@ metadata, the candidate version must be strictly greater. Preview low bytes are 
 stable release uses <code>0xFF</code>, and low-byte zero or all-ones values are rejected.
 There is no remote rollback/migration override; intentional rollback uses
 USB/BLE DFU or SWD.</p>
-<p>The <code>no_external_sensors</code> profiles omit optional/add-on sensor packages to
-preserve flash headroom. A board recipe can retain GPS. The RAK3401 OTA
-repeater retains RAK12501 GPS in sensor slot A, and the RAK4631 OTA repeater
-retains GPS except where a Serial1 RS232 bridge owns the same UART.</p>
+<p>The legacy <code>no_external_sensors</code> profiles trim selected optional environmental
+and ranging drivers to preserve flash headroom; they do not generally disable
+the I2C bus. Reduced RAK3401 and RAK4631 recipes retain INA219, INA226, INA260,
+and INA3221 voltage/current monitors. Those are entries in the optional sensor
+table, not the complete set of I2C consumers: the SSD1306 OLED, supported
+autodiscovered RTCs, and RAK12500 GPS remain separate I2C peripherals where the
+exact board recipe enables them. RAK3401 retains its compatible RAK12500 I2C
+and RAK12501/L76K UART GPS paths in sensor slot A. The plain RAK4631 repeater
+and Serial2 bridge retain GPS. Its RAK12501 path uses Serial1; the explicitly
+compiled Serial1 RS232 bridge therefore omits the combined GPS provider,
+including RAK12500, even though RAK12500 itself is I2C rather than UART.</p>
+<p>The firmware-configured INA3221 and RAK12500 addresses are both <code>0x42</code>. They
+cannot coexist on the same bus at those addresses. Leave RAK12500 at <code>0x42</code>,
+strap INA3221 A0 to SCL for <code>0x43</code>, and use firmware built with
+<code>-DTELEM_INA3221_ADDRESS=0x43</code> when both modules are installed.</p>
 <p>Boards with onboard external flash are not silently redirected to internal
 staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo
 Lite/Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and

@@ -838,6 +838,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -2087,9 +2114,11 @@ WiFi only, not LoRa transmit power.</p>
 <h2 id="recognizing-the-wrong-firmware">Recognizing the wrong firmware</h2>
 <p><code>get wifi.status</code>, <code>get wifi.ssid</code>, <code>get wifi.powersave</code>, and <code>get wifi.cli</code>
 are available on MQTT observers and on FULL non-MQTT repeater/room-server
-builds with WebConfig. ESP32 WiFi Companions with WebConfig expose those
-commands, credential setters, and <code>start webconfig [ap]</code> through their USB text
-terminal; Full Companion additionally exposes that terminal on TCP port 5002.
+builds with WebConfig. ESP32 WiFi Companions expose the first three commands,
+credential setters, and <code>start webconfig [ap]</code> through their USB text terminal;
+<code>get/set wifi.cli</code> explicitly report that the repeater/room-server browser CLI
+is unavailable. Full Companion instead exposes its complete role-specific text
+terminal on TCP port 5002.
 MQTT commands such as <code>get mqtt.status</code> and <code>set mqtt1.preset ...</code> still require
 an MQTT observer target. Unknown settings return <code>Error: unknown setting:
 &lt;name&gt;</code>. Older firmware that used the discontinued compact CLI can instead

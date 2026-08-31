@@ -664,6 +664,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1495,7 +1522,7 @@ storage does not increase the MCU's executable flash.</p>
 <p>For this S140 v6 target, the maximum application image including its <code>EndF</code>
 trailer is <code>0xC7000</code> bytes (815,104 bytes). To package a full self-update:</p>
 <pre><code class="language-bash">motatool build --fw ./Heltec_tower_v2_sdcard-new.hex \
-  --sign-key ./trusted-signer.key --out-dir ./motas
+  --sign ./trusted-signer.key --out-dir ./motas
 motatool verify ./motas/*.mota
 </code></pre>
 <p>A delta uses the exact installed image as its base. The normal <code>0x98000</code>
@@ -1506,7 +1533,7 @@ limit, build the patch with the SD target's larger workspace:</p>
   --fw ./Heltec_tower_v2_sdcard-new.hex \
   --patch-type in-place \
   --inplace-memory 0xC7000 \
-  --sign-key ./trusted-signer.key \
+  --sign ./trusted-signer.key \
   --out-dir ./motas
 motatool verify ./motas/*.mota
 </code></pre>

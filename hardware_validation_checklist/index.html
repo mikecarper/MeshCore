@@ -1,0 +1,2661 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/hardware_validation_checklist/">
+      
+      
+        <link rel="prev" href="../halo_keymind_settings/">
+      
+      
+        <link rel="next" href="../host_cli_service/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Hardware validation checklist - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#hardware-validation-checklist" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Hardware validation checklist
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_offline_queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Offline Message Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_radio_full/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../filter_tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filter policy playground
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firmware_picker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware picker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#current-marathon-ledger-2026-08-30" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current marathon ledger (2026-08-30)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-wide-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run-wide gates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Run-wide gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#compute-placement-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compute-placement gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mercerwood-pi-usb-power-cycle-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mercerwood Pi USB power-cycle gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeed-xiao-nrf52840" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeed XIAO nRF52840
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeed-tracker-t1000-e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeed Tracker T1000-E
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rak3401" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK3401
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rak4631-reduced-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK4631 reduced profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heltec-meshtower-v2-with-sd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heltec MeshTower V2 with SD
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heltec-v4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heltec V4
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeed-sensecap-indicator-lora" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeed SenseCAP Indicator LoRa
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-radio-lora-ota-acceptance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-radio LoRa OTA acceptance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lora_ota_automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scripted LoRa OTA from start to finish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mbedtls-tls-footprint/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shrinking the per-connection TLS footprint on non-PSRAM observers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 repeater LoRa OTA with external QSPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rak3401_mota_chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAK3401 1W repeater compact LoRa update chain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#current-marathon-ledger-2026-08-30" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current marathon ledger (2026-08-30)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-wide-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run-wide gates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Run-wide gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#compute-placement-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compute-placement gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mercerwood-pi-usb-power-cycle-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mercerwood Pi USB power-cycle gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeed-xiao-nrf52840" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeed XIAO nRF52840
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeed-tracker-t1000-e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeed Tracker T1000-E
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rak3401" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK3401
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rak4631-reduced-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK4631 reduced profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heltec-meshtower-v2-with-sd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heltec MeshTower V2 with SD
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heltec-v4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heltec V4
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeed-sensecap-indicator-lora" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeed SenseCAP Indicator LoRa
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-radio-lora-ota-acceptance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-radio LoRa OTA acceptance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/hardware_validation_checklist.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="hardware-validation-checklist">Hardware validation checklist</h1>
+<p>Use this checklist for release-candidate hardware runs. A check is complete only
+when its log identifies the physical device, firmware artifact, artifact hash,
+command result, and cold/warm boot outcome. Do not infer success from a tool's
+exit code when the tool has a documented false-success mode.</p>
+<h2 id="current-marathon-ledger-2026-08-30">Current marathon ledger (2026-08-30)</h2>
+<table>
+<thead>
+<tr>
+<th>Hardware</th>
+<th>Stable identity</th>
+<th>Current state</th>
+<th>Next blocking check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Seeed XIAO nRF52840</td>
+<td><code>B35E71C1C3726CE7</code></td>
+<td>Exact Full Companion application and latency-disable bootloader candidate installed. An exact bonded B-A-B link-profile test passed at 6.225, 3.343, and 6.231 kB/s for 15 ms, untouched 30 ms control, and 15 ms repeat; CRC, activation, target disconnect, and stable USB return passed three times</td>
+<td>Power-removal cold test, then exercise BLE-controlled LoRa OTA</td>
+</tr>
+<tr>
+<td>Seeed Tracker T1000-E</td>
+<td><code>34A9141999729D5D</code></td>
+<td>Later connection-policy-reapply OTAFIX candidate and temporary Full Companion are running; the exact bonded warm baseline passed at 3.34 kB/s. Two lab-only pre-START 15 ms/latency-0 DFUs with <code>0/0</code> no-preference event-length hints passed at 6.23 and 6.52 kB/s; a 10 ms event-length control timed out before START</td>
+<td>Prove installed bootloader bytes by readback, exercise a physical cold 20-to-244-byte readiness transition, restore the protected Repeater identity, cold boot, then force LR1110 reset</td>
+</tr>
+<tr>
+<td>RAK3401</td>
+<td><code>0B81C9C68D8D01B4</code>; FICR <code>8D8D01B4 0B81C9C6</code></td>
+<td>Direct V4 LoRa OTA from <code>bf092b24</code> to exact <code>3caf9dcf</code> passed. OTAFIX test version <code>0x02040403</code> is installed; bidirectional application UF2, exact SWD application/bootloader readback, and unchanged UICR all pass</td>
+<td>Add RF packet counters, then repeat bandwidth and routed-hop matrix</td>
+</tr>
+<tr>
+<td>Heltec MeshTower V2 with SD</td>
+<td><code>9352162A72082314</code></td>
+<td>Exact SD LoRa-OTA Repeater <code>e26d48e4</code> is running after identity-gated BLE recovery. Card format/cooldown/forced-format/raw-erase/remount pass; live bootloader contract reports ABI 3, FULL+INPLACE, and SD apply</td>
+<td>Signed interrupted-download resume, corruption/signature rejection, then full/delta apply</td>
+</tr>
+<tr>
+<td>Heltec V4</td>
+<td>USB MAC <code>44:1B:F6:6A:E8:44</code>; BLE <code>44:1B:F6:6A:E8:45</code></td>
+<td>USB/BLE/Wi-Fi and all three TCP services pass on hardware. The final fresh-NTP-gated Full Companion image builds with 4.31 MB app space free</td>
+<td>Flash the exact final NTP build, prove NTP-before-TLS success/failure ordering, then OTA seeding</td>
+</tr>
+<tr>
+<td>SenseCAP Indicator LoRa</td>
+<td>CH340 plus USB MAC <code>D8:3B:DA:75:23:AC</code>; BLE <code>D8:3B:DA:75:23:AD</code></td>
+<td>Exact 2,145,640-byte Full Companion font-recovery application, SHA-256 <code>88d8d8ae138b297fc7841005ab40c303e1efe9d27a2bb4a89a30735748a073c4</code>, is installed; identity-gated flash, USB ASCII/Binary switching, runtime logging, configured Wi-Fi, BLE, all three TCP services, fresh-NTP-gated HTTPS recovery, strict Range resume, STAGEV2 install, and exact RP USB readback pass</td>
+<td>Physical display-wrap check, LoRa/TempRadio, and OTA seeding</td>
+</tr>
+</tbody>
+</table>
+<p>The RAK failure log is
+<code>/home/mikec/hwtest/runs/rak3401-syncidle-clean-tSp7PLgA/result.txt</code> on
+the Mercerwood Pi. The tested UF2 SHA-256 was
+<code>650c9fda456685cdf99c1f2996c60f1f551cc9216d2b746a22c8cb78464b0ff7</code>.
+<code>cp</code> returned success in 95 ms, but <code>sync -f</code> failed with <code>EIO</code> after
+157,188 ms. Post-failure SWD readback proved that all seven ordinary sectors
+whose bytes differed between the old and intended builds still contained the
+old values, and the settings page was still erased. The only available
+pre-copy SWD dump was taken several hours earlier, however, so it cannot prove
+that zero unchanged blocks were written during this attempt or establish when
+the stale S140-v7 tail in the first application page appeared. The next run
+must capture an immediate pre-copy dump as well as the post-copy dump. Serial
+DFU recovery then completed in 35,698 ms with the exact <code>Device programmed.</code>
+marker. All 1,830 UF2 payload blocks matched SWD readback after recovery, and
+the application passed a subsequent real power-removal boot.</p>
+<p>The corrected 2.4.4-preview.2 candidate was installed through identity-gated
+SWD from combined-image SHA-256
+<code>9b1654baccd2a920f68651893e31d79170400d1a7982a3f854ae640f1d3513a8</code>.
+An immediate pre-copy dump closed the earlier evidence gap. A deliberately old
+UF2 then copied and flushed successfully in 16,568 ms, and the exact formerly
+failing UF2 above copied and flushed successfully in 16,601 ms. After each
+direction, all 1,830 payload blocks matched a full SWD readback with zero header
+or payload mismatches. The return update changed 123 bytes across five expected
+application pages, UICR remained byte-identical, and a subsequent downstream
+USB power removal plus Pi reboot returned the RAK as the same stable identity.
+It reported the intended <code>3caf9dcf</code> application, board, node name, USA radio
+tuple, and 22 dBm setting after that cold boot. The new bootloader's CLI source
+string is truncated before the injected preview number, so the independently
+hashed SWD artifact is the authoritative candidate identity for this run.</p>
+<p>The later TinyUSB lifecycle/generation candidate identifies itself as test
+version <code>0x02040403</code>. Its exact 40,960-byte bootloader readback SHA-256 is
+<code>f609eb18754070c54f127325b1cb48547baf5c6b1c695d36fd0c8e0874713c13</code>.
+With that candidate installed, a full <code>CURRENT.UF2</code> read completed before each
+write. The 936,960-byte <code>bf092b24</code> application UF2 (SHA-256
+<code>12477a9734cf12eb920361bd21024e39bf303953fcf79d0bf720e00847e2ae92</code>)
+copied and flushed in 28,203 ms and returned to application mode four seconds
+later. The exact <code>3caf9dcf</code> application UF2 (SHA-256
+<code>650c9fda456685cdf99c1f2996c60f1f551cc9216d2b746a22c8cb78464b0ff7</code>)
+then copied and flushed in 26,479 ms and also returned in four seconds. Both
+boots retained <code>RAK3401-OTA-BENCH</code> and <code>910.525/62.5/SF7/CR5</code>.</p>
+<p>Identity-gated SWD then read the entire 468,480-byte padded UF2 application
+range. Its SHA-256 exactly matched the converted source on both sides at
+<code>b2e37a7681027ca91d1b2bd8e39b55395d9e91d4863aed17131e50c1ba1d2227</code>.
+The bootloader still matched the installed <code>0x02040403</code> image byte-for-byte,
+and UICR still matched the pre-test image at
+<code>d029ea630c2f632a1b690cb52b2a96a28b6f870c656c3e1bd74ba3a571c53b9c</code>.
+The authoritative logs are under
+<code>/home/mikec/hwtest/runs/rak3401-uf2-02040403-20260830-170829</code> and
+<code>/home/mikec/hwtest/runs/rak3401-uf2-return-02040403-sfHiGEqA</code> on Mercerwood.</p>
+<p>The subsequent direct LoRa qualification used the V4 as controller/seeder and
+the RAK's exact <code>bf092b24</code> body <code>91CF4EC2882F23D6</code> as the base. Its mandatory
+fixed three-minute rehearsal passed on <code>909.95/250/SF5/CR5</code>, including natural
+expiry and exact normal-radio recovery. The 2,132-byte, two-block in-place
+delta reached <code>2/2</code> and ready in six seconds; install was accepted, and the new
+body appeared at the 60-second reboot probe. The automation took 514 seconds
+including rehearsal, clock/radio safety checks, and post-install verification.
+The final body was <code>27A223DDFC3A8F47</code>, version <code>1.17.1.5</code> at <code>3caf9dcf</code>, and
+the bootloader reported <code>blrc:B8</code>, which is OTAFIX's successful application
+apply result rather than an error. Exact target TX power was wrapped from
+22 dBm to 0 dBm for the co-located transfer and restored to 22 dBm afterward;
+the source RXPS configuration and both normal radio tuples were also restored.</p>
+<p>Identity-gated SWD then read the live application at <code>0x26000</code>. All 468,384
+bytes matched the intended release image exactly (SHA-256
+<code>b496e3f4419c9f771564ed3c74b3407822f45acdf60cbd6c4625a54b181ca084</code>),
+and the independently recomputed EndF hash was <code>27A223DDFC3A8F47</code>. The target
+ID was <code>2FA509C1</code>, hardware ID was <code>RAK_3401</code>, and version word decoded to
+<code>1.17.1.5</code>. The 40,024-byte bootloader readback also matched the exact installed
+<code>ffb1580</code>/test-version-<code>0x02040402</code> artifact byte-for-byte; UICR was unchanged.
+After SWD reset-halt/resume, USB again reported the expected application,
+identity, name, radio, 22 dBm, no TempRadio lease, and <code>blrc:00</code> (the retained
+success diagnostic is intentionally cleared by the next normal boot).</p>
+<p>A serialized VM build of the six connected-board qualification profiles then
+completed 6/6 in 136.122 seconds: XIAO nRF52 BLE Companion, T1000-E BLE
+Companion, RAK3401 LoRa-OTA Repeater, SenseCAP Indicator LoRa USB/Wi-Fi
+Companion, MeshTower V2 SD LoRa-OTA Repeater, and the consolidated Heltec V4
+V4.2/V4.3 Full Companion. The earlier V4 selector typo was rejected before any
+compile began and is not a firmware build failure.</p>
+<p>After the fresh-NTP download gate, shared SNTP coordinator, MQTT-to-MeshCore
+RTC handoff, and daily refresh policy were added, the complete native matrix
+passed 1,102/1,102 cases in 93.953 seconds. The scheduler is host-tested at
+24-hours-minus-one-millisecond, the exact 24-hour boundary, normal and wrapped
+<code>millis()</code> values, a short retry that overrides the daily cadence, the zero
+deadline sentinel, and a Wi-Fi reconnect. A reconnect schedules one fresh
+sample and clears an arbitrarily old short-retry deadline; while continuously
+connected, successful samples are requested only once per day. All current
+Python and shell contract suites passed, and the expanded LoRa-OTA automation
+suite passed 317/317 cases.</p>
+<p>Serialized real builds also passed after that change. The final event-safe
+implementation uses an atomic <code>GOT_IP</code> latch so even a disconnect/reconnect
+shorter than the 10-second MQTT status sample cannot skip the required fresh
+NTP request. The final Heltec V4 MQTT Observer application is 1,853,304 bytes
+with SHA-256
+<code>1938ae88fcdbe601cf8698df44b548656079562d899801886b808af913e5f9ac</code>.
+The consolidated Full V4 image used 2,247,757/6,553,600 flash bytes and left
+4,305,368 bytes of app-image space. Its 2,248,232-byte application image has
+SHA-256
+<code>2547bb245349a500b7c9a112ac25bcec91ce70733c648ee0ff9ac7de3176da1a</code>;
+the 2,313,768-byte merged image has SHA-256
+<code>1f89ff127d50f06c3e3ce11c642611e079dae74772f169da9f2e4643da55a797</code>.
+The focused daily-NTP policy suite passed all 38 cases after the latch was
+added, and the Full capability manifest verified all ten expected features.
+The reduced RAK3401 LoRa-OTA Repeater also compiled with the verified WisBlock
+I2C aliases. At that source state its link used 471,344/815,104 flash bytes; the
+reduced external-sensor contract retains INA219/INA226/INA260/INA3221 as the
+voltage/current entries in the optional environmental-telemetry table. These
+are not the image's only I2C consumers. The image separately retains its
+SSD1306 display, auto-discovered I2C RTCs,
+RAK12500 I2C GPS, and RAK12501/L76K UART GPS paths. The configured INA3221 and
+RAK12500 both default to I2C address <code>0x42</code>; those two devices cannot coexist
+at those addresses. The supported combined arrangement leaves RAK12500 at
+<code>0x42</code>, straps INA3221 A0 to SCL for <code>0x43</code>, and uses a build with
+<code>-DTELEM_INA3221_ADDRESS=0x43</code>.
+The nRF52840 die-temperature and ADC battery-voltage paths are also retained.
+The 472,227-byte DFU ZIP SHA-256 is
+<code>fdd369005a61635756efa9e38b217376a952f334b0864f927a46799b65264fa9</code>,
+and the matching 943,104-byte UF2 SHA-256 is
+<code>2155632fde730e0ae2e4a72ce64f89910861f6c5105a4bd7ac96aaa538a33dca</code>.
+These VM results do not replace the remaining exact-final hardware test with
+UDP/123 blocked.</p>
+<p>The later serialized RAK3401 contract build, after the non-blocking nRF52 USB
+logging change, used 471,576 bytes before its 56-byte EndF trailer. Its EndF
+body hash is <code>026749684bf6ee8f</code>, target ID is <code>2FA509C1</code>, hardware ID is
+<code>RAK_3401</code>, and version word is <code>0x01110105</code>. The 472,435-byte DFU ZIP has
+SHA-256
+<code>cf0880b26f2d6bd8157f8af76a6718fe1f998de8ea7df8cd952e734448201fb9</code>;
+the 943,616-byte UF2 has SHA-256
+<code>f893a8cebf309af12a4a6f5483acb28f94158e18632f660e011658c846e8ca7f</code>.
+The linked ELF contains GPS, SSD1306, RTC, and the four INA families, while an
+exact symbol audit finds none of AHT10/20, BME280, BMP280, SHTC3, SHT4X,
+LPS22HB, MLX90614, VL53L0X, BME680/BSEC, BMP085, or RAK12035. The complete
+native matrix passed 1,112/1,112 cases at that intermediate source state. These
+are VM gates only; flash the exact artifacts and repeat the physical peripheral
+and blocked-clock checks before marking any later source state
+hardware-qualified.</p>
+<p>Subsequent source hardening changed RAK peripheral discovery: the shared 3V3_S
+rail remains enabled, UART GPS requires a complete checksum-valid NMEA sentence,
+an exact INA3221 identity blocks a conflicting u-blox probe, and a successful
+I2C GPS claim suppresses a sensor only on the same bus and address. The hashes
+and sizes above describe their recorded intermediate artifacts; they are not
+current-HEAD evidence and must not be reused for the hardened source.</p>
+<p>The immutable font endpoint was re-probed only after the VM reported
+<code>NTPSynchronized=yes</code>. GitHub returned HTTP 206 for bytes <code>0-65535</code>, an exact
+65,536-byte match to the checked-in font (range SHA-256
+<code>8b0dd308eb01469d1f9e732fba260720a80cc86f6cb5385c28e8a16c76dcfbf3</code>),
+with total length 1,302,608 and strong ETag
+<code>"39ff0cfbe37e36905507697d042869c05374c3202dd96d5a9f98812153f324c1"</code>.
+This validates the current strict Range assumptions against the live service;
+the exact-final Indicator still needs the negative hardware run proving that
+blocked UDP/123 prevents every TLS request and RP2040 staging write.</p>
+<p>Mercerwood subsequently recovered without a target write. Both its Tailscale
+and LAN addresses again accepted SSH, Bluetooth was idle, and the exact T1000-E
+stable serial <code>34A9141999729D5D</code> was present as application USB <code>239a:8029</code>.
+The RAK3401 simultaneously uses the same VID/PID, which confirms that every
+continuation must resolve the stable serial/by-id identity rather than VID/PID.
+The T1000-E remained in the exact bonded Full Companion application; no stale
+DFU, scanner, <code>meshcli</code>, or HCI-capture process was running.</p>
+<h2 id="run-wide-gates">Run-wide gates</h2>
+<ul>
+<li>[ ] Record commit, version string, role/profile, artifact filename, size, and
+      SHA-256 before flashing.</li>
+<li>[ ] Archive the exact ELF and symbol/objdump map beside each qualification
+      firmware. A rebuilt ELF is acceptable for diagnosis only after its
+      firmware binary matches byte-for-byte; compiler <code>__DATE__</code>/<code>__TIME__</code>
+      strings can otherwise change both bytes and the EndF body hash.</li>
+<li>[ ] Bind every operation to a stable USB serial number or physical USB path;
+      never rely on a changing <code>ttyACM</code>/<code>ttyUSB</code> number.</li>
+<li>[ ] After erasing/reflashing a BLE board that reuses its Bluetooth address,
+      remove any stale host bond and pair again with the board's current PIN
+      before diagnosing service-discovery disconnects. On Linux, verify the
+      BlueZ agent actually accepted the passkey; a scanner seeing the device is
+      not proof that Companion GATT is usable.</li>
+<li>[ ] Do not use BlueZ's advertisement <code>service_uuids</code> as a same-address warm
+      handoff identity gate. After application/bootloader transitions BlueZ can
+      merge the bootloader's cached GATT UUIDs into the live application's
+      advertisement. Gate the application advertisement by exact address and
+      name, then require the live connected BLEDfu service, control/revision
+      characteristics, retained bond/encryption, notification subscription,
+      and observed target disconnect before accepting the handoff.</li>
+<li>[ ] Do not treat <code>meshcli -P</code> as an infallible pairing probe. Immediately
+      after one successful post-DFU session, a second invocation with the exact
+      paired XIAO address hit the meshcore-cli <code>NoneType ... pair/disconnect</code>
+      path before it created a Bleak client. BlueZ still reported the exact
+      bond and the same command without <code>-P</code> connected and synchronized the
+      clock successfully. Capture this as a host-tool failure, then verify the
+      device independently before blaming firmware.</li>
+<li>[ ] After a successful <code>BleakClient.connect()</code>, start a fresh disconnect
+      generation before beginning DFU. BlueZ can fail one internal LE attempt,
+      retry successfully, and still deliver the failed attempt's callback. A
+      stale event caused the host to stop notifications and issue a local HCI
+      disconnect after a valid image CRC but before ACTIVATE; the target and
+      bootloader had not dropped the link. Preserve an HCI trace through
+      activation so local-host and remote-target disconnects remain
+      distinguishable.</li>
+<li>[ ] Before a BLE pairing/throughput test on a Wi-Fi-managed Pi, record both
+      management addresses and a same-LAN recovery vantage point. The XIAO
+      pairing run completed, but Mercerwood then stopped answering on both its
+      Wi-Fi and Tailscale addresses; BellevueBBS confirmed the old LAN address
+      was absent at ARP and no replacement LAN host exposed SSH. This is an
+      infrastructure outage until Pi logs prove a cause, not a firmware or BLE
+      failure. The T1000-E pairing run reproduced the management outage: its
+      exact application paired successfully and exposed the complete DFU
+      service, then Mercerwood stopped accepting SSH and ultimately stopped
+      answering Tailscale pings. No buttonless DFU write had been sent, and the
+      T1000 remained in its valid application. Capture Pi Wi-Fi/firmware logs
+      after recovery and avoid leaving discovery enabled between operations.</li>
+<li>[ ] Confirm the selected board and role before every erase or flash.</li>
+<li>[ ] Before every SWD write, read the target FICR device ID and match it to the
+      intended board's stable USB serial (and physical wiring record). A USB
+      product name or remembered cable position is not sufficient.</li>
+<li>[ ] Confirm no other PlatformIO process is active; run only one PlatformIO
+      build, test, clean, or upload at a time.</li>
+<li>[ ] Record the installed bootloader, SoftDevice, partition table, or flash
+      layout independently of the application banner where applicable.</li>
+<li>[ ] Test both a software reboot and a real power removal/cold boot.</li>
+<li>[ ] After an update, read back identity, version, radio tuple, node name, and
+      persistent settings instead of assuming they survived.</li>
+<li>[ ] Save command output and elapsed milliseconds. Mark a test <code>FAIL</code>, not
+      <code>PASS</code>, if the transport reports an I/O error even when firmware later
+      boots.</li>
+<li>[ ] Before calling a node hung, validate that the probe uses that profile's
+      command terminator, check a second transport, and capture PC/LR/watchdog
+      state over identity-gated SWD before reset. Resume once and retest before
+      using reset as recovery so the diagnostic state is not destroyed first.</li>
+<li>[ ] Treat a remote login acknowledgement and the following command reply as
+      separate LoRa packets. A lost login acknowledgement is not proof of
+      failed authentication when a command-matched private reply from the
+      selected contact key is present; an explicit negative login result still
+      fails closed.</li>
+<li>[ ] Restore the intended USA radio preset and normal-radio mode after tests.</li>
+<li>[ ] Compare both semantic version and exact EndF/body hash. A transition
+      between two commits carrying the same version string must stop at the
+      normal reinstall guard unless the run plan explicitly records and passes
+      <code>--allow-non-upgrade</code>; a different commit name alone is not authorization.</li>
+<li>[ ] Do not allow a non-interactive transmission-failure prompt to continue
+      retry cycles forever. Optional capability probes must fail/fall back after
+      a bounded interval, while mutations and cleanup retain their stronger
+      bounded-lease recovery rules.</li>
+<li>[ ] Before the first remote command after any controller/source reboot, read
+      its RTC and compare it with a trusted host clock. Advance a clock which is
+      behind and prove readback; never move a radio clock backward. Fail closed
+      when it is more than 10 minutes ahead. During the RAK rehearsal the V4
+      rebooted to <code>2026-03-01</code> while the RAK remained at <code>2026-08-30</code>; the RAK
+      received the direct packets but correctly rejected their old timestamps
+      as replays. Setting the V4 to host epoch immediately restored login and
+      the exact public-key reply at SNR -1.5 dB.</li>
+<li>[ ] Before every external HTTPS download, require a fresh SNTP response for
+      that bounded operation, a plausible signed wall clock, connected Wi-Fi,
+      and a non-expired proof immediately before opening TLS. Re-check the proof
+      before every resumed/Range TLS connection. A retained plausible RTC or
+      mesh time is not a substitute for observing NTP, and failure must occur
+      before any HTTP request body or flash writer begins.</li>
+<li>[ ] Treat an unacknowledged immediate <code>tempradio</code> mutation as potentially
+      active, not merely lost. On the tested repeater, scheduled-radio expiry
+      deliberately waits for <code>hasOutbound()</code> to clear; a CLI reply stranded on
+      the temporary tuple can therefore hold the node there beyond its nominal
+      lease. Prefer one fixed absolute <code>tempradioat</code> window per node, so duplicate
+      delivery cannot extend it, and prove the return on both tuples before a
+      transfer. If recovering an older immediate handoff, join the exact
+      temporary tuple to drain the reply before issuing <code>normalradio</code>.</li>
+<li>[ ] Do not diagnose a co-located high-power LoRa bench failure as weak RF
+      without an overdrive check. On the RAK3401/V4 bench, the RAK at 22 dBm
+      produced only 3/6 status replies around -1.5 dB SNR, while a reversible
+      0 dBm setting produced 6/6 replies in 5--8 seconds at +12 to +12.5 dB
+      SNR. Read the original power, lower it only for the near-field test, and
+      require exact restoration afterward.</li>
+</ul>
+<h3 id="compute-placement-gate">Compute-placement gate</h3>
+<ul>
+<li>[ ] Run firmware builds, PlatformIO, mOTA/delta generation, compression,
+      full-image hashing sweeps, symbol generation, and other sustained CPU or
+      memory work on the VM. Do not offload these jobs to a Pi merely because
+      the hardware and source artifacts are attached there.</li>
+<li>[ ] Use the Mercerwood Pi as the identity-gated hardware gateway, SWD/USB/BLE
+      test host, and LoRa/Wi-Fi seeder. Copy only the completed artifact plus
+      its manifest/hash to the Pi, then verify the copied SHA-256 before use.</li>
+<li>[ ] Run CPU work on a Pi only when Pi performance or deployment behavior is
+      itself the test subject, and label that exception in the run log.</li>
+<li>[ ] Do not assume a non-interactive SSH session has the same <code>PATH</code> as an
+      interactive shell. Resolve pipx-installed tools such as esptool and
+      detools to their explicit venv path, record the version, and fail before
+      erase if the pinned executable is unavailable.</li>
+<li>[ ] Treat short serial/BLE/SWD control scripts on the Pi as hardware I/O, not
+      as permission to generate artifacts there. Use the explicit Python from
+      the relevant pipx environment when a probe needs one of its dependencies;
+      the Pi system Python did not contain <code>pyserial</code> during the RAK run.</li>
+</ul>
+<h3 id="mercerwood-pi-usb-power-cycle-gate">Mercerwood Pi USB power-cycle gate</h3>
+<ul>
+<li>[ ] Confirm the Pi is reachable through Wi-Fi/Tailscale and that <code>eth0</code> is not
+      the active management path before cycling its downstream USB tree.</li>
+<li>[ ] Stop all flashes/transfers, run <code>sync</code>, and release SWD GPIO 8 and GPIO 11
+      to inputs with no pulls before removing USB power. This prevents an SWD
+      signal from partially back-powering an otherwise unpowered nRF52.</li>
+<li>[ ] Never issue a standalone <code>uhubctl ... -a off</code> to Pi root hub location <code>1</code>.
+      Once its only port is off, the hub disappears from <code>uhubctl</code> discovery and
+      a separate <code>-a on</code> command fails with <code>No compatible devices detected at
+      location 1!</code>. This has interrupted two hardware runs.</li>
+<li>[ ] A downstream hub may be cycled only after resolving the board's stable
+      USB serial to an exact sysfs path and proving that hub advertises
+      per-port power switching. Record the hub location and port, cycle only
+      that port, and gate the re-enumerated VID/PID/serial before continuing.
+      The T1000-E qualification safely used child hub <code>1-1.2</code>, port 3; this is
+      not permission to cycle the ganged root hub at location <code>1</code>.</li>
+<li>[ ] Do not use <code>uhubctl</code> <code>off</code>, <code>on</code>, <strong>or</strong> atomic <code>cycle</code> on Mercerwood root
+      hub location <code>1</code>. Physical testing showed that even one atomic <code>cycle</code>
+      powers the ganged root hub down and then cannot rediscover it to restore
+      power. Use a planned Wi-Fi-issued <code>sudo reboot</code>, which is the verified
+      recovery, or arrange a true upstream VBUS removal when that distinction
+      is part of the test.</li>
+<li>[ ] Treat root hub <code>1</code> as a ganged operation: every attached test board and USB
+      Ethernet adapter loses power. After recovery, enumerate every stable
+      <code>/dev/serial/by-id</code> identity again before resuming any board-specific test.</li>
+<li>[ ] On this heavily populated root hub, inspect kernel logs for real transfer
+      faults before and after a flash, and stop ModemManager while it could open
+      a test TTY. A CH340/ESP32-S3 write which lost the chip at 460800 baud
+      completed and verified at 115200 after a planned Pi reboot; start at the
+      board-qualified conservative rate rather than treating a fast partial
+      transfer as firmware failure.</li>
+<li>[ ] Under non-interactive SSH, do not let <code>udisksctl</code> fall through to an
+      interactive polkit password prompt. After resolving the exact UF2 block
+      device by board serial, either use an already-mounted volume or an
+      explicit <code>sudo -n mount</code> at a board-specific mount point; re-check
+      <code>INFO_UF2.TXT</code> model/version before copying.</li>
+</ul>
+<h2 id="seeed-xiao-nrf52840">Seeed XIAO nRF52840</h2>
+<ul>
+<li>[ ] Stable USB identity distinguishes application (<code>2886:8044</code>) from UF2
+      bootloader (<code>2886:0044</code>).</li>
+<li>[ ] Do not repeat the known-failing full-application UF2 copy under the
+      installed initial 2.4.4 candidate. The identity-gated 897,024-byte copy
+      returned exit 0, then <code>sync -f</code> failed with <code>EIO</code> in 850 ms; the kernel
+      logged an offline device, lost queued writes, and FAT errors before USB
+      disappeared. Recover through a separately hash-gated BLE/serial path and
+      qualify a corrected bootloader candidate before retrying UF2.</li>
+<li>[ ] SWD readback exactly matches the intended bootloader-region SHA-256.</li>
+<li>[ ] Actual SoftDevice FWID and runtime application base match the artifact
+      (<code>S140 7.3.0</code>: FWID <code>0x0123</code>, application base <code>0x27000</code>).</li>
+<li>[ ] Exercise and independently verify the exact-board combined
+      bootloader+SoftDevice recovery path before relying on it in the field.
+      A wrong-layout nRF52840 application can overwrite part of S140 while the
+      UF2 bootloader still accepts files and the application still reads flash;
+      internal writes or <code>InternalFS.format()</code> may then hang or reboot. An
+      application-only UF2 and a filesystem erase cannot repair that state.
+      The known XIAO incident in upstream issue #3284 recovered only after the
+      matching Sense/non-Sense OTAFIX bootloader+S140 ZIP was installed. Keep
+      board identity, SoftDevice FWID, application base, and package contents
+      as four separate pre-write gates.</li>
+<li>[ ] Invalid settings enter persistent UF2 recovery after a cold boot.</li>
+<li>[ ] UF2 application copy returns success; <code>sync -f</code> returns success; the host
+      has no offline-sector, lost-write, or FAT I/O errors.</li>
+<li>[ ] Application enumerates after update and reports the expected board,
+      version, role, and radio tuple.</li>
+<li>[ ] Legacy serial DFU crosses all application pages, emits the exact
+      <code>Device programmed.</code> success marker, and rejects false-success output.
+      Two application serial-DFU attempts on this board timed out waiting for
+      the start ACK while <code>adafruit-nrfutil</code> still returned exit 0, so exit
+      status alone is explicitly insufficient.</li>
+<li>[ ] Legacy BLE DFU verifies each cumulative PRN receipt exactly and fails on
+      a missing, short, regressive, or overreported offset; it may adapt
+      only among the packet-size-specific safe receipt windows after timely
+      exact receipts and must step back down on slow exact receipts. Final
+      application/SoftDevice/bootloader CRC and a peer disconnect are mandatory
+      before declaring success.</li>
+<li>[ ] Every upward PRN move is a bounded adjacent-level probe. A failed probe
+      or a later real demotion blocks further increases for that transfer, while
+      additional slow exact receipts may still negotiate down one level at a
+      time. This prevents <code>4 -&gt; 8 -&gt; 4 -&gt; 8</code> churn without disabling a safe
+      initial probe or a <code>32 -&gt; 16 -&gt; 8</code> fallback.</li>
+<li>[x] The exact Full Companion ZIP
+      <code>Xiao_nrf52_companion_radio_full-v1.17.1.5-halo-keymind-cascade-3caf9dcf.zip</code>
+      (SHA-256 <code>9a916c1a3ea83d8f6dd704465fe9c044a363478f852a4369cf6b13424a7a9430</code>)
+      installed over BLE in 237,297 ms at about 2,110 B/s using ATT MTU 247,
+      244-byte writes, PRN 4, and exact cumulative receipts. Validate and the
+      target-initiated disconnect passed. USB then reported the exact expected
+      version/hash, USA radio tuple, key, RXPS policy, and reversible
+      Terminal/Binary mode; the new application advertised NUS as
+      <code>MeshCore-4610BBD2</code>.</li>
+<li>[x] The post-update application was paired through BlueZ with the expected
+      PIN. Companion GATT then returned the same public key, USA radio tuple,
+      22 dBm limit, non-repeater role, board, and build over BLE. Its RTC was
+      18,038 seconds behind the trusted host; <code>clock sync</code> advanced it and the
+      immediate readback was within one second of the host interval. No
+      backward clock write was performed.</li>
+<li>[x] A second exact same-image update exercised application buttonless DFU and
+      retained-peer bootloader entry. The bootloader deliberately reused the
+      bonded application address <code>E5:C3:A8:B0:60:66</code> rather than the cold-entry
+      address ending in <code>:67</code>; exact name, Legacy DFU service, and DIS model
+      gates still passed. The first adaptive threshold remained at PRN 4 and
+      completed all 448,416 bytes at about 877 B/s in 527,832 ms; validate,
+      target disconnect, USB identity, application key, role, and USA radio
+      readback all passed. The application clock was then about 10 minutes
+      behind because its RTC did not advance during the bootloader transfer;
+      it was advanced to the host clock and proved by immediate readback.</li>
+<li>[x] A third same-image A/B run used bounded neutral-window exploration. At
+      244-byte writes, two exact neutral PRN-4 receipts triggered one adjacent
+      PRN-8 probe. PRN 8 measured about 845 B/s against an approximately
+      879 B/s PRN-4 baseline, so the helper rolled back to PRN 4 after two
+      receipts and never re-probed. All 448,416 bytes completed at about
+      870 B/s in 531,804 ms; CRC validation, target disconnect, USB return,
+      exact Companion key/role/radio readback, and post-DFU forward clock sync
+      passed. This proves up/down sender-window adaptation and no churn, while also showing
+      that PRN receipt overhead is not the bonded-path bottleneck on this run.</li>
+<li>[x] A bootloader candidate built from exact ZIP SHA-256
+      <code>9c70200fc15a315a50ec68d2a905b5bcf2fc07a796a21fbd439535ec19a608be</code>
+      disabled inherited slave latency locally during DFU DATA. The controller
+      trace still reported the peer-negotiated 30 ms interval and latency 4,
+      with no connection-parameter update after START; the change is therefore
+      a local event-attendance override, not a GAP speed renegotiation. A cold
+      address-generation control completed 448,416 bytes at 2,231 B/s and
+      passed validation/activation in 226,103 ms.</li>
+<li>[x] Two subsequent bonded application-to-bootloader runs completed the exact
+      same 448,416-byte image at 3,524 and 3,534 B/s. Their complete elapsed
+      times, including exact application advertisement proof, buttonless
+      handoff, bootloader scan, erase, DATA, CRC validation, activation, and
+      reboot, were 169,414 and 169,221 ms. Both targets initiated the final
+      disconnect; USB returned as stable serial <code>B35E71C1C3726CE7</code>; the public
+      key, 22 dBm setting, USA <code>910.525/62.5/SF7/CR5</code> tuple, board, and build
+      read back exactly. Compared with the prior roughly 877 B/s bonded run,
+      the DATA rate improved by about 4.0x without increasing the PRN window
+      beyond 8.</li>
+<li>[x] An exact bonded B-A-B link-profile sequence used the same Full Companion
+      ZIP SHA-256 <code>9a916c1a3ea83d8f6dd704465fe9c044a363478f852a4369cf6b13424a7a9430</code>,
+      lab helper SHA-256 <code>4909c617de37b5666cc622b7190568f002280f55bf26a05843ea283f2be8f566</code>,
+      handoff helper SHA-256
+      <code>1bad570173079b623bbe2bbb9e5ba7c4f8ac379bf966bfd4382c5266fb9fd214</code>,
+      stable USB serial, bonded address, and 448,416-byte application throughout.
+      First B, <code>xiao-ble-event-length-prestart-20260830-072641-W7COxm</code>, used one
+      exact pre-START 15 ms/latency-0 update with <code>0/0</code> no-preference event-length
+      hints and completed DATA in 72.030 seconds at 6,225 B/s; DFU through target
+      disconnect was 102.792 seconds and the full workflow was 117,064 ms.
+      Control A, <code>xiao-ble-control-prestart-20260830-073149-yKf0lO</code>, requested no
+      update, retained the bootloader connection's 30 ms/latency-4 link, and
+      completed DATA in 134.131 seconds at 3,343 B/s; DFU was 165.137 seconds and
+      the full workflow was 182,624 ms. Final B,
+      <code>xiao-ble-exact15-prestart-20260830-073554-FuGPfH</code>, repeated exact 15 ms and
+      completed DATA in 71.970 seconds at 6,231 B/s; DFU was 102.799 seconds and
+      the full workflow was 117,179 ms. Both B rates were about 1.86x control and
+      differed by only 0.096%.</li>
+<li>[x] The B-A-B protocol and link gates passed independently. Both B runs probed
+      PRN 4 -&gt; 8 after an exact 0.135-second four-packet receipt, rolled back
+      once to PRN 4 after the exact 0.345-second eight-packet receipt, and never
+      re-probed. Control A likewise probed after 0.269 seconds and rolled back
+      after 0.600 seconds. Each B bootloader connection had exactly one matching
+      HCI Update Complete before START; control A had no bootloader-connection
+      update. All three captures contained zero connection updates from START
+      through DATA, CRC validation, activation, and the target-initiated
+      disconnect. Each run ended <code>RESULT=PASS</code>, <code>RC=0</code>, <code>STAGE=complete</code>; final B
+      returned the exact Full Companion application as USB <code>2886:8044</code>, stable
+      serial <code>B35E71C1C3726CE7</code>, with current application name
+      <code>MeshCore-4610BBD2</code>. A fresh post-B binary Companion query independently
+      re-gated the unchanged public identity, name, Full Companion role, 22 dBm
+      power, and USA <code>910.525/62.5/SF7/CR5</code> radio tuple. A separate bonded BLE
+      application query then returned the same board, build, and Full Companion
+      role, so the USB return did not mask a broken Companion BLE path or stale
+      bootloader alias.</li>
+<li>[x] The current host-controller ceiling is independently characterized. The
+      Pi Zero 2 W Broadcom UART controller reports HCI/LMP 4.2 but supports only
+      LE 1M; LE Read Maximum Data Length and Read Suggested Default Data Length
+      both return Unknown HCI Command. The final B capture contains 1,837 full
+      244-byte firmware writes,
+      each split into ten 27-byte HCI ACL fragments; all 18,425 transmitted ACL
+      fragments received completed-packet accounting. The median full-write gap
+      was 29.947 ms at 15 ms versus 59.936 ms in control A. A BLE 5 controller
+      with working Data Length Extension is therefore the next host-side speed
+      experiment; this built-in controller cannot exercise DLE or LE 2M.</li>
+<li>[x] The host helper now clears a disconnect callback left by an unsuccessful
+      internal BlueZ connection attempt only after <code>connect()</code> has returned a
+      live link, and labels PRN changes as adaptation rather than link
+      negotiation. All 81 strict host tests pass. The first physical run before
+      this fix still proved the 3,520 B/s DATA rate and returned a successful
+      validation response, but is correctly recorded as FAIL because the stale
+      host event prevented ACTIVATE.</li>
+<li>[ ] Warm app-to-bootloader handoff is tested with the application watchdog
+      active; cold recovery is tested separately.</li>
+<li>[ ] BLE Companion/recovery behavior and radio-reset recovery are exercised.</li>
+</ul>
+<h2 id="seeed-tracker-t1000-e">Seeed Tracker T1000-E</h2>
+<ul>
+<li>[x] Stable application identity <code>34A9141999729D5D</code> is recorded and is not
+      confused with the RAK3401 even though both currently enumerate with USB
+      product ID <code>239a:8029</code>. Application is <code>239a:8029</code>; the exercised
+      bootloader is <code>2886:0057</code>, with the same stable serial and exact
+      <code>T1000-E</code>/<code>T1KE_DFU</code> model/name gates.</li>
+<li>[ ] Board, version, repeater role, bootloader status, and USA radio tuple are
+      correct after erase/install and after reboot. The live baseline and a
+      2,184 ms software reboot passed: <code>3caf9dcf</code>, <code>Seeed Tracker T1000-E</code>, 22 dBm,
+      <code>910.525/62.5/SF7/CR5</code>, OTA target <code>7B071FA0</code>, bootloader
+      <code>0.11.0-OTAFIX2.4.3</code>, and full OTA base hash
+      <code>3E92B157128B6963</code>. A real power-removal boot is still required.</li>
+<li>[ ] UF2 and serial DFU installation paths complete without host I/O errors.
+      On OTAFIX 2.4.3, an identity-gated root copy of the exact old UF2 returned
+      success in 112 ms, but the device disconnected before host writeback was
+      durable: <code>sync -f</code> failed with <code>EIO</code> after 17,695 ms and the kernel logged
+      lost asynchronous writes/FAT read errors. The old application happened to
+      boot and retained its settings, but this transport is a <strong>FAIL</strong>. Retest
+      with the corrected 2.4.4 candidate before qualifying T1000-E UF2.</li>
+<li>[x] The installed <code>t1000e_repeater_lora_ota_no_external_sensors</code> profile does
+      not compile the Companion BLE transport and did not advertise during a
+      post-reboot BlueZ scan; that is expected for this repeater image. BLE
+      Companion qualification belongs to the separate T1000-E Companion build.</li>
+<li>[x] The exact latency-disable bootloader candidate ZIP (SHA-256
+      <code>ebe9739ce40c2c7cc1f52076f9614194959fcf6df93d37666b69b7bd415fab68</code>)
+      installed through identity-gated serial DFU. The final output contained
+      exactly one terminal <code>Device programmed.</code> success line, the bootloader
+      returned as <code>2886:0057</code>, and its embedded manifest identifies
+      <code>T1KE_DFU</code>, S140 7.3/FWID <code>0x0123</code>, application base <code>0x27000</code>, and test
+      version <code>0x02040403</code>.</li>
+<li>[ ] The later connection-policy-reapply combined ZIP (SHA-256
+      <code>c2de1fb2704154b4abc371b6b4827c32ad09c4d15f3f6d97d0f4182bb51fff58</code>)
+      was identity-gated, transferred, validated, activated, and returned as
+      exact <code>2886:0057</code> recovery USB. <code>INFO_UF2.TXT</code> reported
+      <code>0.11.0-OTAFIX2.4.3-3-gffb1580-dirty-test-version-0x02040403</code>, S140
+      7.3.0, and the T1000-E board. The earlier and later candidates share the
+      same visible version string, however, so package sequencing and INFO_UF2
+      do not independently prove the installed bootloader bytes. Require an
+      identity-gated live bootloader-region readback or a uniquely versioned
+      rebuild before checking this item.</li>
+<li>[x] The combined-image BLE transport itself passed: 193,688 bytes at
+      3,331 B/s, target CRC validation, and target-initiated activation. The
+      package contains SoftDevice plus bootloader and <code>APP=0</code>, so remaining in
+      recovery USB was the correct postcondition. Its first supervisor record
+      is not accepted as run-level evidence: TERM inherited status zero and
+      wrote a false <code>PASS</code> at <code>STAGE=post_copy_usb</code>. A separate audit records
+      the transport result, and all later wrappers map INT/TERM to nonzero and
+      refuse <code>PASS</code> unless <code>STAGE=complete</code>.</li>
+<li>[x] A separate exact application recovery after that combined transfer
+      completed 404,468 bytes at 2,095 B/s, validated, activated, and returned
+      stable application USB in 225,899 ms. The lower rate is the expected
+      cold/unbonded class, not the bonded warm baseline.</li>
+<li>[x] A cold exact Full Companion application ZIP (SHA-256
+      <code>b3be000ab2391527a325cc868e2706dec291c167b6e6cd3495908addb8af6c65</code>)
+      completed all 404,468 DATA bytes over BLE at 1,572 B/s. The complete
+      workflow took 281,236 ms (about 1,438 B/s end to end, including setup,
+      validation, activation, and reboot). ATT MTU reached 247, but BlueZ's
+      independently cached maximum write size was still 20, so the
+      identity-gated helper correctly used 20-byte packets, adapted PRN
+      8 -&gt; 16 -&gt; 32, validated CRC, activated, observed the target-initiated
+      disconnect, and gated the exact USB application return.</li>
+<li>[x] The Full Companion application advertised as <code>MeshCore-F9AD7082</code> at the
+      expected address generation, paired with the qualification PIN, and
+      exposed its bonded, MITM-protected Legacy DFU service after connection.
+      That DFU service is intentionally absent from the advertisement, so an
+      advertisement-only check is insufficient. A 1200-baud USB touch instead
+      selects serial-only DFU and correctly produces no BLE advertisement;
+      use the bonded application control characteristic for a warm BLE handoff.</li>
+<li>[x] Exact same-address bonded warm buttonless DFU passed. The application
+      advertisement, Paired/Bonded state, connected BLEDfu service/control/
+      revision layout, encrypted notification/write gate, observed target
+      disconnect, <code>T1KE_DFU</code> advertisement, DIS model <code>T1000-E</code>, ATT MTU 247,
+      and 244-byte write capability were all checked. All 404,468 bytes were
+      confirmed in 121.081 seconds at 3,340 B/s; DFU through target disconnect
+      took 144.076 seconds and the full supervisor took 176.958 seconds. CRC,
+      activation, and exact <code>239a:8029</code>/<code>34A9141999729D5D</code> USB return passed.</li>
+<li>[x] Two accepted in-DATA 30 ms -&gt; 15 ms -&gt; 30 ms controller experiments
+      completed without corrupting either image, but were decisive negative
+      performance results. The first finished DATA in 425.398 seconds at
+      951 B/s; the later candidate finished DATA in 449.063 seconds at 901 B/s.
+      HCI capture found the cause: <code>hcitool lecup</code> silently encoded both
+      connection-event-length hints as <code>0x0001</code> (0.625 ms). The Pi's Broadcom
+      4.2 controller consequently scheduled about one ACL fragment per event:
+      roughly 64 fragments/s at 15 ms and 32 fragments/s after the 30 ms
+      "rollback", versus roughly 120--144 fragments/s on the untouched link.
+      The later pre-START controls prove that 15 ms itself is not slow; the
+      restrictive event-length hint and in-DATA update/rollback were unsafe.</li>
+<li>[x] Two exact 15 ms/latency-0, zero-event-length lab controls passed:
+      <code>t1000-ble-event-length-prestart-20260830-071549-QOeVuw</code> completed all
+      404,468 DATA bytes in 64.905 seconds at 6,232 B/s (95.635 seconds through
+      target disconnect; 112,639 ms full workflow), and
+      <code>t1000-ble-event-length-prestart-20260830-071825-VE9Re3</code> completed DATA in
+      62.070 seconds at 6,516 B/s (92.794 seconds through target disconnect;
+      106,807 ms full workflow). Both used exact <code>0/0</code> no-preference minimum and
+      maximum connection-event lengths. On each bootloader connection the HCI
+      trace contains exactly one successful update before START and none from
+      START through DATA, validation, activation, and the target disconnect;
+      Update Complete preceded START by 7.535 and 7.536 seconds. Completed-packet
+      clusters followed the 15 ms connection anchors, while the median full-size
+      DFU write gap was 29.997 ms in both traces. Exact package hash, CRC,
+      activation, and stable application USB return passed twice.</li>
+<li>[x] <code>t1000-ble-event-length-prestart-20260830-071358-ogzmRy</code> is the bounded
+      negative control. HCI accepted exact 15 ms/latency 0 with both event-length
+      hints set to 10 ms, then reported <code>Connection Timeout (0x08)</code> 6.810 seconds
+      after Update Complete during the 20-second pre-START pause. The run failed
+      closed at <code>STAGE=pre_start_update</code> in 44,227 ms; START and application DATA
+      were never sent. A 10 ms event-length hint is therefore rejected for this
+      adapter/target pair.</li>
+<li>[ ] Production BLE DFU keeps the controller-negotiated link and issues no raw
+      host connection update unless that exact adapter/target profile has been
+      separately graduated. The opt-in lab path may issue exactly one request on
+      the bootloader connection before START while sent/confirmed are zero: exact
+      interval and latency, <code>0/0</code> no-preference event-length hints, bounded pause,
+      and a matching HCI Update Complete are mandatory. Failure or mismatch
+      disconnects before START. Never update or roll back the link during DATA;
+      only the protocol PRN/window may adapt there. Compare complete repeated
+      control/candidate DFUs offline before graduating a production profile.</li>
+<li>[ ] Repeat the cold transfer with the host's bounded BlueZ readiness wait.
+      When ATT MTU is greater than 23 while the cached write capability remains
+      20, it polls the same connected DFU characteristic for at most three
+      seconds, aborts on disconnect, disappearance, or characteristic-handle
+      change, and otherwise falls back safely to 20. The four readiness unit
+      cases and all 81 strict helper tests pass; a physical 20 -&gt; 244-byte
+      promotion is still required.</li>
+<li>[ ] Restore the protected
+      <code>t1000e_repeater_lora_ota_no_external_sensors</code> application (target
+      <code>0x7B071FA0</code>, exact ZIP SHA-256
+      <code>9b9be2bee9ebb6644d22806d404fe02c415d037707713d206fa43a8c689cf632</code>)
+      through identity-gated application DFU while retaining the candidate
+      bootloader. Do not use the generic repeater image or the unqualified UF2
+      path. Verify the protected private/public identity without printing the
+      private key, plus exact name, latitude/longitude, build/body/OTA target,
+      USA radio, 22 dBm, GPS off, power saving on, RX gain on, RXPS on,
+      watchdog on, telemetry access <code>all</code>, no TempRadio/download, and a valid
+      admin login.</li>
+<li>[ ] LoRa radio reset/recovery is forced and normal receive/transmit resumes.
+      Normal post-reboot bidirectional LoRa is already proven: the V4 learned a
+      zero-hop path, received the exact message-specific ACK in 558 ms, and
+      received the T1000-E's exact <code>3caf9dcf</code> version reply. A deliberately
+      forced LR1110 recovery event is still required.</li>
+<li>[x] Direct V4 LoRa OTA receive, apply, reboot, and post-update verification
+      passed from exact <code>bf092b24</code> body <code>9443FB5E6F23FC1B</code> to exact <code>3caf9dcf</code>
+      body <code>3E92B157128B6963</code> on OTAFIX 2.4.3. The mandatory fixed three-minute
+      rehearsal passed at <code>909.950/250/SF5/CR5</code>, including natural expiry and
+      return to <code>910.525/62.5/SF7/CR5</code>. The 2,036-byte/two-block delta reached
+      ready in six seconds, the new body replied at the 50-second probe, and the
+      complete safety-wrapped runner took 519 seconds. V4 source RXPS and both
+      normal radio tuples were restored. The co-located T1000 was temporarily
+      reduced to 0 dBm and restored to 22 dBm using bounded retries across its
+      RXPS busy windows.</li>
+<li>[x] Independent post-LoRa-OTA USB verification matched the protected pre-run
+      private key, public key, name, latitude, and longitude without printing
+      private material. GPS remained off; device power saving, system watchdog,
+      RX gain, and RXPS remained on; telemetry access remained <code>all</code>; no
+      TempRadio lease or download remained. <code>blrc:B8</code> is the expected OTAFIX
+      application-apply success diagnostic. A subsequent software reboot reset
+      uptime and preserved the exact build/body, name, radio, 22 dBm, GPS,
+      power-saving, RXPS, watchdog, and no-TempRadio state. The CDC symlink did
+      not disappear during this warm reset, so uptime/readback—not USB removal—
+      is the required reboot proof on this board.</li>
+<li>[x] GPS was initially off, enabled successfully under device power saving,
+      reported active/no-fix/zero-satellites with its duty-cycle deadline, and
+      was restored to off. Device power saving reported on, RXPS reported
+      <code>on,18205,20423</code>, GPS advert policy <code>prefs</code>, and telemetry access <code>all</code>.</li>
+</ul>
+<h2 id="rak3401">RAK3401</h2>
+<ul>
+<li>[x] Stable USB identity and SWD FICR identity are independently matched.</li>
+<li>[x] Source-level WisBlock peripheral pins are complete and non-conflicting:
+      I2C SDA/SCL are P0.13/P0.14 through both <code>PIN_WIRE_*</code> and
+      <code>PIN_BOARD_*</code>; GPS-module RX crosses to MCU UART TX P0.16, GPS-module TX
+      crosses to MCU UART RX P0.15, and PPS is P0.17. A static contract test
+      prevents these aliases from silently disappearing or being uncrossed.</li>
+<li>[x] Ordinary/full-sensor RAK3401 profiles use the source-built Adafruit BME680
+      provider, not Bosch's precompiled BSEC archive, so upstream issue #3292's
+      soft-float/hard-float link mismatch is not reachable there. The reduced
+      LoRa-OTA profile deliberately omits BME680/BSEC and the other declared
+      optional environmental/ranging drivers. A static contract test requires
+      the hard-float path fix and BSEC dependency if BSEC is enabled in this
+      board or an inherited full-sensor recipe later.</li>
+<li>[ ] With the RAK13302 radio installed, detect a RAK12501/L76K UART GPS from a
+      complete checksum-valid NMEA sentence in sensor slot A. Confirm random
+      UART bytes, an incomplete sentence, and a bad checksum do not claim GPS.</li>
+<li>[ ] Detect RAK12500 I2C GPS alone at <code>0x42</code>; exercise GPS power saving and
+      confirm the shared 3V3_S rail, OLED, RTC, and other slots remain powered.</li>
+<li>[ ] Detect INA3221 alone at the firmware-configured <code>0x42</code> and prove the
+      discovery path does not send u-blox configuration traffic to it.</li>
+<li>[ ] Exercise RAK12500 at <code>0x42</code> and INA3221 at <code>0x43</code> together after strapping
+      INA3221 A0 to SCL and building with
+      <code>-DTELEM_INA3221_ADDRESS=0x43</code>; verify both retain independent telemetry.</li>
+<li>[ ] With a representative omitted environmental sensor attached, confirm the
+      reduced image leaves the generic I2C bus healthy but does not advertise a
+      driver that was intentionally removed.</li>
+<li>[x] Local USB terminal probes are terminated with carriage return (<code>\r</code>).
+      This CLI echoes an LF-only command without executing it; an echoed
+      <code>ver</code> with no reply is therefore a bad probe, not evidence of a hung
+      application. Confirm any suspected hang with a CR-terminated command,
+      LoRa status, and SWD state before resetting the board.</li>
+<li>[x] Assert CDC DTR when probing the RAK terminal. With DTR deasserted, writes
+      reached the port but no CLI replies were returned; the same exact
+      stable-identity port returned the expected version immediately after DTR
+      was asserted. Keep 1200-baud bootloader touch separate from 115200-baud
+      application probes, and allow a full reply window so delayed responses
+      are not attributed to the following command.</li>
+<li>[x] Installed S140 6.1.1 FWID (<code>0x00B6</code>) and runtime application base
+      (<code>0x26000</code>) are independently verified.</li>
+<li>[x] Bootloader version and apply capabilities are independently reported.</li>
+<li>[x] UF2 application copy returns success; <code>sync -f</code> returns success; no USB
+      reset/timeout or offline-sector errors occur; SWD readback matches every
+      UF2 payload byte. Current 2.4.4-preview.2 result is <strong>PASS</strong> in both
+      current→old and old→current directions.</li>
+<li>[x] Board, repeater role, version, name, and USA radio tuple are verified
+      after serial recovery and again after a real cold boot.</li>
+<li>[x] Six consecutive authenticated <code>ota self</code> attempts leave the application
+      healthy. In the qualification run, two login/reply pairs were lost, one
+      login succeeded while its command reply was lost, and the next three
+      commands replied in about 2.5 seconds each. A CR-terminated local <code>ver</code>
+      probe passed after every attempt; packet loss did not become a node hang.</li>
+<li>[ ] An unchanged admin login does not rewrite the ACL flash file, while an
+      actually changed/newly learned persistent route schedules exactly one
+      delayed save and survives reboot. Cover delayed flood-path replies,
+      already-unknown paths, changed permissions/secrets, new/evicted clients,
+      and the intentionally non-persistent guest case. Do not rely on an
+      unrelated login write to capture a later PATH response.</li>
+<li>[ ] Location and private-key persistence are verified without exposing the
+      private key in logs.</li>
+<li>[x] Serial recovery rejects nrfutil's false exit-0 failure, requires the exact
+      success marker, and produces a byte-exact SWD application readback.</li>
+<li>[ ] UF2/serial recovery works with both the deployed older bootloader family
+      and the current backward-compatible application.</li>
+<li>[ ] Bluetooth advertisement and connection work when enabled. The tested
+      repeater profile does not advertise BLE during normal operation.</li>
+<li>[x] Direct LoRa OTA from the V4 passes with elapsed time, bounded retry
+      behavior, final hash/version verification, exact radio restoration, and
+      independent SWD readback. The qualified <code>bf092b24</code> base
+      <code>91CF4EC2882F23D6</code> reached <code>3caf9dcf</code>/<code>27A223DDFC3A8F47</code> using a
+      two-block, 2,132-byte delta: ready in six seconds, new body at the
+      60-second reboot probe, and 514 seconds for the complete safety-wrapped
+      run. Log:
+      <code>/home/mikec/hwtest/runs/rak3401-0dbm-final-9KWjey61/run.log</code>.</li>
+<li>[ ] Add exact RF packet sent/confirmed counters to the device/host telemetry.
+      The qualified run records two payload blocks, all seeder reads, command
+      retries, and final success, but those are not equivalent to LoRa packet
+      counts and must not be presented as such.</li>
+<li>[ ] Repeat at each supported bandwidth and record 0-hop, 1-hop, and 2-hop
+      estimates from measured airtime rather than extrapolating only by file size.</li>
+</ul>
+<h2 id="rak4631-reduced-profiles">RAK4631 reduced profiles</h2>
+<ul>
+<li>[x] Serialized VM contracts distinguish the three application identities:
+      the plain and Serial2 reduced profiles retain the combined WisBlock GPS
+      provider and all four INA voltage/current drivers; the explicit legacy
+      Serial1 profile retains the INA drivers and omits GPS. This is build
+      evidence only, not physical peripheral qualification.</li>
+<li>[ ] On the plain reduced profile, detect and read RAK12500 I2C GPS, a
+      RAK12501/L76K UART GPS in a separate run, the SSD1306 OLED, a supported
+      autodiscovered RTC, and representative INA telemetry. Verify GPS sleep and
+      repeated discovery never lower the shared WB_IO2/3V3_S rail.</li>
+<li>[ ] With a UART RAK12501 installed and detected, confirm the Serial2 bridge
+      and GPS remain usable together. Select Serial1 and try to enable the
+      bridge with the GPS preference both on and off; verify each attempt is
+      refused before the bridge starts and does not change GPS transport,
+      acquisition, hold, or cached-fix state. The shared WB_IO2/3V3_S rail must
+      remain high and GPS must remain usable after each refusal.</li>
+<li>[ ] With only an I2C RAK12500 installed, and again with neither GPS installed,
+      select Serial1 on the merged image and confirm bridge enable is refused
+      without changing saved UART/runtime state. Silence or an I2C-only detection
+      must not defeat the fail-closed RAK12501 reservation. Confirm Serial2 starts
+      and I2C GPS telemetry remains usable.</li>
+<li>[ ] Exercise RAK12500 at <code>0x42</code> and INA3221 at <code>0x43</code> together with the
+      address-matched build. Separately place INA3221 alone at the configured
+      <code>0x42</code> and prove the identity guard prevents u-blox configuration writes.</li>
+<li>[ ] With a logic analyzer, hold SDA low and then SCL low before sensor
+      discovery. Confirm the validated board pins receive at most nine
+      open-drain recovery clocks and a STOP only after SCL rises; the firmware
+      must skip discovery if either line remains low. Repeat on ProMicro's
+      remapped SDA 8/SCL 7 and verify the user-button pin is never driven.</li>
+<li>[ ] Record the remaining core limitation: the pinned Adafruit nRF52 Wire
+      implementation has no transaction timeout. This preflight cannot protect
+      display/RTC calls made earlier in boot or interrupt a peripheral that
+      wedges after a transaction begins. Qualify those cases with a hard power
+      cut/watchdog fixture before claiming bus-hang recovery.</li>
+<li>[ ] Confirm the explicit legacy Serial1 image exposes neither UART RAK12501
+      nor I2C RAK12500. Record this as a combined-provider build limitation, not
+      an assertion that RAK12500 electrically conflicts with the UART.</li>
+</ul>
+<h2 id="heltec-meshtower-v2-with-sd">Heltec MeshTower V2 with SD</h2>
+<ul>
+<li>[x] Stable serial <code>9352162A72082314</code> and physical downstream-hub path
+      <code>1-1.2</code> port 4 identify this board across application and bootloader
+      descriptors; no other attached nRF52 endpoint was selected. The older
+      2.4.3 bootloader's UF2/serial failure was rejected rather than treated as
+      a successful flash.</li>
+<li>[x] Exact <code>1.17.1.5-halo-keymind-cascade-marathon-hwtest-e26d48e4</code> SD
+      Repeater boots with hardware ID <code>Heltec_tower_v2</code>, target <code>0A9DBBF0</code>,
+      body hash <code>E9282D470AAC348B</code>, and USA radio
+      <code>910.525/62.5/SF7/CR5</code>. <code>ota self</code> reports SD apply ABI 3 with codec mask
+      <code>0x5</code>; <code>ota bootloader</code> reports board <code>239A0071</code>, target <code>1150F50E</code>, name
+      <code>TOWER_V2_OTA</code>, and capability byte <code>09</code>.</li>
+<li>[x] Card detection and destructive maintenance pass. Normal format took
+      3,927 ms; an immediate repeat was rejected by the five-minute cooldown;
+      forced format took 3,933 ms; and raw erase plus format took 3,947 ms.
+      The card remounted empty with 16.0 KiB used and 959.6 MiB free, and both
+      completion ages were recorded. Automatic archive capture was then
+      disabled deterministically, leaving only <code>/mota/cache.off</code>.</li>
+<li>[ ] SD card detection, staging, hash validation, apply, cleanup, and recovery
+      from missing/corrupt media pass.</li>
+<li>[ ] Multi-page application and bootloader update paths pass across a cold boot.</li>
+<li>[ ] LoRa OTA receive/apply reports the expected target ID and installed version.</li>
+</ul>
+<h2 id="heltec-v4">Heltec V4</h2>
+<ul>
+<li>[x] Exact V4 hardware variant is reported (<code>Heltec V4.3 OLED</code>); OLED/TFT
+      variants are not merged.</li>
+<li>[x] Full Companion boots with USB logging off and Binary Companion selected.
+      The text terminal independently reports the complete build string;
+      protocol <code>ver</code> has a shorter fixed-width version field.</li>
+<li>[ ] USB logging changes take effect immediately on this single-TTY ESP32
+      profile, require no reboot, and return to Binary Companion only through
+      the explicit terminal-stop mode change.</li>
+<li>[x] Bluetooth pairing and Companion protocol operations pass. Qualification
+      required removing the Pi's stale pre-flash bond, pairing through a BlueZ
+      <code>KeyboardOnly</code> agent with the current displayed/reported PIN, then
+      reconnecting; BLE <code>infos</code> and <code>ver</code> returned the exact V4.3 OLED identity.</li>
+<li>[x] Saved Wi-Fi connects to <code>SlowFi</code>, returns at <code>192.168.1.51</code> after the test
+      host reboot, reports Wi-Fi power save <code>min</code>, and remains governed by the
+      configured-network behavior rather than the unconfigured 30-minute
+      shutdown policy.</li>
+<li>[x] TCP Binary Companion (<code>5000</code>), Wi-Fi OTA (<code>5001</code>), and text CLI (<code>5002</code>)
+      are each tested and cannot be confused with one another. Port 5000
+      returned the exact Companion identity; 5002 returned the full terminal,
+      version, Wi-Fi, logging, RXPS, and memory state; and a real <code>motatool
+      serve --tcp 192.168.1.51:5001 -v</code> session received <code>COUNT -&gt; 0</code> from an
+      intentionally empty folder. Disconnect then restored <code>folder:not
+      connected</code> while the 5001 listener stayed active.</li>
+<li>[ ] For a shared Full-Companion controller/seeder, bind the source identity
+      to the exact public key already read from Binary Companion port 5000.
+      Do not require <code>get public.key</code> from text port 5002: the hardware-tested
+      V4 Full CLI rejects that command. Port 5002 must still prove the local
+      TempRadio state/tuple, while keyed on-air destination replies prove the
+      physical LoRa handoff.</li>
+<li>[ ] V4 seeds direct and routed LoRa OTA; TempRadio preflight, apply, and
+      automatic normal-radio restoration all pass.</li>
+</ul>
+<h2 id="seeed-sensecap-indicator-lora">Seeed SenseCAP Indicator LoRa</h2>
+<ul>
+<li>[x] Flashing selects the ESP32-S3 CH340 endpoint, never the Indicator RP2040
+      ACM endpoint; esptool MAC probing succeeds before erase. The qualifying
+      merged write used 115200 baud and completed with flash hash verification.</li>
+<li>[x] A fresh merged install completes SPIFFS initialization and reports the
+      intended Full Companion version/role and <code>Seeed SenseCAP Indicator</code>
+      hardware identity. The exact qualifying artifact was
+      <code>SenseCapIndicator-LoRa_companion_radio_full-1.17.1.5-halo-keymind-cascade-marathon-e26d48e4-merged.bin</code>,
+      2,070,152 bytes, SHA-256
+      <code>df08b770313ca8776436456525681cf286cd9b5b40e05e7cf55f21ef097f338a</code>;
+      its ELF, map, manifest, and partition signature are archived beside it on
+      the Mercerwood Pi.</li>
+<li>[x] Keep one identity-gated CH340 descriptor open with DTR/RTS deasserted
+      through startup. On the valid-current-font path, the Indicator streams a
+      1,302,608-byte font from its RP2040 at 1 Mbps before registering the USB
+      terminal, so allow at least 30 seconds before the first command. A
+      missing/corrupt-font recovery instead runs in the background after the
+      interfaces start. Reopening short probes can reset the ESP32 repeatedly
+      and create a false UART-hang diagnosis; the controlled run returned
+      <code>ver</code> and <code>board</code> after the same apparent-silence condition.</li>
+<li>[x] Automatic font recovery starts from a physically corrupt RP asset. The
+      setup deliberately installed 64 all-zero bytes, CRC32 <code>758d6336</code>, in
+      place of <code>/meshcore/ui-font.vlw</code>; the ESP32 rejected that asset and kept
+      its built-in fallback font while recovery ran.</li>
+<li>[x] Every new HTTPS recovery attempt waits for a fresh SNTP callback and a
+      signed epoch at or after the compiled asset publication time before it
+      opens TLS. The forced-resume run observed fresh syncs in 3,700, 400, and
+      699 ms across three outer attempts, including two failed TLS handshakes;
+      the final normal run synced in 1,999 ms and only then logged the first
+      <code>api.github.com</code> connection. A retained merely plausible clock is not
+      accepted. CA validation and the compiled asset SHA-256 remain mandatory.</li>
+<li>[x] The release-source normal path downloaded all 1,302,608 bytes into PSRAM
+      in 13,205 ms, closed TLS, verified SHA-256
+      <code>61bce9662db314054e7bcfaa26147a28ad7b500b51baac4cae1caacce90b7421</code>,
+      staged receiver-paced 512-byte <code>MCFONT STAGEV2</code> chunks in 36,676 ms,
+      committed, and verified RP CRC32 <code>19f80d64</code> at 76.7 seconds from reset.
+      An independent <code>MCFONT GET</code> over RP USB then returned exactly 1,302,608
+      bytes with the same CRC and SHA in 15.273 seconds. The exact installed
+      application is
+      <code>SenseCapIndicator-LoRa_companion_radio_full-1.17.1.5-halo-keymind-cascade-marathon-font-recovery-e26d48e4.bin</code>;
+      its log is
+      <code>/home/mikec/hwtest/runs/indicator-release-recovery-lUZEmBHL/esp-serial.log</code>
+      on Mercerwood. The current RP service reports protocol 2 and completed
+      STAGEV2 accounting; its installed flash was not independently read back,
+      so no RP artifact hash is inferred from the archived candidates.</li>
+<li>[x] Strict Range recovery passed a forced hardware interruption. Exact test
+      application SHA-256
+      <code>cfd5aec497cb9919f87c0f82f5deaf8614d411582a709cea1c36275529c0bb68</code>
+      closed the initial response at verified offset 1,048,576. Its first
+      same-offset resume handshake failed; bounded retry 2/2 then accepted only
+      the remaining 254,032-byte <code>206</code> response under the original strong
+      ETag/<code>If-Range</code>, retained the same PSRAM buffer and SHA stream, completed
+      the download in 49,422 ms, staged in 36,702 ms, committed, and passed an
+      independent exact USB readback. The full log is
+      <code>/home/mikec/hwtest/runs/indicator-range-v2-xbKr09wI/esp-serial.log</code>.
+      An earlier forced 512 KiB run proved one correct resume at 524,288 but
+      later exhausted its second reconnect on a TLS failure; it is retained as
+      regression-trigger evidence rather than an end-to-end pass.</li>
+<li>[x] Rebooting the exact release-source application with the current valid
+      font performed no NTP query, TLS connection, or GitHub request. The
+      valid-font boot log is
+      <code>/home/mikec/hwtest/runs/indicator-release-valid-a84vd7Du/esp-serial.log</code>.</li>
+<li>[x] The post-qualification shared SNTP-coordinator source compiles in the
+      real Arduino-ESP32 2.x LoRa USB/WiFi profile (1,587,965 bytes, 60.6% of
+      its OTA slot), the dynamically generated ESP-NOW Full profile (2,093,465
+      bytes, 79.9%), and the matching RP2040 transactional service. After the
+      VM independently reported <code>NTPSynchronized=yes</code>, an
+      end-to-end request to the immutable GitHub asset returned HTTP 200,
+      exactly 1,302,608 bytes, and SHA-256
+      <code>61bce9662db314054e7bcfaa26147a28ad7b500b51baac4cae1caacce90b7421</code>.
+      A live <code>524288-1302607</code> continuation then returned HTTP 206, the same
+      strong ETag, an exact 778,320-byte <code>Content-Length</code>, and a byte-for-byte
+      hash match against the checked-in font tail; the pinned Sectigo E46 root
+      independently verified the current <code>api.github.com</code> chain.
+      The same coordinator also compiles in the real
+      <code>heltec_v4_repeater_observer_mqtt</code> profile: its 1,852,392-byte EndF image
+      has SHA-256
+      <code>fe8352654437f67488b412e1c1a690f2874e836abb5a5d209654bd030c713d7e</code>.
+      MQTT's three process-global <code>configTime()</code> paths are lease-protected,
+      and a busy asynchronous refresh uses a wrap-safe five-second retry
+      deadline instead of overwriting another service's SNTP callback or
+      recording a false successful refresh.
+      The exact final LoRa Full artifact gate then passed 11/11 linked-image
+      markers, including both <code>requesting fresh NTP time before download</code> and
+      the subsequent TLS-open marker. Its 2,146,312-byte application has
+      SHA-256
+      <code>f557088a5ef3f49f74ab01ca95fefc76911cca4073f01b77cee4882284fc5110</code>
+      and 475,128 bytes remain in its app slot; the matching 2,211,848-byte DIO
+      merged image has SHA-256
+      <code>52a4559774384b54dd7fb81da82c791e2c9564991fcf016bcad3b6ad756c1fb2</code>.
+      The exact ELF, map, capability manifest, and partition signature are
+      archived together under <code>/tmp/indicator-full-daily-ntp.WQ6ozM</code> on
+      the VM pending transfer to the hardware-run archive.
+      The ESP-NOW Full sibling passed the same 11/11 gate with a 2,093,928-byte
+      application (527,512 bytes free), SHA-256
+      <code>fcd9e0e8a37551a845a234fc10eaa4a9f420d54172039b9241f4696a12d4c65f</code>,
+      and matching DIO merged-image SHA-256
+      <code>f3637c23f58204f5b752b68a1bd494601cb68bee9c27b664832d40abd03cc186</code>;
+      its complete archive is <code>/tmp/indicator-espnow-full-ntp-gate.YN9T8l</code>.
+      Repeat the negative UDP/123-blocked hardware gate on this exact final
+      source before treating the coordinator refinement as hardware-qualified.</li>
+<li>[ ] Full Wi-Fi SSID, setup address, and related status text wrap without
+      clipping on the physical display.</li>
+<li>[x] With no saved SSID, setup Wi-Fi powers down after the absolute 30-minute
+      window even if queried or used.</li>
+<li>[x] A software reboot starts a fresh unconfigured setup window.</li>
+<li>[x] With a saved SSID, Wi-Fi reconnects to <code>SlowFi</code>, reports minimum modem
+      power save, and remains governed by normal configured-network behavior.</li>
+<li>[x] Bluetooth Companion pairing and protocol operations pass after saving a
+      deterministic qualification PIN, removing any stale host bond, pairing,
+      disconnecting the <code>bluetoothctl</code> client, and reconnecting with meshcli.
+      Binary <code>infos</code>/<code>ver</code> returned the exact Indicator identity and USA tuple.
+      A second connection after the USB-open reboot and logging-mode exercise
+      also returned the exact build; one initial scanner miss was resolved by
+      an explicit BlueZ discovery pass and was not a firmware advertisement
+      failure.</li>
+<li>[x] Wi-Fi/TCP Companion, CLI, and OTA endpoints pass at <code>192.168.1.54</code>:
+      port 5000 returned Binary Companion identity, port 5002 returned the full
+      text version/status, and motatool completed a port-5001 <code>COUNT -&gt; 0</code>
+      protocol exchange against an empty served folder.</li>
+<li>[x] Fresh Full starts with USB logging off. On this single-TTY ESP32 profile,
+      logging on/off applies and persists without a descriptor-changing reboot;
+      the same held-open ASCII terminal reported off -&gt; on -&gt; off correctly,
+      emitted live Wi-Fi/radio diagnostics while on, then accepted the explicit
+      terminal-stop token and returned a valid 85-byte Binary Companion device
+      info frame for <code>Seeed SenseCAP Indicator</code> without rebooting. Companion
+      remained independently usable over Bluetooth and Wi-Fi.</li>
+<li>[x] Normal-radio LoRa transmit and receive pass. At the installed 22 dBm,
+      a co-located discovery request overloaded the nearby receivers and found
+      zero nodes; temporarily reducing only the Indicator to 0 dBm produced
+      three repeater replies at RSSI -29 to -59 dBm, proving both directions.
+      The saved 22 dBm value was restored and independently read back after the
+      test; this near-field result is a lab-power gate, not a firmware failure.</li>
+<li>[ ] TempRadio sanity check, OTA seeding, and normal-radio restoration pass.</li>
+</ul>
+<h2 id="cross-radio-lora-ota-acceptance">Cross-radio LoRa OTA acceptance</h2>
+<ul>
+<li>[ ] Run a three-minute reachability preflight before staging or changing any
+      repeater radio settings.</li>
+<li>[ ] Test direct, fully controlled multi-hop, passive TempRadio hop, and mixed
+      controlled/passive paths independently.</li>
+<li>[ ] Record bytes, LoRa packets sent, packets confirmed, retries, useful
+      throughput, total elapsed time, and per-phase elapsed time.</li>
+<li>[ ] Confirm every controlled intermediate returns to its saved radio tuple.</li>
+<li>[ ] Verify target application and bootloader hashes after apply, not merely the
+      OTA tool's final status line.</li>
+<li>[ ] Exercise interruption/retry and confirm incomplete data cannot be approved
+      or booted.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/firmware_picker.js"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js"></script>
+      
+        <script src="../_javascript/filter_tool.js"></script>
+      
+    
+  </body>
+</html>

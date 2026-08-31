@@ -1695,6 +1695,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -3922,6 +3949,24 @@ the PIN page until Bluetooth connects or the two-minute pairing window expires.<
 7. Press <code>Flash!</code> button and choose the USB device last time
 8. The device is erased and newest firmware is installed
 9. You might need to remove the pairing in Bluetooth System Settings in order to re-pair the app again.</p>
+<p>An erase application or ordinary application ZIP/UF2 does <strong>not</strong> repair a
+damaged or partially overwritten SoftDevice. This can happen after flashing an
+nRF52 image for a different board or SoftDevice layout. A characteristic
+failure is that the application can boot and read its filesystem, but reboots
+or hangs when it writes or formats internal flash. Repeating <code>Erase Flash</code> is
+not a recovery for that condition.</p>
+<p>Recover it with a combined <strong>bootloader + SoftDevice</strong> package for the exact
+board (including XIAO Sense versus non-Sense), installed through serial/BLE DFU
+or SWD. With <code>adafruit-nrfutil</code>, the serial form is:</p>
+<pre><code class="language-bash">adafruit-nrfutil dfu serial -p &lt;port&gt; \
+  -pkg &lt;exact-board-bootloader-with-softdevice&gt;.zip -sb -t 1200
+</code></pre>
+<p>Then install the exact-board MeshCore application. Do not use an application-
+only UF2, filesystem formatter, or a similarly named package from another
+nRF52 board as a substitute. See the confirmed XIAO recovery in
+<a href="https://github.com/meshcore-dev/MeshCore/issues/3284">issue #3284</a> and obtain
+the matching package from the
+<a href="https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX/releases">OTAFIX releases</a>.</p>
 <p>Separately, starting in firmware version 1.7.0, there is a CLI Rescue mode. If your device has a user button (e.g. some RAK, T114), you can activate the rescue mode by holding down the user button of the device within 8 seconds of boot. Then you can use the 'Console' on <a href="https://flasher.meshcore.io">https://flasher.meshcore.io</a></p>
 <h3 id="68-q-webflasher-fails-on-linux-with-failed-to-open">6.8. Q: WebFlasher fails on Linux with failed to open</h3>
 <p><strong>A:</strong> If the usb port doesn't have the right ownership for this task, the process fails with the following error:</p>

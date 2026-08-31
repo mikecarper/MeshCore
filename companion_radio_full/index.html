@@ -844,6 +844,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1713,16 +1740,18 @@ the WebConfig <strong>WiFi</strong> card, or use the Full Companion text termina
 <pre><code class="language-text">get wifi.ssid
 get wifi.status
 get wifi.powersave
-get wifi.cli
 get webui
 set wifi.ssid MyNetwork
 set wifi.pwd my-password
 set wifi.powersave min
 set wifi.powersave max
-set wifi.cli on
 start webconfig
 stop webconfig
 </code></pre>
+<p>Full Companion does not expose the repeater/room-server browser CLI tab, so
+<code>get/set wifi.cli</code> explicitly report that the browser terminal is unavailable.
+Its complete Companion text terminal remains available over USB and TCP port
+5002; this does not reduce that command surface.</p>
 <p>On the two primary-ESP-NOW Full targets, the same terminal also provides
 <code>get espnow.channel</code> and <code>set espnow.channel &lt;1-13&gt;</code>. A channel change is
 persisted and requires a reboot, unlike a WiFi power-save change.</p>
@@ -1925,9 +1954,11 @@ is active; do not enter the start token again after it appears.</p>
 <code>channel &lt;name-or-slot&gt; &lt;message&gt;</code>, remote administration with
 <code>login &lt;admin-password&gt;</code> and <code>cmd &lt;remote-command&gt;</code>, and routed
 <code>trace [recipient-name-or-prefix]</code>, plus local <code>ota</code>, <code>tempradio</code>, and
-<code>normalradio</code> controls. ESP32 builds also provide local
-WiFi credential, status, WebConfig, CLI-tab, and power-save controls. Every
-Full Companion provides persistent <code>get/set usb.logging</code> and starts with
+<code>normalradio</code> controls. <code>board</code> reports the exact hardware target. ESP32 Full
+Companion also provides <code>memory</code>, which reports heap, internal allocation,
+PSRAM, and offline-queue usage; it is omitted from non-ESP32 help. ESP32 builds
+also provide local WiFi credential, status, WebConfig, and power-save controls.
+Every Full Companion provides persistent <code>get/set usb.logging</code> and starts with
 logging off on a fresh installation.</p>
 <h3 id="esp32-single-usb-serial-port">ESP32 single USB serial port</h3>
 <p>Every ESP32 Full Companion exposes one USB TTY with two exclusive modes. It

@@ -788,6 +788,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1538,7 +1565,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td>Internal-flash nRF52 repeater auto pair</td>
-<td><code>full-ota</code> retains the board's external-sensor drivers; <code>reduced-ota</code> omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured 4,808-byte flash cost. Both artifacts carry the same stable OTA target identity and are checked for <code>ota ...</code> and <code>retry.preset</code>; RAK artifacts also verify the retained monitor drivers.</td>
+<td><code>full-ota</code> retains the board's external-sensor drivers; <code>reduced-ota</code> omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured cost below 5 KiB. Both artifacts carry the same stable OTA target identity and are checked for <code>ota ...</code> and <code>retry.preset</code>; RAK artifacts also verify the retained monitor drivers.</td>
 </tr>
 <tr>
 <td>ESP32 MQTT observer or ESP-NOW bridge</td>
@@ -1562,10 +1589,19 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
-<td>Removes optional external-sensor drivers and their settings; it does not remove core repeater discovery, routing, or runtime RS-232 commands. RAK3401 and RAK4631 profiles retain the four common INA I2C voltage/current monitors. GPS-preserving RAK nRF52 OTA profiles retain their GPS commands and provider; RAK4631 defaults the bridge to UART 2 because GPS uses UART 1. Legacy target suffixes remain stable for OTA identity compatibility.</td>
+<td>Trims selected optional environmental/ranging drivers and their settings; it does not remove generic I2C, core repeater discovery, routing, or runtime RS-232 commands. RAK3401 and RAK4631 profiles retain the four common INA I2C voltage/current monitors. GPS-preserving RAK nRF52 OTA profiles retain their GPS commands and provider; RAK4631 defaults the bridge to UART 2 because RAK12501/L76K GPS uses UART 1. Legacy target suffixes remain stable for OTA identity compatibility.</td>
 </tr>
 </tbody>
 </table>
+<p>The four retained INA drivers are entries in the optional environmental-sensor
+table, not the complete set of RAK I2C consumers. Compatible reduced profiles
+also retain the SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 I2C
+GPS as separate board peripherals. RAK12501/L76K GPS uses UART Serial1. The
+explicit RAK4631 Serial1 bridge omits the combined GPS provider, including the
+otherwise non-UART RAK12500 path.</p>
+<p>The firmware-configured INA3221 and RAK12500 addresses are both <code>0x42</code>. To use
+both devices on one bus, leave RAK12500 at <code>0x42</code>, strap INA3221 A0 to SCL for
+<code>0x43</code>, and build with <code>-DTELEM_INA3221_ADDRESS=0x43</code>.</p>
 <p><code>logging</code>, <code>OTA</code>, and <code>FULL</code> describe independent build features in historical
 filenames. Current standard artifacts use no <code>-logging-</code> infix because their
 USB logging is runtime controlled.</p>
@@ -1615,7 +1651,7 @@ available from a canonical image:</p>
   partition by 2,192 bytes.</li>
 </ul>
 <p>The old aliases still work with <code>build-firmware</code> and
-<code>build-matching-firmwares</code>. Dedicated repeater LoRa OTA receiver images are not
+<code>build-matching-firmwares</code>. Dedicated LoRa OTA repeater images are not
 collapsed; they retain their exact storage, bootloader, role, and target
 identity contracts. Companion boards keep transport-specific canonical images
 only when no exact Full recipe has passed the combined flash/RAM qualification.
@@ -1652,14 +1688,15 @@ maintain the repeater administrator neighbor table.</p>
 <p>Even in a FULL build, a command can be unavailable when its underlying feature
 does not exist on that target:</p>
 <ul>
-<li>WebConfig and the <code>wifi.ssid</code>, <code>wifi.status</code>, <code>wifi.powersave</code>, and <code>wifi.cli</code> command
+<li>WebConfig and the <code>wifi.ssid</code>, <code>wifi.status</code>, and <code>wifi.powersave</code> command
   family require an ESP32 WebConfig build. FULL standalone repeater and
   room-server builds support the corresponding WiFi setters and status
   commands. ESP32 WiFi Companions with WebConfig expose WiFi credentials,
-  connection status, WebConfig, CLI-tab, and power-save controls from their USB
+  connection status, WebConfig, and power-save controls from their USB
   text terminal as well as power saving through WebConfig and the binary
-  protocol. Full Companion additionally exposes its complete role-specific
-  text terminal on TCP port 5002.</li>
+  protocol. The browser CLI tab and <code>wifi.cli</code> setting are repeater/room-server
+  features. Full Companion instead exposes its complete role-specific text
+  terminal on TCP port 5002.</li>
 <li>MQTT commands require an MQTT observer target.</li>
 <li><code>discover.scopes</code> requires an MQTT observer with compiled neighbor support;
   it does not independently require PSRAM or the FULL parser.</li>

@@ -766,6 +766,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1546,8 +1573,8 @@ from the published firmware assets.</p>
 <td>Normal standalone operation without the dedicated logging/MQTT profile</td>
 </tr>
 <tr>
-<td>LoRa OTA enabled / receiver</td>
-<td>Install-capable profile that can stage an exact matching update received over LoRa</td>
+<td>LoRa OTA repeater</td>
+<td>Repeater profile that can stage an exact matching update received over LoRa</td>
 </tr>
 <tr>
 <td>LoRa OTA source only</td>
@@ -1613,8 +1640,8 @@ restores the board default, so a separate rotated release image is not
 recommended.</p>
 <p>Ordinary non-OTA roles also use one artifact for normal operation and USB
 logging. Select the saved mode with <code>set usb.logging off|on</code>; no <code>-logging-</code>
-artifact is emitted. KISS, BLE-only Companion, and constrained LoRa-OTA
-receiver images retain their protocol/partition contracts and do not inherit
+artifact is emitted. KISS, BLE-only Companion, and constrained LoRa OTA
+repeater images retain their protocol/partition contracts and do not inherit
 plaintext USB logging.</p>
 <p>nRF52 Full Companion keeps the multi-role primary interface on <code>00</code>; it starts
 as an ASCII terminal and automatically hands a complete <code>&lt;</code> frame to Binary
@@ -1665,9 +1692,10 @@ A second ESP32 CDC interface is not part of the release profile.</p>
 <p>Never send a merged ESP32 image through browser OTA or LoRa OTA. Back up the
 node configuration and verify every filename suffix before flashing.</p>
 <h2 id="lora-ota-and-otafix">LoRa OTA and OTAFIX</h2>
-<p>An OTA receiver build installs the receiving/staging firmware. A later LoRa
-update still needs an exact target identity, compatible partition signature,
-matching radio settings, and the correct update package.</p>
+<p>A LoRa OTA repeater build installs repeater firmware that can receive and
+stage updates. A later LoRa update still needs an exact target identity,
+compatible partition signature, matching radio settings, and the correct
+update package.</p>
 <p>nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board. There
 is no universal bootloader file. Use the
 <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest">latest stable OTAFIX release</a>
@@ -1677,10 +1705,21 @@ and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.</
 menu. It separates revisions, display type, expansion kit, radio/PA layout,
 pin map, and other physical differences without crowding the first menu. The
 firmware-variant menu separately exposes choices that still require different
-code or wiring, such as serial port or no-external-sensors. Companion power
-saving, controllable FEM receive gain, and radio-chip receive gain are saved
-settings rather than separate recommended firmware files. Do not substitute a
-similarly named physical target.</p>
+code or wiring, such as serial port or the legacy <code>no_external_sensors</code> target
+suffix. The picker labels that suffix <strong>Reduced optional environmental/ranging drivers</strong>:
+it does not disable generic I2C or unrelated board-integrated peripherals.
+Reduced RAK3401 and RAK4631 targets retain INA219/INA226/INA260/INA3221 as
+voltage/current entries in the optional sensor table. They are not the only I2C
+users: the SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS remain
+separate I2C peripherals in compatible recipes. RAK12501/L76K GPS uses Serial1
+instead. The explicit RAK4631 Serial1 bridge omits the combined GPS provider
+because its bridge owns the RAK12501 UART, so that legacy image does not expose
+RAK12500 either. The firmware-configured INA3221 and RAK12500 addresses are both
+<code>0x42</code>; to install both, keep RAK12500 at <code>0x42</code>, strap INA3221 A0 to SCL for
+<code>0x43</code>, and use a build with <code>-DTELEM_INA3221_ADDRESS=0x43</code>. Companion power saving,
+controllable FEM receive gain, and radio-chip receive gain are saved settings
+rather than separate recommended firmware files. Do not substitute a similarly
+named physical target.</p>
 <p>The picker recommends one Full Companion image instead of separate USB, BLE,
 ordinary WiFi, and USB-logging images. On ESP32, logging is off by default so
 the one USB TTY starts in ASCII and automatically changes to framed Companion

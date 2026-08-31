@@ -664,6 +664,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1770,7 +1797,10 @@ report <code>bootloader: apply OK</code>, <code>bootloader: QSPI apply OK</code>
 reported bootloader ABI and codec mask against the selected package. If the
 version command is unavailable on older firmware, the script warns and falls
 back to the legacy <code>ota self</code> platform marker. If an nRF52 bootloader lacks
-the required capabilities, install the exact-board OTAFIX bootloader first.</p>
+the required capabilities, install the exact-board OTAFIX bootloader first.
+<code>ota stats</code> is only an optional EndF version probe. It uses one bounded retry
+cycle; unsupported firmware or a lost reply falls back directly to the
+required <code>ver</code> command instead of entering an operator continuation loop.</p>
 <p>The default TempRadio tuple is:</p>
 <pre><code class="language-text">909.950,250,5,5,120
 </code></pre>
@@ -1778,6 +1808,28 @@ the required capabilities, install the exact-board OTAFIX bootloader first.</p>
 North American example: choose a legal frequency supported by every
 participating radio and appropriate to your location. Older radios that do not
 support SF5 require a complete replacement tuple passed with <code>--temp-radio</code>.</p>
+<p>Before that long window is allowed, the live runner performs a mandatory
+independent three-minute rehearsal. Its exact normal-channel <code>ota status</code> and
+<code>ota self</code> identity proof gets one shared four-minute, read-only budget before
+any schedule, radio override, seeder, or transfer is armed; this tolerates a
+marginal link without consuming or extending a live lease. It advances a stale
+managed controller with exact readback and treats a source terminal's
+whole-minute display as an uncertainty window, never as an exact epoch. A
+source minute overlapping the host is preserved; a completely stale minute is
+pinned to a guarded future value and read back once. Neither clock is moved
+backward, and the runner stops if a managed clock cannot be proven within the
+ten-minute limit. Each remote participant must expose an empty <code>tempradioat</code>
+schedule. The runner projects one fixed start/end interval into each
+participant's independently sampled RTC, sends each mutation once, proves
+every exact identity on the temporary tuple, waits for natural expiry, and
+proves the complete normal path again. A lost schedule reply is resolved by
+those on-air proofs; it is never blindly replayed with a fresh duration.</p>
+<p>The published RAK3401 <code>v1.16.7-c1caa5ad</code> LoRa-OTA image includes
+<code>get/set/del tempradioat</code> and can take this safe first step. A truly older or
+reduced build without fixed TempRadio scheduling is rejected before mutation;
+bootstrap it locally or with another explicitly controlled maintenance path.
+The automation does not substitute an immediate <code>tempradio</code> command whose
+first delivery could remain queued after cleanup.</p>
 <h3 id="rxps-handling-during-tempradio">RXPS handling during TempRadio</h3>
 <p>RXPS improves receive performance per unit of radio-on time, so the runner
 keeps the destination's saved RXPS preference enabled whenever the selected
@@ -1875,8 +1927,11 @@ moving back to a slower tuple returns to the operator's saved level.</p>
 <p>The OTA source has a stricter policy than the destination. For every source
 with a managed serial or TCP CLI, the runner reads and retains its exact RXPS
 preference, using the legacy fixed-period query only when the detailed query is
-unavailable. It then disables RXPS and verifies the readback before any target
-discovery or TempRadio change. Source RXPS stays off through catalog serving,
+unavailable. It builds and verifies the package, completes the read-only target
+checks, and obtains confirmation while that preference remains unchanged.
+Immediately before the first radio mutation, it reads the source RXPS state
+again, disables RXPS, and verifies the readback. Source RXPS stays off through
+catalog serving,
 download, installation, and post-install identity verification. Cleanup first
 proves that the source has returned to its normal radio, then restores and
 verifies the exact saved level/preamble or fixed-period state once. A source
@@ -2047,11 +2102,15 @@ well as individual ZIP members, are rejected above 64 MiB before being loaded.</
   downloading or staged on the target. Without it, that update is preserved.</li>
 <li><code>--source-shares-controller</code> is for a Full Companion whose USB Binary API is
   the controller while its TCP port <code>5001</code> is the source. It verifies that the
-  source's port-<code>5000</code> public key equals the controller key. Port <code>5002</code> uses a
-  bounded local <code>tempradio</code> override to move the shared physical radio without
-  overwriting its saved normal tuple; the Binary API remains the authenticated
-  transport. Cleanup sends local <code>normalradio</code>, proves that override inactive,
-  and then reasserts the saved Binary tuple. It cannot be combined with
+  source's port-<code>5000</code> public key equals the controller key, then binds the
+  fresh port-<code>5002</code> Full Terminal banner's complete public key to that Binary
+  identity and challenges it with the supported <code>ver</code> command. It does not
+  assume the Full Terminal implements repeater-only <code>get public.key</code>. Port
+  <code>5002</code> uses a bounded local <code>tempradio</code> override to move the shared physical
+  radio without overwriting its saved normal tuple; the Binary API remains the
+  authenticated transport. Cleanup sends local <code>normalradio</code>, proves that
+  override inactive, and then reasserts the saved Binary tuple. It cannot be
+  combined with
   <code>--leave-controller-radio</code>,
   because exact source RXPS restoration requires that shared physical radio to
   be back on its verified normal tuple.</li>
@@ -2065,6 +2124,12 @@ well as individual ZIP members, are rejected above 64 MiB before being loaded.</
   restores both values before the relay leaves TempRadio.</li>
 <li><code>--work-dir PATH</code> chooses a new, non-existent work directory.</li>
 <li><code>--meshcli PATH</code> and <code>--motatool PATH</code> select binaries not on <code>PATH</code>.</li>
+<li><code>--package-build-timeout SECONDS</code> bounds local mOTA generation. It defaults
+  to 3600 seconds. Run detools, delta/compression, and raw-firmware package
+  generation on a workstation or build VM, then transfer the completed,
+  hash-verified <code>.mota</code> to a Pi-class radio host. The Pi should perform only
+  lightweight identity-gated hardware I/O and serve that finished artifact;
+  preparation still occurs before any radio state changes.</li>
 <li><code>--debug</code> prints redacted child commands, timeouts, process status, stdout,
   and stderr. Admin passwords are never printed, but node names, addresses,
   paths, and command replies can still be sensitive; share the log carefully.</li>
@@ -2083,19 +2148,30 @@ the destination.</p>
 <h2 id="what-happens-during-a-run">What happens during a run</h2>
 <ol>
 <li>Validate the input paths and host tools, then prove the source is either an
-   OTA-enabled raw CLI or a source-only full Companion control interface.</li>
-<li>Authenticate to the target and query its target ID, hardware, running body
+   OTA-enabled raw CLI or a source-only full Companion control interface. Read
+   and durably save a managed source's exact RXPS preference without changing
+   it.</li>
+<li>Before sending any remote packet, prove the managed source has no active,
+   pending, or fixed TempRadio work, then gate the source and controller
+   clocks. Advance a stale exact clock to host time; for a minute-resolution
+   source, preserve an overlapping minute or use one guarded forward value
+   with readback. Preserve a small future lead and fail closed above the
+   ten-minute drift limit. Then
+   authenticate to the target, query its target ID, hardware, running body
    hash, firmware version, bootloader version, and nRF52 bootloader
-   capabilities.</li>
+   capabilities, and save the controller's normal radio tuple.</li>
 <li>Select or build one compatible <strong>v2 application</strong> mOTA and verify all block
    hashes, Merkle root, full-image hash where applicable, identity fields,
    signature, codec, base, and the firmware's 1024-byte maximum block size.
    Version-3 bootloader packages are refused before any target state changes.</li>
-<li>Read and save a managed source's exact RXPS preference, disable and verify
-   source RXPS, save the controller's normal radio tuple, read every
-   participant's version, save the destination's RXPS state, select the
-   qualified destination policy, and show the confirmation prompt.</li>
-<li>Apply and verify the destination RXPS policy, then start TempRadio on the
+<li>Read every participant's version, save the destination's RXPS state,
+   select the qualified destination policy, and show the confirmation prompt.</li>
+<li>Run the fixed-window three-minute rehearsal described above. This phase
+   does not disable RXPS, start a seeder, request a pull, or install anything;
+   the long transfer remains completely unarmed until temporary and normal
+   reachability both pass.</li>
+<li>Fresh-read, disable, and verify source RXPS; apply and verify the
+   destination RXPS policy; then start TempRadio on the
    target, far-to-near relays, and source. A separate controller is moved and
    read back through Binary; a shared Full Companion instead schedules its
    bounded local override while Binary remains the transport. The runner
@@ -2127,9 +2203,17 @@ status for another manifest ID is an error, never permission to install it.</p>
 <h2 id="transmission-loss-and-retries">Transmission loss and retries</h2>
 <p>Read-only and replay-safe transmissions retry up to three times. Three retries
 or 90 seconds, whichever comes first, opens a 10-second stop-or-continue
-prompt. Continue is the default on timeout, Enter, and unattended input, so a
-temporary outage does not silently abandon a resumable transfer. Enter <code>s</code> or
-<code>stop</code> to end the run; Ctrl-C also remains immediate.</p>
+prompt when stdin is an interactive terminal. Continue remains the default on
+timeout or Enter, so an operator can persist through a temporary outage; enter
+<code>s</code> or <code>stop</code> to end the run, and Ctrl-C remains immediate. With non-interactive
+stdin, the runner stops after that finite automatic retry cycle instead of
+silently starting another cycle forever. Optional participant-version probes
+always use a bounded cycle and degrade to <code>unknown</code>; optional destination
+<code>ota stats</code> falls back directly to <code>ver</code>. The mandatory normal-channel
+destination baseline is the narrow exception: it may make nine total read-only
+attempts but is stopped by one hard four-minute deadline before any TempRadio
+lease or OTA mutation exists. Proofs inside the live rehearsal retain the
+smaller four-attempt limit.</p>
 <p>Commands that change OTA state are reconciled before replay:</p>
 <ul>
 <li>After a lost <code>ota pull</code> reply, <code>ota status</code> must show the requested manifest

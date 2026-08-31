@@ -893,6 +893,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1646,8 +1673,16 @@ own interface, so those build roles are not represented here.</p>
   filename marker. Safe plaintext-USB roles embed runtime USB logging.</li>
 <li><strong>Logging</strong> - the legacy <code>-logging-</code> profile, now represented by the same
   ordinary artifact and retained as a comparison column only.</li>
-<li><strong>LoRa OTA</strong> - the explicit <code>-ota-</code> repeater or repeater-bridge artifact. Its
-  optional external-sensor drivers are removed, but onboard GPS is retained.</li>
+<li><strong>LoRa OTA</strong> - the explicit <code>-ota-</code> repeater or repeater-bridge artifact. A
+  legacy <code>no_external_sensors</code> profile trims selected optional environmental
+  and ranging drivers; it does not disable the generic I2C bus or unrelated
+  board-integrated peripherals. Reduced RAK3401 and RAK4631 profiles retain
+  INA219/INA226/INA260/INA3221 as voltage/current entries in the optional sensor
+  table. The SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS are
+  separate I2C peripherals in compatible recipes. RAK12501/L76K GPS instead
+  uses UART Serial1. The plain RAK profiles and RAK4631 Serial2 bridge retain
+  the combined GPS provider; the explicit RAK4631 Serial1 bridge omits that
+  provider, including RAK12500, because the bridge owns the RAK12501 UART.</li>
 <li><strong>FULL unified</strong> - the expanded-partition ESP32 artifact with LoRa OTA, the
   complete parser, USB packet logging, and direct WiFi MQTT. Its saved output
   mode can be off, USB, WiFi, or both. MQTT observers use this profile.</li>
@@ -1655,6 +1690,10 @@ own interface, so those build roles are not represented here.</p>
   where there is no MQTT sibling. It has the complete parser and a saved
   USB-logging on/off gate. ESP-NOW bridges use this profile.</li>
 </ul>
+<p>The firmware-configured INA3221 and RAK12500 addresses are both <code>0x42</code>; they
+cannot coexist on one bus at those addresses. Leave RAK12500 at <code>0x42</code>, strap
+INA3221 A0 to SCL for <code>0x43</code>, and use a build with
+<code>-DTELEM_INA3221_ADDRESS=0x43</code> when both are installed.</p>
 <p>Cell values mean:</p>
 <ul>
 <li><strong>Yes</strong> - the parser includes the command. The Scope column still applies.</li>
@@ -1681,6 +1720,14 @@ over the normal binary USB, BLE, or TCP connection:</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><a href="../cli_commands/#show-the-hardware-name"><code>board</code></a></td>
+<td>Every Companion text terminal and command <code>0x42</code></td>
+</tr>
+<tr>
+<td><a href="#memory"><code>memory</code></a></td>
+<td>ESP32 Full Companion text terminal and command <code>0x42</code></td>
+</tr>
 <tr>
 <td><a href="../cli_commands/#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141"><code>get/set radio.rxgain</code></a></td>
 <td>Companion with a supported radio</td>
@@ -2549,7 +2596,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Sensors</td>
 <td><a href="../cli_commands/#view-the-list-of-sensors-on-this-node"><code>sensor list [start]</code></a></td>
-<td>Compiled sensor manager; OTA omits external sensors</td>
+<td>Compiled sensor manager; reduced OTA trims target-selected optional environmental/ranging drivers</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Limited</td>
@@ -2557,7 +2604,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Sensors</td>
 <td><a href="../cli_commands/#view-or-change-the-value-of-a-sensor"><code>sensor get</code>; <code>sensor set</code></a></td>
-<td>Compiled sensor setting; OTA omits external sensors</td>
+<td>Compiled sensor setting; reduced OTA trims target-selected optional environmental/ranging drivers</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Limited</td>
@@ -2580,7 +2627,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 </tr>
 <tr>
 <td>Bridge</td>
-<td><a href="../cli_commands/#view-or-change-the-bridge-enabled-flag"><code>get/set bridge.enabled</code></a></td>
+<td><a href="../cli_commands/#view-or-change-the-bridge-enabled-flag"><code>get/set bridge.enabled</code>; <code>get bridge.running</code></a></td>
 <td>Compiled bridge</td>
 <td>Feature</td>
 <td>Feature</td>
@@ -4074,7 +4121,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Sensors</td>
 <td><a href="../cli_commands/#view-the-list-of-sensors-on-this-node"><code>sensor list [start]</code></a></td>
-<td>Compiled sensor manager; <code>no_external_sensors</code> omits optional drivers</td>
+<td>Compiled sensor manager; <code>no_external_sensors</code> trims target-selected environmental/ranging drivers, not generic I2C</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Limited</td>
@@ -4084,7 +4131,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Sensors</td>
 <td><a href="../cli_commands/#view-or-change-the-value-of-a-sensor"><code>sensor get</code>; <code>sensor set</code></a></td>
-<td>Compiled sensor setting; <code>no_external_sensors</code> omits optional drivers</td>
+<td>Compiled sensor setting; <code>no_external_sensors</code> trims target-selected environmental/ranging drivers, not generic I2C</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Limited</td>
@@ -4113,7 +4160,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 </tr>
 <tr>
 <td>Bridge</td>
-<td><a href="../cli_commands/#view-or-change-the-bridge-enabled-flag"><code>get/set bridge.enabled</code></a></td>
+<td><a href="../cli_commands/#view-or-change-the-bridge-enabled-flag"><code>get/set bridge.enabled</code>; <code>get bridge.running</code></a></td>
 <td>Compiled bridge</td>
 <td>Feature</td>
 <td>Feature</td>
