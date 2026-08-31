@@ -1785,11 +1785,15 @@ image over USB once when moving a device from the legacy partition layout.</p>
 <p>A <code>*_companion_radio_wifi</code> build replaces the BLE or USB companion link with
 the MeshCore companion protocol over TCP port 5000. The phone or computer must
 be able to reach the device on the same LAN.</p>
-<p>An ESP32 <code>*_companion_radio_full</code> target keeps all three Companion links at
-once: USB, BLE, and TCP port 5000. It also provides a source-only LoRa mOTA
-service on ports 5001 and 5002. See the
-<a href="../companion_radio_full/">full Companion guide</a> for its build, terminal mode,
-and complete update-source workflow.</p>
+<p>Most ESP32 <code>*_companion_radio_full</code> targets keep all three Companion links at
+once: USB, BLE, and TCP port 5000. The two SenseCAP Indicator Full targets are
+the exception: USB remains available, while a saved next-boot selector starts
+exactly one secondary wireless Companion transport, either BLE or
+infrastructure WiFi/TCP. On the ESP-NOW Indicator, this selector never stops the
+primary ESP-NOW mesh radio. Full ESP32 images also provide a source-only LoRa
+mOTA service on ports 5001 and 5002 whenever their WiFi transport is active.
+See the <a href="../companion_radio_full/">full Companion guide</a> for its build,
+terminal mode, and complete update-source workflow.</p>
 <p>The LilyGo T-Beam 1W Full Companion maps one press of the physical <code>BOOT</code> button
 (GPIO0) to a persistent WiFi on/off toggle. Turning WiFi off closes WebConfig,
 Companion TCP, mOTA, and MQTT network services while USB, BLE, the display, GPS,
@@ -1814,6 +1818,17 @@ password as it is entered; <code>get wifi.pwd</code> is intentionally unavailabl
 standalone credential store accepts an empty password, ordinary passphrases up
 to 63 characters, or an exact 64-character hexadecimal WPA/WPA2 PSK. A
 non-hexadecimal 64-character value and every longer value are rejected.</p>
+<p>After the saved station first connects following boot, every ESP32 WiFi
+Companion requests a fresh UTC time from NTP. A verified reply updates both the
+MeshCore clock and any detected hardware RTC; the next explicit refresh is due
+24 hours after that success. A failed request times out without blocking the
+radio loop and retries after five minutes. While WiFi is disconnected or only
+the setup AP is available, the request waits for a station connection. Builds
+with a configured MQTT bridge use its boot-and-daily NTP owner instead, so two
+firmware services never reconfigure the ESP32 SNTP client at the same time. A
+later WiFi reconnect does not add another successful-sync request; it preserves
+the existing 24-hour deadline. Until a fresh internet reply succeeds, LoRa
+clock consensus remains available as the fallback.</p>
 <p>On Full Companion targets whose primary mesh radio is ESP-NOW, ESP-NOW, the
 setup AP, and the infrastructure-WiFi station must share one 2.4 GHz channel.
 The persisted channel defaults to 1 and can be inspected or changed from the
@@ -1873,16 +1888,19 @@ setting and is independent of the Companion device <code>powersaving</code> sett
 WiFi card in Companion WebConfig exposes <code>none</code>, <code>min</code>, and <code>max</code>. Fresh
 Cascade-profile builds select <code>min</code>; target-default builds select <code>none</code>.
 A saved setting takes precedence after an upgrade.</p>
-<p>WiFi-only Companions can use all three modes. Full Companion also runs BLE, so
-ESP32 WiFi/Bluetooth coexistence requires at least minimum modem sleep. It
-reports <code>min</code> when an old or target-default <code>none</code> value is found and rejects a
-new <code>none</code> selection while Bluetooth is compiled in. When ESP-NOW is also the
-Full Companion's primary mesh radio, <code>max</code> is unavailable: the access point does
-not buffer ESP-NOW broadcasts for a sleeping station, so maximum modem sleep can
-lose them. Firmware caps a previously saved <code>max</code> value to and reports it as
-<code>min</code>, and rejects a new <code>max</code> selection. Thus a WiFi/BLE/primary-ESP-NOW Full
-Companion uses <code>min</code>. Device power saving can still be turned on or off without
-changing the selected WiFi modem policy.</p>
+<p>WiFi-only Companions can use all three modes. A Full Companion that runs WiFi
+and BLE simultaneously requires at least minimum modem sleep. It reports <code>min</code>
+when an old or target-default <code>none</code> value is found and rejects a new <code>none</code>
+selection. When ESP-NOW is also the primary mesh radio, <code>max</code> is unavailable:
+the access point does not buffer ESP-NOW broadcasts for a sleeping station, so
+maximum modem sleep can lose them. Firmware caps a previously saved <code>max</code> value
+to and reports it as <code>min</code>, and rejects a new <code>max</code> selection.</p>
+<p>The SenseCAP Indicator Full targets select BLE or infrastructure WiFi instead
+of running both. On a WiFi-selected boot, the LoRa layout accepts
+<code>none|min|max</code>, while the ESP-NOW layout accepts <code>none|min</code> and still rejects
+<code>max</code>. On a BLE-selected boot infrastructure WiFi is off; the LoRa layout
+accepts <code>min|max</code> for the saved WiFi setting, while ESP-NOW + BLE requires
+<code>min</code>. Device power saving remains independent of this modem policy.</p>
 <p>WiFi companions do not have the repeater/room-server admin CLI password model,
 so their LAN WebConfig page is intentionally unauthenticated. Use them only on
 a trusted LAN.</p>
@@ -2099,13 +2117,14 @@ reliability on busy nodes. A saved operator setting takes precedence on an
 upgrade. ESP32 WiFi Companions expose the same values in their WebConfig WiFi
 card and USB text terminal. Full Companion also accepts the text commands from
 TCP port 5002. The normal binary Companion protocol can read or write the
-setting over USB, BLE, or TCP port 5000 without entering terminal mode. Full
-Companion rejects <code>none</code> because its simultaneous BLE transport requires WiFi
-modem sleep. An ESP32 Full Companion whose primary mesh radio is ESP-NOW also
-rejects <code>max</code>; maximum
+setting over USB, BLE, or TCP port 5000 without entering terminal mode. A Full
+Companion that runs BLE and infrastructure WiFi simultaneously rejects <code>none</code>
+because coexistence requires WiFi modem sleep. An ESP32 Full Companion whose
+primary mesh radio is ESP-NOW also rejects <code>max</code>; maximum
 modem sleep can cause the station to miss ESP-NOW broadcasts because the access
 point does not buffer them. A previously saved <code>max</code> value is capped to and
-reported as <code>min</code>. Such a primary-ESP-NOW Full Companion therefore uses <code>min</code>.
+reported as <code>min</code>. The SenseCAP Indicator exception uses the active-mode rules
+above rather than assuming BLE and infrastructure WiFi are active together.
 ESP-NOW and
 infrastructure WiFi still must use the same fixed channel.</p>
 <p>MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless

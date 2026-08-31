@@ -773,10 +773,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#opt-in-reboot-example" class="md-nav__link">
+  <a href="#opt-in-network-and-reboot-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Opt-in reboot example
+        Opt-in network and reboot recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#opt-in-clock-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opt-in clock recovery
       
     </span>
   </a>
@@ -1348,10 +1359,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#opt-in-reboot-example" class="md-nav__link">
+  <a href="#opt-in-network-and-reboot-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Opt-in reboot example
+        Opt-in network and reboot recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#opt-in-clock-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opt-in clock recovery
       
     </span>
   </a>
@@ -1416,11 +1438,17 @@ cmd host uptime
 cmd host load
 cmd host memory
 cmd host disk-free
+cmd host clock status
+cmd host clock sync
+cmd host clock set &lt;unix_epoch&gt;
+cmd host network restart
 cmd host reboot
+cmd host action status &lt;operation_id&gt;
 cmd host run &lt;alias&gt; [arguments]
 </code></pre>
-<p>The first six actions after <code>help</code> are read-only. <code>reboot</code> is an opt-in action
-example and is disabled unless the endpoint is started with <code>--allow-reboot</code>.
+<p>The first seven actions after <code>help</code> are read-only. Clock changes, network
+restart, and reboot are opt-in actions and are disabled unless explicitly
+enabled.
 Text such as <code>reboot now</code>, <code>cpu-temp; reboot</code>, and embedded newlines is not a
 command: the endpoint accepts only an exact allowlist match.</p>
 <p>The bridge is included in normal repeater firmware except on Wio-E5. Its
@@ -1434,6 +1462,11 @@ be local to the Raspberry Pi:</p>
 <pre><code class="language-text">LoRa -&gt; repeater -&gt; USB -&gt; meshcoretomqtt -&gt; MQTT -&gt; host endpoint
 LoRa &lt;- repeater &lt;- USB &lt;- meshcoretomqtt &lt;- MQTT &lt;- host endpoint
 </code></pre>
+<p>Clock-recovery deployments must run the loopback broker, <code>meshcoretomqtt</code>, and
+endpoint on the same Pi. A wrong Pi clock can prevent TLS validation against a
+remote broker, while split host clocks can reject the signed live claim before
+the correction arrives. Remote brokers remain suitable for ordinary commands
+when the connection and both clocks are already healthy.</p>
 <p>Launch <code>meshcoretomqtt</code> with its existing arguments plus <code>--debug</code>; its current
 debug-topic parser needs that flag to publish the repeater request record. Do
 not open the serial TTY from the host endpoint too.</p>
@@ -1493,18 +1526,133 @@ The allowlist file and executable must not be group- or world-writable.</p>
 <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/examples/host_cli_service/programs.example.json"><code>programs.example.json</code></a>,
 then give the service account only the operating-system permissions needed by
 those trusted programs.</p>
-<h2 id="opt-in-reboot-example">Opt-in reboot example</h2>
-<p>To enable only the exact <code>host reboot</code> action, give the service account narrow
-permission in <code>/etc/sudoers.d/meshcore-host-cli</code>:</p>
-<pre><code class="language-text">mctomqtt ALL=(root) NOPASSWD: /usr/bin/systemctl reboot
+<h2 id="opt-in-network-and-reboot-recovery">Opt-in network and reboot recovery</h2>
+<p>These actions use their own socket-activated root broker, independently of the
+clock-control broker. Installing or enabling clock control does not grant host
+recovery actions. Install the following as root-owned files:</p>
+<pre><code class="language-sh">sudo install -o root -g root -m 0755 meshcore_host_actions.py \
+  /usr/local/sbin/meshcore-host-actions
+sudo install -o root -g root -m 0644 meshcore-host-actions.socket \
+  /etc/systemd/system/meshcore-host-actions.socket
+sudo install -o root -g root -m 0644 meshcore-host-actions.service \
+  /etc/systemd/system/meshcore-host-actions.service
+sudo install -o root -g root -m 0644 meshcore-networkmanager-restart.service \
+  /etc/systemd/system/meshcore-networkmanager-restart.service
+sudo install -o root -g root -m 0644 meshcore-host-reboot.timer \
+  /etc/systemd/system/meshcore-host-reboot.timer
+sudo install -o root -g root -m 0644 meshcore-host-reboot.service \
+  /etc/systemd/system/meshcore-host-reboot.service
 </code></pre>
-<p>Set that file to mode <code>440</code>, test it locally, and add <code>--allow-reboot</code> to the
-endpoint command. Its default response is <code>OK - host reboot scheduled in 5s</code>.
-The delay can be set from 3 through 60 seconds with <code>--reboot-delay</code>.</p>
-<p>The implementation always invokes the fixed argument vector
-<code>/usr/bin/sudo -n /usr/bin/systemctl reboot</code>; no LoRa text is placed in a shell,
-path, or process argument. Do not grant the service account a wildcard sudo
-rule.</p>
+<p>The root-owned broker policy enables nothing by default. Create a systemd
+drop-in and select <code>network-restart</code>, <code>reboot</code>, or both as an exact
+comma-separated list:</p>
+<pre><code class="language-sh">sudo systemctl edit meshcore-host-actions.service
+</code></pre>
+<pre><code class="language-ini">[Service]
+Environment=MESHCORE_HOST_ACTIONS=network-restart,reboot
+</code></pre>
+<p>Reload systemd and enable only the broker socket:</p>
+<pre><code class="language-sh">sudo systemctl daemon-reload
+sudo systemctl enable --now meshcore-host-actions.socket
+</code></pre>
+<p>After changing the policy on an already active installation, restart
+<code>meshcore-host-actions.service</code> so the broker reads the new value.</p>
+<p>Finally add <code>--allow-network-restart</code>, <code>--allow-reboot</code>, or both to the
+unprivileged endpoint. An action must pass both gates: the endpoint flag and
+the root-owned broker policy. The endpoint never invokes <code>sudo</code>; remove legacy
+<code>wifi-restart</code> program aliases and host-action sudoers entries because sudo
+aliases are not a fallback for this hardened service. Use the exact
+<code>host network restart</code> action instead.</p>
+<p>Systemd creates <code>/run/meshcore-host-actions.sock</code> as <code>root:mctomqtt</code> mode
+<code>0660</code>. The root broker authenticates both the endpoint UID and primary GID
+with <code>SO_PEERCRED</code>, while the endpoint authenticates the root-created listener.
+The protocol is one bounded ASCII line. Neither the caller nor request text can
+choose an executable, unit, path, or argument. The broker can start only the
+fixed static NetworkManager restart service or the fixed reboot timer; the
+broker and action units have empty capability sets and systemd sandboxing.
+The configured <code>mctomqtt</code> UID and its effective primary GID are the delegated
+local trust boundary; supplementary group membership alone is rejected.</p>
+<p>Side effects follow a fail-closed two-phase sequence. The endpoint reserves a
+canonical 128-bit operation ID with <code>PREPARE</code>, publishes its reply with MQTT
+QoS 1, and requires <code>wait_for_publish</code> plus <code>is_published</code> confirmation before
+sending one <code>COMMIT</code>. It does not block the Paho network callback while waiting.
+No confirmation means no commit. Reboot uses a fixed approximately 10-second
+timer that starts only after commit. The MQTT confirmation proves acceptance
+by the local broker, not delivery over USB and LoRa; there is no correlated
+serial delivery acknowledgement, so the physical reply is best effort.</p>
+<p><code>network restart</code> deliberately drops Wi-Fi and Tailscale management while
+NetworkManager restarts. Use a loopback MQTT broker and keep the broker,
+<code>meshcoretomqtt</code>, host endpoint, and USB device services independent of
+NetworkManager: they must not have <code>Requires=</code>, <code>BindsTo=</code>, or ordering
+dependencies on it. This preserves the local reply/commit path while remote
+management temporarily disappears.</p>
+<p>The operation ID is derived from the authenticated repeater key, request ID,
+and nonce. The reply displays it, and its state can be queried later:</p>
+<pre><code class="language-text">cmd host action status 0123456789ABCDEF0123456789ABCDEF
+</code></pre>
+<p>The root broker retains at most 64 records for the current boot. It persists
+<code>prepared</code> before replying and <code>in-progress</code> before scheduling, schedules a
+committed operation at most once, and never automatically retries an ambiguous
+outcome. A broker restart converts recovered <code>in-progress</code> to <code>ambiguous</code>.
+Only an old uncommitted <code>prepared</code> record may be evicted; otherwise a full
+store rejects new work. Reusing an operation ID for a different action is
+rejected. <code>scheduled</code> means PID 1 accepted the fixed unit job; it does not claim
+that the subsequent network restart or reboot completed successfully.</p>
+<p>A distinct reboot is rejected while another reboot is committed or ambiguous,
+so a second request cannot falsely promise a fresh 10-second timer while the
+first timer is already running. A new reboot reservation may supersede only an
+older, uncommitted reboot reservation; the superseded operation can no longer
+be committed.</p>
+<h2 id="opt-in-clock-recovery">Opt-in clock recovery</h2>
+<p><code>clock status</code> reports the Pi epoch and NTP synchronization state without root
+access. To enable the exact <code>clock sync</code> and <code>clock set &lt;unix_epoch&gt;</code> actions,
+install
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/examples/host_cli_service/meshcore_clock_control.py"><code>meshcore_clock_control.py</code></a>
+as <code>/usr/local/sbin/meshcore-clock-control</code>, owned by root and mode <code>0755</code>,
+then install the accompanying
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/examples/host_cli_service/meshcore-clock-control.socket"><code>meshcore-clock-control.socket</code></a>
+and
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/examples/host_cli_service/meshcore-clock-control.service"><code>meshcore-clock-control.service</code></a>
+and static
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/examples/host_cli_service/meshcore-chrony-step.service"><code>meshcore-chrony-step.service</code></a>
+files in <code>/etc/systemd/system</code> as root-owned mode-<code>0644</code> files:</p>
+<pre><code class="language-sh">sudo install -o root -g root -m 0755 meshcore_clock_control.py \
+  /usr/local/sbin/meshcore-clock-control
+sudo install -o root -g root -m 0644 meshcore-clock-control.socket \
+  /etc/systemd/system/meshcore-clock-control.socket
+sudo install -o root -g root -m 0644 meshcore-clock-control.service \
+  /etc/systemd/system/meshcore-clock-control.service
+sudo install -o root -g root -m 0644 meshcore-chrony-step.service \
+  /etc/systemd/system/meshcore-chrony-step.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now meshcore-clock-control.socket
+</code></pre>
+<p>The socket is fixed at <code>/run/meshcore-clock-control.sock</code>; systemd creates it
+as <code>root:mctomqtt</code> with mode <code>0660</code>. Run the endpoint as user and primary group
+<code>mctomqtt</code>, then add <code>--allow-clock-control</code>. The endpoint validates the socket
+metadata and authenticates the connected server as root with Linux
+<code>SO_PEERCRED</code>. The root service independently requires the peer's UID and
+primary GID to match <code>mctomqtt:mctomqtt</code> before it reads or executes a request.
+No clock-control sudo rule is used; remove old clock-helper sudoers lines when
+upgrading.</p>
+<p>Both layers require one canonical unsigned decimal argument with no sign,
+leading zero, whitespace, or trailing text. The accepted epoch range is 2020
+through 2099. The private protocol accepts only the complete bounded ASCII
+lines <code>sync</code> and <code>set &lt;epoch&gt;</code>. Every child process uses a fixed absolute argv,
+<code>shell=False</code>, and a timeout no longer than 1.5 seconds.</p>
+<p><code>clock set</code> changes <code>CLOCK_REALTIME</code> without disabling NTP, then requests an NTP
+step. If the NTP request fails, the response honestly reports that the clock
+changed and which synchronization step remains incomplete. If <code>clock sync</code>
+enables NTP but the explicit step/restart fails, that partial outcome is also
+reported. When chrony is available, the root broker starts only the fixed
+static <code>meshcore-chrony-step.service</code>. That hardened one-shot runs
+<code>/usr/bin/chronyc -a makestep</code> as <code>_chrony:_chrony</code>, with no capabilities,
+<code>AF_UNIX</code> only, and a one-second start timeout; it can therefore reach chrony's
+private runtime socket without broadening the root broker. The <code>_chrony</code>
+account comes from the Debian/Raspberry Pi chrony package. Without chrony, the
+broker restarts systemd-timesyncd. Clock drift cannot authorize a captured command:
+the signed request still needs the repeater's live one-time claim, whose
+deadline is monotonic rather than wall-clock based.</p>
 <h2 id="trust-and-injection-controls">Trust and injection controls</h2>
 <p>The MQTT broker transports records but does not establish their authenticity.
 The endpoint checks the configured repeater identity and verifies its Ed25519
@@ -1523,10 +1671,11 @@ A captured proof does not match a new challenge, and restarting the endpoint
 forgets pending challenges. Repeater/Pi clock drift therefore cannot turn an
 old <code>reboot</code> or <code>run</code> record into a valid action. The reply and claim commands
 still use short-lived JWTs; <code>meshcoretomqtt</code> checks their signer allowlist,
-target, expiration, signature, and separate replay nonce. If the endpoint and
-<code>meshcoretomqtt</code> are on different computers, those two host clocks must be
-compatible for JWT validation. They naturally share a clock when both run on
-the same Pi.</p>
+target, expiration, signature, and separate replay nonce. Wall-clock expiry and
+its in-memory nonce cache are not sufficient across a backward clock jump plus
+restart; the firmware's live one-time claim is what protects these host
+actions. Keep recovery-mode <code>allowed_companions</code> limited to the dedicated
+service key, with the endpoint and <code>meshcoretomqtt</code> on the same Pi.</p>
 <p>Newlines and other reply control characters are converted to spaces and are
 also independently rejected by the firmware parser.</p>
 <p>Protect the service private key and use broker ACLs that allow it to subscribe
@@ -1539,8 +1688,11 @@ sign serial requests.</p>
   legacy three-byte companion correlation prefix.</li>
 <li>The complete LoRa reply is at most 162 UTF-8 bytes.</li>
 <li>Only one host request can be pending per repeater.</li>
-<li>The live claim must complete within 4 seconds; after it is accepted, the
-  program and reply have 6 seconds.</li>
+<li>Only one privileged action or action-status query can be active; overlapping
+  work is rejected before reservation.</li>
+<li>The live claim must complete within 4 seconds. Allowlisted programs have a
+  configured 1-5 second child-process timeout. Privileged actions and status
+  queries share one 5-second broker/reply-confirmation deadline.</li>
 <li><code>host.reply</code> is accepted only through physical USB, not LoRa or Ethernet.</li>
 </ul>
 <p>Use <code>cmd get host</code> to report the bridge state and limits.</p>

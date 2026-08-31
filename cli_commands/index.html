@@ -5287,10 +5287,19 @@ proof. This avoids any dependency on repeater/Pi clock agreement. Every
 <code>host.reply</code> USB command must carry the matching request ID and nonce; it is not
 accepted from LoRa or the Ethernet CLI.</p>
 <p>The included Raspberry Pi endpoint supports exact commands for <code>help</code>,
-<code>cpu-temp</code>, <code>hostname</code>, <code>uptime</code>, <code>load</code>, <code>memory</code>, and <code>disk-free</code>. It also
-provides <code>reboot</code> as an opt-in action example and <code>run &lt;alias&gt; [arguments]</code> for
-locally allowlisted executables with typed arguments. Reboot is disabled by
-default, arbitrary executables are never accepted, and no action uses a shell.
+<code>cpu-temp</code>, <code>hostname</code>, <code>uptime</code>, <code>load</code>, <code>memory</code>, <code>disk-free</code>, and
+<code>clock status</code>. It also provides strictly validated <code>clock sync</code> and
+<code>clock set &lt;unix_epoch&gt;</code> recovery actions, opt-in <code>network restart</code> and
+<code>reboot</code> actions, <code>action status &lt;operation_id&gt;</code>, and
+<code>run &lt;alias&gt; [arguments]</code> for locally allowlisted executables with typed
+arguments. Clock changes and host recovery actions are disabled by default,
+arbitrary executables are never accepted, and no action uses a shell. Clock set
+accepts only canonical unsigned decimal epochs from 2020 through 2099; a root-owned
+Unix-socket service revalidates the request and authenticates the local service
+account with <code>SO_PEERCRED</code> before changing system time. Network restart and
+reboot use a separate root-owned Unix-socket broker with fixed systemd units;
+installing clock control does not grant those actions. The endpoint never uses
+<code>sudo</code> for privileged host actions.
 See <a href="../host_cli_service/">LoRa CLI host service</a> for the complete
 <code>meshcoretomqtt</code> setup and security model.</p>
 <hr />
@@ -5407,17 +5416,21 @@ new address; USB password input is masked. Binary Companion clients can use
 USB, BLE, or TCP port 5000 without the terminal-start token: send command
 <code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>) followed by the same CLI text, such as
 <code>get wifi.powersave</code> or <code>set wifi.powersave min</code>. WiFi-only Companions accept
-all three modes. Full Companion rejects
-<code>none</code> because its simultaneous BLE transport requires modem sleep. Companion
-device <code>powersaving</code> and LoRa <code>radio.rxps</code> remain independent. On an ESP32 Full
-Companion whose primary mesh radio is ESP-NOW, <code>max</code> is also unavailable: a
-station using maximum modem sleep can miss ESP-NOW broadcasts, which the access
-point does not buffer for it. A previously saved <code>max</code> value is capped to and
-reported as <code>min</code>, and a new <code>max</code> selection is rejected. These
-WiFi/BLE/primary-ESP-NOW builds therefore report <code>min</code>. The primary mesh radio
-also holds the ESP-IDF WiFi wake reference continuously so unsolicited ESP-NOW
-frames remain receivable; selecting <code>min</code> does not put that primary receiver to
-sleep.</p>
+all three modes. A Full Companion that runs BLE and infrastructure WiFi
+simultaneously rejects <code>none</code> because coexistence requires modem sleep.
+Companion device <code>powersaving</code> and LoRa <code>radio.rxps</code> remain independent. On an
+ESP32 Full Companion whose primary mesh radio is ESP-NOW, <code>max</code> is also
+unavailable: a station using maximum modem sleep can miss ESP-NOW broadcasts,
+which the access point does not buffer for it. A previously saved conflicting
+value is capped to and reported as <code>min</code>, and a new conflicting selection is
+rejected. The primary mesh radio also holds the ESP-IDF WiFi wake reference
+continuously so unsolicited ESP-NOW frames remain receivable; selecting <code>min</code>
+does not put that primary receiver to sleep.</p>
+<p>SenseCAP Indicator Full is the exclusive-secondary exception. On a
+WiFi-selected boot, LoRa accepts <code>none|min|max</code> and ESP-NOW accepts <code>none|min</code>.
+On a BLE-selected boot infrastructure WiFi is not started; LoRa accepts
+<code>min|max</code> for the saved WiFi setting, while ESP-NOW + BLE requires <code>min</code>. USB
+and the primary LoRa or ESP-NOW radio remain available in every mode.</p>
 <h4 id="view-or-change-the-primary-esp-nowwifi-channel">View or change the primary ESP-NOW/WiFi channel</h4>
 <p><strong>Usage:</strong></p>
 <ul>
@@ -5968,6 +5981,10 @@ in <code>both</code> mode.</p>
 <h2 id="info">Info</h2>
 <h3 id="get-the-version">Get the Version</h3>
 <p><strong>Usage:</strong> <code>ver</code></p>
+<p>On Full Companion, the Binary device-info frame retains its legacy fixed-width
+version field. Use <code>version</code> in the text terminal, or send <code>version</code> through
+Binary protocol command <code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>), to read the complete
+untruncated firmware string together with protocol and build date.</p>
 <hr />
 <h3 id="show-the-hardware-name">Show the hardware name</h3>
 <p><strong>Usage:</strong> <code>board</code></p>
@@ -6573,7 +6590,7 @@ get clock.sync.status
 - <code>off</code>: disable power saving</p>
 <p><strong>Default:</strong> <code>on</code> for fresh Cascade-profile builds and Companion firmware; <code>off</code> for other infrastructure profiles</p>
 <p><strong>Note:</strong> Infrastructure firmware enters sleep between radio transmissions. It refuses to enable power saving from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.</p>
-<p>Companion firmware defaults this setting to <code>on</code>. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB, BLE, and WiFi remain available. <code>powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>). Infrastructure WebConfig uses the <code>set powersaving</code> form; enabling it can put the node to sleep and make WiFi temporarily unavailable.</p>
+<p>Companion firmware defaults this setting to <code>on</code>. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. <code>powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>). Infrastructure WebConfig uses the <code>set powersaving</code> form; enabling it can put the node to sleep and make WiFi temporarily unavailable.</p>
 <hr />
 <h4 id="view-or-set-the-reboot-interval-repeater-and-room-server">View or set the reboot interval (Repeater and room server)</h4>
 <p><strong>Usage:</strong>

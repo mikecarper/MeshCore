@@ -2921,6 +2921,11 @@ one byte and must not contain an embedded NUL. An unknown command is returned
 as the normal CLI reply text <code>Unknown command</code>, not as an error frame. Clients
 may prefix the CLI text with any two-character correlation tag and <code>|</code> (for
 example, <code>A7|get radio.rxgain</code>); the reply preserves that prefix.</p>
+<p>Full Companion clients can send <code>version</code> through this command to receive the
+untruncated build identity, for example <code>Companion 1.17.1.5-... (protocol 14,
+build 31-Aug-2026)</code>. This deliberately supplements rather than changes the
+20-byte legacy version field in <code>RESP_CODE_DEVICE_INFO</code>, so existing clients
+keep the same frame layout.</p>
 <p>Firmware from this fork predating the upstream <code>0x42</code> allocation used
 <code>0x42</code>-<code>0x49</code> for these eight settings. This firmware accepts those values as
 deprecated inbound aliases so existing clients continue to work. A one-byte
@@ -3029,11 +3034,40 @@ same explanatory text as the local CLI.</p>
 </tr>
 </tbody>
 </table>
-<p>Full Companion rejects WiFi mode <code>none</code> because simultaneous BLE transport
-requires modem sleep. A Full Companion using ESP-NOW as its primary mesh radio
-also rejects <code>max</code>, because maximum modem sleep can miss broadcasts that the
-access point cannot buffer. If an older image saved <code>max</code>, the effective mode
-is capped to and reported as <code>min</code>. Device <code>powersaving</code> remains independent.</p>
+<p>A Full Companion that runs BLE and infrastructure WiFi simultaneously rejects
+WiFi mode <code>none</code> because coexistence requires modem sleep. A Full Companion
+using ESP-NOW as its primary mesh radio also rejects <code>max</code>, because maximum
+modem sleep can miss broadcasts that the access point cannot buffer. If an
+older image saved a conflicting value, the effective mode is capped to and
+reported as <code>min</code>. Device <code>powersaving</code> remains independent.</p>
+<p>The SenseCAP Indicator Full profiles run exactly one secondary wireless
+Companion transport per boot. Their active-mode constraints are:</p>
+<table>
+<thead>
+<tr>
+<th>Indicator mode</th>
+<th>Accepted <code>wifi.powersave</code> values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LoRa + infrastructure WiFi</td>
+<td><code>none</code>, <code>min</code>, <code>max</code></td>
+</tr>
+<tr>
+<td>LoRa + BLE</td>
+<td><code>min</code>, <code>max</code>; infrastructure WiFi is not started</td>
+</tr>
+<tr>
+<td>ESP-NOW + infrastructure WiFi</td>
+<td><code>none</code>, <code>min</code>; <code>max</code> conflicts with primary ESP-NOW</td>
+</tr>
+<tr>
+<td>ESP-NOW + BLE</td>
+<td><code>min</code>; infrastructure WiFi is not started and primary ESP-NOW remains active</td>
+</tr>
+</tbody>
+</table>
 <p>The Bluetooth name can be configured over USB, BLE, or TCP. Use
 <code>set bluetooth.name default</code> to restore <code>MeshCore-&lt;advert name&gt;</code>; an empty CLI
 value is rejected. (<code>clear</code> is also accepted as an alias for <code>default</code>.) A
