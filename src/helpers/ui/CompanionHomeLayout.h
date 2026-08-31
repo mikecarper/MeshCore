@@ -30,6 +30,17 @@ struct CompactCompanionPairingLayout {
   int pairing_value_y;
 };
 
+// Full-size Indicator builds keep the established 160x160 logical coordinate
+// system even when they obtain a native 480x480 render buffer. Expose that
+// distinction to the home page so it can spend the extra pixel density on
+// larger, deliberately reflowed text without changing the 320 BLE profile or
+// unrelated displays that happen to have a tall viewport.
+inline bool usesExpandedCompanionHomeTypography(
+    int width, int height, int render_width, int render_height) {
+  return width == 160 && height == 160
+      && render_width == 480 && render_height == 480;
+}
+
 // The common Companion OLED/TFT viewport is 128x64.  Its normal instruction
 // and network rows occupy the same lower area needed by the Bluetooth status,
 // so an active PIN/connection replaces those rows with this compact block.
@@ -56,7 +67,19 @@ inline CompactCompanionPairingLayout makeCompactCompanionPairingLayout(
 // fifths of the display height.  The Indicator renders a 160x160 logical UI,
 // for which this produces a 48-pixel-tall block centered at y=128.
 inline CompanionHomeLayout makeLargeCompanionHomeLayout(int width,
-                                                        int height) {
+                                                        int height,
+                                                        bool expanded = false) {
+  if (expanded && width == 160 && height == 160) {
+    return {
+        {2, 51, 156, 46},
+        {8, 100, 144, 58},
+        52,
+        76,
+        102,
+        126,
+    };
+  }
+
   // Ordinary one-line status needs almost the full logical width when the
   // Indicator's recovered mono font is active. The PIN block gets the larger
   // inset so it remains visibly distinct from the page background.

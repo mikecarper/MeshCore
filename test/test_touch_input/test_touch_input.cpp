@@ -153,6 +153,32 @@ TEST(TouchInput, SplitSelectorMapsTapHalvesToExplicitChoices) {
             TouchAction::None);
 }
 
+TEST(TouchInput, SplitSelectorAcceptsQuickBoundedTapsOnly) {
+  TouchInput input(true, true, 70);
+  const TouchSplitSelector selector{2, 76, 82, 76, 36, 98};
+
+  input.update(true, 30, 100, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::SelectLeft);
+
+  input.update(true, 130, 100, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::SelectRight);
+
+  input.update(true, 80, 100, 160, 160, false, &selector);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+  EXPECT_EQ(input.update(false, -1, -1, 160, 160, false, &selector),
+            TouchAction::None);
+
+  input.update(true, 30, 100, 160, 160);
+  EXPECT_EQ(release(input, 160, 160), TouchAction::None);
+}
+
 TEST(TouchInput, SplitSelectorKeepsSwipesAsNavigation) {
   TouchInput input(true, true, 70);
   const TouchSplitSelector selector{8, 68, 84, 68, 38, 72};

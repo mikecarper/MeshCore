@@ -89,9 +89,13 @@ public:
     _active = false;
     _release_samples = 0;
 
-    // A contact seen only once has no measurable direction. Ignoring it is
-    // safer than treating the endpoint of a fast swipe as an opposite tap.
-    if (_touch_samples < 2 || width <= 0 || height <= 0) {
+    // A contact seen only once has no measurable direction. Keep ignoring it
+    // on ordinary pages so the endpoint of a fast swipe cannot become an
+    // opposite tap. An explicit split selector is different: its bounded
+    // boxes are unambiguous stationary targets, and rejecting a quick contact
+    // makes a normal tap disappear when it lands within one polling interval.
+    if (_touch_samples == 0 || width <= 0 || height <= 0
+        || (_touch_samples < 2 && split_selector == nullptr)) {
       return TouchAction::None;
     }
 

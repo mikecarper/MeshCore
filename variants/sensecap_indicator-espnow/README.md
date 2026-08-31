@@ -16,6 +16,10 @@ wakes it without selecting anything.
   side performs Previous or Next; horizontal swipes remain available anywhere.
 - A gesture is committed after a stable release. Brief missing touch samples
   are ignored so one swipe cannot become a second, opposite endpoint tap.
+- The transport page is the exception for a very quick stationary contact:
+  either tall, outlined WiFi/BLE box can accept one sampled point after the
+  same stable-release debounce. Taps in the title, center gap, or footer stay
+  inert, and a moving contact is still handled as a swipe first.
 
 ## Reading messages
 
@@ -110,6 +114,13 @@ current session. WiFi mode never initializes BLE and releases the ESP32
 Bluetooth controller and host memory. BLE mode does not start infrastructure
 WiFi, WebConfig, MQTT, OTA networking, or TCP Companion services. USB remains
 available in both modes for recovery.
+
+The Indicator transport page presents WiFi and BLE as full-height side-by-side
+choices. Tapping either choice saves it and reboots only when it differs from
+the active mode. Its size-3 choice labels render at the same physical size in
+the 320 and 480 profiles. On a retained native 480 canvas, the first home page
+also reflows its inbox heading and short status labels at larger sizes; long IP
+addresses automatically fall back to the smaller row size instead of clipping.
 
 LoRa remains the primary radio in both LoRa modes. On the ESP-NOW layout,
 selecting BLE leaves the primary ESP-NOW WiFi radio and its fixed channel

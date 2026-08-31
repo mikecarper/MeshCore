@@ -181,6 +181,36 @@ TEST(DisplayDriver, IndicatorHomeSeparatesInfoAndPairingGeometry) {
       layout.pairing, layout.pairing_value_y, 24));
 }
 
+TEST(DisplayDriver, NativeIndicatorExpandsHomeTypographyRegions) {
+  EXPECT_TRUE(mesh::ui::usesExpandedCompanionHomeTypography(
+      160, 160, 480, 480));
+  EXPECT_FALSE(mesh::ui::usesExpandedCompanionHomeTypography(
+      160, 160, 320, 320));
+  EXPECT_FALSE(mesh::ui::usesExpandedCompanionHomeTypography(
+      128, 64, 480, 480));
+
+  const mesh::ui::CompanionHomeLayout layout =
+      mesh::ui::makeLargeCompanionHomeLayout(160, 160, true);
+  EXPECT_EQ(2, layout.info.x);
+  EXPECT_EQ(51, layout.info.y);
+  EXPECT_EQ(156, layout.info.width);
+  EXPECT_EQ(46, layout.info.height);
+  EXPECT_EQ(8, layout.pairing.x);
+  EXPECT_EQ(100, layout.pairing.y);
+  EXPECT_EQ(144, layout.pairing.width);
+  EXPECT_EQ(58, layout.pairing.height);
+  EXPECT_FALSE(mesh::ui::displayRegionsOverlap(layout.info,
+                                               layout.pairing));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.info, layout.instruction_y, 20));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.info, layout.network_y, 20));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.pairing, layout.pairing_label_y, 20));
+  EXPECT_TRUE(mesh::ui::displayRegionContainsLine(
+      layout.pairing, layout.pairing_value_y, 30));
+}
+
 TEST(DisplayDriver, IndicatorPairingValuesFitAtRenderedTextSizes) {
   // Model the fallback font's fixed six-logical-pixel cell. It is the wider
   // of the two paths for CONNECTED; the profile test reads the recovered

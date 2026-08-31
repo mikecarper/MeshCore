@@ -103,8 +103,13 @@ class IndicatorDisplayProfileTest(unittest.TestCase):
                 requested_size * coordinate_scale / native_scale
                 * profile_scale
             )
-            width = sum(advances[ord(char)] for char in text)
-            height = max(heights[ord(char)] for char in text)
+            # Blank glyphs carry no bitmap record in the packed VLW. The
+            # checked-in font is monospaced with the documented 18px cell, so
+            # spaces still advance by one complete cell.
+            width = sum(
+                18 if char == " " else advances[ord(char)] for char in text
+            )
+            height = max(heights[ord(char)] for char in text if char != " ")
             return (
                 int((width * render_scale + coordinate_scale - 1)
                     // coordinate_scale),
@@ -128,6 +133,26 @@ class IndicatorDisplayProfileTest(unittest.TestCase):
         for width, height in (native_pin, native_connected):
             self.assertLessEqual(width, 144)
             self.assertLessEqual(height, 30)
+
+        # Native 480 reflows the spacious home page instead of globally
+        # enlarging every dense UI row. Its prominent strings fit at their
+        # requested sizes, while a two-digit inbox count takes the deliberate
+        # size-2 fallback.
+        native_title = dimensions("INBOX 0", 3, 3, 1.2)
+        native_two_digit_title = dimensions("INBOX 10", 3, 3, 1.2)
+        native_two_digit_fallback = dimensions("INBOX 10", 2, 3, 1.2)
+        self.assertLessEqual(native_title[0], 156)
+        self.assertGreater(native_two_digit_title[0], 156)
+        self.assertLessEqual(native_two_digit_fallback[0], 156)
+
+        for text, region_width in (
+            ("tap inbox", 156),
+            ("WiFi: OFF", 156),
+            ("BLE PIN", 144),
+        ):
+            width, height = dimensions(text, 2, 3, 1.2)
+            self.assertLessEqual(width, region_width)
+            self.assertLessEqual(height, 20)
 
 
 if __name__ == "__main__":

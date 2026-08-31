@@ -86,16 +86,17 @@ static void drawCompanionTransportChoice(DisplayDriver& display,
   }
 
   const bool large_transport_text = display.height() >= 96;
-  display.setTextSize(large_transport_text ? 2 : 1);
+  display.setTextSize(large_transport_text ? 3 : 1);
   const bool show_status_label = height >= 44;
   const int label_y = show_status_label
-      ? y + (large_transport_text ? 9 : 12)
+      ? y + (large_transport_text ? 17 : 12)
       : y + (height - 8) / 2;
   display.drawTextCentered(x + width / 2, label_y, label);
   if (show_status_label && (active || selected)) {
+    display.setTextSize(large_transport_text ? 2 : 1);
     display.drawTextCentered(
         x + width / 2,
-        y + height - (large_transport_text ? 23 : 17),
+        y + height - (large_transport_text ? 25 : 17),
         active ? "ACTIVE"
                : (large_transport_text ? "NEXT" : "NEXT BOOT"));
   }
@@ -375,13 +376,27 @@ public:
 
     if (_page == HomePage::FIRST) {
       display.setColor(UIColor::primary_txt);
+#ifdef UI_DEDICATED_PAIRING_BLOCK
+      const bool expanded_home =
+          mesh::ui::usesExpandedCompanionHomeTypography(
+              display.width(), display.height(),
+              display.renderWidth(), display.renderHeight());
+      sprintf(tmp, expanded_home ? "INBOX %d" : "INBOX: %d",
+              _task->getPreviewCount());
+      display.setTextSize(expanded_home ? 3 : 2);
+      if (expanded_home && display.getTextWidth(tmp) > display.width() - 4) {
+        display.setTextSize(2);
+      }
+#else
       display.setTextSize(2);
       sprintf(tmp, "INBOX: %d", _task->getPreviewCount());
+#endif
       display.drawTextCentered(display.width() / 2, 22, tmp);
 #ifdef UI_DEDICATED_PAIRING_BLOCK
       const mesh::ui::CompanionHomeLayout layout =
           mesh::ui::makeLargeCompanionHomeLayout(display.width(),
-                                                 display.height());
+                                                 display.height(),
+                                                 expanded_home);
 
       // These are distinct repaint regions. In particular, removing or
       // replacing a pairing PIN cannot leave old glyphs behind, and long
@@ -390,10 +405,11 @@ public:
       mesh::ui::clearDisplayRegion(display, layout.info);
       mesh::ui::clearDisplayRegion(display, layout.pairing);
 
-      display.setTextSize(1);
+      display.setTextSize(expanded_home ? 2 : 1);
       display.setColor(UIColor::secondary_txt);
       mesh::ui::drawTextCenteredEllipsized(
-          display, layout.info, layout.instruction_y, "tap center: inbox");
+          display, layout.info, layout.instruction_y,
+          expanded_home ? "tap inbox" : "tap center: inbox");
 
       #ifdef WIFI_SSID
         if (isCompanionWiFiEnabled()) {
@@ -402,6 +418,10 @@ public:
                    ip[0], ip[1], ip[2], ip[3]);
         } else {
           strcpy(tmp, "WiFi: OFF");
+        }
+        display.setTextSize(expanded_home ? 2 : 1);
+        if (display.getTextWidth(tmp) > layout.info.width) {
+          display.setTextSize(1);
         }
         mesh::ui::drawTextCenteredEllipsized(
             display, layout.info, layout.network_y, tmp);
@@ -415,11 +435,11 @@ public:
       int pairing_value_size = 2;
       char pairing_pin[16];
       if (bluetooth_connected) {
-        pairing_label = "BLUETOOTH";
+        pairing_label = expanded_home ? "BLE" : "BLUETOOTH";
         pairing_value = "CONNECTED";
       } else if (mesh::ui::shouldDisplayBluetoothPairingPin(
                      bluetooth_enabled, bluetooth_connected, bluetooth_pin)) {
-        pairing_label = "BLUETOOTH PIN";
+        pairing_label = expanded_home ? "BLE PIN" : "BLUETOOTH PIN";
         snprintf(pairing_pin, sizeof(pairing_pin), "%06u",
                  (unsigned int)bluetooth_pin);
         pairing_value = pairing_pin;
@@ -430,7 +450,7 @@ public:
         display.setColor(UIColor::title_bkg);
         mesh::ui::clearDisplayRegion(display, layout.pairing);
         display.setColor(UIColor::title_txt);
-        display.setTextSize(1);
+        display.setTextSize(expanded_home ? 2 : 1);
         mesh::ui::drawTextCenteredEllipsized(
             display, layout.pairing, layout.pairing_label_y, pairing_label);
         display.setTextSize(pairing_value_size);
@@ -591,10 +611,10 @@ public:
           mesh::ui::makeCompanionTransportSelectorLayout(
               display.width(), display.height());
 
-      // Size 2 is already a substantial increase. Keep this page independent
-      // of the additional native-480 text boost so ACTIVE still fits inside
-      // either half-screen choice; the compact status strip above was drawn
-      // before this point and is unaffected.
+      // Keep this page independent of the additional native-480 text boost:
+      // the size-3 choice names and size-2 status already consume nearly the
+      // full half-screen width, and should remain equally readable in the
+      // memory-saving 320 profile.
       display.setCompactText(true);
       if (layout.show_title) {
         display.setColor(UIColor::primary_txt);
@@ -605,14 +625,14 @@ public:
       drawCompanionTransportChoice(
           display, layout.wifi.x, layout.wifi.y,
           layout.wifi.width, layout.wifi.height,
-          "Wi-Fi", wifi_active, wifi_selected);
+          "WiFi", wifi_active, wifi_selected);
       drawCompanionTransportChoice(
           display, layout.bluetooth.x, layout.bluetooth.y,
           layout.bluetooth.width, layout.bluetooth.height,
           "BLE", !wifi_active, !wifi_selected);
 
       display.setColor(UIColor::secondary_txt);
-      display.setTextSize(display.height() >= 96 ? 2 : 1);
+      display.setTextSize(1);
 #ifdef HAS_TOUCH
       display.drawTextCentered(
           display.width() / 2, layout.prompt_y, "tap a box");

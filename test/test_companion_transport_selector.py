@@ -20,8 +20,8 @@ int main() {
   if (!layout.show_title) return 1;
   if (layout.wifi.x != 2 || layout.wifi.width != 76) return 2;
   if (layout.bluetooth.x != 82 || layout.bluetooth.width != 76) return 3;
-  if (layout.wifi.y != 40 || layout.wifi.height != 72) return 4;
-  if (layout.title_y != 17 || layout.prompt_y != 138) return 5;
+  if (layout.wifi.y != 36 || layout.wifi.height != 98) return 4;
+  if (layout.title_y != 17 || layout.prompt_y != 140) return 5;
 
   const auto small = mesh::ui::makeCompanionTransportSelectorLayout(128, 64);
   if (small.show_title) return 6;
@@ -56,15 +56,21 @@ int main() {
             )
             self.assertEqual(run_result.returncode, 0, run_result.stderr)
 
-        logical_glyph_width = 6 * 2
-        logical_glyph_height = 8 * 2
-        for text in ("Wi-Fi", "BLE", "ACTIVE", "NEXT"):
-            self.assertLessEqual(len(text) * logical_glyph_width, 76)
+        choice_glyph_width = 6 * 3
+        choice_glyph_height = 8 * 3
+        for text in ("WiFi", "BLE"):
+            self.assertLessEqual(len(text) * choice_glyph_width, 76)
+        status_glyph_width = 6 * 2
+        status_glyph_height = 8 * 2
+        for text in ("ACTIVE", "NEXT"):
+            self.assertLessEqual(len(text) * status_glyph_width, 76)
+        title_glyph_width = 6 * 2
         for text in ("TRANSPORT", "tap a box"):
-            self.assertLessEqual(len(text) * logical_glyph_width, 160)
-        self.assertLessEqual(17 + logical_glyph_height, 40)
-        self.assertLessEqual(89 + logical_glyph_height, 112)
-        self.assertLessEqual(138 + logical_glyph_height, 160)
+            self.assertLessEqual(len(text) * title_glyph_width, 160)
+        self.assertLessEqual(17 + 8 * 2, 36)
+        self.assertLessEqual(53 + choice_glyph_height, 134)
+        self.assertLessEqual(109 + status_glyph_height, 134)
+        self.assertLessEqual(140 + 8, 160)
 
     def test_touch_split_selector_distinguishes_taps_from_swipes(self):
         source = r'''
@@ -113,6 +119,35 @@ int main() {
   input.update(true, 130, 68, 160, 160, false, &selector);
   if (release(input, &selector) != TouchAction::Next) return 6;
 
+  // A quick selector tap may occupy only one 25 ms poll. Its bounded target
+  // remains unambiguous after the normal two-sample release debounce.
+  input.update(true, 30, 120, 160, 160, false, &selector);
+  if (release(input, &selector) != TouchAction::SelectLeft) return 7;
+
+  input.update(true, 130, 120, 160, 160, false, &selector);
+  if (release(input, &selector) != TouchAction::SelectRight) return 8;
+
+  // The gap, title, and exclusive bottom edge remain inert even for a quick
+  // contact, while the last pixel inside the taller box is selectable.
+  input.update(true, 80, 120, 160, 160, false, &selector);
+  if (release(input, &selector) != TouchAction::None) return 9;
+
+  input.update(true, 30, layout.wifi.y - 1, 160, 160, false, &selector);
+  if (release(input, &selector) != TouchAction::None) return 10;
+
+  input.update(true, 30, layout.wifi.y + layout.wifi.height,
+               160, 160, false, &selector);
+  if (release(input, &selector) != TouchAction::None) return 11;
+
+  input.update(true, 30, layout.wifi.y + layout.wifi.height - 1,
+               160, 160, false, &selector);
+  if (release(input, &selector) != TouchAction::SelectLeft) return 12;
+
+  // Ordinary pages keep the two-sample protection against a detached swipe
+  // endpoint being interpreted as a tap.
+  input.update(true, 30, 70, 160, 160, false, nullptr);
+  if (release(input, nullptr) != TouchAction::None) return 13;
+
   return 0;
 }
 '''
@@ -144,11 +179,11 @@ int main() {
         source = UI.read_text(encoding="utf-8")
         self.assertIn("#ifdef COMPANION_EXCLUSIVE_WIFI_BLE", source)
         self.assertIn("TRANSPORT,", source)
-        self.assertIn('"Wi-Fi", wifi_active, wifi_selected', source)
+        self.assertIn('"WiFi", wifi_active, wifi_selected', source)
         self.assertIn('"BLE", !wifi_active, !wifi_selected', source)
         self.assertIn("display.fillRect(x, y, width, height);", source)
         self.assertIn('"ACTIVE"', source)
-        self.assertIn('large_transport_text ? 2 : 1', source)
+        self.assertIn('large_transport_text ? 3 : 1', source)
         self.assertIn("const bool show_status_label = height >= 44;", source)
         self.assertIn('active ? "ACTIVE"', source)
         self.assertIn('large_transport_text ? "NEXT" : "NEXT BOOT"', source)
