@@ -144,6 +144,20 @@ require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "ENABLE_USB_INTER
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "BLE_PIN_CODE=123456")
 require("heltec_v4_expansionkit_tft_companion_radio_full_femon", "platform", "platformio/espressif32@6.11.0")
 require("heltec_v4_expansionkit_tft_companion_radio_full_femon", "build_flags", "ARDUINO_USB_MODE=1")
+full_env_names = sorted(
+    section_name.removeprefix("env:")
+    for section_name in sections
+    if section_name.startswith("env:")
+    and "companion_radio_full" in section_name.lower()
+)
+if not full_env_names:
+    raise SystemExit("test_build_profiles: no concrete Full environments found")
+for env_name in full_env_names:
+    require(
+        env_name,
+        "build_flags",
+        "MESHCORE_REQUIRES_COMPANION_RADIO_FULL=1",
+    )
 reject("heltec_v4_expansionkit_tft_companion_radio_full_femon", "build_flags", "ARDUINO_USB_MODE=0")
 reject("heltec_v4_expansionkit_tft_companion_radio_full_femon", "platform", "55.03.311")
 reject("heltec_v4_expansionkit_tft_companion_radio_full_femon", "platform_packages", "esp32-core-3.3.11")
@@ -370,6 +384,10 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
     || fail "$full_env Full Companion omitted its WiFi runtime overlay"
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESHCORE_EXPANDED_PARTITION_PROFILE=1"* ]] \
     || fail "$full_env Full Companion omitted its expanded runtime profile"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_RADIO_FULL=1"* ]] \
+    || fail "$full_env Full Companion omitted its capability identity"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"BLE_PIN_CODE=123456"* ]] \
+    || fail "$full_env Full Companion omitted Bluetooth pairing"
   case "${full_env,,}" in
     sensecapindicator-espnow_companion_radio_full|\
     sensecapindicator-lora_companion_radio_full)
@@ -412,6 +430,32 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
 done
 unset PLATFORMIO_BUILD_FLAGS PLATFORMIO_BUILD_UNFLAGS \
   PLATFORMIO_BUILD_SRC_FILTER MESHCORE_ESP32_FULL_PARTITION_TABLE
+
+# nRF52 Full targets use the same capability identity and pairing transport,
+# plus both host-folder mOTA sources. Check every registered logical target so
+# synthetic Full names that share a USB/BLE PlatformIO recipe stay protected.
+for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
+  is_nrf52_companion_radio_full_target "$full_env" || continue
+  pio_env=$(get_pio_build_env "$full_env")
+  PLATFORMIO_BUILD_FLAGS=""
+  PLATFORMIO_BUILD_UNFLAGS=""
+  PLATFORMIO_BUILD_SRC_FILTER=""
+  BUILD_REDUCTIONS=()
+  apply_companion_radio_full_profile "$full_env" "$pio_env"
+
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_RADIO_FULL=1"* ]] \
+    || fail "$full_env Full Companion omitted its capability identity"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"BLE_PIN_CODE=123456"* ]] \
+    || fail "$full_env Full Companion omitted Bluetooth pairing"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"ENABLE_OTA=1"* ]] \
+    || fail "$full_env Full Companion omitted LoRa OTA seeding"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"OTA_FOLDER_SERIAL=1"* ]] \
+    || fail "$full_env Full Companion omitted USB folder seeding"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_BLE_MOTA_SOURCE=1"* ]] \
+    || fail "$full_env Full Companion omitted BLE folder seeding"
+done
+unset PLATFORMIO_BUILD_FLAGS PLATFORMIO_BUILD_UNFLAGS \
+  PLATFORMIO_BUILD_SRC_FILTER
 
 # The bounded AsyncTCP task stack belongs to every ESP32 Full profile, including
 # expanded non-Companion builds, but must not leak into ordinary or nRF52

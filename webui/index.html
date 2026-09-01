@@ -296,7 +296,8 @@ body.tab-cli{padding-bottom:0}
     </div>
     <div class="row">
       <button class="btn sec" onclick="wzGo(1)">Back</button>
-      <button class="btn" style="flex:1" id="wz-radio-next" onclick="wzGo(3)">Next: MQTT</button>
+      <button class="btn sec hide" style="flex:1" id="wz-radio-skip" onclick="wzSkipRadio()">Skip radio</button>
+      <button class="btn" style="flex:1" id="wz-radio-next" onclick="wzUseRadio()">Next: MQTT</button>
     </div>
   </div>
 
@@ -320,7 +321,8 @@ body.tab-cli{padding-bottom:0}
     </div>
     <div class="row">
       <button class="btn sec" onclick="wzGo(2)">Back</button>
-      <button class="btn" style="flex:1" onclick="wzGo(4)">Review</button>
+      <button class="btn sec" style="flex:1" onclick="wzSkipMqtt()">Skip MQTT</button>
+      <button class="btn" style="flex:1" onclick="wzUseMqtt()">Review</button>
     </div>
   </div>
 
@@ -615,7 +617,7 @@ body.tab-cli{padding-bottom:0}
 <script>
 "use strict";
 var SENTINEL="********";
-var st={mode:"",authed:false,hasMqtt:false,hasCli:false,wifiPsk64:false,passwordSupported:false,needsPassword:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
+var st={mode:"",authed:false,hasMqtt:false,hasCli:false,wifiPsk64:false,passwordSupported:false,needsPassword:false,radioOptional:false,skipRadio:false,skipMqtt:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
 
 function $(s){return document.querySelector(s)}
 function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
@@ -695,6 +697,7 @@ function applyFeatures(){
       ? "Passphrases may be up to 63 characters; a 64-character key must be hexadecimal."
       : "Passphrases may be up to 63 characters.";
   });
+  $("#wz-radio-skip").classList.toggle("hide",!st.radioOptional);
   if(!st.hasCli){
     var cliTab=$('#tabs button[data-t="cli"]');if(cliTab)cliTab.remove();
     $("#t-cli").classList.add("hide");
@@ -725,6 +728,7 @@ function boot(){
     st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.hasCli=!!s.cli;
     st.wifiPsk64=!!s.wifi_psk64;
     st.passwordSupported=!!s.password_supported;st.needsPassword=!!s.needs_password;
+    st.radioOptional=!!s.radio_optional;
     st.needsSetup=!!s.needs_setup;st.caps=s.capabilities||0;
     st.nslots=st.hasMqtt?(s.active_slots||s.runtime_slots||0):0;
     if(s.max_cmds>0)CLI_MAX=s.max_cmds;
@@ -852,7 +856,7 @@ function radioCombo(){
 }
 function loadConfig(){
   return api("/api/config").then(function(c){
-    st.cfg=c;st.orig={};st.dirty={};
+    st.cfg=c;st.orig={};st.dirty={};st.skipRadio=false;st.skipMqtt=false;
     if(st.hasMqtt){buildSlots("#app-slots");buildSlots("#wz-slots")}
     $$("[data-k]").forEach(function(el){
       var k=el.dataset.k,v=cfgVal(k);
@@ -1398,6 +1402,7 @@ function wzRadioFill(){
   sel.classList.remove("dirty");
 }
 function wzRadioSel(sel){
+  st.skipRadio=false;
   var v=sel.value,combo;
   if(v===""||v==="keep"){combo=st.orig.radio}
   else{var p=RADIO_PRESETS[+v];combo=presetCombo(p)}
@@ -1421,6 +1426,7 @@ function wzGo(n){
     $("#stp"+i).classList.toggle("on",i<=n);
   });
   if(n===3){
+    st.skipMqtt=false;
     // Prefill observer name with the node name - only while still blank, so
     // an existing config or a manual edit is never clobbered.
     var o=$('#wz3 [data-k="mqtt.origin"]');
@@ -1429,6 +1435,49 @@ function wzGo(n){
   }
   if(n===4)buildReview();
   window.scrollTo(0,0);
+}
+function wzUseRadio(){
+  st.skipRadio=false;
+  wzGo(3);
+}
+function wzSkipRadio(){
+  if(!st.radioOptional)return;
+  st.skipRadio=true;
+  delete st.dirty.radio;
+  delete st.dirty.tx;
+  $$("[data-rg]").forEach(function(el){
+    var idx={freq:0,bw:1,sf:2,cr:3}[el.dataset.rg];
+    el.value=st.orig.radio.split(",")[idx];el.classList.remove("dirty");
+  });
+  $("#wz-rp").value="keep";
+  $("#wz-rp").classList.remove("dirty");
+  $$('[data-k="tx"]').forEach(function(el){
+    setEl(el,st.orig.tx||"");el.classList.remove("dirty");
+  });
+  updateSaveBar();
+  wzGo(st.hasMqtt?3:4);
+}
+function wzUseMqtt(){
+  st.skipMqtt=false;
+  wzGo(4);
+}
+function wzSkipMqtt(){
+  st.skipMqtt=true;
+  Object.keys(st.dirty).forEach(function(k){
+    if(/^mqtt(?:\.|[1-9]\.)/.test(k))delete st.dirty[k];
+  });
+  $$('[data-k]').forEach(function(el){
+    if(/^mqtt(?:\.|[1-9]\.)/.test(el.dataset.k)){
+      setEl(el,st.orig[el.dataset.k]||"");el.classList.remove("dirty");
+    }
+  });
+  for(var i=1;i<=st.nslots;i++){
+    refreshSlotFields($("#app-slots"),i);
+    refreshSlotFields($("#wz-slots"),i);
+  }
+  syncPacketFilters();
+  updateSaveBar();
+  wzGo(4);
 }
 function popOut(){
   // Tell the node to start answering OS captive probes with "success" so the
@@ -1456,10 +1505,12 @@ function buildReview(){
   if(d.name||st.orig.name)row("Node name",d.name||st.orig.name);
   var rc=d.radio||st.orig.radio||"",rp=null;
   RADIO_PRESETS.forEach(function(p){if(comboEq(presetCombo(p),rc))rp=p});
-  row("Radio",(rp?rp.t+" - ":"")+rc.split(",").join(" / ")+(d.radio?"":" (unchanged)"));
+  row("Radio",st.skipRadio?"Skipped (unchanged)":(rp?rp.t+" - ":"")+rc.split(",").join(" / ")+(d.radio?"":" (unchanged)"));
   if(d.tx)row("TX power",d.tx+" dBm");
   if(st.passwordSupported&&(st.needsPassword||eff("password")))row("Admin password",eff("password")?"set":"(not set)");
-  if(st.hasMqtt){
+  if(st.hasMqtt&&st.skipMqtt){
+    row("MQTT","Skipped (unchanged)");
+  }else if(st.hasMqtt){
     row("Observer name",d["mqtt.origin"]||st.orig["mqtt.origin"]||"(not set)");
     row("IATA",(d["mqtt.iata"]||st.orig["mqtt.iata"]||"(not set)").toUpperCase());
     var own=d["mqtt.owner"]||st.orig["mqtt.owner"];
@@ -1477,10 +1528,10 @@ function buildReview(){
 }
 function wizardSave(){
   if(!st.dirty["wifi.ssid"]&&!st.orig["wifi.ssid"]){$("#wz-err").textContent="Please set a WiFi network (step 1).";return}
-  if($("#wz-rp").value===""){$("#wz-err").textContent="Please choose a radio preset (step 2) - nodes ship with non-US defaults.";return}
+  if(!st.skipRadio&&$("#wz-rp").value===""){$("#wz-err").textContent="Please choose a radio preset (step 2) - nodes ship with non-US defaults.";return}
   var pwdErr=adminPwdError(true);
   if(pwdErr){$("#wz-err").textContent=pwdErr+" (step 2).";return}
-  if(st.hasMqtt&&!/^[A-Za-z]{3}$/.test(st.dirty["mqtt.iata"]||st.orig["mqtt.iata"]||"")){
+  if(st.hasMqtt&&!st.skipMqtt&&!/^[A-Za-z]{3}$/.test(st.dirty["mqtt.iata"]||st.orig["mqtt.iata"]||"")){
     $("#wz-err").textContent="Please enter a 3-letter IATA region code (MQTT step).";return}
   $("#wz-err").textContent="";
   var b=$("#wz-save"),blabel=b.textContent;b.disabled=true;

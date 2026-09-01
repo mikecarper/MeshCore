@@ -81,4 +81,19 @@ assert re.search(
     features,
 )
 
+# A PlatformIO environment whose name promises a Full image must not silently
+# emit an ordinary WiFi/USB binary when invoked outside build.sh.
+assert re.search(
+    r"#if defined\(MESHCORE_REQUIRES_COMPANION_RADIO_FULL\).*?"
+    r"&& !defined\(COMPANION_RADIO_FULL\).*?"
+    r'#error "This target requires build\.sh to apply the Full Companion profile"',
+    features,
+    re.DOTALL,
+)
+assert re.search(
+    r"#if defined\(COMPANION_RADIO_FULL\) && !defined\(BLE_PIN_CODE\)\s+"
+    r'#error "COMPANION_RADIO_FULL requires the Bluetooth Companion transport"',
+    features,
+)
+
 print("test_companion_terminal_profile: PASS")

@@ -208,11 +208,13 @@ int main() {
         self.assertIn('"not-configured"', main)
         self.assertIn("companion_wifi_setup_requested", loop)
 
-    def test_wifi_qr_payload_is_standard_and_escaped(self):
+    def test_wifi_qr_payload_is_compact_and_escaped(self):
         setup = WIFI_QR_PAYLOAD.read_text(encoding="utf-8")
         self.assertIn("buildWiFiSetupQrPayload", setup)
         self.assertIn('"WIFI:T:WPA;S:"', setup)
-        self.assertIn('"WIFI:T:nopass;S:"', setup)
+        # Omitting the optional open-network type keeps the setup payload in
+        # QR version 1 at low error correction on the 64-pixel OLED.
+        self.assertIn('"WIFI:S:"', setup)
         self.assertIn('strchr("\\\\;,\\\":", *value)', setup)
         self.assertIn('";P:"', setup)
         self.assertIn('";;"', setup)
@@ -330,6 +332,7 @@ printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
             "-DLORA_BW=62.5",
             "-DLORA_SF=7",
             "-DLORA_CR=5",
+            "-DMESHCORE_USA_RADIO_PRESET=1",
             "-DCASCADE_PROFILE=1",
             "-DDEFAULT_RX_DELAY_BASE=2.0f",
         ):
@@ -346,6 +349,28 @@ printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
             "SenseCapIndicator-LoRa-N16R2_companion_radio_full'",
             build,
         )
+
+    def test_non_usa_radio_does_not_enable_wizard_skip(self):
+        command = r'''
+set -e
+source "$1"
+PLATFORMIO_BUILD_FLAGS=""
+RADIO_SETTING_TITLE="Australia"
+RADIO_FREQ_OVERRIDE=915.800
+RADIO_BW_OVERRIDE=250
+RADIO_SF_OVERRIDE=10
+RADIO_CR_OVERRIDE=5
+apply_radio_overrides
+printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
+'''
+        result = subprocess.run(
+            ["bash", "-c", command, "test", str(BUILD)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("-DMESHCORE_USA_RADIO_PRESET=1", result.stdout.split())
 
 
 if __name__ == "__main__":

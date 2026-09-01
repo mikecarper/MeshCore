@@ -89,6 +89,11 @@
   #error "COMPANION_FEATURE_DEDICATED_USB_LOGGING requires nRF52 dual-CDC USB"
 #endif
 
+#if defined(MESHCORE_REQUIRES_COMPANION_RADIO_FULL) \
+    && !defined(COMPANION_RADIO_FULL)
+  #error "This target requires build.sh to apply the Full Companion profile"
+#endif
+
 #if defined(COMPANION_RADIO_FULL) && !defined(BLE_PIN_CODE)
   #error "COMPANION_RADIO_FULL requires the Bluetooth Companion transport"
 #endif

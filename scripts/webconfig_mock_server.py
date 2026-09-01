@@ -198,6 +198,7 @@ class State:
             "role": "Repeater", "board": "Heltec V3 (mock)",
             "uptime_s": int(time.time() - self.start),
             "runtime_slots": 6, "max_slots": 6, "active_slots": self.active_slots,
+            "mqtt": True, "radio_optional": True,
             "wifi_psk64": True,
             # Every ordinary repeater feature except an external FEM, plus
             # radio RX power saving (bit 12) and device power saving (bit 13).

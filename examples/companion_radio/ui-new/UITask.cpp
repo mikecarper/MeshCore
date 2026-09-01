@@ -596,7 +596,9 @@ public:
         pairing_value = expanded_home ? "LINKED" : "CONNECTED";
         if (expanded_home) pairing_value_size = 3;
       } else if (mesh::ui::shouldDisplayBluetoothPairingPin(
-                     bluetooth_enabled, bluetooth_connected, bluetooth_pin)) {
+                     bluetooth_enabled, bluetooth_connected, bluetooth_pin)
+                 && (!_task->isPairingPromptActive()
+                     || display.height() > 64)) {
         pairing_label = expanded_home ? "PIN" : "BLUETOOTH PIN";
         snprintf(pairing_pin, sizeof(pairing_pin), "%06u",
                  (unsigned int)bluetooth_pin);
@@ -645,7 +647,8 @@ public:
       const uint32_t bluetooth_pin = the_mesh.getBLEPin();
       const bool show_bluetooth_pin =
           mesh::ui::shouldDisplayBluetoothPairingPin(
-              bluetooth_enabled, bluetooth_connected, bluetooth_pin);
+              bluetooth_enabled, bluetooth_connected, bluetooth_pin)
+          && (!_task->isPairingPromptActive() || display.height() > 64);
       const bool compact_pairing =
           mesh::ui::usesCompactCompanionPairingLayout(
               display.width(), display.height())
@@ -1567,6 +1570,21 @@ bool UITask::isPairingScreenActive() const {
       static_cast<uint32_t>(millis()));
 }
 
+void UITask::renderPairingBanner() {
+  if (_display == NULL || !isPairingScreenActive()) return;
+  const uint32_t pairing_pin = the_mesh.getBLEPin();
+  if (pairing_pin == 0) return;
+
+  char prompt[24];
+  snprintf(prompt, sizeof(prompt), "PAIR PIN %06u",
+           (unsigned int)pairing_pin);
+  _display->setColor(UIColor::popup_bkg);
+  _display->fillRect(0, 0, _display->width(), 12);
+  _display->setColor(UIColor::popup_txt);
+  _display->setTextSize(1);
+  _display->drawTextCentered(_display->width() / 2, 2, prompt);
+}
+
 void UITask::showPairingPin() {
   if (!isBluetoothEnabled()) return;
 
@@ -1600,6 +1618,20 @@ void UITask::finishPairingScreen(bool timed_out) {
     } else {
       _auto_off = millis() + AUTO_OFF_MILLIS;
       _next_refresh = 0;
+    }
+  }
+}
+
+void UITask::servicePairingState() {
+  if (_interfaceManager->takePairingRequest()) {
+    showPairingPin();
+  }
+
+  if (_pairing_screen_until != 0) {
+    const bool timed_out =
+        static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
+    if (!isPairingScreenActive()) {
+      finishPairingScreen(timed_out);
     }
   }
 }
@@ -1643,17 +1675,7 @@ bool UITask::isButtonPressed() const {
 
 void UITask::loop() {
   serviceWiFiToggleButton();
-
-  if (_interfaceManager->takePairingRequest()) {
-    showPairingPin();
-  }
-
-  if (_pairing_screen_until != 0) {
-    const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
-    if (!isPairingScreenActive()) {
-      finishPairingScreen(timed_out);
-    }
-  }
+  servicePairingState();
 
   char c = 0;
 #if UI_HAS_JOYSTICK
@@ -1836,6 +1858,7 @@ void UITask::loop() {
     if (millis() >= _next_refresh && curr) {
       _display->startFrame();
       int delay_millis = curr->render(*_display);
+      renderPairingBanner();
       if (millis() < _alert_expiry) {  // render alert popup
         _display->setTextSize(1);
         int y = _display->height() / 3;

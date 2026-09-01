@@ -95,6 +95,7 @@ class UITask : public AbstractUITask {
 
   void setCurrScreen(UIScreen* c);
   bool isPairingScreenActive() const;
+  void renderPairingBanner();
   void showPairingPin();
   void finishPairingScreen(bool timed_out);
 
@@ -111,6 +112,10 @@ public:
   }
   void begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs);
   void serviceWiFiToggleButton();
+  void servicePairingState() override;
+  bool isPairingPromptActive() const override {
+    return isPairingScreenActive();
+  }
 
   void gotoHomeScreen() { setCurrScreen(home); }
   void showMessages();

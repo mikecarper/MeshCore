@@ -81,6 +81,10 @@ public:
     return _display != NULL && _display->setRotationDegrees(degrees);
   }
   void clearMsgPreview();
+  void servicePairingState() override;
+  bool isPairingPromptActive() const override {
+    return isPairingScreenActive();
+  }
 
   // from AbstractUITask
   void msgRead(int msgcount) override;

@@ -1645,6 +1645,13 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
   doc["active_slots"] = 0;
 #endif
   doc["mqtt"] = has_mqtt;
+#ifdef MESHCORE_USA_RADIO_PRESET
+  // USA-targeted images already carry the intended regional radio defaults,
+  // so first-boot setup may preserve them without forcing another selection.
+  doc["radio_optional"] = true;
+#else
+  doc["radio_optional"] = false;
+#endif
   // The fixed-layout MQTTPrefs path remains limited to 63 characters.
   // Standalone mesh-wifi NVS can also hold a standards-defined 64-hex PSK.
   doc["wifi_psk64"] = (_mqtt_prefs == NULL || !_owns_wifi);

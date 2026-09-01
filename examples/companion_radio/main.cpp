@@ -2107,11 +2107,11 @@ void loop() {
   #endif
   #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG) \
       && UI_WIFI_SETUP_HOME_PAGE != 1
-  if (isCompanionWiFiEnabled() && (the_mesh.isWebConfigSetupActive()
-  #ifdef WITH_MQTT_BRIDGE
-      || !the_mesh.isMQTTConfigured()
-  #endif
-     )) {
+  ui_task.servicePairingState();
+  if (ui_task.isPairingPromptActive()) {
+    ui_task.loop();
+  } else if (isCompanionWiFiEnabled()
+      && the_mesh.isWebConfigSetupActive()) {
   #if defined(TBEAM_1W) && defined(PIN_WIFI_BTN)
     ui_task.serviceWiFiToggleButton();
   #endif

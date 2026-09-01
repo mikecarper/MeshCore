@@ -96,6 +96,10 @@ public:
     return _display != NULL && _display->setRotationDegrees(degrees);
   }
   bool isButtonPressed() const;
+  void servicePairingState() override;
+  bool isPairingPromptActive() const override {
+    return isPairingScreenActive();
+  }
 
   bool isBuzzerQuiet() { 
 #ifdef PIN_BUZZER

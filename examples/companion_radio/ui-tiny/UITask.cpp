@@ -600,6 +600,20 @@ void UITask::finishPairingScreen(bool timed_out) {
   }
 }
 
+void UITask::servicePairingState() {
+  if (_interfaceManager->takePairingRequest()) {
+    showPairingPin();
+  }
+
+  if (_pairing_screen_until != 0) {
+    const bool timed_out =
+        static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
+    if (!isPairingScreenActive()) {
+      finishPairingScreen(timed_out);
+    }
+  }
+}
+
 /*
   hardware-agnostic pre-shutdown activity should be done here
 */
@@ -635,16 +649,7 @@ bool UITask::isButtonPressed() const {
 }
 
 void UITask::loop() {
-  if (_interfaceManager->takePairingRequest()) {
-    showPairingPin();
-  }
-
-  if (_pairing_screen_until != 0) {
-    const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
-    if (!isPairingScreenActive()) {
-      finishPairingScreen(timed_out);
-    }
-  }
+  servicePairingState();
 
   char c = 0;
 #if UI_HAS_JOYSTICK

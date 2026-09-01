@@ -3511,6 +3511,10 @@ apply_companion_radio_full_profile() {
 apply_radio_overrides() {
   if [ -n "$RADIO_FREQ_OVERRIDE" ] && [ -n "$RADIO_BW_OVERRIDE" ] && [ -n "$RADIO_SF_OVERRIDE" ] && [ -n "$RADIO_CR_OVERRIDE" ]; then
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DLORA_FREQ=${RADIO_FREQ_OVERRIDE} -DLORA_BW=${RADIO_BW_OVERRIDE} -DLORA_SF=${RADIO_SF_OVERRIDE} -DLORA_CR=${RADIO_CR_OVERRIDE}"
+    if [ "$RADIO_SETTING_TITLE" = "$USA_CASCADIA_RADIO_TITLE" ] \
+        || is_usa_cascadia_radio_title "$RADIO_SETTING_TITLE"; then
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESHCORE_USA_RADIO_PRESET=1"
+    fi
   fi
 }
 

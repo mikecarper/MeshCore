@@ -494,17 +494,22 @@ void UITask::finishPairingScreen(bool timed_out) {
   }
 }
 
-void UITask::loop() {
+void UITask::servicePairingState() {
   if (_interfaceManager->takePairingRequest()) {
     showPairingPin();
   }
 
   if (_pairing_screen_until != 0) {
-    const bool timed_out = static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
+    const bool timed_out =
+        static_cast<int32_t>(millis() - _pairing_screen_until) >= 0;
     if (!isPairingScreenActive()) {
       finishPairingScreen(timed_out);
     }
   }
+}
+
+void UITask::loop() {
+  servicePairingState();
 
   #ifdef PIN_USER_BTN
     if (_userButton) {

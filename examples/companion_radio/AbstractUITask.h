@@ -76,5 +76,10 @@ public:
     (void)degrees;
     return false;
   }
+  // Display implementations that surface an incoming BLE passkey request can
+  // override these hooks. The default keeps setup-screen routing compatible
+  // with older UIs that handle pairing only from their regular loop.
+  virtual void servicePairingState() {}
+  virtual bool isPairingPromptActive() const { return false; }
   virtual void loop() = 0;
 };
