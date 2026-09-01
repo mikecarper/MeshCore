@@ -96,6 +96,16 @@ class ColorThemeTest(unittest.TestCase):
         ]
         self.assertEqual(positions, sorted(positions))
 
+    def test_indicator_qr_avoids_transparent_palette_slot(self) -> None:
+        source = (ROOT / "src/helpers/ui/LGFXDisplay.cpp").read_text()
+        start = source.index("bool LGFXDisplay::drawQrCode")
+        end = source.index("uint16_t LGFXDisplay::getTextWidth", start)
+        qr = source[start:end]
+        self.assertIn("renderColor(UIColor::primary_txt)", qr)
+        self.assertIn("renderColor(UIColor::window_bkg)", qr)
+        self.assertNotIn("TRANSPARENT_EMOJI_PALETTE_INDEX", qr)
+        self.assertNotIn("buffer.qrcode", qr)
+
     def test_pagination_uses_readable_accent_on_color_displays(self) -> None:
         source = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
         branch = re.search(

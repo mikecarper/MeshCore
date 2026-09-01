@@ -148,17 +148,20 @@ profile_end = build.index("\napply_radio_overrides()", profile_start)
 profile = build[profile_start:profile_end]
 flag = "-DCOMPANION_EXCLUSIVE_WIFI_BLE=1"
 assert profile.count(flag) == 1
-exclusive_case = re.search(
-    r'case "\$\{env_name,,\}" in\s+'
-    r"sensecapindicator-espnow_companion_radio_full\|\\\s+"
-    r"sensecapindicator-lora_companion_radio_full\)\s+"
-    r'export PLATFORMIO_BUILD_FLAGS="\$\{PLATFORMIO_BUILD_FLAGS\} '
-    r"-DCOMPANION_EXCLUSIVE_WIFI_BLE=1 "
-    r"-DINDICATOR_TRANSPORT_RENDER_PROFILE=1\"\s+;;\s+esac",
-    profile,
+exclusive_policy = profile.index(
+    "# Both Indicator Full layouts select exactly one secondary"
 )
-assert exclusive_case
-assert "espnow" in exclusive_case.group(0).lower()
+exclusive_start = profile.index(
+    "sensecapindicator-espnow_companion_radio_full|\\\n"
+    "    sensecapindicator-lora_companion_radio_full)",
+    exclusive_policy,
+)
+exclusive_case = profile[exclusive_start:profile.index(";;", exclusive_start)]
+assert "espnow" in exclusive_case.lower()
+assert "-DCOMPANION_EXCLUSIVE_WIFI_BLE=1" in exclusive_case
+assert "-DINDICATOR_TRANSPORT_RENDER_PROFILE=1" in exclusive_case
+assert "-DUI_WIFI_SETUP_HOME_PAGE=1" in exclusive_case
+assert "-DWEBCONFIG_AP_PREFIX='\\\"MC-Set\\\"'" in exclusive_case
 
 
 assert "get companion.transport" in readme

@@ -45,7 +45,7 @@ wakes it without selecting anything.
 
 The message preview is a non-destructive local inbox, newest first:
 
-- A seventh home page, immediately after the status page, shows the newest
+- A Messages home page, immediately after the status page, shows the newest
   retained message for each heard channel. Each two-line row contains the
   channel name, rollover-safe relative age, and a one-line ellipsized message
   preview. Direct messages are grouped by contact and labelled `Direct`.
@@ -53,7 +53,7 @@ The message preview is a non-destructive local inbox, newest first:
   Companion drains its unread queue. The oldest history is overwritten and a
   reboot starts with an empty list; messages are not written to flash.
 - Tap the center of the message-summary page to open the existing full message
-  view. Horizontal swipes continue to move among the seven home pages.
+  view. Horizontal swipes continue to move among the eight home pages.
 - The first home page shows the retained local `INBOX` count, which remains
   useful when a USB host has already drained the protocol's unread count. Tap
   the center to open the inbox and channel selector even when the count is 0.
@@ -99,14 +99,20 @@ than claiming hundredth-dB measurement accuracy.
 
 ## USB + WiFi Companion
 
-Build `SenseCapIndicator-LoRa_comp_radio_usb_wifi` to retain the USB Companion
+Build `SenseCapIndicator-LoRa_companion_radio_full` to retain the USB Companion
 link and expose the same framed Companion protocol over WiFi TCP port `5000`.
-Fresh devices advertise an open `MeshCore-Setup-XXXX` access point, where the
-four-character suffix identifies the device; join it and open
-`http://192.168.4.1/` to save WiFi credentials. Saved credentials and the WiFi
-on/off preference survive application-only reflashes. Setup mode explicitly
-restores standard 2.4 GHz b/g/n operation, so a previously installed ESP-NOW
-image cannot leave the setup AP hidden behind its long-range protocol setting.
+Fresh Full devices advertise an open `MC-Set-XXXX` access point, where the
+four-character suffix identifies the device. WiFi Setup is the eighth normal
+home page and shows the SSID plus a WiFi-join QR while the captive AP is active.
+Fresh setup starts on that page, but ordinary swipes still reach the other
+seven pages and the LoRa modem continues running. The captive portal should
+open automatically after joining, or browse to `http://192.168.4.1/` to save
+WiFi credentials. The direct
+`SenseCapIndicator-LoRa_comp_radio_usb_wifi` environment retains the generic
+`MeshCore-Setup-XXXX` name. Saved credentials and the WiFi on/off preference
+survive application-only reflashes. Setup mode explicitly restores standard
+2.4 GHz b/g/n operation, so a previously installed ESP-NOW image cannot leave
+the setup AP hidden behind its long-range protocol setting.
 
 The combined profile uses minimum WiFi modem power saving by default. USB
 remains available for recovery and management if the configured network is
@@ -144,12 +150,11 @@ uses separate full-width size-4 `INBOX` and count rows plus a large lower
 action or BLE-status block. Long IP addresses retain a smaller bounded row
 instead of clipping.
 
-The Indicator WiFi setup/status screen is reflowed separately: its title and
-short `JOIN`/`OPEN`/`WAIT` actions are size 4, while the setup SSID and IP
-address use size 2. This large sparse layout uses a fixed physical scale on
-both the native and 320x320 emergency canvases, so a failed native allocation
-cannot turn the instructions back into the generic size-1 page. Other display
-layouts retain their compact setup page.
+The Indicator WiFi setup/status page uses a fixed physical scale on both the
+native and 320x320 emergency canvases. Its content begins below the shared
+status bar and eight page dots. The page only reads connection state; it never
+starts or stops WebConfig, WiFi, ESP-NOW, or LoRa. Other display layouts retain
+their existing setup overlay.
 
 LoRa remains the primary radio in both LoRa modes. On the ESP-NOW layout,
 selecting BLE leaves the primary ESP-NOW WiFi radio and its fixed channel

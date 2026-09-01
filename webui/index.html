@@ -586,7 +586,7 @@ body.tab-cli{padding-bottom:0}
       <li>Open Safari or Chrome on this device.</li>
       <li>Go to <b style="font-size:17px" id="exit-url">http://192.168.4.1</b></li>
     </ol>
-    <div class="note" style="margin-top:14px">Stay connected to the <b>MeshCore-Setup</b> WiFi network. Your progress here isn't carried over &mdash; the setup restarts in the browser, where it survives the screen locking.</div>
+    <div class="note" style="margin-top:14px">Stay connected to this device's <b>setup WiFi</b> network. Your progress here isn't carried over &mdash; the setup restarts in the browser, where it survives the screen locking.</div>
     <p style="text-align:center;margin-top:10px"><a href="#" onclick="document.getElementById('exit-ov').classList.remove('show');return false" style="font-size:13px">Go back</a></p>
   </div>
 </div>
@@ -1471,12 +1471,12 @@ function wizardSave(){
       if(acked){
         // The node accepted the batch (202), but without its result we cannot
         // know whether every field passed CLI validation.
-        showReboot("The node accepted the settings for processing, but the confirmation reply was lost. If every setting passed, its screen shows \"Config saved!\" and it reboots within 30 seconds. If it stays in setup mode, reconnect to MeshCore-Setup and correct the rejected field.",
+        showReboot("The node accepted the settings for processing, but the confirmation reply was lost. If every setting passed, its screen shows \"Config saved!\" and it reboots within 30 seconds. If it stays in setup mode, reconnect to its setup WiFi and correct the rejected field.",
           false,"Settings sent - verify the node");
         st.dirty={};
         return;
       }
-      $("#wz-err").textContent="Couldn't reach the node to save. Check this device is still on the MeshCore-Setup WiFi, then retry.";
+      $("#wz-err").textContent="Couldn't reach the node to save. Check this device is still on its setup WiFi, then retry.";
       return;
     }
     var fails=(r.results||[]).filter(function(x){return!/^OK/i.test(x.reply)});

@@ -1173,98 +1173,14 @@ void halt() {
 #endif
   }
 
-  #if defined(WITH_WEBCONFIG) && defined(DISPLAY_CLASS)
+  #if defined(WITH_WEBCONFIG) && defined(DISPLAY_CLASS) \
+      && UI_WIFI_SETUP_HOME_PAGE != 1
     static DisplayDriver* companion_setup_display = nullptr;
     static unsigned long companion_setup_display_refresh = 0;
 
     static bool hasLargeCompanionSetupDisplay() {
       return companion_setup_display->width() >= 128
           && companion_setup_display->height() >= 128;
-    }
-
-    static bool hasIndicatorSetupTypography() {
-#if defined(INDICATOR_TRANSPORT_RENDER_PROFILE)
-      // This flag is emitted only for the two SenseCAP Indicator Full builds.
-      // Runtime canvas dimensions may differ after allocation fallback (and
-      // across historical UI macro ordering), but the physical panel remains
-      // 480x480. Never send this board through the generic size-1 setup page.
-      return true;
-#else
-      return false;
-#endif
-    }
-
-    static int drawIndicatorSetupValue(int y, const char* value) {
-      companion_setup_display->setTextSize(2);
-      // The setup AP has a stable prefix. Split on its semantic boundary so
-      // the two large centered rows read cleanly instead of wrapping midway
-      // through "Setup".
-      if (value != nullptr
-          && strncmp(value, "MeshCore-Setup-", 15) == 0) {
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, y, "MeshCore-");
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, y + 17, value + 9);
-        return 2;
-      }
-      const int max_width = companion_setup_display->width() - 12;
-      int line_height = 17;
-      // A configured SSID can contain 32 bytes. Keep ordinary names at the
-      // large size, but let the longest legal value use two complete size-1
-      // rows instead of silently losing its tail.
-      if (value != nullptr
-          && companion_setup_display->getTextWidth(value) > max_width * 2) {
-        companion_setup_display->setTextSize(1);
-        line_height = 9;
-      }
-      return mesh::ui::drawTextWrapped(
-          *companion_setup_display, 6, y,
-          max_width, line_height, 2,
-          value != nullptr && value[0] != 0 ? value : "(not set)");
-    }
-
-    static void drawIndicatorSetupAddress(int y, const char* address) {
-      const char* value = address != nullptr && address[0] != 0
-          ? address : "(not set)";
-      companion_setup_display->setTextSize(2);
-      if (companion_setup_display->getTextWidth(value)
-          > companion_setup_display->width()) {
-        companion_setup_display->setTextSize(1);
-      }
-      companion_setup_display->drawTextCentered(
-          companion_setup_display->width() / 2, y, value);
-    }
-
-    static void renderIndicatorSetupDisplay(const char* title,
-                                            const char* wifi_name,
-                                            const char* address,
-                                            bool connecting) {
-      // Keep the requested sizes physically identical on a native canvas and
-      // the 320-to-480 emergency canvas.  This page is sparse enough to use
-      // genuinely large type instead of relying on the global 480 boost.
-      companion_setup_display->setCompactText(true);
-      companion_setup_display->setTextSize(4);
-      companion_setup_display->drawTextCentered(
-          companion_setup_display->width() / 2, 0, title);
-
-      companion_setup_display->setTextSize(4);
-      companion_setup_display->drawTextCentered(
-          companion_setup_display->width() / 2, 35, "JOIN");
-      drawIndicatorSetupValue(70, wifi_name);
-
-      if (connecting) {
-        companion_setup_display->setTextSize(4);
-        companion_setup_display->drawTextCentered(
-            companion_setup_display->width() / 2, 108, "WAIT");
-        return;
-      }
-
-      companion_setup_display->setTextSize(4);
-      companion_setup_display->drawTextCentered(
-          companion_setup_display->width() / 2, 105, "OPEN");
-      // The scheme is implicit here so the address itself can remain nearly
-      // panel-wide at size 2. Long DHCP addresses fall back to size 1.
-      drawIndicatorSetupAddress(140, address);
     }
 
     static int drawCompanionSetupValue(int y, int max_lines,
@@ -1318,10 +1234,7 @@ void halt() {
       char setup_ip[16] = {0};
       if (WebConfigServer::getSetupInfo(setup_ssid, sizeof(setup_ssid),
                                         setup_ip, sizeof(setup_ip))) {
-        if (hasIndicatorSetupTypography()) {
-          renderIndicatorSetupDisplay(
-              "SETUP", setup_ssid, setup_ip, false);
-        } else if (hasLargeCompanionSetupDisplay()) {
+        if (hasLargeCompanionSetupDisplay()) {
           renderLargeCompanionSetupDisplay(
               "WebUI setup", "Join open WiFi:", setup_ssid, setup_ip, false);
         } else {
@@ -1338,10 +1251,7 @@ void halt() {
         }
       } else if (WiFi.status() == WL_CONNECTED) {
         const String ip = WiFi.localIP().toString();
-        if (hasIndicatorSetupTypography()) {
-          renderIndicatorSetupDisplay(
-              "READY", configured_wifi_ssid, ip.c_str(), false);
-        } else if (hasLargeCompanionSetupDisplay()) {
+        if (hasLargeCompanionSetupDisplay()) {
           renderLargeCompanionSetupDisplay(
               "WebUI ready", "Join WiFi:", configured_wifi_ssid, ip.c_str(),
               false);
@@ -1358,10 +1268,7 @@ void halt() {
               companion_setup_display->width() / 2, 51, ip.c_str());
         }
       } else {
-        if (hasIndicatorSetupTypography()) {
-          renderIndicatorSetupDisplay(
-              "WIFI", configured_wifi_ssid, nullptr, true);
-        } else if (hasLargeCompanionSetupDisplay()) {
+        if (hasLargeCompanionSetupDisplay()) {
           renderLargeCompanionSetupDisplay(
               "WiFi connecting", "WiFi name:", configured_wifi_ssid, nullptr,
               true);
@@ -1376,8 +1283,6 @@ void halt() {
               companion_setup_display->width() / 2, 52, "Please wait...");
         }
       }
-      // Do not leak the setup page's fixed physical text scale into the normal
-      // UI after WebConfig exits.
       companion_setup_display->setCompactText(false);
       companion_setup_display->endFrame();
     }
@@ -1779,7 +1684,8 @@ void setup() {
   DisplayDriver* disp = NULL;
   if (display.begin()) {
     disp = &display;
-  #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG)
+  #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG) \
+      && UI_WIFI_SETUP_HOME_PAGE != 1
     companion_setup_display = disp;
   #endif
     disp->startFrame();
@@ -2133,7 +2039,8 @@ void loop() {
   // main/UI task.
   display.serviceFontRecovery();
   #endif
-  #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG)
+  #if defined(ESP32) && defined(WIFI_SSID) && defined(WITH_WEBCONFIG) \
+      && UI_WIFI_SETUP_HOME_PAGE != 1
   if (isCompanionWiFiEnabled() && (the_mesh.isWebConfigSetupActive()
   #ifdef WITH_MQTT_BRIDGE
       || !the_mesh.isMQTTConfigured()

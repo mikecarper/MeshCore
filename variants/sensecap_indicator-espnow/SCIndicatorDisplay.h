@@ -231,7 +231,16 @@ class SCIndicatorDisplay : public LGFXDisplay {
   }
 
 public:
+#if defined(INDICATOR_TRANSPORT_RENDER_PROFILE)
+  // Full builds always use the established 160x160 logical layout. State it
+  // explicitly here because PlatformIO's inherited flag ordering can leave
+  // the variant's historical UI_COORD_SCALE value visible in this header.
+  // The 480px canvas is allocated before radio/transport startup; begin()
+  // retains its 320px emergency fallback if that allocation is unavailable.
+  SCIndicatorDisplay() : LGFXDisplay(160, 160, 3, 1.0f, disp) {}
+#else
   SCIndicatorDisplay() : LGFXDisplay(480, 480, disp) {}
+#endif
 
   bool begin() {
     if (!prepareControllers()) return false;

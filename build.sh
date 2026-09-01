@@ -3429,7 +3429,7 @@ apply_companion_radio_full_profile() {
   case "${env_name,,}" in
     sensecapindicator-espnow_companion_radio_full|\
     sensecapindicator-lora_companion_radio_full)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DINDICATOR_TRANSPORT_RENDER_PROFILE=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DINDICATOR_TRANSPORT_RENDER_PROFILE=1 -DUI_WIFI_SETUP_HOME_PAGE=1 -DWEBCONFIG_AP_PREFIX='\"MC-Set\"'"
       ;;
   esac
 

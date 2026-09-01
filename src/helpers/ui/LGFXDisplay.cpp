@@ -1,6 +1,7 @@
 #include "LGFXDisplay.h"
 #include "ColorTheme.h"
 #include "IndicatorRenderProfile.h"
+#include <lgfx/utility/lgfx_qrcode.h>
 
 #ifndef DISPLAY_ROTATION
   #define DISPLAY_ROTATION 1
@@ -343,6 +344,64 @@ void LGFXDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
       }
     }
   }
+}
+
+bool LGFXDisplay::drawQrCode(const char* text, int x, int y, int size) {
+  if (text == nullptr || text[0] == 0 || x < 0 || y < 0 || size <= 0
+      || size > width() || size > height()
+      || x > width() - size || y > height() - size) {
+    return false;
+  }
+
+  // LovyanGFX's convenience renderer hardcodes pure colors. On the
+  // Indicator's indexed canvas its light color maps to palette slot 15,
+  // which is deliberately reserved for transparent emoji pixels. Generate
+  // the matrix directly so both colors use stable semantic palette entries.
+  static constexpr uint8_t max_version = 10;
+  static constexpr uint8_t max_modules = 4 * max_version + 17;
+  uint8_t modules[(max_modules * max_modules + 7) / 8];
+  QRCode qr = {};
+  bool initialized = false;
+  for (uint8_t version = 1; version <= max_version; ++version) {
+    if (lgfx_qrcode_initText(&qr, modules, version, ECC_LOW, text) == 0) {
+      initialized = true;
+      break;
+    }
+  }
+  if (!initialized) return false;
+
+  static constexpr int quiet_zone = 4;
+  const int scaled_size = size * _coordinateScale;
+  const int module_size = scaled_size / (qr.size + quiet_zone * 2);
+  if (module_size <= 0) return false;
+  const int used_size = module_size * (qr.size + quiet_zone * 2);
+  const int left = x * _coordinateScale + (scaled_size - used_size) / 2;
+  const int top = y * _coordinateScale + (scaled_size - used_size) / 2;
+  const uint32_t light = renderColor(UIColor::primary_txt);
+  const uint32_t dark = renderColor(UIColor::window_bkg);
+
+  buffer.fillRect(x * _coordinateScale, y * _coordinateScale,
+                  scaled_size, scaled_size, light);
+  const int matrix_left = left + quiet_zone * module_size;
+  const int matrix_top = top + quiet_zone * module_size;
+  for (uint_fast8_t row = 0; row < qr.size; ++row) {
+    int run_start = -1;
+    for (uint_fast16_t column = 0; column <= qr.size; ++column) {
+      const bool filled = column < qr.size
+          && lgfx_qrcode_getModule(&qr, column, row);
+      if (filled && run_start < 0) {
+        run_start = column;
+      } else if (!filled && run_start >= 0) {
+        buffer.fillRect(
+            matrix_left + run_start * module_size,
+            matrix_top + row * module_size,
+            (column - run_start) * module_size,
+            module_size, dark);
+        run_start = -1;
+      }
+    }
+  }
+  return true;
 }
 
 uint16_t LGFXDisplay::getTextWidth(const char* str) {

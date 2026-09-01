@@ -3,6 +3,7 @@
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/ui/CompanionHomeLayout.h>
 #include <helpers/ui/DisplayTextLayout.h>
+#include <helpers/ui/WiFiSetupQrPayload.h>
 
 #include <string>
 #include <vector>
@@ -96,6 +97,34 @@ TEST(DisplayDriver, EllipsizesOnlyAtUTF8CodepointBoundaries) {
   display.drawTextEllipsized(0, 0, 5, "AB\xF0\x9F\x98\x80" "CDE");
   EXPECT_EQ("AB...", display.printed);
   EXPECT_TRUE(isValidUTF8(display.printed.c_str()));
+}
+
+TEST(DisplayDriver, QrCodeIsOptionalByDefault) {
+  TestDisplay display;
+  EXPECT_FALSE(display.drawQrCode("WIFI:T:nopass;S:MC-Set-90DF;;",
+                                  27, 55, 105));
+}
+
+TEST(WiFiSetupQrPayload, EncodesOpenSetupNetwork) {
+  char payload[64];
+  EXPECT_TRUE(mesh::ui::buildWiFiSetupQrPayload(
+      payload, sizeof(payload), "MC-Set-90DF"));
+  EXPECT_STREQ("WIFI:T:nopass;S:MC-Set-90DF;;", payload);
+}
+
+TEST(WiFiSetupQrPayload, EscapesProtectedNetworkFields) {
+  char payload[96];
+  EXPECT_TRUE(mesh::ui::buildWiFiSetupQrPayload(
+      payload, sizeof(payload), "Cafe;West", "p,ass"));
+  EXPECT_STREQ("WIFI:T:WPA;S:Cafe\\;West;P:p\\,ass;;", payload);
+}
+
+TEST(WiFiSetupQrPayload, RejectsMissingOrTruncatedFields) {
+  char payload[8];
+  EXPECT_FALSE(mesh::ui::buildWiFiSetupQrPayload(
+      payload, sizeof(payload), ""));
+  EXPECT_FALSE(mesh::ui::buildWiFiSetupQrPayload(
+      payload, sizeof(payload), "MC-Set-90DF"));
 }
 
 TEST(DisplayDriver, FixedBufferDoesNotSplitUTF8Codepoint) {

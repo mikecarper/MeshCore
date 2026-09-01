@@ -2,6 +2,15 @@
 
 #include <stdint.h>
 
+#ifndef UI_WIFI_SETUP_HOME_PAGE
+  #define UI_WIFI_SETUP_HOME_PAGE 0
+#endif
+
+#if UI_WIFI_SETUP_HOME_PAGE == 1 \
+    && !(defined(ESP32) && defined(WIFI_SSID))
+#error "UI_WIFI_SETUP_HOME_PAGE requires ESP32 infrastructure WiFi"
+#endif
+
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE) \
     && !(defined(ESP32) && defined(WIFI_SSID) && defined(BLE_PIN_CODE))
 #error "COMPANION_EXCLUSIVE_WIFI_BLE requires ESP32, WIFI_SSID, and BLE_PIN_CODE"

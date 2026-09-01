@@ -2,6 +2,9 @@
 
 #ifdef WITH_WEBCONFIG
 
+static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
+              "WEBCONFIG_AP_PREFIX must be at most 27 bytes");
+
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -773,7 +776,8 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   WiFi.setAutoReconnect(false);
   bool disconnect_ok = WiFi.disconnect(false, true);
   delay(100);
-  snprintf(_ap_ssid, sizeof(_ap_ssid), "MeshCore-Setup-%02X%02X", _pub_key[0], _pub_key[1]);
+  snprintf(_ap_ssid, sizeof(_ap_ssid), "%s-%02X%02X",
+           WEBCONFIG_AP_PREFIX, _pub_key[0], _pub_key[1]);
   bool ap_ok = false;
   for (uint8_t attempt = 1; attempt <= 6 && !ap_ok; ++attempt) {
 #ifdef WEBCONFIG_AP_PASSWORD

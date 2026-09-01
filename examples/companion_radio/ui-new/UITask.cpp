@@ -11,6 +11,10 @@
 #ifdef WIFI_SSID
   #include <WiFi.h>
 #endif
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+  #include <helpers/esp32/WebConfigServer.h>
+  #include <helpers/ui/WiFiSetupQrPayload.h>
+#endif
 #if defined(ESP32)
   #include <esp_timer.h>
 #endif
@@ -113,6 +117,70 @@ static void drawCompanionTransportChoice(DisplayDriver& display,
 }
 #endif
 
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
+  char setup_ssid[33] = {0};
+  char setup_ip[16] = {0};
+  const bool setup_active = WebConfigServer::getSetupInfo(
+      setup_ssid, sizeof(setup_ssid), setup_ip, sizeof(setup_ip));
+
+  // Keep the setup content below the shared title bar and page dots. Compact
+  // text makes its physical size identical on the 480 canvas and the
+  // 320-to-480 emergency canvas.
+  display.setCompactText(true);
+  display.setColor(UIColor::primary_txt);
+
+  if (setup_active) {
+    display.setTextSize(2);
+    display.drawTextCentered(display.width() / 2, 20, "WIFI SETUP");
+    display.drawTextCentered(display.width() / 2, 37, setup_ssid);
+
+    char payload[256];
+    const char* setup_password = nullptr;
+#ifdef WEBCONFIG_AP_PASSWORD
+    setup_password = WEBCONFIG_AP_PASSWORD;
+#endif
+    if (mesh::ui::buildWiFiSetupQrPayload(
+            payload, sizeof(payload), setup_ssid, setup_password)) {
+      static constexpr int qr_size = 105;
+      const int qr_x = (display.width() - qr_size) / 2;
+      if (display.drawQrCode(payload, qr_x, 55, qr_size)) {
+        display.setCompactText(false);
+        return;
+      }
+    }
+
+    display.setColor(UIColor::warning_txt);
+    display.setTextSize(2);
+    display.drawTextCentered(display.width() / 2, 70, "QR UNAVAILABLE");
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextCentered(display.width() / 2, 100, setup_ip);
+  } else if (!isCompanionWiFiEnabled()) {
+    display.setTextSize(3);
+    display.drawTextCentered(display.width() / 2, 45, "WIFI OFF");
+    display.setTextSize(2);
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextCentered(display.width() / 2, 90, "SELECT WIFI");
+    display.drawTextCentered(display.width() / 2, 112, "THEN REBOOT");
+  } else if (WiFi.status() == WL_CONNECTED) {
+    display.setTextSize(2);
+    display.drawTextCentered(display.width() / 2, 25, "WIFI READY");
+    const String ssid = WiFi.SSID();
+    display.drawTextEllipsized(4, 60, display.width() - 8, ssid.c_str());
+    const String ip = WiFi.localIP().toString();
+    display.drawTextCentered(display.width() / 2, 95, ip.c_str());
+  } else {
+    display.setTextSize(3);
+    display.drawTextCentered(display.width() / 2, 45, "WIFI");
+    display.setTextSize(2);
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextCentered(display.width() / 2, 90, "CONNECTING");
+  }
+
+  display.setCompactText(false);
+}
+#endif
+
 #include "icons.h"
 
 class SplashScreen : public UIScreen {
@@ -191,6 +259,9 @@ class HomeScreen : public UIScreen {
 #ifndef UI_NO_HIBERNATE
     SHUTDOWN,
 #endif
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+    WIFI_SETUP,
+#endif
     Count    // keep as last
   };
 
@@ -200,6 +271,9 @@ class HomeScreen : public UIScreen {
   CompanionNodePrefs* _node_prefs;
   uint8_t _page;
   bool _shutdown_init;
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+  bool _wifi_setup_was_active;
+#endif
   uint32_t _uptime_last_millis;
   uint64_t _uptime_millis;
   AdvertPath recent[UI_RECENT_LIST_SIZE];
@@ -329,8 +403,17 @@ class HomeScreen : public UIScreen {
 public:
   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, CompanionNodePrefs* node_prefs)
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
-       _shutdown_init(false), _uptime_last_millis(millis()), _uptime_millis(0),
-       sensors_lpp(200) {  }
+       _shutdown_init(false),
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+       _wifi_setup_was_active(false),
+#endif
+       _uptime_last_millis(millis()), _uptime_millis(0), sensors_lpp(200) {
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+    _wifi_setup_was_active = WebConfigServer::getSetupInfo(
+        nullptr, 0, nullptr, 0);
+    if (_wifi_setup_was_active) _page = HomePage::WIFI_SETUP;
+#endif
+  }
 
   void showFirstPage() { _page = HomePage::FIRST; }
 
@@ -343,6 +426,17 @@ public:
   }
 
   void poll() override {
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+    const bool wifi_setup_active = WebConfigServer::getSetupInfo(
+        nullptr, 0, nullptr, 0);
+    if (wifi_setup_active && !_wifi_setup_was_active) {
+      // Focus a newly opened setup portal once. Keeping this edge-triggered
+      // lets the user swipe away while setup and LoRa continue running.
+      _page = HomePage::WIFI_SETUP;
+      _task->gotoHomeScreen();
+    }
+    _wifi_setup_was_active = wifi_setup_active;
+#endif
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
       _task->shutdown();
     }
@@ -817,6 +911,10 @@ public:
       if (sensors_scroll) sensors_scroll_offset = (sensors_scroll_offset+1)%sensors_nb;
       else sensors_scroll_offset = 0;
 #endif
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+    } else if (_page == HomePage::WIFI_SETUP) {
+      drawCompanionWiFiSetupPage(display);
+#endif
 #ifndef UI_NO_HIBERNATE
     } else if (_page == HomePage::SHUTDOWN) {
       display.setColor(UIColor::corp_blue);
@@ -834,6 +932,9 @@ public:
     if (_page == HomePage::RADIO) return UI_RADIO_REFRESH_MILLIS;
 #if UI_MESSAGES_HOME_PAGE == 1
     if (_page == HomePage::MESSAGES) return 1000;
+#endif
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+    if (_page == HomePage::WIFI_SETUP) return 1000;
 #endif
     return 5000;
   }

@@ -67,6 +67,16 @@ public:
   virtual void fillRect(int x, int y, int w, int h) = 0;
   virtual void drawRect(int x, int y, int w, int h) = 0;
   virtual void drawXbm(int x, int y, const uint8_t* bits, int w, int h) = 0;
+  // Optional QR renderer. Coordinates and size use the same logical units as
+  // the rest of the UI. Drivers without QR support leave the caller's
+  // fallback layout in place.
+  virtual bool drawQrCode(const char* text, int x, int y, int size) {
+    (void)text;
+    (void)x;
+    (void)y;
+    (void)size;
+    return false;
+  }
   virtual uint16_t getTextWidth(const char* str) = 0;
   virtual bool getTouch(int* x, int* y) {
     (void)x;

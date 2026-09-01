@@ -52,6 +52,9 @@ class DNSServer;
 #ifndef WEBCONFIG_SESSION_TTL_MS
   #define WEBCONFIG_SESSION_TTL_MS      (20UL * 60UL * 1000UL)
 #endif
+#ifndef WEBCONFIG_AP_PREFIX
+  #define WEBCONFIG_AP_PREFIX "MeshCore-Setup"
+#endif
 
 class WebConfigServer {
 public:

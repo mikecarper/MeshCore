@@ -69,6 +69,10 @@ public:
   LGFXDisplay(int w, int h, LGFX_Device &disp)
     : DisplayDriver(w/(UI_ZOOM*UI_COORD_SCALE),
                     h/(UI_ZOOM*UI_COORD_SCALE)), display(&disp) {}
+  LGFXDisplay(int logical_w, int logical_h, uint8_t coordinate_scale,
+              float output_zoom, LGFX_Device &disp)
+    : DisplayDriver(logical_w, logical_h), display(&disp),
+      _coordinateScale(coordinate_scale), _outputZoom(output_zoom) {}
   bool begin();
   bool isOn() override { return _isOn; }
   void turnOn() override;
@@ -86,6 +90,7 @@ public:
   void fillRect(int x, int y, int w, int h) override;
   void drawRect(int x, int y, int w, int h) override;
   void drawXbm(int x, int y, const uint8_t* bits, int w, int h) override;
+  bool drawQrCode(const char* text, int x, int y, int size) override;
   uint16_t getTextWidth(const char* str) override;
   void translateUTF8ToBlocks(char* dest, const char* src,
                              size_t dest_size) override;
