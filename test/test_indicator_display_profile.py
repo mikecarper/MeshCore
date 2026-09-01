@@ -42,10 +42,15 @@ class IndicatorDisplayProfileTest(unittest.TestCase):
     def test_panel_cs_release_cannot_discard_initialized_display(self):
         display = INDICATOR_DISPLAY.read_text()
         self.assertIn("releasePanelChipSelectWithRetry()", display)
-        self.assertIn("if (!initialized) return false;", display)
+        self.assertIn("if (!initialized) {", display)
+        self.assertIn("begin_status = 0x82;", display)
         self.assertNotIn("if (!initialized || !released) return false;", display)
         self.assertIn("panel_chip_select_released =", display)
         self.assertIn("void startFrame(ColorVal bkg", display)
+        self.assertIn("const bool controllers_prepared = prepareControllers()", display)
+        self.assertIn("begin_status = controllers_prepared ? 4 : 0x84", display)
+        self.assertIn("if (expander_address == 0 && prepareControllers())", display)
+        self.assertIn("uint8_t beginStatus() const", display)
 
     def test_preserves_original_indicator_memory_profile(self):
         profile = base_profile()

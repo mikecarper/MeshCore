@@ -130,6 +130,7 @@ class SCIndicatorDisplay : public LGFXDisplay {
   uint8_t expander_address = 0;
   uint16_t expander_output = 0;
   bool panel_chip_select_released = false;
+  uint8_t begin_status = 0;
 
   static constexpr gpio_num_t BACKLIGHT_PIN = GPIO_NUM_45;
   static constexpr uint8_t I2C_PORT = 0;
@@ -218,10 +219,14 @@ class SCIndicatorDisplay : public LGFXDisplay {
   }
 
   bool prepareControllers() {
-    if (!lgfx::i2c::init(I2C_PORT, PIN_BOARD_SDA, PIN_BOARD_SCL).has_value()) {
-      return false;
+    for (uint8_t attempt = 0; attempt < 10; ++attempt) {
+      if (lgfx::i2c::init(I2C_PORT, PIN_BOARD_SDA, PIN_BOARD_SCL).has_value()
+          && (prepareControllersAt(0x20) || prepareControllersAt(0x39))) {
+        return true;
+      }
+      delay(20);
     }
-    return prepareControllersAt(0x20) || prepareControllersAt(0x39);
+    return false;
   }
 
   bool releasePanelChipSelect() {
@@ -258,15 +263,23 @@ public:
 #endif
 
   bool begin() {
-    if (!prepareControllers()) return false;
+    begin_status = 1;
+    const bool controllers_prepared = prepareControllers();
+    begin_status = controllers_prepared ? 2 : 0x81;
     const bool initialized = LGFXDisplay::begin();
-    if (!initialized) return false;
+    if (!initialized) {
+      begin_status = 0x82;
+      return false;
+    }
+    begin_status = controllers_prepared ? 3 : 0x83;
 
     // A failed CS release must not discard an otherwise valid 115 KiB render
     // buffer and leave the LCD showing its pre-reset scanout forever. Keep the
     // UI alive and retry from startFrame(); the common case succeeds here
     // before the external LoRa radio is initialized.
-    panel_chip_select_released = releasePanelChipSelectWithRetry();
+    if (controllers_prepared) {
+      panel_chip_select_released = releasePanelChipSelectWithRetry();
+    }
     setBacklight(true);
     size_t fontSize;
     uint8_t* fontData = IndicatorFontClient::load(fontSize);
@@ -280,15 +293,27 @@ public:
       }
 #endif
     }
+    begin_status = controllers_prepared ? 4 : 0x84;
     return true;
   }
 
   void startFrame(ColorVal bkg = UIColor::window_bkg) override {
+    if (expander_address == 0 && prepareControllers()) {
+      // The RGB scanout can start while the shared expander is temporarily
+      // unavailable. Once it recovers, re-run the panel command sequence and
+      // release CS before presenting the next complete frame.
+      if (disp.init()) {
+        panel_chip_select_released = releasePanelChipSelectWithRetry();
+        begin_status = 5;
+      }
+    }
     if (!panel_chip_select_released) {
       panel_chip_select_released = releasePanelChipSelectWithRetry();
     }
     LGFXDisplay::startFrame(bkg);
   }
+
+  uint8_t beginStatus() const { return begin_status; }
 
 #ifdef INDICATOR_WIFI_FONT_RECOVERY
   void serviceFontRecovery() {
