@@ -384,20 +384,17 @@ bool LGFXDisplay::drawQrCode(const char* text, int x, int y, int size) {
                   scaled_size, scaled_size, light);
   const int matrix_left = left + quiet_zone * module_size;
   const int matrix_top = top + quiet_zone * module_size;
+  // Paint complete modules instead of coalescing horizontal runs. The
+  // Indicator's indexed sprite path has produced alternating light modules
+  // inside coalesced dark runs on hardware, which destroys the three finder
+  // patterns even though the encoded matrix itself is valid. Individual
+  // module rectangles remain pixel-aligned and touch without gaps.
   for (uint_fast8_t row = 0; row < qr.size; ++row) {
-    int run_start = -1;
-    for (uint_fast16_t column = 0; column <= qr.size; ++column) {
-      const bool filled = column < qr.size
-          && lgfx_qrcode_getModule(&qr, column, row);
-      if (filled && run_start < 0) {
-        run_start = column;
-      } else if (!filled && run_start >= 0) {
-        buffer.fillRect(
-            matrix_left + run_start * module_size,
-            matrix_top + row * module_size,
-            (column - run_start) * module_size,
-            module_size, dark);
-        run_start = -1;
+    for (uint_fast8_t column = 0; column < qr.size; ++column) {
+      if (lgfx_qrcode_getModule(&qr, column, row)) {
+        buffer.fillRect(matrix_left + column * module_size,
+                        matrix_top + row * module_size,
+                        module_size, module_size, dark);
       }
     }
   }
