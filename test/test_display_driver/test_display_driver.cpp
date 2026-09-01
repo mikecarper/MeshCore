@@ -3,10 +3,21 @@
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/ui/CompanionHomeLayout.h>
 #include <helpers/ui/DisplayTextLayout.h>
+#include <helpers/ui/WiFiSetupQrDisplay.h>
 #include <helpers/ui/WiFiSetupQrPayload.h>
 
 #include <string>
 #include <vector>
+
+ColorVal UIColor::window_bkg = 0;
+ColorVal UIColor::title_bkg = 0;
+ColorVal UIColor::title_txt = 0;
+ColorVal UIColor::primary_txt = 1;
+ColorVal UIColor::secondary_txt = 1;
+ColorVal UIColor::warning_txt = 1;
+ColorVal UIColor::popup_bkg = 0;
+ColorVal UIColor::popup_txt = 1;
+ColorVal UIColor::corp_blue = 1;
 
 namespace {
 
@@ -90,6 +101,23 @@ public:
   void endFrame() override {}
 };
 
+class QrTestDisplay : public TestDisplay {
+public:
+  int qr_x = -1;
+  int qr_y = -1;
+  int qr_size = -1;
+
+  QrTestDisplay(int width, int height, int glyph_width)
+      : TestDisplay(width, height, glyph_width) {}
+
+  bool drawQrCode(const char*, int x, int y, int size) override {
+    qr_x = x;
+    qr_y = y;
+    qr_size = size;
+    return true;
+  }
+};
+
 }  // namespace
 
 TEST(DisplayDriver, EllipsizesOnlyAtUTF8CodepointBoundaries) {
@@ -103,6 +131,22 @@ TEST(DisplayDriver, QrCodeIsOptionalByDefault) {
   TestDisplay display;
   EXPECT_FALSE(display.drawQrCode("WIFI:T:nopass;S:MC-Set-90DF;;",
                                   27, 55, 105));
+}
+
+TEST(DisplayDriver, CompactWiFiQrLeavesRoomForCompleteSetupAddress) {
+  QrTestDisplay display(128, 64, 6);
+  ASSERT_TRUE(mesh::ui::drawWiFiSetupQr(
+      display, "MC-F7F0", "192.168.4.1"));
+
+  EXPECT_EQ(0, display.qr_x);
+  EXPECT_EQ(0, display.qr_y);
+  EXPECT_EQ(58, display.qr_size);
+  ASSERT_FALSE(display.rows.empty());
+  const auto& address = display.rows.back();
+  EXPECT_EQ("192.168.4.1", address.text);
+  EXPECT_EQ(48, address.y);
+  EXPECT_LE(address.x + display.getTextWidth(address.text.c_str()),
+            display.width());
 }
 
 TEST(WiFiSetupQrPayload, EncodesOpenSetupNetwork) {

@@ -8,6 +8,9 @@ namespace ui {
 
 // Render a setup-AP join QR at the largest size that still leaves the right
 // half of compact displays available for a short textual fallback/reference.
+// A Version 1 QR, including its four-module quiet zone, is exactly 58 pixels
+// at two pixels per module. Keep that exact upper-left footprint on 128x64
+// panels so a normal setup IP has the full 66-pixel text row beside it.
 // Returns false when the payload or panel geometry cannot be represented.
 inline bool drawWiFiSetupQr(DisplayDriver& display, const char* ssid,
                             const char* address) {
@@ -21,8 +24,12 @@ inline bool drawWiFiSetupQr(DisplayDriver& display, const char* ssid,
     return false;
   }
 
-  const int qr_size = display.height() < display.width() / 2
+  int qr_size = display.height() < display.width() / 2
       ? display.height() : display.width() / 2;
+  static constexpr int compact_qr_size = (21 + 4 * 2) * 2;
+  if (display.height() == 64 && qr_size >= compact_qr_size) {
+    qr_size = compact_qr_size;
+  }
   if (!display.drawQrCode(payload, 0, 0, qr_size)) return false;
 
   const int text_x = qr_size + 4;
