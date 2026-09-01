@@ -1144,6 +1144,13 @@ void halt() {
     return companion_wifi_requested;
   }
 
+  bool isCompanionWiFiConnected() {
+    if (!companion_wifi_requested || !companion_wifi_active) return false;
+    if (WiFi.status() == WL_CONNECTED) return true;
+    wifi_ap_record_t access_point = {};
+    return esp_wifi_sta_get_ap_info(&access_point) == ESP_OK;
+  }
+
   bool toggleCompanionWiFi() {
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
     const CompanionTransportMode current = getCompanionTransportMode();

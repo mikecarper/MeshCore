@@ -176,6 +176,9 @@ int main() {
         self.assertIn("_page == HomePage::WIFI_SETUP", ui)
         self.assertIn("if (_page == HomePage::WIFI_SETUP) return 1000;", ui)
         self.assertIn("wifi_setup_active && !_wifi_setup_was_active", ui)
+        self.assertIn("isCompanionWiFiConnected()", page)
+        self.assertIn("wifi_connected != _wifi_was_connected", ui)
+        self.assertIn("_task->gotoHomeScreen();", ui)
 
         main = MAIN.read_text(encoding="utf-8")
         loop = main[main.index("\nvoid loop()") :]

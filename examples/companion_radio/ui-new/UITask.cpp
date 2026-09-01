@@ -162,7 +162,7 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(display.width() / 2, 90, "SELECT WIFI");
     display.drawTextCentered(display.width() / 2, 112, "THEN REBOOT");
-  } else if (WiFi.status() == WL_CONNECTED) {
+  } else if (isCompanionWiFiConnected()) {
     display.setTextSize(2);
     display.drawTextCentered(display.width() / 2, 25, "WIFI READY");
     const String ssid = WiFi.SSID();
@@ -273,6 +273,7 @@ class HomeScreen : public UIScreen {
   bool _shutdown_init;
 #if UI_WIFI_SETUP_HOME_PAGE == 1
   bool _wifi_setup_was_active;
+  bool _wifi_was_connected;
 #endif
   uint32_t _uptime_last_millis;
   uint64_t _uptime_millis;
@@ -405,12 +406,13 @@ public:
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
        _shutdown_init(false),
 #if UI_WIFI_SETUP_HOME_PAGE == 1
-       _wifi_setup_was_active(false),
+       _wifi_setup_was_active(false), _wifi_was_connected(false),
 #endif
        _uptime_last_millis(millis()), _uptime_millis(0), sensors_lpp(200) {
 #if UI_WIFI_SETUP_HOME_PAGE == 1
     _wifi_setup_was_active = WebConfigServer::getSetupInfo(
         nullptr, 0, nullptr, 0);
+    _wifi_was_connected = isCompanionWiFiConnected();
     if (_wifi_setup_was_active) _page = HomePage::WIFI_SETUP;
 #endif
   }
@@ -436,6 +438,14 @@ public:
       _task->gotoHomeScreen();
     }
     _wifi_setup_was_active = wifi_setup_active;
+    const bool wifi_connected = isCompanionWiFiConnected();
+    if (wifi_connected != _wifi_was_connected) {
+      // A network transition must invalidate the page immediately. This also
+      // recovers from a previously retained CONNECTING frame even if the
+      // ordinary one-second render deadline was delayed by another service.
+      _wifi_was_connected = wifi_connected;
+      _task->gotoHomeScreen();
+    }
 #endif
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
       _task->shutdown();
