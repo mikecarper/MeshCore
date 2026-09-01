@@ -58,6 +58,9 @@ input.dirty,select.dirty{border-color:var(--warn)}
   cursor:pointer;text-decoration:underline}
 .pfsum{color:var(--mut);margin-left:auto}
 .row{display:flex;gap:10px}.row>.f{flex:1;min-width:0}
+.pwrow{display:flex;align-items:stretch;gap:8px}
+.pwrow input{flex:1;min-width:0}
+.pwrow .pwshow{min-width:62px}
 .sw{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0}
 .sw span b{display:block;font-size:13.5px;font-weight:600}
 .sw span i{font-style:normal;font-size:11.5px;color:var(--mut)}
@@ -255,7 +258,10 @@ body.tab-cli{padding-bottom:0}
           <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('wz-ssid')">Scan</button>
         </div></div>
       <div class="f"><label>Password</label>
-        <input type="password" data-k="wifi.pwd" maxlength="64" autocomplete="off">
+        <div class="pwrow">
+          <input type="password" data-k="wifi.pwd" id="wz-wifi-pwd" maxlength="64" autocomplete="off">
+          <button class="btn sec sm pwshow" type="button" aria-pressed="false" aria-controls="wz-wifi-pwd" onclick="toggleWiFiPassword(this)">Show</button>
+        </div>
         <div class="hint">Leave blank for an open network. <span data-wifi-pwd-hint>Passphrases may be up to 63 characters; a 64-character key must be hexadecimal.</span> 2.4&thinsp;GHz networks only.</div></div>
       <div class="f" data-cap="32768"><label>ESP-NOW / WiFi channel</label>
         <input type="number" data-k="espnow.channel" min="1" max="13" step="1" style="max-width:120px">
@@ -498,7 +504,11 @@ body.tab-cli{padding-bottom:0}
           <input type="text" data-k="wifi.ssid" id="app-ssid" autocapitalize="off" autocorrect="off" style="flex:1">
           <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('app-ssid')">Scan</button>
         </div></div>
-      <div class="f"><label>Password</label><input type="password" data-k="wifi.pwd" maxlength="64" autocomplete="off">
+      <div class="f"><label>Password</label>
+        <div class="pwrow">
+          <input type="password" data-k="wifi.pwd" id="app-wifi-pwd" maxlength="64" autocomplete="off">
+          <button class="btn sec sm pwshow" type="button" aria-pressed="false" aria-controls="app-wifi-pwd" onclick="toggleWiFiPassword(this)">Show</button>
+        </div>
         <div class="hint">Leave blank for an open network. <span data-wifi-pwd-hint>Passphrases may be up to 63 characters; a 64-character key must be hexadecimal.</span></div></div>
       <div class="f" data-cap="32768"><label>ESP-NOW / WiFi channel</label>
         <input type="number" data-k="espnow.channel" min="1" max="13" step="1" style="max-width:120px">
@@ -611,6 +621,16 @@ function $(s){return document.querySelector(s)}
 function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
 function toast(m){var t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove("show")},2600)}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function toggleWiFiPassword(btn){
+  var input=document.getElementById(btn.getAttribute("aria-controls"));
+  if(!input)return;
+  var show=input.type==="password";
+  input.type=show?"text":"password";
+  btn.textContent=show?"Hide":"Show";
+  btn.setAttribute("aria-pressed",show?"true":"false");
+  btn.setAttribute("aria-label",(show?"Hide":"Show")+" WiFi password");
+  input.focus();
+}
 // build.sh embeds base[.build][-observer][-channel]-hash, e.g.
 // v1.16.0.5-observer-beta-dev-a1b2c3d. What identifies a build to a person is
 // the base, the published build number and the channel -- the -observer variant
