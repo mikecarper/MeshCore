@@ -44,7 +44,7 @@ inline bool buildWiFiSetupQrPayload(char* payload, size_t payload_size,
 
   if (!appendWiFiQrText(output, remaining,
                         protected_network ? "WIFI:T:WPA;S:"
-                                          : "WIFI:T:nopass;S:",
+                                          : "WIFI:S:",
                         false)
       || !appendWiFiQrText(output, remaining, ssid, true)) {
     return false;

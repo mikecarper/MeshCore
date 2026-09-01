@@ -70,6 +70,7 @@ MultiSerialInterface interface_manager;
     #include <helpers/CompanionWiFiNtpPolicy.h>
     #include <helpers/ui/DisplayTextLayout.h>
     #include <helpers/ui/IndicatorRenderProfile.h>
+    #include <helpers/ui/WiFiSetupQrDisplay.h>
     #include <helpers/esp32/SntpOperationCoordinator.h>
     #include <helpers/esp32/TlsClockValidity.h>
     #include <helpers/esp32/WiFiRadioPolicy.h>
@@ -1286,6 +1287,11 @@ void halt() {
       char setup_ip[16] = {0};
       if (WebConfigServer::getSetupInfo(setup_ssid, sizeof(setup_ssid),
                                         setup_ip, sizeof(setup_ip))) {
+        if (mesh::ui::drawWiFiSetupQr(
+                *companion_setup_display, setup_ssid, setup_ip)) {
+          companion_setup_display->endFrame();
+          return;
+        }
         if (hasLargeCompanionSetupDisplay()) {
           renderLargeCompanionSetupDisplay(
               "WebUI setup", "Join open WiFi:", setup_ssid, setup_ip, false);
@@ -1749,7 +1755,11 @@ void setup() {
   }
 #if defined(ESP32) && defined(WIFI_SSID)
   companion_display_available = disp != NULL;
+#if defined(SENSECAP_INDICATOR_LORA)
   companion_display_begin_status = display.beginStatus();
+#else
+  companion_display_begin_status = companion_display_available ? 1 : 0;
+#endif
 #endif
 #endif
 

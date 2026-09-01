@@ -2,6 +2,7 @@
 #include "target.h"
 #include <Arduino.h>
 #include <helpers/CommonCLI.h>
+#include <helpers/ui/WiFiSetupQrDisplay.h>
 
 #ifdef DISPLAY_REDRAW_ON_CHANGE
 #include <helpers/ui/DisplayFrameSignature.h>
@@ -175,6 +176,9 @@ void UITask::renderCurrScreen() {
     char wc_ssid[33], wc_ip[16];
     if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
       // setup portal active: show join instructions instead of the home screen
+      if (mesh::ui::drawWiFiSetupQr(*_display, wc_ssid, wc_ip)) {
+        return;
+      }
       _display->setTextSize(1);
       _display->setColor(UIColor::corp_blue);
       _display->setCursor(0, 0);

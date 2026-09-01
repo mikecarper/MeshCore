@@ -109,7 +109,14 @@ TEST(WiFiSetupQrPayload, EncodesOpenSetupNetwork) {
   char payload[64];
   EXPECT_TRUE(mesh::ui::buildWiFiSetupQrPayload(
       payload, sizeof(payload), "MC-Set-90DF"));
-  EXPECT_STREQ("WIFI:T:nopass;S:MC-Set-90DF;;", payload);
+  EXPECT_STREQ("WIFI:S:MC-Set-90DF;;", payload);
+
+  char small_payload[32];
+  EXPECT_TRUE(mesh::ui::buildWiFiSetupQrPayload(
+      small_payload, sizeof(small_payload), "MC-90DF"));
+  EXPECT_STREQ("WIFI:S:MC-90DF;;", small_payload);
+  // MC-XXXX uses 16 payload bytes, within QR Version 1-L's 17-byte capacity.
+  EXPECT_LE(strlen(small_payload), 17U);
 }
 
 TEST(WiFiSetupQrPayload, EscapesProtectedNetworkFields) {

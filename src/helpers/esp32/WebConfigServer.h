@@ -30,6 +30,7 @@
 #include <helpers/WebConfigBatch.h>
 #include <helpers/WiFiPowerSave.h>
 #include <helpers/WiFiReconnectPolicy.h>
+#include <helpers/ui/DisplayBuildFlags.h>
 
 class AsyncWebServer;
 class AsyncWebServerRequest;
@@ -53,7 +54,12 @@ class DNSServer;
   #define WEBCONFIG_SESSION_TTL_MS      (20UL * 60UL * 1000UL)
 #endif
 #ifndef WEBCONFIG_AP_PREFIX
-  #define WEBCONFIG_AP_PREFIX "MeshCore-Setup"
+  #if defined(MESHCORE_HAS_REAL_DISPLAY)
+    // Keeps an open-network WiFi QR in Version 1 on 64-pixel-high screens.
+    #define WEBCONFIG_AP_PREFIX "MC"
+  #else
+    #define WEBCONFIG_AP_PREFIX "MeshCore-Setup"
+  #endif
 #endif
 
 class WebConfigServer {

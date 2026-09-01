@@ -1,5 +1,7 @@
 #pragma once
 
+#include "DisplayBuildFlags.h"
+
 #include <stdint.h>
 #include <string.h>
 
@@ -70,6 +72,9 @@ public:
   // Optional QR renderer. Coordinates and size use the same logical units as
   // the rest of the UI. Drivers without QR support leave the caller's
   // fallback layout in place.
+#if defined(ESP32_PLATFORM) && defined(MESHCORE_HAS_REAL_DISPLAY)
+  virtual bool drawQrCode(const char* text, int x, int y, int size);
+#else
   virtual bool drawQrCode(const char* text, int x, int y, int size) {
     (void)text;
     (void)x;
@@ -77,6 +82,7 @@ public:
     (void)size;
     return false;
   }
+#endif
   virtual uint16_t getTextWidth(const char* str) = 0;
   virtual bool getTouch(int* x, int* y) {
     (void)x;
