@@ -825,6 +825,7 @@ void halt() {
   static CompanionWiFiDisplayState companion_wifi_display_state =
       CompanionWiFiDisplayState::NotRendered;
   static uint32_t companion_wifi_display_frames = 0;
+  static bool companion_display_available = false;
 
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   static CompanionTransportMode companion_transport_boot_mode =
@@ -1173,9 +1174,10 @@ void halt() {
     const bool idf_associated =
         esp_wifi_sta_get_ap_info(&access_point) == ESP_OK;
     snprintf(reply, reply_size,
-             "> state=%s, frames=%lu, requested=%u, services=%u, "
+             "> state=%s, frames=%lu, display=%u, requested=%u, services=%u, "
              "wl=%d, idf=%u, IP=%s",
              names[state], (unsigned long)companion_wifi_display_frames,
+             companion_display_available ? 1U : 0U,
              companion_wifi_requested ? 1U : 0U,
              companion_wifi_active ? 1U : 0U, (int)WiFi.status(),
              idf_associated ? 1U : 0U,
@@ -1733,6 +1735,9 @@ void setup() {
     disp->drawTextCentered(disp->width() / 2, 28, "Loading...");
     disp->endFrame();
   }
+#if defined(ESP32) && defined(WIFI_SSID)
+  companion_display_available = disp != NULL;
+#endif
 #endif
 
   int radioinit_attempts = 0;

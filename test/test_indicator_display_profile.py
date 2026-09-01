@@ -9,6 +9,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "variants" / "sensecap_indicator-espnow" / "platformio.ini"
 DISPLAY = ROOT / "src" / "helpers" / "ui" / "LGFXDisplay.cpp"
+INDICATOR_DISPLAY = (
+    ROOT / "variants" / "sensecap_indicator-espnow" / "SCIndicatorDisplay.h"
+)
 FONT = ROOT / "variants" / "sensecap_indicator-espnow" / "sd" / "ui-font.vlw"
 
 
@@ -36,6 +39,14 @@ def numeric_flag(name: str) -> float:
 
 
 class IndicatorDisplayProfileTest(unittest.TestCase):
+    def test_panel_cs_release_cannot_discard_initialized_display(self):
+        display = INDICATOR_DISPLAY.read_text()
+        self.assertIn("releasePanelChipSelectWithRetry()", display)
+        self.assertIn("if (!initialized) return false;", display)
+        self.assertNotIn("if (!initialized || !released) return false;", display)
+        self.assertIn("panel_chip_select_released =", display)
+        self.assertIn("void startFrame(ColorVal bkg", display)
+
     def test_preserves_original_indicator_memory_profile(self):
         profile = base_profile()
         self.assertIn("board_build.arduino.memory_type = qio_opi", profile)

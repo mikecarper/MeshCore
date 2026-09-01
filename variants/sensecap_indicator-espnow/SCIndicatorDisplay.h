@@ -129,6 +129,7 @@ class SCIndicatorDisplay : public LGFXDisplay {
   LGFX disp;
   uint8_t expander_address = 0;
   uint16_t expander_output = 0;
+  bool panel_chip_select_released = false;
 
   static constexpr gpio_num_t BACKLIGHT_PIN = GPIO_NUM_45;
   static constexpr uint8_t I2C_PORT = 0;
@@ -230,6 +231,20 @@ class SCIndicatorDisplay : public LGFXDisplay {
                                  expander_output);
   }
 
+  bool releasePanelChipSelectWithRetry() {
+    // LovyanGFX initializes the touch controller on this same I2C bus. On a
+    // warm ESP32-S3 reset its final transaction can briefly leave the
+    // expander unavailable even though the RGB panel and render buffer were
+    // initialized successfully. Re-open the bus and retry before LoRa starts
+    // using the panel's shared SCLK/MOSI pins.
+    for (uint8_t attempt = 0; attempt < 10; ++attempt) {
+      if (releasePanelChipSelect()) return true;
+      delay(5);
+      lgfx::i2c::init(I2C_PORT, PIN_BOARD_SDA, PIN_BOARD_SCL);
+    }
+    return false;
+  }
+
 public:
 #if defined(INDICATOR_TRANSPORT_RENDER_PROFILE)
   // Full builds always use the established 160x160 logical layout. State it
@@ -245,8 +260,13 @@ public:
   bool begin() {
     if (!prepareControllers()) return false;
     const bool initialized = LGFXDisplay::begin();
-    const bool released = releasePanelChipSelect();
-    if (!initialized || !released) return false;
+    if (!initialized) return false;
+
+    // A failed CS release must not discard an otherwise valid 115 KiB render
+    // buffer and leave the LCD showing its pre-reset scanout forever. Keep the
+    // UI alive and retry from startFrame(); the common case succeeds here
+    // before the external LoRa radio is initialized.
+    panel_chip_select_released = releasePanelChipSelectWithRetry();
     setBacklight(true);
     size_t fontSize;
     uint8_t* fontData = IndicatorFontClient::load(fontSize);
@@ -261,6 +281,13 @@ public:
 #endif
     }
     return true;
+  }
+
+  void startFrame(ColorVal bkg = UIColor::window_bkg) override {
+    if (!panel_chip_select_released) {
+      panel_chip_select_released = releasePanelChipSelectWithRetry();
+    }
+    LGFXDisplay::startFrame(bkg);
   }
 
 #ifdef INDICATOR_WIFI_FONT_RECOVERY
