@@ -2294,6 +2294,11 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 #endif
 
 #if defined(ESP32) && defined(WIFI_SSID)
+  if (strcmp(command, "get display.wifi") == 0) {
+    formatCompanionWiFiDisplayStatus(reply, reply_size);
+    return true;
+  }
+
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   if (strcmp(command, "get companion.transport") == 0) {
     snprintf(reply, reply_size, "%s",

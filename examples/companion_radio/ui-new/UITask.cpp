@@ -123,6 +123,26 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
   char setup_ip[16] = {0};
   const bool setup_active = WebConfigServer::getSetupInfo(
       setup_ssid, sizeof(setup_ssid), setup_ip, sizeof(setup_ip));
+  const bool wifi_enabled = isCompanionWiFiEnabled();
+  const bool wifi_connected = isCompanionWiFiConnected();
+  const CompanionWiFiDisplayState state = setup_active
+      ? CompanionWiFiDisplayState::Setup
+      : !wifi_enabled
+          ? CompanionWiFiDisplayState::Off
+          : wifi_connected
+              ? CompanionWiFiDisplayState::Ready
+              : CompanionWiFiDisplayState::Connecting;
+  static CompanionWiFiDisplayState previous_state =
+      CompanionWiFiDisplayState::NotRendered;
+
+  // Frame hashing normally suppresses identical LCD transfers. Explicitly
+  // invalidate that cache on a network-state transition so a retained
+  // CONNECTING frame can never survive a READY render.
+  if (state != previous_state) {
+    display.clear();
+    previous_state = state;
+  }
+  noteCompanionWiFiDisplayState(state);
 
   // Keep the setup content below the shared title bar and page dots. Compact
   // text makes its physical size identical on the 480 canvas and the
@@ -155,14 +175,14 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
     display.drawTextCentered(display.width() / 2, 70, "QR UNAVAILABLE");
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(display.width() / 2, 100, setup_ip);
-  } else if (!isCompanionWiFiEnabled()) {
+  } else if (!wifi_enabled) {
     display.setTextSize(3);
     display.drawTextCentered(display.width() / 2, 45, "WIFI OFF");
     display.setTextSize(2);
     display.setColor(UIColor::secondary_txt);
     display.drawTextCentered(display.width() / 2, 90, "SELECT WIFI");
     display.drawTextCentered(display.width() / 2, 112, "THEN REBOOT");
-  } else if (isCompanionWiFiConnected()) {
+  } else if (wifi_connected) {
     display.setTextSize(2);
     display.drawTextCentered(display.width() / 2, 25, "WIFI READY");
     const String ssid = WiFi.SSID();

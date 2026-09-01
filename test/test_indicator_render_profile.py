@@ -178,6 +178,18 @@ int main() {
         self.assertIn("wifi_setup_active && !_wifi_setup_was_active", ui)
         self.assertIn("isCompanionWiFiConnected()", page)
         self.assertIn("wifi_connected != _wifi_was_connected", ui)
+        self.assertIn("CompanionWiFiDisplayState::Ready", page)
+        self.assertIn("display.clear()", page)
+        self.assertIn("noteCompanionWiFiDisplayState(state)", page)
+
+        main = (ROOT / "examples/companion_radio/main.cpp").read_text()
+        helper = main[main.index("bool isCompanionWiFiConnected()"):
+                      main.index("bool toggleCompanionWiFi()")]
+        self.assertNotIn("!companion_wifi_active", helper)
+        self.assertIn("esp_wifi_sta_get_ap_info", helper)
+
+        mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
+        self.assertIn('strcmp(command, "get display.wifi")', mesh)
         self.assertIn("_task->gotoHomeScreen();", ui)
 
         main = MAIN.read_text(encoding="utf-8")

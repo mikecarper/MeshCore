@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifndef UI_WIFI_SETUP_HOME_PAGE
@@ -48,6 +49,20 @@ bool isCompanionWiFiEnabled();
 // ESP-IDF association record, so accept either source while the AP link is
 // live. Unlike localIP(), the driver record is cleared on a real disconnect.
 bool isCompanionWiFiConnected();
+
+enum class CompanionWiFiDisplayState : uint8_t {
+  NotRendered,
+  Setup,
+  Off,
+  Ready,
+  Connecting,
+};
+
+// Record the branch that was actually drawn. This is exposed through the
+// read-only `get display.wifi` terminal diagnostic so a headless test host can
+// distinguish network state from a stale or incorrect LCD frame.
+void noteCompanionWiFiDisplayState(CompanionWiFiDisplayState state);
+void formatCompanionWiFiDisplayStatus(char* reply, size_t reply_size);
 
 // Reload saved credentials after a text-terminal update. The reconnect is
 // deferred so the command reply can leave USB/TCP before WiFi is restarted.

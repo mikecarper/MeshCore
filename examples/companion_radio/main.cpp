@@ -822,6 +822,9 @@ void halt() {
   static unsigned long companion_wifi_credential_reload_at = 0;
   static bool companion_wifi_power_save_loaded = false;
   static uint8_t companion_wifi_power_save = mesh::wifi::kDefaultPowerSave;
+  static CompanionWiFiDisplayState companion_wifi_display_state =
+      CompanionWiFiDisplayState::NotRendered;
+  static uint32_t companion_wifi_display_frames = 0;
 
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   static CompanionTransportMode companion_transport_boot_mode =
@@ -1145,10 +1148,38 @@ void halt() {
   }
 
   bool isCompanionWiFiConnected() {
-    if (!companion_wifi_requested || !companion_wifi_active) return false;
+    // The display describes the station link, not the lifecycle of the
+    // Companion TCP services. A valid station association remains the source
+    // of truth even if service bookkeeping is delayed or being recovered.
+    if (!companion_wifi_requested) return false;
     if (WiFi.status() == WL_CONNECTED) return true;
     wifi_ap_record_t access_point = {};
     return esp_wifi_sta_get_ap_info(&access_point) == ESP_OK;
+  }
+
+  void noteCompanionWiFiDisplayState(CompanionWiFiDisplayState state) {
+    companion_wifi_display_state = state;
+    companion_wifi_display_frames++;
+  }
+
+  void formatCompanionWiFiDisplayStatus(char* reply, size_t reply_size) {
+    if (reply == nullptr || reply_size == 0) return;
+    static const char* const names[] = {
+      "not-rendered", "setup", "off", "ready", "connecting",
+    };
+    uint8_t state = static_cast<uint8_t>(companion_wifi_display_state);
+    if (state >= sizeof(names) / sizeof(names[0])) state = 0;
+    wifi_ap_record_t access_point = {};
+    const bool idf_associated =
+        esp_wifi_sta_get_ap_info(&access_point) == ESP_OK;
+    snprintf(reply, reply_size,
+             "> state=%s, frames=%lu, requested=%u, services=%u, "
+             "wl=%d, idf=%u, IP=%s",
+             names[state], (unsigned long)companion_wifi_display_frames,
+             companion_wifi_requested ? 1U : 0U,
+             companion_wifi_active ? 1U : 0U, (int)WiFi.status(),
+             idf_associated ? 1U : 0U,
+             WiFi.localIP().toString().c_str());
   }
 
   bool toggleCompanionWiFi() {
