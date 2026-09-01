@@ -125,13 +125,16 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
       setup_ssid, sizeof(setup_ssid), setup_ip, sizeof(setup_ip));
   const bool wifi_enabled = isCompanionWiFiEnabled();
   const bool wifi_connected = isCompanionWiFiConnected();
+  const bool wifi_configured = hasCompanionWiFiCredentials();
   const CompanionWiFiDisplayState state = setup_active
       ? CompanionWiFiDisplayState::Setup
       : !wifi_enabled
           ? CompanionWiFiDisplayState::Off
           : wifi_connected
               ? CompanionWiFiDisplayState::Ready
-              : CompanionWiFiDisplayState::Connecting;
+              : !wifi_configured
+                  ? CompanionWiFiDisplayState::NotConfigured
+                  : CompanionWiFiDisplayState::Connecting;
   static CompanionWiFiDisplayState previous_state =
       CompanionWiFiDisplayState::NotRendered;
 
@@ -189,6 +192,12 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
     display.drawTextEllipsized(4, 60, display.width() - 8, ssid.c_str());
     const String ip = WiFi.localIP().toString();
     display.drawTextCentered(display.width() / 2, 95, ip.c_str());
+  } else if (!wifi_configured) {
+    display.setTextSize(3);
+    display.drawTextCentered(display.width() / 2, 45, "WIFI SETUP");
+    display.setTextSize(2);
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextCentered(display.width() / 2, 90, "TAP TO START");
   } else {
     display.setTextSize(3);
     display.drawTextCentered(display.width() / 2, 45, "WIFI");
@@ -558,12 +567,16 @@ public:
             "tap center: inbox");
 
         #ifdef WIFI_SSID
-          if (isCompanionWiFiEnabled()) {
+          if (!isCompanionWiFiEnabled()) {
+            strcpy(tmp, "WiFi: OFF");
+          } else if (isCompanionWiFiConnected()) {
             IPAddress ip = WiFi.localIP();
             snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d",
                      ip[0], ip[1], ip[2], ip[3]);
+          } else if (hasCompanionWiFiCredentials()) {
+            strcpy(tmp, "WiFi: CONNECTING");
           } else {
-            strcpy(tmp, "WiFi: OFF");
+            strcpy(tmp, "WiFi: SETUP");
           }
           display.setTextSize(1);
           mesh::ui::drawTextCenteredEllipsized(
@@ -607,14 +620,20 @@ public:
         mesh::ui::drawTextCenteredEllipsized(
             display, layout.pairing, layout.pairing_label_y, "TAP");
 #ifdef WIFI_SSID
-        if (isCompanionWiFiEnabled()) {
+        if (!isCompanionWiFiEnabled()) {
+          strcpy(tmp, "OFF");
+          display.setTextSize(3);
+        } else if (isCompanionWiFiConnected()) {
           IPAddress ip = WiFi.localIP();
           snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d",
                    ip[0], ip[1], ip[2], ip[3]);
           display.setTextSize(1);
-        } else {
-          strcpy(tmp, "OFF");
+        } else if (hasCompanionWiFiCredentials()) {
+          strcpy(tmp, "WAIT");
           display.setTextSize(3);
+        } else {
+          strcpy(tmp, "SETUP");
+          display.setTextSize(2);
         }
         mesh::ui::drawTextCenteredEllipsized(
             display, layout.pairing, layout.pairing_value_y, tmp);
@@ -677,12 +696,16 @@ public:
         #endif
 
         #ifdef WIFI_SSID
-          if (isCompanionWiFiEnabled()) {
+          if (!isCompanionWiFiEnabled()) {
+            strcpy(tmp, "WiFi: OFF");
+          } else if (isCompanionWiFiConnected()) {
             IPAddress ip = WiFi.localIP();
             snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d",
                      ip[0], ip[1], ip[2], ip[3]);
+          } else if (hasCompanionWiFiCredentials()) {
+            strcpy(tmp, "WiFi: CONNECTING");
           } else {
-            strcpy(tmp, "WiFi: OFF");
+            strcpy(tmp, "WiFi: SETUP");
           }
           display.setTextSize(1);
           display.drawTextCentered(display.width() / 2, 54, tmp);
@@ -1024,6 +1047,16 @@ public:
 #if UI_MESSAGES_HOME_PAGE == 1
     if (c == KEY_ENTER && _page == HomePage::MESSAGES) {
       _task->showMessages();
+      return true;
+    }
+#endif
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+    if (c == KEY_ENTER && _page == HomePage::WIFI_SETUP) {
+      if (isCompanionWiFiEnabled() && !isCompanionWiFiConnected()
+          && !WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) {
+        requestCompanionWiFiSetup();
+        _task->showAlert("Starting WiFi setup", 1000);
+      }
       return true;
     }
 #endif

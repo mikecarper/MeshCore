@@ -177,6 +177,9 @@ int main() {
         self.assertIn("if (_page == HomePage::WIFI_SETUP) return 1000;", ui)
         self.assertIn("wifi_setup_active && !_wifi_setup_was_active", ui)
         self.assertIn("isCompanionWiFiConnected()", page)
+        self.assertIn("hasCompanionWiFiCredentials()", page)
+        self.assertIn("CompanionWiFiDisplayState::NotConfigured", page)
+        self.assertIn('"TAP TO START"', page)
         self.assertIn("wifi_connected != _wifi_was_connected", ui)
         self.assertIn("CompanionWiFiDisplayState::Ready", page)
         self.assertIn("display.clear()", page)
@@ -191,6 +194,9 @@ int main() {
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         self.assertIn('strcmp(command, "get display.wifi")', mesh)
         self.assertIn("_task->gotoHomeScreen();", ui)
+        self.assertIn("requestCompanionWiFiSetup();", ui)
+        self.assertIn('strcpy(tmp, "WiFi: SETUP");', ui)
+        self.assertIn('strcpy(tmp, "SETUP");', ui)
 
         main = MAIN.read_text(encoding="utf-8")
         loop = main[main.index("\nvoid loop()") :]
@@ -199,6 +205,8 @@ int main() {
         self.assertIn("&& UI_WIFI_SETUP_HOME_PAGE != 1", display_dispatch)
         self.assertIn("renderCompanionSetupDisplay();", display_dispatch)
         self.assertIn("#else\n  ui_task.loop();", display_dispatch)
+        self.assertIn('"not-configured"', main)
+        self.assertIn("companion_wifi_setup_requested", loop)
 
     def test_wifi_qr_payload_is_standard_and_escaped(self):
         setup = WIFI_QR_PAYLOAD.read_text(encoding="utf-8")

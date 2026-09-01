@@ -45,6 +45,7 @@ enum class CompanionWiFiPowerSaveResult : uint8_t {
 // from the main loop so a button callback never tears down an active server.
 bool toggleCompanionWiFi();
 bool isCompanionWiFiEnabled();
+bool hasCompanionWiFiCredentials();
 // Display-facing station state. Arduino's cached WL status can briefly lag the
 // ESP-IDF association record, so accept either source while the AP link is
 // live. Unlike localIP(), the driver record is cleared on a real disconnect.
@@ -55,6 +56,7 @@ enum class CompanionWiFiDisplayState : uint8_t {
   Setup,
   Off,
   Ready,
+  NotConfigured,
   Connecting,
 };
 
@@ -63,6 +65,11 @@ enum class CompanionWiFiDisplayState : uint8_t {
 // distinguish network state from a stale or incorrect LCD frame.
 void noteCompanionWiFiDisplayState(CompanionWiFiDisplayState state);
 void formatCompanionWiFiDisplayStatus(char* reply, size_t reply_size);
+
+// A display callback only queues this request. The main loop owns the actual
+// WebConfig/WiFi transition so touch handling never tears down network services
+// from the UI task.
+void requestCompanionWiFiSetup();
 
 // Reload saved credentials after a text-terminal update. The reconnect is
 // deferred so the command reply can leave USB/TCP before WiFi is restarted.

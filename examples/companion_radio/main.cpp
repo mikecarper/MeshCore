@@ -818,6 +818,7 @@ void halt() {
   static bool companion_wifi_active = false;
   static bool companion_wifi_disable_in_progress = false;
   static bool companion_wifi_services_stopped = false;
+  static volatile bool companion_wifi_setup_requested = false;
   static bool companion_wifi_credential_reload_pending = false;
   static unsigned long companion_wifi_credential_reload_at = 0;
   static bool companion_wifi_power_save_loaded = false;
@@ -1149,6 +1150,10 @@ void halt() {
     return companion_wifi_requested;
   }
 
+  bool hasCompanionWiFiCredentials() {
+    return companion_wifi_has_credentials;
+  }
+
   bool isCompanionWiFiConnected() {
     // The display describes the station link, not the lifecycle of the
     // Companion TCP services. A valid station association remains the source
@@ -1167,7 +1172,8 @@ void halt() {
   void formatCompanionWiFiDisplayStatus(char* reply, size_t reply_size) {
     if (reply == nullptr || reply_size == 0) return;
     static const char* const names[] = {
-      "not-rendered", "setup", "off", "ready", "connecting",
+      "not-rendered", "setup", "off", "ready", "not-configured",
+      "connecting",
     };
     uint8_t state = static_cast<uint8_t>(companion_wifi_display_state);
     if (state >= sizeof(names) / sizeof(names[0])) state = 0;
@@ -1184,6 +1190,10 @@ void halt() {
              companion_wifi_active ? 1U : 0U, (int)WiFi.status(),
              idf_associated ? 1U : 0U,
              WiFi.localIP().toString().c_str());
+  }
+
+  void requestCompanionWiFiSetup() {
+    companion_wifi_setup_requested = true;
   }
 
   bool toggleCompanionWiFi() {
@@ -2156,6 +2166,15 @@ void loop() {
 #if defined(ESP32) && defined(WIFI_SSID)
   #ifdef WITH_WEBCONFIG
     the_mesh.serviceWebConfig();
+    if (companion_wifi_setup_requested) {
+      companion_wifi_setup_requested = false;
+      if (companion_wifi_requested) {
+        char web_reply[160];
+        if (!the_mesh.startWebConfig(true, web_reply)) {
+          WIFI_DEBUG_PRINTLN("Display WiFi setup request: %s", web_reply);
+        }
+      }
+    }
   #endif
   serviceCompanionWiFiCredentialReload();
   serviceCompanionWiFiState();
