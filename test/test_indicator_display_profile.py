@@ -36,6 +36,24 @@ def numeric_flag(name: str) -> float:
 
 
 class IndicatorDisplayProfileTest(unittest.TestCase):
+    def test_preserves_original_indicator_memory_profile(self):
+        profile = base_profile()
+        self.assertIn("board_build.arduino.memory_type = qio_opi", profile)
+        self.assertIn("board_build.psram_type = opi", profile)
+        self.assertIn("board_upload.flash_size = 8MB", profile)
+
+    def test_n16r2_profile_uses_quad_psram_and_full_flash(self):
+        profile = PROFILE.read_text()
+        start = profile.index(
+            "[env:SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi]"
+        )
+        n16r2 = profile[start:]
+        self.assertIn("board_build.arduino.memory_type = qio_qspi", n16r2)
+        self.assertIn("board_build.psram_type = qspi", n16r2)
+        self.assertIn("board_upload.flash_size = 16MB", n16r2)
+        self.assertIn("board_upload.maximum_size = 16777216", n16r2)
+        self.assertIn("dual_ota_6400k_preserve_spiffs.csv", n16r2)
+
     def test_preserves_logical_ui_and_fills_panel(self):
         panel_size = 480
         zoom = numeric_flag("UI_ZOOM")

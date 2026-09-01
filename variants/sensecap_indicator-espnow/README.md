@@ -178,10 +178,17 @@ agreeing sources from signed adverts or authenticated Public-channel messages;
 one repeated sender cannot set the clock alone. A successful Companion or
 local CLI time update always wins and disables the LoRa fallback until reboot.
 
-The combined image uses two 2.5 MiB OTA application slots. Its partition map
-keeps the prior NVS and SPIFFS addresses, so installing the partition table and
-application over an existing Indicator preserves identity, channels, radio
-settings, and saved WiFi credentials.
+The original combined image uses two 2.5 MiB OTA application slots. Its
+partition map keeps the prior NVS and SPIFFS addresses, so installing the
+partition table and application over an existing Indicator preserves identity,
+channels, radio settings, and saved WiFi credentials.
+
+Some later LoRa units, including Mercer, report an ESP32-S3-WROOM-1-N16R2:
+16 MiB flash with 2 MiB quad PSRAM. Use
+`SenseCapIndicator-LoRa-N16R2_companion_radio_full` for those boards. Its
+factory-compatible map provides two 6.25 MiB OTA slots while retaining the
+NVS, SPIFFS, and coredump offsets. Do not install this image on the original
+8 MiB/octal-PSRAM Indicator; PSRAM line mode cannot be runtime-detected.
 
 ## SD-backed font
 
@@ -194,9 +201,9 @@ per second. See
 [`../../tools/sensecap_indicator_rp2040/README.md`](../../tools/sensecap_indicator_rp2040/README.md)
 for installation and diagnostics.
 
-Both Full Companion layouts, `SenseCapIndicator-LoRa_companion_radio_full` and
-`SenseCapIndicator-ESPNow_companion_radio_full`, can repair a missing, corrupt,
-or older font after station WiFi connects. The LoRa USB/WiFi base profile has
+All Indicator Full Companion layouts, including the N16R2 variant, can repair
+a missing, corrupt, or older font after station WiFi connects. The LoRa
+USB/WiFi base profile has
 the same recovery support; USB-only images omit it. Startup never waits for the
 network: the UI uses its built-in font while a bounded background task fetches
 the 1,302,608-byte asset from GitHub's official, content-addressed Git Blob REST

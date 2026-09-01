@@ -18,6 +18,10 @@ INDICATOR_PARTITIONS = (
     "variants/sensecap_indicator-espnow/"
     "dual_ota_2560k_preserve_spiffs.csv"
 )
+INDICATOR_N16R2_PARTITIONS = (
+    "variants/sensecap_indicator-espnow/"
+    "dual_ota_6400k_preserve_spiffs.csv"
+)
 
 
 class FakeBoardConfig:
@@ -89,6 +93,27 @@ class Esp32FullPartitionTest(unittest.TestCase):
         self.assertIn(("build.partitions", INDICATOR_PARTITIONS), board.updates)
         self.assertEqual(board.values["build.flash_mode"], "dio")
         self.assertIn(INDICATOR_PARTITIONS, output)
+
+    def test_n16r2_retains_factory_six_megabyte_ota_slots(self):
+        profile = INDICATOR_PROFILE.read_text()
+        self.assertIn(
+            f"board_build.partitions = {INDICATOR_N16R2_PARTITIONS}", profile
+        )
+        table = (ROOT / INDICATOR_N16R2_PARTITIONS).read_text()
+        self.assertIn("app0,     app,  ota_0,   0x10000,  0x640000", table)
+        self.assertIn("app1,     app,  ota_1,   0x650000, 0x640000", table)
+        self.assertIn("spiffs,   data, spiffs,  0xc90000, 0x360000", table)
+        board, output = apply_policy(
+            {
+                "upload.flash_size": "16MB",
+                "build.mcu": "esp32s3",
+                "build.partitions": INDICATOR_N16R2_PARTITIONS,
+            }
+        )
+        self.assertEqual(
+            board.values["build.partitions"], INDICATOR_N16R2_PARTITIONS
+        )
+        self.assertIn(INDICATOR_N16R2_PARTITIONS, output)
 
     def test_absolute_indicator_partition_path_is_also_preserved(self):
         absolute = str(ROOT / INDICATOR_PARTITIONS)

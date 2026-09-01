@@ -9,6 +9,7 @@ import os
 # board's persistent data.
 PRESERVED_FULL_PARTITION_TABLES = {
     "variants/sensecap_indicator-espnow/dual_ota_2560k_preserve_spiffs.csv",
+    "variants/sensecap_indicator-espnow/dual_ota_6400k_preserve_spiffs.csv",
 }
 
 

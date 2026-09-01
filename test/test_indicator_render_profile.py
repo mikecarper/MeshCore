@@ -318,6 +318,11 @@ printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
             "SenseCapIndicator-LoRa_companion_radio_full'",
             build,
         )
+        self.assertIn(
+            "'SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi|"
+            "SenseCapIndicator-LoRa-N16R2_companion_radio_full'",
+            build,
+        )
 
 
 if __name__ == "__main__":

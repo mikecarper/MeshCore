@@ -339,6 +339,7 @@ Heltec_E290_companion_usb_ble|Heltec_E290_companion_radio_full|Heltec_E290_compa
 Heltec_T190_companion_radio_usb_ble_|Heltec_T190_companion_radio_full_|Heltec_T190_companion_radio_usb_ble_
 SenseCapIndicator-ESPNow_comp_radio_usb|SenseCapIndicator-ESPNow_companion_radio_full|SenseCapIndicator-ESPNow_comp_radio_usb
 SenseCapIndicator-LoRa_comp_radio_usb_wifi|SenseCapIndicator-LoRa_companion_radio_full|SenseCapIndicator-LoRa_comp_radio_usb_wifi
+SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi|SenseCapIndicator-LoRa-N16R2_companion_radio_full|SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi
 FULL_COMPANION_SPECS
 
 # The Full overlay, not the historical transport used as its build base, owns
@@ -375,6 +376,13 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
       [ "${MESHCORE_ESP32_FULL_PARTITION_TABLE:-}" \
           = "variants/sensecap_indicator-espnow/dual_ota_2560k_preserve_spiffs.csv" ] \
         || fail "$full_env omitted the Indicator preserve-SPIFFS table"
+      [[ "$PLATFORMIO_BUILD_FLAGS" == *"INDICATOR_WIFI_FONT_RECOVERY=1"* ]] \
+        || fail "$full_env omitted WiFi font recovery"
+      ;;
+    sensecapindicator-lora-n16r2_companion_radio_full)
+      [ "${MESHCORE_ESP32_FULL_PARTITION_TABLE:-}" \
+          = "variants/sensecap_indicator-espnow/dual_ota_6400k_preserve_spiffs.csv" ] \
+        || fail "$full_env omitted the N16R2 preserve-SPIFFS table"
       [[ "$PLATFORMIO_BUILD_FLAGS" == *"INDICATOR_WIFI_FONT_RECOVERY=1"* ]] \
         || fail "$full_env omitted WiFi font recovery"
       ;;

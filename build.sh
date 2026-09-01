@@ -480,6 +480,7 @@ for section, options in data:
       'Heltec_T190_companion_radio_usb_ble_|Heltec_T190_companion_radio_full_'
       'SenseCapIndicator-ESPNow_comp_radio_usb|SenseCapIndicator-ESPNow_companion_radio_full'
       'SenseCapIndicator-LoRa_comp_radio_usb_wifi|SenseCapIndicator-LoRa_companion_radio_full'
+      'SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi|SenseCapIndicator-LoRa-N16R2_companion_radio_full'
     )
     local -a qualified_nrf52_full_companion_bases=(
       GAT562_Mesh_Watch13_companion_radio_ble
@@ -3420,6 +3421,13 @@ apply_companion_radio_full_profile() {
       # than to whichever historical USB/WiFi environment supplies the recipe.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DINDICATOR_WIFI_FONT_RECOVERY=1"
       ;;
+    sensecapindicator-lora-n16r2_companion_radio_full)
+      export MESHCORE_ESP32_FULL_PARTITION_TABLE="variants/sensecap_indicator-espnow/dual_ota_6400k_preserve_spiffs.csv"
+      # Both physical Indicator radio layouts gain ordinary WiFi in their Full
+      # overlay. Keep font recovery tied to that effective capability rather
+      # than to whichever historical USB/WiFi environment supplies the recipe.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DINDICATOR_WIFI_FONT_RECOVERY=1"
+      ;;
   esac
 
   # Both Indicator Full layouts select exactly one secondary Companion
@@ -3428,7 +3436,8 @@ apply_companion_radio_full_profile() {
   # mode can release Bluetooth memory without disturbing ESP-NOW.
   case "${env_name,,}" in
     sensecapindicator-espnow_companion_radio_full|\
-    sensecapindicator-lora_companion_radio_full)
+    sensecapindicator-lora_companion_radio_full|\
+    sensecapindicator-lora-n16r2_companion_radio_full)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DINDICATOR_TRANSPORT_RENDER_PROFILE=1 -DUI_WIFI_SETUP_HOME_PAGE=1 -DWEBCONFIG_AP_PREFIX='\"MC-Set\"'"
       ;;
   esac
@@ -3438,7 +3447,8 @@ apply_companion_radio_full_profile() {
   # every other combination retains native 480x480 rendering.
   case "${env_name,,}" in
     sensecapindicator-espnow_companion_radio_full|\
-    sensecapindicator-lora_companion_radio_full)
+    sensecapindicator-lora_companion_radio_full|\
+    sensecapindicator-lora-n16r2_companion_radio_full)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UUI_ZOOM -DUI_ZOOM=1.0f -UUI_COORD_SCALE -DUI_COORD_SCALE=3"
       ;;
   esac
@@ -4165,6 +4175,9 @@ get_esp32_full_companion_replacement() {
       ;;
     sensecapindicator-espnow_comp_radio_*)
       full_env=SenseCapIndicator-ESPNow_companion_radio_full
+      ;;
+    sensecapindicator-lora-n16r2_comp_radio_*)
+      full_env=SenseCapIndicator-LoRa-N16R2_companion_radio_full
       ;;
     sensecapindicator-lora_comp_radio_*)
       full_env=SenseCapIndicator-LoRa_companion_radio_full
