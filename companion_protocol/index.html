@@ -2897,7 +2897,7 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 <tr>
 <td><code>0x4A</code></td>
 <td><code>CMD_EXEC_LOCAL_OTA_CONTROL</code></td>
-<td>Run one bounded local TempRadio or OTA command on a Full Companion.</td>
+<td>Run one bounded local TempRadio or OTA command when the Companion includes the OTA CLI.</td>
 </tr>
 <tr>
 <td><code>0x4B</code></td>
@@ -3073,13 +3073,15 @@ Companion transport per boot. Their active-mode constraints are:</p>
 value is rejected. (<code>clear</code> is also accepted as an alias for <code>default</code>.) A
 custom name is limited to 31 valid UTF-8 bytes and takes effect after reboot.</p>
 <h3 id="bluetooth-lora-mota-source">Bluetooth LoRa mOTA source</h3>
-<p>Protocol v14 lets a phone use an nRF52 Full Companion as the source for a
+<p>Protocol v14 lets a phone control an install-capable Companion's own LoRa OTA
+session. An nRF52 Full Companion can additionally act as the source for a
 remote repeater update without a USB computer. The normal Companion service
 still carries contacts, repeater login, CLI messages, and these two control
 commands. The separate mOTA service carries only host-folder request/response
 frames.</p>
 <p><code>CMD_EXEC_LOCAL_OTA_CONTROL</code> (<code>0x4A</code>) is followed by 1-174 printable ASCII
-bytes. Full Companion accepts only these local command families:</p>
+bytes. A Companion built with the OTA CLI accepts only these local command
+families:</p>
 <pre><code class="language-text">tempradio &lt;freq_kHz&gt;,&lt;bw_kHz&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;minutes&gt;
 normalradio
 ota ...
@@ -3091,7 +3093,7 @@ return <code>ERR_CODE_ILLEGAL_ARG</code>. A recognized command replies with
 <code>RESP_CODE_OK</code>, one unsigned reply-length byte, and exactly that many printable
 result bytes. Shell metacharacters are rejected as well; the text is dispatched
 only to the in-firmware parser and is never passed to a host shell. Firmware
-without the Full Companion feature returns <code>ERR_CODE_UNSUPPORTED_CMD</code>.</p>
+without the OTA CLI feature returns <code>ERR_CODE_UNSUPPORTED_CMD</code>.</p>
 <p><code>CMD_BLE_MOTA_SOURCE</code> (<code>0x4B</code>) has one action byte:</p>
 <table>
 <thead>

@@ -1480,7 +1480,7 @@ and partition policy:</p>
 <tbody>
 <tr>
 <td><code>auto</code></td>
-<td>For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other repeaters attempt the complete recipe in their current application region. A measured flash/partition overflow starts the standard <code>no_external_sensors</code> LoRa OTA pass. Internal-flash nRF52 repeaters publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD repeaters do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract.</td>
+<td>For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other repeaters attempt the complete recipe in their current application region. A non-repeater keeps every capability declared by its resolved PlatformIO recipe, including LoRa OTA, and fails instead of silently removing one that does not fit. A measured repeater flash/partition overflow starts the standard <code>no_external_sensors</code> LoRa OTA pass. Internal-flash nRF52 repeaters publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD repeaters do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract.</td>
 </tr>
 <tr>
 <td><code>standard</code></td>
@@ -1498,7 +1498,8 @@ logical OTA target, actual PlatformIO base, artifact name target, promised
 capabilities, and every reduction selected by the script. The build
 fails if a promised linked marker is absent. Current invariants include
 <code>retry.preset</code> for repeater/room-server roles, WebConfig for the Indicator and
-ESP32 Full Companion, TempRadio/mOTA controls for Full Companion, and the
+ESP32 Full Companion, TempRadio/OTA controls for install-capable Companions,
+host-mOTA controls for Full Companion, and the
 advanced flood-rule engine for Full room servers. Resume mode will not accept
 an old or failed artifact without a verified sidecar.</p>
 <h2 id="role-comes-first">Role comes first</h2>
