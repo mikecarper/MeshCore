@@ -255,7 +255,7 @@ body.tab-cli{padding-bottom:0}
       <div class="f"><label>Network name (SSID)</label>
         <div class="row" style="gap:8px">
           <input type="text" data-k="wifi.ssid" id="wz-ssid" autocapitalize="off" autocorrect="off" style="flex:1">
-          <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('wz-ssid')">Scan</button>
+          <button class="btn sec" id="wz-scan-btn" type="button" aria-controls="scan-panel" aria-expanded="false" onmousedown="event.preventDefault()" onclick="openScan('wz-ssid')">Scan</button>
         </div></div>
       <div class="f"><label>Password</label>
         <div class="pwrow">
@@ -504,7 +504,7 @@ body.tab-cli{padding-bottom:0}
       <div class="f"><label>Network name (SSID)</label>
         <div class="row" style="gap:8px">
           <input type="text" data-k="wifi.ssid" id="app-ssid" autocapitalize="off" autocorrect="off" style="flex:1">
-          <button class="btn sec" type="button" onmousedown="event.preventDefault()" onclick="openScan('app-ssid')">Scan</button>
+          <button class="btn sec" id="app-scan-btn" type="button" aria-controls="scan-panel" aria-expanded="false" onmousedown="event.preventDefault()" onclick="openScan('app-ssid')">Scan</button>
         </div></div>
       <div class="f"><label>Password</label>
         <div class="pwrow">
@@ -579,11 +579,11 @@ body.tab-cli{padding-bottom:0}
 </div>
 
 <!-- inline scan panel: moved under whichever SSID field requested it -->
-<div class="scanpanel hide" id="scan-panel">
+<div class="scanpanel hide" id="scan-panel" role="region" aria-label="Nearby WiFi networks" aria-hidden="true">
   <div class="sp-head">Nearby networks<span style="flex:1"></span>
     <button class="btn sec sm" type="button" onmousedown="event.preventDefault()" onclick="startScan(true)">Rescan</button>
     <button class="btn sec sm" type="button" onmousedown="event.preventDefault()" onclick="closeScan()">Close</button></div>
-  <div id="scan-list"><div style="text-align:center;padding:18px"><span class="spin"></span></div></div>
+  <div id="scan-list" aria-live="polite" aria-busy="true"><div style="text-align:center;padding:18px"><span class="spin"></span></div></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -617,7 +617,7 @@ body.tab-cli{padding-bottom:0}
 <script>
 "use strict";
 var SENTINEL="********";
-var st={mode:"",authed:false,hasMqtt:false,hasCli:false,wifiPsk64:false,passwordSupported:false,needsPassword:false,radioOptional:false,skipRadio:false,skipMqtt:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0};
+var st={mode:"",authed:false,hasMqtt:false,hasCli:false,wifiPsk64:false,passwordSupported:false,needsPassword:false,radioOptional:false,skipRadio:false,skipMqtt:false,caps:0,cfg:null,orig:{},dirty:{},presets:[],nslots:0,statsTimer:0,hist:{heap:[],noise:[]},scanTarget:"",scanTimer:0,scanEpoch:0,configEpoch:0,wizardScanOpened:false,configLoadCapture:null,wifiPasswordAutoCleared:false};
 
 function $(s){return document.querySelector(s)}
 function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
@@ -813,6 +813,62 @@ function setEl(el,v){
   if(el.type==="checkbox")el.checked=(v==="on");
   else el.value=v;
 }
+function restoreConfigLoadEdits(capture){
+  if(!capture)return;
+  var owns=Object.prototype.hasOwnProperty;
+  // An early scan choice can happen before the masked stored password arrives.
+  // In that case the click handler saw an empty field and had nothing to clear;
+  // turn the newly loaded sentinel into an explicit empty password here unless
+  // the operator also entered (or deliberately cleared) a password meanwhile.
+  if(owns.call(capture.values,"wifi.ssid")
+      &&capture.values["wifi.ssid"]!==st.orig["wifi.ssid"]
+      &&!owns.call(capture.values,"wifi.pwd")
+      &&st.orig["wifi.pwd"]===SENTINEL){
+    capture.values["wifi.pwd"]="";
+    capture.wifiPasswordAutoCleared=true;
+  }
+  // Preserve why an empty password was captured. A config refresh resets the
+  // live marker before replaying edits; without this metadata, returning to the
+  // original SSID would leave an automatic clear looking like a deliberate one.
+  if(capture.wifiPasswordAutoCleared===true
+      &&capture.values["wifi.pwd"]===""){
+    var capturedSsid=owns.call(capture.values,"wifi.ssid")
+      ?capture.values["wifi.ssid"]:st.orig["wifi.ssid"];
+    if(capturedSsid===st.orig["wifi.ssid"]&&st.orig["wifi.pwd"]===SENTINEL){
+      capture.values["wifi.pwd"]=SENTINEL;
+      capture.wifiPasswordAutoCleared=false;
+    }else if(capturedSsid!==st.orig["wifi.ssid"]){
+      st.wifiPasswordAutoCleared=true;
+    }
+  }
+  Object.keys(capture.values).forEach(function(k){
+    var v=capture.values[k],dirty=v!==st.orig[k];
+    $$('[data-k]').forEach(function(el){
+      if(el.dataset.k===k){setEl(el,v);el.classList.toggle("dirty",dirty)}
+    });
+    if(dirty)st.dirty[k]=v;else delete st.dirty[k];
+  });
+  Object.keys(capture.confirms).forEach(function(k){
+    $$('[data-cfm]').forEach(function(el){if(el.dataset.cfm===k)el.value=capture.confirms[k]})
+  });
+  if(capture.radio){
+    // Replay only radio fields the operator actually touched. Untouched fields
+    // may still have been blank or at DOM defaults while /api/config was in
+    // flight, so capturing the whole tuple would overwrite the server values.
+    Object.keys(capture.radio).forEach(function(k){
+      var el=$('[data-rg="'+k+'"]');if(el)setEl(el,capture.radio[k]);
+    });
+    var restoredRadio=radioCombo(),radioDirty=!comboEq(restoredRadio,st.orig.radio);
+    $$('[data-rg]').forEach(function(el){el.classList.toggle("dirty",radioDirty)});
+    if(radioDirty)st.dirty.radio=restoredRadio;else delete st.dirty.radio;
+  }
+  if(capture.rxps){
+    Object.keys(capture.rxps).forEach(function(k){
+      var el=$('[data-rxps="'+k+'"]');if(el)setEl(el,capture.rxps[k]);
+    });
+    refreshRxps(true);
+  }
+}
 function rxpsCfgValue(r){
   if(!r.rxps_enabled)return"off";
   var level=Number(r.rxps_level)||0,preamble=Number(r.rxps_preamble)||0;
@@ -854,9 +910,15 @@ function radioCombo(){
   var p={};$$("[data-rg]").forEach(function(el){p[el.dataset.rg]=el.value});
   return p.freq+","+p.bw+","+p.sf+","+p.cr;
 }
-function loadConfig(){
+function loadConfig(loadCapture){
+  var epoch=++st.configEpoch;
+  if(loadCapture)loadCapture.loadEpoch=epoch;
   return api("/api/config").then(function(c){
+    // A newer view/load owns the form now. Do not let this response reset its
+    // baseline or discard edits simply because the older request finished last.
+    if(epoch!==st.configEpoch)return false;
     st.cfg=c;st.orig={};st.dirty={};st.skipRadio=false;st.skipMqtt=false;
+    st.wifiPasswordAutoCleared=false;
     if(st.hasMqtt){buildSlots("#app-slots");buildSlots("#wz-slots")}
     $$("[data-k]").forEach(function(el){
       var k=el.dataset.k,v=cfgVal(k);
@@ -869,7 +931,12 @@ function loadConfig(){
     st.orig.radio=radioCombo();afHint();
     for(var i=1;i<=st.nslots;i++){refreshSlotFields($("#app-slots"),i);refreshSlotFields($("#wz-slots"),i)}
     syncPacketFilters();
+    // The wizard is deliberately visible while this local request runs. Replay
+    // any values the operator changed meanwhile against the newly loaded
+    // baseline instead of silently replacing their selection or typing.
+    restoreConfigLoadEdits(loadCapture);
     updateSaveBar();
+    return true;
   });
 }
 function markDirty(k,v,el){
@@ -888,6 +955,10 @@ function afHint(){
 }
 document.addEventListener("input",function(ev){
   var el=ev.target;
+  if(el.dataset.k==="wifi.pwd"&&!ev.meshAutoWiFiPassword)st.wifiPasswordAutoCleared=false;
+  // Typed SSIDs follow the same safety rule as scan selections. A masked value
+  // means "retain the old network's secret" and must not follow a new network.
+  if(el.dataset.k==="wifi.ssid")clearInheritedWiFiPassword(el.id,elVal(el));
   if(el.dataset.rxps){
     refreshRxps(true);
   }else if(el.dataset.k){
@@ -906,6 +977,24 @@ document.addEventListener("input",function(ev){
       s.value=m>=0?String(m):(("radio" in st.dirty)?"keep":s.value);
     }
   }
+  var capture=st.configLoadCapture;
+  if(capture&&el.closest&&el.closest(capture.root)){
+    if(el.dataset.k){
+      capture.values[el.dataset.k]=elVal(el);
+      if(el.dataset.k==="wifi.pwd"){
+        capture.wifiPasswordAutoCleared=!!ev.meshAutoWiFiPassword&&elVal(el)==="";
+      }
+    }
+    else if(el.dataset.cfm)capture.confirms[el.dataset.cfm]=el.value;
+    else if(el.dataset.rg){
+      if(!capture.radio)capture.radio={};
+      capture.radio[el.dataset.rg]=elVal(el);
+    }
+    else if(el.dataset.rxps){
+      if(!capture.rxps)capture.rxps={};
+      capture.rxps[el.dataset.rxps]=elVal(el);
+    }
+  }
 });
 function updateSaveBar(){
   var n=Object.keys(st.dirty).length;
@@ -913,7 +1002,7 @@ function updateSaveBar(){
   $("#savebar").classList.toggle("show",n>0&&appVisible);
   $("#save-n").textContent=n+(n===1?" change":" changes");
 }
-function revertAll(){loadConfig().then(function(){toast("Reverted")})}
+function revertAll(){loadConfig().then(function(applied){if(applied)toast("Reverted")})}
 
 /* ---------- slots ---------- */
 // maxlength per destination MQTTPrefs buffer minus the NUL (host[64],
@@ -1211,8 +1300,15 @@ function loadConfigSoft(){ // re-sync origin values without clobbering result ch
 
 /* ---------- tabs / app ---------- */
 function enterApp(){
+  var capture={root:"#v-app",values:{},confirms:{}};
+  st.configLoadCapture=capture;
   show("#v-app");
-  loadConfig().catch(function(e){if(e.message!=="auth")toast("Failed to load config")});
+  loadConfig(capture).then(function(){
+    if(st.configLoadCapture===capture)st.configLoadCapture=null;
+  }).catch(function(e){
+    if(st.configLoadCapture===capture)st.configLoadCapture=null;
+    if(e.message!=="auth")toast("Failed to load config")
+  });
 }
 // Setup-mode shortcut: straight past the guided steps into the terminal, for
 // operators who already have a config to paste. Setup mode authenticates by
@@ -1302,6 +1398,9 @@ function dropKeyboard(target){
   if(ae&&ae!==document.body&&ae.blur)ae.blur();
 }
 function openScan(target){
+  // A manual tap while the wizard is still loading also fulfils its one-time
+  // automatic open; do not reopen a panel the operator already closed.
+  if(target==="wz-ssid")st.wizardScanOpened=true;
   st.scanTarget=target;
   // Move the panel into the flow right below the target SSID field: iOS
   // keeps the focused field visible above the keyboard, so the panel under
@@ -1309,35 +1408,80 @@ function openScan(target){
   var el=document.getElementById(target),panel=$("#scan-panel");
   var f=el&&el.closest(".f");
   if(f&&f.parentNode)f.parentNode.insertBefore(panel,f.nextSibling);
-  panel.classList.remove("hide");
+  panel.classList.remove("hide");panel.setAttribute("aria-hidden","false");
+  $("#wz-scan-btn").setAttribute("aria-expanded",target==="wz-ssid"?"true":"false");
+  $("#app-scan-btn").setAttribute("aria-expanded",target==="app-ssid"?"true":"false");
   // best-effort keyboard drop (works in real Safari; the CNA sheet ignores it)
   dropKeyboard(target);
   setTimeout(function(){dropKeyboard(target)},150);
   startScan(false)}
-function closeScan(){$("#scan-panel").classList.add("hide");clearTimeout(st.scanTimer)}
+function closeScan(){
+  $("#scan-panel").classList.add("hide");
+  $("#scan-panel").setAttribute("aria-hidden","true");
+  $("#wz-scan-btn").setAttribute("aria-expanded","false");
+  $("#app-scan-btn").setAttribute("aria-expanded","false");
+  clearTimeout(st.scanTimer);st.scanTimer=0;
+  st.scanEpoch++;
+}
 function startScan(force){
+  clearTimeout(st.scanTimer);st.scanTimer=0;
+  var epoch=++st.scanEpoch;
+  $("#scan-list").setAttribute("aria-busy","true");
   $("#scan-list").innerHTML='<div style="text-align:center;padding:18px"><span class="spin"></span></div>';
-  pollScan(force?"/api/scan?rescan=1":"/api/scan");
+  pollScan(force?"/api/scan?rescan=1":"/api/scan",epoch);
 }
 function bars(rssi){var n=rssi>-55?4:rssi>-67?3:rssi>-78?2:1;var o="";
   for(var i=1;i<=4;i++)o+='<span style="display:inline-block;width:3px;margin-right:1px;border-radius:1px;height:'+(3+i*3)+'px;background:'+(i<=n?"var(--acc)":"var(--line)")+'"></span>';
   return'<span style="display:inline-flex;align-items:flex-end;height:15px">'+o+"</span>"}
-function pollScan(url){
+function pollScan(url,epoch){
+  if(epoch!==st.scanEpoch)return;
   api(url).then(function(r){
-    if(r.state==="scanning"){st.scanTimer=setTimeout(function(){pollScan("/api/scan")},1500);return}
+    if(epoch!==st.scanEpoch)return;
+    if(r.state==="scanning"){st.scanTimer=setTimeout(function(){pollScan("/api/scan",epoch)},1500);return}
     var nets=(r.networks||[]).filter(function(n){return n.ssid});
     nets.sort(function(a,b){return b.rssi-a.rssi});
     var seen={};nets=nets.filter(function(n){if(seen[n.ssid])return false;seen[n.ssid]=1;return true});
+    $("#scan-list").setAttribute("aria-busy","false");
     $("#scan-list").innerHTML=nets.length?nets.map(function(n){
       return'<button type="button" class="net" data-ssid="'+esc(n.ssid)+'" data-channel="'+esc(n.channel||"")+'">'+bars(n.rssi)
         +'<span class="ss">'+esc(n.ssid)+"</span>"+(n.enc?"&#128274;":"")+"<small>ch "+esc(n.channel||"?")+" &middot; "+n.rssi+"</small></button>";
     }).join(""):'<p style="color:var(--mut);padding:12px">No networks found.</p>';
-  }).catch(function(){$("#scan-list").innerHTML='<p style="color:var(--mut);padding:12px">Scan failed.</p>'});
+  }).catch(function(){
+    if(epoch!==st.scanEpoch)return;
+    $("#scan-list").setAttribute("aria-busy","false");
+    $("#scan-list").innerHTML='<p style="color:var(--mut);padding:12px">Scan failed.</p>'
+  });
+}
+function clearInheritedWiFiPassword(target,nextSsid){
+  var pwdId=target==="wz-ssid"?"wz-wifi-pwd":target==="app-ssid"?"app-wifi-pwd":"";
+  var pwd=pwdId&&document.getElementById(pwdId);
+  // The sentinel means "keep the stored secret". It is valid only while the
+  // stored SSID is retained; carrying it to another SSID silently pairs that
+  // network with the previous network's password.
+  if(!pwd)return;
+  if(nextSsid===st.orig["wifi.ssid"]){
+    if(st.wifiPasswordAutoCleared&&pwd.value===""){
+      st.wifiPasswordAutoCleared=false;
+      pwd.value=SENTINEL;
+      var restoreEvent=new Event("input",{bubbles:true});
+      restoreEvent.meshAutoWiFiPassword=true;
+      pwd.dispatchEvent(restoreEvent);
+    }
+    return;
+  }
+  if(pwd.value!==SENTINEL)return;
+  st.wifiPasswordAutoCleared=true;
+  pwd.value="";
+  var clearEvent=new Event("input",{bubbles:true});
+  clearEvent.meshAutoWiFiPassword=true;
+  pwd.dispatchEvent(clearEvent);
 }
 $("#scan-list").addEventListener("click",function(ev){
   var b=ev.target.closest(".net");if(!b)return;
   var el=document.getElementById(st.scanTarget);
-  el.value=b.dataset.ssid;
+  var selected=b.dataset.ssid;
+  clearInheritedWiFiPassword(st.scanTarget,selected);
+  el.value=selected;
   el.dispatchEvent(new Event("input",{bubbles:true}));
   var channel=Number(b.dataset.channel);
   if((st.caps&32768)&&channel>=1&&channel<=13&&Math.floor(channel)===channel){
@@ -1415,9 +1559,29 @@ function wzRadioSel(sel){
   sel.classList.toggle("dirty",combo!==st.orig.radio);
   markDirty("radio",combo);
 }
+function openWizardScanOnce(){
+  if(st.wizardScanOpened)return;
+  st.wizardScanOpened=true;
+  // Setup mode starts the hardware scan while bringing up its AP. Poll that
+  // scan through the existing inline picker (without forcing a second scan),
+  // and leave SSID/password fields untouched until a network is selected.
+  openScan("wz-ssid");
+}
 function showWizard(){
+  var capture={root:"#v-wizard",values:{},confirms:{}};
+  st.configLoadCapture=capture;
   show("#v-wizard");
-  loadConfig().then(wzRadioFill).catch(function(){});
+  // Initialize stored credentials first so a late config reply cannot replace
+  // text entered after the automatically opened scan panel appears.
+  loadConfig(capture).then(function(applied){
+    if(st.configLoadCapture===capture)st.configLoadCapture=null;
+    if(!applied)return;
+    wzRadioFill();openWizardScanOnce()
+  }).catch(function(){
+    var current=st.configEpoch===capture.loadEpoch;
+    if(st.configLoadCapture===capture)st.configLoadCapture=null;
+    if(current)openWizardScanOnce()
+  });
 }
 function wzGo(n){
   if(!st.hasMqtt&&n===3)n=4;
@@ -1500,7 +1664,8 @@ function buildReview(){
   var rows=[],d=st.dirty;
   function row(l,v){rows.push('<div class="kv"><i>'+l+"</i><b>"+esc(v)+"</b></div>")}
   row("WiFi network",d["wifi.ssid"]||st.orig["wifi.ssid"]||"(not set)");
-  row("WiFi password",d["wifi.pwd"]?"******":(st.orig["wifi.pwd"]?"(unchanged)":"(open network)"));
+  var pwdChanged=Object.prototype.hasOwnProperty.call(d,"wifi.pwd");
+  row("WiFi password",pwdChanged?(d["wifi.pwd"]?"******":"(open network)"):(st.orig["wifi.pwd"]?"(unchanged)":"(open network)"));
   if(st.caps&32768)row("ESP-NOW / WiFi channel","Channel "+eff("espnow.channel")+(d["espnow.channel"]?" (reboot required)":""));
   if(d.name||st.orig.name)row("Node name",d.name||st.orig.name);
   var rc=d.radio||st.orig.radio||"",rp=null;

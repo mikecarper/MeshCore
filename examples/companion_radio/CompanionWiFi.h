@@ -65,11 +65,18 @@ enum class CompanionWiFiDisplayState : uint8_t {
 // distinguish network state from a stale or incorrect LCD frame.
 void noteCompanionWiFiDisplayState(CompanionWiFiDisplayState state);
 void formatCompanionWiFiDisplayStatus(char* reply, size_t reply_size);
+#ifdef WITH_WEBCONFIG
+// Use Companion ownership state when formatting an otherwise ambiguous idle or
+// disconnected station; WebConfig being stopped does not mean WiFi is off.
+void formatCompanionWiFiStatus(char* reply, size_t reply_size);
+#endif
 
-// A display callback only queues this request. The main loop owns the actual
-// WebConfig/WiFi transition so touch handling never tears down network services
-// from the UI task.
+// Display callbacks only queue these requests. The main loop owns the actual
+// WebConfig/WiFi transitions so input handling never tears down network
+// services from the UI task. Neither request changes the saved WebUI or WiFi
+// preference; the setup AP is controlled only for the current boot session.
 void requestCompanionWiFiSetup();
+void requestCompanionWiFiSetupStop();
 
 // Reload saved credentials after a text-terminal update. The reconnect is
 // deferred so the command reply can leave USB/TCP before WiFi is restarted.

@@ -5,6 +5,7 @@
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include <helpers/CompanionStatusResponse.h>
 #include <helpers/IdentityGeneration.h>
+#include <helpers/StorageLayout.h>
 #include <helpers/UsbAsciiBinarySwitch.h>
 #include <helpers/UsbLogging.h>
 #include "helpers/radiolib/RXPowerSaving.h"
@@ -2118,6 +2119,12 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
+  if (strncmp(command, "get ", 4) == 0 &&
+      mesh::cli::handleStorageLayoutGet(command + 4, board, reply,
+                                        reply_size)) {
+    return true;
+  }
+
   if (strcmp(command, "get pwrmgt.bootreason") == 0
       || strcmp(command, "powerlog") == 0) {
     if (!board.isPowerManagementInitialized()) {
@@ -2396,7 +2403,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         WebConfigServer::formatWiFiSSID(reply, reply_size);
         return true;
       case mesh::cli::StandaloneWiFiKey::Status:
-        WebConfigServer::formatWiFiStatus(reply, reply_size);
+        formatCompanionWiFiStatus(reply, reply_size);
         return true;
       case mesh::cli::StandaloneWiFiKey::CLI:
         // Companion WebConfig deliberately has no browser command terminal:
@@ -3300,6 +3307,22 @@ void MyMesh::clearPendingReqs() {
 bool MyMesh::hasPendingReqs() const {
   return pending_login != 0 || pending_status != 0 || pending_telemetry != 0
       || pending_discovery != 0 || pending_req != 0;
+}
+
+bool MyMesh::hasFiniteDelayedReplyForRoute(BaseSerialInterface* route) const {
+  if (route == NULL) return false;
+  if (pending_serial_reply_route == route
+      || (command_radio_apply_pending && command_radio_reply_route == route)
+      || (binary_trace_pending && binary_trace_reply_route == route)) {
+    return true;
+  }
+  for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; ++i) {
+    if (expected_ack_table[i].ack != 0
+        && expected_ack_table[i].reply_route == route) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void MyMesh::servicePendingSerialReply() {
@@ -6331,6 +6354,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("Commands:\r\n");
     terminalOutput().print("  board\r\n");
     terminalOutput().print("  version\r\n");
+    terminalOutput().print("  get storage.layout\r\n");
     terminalOutput().print("  get pwrmgt.bootreason\r\n");
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
     terminalOutput().print("  memory\r\n");

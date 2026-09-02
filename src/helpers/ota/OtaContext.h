@@ -23,10 +23,15 @@
 #if defined(OTA_FOLDER_SERIAL)
   #include "MotaSourceSerial.h"   // relay an external folder served by a host daemon over the USB serial
   #ifndef OTA_FOLDER_SERIAL_STREAM
-    #if defined(NRF52_PLATFORM)
-      // Adafruit's CDC write waits while an open host stops reading. Every
-      // default nRF52 serial-folder request uses a whole-record facade over one
-      // TinyUSB attempt; dedicated-UART overrides retain their normal stream.
+    #if defined(NRF52_PLATFORM) \
+        || (defined(ESP32) && defined(ARDUINO_USB_MODE) \
+            && ARDUINO_USB_MODE == 1 \
+            && defined(ARDUINO_USB_CDC_ON_BOOT) \
+            && ARDUINO_USB_CDC_ON_BOOT \
+            && defined(ENABLE_USB_INTERFACE))
+      // Native USB serial-folder requests share the primary session facade.
+      // It prevents a host reset from racing a cached mOTA Stream reference;
+      // dedicated-UART overrides retain their normal stream.
       #include "../UsbLogging.h"
       #define OTA_FOLDER_SERIAL_STREAM ::mesh::usbMotaPort()
       #define MESH_OTA_FOLDER_SERIAL_NONBLOCKING_USB 1

@@ -16,6 +16,10 @@
 
 namespace mesh {
 
+#ifndef MESH_ESP32_USB_TX_BUFFER_SIZE
+  #define MESH_ESP32_USB_TX_BUFFER_SIZE 4096
+#endif
+
 namespace detail {
 
 // Keep the identity-marker reconnect rule pure so host tests can exercise the
@@ -39,6 +43,11 @@ void setUsbLoggingEnabled(bool enabled);
 // descriptor mirror; nRF52 selects its optional second interface after loading
 // the normal role preferences.
 bool saveUsbLoggingBootPreference(bool enabled);
+
+// Record the HWCDC TX ring size actually allocated during early setup. A zero
+// value keeps reset cleanup quarantined and eligible for a minimum-size retry
+// instead of mistaking an allocation failure for a permanently non-empty ring.
+void setUsbCompanionTxBufferCapacity(size_t capacity);
 
 // Start the optional dedicated USB logging interface. Ordinary and single-TTY
 // builds use Serial; nRF52 Full Companion uses a second CDC ACM port.
@@ -66,14 +75,20 @@ Stream& usbTerminalPort();
 void serviceUsbTerminalPort();
 void discardUsbTerminalOutput();
 bool hasPendingUsbTerminalOutput();
-// Consume an exact CDC0 DTR-low edge captured in TinyUSB's owner task. This is
-// separate from polling the current DTR value: Windows can close and reopen a
-// COM handle between two application-loop iterations.
+// Consume a primary-USB session boundary reported by the USB owner task:
+// CDC0 DTR-low on nRF52, or a hardware CDC bus reset on ESP32. This is
+// independent of polling current line/SOF state; ESP32 retains that poll as a
+// fallback because its bundled framework event queue is finite.
 bool takeUsbTerminalSessionReset();
 // After the application has reset its protocol state, atomically purge any
 // CDC0 writer that raced the close callback and reopen the producer gate. A
 // false result is a zero-wait busy indication; retry it next loop.
 bool tryCompleteUsbTerminalSessionReset();
+// Purge platform USB-driver bytes at a confirmed host-session boundary. On
+// ESP32 HWCDC this briefly detaches the PHY and gates diagnostics so stale RX
+// or TX data cannot cross into a newly enumerated host session. A false result
+// leaves that quarantine intact and should be retried from a later loop.
+bool resetUsbCompanionTransport();
 bool hasDedicatedUsbLoggingPort();
 bool isDedicatedUsbLoggingPortConfigured();
 bool usbLoggingInterfaceRestartRequired();

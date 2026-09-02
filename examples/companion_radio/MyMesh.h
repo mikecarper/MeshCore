@@ -134,6 +134,7 @@ public:
   void startInterface(BaseSerialInterface &serial);
   void cancelSerialResponseStream();
   void cancelSerialOperationsForRoute(BaseSerialInterface* route);
+  bool hasFiniteDelayedReplyForRoute(BaseSerialInterface* route) const;
   void resetUsbHostSessionInput();
 
   const char *getNodeName();
@@ -187,6 +188,9 @@ public:
 #ifdef ENABLE_USB_INTERFACE
   void enterTerminalMode();
   void exitTerminalMode();
+  // Clear state owned by the current text-terminal host without changing the
+  // protocol owner or printing a new banner.
+  void resetTerminalSession();
   bool isTerminalMode() const { return _terminal_mode; }
   void handleTerminalCommand(char* command);
 #if COMPANION_FEATURE_NETWORK_TERMINAL
@@ -362,7 +366,6 @@ private:
 #ifdef ENABLE_USB_INTERFACE
   Stream& terminalOutput();
   bool hasTerminalOutput() const { return _terminal_output != NULL; }
-  void resetTerminalSession();
   void printTerminalBanner(bool show_binary_stop);
   ContactInfo* getTerminalRecipient();
   void printTerminalPath(const ContactInfo& recipient);

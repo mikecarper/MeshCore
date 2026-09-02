@@ -118,6 +118,46 @@ static void drawCompanionTransportChoice(DisplayDriver& display,
 #endif
 
 #if UI_WIFI_SETUP_HOME_PAGE == 1
+static bool drawCompactCompanionWiFiSetupPage(
+    DisplayDriver& display, bool setup_active, const char* setup_ssid,
+    const char* setup_ip, bool wifi_enabled, bool wifi_connected,
+    bool wifi_configured) {
+  if (display.width() > 128 || display.height() > 64) return false;
+
+  // Four small rows fit below the shared title bar and page dots. The OLED
+  // deliberately uses text instead of a QR: at this scale the SSID, portal IP,
+  // and physical-button action are more useful and remain readable.
+  display.setCompactText(true);
+  display.setTextSize(1);
+  display.setColor(UIColor::primary_txt);
+  display.drawTextCentered(
+      display.width() / 2, 20,
+      setup_active ? "SETUP AP ACTIVE" : "SETUP AP INACTIVE");
+
+  if (setup_active) {
+    display.drawTextEllipsized(0, 31, display.width(), setup_ssid);
+    char open_ip[22];
+    snprintf(open_ip, sizeof(open_ip), "OPEN %s", setup_ip);
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextCentered(display.width() / 2, 42, open_ip);
+  } else {
+    const char* wifi_status = !wifi_enabled
+        ? "WIFI OFF"
+        : wifi_connected
+            ? "WIFI READY"
+            : wifi_configured ? "WIFI CONNECTING" : "WIFI NOT CONFIGURED";
+    display.setColor(UIColor::secondary_txt);
+    display.drawTextCentered(display.width() / 2, 37, wifi_status);
+  }
+
+  display.setColor(UIColor::warning_txt);
+  display.drawTextCentered(
+      display.width() / 2, 53,
+      setup_active ? "HOLD STOP AP" : "HOLD START AP");
+  display.setCompactText(false);
+  return true;
+}
+
 static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
   char setup_ssid[33] = {0};
   char setup_ip[16] = {0};
@@ -146,6 +186,12 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
     previous_state = state;
   }
   noteCompanionWiFiDisplayState(state);
+
+  if (drawCompactCompanionWiFiSetupPage(
+          display, setup_active, setup_ssid, setup_ip, wifi_enabled,
+          wifi_connected, wifi_configured)) {
+    return;
+  }
 
   // Keep the setup content below the shared title bar and page dots. Compact
   // text makes its physical size identical on the 480 canvas and the
@@ -455,6 +501,10 @@ public:
     return false;
 #endif
   }
+
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+  bool isWiFiSetupPage() const { return _page == HomePage::WIFI_SETUP; }
+#endif
 
   void poll() override {
 #if UI_WIFI_SETUP_HOME_PAGE == 1
@@ -1055,10 +1105,12 @@ public:
 #endif
 #if UI_WIFI_SETUP_HOME_PAGE == 1
     if (c == KEY_ENTER && _page == HomePage::WIFI_SETUP) {
-      if (isCompanionWiFiEnabled() && !isCompanionWiFiConnected()
-          && !WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) {
+      if (WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) {
+        requestCompanionWiFiSetupStop();
+        _task->showAlert("Stopping setup AP", 1000);
+      } else {
         requestCompanionWiFiSetup();
-        _task->showAlert("Starting WiFi setup", 1000);
+        _task->showAlert("Starting setup AP", 1000);
       }
       return true;
     }
@@ -1943,6 +1995,13 @@ char UITask::checkDisplayOn(char c) {
 }
 
 char UITask::handleLongPress(char c) {
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+  // A setup AP may focus this page immediately at boot. Its documented HOLD
+  // action must win over the otherwise-global early-boot CLI rescue gesture.
+  if (curr == home && static_cast<HomeScreen*>(home)->isWiFiSetupPage()) {
+    return c;
+  }
+#endif
   if (millis() - ui_started_at < 8000) {   // long press in first 8 seconds since startup -> CLI/rescue
     the_mesh.enterCLIRescue();
     c = 0;   // consume event

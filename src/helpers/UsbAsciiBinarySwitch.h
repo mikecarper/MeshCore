@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <stdint.h>
 #include <string.h>
 
@@ -39,6 +40,180 @@ inline bool isUsbMotaOwnerTransitionCommand(const char* command) {
   return command != nullptr
       && isUsbMotaOwnerTransitionCommand(command, strlen(command));
 }
+
+// A deliberate HWCDC detach can produce a burst of BUS_RESET callbacks while
+// the host enumerates the clean transport. Keep ignoring that whole burst until
+// actual post-clean RX/TX activity proves that a new session has begun. Unlike
+// a one-shot boolean exchange, repeated reset callbacks do not consume the
+// clean-transport proof and cannot start a detach/reset loop.
+class UsbSelfResetBurstGuard {
+  std::atomic<bool> _clean_transport_waiting_for_activity{false};
+
+public:
+  void expectSelfResetBurst() {
+    _clean_transport_waiting_for_activity.store(
+        true, std::memory_order_release);
+  }
+
+  bool shouldIgnoreBusReset() const {
+    return _clean_transport_waiting_for_activity.load(
+        std::memory_order_acquire);
+  }
+
+  void notePostCleanActivity() {
+    _clean_transport_waiting_for_activity.store(
+        false, std::memory_order_release);
+  }
+};
+
+// HWCDC exposes a physical/SOF host signal but no DTR/open state. Its framework
+// filter is only a few milliseconds, so apply a second, meaningful debounce
+// before reporting a transport boundary. The response route retains its longer
+// grace independently, and sustained loss remains a conservative fallback.
+class UsbHostPresenceDebouncer {
+  bool _host_seen = false;
+  bool _physical_host_seen = false;
+  bool _loss_observed = false;
+  bool _host_loss_edge_reported = false;
+  bool _host_loss_edge_pending = false;
+  bool _sustained_loss_pending = false;
+  bool _completed_frame_seen = false;
+  bool _finite_reply_was_pending = false;
+  bool _finite_reply_drain_active = false;
+  uint32_t _loss_observed_at = 0;
+  uint32_t _last_completed_frame_count = 0;
+  uint32_t _finite_reply_drain_started_at = 0;
+
+  bool retainFiniteReplyLease(bool pending, uint32_t now,
+                              uint32_t drain_grace_ms) {
+    if (pending) {
+      _finite_reply_was_pending = true;
+      _finite_reply_drain_active = false;
+      return true;
+    }
+    if (_finite_reply_was_pending) {
+      _finite_reply_was_pending = false;
+      _finite_reply_drain_active = true;
+      _finite_reply_drain_started_at = now;
+    }
+    if (!_finite_reply_drain_active) return false;
+    if ((uint32_t)(now - _finite_reply_drain_started_at) < drain_grace_ms) {
+      return true;
+    }
+    _finite_reply_drain_active = false;
+    return false;
+  }
+
+public:
+  bool observeHost(bool host_present, uint32_t now,
+                   uint32_t host_loss_edge_ms,
+                   uint32_t host_loss_grace_ms) {
+    if (_sustained_loss_pending) return false;
+    if (host_present) {
+      _host_seen = true;
+      _physical_host_seen = true;
+      _loss_observed = false;
+      _host_loss_edge_reported = false;
+      return true;
+    }
+    if (!_host_seen) return false;
+    if (!_loss_observed) {
+      _loss_observed = true;
+      _loss_observed_at = now;
+      return true;
+    }
+    const uint32_t loss_age = (uint32_t)(now - _loss_observed_at);
+    if (!_host_loss_edge_reported && _physical_host_seen
+        && loss_age >= host_loss_edge_ms) {
+      // Keep this shorter than the response-affinity grace, but long enough to
+      // reject the framework's transient five-millisecond SOF gaps. This still
+      // recovers an actual unplug/re-enumeration when its BUS_RESET event was
+      // dropped by the framework's finite event queue.
+      _host_loss_edge_reported = true;
+      _host_loss_edge_pending = true;
+    }
+    if (loss_age < host_loss_grace_ms) {
+      return true;
+    }
+    _host_seen = false;
+    _physical_host_seen = false;
+    _loss_observed = false;
+    _sustained_loss_pending = true;
+    return false;
+  }
+
+  void noteClientActivity() {
+    if (_sustained_loss_pending) return;
+    _host_seen = true;
+    _loss_observed = false;
+  }
+
+  bool isClientConnected(bool host_present, uint32_t now,
+                         bool has_received_frame,
+                         uint32_t last_frame_at,
+                         uint32_t completed_frame_count,
+                          uint32_t frame_reply_grace_ms,
+                          uint32_t client_idle_timeout_ms,
+                          uint32_t host_loss_edge_ms,
+                          uint32_t host_loss_grace_ms,
+                          bool finite_reply_pending) {
+    // A newly completed Binary frame proves a host session even when HWCDC's
+    // SOF signal was already false. Arm loss tracking once per frame count;
+    // doing this on every poll would continually restart the debounce timer.
+    if (has_received_frame
+        && (!_completed_frame_seen
+            || completed_frame_count != _last_completed_frame_count)) {
+      _completed_frame_seen = true;
+      _last_completed_frame_count = completed_frame_count;
+      noteClientActivity();
+    }
+
+    // Sample the physical signal even during the immediate-frame lease so a
+    // delayed operation has a fresh last-positive timestamp to rely on.
+    const bool host_recent =
+        observeHost(host_present, now, host_loss_edge_ms,
+                    host_loss_grace_ms);
+    if (_sustained_loss_pending) return false;
+    if (!has_received_frame) return false;
+
+    const uint32_t frame_age = (uint32_t)(now - last_frame_at);
+    // Only a bounded, already-routed operation may extend the absolute idle
+    // cap. Its true->false transition grants one short drain window for the
+    // final frame which was queued just before the operation cleared itself.
+    const bool finite_reply_lease = retainFiniteReplyLease(
+        finite_reply_pending, now, frame_reply_grace_ms);
+    if (frame_age < frame_reply_grace_ms) return true;
+    return host_recent
+        && (frame_age < client_idle_timeout_ms || finite_reply_lease);
+  }
+
+  bool takeSustainedHostLoss() {
+    const bool pending = _sustained_loss_pending;
+    _sustained_loss_pending = false;
+    return pending;
+  }
+
+  bool takeHostLossEdge() {
+    const bool pending = _host_loss_edge_pending;
+    _host_loss_edge_pending = false;
+    return pending;
+  }
+
+  void reset() {
+    _host_seen = false;
+    _physical_host_seen = false;
+    _loss_observed = false;
+    _host_loss_edge_reported = false;
+    _host_loss_edge_pending = false;
+    _sustained_loss_pending = false;
+    _completed_frame_seen = false;
+    _finite_reply_was_pending = false;
+    _finite_reply_drain_active = false;
+    _loss_observed_at = 0;
+    _last_completed_frame_count = 0;
+    _finite_reply_drain_started_at = 0;
+  }
+};
 
 // Coordinates the Full Companion USB startup handoff without consuming the
 // '<' byte. ArduinoSerialInterface remains the only binary protocol parser.

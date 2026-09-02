@@ -93,6 +93,7 @@ MultiSerialInterface interface_manager;
   #include <helpers/ArduinoSerialInterface.h>
   #include <helpers/CLICommandUtils.h>
   #include <helpers/UsbAsciiBinarySwitch.h>
+  #include <helpers/UsbLogging.h>
   static const char USB_TERMINAL_START_TOKEN[] = "+++MESHCORE-TERM-START";
   static const char USB_TERMINAL_STOP_TOKEN[] = "+++MESHCORE-TERM-STOP";
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
@@ -107,6 +108,32 @@ MultiSerialInterface interface_manager;
     // for targets which cannot report DTR (see setConnectedCheck below)
     #define USB_CLIENT_IDLE_TIMEOUT   (10*60*1000UL)
   #endif
+  #ifndef USB_FRAME_REPLY_GRACE_MS
+    // A complete command frame proves that a Binary Companion client is
+    // listening even if an ESP32 HWCDC host-presence flag briefly flaps while
+    // the response is being queued. Keep this much time to finish the reply.
+    #define USB_FRAME_REPLY_GRACE_MS  2000UL
+  #endif
+  #ifndef USB_HOST_LOSS_GRACE_MS
+    // The bundled ESP32 HWCDC SOF detector declares loss after only a few
+    // missed ticks. Debounce that advisory signal before ending a host session.
+    #define USB_HOST_LOSS_GRACE_MS    2000UL
+  #endif
+  #ifndef USB_HOST_LOSS_EDGE_MS
+    // HWCDC's framework filter declares loss after roughly 5 ms without SOFs.
+    // Require a longer continuous gap before using that signal as a fallback
+    // session boundary when the finite BUS_RESET event queue drops its event.
+    #define USB_HOST_LOSS_EDGE_MS      100UL
+  #endif
+  #ifndef USB_TRANSPORT_RESET_RETRY_MS
+    // A failed purge can spend up to roughly 150 ms waiting on the live HWCDC
+    // writer/ring. Back off enough to keep WiFi and mesh service responsive.
+    #define USB_TRANSPORT_RESET_RETRY_MS 1000UL
+  #endif
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  mesh::UsbHostPresenceDebouncer usb_hwcdc_host_presence;
+#endif
 #endif
 
 #if COMPANION_FEATURE_NETWORK_TERMINAL
@@ -502,7 +529,10 @@ static void queueUsbTerminalControlReply(const char* reply) {
 static void drainUsbTerminalOutputBeforeProtocolSwitch() {
   const uint32_t started = millis();
   while (mesh::hasPendingUsbTerminalOutput()
+#if !(defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+      && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT)
          && isUsbTerminalDataConnected()
+#endif
          && (uint32_t)(millis() - started)
                 < USB_TERMINAL_PROTOCOL_DRAIN_MS) {
     mesh::serviceUsbTerminalPort();
@@ -605,6 +635,12 @@ static bool enterUsbMotaMode(mesh::UsbMotaEntryOrigin origin) {
   usb_mota_line_len = 0;
   usb_mota_line[0] = 0;
   usb_mota_disconnect_armed = isUsbTerminalDataConnected();
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  // A valid attach command is stronger host proof than HWCDC's advisory SOF
+  // sample, which may be low in the same loop as the received command.
+  usb_hwcdc_host_presence.noteClientActivity();
+#endif
 
   char reply[160] = {0};
   if (!the_mesh.handleLocalControlCommand("ota folder on", reply, sizeof(reply))
@@ -631,12 +667,15 @@ static bool enterUsbMotaMode(mesh::UsbMotaEntryOrigin origin) {
 }
 
 static void serviceUsbMota() {
+#if !(defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+      && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT)
   if (isUsbTerminalDataConnected()) {
     usb_mota_disconnect_armed = true;
   } else if (usb_mota_disconnect_armed) {
     leaveUsbMotaMode(false);
     return;
   }
+#endif
 
   // SerialMotaSource consumes framed responses synchronously while serving a
   // block. Bytes left here are host control text, notably motatool's automatic
@@ -669,50 +708,112 @@ static void serviceUsbMota() {
 }
 #endif
 
-// DTR polling alone cannot distinguish a continuously open handle from a
-// close/reopen that happened entirely between two loop iterations. Consume the
-// TinyUSB owner-task edge before any protocol parser runs, so no line, login,
-// recipient, queued text, or mOTA attachment survives into the next host.
+// Consume an exact TinyUSB owner-task edge, or HWCDC's framework-debounced SOF
+// loss edge, before any protocol parser runs. No line, login, recipient, queued
+// text, or mOTA attachment may survive into the next host session.
 static bool usb_terminal_host_reset_completion_pending = false;
+static uint32_t usb_terminal_host_reset_retry_at = 0;
+
+static void resetUsbTerminalHostSession(bool preserve_ascii_terminal) {
+  // Stop only work routed to the old USB host; a simultaneous BLE/WiFi
+  // transaction is independent and must continue. Clear the route after
+  // stopping its producer so no response can fall back to another transport.
+  cancelUsbSerialOperations();
+  the_mesh.resetUsbHostSessionInput();
+  bool protocol_owner_reset = false;
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
+  if (usb_mota_mode) {
+    leaveUsbMotaMode(false);
+    protocol_owner_reset = true;
+  }
+#endif
+  if (!protocol_owner_reset && the_mesh.isTerminalMode()) {
+    if (preserve_ascii_terminal) {
+      // Full Companion's ordinary HWCDC terminal is the default protocol.
+      // Clear the old host's input/output without turning the next physical
+      // session into a silent Binary-only port.
+      the_mesh.resetTerminalSession();
+      mesh::discardUsbTerminalOutput();
+      clearUsbTerminalLine();
+      usb_terminal_discard_line = false;
+      usb_terminal_disconnect_armed = false;
+#if defined(COMPANION_RADIO_FULL)
+      usb_binary_startup_probe.cancel();
+#endif
+    } else {
+      leaveUsbTerminalMode(false);
+    }
+    protocol_owner_reset = true;
+  }
+
+  if (!protocol_owner_reset) {
+    mesh::discardUsbTerminalOutput();
+    usb_serial_interface.setPassthroughMode(false);
+    clearUsbTerminalLine();
+    usb_terminal_discard_line = false;
+    usb_terminal_disconnect_armed = false;
+    usb_logging_terminal_mode = false;
+#if defined(COMPANION_RADIO_FULL)
+    usb_binary_startup_probe.cancel();
+#endif
+  }
+  // setPassthroughMode() clears parser/queue state but frame ownership is a
+  // separate proof. Revoke all three explicitly at the session boundary.
+  usb_serial_interface.resetSessionState();
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  // Purge HWCDC's queues behind a temporary diagnostics gate. This keeps the
+  // core's shared RTOS objects alive while other firmware tasks are running.
+  if (!mesh::resetUsbCompanionTransport()) {
+    // Keep the producer gate and PHY quarantined, then retry from later loops.
+    // Rebooting on repeatable allocation/contention failures creates a host-
+    // enumeration restart loop and still does not prove stale bytes were gone.
+    usb_terminal_host_reset_completion_pending = true;
+    usb_terminal_host_reset_retry_at = millis() + USB_TRANSPORT_RESET_RETRY_MS;
+    return;
+  }
+  usb_terminal_host_reset_completion_pending = false;
+  usb_hwcdc_host_presence.reset();
+#endif
+}
 
 static void serviceUsbTerminalHostSessionReset() {
 #if defined(NRF52_PLATFORM)
   if (mesh::takeUsbTerminalSessionReset()) {
     usb_terminal_host_reset_completion_pending = true;
-    // A rapid reopen can make USB look connected again before this loop. Stop
-    // only work routed to the old USB host; a simultaneous BLE transaction is
-    // independent and must continue. Clear the route after stopping its
-    // producer so no remaining response can fall back to another transport.
-    cancelUsbSerialOperations();
-    the_mesh.resetUsbHostSessionInput();
-    bool protocol_owner_reset = false;
-#if COMPANION_FEATURE_USB_MOTA_SOURCE
-    if (usb_mota_mode) {
-      leaveUsbMotaMode(false);
-      protocol_owner_reset = true;
-    }
-#endif
-    if (!protocol_owner_reset && the_mesh.isTerminalMode()) {
-      leaveUsbTerminalMode(false);
-      protocol_owner_reset = true;
-    }
-
-    if (!protocol_owner_reset) {
-      mesh::discardUsbTerminalOutput();
-      usb_serial_interface.setPassthroughMode(false);
-      clearUsbTerminalLine();
-      usb_terminal_discard_line = false;
-      usb_terminal_disconnect_armed = false;
-      usb_logging_terminal_mode = false;
-#if defined(COMPANION_RADIO_FULL)
-      usb_binary_startup_probe.cancel();
-#endif
-    }
+    resetUsbTerminalHostSession(false);
   }
 
   if (usb_terminal_host_reset_completion_pending
       && mesh::tryCompleteUsbTerminalSessionReset()) {
     usb_terminal_host_reset_completion_pending = false;
+  }
+#elif defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  if (usb_terminal_host_reset_completion_pending) {
+    if ((int32_t)(millis() - usb_terminal_host_reset_retry_at) >= 0) {
+      if (mesh::resetUsbCompanionTransport()) {
+        usb_terminal_host_reset_completion_pending = false;
+        usb_hwcdc_host_presence.reset();
+      } else {
+        usb_terminal_host_reset_retry_at =
+            millis() + USB_TRANSPORT_RESET_RETRY_MS;
+      }
+    }
+    return;
+  }
+
+  const bool host_present = board.isUsbHostConnected();
+  (void)usb_hwcdc_host_presence.observeHost(
+      host_present, millis(), USB_HOST_LOSS_EDGE_MS,
+      USB_HOST_LOSS_GRACE_MS);
+  const bool hardware_bus_reset = mesh::takeUsbTerminalSessionReset();
+  const bool physical_host_loss =
+      usb_hwcdc_host_presence.takeHostLossEdge();
+  const bool sustained_host_loss =
+      usb_hwcdc_host_presence.takeSustainedHostLoss();
+  if (hardware_bus_reset || physical_host_loss || sustained_host_loss) {
+    resetUsbTerminalHostSession(true);
   }
 #endif
 }
@@ -940,6 +1041,7 @@ void halt() {
   static bool companion_wifi_disable_in_progress = false;
   static bool companion_wifi_services_stopped = false;
   static volatile bool companion_wifi_setup_requested = false;
+  static volatile bool companion_wifi_setup_stop_requested = false;
   static bool companion_wifi_credential_reload_pending = false;
   static unsigned long companion_wifi_credential_reload_at = 0;
   static bool companion_wifi_power_save_loaded = false;
@@ -1313,8 +1415,25 @@ void halt() {
              WiFi.localIP().toString().c_str());
   }
 
+#ifdef WITH_WEBCONFIG
+  void formatCompanionWiFiStatus(char* reply, size_t reply_size) {
+    const mesh::wifi::CompanionWiFiRuntimeState runtime = {
+        companion_wifi_requested,
+        companion_wifi_active,
+        companion_wifi_credential_reload_pending,
+    };
+    WebConfigServer::formatWiFiStatus(reply, reply_size, &runtime);
+  }
+#endif
+
   void requestCompanionWiFiSetup() {
+    companion_wifi_setup_stop_requested = false;
     companion_wifi_setup_requested = true;
+  }
+
+  void requestCompanionWiFiSetupStop() {
+    companion_wifi_setup_requested = false;
+    companion_wifi_setup_stop_requested = true;
   }
 
   bool toggleCompanionWiFi() {
@@ -1847,7 +1966,37 @@ void halt() {
 #endif
 
 void setup() {
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
+    && defined(ENABLE_USB_INTERFACE)
+  // Configure HWCDC before begin() allocates its mutex and enables the USB ISR.
+  // The bundled setTxBufferSize() deletes/recreates its ring without taking the
+  // TX mutex or masking that ISR, so even an otherwise-quiet post-begin resize
+  // can race the interrupt handler.
+  // A failed resize deletes HWCDC's existing ring. Try progressively smaller
+  // queues while setup still has no producers, and tell reset cleanup the exact
+  // capacity it must observe before reopening a host session.
+  static const size_t usb_tx_sizes[] = {
+      MESH_ESP32_USB_TX_BUFFER_SIZE, 2048, 1024, 512, 256};
+  size_t usb_tx_capacity = 0;
+  for (size_t candidate : usb_tx_sizes) {
+    usb_tx_capacity = Serial.setTxBufferSize(candidate);
+    if (usb_tx_capacity == candidate) break;
+  }
+  Serial.setTxTimeoutMs(5);
+#endif
   Serial.begin(115200);
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
+    && defined(ENABLE_USB_INTERFACE)
+  // If every pre-begin allocation failed, begin() may have recovered by
+  // creating its built-in 256-byte ring. Discover that ring without replacing
+  // it after the ISR is live; a zero result leaves reset cleanup quarantined.
+  if (usb_tx_capacity == 0) {
+    usb_tx_capacity = Serial.availableForWrite();
+  }
+  mesh::setUsbCompanionTxBufferCapacity(usb_tx_capacity);
+#endif
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
@@ -2115,19 +2264,25 @@ void setup() {
   usb_serial_interface.enableFlowControl(true);
 #if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-  // a 256 byte TX buffer overflows during a contact sync, and write() blocks
-  // up to tx_timeout_ms per call against a stalled host (same reasoning as
-  // the kiss_modem tuning)
-  Serial.setTxBufferSize(4096);
-  Serial.setTxTimeoutMs(5);
-  // The ESP32 USB-Serial-JTAG peripheral (HWCDC) has no DTR concept at all,
-  // and its bool operator is only a transient RX/TX activity heuristic. A real
-  // Binary Companion client therefore has to prove ownership by sending
-  // frames; an idle physical cable must not claim the interface.
+  // The ESP32 USB-Serial-JTAG peripheral (HWCDC) has no DTR concept at all.
+  // Its bool operator is a transient RX/TX activity heuristic, and even the
+  // SOF-based host-presence flag can briefly flap around a bus reset. A
+  // complete command frame is stronger proof that a client is listening, so
+  // grant it a short lease in which the response can be queued and drained.
+  // Outside that lease, require the physical host signal as well as recent
+  // Binary Companion activity so an idle cable does not claim the interface.
+  // The idle cap stays absolute: an abandoned multi-frame response must not
+  // lock BLE or WiFi dispatch forever merely because SOFs continue.
   usb_serial_interface.setConnectedCheck([]() {
-    uint32_t last = usb_serial_interface.getLastFrameMillis();
-    return (bool)Serial && usb_serial_interface.hasReceivedFrame()
-        && (millis() - last) < USB_CLIENT_IDLE_TIMEOUT;
+    return usb_hwcdc_host_presence.isClientConnected(
+        board.isUsbHostConnected(), millis(),
+        usb_serial_interface.hasReceivedFrame(),
+        usb_serial_interface.getLastFrameMillis(),
+        usb_serial_interface.getCompletedFrameCount(),
+        USB_FRAME_REPLY_GRACE_MS, USB_CLIENT_IDLE_TIMEOUT,
+        USB_HOST_LOSS_EDGE_MS,
+        USB_HOST_LOSS_GRACE_MS,
+        the_mesh.hasFiniteDelayedReplyForRoute(&usb_serial_interface));
   });
 #elif (defined(ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
     || defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
@@ -2317,13 +2472,15 @@ void loop() {
 #if defined(ESP32) && defined(WIFI_SSID)
   #ifdef WITH_WEBCONFIG
     the_mesh.serviceWebConfig();
+    if (companion_wifi_setup_stop_requested) {
+      companion_wifi_setup_stop_requested = false;
+      the_mesh.stopWebConfig();
+    }
     if (companion_wifi_setup_requested) {
       companion_wifi_setup_requested = false;
-      if (companion_wifi_requested) {
-        char web_reply[160];
-        if (!the_mesh.startWebConfig(true, web_reply)) {
-          WIFI_DEBUG_PRINTLN("Display WiFi setup request: %s", web_reply);
-        }
+      char web_reply[160];
+      if (!the_mesh.startWebConfig(true, web_reply)) {
+        WIFI_DEBUG_PRINTLN("Display WiFi setup request: %s", web_reply);
       }
     }
   #endif

@@ -27,6 +27,7 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <helpers/CompanionWiFiStatus.h>
 #include <helpers/WebConfigBatch.h>
 #include <helpers/WiFiPowerSave.h>
 #include <helpers/WiFiReconnectPolicy.h>
@@ -183,7 +184,9 @@ public:
   static bool setWiFiCliEnabled(const char* value, char* reply,
                                 size_t reply_len);
   static bool formatWiFiSSID(char* reply, size_t reply_len);
-  static bool formatWiFiStatus(char* reply, size_t reply_len);
+  static bool formatWiFiStatus(
+      char* reply, size_t reply_len,
+      const mesh::wifi::CompanionWiFiRuntimeState* companion_runtime = NULL);
   static bool formatWiFiPowerSave(char* reply, size_t reply_len);
   static bool formatWiFiCliStatus(char* reply, size_t reply_len);
 

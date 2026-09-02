@@ -95,6 +95,10 @@ public:
   // Without it isConnected() assumes true, as a plain UART has no way of knowing.
   void setConnectedCheck(ConnectedCheck fn) { _conn_check = fn; }
 
+  // Clear all protocol state owned by one host session while retaining the
+  // monotonic completed-frame counter used by startup handoff arbitration.
+  void resetSessionState();
+
   // millis() of the last completely received frame, 0 if none since boot.
   // Useful as an activity-based connection check where no DTR state exists.
   uint32_t getLastFrameMillis() const { return _last_frame_ms; }

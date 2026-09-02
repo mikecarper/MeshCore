@@ -158,6 +158,15 @@ void ArduinoSerialInterface::setPassthroughMode(bool enabled) {
   resetTransmitState();
 }
 
+void ArduinoSerialInterface::resetSessionState() {
+  _controlSequenceReceived = false;
+  _secondaryControlSequenceReceived = false;
+  _has_received_frame = false;
+  _last_frame_ms = 0;
+  resetReceiveState();
+  resetTransmitState();
+}
+
 bool ArduinoSerialInterface::takeControlSequence() {
   bool received = _controlSequenceReceived;
   _controlSequenceReceived = false;
@@ -172,19 +181,11 @@ bool ArduinoSerialInterface::takeSecondaryControlSequence() {
 
 void ArduinoSerialInterface::enable() {
   _isEnabled = true;
-  _controlSequenceReceived = false;
-  _secondaryControlSequenceReceived = false;
-  _has_received_frame = false;
-  resetReceiveState();
-  resetTransmitState();
+  resetSessionState();
 }
 void ArduinoSerialInterface::disable() {
   _isEnabled = false;
-  _controlSequenceReceived = false;
-  _secondaryControlSequenceReceived = false;
-  _has_received_frame = false;
-  resetReceiveState();
-  resetTransmitState();
+  resetSessionState();
 }
 
 bool ArduinoSerialInterface::isConnected() const {

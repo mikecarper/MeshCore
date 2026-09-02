@@ -88,7 +88,11 @@ struct SingleAttemptContext {
   size_t nested_result = 99;
   bool reenter = false;
   bool accessible = true;
+  bool try_exclusive_during_write = false;
+  bool nested_exclusive_result = true;
 };
+
+void noOpExclusive(void*) {}
 
 size_t tryWriteOnce(void* opaque, const uint8_t*, size_t size) {
   SingleAttemptContext* context =
@@ -99,6 +103,10 @@ size_t tryWriteOnce(void* opaque, const uint8_t*, size_t size) {
     context->reenter = false;
     const uint8_t nested = 'n';
     context->nested_result = context->stream->write(&nested, 1);
+  }
+  if (context->try_exclusive_during_write && context->stream != nullptr) {
+    context->nested_exclusive_result =
+        context->stream->tryRunExclusive(noOpExclusive);
   }
   return context->result;
 }
@@ -364,6 +372,21 @@ TEST_F(Nrf52DebugOutputTest, SingleAttemptFacadeDropsAReentrantWriter) {
   EXPECT_EQ(port.write(record, sizeof(record)), sizeof(record));
   EXPECT_EQ(context.calls, 1U);
   EXPECT_EQ(context.nested_result, 0U);
+}
+
+TEST_F(Nrf52DebugOutputTest,
+       SingleAttemptFacadeExcludesAPurgeWhileAWriterIsActive) {
+  SingleAttemptContext context;
+  context.result = 1;
+  context.try_exclusive_during_write = true;
+  mesh::SingleAttemptNonBlockingStream port(logging_port, tryWriteOnce,
+                                             &context, canAccess);
+  context.stream = &port;
+  const uint8_t value = 'x';
+
+  EXPECT_EQ(port.write(&value, 1), 1U);
+  EXPECT_FALSE(context.nested_exclusive_result);
+  EXPECT_TRUE(port.tryRunExclusive(noOpExclusive));
 }
 
 TEST_F(Nrf52DebugOutputTest,

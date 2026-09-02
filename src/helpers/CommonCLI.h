@@ -754,7 +754,6 @@ class CommonCLI {
   void handleGetCmd(uint32_t sender_timestamp, char* command, char* reply);
   void handleSetCmd(uint32_t sender_timestamp, char* command, char* reply);
   void handleDelCmd(char* command, char* reply);
-  bool handleStorageLayoutGetCmd(const char* config, char* reply);
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   bool handleSdCardGetCmd(const char* config, char* reply);
   bool handleSdCardSetCmd(const char* config, char* reply);

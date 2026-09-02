@@ -52,6 +52,206 @@ public:
 static const char START_TOKEN[] = "+++MESHCORE-TERM-START";
 static const char SEEDER_TOKEN[] = "ota folder on";
 
+TEST(UsbHwcdcSession, IgnoresWholeExpectedSelfResetBurstUntilActivity) {
+  mesh::UsbSelfResetBurstGuard guard;
+  EXPECT_FALSE(guard.shouldIgnoreBusReset());
+
+  guard.expectSelfResetBurst();
+  EXPECT_TRUE(guard.shouldIgnoreBusReset());
+  EXPECT_TRUE(guard.shouldIgnoreBusReset());
+
+  guard.notePostCleanActivity();
+  EXPECT_FALSE(guard.shouldIgnoreBusReset());
+}
+
+TEST(UsbHwcdcSession, CompletedFrameGetsImmediateReplyLease) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.isClientConnected(
+      false, 100, true, 100, 1, 2000, 600000, 100, 2000, false));
+  EXPECT_TRUE(tracker.isClientConnected(
+      false, 2099, true, 100, 1, 2000, 600000, 100, 2000, false));
+  EXPECT_FALSE(tracker.isClientConnected(
+      false, 2100, true, 100, 1, 2000, 600000, 100, 2000, false));
+  EXPECT_TRUE(tracker.takeSustainedHostLoss());
+}
+
+TEST(UsbHwcdcSession, DebouncesTransientHostLossAndReportsSustainedLossOnce) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.observeHost(true, 100, 100, 2000));
+  // A long interval without sampling is not itself evidence of continuous
+  // loss. The debounce window starts at the first observed false sample.
+  EXPECT_TRUE(tracker.observeHost(false, 5000, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(false, 6999, 100, 2000));
+  EXPECT_FALSE(tracker.takeSustainedHostLoss());
+  EXPECT_FALSE(tracker.observeHost(false, 7000, 100, 2000));
+  EXPECT_TRUE(tracker.takeSustainedHostLoss());
+  EXPECT_FALSE(tracker.takeSustainedHostLoss());
+}
+
+TEST(UsbHwcdcSession, DebouncesAndReportsPhysicalLossEdgeOnce) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.observeHost(true, 100, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(false, 110, 100, 2000));
+  EXPECT_FALSE(tracker.takeHostLossEdge());
+  EXPECT_TRUE(tracker.observeHost(false, 209, 100, 2000));
+  EXPECT_FALSE(tracker.takeHostLossEdge());
+  EXPECT_TRUE(tracker.observeHost(false, 210, 100, 2000));
+  EXPECT_TRUE(tracker.takeHostLossEdge());
+  EXPECT_FALSE(tracker.takeHostLossEdge());
+
+  // Repeated false samples belong to the same edge.
+  EXPECT_TRUE(tracker.observeHost(false, 220, 100, 2000));
+  EXPECT_FALSE(tracker.takeHostLossEdge());
+}
+
+TEST(UsbHwcdcSession, IgnoresTransientPhysicalLossBeforeEdgeDebounce) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.observeHost(true, 100, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(false, 110, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(true, 150, 100, 2000));
+  EXPECT_FALSE(tracker.takeHostLossEdge());
+}
+
+TEST(UsbHwcdcSession, FrameProofAloneDoesNotInventPhysicalLossEdge) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.isClientConnected(
+      false, 100, true, 100, 1, 2000, 600000, 100, 2000, false));
+  EXPECT_FALSE(tracker.takeHostLossEdge());
+}
+
+TEST(UsbHwcdcSession, DebounceHandlesMillisRollover) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  const uint32_t started = 0xFFFFFFF0u;
+  EXPECT_TRUE(tracker.observeHost(true, started, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(false, started + 100u, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(false, started + 2099u, 100, 2000));
+  EXPECT_FALSE(tracker.observeHost(false, started + 2100u, 100, 2000));
+  EXPECT_TRUE(tracker.takeSustainedHostLoss());
+}
+
+TEST(UsbHwcdcSession, IdleLeaseIsAbsoluteWhileHostRemains) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_FALSE(tracker.isClientConnected(
+      true, 700100, true, 100, 1, 2000, 600000, 100, 2000, false));
+}
+
+TEST(UsbHwcdcSession, ReplugDoesNotErasePendingOldSessionLoss) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.observeHost(true, 10, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(false, 20, 100, 2000));
+  EXPECT_FALSE(tracker.observeHost(false, 2020, 100, 2000));
+  EXPECT_FALSE(tracker.observeHost(true, 2030, 100, 2000));
+  EXPECT_TRUE(tracker.takeSustainedHostLoss());
+  EXPECT_FALSE(tracker.takeSustainedHostLoss());
+}
+
+TEST(UsbHwcdcSession, SustainedLossOverridesFreshFrameUntilReset) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.observeHost(true, 10, 100, 2000));
+  EXPECT_TRUE(tracker.observeHost(false, 20, 100, 2000));
+  EXPECT_FALSE(tracker.observeHost(false, 2020, 100, 2000));
+  EXPECT_FALSE(tracker.isClientConnected(
+      false, 2030, true, 2030, 1, 2000, 600000, 100, 2000, false));
+  EXPECT_FALSE(tracker.isClientConnected(
+      true, 2040, true, 2040, 2, 2000, 600000, 100, 2000, false));
+  EXPECT_TRUE(tracker.takeSustainedHostLoss());
+  tracker.reset();
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, 2050, true, 2050, 3, 2000, 600000, 100, 2000, false));
+}
+
+TEST(UsbHwcdcSession, FiniteReplyExtendsIdleAndGetsOneDrainWindow) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  const uint32_t last_frame = 100;
+  const uint32_t idle_limit = 600000;
+  const uint32_t now = last_frame + idle_limit;
+
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, now, true, last_frame, 1, 2000, idle_limit, 100, 2000, true));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, now + 1, true, last_frame, 1, 2000, idle_limit, 100, 2000, false));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, now + 2000, true, last_frame, 1, 2000, idle_limit, 100, 2000, false));
+  EXPECT_FALSE(tracker.isClientConnected(
+      true, now + 2001, true, last_frame, 1, 2000, idle_limit, 100, 2000, false));
+  EXPECT_FALSE(tracker.isClientConnected(
+      true, now + 3000, true, last_frame, 1, 2000, idle_limit, 100, 2000, false));
+}
+
+TEST(UsbHwcdcSession, NewFiniteReplyRearmsAfterDrain) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, 700000, true, 1, 1, 2000, 600000, 100, 2000, true));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, 700001, true, 1, 1, 2000, 600000, 100, 2000, false));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, 701000, true, 1, 1, 2000, 600000, 100, 2000, true));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, 701001, true, 1, 1, 2000, 600000, 100, 2000, false));
+  EXPECT_FALSE(tracker.isClientConnected(
+      true, 703001, true, 1, 1, 2000, 600000, 100, 2000, false));
+}
+
+TEST(UsbHwcdcSession, SustainedLossOverridesFiniteReplyAndResetClearsIt) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  EXPECT_TRUE(tracker.observeHost(true, 10, 100, 2000));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, 700000, true, 1, 1, 2000, 600000, 100, 2000, true));
+  EXPECT_TRUE(tracker.observeHost(false, 700010, 100, 2000));
+  EXPECT_FALSE(tracker.observeHost(false, 702010, 100, 2000));
+  EXPECT_FALSE(tracker.isClientConnected(
+      false, 702011, true, 1, 1, 2000, 600000, 100, 2000, true));
+  tracker.reset();
+  EXPECT_FALSE(tracker.isClientConnected(
+      true, 702012, true, 1, 1, 2000, 600000, 100, 2000, false));
+}
+
+TEST(UsbHwcdcSession, FiniteReplyDrainHandlesMillisRollover) {
+  mesh::UsbHostPresenceDebouncer tracker;
+  const uint32_t started = 0xFFFFFFF0u;
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, started, true, started - 600001u, 1,
+      2000, 600000, 100, 2000, true));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, started + 1u, true, started - 600001u, 1,
+      2000, 600000, 100, 2000, false));
+  EXPECT_TRUE(tracker.isClientConnected(
+      true, started + 2000u, true, started - 600001u, 1,
+      2000, 600000, 100, 2000, false));
+  EXPECT_FALSE(tracker.isClientConnected(
+      true, started + 2001u, true, started - 600001u, 1,
+      2000, 600000, 100, 2000, false));
+}
+
+TEST(UsbHwcdcSession, SessionResetClearsFrameProofAndPartialIo) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream, START_TOKEN);
+  interface.enable();
+  interface.enableFlowControl(true);
+
+  const uint8_t complete[] = {'<', 1, 0, 0x05};
+  stream.push(complete, sizeof(complete));
+  uint8_t frame[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(interface.checkRecvFrame(frame), 1u);
+  ASSERT_TRUE(interface.hasReceivedFrame());
+  const uint32_t completed = interface.getCompletedFrameCount();
+
+  stream.write_capacity = 0;
+  const uint8_t response[] = {0x06, 0x42};
+  ASSERT_EQ(interface.writeFrame(response, sizeof(response)),
+            sizeof(response));
+  const uint8_t partial[] = {'<', 2, 0, 0x16};
+  stream.push(partial, sizeof(partial));
+  EXPECT_EQ(interface.checkRecvFrame(frame), 0u);
+  ASSERT_TRUE(interface.hasPendingIO());
+
+  interface.resetSessionState();
+  EXPECT_FALSE(interface.hasReceivedFrame());
+  EXPECT_FALSE(interface.hasPendingIO());
+  EXPECT_EQ(interface.getCompletedFrameCount(), completed);
+}
+
 TEST(UsbMotaOwnerPolicy, MatchesEveryOtaCliAttachDetachSpelling) {
   EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("ota folder on"));
   EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("ota folder off"));

@@ -656,7 +656,9 @@ bool WebConfigServer::formatWiFiCliStatus(char* reply, size_t reply_len) {
   return true;
 }
 
-bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
+bool WebConfigServer::formatWiFiStatus(
+    char* reply, size_t reply_len,
+    const mesh::wifi::CompanionWiFiRuntimeState* companion_runtime) {
   if (!reply || reply_len == 0) return false;
 
   char ssid[32] = "";
@@ -700,6 +702,31 @@ bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
     return true;
   }
 
+  // Companion owns its station independently of the WebConfig lifecycle. Once
+  // WebConfig stops, MODE_OFF cannot distinguish a disabled radio from a
+  // deferred or active Companion reconnect.
+  if (companion_runtime) {
+    switch (mesh::wifi::classifyCompanionWiFiFallback(*companion_runtime)) {
+      case mesh::wifi::CompanionWiFiFallbackState::OffDisabled:
+        snprintf(reply, reply_len,
+                 "> off, WiFi disabled; configured SSID: %s", ssid);
+        appendOtaSeederStatus(reply, reply_len);
+        return true;
+      case mesh::wifi::CompanionWiFiFallbackState::Inactive:
+        snprintf(reply, reply_len,
+                 "> inactive, WiFi enabled but services stopped; configured SSID: %s",
+                 ssid);
+        appendOtaSeederStatus(reply, reply_len);
+        return true;
+      case mesh::wifi::CompanionWiFiFallbackState::ReconnectScheduled:
+        snprintf(reply, reply_len, "> reconnect scheduled, SSID: %s", ssid);
+        appendOtaSeederStatus(reply, reply_len);
+        return true;
+      case mesh::wifi::CompanionWiFiFallbackState::ConnectingOrRetrying:
+        break;
+    }
+  }
+
   switch (status) {
     case WL_NO_SSID_AVAIL:
       snprintf(reply, reply_len, "> failed, SSID not found: %s", ssid);
@@ -713,6 +740,8 @@ bool WebConfigServer::formatWiFiStatus(char* reply, size_t reply_len) {
     default:
       if (active && active->_mode == MODE_LAN) {
         snprintf(reply, reply_len, "> disconnected, SSID: %s", ssid);
+      } else if (companion_runtime) {
+        snprintf(reply, reply_len, "> connecting/retrying, SSID: %s", ssid);
       } else {
         snprintf(reply, reply_len,
                  "> off, configured SSID: %s; run 'start webconfig'", ssid);
