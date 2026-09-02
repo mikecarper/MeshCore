@@ -461,6 +461,7 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
 
         memset(&c, 0, sizeof(c));
         c.alt_path_len = OUT_PATH_UNKNOWN;
+        c.observed_path_len = OUT_PATH_UNKNOWN;
 
         bool success = (file.read(pub_key, 32) == 32);
         success = success && (file.read((uint8_t *) &c.permissions, 1) == 1);
@@ -694,6 +695,7 @@ ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
   c->out_path_len = OUT_PATH_UNKNOWN;
   c->out_path_is_persistable = true;
   c->alt_path_len = OUT_PATH_UNKNOWN;
+  c->observed_path_len = OUT_PATH_UNKNOWN;
   return c;
 }
 

@@ -195,7 +195,9 @@ can be copied directly into another `set outpath` or `set altpath` command.
 
 ```text
 get outpath
+get outpath path
 set outpath A1B2C3,D4E5F6
+set outpath path
 set outpath direct
 set outpath clear
 set outpath flood
@@ -214,10 +216,18 @@ For example, both `set altpath 600000,0d2784,f8dada` and
 The first CLI word is case-insensitive (`set`, `Set`, and `SET` are the same,
 as are `get`, `Get`, and the other command verbs). Argument case is preserved.
 
+`get outpath path` reports the reciprocal path received after the latest flood
+login without changing `outpath`. That packet arrives asynchronously, so retry
+shortly if the first query reports `> path pending`; the observation window
+expires after one minute. The login path is not automatically selected.
+`set outpath path` copies the observed route into `outpath` and saves it; it
+leaves the current route unchanged when no observed route is available.
+
 `set outpath direct` sets a zero-hop direct route for a client reachable without
-repeaters. `set outpath clear` forgets the override and lets normal path
-discovery fill it again. `set outpath flood` forces replies to use flood packets
-until the client logs in again.
+repeaters. `set outpath clear` forgets the override, replies
+`> outpath cleared`, and lets normal path discovery fill it again.
+`set outpath flood` forces replies to use flood packets until the client logs in
+again.
 
 When `outpath` is a valid direct path and `altpath` is also a valid, different
 direct path, repeater DM replies send two packets: one on `outpath` and one on

@@ -1550,7 +1550,9 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 #### View or set the direct path override for the current remote client
 **Usage:**
 - `get outpath`
+- `get outpath path`
 - `set outpath <hop1_hex,hop2_hex,...>`
+- `set outpath path`
 - `set outpath direct`
 - `set outpath clear`
 - `set outpath flood`
@@ -1560,8 +1562,16 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 
 **Notes:**
 - These commands require remote client context and update the caller's ACL entry.
+- `get outpath path` reports the reciprocal `PAYLOAD_TYPE_PATH` received after
+  the caller's latest flood login without changing the selected output route.
+  Because that packet is asynchronous, an immediate query can report
+  `> path pending`; retry shortly. The observation window expires after one
+  minute, and the captured login path is not automatically selected.
+- `set outpath path` copies that observed route to `outpath` and saves it. It
+  returns an error without changing `outpath` if no route was received.
 - `direct` selects a zero-hop route for a directly reachable caller.
-- `clear` forgets the override so normal path discovery can repopulate it.
+- `clear` forgets the override, replies `> outpath cleared`, and allows normal
+  path discovery to repopulate it.
 - `flood` forces replies to use flood packets until the client logs in again.
 
 ---

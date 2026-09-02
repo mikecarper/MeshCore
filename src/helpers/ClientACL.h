@@ -23,6 +23,10 @@ struct ClientInfo {
   bool out_path_is_persistable;  // live route may replace, but not erase, durable route
   uint8_t alt_path_len;
   uint8_t alt_path[MAX_PATH_SIZE];
+  uint8_t observed_path_len;       // reciprocal login PATH (transient)
+  uint8_t observed_path[MAX_PATH_SIZE];
+  bool observed_path_pending;
+  uint32_t observed_path_expiry;
   uint8_t shared_secret[PUB_KEY_SIZE];
   uint32_t last_timestamp;   // by THEIR clock (exact live floor; reserved ceiling after load)
   uint32_t last_activity;    // by OUR clock    (transient)

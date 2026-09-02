@@ -6,6 +6,7 @@
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ClockSyncUtils.h>
 #include <helpers/ClientLoginPersistence.h>
+#include <helpers/ClientPathObservation.h>
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/DatagramPayloadLimits.h>
 #include <helpers/FloodFilterPolicy.h>
@@ -93,6 +94,8 @@ extern "C" caddr_t _sbrk(int increment);
 #endif
 
 #define FIRMWARE_VER_LEVEL       2
+
+static constexpr uint32_t LOGIN_PATH_OBSERVATION_TIMEOUT_MS = 60000UL;
 
 #define REQ_TYPE_GET_STATUS         0x01 // same as _GET_STATS
 #define REQ_TYPE_KEEP_ALIVE         0x02
@@ -582,6 +585,9 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
       *client, client_existed, perms, PERM_ACL_ROLE_MASK,
       secret, sender_timestamp,
       getRTCClock()->getCurrentTime(), reset_out_path, OUT_PATH_UNKNOWN);
+  // A flood login arms observation only after its PATH reply is successfully
+  // allocated below. Clear any result from an earlier login in either case.
+  mesh::clearObservedClientPath(*client, OUT_PATH_UNKNOWN);
 
   const bool persistence_needed =
       mesh::successfulClientLoginNeedsPersistence(
@@ -914,7 +920,7 @@ bool MyMesh::isLooped(const mesh::Packet* packet, const uint8_t max_counters[]) 
   return n >= max_counters[hash_size];
 }
 
-void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
+bool MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
   TransportKey req_scope;
   bool is_wildcard = recv_pkt_region != NULL && recv_pkt_region->isWildcard();
   bool req_scope_known = recv_pkt_region != NULL && !is_wildcard
@@ -922,17 +928,15 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
 
   switch (mesh::chooseReplyScope(req_scope_known, is_wildcard, !default_scope.isNull())) {
     case mesh::REPLY_SCOPE_REQUEST:
-      sendFloodScoped(req_scope, packet, delay_millis, path_hash_size);   // reply with same scope as request
-      break;
+      return sendFloodScoped(req_scope, packet, delay_millis, path_hash_size);   // reply with same scope as request
     case mesh::REPLY_SCOPE_DEFAULT:
       // requester's scope is unknown: DIRECT request (no transport codes), or code matched no Region.
       // un-scoped would be dropped at hop 0 by repeaters running flood.max.unscoped=0
-      sendFloodScoped(default_scope, packet, delay_millis, path_hash_size);
-      break;
+      return sendFloodScoped(default_scope, packet, delay_millis, path_hash_size);
     case mesh::REPLY_SCOPE_NONE:
-      sendFlood(packet, delay_millis, path_hash_size);  // send un-scoped
-      break;
+      return sendFlood(packet, delay_millis, path_hash_size);  // send un-scoped
   }
+  return false;
 }
 
 static bool directPathsEqual(const uint8_t* a_path, uint8_t a_len, const uint8_t* b_path, uint8_t b_len) {
@@ -2576,7 +2580,15 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
       // let this sender know path TO here, so they can use sendDirect(), and ALSO encode the response
       mesh::Packet* path = createPathReturn(sender, secret, packet->path, packet->path_len,
                                             PAYLOAD_TYPE_RESPONSE, reply_data, reply_len);
-      if (path) sendFloodReply(path, SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+      if (path) {
+        const bool login_path_sent = sendFloodReply(
+            path, SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+        if (client != NULL && login_path_sent) {
+          mesh::beginObservedClientPath(
+              *client, OUT_PATH_UNKNOWN,
+              futureMillis(LOGIN_PATH_OBSERVATION_TIMEOUT_MS));
+        }
+      }
       return;
     }
 
@@ -3161,16 +3173,26 @@ bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t 
     MESH_DEBUG_PRINTLN("PATH to client, path_len=%d", (uint32_t)path_len);
     auto client = acl.getClientByIdx(i);
 
+    // A flood login's reciprocal PATH is direct and has no embedded payload
+    // (decoded as the reserved 0x0F extra type). Retain that one independently
+    // so the operator can inspect or explicitly select it.
+    const bool captured_login_path = packet->isRouteDirect()
+        && extra_type == 0x0F
+        && mesh::captureObservedClientPath(
+            *client, path, path_len, futureMillis(0));
+
     // PATH packets authenticate the sender and are de-duplicated in RAM, but
     // the protocol carries no timestamp or request nonce. Keep a learned route
     // useful for this boot without making an arbitrarily old replay durable.
-    const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
-        client->permissions != 0, false /* no durable replay proof */);
-    const mesh::ClientPathUpdateResult path_update =
-        mesh::applyReceivedClientPath(
-            *client, path, path_len, persistence_allowed,
-            OUT_PATH_FORCE_FLOOD);
-    (void)path_update;
+    if (!captured_login_path) {
+      const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
+          client->permissions != 0, false /* no durable replay proof */);
+      const mesh::ClientPathUpdateResult path_update =
+          mesh::applyReceivedClientPath(
+              *client, path, path_len, persistence_allowed,
+              OUT_PATH_FORCE_FLOOD);
+      (void)path_update;
+    }
     client->last_activity = getRTCClock()->getCurrentTime();
   } else {
     MESH_DEBUG_PRINTLN("onPeerPathRecv: invalid peer idx: %d", i);
@@ -10609,7 +10631,11 @@ static __attribute__((always_inline)) ClientPathCommand classifyClientPathComman
   }
 
   if (is_get) {
-    if (path[7] != 0) return CLIENT_PATH_NONE;
+    if (path[7] != 0
+        && ((result & CLIENT_PATH_ALT) != 0
+            || strcmp(path + 7, " path") != 0)) {
+      return CLIENT_PATH_NONE;
+    }
   } else if (path[7] != 0 && path[7] != ' ') {
     return CLIENT_PATH_NONE;
   }
@@ -10622,6 +10648,9 @@ bool MyMesh::handleClientPathCommand(ClientInfo* sender, char* command, char* re
 
   bool is_get = (path_command & CLIENT_PATH_SET) == 0;
   bool is_alt = (path_command & CLIENT_PATH_ALT) != 0;
+  bool use_observed_path = !is_alt
+      && (strcmp(command, "get outpath path") == 0
+          || strcmp(command, "set outpath path") == 0);
   if (sender == NULL) {
     strcpy(reply, "Err - command needs remote client context");
     return true;
@@ -10630,7 +10659,14 @@ bool MyMesh::handleClientPathCommand(ClientInfo* sender, char* command, char* re
   uint8_t* stored_path = is_alt ? sender->alt_path : sender->out_path;
   uint8_t* stored_path_len = is_alt ? &sender->alt_path_len : &sender->out_path_len;
   if (is_get) {
-    formatPathReply(stored_path, *stored_path_len, reply, 160);
+    if (use_observed_path
+        && mesh::isObservedClientPathPending(*sender, futureMillis(0))) {
+      strcpy(reply, "> path pending");
+    } else if (use_observed_path) {
+      formatPathReply(sender->observed_path, sender->observed_path_len, reply, 160);
+    } else {
+      formatPathReply(stored_path, *stored_path_len, reply, 160);
+    }
     return true;
   }
 
@@ -10640,7 +10676,21 @@ bool MyMesh::handleClientPathCommand(ClientInfo* sender, char* command, char* re
   uint8_t path[MAX_PATH_SIZE];
   uint8_t path_len = OUT_PATH_UNKNOWN;
   const char* err = NULL;
-  if (!parsePathCommand(spec, path, path_len, err)) {
+  if (use_observed_path
+      && mesh::isObservedClientPathPending(*sender, futureMillis(0))) {
+    strcpy(reply, "Err - path pending");
+    return true;
+  }
+  if (use_observed_path) {
+    if (!mesh::isValidObservedClientPathLength(
+            sender->observed_path_len, sizeof(sender->observed_path))) {
+      strcpy(reply, "Err - no path received");
+      return true;
+    }
+    path_len = sender->observed_path_len;
+    const size_t path_bytes = mesh::observedClientPathByteLength(path_len);
+    if (path_bytes != 0) memcpy(path, sender->observed_path, path_bytes);
+  } else if (!parsePathCommand(spec, path, path_len, err)) {
     strcpy(reply, err ? err : "Err - invalid path");
     return true;
   }
@@ -10672,7 +10722,11 @@ bool MyMesh::handleClientPathCommand(ClientInfo* sender, char* command, char* re
   }
   mesh::resetLazyPersistenceAfterSuccess(
       dirty_contacts_expiry, contacts_save_failures);
-  formatPathReply(stored_path, *stored_path_len, reply, 160);
+  if (!is_alt && path_len == OUT_PATH_UNKNOWN) {
+    strcpy(reply, "> outpath cleared");
+  } else {
+    formatPathReply(stored_path, *stored_path_len, reply, 160);
+  }
   return true;
 }
 

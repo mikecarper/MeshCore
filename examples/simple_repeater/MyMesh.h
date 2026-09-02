@@ -893,7 +893,7 @@ protected:
   void onControlDataRecv(mesh::Packet* packet) override;
   // OTA mesh-integration is centralized in mesh::Mesh (no per-example onOtaRecv / send adapter / tick).
 
-  void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
+  bool sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
   void sendClientReply(ClientInfo* client, mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
 
 public:
