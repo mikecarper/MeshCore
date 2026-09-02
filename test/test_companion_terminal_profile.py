@@ -100,6 +100,20 @@ assert 'memcmp(command + noun_start, "fold", 4) == 0' in owner_policy
 assert 'memcmp(command + pos, "on", 2) == 0' in owner_policy
 assert 'memcmp(command + pos, "off", 3) == 0' in owner_policy
 
+# The bounded framed/BLE OTA-control command belongs to the OTA features, not
+# only to the synthetic Full profile.  Auto builds of a declared nRF52 OTA
+# Companion need this route to select TempRadio and drive receive/apply.
+ota_frame_start = source.index(
+    "== mesh::companion::CMD_EXEC_LOCAL_OTA_CONTROL"
+)
+ota_frame_end = source.index(
+    "} else if (cmd_frame[0] == mesh::companion::CMD_BLE_MOTA_SOURCE)",
+    ota_frame_start,
+)
+ota_frame = source[ota_frame_start:ota_frame_end]
+assert "\n#if COMPANION_FEATURE_OTA_CLI\n" in ota_frame
+assert "#if defined(COMPANION_RADIO_FULL)" not in ota_frame
+
 # This compile-time contract prevents either the implementation or help entry
 # from leaking onto a non-ESP32 build merely because a recipe set the flag.
 assert re.search(

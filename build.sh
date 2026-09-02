@@ -245,6 +245,10 @@ init_project_context() {
       if [ -z "$env_name" ] || [ -z "$env_platform" ]; then
         continue
       fi
+      # Native Windows Python writes CRLF even when its output is consumed by
+      # Git Bash. `read` removes LF but leaves CR on the final field, which can
+      # make exact board checks (for example heltec-rc32) silently fail.
+      env_board=${env_board%$'\r'}
       SUPPORTED_PIO_ENVS+=("$env_name")
       PIO_ENV_PLATFORM_BY_NAME["$env_name"]=$env_platform
       PIO_ENV_BOARD_BY_NAME["$env_name"]=$env_board
@@ -2720,6 +2724,16 @@ is_lora_ota_build() {
     return 1
   fi
 
+  # A single-target auto build promises to preserve the capabilities declared
+  # by its resolved PlatformIO environment and fail if they do not fit.  Keep
+  # that contract for nRF52 Companion and other non-repeater roles which
+  # deliberately inherit the shared OTA recipe.  The standard/release profile
+  # continues through the opt-in policy below and may select its documented
+  # portable reductions.
+  if [ "${BUILD_PROFILE_FOR_TARGET:-$BUILD_PROFILE_EFFECTIVE}" = "auto" ]; then
+    return 0
+  fi
+
   # The OTA manager, staging store, and self-install path are deliberately
   # opt-in. Most boards use the constrained no-external-sensors sibling. A
   # purpose-built external-QSPI target may retain the full board feature set.
@@ -2746,11 +2760,15 @@ is_lora_ota_build() {
   esac
 }
 
-is_esp32_companion_build() {
+is_companion_build() {
   case "${1,,}" in
     *companion*|*comp_radio*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+is_esp32_companion_build() {
+  is_companion_build "$1"
 }
 
 requires_esp32_portable_app_slot() {
@@ -2910,8 +2928,7 @@ declare_build_capability_contract() {
       record_build_expectation "companion.ble_mota_source" \
         "Bluetooth mOTA source"
     fi
-  elif [ "$env_platform" = "ESP32_PLATFORM" ] \
-      && is_esp32_companion_build "$env_name" \
+  elif is_companion_build "$env_name" \
       && is_lora_ota_build "$env_name"; then
     record_build_expectation "companion.temp_radio" "ERR usage: tempradio"
     record_build_expectation "companion.ota_cli" "OTA: status"
@@ -3323,8 +3340,7 @@ apply_lora_ota_override() {
       append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_FOLDER_SERIAL"
     fi
-    if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "ESP32_PLATFORM" ] \
-        && is_esp32_companion_build "$env_name"; then
+    if is_companion_build "$env_name"; then
       # Do not link an OTA manager into a Companion while compiling out the
       # terminal controls needed to operate it over LoRa.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1"

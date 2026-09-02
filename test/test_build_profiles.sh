@@ -319,6 +319,51 @@ require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
 # replace each with that exact board's Full target.
 init_project_context >/dev/null
 
+# Auto means that an explicitly selected target keeps the capabilities in its
+# resolved PlatformIO recipe.  T1000-E BLE/USB both inherit nRF52 LoRa OTA; the
+# release builder must not silently replace ENABLE_OTA with -UENABLE_OTA merely
+# because Companion is not a repeater role.  Standard keeps the existing
+# portable-release reduction policy.
+for t1000_env in \
+    t1000e_companion_radio_ble \
+    t1000e_companion_radio_usb; do
+  [ "${PIO_ENV_OTA_BY_NAME[$t1000_env]:-0}" = 1 ] \
+    || fail "$t1000_env resolved recipe no longer declares LoRa OTA"
+  (
+    BUILD_PROFILE_FOR_TARGET=auto
+    is_lora_ota_build "$t1000_env" \
+      || fail "$t1000_env auto profile stripped declared LoRa OTA"
+
+    PLATFORMIO_BUILD_FLAGS=""
+    PLATFORMIO_BUILD_UNFLAGS=""
+    apply_lora_ota_override "$t1000_env"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"-DENABLE_OTA=1"* ]] \
+      || fail "$t1000_env auto overlay omitted ENABLE_OTA"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"-UENABLE_OTA"* ]] \
+      || fail "$t1000_env auto overlay still disables LoRa OTA"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"-DCOMPANION_FEATURE_TEMP_RADIO=1"* ]] \
+      || fail "$t1000_env auto overlay omitted temporary-radio control"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"-DCOMPANION_FEATURE_OTA_CLI=1"* ]] \
+      || fail "$t1000_env auto overlay omitted OTA CLI control"
+
+    BUILD_CAPABILITIES=()
+    BUILD_REDUCTIONS=()
+    BUILD_EXPECTATIONS=()
+    declare_build_capability_contract "$t1000_env" NRF52_PLATFORM
+    expectations=" ${BUILD_EXPECTATIONS[*]} "
+    [[ "$expectations" == *"companion.temp_radio=ERR usage: tempradio"* ]] \
+      || fail "$t1000_env auto contract omitted temporary-radio verification"
+    [[ "$expectations" == *"companion.ota_cli=OTA: status"* ]] \
+      || fail "$t1000_env auto contract omitted OTA CLI verification"
+  )
+  (
+    BUILD_PROFILE_FOR_TARGET=standard
+    if is_lora_ota_build "$t1000_env"; then
+      fail "$t1000_env standard profile bypassed portable OTA policy"
+    fi
+  )
+done
+
 # Arduino-ESP32 3.x OTA-only targets that have always declared larger A/B
 # slots must be checked against their real partition table, not the legacy
 # 1.25 MiB portable ceiling. Keep that exception OTA-only so ordinary RC32

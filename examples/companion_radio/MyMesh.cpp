@@ -4572,7 +4572,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
   } else if (cmd_frame[0]
              == mesh::companion::CMD_EXEC_LOCAL_OTA_CONTROL) {
-#if defined(COMPANION_RADIO_FULL)
+#if COMPANION_FEATURE_OTA_CLI
     const size_t command_len = len - 1;
     if (!mesh::companion::isBleOtaControlCommandAllowed(
             &cmd_frame[1], command_len)) {

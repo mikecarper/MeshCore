@@ -235,7 +235,7 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x3F` / `0x40` | `CMD_SET_DEFAULT_FLOOD_SCOPE` / `CMD_GET_DEFAULT_FLOOD_SCOPE` | Write or read the default flood scope. |
 | `0x41` | `CMD_SEND_RAW_PACKET` | Queue a fully encoded raw mesh packet. |
 | `0x42` | `CMD_RUN_CLI_COMMAND` | Run a local CLI command (protocol v14+). |
-| `0x4A` | `CMD_EXEC_LOCAL_OTA_CONTROL` | Run one bounded local TempRadio or OTA command on a Full Companion. |
+| `0x4A` | `CMD_EXEC_LOCAL_OTA_CONTROL` | Run one bounded local TempRadio or OTA command when the Companion includes the OTA CLI. |
 | `0x4B` | `CMD_BLE_MOTA_SOURCE` | Query, start, or stop an nRF52 Full Companion's Bluetooth-backed LoRa mOTA source. |
 | `0x78`-`0x7F` | Deprecated hardware-setting aliases | Receive-only compatibility for clients shipped before command `0x42` became the canonical settings path. |
 
@@ -326,14 +326,16 @@ custom name is limited to 31 valid UTF-8 bytes and takes effect after reboot.
 
 ### Bluetooth LoRa mOTA source
 
-Protocol v14 lets a phone use an nRF52 Full Companion as the source for a
+Protocol v14 lets a phone control an install-capable Companion's own LoRa OTA
+session. An nRF52 Full Companion can additionally act as the source for a
 remote repeater update without a USB computer. The normal Companion service
 still carries contacts, repeater login, CLI messages, and these two control
 commands. The separate mOTA service carries only host-folder request/response
 frames.
 
 `CMD_EXEC_LOCAL_OTA_CONTROL` (`0x4A`) is followed by 1-174 printable ASCII
-bytes. Full Companion accepts only these local command families:
+bytes. A Companion built with the OTA CLI accepts only these local command
+families:
 
 ```text
 tempradio <freq_kHz>,<bw_kHz>,<sf>,<cr>,<minutes>
@@ -348,7 +350,7 @@ return `ERR_CODE_ILLEGAL_ARG`. A recognized command replies with
 `RESP_CODE_OK`, one unsigned reply-length byte, and exactly that many printable
 result bytes. Shell metacharacters are rejected as well; the text is dispatched
 only to the in-firmware parser and is never passed to a host shell. Firmware
-without the Full Companion feature returns `ERR_CODE_UNSUPPORTED_CMD`.
+without the OTA CLI feature returns `ERR_CODE_UNSUPPORTED_CMD`.
 
 `CMD_BLE_MOTA_SOURCE` (`0x4B`) has one action byte:
 
