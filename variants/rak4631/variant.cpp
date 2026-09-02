@@ -45,5 +45,12 @@ void initVariant()
 
   pinMode(PIN_LED2, OUTPUT);
   ledOff(PIN_LED2);;
-}
 
+#if defined(OTA_QSPI_STORE) && defined(OTA_QSPI_CS_ARDUINO_PIN)
+  // Deselect a wired OTA NOR before any other device can toggle shared
+  // WisBlock SPI nets. The W25Q16 installation also needs a physical CS#
+  // pull-up so the signal is defined while the MCU is in reset.
+  pinMode(OTA_QSPI_CS_ARDUINO_PIN, OUTPUT);
+  digitalWrite(OTA_QSPI_CS_ARDUINO_PIN, HIGH);
+#endif
+}

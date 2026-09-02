@@ -9,6 +9,9 @@
 #include "nrf.h"
 
 #include <Arduino.h>
+#if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+  #include <SPI.h>
+#endif
 #include <string.h>
 
 namespace mesh {
@@ -162,6 +165,43 @@ static void configure_qspi_gpio(const nrf_qspi_pins_t& pins) {
                  NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
 }
 
+#if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+static void disconnect_qspi_pins() {
+  const nrf_qspi_pins_t disconnected = {
+    NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED,
+    NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED,
+    NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED
+  };
+  nrf_qspi_pins_set(NRF_QSPI, &disconnected);
+}
+
+static void acquire_rak3401_radio_bus() {
+  // RadioLib transactions are synchronous in the main loop and its DIO1 ISR
+  // only records state, so no radio SPI transfer can overlap this handoff.
+  // The SX1262 may remain in autonomous RX while its distinct NSS is high.
+  // Reinitializing SPI1 after QSPI releases the pads is necessary because the
+  // QSPI GPIO setup changes their direction and drive configuration.
+  const uint8_t flash_cs = qspi_cs_pin();
+  nrf_gpio_pin_set(flash_cs);
+  nrf_gpio_cfg(flash_cs, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  pinMode(P_LORA_NSS, OUTPUT);
+  digitalWrite(P_LORA_NSS, HIGH);
+  SPI1.end();
+}
+
+static void release_rak3401_radio_bus() {
+  const uint8_t flash_cs = qspi_cs_pin();
+  nrf_gpio_pin_set(flash_cs);
+  nrf_gpio_cfg(flash_cs, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT,
+               NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_H0H1, NRF_GPIO_PIN_NOSENSE);
+  disconnect_qspi_pins();
+  SPI1.begin();
+  pinMode(P_LORA_NSS, OUTPUT);
+  digitalWrite(P_LORA_NSS, HIGH);
+}
+#endif
+
 static void wake_qspi_flash_before_activate(const nrf_qspi_pins_t& pins) {
   // nRF52840 TASKS_ACTIVATE communicates with the NOR before CINSTR is
   // available. A flash put to sleep by our preceding 0xB9 ignores that
@@ -296,6 +336,13 @@ bool OtaStoreQspiNrf52::waitMemoryReady(uint32_t timeout_ms) {
 
 bool OtaStoreQspiNrf52::ensureFlash() {
   if (_qspi_ready) return true;
+
+#if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+  if (!_shared_radio_bus_acquired) {
+    acquire_rak3401_radio_bus();
+    _shared_radio_bus_acquired = true;
+  }
+#endif
 
 #if defined(OTA_QSPI_POWER_PIN)
   pinMode(OTA_QSPI_POWER_PIN, OUTPUT);
@@ -447,12 +494,16 @@ void OtaStoreQspiNrf52::releaseFlash() {
     nrf_qspi_disable(NRF_QSPI);
     nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
     if (_memory_operation_pending) {
+#if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+      disconnect_qspi_pins();
+#else
       const nrf_qspi_pins_t disconnected = {
         NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED,
         NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED,
         NRF_QSPI_PIN_NOT_CONNECTED, NRF_QSPI_PIN_NOT_CONNECTED
       };
       nrf_qspi_pins_set(NRF_QSPI, &disconnected);
+#endif
     }
   }
   _qspi_active = false;
@@ -464,6 +515,12 @@ void OtaStoreQspiNrf52::releaseFlash() {
   if (!_memory_operation_pending) digitalWrite(PIN_FLASH_EN, LOW);
 #elif defined(QSPI_FLASH_EN)
   if (!_memory_operation_pending) digitalWrite(QSPI_FLASH_EN, LOW);
+#endif
+#if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+  if (_shared_radio_bus_acquired) {
+    release_rak3401_radio_bus();
+    _shared_radio_bus_acquired = false;
+  }
 #endif
 }
 

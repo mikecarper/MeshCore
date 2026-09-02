@@ -56,6 +56,9 @@ fi
 
 canonical_target=RAK_4631_repeater
 canonical_ota_target=RAK_4631_repeater_lora_ota_no_external_sensors
+rak15001_target=RAK_4631_repeater_rak15001_slot_c_lora_ota
+rak4631_w25_target=RAK_4631_repeater_w25q16_lora_ota
+rak3401_w25_target=RAK_3401_repeater_rak13302_w25q16_lora_ota
 legacy_install_targets=(
   RAK_4631_repeater_bridge_rs232_serial1
   RAK_4631_repeater_bridge_rs232_serial2
@@ -63,6 +66,9 @@ legacy_install_targets=(
 SUPPORTED_PIO_ENVS=(
   "$canonical_target"
   "$canonical_ota_target"
+  "$rak15001_target"
+  "$rak4631_w25_target"
+  "$rak3401_w25_target"
   "${legacy_install_targets[@]}"
   "${compatibility_targets[@]}"
 )
@@ -75,6 +81,9 @@ assert_array_equals \
   "canonical bulk target list" all_targets \
   "$canonical_target" \
   "$canonical_ota_target" \
+  "$rak15001_target" \
+  "$rak4631_w25_target" \
+  "$rak3401_w25_target" \
   "${compatibility_targets[@]}"
 
 mapfile -t release_targets < <(
@@ -83,6 +92,9 @@ mapfile -t release_targets < <(
 assert_array_equals \
   "repeater release target list" release_targets \
   "$canonical_target" \
+  "$rak15001_target" \
+  "$rak4631_w25_target" \
+  "$rak3401_w25_target" \
   "${compatibility_targets[@]}"
 
 echo "test_rak4631_ota_compatibility: OK"

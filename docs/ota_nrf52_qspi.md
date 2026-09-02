@@ -27,6 +27,11 @@ on these currently matched families:
 - RAK4631 with a RAK15001 in WisBlock sensor slot C, using the dedicated
   `RAK_4631_repeater_rak15001_slot_c_lora_ota` application and matching
   `wiscore_rak4631_board_rak15001_slot_c` OTAFIX bootloader
+- RAK4631 with an externally wired Winbond W25Q16JV breakout on RAK19007,
+  using `RAK_4631_repeater_w25q16_lora_ota`
+- RAK3401 with its RAK13302 1 W radio and the same externally wired W25Q16JV
+  breakout on RAK19007, using
+  `RAK_3401_repeater_rak13302_w25q16_lora_ota`
 
 Heltec T114 is intentionally not in this list. Its public V1, V2.0, and V2.1
 schematics show U9 (MX25R1635F) as an optional QSPI footprint, so standard T114
@@ -70,11 +75,62 @@ chip-select. Update a RAK13800 Ethernet build locally over USB using the
 release's **Manual UF2** or **Serial DFU (.zip)** download; it cannot use this
 RAK15001 LoRa-OTA staging target.
 
-RAK3401 is intentionally unsupported. Its external RAK13302 1 W radio already
+RAK3401 with RAK13302 remains incompatible with **RAK15001**. The 1 W radio
 uses the same WisBlock SPI clock/data pins **and the same chip-select** as
-RAK15001. Firmware cannot independently select or detect the two chips, so a
+RAK15001. Firmware cannot independently select or detect those two chips, so a
 stock RAK3401 + RAK15001 assembly cannot provide reliable OTA staging without
-a hardware chip-select rework.
+a hardware chip-select rework. This restriction does not apply to the
+separate-CS W25Q16 wiring below.
+
+### One W25Q16 wiring for RAK4631 or RAK3401 + RAK13302
+
+An external Winbond W25Q16JV breakout can remain attached to a RAK19007 while
+the core is changed between RAK4631 and RAK3401 + RAK13302. It shares only the
+WisBlock SPI clock/data nets and has its own chip-select on AIN1:
+
+| W25Q16 breakout | RAK19007 connection | nRF52840 / Arduino pin |
+| --- | --- | --- |
+| `CLK` | IO connector pin 26, `SPI_CLK` | P0.03 / `3` |
+| `DO` / MISO | IO connector pin 27, `SPI_MISO` | P0.29 / `29` |
+| `DI` / MOSI | IO connector pin 28, `SPI_MOSI` | P0.30 / `30` |
+| `CS` | J11 `AIN1` | P0.31 / `31` |
+| `VCC` | J12 `VDD` | regulated 3.3 V |
+| `GND` | J12 `GND` | ground |
+
+Fit a physical approximately 10 kOhm pull-up from `CS` to J12 `VDD`. That
+keeps the flash deselected during reset, bootloader entry, and a core-module
+swap. Power the breakout only from J12 `VDD`; **never use J11 `VBAT`**, which
+can exceed the flash's supply rating. The six-pin breakout does not expose
+WP#/IO2 or HOLD#/IO3; do not add nRF IO2/IO3 wiring. A breakout with an onboard
+power LED works, but that LED draws continuously and is undesirable for
+low-power or solar operation.
+
+This arrangement consumes no WisBlock sensor slot. However, `SPI_CLK`,
+`SPI_MISO`, and `SPI_MOSI` are not available on the easy 2.54 mm J10/J11/J12
+headers. Those three signals require a short underside-pad tap or a suitable
+IO-connector interposer at pins 26-28. J11 and J12 alone are not sufficient.
+
+GPS remains supported in sensor slot A. RAK12500 uses I2C, while RAK12501/L76K
+uses UART plus its auxiliary control signals; neither uses the shared SPI
+clock/data bus. On RAK4631 the built-in SX1262 has a separate private SPI bus.
+On RAK3401 the RAK13302 and flash share clock/data, but have independent
+chip-selects: RAK13302 NSS is P0.26 and flash CS is P0.31. The matched firmware
+holds the radio NSS high while it temporarily hands the bus to the flash, then
+restores the radio SPI interface.
+
+The breakout target accepts only a 2 MiB W25Q16 with JEDEC ID `EF 40 15` and
+runs it at 8 MHz in standard single-data-line SPI mode. A substituted W25Q32,
+W25Q64, or W25Q128 fails closed instead of being treated as the OTA store.
+Use the complete application/bootloader identity row that matches the fitted
+core:
+
+| Core and radio | PlatformIO environment | MOTA hardware identity | OTAFIX board / DFU device name |
+| --- | --- | --- | --- |
+| RAK4631 built-in SX1262 | `RAK_4631_repeater_w25q16_lora_ota` | `RAK4631_W25Q16` | `wiscore_rak4631_w25q16` / `4631_W25Q16_DFU` |
+| RAK3401 + RAK13302 1 W | `RAK_3401_repeater_rak13302_w25q16_lora_ota` | `RAK3401_RAK13302_W25Q16` | `wiscore_rak3401_rak13302_w25q16` / `3401_W25Q16_DFU` |
+
+The physical flash wiring is identical, but the two application and
+bootloader pairs are not interchangeable.
 
 ## One-time prerequisite
 
@@ -85,6 +141,14 @@ before using LoRa OTA. The release notes must explicitly list that board's QSPI
 mode. Also install the SoftDevice version expected by that target. The
 application refuses the install handoff when the bootloader does not advertise
 QSPI support.
+
+For the external W25Q16 option, install the corresponding bootloader once
+before installing its MeshCore application: `wiscore_rak4631_w25q16`
+(`DEVICE_NAME=4631_W25Q16_DFU`) for RAK4631, or
+`wiscore_rak3401_rak13302_w25q16` (`DEVICE_NAME=3401_W25Q16_DFU`) for RAK3401
+plus RAK13302. Use only a release that explicitly names that exact pairing. Do
+not substitute the RAK15001 bootloader or swap the two W25Q16 bootloaders
+merely because the base-board wiring is the same.
 
 For the first migration from the ordinary `wiscore_rak4631_board` bootloader to
 `wiscore_rak4631_board_rak15001_slot_c`, use Nordic serial DFU or a compatible
@@ -121,10 +185,20 @@ bl:QSPI
 QSPI jedec=C84015 size=2048K sr1=00 stage=jedec
 ```
 
+A ready external W25Q16 target instead identifies the Winbond part:
+
+```text
+QSPI store:2048K
+bootloader: QSPI apply OK
+bl:QSPI
+QSPI jedec=EF4015 size=2048K sr1=00 stage=jedec
+```
+
 Other supported boards can report a capacity different from 2048K; the
-RAK15001 target must report exactly 2048K. `QSPI store:ERR 0K`, `NO QSPI`, or
-`bl:NO-QSPI` means the flash wiring, flash power, or bootloader does not match.
-Do not start an install in that state.
+RAK15001 and W25Q16 targets must report exactly 2048K and their respective
+exact JEDEC IDs. `QSPI store:ERR 0K`, `NO QSPI`, or `bl:NO-QSPI` means the flash
+wiring, flash power, chip-select pull-up, application, or bootloader does not
+match. Do not start an install in that state.
 
 `ota qspi` is a read-only diagnostic probe available on QSPI OTA builds. It
 reports the exact JEDEC ID, status-register byte, last store stage, and the

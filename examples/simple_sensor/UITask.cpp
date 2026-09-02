@@ -1,4 +1,5 @@
 #include "UITask.h"
+#include "target.h"
 #include <Arduino.h>
 #include <helpers/CommonCLI.h>
 
@@ -31,6 +32,11 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   _auto_off = millis() + AUTO_OFF_MILLIS;
   _node_prefs = node_prefs;
   _display->turnOn();
+#if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
+    && defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
+    && MOMENTARY_BUTTON_WAKE_FROM_SLEEP
+  user_btn.begin();
+#endif
 
   // strip off dash and commit hash by changing dash to null terminator
   // e.g: v1.2.3-abcdef -> v1.2.3
@@ -92,7 +98,18 @@ void UITask::renderCurrScreen() {
 }
 
 void UITask::loop() {
-#ifdef PIN_USER_BTN
+#if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
+    && defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
+    && MOMENTARY_BUTTON_WAKE_FROM_SLEEP
+  int ev = user_btn.check();
+  if (ev != BUTTON_EVENT_NONE) {
+    if (!_display->isOn()) {
+      _display->turnOn();
+      _next_refresh = 0;
+    }
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+  }
+#elif defined(PIN_USER_BTN)
   if (millis() >= _next_read) {
     int btnState = digitalRead(PIN_USER_BTN);
     if (btnState != _prevBtnState) {

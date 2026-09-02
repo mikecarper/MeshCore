@@ -52,6 +52,14 @@ void initVariant()
   // Keep it on from early startup and never cycle it for radio-only recovery.
   digitalWrite(PIN_3V3_EN, HIGH);
 
+#if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+  // Keep the separately selected W25Q16 deselected before the RAK13302 starts
+  // using their shared SCK/MOSI/MISO nets. A physical pull-up is still
+  // required so CS# remains defined during reset and core-module swaps.
+  pinMode(OTA_QSPI_CS_ARDUINO_PIN, OUTPUT);
+  digitalWrite(OTA_QSPI_CS_ARDUINO_PIN, HIGH);
+#endif
+
   // Keep the RAK13302 FEM disabled until board startup has completed its
   // voltage check and explicitly enables the frontend.
   pinMode(SX126X_POWER_EN, OUTPUT);

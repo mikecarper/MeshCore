@@ -247,6 +247,45 @@ public:
     return false;
   }
 
+  // Exact transport-session resets can arrive independently of
+  // isConnected() polling (for example, a close/reopen between two loop
+  // iterations). Let the application abort only work which belongs to that
+  // transport, without disturbing an active BLE/WiFi response transaction.
+  bool isReplyRouteFor(BaseSerialInterface* target) const {
+    return target != nullptr && replyTarget() == target;
+  }
+
+  BaseSerialInterface* captureReplyRoute() override {
+    return replyTarget();
+  }
+
+  bool isReplyRouteAvailable(BaseSerialInterface* route) const override {
+    return _enabled && isAvailableReplyTarget(route);
+  }
+
+  bool isReplyRouteWriteBusy(BaseSerialInterface* route) const override {
+    return !_enabled || !isAvailableReplyTarget(route)
+        || route->isWriteBusy();
+  }
+
+  size_t writeFrameToRoute(BaseSerialInterface* route,
+                           const uint8_t src[], size_t len) override {
+    if (!_enabled || src == nullptr || len == 0
+        || !isAvailableReplyTarget(route)) {
+      return 0;
+    }
+    return route->writeFrame(src, len);
+  }
+
+  // Call this only after the response producer for target has been stopped.
+  // Forgetting both pointers prevents a new host on the same transport from
+  // inheriting the prior host's reply destination.
+  void forgetReplyRouteForDisconnected(BaseSerialInterface* target) {
+    if (target == nullptr) return;
+    if (_lockedReplyInterface == target) _lockedReplyInterface = nullptr;
+    if (_lastRxInterface == target) _lastRxInterface = nullptr;
+  }
+
   void lockReplyRoute() override {
     if (isAvailableReplyTarget(_lastRxInterface)) {
       _lockedReplyInterface = _lastRxInterface;
@@ -263,10 +302,10 @@ public:
       return 0;
     }
 
-    // Responses and delivery-required completion pushes belong to the client
-    // which supplied the latest command. Best-effort asynchronous observations
-    // remain broadcast so passive connected apps can keep their view fresh.
-    if (mesh::companionFrameRequiresDelivery(src, len)) {
+    // Responses and command-completion pushes belong to their requester.
+    // Unsolicited pushes remain broadcast regardless of queue priority so
+    // passive connected apps can keep their view fresh.
+    if (mesh::companionFrameUsesRequesterRoute(src, len)) {
       BaseSerialInterface* target = replyTarget();
       if (target != nullptr) {
         if (!isAvailableReplyTarget(target)) return 0;

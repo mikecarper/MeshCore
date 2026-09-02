@@ -85,6 +85,22 @@ TEST(CompanionFrameQueue, UnknownPushDefaultsToRequired) {
   EXPECT_FALSE(mesh::companionFrameRequiresDelivery(&packet_log, 1));
 }
 
+TEST(CompanionFrameQueue, QueuePriorityDoesNotImplyRequesterOwnership) {
+  uint8_t response = 0x05;
+  uint8_t login_result = 0x85;
+  uint8_t message_waiting = 0x83;
+  uint8_t control_data = 0x8E;
+  uint8_t unknown = 0xF1;
+
+  EXPECT_TRUE(mesh::companionFrameUsesRequesterRoute(&response, 1));
+  EXPECT_TRUE(mesh::companionFrameUsesRequesterRoute(&login_result, 1));
+  EXPECT_FALSE(mesh::companionFrameUsesRequesterRoute(&message_waiting, 1));
+  EXPECT_FALSE(mesh::companionFrameUsesRequesterRoute(&control_data, 1));
+  EXPECT_FALSE(mesh::companionFrameUsesRequesterRoute(&unknown, 1));
+  EXPECT_TRUE(mesh::companionFrameRequiresDelivery(&message_waiting, 1));
+  EXPECT_TRUE(mesh::companionFrameRequiresDelivery(&control_data, 1));
+}
+
 TEST(CompanionFrameQueue, ResponsesRunBeforeQueuedPushesAndRemainFifo) {
   TestFrame queue[5] = {};
   size_t count = 0;

@@ -1,8 +1,44 @@
 #pragma once
 
 #include <stdint.h>
+#include <string.h>
 
 namespace mesh {
+
+// OtaCli accepts both `folder` and `fold`, and collapses repeated ASCII spaces
+// between its words. Recognize that same mutating command surface here so no
+// alias can attach/detach the CDC0-backed folder outside the USB owner state
+// machine. Status/list commands deliberately remain ordinary OTA CLI queries.
+inline bool isUsbMotaOwnerTransitionCommand(const char* command,
+                                             size_t length) {
+  if (command == nullptr) return false;
+  size_t pos = 0;
+  while (pos < length && (command[pos] == ' ' || command[pos] == '\t')) ++pos;
+  if (length - pos < 3 || memcmp(command + pos, "ota", 3) != 0) return false;
+  pos += 3;
+  if (pos < length && command[pos] != ' ') return false;
+
+  while (pos < length && command[pos] == ' ') ++pos;
+  const size_t noun_start = pos;
+  while (pos < length && command[pos] != ' ') ++pos;
+  const size_t noun_len = pos - noun_start;
+  if (!((noun_len == 6
+         && memcmp(command + noun_start, "folder", 6) == 0)
+        || (noun_len == 4
+            && memcmp(command + noun_start, "fold", 4) == 0))) {
+    return false;
+  }
+
+  while (pos < length && command[pos] == ' ') ++pos;
+  const size_t action_len = length - pos;
+  return (action_len == 2 && memcmp(command + pos, "on", 2) == 0)
+      || (action_len == 3 && memcmp(command + pos, "off", 3) == 0);
+}
+
+inline bool isUsbMotaOwnerTransitionCommand(const char* command) {
+  return command != nullptr
+      && isUsbMotaOwnerTransitionCommand(command, strlen(command));
+}
 
 // Coordinates the Full Companion USB startup handoff without consuming the
 // '<' byte. ArduinoSerialInterface remains the only binary protocol parser.

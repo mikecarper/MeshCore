@@ -18,6 +18,7 @@ public:
   int soft_recoveries = 0;
   int hard_recoveries = 0;
   int cad_set_calls = 0;
+  int agc_resets = 0;
   bool cad_enabled = false;
   unsigned long last_irq = 0;
   bool recovery_result = true;
@@ -53,6 +54,7 @@ public:
     cad_set_calls++;
     cad_enabled = enable;
   }
+  void resetAGC() override { agc_resets++; }
   unsigned long getLastRadioInterruptMillis() const override { return last_irq; }
   bool recoverRadio(bool hard) override {
     if (hard) {
@@ -109,6 +111,11 @@ public:
   int forced_rx_delay = -1;
   bool bypass_rx_delay = false;
   bool configured_cad_enabled = false;
+  int configured_agc_interval = 0;
+
+  int getAGCResetInterval() const override {
+    return configured_agc_interval;
+  }
 
   TestDispatcher(TestRadio& radio, TestClock& clock, RxReservePacketManager& mgr)
     : mesh::Dispatcher(radio, clock, mgr), manager(mgr) { }
@@ -276,6 +283,204 @@ TEST(Dispatcher, ConfiguredCadStateIsPropagatedToTheRadio) {
   dispatcher.loop();
   EXPECT_EQ(2, radio.cad_set_calls);
   EXPECT_FALSE(radio.cad_enabled);
+}
+
+TEST(Dispatcher, FirstAgcResetWaitsForConfiguredIntervalAfterStartup) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  clock.now = 1000;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  // Repeater preferences are loaded after Dispatcher::begin().  The first loop
+  // must arm from that persisted value rather than treating a zero deadline as
+  // already expired.
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 8999;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 9001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+}
+
+TEST(Dispatcher, FirstAgcResetWaitsAfterDelayedRadioActivation) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.makeRadioAvailable(false);
+  dispatcher.begin();
+
+  clock.now = 2000;
+  dispatcher.makeRadioAvailable(true);
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 9999;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 10001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+}
+
+TEST(Dispatcher, EnablingAgcResetAtRuntimeArmsWithoutImmediateReset) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+  dispatcher.loop();
+
+  clock.now = 5000;
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 13001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+}
+
+TEST(Dispatcher, LengtheningPositiveAgcIntervalRearmsTheDeadline) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  clock.now = 1000;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.begin();
+  dispatcher.loop();
+
+  clock.now = 2000;
+  dispatcher.configured_agc_interval = 240000;
+  dispatcher.loop();
+
+  // The former 8-second deadline must no longer fire.
+  clock.now = 9001;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 242001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+}
+
+TEST(Dispatcher, ShorteningPositiveAgcIntervalRearmsTheDeadline) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  clock.now = 1000;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 240000;
+  dispatcher.begin();
+  dispatcher.loop();
+
+  clock.now = 2000;
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.loop();
+
+  clock.now = 9999;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 10001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+}
+
+TEST(Dispatcher, DisablingAndReenablingAgcStartsANewFullInterval) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.begin();
+  dispatcher.loop();
+
+  clock.now = 4000;
+  dispatcher.configured_agc_interval = 0;
+  dispatcher.loop();
+
+  clock.now = 10000;
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.loop();
+  clock.now = 17999;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 18001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+}
+
+TEST(Dispatcher, AgcResetRepeatsAtTheConfiguredInterval) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 100;
+  dispatcher.begin();
+  dispatcher.loop();
+
+  clock.now = 101;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+
+  clock.now = 202;
+  dispatcher.loop();
+  EXPECT_EQ(2, radio.agc_resets);
+}
+
+TEST(Dispatcher, RadioReactivationStartsANewFullAgcInterval) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.begin();
+  dispatcher.loop();
+
+  clock.now = 7000;
+  dispatcher.makeRadioAvailable(false);
+  clock.now = 12000;
+  dispatcher.makeRadioAvailable(true);
+  dispatcher.loop();
+
+  clock.now = 19999;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 20001;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+}
+
+TEST(Dispatcher, AgcResetDeadlineSurvivesMillisRollover) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  clock.now = ~0UL - 0xFFUL;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 512;
+  dispatcher.begin();
+  dispatcher.loop();
+
+  clock.now = 0xFFUL;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_resets);
+
+  clock.now = 0x101UL;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
 }
 
 TEST(StaticPoolPacketManager, ReportsEarliestQueueTimesWithoutDequeuing) {

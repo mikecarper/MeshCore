@@ -334,7 +334,17 @@ void loop() {
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif
-  if (the_mesh.getNodePrefs()->powersaving_enabled && !board.isUsbDataConnected()) {
+  bool can_power_save = the_mesh.getNodePrefs()->powersaving_enabled
+      && !board.isUsbDataConnected();
+#if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
+    && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
+    && defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
+  // Do not strand a stable-level debounce or multi-click deadline in the raw
+  // nRF52 event wait. The GPIO edge wakes the first poll; this gate lets the
+  // remaining 25/280 ms state-machine interval finish.
+  can_power_save = can_power_save && !user_btn.needsPolling();
+#endif
+  if (can_power_save) {
     uint32_t sleep_secs = the_mesh.getPowerSaveSleepSeconds(30);
 #ifdef HAS_EXTERNAL_WATCHDOG
     if (sleep_secs > 0) external_watchdog.feed();

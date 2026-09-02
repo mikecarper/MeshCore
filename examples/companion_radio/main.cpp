@@ -433,6 +433,15 @@ static size_t usb_mota_line_len = 0;
 static bool usb_mota_disconnect_armed = false;
 #endif
 
+// nRF52's Adafruit CDC Stream::write() waits and yields until the complete
+// request is queued. Functional terminal text uses a bounded queue over the
+// single-attempt CDC0 facade so a normal host receives complete replies while
+// an open but unread host cannot starve the mesh loop. Other platforms retain
+// their ordinary stream.
+static Stream& usbTerminalOutput() {
+  return mesh::usbTerminalPort();
+}
+
 static void clearUsbTerminalLine() {
   memset(usb_terminal_line, 0, sizeof(usb_terminal_line));
   usb_terminal_line_len = 0;
@@ -447,11 +456,11 @@ static void printUsbTerminalInputEcho() {
   }
 
   if (visible_len > 0) {
-    Serial.write(reinterpret_cast<const uint8_t*>(usb_terminal_line),
-                 visible_len);
+    usbTerminalOutput().write(
+        reinterpret_cast<const uint8_t*>(usb_terminal_line), visible_len);
   }
   for (size_t i = visible_len; i < usb_terminal_line_len; i++) {
-    Serial.print('*');
+    usbTerminalOutput().print('*');
   }
 }
 
@@ -459,10 +468,10 @@ static void redrawUsbTerminalInput() {
   // The documented picocom `--imap spchex` converts an echoed BS to "[08]".
   // It deliberately leaves CR untouched, so redraw the edited line with CR
   // and printable bytes only. Padding clears a removed tab or wide glyph.
-  Serial.print("\r> ");
+  usbTerminalOutput().print("\r> ");
   printUsbTerminalInputEcho();
-  Serial.print("        ");
-  Serial.print("\r> ");
+  usbTerminalOutput().print("        ");
+  usbTerminalOutput().print("\r> ");
   printUsbTerminalInputEcho();
 }
 
@@ -472,6 +481,40 @@ static bool isUsbTerminalDataConnected() {
 #else
   return board.isUsbDataConnected();
 #endif
+}
+
+static constexpr uint32_t USB_TERMINAL_PROTOCOL_DRAIN_MS = 250;
+
+static void queueUsbTerminalControlReply(const char* reply) {
+  if (reply == nullptr) return;
+  const size_t size = strlen(reply);
+  if (usbTerminalOutput().write(
+          reinterpret_cast<const uint8_t*>(reply), size) != size) {
+    // A transition reply takes priority over stale best-effort terminal text.
+    // Clear only the application queue; TinyUSB retains any prefix already
+    // accepted, so Binary/mOTA still cannot overtake it.
+    mesh::discardUsbTerminalOutput();
+    (void)usbTerminalOutput().write(
+        reinterpret_cast<const uint8_t*>(reply), size);
+  }
+}
+
+static void drainUsbTerminalOutputBeforeProtocolSwitch() {
+  const uint32_t started = millis();
+  while (mesh::hasPendingUsbTerminalOutput()
+         && isUsbTerminalDataConnected()
+         && (uint32_t)(millis() - started)
+                < USB_TERMINAL_PROTOCOL_DRAIN_MS) {
+    mesh::serviceUsbTerminalPort();
+#if defined(NRF52_PLATFORM)
+    board.feedWatchdog();
+#endif
+    delay(1);
+  }
+  // Never let terminal bytes remain queued after another CDC0 protocol is
+  // enabled. A draining host normally empties this in a few milliseconds; an
+  // unread host loses only the residual text after the bounded deadline.
+  mesh::discardUsbTerminalOutput();
 }
 
 static bool hasObservableActiveUsbTerminalClient() {
@@ -486,11 +529,23 @@ static bool hasObservableActiveUsbTerminalClient() {
 #endif
 }
 
+static void cancelUsbSerialOperations() {
+  // Contact enumeration uses the manager's pinned streaming route; delayed
+  // single replies capture their own route inside MyMesh. Cancel only USB's
+  // ownership so a simultaneous BLE/WiFi operation keeps running.
+  if (interface_manager.isReplyRouteFor(&usb_serial_interface)) {
+    the_mesh.cancelSerialResponseStream();
+  }
+  the_mesh.cancelSerialOperationsForRoute(&usb_serial_interface);
+  interface_manager.forgetReplyRouteForDisconnected(&usb_serial_interface);
+}
+
 static void enterUsbTerminalMode() {
 #if defined(COMPANION_RADIO_FULL)
   usb_binary_startup_probe.cancel();
 #endif
-  the_mesh.cancelSerialResponseStream();
+  cancelUsbSerialOperations();
+  mesh::discardUsbTerminalOutput();
   usb_serial_interface.setPassthroughMode(true);
   clearUsbTerminalLine();
   usb_terminal_discard_line = false;
@@ -506,7 +561,10 @@ static void enterUsbLoggingTerminalMode() {
 
 static void leaveUsbTerminalMode(bool acknowledge) {
   if (acknowledge) {
-    Serial.print("\r\nOK - Binary mode\r\n");
+    queueUsbTerminalControlReply("\r\nOK - Binary mode\r\n");
+    drainUsbTerminalOutputBeforeProtocolSwitch();
+  } else {
+    mesh::discardUsbTerminalOutput();
   }
   the_mesh.exitTerminalMode();
   usb_serial_interface.setPassthroughMode(false);
@@ -518,6 +576,7 @@ static void leaveUsbTerminalMode(bool acknowledge) {
 
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
 static void resetUsbMotaMode() {
+  mesh::discardUsbTerminalOutput();
   usb_mota_mode = false;
   usb_mota_line_len = 0;
   usb_mota_line[0] = 0;
@@ -529,15 +588,18 @@ static void leaveUsbMotaMode(bool acknowledge) {
   char reply[160] = {0};
   the_mesh.handleLocalControlCommand("ota folder off", reply, sizeof(reply));
   if (acknowledge) {
-    Serial.print("\r\n");
-    Serial.print(reply);
-    Serial.print("\r\nOK - Binary mode\r\n");
+    char transition_reply[224];
+    snprintf(transition_reply, sizeof(transition_reply),
+             "\r\n%s\r\nOK - Binary mode\r\n", reply);
+    queueUsbTerminalControlReply(transition_reply);
+    drainUsbTerminalOutputBeforeProtocolSwitch();
   }
   resetUsbMotaMode();
 }
 
 static bool enterUsbMotaMode(mesh::UsbMotaEntryOrigin origin) {
-  the_mesh.cancelSerialResponseStream();
+  cancelUsbSerialOperations();
+  mesh::discardUsbTerminalOutput();
   usb_serial_interface.setPassthroughMode(true);
   usb_mota_mode = true;
   usb_mota_line_len = 0;
@@ -547,18 +609,24 @@ static bool enterUsbMotaMode(mesh::UsbMotaEntryOrigin origin) {
   char reply[160] = {0};
   if (!the_mesh.handleLocalControlCommand("ota folder on", reply, sizeof(reply))
       || strncmp(reply, "ERR", 3) == 0) {
-    Serial.print("\r\n");
-    Serial.print(reply[0] ? reply : "ERR could not enter mOTA seeder mode");
-    Serial.print("\r\n");
+    char failure_reply[224];
+    snprintf(failure_reply, sizeof(failure_reply), "\r\n%s\r\n",
+             reply[0] ? reply : "ERR could not enter mOTA seeder mode");
+    queueUsbTerminalControlReply(failure_reply);
+    drainUsbTerminalOutputBeforeProtocolSwitch();
     resetUsbMotaMode();
     if (mesh::shouldRestoreAsciiAfterMotaFailure(origin)) {
       enterUsbTerminalMode();
     }
     return false;
   }
-  Serial.print("\r\n");
-  Serial.print(reply);
-  Serial.print("\r\n");
+  char attached_reply[224];
+  snprintf(attached_reply, sizeof(attached_reply), "\r\n%s\r\n", reply);
+  queueUsbTerminalControlReply(attached_reply);
+  // The mOTA request stream writes directly through the single-attempt CDC0
+  // facade. Finish this text barrier first so its first binary frame can never
+  // overtake a queued attach reply.
+  drainUsbTerminalOutputBeforeProtocolSwitch();
   return true;
 }
 
@@ -573,8 +641,9 @@ static void serviceUsbMota() {
   // SerialMotaSource consumes framed responses synchronously while serving a
   // block. Bytes left here are host control text, notably motatool's automatic
   // `ota folder off` on a clean shutdown.
-  while (Serial.available()) {
-    int value = Serial.read();
+  Stream& usb_input = mesh::usbCompanionPort();
+  while (usb_input.available()) {
+    int value = usb_input.read();
     if (value < 0) break;
     char c = (char)value;
     if (c == '\r' || c == '\n') {
@@ -599,6 +668,54 @@ static void serviceUsbMota() {
   }
 }
 #endif
+
+// DTR polling alone cannot distinguish a continuously open handle from a
+// close/reopen that happened entirely between two loop iterations. Consume the
+// TinyUSB owner-task edge before any protocol parser runs, so no line, login,
+// recipient, queued text, or mOTA attachment survives into the next host.
+static bool usb_terminal_host_reset_completion_pending = false;
+
+static void serviceUsbTerminalHostSessionReset() {
+#if defined(NRF52_PLATFORM)
+  if (mesh::takeUsbTerminalSessionReset()) {
+    usb_terminal_host_reset_completion_pending = true;
+    // A rapid reopen can make USB look connected again before this loop. Stop
+    // only work routed to the old USB host; a simultaneous BLE transaction is
+    // independent and must continue. Clear the route after stopping its
+    // producer so no remaining response can fall back to another transport.
+    cancelUsbSerialOperations();
+    the_mesh.resetUsbHostSessionInput();
+    bool protocol_owner_reset = false;
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
+    if (usb_mota_mode) {
+      leaveUsbMotaMode(false);
+      protocol_owner_reset = true;
+    }
+#endif
+    if (!protocol_owner_reset && the_mesh.isTerminalMode()) {
+      leaveUsbTerminalMode(false);
+      protocol_owner_reset = true;
+    }
+
+    if (!protocol_owner_reset) {
+      mesh::discardUsbTerminalOutput();
+      usb_serial_interface.setPassthroughMode(false);
+      clearUsbTerminalLine();
+      usb_terminal_discard_line = false;
+      usb_terminal_disconnect_armed = false;
+      usb_logging_terminal_mode = false;
+#if defined(COMPANION_RADIO_FULL)
+      usb_binary_startup_probe.cancel();
+#endif
+    }
+  }
+
+  if (usb_terminal_host_reset_completion_pending
+      && mesh::tryCompleteUsbTerminalSessionReset()) {
+    usb_terminal_host_reset_completion_pending = false;
+  }
+#endif
+}
 
 static void serviceUsbTerminal() {
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
@@ -649,7 +766,8 @@ static void serviceUsbTerminal() {
       usb_logging_terminal_mode = false;
       clearUsbTerminalLine();
       usb_terminal_discard_line = false;
-      Serial.print("\r\nUSB logging off; ASCII terminal active\r\n> ");
+      usbTerminalOutput().print(
+          "\r\nUSB logging off; ASCII terminal active\r\n> ");
       break;
     case mesh::UsbLoggingTerminalAction::NO_ACTION:
       break;
@@ -699,7 +817,7 @@ static void serviceUsbTerminal() {
   if (!usb_logging_terminal_mode
       && usb_binary_startup_probe.shouldStart(
           usb_terminal_line_len == 0, usb_terminal_discard_line,
-          Serial.peek())) {
+          mesh::usbCompanionPort().peek())) {
     const uint32_t frame_count = usb_serial_interface.getCompletedFrameCount();
     leaveUsbTerminalMode(false);
     usb_binary_startup_probe.start(millis(), frame_count);
@@ -707,15 +825,16 @@ static void serviceUsbTerminal() {
   }
 #endif
 
-  while (Serial.available()) {
-    int value = Serial.read();
+  Stream& usb_input = mesh::usbCompanionPort();
+  while (usb_input.available()) {
+    int value = usb_input.read();
     if (value < 0) break;
     char c = (char)value;
 
     if (usb_terminal_discard_line) {
       if (c == '\r' || c == '\n') {
         usb_terminal_discard_line = false;
-        Serial.print("> ");
+        usbTerminalOutput().print("> ");
       }
       continue;
     }
@@ -731,7 +850,7 @@ static void serviceUsbTerminal() {
 
     if (c == '\r' || c == '\n') {
       if (usb_terminal_line_len == 0) continue;
-      Serial.print("\r\n");
+      usbTerminalOutput().print("\r\n");
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
       // motatool is deliberately text-first: `serve --serial` opens the port
       // and sends this command before its binary mOTA request/reply traffic.
@@ -760,21 +879,21 @@ static void serviceUsbTerminal() {
 #endif
       }
 #endif
-      Serial.print("> ");
+      usbTerminalOutput().print("> ");
       return; // service at most one command per mesh loop
     }
 
     if (usb_terminal_line_len >= sizeof(usb_terminal_line) - 1) {
       clearUsbTerminalLine();
       usb_terminal_discard_line = true;
-      Serial.print("\r\n  ERROR: command too long\r\n");
+      usbTerminalOutput().print("\r\n  ERROR: command too long\r\n");
       continue;
     }
 
     usb_terminal_line[usb_terminal_line_len++] = c;
     usb_terminal_line[usb_terminal_line_len] = 0;
-    Serial.print(mesh::cli::shouldMaskTerminalInput(usb_terminal_line) ? '*'
-                                                                      : c);
+    usbTerminalOutput().print(
+        mesh::cli::shouldMaskTerminalInput(usb_terminal_line) ? '*' : c);
 
     if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {
       leaveUsbTerminalMode(true);
@@ -793,8 +912,9 @@ static void expireUsbBinaryStartupProbeBeforeDispatch() {
   // are still incomplete at one second cannot complete a frame afterwards.
   // Entering passthrough resets the partial binary parser; drain only bytes
   // already queued for that expired attempt so they cannot begin a new probe.
-  int pending = Serial.available();
-  while (pending-- > 0) Serial.read();
+  Stream& usb_input = mesh::usbCompanionPort();
+  int pending = usb_input.available();
+  while (pending-- > 0) usb_input.read();
   enterUsbTerminalMode();
 }
 #endif
@@ -1985,9 +2105,11 @@ void setup() {
 // add usb interface
 #if defined(ENABLE_USB_INTERFACE)
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
-  usb_serial_interface.begin(Serial, USB_TERMINAL_START_TOKEN, USB_MOTA_START_TOKEN);
+  usb_serial_interface.begin(mesh::usbCompanionPort(),
+                             USB_TERMINAL_START_TOKEN, USB_MOTA_START_TOKEN);
 #else
-  usb_serial_interface.begin(Serial, USB_TERMINAL_START_TOKEN);
+  usb_serial_interface.begin(mesh::usbCompanionPort(),
+                             USB_TERMINAL_START_TOKEN);
 #endif
   // keep frames intact and pace the contact stream when the host is slow
   usb_serial_interface.enableFlowControl(true);
@@ -2079,9 +2201,17 @@ void loop() {
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog();
 #endif
+#if defined(ENABLE_USB_INTERFACE)
+  serviceUsbTerminalHostSessionReset();
+#endif
   // Identify nRF52 CDC 1 when a terminal opens it. Doing this on the connection
   // edge avoids losing the marker before the host has opened the port.
   mesh::serviceUsbLoggingPort();
+#if defined(ENABLE_USB_INTERFACE)
+  // Drain functional CDC0 text before the mesh can emit a Binary Companion or
+  // serial-mOTA frame in this iteration.
+  mesh::serviceUsbTerminalPort();
+#endif
 #if defined(ENABLE_USB_INTERFACE) && defined(COMPANION_RADIO_FULL)
   expireUsbBinaryStartupProbeBeforeDispatch();
 #endif
@@ -2091,6 +2221,9 @@ void loop() {
 #endif
 #if defined(ENABLE_USB_INTERFACE)
   serviceUsbTerminal();
+  // Commands can synchronously enqueue a multi-line reply. Give it the
+  // remaining CDC FIFO capacity now; later loops retain any unwritten suffix.
+  mesh::serviceUsbTerminalPort();
 #endif
   interface_manager.loop();
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
@@ -2142,6 +2275,14 @@ void loop() {
 #if defined(NRF52_PLATFORM) \
     || (defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE))
   can_sleep = can_sleep && !board.isUsbHostConnected();
+#endif
+#if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
+    && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
+    && defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
+  // GPIO edges wake the nRF52 poller, but multi-click and long-press results
+  // are due after a time interval rather than another edge. Stay awake only
+  // while that small gesture state machine has a pending deadline.
+  can_sleep = can_sleep && !user_btn.needsPolling();
 #endif
   if (can_sleep) {
 #if defined(NRF52_PLATFORM)

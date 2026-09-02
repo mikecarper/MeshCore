@@ -22,6 +22,11 @@ assert re.search(
     local,
     re.DOTALL,
 )
+assert local.count('strcmp(command, "get pwrmgt.bootreason") == 0') == 1
+assert local.count('strcmp(command, "powerlog") == 0') == 1
+assert "board.isPowerManagementInitialized()" in local
+assert "board.getResetReasonString(board.getResetReason())" in local
+assert "board.getShutdownReasonString(board.getShutdownReason())" in local
 assert re.search(
     r"#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS\s+"
     r'if \(strcmp\(command, "memory"\) == 0\).*?'
@@ -44,11 +49,21 @@ assert "_prefs.ble_pin = previous;" in local
 terminal_start = source.index("void MyMesh::handleTerminalCommand(")
 terminal_end = source.index("\nvoid MyMesh::enterCLIRescue()", terminal_start)
 terminal = source[terminal_start:terminal_end]
+assert "const bool usb_mota_owner_transition =" in terminal
+assert "!usb_mota_owner_transition" in terminal
+assert re.search(
+    r"#if COMPANION_FEATURE_USB_MOTA_SOURCE\s+"
+    r"const bool usb_mota_owner_transition =\s+"
+    r"mesh::isUsbMotaOwnerTransitionCommand\(command\);\s+"
+    r"#else\s+const bool usb_mota_owner_transition = false;",
+    terminal,
+)
 assert terminal.index("handleLocalControlCommand(") < terminal.index(
     'strncmp(command, "set ", 4) == 0'
 )
 assert 'terminalOutput().print("  board\\r\\n")' in terminal
 assert 'terminalOutput().print("  version\\r\\n")' in terminal
+assert 'terminalOutput().print("  get pwrmgt.bootreason\\r\\n")' in terminal
 assert 'terminalOutput().print("  set pin <0-999999>\\r\\n")' in terminal
 assert re.search(
     r"#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS\s+"
@@ -72,6 +87,18 @@ command_start = source.index("bool MyMesh::handleCommand(")
 command_end = source.index("\nvoid MyMesh::checkCLIRescueCmd()", command_start)
 command_handler = source[command_start:command_end]
 assert 'strncmp(command, "set pin' not in command_handler
+owner_guard = command_handler.index(
+    "mesh::isUsbMotaOwnerTransitionCommand(command)"
+)
+local_dispatch = command_handler.index("handleLocalControlCommand(")
+assert owner_guard < local_dispatch
+assert "#if COMPANION_FEATURE_USB_MOTA_SOURCE" in command_handler[:local_dispatch]
+assert "ERR ota folder on/off requires the owning USB mOTA session" in command_handler
+owner_policy = (root / "src/helpers/UsbAsciiBinarySwitch.h").read_text()
+assert 'memcmp(command + noun_start, "folder", 6) == 0' in owner_policy
+assert 'memcmp(command + noun_start, "fold", 4) == 0' in owner_policy
+assert 'memcmp(command + pos, "on", 2) == 0' in owner_policy
+assert 'memcmp(command + pos, "off", 3) == 0' in owner_policy
 
 # This compile-time contract prevents either the implementation or help entry
 # from leaking onto a non-ESP32 build merely because a recipe set the flag.

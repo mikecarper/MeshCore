@@ -133,6 +133,8 @@ public:
   bool isRadioReady() const { return _radio_available; }
   void startInterface(BaseSerialInterface &serial);
   void cancelSerialResponseStream();
+  void cancelSerialOperationsForRoute(BaseSerialInterface* route);
+  void resetUsbHostSessionInput();
 
   const char *getNodeName();
   CompanionNodePrefs *getNodePrefs();
@@ -290,9 +292,8 @@ protected:
   bool onChannelLoaded(uint8_t channel_idx, const ChannelDetails& ch) override { return setChannel(channel_idx, ch); }
   bool getChannelForSave(uint8_t channel_idx, ChannelDetails& ch) override { return getChannel(channel_idx, ch); }
 
-  void clearPendingReqs() {
-    pending_login = pending_status = pending_telemetry = pending_discovery = pending_req = 0;
-  }
+  void clearPendingReqs();
+  bool hasPendingReqs() const;
 
 public:
   bool savePrefs() {
@@ -315,8 +316,10 @@ public:
   bool hasPendingWork() const;
 
 private:
-  void writeOKFrame();
-  void writeErrFrame(uint8_t err_code);
+  void writeOKFrame(BaseSerialInterface* route = nullptr);
+  void writeErrFrame(uint8_t err_code,
+                     BaseSerialInterface* route = nullptr);
+  size_t writePendingSerialFrame(const uint8_t frame[], size_t len);
   void writeDisabledFrame();
   void writeContactRespFrame(uint8_t code, const ContactInfo &contact);
   void stopContactsIterator();
@@ -390,9 +393,16 @@ private:
   mesh::RadioParamApplyResult tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
   bool applySavedRadioParams();
   void configureRadioFromPrefs();
-  void finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat);
+  void finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr,
+                             uint8_t repeat,
+                             BaseSerialInterface* route = nullptr);
   void cancelPendingRadioParamApply();
   void servicePendingRadioParamApply();
+  void servicePendingSerialReply();
+  void clearBinaryTraceReply();
+  void serviceBinaryTraceReply();
+  void cancelSigningSession();
+  void serviceSigningSession();
 #if COMPANION_FEATURE_TEMP_RADIO
   bool scheduleTempRadio(float freq, float bw, uint8_t sf, uint8_t cr,
                          uint32_t timeout_mins, char* reply, size_t reply_size);
@@ -427,6 +437,8 @@ private:
   uint32_t pending_status;
   uint32_t pending_telemetry, pending_discovery;   // pending _TELEMETRY_REQ
   uint32_t pending_req;   // pending _BINARY_REQ
+  BaseSerialInterface* pending_serial_reply_route;
+  unsigned long pending_serial_reply_deadline;
   BaseSerialInterface *_serial;
   mesh::companion::MotaSourceControl* _mota_source_control;
   AbstractUITask* _ui;
@@ -469,6 +481,12 @@ private:
   uint8_t command_radio_cr;
   uint8_t command_radio_repeat;
   unsigned long command_radio_apply_deadline;
+  BaseSerialInterface* command_radio_reply_route;
+  bool binary_trace_pending;
+  uint32_t binary_trace_tag;
+  uint32_t binary_trace_auth;
+  unsigned long binary_trace_deadline;
+  BaseSerialInterface* binary_trace_reply_route;
   // Deferred so USB/TCP terminals can transmit the acknowledgement before
   // the transport disappears. Also used by USB interface changes.
   unsigned long _scheduled_reboot_at;
@@ -489,6 +507,8 @@ private:
   uint8_t app_target_ver;
   uint8_t *sign_data;
   uint32_t sign_data_len;
+  BaseSerialInterface* sign_data_reply_route;
+  unsigned long sign_data_deadline;
   unsigned long dirty_contacts_expiry;
 
   TransportKey send_scope;
@@ -527,6 +547,7 @@ private:
     ContactInfo* contact;
     uint8_t text_fingerprint[MAX_HASH_SIZE];
     uint8_t retry_key[MAX_HASH_SIZE];
+    BaseSerialInterface* reply_route;
 #ifdef ENABLE_USB_INTERFACE
     bool terminal_origin;
 #endif

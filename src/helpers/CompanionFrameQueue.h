@@ -44,6 +44,31 @@ inline bool companionFrameRequiresDelivery(const uint8_t* frame, size_t len) {
   return companionFrameClass(frame, len) != COMPANION_BEST_EFFORT_PUSH;
 }
 
+// Queue priority and transport ownership are separate. Some required pushes
+// (MSG_WAITING, control data, and contact-capacity notifications) are
+// unsolicited state changes which every connected app should observe. Only
+// direct command responses and known asynchronous command completions inherit
+// the requester's route. New push codes default to broadcast, which is safer
+// than exposing one client's completion to whichever client spoke last.
+inline bool companionFrameUsesRequesterRoute(const uint8_t* frame,
+                                              size_t len) {
+  if (frame == NULL || len == 0) return false;
+  if (!isCompanionPushFrame(frame, len)) return true;
+  switch (frame[0]) {
+    case 0x82:  // SEND_CONFIRMED
+    case 0x85:  // LOGIN_SUCCESS
+    case 0x86:  // LOGIN_FAIL
+    case 0x87:  // STATUS_RESPONSE
+    case 0x89:  // TRACE_DATA
+    case 0x8B:  // TELEMETRY_RESPONSE
+    case 0x8C:  // BINARY_RESPONSE
+    case 0x8D:  // PATH_DISCOVERY_RESPONSE
+      return true;
+    default:
+      return false;
+  }
+}
+
 /**
  * Add a frame to a companion transport's contiguous outbound queue.
  *

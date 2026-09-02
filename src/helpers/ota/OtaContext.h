@@ -23,10 +23,26 @@
 #if defined(OTA_FOLDER_SERIAL)
   #include "MotaSourceSerial.h"   // relay an external folder served by a host daemon over the USB serial
   #ifndef OTA_FOLDER_SERIAL_STREAM
-    #define OTA_FOLDER_SERIAL_STREAM Serial      // default: the same USB console the CLI uses (no extra HW)
+    #if defined(NRF52_PLATFORM)
+      // Adafruit's CDC write waits while an open host stops reading. Every
+      // default nRF52 serial-folder request uses a whole-record facade over one
+      // TinyUSB attempt; dedicated-UART overrides retain their normal stream.
+      #include "../UsbLogging.h"
+      #define OTA_FOLDER_SERIAL_STREAM ::mesh::usbMotaPort()
+      #define MESH_OTA_FOLDER_SERIAL_NONBLOCKING_USB 1
+    #else
+      #define OTA_FOLDER_SERIAL_STREAM Serial    // default: shared USB console
+    #endif
   #endif
   #ifndef OTA_FOLDER_SERIAL_BAUD
     #define OTA_FOLDER_SERIAL_BAUD 115200
+  #endif
+  #ifndef OTA_FOLDER_SERIAL_WRITE_POLICY
+    #if defined(MESH_OTA_FOLDER_SERIAL_NONBLOCKING_USB)
+      #define OTA_FOLDER_SERIAL_WRITE_POLICY MotaStreamWritePolicy::NoFlush
+    #else
+      #define OTA_FOLDER_SERIAL_WRITE_POLICY MotaStreamWritePolicy::FlushTransmit
+    #endif
   #endif
   // The console Serial is already begun by the example; a DEDICATED UART (override the stream) needs init,
   // so define OTA_FOLDER_SERIAL_BEGIN to have attach_folder() call .begin(baud) on it.
@@ -394,7 +410,7 @@ struct OtaContext {
 #if defined(OTA_FOLDER_SERIAL)
   bool attach_folder(char* msg, size_t cap) {
     static SerialMotaSource src(OTA_FOLDER_SERIAL_STREAM,
-                                MotaStreamWritePolicy::FlushTransmit, 600);
+                                OTA_FOLDER_SERIAL_WRITE_POLICY, 600);
 #ifdef OTA_FOLDER_SERIAL_BEGIN
     OTA_FOLDER_SERIAL_STREAM.begin(OTA_FOLDER_SERIAL_BAUD);     // dedicated UART; console is already up
 #endif

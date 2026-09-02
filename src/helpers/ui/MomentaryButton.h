@@ -14,11 +14,15 @@ class MomentaryButton {
   bool _reverse, _pull;
   int _long_millis;
   int _threshold;  // analog mode
-  unsigned long down_at;
+  uint32_t down_at;
+  bool _press_active;
   uint8_t _click_count;
-  unsigned long _last_click_time;
+  uint32_t _last_click_time;
   int _multi_click_window;
   bool _pending_click;
+  int8_t _candidate_level;
+  uint32_t _candidate_since;
+  bool _debouncing;
 
   bool isPressed(int level) const;
 
@@ -30,4 +34,7 @@ public:
   void cancelClick();  // suppress next BUTTON_EVENT_CLICK (if already in DOWN state)
   uint8_t getPin() { return _pin; }
   bool isPressed() const;
+  bool needsPolling() const {
+    return _debouncing || _press_active || _pending_click;
+  }
 };

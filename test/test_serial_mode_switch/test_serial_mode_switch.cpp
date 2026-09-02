@@ -52,6 +52,20 @@ public:
 static const char START_TOKEN[] = "+++MESHCORE-TERM-START";
 static const char SEEDER_TOKEN[] = "ota folder on";
 
+TEST(UsbMotaOwnerPolicy, MatchesEveryOtaCliAttachDetachSpelling) {
+  EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("ota folder on"));
+  EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("ota folder off"));
+  EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("ota fold on"));
+  EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("ota fold off"));
+  EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("ota  folder   on"));
+  EXPECT_TRUE(mesh::isUsbMotaOwnerTransitionCommand("  ota fold  off"));
+
+  EXPECT_FALSE(mesh::isUsbMotaOwnerTransitionCommand("ota folder"));
+  EXPECT_FALSE(mesh::isUsbMotaOwnerTransitionCommand("ota folder status"));
+  EXPECT_FALSE(mesh::isUsbMotaOwnerTransitionCommand("ota folder on extra"));
+  EXPECT_FALSE(mesh::isUsbMotaOwnerTransitionCommand("ota pull 1234 flash"));
+}
+
 class FakeSerialInterface : public BaseSerialInterface {
 public:
   bool enabled = false;
@@ -154,6 +168,14 @@ TEST(MultiSerialInterface, RoutesRequiredRepliesToTheirRequestingInterface) {
             sizeof(best_effort_push));
   ASSERT_EQ(usb.sent_frames.size(), 3u);
   ASSERT_EQ(wifi.sent_frames.size(), 1u);
+
+  // MSG_WAITING is delivery-required for queue admission, but it is an
+  // unsolicited state notification and therefore remains broadcast.
+  const uint8_t message_waiting[] = {0x83};
+  EXPECT_EQ(manager.writeFrame(message_waiting, sizeof(message_waiting)),
+            sizeof(message_waiting));
+  ASSERT_EQ(usb.sent_frames.size(), 4u);
+  ASSERT_EQ(wifi.sent_frames.size(), 2u);
 }
 
 TEST(MultiSerialInterface, LocksMultiFrameRepliesToOneRequester) {
@@ -187,6 +209,79 @@ TEST(MultiSerialInterface, LocksMultiFrameRepliesToOneRequester) {
   EXPECT_EQ(manager.writeFrame(device_info, sizeof(device_info)),
             sizeof(device_info));
   ASSERT_EQ(wifi.sent_frames.size(), 1u);
+}
+
+TEST(MultiSerialInterface, ForgetsOnlyTheDisconnectedHostReplyRoute) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface bluetooth;
+  usb.connected = true;
+  bluetooth.connected = true;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::Bluetooth, &bluetooth));
+  manager.enable();
+
+  usb.received_frames.push_back({0x04});
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  manager.lockReplyRoute();
+  EXPECT_TRUE(manager.isReplyRouteFor(&usb));
+  EXPECT_FALSE(manager.isReplyRouteFor(&bluetooth));
+
+  manager.forgetReplyRouteForDisconnected(&bluetooth);
+  EXPECT_TRUE(manager.isReplyRouteFor(&usb));
+
+  // The application stops the USB response producer before forgetting this
+  // route. A new host then starts without inheriting either routing pointer.
+  manager.unlockReplyRoute();
+  manager.forgetReplyRouteForDisconnected(&usb);
+  EXPECT_FALSE(manager.isReplyRouteFor(&usb));
+
+  bluetooth.received_frames.push_back({0x16});
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  EXPECT_EQ(command[0], 0x16);
+  EXPECT_TRUE(manager.isReplyRouteFor(&bluetooth));
+}
+
+TEST(MultiSerialInterface, CapturedAsyncReplySurvivesLaterRouteChanges) {
+  MultiSerialInterface manager;
+  FakeSerialInterface usb;
+  FakeSerialInterface bluetooth;
+  usb.connected = true;
+  bluetooth.connected = true;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::Bluetooth, &bluetooth));
+  manager.enable();
+
+  usb.received_frames.push_back({0x04});
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  BaseSerialInterface* captured = manager.captureReplyRoute();
+  ASSERT_EQ(captured, &usb);
+
+  // Capturing while a contact stream owns the route is valid even after that
+  // producer releases its independent lock.
+  manager.lockReplyRoute();
+  manager.unlockReplyRoute();
+
+  bluetooth.received_frames.push_back({0x16});
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  EXPECT_EQ(command[0], 0x16);
+  EXPECT_TRUE(manager.isReplyRouteFor(&bluetooth));
+
+  const uint8_t delayed_response[] = {0x85, 0x42};
+  EXPECT_FALSE(manager.isReplyRouteWriteBusy(captured));
+  EXPECT_EQ(manager.writeFrameToRoute(
+                captured, delayed_response, sizeof(delayed_response)),
+            sizeof(delayed_response));
+  ASSERT_EQ(usb.sent_frames.size(), 1u);
+  EXPECT_TRUE(bluetooth.sent_frames.empty());
+
+  usb.connected = false;
+  EXPECT_FALSE(manager.isReplyRouteAvailable(captured));
+  EXPECT_EQ(manager.writeFrameToRoute(
+                captured, delayed_response, sizeof(delayed_response)), 0u);
+  EXPECT_TRUE(bluetooth.sent_frames.empty());
 }
 
 TEST(MultiSerialInterface, LosingLockedRequesterCannotFallBackToBroadcast) {

@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "UsbAsciiBinarySwitch.h"
 
 namespace mesh {
 namespace companion {
@@ -80,6 +81,8 @@ inline bool isBleOtaControlCommandAllowed(const uint8_t* command,
   if (exact("tempradio", 9)) return true;
   if (token("tempradio", 9)) return length > 10;
   if (!token("ota", 3)) return false;
+  if (mesh::isUsbMotaOwnerTransitionCommand(
+          reinterpret_cast<const char*>(command), length)) return false;
   if (token("ota folder", 10)) return false;
   return true;
 }

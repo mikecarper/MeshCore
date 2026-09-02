@@ -30,7 +30,13 @@ EnvironmentSensorManager sensors;
 
 #ifdef DISPLAY_CLASS
 DISPLAY_CLASS display(&board.periph_power);
-MomentaryButton user_btn(PIN_USER_BTN, 1000, true);
+// The T096 USER switch is active-low. Keep the nRF52 pull-up enabled even
+// though the schematic also shows an external 10K pull-up: the OTAFIX
+// bootloader uses the same defensive configuration, and it prevents a weak or
+// missing board resistor from leaving the application button input floating.
+// Keep multi-click enabled now that the shared state machine rejects switch
+// bounce and the event-driven loop remains awake through gesture deadlines.
+MomentaryButton user_btn(PIN_USER_BTN, 1000, true, true, true);
 #endif
 
 bool radio_init() {

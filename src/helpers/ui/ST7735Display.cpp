@@ -2,6 +2,10 @@
 #include "../UsbLogging.h"
 #include <TFT_eSPI.h>
 
+#if defined(NRF52_PLATFORM)
+  #include <nrf_gpio.h>
+#endif
+
 //#include <Fonts/GFXFF/FreeSans9pt7b.h>
 
 // Optimised ST7735 display driver, derived from Adafruit_ST7735 library.
@@ -462,11 +466,39 @@ bool ST7735Display::begin() {
   if (!_isOn) {
     if (_peripher_power) _peripher_power->claim();
 
-    delay(100); // TEMP!!
+    delay(100); // allow the peripheral rail to stabilize
     pinMode(PIN_TFT_RST, OUTPUT);
     pinMode(PIN_TFT_CS, OUTPUT);
     pinMode(PIN_TFT_DC, OUTPUT);
+    // Preload the inactive latch before changing direction. This prevents an
+    // active-low backlight from flashing while the controller initializes.
+    digitalWrite(PIN_TFT_LEDA_CTL, !PIN_TFT_LEDA_CTL_ACTIVE);
     pinMode(PIN_TFT_LEDA_CTL, OUTPUT);
+
+    // turnOff() releases the TFT bus pins to prevent back-powering. Restore
+    // them explicitly before touching SPI: on Adafruit nRF52, SPIClass::begin()
+    // is intentionally a no-op after the first initialization and therefore
+    // cannot repair pin modes that application power saving changed.
+    pinMode(PIN_TFT_SDA, OUTPUT);
+    pinMode(PIN_TFT_SCL, OUTPUT);
+
+#if defined(NRF52_PLATFORM)
+    // SPIClass::begin() deliberately returns early after its first call. Match
+    // the Adafruit nRF52 SPI core's high-drive GPIO setup here so a display
+    // wake repairs the bus even while the SPI object remains initialized.
+    nrf_gpio_cfg(PIN_TFT_SCL,
+                 NRF_GPIO_PIN_DIR_OUTPUT,
+                 NRF_GPIO_PIN_INPUT_CONNECT,
+                 NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_H0H1,
+                 NRF_GPIO_PIN_NOSENSE);
+    nrf_gpio_cfg(PIN_TFT_SDA,
+                 NRF_GPIO_PIN_DIR_OUTPUT,
+                 NRF_GPIO_PIN_INPUT_DISCONNECT,
+                 NRF_GPIO_PIN_NOPULL,
+                 NRF_GPIO_PIN_H0H1,
+                 NRF_GPIO_PIN_NOSENSE);
+#endif
 
 #ifdef ESP_PLATFORM
     _spi->begin(PIN_TFT_SCL, -1 /* _miso */, PIN_TFT_SDA /* _mosi */, -1);
@@ -487,7 +519,19 @@ bool ST7735Display::begin() {
 
     _resetAndInit();
 
+    // Re-enter normal display mode explicitly and let the controller settle
+    // before priming its display RAM. A framebuffer transfer made only before
+    // DISPON can be lost while the panel is completing wake initialization.
+    sendCommand(ST77XX_NORON);
+    delay(10);
     sendCommand(ST77XX_DISPON);
+    delay(100);
+
+    // Prime the now-active controller with the retained UI frame before enabling
+    // the backlight. This makes a button-only wake visible even when the UI has
+    // no other reason to redraw; a newly allocated sprite is already zeroed.
+    endFrame();
+    digitalWrite(PIN_TFT_LEDA_CTL, PIN_TFT_LEDA_CTL_ACTIVE);
 
     _isOn = true;
   }
@@ -497,13 +541,15 @@ bool ST7735Display::begin() {
 void ST7735Display::_resetAndInit() {
     if (!spriteReady()) return;
 
-    // Pulse Reset low for 10ms
+    // Pulse reset low, then give the controller its full reset-release recovery
+    // time before sending SLPOUT. Shorter delays can work on a cold panel but
+    // fail intermittently when the shared peripheral rail has only just cycled.
     digitalWrite(PIN_TFT_RST, HIGH);
     delay(2);
     digitalWrite(PIN_TFT_RST, LOW);
     delay(10);
     digitalWrite(PIN_TFT_RST, HIGH);
-    delay(2);
+    delay(120);
 
     // run init commands
     displayInit(Rcmd1);
@@ -516,13 +562,6 @@ void ST7735Display::_resetAndInit() {
 #endif
     displayInit(Rcmd3);
     setRotation(DISPLAY_ROTATION);
-
-    // clear the buffer before display on
-    sprite->fillScreen(ST77XX_BLACK);
-    endFrame();
-
-    // turn on backlight
-    digitalWrite(PIN_TFT_LEDA_CTL, PIN_TFT_LEDA_CTL_ACTIVE);
 
 }
 
@@ -540,7 +579,9 @@ void ST7735Display::turnOff() {
     // Now turn off the backlight
     digitalWrite(PIN_TFT_LEDA_CTL, !PIN_TFT_LEDA_CTL_ACTIVE);
 
-    // Prevent back-powering to save 2.8 mA
+    // Prevent back-powering to save 2.8 mA. Keep the SPI object initialized:
+    // begin() restores these GPIO directions explicitly on the next wake, and
+    // retaining the peripheral avoids an unchecked nrfx uninit/reinit cycle.
     pinMode(PIN_TFT_CS, INPUT);
     pinMode(PIN_TFT_DC, INPUT);
     pinMode(PIN_TFT_SDA, INPUT);

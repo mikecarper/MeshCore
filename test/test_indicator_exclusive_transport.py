@@ -153,7 +153,8 @@ exclusive_policy = profile.index(
 )
 exclusive_start = profile.index(
     "sensecapindicator-espnow_companion_radio_full|\\\n"
-    "    sensecapindicator-lora_companion_radio_full)",
+    "    sensecapindicator-lora_companion_radio_full|\\\n"
+    "    sensecapindicator-lora-n16r2_companion_radio_full)",
     exclusive_policy,
 )
 exclusive_case = profile[exclusive_start:profile.index(";;", exclusive_start)]

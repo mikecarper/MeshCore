@@ -293,7 +293,8 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     usb_logging = (root / "src/helpers/UsbLogging.cpp").read_text(
         encoding="utf-8"
     )
-    assert "Adafruit_USBD_CDC dedicated_usb_logging_port" in usb_logging
+    assert "class DedicatedUsbLoggingCdc : public Adafruit_USBD_CDC" in usb_logging
+    assert "static DedicatedUsbLoggingCdc dedicated_usb_logging_port" in usb_logging
     assert "supported only by nRF52 Full Companion" in usb_logging
     assert "MESH_ESP32_DUAL_CDC_LOGGING" not in usb_logging
     assert "USBCDC(1)" not in usb_logging
@@ -371,7 +372,7 @@ def test_single_tty_logging_off_restores_each_builds_default_mode():
     # stays in ASCII, while a non-Full Companion returns to Binary immediately.
     command_disable = service.split(
         "the_mesh.handleTerminalCommand(usb_terminal_line);", 1
-    )[1].split('Serial.print("> ");', 1)[0]
+    )[1].split('usbTerminalOutput().print("> ");', 1)[0]
     assert "!mesh::isUsbLoggingEnabled()" in command_disable
     assert "usb_logging_terminal_mode = false;" in command_disable
     assert "#if defined(COMPANION_RADIO_FULL)" in command_disable
@@ -937,6 +938,14 @@ def test_hardware_id_for_env():
         == "RAK4631_RAK15001_C"
     )
     assert (
+        ml.hardware_id_for_env("RAK_4631_repeater_w25q16_lora_ota")
+        == "RAK4631_W25Q16"
+    )
+    assert (
+        ml.hardware_id_for_env("RAK_3401_repeater_rak13302_w25q16_lora_ota")
+        == "RAK3401_RAK13302_W25Q16"
+    )
+    assert (
         ml.hardware_id_for_env("RAK_3401_repeater_rak15001_slot_c_lora_ota")
         == "RAK_3401"
     )
@@ -951,6 +960,38 @@ def test_hardware_id_for_env():
     assert len(tag) <= 32 and tag.startswith("ikoka_handheld_nrf_e22")
     assert tag == ml.hardware_id_for_env(long_env.replace("room_server", "companion_radio_usb"))
     assert tag != ml.hardware_id_for_env("ikoka_handheld_nrf_e22_22dbm_096_rotated_room_server")
+
+
+def test_wisblock_w25q16_profiles_are_exactly_bound():
+    root = Path(__file__).resolve().parents[2]
+    common = (root / "platformio.ini").read_text(encoding="utf-8")
+    recipe = common.split("[nrf52_wisblock_w25q16_ota]", 1)[1].split("\n[", 1)[0]
+    assert "OTA_QSPI_EXPECTED_JEDEC_ID=0xEF4015UL" in recipe
+    assert "OTA_QSPI_EXPECTED_SIZE=2097152UL" in recipe
+    assert "OTA_QSPI_SHARED_WISBLOCK_SPI=1" in recipe
+    assert "OTA_QSPI_SCK_ARDUINO_PIN=3" in recipe
+    assert "OTA_QSPI_CS_ARDUINO_PIN=31" in recipe
+    assert "OTA_QSPI_IO0_ARDUINO_PIN=30" in recipe
+    assert "OTA_QSPI_IO1_ARDUINO_PIN=29" in recipe
+    assert "OTA_QSPI_IO2_NOT_CONNECTED=1" in recipe
+    assert "OTA_QSPI_IO3_NOT_CONNECTED=1" in recipe
+
+    variant = (root / "variants/rak4631/platformio.ini").read_text(encoding="utf-8")
+    profile = variant.split(
+        "[env:RAK_4631_repeater_w25q16_lora_ota]", 1
+    )[1].split("\n[", 1)[0]
+    assert "${nrf52_wisblock_w25q16_ota.build_flags}" in profile
+    assert "MOTA_HW_ID='\"RAK4631_W25Q16\"'" in profile
+    assert "OTA_FLASH_STORE=1" in profile
+
+    rak3401 = (root / "variants/rak3401/platformio.ini").read_text(encoding="utf-8")
+    profile = rak3401.split(
+        "[env:RAK_3401_repeater_rak13302_w25q16_lora_ota]", 1
+    )[1].split("\n[", 1)[0]
+    assert "${nrf52_wisblock_w25q16_ota.build_flags}" in profile
+    assert "OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF=1" in profile
+    assert "MOTA_HW_ID='\"RAK3401_RAK13302_W25Q16\"'" in profile
+    assert "ENABLE_OTA=1" in profile
 
 
 # --- EndF ------------------------------------------------------------------
@@ -1283,7 +1324,7 @@ def test_bootloader_v3_build_parse_and_strict_contract():
     assert parsed.manifest.format_ver == ml.BOOT_FORMAT_VER
     assert parsed.manifest.flags == ml.FLAG_FULL | ml.FLAG_SIGNED | ml.FLAG_BOOTLOADER
     assert parsed.manifest.hw_id == ml.hw_id_bytes("XIAO_BL_28860044")
-    assert ml.verify(parsed, expect_pub=priv.public_key().public_bytes_raw()) == []
+    assert ml.verify(parsed, expect_pub=ml.ed25519_public_bytes(priv)) == []
 
     invalid_payload = bytearray(parsed.payload)
     invalid_payload[4] &= 0xFE
@@ -1325,7 +1366,7 @@ def test_generic_internal_bootloader_build_parse_and_strict_contract():
     parsed = ml.parse_container(ml.build_container(manifest, image))
     assert parsed.manifest.target_id == target
     assert parsed.manifest.hw_id == expected_hw
-    assert ml.verify(parsed, expect_pub=priv.public_key().public_bytes_raw()) == []
+    assert ml.verify(parsed, expect_pub=ml.ed25519_public_bytes(priv)) == []
 
     wrong_target = target ^ 1
     try:
@@ -1355,7 +1396,7 @@ def test_meshtower_sd_bootloader_profile_builds_the_same_exact_identity():
         sign_priv=priv, bootloader=True)
     parsed = ml.parse_container(ml.build_container(manifest, image))
     assert parsed.manifest.hw_id == b"NRF_BL_239A0071_TOWER_V2_OTA".ljust(32, b"\0")
-    assert ml.verify(parsed, expect_pub=priv.public_key().public_bytes_raw()) == []
+    assert ml.verify(parsed, expect_pub=ml.ed25519_public_bytes(priv)) == []
 
 
 def test_meshtower_sd_bootloader_build_flag_is_exact_target_only():
@@ -1672,9 +1713,9 @@ def test_signed_build_and_verify():
                           is_full=True, sign_priv=priv)
     parsed = ml.parse_container(ml.build_container(m, image))
     assert parsed.manifest.is_signed
-    assert ml.verify(parsed, expect_pub=priv.public_key().public_bytes_raw()) == []
+    assert ml.verify(parsed, expect_pub=ml.ed25519_public_bytes(priv)) == []
     # wrong expected key -> flagged
-    other = Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+    other = ml.ed25519_public_bytes(Ed25519PrivateKey.generate())
     assert any("signer_pubkey" in p for p in ml.verify(parsed, expect_pub=other))
 
 
@@ -1738,6 +1779,37 @@ def test_delta_build_apply_verify():
     # wrong base must fail the delta->image_hash check
     wrong = ml.verify(parsed, base_image=_fw(99, 40 * 1024))
     assert wrong, "delta verify against a wrong base should fail"
+
+
+def test_delta_in_place_build_apply_verify():
+    old_body = _fw(22, 8 * 1024)
+    new_body = bytearray(old_body)
+    for i in range(700, 1200):
+        new_body[i] = (new_body[i] + 1) & 0xFF
+    new_body += _fw(23, 1024)
+    old_image, base_hash = ml.ensure_endf(old_body)
+    new_image, _ = ml.ensure_endf(bytes(new_body))
+
+    import detools
+    fp = io.BytesIO()
+    detools.create_patch(
+        io.BytesIO(old_image), io.BytesIO(new_image), fp,
+        patch_type="in-place", compression="crle",
+        memory_size=ml.NRF52_INPLACE_MEMORY + ml.NRF52_FLASH_PAGE,
+        segment_size=ml.NRF52_FLASH_PAGE, use_mmap=False)
+    delta = fp.getvalue()
+
+    m = ml.build_manifest(target_id=0xABCD, fw_version=ml.pack_version("1.2.1"),
+                          image_size=len(new_image), payload=delta, block_size=1024,
+                          image_hash=ml.mh32(new_image), codec_id=ml.CODEC_DETOOLS_INPLACE,
+                          is_full=False, base_hash=base_hash)
+    parsed = ml.parse_container(ml.build_container(m, delta))
+
+    # Verification must use the in-place decoder and compare the reconstructed
+    # bytes (not the full mutable memory image) with image_size/image_hash.
+    assert ml.verify(parsed, base_image=old_image) == []
+    wrong = ml.verify(parsed, base_image=_fw(99, len(old_body)))
+    assert "delta applied to base does not match image_hash" in wrong
 
 
 # --- runner ----------------------------------------------------------------

@@ -109,7 +109,11 @@ Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater install-capable; those targets do not need to reserve internal flash
 for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
-path and therefore do not emit redundant no-external-sensors siblings. Other
+path and therefore do not emit redundant no-external-sensors siblings. A
+RAK19007 can use the same separately wired W25Q16 with either RAK4631 or
+RAK3401 + RAK13302: the flash consumes no WisBlock slot and GPS remains
+supported in slot A. This is not the RAK15001 arrangement; RAK15001 and
+RAK13302 share a chip-select and cannot be used together. Other
 normal repeaters can still serve as intermediate relays but cannot necessarily
 install an update themselves. ESP32
 `-ota-` siblings also retain the lightweight browser WiFi uploader (`start
@@ -306,6 +310,19 @@ RAK15001 OTAFIX bootloader, use
 full sensor/GPS set and can install either a full image or a delta from the
 external 2 MiB store.
 
+With the separately wired Winbond breakout, use
+`RAK_4631_repeater_w25q16_lora_ota` for RAK4631 or
+`RAK_3401_repeater_rak13302_w25q16_lora_ota` for RAK3401 + RAK13302. Both
+require an `EF4015` 2 MiB device. As a one-time prerequisite, install
+`wiscore_rak4631_w25q16` for RAK4631 or
+`wiscore_rak3401_rak13302_w25q16` for RAK3401 + RAK13302. Wire CLK/MISO/MOSI
+to the RAK19007 IO connector pins 26/27/28, CS to J11 AIN1, and VCC/GND to J12
+VDD/GND. Fit an approximately 10 kOhm CS-to-VDD pull-up; never use VBAT. The
+SPI pins require underside taps or an interposer, but no sensor slot is
+occupied. See the
+[nRF52 QSPI guide](ota_nrf52_qspi.md#one-w25q16-wiring-for-rak4631-or-rak3401--rak13302)
+before installing either image.
+
 ### 4. Build and check the in-place delta
 
 ```bash
@@ -483,6 +500,7 @@ ota status
   A matched QSPI repeater or MeshTower V2 microSD target accepts full images with its corresponding bootloader.
 - **A QSPI nRF52 reports `QSPI store:ERR 0K` or `bl:NO-QSPI`:** do not download an install package. Install
   the exact QSPI-aware bootloader and check that the selected application matches the board's flash wiring.
+  A RAK W25Q16 target must identify exactly `EF4015` and 2048K; also check its physical CS pull-up.
 - **nRF52 reports no bootloader apply support:** install the exact-board in-place-delta OTAFIX bootloader
   before trying LoRa OTA.
 - **nRF52 reports a base mismatch:** the file passed to `--base` is not the exact application running on

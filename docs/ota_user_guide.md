@@ -83,8 +83,17 @@ complete package off-chip, so their normal full-sensor repeater build can
 install a full image or an in-place delta. The current matched families are
 XIAO nRF52840 and its XIAO-module derivatives, original LilyGo T-Echo,
 ThinkNode M1/M6, Wio Tracker L1, SenseCAP Solar, and the dedicated RAK4631 +
-RAK15001 slot-C target. These require the corresponding QSPI-aware OTAFIX bootloader; see
+RAK15001 slot-C target. The list also includes a separately wired W25Q16JV on
+RAK19007 with either RAK4631 or RAK3401 + RAK13302. These require the
+corresponding exact QSPI-aware OTAFIX bootloader; see
 [the nRF52 QSPI guide](ota_nrf52_qspi.md).
+
+The W25Q16 option uses one permanent RAK19007 wiring for either core: CLK/MISO/
+MOSI tap IO-connector pins 26/27/28, flash CS uses J11 AIN1, and power uses J12
+VDD (3.3 V) and GND. Add an approximately 10 kOhm CS-to-VDD pull-up and never
+power the flash from VBAT. The three SPI signals require underside pads or an
+IO-connector interposer; the easy J10/J11/J12 headers do not expose them. The
+flash consumes no WisBlock slot, so a supported GPS can remain in slot A.
 
 The ordinary full-sensor `RAK_4631_repeater` image remains too large for the
 safe internal in-place update limit. Without external flash, use
@@ -94,6 +103,16 @@ the four INA monitors, and target-compatible GPS. A RAK4631 fitted with
 RAK15001 in sensor slot C can instead use
 `RAK_4631_repeater_rak15001_slot_c_lora_ota` to retain the full sensor/GPS set
 and stage full images or deltas off-chip.
+
+For the external Winbond breakout, use
+`RAK_4631_repeater_w25q16_lora_ota` on RAK4631 or
+`RAK_3401_repeater_rak13302_w25q16_lora_ota` on RAK3401 + RAK13302. They retain
+the full sensor/GPS recipe and require exactly a 2 MiB `EF4015` W25Q16 plus the
+bootloader for that same core/radio/flash combination. Install
+`wiscore_rak4631_w25q16` for RAK4631 or
+`wiscore_rak3401_rak13302_w25q16` for RAK3401 + RAK13302 as a one-time
+prerequisite. The physical wiring is shared, but the two firmware identities
+are deliberately different and cannot be substituted for one another.
 
 ---
 

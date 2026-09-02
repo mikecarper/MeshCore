@@ -459,9 +459,13 @@ void NRF52Board::sleep(uint32_t secs) {
     // flag or BLE queue before sleeping again.
     sd_app_evt_wait();
   } else {
-    // softdevice is disabled, use raw WFE
-    __SEV();
+    // SoftDevice is disabled. Match the Adafruit core's race-preserving
+    // waitForEvent() sequence: the first WFE sleeps or consumes an already-
+    // pending event, then SEV/WFE reliably clears the event register before
+    // returning. SEV/WFE/WFE can erase the only GPIO edge that arrived between
+    // the caller's predicate and here.
     __WFE();
+    __SEV();
     __WFE();
   }
 }

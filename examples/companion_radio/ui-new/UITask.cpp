@@ -1101,6 +1101,9 @@ public:
 #ifndef UI_COMPACT_MESSAGE_STATUS
   #define UI_COMPACT_MESSAGE_STATUS 0
 #endif
+#ifndef UI_MESSAGE_CHANNEL_FOOTER
+  #define UI_MESSAGE_CHANNEL_FOOTER 1
+#endif
 
 class MsgPreviewScreen : public UIScreen {
   UITask* _task;
@@ -1201,6 +1204,7 @@ class MsgPreviewScreen : public UIScreen {
   }
 
   void renderChannelFilter(DisplayDriver& display) const {
+#if UI_MESSAGE_CHANNEL_FOOTER == 1
     const mesh::ui::CompanionMessageChromeLayout layout =
         mesh::ui::makeCompanionMessageChromeLayout(
             UI_COMPACT_MESSAGE_STATUS == 1);
@@ -1223,6 +1227,9 @@ class MsgPreviewScreen : public UIScreen {
                       text_y);
     display.print(">");
     display.setCompactText(false);
+#else
+    (void)display;
+#endif
   }
 
 public:
@@ -1368,7 +1375,14 @@ public:
 
   bool handleInput(char c) override {
     if (c == KEY_NEXT || c == KEY_RIGHT) {
-      if (view_offset + 1 < filteredCount()) ++view_offset;
+      if (view_offset + 1 < filteredCount()) {
+        ++view_offset;
+      } else {
+        // The historical inbox flow returned Home after its final item. Keep
+        // that wrap behavior now that previews persist in MessageHistory;
+        // otherwise a valid navigation press is a silent no-op at the end.
+        _task->gotoHomeScreen();
+      }
       return true;
     }
     if (c == KEY_PREV || c == KEY_LEFT) {

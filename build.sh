@@ -76,7 +76,7 @@ BUILD_BACKGROUND_HANDOFF_STATE=""
 BUILD_SCRIPT_LOCK_FD=""
 INTERACTIVE_BUILD_SELECTION=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak15001_slot_c_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak13302_w25q16_lora_ota|repeater_rak15001_slot_c_lora_ota|repeater_w25q16_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -1928,11 +1928,17 @@ print_release_firmware_targets() {
       ;;
     get-repeater-firmwares-to-build)
       get_pio_envs_ending_with_string "_repeater"
-      # This full-sensor target is a distinct hardware/bootloader contract,
-      # not a generated lean OTA alias, so tagged repeater releases must ship
-      # it explicitly alongside the canonical standard repeaters.
+      # These full-sensor targets are distinct hardware/bootloader contracts,
+      # not generated lean OTA aliases, so tagged repeater releases must ship
+      # them explicitly alongside the canonical standard repeaters.
       if is_supported_build_env "RAK_4631_repeater_rak15001_slot_c_lora_ota"; then
         printf '%s\n' "RAK_4631_repeater_rak15001_slot_c_lora_ota"
+      fi
+      if is_supported_build_env "RAK_4631_repeater_w25q16_lora_ota"; then
+        printf '%s\n' "RAK_4631_repeater_w25q16_lora_ota"
+      fi
+      if is_supported_build_env "RAK_3401_repeater_rak13302_w25q16_lora_ota"; then
+        printf '%s\n' "RAK_3401_repeater_rak13302_w25q16_lora_ota"
       fi
       # Functional consolidation does not change an installed image's mOTA
       # target ID. Keep exact Serial1/Serial2 bridge identities publishable as

@@ -5,6 +5,8 @@
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include <helpers/CompanionStatusResponse.h>
 #include <helpers/IdentityGeneration.h>
+#include <helpers/UsbAsciiBinarySwitch.h>
+#include <helpers/UsbLogging.h>
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 #include "helpers/radiolib/CadTiming.h"
@@ -263,6 +265,7 @@ static mesh::Packet* emergency_client_repeat_packet;
 #define ERR_CODE_ILLEGAL_ARG            6
 
 #define MAX_SIGN_DATA_LEN               (8 * 1024) // 8K
+static constexpr unsigned long SIGN_SESSION_TIMEOUT_MILLIS = 120000;
 
 // Auto-add config bitmask
 // Bit 0: If set, overwrite oldest non-favourite contact when contacts file is full
@@ -273,16 +276,29 @@ static mesh::Packet* emergency_client_repeat_packet;
 #define AUTO_ADD_ROOM_SERVER      (1 << 3)  // 0x08 - auto-add Room Server (ADV_TYPE_ROOM)
 #define AUTO_ADD_SENSOR           (1 << 4)  // 0x10 - auto-add Sensor (ADV_TYPE_SENSOR)
 
-void MyMesh::writeOKFrame() {
+void MyMesh::writeOKFrame(BaseSerialInterface* route) {
   uint8_t buf[1];
   buf[0] = RESP_CODE_OK;
-  _serial->writeFrame(buf, 1);
+  if (route != NULL) {
+    _serial->writeFrameToRoute(route, buf, 1);
+  } else {
+    _serial->writeFrame(buf, 1);
+  }
 }
-void MyMesh::writeErrFrame(uint8_t err_code) {
+void MyMesh::writeErrFrame(uint8_t err_code, BaseSerialInterface* route) {
   uint8_t buf[2];
   buf[0] = RESP_CODE_ERR;
   buf[1] = err_code;
-  _serial->writeFrame(buf, 2);
+  if (route != NULL) {
+    _serial->writeFrameToRoute(route, buf, 2);
+  } else {
+    _serial->writeFrame(buf, 2);
+  }
+}
+
+size_t MyMesh::writePendingSerialFrame(const uint8_t frame[], size_t len) {
+  if (_serial == NULL || pending_serial_reply_route == NULL) return 0;
+  return _serial->writeFrameToRoute(pending_serial_reply_route, frame, len);
 }
 
 void MyMesh::writeDisabledFrame() {
@@ -704,6 +720,15 @@ void MyMesh::expireExpectedAcks() {
       continue;
     }
 
+    if (entry.reply_route != NULL
+        && !_serial->isReplyRouteAvailable(entry.reply_route)) {
+      // The requesting transport owns only the eventual ACK notification,
+      // not the already-accepted radio transmission. Detach a vanished host
+      // without cancelling Mesh's retry sequence or forgetting the semantic
+      // ACK match; a late ACK can still stop those retries safely.
+      entry.reply_route = NULL;
+    }
+
     if (entry.expires_at == now || millisHasNowPassed(entry.expires_at)) {
       if (!hasActiveRetries(entry.retry_key)) {
 #ifdef ENABLE_USB_INTERFACE
@@ -758,7 +783,10 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
       memcpy(&out_frame[1], data, 4);
       uint32_t trip_time = _ms->getMillis() - expected_ack_table[i].msg_sent;
       memcpy(&out_frame[5], &trip_time, 4);
-      _serial->writeFrame(out_frame, 9);
+      if (expected_ack_table[i].reply_route != NULL) {
+        _serial->writeFrameToRoute(expected_ack_table[i].reply_route,
+                                   out_frame, 9);
+      }
 
 #ifdef ENABLE_USB_INTERFACE
       if (expected_ack_table[i].terminal_origin && hasTerminalOutput()) {
@@ -1162,8 +1190,6 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
         && memcmp(_terminal_login_key, contact.id.pub_key,
                   sizeof(_terminal_login_key)) == 0;
 #endif
-    pending_login = 0;
-
     int i = 0;
 #ifdef ENABLE_USB_INTERFACE
     bool login_success = false;
@@ -1200,7 +1226,10 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
       memcpy(&out_frame[i], contact.id.pub_key, 6);
       i += 6; // pub_key_prefix
     }
-    _serial->writeFrame(out_frame, i);
+    // Terminal login has its own text destination and deliberately captures
+    // no Binary route. Binary logins retain their exact requester even if a
+    // different transport has issued a command in the meantime.
+    writePendingSerialFrame(out_frame, i);
 #ifdef ENABLE_USB_INTERFACE
     if (terminal_login_response) {
       if (hasTerminalOutput()) {
@@ -1220,9 +1249,8 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
       clearTerminalLogin();
     }
 #endif
+    clearPendingReqs();
   } else if (mesh::companionStatusTagMatches(pending_status, tag)) {
-    pending_status = 0;
-
     // Do not expose a truncated or unrelated response as repeater statistics.
     // The app parses at least 48 bytes and otherwise throws a RangeError.
     if (!mesh::companionStatusResponseIsLongEnough(len)) {
@@ -1230,6 +1258,7 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
           "onContactResponse(), short status response: len=%u, expected>=%u",
           (unsigned)len,
           (unsigned)mesh::COMPANION_MIN_STATUS_RESPONSE_SIZE);
+      clearPendingReqs();
       return;
     }
 
@@ -1240,10 +1269,9 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
     i += 6; // pub_key_prefix
     memcpy(&out_frame[i], &data[4], len - 4);
     i += (len - 4);
-    _serial->writeFrame(out_frame, i);
+    writePendingSerialFrame(out_frame, i);
+    clearPendingReqs();
   } else if (len > 4 && tag == pending_telemetry) {  // check for matching response tag
-    pending_telemetry = 0;
-
     int i = 0;
     out_frame[i++] = PUSH_CODE_TELEMETRY_RESPONSE;
     out_frame[i++] = 0; // reserved
@@ -1251,10 +1279,9 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
     i += 6; // pub_key_prefix
     memcpy(&out_frame[i], &data[4], len - 4);
     i += (len - 4);
-    _serial->writeFrame(out_frame, i);
+    writePendingSerialFrame(out_frame, i);
+    clearPendingReqs();
   } else if (len > 4 && tag == pending_req) {  // check for matching response tag
-    pending_req = 0;
-
     int i = 0;
     out_frame[i++] = PUSH_CODE_BINARY_RESPONSE;
     out_frame[i++] = 0; // reserved
@@ -1262,7 +1289,8 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
     i += 4;
     memcpy(&out_frame[i], &data[4], len - 4);
     i += (len - 4);
-    _serial->writeFrame(out_frame, i);
+    writePendingSerialFrame(out_frame, i);
+    clearPendingReqs();
   }
 }
 
@@ -1272,8 +1300,6 @@ bool MyMesh::onContactPathRecv(ContactInfo& contact, uint8_t* in_path, uint8_t i
     memcpy(&tag, extra, 4);
 
     if (tag == pending_discovery) {  // check for matching response tag)
-      pending_discovery = 0;
-
       if (!mesh::Packet::isValidPathLen(in_path_len) || !mesh::Packet::isValidPathLen(out_path_len)) {
         MESH_DEBUG_PRINTLN("onContactPathRecv, invalid path sizes: %d, %d", in_path_len, out_path_len);
       } else {
@@ -1288,8 +1314,9 @@ bool MyMesh::onContactPathRecv(ContactInfo& contact, uint8_t* in_path, uint8_t i
         i += mesh::Packet::writePath(&out_frame[i], in_path, in_path_len);
         // NOTE: telemetry data in 'extra' is discarded at present
 
-        _serial->writeFrame(out_frame, i);
+        writePendingSerialFrame(out_frame, i);
       }
+      clearPendingReqs();
       return false;  // DON'T send reciprocal path!
     }
   }
@@ -1339,9 +1366,12 @@ void MyMesh::onRawDataRecv(mesh::Packet *packet) {
 
 void MyMesh::onTraceRecv(mesh::Packet *packet, uint32_t tag, uint32_t auth_code, uint8_t flags,
                          const uint8_t *path_snrs, const uint8_t *path_hashes, uint8_t path_len) {
+  const bool binary_trace_match = binary_trace_pending
+      && tag == binary_trace_tag && auth_code == binary_trace_auth;
   uint8_t path_sz = flags & 0x03;  // NEW v1.11+
   if (12 + path_len + (path_len >> path_sz) + 1 > sizeof(out_frame)) {
     MESH_DEBUG_PRINTLN("onTraceRecv(), path_len is too long: %d", (uint32_t)path_len);
+    if (binary_trace_match) clearBinaryTraceReply();
     return;
   }
   int i = 0;
@@ -1390,10 +1420,9 @@ void MyMesh::onTraceRecv(mesh::Packet *packet, uint32_t tag, uint32_t auth_code,
   }
 #endif
 
-  if (_serial->isConnected()) {
-    _serial->writeFrame(out_frame, i);
-  } else {
-    MESH_DEBUG_PRINTLN("onTraceRecv(), data received while app offline");
+  if (binary_trace_match) {
+    _serial->writeFrameToRoute(binary_trace_reply_route, out_frame, i);
+    clearBinaryTraceReply();
   }
 }
 
@@ -1444,6 +1473,12 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   command_radio_cr = 0;
   command_radio_repeat = 0;
   command_radio_apply_deadline = 0;
+  command_radio_reply_route = NULL;
+  binary_trace_pending = false;
+  binary_trace_tag = 0;
+  binary_trace_auth = 0;
+  binary_trace_deadline = 0;
+  binary_trace_reply_route = NULL;
   _scheduled_reboot_at = 0;
 #if COMPANION_FEATURE_TEMP_RADIO
   _temp_radio_set_at = 0;
@@ -1469,6 +1504,8 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   next_ack_expiry = 0;
   has_next_ack_expiry = false;
   sign_data = NULL;
+  sign_data_reply_route = NULL;
+  sign_data_deadline = 0;
   dirty_contacts_expiry = 0;
   memset(advert_paths, 0, sizeof(advert_paths));
   memset(send_scope.key, 0, sizeof(send_scope.key));
@@ -1820,7 +1857,9 @@ bool MyMesh::applySavedRadioParams() {
       == mesh::RadioParamApplyResult::APPLIED;
 }
 
-void MyMesh::finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat) {
+void MyMesh::finishRadioParamApply(float freq, float bw, uint8_t sf,
+                                   uint8_t cr, uint8_t repeat,
+                                   BaseSerialInterface* route) {
   _prefs.sf = sf;
   _prefs.cr = cr;
   _prefs.freq = freq;
@@ -1838,7 +1877,7 @@ void MyMesh::finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr,
   MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d",
                      (uint32_t)(freq * 1000.0f), (uint32_t)(bw * 1000.0f),
                      (uint32_t)sf, (uint32_t)cr);
-  writeOKFrame();
+  writeOKFrame(route);
 }
 
 void MyMesh::cancelPendingRadioParamApply() {
@@ -1846,6 +1885,7 @@ void MyMesh::cancelPendingRadioParamApply() {
 
   command_radio_apply_pending = false;
   command_radio_apply_deadline = 0;
+  command_radio_reply_route = NULL;
   // The requested tuple was not committed. Reassert the persisted tuple in
   // case a failed hardware apply only restored part of the old configuration.
   saved_radio_apply_pending = true;
@@ -1855,13 +1895,13 @@ void MyMesh::cancelPendingRadioParamApply() {
 
 void MyMesh::servicePendingRadioParamApply() {
   if (!command_radio_apply_pending) return;
-  if (!_serial || !_serial->isConnected()) {
+  if (!_serial || !_serial->isReplyRouteAvailable(command_radio_reply_route)) {
     cancelPendingRadioParamApply();
     return;
   }
 
   // Leave enough queue headroom for the eventual command response.
-  if (_serial->isWriteBusy()) return;
+  if (_serial->isReplyRouteWriteBusy(command_radio_reply_route)) return;
 
   mesh::RadioParamApplyResult result = tryApplyRadioParams(
       command_radio_freq, command_radio_bw, command_radio_sf, command_radio_cr);
@@ -1871,16 +1911,18 @@ void MyMesh::servicePendingRadioParamApply() {
     uint8_t sf = command_radio_sf;
     uint8_t cr = command_radio_cr;
     uint8_t repeat = command_radio_repeat;
+    BaseSerialInterface* route = command_radio_reply_route;
     command_radio_apply_pending = false;
     command_radio_apply_deadline = 0;
-    finishRadioParamApply(freq, bw, sf, cr, repeat);
+    command_radio_reply_route = NULL;
+    finishRadioParamApply(freq, bw, sf, cr, repeat, route);
   } else if (result == mesh::RadioParamApplyResult::FAILED) {
+    writeErrFrame(ERR_CODE_ILLEGAL_ARG, command_radio_reply_route);
     cancelPendingRadioParamApply();
-    writeErrFrame(ERR_CODE_ILLEGAL_ARG);
   } else if (command_radio_apply_deadline == _ms->getMillis()
              || millisHasNowPassed(command_radio_apply_deadline)) {
+    writeErrFrame(ERR_CODE_BAD_STATE, command_radio_reply_route);
     cancelPendingRadioParamApply();
-    writeErrFrame(ERR_CODE_BAD_STATE);
   }
 }
 
@@ -2073,6 +2115,18 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     snprintf(reply, reply_size, "Companion %s (protocol %u, build %s)",
              FIRMWARE_VERSION, (unsigned)FIRMWARE_VER_CODE,
              FIRMWARE_BUILD_DATE);
+    return true;
+  }
+
+  if (strcmp(command, "get pwrmgt.bootreason") == 0
+      || strcmp(command, "powerlog") == 0) {
+    if (!board.isPowerManagementInitialized()) {
+      snprintf(reply, reply_size, "Error: power management unsupported");
+    } else {
+      snprintf(reply, reply_size, "> Reset: %s; Shutdown: %s",
+               board.getResetReasonString(board.getResetReason()),
+               board.getShutdownReasonString(board.getShutdownReason()));
+    }
     return true;
   }
 
@@ -3236,13 +3290,110 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
   serial.enable();
 }
 
+void MyMesh::clearPendingReqs() {
+  pending_login = pending_status = pending_telemetry = pending_discovery =
+      pending_req = 0;
+  pending_serial_reply_route = NULL;
+  pending_serial_reply_deadline = 0;
+}
+
+bool MyMesh::hasPendingReqs() const {
+  return pending_login != 0 || pending_status != 0 || pending_telemetry != 0
+      || pending_discovery != 0 || pending_req != 0;
+}
+
+void MyMesh::servicePendingSerialReply() {
+  if (pending_serial_reply_route == NULL) return;
+  if (!_serial->isReplyRouteAvailable(pending_serial_reply_route)
+      || pending_serial_reply_deadline == _ms->getMillis()
+      || millisHasNowPassed(pending_serial_reply_deadline)) {
+    clearPendingReqs();
+  }
+}
+
+void MyMesh::clearBinaryTraceReply() {
+  binary_trace_pending = false;
+  binary_trace_tag = 0;
+  binary_trace_auth = 0;
+  binary_trace_deadline = 0;
+  binary_trace_reply_route = NULL;
+}
+
+void MyMesh::serviceBinaryTraceReply() {
+  if (!binary_trace_pending) return;
+  if (!_serial->isReplyRouteAvailable(binary_trace_reply_route)
+      || binary_trace_deadline == _ms->getMillis()
+      || millisHasNowPassed(binary_trace_deadline)) {
+    clearBinaryTraceReply();
+  }
+}
+
+void MyMesh::cancelSigningSession() {
+  if (sign_data != NULL) free(sign_data);
+  sign_data = NULL;
+  sign_data_len = 0;
+  sign_data_reply_route = NULL;
+  sign_data_deadline = 0;
+}
+
+void MyMesh::serviceSigningSession() {
+  if (sign_data == NULL) return;
+  if (!_serial->isReplyRouteAvailable(sign_data_reply_route)
+      || sign_data_deadline == _ms->getMillis()
+      || millisHasNowPassed(sign_data_deadline)) {
+    cancelSigningSession();
+  }
+}
+
 void MyMesh::cancelSerialResponseStream() {
   stopContactsIterator();
+}
+
+void MyMesh::cancelSerialOperationsForRoute(BaseSerialInterface* route) {
+  if (route == NULL) return;
+  if (pending_serial_reply_route == route) clearPendingReqs();
+  if (command_radio_reply_route == route) cancelPendingRadioParamApply();
+  if (binary_trace_reply_route == route) clearBinaryTraceReply();
+  if (sign_data_reply_route == route) cancelSigningSession();
+  for (int i = 0; i < EXPECTED_ACK_TABLE_SIZE; ++i) {
+    if (expected_ack_table[i].reply_route == route) {
+      // A host-session change must prevent the late ACK from reaching a new
+      // session on the same transport, but it must not revoke radio delivery
+      // for a message for which RESP_CODE_SENT was already returned.
+      expected_ack_table[i].reply_route = NULL;
+    }
+  }
+  expireExpectedAcks();
+}
+
+void MyMesh::resetUsbHostSessionInput() {
+  // CLI rescue deliberately remains active across reconnects, but no bytes
+  // typed by the old host may complete a command for the new one. This is
+  // especially important for the rescue shell's erase/rm commands.
+  if (_cli_rescue) memset(cli_command, 0, sizeof(cli_command));
 }
 
 void MyMesh::handleCmdFrame(size_t len) {
   if (len == 0) {
     writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    return;
+  }
+
+  const bool starts_long_lived_request =
+      (cmd_frame[0] == CMD_SEND_LOGIN && len >= 1 + PUB_KEY_SIZE)
+      || (cmd_frame[0] == CMD_SEND_ANON_REQ && len > 1 + PUB_KEY_SIZE)
+      || (cmd_frame[0] == CMD_SEND_STATUS_REQ && len >= 1 + PUB_KEY_SIZE)
+      || (cmd_frame[0] == CMD_SEND_PATH_DISCOVERY_REQ
+          && len >= 2 + PUB_KEY_SIZE)
+      || (cmd_frame[0] == CMD_SEND_TELEMETRY_REQ
+          && len >= 4 + PUB_KEY_SIZE)
+      || (cmd_frame[0] == CMD_SEND_BINARY_REQ
+          && len >= 2 + PUB_KEY_SIZE);
+  if (starts_long_lived_request && hasPendingReqs()) {
+    // There is one correlation slot for these request families. Reject before
+    // transmitting rather than orphaning an earlier USB/BLE client's SENT
+    // operation and reassigning its late response to the new requester.
+    writeErrFrame(ERR_CODE_BAD_STATE);
     return;
   }
 
@@ -3273,8 +3424,9 @@ void MyMesh::handleCmdFrame(size_t len) {
     cmd_frame[len] = 0; // make app_name null terminated
     MESH_DEBUG_PRINTLN("App %s connected", app_name);
 
+    BaseSerialInterface* app_route = _serial->captureReplyRoute();
     stopContactsIterator(); // stop any left-over ContactsIterator
-    cancelPendingRadioParamApply();
+    cancelSerialOperationsForRoute(app_route);
     int i = 0;
     out_frame[i++] = RESP_CODE_SELF_INFO;
     out_frame[i++] = ADV_TYPE_CHAT; // what this node Advert identifies as (maybe node's pronouns too?? :-)
@@ -3400,6 +3552,7 @@ void MyMesh::handleCmdFrame(size_t len) {
           entry.ack = expected_ack;
           entry.message_timestamp = msg_timestamp;
           entry.contact = recipient;
+          entry.reply_route = _serial->captureReplyRoute();
           memcpy(entry.text_fingerprint, text_fingerprint, sizeof(entry.text_fingerprint));
           memcpy(entry.retry_key, packet_retry_key, sizeof(entry.retry_key));
           if (replacement_entry == NULL) {
@@ -3732,6 +3885,14 @@ void MyMesh::handleCmdFrame(size_t len) {
 
       mesh::RadioParamApplyResult result = tryApplyRadioParams(new_freq, new_bw, sf, cr);
       if (result == mesh::RadioParamApplyResult::BUSY) {
+        // Capture this requester instead of relying on the mutable last-RX
+        // route. This remains correct if a contact stream later unlocks or a
+        // different transport supplies another command before completion.
+        command_radio_reply_route = _serial->captureReplyRoute();
+        if (command_radio_reply_route == NULL) {
+          writeErrFrame(ERR_CODE_BAD_STATE);
+          return;
+        }
         command_radio_apply_pending = true;
         command_radio_freq = new_freq;
         command_radio_bw = new_bw;
@@ -3908,6 +4069,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         clearPendingReqs();
+        pending_serial_reply_route = _serial->captureReplyRoute();
+        pending_serial_reply_deadline =
+            futureMillis(est_timeout + est_timeout / 5);
         memcpy(&pending_login, recipient->id.pub_key, 4); // match this to onContactResponse()
         out_frame[0] = RESP_CODE_SENT;
         out_frame[1] = (result == MSG_SEND_SENT_FLOOD) ? 1 : 0;
@@ -3942,6 +4106,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         clearPendingReqs();
+        pending_serial_reply_route = _serial->captureReplyRoute();
+        pending_serial_reply_deadline =
+            futureMillis(est_timeout + est_timeout / 5);
         pending_req = tag; // match this to onContactResponse()
         out_frame[0] = RESP_CODE_SENT;
         out_frame[1] = (result == MSG_SEND_SENT_FLOOD) ? 1 : 0;
@@ -3962,6 +4129,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         clearPendingReqs();
+        pending_serial_reply_route = _serial->captureReplyRoute();
+        pending_serial_reply_deadline =
+            futureMillis(est_timeout + est_timeout / 5);
         pending_status = tag; // match the reflected tag in onContactResponse()
         out_frame[0] = RESP_CODE_SENT;
         out_frame[1] = (result == MSG_SEND_SENT_FLOOD) ? 1 : 0;
@@ -3991,6 +4161,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         clearPendingReqs();
+        pending_serial_reply_route = _serial->captureReplyRoute();
+        pending_serial_reply_deadline =
+            futureMillis(est_timeout + est_timeout / 5);
         pending_discovery = tag; // match this in onContactResponse()
         out_frame[0] = RESP_CODE_SENT;
         out_frame[1] = (result == MSG_SEND_SENT_FLOOD) ? 1 : 0;
@@ -4011,6 +4184,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         clearPendingReqs();
+        pending_serial_reply_route = _serial->captureReplyRoute();
+        pending_serial_reply_deadline =
+            futureMillis(est_timeout + est_timeout / 5);
         pending_telemetry = tag; // match this in onContactResponse()
         out_frame[0] = RESP_CODE_SENT;
         out_frame[1] = (result == MSG_SEND_SENT_FLOOD) ? 1 : 0;
@@ -4052,6 +4228,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         writeErrFrame(ERR_CODE_TABLE_FULL);
       } else {
         clearPendingReqs();
+        pending_serial_reply_route = _serial->captureReplyRoute();
+        pending_serial_reply_deadline =
+            futureMillis(est_timeout + est_timeout / 5);
         pending_req = tag; // match this in onContactResponse()
         out_frame[0] = RESP_CODE_SENT;
         out_frame[1] = (result == MSG_SEND_SENT_FLOOD) ? 1 : 0;
@@ -4103,31 +4282,48 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
     }
   } else if (cmd_frame[0] == CMD_SIGN_START) {
+    BaseSerialInterface* signing_route = _serial->captureReplyRoute();
+    if (signing_route == NULL) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+      return;
+    }
+    if (sign_data != NULL && sign_data_reply_route != signing_route) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+      return;
+    }
+    cancelSigningSession();
+    sign_data = (uint8_t *)malloc(MAX_SIGN_DATA_LEN);
+    if (sign_data == NULL) {
+      writeErrFrame(ERR_CODE_TABLE_FULL);
+      return;
+    }
+    sign_data_len = 0;
+    sign_data_reply_route = signing_route;
+    sign_data_deadline = futureMillis(SIGN_SESSION_TIMEOUT_MILLIS);
+
     out_frame[0] = RESP_CODE_SIGN_START;
     out_frame[1] = 0; // reserved
     uint32_t len = MAX_SIGN_DATA_LEN;
     memcpy(&out_frame[2], &len, 4);
     _serial->writeFrame(out_frame, 6);
-
-    if (sign_data) {
-      free(sign_data);
-    }
-    sign_data = (uint8_t *)malloc(MAX_SIGN_DATA_LEN);
-    sign_data_len = 0;
   } else if (cmd_frame[0] == CMD_SIGN_DATA && len > 1) {
-    if (sign_data == NULL || sign_data_len + (len - 1) > MAX_SIGN_DATA_LEN) {
-      writeErrFrame(sign_data == NULL ? ERR_CODE_BAD_STATE : ERR_CODE_TABLE_FULL); // error: too long
+    BaseSerialInterface* signing_route = _serial->captureReplyRoute();
+    if (sign_data == NULL || sign_data_reply_route != signing_route) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+    } else if (sign_data_len + (len - 1) > MAX_SIGN_DATA_LEN) {
+      writeErrFrame(ERR_CODE_TABLE_FULL); // error: too long
     } else {
       memcpy(&sign_data[sign_data_len], &cmd_frame[1], len - 1);
       sign_data_len += (len - 1);
+      sign_data_deadline = futureMillis(SIGN_SESSION_TIMEOUT_MILLIS);
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_SIGN_FINISH) {
-    if (sign_data) {
+    if (sign_data != NULL
+        && sign_data_reply_route == _serial->captureReplyRoute()) {
       self_id.sign(&out_frame[1], sign_data, sign_data_len);
 
-      free(sign_data); // don't need sign_data now
-      sign_data = NULL;
+      cancelSigningSession();
 
       out_frame[0] = RESP_CODE_SIGNATURE;
       _serial->writeFrame(out_frame, 1 + SIGNATURE_SIZE);
@@ -4135,6 +4331,11 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_BAD_STATE);
     }
   } else if (cmd_frame[0] == CMD_SEND_TRACE_PATH && len > 10 && len - 10 <= MAX_PACKET_PAYLOAD - 9) {
+    serviceBinaryTraceReply();
+    if (binary_trace_pending) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+      return;
+    }
     uint8_t path_len = len - 10;
     uint8_t flags = cmd_frame[9];
     uint8_t path_sz = flags & 0x03;  // NEW v1.11+
@@ -4151,6 +4352,12 @@ void MyMesh::handleCmdFrame(size_t len) {
         uint32_t t = _radio->getEstAirtimeFor(9 + path_len + 2);
         uint32_t est_timeout = calcDirectTimeoutMillisFor(t, path_len >> path_sz);
         if (sendDirect(pkt, &cmd_frame[10], path_len)) {
+          binary_trace_pending = true;
+          binary_trace_tag = tag;
+          binary_trace_auth = auth;
+          binary_trace_deadline =
+              futureMillis(est_timeout + est_timeout / 5);
+          binary_trace_reply_route = _serial->captureReplyRoute();
           out_frame[0] = RESP_CODE_SENT;
           out_frame[1] = 0;
           memcpy(&out_frame[2], &tag, 4);
@@ -5027,7 +5234,7 @@ void MyMesh::printTerminalBanner(bool show_binary_stop) {
 
 void MyMesh::enterTerminalMode() {
   _terminal_mode = true;
-  _terminal_output = &Serial;
+  _terminal_output = &mesh::usbTerminalPort();
   resetTerminalSession();
   printTerminalBanner(true);
 }
@@ -5035,7 +5242,7 @@ void MyMesh::enterTerminalMode() {
 void MyMesh::exitTerminalMode() {
   _terminal_mode = false;
   resetTerminalSession();
-  if (_terminal_output == &Serial) _terminal_output = NULL;
+  if (_terminal_output == &mesh::usbTerminalPort()) _terminal_output = NULL;
 }
 
 #if COMPANION_FEATURE_NETWORK_TERMINAL
@@ -5164,6 +5371,7 @@ void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
   entry.ack = expected_ack;
   entry.message_timestamp = message_timestamp;
   entry.contact = &recipient;
+  entry.reply_route = NULL;
   mesh::Utils::sha256(entry.text_fingerprint, sizeof(entry.text_fingerprint),
                       recipient.id.pub_key, PUB_KEY_SIZE,
                       (const uint8_t*)text, strlen(text));
@@ -5329,6 +5537,11 @@ void MyMesh::sendTerminalLogin(ContactInfo& recipient,
   if (_terminal_login_pending) {
     terminalOutput().printf("  ERROR: login to %s is still pending\r\n",
                   _terminal_login_target);
+    return;
+  }
+  if (hasPendingReqs()) {
+    terminalOutput().print(
+        "  ERROR: another Companion request is still pending\r\n");
     return;
   }
 
@@ -5594,7 +5807,14 @@ void MyMesh::handleTerminalCommand(char* command) {
   mesh::cli::normalizeCommandVerb(command);
 
   char local_reply[160];
-  if (handleLocalControlCommand(command, local_reply, sizeof(local_reply))) {
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
+  const bool usb_mota_owner_transition =
+      mesh::isUsbMotaOwnerTransitionCommand(command);
+#else
+  const bool usb_mota_owner_transition = false;
+#endif
+  if (!usb_mota_owner_transition
+      && handleLocalControlCommand(command, local_reply, sizeof(local_reply))) {
     terminalOutput().printf("  %s\r\n", local_reply);
     return;
   }
@@ -6111,6 +6331,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("Commands:\r\n");
     terminalOutput().print("  board\r\n");
     terminalOutput().print("  version\r\n");
+    terminalOutput().print("  get pwrmgt.bootreason\r\n");
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
     terminalOutput().print("  memory\r\n");
 #endif
@@ -6206,7 +6427,7 @@ void MyMesh::handleTerminalCommand(char* command) {
 void MyMesh::enterCLIRescue() {
   _cli_rescue = true;
   cli_command[0] = 0;
-  Serial.println("========= CLI Rescue =========");
+  mesh::usbTerminalPort().println("========= CLI Rescue =========");
 }
 
 static bool isCompanionRadioPrefsCommand(const char* command) {
@@ -6245,6 +6466,14 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     command += 3;
     while (*command == ' ' || *command == '\t') command++;
   }
+
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
+  if (mesh::isUsbMotaOwnerTransitionCommand(command)) {
+    snprintf(reply, reply_capacity,
+             "ERR ota folder on/off requires the owning USB mOTA session");
+    return true;
+  }
+#endif
 
   if (handleLocalControlCommand(command, reply, reply_capacity)) return true;
 
@@ -6356,14 +6585,16 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
 }
 
 void MyMesh::checkCLIRescueCmd() {
+  Stream& output = mesh::usbTerminalPort();
+  Stream& input = mesh::usbCompanionPort();
   int len = strlen(cli_command);
-  while (Serial.available() && len < sizeof(cli_command)-1) {
-    char c = Serial.read();
+  while (input.available() && len < sizeof(cli_command)-1) {
+    char c = input.read();
     if (c != '\n') {
       cli_command[len++] = c;
       cli_command[len] = 0;
     }
-    Serial.print(c);  // echo
+    output.print(c);  // echo
   }
   if (len == sizeof(cli_command)-1) {  // command buffer full
     cli_command[sizeof(cli_command)-1] = '\r';
@@ -6375,7 +6606,7 @@ void MyMesh::checkCLIRescueCmd() {
     reply_buf[0] = 0;
     if (handleCommand(cli_command, 0, reply_buf)) {
       // command was handled, print reply output
-      Serial.print("  "); Serial.print(reply_buf); Serial.println();
+      output.print("  "); output.print(reply_buf); output.println();
     } else if (strcmp(cli_command, "rebuild") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {
@@ -6383,16 +6614,16 @@ void MyMesh::checkCLIRescueCmd() {
         savePrefs();
         saveContacts();
         saveChannels();
-        Serial.println("  > erase and rebuild done");
+        output.println("  > erase and rebuild done");
       } else {
-        Serial.println("  Error: erase failed");
+        output.println("  Error: erase failed");
       }
     } else if (strcmp(cli_command, "erase") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {
-        Serial.println("  > erase done");
+        output.println("  > erase done");
       } else {
-        Serial.println("  Error: erase failed");
+        output.println("  Error: erase failed");
       }
     } else if (memcmp(cli_command, "ls", 2) == 0) {
 
@@ -6406,7 +6637,7 @@ void MyMesh::checkCLIRescueCmd() {
         path += 7; // skip "ExtraFS"
         is_fs2 = true;
       }
-      Serial.printf("Listing files in %s\n", path);
+      output.printf("Listing files in %s\n", path);
 
       // log each file and directory
       File root = _store->openRead(path);
@@ -6415,9 +6646,10 @@ void MyMesh::checkCLIRescueCmd() {
           File file = root.openNextFile();
           while (file) {
             if (file.isDirectory()) {
-              Serial.printf("[dir]  UserData%s/%s\n", path, file.name());
+              output.printf("[dir]  UserData%s/%s\n", path, file.name());
             } else {
-              Serial.printf("[file] UserData%s/%s (%d bytes)\n", path, file.name(), file.size());
+              output.printf("[file] UserData%s/%s (%d bytes)\n", path,
+                            file.name(), file.size());
             }
             // move to next file
             file = root.openNextFile();
@@ -6432,9 +6664,10 @@ void MyMesh::checkCLIRescueCmd() {
           File file = root2.openNextFile();
           while (file) {
             if (file.isDirectory()) {
-              Serial.printf("[dir]  ExtraFS%s/%s\n", path, file.name());
+              output.printf("[dir]  ExtraFS%s/%s\n", path, file.name());
             } else {
-              Serial.printf("[file] ExtraFS%s/%s (%d bytes)\n", path, file.name(), file.size());
+              output.printf("[file] ExtraFS%s/%s (%d bytes)\n", path,
+                            file.name(), file.size());
             }
             // move to next file
             file = root2.openNextFile();
@@ -6454,7 +6687,8 @@ void MyMesh::checkCLIRescueCmd() {
         path += 7; // skip "ExtraFS"
         is_fs2 = true;
       } else {
-        Serial.println("Invalid path provided, must start with UserData/ or ExtraFS/");
+        output.println(
+            "Invalid path provided, must start with UserData/ or ExtraFS/");
         cli_command[0] = 0;
         return;
       }
@@ -6472,8 +6706,8 @@ void MyMesh::checkCLIRescueCmd() {
         file.read(buffer, file_size);
 
         // print hex
-        mesh::Utils::printHex(Serial, buffer, file_size);
-        Serial.print("\n");
+        mesh::Utils::printHex(output, buffer, file_size);
+        output.print("\n");
 
         file.close();
 
@@ -6485,7 +6719,7 @@ void MyMesh::checkCLIRescueCmd() {
       MESH_DEBUG_PRINTLN("Removing file: %s", path);
       // ensure path is not empty, or root dir
       if(!path || strlen(path) == 0 || strcmp(path, "/") == 0){
-        Serial.println("Invalid path provided");
+        output.println("Invalid path provided");
       } else {
       bool is_fs2 = false;
       if (memcmp(path, "UserData/", 9) == 0) {
@@ -6505,9 +6739,9 @@ void MyMesh::checkCLIRescueCmd() {
           removed = _store->removeFile(path);
         }
         if(removed){
-          Serial.println("File removed");
+          output.println("File removed");
         } else {
-          Serial.println("Failed to remove file");
+          output.println("Failed to remove file");
         }
 
       }
@@ -6515,7 +6749,7 @@ void MyMesh::checkCLIRescueCmd() {
     } else if (strcmp(cli_command, "reboot") == 0) {
       board.reboot();  // doesn't return
     } else {
-      Serial.println("  Error: unknown command");
+      output.println("  Error: unknown command");
     }
 
     cli_command[0] = 0;  // reset command buffer
@@ -6526,7 +6760,6 @@ void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame);
   if (!_serial->isConnected()) {
     stopContactsIterator();
-    cancelPendingRadioParamApply();
     return;
   }
 
@@ -6577,6 +6810,9 @@ void MyMesh::loop() {
   serviceTerminalCommand();
   serviceTerminalTrace();
 #endif
+  servicePendingSerialReply();
+  serviceBinaryTraceReply();
+  serviceSigningSession();
   if (!command_radio_apply_pending && saved_radio_apply_pending && !hasOutbound()
 #if COMPANION_FEATURE_TEMP_RADIO
       && !_temp_radio_applied && _temp_radio_set_at == 0
@@ -6651,6 +6887,9 @@ bool MyMesh::hasPendingWork() const {
   return (_serial != NULL && _serial->hasPendingIO())
       || (_iter_started && _serial != NULL && _serial->isConnected())
       || command_radio_apply_pending
+      || pending_serial_reply_route != NULL
+      || binary_trace_pending
+      || sign_data != NULL
       || hasQueuedWorkDue() || hasRetryWorkDue()
       || (saved_radio_apply_pending
           && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))

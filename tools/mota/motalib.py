@@ -181,6 +181,19 @@ def mh32(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
 
 
+def ed25519_public_bytes(key) -> bytes:
+    """Return a raw Ed25519 public key across supported cryptography versions."""
+    public_key = key.public_key() if hasattr(key, "public_key") else key
+    public_bytes_raw = getattr(public_key, "public_bytes_raw", None)
+    if public_bytes_raw is not None:
+        return public_bytes_raw()
+
+    # public_bytes_raw() was added after the stable serialization API. Keep
+    # the OTA builder usable on distro-provided cryptography releases too.
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    return public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+
 # ---------------------------------------------------------------------------
 # fw_version packing
 # ---------------------------------------------------------------------------
@@ -224,12 +237,14 @@ def hardware_id_for_env(env_name: str) -> str:
     """
     # Optional storage that requires a different bootloader/application pair is
     # a distinct hardware class even though it uses the same WisBlock Core.
-    if re.fullmatch(
-        r"RAK_4631_repeater_rak15001_slot_c_lora_ota",
-        env_name,
-        re.IGNORECASE,
-    ):
-        return "RAK4631_RAK15001_C"
+    exact_storage_hardware = {
+        "RAK_4631_repeater_rak15001_slot_c_lora_ota": "RAK4631_RAK15001_C",
+        "RAK_4631_repeater_w25q16_lora_ota": "RAK4631_W25Q16",
+        "RAK_3401_repeater_rak13302_w25q16_lora_ota": "RAK3401_RAK13302_W25Q16",
+    }
+    for exact_env, hardware_id in exact_storage_hardware.items():
+        if env_name.casefold() == exact_env.casefold():
+            return hardware_id
 
     role = re.search(
         r"[_-](?:repeater|repeatr|room_server|room_svr|sensor|terminal_chat|kiss_modem|"
@@ -880,7 +895,7 @@ def build_manifest(*, target_id: int, fw_version: int, image_size: int, payload:
     if not is_full and (base_hash is None or len(base_hash) != 8):
         raise ValueError("delta requires an 8-byte base_hash")
     if sign_priv is not None:
-        m.signer_pubkey = sign_priv.public_key().public_bytes_raw()
+        m.signer_pubkey = ed25519_public_bytes(sign_priv)
         m.signature = sign_priv.sign(m.signed_region())    # else signer_pubkey/signature stay zero
     _validate_lengths(m)
     return m
@@ -1029,10 +1044,7 @@ def verify(parsed: Parsed, *, expect_pub: Optional[bytes] = None,
     elif base_image is not None:
         # delta: optionally apply against a provided base to confirm image_hash
         try:
-            import detools
-            out = io.BytesIO()
-            detools.apply_patch(io.BytesIO(_ensure_base(base_image)), io.BytesIO(payload), out)
-            rebuilt = out.getvalue()
+            rebuilt = _apply_detools_delta(m.codec_id, payload, _ensure_base(base_image))
             if mh32(rebuilt) != m.image_hash:
                 problems.append("delta applied to base does not match image_hash")
             if len(rebuilt) != m.image_size:
@@ -1040,6 +1052,32 @@ def verify(parsed: Parsed, *, expect_pub: Optional[bytes] = None,
         except Exception as e:  # noqa: BLE001
             problems.append(f"delta apply check failed: {e}")
     return problems
+
+
+def _apply_detools_delta(codec_id: int, payload: bytes, base_image: bytes) -> bytes:
+    """Apply a detools delta using the decoder selected by its manifest codec."""
+    import detools
+
+    if codec_id == CODEC_DETOOLS_SEQUENTIAL:
+        out = io.BytesIO()
+        detools.apply_patch(io.BytesIO(base_image), io.BytesIO(payload), out)
+        return out.getvalue()
+
+    if codec_id == CODEC_DETOOLS_INPLACE:
+        patch_type, patch_info = detools.patch_info(io.BytesIO(payload))
+        if patch_type != "in-place":
+            raise ValueError(f"in-place codec contains a {patch_type} patch")
+
+        # detools embeds the required flash-memory geometry in every in-place
+        # patch.  apply_patch_in_place() requires a mutable image of at least
+        # that size and writes the reconstructed image at offset zero.
+        memory_size = patch_info[3]
+        memory = io.BytesIO(base_image.ljust(memory_size, b"\xff"))
+        rebuilt_size = detools.apply_patch_in_place(memory, io.BytesIO(payload))
+        memory.seek(0)
+        return memory.read(rebuilt_size)
+
+    raise ValueError(f"unsupported detools codec_id {codec_id}")
 
 
 def _ensure_base(base_image: bytes) -> bytes:

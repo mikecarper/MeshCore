@@ -1,7 +1,5 @@
 #include "UITask.h"
-#ifdef DISPLAY_TOUCH_TOGGLE
 #include "target.h"
-#endif
 #include <Arduino.h>
 #include <helpers/CommonCLI.h>
 #include <helpers/ui/WiFiSetupQrDisplay.h>
@@ -100,9 +98,12 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   applyDisplayFlip();
 #ifdef DISPLAY_TOUCH_TOGGLE
   _touch.begin();
-#if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
-  user_btn.begin();
 #endif
+#if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
+    && (defined(DISPLAY_TOUCH_TOGGLE) \
+        || (defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
+            && MOMENTARY_BUTTON_WAKE_FROM_SLEEP))
+  user_btn.begin();
 #endif
 #ifdef DISPLAY_REDRAW_ON_CHANGE
   _frame_valid = false;
@@ -377,6 +378,27 @@ void UITask::loop() {
     _rows_valid = false;
 #endif
     _next_refresh = 0;
+  }
+#elif defined(PIN_USER_BTN) \
+    && defined(DISPLAY_CLASS) \
+    && defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
+    && MOMENTARY_BUTTON_WAKE_FROM_SLEEP
+  // Event-driven nRF52 targets must use the shared debounced button state
+  // machine. Raw 200 ms polling can go back to sleep after the GPIO edge and
+  // miss both a short press and its release.
+  int ev = user_btn.check();
+  if (ev != BUTTON_EVENT_NONE) {
+    if (!_display->isOn()) {
+      _display->turnOn();
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+      _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+      _rows_valid = false;
+#endif
+      _next_refresh = 0;
+    }
+    _auto_off = millis() + displayTimeoutMillis();
   }
 #elif defined(PIN_USER_BTN)
   if (millisReached(millis(), _next_read)) {

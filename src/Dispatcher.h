@@ -250,6 +250,8 @@ class Dispatcher {
   unsigned long cad_busy_start;
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time, next_agc_reset_time;
+  int   armed_agc_reset_interval;
+  bool  agc_reset_armed;
   bool  prev_isrecv_mode;
   bool  radio_available;
   bool  dispatcher_started;
@@ -290,6 +292,8 @@ protected:
     next_tx_time = ms.getMillis();
     cad_busy_start = 0;
     next_floor_calib_time = next_agc_reset_time = 0;
+    armed_agc_reset_interval = 0;
+    agc_reset_armed = false;
     _err_flags = 0;
     radio_nonrx_start = 0;
     prev_isrecv_mode = true;

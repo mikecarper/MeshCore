@@ -34,6 +34,47 @@ def hex_define(source: str, name: str) -> int:
 
 
 class Nrf52VariantContractsTest(unittest.TestCase):
+    def test_rak3401_w25q16_handoff_keeps_rak13302_and_gps_isolated(self) -> None:
+        shared = (ROOT / "platformio.ini").read_text()
+        recipe = (ROOT / "variants/rak3401/platformio.ini").read_text()
+        variant = (ROOT / "variants/rak3401/variant.h").read_text()
+        store_h = (ROOT / "src/helpers/ota/OtaStoreQspiNrf52.h").read_text()
+        store_cpp = (ROOT / "src/helpers/ota/OtaStoreQspiNrf52.cpp").read_text()
+
+        flash = ini_section(shared, "nrf52_wisblock_w25q16_ota")
+        for define in (
+            "OTA_QSPI_SCK_ARDUINO_PIN=3",
+            "OTA_QSPI_CS_ARDUINO_PIN=31",
+            "OTA_QSPI_IO0_ARDUINO_PIN=30",
+            "OTA_QSPI_IO1_ARDUINO_PIN=29",
+        ):
+            self.assertIn(define, flash)
+
+        profile = ini_section(
+            recipe, "env:RAK_3401_repeater_rak13302_w25q16_lora_ota"
+        )
+        self.assertIn("OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF=1", profile)
+        self.assertNotRegex(profile, r"-D\s+ENV_INCLUDE_GPS=0\b")
+
+        self.assertRegex(variant, r"#define\s+SX126X_CS\s+\(26\)")
+        self.assertRegex(variant, r"#define\s+PIN_SERIAL1_RX\s+\(15\)")
+        self.assertRegex(variant, r"#define\s+PIN_SERIAL1_TX\s+\(16\)")
+        self.assertRegex(variant, r"#define\s+PIN_GPS_PPS\s+\(17\)")
+
+        self.assertIn(
+            "RAK3401 W25 flash and RAK13302 radio must use different chip-selects",
+            store_h,
+        )
+        acquire = store_cpp.split("static void acquire_rak3401_radio_bus()", 1)[1]
+        acquire = acquire.split("static void release_rak3401_radio_bus()", 1)[0]
+        self.assertLess(
+            acquire.index("digitalWrite(P_LORA_NSS, HIGH)"),
+            acquire.index("SPI1.end()"),
+        )
+        release = store_cpp.split("static void release_rak3401_radio_bus()", 1)[1]
+        release = release.split("#endif", 1)[0]
+        self.assertLess(release.index("disconnect_qspi_pins()"), release.index("SPI1.begin()"))
+
     def test_rak3401_wisblock_i2c_aliases_are_complete(self) -> None:
         variant = (ROOT / "variants/rak3401/variant.h").read_text()
 

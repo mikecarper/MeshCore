@@ -45,7 +45,8 @@ void Dispatcher::setRadioAvailable(bool available) {
   const unsigned long now = _ms->getMillis();
   radio_nonrx_start = now;
   next_floor_calib_time = now;
-  next_agc_reset_time = now;
+  armed_agc_reset_interval = 0;
+  agc_reset_armed = false;
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
   last_observed_radio_irq = _radio->getLastRadioInterruptMillis();
@@ -73,6 +74,8 @@ void Dispatcher::begin() {
   last_budget_update = _ms->getMillis();
 
   const unsigned long now = _ms->getMillis();
+  armed_agc_reset_interval = 0;
+  agc_reset_armed = false;
   dispatcher_started = true;
   if (radio_available) {
     _radio->begin();
@@ -461,12 +464,35 @@ void Dispatcher::loop() {
     }
 
     // going back into receive mode now...
-    next_agc_reset_time = futureMillis(getAGCResetInterval());
+    const int agc_interval = getAGCResetInterval();
+    if (agc_interval > 0) {
+      next_agc_reset_time = futureMillis(agc_interval);
+      armed_agc_reset_interval = agc_interval;
+      agc_reset_armed = true;
+    } else {
+      armed_agc_reset_interval = 0;
+      agc_reset_armed = false;
+    }
   }
 
-  if (getAGCResetInterval() > 0 && millisHasNowPassed(next_agc_reset_time)) {
+  const int agc_interval = getAGCResetInterval();
+  if (agc_interval <= 0) {
+    armed_agc_reset_interval = 0;
+    agc_reset_armed = false;
+  } else if (!agc_reset_armed
+             || agc_interval != armed_agc_reset_interval) {
+    // MyMesh loads persisted preferences after Dispatcher::begin().  Arm from
+    // the first loop so the real configured interval is used, and so a freshly
+    // initialized radio/frontend gets one full settle interval before the
+    // first warm-sleep AGC reset. A live interval change also gets a complete
+    // new interval instead of inheriting the old setting's deadline.
+    next_agc_reset_time = futureMillis(agc_interval);
+    armed_agc_reset_interval = agc_interval;
+    agc_reset_armed = true;
+  } else if (millisHasNowPassed(next_agc_reset_time)) {
     _radio->resetAGC();
-    next_agc_reset_time = futureMillis(getAGCResetInterval());
+    next_agc_reset_time = futureMillis(agc_interval);
+    armed_agc_reset_interval = agc_interval;
   }
 
   // check inbound (delayed) queue

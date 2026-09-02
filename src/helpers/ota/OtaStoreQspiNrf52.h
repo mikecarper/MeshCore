@@ -15,7 +15,21 @@
 #endif
 
 #if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(RAK_3401)
-#error "RAK3401's RAK13302 radio already owns the WisBlock SPI bus/chip-select"
+  #if !defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+    #error "RAK3401 WisBlock SPI staging requires the explicit RAK13302 bus-handoff contract"
+  #endif
+  #if !defined(OTA_QSPI_CS_ARDUINO_PIN)
+    #error "RAK3401 shared-SPI staging requires an explicit flash chip-select"
+  #elif OTA_QSPI_CS_ARDUINO_PIN == 26
+    #error "RAK3401 W25 flash and RAK13302 radio must use different chip-selects"
+  #endif
+  #if !defined(OTA_QSPI_SCK_ARDUINO_PIN) || !defined(OTA_QSPI_IO0_ARDUINO_PIN) || \
+      !defined(OTA_QSPI_IO1_ARDUINO_PIN)
+    #error "RAK3401 radio-bus handoff requires explicit Arduino SPI pin overrides"
+  #elif OTA_QSPI_SCK_ARDUINO_PIN != 3 || OTA_QSPI_IO0_ARDUINO_PIN != 30 || \
+        OTA_QSPI_IO1_ARDUINO_PIN != 29 || OTA_QSPI_CS_ARDUINO_PIN != 31
+    #error "RAK3401 W25 handoff is bound to SCK P0.03, MOSI P0.30, MISO P0.29, CS P0.31"
+  #endif
 #endif
 
 namespace mesh {
@@ -113,6 +127,9 @@ class OtaStoreQspiNrf52 : public OtaStore {
   bool _qspi_active = false;
   bool _qspi_awake = false;
   bool _qspi_ready = false;
+#if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
+  bool _shared_radio_bus_acquired = false;
+#endif
   bool _memory_operation_pending = false;
   bool _io_ok = true;
   bool _meta_dirty = false;

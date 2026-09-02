@@ -26,6 +26,9 @@ TEST(BleMotaControl, AllowsOnlyBoundedOtaSessionCommands) {
   EXPECT_FALSE(allowed("otafolder status"));
   EXPECT_FALSE(allowed("ota folder on"));
   EXPECT_FALSE(allowed("ota folder off"));
+  EXPECT_FALSE(allowed("ota fold on"));
+  EXPECT_FALSE(allowed("ota fold off"));
+  EXPECT_FALSE(allowed("ota  folder   on"));
   // Sharing local command routing with the text/rescue CLI must not expand
   // the deliberately narrow Bluetooth mOTA control allowlist.
   EXPECT_FALSE(allowed("set pin 123456"));

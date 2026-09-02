@@ -275,6 +275,12 @@ controllable FEM receive gain, and radio-chip receive gain are saved settings
 rather than separate recommended firmware files. Do not substitute a similarly
 named physical target.
 
+The header-wired RAK19007 W25Q16 LoRa-OTA recipes are also exact hardware
+variants. Choose the W25Q16 variant for RAK4631 or for RAK3401 + RAK13302 only
+when that core/radio combination, the `EF4015` flash wiring, and its matching
+OTAFIX bootloader are all present. The common base-board wiring does not make
+the two firmware or bootloader identities interchangeable.
+
 The picker recommends one Full Companion image instead of separate USB, BLE,
 ordinary WiFi, and USB-logging images. On ESP32, logging is off by default so
 the one USB TTY starts in ASCII and automatically changes to framed Companion

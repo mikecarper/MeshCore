@@ -25,6 +25,20 @@ public:
   // Returns true once for each pending Bluetooth pairing prompt. Non-BLE
   // transports keep the default implementation so UI code can poll safely.
   virtual bool takePairingRequest() { return false; }
+  // Capture and later address the transport which supplied the current
+  // command. Multi-transport implementations override these so asynchronous
+  // replies do not follow a newer client's command or fall back to broadcast.
+  virtual BaseSerialInterface* captureReplyRoute() { return this; }
+  virtual bool isReplyRouteAvailable(BaseSerialInterface* route) const {
+    return route == this && isEnabled() && isConnected();
+  }
+  virtual bool isReplyRouteWriteBusy(BaseSerialInterface* route) const {
+    return !isReplyRouteAvailable(route) || isWriteBusy();
+  }
+  virtual size_t writeFrameToRoute(BaseSerialInterface* route,
+                                   const uint8_t src[], size_t len) {
+    return route == this ? writeFrame(src, len) : 0;
+  }
   // Multi-transport implementations can pin a sequence of response frames to
   // the interface which supplied the current command. Single transports have
   // nothing to route, so their default implementations are no-ops.
