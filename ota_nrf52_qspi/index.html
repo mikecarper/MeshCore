@@ -1016,6 +1016,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#one-w25q16-wiring-for-rak4631-or-rak3401-rak13302" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One W25Q16 wiring for RAK4631 or RAK3401 + RAK13302
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1365,6 +1376,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#one-w25q16-wiring-for-rak4631-or-rak3401-rak13302" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One W25Q16 wiring for RAK4631 or RAK3401 + RAK13302
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1464,6 +1486,11 @@ on these currently matched families:</p>
 <li>RAK4631 with a RAK15001 in WisBlock sensor slot C, using the dedicated
   <code>RAK_4631_repeater_rak15001_slot_c_lora_ota</code> application and matching
   <code>wiscore_rak4631_board_rak15001_slot_c</code> OTAFIX bootloader</li>
+<li>RAK4631 with an externally wired Winbond W25Q16JV breakout on RAK19007,
+  using <code>RAK_4631_repeater_w25q16_lora_ota</code></li>
+<li>RAK3401 with its RAK13302 1 W radio and the same externally wired W25Q16JV
+  breakout on RAK19007, using
+  <code>RAK_3401_repeater_rak13302_w25q16_lora_ota</code></li>
 </ul>
 <p>Heltec T114 is intentionally not in this list. Its public V1, V2.0, and V2.1
 schematics show U9 (MX25R1635F) as an optional QSPI footprint, so standard T114
@@ -1500,11 +1527,106 @@ module. RAK13800 and RAK15001 cannot coexist because they use the same SPI
 chip-select. Update a RAK13800 Ethernet build locally over USB using the
 release's <strong>Manual UF2</strong> or <strong>Serial DFU (.zip)</strong> download; it cannot use this
 RAK15001 LoRa-OTA staging target.</p>
-<p>RAK3401 is intentionally unsupported. Its external RAK13302 1 W radio already
+<p>RAK3401 with RAK13302 remains incompatible with <strong>RAK15001</strong>. The 1 W radio
 uses the same WisBlock SPI clock/data pins <strong>and the same chip-select</strong> as
-RAK15001. Firmware cannot independently select or detect the two chips, so a
+RAK15001. Firmware cannot independently select or detect those two chips, so a
 stock RAK3401 + RAK15001 assembly cannot provide reliable OTA staging without
-a hardware chip-select rework.</p>
+a hardware chip-select rework. This restriction does not apply to the
+separate-CS W25Q16 wiring below.</p>
+<h3 id="one-w25q16-wiring-for-rak4631-or-rak3401-rak13302">One W25Q16 wiring for RAK4631 or RAK3401 + RAK13302</h3>
+<p>An external Winbond W25Q16JV breakout can remain attached to a RAK19007 while
+the core is changed between RAK4631 and RAK3401 + RAK13302. It shares only the
+WisBlock SPI clock/data nets and has its own chip-select on AIN1:</p>
+<table>
+<thead>
+<tr>
+<th>W25Q16 breakout</th>
+<th>RAK19007 connection</th>
+<th>nRF52840 / Arduino pin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLK</code></td>
+<td>IO connector pin 26, <code>SPI_CLK</code></td>
+<td>P0.03 / <code>3</code></td>
+</tr>
+<tr>
+<td><code>DO</code> / MISO</td>
+<td>IO connector pin 27, <code>SPI_MISO</code></td>
+<td>P0.29 / <code>29</code></td>
+</tr>
+<tr>
+<td><code>DI</code> / MOSI</td>
+<td>IO connector pin 28, <code>SPI_MOSI</code></td>
+<td>P0.30 / <code>30</code></td>
+</tr>
+<tr>
+<td><code>CS</code></td>
+<td>J11 <code>AIN1</code></td>
+<td>P0.31 / <code>31</code></td>
+</tr>
+<tr>
+<td><code>VCC</code></td>
+<td>J12 <code>VDD</code></td>
+<td>regulated 3.3 V</td>
+</tr>
+<tr>
+<td><code>GND</code></td>
+<td>J12 <code>GND</code></td>
+<td>ground</td>
+</tr>
+</tbody>
+</table>
+<p>Fit a physical approximately 10 kOhm pull-up from <code>CS</code> to J12 <code>VDD</code>. That
+keeps the flash deselected during reset, bootloader entry, and a core-module
+swap. Power the breakout only from J12 <code>VDD</code>; <strong>never use J11 <code>VBAT</code></strong>, which
+can exceed the flash's supply rating. The six-pin breakout does not expose
+WP#/IO2 or HOLD#/IO3; do not add nRF IO2/IO3 wiring. A breakout with an onboard
+power LED works, but that LED draws continuously and is undesirable for
+low-power or solar operation.</p>
+<p>This arrangement consumes no WisBlock sensor slot. However, <code>SPI_CLK</code>,
+<code>SPI_MISO</code>, and <code>SPI_MOSI</code> are not available on the easy 2.54 mm J10/J11/J12
+headers. Those three signals require a short underside-pad tap or a suitable
+IO-connector interposer at pins 26-28. J11 and J12 alone are not sufficient.</p>
+<p>GPS remains supported in sensor slot A. RAK12500 uses I2C, while RAK12501/L76K
+uses UART plus its auxiliary control signals; neither uses the shared SPI
+clock/data bus. On RAK4631 the built-in SX1262 has a separate private SPI bus.
+On RAK3401 the RAK13302 and flash share clock/data, but have independent
+chip-selects: RAK13302 NSS is P0.26 and flash CS is P0.31. The matched firmware
+holds the radio NSS high while it temporarily hands the bus to the flash, then
+restores the radio SPI interface.</p>
+<p>The breakout target accepts only a 2 MiB W25Q16 with JEDEC ID <code>EF 40 15</code> and
+runs it at 8 MHz in standard single-data-line SPI mode. A substituted W25Q32,
+W25Q64, or W25Q128 fails closed instead of being treated as the OTA store.
+Use the complete application/bootloader identity row that matches the fitted
+core:</p>
+<table>
+<thead>
+<tr>
+<th>Core and radio</th>
+<th>PlatformIO environment</th>
+<th>MOTA hardware identity</th>
+<th>OTAFIX board / DFU device name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAK4631 built-in SX1262</td>
+<td><code>RAK_4631_repeater_w25q16_lora_ota</code></td>
+<td><code>RAK4631_W25Q16</code></td>
+<td><code>wiscore_rak4631_w25q16</code> / <code>4631_W25Q16_DFU</code></td>
+</tr>
+<tr>
+<td>RAK3401 + RAK13302 1 W</td>
+<td><code>RAK_3401_repeater_rak13302_w25q16_lora_ota</code></td>
+<td><code>RAK3401_RAK13302_W25Q16</code></td>
+<td><code>wiscore_rak3401_rak13302_w25q16</code> / <code>3401_W25Q16_DFU</code></td>
+</tr>
+</tbody>
+</table>
+<p>The physical flash wiring is identical, but the two application and
+bootloader pairs are not interchangeable.</p>
 <h2 id="one-time-prerequisite">One-time prerequisite</h2>
 <p>Install a QSPI-capable OTAFIX 2.4.1 preview.9 or newer bootloader for the exact
 board from the
@@ -1513,6 +1635,13 @@ before using LoRa OTA. The release notes must explicitly list that board's QSPI
 mode. Also install the SoftDevice version expected by that target. The
 application refuses the install handoff when the bootloader does not advertise
 QSPI support.</p>
+<p>For the external W25Q16 option, install the corresponding bootloader once
+before installing its MeshCore application: <code>wiscore_rak4631_w25q16</code>
+(<code>DEVICE_NAME=4631_W25Q16_DFU</code>) for RAK4631, or
+<code>wiscore_rak3401_rak13302_w25q16</code> (<code>DEVICE_NAME=3401_W25Q16_DFU</code>) for RAK3401
+plus RAK13302. Use only a release that explicitly names that exact pairing. Do
+not substitute the RAK15001 bootloader or swap the two W25Q16 bootloaders
+merely because the base-board wiring is the same.</p>
 <p>For the first migration from the ordinary <code>wiscore_rak4631_board</code> bootloader to
 <code>wiscore_rak4631_board_rak15001_slot_c</code>, use Nordic serial DFU or a compatible
 BLE DFU client with the exact slot-C OTAFIX <strong>combined bootloader + SoftDevice
@@ -1538,10 +1667,17 @@ bootloader: QSPI apply OK
 bl:QSPI
 QSPI jedec=C84015 size=2048K sr1=00 stage=jedec
 </code></pre>
+<p>A ready external W25Q16 target instead identifies the Winbond part:</p>
+<pre><code class="language-text">QSPI store:2048K
+bootloader: QSPI apply OK
+bl:QSPI
+QSPI jedec=EF4015 size=2048K sr1=00 stage=jedec
+</code></pre>
 <p>Other supported boards can report a capacity different from 2048K; the
-RAK15001 target must report exactly 2048K. <code>QSPI store:ERR 0K</code>, <code>NO QSPI</code>, or
-<code>bl:NO-QSPI</code> means the flash wiring, flash power, or bootloader does not match.
-Do not start an install in that state.</p>
+RAK15001 and W25Q16 targets must report exactly 2048K and their respective
+exact JEDEC IDs. <code>QSPI store:ERR 0K</code>, <code>NO QSPI</code>, or <code>bl:NO-QSPI</code> means the flash
+wiring, flash power, chip-select pull-up, application, or bootloader does not
+match. Do not start an install in that state.</p>
 <p><code>ota qspi</code> is a read-only diagnostic probe available on QSPI OTA builds. It
 reports the exact JEDEC ID, status-register byte, last store stage, and the
 first latched storage error. Run it after an immediate <code>storage error</code> before

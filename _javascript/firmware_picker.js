@@ -767,7 +767,11 @@
       serial2: "Serial 2",
       sim: "SIM",
       rak15001: "RAK15001",
+      rak13302: "RAK13302",
+      w25q16: "W25Q16",
       qspi: "QSPI",
+      lora: "LoRa",
+      ota: "OTA",
     };
     const tokens = value.split("-");
     const labels = [];

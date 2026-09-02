@@ -724,10 +724,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#current-marathon-ledger-2026-08-30" class="md-nav__link">
+  <a href="#current-marathon-ledger-through-2026-09-01" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current marathon ledger (2026-08-30)
+        Current marathon ledger (through 2026-09-01)
       
     </span>
   </a>
@@ -822,6 +822,17 @@
     <span class="md-ellipsis">
       
         RAK4631 reduced profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heltec-t096" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heltec T096
       
     </span>
   </a>
@@ -1420,10 +1431,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#current-marathon-ledger-2026-08-30" class="md-nav__link">
+  <a href="#current-marathon-ledger-through-2026-09-01" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Current marathon ledger (2026-08-30)
+        Current marathon ledger (through 2026-09-01)
       
     </span>
   </a>
@@ -1525,6 +1536,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#heltec-t096" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heltec T096
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#heltec-meshtower-v2-with-sd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1598,7 +1620,7 @@
 when its log identifies the physical device, firmware artifact, artifact hash,
 command result, and cold/warm boot outcome. Do not infer success from a tool's
 exit code when the tool has a documented false-success mode.</p>
-<h2 id="current-marathon-ledger-2026-08-30">Current marathon ledger (2026-08-30)</h2>
+<h2 id="current-marathon-ledger-through-2026-09-01">Current marathon ledger (through 2026-09-01)</h2>
 <table>
 <thead>
 <tr>
@@ -1626,6 +1648,12 @@ exit code when the tool has a documented false-success mode.</p>
 <td><code>0B81C9C68D8D01B4</code>; FICR <code>8D8D01B4 0B81C9C6</code></td>
 <td>OTAFIX test version <code>0x02040403</code> passes bidirectional application UF2, exact SWD application/bootloader readback, unchanged UICR, and a 74-block direct V4 LoRa apply from exact <code>3caf9dcf</code> to current HEAD <code>9fd580c8</code>. Post-apply USB and LoRa identity/hash checks pass and the temporary 0 dBm bench setting is restored to 22 dBm</td>
 <td>Add exact RF packet counters, then repeat the supported-bandwidth and controlled/passive/mixed routed-hop matrix</td>
+</tr>
+<tr>
+<td>Heltec T096</td>
+<td><code>651F8E496197F882</code></td>
+<td>OTAFIX HIL candidate <code>0x02040401</code>, serial DFU, signed LoRa bootloader OTA, warm-watchdog recovery, physical power-removal cold persistence, bonded Legacy BLE application DFU, serial mOTA ownership, button/display wake, and Full Companion dual-CDC reconnect checks pass on <code>keymindCascade</code> <code>fcd1f8cc</code>. The final T096-only no-footer Full Companion image is installed</td>
+<td>Perform a privileged or physical host-driven USB bus reset without resetting the MCU; complete the deferred multi-click/long-press physical matrix</td>
 </tr>
 <tr>
 <td>Heltec MeshTower V2 with SD</td>
@@ -2555,6 +2583,182 @@ network, and reboot record in that manifest.</p>
 <li>[ ] Confirm the explicit legacy Serial1 image exposes neither UART RAK12501
       nor I2C RAK12500. Record this as a combined-provider build limitation, not
       an assertion that RAK12500 electrically conflicts with the UART.</li>
+</ul>
+<h2 id="heltec-t096">Heltec T096</h2>
+<ul>
+<li>[x] Stable USB serial <code>651F8E496197F882</code> distinguishes the application
+      (<code>239A:8029</code>) from the OTAFIX serial-DFU interface. Every flash followed
+      that identity across the host-assigned <code>COM9 -&gt; COM6 -&gt; COM9</code> transition;
+      the simultaneously connected MeshPocket on <code>COM20</code> was never selected.</li>
+<li>[x] Baseline bootloader <code>0.11.0-OTAFIX2.4.3</code> was installed at this checkpoint. The restored Repeater
+      reports application body hash <code>3B6D1A729C087243</code>, target <code>98411AC6</code>, apply
+      ABI 3, codec mask <code>0x5</code>, and stage address <code>0xED000</code>. The application ZIP
+      is 708,216 bytes with SHA-256
+      <code>abb00560cc5618ae155bf10252e9261127416a7a91b5f6565837384f0dec2390</code>.</li>
+<li>[x] A 48,229-byte in-place delta with SHA-256
+      <code>988bd2385e9c995d0ae04effb6bb5cd614227c7c764590d82bd1943da2f18e4d</code>
+      transferred over LoRa in 47/47 blocks from the MeshPocket seeder and
+      applied successfully. The first application boot reported bootloader
+      result <code>B8</code>; the running body hash matched the candidate exactly. No chat
+      message was sent for this transfer.</li>
+<li>[x] The generic delayed AGC/watchdog arming fix passes warm-reboot hardware
+      checks on both the T096 and MeshPocket. The restored T096 retained AGC
+      interval 8 and, after 215 seconds, was in RX with 100 packets received,
+      28 sent, zero core errors, and <code>err_flags=0</code>. The Pocket's quiet-channel
+      liveness recovery set only the expected radio-watchdog bit; temporarily
+      matching the USA channel then received 14 packets with zero receive
+      errors before its saved <code>869.618/62.5/SF8/CR5</code> profile was restored. At
+      498 seconds the T096 had one CAD-busy timeout after 37 busy-channel
+      samples, then returned to RX with no queue, watchdog, or start-RX fault.</li>
+<li>[x] Exact Full Companion ZIP SHA-256
+      <code>ee92856e5bfb7877b0d8bff6d6a5873d8037fc178ddb151202a9e6a6d9d59e73</code>
+      installed by serial DFU and passed the reversible dual-CDC test. Logging
+      off exposed only interface <code>00</code>; <code>set usb.logging on reboot</code> added
+      interface <code>02</code> as <code>COM21</code>. Opening <code>02</code> emitted both portable identity
+      lines, 980 captured bytes were entirely printable, and host input produced
+      no echo or command reply while Binary Companion on <code>00</code> returned the exact
+      model, key, and radio tuple.</li>
+<li>[x] With interface <code>02</code> deliberately unread, 11/11 text-terminal probes stayed
+      between 212 and 231 ms for 44.4 seconds. A longer 100-second hold buffered
+      8,636 entirely printable bytes while 60/60 hard-bounded Binary Companion
+      reconnects passed with no timeout; the final full identity query completed
+      in 739 ms. Neither USB interface disconnected. Logging off plus reboot
+      removed <code>02</code>, read back off on <code>00</code>, and the qualified Repeater was then
+      restored with its original name, public key, and USA radio tuple.</li>
+<li>[x] The descriptor/reconnect follow-up built a 482,271-byte Full Companion DFU
+      ZIP with SHA-256
+      <code>2a5a6bd0fd26031a2c2e047af6ead8f85f0d617da238d0cd6d816f7d5c41ec6f</code>.
+      On the physical T096, Windows read interface <code>02</code>'s bus-reported
+      description as <code>MeshCore Logging</code>. Two immediate open/close cycles each
+      delivered the complete 80-byte two-line identity marker with no NUL or
+      other invalid control byte, while Binary Companion on interface <code>00</code>
+      retained the exact key, model, and <code>910.525/62.5/SF7/CR5</code> tuple.</li>
+<li>[x] The final short-write/reconnect guard built a 482,271-byte Full Companion
+      DFU ZIP with SHA-256
+      <code>bbbc3459b2c032af23c6da05e41984cb0250398b57ba56ea99166456700ace6f</code>
+      and EndF body hash <code>41365E4DB0FF4AE5</code>. On the physical T096, interface
+      <code>02</code> again reported <code>MeshCore Logging</code>; 3/3 explicit DTR sessions each
+      delivered one complete 80-byte marker with no NUL or invalid control byte.
+      With that logging endpoint held open and unread, interface <code>00</code> completed
+      60/60 Binary Companion reconnect queries and retained public key
+      <code>8e229d0a9ace9bd6f768fc1237d9e3ebca340d1ff1c6087349983a07f305903a</code>
+      plus the exact <code>910.525/62.5/SF7/CR5</code> tuple.</li>
+<li>[x] The corrected Windows flasher identifies Binary-mode Full Companion and
+      links the same-radio <code>MI_02</code> inventory row to <code>MI_00</code>. An intentional
+      selection of <code>COM21/MI_02</code> was canonicalized to <code>COM9/MI_00</code> before any
+      1200-baud action; the exact USB serial then followed
+      <code>COM9 -&gt; COM6 -&gt; COM9</code>, never touched the logging endpoint or MeshPocket,
+      and produced both <code>Device programmed.</code> and <code>Flash completed.</code>. The VM was
+      suspended only across each touch/transfer and resumed immediately. After
+      restoring the qualified Repeater and performing a final warm reboot, the
+      58-second snapshot was in RX with 28 packets received, 9 sent, zero core
+      errors, an empty queue, and <code>err_flags=0</code>.</li>
+<li>[x] Final flasher review now revalidates the selected USB identity and exact
+      interface immediately before both the direct 1200-baud open and its Python
+      fallback, and balances every successfully written terminal START with a
+      STOP even when the banner is lost. Windows PowerShell 5.1 and PowerShell 7
+      regression suites pass. A second physical restore deliberately selected
+      <code>COM21/MI_02</code>; it was canonicalized to <code>COM9/MI_00</code>, followed the same
+      <code>COM9 -&gt; COM6 -&gt; COM9</code> transition, and completed without touching the
+      MeshPocket. At 112 seconds the restored Repeater retained its name, OTA
+      body hash <code>3B6D1A729C087243</code>, USA radio tuple, and AGC interval 8; it was in
+      RX with 20 packets received, 6 sent, zero core errors, an empty queue, and
+      <code>err_flags=0</code>. The VM was running again immediately after the flash.</li>
+<li>[x] The T096-only message profile defines <code>UI_MESSAGE_CHANNEL_FOOTER=0</code>;
+      every other profile retains the default footer. The exact incoming
+      <code>#testing</code> message <code>T096 footer test: wrapped text should reach the screen
+      bottom.</code> traversed the live channel receive/display path, and the temporary
+      empty <code>#testing</code> channel slots on both endpoints were restored byte-for-byte.
+      Static profile coverage passes 2/2. No framebuffer or camera capture was
+      available, so the evidence is the exact live UI path plus the compiled
+      board-specific flag rather than a pixel photograph.</li>
+<li>[x] The then-final Full Companion artifact at this checkpoint,
+      <code>v1.17.1-t096-head-fcd1f8cc-usbtask8-fcd1f8cc</code>, was installed. Its DFU ZIP
+      is 487,231 bytes with SHA-256
+      <code>CD267952F420294DF21CA96E3AA6D924C6EF7467C31C8D69B46F31E6719A1D67</code>;
+      the application is 486,428 bytes with a 486,372-byte EndF body and hash
+      <code>2E03B1C1166D4CC0</code>. The ELF exposes strong <code>T</code> definitions for both CDC
+      callbacks, mount/unmount, SOF, and the CDC0-only framework flush override.</li>
+<li>[x] Identity-gated BLE application DFU passed through the bonded address
+      <code>CF:A8:18:36:DE:8B</code>: encrypted application handoff from
+      <code>MeshCore-8E229D0A</code>, same-address <code>T096_DFU</code> Legacy service, and DIS model
+      <code>HT-n5262G</code> all matched. The target confirmed 486,428/486,428 bytes in
+      565.986 seconds at 859 payload B/s, validated, activated, and initiated
+      the expected disconnect; end-to-end time was 603.967 seconds. USB serial,
+      version, board, public key, radio tuple, EndF hash, and bootloader apply
+      ABI 3/codecs <code>0x5</code> returned exactly, and a fresh active scan observed the
+      application name again at the same address.</li>
+<li>[x] The real host <code>motatool</code> opened <code>COM9</code>, survived the intentional CDC
+      session-settle purge, attached an empty folder with <code>COUNT -&gt; 0</code> and
+      <code>OK folder attached</code>, then detached it and restored Binary mode. This
+      test sent no mesh messages. Three primary-port close/reopen cycles after
+      deliberately abandoned terminal output exposed zero stale bytes and each
+      returned a clean banner. Five logging-port reopen sessions each began
+      with the exact 80-byte identity marker and contained no NUL or invalid
+      control byte.</li>
+<li>[x] With both USB outputs deliberately unread for 65 seconds after a 10,000-byte
+      terminal input burst, the primary accumulated 16,886 printable bytes and
+      CDC1 accumulated 3,735 printable bytes beginning with its exact marker.
+      <code>ver</code> and Binary Companion remained responsive. A subsequent warm reboot
+      removed USB for 2.209 seconds, returned both interfaces in 2.409 seconds,
+      and CDC1 again emitted the exact marker. At 65 seconds the fresh boot had
+      <code>err_flags=0</code>, an empty outbound queue, 9 received floods, and zero CRC
+      errors. A Windows host-side composite
+      restart was attempted but denied by the non-elevated PnP API, so the
+      distinct host-driven BUS_RESET case remains a physical/privileged check;
+      it is not inferred from the warm-reboot result.</li>
+<li>[x] After the operator physically removed and restored T096 power (the off
+      interval was not measured), stable serial <code>651F8E496197F882</code> returned as
+      primary <code>MI_00</code>/<code>COM9</code> and logging <code>MI_02</code>/<code>COM21</code>. The cold terminal
+      reported exact version
+      <code>v1.17.1-t096-head-fcd1f8cc-usbtask8-fcd1f8cc</code>, Heltec T096 identity,
+      public key, USA radio tuple, BLE name, dedicated-CDC logging state, EndF
+      body hash <code>2E03B1C1166D4CC0</code>, and bootloader apply ABI 3/codecs <code>0x5</code> with
+      stage ceiling <code>0xD4000</code>; mOTA remained source-only with no folder attached,
+      and STOP restored Binary mode. CDC1's first read was the exact 80-byte
+      identity marker with no NUL. At 150 seconds, Binary stats reported 4,224
+      mV, <code>err_flags=0</code>, an empty outbound queue, 47 packets received, zero
+      packets sent, and zero TX airtime. A second core checkpoint advanced
+      monotonically to 315 seconds with 4,220 mV, <code>err_flags=0</code>, and an empty
+      queue, providing no evidence of a watchdog reboot. A fresh active BLE
+      scan observed <code>MeshCore-8E229D0A</code> at the same <code>CF:A8:18:36:DE:8B</code>
+      address; BlueZ still
+      reported paired, bonded, and trusted. No mesh message was sent. This proves
+      cold persistence, but not the distinct host-only USB <code>BUS_RESET</code> path.</li>
+<li>[x] The display auto-off wake failure was traced to the shared ST7735 power
+      lifecycle: <code>turnOff()</code> released SCK/MOSI as inputs, but the nRF52
+      <code>SPIClass::begin()</code> wake path was a no-op while the SPI object still
+      considered itself initialized. The shared driver now restores the bus-pin
+      directions and nRF52 high-drive configuration explicitly, waits through
+      reset release, and primes the retained frame after <code>DISPON</code>. Static wake
+      ordering and the T096 footer profile pass, and the exact Full Companion artifact
+      <code>v1.17.1-t096-head-fcd1f8cc-wake1-fcd1f8cc</code> compiled at 486,348 bytes.
+      Its 487,231-byte serial-DFU ZIP has SHA-256
+      <code>A091F6DC458177BB26B8384B2AAAC0A9FD550322179F96062CCD3F0F5BB0E585</code>;
+      the 486,428-byte OTA image reports a 486,372-byte EndF body with hash
+      <code>E9AB2A36E9F7091F</code>. Identity-gated <code>meshfirmware</code> selected <code>COM21/MI_02</code>,
+      canonicalized it to <code>COM9/MI_00</code>, followed <code>COM9 -&gt; COM6 -&gt; COM9</code>, and
+      emitted both <code>Device programmed.</code> and <code>Flash completed.</code> without touching
+      the MeshPocket. The VM was suspended only across touch/transfer and was
+      running again as soon as exact serial <code>651F8E496197F882</code> returned. Live
+      readback then matched the public key, Heltec T096 board, USA
+      <code>910.525/62.5/SF7/CR5</code> tuple, ABI 3/codecs <code>0x5</code>/stage <code>0xD4000</code>, and exact
+      80-byte CDC1 marker; core checkpoints advanced through 369 seconds with
+      <code>err_flags=0</code>, an empty queue, and zero TX. Follow-up physical testing
+      confirmed auto-off wake and single-click page navigation. Double-click,
+      triple-click, long-press, and simultaneous-button gestures remain deferred.</li>
+<li>[x] A signed bootloader mOTA package for OTAFIX HIL candidate <code>0x02040401</code>
+      transferred over LoRa in 40/40 blocks, passed the privileged-install gate,
+      installed with the watchdog enabled, and rebooted with unchanged node and
+      radio settings. The installed bootloader CRC changed to the package's
+      expected <code>381BAE6E</code>; the temporary HIL signer was removed afterwards.</li>
+<li>[x] A 486,796-byte Full Companion application completed bonded Legacy BLE DFU
+      at approximately 5.7-6.2 kbit/s payload throughput, then returned with the
+      same identity and USA radio tuple. The later CDC0 first-open fix preserved
+      immediate <code>APP_START</code> input across the eight-millisecond session gate:
+      first client after reboot passed with CDC1 logging active, followed by
+      10/10 immediate COM9 close/reopen queries. CDC1 continued to emit its exact
+      identity marker and printable packet/debug logs.</li>
 </ul>
 <h2 id="heltec-meshtower-v2-with-sd">Heltec MeshTower V2 with SD</h2>
 <ul>

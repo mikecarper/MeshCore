@@ -1829,7 +1829,11 @@ bus at those addresses. Keep RAK12500 at <code>0x42</code>, strap INA3221 A0 to 
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater install-capable; those targets do not need to reserve internal flash
 for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
-path and therefore do not emit redundant no-external-sensors siblings. Other
+path and therefore do not emit redundant no-external-sensors siblings. A
+RAK19007 can use the same separately wired W25Q16 with either RAK4631 or
+RAK3401 + RAK13302: the flash consumes no WisBlock slot and GPS remains
+supported in slot A. This is not the RAK15001 arrangement; RAK15001 and
+RAK13302 share a chip-select and cannot be used together. Other
 normal repeaters can still serve as intermediate relays but cannot necessarily
 install an update themselves. ESP32
 <code>-ota-</code> siblings also retain the lightweight browser WiFi uploader (<code>start
@@ -1979,6 +1983,18 @@ RAK15001 OTAFIX bootloader, use
 <code>RAK_4631_repeater_rak15001_slot_c_lora_ota</code> instead. That target retains the
 full sensor/GPS set and can install either a full image or a delta from the
 external 2 MiB store.</p>
+<p>With the separately wired Winbond breakout, use
+<code>RAK_4631_repeater_w25q16_lora_ota</code> for RAK4631 or
+<code>RAK_3401_repeater_rak13302_w25q16_lora_ota</code> for RAK3401 + RAK13302. Both
+require an <code>EF4015</code> 2 MiB device. As a one-time prerequisite, install
+<code>wiscore_rak4631_w25q16</code> for RAK4631 or
+<code>wiscore_rak3401_rak13302_w25q16</code> for RAK3401 + RAK13302. Wire CLK/MISO/MOSI
+to the RAK19007 IO connector pins 26/27/28, CS to J11 AIN1, and VCC/GND to J12
+VDD/GND. Fit an approximately 10 kOhm CS-to-VDD pull-up; never use VBAT. The
+SPI pins require underside taps or an interposer, but no sensor slot is
+occupied. See the
+<a href="../ota_nrf52_qspi/#one-w25q16-wiring-for-rak4631-or-rak3401--rak13302">nRF52 QSPI guide</a>
+before installing either image.</p>
 <h3 id="4-build-and-check-the-in-place-delta">4. Build and check the in-place delta</h3>
 <pre><code class="language-bash">mkdir -p ./motas
 motatool build \
@@ -2106,7 +2122,8 @@ application can be restored.</p>
 <li><strong>An internal-flash nRF52 marks a full update <code>[unsupported]</code>:</strong> it can install only an in-place delta.
   A matched QSPI repeater or MeshTower V2 microSD target accepts full images with its corresponding bootloader.</li>
 <li><strong>A QSPI nRF52 reports <code>QSPI store:ERR 0K</code> or <code>bl:NO-QSPI</code>:</strong> do not download an install package. Install
-  the exact QSPI-aware bootloader and check that the selected application matches the board's flash wiring.</li>
+  the exact QSPI-aware bootloader and check that the selected application matches the board's flash wiring.
+  A RAK W25Q16 target must identify exactly <code>EF4015</code> and 2048K; also check its physical CS pull-up.</li>
 <li><strong>nRF52 reports no bootloader apply support:</strong> install the exact-board in-place-delta OTAFIX bootloader
   before trying LoRa OTA.</li>
 <li><strong>nRF52 reports a base mismatch:</strong> the file passed to <code>--base</code> is not the exact application running on
