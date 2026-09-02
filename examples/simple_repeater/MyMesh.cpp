@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/ClientPathObservation.h>
 #include <algorithm>
 
 /* ------------------------------ Config -------------------------------- */
@@ -42,6 +43,8 @@
 #endif
 
 #define FIRMWARE_VER_LEVEL       2
+
+static constexpr uint32_t LOGIN_PATH_OBSERVATION_TIMEOUT_MS = 60000UL;
 
 #define REQ_TYPE_GET_STATUS         0x01 // same as _GET_STATS
 #define REQ_TYPE_KEEP_ALIVE         0x02
@@ -131,6 +134,9 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
   if (is_flood) {
     client->out_path_len = OUT_PATH_UNKNOWN;  // need to rediscover out_path
   }
+  // A flood login arms observation only after its PATH reply is successfully
+  // queued below. Clear any result from an earlier login in either case.
+  mesh::clearObservedClientPath(*client, OUT_PATH_UNKNOWN);
 
   uint32_t now = getRTCClock()->getCurrentTimeUnique();
   memcpy(reply_data, &now, 4);   // response packets always prefixed with timestamp
@@ -410,11 +416,12 @@ bool MyMesh::isLooped(const mesh::Packet* packet, const uint8_t max_counters[]) 
   return n >= max_counters[hash_size];
 }
 
-void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
+bool MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
   TransportKey req_scope;
   bool is_wildcard = recv_pkt_region != NULL && recv_pkt_region->isWildcard();
   bool req_scope_known = recv_pkt_region != NULL && !is_wildcard
                       && region_map.getTransportKeysFor(*recv_pkt_region, &req_scope, 1) > 0;
+  const int queued_before = _mgr->getOutboundTotal();
 
   switch (mesh::chooseReplyScope(req_scope_known, is_wildcard, !default_scope.isNull())) {
     case mesh::REPLY_SCOPE_REQUEST:
@@ -429,6 +436,10 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
       sendFlood(packet, delay_millis, path_hash_size);  // send un-scoped
       break;
   }
+  // This older branch's send APIs return void. Queue handling is synchronous,
+  // so a count increase confirms that the packet was accepted rather than
+  // released because the queue was full or the packet was invalid.
+  return _mgr->getOutboundTotal() > queued_before;
 }
 
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
@@ -603,7 +614,15 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
       // let this sender know path TO here, so they can use sendDirect(), and ALSO encode the response
       mesh::Packet* path = createPathReturn(sender, secret, packet->path, packet->path_len,
                                             PAYLOAD_TYPE_RESPONSE, reply_data, reply_len);
-      if (path) sendFloodReply(path, SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+      if (path) {
+        const bool login_path_sent = sendFloodReply(
+            path, SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+        if (client != NULL && login_path_sent) {
+          mesh::beginObservedClientPath(
+              *client, OUT_PATH_UNKNOWN,
+              futureMillis(LOGIN_PATH_OBSERVATION_TIMEOUT_MS));
+        }
+      }
       return;
     }
 
@@ -772,8 +791,17 @@ bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t 
     MESH_DEBUG_PRINTLN("PATH to client, path_len=%d", (uint32_t)path_len);
     auto client = acl.getClientByIdx(i);
 
+    // A flood login's reciprocal PATH is direct and has no embedded payload
+    // (decoded as the reserved 0x0F extra type). Retain that one independently
+    // so it can be inspected or explicitly selected by the outpath CLI.
+    const bool captured_login_path = packet->isRouteDirect()
+        && extra_type == 0x0F
+        && mesh::captureObservedClientPath(
+            *client, path, path_len, futureMillis(0));
+
     // store a copy of path, for sendDirect()
-    if (client->out_path_len != OUT_PATH_FORCE_FLOOD) {
+    if (!captured_login_path
+        && client->out_path_len != OUT_PATH_FORCE_FLOOD) {
       client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len);
     }
     client->last_activity = getRTCClock()->getCurrentTime();
@@ -1374,14 +1402,37 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     }
     reply[0] = 0;
   } else if (strcmp(command, "get outpath") == 0
+          || strcmp(command, "get outpath path") == 0
           || strcmp(command, "set outpath") == 0
           || strncmp(command, "set outpath ", 12) == 0) {
     bool is_get = strncmp(command, "get ", 4) == 0;
+    bool use_observed_path = strcmp(command, "get outpath path") == 0
+                          || strcmp(command, "set outpath path") == 0;
     if (sender == NULL) {
       strcpy(reply, "Err - command needs remote client context");
     } else if (is_get) {
-      formatPathReply(sender->out_path, sender->out_path_len, reply, 160);
+      if (use_observed_path) {
+        if (mesh::isObservedClientPathPending(*sender, futureMillis(0))) {
+          strcpy(reply, "> path pending");
+        } else {
+          formatPathReply(sender->observed_path, sender->observed_path_len, reply, 160);
+        }
+      } else {
+        formatPathReply(sender->out_path, sender->out_path_len, reply, 160);
+      }
     } else {
+      if (use_observed_path) {
+        if (mesh::isObservedClientPathPending(*sender, futureMillis(0))) {
+          strcpy(reply, "Err - path pending");
+        } else if (!mesh::promoteObservedClientPath(*sender)) {
+          strcpy(reply, "Err - no path received");
+        } else {
+          dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+          formatPathReply(sender->out_path, sender->out_path_len, reply, 160);
+        }
+        return;
+      }
+
       char* spec = command + 11;  // length of "set outpath"
       if (*spec == ' ') spec++;
 
@@ -1398,7 +1449,11 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
           sender->out_path_len = mesh::Packet::copyPath(sender->out_path, path, path_len);
         }
         dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
-        formatPathReply(sender->out_path, sender->out_path_len, reply, 160);
+        if (path_len == OUT_PATH_UNKNOWN) {
+          strcpy(reply, "> outpath cleared");
+        } else {
+          formatPathReply(sender->out_path, sender->out_path_len, reply, 160);
+        }
       }
     }
   } else if (memcmp(command, "discover.neighbors", 18) == 0) {
