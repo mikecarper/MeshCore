@@ -4,6 +4,9 @@
 
 #if defined(NRF52_PLATFORM)
 #include <helpers/AtomicFileWriter.h>
+#if defined(EXTRAFS) && !defined(QSPIFLASH)
+#include <helpers/nrf52/InternalSecondaryFsRepair.h>
+#endif
 #endif
 
 // Linked presence of this symbol is the authoritative signal that this firmware actually mounts the
@@ -11,6 +14,7 @@
 // reserved range even though nrf52_base defines EXTRAFS globally.
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
 extern "C" __attribute__((used)) const uint8_t g_meshcore_internal_extrafs = 1u;
+extern "C" uint32_t __flash_arduino_end[];
 #endif
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
@@ -19,7 +23,8 @@ extern "C" __attribute__((used)) const uint8_t g_meshcore_internal_extrafs = 1u;
   #define MAX_BLOBRECS 20
 #endif
 
-DataStore::DataStore(FILESYSTEM& fs, mesh::RTCClock& clock) : _fs(&fs), _fsExtra(nullptr), _clock(&clock),
+DataStore::DataStore(FILESYSTEM& fs, mesh::RTCClock& clock) : _fs(&fs), _fsExtra(nullptr),
+    _configuredFsExtra(nullptr), _clock(&clock),
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
     identity_store(fs, "")
 #elif defined(RP2040_PLATFORM)
@@ -31,7 +36,8 @@ DataStore::DataStore(FILESYSTEM& fs, mesh::RTCClock& clock) : _fs(&fs), _fsExtra
 }
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
-DataStore::DataStore(FILESYSTEM& fs, FILESYSTEM& fsExtra, mesh::RTCClock& clock) : _fs(&fs), _fsExtra(&fsExtra), _clock(&clock),
+DataStore::DataStore(FILESYSTEM& fs, FILESYSTEM& fsExtra, mesh::RTCClock& clock) : _fs(&fs), _fsExtra(&fsExtra),
+    _configuredFsExtra(&fsExtra), _clock(&clock),
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
     identity_store(fs, "")
 #elif defined(RP2040_PLATFORM)
@@ -75,9 +81,10 @@ void DataStore::begin() {
     primary_ready = recoverPrimaryFilesystem(_fs);
   }
   if (_fsExtra != nullptr && !validateLfsFilesystem(_fsExtra)) {
-    // Do not erase removable/external storage automatically.  Keep it intact
-    // for recovery and boot from the known-good internal filesystem.
-    MESH_DEBUG_PRINTLN("DataStore: secondary LittleFS metadata is corrupt; using internal storage");
+    // A traversal-failed filesystem may still be recoverable offline. Keep
+    // both removable QSPI and managed on-chip ExtraFS intact until an explicit
+    // local repair/factory-reset operation authorizes erasing it.
+    MESH_DEBUG_PRINTLN("DataStore: secondary LittleFS metadata is corrupt; preserving it and using primary storage");
     _fsExtra = nullptr;
   }
   if (primary_ready) cleanupAtomicTempFiles(_fs);
@@ -85,7 +92,9 @@ void DataStore::begin() {
   resetContactPageState();
 #endif
   #if defined(EXTRAFS) || defined(QSPIFLASH)
-  if (_fsExtra != nullptr) migrateToSecondaryFS();
+  if (_fsExtra != nullptr && !migrateToSecondaryFS()) {
+    MESH_DEBUG_PRINTLN("DataStore: one or more secondary filesystem migrations remain pending");
+  }
   #endif
   checkAdvBlobFile();
 #else
@@ -163,7 +172,8 @@ static void cleanupAtomicTempFiles(FILESYSTEM* fs) {
 
   static const char* fixed_temp_paths[] = {
       "/_main.id.tmp", "/new_prefs.tmp", "/channels2.tmp",
-      "/contacts3.tmp", "/contacts4.mig.tmp", "/adv_blobs.tmp"};
+      "/contacts3.tmp", "/contacts4.mig.tmp", "/adv_blobs.tmp",
+      "/.extrafs.mig.tmp"};
   for (size_t i = 0; i < sizeof(fixed_temp_paths) / sizeof(fixed_temp_paths[0]); i++) {
     if (fs->exists(fixed_temp_paths[i])) fs->remove(fixed_temp_paths[i]);
   }
@@ -181,6 +191,62 @@ static void cleanupAtomicTempFiles(FILESYSTEM* fs) {
     if (fs->exists(path)) fs->remove(path);
   }
 }
+
+#if defined(EXTRAFS) && !defined(QSPIFLASH)
+bool DataStore::reinitializeInternalExtraFS() {
+  if (_configuredFsExtra == nullptr) return false;
+
+  CustomLFS* extra = static_cast<CustomLFS*>(_configuredFsExtra);
+  if (!mesh::storage::isExpectedInternalExtraFsGeometry(
+          extra->getFlashAddr(), extra->getFlashSize(),
+          extra->getBlockSize())
+      || !mesh::storage::isInternalExtraFsReservedByApplication(
+          (uint32_t)(uintptr_t)__flash_arduino_end)) {
+    _fsExtra = nullptr;
+    MESH_DEBUG_PRINTLN("DataStore: refusing internal ExtraFS repair with unexpected geometry");
+    return false;
+  }
+
+  const mesh::storage::InternalSecondaryFsRepairResult result =
+      mesh::storage::repairInternalSecondaryFilesystem(
+          [extra]() -> bool {
+            // Avoid CustomLFS::formatRegion(): it probes corrupt metadata with
+            // open("/") before deciding whether to unmount. end() is safe for
+            // both mounted and unmounted Adafruit LittleFS instances.
+            extra->end();
+            return extra->format();
+          },
+          [extra]() -> bool {
+            // Call the base mount explicitly. CustomLFS::begin() would erase
+            // the complete region again if this mount failed.
+            return extra->Adafruit_LittleFS::begin();
+          },
+          [this]() -> bool {
+            return validateLfsFilesystem(_configuredFsExtra);
+          });
+  if (result != mesh::storage::InternalSecondaryFsRepairResult::Repaired) {
+    _fsExtra = nullptr;
+    switch (result) {
+      case mesh::storage::InternalSecondaryFsRepairResult::FormatFailed:
+        MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repair format failed");
+        break;
+      case mesh::storage::InternalSecondaryFsRepairResult::MountFailed:
+        MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repair mount failed");
+        break;
+      case mesh::storage::InternalSecondaryFsRepairResult::ValidationFailed:
+        MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repair validation failed");
+        break;
+      default:
+        break;
+    }
+    return false;
+  }
+
+  _fsExtra = _configuredFsExtra;
+  MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repaired and reactivated");
+  return true;
+}
+#endif
 #endif
 
 uint32_t DataStore::getStorageUsedKb() const {
@@ -252,11 +318,17 @@ bool DataStore::formatFileSystem() {
   #if defined(NRF52_PLATFORM)
   resetContactPageState();
   #endif
-  if (_fsExtra == nullptr) {
-    return _fs->format();
-  } else {
-    return _fs->format() && _fsExtra->format();
-  }
+  const bool primary_success = _fs->format();
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+  // Factory reset/rebuild is already an explicit destructive operation. Use
+  // the configured pointer so it also clears and reactivates an ExtraFS which
+  // normal boot deliberately quarantined after failed traversal validation.
+  const bool secondary_success = _configuredFsExtra == nullptr
+      || reinitializeInternalExtraFS();
+#else
+  const bool secondary_success = _fsExtra == nullptr || _fsExtra->format();
+#endif
+  return primary_success && secondary_success;
 #elif defined(RP2040_PLATFORM)
   return LittleFS.format();
 #elif defined(ESP32)
@@ -265,6 +337,35 @@ bool DataStore::formatFileSystem() {
   return fs_success && (nvs_err == ESP_OK);
 #else
   #error "need to implement format()"
+#endif
+}
+
+bool DataStore::repairInternalExtraFS() {
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+  // A healthy active ExtraFS must never be erased. Re-running the explicit
+  // command is still useful, though: it retries any verified migration which
+  // failed after a previously repaired filesystem was activated.
+  if (_fsExtra != nullptr) {
+    CustomLFS* extra = static_cast<CustomLFS*>(_fsExtra);
+    if (_fsExtra != _configuredFsExtra
+        || !mesh::storage::isExpectedInternalExtraFsGeometry(
+            extra->getFlashAddr(), extra->getFlashSize(), extra->getBlockSize())
+        || !mesh::storage::isInternalExtraFsReservedByApplication(
+            (uint32_t)(uintptr_t)__flash_arduino_end)) {
+      MESH_DEBUG_PRINTLN("DataStore: refusing internal ExtraFS migration with unexpected geometry");
+      return false;
+    }
+    cleanupAtomicTempFiles(_fsExtra);
+    return migrateToSecondaryFS();
+  }
+  if (!reinitializeInternalExtraFS()) return false;
+
+  cleanupAtomicTempFiles(_fsExtra);
+  // The fallback primary remains intact until each destination file has been
+  // copied, read back byte-for-byte, and committed by migrateToSecondaryFS().
+  return migrateToSecondaryFS();
+#else
+  return false;
 #endif
 }
 
@@ -528,6 +629,9 @@ static bool deserializeContactRecord(
 
 #if defined(NRF52_PLATFORM)
 static const char* CONTACT_MIGRATION_MARKER = "/contacts4.mig";
+static const char* SECONDARY_MIGRATION_JOURNAL = "/.extrafs.mig";
+static const uint8_t SECONDARY_MIGRATION_PENDING = 1;
+static const uint8_t SECONDARY_MIGRATION_COMMITTED = 2;
 
 static void makeContactPagePath(uint8_t page, char path[24]) {
   snprintf(path, 24, "/contacts4_%02u", (unsigned)page);
@@ -1025,19 +1129,19 @@ void DataStore::loadChannels(DataStoreHost* host) {
     }
 }
 
-void DataStore::saveChannels(DataStoreHost* host) {
+bool DataStore::saveChannels(DataStoreHost* host) {
 #if defined(NRF52_PLATFORM)
   mesh::AtomicFileWriter file(_getContactsChannelsFS(), "/channels2");
 #else
   File file = openWrite(_getContactsChannelsFS(), "/channels2");
 #endif
+  bool success = (bool)file;
   if (file) {
     uint8_t channel_idx = 0;
     ChannelDetails ch;
     uint8_t unused[4];
     memset(unused, 0, 4);
 
-    bool success = true;
     while (success && host->getChannelForSave(channel_idx, ch)) {
       success = (file.write(unused, 4) == 4);
       success = success && (file.write((uint8_t *)ch.name, 32) == 32);
@@ -1047,11 +1151,13 @@ void DataStore::saveChannels(DataStoreHost* host) {
       channel_idx++;
     }
 #if defined(NRF52_PLATFORM)
-    if (!file.commit(success)) MESH_DEBUG_PRINTLN("DataStore: atomic channels write failed");
+    success = file.commit(success);
+    if (!success) MESH_DEBUG_PRINTLN("DataStore: atomic channels write failed");
 #else
     file.close();
 #endif
   }
+  return success;
 }
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -1103,11 +1209,13 @@ void DataStore::checkAdvBlobFile() {
 #endif
 }
 
-void DataStore::migrateToSecondaryFS() {
-  if (_fsExtra == nullptr) return;
+bool DataStore::migrateToSecondaryFS() {
+  if (_fsExtra == nullptr) return false;
 
-  // Implemented below through verified copy transactions.  Source files are
-  // removed only after the destination has been read back successfully.
+  // Implemented below through verified copy transactions. On nRF52, all
+  // primary contact/channel files are copied before an atomic journal commit;
+  // no source is removed before that commit makes the complete secondary
+  // snapshot authoritative across a reset.
 #if defined(NRF52_PLATFORM)
   // /adv_blobs is a reconstructable cache retired by checkAdvBlobFile(); do
   // not spend time and temporary space atomically copying it first.
@@ -1122,13 +1230,15 @@ void DataStore::migrateToSecondaryFS() {
                            const char* path) -> bool {
     File left = openRead(left_fs, path);
     File right = openRead(right_fs, path);
-    if (!left || !right || left.size() != right.size()) {
+    const uint32_t expected_size = left ? left.size() : 0;
+    if (!left || !right || expected_size != right.size()) {
       if (left) left.close();
       if (right) right.close();
       return false;
     }
     uint8_t left_buf[64], right_buf[64];
     bool equal = true;
+    uint32_t compared = 0;
     while (equal) {
       int left_count = left.read(left_buf, sizeof(left_buf));
       int right_count = right.read(right_buf, sizeof(right_buf));
@@ -1140,19 +1250,21 @@ void DataStore::migrateToSecondaryFS() {
         break;
       } else if (memcmp(left_buf, right_buf, left_count) != 0) {
         equal = false;
+      } else {
+        compared += (uint32_t)left_count;
       }
     }
     left.close();
     right.close();
-    return equal;
+    return equal && compared == expected_size;
   };
 
-  auto migrate = [this, &filesEqual](FILESYSTEM* source_fs, FILESYSTEM* dest_fs,
-                                     const char* path) -> bool {
+  auto copy = [this, &filesEqual](FILESYSTEM* source_fs, FILESYSTEM* dest_fs,
+                                  const char* path) -> bool {
     if (!source_fs->exists(path)) return true;
     if (dest_fs->exists(path)) {
       if (filesEqual(source_fs, dest_fs, path)) {
-        return source_fs->remove(path);
+        return true;
       }
       MESH_DEBUG_PRINTLN("DataStore: migration conflict for %s; preserving both copies", path);
       return false;
@@ -1212,30 +1324,208 @@ void DataStore::migrateToSecondaryFS() {
       MESH_DEBUG_PRINTLN("DataStore: verified migration failed for %s", path);
       return false;
     }
-    return source_fs->remove(path);
+    return true;
   };
 
-  for (size_t i = 0; i < sizeof(to_secondary) / sizeof(to_secondary[0]); i++) {
-    migrate(_fs, _fsExtra, to_secondary[i]);
-  }
-  // Also move the bounded nRF v4 page/bucket files.  This matters after a boot
-  // where external QSPI was unavailable and the store deliberately fell back
-  // to internal flash.
+  auto move = [&copy](FILESYSTEM* source_fs, FILESYSTEM* dest_fs,
+                      const char* path) -> bool {
+    if (!source_fs->exists(path)) return true;
+    return copy(source_fs, dest_fs, path) && source_fs->remove(path);
+  };
+
+  auto migratePrimarySources = [this, &copy, &filesEqual]() -> bool {
+    bool success = true;
+    for (size_t i = 0; i < sizeof(to_primary) / sizeof(to_primary[0]); i++) {
+      const char* path = to_primary[i];
+      if (!_fsExtra->exists(path)) continue;
+
+      if (_fs->exists(path)) {
+        if (!filesEqual(_fsExtra, _fs, path)) {
+          // Identity/preferences are canonical on primary. A differing legacy
+          // secondary copy is useful forensic data, but it must not prevent
+          // contact/channel migration or make secondary storage disappear.
+          MESH_DEBUG_PRINTLN("DataStore: preserving conflicting legacy secondary %s; primary remains authoritative", path);
+          continue;
+        }
+      } else if (!copy(_fsExtra, _fs, path)) {
+        // Without any primary copy MyMesh would generate a replacement
+        // identity or persist default preferences, so this is the only
+        // primary-source condition which must block the storage handoff.
+        success = false;
+        continue;
+      }
+
+      // At this point primary has an exact verified copy. Failure to retire a
+      // duplicate is harmless and can be retried on a later boot.
+      if (!_fsExtra->remove(path)) {
+        MESH_DEBUG_PRINTLN("DataStore: could not retire verified legacy secondary %s", path);
+      }
+    }
+    return success;
+  };
+
 #if defined(NRF52_PLATFORM)
-  for (uint8_t page = 0; page < mesh::storage::CONTACT_PAGE_COUNT; page++) {
-    char path[24];
-    makeContactPagePath(page, path);
-    migrate(_fs, _fsExtra, path);
+  // Identity and preferences are always read from the primary filesystem.
+  // Recover legacy/test-layout copies before the contact/channel transaction
+  // can take an early fallback return; otherwise MyMesh may generate a new
+  // identity or persist default preferences while the real copy is stranded
+  // on the now-disabled secondary filesystem.
+  if (!migratePrimarySources()) {
+    MESH_DEBUG_PRINTLN("DataStore: primary identity/preferences migration failed; using primary storage");
+    _fsExtra = nullptr;
+    return false;
   }
-  for (uint8_t bucket = 0; bucket < 10; bucket++) {
-    char path[20];
-    snprintf(path, sizeof(path), "/adv4_%02u", (unsigned)bucket);
-    migrate(_fs, _fsExtra, path);
+
+  enum class MigrationJournalState : uint8_t {
+    None,
+    Pending,
+    Committed,
+    Invalid,
+  };
+  static const uint8_t journal_magic[] = {'M', 'C', 'X', 'F', 1};
+
+  auto readJournal = [this]() -> MigrationJournalState {
+    if (!_fsExtra->exists(SECONDARY_MIGRATION_JOURNAL)) {
+      return MigrationJournalState::None;
+    }
+    File journal = openRead(_fsExtra, SECONDARY_MIGRATION_JOURNAL);
+    uint8_t payload[sizeof(journal_magic) + 1];
+    const bool valid_size = journal && journal.size() == sizeof(payload);
+    const int count = valid_size ? journal.read(payload, sizeof(payload)) : 0;
+    if (journal) journal.close();
+    if (count != (int)sizeof(payload)
+        || memcmp(payload, journal_magic, sizeof(journal_magic)) != 0) {
+      return MigrationJournalState::Invalid;
+    }
+    if (payload[sizeof(journal_magic)] == SECONDARY_MIGRATION_PENDING) {
+      return MigrationJournalState::Pending;
+    }
+    if (payload[sizeof(journal_magic)] == SECONDARY_MIGRATION_COMMITTED) {
+      return MigrationJournalState::Committed;
+    }
+    return MigrationJournalState::Invalid;
+  };
+
+  auto writeJournal = [this](uint8_t state) -> bool {
+    uint8_t payload[sizeof(journal_magic) + 1];
+    memcpy(payload, journal_magic, sizeof(journal_magic));
+    payload[sizeof(journal_magic)] = state;
+    mesh::AtomicFileWriter journal(_fsExtra, SECONDARY_MIGRATION_JOURNAL);
+    return journal
+        && journal.write(payload, sizeof(payload)) == sizeof(payload)
+        && journal.commit();
+  };
+
+  auto hasSecondarySources = [this]() -> bool {
+    for (size_t i = 0; i < sizeof(to_secondary) / sizeof(to_secondary[0]); i++) {
+      if (_fs->exists(to_secondary[i])) return true;
+    }
+    for (uint8_t page = 0; page < mesh::storage::CONTACT_PAGE_COUNT; page++) {
+      char path[24];
+      makeContactPagePath(page, path);
+      if (_fs->exists(path)) return true;
+    }
+    for (uint8_t bucket = 0; bucket < 10; bucket++) {
+      char path[20];
+      snprintf(path, sizeof(path), "/adv4_%02u", (unsigned)bucket);
+      if (_fs->exists(path)) return true;
+    }
+    return false;
+  };
+
+  auto copySecondarySources = [this, &copy]() -> bool {
+    bool success = true;
+    for (size_t i = 0; i < sizeof(to_secondary) / sizeof(to_secondary[0]); i++) {
+      if (!copy(_fs, _fsExtra, to_secondary[i])) success = false;
+    }
+    for (uint8_t page = 0; page < mesh::storage::CONTACT_PAGE_COUNT; page++) {
+      char path[24];
+      makeContactPagePath(page, path);
+      if (!copy(_fs, _fsExtra, path)) success = false;
+    }
+    for (uint8_t bucket = 0; bucket < 10; bucket++) {
+      char path[20];
+      snprintf(path, sizeof(path), "/adv4_%02u", (unsigned)bucket);
+      if (!copy(_fs, _fsExtra, path)) success = false;
+    }
+    return success;
+  };
+
+  auto retireSecondarySources = [this]() -> bool {
+    bool success = true;
+    auto retire = [this, &success](const char* path) {
+      if (!_fs->exists(path)) return;
+      // The committed journal is the authority switch: every destination was
+      // already verified before it was written. Do not compare again here,
+      // because the secondary may legitimately advance while cleanup retries.
+      if (!_fs->remove(path)) success = false;
+    };
+    for (size_t i = 0; i < sizeof(to_secondary) / sizeof(to_secondary[0]); i++) {
+      retire(to_secondary[i]);
+    }
+    for (uint8_t page = 0; page < mesh::storage::CONTACT_PAGE_COUNT; page++) {
+      char path[24];
+      makeContactPagePath(page, path);
+      retire(path);
+    }
+    for (uint8_t bucket = 0; bucket < 10; bucket++) {
+      char path[20];
+      snprintf(path, sizeof(path), "/adv4_%02u", (unsigned)bucket);
+      retire(path);
+    }
+    return success;
+  };
+
+  MigrationJournalState journal_state = readJournal();
+  if (journal_state == MigrationJournalState::Invalid) {
+    MESH_DEBUG_PRINTLN("DataStore: invalid ExtraFS migration journal; using primary storage");
+    _fsExtra = nullptr;
+    return false;
   }
+
+  if (journal_state != MigrationJournalState::Committed
+      && (journal_state != MigrationJournalState::None || hasSecondarySources())) {
+    if (journal_state == MigrationJournalState::None
+        && !writeJournal(SECONDARY_MIGRATION_PENDING)) {
+      MESH_DEBUG_PRINTLN("DataStore: could not start ExtraFS migration transaction");
+      _fsExtra = nullptr;
+      return false;
+    }
+    if (!copySecondarySources()
+        || !writeJournal(SECONDARY_MIGRATION_COMMITTED)) {
+      // Pending means no source has been retired, so primary remains a complete
+      // fallback even if the destination contains harmless partial copies.
+      MESH_DEBUG_PRINTLN("DataStore: ExtraFS migration copy incomplete; using primary storage");
+      _fsExtra = nullptr;
+      return false;
+    }
+    journal_state = MigrationJournalState::Committed;
+  }
+
+  if (journal_state == MigrationJournalState::Committed) {
+    if (!retireSecondarySources()) {
+      // The committed secondary contains the full verified snapshot. Keep it
+      // active and keep the journal so cleanup can resume without copying a
+      // stale primary source over newer secondary data.
+      MESH_DEBUG_PRINTLN("DataStore: ExtraFS migration committed; source cleanup remains pending");
+      return false;
+    }
+    if (_fsExtra->exists(SECONDARY_MIGRATION_JOURNAL)
+        && !_fsExtra->remove(SECONDARY_MIGRATION_JOURNAL)) {
+      MESH_DEBUG_PRINTLN("DataStore: ExtraFS migration journal cleanup failed");
+      return false;
+    }
+  }
+#else
+  bool success = true;
+  for (size_t i = 0; i < sizeof(to_secondary) / sizeof(to_secondary[0]); i++) {
+    if (!move(_fs, _fsExtra, to_secondary[i])) success = false;
+  }
+  if (!success) return false;
+  return migratePrimarySources();
 #endif
-  for (size_t i = 0; i < sizeof(to_primary) / sizeof(to_primary[0]); i++) {
-    migrate(_fsExtra, _fs, to_primary[i]);
-  }
+
+  return true;
 }
 
 #if defined(NRF52_PLATFORM)

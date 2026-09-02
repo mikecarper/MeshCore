@@ -117,7 +117,7 @@ struct AdvertPath {
   uint8_t path[MAX_PATH_SIZE];
 };
 
-class MyMesh : public BaseChatMesh, public DataStoreHost
+class MyMesh : public BaseChatMesh, public DataStoreHost, public UIShutdownGuard
 #ifdef ENABLE_USB_INTERFACE
              , public ContactVisitor
 #endif
@@ -414,10 +414,18 @@ private:
 #endif
 
   // helpers, short-cuts
-  void saveChannels() { _store->saveChannels(this); }
+  bool saveChannels() { return _store->saveChannels(this); }
   void saveContacts();
+  void scheduleContactWriteRetry();
+  bool isContactWriteDue() const;
+  bool flushContactsBeforeReboot();
+  bool prepareForOtaReboot() override;
+  bool prepareForUiShutdown() override;
   void scheduleContactWrite(const ContactInfo& contact);
   void scheduleContactWriteAfterRelease(const ContactInfo& contact);
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+  void repairInternalExtraFS(Stream& output);
+#endif
 
   DataStore* _store;
   CompanionNodePrefs _prefs;
@@ -513,6 +521,7 @@ private:
   BaseSerialInterface* sign_data_reply_route;
   unsigned long sign_data_deadline;
   unsigned long dirty_contacts_expiry;
+  uint8_t dirty_contacts_failures;
 
   TransportKey send_scope;
 

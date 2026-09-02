@@ -5,6 +5,7 @@
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include <helpers/CompanionStatusResponse.h>
 #include <helpers/IdentityGeneration.h>
+#include <helpers/LazyPersistence.h>
 #include <helpers/StorageLayout.h>
 #include <helpers/UsbAsciiBinarySwitch.h>
 #include <helpers/UsbLogging.h>
@@ -1508,6 +1509,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   sign_data_reply_route = NULL;
   sign_data_deadline = 0;
   dirty_contacts_expiry = 0;
+  dirty_contacts_failures = 0;
   memset(advert_paths, 0, sizeof(advert_paths));
   memset(send_scope.key, 0, sizeof(send_scope.key));
   send_unscoped = false;
@@ -1574,6 +1576,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _webconfig = nullptr;
   _wc_mqtt_dirty = false;
 #endif
+  if (_ui != nullptr) _ui->setShutdownGuard(this);
 }
 
 void MyMesh::begin(bool has_display, bool radio_available) {
@@ -1724,7 +1727,8 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   resetContacts();
   _store->loadContacts(this);
   if (_store->hasPendingContactWrites()) {
-    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+    dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
+        futureMillis(LAZY_CONTACTS_WRITE_DELAY));
   }
   updateGpsTelemetryPolicy();
   bootstrapRTCfromContacts();
@@ -2876,7 +2880,11 @@ bool MyMesh::isWebConfigWiFiRecoveryActive() const {
 }
 
 void MyMesh::rebootNow() {
-  board.reboot();
+  if (flushContactsBeforeReboot()) {
+    board.reboot();
+  } else {
+    MESH_DEBUG_PRINTLN("Reboot refused: pending contacts could not be saved");
+  }
 }
 
 void MyMesh::onConfigBatchStart() {
@@ -4008,14 +4016,9 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeOKFrame();
     }
   } else if (cmd_frame[0] == CMD_REBOOT && len >= 7 && memcmp(&cmd_frame[1], "reboot", 6) == 0) {
-    // Non-nRF stores use the legacy monolithic file and therefore do not
-    // report dirty pages.  The lazy-write timer is still proof that RAM holds
-    // newer contact data which must be persisted before rebooting.
-    if (dirty_contacts_expiry || _store->hasPendingContactWrites()) {
-      if (!_store->flushContactWrites(this, save_filter)) {
-        writeErrFrame(ERR_CODE_FILE_IO_ERROR);
-        return;
-      }
+    if (!flushContactsBeforeReboot()) {
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+      return;
     }
     board.reboot();
   } else if (cmd_frame[0] == CMD_GET_BATT_AND_STORAGE) {
@@ -4042,6 +4045,10 @@ void MyMesh::handleCmdFrame(size_t len) {
 #if ENABLE_PRIVATE_KEY_IMPORT
     if (!mesh::LocalIdentity::validatePrivateKey(&cmd_frame[1])) {
         writeErrFrame(ERR_CODE_ILLEGAL_ARG); // invalid key
+    } else if (!flushContactsBeforeReboot()) {
+        // loadContacts() resets the dirty-page map, so never replace the
+        // identity and reload while newer contact state exists only in RAM.
+        writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     } else {
         mesh::LocalIdentity identity;
         identity.readFrom(&cmd_frame[1], 64);
@@ -4051,7 +4058,14 @@ void MyMesh::handleCmdFrame(size_t len) {
           // re-load contacts, to invalidate ecdh shared_secrets
           stopContactsIterator();
           resetContacts();
+          mesh::resetLazyPersistenceAfterSuccess(
+              dirty_contacts_expiry, dirty_contacts_failures);
           _store->loadContacts(this);
+          if (_store->hasPendingContactWrites()) {
+            mesh::scheduleLazyPersistenceMutation(
+                dirty_contacts_expiry, dirty_contacts_failures,
+                futureMillis(LAZY_CONTACTS_WRITE_DELAY));
+          }
           updateGpsTelemetryPolicy();
         } else {
           writeErrFrame(ERR_CODE_FILE_IO_ERROR);
@@ -4819,21 +4833,110 @@ static bool save_filter(const ContactInfo& c) {
 
 void MyMesh::saveContacts() {
   const bool success = _store->saveContacts(this, save_filter);
-  dirty_contacts_expiry = (!success || _store->hasPendingContactWrites())
-      ? futureMillis(1000) : 0;
+  if (!success) {
+    scheduleContactWriteRetry();
+  } else if (_store->hasPendingContactWrites()) {
+    dirty_contacts_failures = 0;
+    dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
+        futureMillis(CONTACT_PAGE_WRITE_GAP));
+  } else {
+    mesh::resetLazyPersistenceAfterSuccess(
+        dirty_contacts_expiry, dirty_contacts_failures);
+  }
+}
+
+void MyMesh::scheduleContactWriteRetry() {
+  const uint32_t retry_delay = mesh::recordLazyPersistenceSaveFailure(
+      dirty_contacts_failures, LAZY_CONTACTS_WRITE_DELAY,
+      mesh::LAZY_PERSISTENCE_MAX_RETRY_DELAY_MILLIS);
+  mesh::completeLazyPersistenceSave(
+      dirty_contacts_expiry, false, futureMillis(retry_delay));
+  MESH_DEBUG_PRINTLN("Contact persistence failed; retry in %lu ms",
+                     (unsigned long)retry_delay);
+}
+
+bool MyMesh::isContactWriteDue() const {
+  // Read the clock once. Two separate reads can straddle the exact deadline
+  // and make both equality and the library's strict-after test return false.
+  const uint32_t now = _ms->getMillis();
+  return dirty_contacts_expiry != 0
+      && (int32_t)(now - dirty_contacts_expiry) >= 0;
+}
+
+bool MyMesh::flushContactsBeforeReboot() {
+  // Non-nRF stores use the legacy monolithic file and therefore do not report
+  // dirty pages. The lazy-write deadline still proves that RAM may be newer.
+  if (!dirty_contacts_expiry && !_store->hasPendingContactWrites()) return true;
+  if (!_store->flushContactWrites(this, save_filter)) {
+    scheduleContactWriteRetry();
+    return false;
+  }
+  mesh::resetLazyPersistenceAfterSuccess(
+      dirty_contacts_expiry, dirty_contacts_failures);
+  return true;
+}
+
+bool MyMesh::prepareForOtaReboot() {
+  // Once a write has failed, honor its bounded retry deadline instead of
+  // letting the armed OTA apply hammer the same filesystem every loop.
+  if (dirty_contacts_failures != 0 && dirty_contacts_expiry != 0
+      && !isContactWriteDue()) {
+    return false;
+  }
+  return flushContactsBeforeReboot();
+}
+
+bool MyMesh::prepareForUiShutdown() {
+  return flushContactsBeforeReboot();
 }
 
 void MyMesh::scheduleContactWrite(const ContactInfo& contact) {
   if (_store->markContactDirty(contact)) {
-    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+    mesh::scheduleLazyPersistenceMutation(
+        dirty_contacts_expiry, dirty_contacts_failures,
+        futureMillis(LAZY_CONTACTS_WRITE_DELAY));
   }
 }
 
 void MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact) {
   if (_store->releaseContact(contact)) {
-    dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
+    mesh::scheduleLazyPersistenceMutation(
+        dirty_contacts_expiry, dirty_contacts_failures,
+        futureMillis(LAZY_CONTACTS_WRITE_DELAY));
   }
 }
+
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+void MyMesh::repairInternalExtraFS(Stream& output) {
+  // Always run the store-level operation. When the 100 KiB ExtraFS is already
+  // active this is a non-destructive retry of any incomplete migration, not a
+  // format. Do not overwrite it from RAM until every authoritative source file
+  // has been copied, verified, and retired from primary storage.
+  if (!_store->repairInternalExtraFS()) {
+    output.println("  Error: internal ExtraFS repair/migration failed; retry repair extrafs");
+    return;
+  }
+
+  const bool contacts_saved = _store->saveContacts(this, save_filter);
+  const bool channels_saved = saveChannels();
+  const bool capacity_ready = _store->getStorageTotalKb() == 100;
+  if (contacts_saved && channels_saved && capacity_ready
+      && !_store->hasPendingContactWrites()) {
+    mesh::resetLazyPersistenceAfterSuccess(
+        dirty_contacts_expiry, dirty_contacts_failures);
+    output.printf("  > internal ExtraFS repaired (%lu KiB); contacts and channels rebuilt\n",
+                  (unsigned long)_store->getStorageTotalKb());
+  } else {
+    if (!contacts_saved || _store->hasPendingContactWrites()) {
+      scheduleContactWriteRetry();
+    } else {
+      mesh::resetLazyPersistenceAfterSuccess(
+          dirty_contacts_expiry, dirty_contacts_failures);
+    }
+    output.println("  Error: ExtraFS is active, but data rebuild/verification failed; retry repair extrafs");
+  }
+}
+#endif
 
 bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
   if (!board.canControlLoRaFemLna()) return false;
@@ -6347,6 +6450,10 @@ void MyMesh::handleTerminalCommand(char* command) {
   } else if (strcmp(command, "reboot") == 0) {
     terminalOutput().print("  OK - rebooting in 1 second\r\n");
     _scheduled_reboot_at = futureMillis(1000);
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+  } else if (strcmp(command, "repair extrafs") == 0) {
+    repairInternalExtraFS(terminalOutput());
+#endif
   } else if (strcmp(command, "ver") == 0) {
     terminalOutput().printf("Companion %s (protocol %u, build %s)\r\n",
                   FIRMWARE_VERSION, (unsigned)FIRMWARE_VER_CODE, FIRMWARE_BUILD_DATE);
@@ -6421,6 +6528,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  public <text>\r\n");
     terminalOutput().print("  channels\r\n");
     terminalOutput().print("  channel <name-or-slot> <text>\r\n");
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+    terminalOutput().print("  repair extrafs (erases/rebuilds internal ExtraFS)\r\n");
+#endif
 #if COMPANION_FEATURE_TEMP_RADIO || COMPANION_FEATURE_OTA_CLI
 #if COMPANION_FEATURE_TEMP_RADIO
     terminalOutput().print("  tempradio [freq,bw,sf,cr,minutes]\r\n");
@@ -6631,14 +6741,33 @@ void MyMesh::checkCLIRescueCmd() {
     if (handleCommand(cli_command, 0, reply_buf)) {
       // command was handled, print reply output
       output.print("  "); output.print(reply_buf); output.println();
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+    } else if (strcmp(cli_command, "repair extrafs") == 0) {
+      repairInternalExtraFS(output);
+#endif
     } else if (strcmp(cli_command, "rebuild") == 0) {
       bool success = _store->formatFileSystem();
       if (success) {
-        _store->saveMainIdentity(self_id);
-        savePrefs();
-        saveContacts();
-        saveChannels();
-        output.println("  > erase and rebuild done");
+        const bool identity_saved = _store->saveMainIdentity(self_id);
+        const bool prefs_saved = savePrefs();
+        const bool contacts_saved = _store->saveContacts(this, save_filter);
+        const bool channels_saved = saveChannels();
+        const bool contacts_complete =
+            contacts_saved && !_store->hasPendingContactWrites();
+
+        if (contacts_complete) {
+          mesh::resetLazyPersistenceAfterSuccess(
+              dirty_contacts_expiry, dirty_contacts_failures);
+        } else {
+          scheduleContactWriteRetry();
+        }
+
+        if (identity_saved && prefs_saved && contacts_complete
+            && channels_saved) {
+          output.println("  > erase and rebuild done");
+        } else {
+          output.println("  Error: erase succeeded, but data rebuild failed; retry rebuild");
+        }
       } else {
         output.println("  Error: erase failed");
       }
@@ -6717,24 +6846,33 @@ void MyMesh::checkCLIRescueCmd() {
         return;
       }
 
-      // log file content as hex
-      File file = _store->openRead(path);
-      if (is_fs2 == true) {
-        file = _store->openRead(_store->getSecondaryFS(), path);
-      }
-      if(file){
+      // A corrupt internal ExtraFS is deliberately quarantined until the
+      // explicit repair command runs. Never pass that null secondary pointer
+      // into the raw filesystem helpers while it is unavailable.
+      FILESYSTEM* selected_fs = is_fs2
+          ? _store->getSecondaryFS()
+          : _store->getPrimaryFS();
+      if (selected_fs == nullptr) {
+        output.println("ExtraFS is unavailable; run repair extrafs first");
+      } else {
+        // log file content as hex
+        File file = _store->openRead(selected_fs, path);
+        if(file){
 
-        // get file content
-        int file_size = file.available();
-        uint8_t buffer[file_size];
-        file.read(buffer, file_size);
+          // Stream the dump in bounded chunks. An ExtraFS file can be much
+          // larger than the nRF52 task stack, so never allocate file.size()
+          // bytes on the stack here.
+          uint8_t buffer[64];
+          while (file.available() > 0) {
+            const int count = file.read(buffer, sizeof(buffer));
+            if (count <= 0) break;
+            mesh::Utils::printHex(output, buffer, count);
+          }
+          output.print("\n");
 
-        // print hex
-        mesh::Utils::printHex(output, buffer, file_size);
-        output.print("\n");
+          file.close();
 
-        file.close();
-
+        }
       }
 
     } else if (memcmp(cli_command, "rm ", 3) == 0) {
@@ -6754,24 +6892,32 @@ void MyMesh::checkCLIRescueCmd() {
       }
 
         // remove file
-        bool removed;
-        if (is_fs2) {
-          MESH_DEBUG_PRINTLN("Removing file from ExtraFS: %s", path);
-          removed = _store->removeFile(_store->getSecondaryFS(), path);
+        FILESYSTEM* selected_fs = is_fs2
+            ? _store->getSecondaryFS()
+            : _store->getPrimaryFS();
+        if (selected_fs == nullptr) {
+          output.println("ExtraFS is unavailable; run repair extrafs first");
         } else {
-          MESH_DEBUG_PRINTLN("Removing file from UserData: %s", path);
-          removed = _store->removeFile(path);
-        }
-        if(removed){
-          output.println("File removed");
-        } else {
-          output.println("Failed to remove file");
+          if (is_fs2) {
+            MESH_DEBUG_PRINTLN("Removing file from ExtraFS: %s", path);
+          } else {
+            MESH_DEBUG_PRINTLN("Removing file from UserData: %s", path);
+          }
+          if (_store->removeFile(selected_fs, path)) {
+            output.println("File removed");
+          } else {
+            output.println("Failed to remove file");
+          }
         }
 
       }
 
     } else if (strcmp(cli_command, "reboot") == 0) {
-      board.reboot();  // doesn't return
+      if (flushContactsBeforeReboot()) {
+        board.reboot();  // doesn't return
+      } else {
+        output.println("  Error: pending contacts could not be saved; reboot cancelled");
+      }
     } else {
       output.println("  Error: unknown command");
     }
@@ -6817,9 +6963,14 @@ void MyMesh::loop() {
   if (_mqtt_bridge) _mqtt_bridge->servicePendingClockCorrection();
 #endif
   if (_scheduled_reboot_at != 0
-      && millisHasNowPassed(_scheduled_reboot_at)) {
+      && (_scheduled_reboot_at == _ms->getMillis()
+          || millisHasNowPassed(_scheduled_reboot_at))) {
     _scheduled_reboot_at = 0;
-    board.reboot();
+    if (flushContactsBeforeReboot()) {
+      board.reboot();
+    } else {
+      MESH_DEBUG_PRINTLN("Scheduled reboot cancelled: pending contacts could not be saved");
+    }
     return;
   }
 #if COMPANION_FEATURE_TEMP_RADIO
@@ -6874,12 +7025,17 @@ void MyMesh::loop() {
   servicePendingRadioParamApply();
 
   // is there are pending dirty contacts write needed?
-  if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {
+  if (isContactWriteDue()) {
     const bool success = _store->serviceContactWrites(this, save_filter);
-    if (!success || _store->hasPendingContactWrites()) {
-      dirty_contacts_expiry = futureMillis(success ? CONTACT_PAGE_WRITE_GAP : 1000);
+    if (!success) {
+      scheduleContactWriteRetry();
+    } else if (_store->hasPendingContactWrites()) {
+      dirty_contacts_failures = 0;
+      dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
+          futureMillis(CONTACT_PAGE_WRITE_GAP));
     } else {
-      dirty_contacts_expiry = 0;
+      mesh::resetLazyPersistenceAfterSuccess(
+          dirty_contacts_expiry, dirty_contacts_failures);
     }
   }
 
@@ -6908,16 +7064,30 @@ bool MyMesh::hasPendingWork() const {
   if (_radio_available
       && (radio_driver.isWatchdogObserving()
           || radio_driver.isCalibratingNoiseFloor())) return true;
+#if defined(NRF52_PLATFORM)
+  // nRF52 sleep is event-driven, so a future lazy-write deadline has no
+  // guaranteed interrupt to wake the loop when it becomes due. Keep polling
+  // through the initial write. After an actual storage failure, allow sleep
+  // during the bounded backoff; the next BLE/radio/GPIO event services an
+  // overdue retry without losing the dirty-page state.
+  const bool contact_write_needs_polling = dirty_contacts_expiry != 0
+      && (dirty_contacts_failures == 0
+          || isContactWriteDue());
+#else
+  const bool contact_write_needs_polling = isContactWriteDue();
+#endif
   return (_serial != NULL && _serial->hasPendingIO())
       || (_iter_started && _serial != NULL && _serial->isConnected())
+      || hasPendingOtaApply()
       || command_radio_apply_pending
+      || _scheduled_reboot_at != 0
       || pending_serial_reply_route != NULL
       || binary_trace_pending
       || sign_data != NULL
       || hasQueuedWorkDue() || hasRetryWorkDue()
       || (saved_radio_apply_pending
           && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))
-      || (dirty_contacts_expiry != 0 && millisHasNowPassed(dirty_contacts_expiry))
+      || contact_write_needs_polling
       || (emergency_client_repeat_packet != NULL
           && millisHasNowPassed(emergency_client_repeat_send_at))
 #if COMPANION_FEATURE_TEMP_RADIO

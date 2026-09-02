@@ -1358,6 +1358,7 @@ uint32_t SensorMesh::limitSleepToMillisTimer(unsigned long timestamp,
 }
 
 bool SensorMesh::hasPendingWork() const {
+  if (hasPendingOtaApply()) return true;
   if (_cli.hasActiveUserGpioTimer()) return true;
   if (radio_driver.isWatchdogObserving()) return true;
   if (radio_driver.isCalibratingNoiseFloor()) return true;

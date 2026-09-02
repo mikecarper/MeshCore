@@ -277,6 +277,14 @@ void Mesh::loop() {
 #endif
 }
 
+bool Mesh::hasPendingOtaApply() const {
+#if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
+  return ota::ota_ctx().apply_pending;
+#else
+  return false;
+#endif
+}
+
 void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
   if (_waiting_direct_retry_count != 0
       && millisHasNowPassed(_next_direct_retry_timeout)) {
@@ -335,8 +343,17 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
         oc.apply_hard = futureMillis(15000);
       } else if (millisHasNowPassed(oc.apply_at) &&
                  (_mgr->getOutboundTotal() == 0 || millisHasNowPassed(oc.apply_hard))) {
-        if (oc.bootloader_apply_pending) ota::ota_reboot_to_bootloader_update();
-        else                             ota::ota_reboot_to_apply();
+        if (!prepareForOtaReboot()) {
+          // A role-specific persistence flush failed or is in bounded
+          // backoff. Keep the verified apply armed without hammering storage
+          // on every pass through the event loop.
+          oc.apply_at = futureMillis(1000);
+          oc.apply_hard = futureMillis(15000);
+        } else if (oc.bootloader_apply_pending) {
+          ota::ota_reboot_to_bootloader_update();
+        } else {
+          ota::ota_reboot_to_apply();
+        }
       }
     }
   }

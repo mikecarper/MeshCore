@@ -26,14 +26,28 @@ enum class UIEventType {
     ack
 };
 
+class UIShutdownGuard {
+public:
+  virtual ~UIShutdownGuard() = default;
+  virtual bool prepareForUiShutdown() = 0;
+};
+
 class AbstractUITask {
 protected:
   mesh::MainBoard* _board;
   MultiSerialInterface* _interfaceManager;
+  UIShutdownGuard* _shutdownGuard;
   bool _connected;
 
-  AbstractUITask(mesh::MainBoard* board, MultiSerialInterface* interfaceManager) : _board(board), _interfaceManager(interfaceManager) {
+  AbstractUITask(mesh::MainBoard* board, MultiSerialInterface* interfaceManager)
+      : _board(board), _interfaceManager(interfaceManager),
+        _shutdownGuard(nullptr) {
     _connected = false;
+  }
+
+  bool prepareForShutdown() {
+    return _shutdownGuard == nullptr
+        || _shutdownGuard->prepareForUiShutdown();
   }
 
   bool isDisplayAutoOffDue(unsigned long configured_deadline,
@@ -58,6 +72,7 @@ protected:
   }
 
 public:
+  void setShutdownGuard(UIShutdownGuard* guard) { _shutdownGuard = guard; }
   void setHasConnection(bool connected) { _connected = connected; }
   bool hasConnection() const { return _connected; }
   bool hasBluetoothConnection() const { return _interfaceManager->isBluetoothConnected(); }

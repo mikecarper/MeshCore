@@ -87,12 +87,10 @@ bool ota_apply_verify_slot(ApplyState& st) {
   return st.slot_ok;
 }
 
-bool ota_apply_commit() {
+bool ota_apply_arm() {
   const esp_partition_t* p = esp_ota_get_next_update_partition(nullptr);
   if (!p) return false;
-  if (esp_ota_set_boot_partition(p) != ESP_OK) return false;
-  esp_restart();   // does not return
-  return true;
+  return esp_ota_set_boot_partition(p) == ESP_OK;
 }
 
 // --- detools callback context -----------------------------------------------------------------
@@ -457,7 +455,7 @@ static bool parse_inplace_patch_dims(const uint8_t* payload, uint32_t payload_le
 bool ota_apply_slot_info(uint32_t*, uint32_t*) { return false; }
 bool ota_apply_set_manifest(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st) { st = ApplyState(); return false; }
 bool ota_apply_verify_slot(ApplyState&) { return false; }
-bool ota_apply_commit() { return false; }
+bool ota_apply_arm() { return false; }
 bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) { st = ApplyState(); strcpy(msg, "use ota_apply_mota_nrf52"); return false; }
 
 void ota_reboot_to_apply() {                   // public: set the apply magic + reset (does not return)
@@ -1092,7 +1090,7 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
 bool ota_apply_slot_info(uint32_t*, uint32_t*) { return false; }
 bool ota_apply_set_manifest(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st) { st = ApplyState(); return false; }
 bool ota_apply_verify_slot(ApplyState&) { return false; }
-bool ota_apply_commit() { return false; }
+bool ota_apply_arm() { return false; }
 bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) { st = ApplyState(); strcpy(msg, "unsupported"); return false; }
 bool ota_apply_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) { st = ApplyState(); strcpy(msg, "unsupported"); return false; }
 bool ota_rescue_mota_nrf52(const uint8_t*, uint32_t, const SignerAllowlist&, const uint8_t*,

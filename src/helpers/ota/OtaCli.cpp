@@ -1160,8 +1160,15 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       sprintf(reply, "slot image_hash %s (size=%u)", ok ? "MATCH" : "MISMATCH", (unsigned)c.apply_st.image_size);
     } else if (strncmp(sub, "commit", 6) == 0) {
       if (!c.apply_st.slot_ok) { strcpy(reply, "ERR run 'ota dev apply verify' first (slot must match)"); return true; }
-      ota_apply_commit();                 // set boot partition + reboot; no return
-      strcpy(reply, "ERR commit failed (no A/B slot?)");
+      if (c.apply_pending) { strcpy(reply, "ERR update is already armed; reboot is pending"); return true; }
+      if (!ota_apply_arm()) { strcpy(reply, "ERR commit failed (no A/B slot?)"); return true; }
+      // Use the same deferred path as ordinary installs: it lets this reply
+      // drain, then Mesh invokes prepareForOtaReboot() before the reset.
+      c.bootloader_apply_pending = false;
+      c.apply_at = 0;
+      c.apply_hard = 0;
+      c.apply_pending = true;
+      strcpy(reply, "OK slot armed; guarded reboot pending");
     } else {
       strcpy(reply, "ERR ota dev apply (slot|manifest|verify|commit)");
     }

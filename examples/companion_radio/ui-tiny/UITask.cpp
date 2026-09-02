@@ -618,6 +618,7 @@ void UITask::servicePairingState() {
   hardware-agnostic pre-shutdown activity should be done here
 */
 void UITask::shutdown(bool restart){
+  if (!prepareForShutdown()) return;
 
   #ifdef PIN_BUZZER
   /* note: we have a choice here -

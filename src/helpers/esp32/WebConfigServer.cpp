@@ -1143,10 +1143,14 @@ void WebConfigServer::tick(uint32_t now) {
   }
 
   if (WebConfigBatch::rebootDue(_reboot_at, now)) {
+    // rebootNow() can return when its pre-reboot persistence flush fails.
+    // Consume this request first so a full filesystem cannot turn tick() into
+    // a tight loop of repeated flush attempts.
+    _reboot_at = 0;
     mesh::usbLoggingPort().printf(
         "WC: rebooting now (%s)\n",
         _batch_reboot_armed ? "confirmed" : "fallback");
-    _cb->rebootNow();  // does not return
+    _cb->rebootNow();
   }
 
   if ((int32_t)(_diag_until - now) > 0 && (now - _diag_last) >= 1000) {

@@ -162,6 +162,8 @@ static bool isNetworkTerminalActive();
   #else
     #if defined(EXTRAFS)
       #include <CustomLFS.h>
+      #include <helpers/nrf52/InternalSecondaryFsRepair.h>
+      extern "C" uint32_t __flash_arduino_end[];
       CustomLFS ExtraFS(0xD4000, 0x19000, 128);
       DataStore store(InternalFS, ExtraFS, rtc_clock);
     #else
@@ -2090,7 +2092,50 @@ void setup() {
     }
   #else
   #if defined(EXTRAFS)
-      ExtraFS.begin();
+      const bool extra_fs_geometry_valid =
+          mesh::storage::isExpectedInternalExtraFsGeometry(
+              ExtraFS.getFlashAddr(), ExtraFS.getFlashSize(),
+              ExtraFS.getBlockSize())
+          && mesh::storage::isInternalExtraFsReservedByApplication(
+              (uint32_t)(uintptr_t)__flash_arduino_end);
+      mesh::storage::InternalSecondaryFsBootResult extra_fs_boot =
+          mesh::storage::InternalSecondaryFsBootResult::InitializationFailed;
+      if (extra_fs_geometry_valid) {
+        extra_fs_boot = mesh::storage::prepareInternalSecondaryFilesystem(
+            []() -> bool {
+              // Bypass CustomLFS::begin(), whose mount-failure path erases
+              // nonblank media before DataStore can quarantine it.
+              return ExtraFS.Adafruit_LittleFS::begin();
+            },
+            []() -> bool {
+              const volatile uint32_t* word =
+                  reinterpret_cast<const volatile uint32_t*>(
+                      mesh::storage::INTERNAL_EXTRAFS_START);
+              for (uint32_t offset = 0;
+                   offset < mesh::storage::INTERNAL_EXTRAFS_SIZE;
+                   offset += sizeof(uint32_t), word++) {
+                if (*word != 0xFFFFFFFFUL) return false;
+              }
+              return true;
+            },
+            []() -> bool {
+              ExtraFS.end();
+              return ExtraFS.format();
+            });
+      }
+      if (!extra_fs_geometry_valid
+          || extra_fs_boot == mesh::storage::InternalSecondaryFsBootResult::PreservedNonBlank
+          || extra_fs_boot == mesh::storage::InternalSecondaryFsBootResult::InitializationFailed) {
+        if (!extra_fs_geometry_valid) {
+          MESH_DEBUG_PRINTLN("CustomLFS: internal ExtraFS geometry is not 100 KiB; refusing to mount or erase it");
+        } else if (extra_fs_boot
+                   == mesh::storage::InternalSecondaryFsBootResult::PreservedNonBlank) {
+          MESH_DEBUG_PRINTLN("CustomLFS: internal ExtraFS mount failed; preserving nonblank media and using primary storage");
+        } else {
+          MESH_DEBUG_PRINTLN("CustomLFS: blank internal ExtraFS initialization failed; using primary storage");
+        }
+        store.disableSecondaryFS();
+      }
   #endif
   #endif
   store.begin();

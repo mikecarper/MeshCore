@@ -18,6 +18,10 @@ public:
 class DataStore {
   FILESYSTEM* _fs;
   FILESYSTEM* _fsExtra;
+  // Keep the configured secondary even when normal I/O falls back to the
+  // primary filesystem. An explicit local repair/factory reset must still be
+  // able to address the inactive on-chip ExtraFS.
+  FILESYSTEM* _configuredFsExtra;
   mesh::RTCClock* _clock;
   IdentityStore identity_store;
 
@@ -35,6 +39,9 @@ class DataStore {
                         bool (*filter)(const ContactInfo& c));
   bool truncateLegacyContacts(uint16_t remaining_contacts);
   void resetContactPageState();
+#if defined(EXTRAFS) && !defined(QSPIFLASH)
+  bool reinitializeInternalExtraFS();
+#endif
 #endif
 
   void loadPrefsInt(const char *filename, CompanionNodePrefs& prefs, double& node_lat, double& node_lon);
@@ -47,6 +54,7 @@ public:
   DataStore(FILESYSTEM& fs, FILESYSTEM& fsExtra, mesh::RTCClock& clock);
   void begin();
   bool formatFileSystem();
+  bool repairInternalExtraFS();
   FILESYSTEM* getPrimaryFS() const { return _fs; }
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
   void disableSecondaryFS() { _fsExtra = nullptr; }
@@ -62,8 +70,8 @@ public:
   bool flushContactWrites(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool hasPendingContactWrites() const;
   void loadChannels(DataStoreHost* host);
-  void saveChannels(DataStoreHost* host);
-  void migrateToSecondaryFS();
+  bool saveChannels(DataStoreHost* host);
+  bool migrateToSecondaryFS();
   uint8_t getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]);
   bool putBlobByKey(const uint8_t key[], int key_len, const uint8_t src_buf[], uint8_t len);
   bool deleteBlobByKey(const uint8_t key[], int key_len);

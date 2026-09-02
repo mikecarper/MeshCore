@@ -2678,6 +2678,7 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+  if (hasPendingOtaApply()) return true;
 #if defined(WITH_BRIDGE)
   if (bridge && bridge->isRunning()) return true; // bridge needs WiFi radio, can't sleep
 #endif

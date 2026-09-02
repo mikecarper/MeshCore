@@ -12566,6 +12566,7 @@ bool MyMesh::startNeighborDiscover(char* reply) {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+  if (hasPendingOtaApply()) return true;
   if (deferred_cli_command.pending || pending_self_advert || _cli.hasActiveUserGpioTimer()) return true;
 #if defined(WITH_BRIDGE)
   const AbstractBridge* active_bridge = activeBridge();

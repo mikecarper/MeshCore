@@ -54,7 +54,10 @@ bool ota_apply_slot_info(uint32_t* addr, uint32_t* size);                 // the
 bool ota_apply_set_manifest(const uint8_t* mf, uint32_t len,
                             const SignerAllowlist& allow, ApplyState& st); // parse + verify signature
 bool ota_apply_verify_slot(ApplyState& st);                              // hash the slot vs image_hash
-bool ota_apply_commit();                                                 // set-boot + reboot (no return)
+// Select the verified A/B slot for the next boot without rebooting inline. The
+// caller must arm OtaContext::apply_pending so Mesh can drain the command reply
+// and run its role-specific persistence guard before ota_reboot_to_apply().
+bool ota_apply_arm();
 
 // Apply an ESP32 A/B `.mota` (CODEC_DETOOLS_SEQUENTIAL delta or CODEC_FULL image) and arm the inactive
 // slot; the caller reboots after the confirmation reply. `msg` (>=80 bytes) receives a human-readable

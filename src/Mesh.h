@@ -190,6 +190,13 @@ class Mesh : public Dispatcher {
   DispatcherAction forwardMultipartDirect(Packet* pkt);
 
 protected:
+  // Roles with lazily persisted state can veto an OTA reset until that state
+  // is durable. The OTA apply remains armed and is retried later.
+  virtual bool prepareForOtaReboot() { return true; }
+  // Power-saving roles must stay runnable while the deferred OTA reboot grace
+  // period (or a persistence retry) is pending. On nRF52, board.sleep() has no
+  // timer wake and could otherwise strand an already-approved update.
+  bool hasPendingOtaApply() const;
   DispatcherAction onRecvPacket(Packet* pkt) override;
   void onTracePacketQueuedForSend(Packet* packet) override;
   void onSendComplete(Packet* packet) override;
