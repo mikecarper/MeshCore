@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -22,6 +24,25 @@ LGFX_DISPLAY_CPP = ROOT / "src" / "helpers" / "ui" / "LGFXDisplay.cpp"
 WEBCONFIG_HEADER = ROOT / "src" / "helpers" / "esp32" / "WebConfigServer.h"
 WEBCONFIG_SOURCE = ROOT / "src" / "helpers" / "esp32" / "WebConfigServer.cpp"
 WIFI_QR_PAYLOAD = ROOT / "src" / "helpers" / "ui" / "WiFiSetupQrPayload.h"
+
+
+def find_bash():
+    # The legacy WindowsApps bash.exe bridge drops shell positional arguments
+    # and expands variables incorrectly. Prefer Git for Windows' real Bash;
+    # other platforms use the normal PATH lookup.
+    if os.name == "nt":
+        git_bash = (
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+            / "Git"
+            / "bin"
+            / "bash.exe"
+        )
+        if git_bash.is_file():
+            return str(git_bash)
+    return shutil.which("bash") or "bash"
+
+
+BASH = find_bash()
 
 
 class IndicatorRenderProfileTest(unittest.TestCase):
@@ -308,7 +329,7 @@ int main() {
     def test_explicit_usa_cascadia_and_cascade_build_flags(self):
         command = r'''
 set -e
-source "$1"
+source ./build.sh
 PLATFORMIO_BUILD_FLAGS=""
 RADIO_FREQ_OVERRIDE=910.525
 RADIO_BW_OVERRIDE=62.5
@@ -320,7 +341,8 @@ apply_firmware_profile_overrides
 printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
 '''
         result = subprocess.run(
-            ["bash", "-c", command, "test", str(BUILD)],
+            [BASH, "-c", command],
+            cwd=ROOT,
             text=True,
             capture_output=True,
             check=False,
@@ -353,7 +375,7 @@ printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
     def test_non_usa_radio_does_not_enable_wizard_skip(self):
         command = r'''
 set -e
-source "$1"
+source ./build.sh
 PLATFORMIO_BUILD_FLAGS=""
 RADIO_SETTING_TITLE="Australia"
 RADIO_FREQ_OVERRIDE=915.800
@@ -364,7 +386,8 @@ apply_radio_overrides
 printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
 '''
         result = subprocess.run(
-            ["bash", "-c", command, "test", str(BUILD)],
+            [BASH, "-c", command],
+            cwd=ROOT,
             text=True,
             capture_output=True,
             check=False,

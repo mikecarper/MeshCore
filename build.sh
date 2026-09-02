@@ -3980,6 +3980,15 @@ build_firmware() {
         "scripts/esp32_full_partition.py"; then
       append_platformio_extra_script "pre:scripts/esp32_full_partition.py"
     fi
+    # PlatformIO appends PLATFORMIO_BUILD_FLAGS while resolving every extends
+    # layer. Deep ESP32 Full profiles can therefore exceed Windows' process
+    # command-line limit before GCC can launch cc1plus. Compact repeated macro
+    # flags and Windows include paths after all profiles are resolved.
+    if ! pio_env_option_contains "$pio_env_name" extra_scripts \
+        "scripts/deduplicate_full_build_flags.py"; then
+      append_platformio_extra_script \
+        "pre:scripts/deduplicate_full_build_flags.py"
+    fi
   else
     unset MESHCORE_ESP32_FULL_BUILD
     unset MESHCORE_COMPANION_RADIO_FULL
