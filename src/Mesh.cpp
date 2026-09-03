@@ -892,14 +892,15 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       bool seen = _tables->wasSeen(pkt);
       if (!seen) _tables->markSeen(pkt);
       ota::ota_ctx().manager.set_clock(_ms->getMillis());                 // discovery jitter/ages
-      ota::ota_ctx().manager.on_message(pkt->payload, pkt->payload_len);  // central OTA receive (beacon/query/
+      bool terminal_ota = ota::ota_ctx().manager.terminallyConsumes(pkt->payload, pkt->payload_len);
+      ota::ota_ctx().on_message(pkt->payload, pkt->payload_len);          // central OTA receive (beacon/query/
                                                                          // have/manifest/data/proof; all roles)
       ota::ota_ctx().track_session(ota::ota_ctx().manager.fetchState(), _ms->getMillis());
       onOtaRecv(pkt);                                                     // optional per-example hook
       // Re-flood at the LOWEST priority and only while still under the hop limit, so OTA never competes with
       // mesh traffic. The free-pool guard keeps heavy OTA from monopolising the shared packet pool - dropping
       // a relay is safe (OTA is best-effort; the source retries).
-      if (!seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
+      if (!terminal_ota && !seen && pkt->isRouteFlood() && !pkt->isMarkedDoNotRetransmit()
           && n < getOtaHopLimit()
           && (n + 1) * pkt->getPathHashSize() <= MAX_PATH_SIZE
           && _mgr->getFreeCount() > OTA_FWD_MIN_FREE

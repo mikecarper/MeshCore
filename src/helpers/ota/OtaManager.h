@@ -101,7 +101,10 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #define OTA_SERVE_SUPPRESS_MS 1500  // don't re-serve a block whose DATA we just overheard another holder send
 #endif                              // (so multiple sources of the same mota don't duplicate-broadcast it)
 #ifndef OTA_FRAG_DATA
-#define OTA_FRAG_DATA 160           // data bytes per DATA fragment (<= MAX_PACKET_PAYLOAD - 9-byte header)
+#define OTA_FRAG_DATA 160           // deployed legacy DATA geometry; never change in place
+#endif
+#ifndef OTA_FRAG_DATA_V2
+#define OTA_FRAG_DATA_V2 171        // negotiated DATA geometry (13-byte overhead => 184-byte packet payload)
 #endif
 #ifndef OTA_PROOF_GRACE_MS
 #define OTA_PROOF_GRACE_MS 500      // wait for a proactive proof before the legacy REQ_PROOF fallback
@@ -287,6 +290,12 @@ public:
   // This node's id (pubkey[0:4]), stamped into adverts we send so receivers can count distinct seeders.
   void set_seeder_id(const uint8_t* id4) { if (id4) for (int i = 0; i < 4; i++) _seeder_id[i] = id4[i]; }
 
+  // True when this node is the source or destination for a bulk message. The
+  // mesh adapter uses this to avoid re-flooding traffic already consumed here.
+  bool terminallyConsumes(const uint8_t* msg, uint16_t len);
+  // Exact logical length of a block this receiver currently requested, or zero for unsolicited DATA.
+  // Used by the historical transport shim without exposing or changing the manager's reassembly buffers.
+  uint16_t requestedBlockLength(const uint8_t* manifest_id, uint16_t block) const;
   void on_message(const uint8_t* msg, uint16_t len);   // feed one received OTA message
   void loop();                                         // drive fetch (re-request missing blocks)
 

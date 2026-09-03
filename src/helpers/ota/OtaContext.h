@@ -3,6 +3,7 @@
 #include <stdio.h>          // snprintf (hw_id mismatch message)
 #include <string.h>         // strncmp/strncpy (hw_id)
 #include "OtaManager.h"
+#include "OtaDeflate.h"
 #include "OtaStore.h"
 #include "SignerAllowlist.h"
 #include "OtaApply.h"
@@ -54,6 +55,7 @@ class FolderMotaStore;   // pull destination over the seeder link (full type onl
 
 struct OtaContext {
   OtaManager manager;
+  OtaTransportInflateReceiver transport_inflate;
 #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
   OtaStoreFlashNrf52 fetch_store;            // persistent flash staging (survives reboot; large deltas)
 #elif defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
@@ -204,6 +206,10 @@ struct OtaContext {
     }
   }
 
+  void on_message(const uint8_t* msg, uint16_t len) {
+    transport_inflate.on_message(msg, len);
+  }
+
   void begin(uint32_t target_id, OtaSend send, void* ctx, const char* hw = nullptr) {
     // Prefer the firmware's SELF-DESCRIBING EndF identity (docs Section 2) over the build-flag values the caller
     // passed - it's correct on any build (build.sh injection, bare IDE build, ...), so `ota ls`/`status`
@@ -213,7 +219,7 @@ struct OtaContext {
       if (_fi.target_id) target_id = _fi.target_id;
       if (_fi.hw_id[0]) hw = _fi.hw_id;
     }
-    manager.begin(target_id, send, ctx);
+    transport_inflate.begin(manager, target_id, send, ctx);
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }
     // a node only fetches firmware it can apply: ESP32 A/B -> sequential, nRF52 single-slot -> in-place
 #if defined(NRF52_PLATFORM)

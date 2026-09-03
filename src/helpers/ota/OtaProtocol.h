@@ -60,22 +60,78 @@ struct ManifestMsg {
 };
 
 // ---- OTA_REQ: request specific fragments of ONE block (direct) ----
-// body: manifest_id(4) block_idx(2) want_mask(2). want_mask bit k = "send fragment k" (the slice at byte
-// offset k*OTA_FRAG_DATA). A fetcher requests the full mask ((1<<nf)-1) for a fresh block and only the
-// missing bits to recover holes, so a lost fragment costs one fragment to re-send - not the whole block
-// (saves airtime and avoids the re-REQ colliding with a multi-fragment burst on half-duplex radios).
+// body: manifest_id(4) block_idx(2) want_mask(2). Legacy want_mask bit k = "send fragment k" (the slice at
+// byte offset k*OTA_FRAG_DATA). A recovery request uses only the missing bits. New receivers reserve bits
+// 15..14 as an in-band request profile: bit 15 asks for the v2 171-byte geometry and bit 14 permits per-block
+// raw DEFLATE. An old source masks those bits away and returns the ordinary 160-byte DATA train; the new
+// receiver detects that response and downgrades without stranding old fleets.
 struct ReqMsg { uint8_t manifest_id[4]; uint16_t block_idx; uint16_t want_mask; };
 
 // ---- OTA_DATA: one self-describing fragment of a block's data (proof is fetched separately) ----
 // body: manifest_id(4) block_idx(2) frag_off(2) data[]
-// `frag_off` is the byte offset of `data` within block `block_idx` (global position = block_idx*block_size
-// + frag_off), so a fragment is self-placing when received from the selected source.
+// Legacy `frag_off` is the byte offset of `data` within block `block_idx`. In negotiated v2 its high bit is
+// set and the field packs the wire encoding, fragment index, and total encoded size; data[] starts with
+// SHA-256:4 of the complete encoded representation, followed by up to 171 bytes. Repeating that id prevents
+// different seeders' valid-but-different DEFLATE streams from being mixed. The message type stays OTA_DATA,
+// so deployed opaque relays retain the same priority and forwarding behavior.
 struct DataMsg {
   uint8_t  manifest_id[4];
   uint16_t block_idx;
   uint16_t frag_off;
   const uint8_t* data; uint16_t data_len;
 };
+
+// OTA_REQ want_mask extension. These bits sit outside every valid fragment bit for <=1 KiB blocks. A first
+// v2 request deliberately includes all seven legacy fragment bits so an old source can answer it completely.
+static const uint16_t OTA_REQ_V2_MARK             = 0x8000u;
+static const uint16_t OTA_REQ_V2_ALLOW_DEFLATE    = 0x4000u;
+static const uint16_t OTA_REQ_V2_RESERVED         = 0x2000u;
+static const uint16_t OTA_REQ_V2_FRAGMENT_MASK    = 0x1FFFu;
+
+// OTA_DATA v2 frag_off packing:
+//   bit 15      v2 marker
+//   bit 14      data[] is one raw-RFC1951-DEFLATE stream fragment (clear = raw block bytes)
+//   bits 13..10 fragment index (0..15; byte offset = index * OTA_FRAG_DATA_V2)
+//   bits  9..0  total encoded block length minus one (1..1024 bytes)
+static const uint16_t OTA_DATA_V2_MARK             = 0x8000u;
+static const uint16_t OTA_DATA_V2_DEFLATED         = 0x4000u;
+static const uint16_t OTA_DATA_V2_FRAGMENT_BITS    = 0x3C00u;
+static const uint16_t OTA_DATA_V2_LENGTH_BITS      = 0x03FFu;
+static const uint8_t  OTA_DATA_V2_FRAGMENT_SHIFT   = 10;
+static const uint16_t OTA_DATA_V2_MAX_ENCODED      = 1024;
+static const uint8_t  OTA_DATA_V2_STREAM_ID_BYTES  = 4;
+
+inline bool ota_req_is_v2(uint16_t want_mask) {
+  return (want_mask & OTA_REQ_V2_MARK) != 0 && (want_mask & OTA_REQ_V2_RESERVED) == 0;
+}
+
+inline uint16_t ota_req_v2_fragments(uint16_t want_mask) {
+  return (uint16_t)(want_mask & OTA_REQ_V2_FRAGMENT_MASK);
+}
+
+inline uint16_t ota_req_make_v2(uint16_t fragments, bool allow_deflate) {
+  return (uint16_t)((fragments & OTA_REQ_V2_FRAGMENT_MASK) | OTA_REQ_V2_MARK |
+                    (allow_deflate ? OTA_REQ_V2_ALLOW_DEFLATE : 0));
+}
+
+inline bool ota_data_v2_pack(uint8_t fragment, uint16_t encoded_len, bool deflated,
+                             uint16_t& packed) {
+  if (fragment >= 16 || encoded_len == 0 || encoded_len > OTA_DATA_V2_MAX_ENCODED) return false;
+  packed = (uint16_t)(OTA_DATA_V2_MARK |
+      (deflated ? OTA_DATA_V2_DEFLATED : 0) |
+      ((uint16_t)fragment << OTA_DATA_V2_FRAGMENT_SHIFT) |
+      (encoded_len - 1u));
+  return true;
+}
+
+inline bool ota_data_v2_unpack(uint16_t packed, uint8_t& fragment, uint16_t& encoded_len,
+                               bool& deflated) {
+  if ((packed & OTA_DATA_V2_MARK) == 0) return false;
+  fragment = (uint8_t)((packed & OTA_DATA_V2_FRAGMENT_BITS) >> OTA_DATA_V2_FRAGMENT_SHIFT);
+  encoded_len = (uint16_t)((packed & OTA_DATA_V2_LENGTH_BITS) + 1u);
+  deflated = (packed & OTA_DATA_V2_DEFLATED) != 0;
+  return true;
+}
 
 // ---- OTA_GET_LEAVES: request the target's merkle leaves[] in bulk (direct; motatool warm-start only) ----
 // body: manifest_id(4) want_mask(2). want_mask bit k = "send leaves fragment k"; 0xFFFF = "send all" on the

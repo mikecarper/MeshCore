@@ -913,6 +913,42 @@ void OtaManager::loop() {
 
 // ---------------- dispatch ----------------
 
+uint16_t OtaManager::requestedBlockLength(const uint8_t* manifest_id, uint16_t block) const {
+  if (!manifest_id || !_fetch || _fstate != FETCHING || block >= _fbc ||
+      memcmp(manifest_id, _fid, sizeof(_fid)) != 0 || findReassemblySlot(block) < 0) return 0;
+  const uint32_t len = blockLen(block);
+  return len <= OTA_MAX_BLOCK ? (uint16_t)len : 0;
+}
+
+bool OtaManager::terminallyConsumes(const uint8_t* msg, uint16_t len) {
+  switch (ota_msg_type(msg, len)) {
+    case OTA_REQ: {
+      ReqMsg rq;
+      if (!decode_req(msg, len, rq)) return false;
+      ServeView* v = resolve(rq.manifest_id);
+      return v && rq.block_idx < v->m.block_count;
+    }
+    case OTA_REQ_PROOF: {
+      ReqProofMsg rp;
+      if (!decode_req_proof(msg, len, rp)) return false;
+      ServeView* v = resolve(rp.manifest_id);
+      return v && rp.block_idx < v->m.block_count;
+    }
+    case OTA_DATA: {
+      DataMsg dm;
+      return decode_data(msg, len, dm) && _fetch && _fstate != IDLE
+          && dm.block_idx < _fbc && memcmp(dm.manifest_id, _fid, 4) == 0;
+    }
+    case OTA_PROOF: {
+      ProofMsg pm;
+      return decode_proof(msg, len, pm) && _fetch && _fstate != IDLE
+          && pm.block_idx < _fbc && memcmp(pm.manifest_id, _fid, 4) == 0;
+    }
+    default:
+      return false;
+  }
+}
+
 void OtaManager::on_message(const uint8_t* msg, uint16_t len) {
   switch (ota_msg_type(msg, len)) {
     case OTA_ADV:          handleAdv(msg, len); break;
