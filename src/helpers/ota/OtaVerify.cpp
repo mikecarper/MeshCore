@@ -47,7 +47,7 @@ static VerifyResult ota_verify_store(const OtaStore& store,
   if (!mota_parse_manifest(manifest, sizeof(manifest), m)) return r;
   const uint32_t leaves_off = 8 + MOTA_MFL;
   const uint64_t payload_off64 = (uint64_t)leaves_off + (uint64_t)m.block_count * 4;
-  if (m.block_size() > OTA_DEFAULT_BLOCK_SIZE ||
+  if (m.block_size() > OTA_MAX_APPLICATION_BLOCK_SIZE ||
       payload_off64 > UINT32_MAX ||
       payload_off64 + m.payload_size + 5 != total) return r;
   const uint32_t payload_off = (uint32_t)payload_off64;

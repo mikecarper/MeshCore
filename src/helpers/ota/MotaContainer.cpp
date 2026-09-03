@@ -44,7 +44,9 @@ static bool parse_manifest_fields(ByteReader& r, MotaManifest& out) {
   out.approval       = r.take(4);
   if (!r.ok) return false;
   if (out.block_size_log2 == 0 || out.block_size_log2 > 24 || out.payload_size == 0) return false;
-  out.block_count = (out.payload_size + out.block_size() - 1) / out.block_size();
+  const uint32_t block_size = out.block_size();
+  out.block_count = out.payload_size / block_size +
+                    (out.payload_size % block_size != 0 ? 1u : 0u);
   if (out.is_bootloader()) {
     static const uint8_t zero_base[8] = {0};
     if (out.fw_version == 0 || out.codec_id != CODEC_FULL || out.image_size != 0xA000u ||

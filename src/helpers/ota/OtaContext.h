@@ -128,7 +128,7 @@ struct OtaContext {
   // flash-backed self-serve: cached merkle leaves (heap, freed on re-serve) + assembled manifest of our
   // own running firmware. The payload is read from flash per block; only the metadata is held in RAM.
   // serve_self_proof is the proof-gen working buffer (>= block_count*4) - sized to OUR image's block
-  // count (the manager's fixed 4 KB scratch only covers <=1024 blocks; a >1 MB image needs more).
+  // count (the manager's fixed 4 KiB scratch covers <=1024 blocks, about 2 MiB at the new default).
   uint8_t* serve_self_leaves = nullptr;
   uint8_t* serve_self_proof  = nullptr;
   uint8_t  serve_self_manifest[MOTA_MFL];   // fixed-layout full+unsigned manifest-minus-leaves (197 B)

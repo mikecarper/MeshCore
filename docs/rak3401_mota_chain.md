@@ -3,25 +3,25 @@
 > Status: **published prerelease for controlled, recoverable lab use.** On
 > 29-Aug-2026 steps 1-9 completed on the target RAK3401 and are byte-for-byte
 > identical to the corresponding transitions in the physically passed
-> `fd98bc90` chain. The replacement step 10 installs the current `b40d2e6c`
+> `fd98bc90` chain. The replacement step 10 installs the current `3f6eddd5`
 > endpoint. That replacement package and the hardened current runner have
-> passed offline reconstruction plus both required bootloader simulators, but
+> passed offline reconstruction plus the exact deployed bootloader simulator, but
 > have not had a new physical end-to-end run. Use the lab gate and keep local
 > DFU/SWD recovery available. Multi-hop and alternate-bandwidth estimates
 > remain planning data, not physical qualification.
 
 The prerelease is
-[`rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c`](https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c).
+[`rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.6-3f6eddd5`](https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.6-3f6eddd5).
 Use this asset:
 
 ```text
-RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip
+RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip
 ```
 
-- prerelease ZIP SHA-256: `8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4`
-- inner `SHA256SUMS.txt` SHA-256: `29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a`
-- endpoint image SHA-256: `a7761da8af1f2447d7f01d72e2b1456b99c0e874a165d6483f48ab1f58e8d905`
-- endpoint EndF body hash: `1FA6AAA3C28D8BD8`
+- prerelease ZIP SHA-256: `135783dd8777490db2422a7543f7d80e3cf03f621d5ac362da930abbc1850dc4`
+- inner `SHA256SUMS.txt` SHA-256: `93835ed497c579be0a2322292e7f15ab095e7c8ab7892833fe7df3130dbdaba4`
+- endpoint image SHA-256: `cd1e9b819f9e918f9f2ceaf37b8a74bf242e2be78f319af2cf02a42d7729d0f4`
+- endpoint EndF body hash: `9BD7CF682EE065AE`
 
 `--verify-only` remains the safe default. Live preflight and installation of
 this prerelease require `--accept-test-candidate`. That switch bypasses only
@@ -37,10 +37,19 @@ target:
 - hardware: `RAK_3401`
 - role: `RAK_3401_repeater_lora_ota_no_external_sensors`
 - start: `v1.16.7.0-c1caa5ad`, EndF `71F4026CBE4B8B74`
-- endpoint source: MeshCore `b40d2e6cb2a185db740175e8b161ea71736d19d9`
-- endpoint label: `v1.17.1.5-halo-keymind-cascade-dev-b40d2e6c`
-- endpoint packed version: `0x01110105`
+- endpoint source: MeshCore `3f6eddd5c20f1fa3df6ba1cc208efbe3e2fffb43`
+- endpoint label: `v1.17.1.6-halo-keymind-cascade-dev-3f6eddd5`
+- endpoint packed version: `0x01110106`
 - deployment target key: `63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d`
+
+The exact starting application is the
+[`lora-ota-v1.16.07-halo-keymind-cascade-dev-3a6af3bf`](https://github.com/mikecarper/MeshCore/releases/tag/lora-ota-v1.16.07-halo-keymind-cascade-dev-3a6af3bf)
+RAK3401 asset. Its outer ZIP SHA-256 is
+`58ead2ea18efafda186bc9d983fe08cdf65f69b0e5a3a1c72c18fe35948a254c`;
+its 566,912-byte `firmware.bin` SHA-256 is
+`4301fc63ebd661c70f9bc40e7eca44d3cb8a358cb3c0075e700d9676a57478cb`.
+The endpoint build ZIP SHA-256 is
+`a9fca9be145a96feb650b57c43b5ed173d74d2f3194da12e31b1c54352635b56`.
 
 ### Retained and omitted hardware support
 
@@ -62,7 +71,7 @@ identity without helping this route.
 Do not use the chain on another target ID, hardware family, starting image, or
 firmware body hash. The runner checks all four.
 
-## Why Preview 5 and the old staging ceiling work
+## Why the deployed OTAFIX2.4 and old staging ceiling work
 
 The deployed bootloader is not changed and no package uses the newer expanded
 `0xED000` ceiling. Each package remains bottom-aligned below the old
@@ -85,19 +94,30 @@ workspace.
 Every package in this candidate is an ordinary application container using
 format ABI 2 and in-place codec 2. The historical bridge applications scan the
 bootloader capability marker byte-by-byte, so they recognize the released
-Preview 5 RAK4631 marker at absolute address `0xFCDEA` even though it is two
-bytes off a word boundary. The `b40d2e6c` endpoint retains that exact Preview
-5 application-update fallback. Its separately compiled internal
-bootloader-update feature remains unavailable on Preview 5 because privileged
-self-update requires a current ABI 3 marker with the exact storage profile.
+`0.9.2-OTAFIX2.4` marker at absolute address `0xFCD16`. That immutable marker
+advertises ABI 2, codec mask `0x0004`, and internal storage profile 0. The
+`3f6eddd5` endpoint retains the matching legacy application-update fallback.
+Its separately compiled internal bootloader-update feature remains unavailable
+because privileged self-update requires a current ABI 3 marker with the exact
+storage profile.
 Installing this chain therefore does not replace the bootloader, and the final
 application can still accept a future valid ABI-2/codec-2 application update.
 
-The schema-2 exhaustive search checked 17,371 candidate geometries and found
-121 feasible forward edges in the declared 33-image inventory. Fourteen
-ten-package routes tied for the minimum package count; the selected route has
-the smallest total container size among them. That minimum applies to the
-declared inventory, not every conceivable firmware image. The selected route
+The exact installed bootloader is the
+[`0.9.2-OTAFIX2.4` RAK4631 asset](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.9.2-OTAFIX2.4/wiscore_rak4631_board_bootloader-0.9.2-OTAFIX2.4_s140_6.1.1.zip).
+Its outer ZIP SHA-256 is
+`5e29e7a8982cc2ed5f8868435556eb09387250fe5b9a7e8443bac325247dfed1`;
+its 191,040-byte `sd_bl.bin` SHA-256 is
+`a97f834388db0f1da6c29f6d8f458ff6d3e6a26034709044566384838919bb23`.
+The exact simulator was compiled from release commit
+`d73de8372e89b8ef352747c8bc7a1aaeab80fbfe`; its executable SHA-256 is
+`9dacf24b1023fe2f4c620419417649ccc9538dd4a611b47bc19b7fedb97ceba6`.
+
+The schema-2 exhaustive search checked 1,799 candidate geometries and found 12
+feasible forward edges in the declared exact 12-node inventory. It found one
+shortest ten-package route and selected the smallest total container bytes as
+the secondary objective. This minimum applies only to that declared inventory
+and geometry table, not every conceivable new bridge image. The selected route
 is:
 
 | Step | From | To | Workspace | Package | Margin |
@@ -111,20 +131,28 @@ is:
 | 7 | 1.16.9.113 | 1.16.9.117 | `0x8B000` | 139,637 | 0 |
 | 8 | 1.16.9.117 | 1.16.10.0 | `0x7E000` | 174,202 | 20,480 |
 | 9 | 1.16.10.0 | 1.17.1.3 | `0x6B000` | 271,569 | 0 |
-| 10 | 1.17.1.3 | 1.17.1.5 | `0x74000` | 174,744 | 61,440 |
+| 10 | 1.17.1.3 | 1.17.1.6 | `0x76000` | 197,825 | 28,672 |
 
-Total mOTA transfer data is 1,384,252 bytes. `ROUTE.json`, `CHAIN.csv`, and
+Total mOTA transfer data is 1,407,333 bytes. `ROUTE.json`, `CHAIN.csv`, and
 `validation-results.json` in the bundle pin the exact geometry and image hash
 for every transition.
 
 Steps 1-9 are byte-for-byte identical to the transitions that passed on the
 physical RAK3401. The replacement step 10, from the physically reached
-`FE65A6135A1E7B3F` v1.17.1.3 body to `1FA6AAA3C28D8BD8`, has offline
+`FE65A6135A1E7B3F` v1.17.1.3 body to `9BD7CF682EE065AE`, has offline
 qualification only. All ten packages passed independent container checks,
-zero-filled and erased-workspace reconstruction, the OTAFIX 2.4.1 Preview 5
-simulator, and the current OTAFIX simulator. Those results prove the package
-bytes and apply geometry; they are not a physical claim for the replacement
-step 10 or the hardened runner.
+zero-filled and erased-workspace reconstruction, and the exact deployed
+`0.9.2-OTAFIX2.4` simulator. Those results prove the package bytes and apply
+geometry; they are not a physical claim for the replacement step 10 or the
+hardened runner.
+
+The 171-byte transport DEFLATE support lands only in the final `3f6eddd5`
+application. The starting receiver and every receiver that accepts steps 1-10
+lack that inflate path, so all ten legacy-chain transfers remain raw and the
+1,407,333-byte total above is not automatically reduced over LoRa. A later
+update can negotiate transport compression after this endpoint is running;
+the application inflates before staging, and the immutable bootloader still
+applies an ordinary ABI-2/codec-2 container.
 
 ## Host requirements
 
@@ -137,7 +165,7 @@ No password or device is needed:
 
 ```bash
 python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip \
   --work-dir ./rak3401-mota-chain-work \
   --motatool /path/to/motatool \
   --verify-only
@@ -166,7 +194,7 @@ Restore the test start locally with
 export MESHCORE_ADMIN_PASSWORD='password'
 
 python3 tools/lora_ota/rak3401_mota_chain.py \
-  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip \
   --work-dir ./rak3401-mota-chain-work \
   --controller-serial /dev/ttyACM0 \
   --source-tcp 192.168.1.51:5001 \
@@ -188,6 +216,23 @@ zero and restores it at the endpoint. Use that option only where the selected
 frequency and local duty-cycle rules permit a full transmit budget; omit it
 otherwise.
 
+## Superseded `b40d2e6c` prerelease
+
+The immediately preceding prerelease remains pinned for offline provenance:
+
+- release: [`rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c`](https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c)
+- asset: `RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip`
+- outer ZIP SHA-256: `8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4`
+- inner `SHA256SUMS.txt` SHA-256: `29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a`
+- endpoint image SHA-256: `a7761da8af1f2447d7f01d72e2b1456b99c0e874a165d6483f48ab1f58e8d905`
+- endpoint EndF body hash: `1FA6AAA3C28D8BD8`
+
+Its first nine packages are byte-for-byte identical to the current release and
+the physical `fd98bc90` evidence. Its different step 10 had offline
+qualification only. The runner recognizes this exact archive separately and
+keeps live use gated; it is not interchangeable with the current `3f6eddd5`
+asset.
+
 ## Legacy `fd98bc90` physical and SWD qualification
 
 The earlier local candidate remains the exact physical evidence source for
@@ -207,9 +252,9 @@ deployed `0.9.2-OTAFIX2.4` bootloader and a Heltec V4 source at 909.950 MHz /
 500 kHz / SF5 / CR5. Every intermediate EndF hash matched. Independent SWD
 readback then matched the endpoint application, original bootloader,
 SoftDevice/MBR, and UICR byte-for-byte. Steps 1-9 are also the exact first nine
-packages in the `b40d2e6c` prerelease. The two candidates have different step
-10 packages and endpoints, so the physical result and step-10 timing must not
-be attributed to `b40d2e6c`.
+packages in the `b40d2e6c` and `3f6eddd5` prereleases. All three candidates
+have different step 10 packages or endpoints, so the physical result and
+step-10 timing must not be attributed to either later prerelease.
 
 ### Measured direct-link timing for `fd98bc90`
 
@@ -291,17 +336,17 @@ never skip a step even when a later package appears in `ota ls`.
 ### 1. Verify and extract the asset
 
 ```bash
-sha256sum RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip
-unzip RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip
-cd RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c
+sha256sum RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip
+unzip RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip
+cd RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5
 sha256sum -c SHA256SUMS.txt
 for package in motas/*.mota; do motatool verify "$package" || exit 1; done
 ```
 
 The outer hash must be
-`8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4`,
+`135783dd8777490db2422a7543f7d80e3cf03f621d5ac362da930abbc1850dc4`,
 and the SHA-256 of the extracted `SHA256SUMS.txt` must be
-`29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a`.
+`93835ed497c579be0a2322292e7f15ab095e7c8ab7892833fe7df3130dbdaba4`.
 Do not continue after any checksum or verification error.
 
 ### 2. Record and prepare the destination

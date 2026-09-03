@@ -57,7 +57,8 @@ ENDF_MAGIC = b"EndF"
 ENDF_SIZE = 56
 MAX_ARCHIVE_MEMBER_SIZE = 64 * 1024 * 1024
 MAX_FIRMWARE_IMAGE_SIZE = 64 * 1024 * 1024
-MOTA_MAX_BLOCK_SIZE = 1024
+LEGACY_TARGET_MAX_BLOCK_SIZE = 1024
+MOTA_MAX_BLOCK_SIZE = 2048
 TRANSMISSION_RETRY_LIMIT = 3
 TRANSMISSION_RETRY_WINDOW_SECONDS = 90
 TRANSMISSION_RETRY_DELAY_SECONDS = 2
@@ -230,6 +231,8 @@ class TargetInfo:
     current_version: str | None = None
     current_version_source: str | None = None
     nrf_qspi: bool = False
+    # Firmware predating the live maxblk marker had 1 KiB receive buffers.
+    max_block_size: int = LEGACY_TARGET_MAX_BLOCK_SIZE
 
     @property
     def nrf_external(self) -> bool:
@@ -832,7 +835,7 @@ def parse_mota(blob: bytes, path: Path | None = None) -> MotaInfo:
 
     target_id, fw_version, image_size, payload_size = struct.unpack_from("<IIII", blob, 11)
     block_size_log2 = blob[27]
-    if block_size_log2 == 0 or block_size_log2 > 10:
+    if block_size_log2 == 0 or block_size_log2 > 11:
         raise OtaError(
             f"invalid mOTA block size; firmware supports at most "
             f"{MOTA_MAX_BLOCK_SIZE} bytes"
@@ -1002,6 +1005,11 @@ def compatible_mota(info: MotaInfo, target: TargetInfo) -> tuple[bool, str]:
         return False, f"target {info.target_id:08X}, need {target.target_id:08X}"
     if info.hw_id and target.hw_id and info.hw_id != target.hw_id:
         return False, f"hardware {info.hw_id!r}, destination is {target.hw_id!r}"
+    if info.block_size > target.max_block_size:
+        return False, (
+            f"block size {info.block_size} bytes exceeds destination "
+            f"maxblk:{target.max_block_size}"
+        )
     if info.is_full:
         if target.platform == "nrf52" and not target.nrf_external:
             return False, "internal-flash nRF52 accepts only an in-place delta"
@@ -1382,6 +1390,8 @@ def prepare_package(
             "build",
             "--fw",
             str(new_image),
+            "--block-size",
+            str(target.max_block_size),
             "--out",
             str(output),
         ]
@@ -2359,6 +2369,33 @@ def split_host_port(value: str, default_port: int) -> tuple[str, int]:
     return host, port
 
 
+def parse_target_max_block_size(status: str, self_status: str) -> int:
+    """Read the live application receive limit, with a safe deployed fallback."""
+    markers = re.findall(
+        r"\bmaxblk:(\d+)\b", f"{status} {self_status}", re.IGNORECASE
+    )
+    if not markers:
+        return LEGACY_TARGET_MAX_BLOCK_SIZE
+    values = {int(marker) for marker in markers}
+    if len(values) != 1:
+        rendered = ", ".join(str(value) for value in sorted(values))
+        raise OtaError(
+            f"destination reports conflicting maxblk capabilities: {rendered}"
+        )
+    value = values.pop()
+    if (
+        value <= 0
+        or value > MOTA_MAX_BLOCK_SIZE
+        or value & (value - 1)
+    ):
+        raise OtaError(
+            f"destination reports unsupported maxblk:{value}; this runner "
+            f"supports power-of-two application blocks through "
+            f"{MOTA_MAX_BLOCK_SIZE} bytes"
+        )
+    return value
+
+
 def query_target(
     controller: Controller,
     args: argparse.Namespace,
@@ -2381,6 +2418,7 @@ def query_target(
     if not hash_match:
         raise OtaError("could not read destination base hash from `ota self`")
     base_hash = bytes.fromhex(hash_match.group(1))
+    max_block_size = parse_target_max_block_size(status, self_status)
     combined = f"{status} {self_status}"
     if reported_platform is None:
         platform = (
@@ -2479,6 +2517,7 @@ def query_target(
         current_version=current_version,
         current_version_source=current_version_source,
         nrf_qspi=nrf_qspi,
+        max_block_size=max_block_size,
     )
 
 
@@ -3894,6 +3933,7 @@ def confirm_update(
     print("\nValidated update plan:")
     print(f"  destination : {target.name} ({target.target_id:08X}, {target.platform})")
     print(f"  running base: {target.base_hash.hex().upper()}")
+    print(f"  max block   : {target.max_block_size} bytes")
     if target.platform == "nrf52":
         version = target.bootloader_version or "unknown"
         print(
@@ -7023,6 +7063,8 @@ def offline_target(args: argparse.Namespace) -> TargetInfo:
         status="offline",
         self_status="offline",
         nrf_qspi=args.nrf_qspi,
+        # There is no live query in prepare-only mode; retain the current application default.
+        max_block_size=MOTA_MAX_BLOCK_SIZE,
     )
 
 

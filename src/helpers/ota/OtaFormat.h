@@ -119,7 +119,11 @@ inline bool ota_is_transfer_message(uint8_t type) {
   }
 }
 
-static const uint16_t OTA_DEFAULT_BLOCK_SIZE = 1024;
+// New application containers use 2 KiB Merkle/transport blocks.  Parsers still
+// accept the deployed 1 KiB geometry, while bootloader-update containers keep
+// their separate, fixed 1 KiB contract.
+static const uint16_t OTA_DEFAULT_BLOCK_SIZE         = 2048;
+static const uint16_t OTA_MAX_APPLICATION_BLOCK_SIZE = 2048;
 static const uint8_t  OTA_DEFAULT_HOP_LIMIT  = 3;
 
 } // namespace ota

@@ -144,8 +144,9 @@ bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
 #endif
   SelfFwInfo fi;
   if (!ota_self_firmware(fi) || !fi.valid) return false;
-  // 1 KB logical blocks (delivered as multiple LoRa fragments): 8x fewer merkle leaves than 128 B, so a
-  // ~530 KB image is ~518 blocks (proof-gen scratch ~2 KB) instead of ~4150 (which overflowed the scratch).
+  // 2 KiB logical blocks (delivered as multiple LoRa fragments) reduce Merkle/proof overhead and give each
+  // independent transport-DEFLATE stream more useful history than the deployed 1 KiB geometry. A ~530 KiB
+  // image is about 265 blocks (roughly 1 KiB of leaves) instead of ~4,240 128-byte leaves.
   const uint32_t image_size = fi.image_len, BS = OTA_DEFAULT_BLOCK_SIZE;
   const uint32_t bc = (image_size + BS - 1) / BS;
   if ((uint64_t)bc * 4 > OTA_SELF_LEAVES_MAX) return false;
@@ -186,7 +187,7 @@ bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
   m[0] = MOTA_FORMAT_VER; m[1] = MFLAG_FULL; m[2] = HASH_ALGO_SHA256;
   wr_u32le(m + 3, out_target); wr_u32le(m + 7, out_ver);
   wr_u32le(m + 11, image_size); wr_u32le(m + 15, image_size);   // full: payload == image
-  m[19] = 10;                                 // block_size_log2 = 10 (1024 B logical block)
+  m[19] = 11;                                 // block_size_log2 = 11 (2048 B logical block)
   memcpy(m + 20, root, 4);
   memcpy(m + 24, image_hash, 32);
   m[56] = CODEC_FULL;

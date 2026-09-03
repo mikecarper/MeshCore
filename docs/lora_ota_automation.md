@@ -200,6 +200,12 @@ reported bootloader ABI and codec mask against the selected package. If the
 version command is unavailable on older firmware, the script warns and falls
 back to the legacy `ota self` platform marker. If an nRF52 bootloader lacks
 the required capabilities, install the exact-board OTAFIX bootloader first.
+Current firmware also reports `maxblk:2048` near the front of both OTA replies.
+The runner treats a missing marker as the deployed 1 KiB receive limit, rejects
+a ready 2 KiB package for such a target before transfer, and passes the live
+limit to `motatool --block-size` when it builds from raw firmware. Thus updating
+an older target from a release ZIP produces a compatible 1 KiB package while a
+current target retains the 2 KiB application default.
 `ota stats` is only an optional EndF version probe. It uses one bounded retry
 cycle; unsupported firmware or a lost reply falls back directly to the
 required `ver` command instead of entering an operator continuation loop.
@@ -581,7 +587,8 @@ the destination.
    capabilities, and save the controller's normal radio tuple.
 3. Select or build one compatible **v2 application** mOTA and verify all block
    hashes, Merkle root, full-image hash where applicable, identity fields,
-   signature, codec, base, and the firmware's 1024-byte maximum block size.
+   signature, codec, base, and the live firmware's reported maximum block size
+   (1 KiB for legacy replies without `maxblk`, currently 2 KiB otherwise).
    Version-3 bootloader packages are refused before any target state changes.
 4. Read every participant's version, save the destination's RXPS state,
    select the qualified destination policy, and show the confirmation prompt.

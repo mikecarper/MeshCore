@@ -56,7 +56,9 @@ CODEC_NAMES = {CODEC_FULL: "full", CODEC_DETOOLS_SEQUENTIAL: "detools-sequential
 APPROVAL_NOT = b"\xff\xff\xff\xff"   # erased = not approved
 APPROVAL_YES = b"APRV"               # 41 50 52 56 = approved
 
-DEFAULT_BLOCK_SIZE = 1024
+DEFAULT_BLOCK_SIZE = 2048
+MAX_APP_BLOCK_SIZE = 2048
+BOOTLOADER_BLOCK_SIZE = 1024
 
 # Conservative fallback for firmware built before the layout record below existed. Keep in sync with
 # OtaFlashLayout_nrf52.h and motatool's format.rs.
@@ -503,7 +505,7 @@ class Manifest:
     fw_version: int = 0
     image_size: int = 0
     payload_size: int = 0
-    block_size_log2: int = 10
+    block_size_log2: int = 11
     merkle_root: bytes = b"\0\0\0\0"
     image_hash: bytes = b"\0" * 32
     codec_id: int = CODEC_FULL
@@ -859,6 +861,9 @@ def build_manifest(*, target_id: int, fw_version: int, image_size: int, payload:
                    base_hash: Optional[bytes] = None, sign_priv=None, hw_id=None,
                    bootloader: bool = False) -> Manifest:
     assert (block_size & (block_size - 1)) == 0, "block_size must be a power of two"
+    if not 1 < block_size <= MAX_APP_BLOCK_SIZE:
+        raise ValueError(
+            f"application block size must be at most {MAX_APP_BLOCK_SIZE} bytes")
     leaves = leaf_hashes(payload, block_size)
     if bootloader:
         identity = validate_bootloader_image(payload, target_id)
@@ -868,7 +873,7 @@ def build_manifest(*, target_id: int, fw_version: int, image_size: int, payload:
         if (not bootloader_version_valid(fw_version) or
                 fw_version != identity.boot_version or not is_full or codec_id != CODEC_FULL or
                 image_size != XIAO_BOOT_IMAGE_SIZE or
-                block_size != DEFAULT_BLOCK_SIZE or base_hash not in (None, b"\0" * 8)):
+                block_size != BOOTLOADER_BLOCK_SIZE or base_hash not in (None, b"\0" * 8)):
             raise ValueError("bootloader package version must equal BLM2 metadata and use a 40 KiB CODEC_FULL image with 1 KiB blocks")
         if sign_priv is None:
             raise ValueError("bootloader package must be signed")
@@ -950,6 +955,12 @@ def parse_container(blob: bytes) -> Parsed:
     m.hash_algo = take(1)[0]
     m.target_id, m.fw_version, m.image_size, m.payload_size = struct.unpack("<IIII", take(16))
     m.block_size_log2 = take(1)[0]
+    if m.format_ver == APP_FORMAT_VER:
+        if not 1 <= m.block_size_log2 <= MAX_APP_BLOCK_SIZE.bit_length() - 1:
+            raise ValueError(
+                f"v2 application block size must be at most {MAX_APP_BLOCK_SIZE} bytes")
+    elif m.block_size_log2 != BOOTLOADER_BLOCK_SIZE.bit_length() - 1:
+        raise ValueError("v3 bootloader manifest requires 1 KiB blocks")
     m.merkle_root = take(4)
     m.image_hash = take(32)
     m.codec_id = take(1)[0]

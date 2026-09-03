@@ -90,6 +90,7 @@ def target(
     boot_codecs: int | None = None,
     boot_version: str | None = None,
     current_version: str | None = None,
+    max_block_size: int = ota.MOTA_MAX_BLOCK_SIZE,
 ) -> ota.TargetInfo:
     return ota.TargetInfo(
         name="remote",
@@ -105,6 +106,7 @@ def target(
         self_status="self",
         current_version=current_version,
         nrf_qspi=nrf_qspi,
+        max_block_size=max_block_size,
     )
 
 
@@ -150,10 +152,15 @@ class FormatTests(unittest.TestCase):
         with self.assertRaisesRegex(ota.OtaError, "invalid flags in v2"):
             ota.parse_mota(bytes(blob))
 
+    def test_2k_application_block_is_accepted(self) -> None:
+        image = firmware(b"C" * 5000, VERSION_NEW)
+        parsed = ota.parse_mota(mota_blob(image, block_size_log2=11))
+        self.assertEqual(parsed.block_size, 2048)
+
     def test_block_larger_than_firmware_buffer_is_rejected(self) -> None:
         image = firmware(b"C" * 5000, VERSION_NEW)
-        with self.assertRaisesRegex(ota.OtaError, "at most 1024 bytes"):
-            ota.parse_mota(mota_blob(image, block_size_log2=11))
+        with self.assertRaisesRegex(ota.OtaError, "at most 2048 bytes"):
+            ota.parse_mota(mota_blob(image, block_size_log2=12))
 
     def test_manifest_endf_identity_mismatch_is_rejected(self) -> None:
         wrong_image = firmware(b"B" * 5000, VERSION_NEW, target=TARGET + 1)
@@ -2097,6 +2104,38 @@ class CompatibilityTests(unittest.TestCase):
         nrf = target(platform="nrf52", nrf_qspi=True, boot_codecs=1)
         self.assertTrue(ota.compatible_mota(full, nrf)[0])
 
+    def test_2k_mota_requires_explicit_live_target_capability(self) -> None:
+        package = ota.parse_mota(
+            mota_blob(self.new_image, block_size_log2=11)
+        )
+        legacy = target(max_block_size=ota.LEGACY_TARGET_MAX_BLOCK_SIZE)
+        good, reason = ota.compatible_mota(package, legacy)
+        self.assertFalse(good)
+        self.assertIn("block size 2048", reason)
+        self.assertIn("maxblk:1024", reason)
+        self.assertTrue(ota.compatible_mota(package, target())[0])
+
+    def test_direct_2k_mota_is_rejected_before_any_tool_is_run(self) -> None:
+        package = mota_blob(self.new_image, block_size_log2=11)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "update.mota"
+            source.write_bytes(package)
+            work = root / "work"
+            work.mkdir()
+            with (
+                mock.patch.object(ota, "run_checked") as run,
+                self.assertRaisesRegex(
+                    ota.OtaError, r"block size 2048.*maxblk:1024"
+                ),
+            ):
+                ota.prepare_package(
+                    prepare_args(source, "motatool"),
+                    target(max_block_size=ota.LEGACY_TARGET_MAX_BLOCK_SIZE),
+                    work,
+                )
+            run.assert_not_called()
+
     def test_zip_prefers_equal_version_delta(self) -> None:
         full = mota_blob(self.new_image)
         delta = mota_blob(
@@ -2151,11 +2190,54 @@ class CompatibilityTests(unittest.TestCase):
             if call.kwargs["label"] == "build mOTA"
         )
         self.assertEqual(build_call.kwargs["timeout"], 4321)
+        build_command = build_call.args[0]
+        self.assertEqual(
+            build_command[build_command.index("--block-size") + 1], "2048"
+        )
         verify_call = next(
             call for call in run.call_args_list
             if call.kwargs["label"].startswith("verify ")
         )
         self.assertEqual(verify_call.kwargs["timeout"], 120)
+
+    def test_raw_package_build_uses_legacy_live_block_limit(self) -> None:
+        image = firmware(b"legacy live block limit" * 300, VERSION_NEW)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive_path = root / "release.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("firmware.bin", image)
+            work = root / "work"
+            work.mkdir()
+
+            def run_tool(
+                command: list[str], *, label: str, **_kwargs: object,
+            ) -> subprocess.CompletedProcess[str]:
+                if label == "build mOTA":
+                    output = Path(command[command.index("--out") + 1])
+                    output.write_bytes(mota_blob(image, block_size_log2=10))
+                return subprocess.CompletedProcess(
+                    args=command, returncode=0, stdout="OK", stderr=""
+                )
+
+            with mock.patch.object(
+                ota, "run_checked", side_effect=run_tool
+            ) as run:
+                _path, package, _expected = ota.prepare_package(
+                    prepare_args(archive_path, "motatool"),
+                    target(max_block_size=ota.LEGACY_TARGET_MAX_BLOCK_SIZE),
+                    work,
+                )
+
+        self.assertEqual(package.block_size, 1024)
+        build_call = next(
+            call for call in run.call_args_list
+            if call.kwargs["label"] == "build mOTA"
+        )
+        build_command = build_call.args[0]
+        self.assertEqual(
+            build_command[build_command.index("--block-size") + 1], "1024"
+        )
 
     def test_base_zip_selects_running_hash_not_newest_file(self) -> None:
         other = firmware(b"other" * 1300, VERSION_NEW)
@@ -4587,6 +4669,9 @@ class ReliabilityTests(unittest.TestCase):
         )
         self.assertEqual(result.platform, "esp32")
         self.assertIsNone(result.bootloader_version)
+        self.assertEqual(
+            result.max_block_size, ota.LEGACY_TARGET_MAX_BLOCK_SIZE
+        )
         self.assertEqual(result.current_version, "v1.16.9")
         self.assertEqual(result.current_version_source, "ver")
 
@@ -4625,9 +4710,11 @@ class ReliabilityTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.commands: list[str] = []
                 self.replies = iter([
-                    "OTA | no download | target:1234ABCD hw=RAK_3401",
+                    "OTA | no download | target:1234ABCD | maxblk:2048 "
+                    "| hw=RAK_3401",
                     "> 0.9.2-OTAFIX2.4",
-                    "self body=1 image=2 base_hash=0011223344556677 | "
+                    "self body=1 image=2 base_hash=0011223344556677 "
+                    "| maxblk:2048 | "
                     "bootloader: apply OK (abi=2 codecs=0x4)",
                     "OTA | fw v1.17.0 id=00112233",
                 ])
@@ -4646,10 +4733,22 @@ class ReliabilityTests(unittest.TestCase):
         self.assertEqual(result.bootloader_version, "0.9.2-OTAFIX2.4")
         self.assertEqual(result.bootloader_abi, 2)
         self.assertEqual(result.bootloader_codecs, 0x4)
+        self.assertEqual(result.max_block_size, 2048)
         self.assertEqual(
             controller.commands,
             ["ota status", "get bootloader.ver", "ota self", "ota stats"],
         )
+
+    def test_target_rejects_conflicting_or_unsupported_maxblk_markers(self) -> None:
+        with self.assertRaisesRegex(ota.OtaError, "conflicting maxblk"):
+            ota.parse_target_max_block_size(
+                "OTA | target:1234ABCD | maxblk:2048",
+                "self base_hash=0011223344556677 | maxblk:1024",
+            )
+        with self.assertRaisesRegex(ota.OtaError, "unsupported maxblk:4096"):
+            ota.parse_target_max_block_size(
+                "OTA | target:1234ABCD | maxblk:4096", "self"
+            )
 
     def test_optional_ota_stats_loss_is_bounded_then_falls_back_to_ver(
         self,
@@ -6779,6 +6878,58 @@ class Rak3401ExtractionCacheTests(unittest.TestCase):
 
 
 class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
+    @staticmethod
+    def live_chain_args() -> argparse.Namespace:
+        return argparse.Namespace(
+            meshcli="meshcli",
+            controller_serial="/dev/controller",
+            controller_tcp=None,
+            controller_ble=None,
+            controller_baud=115200,
+            reply_timeout=45,
+        )
+
+    @staticmethod
+    def live_chain_target(bootloader_version: str | None) -> ota.TargetInfo:
+        return ota.TargetInfo(
+            name="remote",
+            target_id=rak_chain.EXPECTED_TARGET_ID,
+            base_hash=b"12345678",
+            platform="nrf52",
+            nrf_sd=False,
+            hw_id=rak_chain.EXPECTED_HARDWARE,
+            bootloader_version=bootloader_version,
+            bootloader_abi=2,
+            bootloader_codecs=1 << ota.MOTA_CODEC_IN_PLACE,
+            status="status",
+            self_status="self",
+            nrf_qspi=False,
+        )
+
+    def test_live_chain_accepts_exact_deployed_bootloader_version(self) -> None:
+        expected = self.live_chain_target(rak_chain.EXPECTED_BOOTLOADER_VERSION)
+        with mock.patch.object(
+            rak_chain.ota, "query_target", return_value=expected
+        ):
+            actual = rak_chain.query_live_target(
+                mock.Mock(), self.live_chain_args(), "remote"
+            )
+        self.assertIs(actual, expected)
+
+    def test_live_chain_rejects_any_other_bootloader_version(self) -> None:
+        for version in (None, "0.9.2-OTAFIX2.3", "0.9.2-OTAFIX2.5"):
+            with self.subTest(version=version), mock.patch.object(
+                rak_chain.ota,
+                "query_target",
+                return_value=self.live_chain_target(version),
+            ), self.assertRaisesRegex(
+                ota.OtaError,
+                "expected exact deployed version '0.9.2-OTAFIX2.4'",
+            ):
+                rak_chain.query_live_target(
+                    mock.Mock(), self.live_chain_args(), "remote"
+                )
+
     def test_chain_resume_uses_exact_body_hash_not_runtime_label(self) -> None:
         steps = [
             mock.Mock(base_hash=bytes.fromhex("0011223344556677")),
@@ -7026,7 +7177,22 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
             steps[number - 1].target_sha256 = image_sha256
         with self.assertRaisesRegex(
             rak_chain.KnownUnsafeReleaseError,
-            "new b40d2e6c step 10.*bootloader simulators only",
+            "new 3f6eddd5 step 10.*exact OTAFIX2.4 bootloader simulator only",
+        ):
+            rak_chain.require_live_release_safe(
+                argparse.Namespace(accept_test_candidate=False), steps
+            )
+        rak_chain.require_live_release_safe(
+            argparse.Namespace(accept_test_candidate=True), steps
+        )
+
+    def test_exact_superseded_b40_ten_step_candidate_remains_gated(self) -> None:
+        steps = [mock.Mock(target_sha256="") for _ in range(10)]
+        for number, image_sha256 in rak_chain.SUPERSEDED_B40_ANCHORS:
+            steps[number - 1].target_sha256 = image_sha256
+        with self.assertRaisesRegex(
+            rak_chain.KnownUnsafeReleaseError,
+            "exact superseded b40d2e6c ten-step prerelease.*step 10",
         ):
             rak_chain.require_live_release_safe(
                 argparse.Namespace(accept_test_candidate=False), steps
@@ -7050,30 +7216,45 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
             argparse.Namespace(accept_test_candidate=True), steps
         )
 
-    def test_current_and_legacy_ten_step_reports_do_not_mix_evidence(self) -> None:
+    def test_ten_step_reports_do_not_mix_current_and_legacy_evidence(self) -> None:
         current = [mock.Mock(target_sha256="") for _ in range(10)]
+        superseded = [mock.Mock(target_sha256="") for _ in range(10)]
         legacy = [mock.Mock(target_sha256="") for _ in range(10)]
         for number, image_sha256 in rak_chain.CURRENT_10_CANDIDATE_ANCHORS:
             current[number - 1].target_sha256 = image_sha256
+        for number, image_sha256 in rak_chain.SUPERSEDED_B40_ANCHORS:
+            superseded[number - 1].target_sha256 = image_sha256
         for number, image_sha256 in rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS:
             legacy[number - 1].target_sha256 = image_sha256
 
         current_message = rak_chain.ten_step_verification_message(current)
+        superseded_message = rak_chain.ten_step_verification_message(superseded)
         legacy_message = rak_chain.ten_step_verification_message(legacy)
         self.assertIn("new step 10", current_message)
+        self.assertIn("exact OTAFIX2.4 bootloader simulation", current_message)
         self.assertIn("not had a clean physical run", current_message)
         self.assertNotIn("endpoint passed independent SWD readback", current_message)
+        self.assertIn("Superseded b40d2e6c", superseded_message)
+        self.assertNotIn("exact OTAFIX2.4 bootloader simulation", superseded_message)
         self.assertIn("exact ten package transitions", legacy_message)
         self.assertIn("endpoint passed independent SWD readback", legacy_message)
 
-    def test_ten_step_candidates_share_only_the_pinned_physical_prefix(self) -> None:
+    def test_ten_step_candidates_share_the_pinned_physical_prefix(self) -> None:
         self.assertEqual(
             rak_chain.CURRENT_10_CANDIDATE_ANCHORS[:9],
+            rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS[:9],
+        )
+        self.assertEqual(
+            rak_chain.SUPERSEDED_B40_ANCHORS[:9],
             rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS[:9],
         )
         self.assertNotEqual(
             rak_chain.CURRENT_10_CANDIDATE_ANCHORS[-1],
             rak_chain.PHYSICALLY_PASSED_FD98_ANCHORS[-1],
+        )
+        self.assertNotEqual(
+            rak_chain.CURRENT_10_CANDIDATE_ANCHORS[-1],
+            rak_chain.SUPERSEDED_B40_ANCHORS[-1],
         )
         steps = [mock.Mock(target_sha256="") for _ in range(10)]
         for number, image_sha256 in rak_chain.CURRENT_10_CANDIDATE_ANCHORS:
@@ -7101,6 +7282,62 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 ota.OtaError, "automatic release download is disabled.*--bundle"
             ):
                 rak_chain.download_release_asset(destination)
+
+    def test_primary_release_and_endpoint_are_pinned(self) -> None:
+        self.assertEqual(
+            rak_chain.RELEASE_URL,
+            "https://github.com/mikecarper/MeshCore/releases/tag/"
+            "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.6-3f6eddd5",
+        )
+        self.assertEqual(
+            rak_chain.ASSET_NAME,
+            "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip",
+        )
+        self.assertEqual(
+            rak_chain.BUNDLE_ROOT_NAME,
+            "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5",
+        )
+        self.assertEqual(
+            rak_chain.ASSET_SHA256,
+            "135783dd8777490db2422a7543f7d80e3cf03f621d5ac362da930abbc1850dc4",
+        )
+        self.assertEqual(
+            rak_chain.CHECKSUM_LIST_SHA256,
+            "93835ed497c579be0a2322292e7f15ab095e7c8ab7892833fe7df3130dbdaba4",
+        )
+        self.assertEqual(rak_chain.EXPECTED_FINAL_VERSION, "1.17.1.6")
+        self.assertEqual(
+            rak_chain.CURRENT_10_CANDIDATE_ANCHORS[-1],
+            (
+                10,
+                "cd1e9b819f9e918f9f2ceaf37b8a74bf242e2be78f319af2cf02a42d7729d0f4",
+            ),
+        )
+        self.assertEqual(
+            rak_chain.PINNED_ARCHIVE_CHECKSUMS[rak_chain.ASSET_SHA256],
+            rak_chain.CHECKSUM_LIST_SHA256,
+        )
+
+    def test_superseded_b40_archive_and_inner_checksum_remain_pinned(self) -> None:
+        self.assertEqual(
+            rak_chain.SUPERSEDED_B40_ASSET_SHA256,
+            "8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4",
+        )
+        self.assertEqual(
+            rak_chain.SUPERSEDED_B40_CHECKSUM_LIST_SHA256,
+            "29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a",
+        )
+        self.assertEqual(
+            rak_chain.SUPERSEDED_B40_ROOT_NAME,
+            "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c",
+        )
+        self.assertEqual(rak_chain.SUPERSEDED_B40_FINAL_VERSION, "1.17.1.5")
+        self.assertEqual(
+            rak_chain.PINNED_ARCHIVE_CHECKSUMS[
+                rak_chain.SUPERSEDED_B40_ASSET_SHA256
+            ],
+            rak_chain.SUPERSEDED_B40_CHECKSUM_LIST_SHA256,
+        )
 
     def test_fd98_archive_and_inner_checksum_remain_pinned(self) -> None:
         self.assertEqual(
@@ -7132,6 +7369,30 @@ class Rak3401KnownUnsafeReleaseTests(unittest.TestCase):
                 archive.resolve(),
                 root / "work" / "bundle",
                 rak_chain.PHYSICALLY_PASSED_FD98_ASSET_SHA256,
+            )
+
+    def test_locate_bundle_accepts_exact_superseded_b40_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / rak_chain.SUPERSEDED_B40_ASSET_NAME
+            archive.write_bytes(b"fixture is identified by the mocked digest")
+            extracted = root / rak_chain.SUPERSEDED_B40_ROOT_NAME
+            args = argparse.Namespace(bundle=archive)
+            with (
+                mock.patch.object(
+                    rak_chain,
+                    "sha256_file_limited",
+                    return_value=rak_chain.SUPERSEDED_B40_ASSET_SHA256,
+                ),
+                mock.patch.object(
+                    rak_chain, "extract_bundle", return_value=extracted
+                ) as extract_bundle,
+            ):
+                self.assertEqual(rak_chain.locate_bundle(args, root / "work"), extracted)
+            extract_bundle.assert_called_once_with(
+                archive.resolve(),
+                root / "work" / "bundle",
+                rak_chain.SUPERSEDED_B40_ASSET_SHA256,
             )
 
     def test_compact_9_step_release_rejects_changed_anchor(self) -> None:

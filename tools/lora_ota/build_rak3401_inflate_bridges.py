@@ -29,7 +29,7 @@ import motalib  # noqa: E402
 
 
 ENV_NAME = "RAK_3401_repeater_lora_ota_no_external_sensors"
-VERSION_SUFFIX = "halo-keymind-cascade-mota-inflate"
+VERSION_SUFFIX = "halo-keymind-cascade-mota-inflate2k"
 EXPECTED_TARGET_ID = 0x2FA509C1
 EXPECTED_HARDWARE = "RAK_3401"
 COMMON_PATCH = SCRIPT_DIR / "rak3401_terminal_ota_backport.patch"
@@ -39,16 +39,18 @@ VERSION_PATCH = SCRIPT_DIR / "rak3401_four_component_endf_backport.patch"
 WORKSPACE_PATCH = SCRIPT_DIR / "rak3401_dynamic_workspace_backport.patch"
 SELECTIVE_OS_HOOK = SCRIPT_DIR / "rak3401_selective_os.py"
 INFLATE_ASSET_ROOT = SCRIPT_DIR / "rak3401_inflate_assets"
-INFLATE_SNAPSHOT_COMMIT = "add51bf00c46c15ef54318ca766a6daf08a147ee"
+# Provenance of the receive shim these pinned assets extend. The exact amended
+# sources are authenticated independently by INFLATE_ASSETS below.
+INFLATE_BASE_SNAPSHOT_COMMIT = "add51bf00c46c15ef54318ca766a6daf08a147ee"
 
 INFLATE_ASSETS = {
     "src/helpers/ota/OtaDeflate.cpp": (
         "OtaDeflate.cpp",
-        "7cc464fc3c304cc65f52973593068c8d85a783853da121476c4bc2e196798e8e",
+        "524328f798c931ce483916cf2c517f04df933d6d9d50d868abc907dc0544bbae",
     ),
     "src/helpers/ota/OtaDeflate.h": (
         "OtaDeflate.h",
-        "f6cd5b0fe8b2164178881d93664df37722d6434f8ef61c37d08255bce12f842c",
+        "39c3e5ca4d90b56f1631c75bb1dd4d8b9589aaa8705b936f46bfa2f890e0c154",
     ),
     "src/helpers/ota/OtaTinf.c": (
         "OtaTinf.c",
@@ -244,10 +246,13 @@ def validate_inflate_source(source: Path) -> None:
         "void manager receive ABI": "void on_message(const uint8_t* msg, uint16_t len)",
         "requested block hook declaration": "uint16_t requestedBlockLength(",
         "requested block hook implementation": "uint16_t OtaManager::requestedBlockLength(",
+        "nominal block geometry hook": "uint16_t* nominal_size = nullptr",
         "inflater context member": "OtaTransportInflateReceiver transport_inflate;",
         "inflater context begin": "transport_inflate.begin(manager, target_id, send, ctx);",
         "v2 request marker": "OTA_REQ_V2_MARK             = 0x8000u",
+        "2 KiB logical block maximum": "#define OTA_MAX_BLOCK 2048",
         "v2 fragment size": "#define OTA_FRAG_DATA_V2 171",
+        "v2 extended length flag": "OTA_REQ_V2_EXTENDED_LENGTH  = 0x2000u",
         "tinf build filter": "+<helpers/ota/OtaTinf.c>",
     }
     haystacks = {
@@ -255,10 +260,13 @@ def validate_inflate_source(source: Path) -> None:
         "void manager receive ABI": manager_h,
         "requested block hook declaration": manager_h,
         "requested block hook implementation": manager_cpp,
+        "nominal block geometry hook": manager_h,
         "inflater context member": context_h,
         "inflater context begin": context_h,
         "v2 request marker": protocol_h,
+        "2 KiB logical block maximum": manager_h,
         "v2 fragment size": manager_h,
+        "v2 extended length flag": protocol_h,
         "tinf build filter": platformio,
     }
     for label, needle in required.items():
@@ -279,6 +287,16 @@ def apply_inflate_transforms(source: Path) -> None:
     manager_h = source / "src/helpers/ota/OtaManager.h"
     replace_exact(
         manager_h,
+        b"#ifndef OTA_MAX_BLOCK\n"
+        b"#define OTA_MAX_BLOCK 1024          // largest logical block (merkle leaf unit) = reassembly buffer size\n"
+        b"#endif\n",
+        b"#ifndef OTA_MAX_BLOCK\n"
+        b"#define OTA_MAX_BLOCK 2048          // receive bridge accepts extended 2 KiB logical blocks\n"
+        b"#endif\n",
+        "OTA logical block maximum",
+    )
+    replace_exact(
+        manager_h,
         b"#ifndef OTA_FRAG_DATA\n"
         b"#define OTA_FRAG_DATA 160           // data bytes per DATA fragment (<= MAX_PACKET_PAYLOAD - 9-byte header)\n"
         b"#endif\n",
@@ -297,7 +315,8 @@ def apply_inflate_transforms(source: Path) -> None:
         b"  bool terminallyConsumes(const uint8_t* msg, uint16_t len);\n"
         b"  // Exact logical length of a block this receiver currently requested, or zero for unsolicited DATA.\n"
         b"  // Used by the historical transport shim without exposing or changing the manager's reassembly buffers.\n"
-        b"  uint16_t requestedBlockLength(const uint8_t* manifest_id, uint16_t block) const;\n"
+        b"  uint16_t requestedBlockLength(const uint8_t* manifest_id, uint16_t block,\n"
+        b"                                uint16_t* nominal_size = nullptr) const;\n"
         b"  void on_message(const uint8_t* msg, uint16_t len);   // feed one received OTA message\n",
         "OtaManager receive shim declaration",
     )
@@ -306,10 +325,13 @@ def apply_inflate_transforms(source: Path) -> None:
     replace_exact(
         manager_cpp,
         b"bool OtaManager::terminallyConsumes(const uint8_t* msg, uint16_t len) {\n",
-        b"uint16_t OtaManager::requestedBlockLength(const uint8_t* manifest_id, uint16_t block) const {\n"
+        b"uint16_t OtaManager::requestedBlockLength(const uint8_t* manifest_id, uint16_t block,\n"
+        b"                                          uint16_t* nominal_size) const {\n"
+        b"  if (nominal_size) *nominal_size = 0;\n"
         b"  if (!manifest_id || !_fetch || _fstate != FETCHING || block >= _fbc ||\n"
         b"      memcmp(manifest_id, _fid, sizeof(_fid)) != 0 || findReassemblySlot(block) < 0) return 0;\n"
         b"  const uint32_t len = blockLen(block);\n"
+        b"  if (nominal_size && _fbs <= OTA_MAX_BLOCK) *nominal_size = (uint16_t)_fbs;\n"
         b"  return len <= OTA_MAX_BLOCK ? (uint16_t)len : 0;\n"
         b"}\n\n"
         b"bool OtaManager::terminallyConsumes(const uint8_t* msg, uint16_t len) {\n",
@@ -326,37 +348,54 @@ def apply_inflate_transforms(source: Path) -> None:
         b"};\n"
     )
     v2_protocol = data_message + (
-        b"\n// OTA_REQ want_mask extension. These bits sit outside every valid fragment bit for <=1 KiB blocks. A first\n"
-        b"// v2 request deliberately includes all seven legacy fragment bits so an old source can answer it completely.\n"
+        b"\n// OTA_REQ want_mask extension. These bits sit outside every valid fragment bit: a 2 KiB block needs at\n"
+        b"// most 13 legacy or 12 v2 fragments. A first request includes all legacy fragment bits so an old source\n"
+        b"// can answer a 1 KiB block completely.\n"
         b"static const uint16_t OTA_REQ_V2_MARK             = 0x8000u;\n"
         b"static const uint16_t OTA_REQ_V2_ALLOW_DEFLATE    = 0x4000u;\n"
-        b"static const uint16_t OTA_REQ_V2_RESERVED         = 0x2000u;\n"
+        b"static const uint16_t OTA_REQ_V2_EXTENDED_LENGTH  = 0x2000u;\n"
         b"static const uint16_t OTA_REQ_V2_FRAGMENT_MASK    = 0x1FFFu;\n"
-        b"\n// OTA_DATA v2 frag_off packing:\n"
-        b"//   bit 15      v2 marker\n"
-        b"//   bit 14      data[] is one raw-RFC1951-DEFLATE stream fragment (clear = raw block bytes)\n"
-        b"//   bits 13..10 fragment index (0..15; byte offset = index * OTA_FRAG_DATA_V2)\n"
-        b"//   bits  9..0  total encoded block length minus one (1..1024 bytes)\n"
+        b"static const uint16_t OTA_REQ_V2_EXT_FRAGMENT_MASK = 0x0FFFu;\n"
+        b"static const uint16_t OTA_REQ_V2_EXT_RESERVED      = 0x1000u;\n"
+        b"\n// The 1 KiB OTA_DATA layout remains byte-for-byte compatible. An extended request selects a 2 KiB layout\n"
+        b"// with fragment index in bits 14..11 and encoded length minus one in bits 10..0. In that layout an\n"
+        b"// encoded length shorter than the manifest-derived raw length unambiguously identifies DEFLATE.\n"
         b"static const uint16_t OTA_DATA_V2_MARK             = 0x8000u;\n"
         b"static const uint16_t OTA_DATA_V2_DEFLATED         = 0x4000u;\n"
         b"static const uint16_t OTA_DATA_V2_FRAGMENT_BITS    = 0x3C00u;\n"
         b"static const uint16_t OTA_DATA_V2_LENGTH_BITS      = 0x03FFu;\n"
         b"static const uint8_t  OTA_DATA_V2_FRAGMENT_SHIFT   = 10;\n"
-        b"static const uint16_t OTA_DATA_V2_MAX_ENCODED      = 1024;\n"
+        b"static const uint16_t OTA_DATA_V2_LEGACY_MAX_ENCODED = 1024;\n"
+        b"static const uint16_t OTA_DATA_V2_EXT_FRAGMENT_BITS  = 0x7800u;\n"
+        b"static const uint16_t OTA_DATA_V2_EXT_LENGTH_BITS    = 0x07FFu;\n"
+        b"static const uint8_t  OTA_DATA_V2_EXT_FRAGMENT_SHIFT = 11;\n"
+        b"static const uint16_t OTA_DATA_V2_MAX_ENCODED        = 2048;\n"
         b"static const uint8_t  OTA_DATA_V2_STREAM_ID_BYTES  = 4;\n"
         b"\ninline bool ota_req_is_v2(uint16_t want_mask) {\n"
-        b"  return (want_mask & OTA_REQ_V2_MARK) != 0 && (want_mask & OTA_REQ_V2_RESERVED) == 0;\n"
+        b"  if ((want_mask & OTA_REQ_V2_MARK) == 0) return false;\n"
+        b"  return (want_mask & OTA_REQ_V2_EXTENDED_LENGTH) == 0 ||\n"
+        b"         (want_mask & OTA_REQ_V2_EXT_RESERVED) == 0;\n"
         b"}\n"
         b"\ninline uint16_t ota_req_v2_fragments(uint16_t want_mask) {\n"
-        b"  return (uint16_t)(want_mask & OTA_REQ_V2_FRAGMENT_MASK);\n"
+        b"  const uint16_t mask = (want_mask & OTA_REQ_V2_EXTENDED_LENGTH)\n"
+        b"      ? OTA_REQ_V2_EXT_FRAGMENT_MASK : OTA_REQ_V2_FRAGMENT_MASK;\n"
+        b"  return (uint16_t)(want_mask & mask);\n"
         b"}\n"
-        b"\ninline uint16_t ota_req_make_v2(uint16_t fragments, bool allow_deflate) {\n"
-        b"  return (uint16_t)((fragments & OTA_REQ_V2_FRAGMENT_MASK) | OTA_REQ_V2_MARK |\n"
-        b"                    (allow_deflate ? OTA_REQ_V2_ALLOW_DEFLATE : 0));\n"
+        b"\ninline bool ota_req_v2_extended_length(uint16_t want_mask) {\n"
+        b"  return (want_mask & OTA_REQ_V2_EXTENDED_LENGTH) != 0;\n"
+        b"}\n"
+        b"\ninline uint16_t ota_req_make_v2(uint16_t fragments, bool allow_deflate,\n"
+        b"                                bool extended_length = false) {\n"
+        b"  const uint16_t fragment_mask = extended_length\n"
+        b"      ? OTA_REQ_V2_EXT_FRAGMENT_MASK : OTA_REQ_V2_FRAGMENT_MASK;\n"
+        b"  return (uint16_t)((fragments & fragment_mask) | OTA_REQ_V2_MARK |\n"
+        b"                    (allow_deflate ? OTA_REQ_V2_ALLOW_DEFLATE : 0) |\n"
+        b"                    (extended_length ? OTA_REQ_V2_EXTENDED_LENGTH : 0));\n"
         b"}\n"
         b"\ninline bool ota_data_v2_pack(uint8_t fragment, uint16_t encoded_len, bool deflated,\n"
         b"                             uint16_t& packed) {\n"
-        b"  if (fragment >= 16 || encoded_len == 0 || encoded_len > OTA_DATA_V2_MAX_ENCODED) return false;\n"
+        b"  if (fragment >= 16 || encoded_len == 0 ||\n"
+        b"      encoded_len > OTA_DATA_V2_LEGACY_MAX_ENCODED) return false;\n"
         b"  packed = (uint16_t)(OTA_DATA_V2_MARK |\n"
         b"      (deflated ? OTA_DATA_V2_DEFLATED : 0) |\n"
         b"      ((uint16_t)fragment << OTA_DATA_V2_FRAGMENT_SHIFT) |\n"
@@ -369,6 +408,26 @@ def apply_inflate_transforms(source: Path) -> None:
         b"  fragment = (uint8_t)((packed & OTA_DATA_V2_FRAGMENT_BITS) >> OTA_DATA_V2_FRAGMENT_SHIFT);\n"
         b"  encoded_len = (uint16_t)((packed & OTA_DATA_V2_LENGTH_BITS) + 1u);\n"
         b"  deflated = (packed & OTA_DATA_V2_DEFLATED) != 0;\n"
+        b"  return true;\n"
+        b"}\n"
+        b"\ninline bool ota_data_v2_pack_extended(uint8_t fragment, uint16_t encoded_len,\n"
+        b"                                      uint16_t& packed) {\n"
+        b"  if (fragment >= 16 || encoded_len == 0 || encoded_len > OTA_DATA_V2_MAX_ENCODED) return false;\n"
+        b"  packed = (uint16_t)(OTA_DATA_V2_MARK |\n"
+        b"      ((uint16_t)fragment << OTA_DATA_V2_EXT_FRAGMENT_SHIFT) |\n"
+        b"      (encoded_len - 1u));\n"
+        b"  return true;\n"
+        b"}\n"
+        b"\ninline bool ota_data_v2_unpack_extended(uint16_t packed, uint16_t raw_len,\n"
+        b"                                        uint8_t& fragment, uint16_t& encoded_len,\n"
+        b"                                        bool& deflated) {\n"
+        b"  if ((packed & OTA_DATA_V2_MARK) == 0 || raw_len == 0 ||\n"
+        b"      raw_len > OTA_DATA_V2_MAX_ENCODED) return false;\n"
+        b"  fragment = (uint8_t)((packed & OTA_DATA_V2_EXT_FRAGMENT_BITS) >>\n"
+        b"                       OTA_DATA_V2_EXT_FRAGMENT_SHIFT);\n"
+        b"  encoded_len = (uint16_t)((packed & OTA_DATA_V2_EXT_LENGTH_BITS) + 1u);\n"
+        b"  if (encoded_len > raw_len) return false;\n"
+        b"  deflated = encoded_len < raw_len;\n"
         b"  return true;\n"
         b"}\n"
     )
@@ -679,7 +738,7 @@ def main() -> int:
             "target_id": f"{EXPECTED_TARGET_ID:08X}",
             "hardware": EXPECTED_HARDWARE,
             "version_suffix": VERSION_SUFFIX,
-            "inflate_snapshot_commit": INFLATE_SNAPSHOT_COMMIT,
+            "inflate_base_snapshot_commit": INFLATE_BASE_SNAPSHOT_COMMIT,
             "inflate_assets": asset_metadata,
             "builder_script": Path(__file__).name,
             "builder_script_sha256": sha256_file(Path(__file__)),
@@ -696,6 +755,8 @@ def main() -> int:
             "selective_os_hook": SELECTIVE_OS_HOOK.name,
             "selective_os_hook_sha256": sha256_file(SELECTIVE_OS_HOOK),
             "transport_fragment_bytes": 171,
+            "transport_max_block_bytes": 2048,
+            "transport_descriptor_layouts": ["v2-1k", "v2-2k-extended"],
             "transport_codec": "raw-deflate-receive-only",
             "fetch_pipeline": 1,
             "targets": records,

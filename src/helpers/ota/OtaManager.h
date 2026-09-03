@@ -15,8 +15,9 @@
 // the signed merkle root via proofs). It is portable (no Arduino / radio / Ed25519) so it can be
 // driven by a host simulation; a thin Mesh adapter wires it to PAYLOAD_TYPE_OTA on device.
 //
-// Transfer keeps 1 KB logical blocks. A server paces each block's self-describing DATA fragments through a
-// bounded response queue and follows them with the Merkle PROOF. A short radio-aware turnaround gap lets a
+// Transfer accepts deployed 1 KiB and new 2 KiB logical blocks. A server paces each block's self-describing
+// DATA fragments through a bounded response queue and follows them with the Merkle PROOF. A short
+// radio-aware turnaround gap lets a
 // legacy fetcher send its immediate REQ_PROOF without colliding with that proactive proof; newer fetchers wait
 // briefly for the proactive proof and retain REQ_PROOF as a loss/legacy-server fallback.
 
@@ -49,15 +50,21 @@ typedef bool (*ServeDeflateReadFn)(void* ctx, uint16_t block, uint8_t* dst,
 
 #ifndef OTA_PROOFGEN_SCRATCH
   #if defined(OTA_SD_STORE)
-    #define OTA_PROOFGEN_SCRATCH 8192  // SD archive can seed <=2048 blocks (about 2 MB at 1 KB/block)
+    #define OTA_PROOFGEN_SCRATCH 8192  // SD archive can seed <=2048 blocks (about 4 MiB at 2 KiB/block)
   #else
     #define OTA_PROOFGEN_SCRATCH 4096  // server proof-gen working buffer (supports up to 1024 blocks)
   #endif
 #endif
 
 #ifndef OTA_MAX_BLOCK
-#define OTA_MAX_BLOCK 1024          // largest logical block (merkle leaf unit) = reassembly buffer size
+#define OTA_MAX_BLOCK 2048          // largest logical block (Merkle leaf / independent DEFLATE unit)
 #endif
+static_assert(OTA_MAX_BLOCK <= OTA_DATA_V2_MAX_ENCODED,
+              "OTA_MAX_BLOCK exceeds the negotiated v2 DATA descriptor");
+
+// Live application capability advertised by `ota status` / `ota self`. Keep this tied to the actual
+// receive/reassembly buffers rather than a release label so a host can safely choose package geometry.
+static constexpr uint16_t ota_max_block_capability() { return (uint16_t)OTA_MAX_BLOCK; }
 #ifndef OTA_CHECKPOINT_BLOCKS
 #define OTA_CHECKPOINT_BLOCKS 4     // persist progress (store.checkpoint) every N committed blocks (resume)
 #endif
@@ -562,7 +569,8 @@ private:
   static bool srcDeflateReadTramp(void* c, uint16_t block, uint8_t* buf,
                                   uint16_t cap, uint16_t* len);
   bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask,
-                     bool wire_v2 = false, bool allow_deflate = false);
+                     bool wire_v2 = false, bool allow_deflate = false,
+                     bool extended_length = false);
   bool queueManifestJob(const uint8_t* mid, uint16_t want_mask);
   uint32_t manifestEgressGapMs() const;
   uint32_t proofEgressGapMs() const;
@@ -625,7 +633,7 @@ private:
   uint8_t     _scratch[OTA_PROOFGEN_SCRATCH];        // proof-gen / fetch root-check working buffer
 #endif
 
-  // Server-side response descriptors are tiny. The active 1 KB block has its own buffer so proof generation
+  // Server-side response descriptors are tiny. The active logical block has its own buffer so proof generation
   // or a simultaneous fetch cannot overwrite DATA retained behind radio-queue backpressure.
   struct ServeJob {
     uint8_t mid[4] = {0};
@@ -636,6 +644,7 @@ private:
     bool proof_requested = false;
     bool wire_v2 = false;
     bool allow_deflate = false;
+    bool extended_length = false;
   };
   ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
   uint8_t    _n_serve_jobs = 0;
@@ -698,7 +707,7 @@ private:
   // Bounded adaptive multi-block client flight. Each slot independently reassembles DATA and awaits its
   // Merkle proof. One append-only OTA_REQ packet opens the whole flight; the receiver then stays quiet until
   // every slot completes or an airtime-aware deadline expires. Clean flights grow 1->2->3->4; any recovery
-  // makes the next flight smaller. Logical/signed block geometry remains 1 KB.
+  // makes the next flight smaller. New application containers use 2 KiB logical/signed blocks.
   struct ReassemblySlot {
     uint32_t block = NO_BLOCK;
     uint16_t mask = 0;                         // received FRAG_DATA-slice bitmap

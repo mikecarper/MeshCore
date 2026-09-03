@@ -67,10 +67,11 @@ bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
   uint8_t* scratch = ensureScratch();
   if (!scratch) return false;
   if (!mota_parse(mota, len, _view0.m)) return false;
+  if (_view0.m.block_size() == 0 || _view0.m.block_size() > OTA_MAX_BLOCK) return false;
   _view0.mfl = (uint16_t)(_view0.m.leaves - _view0.m.manifest_start);  // contiguous container
   _view0.read = nullptr; _view0.read_ctx = nullptr;                    // payload is contiguous _view0.m.payload
   _view0.read_deflated = nullptr; _view0.deflate_ctx = nullptr;
-  _view0.scratch = scratch; _view0.scratch_sz = OTA_PROOFGEN_SCRATCH;  // <=1024 blocks (RAM .mota is small)
+  _view0.scratch = scratch; _view0.scratch_sz = OTA_PROOFGEN_SCRATCH;  // <=1024 leaves/blocks
   _view0.valid = true;
   clearPendingEgress();
   if (_n_src_obj) refresh_sources(); else registerSelfEntry();
@@ -82,6 +83,7 @@ bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t
                             ServeReadFn read, void* ctx) {
   if (proof_scratch_sz < (uint64_t)block_count * 4) return false;   // proof-gen needs count*4 working bytes
   if (!mota_parse_manifest(manifest, mfl, _view0.m)) return false;  // fixed fields: root, image_hash, sizes
+  if (_view0.m.block_size() == 0 || _view0.m.block_size() > OTA_MAX_BLOCK) return false;
   _view0.m.manifest_start = manifest;
   _view0.m.leaves   = leaves;        // pre-computed, caller-owned (heap)
   _view0.m.payload  = nullptr;       // read on demand via `read`
@@ -417,7 +419,8 @@ void OtaManager::handleGetLeaves(const uint8_t* m, uint16_t n) {
 }
 
 // Smallest mask covering `nf` fragments: bit k set for k in [0, nf). Caps at 16 (matches each pipeline
-// slot mask and the manifest reassembly), which bounds a block at 16 fragments - our 1 KB blocks are 7.
+// slot mask and the manifest reassembly), which bounds a block at 16 fragments. A 2 KiB block is 13 legacy
+// fragments or 12 v2 fragments.
 static inline uint16_t frag_full_mask(uint32_t nf) {
   return (nf >= 16) ? 0xFFFFu : (uint16_t)((1u << nf) - 1);
 }
@@ -426,14 +429,15 @@ static inline uint16_t frag_full_mask(uint32_t nf) {
 // while a block is already queued merge only fragments not yet admitted to the radio queue; a later retry can
 // enqueue the block again if one of those admitted packets was actually lost over the air.
 bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask,
-                               bool wire_v2, bool allow_deflate) {
+                               bool wire_v2, bool allow_deflate, bool extended_length) {
   for (uint8_t i = 0; i < _n_serve_jobs; i++) {
     ServeJob& job = _serve_jobs[i];
     if (job.block != block || memcmp(job.mid, mid, 4) != 0) continue;
     // A proof-only request can complete whichever representation is already queued. DATA requests with
     // different geometries remain distinct because their bitmap positions do not describe the same bytes.
     if (want_mask != 0 && (job.wire_v2 != wire_v2 ||
-        (wire_v2 && job.allow_deflate != allow_deflate))) continue;
+        (wire_v2 && (job.allow_deflate != allow_deflate ||
+                     job.extended_length != extended_length)))) continue;
     job.pending_mask |= (uint16_t)(want_mask & ~job.emitted_mask);
     if (want_mask == 0) job.proof_requested = true;
     return true;
@@ -448,6 +452,7 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
   job.proof_requested = want_mask == 0;
   job.wire_v2 = wire_v2;
   job.allow_deflate = allow_deflate;
+  job.extended_length = extended_length;
   return true;
 }
 
@@ -633,6 +638,10 @@ bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
     const bool wire_v2 = ota_req_is_v2(rq.items[i].want_mask);
     const bool allow_deflate = wire_v2 &&
         (rq.items[i].want_mask & OTA_REQ_V2_ALLOW_DEFLATE) != 0;
+    const bool extended_length = wire_v2 &&
+        ota_req_v2_extended_length(rq.items[i].want_mask);
+    const bool block_requires_extended = v->m.block_size() > OTA_DATA_V2_LEGACY_MAX_ENCODED;
+    if (wire_v2 && extended_length != block_requires_extended) continue;
     const uint16_t valid_mask = frag_full_mask((blen +
         (wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA) - 1) /
         (wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA));
@@ -640,7 +649,7 @@ bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
         ? ota_req_v2_fragments(rq.items[i].want_mask) : rq.items[i].want_mask;
     const uint16_t want = (uint16_t)(requested & valid_mask);
     if (want != 0) accepted |= queueServeJob(v->m.merkle_root, (uint16_t)idx, want,
-                                             wire_v2, allow_deflate);
+                                             wire_v2, allow_deflate, extended_length);
   }
   return accepted;
 }
@@ -710,7 +719,10 @@ void OtaManager::serviceEgress() {
     dm.block_idx = job.block;
     uint8_t v2_data[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
     if (job.wire_v2) {
-      if (!ota_data_v2_pack(fragment, _serve_wire_len, _serve_wire_deflated, dm.frag_off)) {
+      const bool packed = job.extended_length
+          ? ota_data_v2_pack_extended(fragment, _serve_wire_len, dm.frag_off)
+          : ota_data_v2_pack(fragment, _serve_wire_len, _serve_wire_deflated, dm.frag_off);
+      if (!packed) {
         popServeJob();
         return;
       }
@@ -1342,7 +1354,7 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   uint32_t bs = 1u << bsl;
   // a block must fit our reassembly buffer (and be non-empty) - reject an oversized block_size up front
   if (bs == 0 || bs > OTA_MAX_BLOCK || payload_size == 0) { failFetch(FETCH_ERROR_GEOMETRY); return; }
-  uint32_t bc = (payload_size + bs - 1) / bs;
+  uint32_t bc = payload_size / bs + (payload_size % bs != 0 ? 1u : 0u);
   if (bc > 0xFFFFu) { failFetch(FETCH_ERROR_TOO_LARGE); return; } // uint16 block index on the wire
   if (_archive_fetch && (uint64_t)bc * 4 > OTA_PROOFGEN_SCRATCH) {
     failFetch(FETCH_ERROR_TOO_LARGE); return;       // retaining an image we cannot seed is useless
@@ -1659,7 +1671,12 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
     uint8_t fragment = 0;
     uint16_t encoded_len = 0;
     bool deflated = false;
-    if (!ota_data_v2_unpack(dm.frag_off, fragment, encoded_len, deflated)) return false;
+    const bool extended_length = _fbs > OTA_DATA_V2_LEGACY_MAX_ENCODED;
+    const bool unpacked = extended_length
+        ? ota_data_v2_unpack_extended(dm.frag_off, (uint16_t)blen,
+                                      fragment, encoded_len, deflated)
+        : ota_data_v2_unpack(dm.frag_off, fragment, encoded_len, deflated);
+    if (!unpacked) return false;
     if (encoded_len > blen || (deflated ? encoded_len >= blen : encoded_len != blen)) return false;
     const uint16_t fragment_len = (uint16_t)(dm.data_len - OTA_DATA_V2_STREAM_ID_BYTES);
     const uint32_t fragment_off = (uint32_t)fragment * OTA_FRAG_DATA_V2;
@@ -1795,7 +1812,8 @@ uint16_t OtaManager::wireRequestMask(uint32_t block, uint16_t need, uint16_t rec
       want = frag_full_mask((blockLen(block) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
     }
     if (want == 0) want = need;
-    return ota_req_make_v2(want, _wire_allow_deflate);
+    return ota_req_make_v2(
+        want, _wire_allow_deflate, _fbs > OTA_DATA_V2_LEGACY_MAX_ENCODED);
   }
   if (want == 0) want = need;
   return want;

@@ -1544,6 +1544,7 @@ def test_bootloader_builder_rejects_wrong_identity_geometry_and_continuity():
     for change in (
         {"sign_priv": None},
         {"block_size": 512},
+        {"block_size": ml.DEFAULT_BLOCK_SIZE},
         {"fw_version": 0},
         {"target_id": ml.XIAO_BOOT_BOARD_ID_SENSE},
         {"hw_id": "wrong"},
@@ -1660,6 +1661,31 @@ def test_full_build_parse_verify():
     assert parsed.manifest.image_hash == ml.mh32(image)
     assert parsed.payload == image
     assert ml.verify(parsed) == []
+
+
+def test_application_default_and_maximum_block_size_are_2k():
+    assert ml.DEFAULT_BLOCK_SIZE == ml.MAX_APP_BLOCK_SIZE == 2048
+    assert ml.Manifest().block_size == 2048
+
+    fw = _fw(15, 5 * 1024 + 7)
+    image, _ = ml.ensure_endf(fw)
+    manifest = ml.build_manifest(
+        target_id=0xDEADBEEF, fw_version=ml.pack_version("1.17.2"),
+        image_size=len(image), payload=image, block_size=ml.DEFAULT_BLOCK_SIZE,
+        image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True)
+    parsed = ml.parse_container(ml.build_container(manifest, image))
+    assert parsed.manifest.block_size_log2 == 11
+    assert parsed.manifest.block_size == 2048
+    assert ml.verify(parsed) == []
+
+    try:
+        ml.build_manifest(
+            target_id=0xDEADBEEF, fw_version=ml.pack_version("1.17.2"),
+            image_size=len(image), payload=image, block_size=4096,
+            image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True)
+        assert False, "v2 application block larger than 2 KiB accepted"
+    except ValueError:
+        pass
 
 
 def test_hw_id_roundtrip_and_signed():

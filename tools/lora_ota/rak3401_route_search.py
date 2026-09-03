@@ -7,9 +7,12 @@ be migrated safely when new candidate images are inserted.
 
 The default secondary objective remains container size. ``--objective transport``
 instead measures the exact live motatool encoder and minimizes clean serialized
-MeshCore bytes. Inventory boolean ``ota_transport_deflate`` and integer
-``ota_fetch_pipeline`` belong to the currently running/source image; the pinned
-first bootstrap is always legacy raw.
+MeshCore bytes. Inventory fields ``ota_transport_deflate``,
+``ota_fetch_pipeline``, and ``transport_max_block_bytes`` belong to the
+currently running/source image; the pinned first bootstrap is always legacy
+raw. The explicit maximum controls signed-container block geometry independently
+of whether DEFLATE is allowed; either DEFLATE or 2 KiB geometry negotiates the
+171-byte v2 wire profile.
 """
 from __future__ import annotations
 
@@ -43,9 +46,21 @@ EXPECTED_TARGET_ID = 0x2FA509C1
 EXPECTED_HARDWARE = "RAK_3401"
 TRANSPORT_CAPABILITY = "ota_transport_deflate"
 TRANSPORT_PIPELINE_FIELD = "ota_fetch_pipeline"
+TRANSPORT_MAX_BLOCK_FIELD = "transport_max_block_bytes"
 TRANSPORT_CAPABILITY_ALIAS = "transport_inflate"
 TRANSPORT_PIPELINE_ALIAS = "fetch_pipeline"
-BLOCK_SIZE = 1024
+LEGACY_BLOCK_SIZE = 1024
+DEFLATE_BLOCK_SIZE = 2048
+TRANSPORT_PROFILE_MATRIX = {
+    "1024,deflate=false": "legacy-160-raw",
+    "1024,deflate=true": "v2-171-deflate",
+    "2048,deflate=false": "v2-171-raw",
+    "2048,deflate=true": "v2-171-deflate",
+}
+# Retain the historical name for callers that are specifically dealing with
+# the immutable first package. New route geometry must choose a block size from
+# the currently running/source image via ``source_block_size``.
+BLOCK_SIZE = LEGACY_BLOCK_SIZE
 LEGACY_DATA_BYTES = 160
 V2_DATA_BYTES = 171
 MANIFEST_BYTES = 197
@@ -58,7 +73,7 @@ TRANSPORT_FIELDS = [
 ]
 FIELDS = [
     "source", "target", "source_sha256", "target_sha256", "memory",
-    "payload", "container", "stage_start", "margin", "feasible", "error",
+    "payload", "block_size", "container", "stage_start", "margin", "feasible", "error",
 ] + TRANSPORT_FIELDS
 
 
@@ -74,27 +89,46 @@ def align_down(value: int, unit: int = PAGE) -> int:
     return value // unit * unit
 
 
-def container_size(payload_size: int) -> int:
-    return payload_size + 210 + 4 * ((payload_size + 1023) // 1024)
+def _validate_block_size(block_size: int) -> int:
+    if block_size not in (LEGACY_BLOCK_SIZE, DEFLATE_BLOCK_SIZE):
+        raise RouteSearchError(
+            f"logical block size must be {LEGACY_BLOCK_SIZE} or {DEFLATE_BLOCK_SIZE}"
+        )
+    return block_size
 
 
-def payload_size_from_container(total: int) -> int:
+def container_size(
+    payload_size: int, block_size: int = LEGACY_BLOCK_SIZE
+) -> int:
+    block_size = _validate_block_size(block_size)
+    if payload_size <= 0:
+        raise RouteSearchError("container payload must be positive")
+    return payload_size + 210 + 4 * (
+        (payload_size + block_size - 1) // block_size
+    )
+
+
+def payload_size_from_container(
+    total: int, block_size: int = LEGACY_BLOCK_SIZE
+) -> int:
     """Invert the fixed mOTA geometry used by the pinned bootstrap package."""
+    block_size = _validate_block_size(block_size)
     if total <= 210:
         raise RouteSearchError("container is too small to contain a payload")
-    max_blocks = (total - 210 + BLOCK_SIZE - 1) // BLOCK_SIZE
+    max_blocks = (total - 210 + block_size - 1) // block_size
     for blocks in range(1, max_blocks + 1):
         payload = total - 210 - 4 * blocks
-        if payload > 0 and (payload + BLOCK_SIZE - 1) // BLOCK_SIZE == blocks:
+        if payload > 0 and (payload + block_size - 1) // block_size == blocks:
             return payload
     raise RouteSearchError(f"container size {total} has no valid payload geometry")
 
 
-def _block_lengths(payload_size: int) -> list[int]:
+def _block_lengths(payload_size: int, block_size: int) -> list[int]:
     if payload_size <= 0:
         raise RouteSearchError("transport payload must be positive")
-    full, tail = divmod(payload_size, BLOCK_SIZE)
-    result = [BLOCK_SIZE] * full
+    block_size = _validate_block_size(block_size)
+    full, tail = divmod(payload_size, block_size)
+    result = [block_size] * full
     if tail:
         result.append(tail)
     return result
@@ -136,7 +170,7 @@ def _common_transport_cost(block_count: int) -> tuple[int, int, int]:
 
 def legacy_transport_cost(payload_size: int) -> dict[str, int | str]:
     """Ideal clean legacy transfer, including requests, DATA, and proofs."""
-    blocks = _block_lengths(payload_size)
+    blocks = _block_lengths(payload_size, LEGACY_BLOCK_SIZE)
     block_count = len(blocks)
     data_packets = sum(
         (length + LEGACY_DATA_BYTES - 1) // LEGACY_DATA_BYTES
@@ -151,6 +185,7 @@ def legacy_transport_cost(payload_size: int) -> dict[str, int | str]:
     manifest_bytes = common_bytes - proof_bytes
     return {
         "profile": "legacy-160-raw",
+        "block_size": LEGACY_BLOCK_SIZE,
         "payload_bytes": payload_size,
         "wire_bytes": payload_size,
         "deflate_bytes": 0,
@@ -197,9 +232,10 @@ def v2_transport_cost(
     deflate_blocks: int,
     data_packets: int,
     pipeline_capacity: int = RAK3401_PIPELINE_MAX,
+    block_size: int = DEFLATE_BLOCK_SIZE,
 ) -> dict[str, int | str]:
     """Ideal clean negotiated v2 transfer using measured seeder output."""
-    blocks = _block_lengths(payload_size)
+    blocks = _block_lengths(payload_size, block_size)
     block_count = len(blocks)
     raw_data_packets = sum(
         (length + V2_DATA_BYTES - 1) // V2_DATA_BYTES for length in blocks
@@ -226,6 +262,7 @@ def v2_transport_cost(
     manifest_bytes = common_bytes - proof_bytes
     return {
         "profile": "v2-171-deflate",
+        "block_size": block_size,
         "payload_bytes": payload_size,
         "wire_bytes": wire_bytes,
         "deflate_bytes": deflate_bytes,
@@ -245,6 +282,29 @@ def v2_transport_cost(
         "data_bytes": data_bytes,
         "request_bytes": request_bytes,
     }
+
+
+def v2_raw_transport_cost(
+    payload_size: int,
+    pipeline_capacity: int = RAK3401_PIPELINE_MAX,
+    block_size: int = LEGACY_BLOCK_SIZE,
+) -> dict[str, int | str]:
+    """Ideal negotiated v2 transfer without compression for a comparison base."""
+    blocks = _block_lengths(payload_size, block_size)
+    data_packets = sum(
+        (length + V2_DATA_BYTES - 1) // V2_DATA_BYTES for length in blocks
+    )
+    result = v2_transport_cost(
+        payload_size,
+        payload_size,
+        0,
+        0,
+        data_packets,
+        pipeline_capacity,
+        block_size,
+    )
+    result["profile"] = "v2-171-raw"
+    return result
 
 
 def linear_path_bytes(origin_mesh_bytes: int, packets: int, relay_hops: int) -> int:
@@ -300,6 +360,13 @@ def load_inventory(path: Path) -> list[dict[str, object]]:
         and TRANSPORT_CAPABILITY in capability_contract
     ) or any(
         isinstance(record, dict) and TRANSPORT_CAPABILITY in record
+        for record in images
+    )
+    strict_block_contract = strict_transport_contract or (
+        isinstance(capability_contract, dict)
+        and TRANSPORT_MAX_BLOCK_FIELD in capability_contract
+    ) or any(
+        isinstance(record, dict) and TRANSPORT_MAX_BLOCK_FIELD in record
         for record in images
     )
     edge_policy = document.get("edge_policy", {})
@@ -401,6 +468,25 @@ def load_inventory(path: Path) -> list[dict[str, object]]:
                 f"{TRANSPORT_CAPABILITY}"
             )
         record[TRANSPORT_CAPABILITY] = capability
+        raw_max_block = record.get(TRANSPORT_MAX_BLOCK_FIELD)
+        if raw_max_block is None:
+            if strict_block_contract:
+                raise RouteSearchError(
+                    f"image {index} {TRANSPORT_MAX_BLOCK_FIELD} is required by "
+                    "the inventory capability contract"
+                )
+            max_block = LEGACY_BLOCK_SIZE
+        else:
+            max_block = _integer(
+                raw_max_block, f"image {index} {TRANSPORT_MAX_BLOCK_FIELD}"
+            )
+            if max_block not in (LEGACY_BLOCK_SIZE, DEFLATE_BLOCK_SIZE):
+                raise RouteSearchError(
+                    f"image {index} {TRANSPORT_MAX_BLOCK_FIELD} must be "
+                    f"{LEGACY_BLOCK_SIZE} or {DEFLATE_BLOCK_SIZE}"
+                )
+        record[TRANSPORT_MAX_BLOCK_FIELD] = max_block
+        uses_v2 = capability or max_block > LEGACY_BLOCK_SIZE
         raw_pipeline = record.get(TRANSPORT_PIPELINE_FIELD)
         if (
             raw_pipeline is None
@@ -408,12 +494,12 @@ def load_inventory(path: Path) -> list[dict[str, object]]:
             and TRANSPORT_PIPELINE_ALIAS in record
         ):
             raw_pipeline = record[TRANSPORT_PIPELINE_ALIAS]
-        if capability and raw_pipeline is None:
+        if uses_v2 and raw_pipeline is None:
             raise RouteSearchError(
-                f"image {index} {TRANSPORT_PIPELINE_FIELD} is required when "
-                f"{TRANSPORT_CAPABILITY} is true"
+                f"image {index} {TRANSPORT_PIPELINE_FIELD} is required for "
+                "v2 transport"
             )
-        if capability:
+        if uses_v2:
             pipeline = _integer(
                 raw_pipeline, f"image {index} {TRANSPORT_PIPELINE_FIELD}"
             )
@@ -426,7 +512,7 @@ def load_inventory(path: Path) -> list[dict[str, object]]:
         elif raw_pipeline is not None and strict_transport_contract:
             raise RouteSearchError(
                 f"image {index} {TRANSPORT_PIPELINE_FIELD} must be null when "
-                f"{TRANSPORT_CAPABILITY} is false"
+                "neither DEFLATE nor 2 KiB blocks are enabled"
             )
         else:
             record[TRANSPORT_PIPELINE_FIELD] = None
@@ -532,7 +618,8 @@ def transport_stats_complete(row: dict[str, object]) -> bool:
 
 
 def normalize_transport_stats(
-    row: dict[str, object], payload_size: int, label: str
+    row: dict[str, object], payload_size: int, label: str,
+    block_size: int = DEFLATE_BLOCK_SIZE,
 ) -> dict[str, object]:
     present = [row.get(field) not in (None, "") for field in TRANSPORT_FIELDS]
     if any(present) and not all(present):
@@ -554,16 +641,22 @@ def normalize_transport_stats(
         int(normalized["v2_deflate_bytes"]),
         int(normalized["v2_deflate_blocks"]),
         int(normalized["v2_data_packets"]),
+        block_size=block_size,
     )
     return normalized
 
 
-def measure_transport_size(tool: Path, payload: Path) -> dict[str, object]:
+def measure_transport_size(
+    tool: Path,
+    payload: Path,
+    block_size: int = DEFLATE_BLOCK_SIZE,
+) -> dict[str, object]:
     """Ask motatool's live-seeder encoder for exact per-block byte counts."""
+    block_size = _validate_block_size(block_size)
     try:
         completed = subprocess.run(
             [str(tool), "transport-size", "--payload", str(payload),
-             "--block-size", str(BLOCK_SIZE)],
+             "--block-size", str(block_size)],
             check=False, capture_output=True, text=True, encoding="utf-8",
             timeout=60,
         )
@@ -585,9 +678,9 @@ def measure_transport_size(tool: Path, payload: Path) -> dict[str, object]:
     expected_payload = payload.stat().st_size
     if measured.get("payload_bytes") != expected_payload:
         raise RouteSearchError("transport-size tool measured the wrong payload")
-    if measured.get("block_size") != BLOCK_SIZE:
+    if measured.get("block_size") != block_size:
         raise RouteSearchError("transport-size tool used the wrong block size")
-    expected_blocks = (expected_payload + BLOCK_SIZE - 1) // BLOCK_SIZE
+    expected_blocks = (expected_payload + block_size - 1) // block_size
     if measured.get("block_count") != expected_blocks:
         raise RouteSearchError("transport-size tool returned the wrong block count")
     row = {
@@ -598,7 +691,9 @@ def measure_transport_size(tool: Path, payload: Path) -> dict[str, object]:
         "v2_deflate_blocks": measured.get("deflate_blocks"),
         "v2_data_packets": measured.get("data_packets"),
     }
-    return normalize_transport_stats(row, expected_payload, str(payload))
+    return normalize_transport_stats(
+        row, expected_payload, str(payload), block_size
+    )
 
 
 def migrate_csv(
@@ -664,6 +759,7 @@ def migrate_csv(
             memory = _integer(row["memory"], f"memory at {csv_path}:{line}")
             try:
                 payload = int(row.get("payload", ""))
+                recorded_block_size = row.get("block_size", "")
                 total = int(row.get("container", ""))
                 stage_start = int(row.get("stage_start", ""))
                 margin = int(row.get("margin", ""))
@@ -681,11 +777,24 @@ def migrate_csv(
                     f"successful cached geometry carries an error at "
                     f"{csv_path}:{line}; regenerate it"
                 )
-            expected_total = container_size(payload)
-            expected_stage = align_down(STAGE_CEILING - expected_total)
-            expected_margin = expected_stage - (APP_BASE + memory)
+            expected_block_size = source_block_size(images, source_node)
+            # Geometry caches predating per-source block sizing have no column
+            # and therefore contain 1 KiB container arithmetic. The detools
+            # payload itself does not depend on the Merkle block size, so first
+            # authenticate that historical arithmetic and then migrate only
+            # the derived container/staging fields. Transport counters do
+            # depend on block boundaries and are deliberately invalidated.
+            if recorded_block_size in (None, ""):
+                recorded_block_size_int = LEGACY_BLOCK_SIZE
+            else:
+                recorded_block_size_int = _integer(
+                    recorded_block_size, f"block_size at {csv_path}:{line}"
+                )
+            recorded_total = container_size(payload, recorded_block_size_int)
+            recorded_stage = align_down(STAGE_CEILING - recorded_total)
+            recorded_margin = recorded_stage - (APP_BASE + memory)
             if (total, stage_start, margin) != (
-                expected_total, expected_stage, expected_margin
+                recorded_total, recorded_stage, recorded_margin
             ):
                 raise RouteSearchError(
                     f"inconsistent cached geometry at {csv_path}:{line}"
@@ -694,16 +803,30 @@ def migrate_csv(
                 raise RouteSearchError(
                     f"cached feasibility is inconsistent at {csv_path}:{line}"
                 )
+            block_size = expected_block_size
+            total = container_size(payload, block_size)
+            stage_start = align_down(STAGE_CEILING - total)
+            margin = stage_start - (APP_BASE + memory)
+            feasible = payload >= 0 and margin >= 0
             key = cache_key(source_sha, target_sha, memory)
             normalized = {field: row.get(field, "") for field in FIELDS}
             normalized.update(source=source_node, target=target_node,
                               source_sha256=source_sha, target_sha256=target_sha,
-                              memory=memory)
-            normalized.update(normalize_transport_stats(
-                row, payload, f"{csv_path}:{line}"
-            ))
+                              memory=memory, payload=payload,
+                              block_size=block_size, container=total,
+                              stage_start=stage_start, margin=margin,
+                              feasible=feasible, error="")
+            if recorded_block_size_int == block_size:
+                normalized.update(normalize_transport_stats(
+                    row, payload, f"{csv_path}:{line}", block_size
+                ))
+            else:
+                normalized.update({field: "" for field in TRANSPORT_FIELDS})
             previous = migrated.get(key)
-            comparable = ("payload", "container", "stage_start", "margin", "feasible", "error")
+            comparable = (
+                "payload", "block_size", "container", "stage_start", "margin",
+                "feasible", "error",
+            )
             if previous is not None and any(
                 str(previous.get(item, "")) != str(normalized.get(item, ""))
                 for item in comparable
@@ -723,7 +846,7 @@ def migrate_csv(
     return migrated
 
 
-Job = tuple[int, int, int, str, str, str, str]
+Job = tuple[int, int, int, str, str, str, str, int]
 
 
 def is_forward_progress(
@@ -745,7 +868,8 @@ def all_jobs(images: list[dict[str, object]]) -> list[Job]:
             continue
         jobs.append((1, target, FIXED_MEMORY, str(images[1]["path"]),
                      str(images[target]["path"]), str(images[1]["sha256"]),
-                     str(images[target]["sha256"])))
+                     str(images[target]["sha256"]),
+                     source_block_size(images, 1)))
     for source in range(2, endpoint):
         source_size = int(images[source]["size"])
         for target in range(source + 1, endpoint + 1):
@@ -756,7 +880,8 @@ def all_jobs(images: list[dict[str, object]]) -> list[Job]:
             for memory_page in range(first_page, AVAILABLE_PAGES):
                 jobs.append((source, target, memory_page * PAGE,
                              str(images[source]["path"]), str(images[target]["path"]),
-                             str(images[source]["sha256"]), str(images[target]["sha256"])))
+                             str(images[source]["sha256"]), str(images[target]["sha256"]),
+                             source_block_size(images, source)))
     return jobs
 
 
@@ -826,7 +951,7 @@ def job_needs_transport_stats(
 ) -> bool:
     return (
         objective == "transport"
-        and source_uses_v2(images, job[0])
+        and source_uses_deflate(images, job[0])
         and (relevant_pairs is None or (job[0], job[1]) in relevant_pairs)
     )
 
@@ -835,8 +960,12 @@ def cache_satisfies_job(
     row: dict[str, object] | None,
     needs_transport: bool,
     expected_encoder_sha256: str | None = None,
+    expected_block_size: int | None = None,
 ) -> bool:
     return row is not None and (
+        expected_block_size is None
+        or int(row.get("block_size") or LEGACY_BLOCK_SIZE) == expected_block_size
+    ) and (
         not needs_transport
         or not truth(row.get("feasible", False))
         or (
@@ -857,13 +986,17 @@ def geometry_job(args: tuple[object, ...]) -> dict[str, object]:
             "detools is required to generate geometry; run this tool in the "
             "detools pipx environment"
         ) from exc
-    if len(args) not in (8, 9):
+    if len(args) not in (9, 10):
         raise RouteSearchError("invalid geometry job")
-    source, target, memory, from_raw, to_raw, source_sha, target_sha, patches_raw = args[:8]
-    transport_tool = str(args[8]) if len(args) == 9 and args[8] else ""
+    (
+        source, target, memory, from_raw, to_raw, source_sha, target_sha,
+        block_size, patches_raw,
+    ) = args[:9]
+    transport_tool = str(args[9]) if len(args) == 10 and args[9] else ""
     source = int(source)
     target = int(target)
     memory = int(memory)
+    block_size = _validate_block_size(int(block_size))
     from_raw = str(from_raw)
     to_raw = str(to_raw)
     source_sha = str(source_sha)
@@ -877,12 +1010,12 @@ def geometry_job(args: tuple[object, ...]) -> dict[str, object]:
             memory_size=memory, segment_size=SEGMENT, use_mmap=True,
         )
         payload = patch.stat().st_size
-        total = container_size(payload)
+        total = container_size(payload, block_size)
         stage_start = align_down(STAGE_CEILING - total)
         margin = stage_start - (APP_BASE + memory)
         error = ""
         transport = (
-            measure_transport_size(Path(transport_tool), patch)
+            measure_transport_size(Path(transport_tool), patch, block_size)
             if transport_tool and margin >= 0
             else {field: "" for field in TRANSPORT_FIELDS}
         )
@@ -895,7 +1028,8 @@ def geometry_job(args: tuple[object, ...]) -> dict[str, object]:
         patch.unlink(missing_ok=True)
     return {"source": source, "target": target, "source_sha256": source_sha,
             "target_sha256": target_sha, "memory": memory, "payload": payload,
-            "container": total, "stage_start": stage_start, "margin": margin,
+            "block_size": block_size, "container": total,
+            "stage_start": stage_start, "margin": margin,
             "feasible": payload >= 0 and margin >= 0, "error": error,
             **transport}
 
@@ -915,6 +1049,12 @@ def project_cache(cache: dict[tuple[str, str, int], dict[str, object]],
             )
         row.update(source=index[key[0]], target=index[key[1]],
                    source_sha256=key[0], target_sha256=key[1], memory=key[2])
+        expected_block_size = source_block_size(images, int(row["source"]))
+        if int(row.get("block_size") or LEGACY_BLOCK_SIZE) != expected_block_size:
+            raise RouteSearchError(
+                f"required cache geometry has the wrong block size: {key}"
+            )
+        row["block_size"] = expected_block_size
         rows.append(row)
     return rows
 
@@ -980,9 +1120,48 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
         raise
 
 
-def source_uses_v2(images: list[dict[str, object]], source: int) -> bool:
-    """Capability is the currently running/source image; bootstrap is raw."""
+def source_block_size(images: list[dict[str, object]], source: int) -> int:
+    """Logical package/Merkle block size accepted by the running receiver."""
+    if source == 0:
+        return LEGACY_BLOCK_SIZE
+    block_size = int(images[source].get(TRANSPORT_MAX_BLOCK_FIELD, 0))
+    if block_size not in (LEGACY_BLOCK_SIZE, DEFLATE_BLOCK_SIZE):
+        raise RouteSearchError(
+            f"source image {source} has no explicit supported application "
+            "block size"
+        )
+    return block_size
+
+
+def source_uses_deflate(images: list[dict[str, object]], source: int) -> bool:
+    """Whether the running receiver permits compressed v2 DATA blocks."""
     return source != 0 and bool(images[source][TRANSPORT_CAPABILITY])
+
+
+def source_uses_v2(images: list[dict[str, object]], source: int) -> bool:
+    """Whether either independent capability requires the negotiated v2 wire."""
+    return source != 0 and (
+        source_uses_deflate(images, source)
+        or source_block_size(images, source) > LEGACY_BLOCK_SIZE
+    )
+
+
+def source_transport_profile(
+    images: list[dict[str, object]], source: int
+) -> str:
+    """Select the profile from the independent compression/block-size axes."""
+    if source == 0:
+        return "legacy-160-raw"
+    key = (
+        f"{source_block_size(images, source)},deflate="
+        f"{str(source_uses_deflate(images, source)).lower()}"
+    )
+    try:
+        return TRANSPORT_PROFILE_MATRIX[key]
+    except KeyError as exc:
+        raise RouteSearchError(
+            f"source image {source} has an unsupported transport capability matrix"
+        ) from exc
 
 
 def source_transport_pipeline(images: list[dict[str, object]], source: int) -> int:
@@ -1002,7 +1181,7 @@ def transport_encoder_for_rows(
         str(row["transport_encoder_sha256"])
         for row in rows
         if truth(row.get("feasible", False))
-        and source_uses_v2(images, int(row["source"]))
+        and source_uses_deflate(images, int(row["source"]))
         and (
             relevant_pairs is None
             or (int(row["source"]), int(row["target"])) in relevant_pairs
@@ -1020,13 +1199,26 @@ def edge_transport_cost(
     row: dict[str, object], images: list[dict[str, object]], relay_hops: int
 ) -> dict[str, int | str]:
     source = int(row["source"])
+    block_size = source_block_size(images, source)
+    recorded_block_size = int(row.get("block_size") or block_size)
+    if recorded_block_size != block_size:
+        raise RouteSearchError(
+            f"geometry edge {source}->{int(row['target'])} uses "
+            f"{recorded_block_size}-byte blocks, expected {block_size}"
+        )
     payload = int(row.get("payload", 0))
     if payload <= 0:
-        payload = payload_size_from_container(int(row["container"]))
-    if source_uses_v2(images, source):
+        payload = payload_size_from_container(int(row["container"]), block_size)
+    elif int(row["container"]) != container_size(payload, block_size):
+        raise RouteSearchError(
+            f"geometry edge {source}->{int(row['target'])} container does not "
+            "match its logical block size"
+        )
+    profile = source_transport_profile(images, source)
+    if profile == "v2-171-deflate":
         if not transport_stats_complete(row):
             raise RouteSearchError(
-                f"missing transport statistics for capable source edge "
+                f"missing transport statistics for compressed source edge "
                 f"{source}->{int(row['target'])} memory=0x{int(row['memory']):X}"
             )
         cost = v2_transport_cost(
@@ -1036,6 +1228,13 @@ def edge_transport_cost(
             int(row["v2_deflate_blocks"]),
             int(row["v2_data_packets"]),
             source_transport_pipeline(images, source),
+            block_size,
+        )
+    elif profile == "v2-171-raw":
+        cost = v2_raw_transport_cost(
+            payload,
+            source_transport_pipeline(images, source),
+            block_size,
         )
     else:
         cost = legacy_transport_cost(payload)
@@ -1064,6 +1263,7 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
         raise RouteSearchError("pinned first package does not fit")
     baseline_row: dict[str, object] = {
         "source": 0, "target": 1, "memory": FIXED_MEMORY,
+        "block_size": LEGACY_BLOCK_SIZE,
         "container": baseline_size, "stage_start": baseline_stage,
         "margin": baseline_margin, "feasible": True,
     }
@@ -1160,8 +1360,13 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
         )
         common["transport_accounting"] = {
             "relay_hops": relay_hops,
+            "legacy_block_size": LEGACY_BLOCK_SIZE,
+            "supported_block_sizes": [LEGACY_BLOCK_SIZE, DEFLATE_BLOCK_SIZE],
+            "comparison_baseline_block_size": LEGACY_BLOCK_SIZE,
             "source_capability_field": TRANSPORT_CAPABILITY,
             "source_pipeline_field": TRANSPORT_PIPELINE_FIELD,
+            "source_max_block_field": TRANSPORT_MAX_BLOCK_FIELD,
+            "source_profile_matrix": dict(TRANSPORT_PROFILE_MATRIX),
             "first_bootstrap_profile": "legacy-160-raw",
             "included": (
                 "OTA messages, repeated 4-byte v2 stream IDs, 171-byte DATA slicing, "
@@ -1186,6 +1391,7 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
         for source, target in zip(nodes, nodes[1:]):
             row = edges[source, target]
             step = {"source_node": source, "target_node": target,
+                    "block_size": source_block_size(images, source),
                     "inplace_memory": f"0x{int(row['memory']):X}",
                     "reuse_baseline_package": source == 0 and target == 1,
                     "expected_container_size": int(row["container"]),
@@ -1197,14 +1403,14 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
                 step["transport"] = {
                     key: cost[key] for key in (
                         "profile", "payload_bytes", "wire_bytes", "deflate_bytes",
-                        "deflate_blocks", "data_packets", "request_packets",
+                        "deflate_blocks", "block_size", "data_packets", "request_packets",
                         "manifest_packets", "request_pipeline", "proof_request_packets",
                         "proof_packets", "packets", "manifest_bytes", "data_bytes",
                         "block_request_bytes", "proof_request_bytes",
                         "proof_response_bytes", "origin_mesh_bytes", "linear_path_bytes",
                     )
                 }
-                if source_uses_v2(images, source):
+                if source_uses_deflate(images, source):
                     step["transport"]["payload_sha256"] = row["payload_sha256"]
                     step["transport"]["encoder_sha256"] = row[
                         "transport_encoder_sha256"
@@ -1284,7 +1490,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         cache: dict[tuple[str, str, int], dict[str, object]] = {}
         comparable = (
-            "payload", "container", "stage_start", "margin", "feasible", "error"
+            "payload", "block_size", "container", "stage_start", "margin",
+            "feasible", "error",
         )
         for reuse_number, value in enumerate(args.reuse, 1):
             left, separator, right = value.partition("=")
@@ -1324,7 +1531,11 @@ def main(argv: list[str] | None = None) -> int:
         required = {cache_key(job[5], job[6], job[2]) for job in jobs}
         geometry_remaining = [
             job for job in jobs
-            if cache_key(job[5], job[6], job[2]) not in cache
+            if not cache_satisfies_job(
+                cache.get(cache_key(job[5], job[6], job[2])),
+                False,
+                expected_block_size=job[7],
+            )
         ]
         print(
             f"nodes={len(images)} geometries={len(jobs)} "
@@ -1359,7 +1570,15 @@ def main(argv: list[str] | None = None) -> int:
                                 f"geometry_measured={done}/{len(geometry_remaining)}",
                                 flush=True,
                             )
-        geometry_completed = required & cache.keys()
+        geometry_completed = {
+            cache_key(job[5], job[6], job[2])
+            for job in jobs
+            if cache_satisfies_job(
+                cache.get(cache_key(job[5], job[6], job[2])),
+                False,
+                expected_block_size=job[7],
+            )
+        }
         rows = project_cache(cache, images, geometry_completed)
         write_csv(args.work_dir / "geometry.csv", rows)
         geometry_complete = geometry_completed == required
@@ -1380,6 +1599,7 @@ def main(argv: list[str] | None = None) -> int:
                         job, images, args.objective, relevant_pairs
                     ),
                     frozen_transport_tool_sha256,
+                    job[7],
                 )
             ]
             print(
@@ -1437,6 +1657,7 @@ def main(argv: list[str] | None = None) -> int:
                         job, images, args.objective, relevant_pairs
                     ),
                     frozen_transport_tool_sha256,
+                    job[7],
                 )
                 for job in jobs
             )

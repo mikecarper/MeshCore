@@ -43,7 +43,10 @@ STAGE_CEILING = 0xD4000
 FIXED_WORKSPACE = 0x98000
 FLASH_PAGE = 4096
 SEGMENT_SIZE = 4096
-BLOCK_SIZE = 1024
+LEGACY_BLOCK_SIZE = 1024
+DEFLATE_BLOCK_SIZE = 2048
+# Schema-1 and the pinned bootstrap always use the historical geometry.
+BLOCK_SIZE = LEGACY_BLOCK_SIZE
 UF2_BLOCK_SIZE = 512
 UF2_DATA_OFFSET = 32
 UF2_DATA_CAPACITY = 476
@@ -54,19 +57,32 @@ UF2_FLAG_NOT_MAIN_FLASH = 0x00000001
 UF2_FLAG_FAMILY_ID = 0x00002000
 UF2_NRF52840_FAMILY_ID = 0xADA52840
 REQUIRED_SIMULATORS = {
-    "preview5": {
-        "sha256": "c6b3c6bc0b284b0b2c7a9eef1b3ea7afeb05ce4241d81309d4ab6381a575b897",
-        "tag": "0.9.2-OTAFIX2.4.1-preview.5",
-        "commit": "f8d5649ccf8b4a482c43cfdfeb61b29ab816ca48",
-    },
-    "current": {
-        "sha256": "bf57fc4b62f11d6d9ee1d8b7a863d22d3e8048ad750f6bee5ceffd7b2d4d83a7",
-        "commit": "ffb1580d8fa59d333e1e944a198ec9b231be5a40",
+    "otafix2.4": {
+        "sha256": "9dacf24b1023fe2f4c620419417649ccc9538dd4a611b47bc19b7fedb97ceba6",
+        "tag": "0.9.2-OTAFIX2.4",
+        "commit": "d73de8372e89b8ef352747c8bc7a1aaeab80fbfe",
     },
 }
 MOTATOOL_VERSION = "0.1.0"
-MOTATOOL_COMMIT = "b0bfa1c16fa758f622cacaea6e427756921c4271"
+MOTATOOL_COMMIT = "abdabec012cb53883a01da53b3e7b604ee0fd070"
+TRANSPORT_ROUTE_ENCODER_SHA256 = (
+    "53e3ca7e82f2f95b62c65d0858a83f5c54bd238a955b3a01fbe41c08bb4962e8"
+)
 DETOOLS_VERSION = "0.53.0"
+CONTAINER_ROUTE_OBJECTIVE = "minimum packages, then minimum total container bytes"
+TRANSPORT_ROUTE_OBJECTIVE = (
+    "minimum packages, then minimum ideal linear-path serialized MeshCore bytes"
+)
+TRANSPORT_STEP_FIELDS = (
+    "profile", "block_size", "payload_bytes", "wire_bytes", "deflate_bytes",
+    "deflate_blocks", "data_packets", "request_packets",
+    "manifest_packets", "request_pipeline", "proof_request_packets",
+    "proof_packets", "packets", "manifest_bytes", "data_bytes",
+    "block_request_bytes", "proof_request_bytes", "proof_response_bytes",
+    "origin_mesh_bytes", "linear_path_bytes",
+)
+LEGACY_RELEASE_TRANSPORT_BYTES = 1_563_957
+LEGACY_RELEASE_TRANSPORT_PACKETS = 13_490
 PHYSICAL_VALIDATION_KIND = "rak3401-mota-exact-chain"
 MAX_PHYSICAL_VALIDATION_BYTES = 256 * 1024
 PHYSICAL_VALIDATION_FIELDS = {
@@ -141,9 +157,11 @@ def parse_simulators(values: list[str]) -> list[tuple[str, Path]]:
     if len(actual) != len(simulators):
         raise CompactBuildError("apply simulator labels must be unique")
     if actual != expected:
+        required = " and ".join(
+            f"{label}={digest}" for label, digest in expected.items()
+        )
         raise CompactBuildError(
-            "legacy RAK3401 builds require exactly preview5="
-            f"{expected['preview5']} and current={expected['current']} apply simulators"
+            f"legacy RAK3401 builds require exactly {required} apply simulators"
         )
     return simulators
 
@@ -285,6 +303,76 @@ def read_route(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
     else:
         node_count = ENDPOINT_NODE + 1
         endpoint_node = ENDPOINT_NODE
+    search = document.get("search") if schema == 1 else document
+    if not isinstance(search, dict):
+        raise CompactBuildError("route plan is missing its exhaustive-search summary")
+    objective = search.get("objective")
+    allowed_objectives = (
+        (CONTAINER_ROUTE_OBJECTIVE,)
+        if schema == 1
+        else (CONTAINER_ROUTE_OBJECTIVE, TRANSPORT_ROUTE_OBJECTIVE)
+    )
+    if objective not in allowed_objectives:
+        raise CompactBuildError("route plan has the wrong search objective")
+    transport_accounting: dict[str, object] | None = None
+    transport_encoder_sha: str | None = None
+    relay_hops = 0
+    if objective == TRANSPORT_ROUTE_OBJECTIVE:
+        raw_accounting = search.get("transport_accounting")
+        if not isinstance(raw_accounting, dict):
+            raise CompactBuildError("route plan transport accounting is missing")
+        transport_accounting = dict(raw_accounting)
+        relay_hops = parse_int(
+            raw_accounting.get("relay_hops"), "route transport relay_hops"
+        )
+        if relay_hops > route_search.OTA_MAX_HOPS:
+            raise CompactBuildError("route transport relay_hops is out of range")
+        if (
+            raw_accounting.get("source_capability_field")
+            != route_search.TRANSPORT_CAPABILITY
+            or raw_accounting.get("source_pipeline_field")
+            != route_search.TRANSPORT_PIPELINE_FIELD
+            or raw_accounting.get("source_max_block_field")
+            != route_search.TRANSPORT_MAX_BLOCK_FIELD
+            or raw_accounting.get("source_profile_matrix")
+            != route_search.TRANSPORT_PROFILE_MATRIX
+            or raw_accounting.get("first_bootstrap_profile") != "legacy-160-raw"
+            or raw_accounting.get("legacy_block_size") != LEGACY_BLOCK_SIZE
+            or raw_accounting.get("supported_block_sizes")
+            != [LEGACY_BLOCK_SIZE, DEFLATE_BLOCK_SIZE]
+            or raw_accounting.get("comparison_baseline_block_size")
+            != LEGACY_BLOCK_SIZE
+            or raw_accounting.get("included")
+            != (
+                "OTA messages, repeated 4-byte v2 stream IDs, 171-byte DATA "
+                "slicing, adaptive requests, manifest, exact per-block proofs, "
+                "and MeshCore framing"
+            )
+            or raw_accounting.get("excluded")
+            != (
+                "discovery, retries, flood fan-out, and radio-dependent LoRa "
+                "PHY coding/preamble"
+            )
+        ):
+            raise CompactBuildError("route transport capability contract is invalid")
+        encoder_sha = raw_accounting.get("encoder_sha256")
+        if encoder_sha is not None and encoder_sha != TRANSPORT_ROUTE_ENCODER_SHA256:
+            raise CompactBuildError(
+                "route transport encoder does not match the audited release binary"
+            )
+        transport_encoder_sha = encoder_sha
+        transport_accounting = {
+            key: raw_accounting[key]
+            for key in (
+                "relay_hops", "source_capability_field", "source_pipeline_field",
+                "source_max_block_field", "source_profile_matrix",
+                "first_bootstrap_profile", "legacy_block_size",
+                "supported_block_sizes", "comparison_baseline_block_size",
+                "included", "excluded",
+            )
+        }
+        if transport_encoder_sha is not None:
+            transport_accounting["encoder_sha256"] = transport_encoder_sha
     if parse_int(document.get("app_base"), "route app_base") != APP_BASE:
         raise CompactBuildError("route plan has the wrong application base")
     if parse_int(document.get("stage_ceiling"), "route stage_ceiling") != STAGE_CEILING:
@@ -329,6 +417,118 @@ def read_route(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
         reuse = raw.get("reuse_baseline_package", False)
         if not isinstance(reuse, bool):
             raise CompactBuildError(f"route step {number} reuse flag must be boolean")
+        # Older all-legacy schema-2 plans predate the explicit field. Treat an
+        # omission as their historical 1 KiB geometry; new route output always
+        # writes the field and transport routes also pin it in accounting.
+        raw_block_size = raw.get("block_size", LEGACY_BLOCK_SIZE)
+        block_size = parse_int(raw_block_size, f"route step {number} block_size")
+        if block_size not in (LEGACY_BLOCK_SIZE, DEFLATE_BLOCK_SIZE):
+            raise CompactBuildError(f"route step {number} block_size is unsupported")
+        raw_transport = raw.get("transport")
+        transport = None
+        if objective == TRANSPORT_ROUTE_OBJECTIVE:
+            if not isinstance(raw_transport, dict):
+                raise CompactBuildError(
+                    f"route step {number} is missing transport accounting"
+                )
+            if raw_transport.get("profile") not in (
+                "legacy-160-raw", "v2-171-raw", "v2-171-deflate"
+            ):
+                raise CompactBuildError(
+                    f"route step {number} has an invalid transport profile"
+                )
+            transport = dict(raw_transport)
+            for field in TRANSPORT_STEP_FIELDS[1:]:
+                transport[field] = parse_int(
+                    raw_transport.get(field),
+                    f"route step {number} transport {field}",
+                )
+            payload_sha = raw_transport.get("payload_sha256")
+            encoder_sha = raw_transport.get("encoder_sha256")
+            profile = str(transport["profile"])
+            compressed_profile = profile == "v2-171-deflate"
+            if (
+                profile == "legacy-160-raw"
+                and block_size != LEGACY_BLOCK_SIZE
+            ) or (
+                profile == "v2-171-raw"
+                and block_size != DEFLATE_BLOCK_SIZE
+            ):
+                raise CompactBuildError(
+                    f"route step {number} block_size disagrees with its "
+                    "transport profile"
+                )
+            if (
+                compressed_profile
+                and (payload_sha is None or encoder_sha is None)
+            ) or (
+                not compressed_profile
+                and (payload_sha is not None or encoder_sha is not None)
+            ):
+                raise CompactBuildError(
+                    f"route step {number} transport hashes do not match its profile"
+                )
+            for field, value in (
+                ("payload_sha256", payload_sha),
+                ("encoder_sha256", encoder_sha),
+            ):
+                if value is not None:
+                    if not isinstance(value, str) or not re.fullmatch(
+                        r"[0-9a-f]{64}", value
+                    ):
+                        raise CompactBuildError(
+                            f"route step {number} transport {field} is invalid"
+                        )
+                    transport[field] = value
+            if encoder_sha is not None and encoder_sha != TRANSPORT_ROUTE_ENCODER_SHA256:
+                raise CompactBuildError(
+                    f"route step {number} transport encoder is not the audited binary"
+                )
+            try:
+                if compressed_profile:
+                    calculated = route_search.v2_transport_cost(
+                        int(transport["payload_bytes"]),
+                        int(transport["wire_bytes"]),
+                        int(transport["deflate_bytes"]),
+                        int(transport["deflate_blocks"]),
+                        int(transport["data_packets"]),
+                        int(transport["request_pipeline"]),
+                        block_size,
+                    )
+                elif profile == "v2-171-raw":
+                    calculated = route_search.v2_raw_transport_cost(
+                        int(transport["payload_bytes"]),
+                        int(transport["request_pipeline"]),
+                        block_size,
+                    )
+                else:
+                    calculated = route_search.legacy_transport_cost(
+                        int(transport["payload_bytes"])
+                    )
+                calculated["linear_path_bytes"] = route_search.linear_path_bytes(
+                    int(calculated["origin_mesh_bytes"]),
+                    int(calculated["packets"]),
+                    relay_hops,
+                )
+            except route_search.RouteSearchError as exc:
+                raise CompactBuildError(
+                    f"route step {number} transport accounting is invalid: {exc}"
+                ) from exc
+            for field in TRANSPORT_STEP_FIELDS:
+                if transport[field] != calculated[field]:
+                    raise CompactBuildError(
+                        f"route step {number} transport {field} is inconsistent"
+                    )
+            if route_search.container_size(
+                int(transport["payload_bytes"]), block_size
+            ) != expected_size:
+                raise CompactBuildError(
+                    f"route step {number} transport payload does not match its container"
+                )
+        elif raw_transport is not None:
+            raise CompactBuildError(
+                f"route step {number} unexpectedly contains transport accounting"
+            )
         if source >= target or target >= node_count or memory % FLASH_PAGE:
             raise CompactBuildError(f"route step {number} has invalid nodes or workspace alignment")
         if memory < FLASH_PAGE or APP_BASE + memory >= STAGE_CEILING:
@@ -338,16 +538,20 @@ def read_route(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
         elif source != steps[-1]["target_node"]:
             raise CompactBuildError(f"route step {number} is discontinuous")
         nodes.append(target)
-        steps.append({
+        step = {
             "source_node": source,
             "target_node": target,
             "inplace_memory": memory,
+            "block_size": block_size,
             "reuse_baseline_package": reuse,
             "expected_container_size": expected_size,
             "expected_staging_margin": expected_margin,
             "expected_target_sha256": expected_sha,
             "expected_target_version": expected_version,
-        })
+        }
+        if transport is not None:
+            step["transport"] = transport
+        steps.append(step)
     if not nodes or nodes[0] != 0 or nodes[-1] != endpoint_node:
         raise CompactBuildError(
             f"route nodes must run from 0 through {endpoint_node}: {tuple(nodes)}"
@@ -362,11 +566,6 @@ def read_route(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
         raise CompactBuildError("the pinned first bridge requires a 0x98000 workspace")
     if steps[1]["inplace_memory"] != FIXED_WORKSPACE:
         raise CompactBuildError("the fixed-receiver second step requires a 0x98000 workspace")
-    search = document.get("search") if schema == 1 else document
-    if not isinstance(search, dict):
-        raise CompactBuildError("route plan is missing its exhaustive-search summary")
-    if search.get("objective") != "minimum packages, then minimum total container bytes":
-        raise CompactBuildError("route plan has the wrong search objective")
     if search.get("shortest_package_count") != expected_steps:
         raise CompactBuildError("route plan search package count is inconsistent")
     if schema == 1:
@@ -381,6 +580,29 @@ def read_route(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
         != selected_bytes
     ):
         raise CompactBuildError("route plan search byte total is inconsistent")
+    if objective == TRANSPORT_ROUTE_OBJECTIVE:
+        has_compressed_step = any(
+            step["transport"]["profile"] == "v2-171-deflate"
+            for step in steps
+        )
+        if has_compressed_step != (transport_encoder_sha is not None):
+            raise CompactBuildError(
+                "route transport encoder presence does not match its profiles"
+            )
+        selected_transport_bytes = sum(
+            int(step["transport"]["linear_path_bytes"]) for step in steps
+        )
+        if (
+            parse_int(
+                search.get("selected_total_transport_bytes"),
+                "route search selected_total_transport_bytes",
+            )
+            != selected_transport_bytes
+        ):
+            raise CompactBuildError(
+                "route plan search transport-byte total is inconsistent"
+            )
+        assert transport_accounting is not None
     search_aliases = {
         "candidate_geometries": (
             "candidate_geometries", "shorter_path_workspace_candidates"
@@ -403,9 +625,13 @@ def read_route(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
                 "candidate_geometries", "feasible_edges", "objective",
                 "selected_total_bytes", "shortest_package_count",
                 "shortest_route_count", "search_complete", "node_count",
+                "selected_total_transport_bytes", "transport_accounting",
             )
             if key in search
         }
+        if transport_accounting is not None:
+            document["transport_accounting"] = transport_accounting
+            document["search"]["transport_accounting"] = transport_accounting
     return steps, document
 
 
@@ -511,10 +737,49 @@ def write_inventory_provenance(source: Path, destination: Path) -> None:
         raise CompactBuildError("cannot normalize invalid image inventory")
     allowed = (
         "node", "size", "sha256", "body_hash", "version",
-        "source_commit", "baseline_container_size",
+        "source_commit", "baseline_container_size", "version_rank",
+        "source_kind", "capability_class", "ota_send_abi",
+        "ota_transport_deflate", "ota_fetch_pipeline",
+        "transport_max_block_bytes",
+        "transport_impl", "transport_fragment_bytes",
+        "accepted_transport_codecs", "prohibit_same_version_hop",
+        "variant_id", "variant_rank", "variant_count",
     )
+    normalized_top = {
+        key: document[key]
+        for key in (
+            "kind", "source_inventory_sha256", "image_count", "start_node",
+            "bootstrap_node", "endpoint_node", "app_base", "stage_ceiling",
+        )
+        if key in document
+    }
+    capability_contract = document.get("capability_contract")
+    if isinstance(capability_contract, dict):
+        normalized_top["capability_contract"] = {
+            key: capability_contract[key]
+            for key in (
+                "compatibility_alias", "cost_capability_owner",
+                "ota_fetch_pipeline", "ota_transport_deflate",
+                "transport_max_block_bytes",
+                "request_cost_rule",
+            )
+            if key in capability_contract
+        }
+    edge_policy = document.get("edge_policy")
+    if isinstance(edge_policy, dict):
+        normalized_top["edge_policy"] = {
+            key: edge_policy[key]
+            for key in (
+                "bootstrap_outbound_workspace", "bootstrap_outbound_workspace_hex",
+                "capability_owner", "eligibility_expression", "endpoint_must_be_last",
+                "pinned_first_edge", "prohibit_same_version_hops", "reason",
+                "require_target_version_rank_gt_source_version_rank",
+            )
+            if key in edge_policy
+        }
     document = {
         "schema": 2,
+        **normalized_top,
         "images": [
             {key: record[key] for key in allowed if key in record}
             for record in raw_images
@@ -562,6 +827,7 @@ def public_route_search(
             "candidate_geometries", "feasible_edges", "objective",
             "selected_total_bytes", "shortest_package_count",
             "shortest_route_count", "search_complete", "node_count",
+            "selected_total_transport_bytes", "transport_accounting",
         )
         return {key: search[key] for key in allowed if key in search}
     if schema != 1 or not isinstance(raw_search, dict):
@@ -596,10 +862,12 @@ def write_route_provenance(
     endpoint_version: str,
 ) -> None:
     """Emit a reusable route plan containing only validated public fields."""
-    normalized_steps = [
-        {
+    normalized_steps = []
+    for step in steps:
+        normalized_step = {
             "source_node": int(step["source_node"]),
             "target_node": int(step["target_node"]),
+            "block_size": int(step["block_size"]),
             "inplace_memory": f"0x{int(step['inplace_memory']):X}",
             "reuse_baseline_package": bool(step["reuse_baseline_package"]),
             "expected_container_size": int(step["expected_container_size"]),
@@ -607,15 +875,22 @@ def write_route_provenance(
             "expected_target_sha256": str(step["expected_target_sha256"]),
             "expected_target_version": str(step["expected_target_version"]),
         }
-        for step in steps
-    ]
+        raw_transport = step.get("transport")
+        if isinstance(raw_transport, dict):
+            normalized_step["transport"] = {
+                key: raw_transport[key]
+                for key in (*TRANSPORT_STEP_FIELDS, "payload_sha256", "encoder_sha256")
+                if key in raw_transport
+            }
+        normalized_steps.append(normalized_step)
     if schema == 2:
         allowed = (
             "schema", "status", "search_complete", "app_base",
             "stage_ceiling", "node_count", "candidate_geometries",
             "feasible_edges", "objective", "nodes",
             "shortest_package_count", "shortest_route_count",
-            "selected_total_bytes",
+            "selected_total_bytes", "selected_total_transport_bytes",
+            "transport_accounting",
         )
         normalized = {key: evidence[key] for key in allowed if key in evidence}
     else:
@@ -651,7 +926,7 @@ def validate_geometry_results(
         raise CompactBuildError(f"invalid route-search inventory: {exc}") from exc
     jobs = route_search.all_jobs(inventory)
     required = {
-        route_search.cache_key(job[5], job[6], job[2]): (job[0], job[1])
+        route_search.cache_key(job[5], job[6], job[2]): (job[0], job[1], job[7])
         for job in jobs
     }
     rows: list[dict[str, object]] = []
@@ -694,12 +969,16 @@ def validate_geometry_results(
                 and target_sha == str(inventory[target_node]["sha256"])
             )
             if (
-                (key not in required or required[key] != (source_node, target_node))
+                (
+                    key not in required
+                    or required[key][:2] != (source_node, target_node)
+                )
                 and not legacy_pinned_source_measurement
             ):
                 raise CompactBuildError(f"extra or misindexed geometry result at line {line}")
             try:
                 payload = int(raw["payload"])
+                block_size = int(raw["block_size"])
                 container = int(raw["container"])
                 stage_start = int(raw["stage_start"])
                 margin = int(raw["margin"])
@@ -724,7 +1003,18 @@ def validate_geometry_results(
                     "an exhaustive route search"
                 )
             else:
-                expected_container = route_search.container_size(payload)
+                expected_block_size = (
+                    LEGACY_BLOCK_SIZE
+                    if legacy_pinned_source_measurement
+                    else required[key][2]
+                )
+                if block_size != expected_block_size:
+                    raise CompactBuildError(
+                        f"geometry line {line} has the wrong block size"
+                    )
+                expected_container = route_search.container_size(
+                    payload, block_size
+                )
                 expected_stage = route_search.align_down(STAGE_CEILING - expected_container)
                 expected_margin = expected_stage - (APP_BASE + memory)
                 if (
@@ -737,9 +1027,20 @@ def validate_geometry_results(
                     raise CompactBuildError(f"geometry line {line} has inconsistent geometry")
             row = dict(raw)
             row.update(source=source_node, target=target_node, memory=memory,
-                       payload=payload, container=container, stage_start=stage_start,
+                       payload=payload, block_size=block_size,
+                       container=container, stage_start=stage_start,
                        margin=margin, feasible=feasible, error=error,
                        source_sha256=source_sha, target_sha256=target_sha)
+            try:
+                row.update(
+                    route_search.normalize_transport_stats(
+                        row, payload, f"geometry line {line}", block_size
+                    )
+                )
+            except route_search.RouteSearchError as exc:
+                raise CompactBuildError(
+                    f"geometry line {line} has invalid transport statistics: {exc}"
+                ) from exc
             rows.append(row)
     missing = set(required) - seen
     if missing:
@@ -749,23 +1050,39 @@ def validate_geometry_results(
         "inventory node 1 baseline_container_size",
     )
     try:
-        with tempfile.TemporaryDirectory() as directory:
-            recomputed = route_search.select_route(
-                rows, inventory, baseline_size, Path(directory) / "route.json",
-                complete=True,
-            )
-    except route_search.RouteSearchError as exc:
-        raise CompactBuildError(f"route recomputation failed: {exc}") from exc
-    try:
         declared = json.loads(route_path.read_text(encoding="ascii"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CompactBuildError(f"cannot reread route plan: {exc}") from exc
-    compared = (
+    declared_objective = declared.get("objective") if isinstance(declared, dict) else None
+    if declared_objective == TRANSPORT_ROUTE_OBJECTIVE:
+        objective = "transport"
+        raw_accounting = declared.get("transport_accounting")
+        if not isinstance(raw_accounting, dict):
+            raise CompactBuildError("route plan transport accounting is missing")
+        relay_hops = parse_int(
+            raw_accounting.get("relay_hops"), "route transport relay_hops"
+        )
+    elif declared_objective == CONTAINER_ROUTE_OBJECTIVE:
+        objective = "container"
+        relay_hops = 0
+    else:
+        raise CompactBuildError("route plan has the wrong search objective")
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            recomputed = route_search.select_route(
+                rows, inventory, baseline_size, Path(directory) / "route.json",
+                complete=True, objective=objective, relay_hops=relay_hops,
+            )
+    except route_search.RouteSearchError as exc:
+        raise CompactBuildError(f"route recomputation failed: {exc}") from exc
+    compared = [
         "schema", "status", "search_complete", "app_base", "stage_ceiling",
         "node_count", "candidate_geometries", "feasible_edges", "objective",
         "nodes", "shortest_package_count", "shortest_route_count",
         "selected_total_bytes", "steps",
-    )
+    ]
+    if objective == "transport":
+        compared.extend(("selected_total_transport_bytes", "transport_accounting"))
     for field in compared:
         if declared.get(field) != recomputed.get(field):
             raise CompactBuildError(f"route plan does not match recomputed {field}")
@@ -879,12 +1196,146 @@ def patch_geometry(detools: Path, payload_path: Path, label: str) -> tuple[int, 
     return values["memory"], values["segment"], values["from_size"], values["to_size"]
 
 
+def validate_selected_transport(
+    motatool: Path,
+    payload_path: Path,
+    plan_step: dict[str, object],
+    inventory: list[dict[str, object]],
+    relay_hops: int,
+    number: int,
+) -> dict[str, object]:
+    """Re-measure a selected payload and match every declared radio-cost field."""
+    declared = plan_step.get("transport")
+    if not isinstance(declared, dict):
+        raise CompactBuildError(f"step {number} has no transport accounting")
+    source_node = int(plan_step["source_node"])
+    uses_v2 = route_search.source_uses_v2(inventory, source_node)
+    uses_deflate = route_search.source_uses_deflate(inventory, source_node)
+    expected_block_size = route_search.source_block_size(inventory, source_node)
+    if int(plan_step.get("block_size", 0)) != expected_block_size:
+        raise CompactBuildError(
+            f"step {number} logical block size disagrees with source capability"
+        )
+    expected_profile = route_search.source_transport_profile(
+        inventory, source_node
+    )
+    if declared.get("profile") != expected_profile:
+        raise CompactBuildError(
+            f"step {number} transport profile disagrees with source capability"
+        )
+    payload_size = payload_path.stat().st_size
+    payload_sha = common.sha256_file(payload_path)
+    verification_encoder_sha: str | None = None
+    try:
+        if uses_deflate:
+            measured = route_search.measure_transport_size(
+                motatool, payload_path, expected_block_size
+            )
+            if measured["payload_sha256"] != payload_sha:
+                raise CompactBuildError(
+                    f"step {number} transport tool measured a different payload"
+                )
+            verification_encoder_sha = str(measured["transport_encoder_sha256"])
+            if verification_encoder_sha != declared.get("encoder_sha256"):
+                raise CompactBuildError(
+                    f"step {number} transport measurement used a different "
+                    "encoder binary"
+                )
+            calculated = route_search.v2_transport_cost(
+                payload_size,
+                int(measured["v2_wire_bytes"]),
+                int(measured["v2_deflate_bytes"]),
+                int(measured["v2_deflate_blocks"]),
+                int(measured["v2_data_packets"]),
+                route_search.source_transport_pipeline(inventory, source_node),
+                expected_block_size,
+            )
+            if declared.get("payload_sha256") != payload_sha:
+                raise CompactBuildError(
+                    f"step {number} payload does not match transport route pin"
+                )
+            if declared.get("encoder_sha256") != TRANSPORT_ROUTE_ENCODER_SHA256:
+                raise CompactBuildError(
+                    f"step {number} route encoder is not the audited release binary"
+                )
+        elif uses_v2:
+            calculated = route_search.v2_raw_transport_cost(
+                payload_size,
+                route_search.source_transport_pipeline(inventory, source_node),
+                expected_block_size,
+            )
+            if "payload_sha256" in declared or "encoder_sha256" in declared:
+                raise CompactBuildError(
+                    f"step {number} raw transport unexpectedly has encoder pins"
+                )
+        else:
+            calculated = route_search.legacy_transport_cost(payload_size)
+            if "payload_sha256" in declared or "encoder_sha256" in declared:
+                raise CompactBuildError(
+                    f"step {number} legacy transport unexpectedly has encoder pins"
+                )
+        calculated["linear_path_bytes"] = route_search.linear_path_bytes(
+            int(calculated["origin_mesh_bytes"]),
+            int(calculated["packets"]),
+            relay_hops,
+        )
+        if uses_v2:
+            one_kib_raw = route_search.v2_raw_transport_cost(
+                payload_size,
+                route_search.source_transport_pipeline(inventory, source_node),
+                LEGACY_BLOCK_SIZE,
+            )
+        else:
+            one_kib_raw = route_search.legacy_transport_cost(payload_size)
+        one_kib_raw["linear_path_bytes"] = route_search.linear_path_bytes(
+            int(one_kib_raw["origin_mesh_bytes"]),
+            int(one_kib_raw["packets"]),
+            relay_hops,
+        )
+    except route_search.RouteSearchError as exc:
+        raise CompactBuildError(
+            f"step {number} transport verification failed: {exc}"
+        ) from exc
+    for field in TRANSPORT_STEP_FIELDS:
+        if declared.get(field) != calculated[field]:
+            raise CompactBuildError(
+                f"step {number} regenerated transport {field} does not match route"
+            )
+    return {
+        "status": "passed",
+        **{field: calculated[field] for field in TRANSPORT_STEP_FIELDS},
+        "payload_sha256": payload_sha,
+        "route_encoder_sha256": (
+            TRANSPORT_ROUTE_ENCODER_SHA256 if uses_deflate else None
+        ),
+        "verification_encoder_sha256": verification_encoder_sha,
+        "one_kib_no_compression": {
+            field: one_kib_raw[field]
+            for field in TRANSPORT_STEP_FIELDS
+        },
+    }
+
+
 def write_chain(path: Path, rows: list[dict[str, object]]) -> None:
     fields = [
         "step", "from_version", "to_version", "mota_file", "mota_size",
+        "mota_block_size",
         "inplace_memory", "stage_start", "workspace_end", "staging_margin",
         "target_image_size", "base_body_hash", "target_body_hash",
-        "target_sha256", "source_commit",
+        "target_sha256", "source_commit", "transport_profile",
+        "transport_relay_hops", "transport_request_pipeline",
+        "transport_payload_sha256", "transport_encoder_sha256",
+        "transport_payload_bytes", "transport_wire_bytes",
+        "transport_deflate_bytes", "transport_deflate_blocks",
+        "transport_data_packets", "transport_request_packets",
+        "transport_manifest_packets", "transport_proof_request_packets",
+        "transport_proof_packets", "transport_packets",
+        "transport_manifest_bytes", "transport_data_bytes",
+        "transport_block_request_bytes", "transport_proof_request_bytes",
+        "transport_proof_response_bytes",
+        "transport_origin_mesh_bytes", "transport_linear_path_bytes",
+        "baseline_1k_raw_packets", "baseline_1k_raw_origin_mesh_bytes",
+        "baseline_1k_raw_linear_path_bytes",
     ]
     with path.open("w", newline="", encoding="ascii") as output:
         writer = csv.DictWriter(output, fieldnames=fields, lineterminator="\n")
@@ -1055,6 +1506,133 @@ def write_docs(
     largest = max(int(row["mota_size"]) for row in rows)
     minimum_margin = min(int(row["staging_margin"]) for row in rows)
     expected_steps = len(rows)
+    transport_rows = [row for row in rows if row.get("transport_profile")]
+    if transport_rows and len(transport_rows) != expected_steps:
+        raise CompactBuildError("generated chain has partial transport accounting")
+    if transport_rows:
+        relay_hop_values = {
+            int(row["transport_relay_hops"]) for row in transport_rows
+        }
+        if len(relay_hop_values) != 1:
+            raise CompactBuildError("generated chain mixes transport relay-hop models")
+        relay_hops = relay_hop_values.pop()
+        model_label = (
+            "ideal direct-source"
+            if relay_hops == 0
+            else f"ideal linear path with {relay_hops} relay hops"
+        )
+        transport_bytes = sum(
+            int(row["transport_linear_path_bytes"]) for row in transport_rows
+        )
+        transport_packets = sum(
+            int(row["transport_packets"]) for row in transport_rows
+        )
+        payload_bytes = sum(
+            int(row["transport_payload_bytes"]) for row in transport_rows
+        )
+        wire_bytes = sum(
+            int(row["transport_wire_bytes"]) for row in transport_rows
+        )
+        deflate_bytes = sum(
+            int(row["transport_deflate_bytes"]) for row in transport_rows
+        )
+        deflate_blocks = sum(
+            int(row["transport_deflate_blocks"]) for row in transport_rows
+        )
+        data_packets = sum(
+            int(row["transport_data_packets"]) for row in transport_rows
+        )
+        baseline_bytes = sum(
+            int(row["baseline_1k_raw_linear_path_bytes"])
+            for row in transport_rows
+        )
+        baseline_packets = sum(
+            int(row["baseline_1k_raw_packets"])
+            for row in transport_rows
+        )
+        baseline_byte_savings = baseline_bytes - transport_bytes
+        baseline_packet_savings = baseline_packets - transport_packets
+        baseline_byte_percent = 100.0 * baseline_byte_savings / baseline_bytes
+        baseline_packet_percent = 100.0 * baseline_packet_savings / baseline_packets
+        legacy_release_transport_bytes = route_search.linear_path_bytes(
+            LEGACY_RELEASE_TRANSPORT_BYTES,
+            LEGACY_RELEASE_TRANSPORT_PACKETS,
+            relay_hops,
+        )
+        transport_savings = legacy_release_transport_bytes - transport_bytes
+        packet_savings = LEGACY_RELEASE_TRANSPORT_PACKETS - transport_packets
+        transport_percent = (
+            100.0 * transport_savings / legacy_release_transport_bytes
+        )
+        packet_percent = 100.0 * packet_savings / LEGACY_RELEASE_TRANSPORT_PACKETS
+        deflate_steps = [
+            str(row["step"])
+            for row in transport_rows
+            if row["transport_profile"] == "v2-171-deflate"
+        ]
+        raw_v2_steps = [
+            str(row["step"])
+            for row in transport_rows
+            if row["transport_profile"] == "v2-171-raw"
+        ]
+        legacy_steps = [
+            str(row["step"])
+            for row in transport_rows
+            if row["transport_profile"] == "legacy-160-raw"
+        ]
+        transport_summary = f"""
+- Staged container bytes: {total_bytes:,}
+
+| Same-route radio model | Logical block geometry | Origin packets | {model_label.capitalize()} serialized MeshCore bytes |
+|---|---:|---:|---:|
+| No DEFLATE baseline; packet profiles preserved | 1 KiB all steps | {baseline_packets:,} | {baseline_bytes:,} |
+| Selected capability-aware route | Per-source 1/2 KiB signed geometry | {transport_packets:,} | {transport_bytes:,} |
+
+- Selected block streams: {payload_bytes:,} raw payload bytes become
+  {wire_bytes:,} radio bytes, including {deflate_bytes:,} DEFLATE bytes across
+  {deflate_blocks:,} compressed blocks and {data_packets:,} DATA packets
+- Same-route savings: {baseline_packet_savings:,} packets
+  ({baseline_packet_percent:.2f}%) and {baseline_byte_savings:,} bytes
+  ({baseline_byte_percent:.2f}%)
+- The baseline preserves each step's packet profile (171-byte negotiated v2
+  or 160-byte legacy); it changes only logical blocks to 1 KiB and disables
+  DEFLATE.
+- Serialized-byte reduction versus the published b40d2e6c chain:
+  {transport_savings:,} ({transport_percent:.2f}%)
+- Origin packet reduction versus the published b40d2e6c chain:
+  {packet_savings:,} ({packet_percent:.2f}%)
+"""
+        mode_descriptions = []
+        if deflate_steps:
+            mode_descriptions.append(
+                f"Steps {', '.join(deflate_steps)} use negotiated 171-byte DATA "
+                "and independent per-block DEFLATE at each source's declared "
+                "signed-container block size."
+            )
+        if raw_v2_steps:
+            mode_descriptions.append(
+                f"Steps {', '.join(raw_v2_steps)} use negotiated 171-byte raw "
+                "DATA with 2 KiB signed-container blocks; they require no "
+                "compression measurement or encoder hash."
+            )
+        if legacy_steps:
+            mode_descriptions.append(
+                f"Steps {', '.join(legacy_steps)} use 1 KiB logical blocks and "
+                "the legacy 160-byte raw transport."
+            )
+        transport_description = " ".join(mode_descriptions) + (
+            " The protocol remains multi-hop; this report uses the "
+            f"{model_label} serialization model, excluding retries and flood "
+            "fan-out."
+        )
+        package_description = (
+            f"{expected_steps}; exhaustive route search proved that {expected_steps} "
+            "is the minimum for the declared firmware inventory"
+        )
+    else:
+        transport_summary = f"\n- Staged container bytes: {total_bytes:,}\n"
+        transport_description = "This legacy route has no audited transport-byte accounting."
+        package_description = str(expected_steps)
     physical_text = (
         "The publisher supplied an unsigned operator assertion that the exact "
         "package sequence passed physical/SWD validation; every hash in that "
@@ -1080,8 +1658,8 @@ below its original `0x{STAGE_CEILING:X}` scan ceiling, and every encoded detools
 workspace ends at or below that package. No byte from `0x{STAGE_CEILING:X}`
 through `0xED000` is used by this chain.
 
-- Packages: {expected_steps} (the replaced chain used 30)
-- Total transferred bytes: {total_bytes:,}
+- Packages: {package_description}
+{transport_summary.rstrip()}
 - Largest package: {largest:,} bytes
 - Smallest workspace-to-stage margin: {minimum_margin:,} bytes
 - Endpoint image SHA-256: `{endpoint_sha}`
@@ -1092,11 +1670,14 @@ The next package leaves the fixed-workspace receiver while still obeying its
 old `0x{FIXED_WORKSPACE:X}` limit. Every later package uses the page-aligned
 workspace selected in `ROUTE.json`.
 
+{transport_description} When DEFLATE is selected, it exists only on the radio
+transfer. The staged `.mota` container and bootloader input remain unchanged
+and uncompressed, so the deployed bootloader does not need an inflater.
+
 All {expected_steps} transitions passed container verification, zero-filled and
-erased-workspace reconstruction, OTAFIX 2.4.1 Preview 5 simulator validation
-(tag `0.9.2-OTAFIX2.4.1-preview.5`, commit
-`f8d5649ccf8b4a482c43cfdfeb61b29ab816ca48`) and current simulator validation
-(commit `ffb1580d8fa59d333e1e944a198ec9b231be5a40`).
+erased-workspace reconstruction, and validation with the simulator built from
+the exact deployed OTAFIX 2.4 source (tag `0.9.2-OTAFIX2.4`, commit
+`d73de8372e89b8ef352747c8bc7a1aaeab80fbfe`).
 {physical_text} Use the pinned chain runner and do not install packages out of
 order.
 """,
@@ -1112,7 +1693,9 @@ Endpoint profile name: `halo-keymind-cascade-dev`
 Legacy stage ceiling: `0x{STAGE_CEILING:X}`
 Application base: `0x{APP_BASE:X}`
 Segment size: `{SEGMENT_SIZE}`
-Logical mOTA block size: `{BLOCK_SIZE}`
+Logical mOTA block size: independently selected per running source from its
+explicit `{route_search.TRANSPORT_MAX_BLOCK_FIELD}` capability (`{LEGACY_BLOCK_SIZE}`
+or `{DEFLATE_BLOCK_SIZE}` bytes); DEFLATE permission is a separate capability
 
 Pinned 30-step reconstruction input SHA-256: `{previous_sha}`
 Dynamic bridge-image manifest SHA-256: `{bridge_sha}`
@@ -1121,6 +1704,7 @@ Geometry-results SHA-256: `{geometry_sha or "not applicable (schema 1)"}`
 Bundled route-selection/verifier source SHA-256:
 `{route_search_sha or "not applicable (schema 1)"}`
 Executing bundle-builder source SHA-256: `{builder_source_sha}`
+Audited route transport encoder SHA-256: `{TRANSPORT_ROUTE_ENCODER_SHA256}`
 
 Tool provenance:
 
@@ -1132,19 +1716,23 @@ Tool provenance:
 
 Required bootloader simulators:
 
-- OTAFIX 2.4.1 Preview 5 (`0.9.2-OTAFIX2.4.1-preview.5`, commit
-  `f8d5649ccf8b4a482c43cfdfeb61b29ab816ca48`):
-  `c6b3c6bc0b284b0b2c7a9eef1b3ea7afeb05ce4241d81309d4ab6381a575b897`
-- Current OTAFIX (commit `ffb1580d8fa59d333e1e944a198ec9b231be5a40`):
-  `bf57fc4b62f11d6d9ee1d8b7a863d22d3e8048ad750f6bee5ceffd7b2d4d83a7`
+- Exact deployed OTAFIX 2.4 (`0.9.2-OTAFIX2.4`, commit
+  `d73de8372e89b8ef352747c8bc7a1aaeab80fbfe`):
+  `9dacf24b1023fe2f4c620419417649ccc9538dd4a611b47bc19b7fedb97ceba6`
 
-For schema 2, the route plan is independently selected again from every
-successful row in the complete, content-pinned `GEOMETRY.csv` table. Failed
-tool jobs are not admissible evidence. The minimum-package, then minimum-byte
-claim applies only to that declared firmware inventory and geometry table; it
-does not claim that no other conceivable bridge firmware could improve the
-route. The bundle generator rebuilds every selected package and checks it
-against the old bootloader ceiling before invoking either simulator.
+For schema 2, the route plan is independently selected again from every row in
+the complete, content-pinned `GEOMETRY.csv` table. Transport measurements are
+required only for feasible capable-source edges on the shortest-route DAG.
+Failed tool jobs and missing relevant transport rows are not admissible
+evidence. The secondary objective is exact ideal linear-path serialized
+MeshCore bytes, after minimizing package count. It applies only to the declared
+firmware inventory and geometry table; it does not claim that no other
+conceivable bridge firmware could improve the route.
+
+The bundle generator rebuilds every selected package, matches every v2 payload
+SHA-256 and transport counter against `ROUTE.json`, checks the old bootloader
+ceiling, reconstructs under both erased and zero-filled workspace assumptions,
+then invokes the exact deployed bootloader simulator.
 """,
         encoding="ascii",
     )
@@ -1309,6 +1897,24 @@ def main() -> int:
     route, route_document = read_route(args.route_plan)
     route_evidence = route_document
     route_schema = int(route_document["schema"])
+    route_search_summary = route_document.get("search")
+    transport_route = (
+        route_schema == 2
+        and isinstance(route_search_summary, dict)
+        and route_search_summary.get("objective") == TRANSPORT_ROUTE_OBJECTIVE
+    )
+    transport_relay_hops = 0
+    if transport_route:
+        transport_accounting = route_search_summary.get("transport_accounting")
+        assert isinstance(transport_accounting, dict)
+        transport_relay_hops = int(transport_accounting["relay_hops"])
+        if (
+            tools["motatool"]["executable_sha256"]
+            != TRANSPORT_ROUTE_ENCODER_SHA256
+        ):
+            raise CompactBuildError(
+                "motatool executable does not match the audited route encoder"
+            )
     if route_schema == 1 and args.accelerated_images is None:
         raise CompactBuildError("schema-1 routes require --accelerated-images")
     if route_schema == 2 and args.image_inventory is None:
@@ -1317,6 +1923,7 @@ def main() -> int:
         raise CompactBuildError("schema-2 routes require --geometry-results")
     if route_schema == 1 and args.geometry_results is not None:
         raise CompactBuildError("--geometry-results is only valid for schema-2 routes")
+    route_inventory: list[dict[str, object]] | None = None
     if route_schema == 1:
         assert args.accelerated_images is not None
         args.accelerated_images = snapshot_schema1_manifest(
@@ -1404,6 +2011,12 @@ def main() -> int:
     else:
         assert args.image_inventory is not None
         assert args.geometry_results is not None
+        try:
+            route_inventory = route_search.load_inventory(args.image_inventory)
+        except route_search.RouteSearchError as exc:
+            raise CompactBuildError(
+                f"invalid route-search inventory: {exc}"
+            ) from exc
         images, sources = read_image_inventory(
             args.image_inventory, endpoint_node + 1
         )
@@ -1443,6 +2056,7 @@ def main() -> int:
         source_node = int(plan_step["source_node"])
         target_node = int(plan_step["target_node"])
         memory_size = int(plan_step["inplace_memory"])
+        block_size = int(plan_step["block_size"])
         base_image = images[source_node]
         target_image = images[target_node]
         base_packed, base_body, base_version, _base_body_size = firmware_identity(base_image)
@@ -1466,7 +2080,7 @@ def main() -> int:
                     "--base", str(base_path), "--patch-type", "in-place",
                     "--inplace-memory", hex(memory_size),
                     "--segment-size", str(SEGMENT_SIZE),
-                    "--block-size", str(BLOCK_SIZE), "--out", str(output_path),
+                    "--block-size", str(block_size), "--out", str(output_path),
                 ],
                 f"build compact step {number}",
             )
@@ -1475,7 +2089,19 @@ def main() -> int:
             build_kind = "freshly generated"
         run([str(args.motatool), "verify", str(output_path)], f"verify compact step {number}")
         parsed = motalib.parse_container(output_path.read_bytes())
+        if parsed.manifest.block_size != block_size:
+            raise CompactBuildError(
+                f"step {number} manifest block size is "
+                f"{parsed.manifest.block_size}, expected {block_size}"
+            )
         payload_path.write_bytes(parsed.payload)
+        transport_validation = None
+        if transport_route:
+            assert route_inventory is not None
+            transport_validation = validate_selected_transport(
+                args.motatool, payload_path, plan_step, route_inventory,
+                transport_relay_hops, number,
+            )
         patch_memory, patch_segment, patch_from, patch_to = patch_geometry(
             args.detools, payload_path, f"compact step {number}"
         )
@@ -1548,12 +2174,13 @@ def main() -> int:
                 "sha256": common.sha256_file(simulator),
             })
 
-        output_rows.append({
+        output_row = {
             "step": number,
             "from_version": from_version,
             "to_version": to_version,
             "mota_file": f"motas/{filename}",
             "mota_size": package_size,
+            "mota_block_size": block_size,
             "inplace_memory": f"0x{memory_size:X}",
             "stage_start": f"0x{stage_start:X}",
             "workspace_end": f"0x{workspace_end:X}",
@@ -1563,8 +2190,80 @@ def main() -> int:
             "target_body_hash": target_body,
             "target_sha256": target_sha,
             "source_commit": sources[target_node],
-        })
-        validation_steps.append({
+            "transport_profile": "",
+            "transport_relay_hops": "",
+            "transport_request_pipeline": "",
+            "transport_payload_sha256": "",
+            "transport_encoder_sha256": "",
+            "transport_payload_bytes": "",
+            "transport_wire_bytes": "",
+            "transport_deflate_bytes": "",
+            "transport_deflate_blocks": "",
+            "transport_data_packets": "",
+            "transport_request_packets": "",
+            "transport_manifest_packets": "",
+            "transport_proof_request_packets": "",
+            "transport_proof_packets": "",
+            "transport_packets": "",
+            "transport_manifest_bytes": "",
+            "transport_data_bytes": "",
+            "transport_block_request_bytes": "",
+            "transport_proof_request_bytes": "",
+            "transport_proof_response_bytes": "",
+            "transport_origin_mesh_bytes": "",
+            "transport_linear_path_bytes": "",
+            "baseline_1k_raw_packets": "",
+            "baseline_1k_raw_origin_mesh_bytes": "",
+            "baseline_1k_raw_linear_path_bytes": "",
+        }
+        if transport_validation is not None:
+            output_row.update({
+                "transport_profile": transport_validation["profile"],
+                "transport_relay_hops": transport_relay_hops,
+                "transport_request_pipeline": transport_validation[
+                    "request_pipeline"
+                ],
+                "transport_payload_sha256": transport_validation["payload_sha256"],
+                "transport_encoder_sha256": (
+                    transport_validation["route_encoder_sha256"] or ""
+                ),
+                "transport_payload_bytes": transport_validation["payload_bytes"],
+                "transport_wire_bytes": transport_validation["wire_bytes"],
+                "transport_deflate_bytes": transport_validation["deflate_bytes"],
+                "transport_deflate_blocks": transport_validation["deflate_blocks"],
+                "transport_data_packets": transport_validation["data_packets"],
+                "transport_request_packets": transport_validation["request_packets"],
+                "transport_manifest_packets": transport_validation["manifest_packets"],
+                "transport_proof_request_packets": transport_validation[
+                    "proof_request_packets"
+                ],
+                "transport_proof_packets": transport_validation["proof_packets"],
+                "transport_packets": transport_validation["packets"],
+                "transport_manifest_bytes": transport_validation["manifest_bytes"],
+                "transport_data_bytes": transport_validation["data_bytes"],
+                "transport_block_request_bytes": transport_validation[
+                    "block_request_bytes"
+                ],
+                "transport_proof_request_bytes": transport_validation[
+                    "proof_request_bytes"
+                ],
+                "transport_proof_response_bytes": transport_validation[
+                    "proof_response_bytes"
+                ],
+                "transport_origin_mesh_bytes": transport_validation["origin_mesh_bytes"],
+                "transport_linear_path_bytes": transport_validation["linear_path_bytes"],
+                "baseline_1k_raw_packets": transport_validation[
+                    "one_kib_no_compression"
+                ]["packets"],
+                "baseline_1k_raw_origin_mesh_bytes": transport_validation[
+                    "one_kib_no_compression"
+                ]["origin_mesh_bytes"],
+                "baseline_1k_raw_linear_path_bytes": transport_validation[
+                    "one_kib_no_compression"
+                ]["linear_path_bytes"],
+            })
+        output_rows.append(output_row)
+        validation_step = {
             "step": number,
             "source_node": source_node,
             "target_node": target_node,
@@ -1575,14 +2274,24 @@ def main() -> int:
             "staging_margin": staging_margin,
             "mota_sha256": common.sha256_file(output_path),
             "mota_size": package_size,
+            "block_size": block_size,
             "target_sha256": target_sha,
             "zero_fill_apply": "passed",
             "erased_fill_apply": "passed",
             "apply_simulators": simulator_results,
-        })
+        }
+        if transport_validation is not None:
+            validation_step["transport"] = transport_validation
+        validation_steps.append(validation_step)
+        transport_text = (
+            f" radio={transport_validation['profile']} "
+            f"bytes={transport_validation['linear_path_bytes']}"
+            if transport_validation is not None else ""
+        )
         print(
             f"[compact] {number:02d}/{expected_steps} nodes={source_node}->{target_node} "
-            f"memory=0x{memory_size:X} size={package_size} margin={staging_margin}",
+            f"memory=0x{memory_size:X} size={package_size} margin={staging_margin}"
+            f"{transport_text}",
             flush=True,
         )
 
@@ -1668,13 +2377,134 @@ def main() -> int:
         "app_base": APP_BASE,
         "stage_ceiling": STAGE_CEILING,
         "segment_size": SEGMENT_SIZE,
-        "block_size": BLOCK_SIZE,
+        "block_size_policy": {
+            "source_max_block_field": "transport_max_block_bytes",
+            "supported_block_sizes": [LEGACY_BLOCK_SIZE, DEFLATE_BLOCK_SIZE],
+            "source_deflate_field": "ota_transport_deflate",
+            "source_profile_matrix": dict(route_search.TRANSPORT_PROFILE_MATRIX),
+        },
         "steps": validation_steps,
     }
     if route_schema == 2:
         validation["geometry_results_sha256"] = geometry_sha
         validation["route_search_source_sha256"] = route_search_sha
         validation["image_inventory_sha256"] = bridge_sha
+    if transport_route:
+        transport_validations = [
+            step["transport"] for step in validation_steps
+            if isinstance(step.get("transport"), dict)
+        ]
+        if len(transport_validations) != expected_steps:
+            raise CompactBuildError("not every selected step has transport validation")
+        selected_container_bytes = sum(
+            int(row["mota_size"]) for row in output_rows
+        )
+        selected_transport_bytes = sum(
+            int(item["linear_path_bytes"]) for item in transport_validations
+        )
+        baseline_transport_bytes = sum(
+            int(item["one_kib_no_compression"]["linear_path_bytes"])
+            for item in transport_validations
+        )
+        route_encoder_hashes = {
+            str(item["route_encoder_sha256"])
+            for item in transport_validations
+            if item.get("route_encoder_sha256") is not None
+        }
+        if len(route_encoder_hashes) > 1:
+            raise CompactBuildError("selected steps mix route transport encoders")
+        selected_route_encoder = next(iter(route_encoder_hashes), None)
+        selected_packets = sum(
+            int(item["packets"]) for item in transport_validations
+        )
+        baseline_packets = sum(
+            int(item["one_kib_no_compression"]["packets"])
+            for item in transport_validations
+        )
+        component_totals = {
+            field: sum(int(item[field]) for item in transport_validations)
+            for field in (
+                "manifest_packets", "data_packets", "request_packets",
+                "proof_request_packets", "proof_packets", "manifest_bytes",
+                "data_bytes", "block_request_bytes", "proof_request_bytes",
+                "proof_response_bytes",
+            )
+        }
+        if selected_packets != sum(
+            component_totals[field]
+            for field in (
+                "manifest_packets", "data_packets", "request_packets",
+                "proof_request_packets", "proof_packets",
+            )
+        ) or sum(
+            component_totals[field]
+            for field in (
+                "manifest_bytes", "data_bytes", "block_request_bytes",
+                "proof_request_bytes", "proof_response_bytes",
+            )
+        ) != sum(
+            int(item["origin_mesh_bytes"]) for item in transport_validations
+        ):
+            raise CompactBuildError("transport component totals are inconsistent")
+        if (
+            selected_container_bytes != route_evidence.get("selected_total_bytes")
+            or selected_transport_bytes
+            != route_evidence.get("selected_total_transport_bytes")
+        ):
+            raise CompactBuildError("selected transport totals do not match route evidence")
+        validation["transport_validation"] = {
+            "status": "passed",
+            "relay_hops": transport_relay_hops,
+            "route_encoder_sha256": selected_route_encoder,
+            "selected_total_container_bytes": selected_container_bytes,
+            "selected_total_transport_bytes": selected_transport_bytes,
+            "selected_total_packets": selected_packets,
+            "selected_total_payload_bytes": sum(
+                int(item["payload_bytes"]) for item in transport_validations
+            ),
+            "selected_total_wire_bytes": sum(
+                int(item["wire_bytes"]) for item in transport_validations
+            ),
+            "selected_total_deflate_bytes": sum(
+                int(item["deflate_bytes"]) for item in transport_validations
+            ),
+            "selected_total_deflate_blocks": sum(
+                int(item["deflate_blocks"]) for item in transport_validations
+            ),
+            "component_totals": component_totals,
+            "one_kib_no_compression_baseline": {
+                "description": (
+                    "same selected route with 1 KiB logical blocks and no "
+                    "DEFLATE, preserving each step's negotiated 171-byte or "
+                    "legacy 160-byte packet profile"
+                ),
+                "block_size": LEGACY_BLOCK_SIZE,
+                "total_payload_bytes": sum(
+                    int(item["payload_bytes"]) for item in transport_validations
+                ),
+                "total_wire_bytes": sum(
+                    int(item["one_kib_no_compression"]["wire_bytes"])
+                    for item in transport_validations
+                ),
+                "total_transport_bytes": baseline_transport_bytes,
+                "total_packets": baseline_packets,
+                "saved_transport_bytes": (
+                    baseline_transport_bytes - selected_transport_bytes
+                ),
+                "saved_packets": baseline_packets - selected_packets,
+                "saved_transport_percent": round(
+                    100.0
+                    * (baseline_transport_bytes - selected_transport_bytes)
+                    / baseline_transport_bytes,
+                    6,
+                ),
+                "saved_packet_percent": round(
+                    100.0 * (baseline_packets - selected_packets)
+                    / baseline_packets,
+                    6,
+                ),
+            },
+        }
     if physical_validation is not None:
         validation["physical_validation_record_sha256"] = common.sha256_file(
             physical_validation_path

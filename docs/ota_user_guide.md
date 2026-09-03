@@ -235,12 +235,12 @@ trusted - every kept block is checked against the target's own fingerprints, so 
 just means those blocks are fetched over the radio (correct result, only slower).
 
 The node fetches from one source as **primary traffic**, with bounded adaptive request flights. Every session
-probes with one 1 KiB block, then clean flights grow `1 -> 2 -> 3 -> 4` blocks on RAK3401 OTA builds. All blocks
+probes with one manifest block, then clean flights grow `1 -> 2 -> 3 -> 4` blocks on RAK3401 OTA builds. New
+application packages use 2 KiB blocks; deployed 1 KiB packages remain supported. All blocks
 in a flight share one request packet, and the receiver stays silent until the source/relays finish returning
 them. A recovery halves the next flight. Retry timing follows the active SF/BW airtime, duty budget, and path
 length, so faster settings recover sooner without a fixed one-second request colliding with a valid multi-hop
-response. The signed block size itself remains 1 KiB. Mesh repeaters carry the packets only while their
-temporary-radio windows are active.
+response. Mesh repeaters carry the packets only while their temporary-radio windows are active.
 Check progress with `ota status`.
 
 If a `folder` pull loses its link mid-transfer, `ota status` shows **paused** - the host keeps the

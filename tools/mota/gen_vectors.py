@@ -11,6 +11,7 @@ Run:  ./meshcore/bin/python tools/mota/gen_vectors.py
 from __future__ import annotations
 
 import random
+import zlib
 from pathlib import Path
 
 import motalib as ml
@@ -21,6 +22,11 @@ OUT = Path(__file__).resolve().parents[2] / "test" / "test_ota" / "mota_vectors.
 def _carr(name, data: bytes) -> str:
     body = ",".join(str(b) for b in data)
     return f"static const uint8_t {name}[{len(data)}] = {{{body}}};\n"
+
+
+def _u16arr(name: str, values: list[int]) -> str:
+    body = ",".join(str(value) for value in values)
+    return f"static const uint16_t {name}[{len(values)}] = {{{body}}};\n"
 
 
 def build_full():
@@ -131,6 +137,38 @@ def main():
     lines.append(_carr("SIM_MOTA_1K", sim1k_blob))
     lines.append(f"static const uint32_t SIM_MOTA_1K_LEN = {len(sim1k_blob)};")
     lines.append(f"static const uint32_t SIM_MOTA_1K_BLOCKS = {sm1k.block_count};")
+
+    # 2 KiB-block signed .mota: one full block plus a short final block.  The payload is deliberately
+    # compressible so its independently generated raw-RFC1951 streams exercise both extended-length
+    # DEFLATE descriptors, including the rule that a short tail still uses the manifest's 2 KiB profile.
+    sim2k_fw_len = 2 * 1024 + 137
+    sim2k_phrase = b"MeshCore 2 KiB transport DEFLATE vector. "
+    sim2k_fw = (sim2k_phrase * ((sim2k_fw_len + len(sim2k_phrase) - 1) // len(sim2k_phrase)))[:sim2k_fw_len]
+    sim2k_image, _ = ml.ensure_endf(sim2k_fw)
+    sm2k = ml.build_manifest(target_id=0xCAFEBABE, fw_version=ml.pack_version("3.1.0"),
+                             image_size=len(sim2k_image), payload=sim2k_image, block_size=2048,
+                             image_hash=ml.mh32(sim2k_image), codec_id=ml.CODEC_FULL,
+                             is_full=True, sign_priv=sim_priv)
+    sim2k_blob = ml.build_container(sm2k, sim2k_image)
+    compressed = bytearray()
+    compressed_offsets = []
+    compressed_lengths = []
+    for offset in range(0, len(sim2k_image), 2048):
+        block = sim2k_image[offset:offset + 2048]
+        encoder = zlib.compressobj(level=9, wbits=-15)
+        encoded = encoder.compress(block) + encoder.flush()
+        assert 0 < len(encoded) < len(block), (len(block), len(encoded))
+        compressed_offsets.append(len(compressed))
+        compressed_lengths.append(len(encoded))
+        compressed.extend(encoded)
+    assert len(compressed_offsets) == sm2k.block_count
+    lines.append("// 2 KiB-block signed .mota: one full block plus a short tail")
+    lines.append(_carr("SIM_MOTA_2K", sim2k_blob))
+    lines.append(f"static const uint32_t SIM_MOTA_2K_LEN = {len(sim2k_blob)};")
+    lines.append(f"static const uint32_t SIM_MOTA_2K_BLOCKS = {sm2k.block_count};")
+    lines.append(_carr("SIM_MOTA_2K_DEFLATED", bytes(compressed)))
+    lines.append(_u16arr("SIM_MOTA_2K_DEFLATED_OFFSETS", compressed_offsets))
+    lines.append(_u16arr("SIM_MOTA_2K_DEFLATED_LENGTHS", compressed_lengths))
 
     # detools sequential+crle delta vector: base image, the real detools 0.53.0 patch, and the
     # expected target image. The native test applies DT_PATCH to DT_BASE with the *vendored detools

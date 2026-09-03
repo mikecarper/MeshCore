@@ -115,7 +115,12 @@ void OtaTransportInflateReceiver::send(const uint8_t* msg, uint16_t len, bool fl
       }
 
       if (!_legacy_session) {
-        request.want_mask = ota_req_make_v2(fragments, _allow_deflate);
+        uint16_t nominal_block_size = 0;
+        (void)_manager->requestedBlockLength(request.manifest_id, request.block_idx,
+                                             &nominal_block_size);
+        request.want_mask = ota_req_make_v2(
+            fragments, _allow_deflate,
+            nominal_block_size > OTA_DATA_V2_LEGACY_MAX_ENCODED);
         uint8_t wire[16];
         const uint16_t wire_len = encode_req(wire, sizeof(wire), request);
         if (wire_len != 0) {
@@ -162,13 +167,20 @@ bool OtaTransportInflateReceiver::handle_v2_data(const uint8_t* msg, uint16_t le
   if (!decode_data(msg, len, data) || !is_active(data.manifest_id, data.block_idx) ||
       data.data_len <= OTA_DATA_V2_STREAM_ID_BYTES || _legacy_session) return false;
 
-  const uint16_t block_len = _manager->requestedBlockLength(data.manifest_id, data.block_idx);
+  uint16_t nominal_block_size = 0;
+  const uint16_t block_len = _manager->requestedBlockLength(
+      data.manifest_id, data.block_idx, &nominal_block_size);
   if (block_len == 0) return false;
 
   uint8_t fragment = 0;
   uint16_t encoded_len = 0;
   bool deflated = false;
-  if (!ota_data_v2_unpack(data.frag_off, fragment, encoded_len, deflated)) return false;
+  const bool extended_length = nominal_block_size > OTA_DATA_V2_LEGACY_MAX_ENCODED;
+  const bool unpacked = extended_length
+      ? ota_data_v2_unpack_extended(data.frag_off, block_len,
+                                    fragment, encoded_len, deflated)
+      : ota_data_v2_unpack(data.frag_off, fragment, encoded_len, deflated);
+  if (!unpacked) return false;
   if (encoded_len > block_len || (deflated ? encoded_len >= block_len : encoded_len != block_len) ||
       (deflated && !_allow_deflate)) return false;
 

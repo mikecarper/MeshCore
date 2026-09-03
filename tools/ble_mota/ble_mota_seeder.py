@@ -57,6 +57,7 @@ STATUS_OK = 0
 STATUS_ERR = 1
 MOTA_READ_MAX = 192
 MOTA_DEFLATE_CHUNK_MAX = 190
+MOTA_DEFLATE_BLOCK_MAX = 2048
 MOTA_DESC_WIRE = 38
 MOTA_SOURCE_CAP_DEFLATE_BLOCK = 0x01
 MOTA_HEADER_LEN = 8
@@ -88,14 +89,15 @@ class MotaFile:
             return None
         raw_offset = block_index * block_size
         raw_length = min(block_size, payload_size - raw_offset)
-        if raw_length <= 0 or raw_length > 1024 or self.path.stat().st_size != self.size:
+        if (raw_length <= 0 or raw_length > MOTA_DEFLATE_BLOCK_MAX
+                or self.path.stat().st_size != self.size):
             return None
         with self.path.open("rb") as stream:
             stream.seek(payload_offset + raw_offset)
             raw = stream.read(raw_length)
         if len(raw) != raw_length:
             return None
-        compressor = zlib.compressobj(level=9, method=zlib.DEFLATED, wbits=-10)
+        compressor = zlib.compressobj(level=9, method=zlib.DEFLATED, wbits=-11)
         encoded = compressor.compress(raw) + compressor.flush()
         return encoded if 0 < len(encoded) < len(raw) else None
 

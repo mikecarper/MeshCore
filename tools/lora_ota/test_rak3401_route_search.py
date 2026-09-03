@@ -33,6 +33,7 @@ class RouteSearchTests(unittest.TestCase):
         self, root: Path, payloads: list[bytes], *, baseline_size: int = 100,
         versions: list[str] | None = None,
         transport_capabilities: list[bool] | None = None,
+        transport_block_sizes: list[int] | None = None,
         transport_pipelines: list[int | None] | None = None,
         version_ranks: list[int] | None = None,
     ) -> tuple[Path, list[dict[str, object]]]:
@@ -60,6 +61,14 @@ class RouteSearchTests(unittest.TestCase):
                 if transport_capabilities is not None else False
             )
             record[search.TRANSPORT_CAPABILITY] = capability
+            record[search.TRANSPORT_MAX_BLOCK_FIELD] = (
+                transport_block_sizes[node]
+                if transport_block_sizes is not None
+                else (
+                    search.DEFLATE_BLOCK_SIZE
+                    if capability else search.LEGACY_BLOCK_SIZE
+                )
+            )
             record[search.TRANSPORT_PIPELINE_FIELD] = (
                 transport_pipelines[node]
                 if transport_pipelines is not None else None
@@ -69,6 +78,10 @@ class RouteSearchTests(unittest.TestCase):
         manifest.write_text(json.dumps({
             "capability_contract": {
                 search.TRANSPORT_CAPABILITY: "required boolean on every record",
+                search.TRANSPORT_MAX_BLOCK_FIELD: (
+                    "required signed-container block size on every record; "
+                    "independent of ota_transport_deflate"
+                ),
             },
             "edge_policy": {
                 "require_target_version_rank_gt_source_version_rank": True,
@@ -119,6 +132,49 @@ class RouteSearchTests(unittest.TestCase):
                 migrated, search.load_inventory(new_manifest), {key}
             )
             self.assertEqual((projected[0]["source"], projected[0]["target"]), (2, 3))
+
+    def test_cache_migration_reuses_payload_but_recomputes_2k_geometry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, records = self.write_inventory(
+                root,
+                [b"start", b"capable", b"endpoint"],
+                transport_capabilities=[False, True, False],
+                transport_pipelines=[None, 1, None],
+            )
+            payload = 3000
+            old_total = search.container_size(payload, search.LEGACY_BLOCK_SIZE)
+            old_stage = search.align_down(search.STAGE_CEILING - old_total)
+            cache = root / "old-1k.csv"
+            with cache.open("w", newline="", encoding="ascii") as output:
+                writer = csv.DictWriter(output, fieldnames=search.FIELDS)
+                writer.writeheader()
+                writer.writerow({
+                    "source": 1,
+                    "target": 2,
+                    "source_sha256": records[1]["sha256"],
+                    "target_sha256": records[2]["sha256"],
+                    "memory": search.FIXED_MEMORY,
+                    "payload": payload,
+                    # Blank means a pre-per-step cache with 1 KiB geometry.
+                    "block_size": "",
+                    "container": old_total,
+                    "stage_start": old_stage,
+                    "margin": old_stage - (search.APP_BASE + search.FIXED_MEMORY),
+                    "feasible": True,
+                    "error": "",
+                })
+
+            migrated = search.migrate_csv(manifest, cache)
+            row = next(iter(migrated.values()))
+
+        self.assertEqual(row["payload"], payload)
+        self.assertEqual(row["block_size"], search.DEFLATE_BLOCK_SIZE)
+        self.assertEqual(
+            row["container"],
+            search.container_size(payload, search.DEFLATE_BLOCK_SIZE),
+        )
+        self.assertFalse(search.transport_stats_complete(row))
 
     def test_all_jobs_covers_every_valid_page_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -216,7 +272,7 @@ class RouteSearchTests(unittest.TestCase):
                     1, 2, search.FIXED_MEMORY,
                     str(Path(directory) / "from.bin"),
                     str(Path(directory) / "to.bin"),
-                    "1" * 64, "2" * 64, directory,
+                    "1" * 64, "2" * 64, search.LEGACY_BLOCK_SIZE, directory,
                 ))
 
     def test_snapshot_inventory_is_immune_to_later_source_mutation(self) -> None:
@@ -272,7 +328,7 @@ class RouteSearchTests(unittest.TestCase):
                 1, 2, search.FIXED_MEMORY,
                 str(inventory_root / str(records[1]["path"])),
                 str(inventory_root / str(records[2]["path"])),
-                source_sha, target_sha,
+                source_sha, target_sha, search.LEGACY_BLOCK_SIZE,
             )
 
             def measured(args: tuple[object, ...]) -> dict[str, object]:
@@ -285,6 +341,7 @@ class RouteSearchTests(unittest.TestCase):
                     "source_sha256": source_sha,
                     "target_sha256": target_sha,
                     "memory": memory, "payload": payload,
+                    "block_size": search.LEGACY_BLOCK_SIZE,
                     "container": total, "stage_start": stage,
                     "margin": stage - (search.APP_BASE + int(memory)),
                     "feasible": True, "error": "",
@@ -400,8 +457,14 @@ class RouteSearchTests(unittest.TestCase):
         # The receive-inflate compatibility bridges are compiled with a single
         # block in flight. Account for their five individual request frames,
         # rather than the full RAK3401 receiver's clean [1, 2, 2] flights.
-        full = search.v2_transport_cost(5 * 1024, 5 * 1024, 0, 0, 30, 4)
-        bridge = search.v2_transport_cost(5 * 1024, 5 * 1024, 0, 0, 30, 1)
+        full = search.v2_transport_cost(
+            5 * 1024, 5 * 1024, 0, 0, 30, 4,
+            search.LEGACY_BLOCK_SIZE,
+        )
+        bridge = search.v2_transport_cost(
+            5 * 1024, 5 * 1024, 0, 0, 30, 1,
+            search.LEGACY_BLOCK_SIZE,
+        )
         self.assertEqual(full["request_packets"], 3)
         self.assertEqual(full["request_bytes"], 41)
         self.assertEqual(bridge["request_packets"], 5)
@@ -409,6 +472,27 @@ class RouteSearchTests(unittest.TestCase):
         self.assertEqual(
             int(bridge["origin_mesh_bytes"]) - int(full["origin_mesh_bytes"]), 14
         )
+
+    def test_deflate_geometry_uses_2k_blocks_and_raw_baseline_uses_1k(self) -> None:
+        payload = 4096
+        self.assertEqual(
+            search.container_size(payload, search.LEGACY_BLOCK_SIZE),
+            payload + 210 + 4 * 4,
+        )
+        self.assertEqual(
+            search.container_size(payload, search.DEFLATE_BLOCK_SIZE),
+            payload + 210 + 4 * 2,
+        )
+        selected = search.v2_transport_cost(
+            payload, 2000, 2000, 2, 12, 1
+        )
+        baseline = search.v2_raw_transport_cost(payload, 1)
+        self.assertEqual(selected["block_size"], search.DEFLATE_BLOCK_SIZE)
+        self.assertEqual(selected["proof_packets"], 2)
+        self.assertEqual(baseline["profile"], "v2-171-raw")
+        self.assertEqual(baseline["block_size"], search.LEGACY_BLOCK_SIZE)
+        self.assertEqual(baseline["proof_packets"], 4)
+        self.assertGreater(baseline["packets"], selected["packets"])
 
     def test_published_legacy_chain_and_new_bootstrap_cost_regressions(self) -> None:
         old_payloads = [
@@ -428,6 +512,59 @@ class RouteSearchTests(unittest.TestCase):
         self.assertEqual(new_bootstrap["origin_mesh_bytes"], 72_528)
         with self.assertRaisesRegex(search.RouteSearchError, "between 0 and 8"):
             search.linear_path_bytes(100, 1, 9)
+
+    def test_current_route_2k_and_1k_raw_projection_regressions(self) -> None:
+        # Exact current-route detools payloads and pinned motatool 2 KiB
+        # measurements. Steps 1, 2, and 10 remain legacy; steps 3-9 negotiate
+        # v2 and use a one-block request pipeline.
+        legacy_payloads = [89_282, 64_756, 196_843]
+        v2_measurements = [
+            (104_543, 60_379, 60_284, 51, 381),
+            (148_997, 92_549, 92_549, 73, 577),
+            (112_123, 59_704, 59_704, 55, 375),
+            (121_934, 63_977, 63_977, 60, 405),
+            (135_068, 87_425, 87_425, 66, 547),
+            (176_140, 130_264, 130_252, 86, 807),
+            (271_013, 210_192, 210_192, 133, 1297),
+        ]
+        selected = [
+            search.legacy_transport_cost(payload) for payload in legacy_payloads
+        ] + [
+            search.v2_transport_cost(*measurement, 1, search.DEFLATE_BLOCK_SIZE)
+            for measurement in v2_measurements
+        ]
+        baseline = [
+            search.legacy_transport_cost(payload) for payload in legacy_payloads
+        ] + [
+            search.v2_raw_transport_cost(
+                measurement[0], 1, search.LEGACY_BLOCK_SIZE
+            )
+            for measurement in v2_measurements
+        ]
+
+        self.assertEqual(
+            (
+                sum(int(cost["origin_mesh_bytes"]) for cost in selected),
+                sum(int(cost["packets"]) for cost in selected),
+            ),
+            (1_195_442, 8_906),
+        )
+        self.assertEqual(
+            (
+                sum(int(cost["origin_mesh_bytes"]) for cost in baseline),
+                sum(int(cost["packets"]) for cost in baseline),
+            ),
+            (1_618_318, 11_835),
+        )
+        self.assertEqual(
+            (
+                1_618_318 - 1_195_442,
+                11_835 - 8_906,
+            ),
+            (422_876, 2_929),
+        )
+        self.assertEqual(round(100 * 422_876 / 1_618_318, 2), 26.13)
+        self.assertEqual(round(100 * 2_929 / 11_835, 2), 24.75)
 
     def test_proof_sizing_matches_promote_odd_merkle_implementation(self) -> None:
         for count in range(1, 33):
@@ -492,6 +629,22 @@ class RouteSearchTests(unittest.TestCase):
                 transport["steps"][2]["transport"]["request_pipeline"], 1
             )
             self.assertEqual(
+                [step["block_size"] for step in transport["steps"]],
+                [
+                    search.LEGACY_BLOCK_SIZE,
+                    search.LEGACY_BLOCK_SIZE,
+                    search.DEFLATE_BLOCK_SIZE,
+                ],
+            )
+            self.assertEqual(
+                transport["transport_accounting"]["source_max_block_field"],
+                search.TRANSPORT_MAX_BLOCK_FIELD,
+            )
+            self.assertEqual(
+                transport["transport_accounting"]["source_profile_matrix"],
+                search.TRANSPORT_PROFILE_MATRIX,
+            )
+            self.assertEqual(
                 transport["selected_total_bytes"],
                 sum(step["expected_container_size"] for step in transport["steps"]),
             )
@@ -508,6 +661,162 @@ class RouteSearchTests(unittest.TestCase):
                 objective="container",
             )
             self.assertEqual(container["nodes"], [0, 1, 3, 4])
+
+    def test_block_size_and_deflate_capabilities_form_independent_matrix(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, _ = self.write_inventory(
+                root, [b"bootstrap", b"legacy", b"deflate-1k", b"raw-2k", b"deflate-2k"],
+                transport_capabilities=[False, False, True, False, True],
+                transport_block_sizes=[
+                    search.LEGACY_BLOCK_SIZE,
+                    search.LEGACY_BLOCK_SIZE,
+                    search.LEGACY_BLOCK_SIZE,
+                    search.DEFLATE_BLOCK_SIZE,
+                    search.DEFLATE_BLOCK_SIZE,
+                ],
+                transport_pipelines=[None, None, 1, 2, 4],
+            )
+            images = search.load_inventory(manifest)
+
+            self.assertEqual(
+                [search.source_block_size(images, node) for node in range(1, 5)],
+                [1024, 1024, 2048, 2048],
+            )
+            self.assertEqual(
+                [
+                    search.source_transport_profile(images, node)
+                    for node in range(1, 5)
+                ],
+                [
+                    "legacy-160-raw",
+                    "v2-171-deflate",
+                    "v2-171-raw",
+                    "v2-171-deflate",
+                ],
+            )
+            jobs = [
+                (
+                    node, 9, search.FIXED_MEMORY, "from", "to",
+                    "1" * 64, "2" * 64,
+                    search.source_block_size(images, node),
+                )
+                for node in range(1, 5)
+            ]
+            self.assertEqual(
+                [
+                    search.job_needs_transport_stats(job, images, "transport")
+                    for job in jobs
+                ],
+                [False, True, False, True],
+            )
+
+            def edge(source: int, include_measurement: bool) -> dict[str, object]:
+                block_size = search.source_block_size(images, source)
+                payload = 3000
+                row: dict[str, object] = {
+                    "source": source,
+                    "target": 4,
+                    "memory": 0x1000,
+                    "payload": payload,
+                    "block_size": block_size,
+                    "container": search.container_size(payload, block_size),
+                    "stage_start": 0xC0000,
+                    "margin": 100,
+                    "feasible": True,
+                }
+                if include_measurement:
+                    row.update({
+                        "payload_sha256": "a" * 64,
+                        "transport_encoder_sha256": "b" * 64,
+                        "v2_wire_bytes": 1500,
+                        "v2_deflate_bytes": 1500,
+                        "v2_deflate_blocks": (
+                            payload + block_size - 1
+                        ) // block_size,
+                        "v2_data_packets": 9,
+                    })
+                return row
+
+            self.assertEqual(
+                search.edge_transport_cost(edge(1, False), images, 0)["profile"],
+                "legacy-160-raw",
+            )
+            with self.assertRaisesRegex(search.RouteSearchError, "missing transport"):
+                search.edge_transport_cost(edge(2, False), images, 0)
+            self.assertEqual(
+                search.edge_transport_cost(edge(2, True), images, 0)["profile"],
+                "v2-171-deflate",
+            )
+            # Raw 2 KiB v2 accounting is derived and needs no encoder evidence.
+            raw_2k = search.edge_transport_cost(edge(3, False), images, 0)
+            self.assertEqual(raw_2k["profile"], "v2-171-raw")
+            self.assertEqual(raw_2k["block_size"], search.DEFLATE_BLOCK_SIZE)
+            self.assertEqual(
+                search.edge_transport_cost(edge(4, True), images, 0)["profile"],
+                "v2-171-deflate",
+            )
+
+    def test_raw_2k_route_requires_no_transport_encoder_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline = search.container_size(64)
+            manifest, _ = self.write_inventory(
+                root, [b"bootstrap", b"raw-2k", b"endpoint"],
+                baseline_size=baseline,
+                transport_capabilities=[False, False, False],
+                transport_block_sizes=[1024, 2048, 1024],
+                transport_pipelines=[None, 2, None],
+            )
+            images = search.load_inventory(manifest)
+            payload = 3000
+            row = {
+                "source": 1,
+                "target": 2,
+                "memory": search.FIXED_MEMORY,
+                "payload": payload,
+                "block_size": 2048,
+                "container": search.container_size(payload, 2048),
+                "stage_start": 0xC0000,
+                "margin": 100,
+                "feasible": True,
+            }
+
+            result = search.select_route(
+                [row], images, baseline, root / "route.json", True,
+                objective="transport",
+            )
+
+            self.assertEqual(
+                result["steps"][1]["transport"]["profile"], "v2-171-raw"
+            )
+            self.assertNotIn("payload_sha256", result["steps"][1]["transport"])
+            self.assertNotIn("encoder_sha256", result["steps"][1]["transport"])
+            self.assertNotIn("encoder_sha256", result["transport_accounting"])
+
+    def test_transport_image_without_explicit_block_capability_fails_closed(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, _ = self.write_inventory(
+                root, [b"start", b"capable", b"endpoint"],
+                transport_capabilities=[False, True, False],
+                transport_pipelines=[None, 1, None],
+            )
+            document = json.loads(manifest.read_text(encoding="ascii"))
+            del document["capability_contract"][search.TRANSPORT_MAX_BLOCK_FIELD]
+            for image in document["images"]:
+                del image[search.TRANSPORT_MAX_BLOCK_FIELD]
+            manifest.write_text(json.dumps(document), encoding="ascii")
+
+            with self.assertRaisesRegex(
+                search.RouteSearchError,
+                "transport_max_block_bytes is required by the inventory",
+            ):
+                search.load_inventory(manifest)
 
     def test_transport_stats_are_required_only_on_the_shortest_hop_dag(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -609,7 +918,7 @@ class RouteSearchTests(unittest.TestCase):
             tool = root / "motatool"
             tool.write_bytes(b"exact encoder binary")
             measured = {
-                "schema": 1, "payload_bytes": 300, "block_size": 1024,
+                "schema": 1, "payload_bytes": 300, "block_size": 2048,
                 "block_count": 1, "wire_bytes": 200, "deflate_bytes": 200,
                 "deflate_blocks": 1, "data_packets": 2,
             }
@@ -720,15 +1029,32 @@ class RouteSearchTests(unittest.TestCase):
             del bad["images"][1][search.TRANSPORT_CAPABILITY]
             cases.append((bad, "required by the inventory capability contract"))
             bad = json.loads(manifest.read_text())
+            del bad["images"][1][search.TRANSPORT_MAX_BLOCK_FIELD]
+            cases.append((bad, "required by the inventory capability contract"))
+            bad = json.loads(manifest.read_text())
+            bad["images"][1][search.TRANSPORT_MAX_BLOCK_FIELD] = 4096
+            cases.append((bad, "must be 1024 or 2048"))
+            bad = json.loads(manifest.read_text())
             bad["images"][1][search.TRANSPORT_CAPABILITY_ALIAS] = True
             cases.append((bad, "disagrees"))
             bad = json.loads(manifest.read_text())
             bad["images"][1][search.TRANSPORT_CAPABILITY] = True
+            bad["images"][1][search.TRANSPORT_MAX_BLOCK_FIELD] = (
+                search.DEFLATE_BLOCK_SIZE
+            )
             cases.append((bad, "is required"))
             bad = json.loads(manifest.read_text())
             bad["images"][1][search.TRANSPORT_CAPABILITY] = True
+            bad["images"][1][search.TRANSPORT_MAX_BLOCK_FIELD] = (
+                search.DEFLATE_BLOCK_SIZE
+            )
             bad["images"][1][search.TRANSPORT_PIPELINE_FIELD] = 0
             cases.append((bad, "must be between"))
+            bad = json.loads(manifest.read_text())
+            bad["images"][1][search.TRANSPORT_MAX_BLOCK_FIELD] = (
+                search.DEFLATE_BLOCK_SIZE
+            )
+            cases.append((bad, "required for v2 transport"))
             bad = json.loads(manifest.read_text())
             del bad["images"][1]["version_rank"]
             cases.append((bad, "required by the inventory edge policy"))

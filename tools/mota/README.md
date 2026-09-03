@@ -58,6 +58,8 @@ family derived from the environment name, and `fw_version` = parsed from `FIRMWA
 ## Privileged nRF52 bootloader reference builder
 
 Ordinary calls to `build_manifest()` continue to emit v2 application packages.
+New application packages default to 2048-byte blocks; pass 1024 explicitly when
+targeting a deployed receiver that predates the extended transport descriptor.
 Passing `bootloader=True` is a deliberately narrow reference-only path: it
 requires a nonzero version, a signed exact 40 KiB OTAFIX region, 1024-byte
 blocks, full codec, zero base hash, a sane vector table, an exact embedded

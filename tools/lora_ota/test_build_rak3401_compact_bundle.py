@@ -98,6 +98,109 @@ class CompactRouteInputTests(unittest.TestCase):
             ],
         }
 
+    def transport_schema2_route(self) -> dict[str, object]:
+        specifications = [
+            ("legacy-160-raw", 1024, None),
+            ("v2-171-deflate", 1024, 1),
+            ("v2-171-raw", 2048, 2),
+            ("v2-171-deflate", 2048, 4),
+        ]
+        steps = []
+        for number, (profile, block_size, pipeline) in enumerate(
+            specifications, 1
+        ):
+            payload = 3000
+            if profile == "legacy-160-raw":
+                cost = compact.route_search.legacy_transport_cost(payload)
+            elif profile == "v2-171-raw":
+                cost = compact.route_search.v2_raw_transport_cost(
+                    payload, int(pipeline), block_size
+                )
+            else:
+                cost = compact.route_search.v2_transport_cost(
+                    payload,
+                    1500,
+                    1500,
+                    (payload + block_size - 1) // block_size,
+                    9,
+                    int(pipeline),
+                    block_size,
+                )
+            cost["linear_path_bytes"] = compact.route_search.linear_path_bytes(
+                int(cost["origin_mesh_bytes"]), int(cost["packets"]), 0
+            )
+            transport = {
+                field: cost[field] for field in compact.TRANSPORT_STEP_FIELDS
+            }
+            if profile == "v2-171-deflate":
+                transport.update({
+                    "payload_sha256": f"{number:064x}",
+                    "encoder_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+                })
+            steps.append({
+                "source_node": number - 1,
+                "target_node": number,
+                "block_size": block_size,
+                "inplace_memory": "0x98000" if number <= 2 else "0x80000",
+                "reuse_baseline_package": number == 1,
+                "expected_container_size": compact.route_search.container_size(
+                    payload, block_size
+                ),
+                "expected_staging_margin": 1,
+                "expected_target_sha256": f"{number:064x}",
+                "expected_target_version": f"1.0.0.{number}",
+                "transport": transport,
+            })
+        return {
+            "schema": 2,
+            "status": "reachable",
+            "search_complete": True,
+            "app_base": "0x26000",
+            "stage_ceiling": "0xD4000",
+            "node_count": 5,
+            "objective": compact.TRANSPORT_ROUTE_OBJECTIVE,
+            "candidate_geometries": 4,
+            "feasible_edges": 4,
+            "shortest_package_count": 4,
+            "shortest_route_count": 1,
+            "selected_total_bytes": sum(
+                int(step["expected_container_size"]) for step in steps
+            ),
+            "selected_total_transport_bytes": sum(
+                int(step["transport"]["linear_path_bytes"]) for step in steps
+            ),
+            "transport_accounting": {
+                "relay_hops": 0,
+                "legacy_block_size": 1024,
+                "supported_block_sizes": [1024, 2048],
+                "comparison_baseline_block_size": 1024,
+                "source_capability_field": (
+                    compact.route_search.TRANSPORT_CAPABILITY
+                ),
+                "source_pipeline_field": (
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD
+                ),
+                "source_max_block_field": (
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD
+                ),
+                "source_profile_matrix": (
+                    compact.route_search.TRANSPORT_PROFILE_MATRIX
+                ),
+                "first_bootstrap_profile": "legacy-160-raw",
+                "included": (
+                    "OTA messages, repeated 4-byte v2 stream IDs, 171-byte DATA "
+                    "slicing, adaptive requests, manifest, exact per-block proofs, "
+                    "and MeshCore framing"
+                ),
+                "excluded": (
+                    "discovery, retries, flood fan-out, and radio-dependent LoRa "
+                    "PHY coding/preamble"
+                ),
+                "encoder_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+            },
+            "steps": steps,
+        }
+
     def test_existing_schema1_route_remains_accepted(self) -> None:
         route = Path(__file__).with_name("rak3401_compact_route.json")
         steps, document = compact.read_route(route)
@@ -150,6 +253,91 @@ class CompactRouteInputTests(unittest.TestCase):
                 path.write_text(json.dumps(document), encoding="ascii")
                 with self.assertRaisesRegex(compact.CompactBuildError, message):
                     compact.read_route(path)
+
+    def test_transport_route_accepts_full_capability_matrix_and_fails_closed(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            route = self.transport_schema2_route()
+            path = root / "route.json"
+            path.write_text(json.dumps(route), encoding="ascii")
+            steps, _document = compact.read_route(path)
+            self.assertEqual(
+                [step["transport"]["profile"] for step in steps],
+                [
+                    "legacy-160-raw",
+                    "v2-171-deflate",
+                    "v2-171-raw",
+                    "v2-171-deflate",
+                ],
+            )
+
+            raw_only = self.transport_schema2_route()
+            for index in (1, 3):
+                block_size = int(raw_only["steps"][index]["block_size"])
+                if block_size == 1024:
+                    cost = compact.route_search.legacy_transport_cost(3000)
+                else:
+                    cost = compact.route_search.v2_raw_transport_cost(
+                        3000,
+                        int(raw_only["steps"][index]["transport"][
+                            "request_pipeline"
+                        ]),
+                        block_size,
+                    )
+                cost["linear_path_bytes"] = compact.route_search.linear_path_bytes(
+                    int(cost["origin_mesh_bytes"]), int(cost["packets"]), 0
+                )
+                raw_only["steps"][index]["transport"] = {
+                    field: cost[field]
+                    for field in compact.TRANSPORT_STEP_FIELDS
+                }
+            del raw_only["transport_accounting"]["encoder_sha256"]
+            raw_only["selected_total_transport_bytes"] = sum(
+                int(step["transport"]["linear_path_bytes"])
+                for step in raw_only["steps"]
+            )
+            raw_path = root / "raw-only.json"
+            raw_path.write_text(json.dumps(raw_only), encoding="ascii")
+            raw_steps, raw_document = compact.read_route(raw_path)
+            self.assertNotIn(
+                "encoder_sha256", raw_document["transport_accounting"]
+            )
+            self.assertEqual(
+                [step["transport"]["profile"] for step in raw_steps],
+                [
+                    "legacy-160-raw",
+                    "legacy-160-raw",
+                    "v2-171-raw",
+                    "v2-171-raw",
+                ],
+            )
+
+            mutations = []
+            bad = self.transport_schema2_route()
+            del bad["transport_accounting"]["source_profile_matrix"]
+            mutations.append((bad, "capability contract"))
+            bad = self.transport_schema2_route()
+            bad["steps"][2]["transport"].update({
+                "payload_sha256": "a" * 64,
+                "encoder_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+            })
+            mutations.append((bad, "hashes do not match"))
+            bad = self.transport_schema2_route()
+            bad["steps"][2]["block_size"] = 1024
+            mutations.append((bad, "block_size disagrees"))
+            bad = self.transport_schema2_route()
+            del bad["transport_accounting"]["encoder_sha256"]
+            mutations.append((bad, "encoder presence"))
+
+            for number, (document, message) in enumerate(mutations):
+                candidate = root / f"bad-{number}.json"
+                candidate.write_text(json.dumps(document), encoding="ascii")
+                with self.subTest(message=message), self.assertRaisesRegex(
+                    compact.CompactBuildError, message
+                ):
+                    compact.read_route(candidate)
 
 
 class CompactImageInventoryTests(unittest.TestCase):
@@ -322,25 +510,20 @@ class CompactImageInventoryTests(unittest.TestCase):
 class CompactSimulatorTests(unittest.TestCase):
     def test_exact_required_simulators_are_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            preview5 = Path(directory) / "preview5"
-            current = Path(directory) / "current"
-            preview5.write_bytes(b"p5")
-            current.write_bytes(b"current")
+            simulator = Path(directory) / "otafix2.4"
+            simulator.write_bytes(b"exact deployed bootloader")
             hashes = {
-                preview5: compact.REQUIRED_SIMULATORS["preview5"]["sha256"],
-                current: compact.REQUIRED_SIMULATORS["current"]["sha256"],
+                simulator: compact.REQUIRED_SIMULATORS["otafix2.4"]["sha256"],
             }
             with mock.patch.object(compact.common, "sha256_file", side_effect=hashes.get):
-                result = compact.parse_simulators([
-                    f"preview5={preview5}", f"current={current}"
-                ])
-        self.assertEqual([label for label, _path in result], ["preview5", "current"])
+                result = compact.parse_simulators([f"otafix2.4={simulator}"])
+        self.assertEqual([label for label, _path in result], ["otafix2.4"])
 
     def test_missing_or_wrong_simulator_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             simulator = Path(directory) / "sim"
             simulator.write_bytes(b"wrong")
-            for values, digest in (([], None), ([f"preview5={simulator}"], "0" * 64)):
+            for values, digest in (([], None), ([f"otafix2.4={simulator}"], "0" * 64)):
                 with self.subTest(values=values), mock.patch.object(
                     compact.common, "sha256_file", return_value=digest
                 ):
@@ -446,14 +629,17 @@ class CompactGeometryEvidenceTests(unittest.TestCase):
         inventory = compact.route_search.load_inventory(inventory_path)
         rows = []
         for job in compact.route_search.all_jobs(inventory):
-            source, target, memory, _from, _to, source_sha, target_sha = job
+            (
+                source, target, memory, _from, _to, source_sha, target_sha,
+                block_size,
+            ) = job
             if source == 1 and target == 3:
                 payload = 10
             else:
                 # A successfully generated patch may be too large for staging;
                 # that is valid infeasible evidence. A tool exception is not.
                 payload = 700_000
-            container = compact.route_search.container_size(payload)
+            container = compact.route_search.container_size(payload, block_size)
             stage_start = compact.route_search.align_down(
                 compact.STAGE_CEILING - container
             )
@@ -462,6 +648,7 @@ class CompactGeometryEvidenceTests(unittest.TestCase):
             rows.append({
                 "source": source, "target": target, "source_sha256": source_sha,
                 "target_sha256": target_sha, "memory": memory, "payload": payload,
+                "block_size": block_size,
                 "container": container, "stage_start": stage_start, "margin": margin,
                 "feasible": feasible, "error": error,
             })
@@ -496,6 +683,7 @@ class CompactGeometryEvidenceTests(unittest.TestCase):
                 "target_sha256": inventory[2]["sha256"],
                 "memory": compact.FIXED_WORKSPACE,
                 "payload": payload,
+                "block_size": compact.LEGACY_BLOCK_SIZE,
                 "container": container,
                 "stage_start": stage_start,
                 "margin": margin,
@@ -522,6 +710,228 @@ class CompactGeometryEvidenceTests(unittest.TestCase):
             compact.route_search.write_csv(root / "geometry.csv", rows)
             with self.assertRaisesRegex(compact.CompactBuildError, "inconsistent"):
                 compact.validate_geometry_results(root / "geometry.csv", inventory, route)
+
+    def test_selected_deflate_step_uses_2k_and_reports_1k_raw_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload_path = root / "payload.patch"
+            payload_path.write_bytes(b"A" * 3000)
+            payload_sha = hashlib.sha256(payload_path.read_bytes()).hexdigest()
+            inventory = [
+                {
+                    compact.route_search.TRANSPORT_CAPABILITY: False,
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD: None,
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD:
+                        compact.LEGACY_BLOCK_SIZE,
+                },
+                {
+                    compact.route_search.TRANSPORT_CAPABILITY: True,
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD: 1,
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD:
+                        compact.DEFLATE_BLOCK_SIZE,
+                },
+            ]
+            selected = compact.route_search.v2_transport_cost(
+                3000, 1500, 1500, 2, 10, 1,
+                compact.DEFLATE_BLOCK_SIZE,
+            )
+            selected["linear_path_bytes"] = compact.route_search.linear_path_bytes(
+                int(selected["origin_mesh_bytes"]), int(selected["packets"]), 0
+            )
+            plan_step = {
+                "source_node": 1,
+                "block_size": compact.DEFLATE_BLOCK_SIZE,
+                "transport": {
+                    **{
+                        field: selected[field]
+                        for field in compact.TRANSPORT_STEP_FIELDS
+                    },
+                    "payload_sha256": payload_sha,
+                    "encoder_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+                },
+            }
+            measured = {
+                "payload_sha256": payload_sha,
+                "transport_encoder_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+                "v2_wire_bytes": 1500,
+                "v2_deflate_bytes": 1500,
+                "v2_deflate_blocks": 2,
+                "v2_data_packets": 10,
+            }
+            with mock.patch.object(
+                compact.route_search,
+                "measure_transport_size",
+                return_value=measured,
+            ) as measure:
+                result = compact.validate_selected_transport(
+                    Path("motatool"), payload_path, plan_step, inventory, 0, 3
+                )
+            with mock.patch.object(
+                compact.route_search,
+                "measure_transport_size",
+                return_value={
+                    **measured,
+                    "transport_encoder_sha256": "0" * 64,
+                },
+            ), self.assertRaisesRegex(
+                compact.CompactBuildError, "different encoder binary"
+            ):
+                compact.validate_selected_transport(
+                    Path("motatool"), payload_path, plan_step, inventory, 0, 3
+                )
+
+        measure.assert_called_once_with(
+            Path("motatool"), payload_path, compact.DEFLATE_BLOCK_SIZE
+        )
+        baseline = result["one_kib_no_compression"]
+        self.assertEqual(result["block_size"], compact.DEFLATE_BLOCK_SIZE)
+        self.assertEqual(baseline["profile"], "v2-171-raw")
+        self.assertEqual(baseline["block_size"], compact.LEGACY_BLOCK_SIZE)
+        self.assertEqual(baseline["proof_packets"], 3)
+        self.assertGreater(baseline["packets"], result["packets"])
+
+    def test_selected_transport_validates_independent_capability_matrix(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload_path = root / "payload.patch"
+            payload_path.write_bytes(b"A" * 3000)
+            payload_sha = hashlib.sha256(payload_path.read_bytes()).hexdigest()
+            inventory = [
+                {
+                    compact.route_search.TRANSPORT_CAPABILITY: False,
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD: 1024,
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD: None,
+                },
+                {
+                    compact.route_search.TRANSPORT_CAPABILITY: False,
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD: 1024,
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD: None,
+                },
+                {
+                    compact.route_search.TRANSPORT_CAPABILITY: True,
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD: 1024,
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD: 1,
+                },
+                {
+                    compact.route_search.TRANSPORT_CAPABILITY: False,
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD: 2048,
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD: 2,
+                },
+                {
+                    compact.route_search.TRANSPORT_CAPABILITY: True,
+                    compact.route_search.TRANSPORT_MAX_BLOCK_FIELD: 2048,
+                    compact.route_search.TRANSPORT_PIPELINE_FIELD: 4,
+                },
+            ]
+
+            def plan(source: int) -> dict[str, object]:
+                block_size = compact.route_search.source_block_size(
+                    inventory, source
+                )
+                profile = compact.route_search.source_transport_profile(
+                    inventory, source
+                )
+                if profile == "v2-171-deflate":
+                    cost = compact.route_search.v2_transport_cost(
+                        3000,
+                        1500,
+                        1500,
+                        (3000 + block_size - 1) // block_size,
+                        9,
+                        compact.route_search.source_transport_pipeline(
+                            inventory, source
+                        ),
+                        block_size,
+                    )
+                elif profile == "v2-171-raw":
+                    cost = compact.route_search.v2_raw_transport_cost(
+                        3000,
+                        compact.route_search.source_transport_pipeline(
+                            inventory, source
+                        ),
+                        block_size,
+                    )
+                else:
+                    cost = compact.route_search.legacy_transport_cost(3000)
+                cost["linear_path_bytes"] = compact.route_search.linear_path_bytes(
+                    int(cost["origin_mesh_bytes"]), int(cost["packets"]), 0
+                )
+                transport = {
+                    field: cost[field] for field in compact.TRANSPORT_STEP_FIELDS
+                }
+                if profile == "v2-171-deflate":
+                    transport.update({
+                        "payload_sha256": payload_sha,
+                        "encoder_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+                    })
+                return {
+                    "source_node": source,
+                    "block_size": block_size,
+                    "transport": transport,
+                }
+
+            def measured(
+                _tool: Path, _payload: Path, block_size: int
+            ) -> dict[str, object]:
+                return {
+                    "payload_sha256": payload_sha,
+                    "transport_encoder_sha256": (
+                        compact.TRANSPORT_ROUTE_ENCODER_SHA256
+                    ),
+                    "v2_wire_bytes": 1500,
+                    "v2_deflate_bytes": 1500,
+                    "v2_deflate_blocks": (3000 + block_size - 1) // block_size,
+                    "v2_data_packets": 9,
+                }
+
+            with mock.patch.object(
+                compact.route_search,
+                "measure_transport_size",
+                side_effect=measured,
+            ) as measure:
+                results = [
+                    compact.validate_selected_transport(
+                        Path("motatool"), payload_path, plan(source), inventory, 0,
+                        source,
+                    )
+                    for source in range(1, 5)
+                ]
+
+            self.assertEqual(
+                [result["profile"] for result in results],
+                [
+                    "legacy-160-raw",
+                    "v2-171-deflate",
+                    "v2-171-raw",
+                    "v2-171-deflate",
+                ],
+            )
+            self.assertEqual(
+                [call.args[2] for call in measure.call_args_list], [1024, 2048]
+            )
+
+            raw_with_hashes = plan(3)
+            raw_with_hashes["transport"].update({
+                "payload_sha256": payload_sha,
+                "encoder_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+            })
+            with self.assertRaisesRegex(
+                compact.CompactBuildError, "raw transport unexpectedly has encoder pins"
+            ):
+                compact.validate_selected_transport(
+                    Path("motatool"), payload_path, raw_with_hashes, inventory, 0, 3
+                )
+
+            wrong_profile = plan(3)
+            wrong_profile["transport"]["profile"] = "legacy-160-raw"
+            with self.assertRaisesRegex(
+                compact.CompactBuildError, "profile disagrees"
+            ):
+                compact.validate_selected_transport(
+                    Path("motatool"), payload_path, wrong_profile, inventory, 0, 3
+                )
 
     def test_missing_and_extra_geometry_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -572,6 +982,132 @@ class CompactGeometryEvidenceTests(unittest.TestCase):
                 compact.CompactBuildError, "integer|malformed|invalid"
             ):
                 compact.validate_geometry_results(root / "geometry.csv", inventory, route)
+
+
+class CompactGeneratedReportTests(unittest.TestCase):
+    def test_chain_csv_pins_block_and_transport_component_details(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "CHAIN.csv"
+            compact.write_chain(path, [{
+                "step": 1,
+                "mota_block_size": compact.DEFLATE_BLOCK_SIZE,
+                "transport_relay_hops": 0,
+                "transport_request_pipeline": 1,
+                "transport_payload_sha256": "a" * 64,
+                "transport_encoder_sha256": "b" * 64,
+                "transport_request_packets": 7,
+                "transport_proof_packets": 9,
+                "transport_data_bytes": 1234,
+                "baseline_1k_raw_packets": 99,
+            }])
+            lines = path.read_text(encoding="ascii").splitlines()
+
+        header = lines[0].split(",")
+        values = dict(zip(header, lines[1].split(",")))
+        self.assertEqual(values["mota_block_size"], "2048")
+        self.assertEqual(values["transport_request_pipeline"], "1")
+        self.assertEqual(values["transport_payload_sha256"], "a" * 64)
+        self.assertEqual(values["transport_encoder_sha256"], "b" * 64)
+        self.assertEqual(values["transport_proof_packets"], "9")
+        self.assertEqual(values["transport_data_bytes"], "1234")
+        self.assertEqual(values["baseline_1k_raw_packets"], "99")
+
+    def test_report_contains_derived_2k_vs_1k_raw_comparison(self) -> None:
+        legacy_payloads = [89_282, 64_756]
+        v2_measurements = [
+            (104_543, 60_379, 60_284, 51, 381),
+            (148_997, 92_549, 92_549, 73, 577),
+            (112_123, 59_704, 59_704, 55, 375),
+            (121_934, 63_977, 63_977, 60, 405),
+            (135_068, 87_425, 87_425, 66, 547),
+            (176_140, 130_264, 130_252, 86, 807),
+            (271_013, 210_192, 210_192, 133, 1297),
+        ]
+        selected = [
+            compact.route_search.legacy_transport_cost(payload)
+            for payload in legacy_payloads
+        ] + [
+            compact.route_search.v2_transport_cost(
+                *measurement, 1, compact.DEFLATE_BLOCK_SIZE
+            )
+            for measurement in v2_measurements
+        ] + [compact.route_search.legacy_transport_cost(196_843)]
+        baseline = [
+            compact.route_search.legacy_transport_cost(payload)
+            for payload in legacy_payloads
+        ] + [
+            compact.route_search.v2_raw_transport_cost(
+                measurement[0], 1, compact.LEGACY_BLOCK_SIZE
+            )
+            for measurement in v2_measurements
+        ] + [compact.route_search.legacy_transport_cost(196_843)]
+        rows = []
+        for number, (actual, raw) in enumerate(zip(selected, baseline), 1):
+            rows.append({
+                "step": number,
+                "mota_size": compact.route_search.container_size(
+                    int(actual["payload_bytes"]), int(actual["block_size"])
+                ),
+                "staging_margin": 4096,
+                "transport_profile": actual["profile"],
+                "transport_relay_hops": 0,
+                "transport_payload_bytes": actual["payload_bytes"],
+                "transport_wire_bytes": actual["wire_bytes"],
+                "transport_deflate_bytes": actual["deflate_bytes"],
+                "transport_deflate_blocks": actual["deflate_blocks"],
+                "transport_data_packets": actual["data_packets"],
+                "transport_packets": actual["packets"],
+                "transport_linear_path_bytes": actual["origin_mesh_bytes"],
+                "baseline_1k_raw_packets": raw["packets"],
+                "baseline_1k_raw_linear_path_bytes": raw["origin_mesh_bytes"],
+            })
+        tools = {
+            "motatool": {
+                "version": compact.MOTATOOL_VERSION,
+                "asserted_source_commit": compact.MOTATOOL_COMMIT,
+                "executable_sha256": compact.TRANSPORT_ROUTE_ENCODER_SHA256,
+            },
+            "detools": {
+                "version": compact.DETOOLS_VERSION,
+                "launcher_sha256": "d" * 64,
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compact.write_docs(
+                root,
+                "a" * 40,
+                "1.17.1.6",
+                firmware(b"endpoint", "1.17.1.6"),
+                "1" * 64,
+                "2" * 64,
+                "3" * 64,
+                "4" * 64,
+                "5" * 64,
+                "6" * 64,
+                tools,
+                rows,
+                False,
+            )
+            readme = (root / "README.md").read_text(encoding="ascii")
+            provenance = (root / "PROVENANCE.md").read_text(encoding="ascii")
+
+        self.assertIn(
+            "| No DEFLATE baseline; packet profiles preserved | 1 KiB all "
+            "steps | 11,835 | 1,618,318 |",
+            readme,
+        )
+        self.assertIn(
+            "| Selected capability-aware route | Per-source 1/2 KiB signed "
+            "geometry | 8,906 | 1,195,442 |",
+            readme,
+        )
+        self.assertIn("2,929 packets\n  (24.75%)", readme)
+        self.assertIn("422,876 bytes\n  (26.13%)", readme)
+        self.assertIn("preserves each step's packet profile", readme)
+        self.assertIn("independently selected per running source", provenance)
+        self.assertIn("`transport_max_block_bytes` capability", provenance)
+        self.assertIn("DEFLATE permission is a separate capability", provenance)
 
 
 class CompactPhysicalValidationTests(unittest.TestCase):

@@ -71,9 +71,11 @@ struct ManifestMsg {
 //
 // Legacy want_mask bit k = "send fragment k" (the slice at byte offset k*OTA_FRAG_DATA). A recovery request
 // uses only the missing bits, so one lost fragment costs one fragment to re-send rather than the whole block.
-// New receivers reserve bits 15..14 as an in-band request profile: bit 15 asks for the v2 171-byte geometry
-// and bit 14 permits per-block raw DEFLATE. An old source masks those bits away and returns the ordinary
-// 160-byte DATA train; the new receiver detects that response and downgrades without stranding old fleets.
+// New receivers reserve bits 15..13 as an in-band request profile: bit 15 asks for the v2 171-byte geometry,
+// bit 14 permits per-block raw DEFLATE, and bit 13 selects the 2 KiB descriptor layout. Bit 12 must be clear
+// in that extended profile, preserving the deployed 0xFFFF legacy "all fragments" request. An old source
+// masks the profile bits away and returns ordinary 160-byte DATA; the new receiver detects that response and
+// downgrades without stranding old fleets.
 struct ReqMsg { uint8_t manifest_id[4]; uint16_t block_idx; uint16_t want_mask; };
 struct ReqItem { uint16_t block_idx; uint16_t want_mask; };
 #ifndef OTA_REQ_MAX_ITEMS
@@ -101,43 +103,65 @@ struct DataMsg {
   const uint8_t* data; uint16_t data_len;
 };
 
-// OTA_REQ want_mask extension. The v2 marker and DEFLATE permission are deliberately outside every valid
-// fragment bit for the fixed <=1 KiB blocks used by this protocol. A v2 request includes all seven legacy
-// fragment bits on its first attempt, so a deployed source which ignores these flags can answer completely.
+// OTA_REQ want_mask extension. The profile bits are deliberately outside every valid fragment bit: a 2 KiB
+// block needs at most 13 legacy 160-byte fragments or 12 v2 171-byte fragments. A first request includes every
+// legacy fragment bit, so a deployed source which ignores the profile flags can still answer a 1 KiB block.
 static const uint16_t OTA_REQ_V2_MARK             = 0x8000u;
 static const uint16_t OTA_REQ_V2_ALLOW_DEFLATE    = 0x4000u;
-static const uint16_t OTA_REQ_V2_RESERVED         = 0x2000u;
+static const uint16_t OTA_REQ_V2_EXTENDED_LENGTH  = 0x2000u;
 static const uint16_t OTA_REQ_V2_FRAGMENT_MASK    = 0x1FFFu;
+static const uint16_t OTA_REQ_V2_EXT_FRAGMENT_MASK = 0x0FFFu;
+static const uint16_t OTA_REQ_V2_EXT_RESERVED      = 0x1000u;
 
-// OTA_DATA v2 frag_off packing:
+// OTA_DATA v2 frag_off packing has two negotiated layouts.  The deployed-compatible 1 KiB layout is retained:
 //   bit 15      v2 marker
-//   bit 14      data[] is one raw-RFC1951-DEFLATE stream fragment (clear = raw block bytes)
-//   bits 13..10 fragment index (0..15; byte offset = index * OTA_FRAG_DATA_V2)
-//   bits  9..0  total encoded block length minus one (1..1024 bytes)
+//   bit 14      raw-RFC1951-DEFLATE stream (clear = raw block bytes)
+//   bits 13..10 fragment index; bits 9..0 encoded length minus one (1..1024)
+// A request carrying OTA_REQ_V2_EXTENDED_LENGTH selects the 2 KiB layout:
+//   bit 15      v2 marker
+//   bits 14..11 fragment index; bits 10..0 encoded length minus one (1..2048)
+// In the extended layout DEFLATE is unambiguous without a flag: encoders may select it only when the encoded
+// stream is strictly shorter than the manifest-derived raw block.  Equal length therefore means raw bytes.
 static const uint16_t OTA_DATA_V2_MARK             = 0x8000u;
 static const uint16_t OTA_DATA_V2_DEFLATED         = 0x4000u;
 static const uint16_t OTA_DATA_V2_FRAGMENT_BITS    = 0x3C00u;
 static const uint16_t OTA_DATA_V2_LENGTH_BITS      = 0x03FFu;
 static const uint8_t  OTA_DATA_V2_FRAGMENT_SHIFT   = 10;
-static const uint16_t OTA_DATA_V2_MAX_ENCODED      = 1024;
+static const uint16_t OTA_DATA_V2_LEGACY_MAX_ENCODED = 1024;
+static const uint16_t OTA_DATA_V2_EXT_FRAGMENT_BITS  = 0x7800u;
+static const uint16_t OTA_DATA_V2_EXT_LENGTH_BITS    = 0x07FFu;
+static const uint8_t  OTA_DATA_V2_EXT_FRAGMENT_SHIFT = 11;
+static const uint16_t OTA_DATA_V2_MAX_ENCODED        = 2048;
 static const uint8_t  OTA_DATA_V2_STREAM_ID_BYTES  = 4;
 
 inline bool ota_req_is_v2(uint16_t want_mask) {
-  return (want_mask & OTA_REQ_V2_MARK) != 0 && (want_mask & OTA_REQ_V2_RESERVED) == 0;
+  if ((want_mask & OTA_REQ_V2_MARK) == 0) return false;
+  return (want_mask & OTA_REQ_V2_EXTENDED_LENGTH) == 0 ||
+         (want_mask & OTA_REQ_V2_EXT_RESERVED) == 0;
 }
 
 inline uint16_t ota_req_v2_fragments(uint16_t want_mask) {
-  return (uint16_t)(want_mask & OTA_REQ_V2_FRAGMENT_MASK);
+  const uint16_t mask = (want_mask & OTA_REQ_V2_EXTENDED_LENGTH)
+      ? OTA_REQ_V2_EXT_FRAGMENT_MASK : OTA_REQ_V2_FRAGMENT_MASK;
+  return (uint16_t)(want_mask & mask);
 }
 
-inline uint16_t ota_req_make_v2(uint16_t fragments, bool allow_deflate) {
-  return (uint16_t)((fragments & OTA_REQ_V2_FRAGMENT_MASK) | OTA_REQ_V2_MARK |
-                    (allow_deflate ? OTA_REQ_V2_ALLOW_DEFLATE : 0));
+inline bool ota_req_v2_extended_length(uint16_t want_mask) {
+  return (want_mask & OTA_REQ_V2_EXTENDED_LENGTH) != 0;
+}
+
+inline uint16_t ota_req_make_v2(uint16_t fragments, bool allow_deflate,
+                                bool extended_length = false) {
+  const uint16_t fragment_mask = extended_length
+      ? OTA_REQ_V2_EXT_FRAGMENT_MASK : OTA_REQ_V2_FRAGMENT_MASK;
+  return (uint16_t)((fragments & fragment_mask) | OTA_REQ_V2_MARK |
+                    (allow_deflate ? OTA_REQ_V2_ALLOW_DEFLATE : 0) |
+                    (extended_length ? OTA_REQ_V2_EXTENDED_LENGTH : 0));
 }
 
 inline bool ota_data_v2_pack(uint8_t fragment, uint16_t encoded_len, bool deflated,
                              uint16_t& packed) {
-  if (fragment >= 16 || encoded_len == 0 || encoded_len > OTA_DATA_V2_MAX_ENCODED) return false;
+  if (fragment >= 16 || encoded_len == 0 || encoded_len > OTA_DATA_V2_LEGACY_MAX_ENCODED) return false;
   packed = (uint16_t)(OTA_DATA_V2_MARK |
       (deflated ? OTA_DATA_V2_DEFLATED : 0) |
       ((uint16_t)fragment << OTA_DATA_V2_FRAGMENT_SHIFT) |
@@ -151,6 +175,27 @@ inline bool ota_data_v2_unpack(uint16_t packed, uint8_t& fragment, uint16_t& enc
   fragment = (uint8_t)((packed & OTA_DATA_V2_FRAGMENT_BITS) >> OTA_DATA_V2_FRAGMENT_SHIFT);
   encoded_len = (uint16_t)((packed & OTA_DATA_V2_LENGTH_BITS) + 1u);
   deflated = (packed & OTA_DATA_V2_DEFLATED) != 0;
+  return true;
+}
+
+inline bool ota_data_v2_pack_extended(uint8_t fragment, uint16_t encoded_len,
+                                      uint16_t& packed) {
+  if (fragment >= 16 || encoded_len == 0 || encoded_len > OTA_DATA_V2_MAX_ENCODED) return false;
+  packed = (uint16_t)(OTA_DATA_V2_MARK |
+      ((uint16_t)fragment << OTA_DATA_V2_EXT_FRAGMENT_SHIFT) |
+      (encoded_len - 1u));
+  return true;
+}
+
+inline bool ota_data_v2_unpack_extended(uint16_t packed, uint16_t raw_len,
+                                        uint8_t& fragment, uint16_t& encoded_len,
+                                        bool& deflated) {
+  if ((packed & OTA_DATA_V2_MARK) == 0 || raw_len == 0 || raw_len > OTA_DATA_V2_MAX_ENCODED) return false;
+  fragment = (uint8_t)((packed & OTA_DATA_V2_EXT_FRAGMENT_BITS) >>
+                       OTA_DATA_V2_EXT_FRAGMENT_SHIFT);
+  encoded_len = (uint16_t)((packed & OTA_DATA_V2_EXT_LENGTH_BITS) + 1u);
+  if (encoded_len > raw_len) return false;
+  deflated = encoded_len < raw_len;
   return true;
 }
 

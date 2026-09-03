@@ -15,10 +15,11 @@ bool ota_transport_inflate(void* context, const uint8_t* src, uint16_t src_len,
                            uint8_t* dst, uint16_t dst_cap, uint16_t* dst_len);
 
 // Receive-only compatibility shim for historical OTA managers. The wrapped manager continues to reassemble
-// canonical 160-byte DATA, verify the Merkle proof, and stage the original `.mota`. This shim only negotiates
-// the v2 wire profile, locks and reassembles one encoded representation, exact-inflates it, and injects the
-// resulting logical block back into that unchanged path. Bridge builds use OTA_FETCH_PIPELINE=1, so one fixed
-// encoded block and one fixed decoded block cover every in-flight request without heap allocation.
+// canonical 160-byte DATA, verify the Merkle proof, and stage the original `.mota`. This shim negotiates both
+// the original 1 KiB and extended 2 KiB v2 wire descriptors, locks and reassembles one encoded representation,
+// exact-inflates it, and injects the resulting logical block back into that unchanged path. Bridge builds use
+// OTA_FETCH_PIPELINE=1, so one fixed encoded block and one fixed decoded block cover every in-flight request
+// without heap allocation.
 class OtaTransportInflateReceiver {
 public:
   void begin(OtaManager& manager, uint32_t target_id, OtaSend send, void* send_ctx);

@@ -29,24 +29,42 @@ except ImportError:
     import lora_ota as ota
 
 
-# The published b40d2e6c prerelease keeps the first nine package bytes from the
+# The published 3f6eddd5 prerelease keeps the first nine package bytes from the
 # physically passed fd98bc90 chain and replaces its endpoint package. The new
-# step 10 and this hardened host runner have exhaustive offline/simulator
-# evidence, but not a clean physical transition run, so live use remains gated.
+# step 10 and this updated host runner have exhaustive offline/exact-bootloader
+# simulator evidence, but not a clean physical transition run, so live use
+# remains gated.
 RELEASE_URL = (
     "https://github.com/mikecarper/MeshCore/releases/tag/"
-    "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c"
+    "rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.6-3f6eddd5"
 )
-ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip"
-ASSET_SHA256 = "8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4"
-CHECKSUM_LIST_SHA256 = "29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a"
-BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c"
+ASSET_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip"
+ASSET_SHA256 = "135783dd8777490db2422a7543f7d80e3cf03f621d5ac362da930abbc1850dc4"
+CHECKSUM_LIST_SHA256 = "93835ed497c579be0a2322292e7f15ab095e7c8ab7892833fe7df3130dbdaba4"
+BUNDLE_ROOT_NAME = "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5"
+
+# Preserve the exact b40d2e6c prerelease that was primary before 3f6eddd5. It
+# remains a separately recognized, hidden-lab-ack-gated superseded artifact;
+# sharing its first nine targets with the current release must never make the
+# archives interchangeable.
+SUPERSEDED_B40_ASSET_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip"
+)
+SUPERSEDED_B40_ASSET_SHA256 = (
+    "8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4"
+)
+SUPERSEDED_B40_CHECKSUM_LIST_SHA256 = (
+    "29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a"
+)
+SUPERSEDED_B40_ROOT_NAME = (
+    "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c"
+)
 
 # Preserve the exact fd98bc90 candidate whose ten package transitions passed
 # directly on the physical RAK3401 and whose endpoint passed independent SWD
 # readback. It remains a separately identified, hidden-lab-ack-gated legacy
-# artifact; sharing its version and first nine targets with b40d2e6c must never
-# make the two archives interchangeable.
+# artifact; sharing its version and first nine targets with later candidates
+# must never make the archives interchangeable.
 PHYSICALLY_PASSED_FD98_ASSET_NAME = (
     "RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip"
 )
@@ -160,6 +178,7 @@ MAX_CHECKSUM_LIST_BYTES = 1024 * 1024
 MAX_PROGRESS_BYTES = 1024 * 1024
 PINNED_ARCHIVE_CHECKSUMS = {
     ASSET_SHA256: CHECKSUM_LIST_SHA256,
+    SUPERSEDED_B40_ASSET_SHA256: SUPERSEDED_B40_CHECKSUM_LIST_SHA256,
     PHYSICALLY_PASSED_FD98_ASSET_SHA256: (
         PHYSICALLY_PASSED_FD98_CHECKSUM_LIST_SHA256
     ),
@@ -185,9 +204,12 @@ EXPECTED_HARDWARE = "RAK_3401"
 EXPECTED_STEP_COUNT = 10
 PHYSICALLY_QUALIFIED_9_STEP_COUNT = 9
 EXPECTED_START_VERSION = "1.16.7.0"
-EXPECTED_FINAL_VERSION = "1.17.1.5"
+EXPECTED_FINAL_VERSION = "1.17.1.6"
+SUPERSEDED_B40_FINAL_VERSION = "1.17.1.5"
+PHYSICALLY_PASSED_FD98_FINAL_VERSION = "1.17.1.5"
 PHYSICALLY_QUALIFIED_9_FINAL_VERSION = "1.17.1.02"
 SUPERSEDED_FINAL_VERSION = "1.17.1.0"
+EXPECTED_BOOTLOADER_VERSION = "0.9.2-OTAFIX2.4"
 WATCHDOG_RESET_WAIT_SECONDS = 90
 WATCHDOG_STABILITY_WAIT_SECONDS = 90
 TRANSFER_SETTINGS_FILE = "target-transfer-settings.json"
@@ -265,8 +287,8 @@ COMPACT_RELEASE_ANCHORS = (
 )
 
 # Every target in the exact legacy fd98bc90 sequence whose package transitions
-# passed directly on the physical RAK3401. The b40d2e6c prerelease reuses the
-# first nine package bytes exactly, but has its own endpoint pin below.
+# passed directly on the physical RAK3401. Later prereleases reuse the first
+# nine package bytes exactly, but each has its own endpoint pin below.
 PHYSICALLY_PASSED_FD98_ANCHORS = (
     (1, "8364257a2b3a219905e870fad6fbb2040a96ca4b4bb7201b2867534cc2b45530"),
     (2, "ac5f50e5028378ccfe6ea08bbf32f227f50fdcf5285a7deb866e309fbdd0a88f"),
@@ -280,9 +302,14 @@ PHYSICALLY_PASSED_FD98_ANCHORS = (
     (10, "31c182c888ceb1135e5afb2376610d93cee2e807b556c838e07fd4486c79d095"),
 )
 
-CURRENT_10_CANDIDATE_ANCHORS = (
+SUPERSEDED_B40_ANCHORS = (
     *PHYSICALLY_PASSED_FD98_ANCHORS[:9],
     (10, "a7761da8af1f2447d7f01d72e2b1456b99c0e874a165d6483f48ab1f58e8d905"),
+)
+
+CURRENT_10_CANDIDATE_ANCHORS = (
+    *PHYSICALLY_PASSED_FD98_ANCHORS[:9],
+    (10, "cd1e9b819f9e918f9f2ceaf37b8a74bf242e2be78f319af2cf02a42d7729d0f4"),
 )
 
 # Exact anchors for every image in the accelerated 30-step release. The outer
@@ -363,13 +390,21 @@ SUPERSEDED_30_MESSAGE = (
     "the deployed bootloader. Use --verify-only for the older bundle."
 )
 CURRENT_10_CANDIDATE_MESSAGE = (
-    "live installation of the exact published b40d2e6c ten-step prerelease is "
+    "live installation of the exact published 3f6eddd5 ten-step prerelease is "
     "disabled: steps 1-9 are byte-identical to package transitions that "
-    "completed directly on the physical RAK3401, but the new b40d2e6c step 10 "
-    "and this hardened host runner have passed offline reconstruction, motatool "
-    "verification, and both bootloader simulators only. The exact final "
-    "transition has not had a clean physical run. Use --verify-only, or the "
-    "hidden controlled-lab override, until that qualification is complete."
+    "completed directly on the physical RAK3401, but the new 3f6eddd5 step 10 "
+    "and this updated host runner have passed offline reconstruction, motatool "
+    "verification, and the exact OTAFIX2.4 bootloader simulator only. The exact "
+    "final transition has not had a clean physical run. Use --verify-only, or "
+    "the hidden controlled-lab override, until that qualification is complete."
+)
+SUPERSEDED_B40_MESSAGE = (
+    "live installation of the exact superseded b40d2e6c ten-step prerelease is "
+    "disabled: steps 1-9 are byte-identical to package transitions that "
+    "completed directly on the physical RAK3401, but its step 10 and this "
+    "updated host runner have not had a clean physical run. Use --verify-only "
+    "with the explicit superseded bundle path, or the hidden controlled-lab "
+    "override."
 )
 PHYSICALLY_PASSED_FD98_MESSAGE = (
     "live installation of the exact legacy fd98bc90 ten-step candidate is "
@@ -398,7 +433,9 @@ def matches_exact_anchors(
 
 def ten_step_candidate_kind(steps: list[ChainStep]) -> str | None:
     if matches_exact_anchors(steps, CURRENT_10_CANDIDATE_ANCHORS):
-        return "current-b40d2e6c"
+        return "current-3f6eddd5"
+    if matches_exact_anchors(steps, SUPERSEDED_B40_ANCHORS):
+        return "superseded-b40d2e6c"
     if matches_exact_anchors(steps, PHYSICALLY_PASSED_FD98_ANCHORS):
         return "legacy-fd98bc90"
     return None
@@ -406,15 +443,25 @@ def ten_step_candidate_kind(steps: list[ChainStep]) -> str | None:
 
 def ten_step_verification_message(steps: list[ChainStep]) -> str:
     candidate_kind = ten_step_candidate_kind(steps)
-    if candidate_kind == "current-b40d2e6c":
+    if candidate_kind == "current-3f6eddd5":
         return (
-            "Current b40d2e6c ten-step prerelease verified offline: exact "
+            "Current 3f6eddd5 ten-step prerelease verified offline: exact "
             "archive/checksum pins, all target anchors, zero-filled and "
             "erased-workspace reconstruction, independent motatool verification, "
-            "and both bootloader simulations passed. Steps 1-9 are byte-identical "
-            "to packages that passed directly on the RAK3401. The new step 10 and "
-            "this hardened host runner have not had a clean physical run; live "
-            "use remains gated."
+            "and the exact OTAFIX2.4 bootloader simulation passed. Steps 1-9 are "
+            "byte-identical to packages that passed directly on the RAK3401. The "
+            "new step 10 and this updated host runner have not had a clean "
+            "physical run; live use remains gated."
+        )
+    if candidate_kind == "superseded-b40d2e6c":
+        return (
+            "Superseded b40d2e6c ten-step prerelease verified offline: exact "
+            "archive/checksum pins, all target anchors, zero-filled and "
+            "erased-workspace reconstruction, independent motatool verification, "
+            "and its pinned bootloader simulations passed. Steps 1-9 are "
+            "byte-identical to packages that passed directly on the RAK3401. Its "
+            "step 10 and this updated host runner have not had a clean physical "
+            "run; live use remains gated."
         )
     if candidate_kind == "legacy-fd98bc90":
         return (
@@ -435,10 +482,14 @@ def require_live_release_safe(
 ) -> None:
     if len(steps) == EXPECTED_STEP_COUNT:
         candidate_kind = ten_step_candidate_kind(steps)
-        if candidate_kind == "current-b40d2e6c":
+        if candidate_kind == "current-3f6eddd5":
             if args.accept_test_candidate:
                 return
             raise KnownUnsafeReleaseError(CURRENT_10_CANDIDATE_MESSAGE)
+        if candidate_kind == "superseded-b40d2e6c":
+            if args.accept_test_candidate:
+                return
+            raise KnownUnsafeReleaseError(SUPERSEDED_B40_MESSAGE)
         if candidate_kind == "legacy-fd98bc90":
             if args.accept_test_candidate:
                 return
@@ -1008,6 +1059,7 @@ def locate_bundle(args: argparse.Namespace, work_dir: Path) -> Path:
     )
     if actual not in {
         ASSET_SHA256,
+        SUPERSEDED_B40_ASSET_SHA256,
         PHYSICALLY_PASSED_FD98_ASSET_SHA256,
         PHYSICALLY_QUALIFIED_9_ASSET_SHA256,
         SUPERSEDED_30_ASSET_SHA256,
@@ -1033,6 +1085,7 @@ def read_checksum_entries(bundle_root: Path) -> dict[PurePosixPath, str]:
     checksum_digest = hashlib.sha256(checksum_bytes).hexdigest()
     expected_lists = {
         CHECKSUM_LIST_SHA256,
+        SUPERSEDED_B40_CHECKSUM_LIST_SHA256,
         PHYSICALLY_PASSED_FD98_CHECKSUM_LIST_SHA256,
         PHYSICALLY_QUALIFIED_9_CHECKSUM_LIST_SHA256,
         SUPERSEDED_30_CHECKSUM_LIST_SHA256,
@@ -1292,6 +1345,10 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
             relative = safe_relative_path(row["mota_file"], "mOTA path")
             path = bundle_root.joinpath(*relative.parts)
             size = int(row["mota_size"])
+            declared_block_size = row.get("mota_block_size", "")
+            block_size = (
+                int(declared_block_size) if declared_block_size else None
+            )
             target_image_size = int(row["target_image_size"])
             base_hash = bytes.fromhex(row["base_body_hash"])
             target_sha256 = row["target_sha256"].lower()
@@ -1306,6 +1363,10 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
         if not path.is_file() or path.stat().st_size != size:
             raise ota.OtaError(f"chain package size/path mismatch at step {number}: {path}")
         package = ota.parse_mota(path.read_bytes(), path)
+        if block_size is not None and package.block_size != block_size:
+            raise ota.OtaError(
+                f"step {number} block size does not match CHAIN.csv"
+            )
         expected_version = ota.parse_version(to_version)
         if expected_version is None or package.fw_version != expected_version:
             raise ota.OtaError(f"step {number} version does not match its mOTA manifest")
@@ -1333,10 +1394,15 @@ def parse_chain(bundle_root: Path) -> tuple[list[ChainStep], bytes]:
         candidate_kind = ten_step_candidate_kind(steps)
         if candidate_kind is None:
             raise ota.OtaError(
-                "ten-step candidate does not match the exact b40d2e6c or "
-                "legacy fd98bc90 audited image pins"
+                "ten-step candidate does not match the exact 3f6eddd5, "
+                "superseded b40d2e6c, or legacy fd98bc90 audited image pins"
             )
-        expected_final_version = EXPECTED_FINAL_VERSION
+        if candidate_kind == "current-3f6eddd5":
+            expected_final_version = EXPECTED_FINAL_VERSION
+        elif candidate_kind == "superseded-b40d2e6c":
+            expected_final_version = SUPERSEDED_B40_FINAL_VERSION
+        else:
+            expected_final_version = PHYSICALLY_PASSED_FD98_FINAL_VERSION
     elif len(steps) == PHYSICALLY_QUALIFIED_9_STEP_COUNT:
         for number, expected_sha256 in COMPACT_RELEASE_ANCHORS:
             if steps[number - 1].target_sha256 != expected_sha256:
@@ -1537,6 +1603,12 @@ def query_live_target(
         )
     if target.platform != "nrf52" or target.nrf_external:
         raise ota.OtaError("live target is not the expected internal-flash nRF52 node")
+    if target.bootloader_version != EXPECTED_BOOTLOADER_VERSION:
+        raise ota.OtaError(
+            "live target bootloader is "
+            f"{target.bootloader_version or 'unknown'!r}, expected exact deployed "
+            f"version {EXPECTED_BOOTLOADER_VERSION!r}"
+        )
     if target.bootloader_abi is None or target.bootloader_abi < 2:
         raise ota.OtaError("live target does not report OTAFIX mOTA ABI 2")
     if target.bootloader_codecs is None or not target.bootloader_codecs & (1 << ota.MOTA_CODEC_IN_PLACE):
@@ -2327,10 +2399,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Verify the exact published ten-step RAK3401 prerelease from "
-            "c1caa5ad to b40d2e6c. Its first nine package bytes passed directly "
-            "on hardware; the new final transition and this hardened host runner "
-            "have offline/simulator qualification only, so live use remains "
-            "disabled without the controlled-lab override."
+            "c1caa5ad to 3f6eddd5. Its first nine package bytes passed directly "
+            "on hardware; the new final transition and this updated host runner "
+            "have offline/exact-OTAFIX2.4-simulator qualification only, so live "
+            "use remains disabled without the controlled-lab override."
         )
     )
     parser.add_argument(

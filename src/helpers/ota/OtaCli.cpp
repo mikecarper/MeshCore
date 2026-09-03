@@ -212,7 +212,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     uint8_t dig[4]; c.manager.servedDigest(dig);
     char dighx[9]; mesh::Utils::toHex(dighx, dig, 4);
     snprintf(reply, 160,
-             "OTA seeder | install:disabled | folder:%s | serving:%u dg=%s | target:00000000 (source only)",
+             "OTA seeder | install:disabled | target:00000000 | maxblk:%u | folder:%s | "
+             "serving:%u dg=%s (source only)",
+             (unsigned)ota_max_block_capability(),
              c.folder_active ? c.folder_dest_info : "not connected",
              (unsigned)c.manager.servedCount(), dighx);
 #else
@@ -252,22 +254,27 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #endif
     const uint8_t last_rc = ota_bootloader_last_rc();
     const char* rc_name = ota_nrf52_boot_update_result(last_rc) ? "blup" : "blrc";
-    // Keep the fixed-width parser/diagnostic fields ahead of the variable download text and optional
-    // human target name. hw is bounded to 32 bytes, so target + the complete blup/blrc token always fit
-    // in the 160-byte reply; snprintf may truncate only the descriptive tail.
+    // Keep the fixed-width parser/capability fields ahead of the variable download text and optional
+    // human target name. hw is bounded to 32 bytes, so target, maxblk, and the complete blup/blrc token
+    // always fit in the 160-byte reply; snprintf may truncate only the descriptive tail.
     snprintf(reply, 160,
-             "OTA | this fw %s (%uK) hw=%s | target:%08X | bl:%s %s:%02X | %s | "
+             "OTA | this fw %s (%uK) hw=%s | target:%08X | maxblk:%u | bl:%s %s:%02X | %s | "
              "serving:%s (%u) | keys:%u | env:%s",
              selfhx, (unsigned)((s ? fi.image_len : 0) / 1024), hw,
-             (unsigned)c.manager.target(), bl_state, rc_name, last_rc, dl,
+             (unsigned)c.manager.target(), (unsigned)ota_max_block_capability(),
+             bl_state, rc_name, last_rc, dl,
              c.serving ? "on" : "off", (unsigned)c.manager.servedCount(),
              (unsigned)c.allow.count(), tenv ? tenv : "?");
 #else
+    // target and maxblk precede the variable download text so remote-admin truncation cannot hide the
+    // package-geometry preflight fields.
     snprintf(reply, 160,
-             "OTA | this fw %s (%uK) hw=%s | %s | serving:%s (%u) | keys:%u | target:%08X (%s)",
-             selfhx, (unsigned)((s ? fi.image_len : 0) / 1024), hw, dl,
+             "OTA | this fw %s (%uK) hw=%s | target:%08X | maxblk:%u | %s | "
+             "serving:%s (%u) | keys:%u | env:%s",
+             selfhx, (unsigned)((s ? fi.image_len : 0) / 1024), hw,
+             (unsigned)c.manager.target(), (unsigned)ota_max_block_capability(), dl,
              c.serving ? "on" : "off", (unsigned)c.manager.servedCount(),
-             (unsigned)c.allow.count(), (unsigned)c.manager.target(), tenv ? tenv : "?");
+             (unsigned)c.allow.count(), tenv ? tenv : "?");
 #endif
 #endif
 
@@ -720,7 +727,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     SelfFwInfo fi;
     if (!ota_self_firmware(fi) || !fi.valid) { strcpy(reply, "ERR no EndF (firmware lacks the trailer?)"); return true; }
     char hx[17]; mesh::Utils::toHex(hx, fi.body_hash, 8);
-    int n = snprintf(reply, 160, "self body=%u image=%u base_hash=%s", (unsigned)fi.body_len, (unsigned)fi.image_len, hx);
+    // maxblk is before the optional bootloader diagnostics so it survives the 160-byte remote reply cap.
+    int n = snprintf(reply, 160, "self body=%u image=%u base_hash=%s | maxblk:%u",
+                     (unsigned)fi.body_len, (unsigned)fi.image_len, hx,
+                     (unsigned)ota_max_block_capability());
 #if defined(NRF52_PLATFORM)
     // nRF52 applies via the bootloader, so surface whether THIS device's bootloader can install this store.
     const OtaBlCaps& bl = c.bootloaderAppCaps();   // cached (flash scanned once)

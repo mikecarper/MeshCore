@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import hashlib
 import struct
 import tempfile
 import unittest
@@ -24,16 +25,21 @@ class TransportDeflateTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.path = Path(self.directory.name) / "test.mota"
-        # This distribution makes zlib level 9 choose a dynamic-Huffman block, proving the
-        # host is not silently constrained to the bootloader's separate fixed-only profile.
-        self.raw = bytes(i % 31 if i % 7 else 0 for i in range(1024))
+        # The repeated 512-byte prefix is 1536 bytes behind its second copy. A 2 KiB
+        # application window can encode that match; the legacy 1 KiB window cannot.
+        noise = b"".join(
+            hashlib.sha256(index.to_bytes(4, "little")).digest()
+            for index in range(48)
+        )
+        self.raw = noise[:512] + noise[512:1536] + noise[:512]
+        self.assertEqual(len(self.raw), seeder.MOTA_DEFLATE_BLOCK_MAX)
         payload_offset = 256
         self.path.write_bytes(bytes(payload_offset) + self.raw)
         descriptor = bytearray(seeder.MOTA_DESC_WIRE)
         struct.pack_into("<I", descriptor, 22, 1)  # block_count
         struct.pack_into("<I", descriptor, 26, payload_offset)
         struct.pack_into("<I", descriptor, 30, len(self.raw))
-        descriptor[34] = 10
+        descriptor[34] = 11
         mota = seeder.MotaFile(self.path, self.path.stat().st_size, bytes(descriptor))
         self.catalog = seeder.Catalog([mota], False)
 
@@ -49,7 +55,7 @@ class TransportDeflateTests(unittest.TestCase):
         self.assertIsNotNone(response)
         return response_payload(response, seeder.OP_DEFLATE_BLOCK)
 
-    def test_serves_independent_raw_deflate_in_bounded_chunks(self):
+    def test_serves_2k_raw_deflate_with_long_distance_match(self):
         status, payload = self.exchange(0, 0, 0)
         self.assertEqual(status, seeder.STATUS_OK)
         total = struct.unpack("<H", payload)[0]
@@ -63,7 +69,13 @@ class TransportDeflateTests(unittest.TestCase):
             self.assertEqual(struct.unpack_from("<H", payload)[0], total)
             encoded.extend(payload[2:])
         self.assertEqual((encoded[0] >> 1) & 0x03, 2)  # dynamic Huffman (BTYPE=2)
-        self.assertEqual(zlib.decompress(bytes(encoded), wbits=-10), self.raw)
+        self.assertEqual(zlib.decompress(bytes(encoded), wbits=-11), self.raw)
+
+        compressor_1k = zlib.compressobj(
+            level=9, method=zlib.DEFLATED, wbits=-10
+        )
+        encoded_1k = compressor_1k.compress(self.raw) + compressor_1k.flush()
+        self.assertLess(len(encoded) + 400, len(encoded_1k))
 
     def test_rejects_bad_block_range_and_oversized_chunk(self):
         self.assertEqual(self.exchange(1, 0, 0)[0], seeder.STATUS_ERR)

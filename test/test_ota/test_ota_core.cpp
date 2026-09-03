@@ -64,6 +64,12 @@ TEST(OtaPolicy, TrustedAutoInstallIsStrictlyForwardOnly) {
   EXPECT_TRUE(ota_trusted_auto_version_allows(0x01170103u, 0x01170104u));
 }
 
+TEST(OtaCapability, LiveMaximumTracksTheApplicationReassemblyLimit) {
+  EXPECT_EQ(ota_max_block_capability(), 2048u);
+  EXPECT_EQ(ota_max_block_capability(), OTA_MAX_BLOCK);
+  EXPECT_LE(ota_max_block_capability(), OTA_DATA_V2_MAX_ENCODED);
+}
+
 TEST(OtaBootPackage, StorageProfilesAndSdGeometryAreExact) {
   EXPECT_EQ(OTA_BL_PROFILE_SD_BOOT_UPDATE, 0x09u);
   EXPECT_EQ(OTA_BL_PROFILE_INTERNAL_BOOT_UPDATE, 0x0Au);
@@ -461,6 +467,7 @@ TEST(OtaBootPackage, ParserSeparatesV2ApplicationsFromStrictV3Bootloader) {
   auto m = boot_manifest_bytes();
   ASSERT_TRUE(mota_parse_manifest(m.data(), m.size(), parsed));
   EXPECT_TRUE(parsed.is_bootloader());
+  EXPECT_EQ(parsed.block_size(), 1024u);
   EXPECT_EQ(parsed.block_count, 40u);
 
   m[0] = MOTA_APP_FORMAT_VER;
@@ -468,6 +475,8 @@ TEST(OtaBootPackage, ParserSeparatesV2ApplicationsFromStrictV3Bootloader) {
   m = boot_manifest_bytes(); m[1] &= ~MFLAG_BOOTLOADER;
   EXPECT_FALSE(mota_parse_manifest(m.data(), m.size(), parsed));
   m = boot_manifest_bytes(); m[19] = 9;
+  EXPECT_FALSE(mota_parse_manifest(m.data(), m.size(), parsed));
+  m = boot_manifest_bytes(); m[19] = 11;
   EXPECT_FALSE(mota_parse_manifest(m.data(), m.size(), parsed));
   m = boot_manifest_bytes(); memset(m.data() + 7, 0, 4);
   EXPECT_FALSE(mota_parse_manifest(m.data(), m.size(), parsed));
@@ -1098,6 +1107,22 @@ TEST(OtaParse, RejectsTooManyBlocks) {
   EXPECT_EQ(mm.block_count, 65535u);
 }
 
+TEST(OtaParse, BlockCountCeilingDoesNotOverflowAtUint32Maximum) {
+  std::vector<uint8_t> manifest(MOTA_MFL, 0);
+  manifest[0] = MOTA_FORMAT_VER;
+  manifest[1] = MFLAG_FULL;
+  manifest[2] = HASH_ALGO_SHA256;
+  manifest[15] = 0xFF;
+  manifest[16] = 0xFF;
+  manifest[17] = 0xFF;
+  manifest[18] = 0xFF;
+  manifest[19] = 24;  // largest parser-valid block: ceil(UINT32_MAX / 2^24) = 256
+
+  MotaManifest parsed;
+  ASSERT_TRUE(mota_parse_manifest(manifest.data(), manifest.size(), parsed));
+  EXPECT_EQ(parsed.block_count, 256u);
+}
+
 TEST(OtaMerkle, RootMatchesVectorAndLeaves) {
   MotaManifest m;
   ASSERT_TRUE(mota_parse(MOTA_VEC, MOTA_VEC_LEN, m));
@@ -1680,12 +1705,21 @@ TEST(OtaProtocol, CodecRoundTrips) {
   EXPECT_EQ(0, memcmp(pm2.proof, proof, 12));
 }
 
-TEST(OtaProtocol, V2ProfilePacks171ByteFragmentsInsideExistingMessages) {
+TEST(OtaProtocol, V2ProfilesPackLegacyAndExtendedLengthBoundaries) {
   const uint16_t request = ota_req_make_v2(0x007Fu, true);
   EXPECT_TRUE(ota_req_is_v2(request));
   EXPECT_EQ(ota_req_v2_fragments(request), 0x007Fu);
   EXPECT_NE(request & OTA_REQ_V2_ALLOW_DEFLATE, 0u);
-  EXPECT_FALSE(ota_req_is_v2((uint16_t)(request | OTA_REQ_V2_RESERVED)));
+  EXPECT_FALSE(ota_req_v2_extended_length(request));
+
+  // Extended v2 needs at most twelve 171-byte fragments.  Keeping fragment bit 12 clear leaves the
+  // deployed legacy "send all" value 0xFFFF unambiguous.
+  const uint16_t extended_request = ota_req_make_v2(0x0FFFu, true, true);
+  EXPECT_TRUE(ota_req_is_v2(extended_request));
+  EXPECT_TRUE(ota_req_v2_extended_length(extended_request));
+  EXPECT_EQ(ota_req_v2_fragments(extended_request), 0x0FFFu);
+  EXPECT_EQ(extended_request, 0xEFFFu);
+  EXPECT_FALSE(ota_req_is_v2(0xFFFFu));                    // deployed legacy full-block request
   EXPECT_FALSE(ota_req_is_v2(0x007Fu));
 
   uint16_t descriptor = 0;
@@ -1697,9 +1731,43 @@ TEST(OtaProtocol, V2ProfilePacks171ByteFragmentsInsideExistingMessages) {
   EXPECT_EQ(fragment, 5u);
   EXPECT_EQ(encoded_len, 1024u);
   EXPECT_TRUE(deflated);
+  EXPECT_FALSE(ota_data_v2_unpack((uint16_t)(descriptor & ~OTA_DATA_V2_MARK),
+                                  fragment, encoded_len, deflated));
   EXPECT_FALSE(ota_data_v2_pack(16, 1024, false, descriptor));
   EXPECT_FALSE(ota_data_v2_pack(0, 0, false, descriptor));
   EXPECT_FALSE(ota_data_v2_pack(0, 1025, false, descriptor));
+
+  ASSERT_TRUE(ota_data_v2_pack_extended(15, 2048, descriptor));
+  EXPECT_EQ(descriptor, 0xFFFFu);
+  ASSERT_TRUE(ota_data_v2_unpack_extended(descriptor, 2048,
+                                          fragment, encoded_len, deflated));
+  EXPECT_EQ(fragment, 15u);
+  EXPECT_EQ(encoded_len, 2048u);
+  EXPECT_FALSE(deflated);
+  EXPECT_FALSE(ota_data_v2_unpack_extended(descriptor, 2047,
+                                           fragment, encoded_len, deflated));
+
+  ASSERT_TRUE(ota_data_v2_pack_extended(0, 1024, descriptor));
+  ASSERT_TRUE(ota_data_v2_unpack_extended(descriptor, 2048,
+                                          fragment, encoded_len, deflated));
+  EXPECT_EQ(fragment, 0u);
+  EXPECT_EQ(encoded_len, 1024u);
+  EXPECT_TRUE(deflated);
+
+  ASSERT_TRUE(ota_data_v2_pack_extended(0, 193, descriptor));
+  ASSERT_TRUE(ota_data_v2_unpack_extended(descriptor, 193,
+                                          fragment, encoded_len, deflated));
+  EXPECT_EQ(encoded_len, 193u);
+  EXPECT_FALSE(deflated);                                  // raw short tail in a 2 KiB manifest
+  EXPECT_FALSE(ota_data_v2_pack_extended(16, 2048, descriptor));
+  EXPECT_FALSE(ota_data_v2_pack_extended(0, 0, descriptor));
+  EXPECT_FALSE(ota_data_v2_pack_extended(0, 2049, descriptor));
+  EXPECT_FALSE(ota_data_v2_unpack_extended(0, 2048,
+                                           fragment, encoded_len, deflated));
+  EXPECT_FALSE(ota_data_v2_unpack_extended(OTA_DATA_V2_MARK, 0,
+                                           fragment, encoded_len, deflated));
+  EXPECT_FALSE(ota_data_v2_unpack_extended(OTA_DATA_V2_MARK, 2049,
+                                           fragment, encoded_len, deflated));
 
   std::array<uint8_t, OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2> payload{};
   ASSERT_TRUE(ota_data_v2_pack(0, 1024, false, descriptor));
@@ -1722,6 +1790,57 @@ static std::vector<SimMsg> g_q;
 struct SendTo { OtaManager* dest; };
 static bool sim_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   g_q.push_back({((SendTo*)ctx)->dest, std::vector<uint8_t>(msg, msg + len)});
+  return true;
+}
+struct ExtendedV2Trace {
+  const MotaManifest* manifest = nullptr;
+  uint32_t extended_requests = 0;
+  uint32_t legacy_requests = 0;
+  bool full_raw = false;
+  bool tail_raw = false;
+  bool full_deflated = false;
+  bool tail_deflated = false;
+};
+struct TracedSendTo { OtaManager* dest; ExtendedV2Trace* trace; };
+static bool traced_sim_send(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
+  TracedSendTo* route = (TracedSendTo*)ctx;
+  ExtendedV2Trace* trace = route->trace;
+  if (trace && trace->manifest && ota_msg_type(msg, len) == OTA_REQ) {
+    ReqWindowMsg request{};
+    if (decode_req_window(msg, len, request)) {
+      for (uint8_t i = 0; i < request.n_items; i++) {
+        if (ota_req_is_v2(request.items[i].want_mask) &&
+            ota_req_v2_extended_length(request.items[i].want_mask)) {
+          trace->extended_requests++;
+        } else if (!ota_req_is_v2(request.items[i].want_mask)) {
+          trace->legacy_requests++;
+        }
+      }
+    }
+  } else if (trace && trace->manifest && ota_msg_type(msg, len) == OTA_DATA) {
+    DataMsg data{};
+    if (decode_data(msg, len, data) && (data.frag_off & OTA_DATA_V2_MARK) != 0 &&
+        data.block_idx < trace->manifest->block_count) {
+      const uint32_t block_offset = (uint32_t)data.block_idx * trace->manifest->block_size();
+      const uint16_t raw_len = (uint16_t)std::min<uint32_t>(
+          trace->manifest->block_size(), trace->manifest->payload_size - block_offset);
+      uint8_t fragment = 0;
+      uint16_t encoded_len = 0;
+      bool deflated = false;
+      if (ota_data_v2_unpack_extended(data.frag_off, raw_len,
+                                      fragment, encoded_len, deflated)) {
+        const bool full = raw_len == trace->manifest->block_size();
+        if (deflated) {
+          if (full) trace->full_deflated = true;
+          else trace->tail_deflated = true;
+        } else {
+          if (full) trace->full_raw = true;
+          else trace->tail_raw = true;
+        }
+      }
+    }
+  }
+  g_q.push_back({route->dest, std::vector<uint8_t>(msg, msg + len)});
   return true;
 }
 struct CapturedMessages { std::vector<std::vector<uint8_t>> items; };
@@ -1780,6 +1899,67 @@ static bool test_wire_decode(void* context, const uint8_t* source, uint16_t sour
   memcpy(destination, manifest.payload + offset, length);
   *decoded_len = (uint16_t)length;
   codec->calls++;
+  return true;
+}
+
+struct VectorDeflateCodec {
+  const MotaManifest* manifest = nullptr;
+  uint32_t calls = 0;
+};
+
+static bool vector_2k_wire_encode(void* context, const uint8_t* source, uint16_t source_len,
+                                  uint8_t* destination, uint16_t capacity,
+                                  uint16_t* encoded_len) {
+  VectorDeflateCodec* codec = (VectorDeflateCodec*)context;
+  if (!codec || !codec->manifest || !source || !destination || !encoded_len ||
+      codec->manifest->block_count != SIM_MOTA_2K_BLOCKS) return false;
+  for (uint32_t block = 0; block < codec->manifest->block_count; block++) {
+    const uint32_t offset = block * codec->manifest->block_size();
+    const uint16_t length = (uint16_t)std::min<uint32_t>(
+        codec->manifest->block_size(), codec->manifest->payload_size - offset);
+    if (length != source_len || memcmp(source, codec->manifest->payload + offset, length) != 0) continue;
+    const uint16_t representation_len = SIM_MOTA_2K_DEFLATED_LENGTHS[block];
+    if (representation_len > capacity) return false;
+    memcpy(destination,
+           SIM_MOTA_2K_DEFLATED + SIM_MOTA_2K_DEFLATED_OFFSETS[block],
+           representation_len);
+    *encoded_len = representation_len;
+    codec->calls++;
+    return true;
+  }
+  return false;
+}
+
+struct RejectWireDecode {
+  uint32_t calls = 0;
+};
+
+static bool reject_wire_decode(void* context, const uint8_t*, uint16_t,
+                               uint8_t*, uint16_t, uint16_t* decoded_len) {
+  RejectWireDecode* decoder = (RejectWireDecode*)context;
+  if (decoder) decoder->calls++;
+  if (decoded_len) *decoded_len = 0;
+  return false;
+}
+
+struct SyntheticRepresentationDecode {
+  const uint8_t* representation = nullptr;
+  uint16_t representation_len = 0;
+  const uint8_t* decoded = nullptr;
+  uint16_t decoded_len = 0;
+  uint32_t calls = 0;
+};
+
+static bool synthetic_representation_decode(void* context, const uint8_t* source,
+                                             uint16_t source_len, uint8_t* destination,
+                                             uint16_t capacity, uint16_t* decoded_len) {
+  SyntheticRepresentationDecode* decoder = (SyntheticRepresentationDecode*)context;
+  if (!decoder || !source || !destination || !decoded_len ||
+      source_len != decoder->representation_len || capacity != decoder->decoded_len ||
+      memcmp(source, decoder->representation, source_len) != 0) return false;
+  memcpy(destination, decoder->decoded, capacity);
+  *decoded_len = capacity;
+  decoder->calls++;
   return true;
 }
 
@@ -2000,10 +2180,11 @@ TEST(OtaTransfer, TwoManagersFullTransfer) {
   EXPECT_TRUE(mota_check_image_hash_full(m));
 }
 
-TEST(OtaTransfer, TransportCodecInflatesBeforeProofAndStagesOriginalContainer) {
+TEST(OtaTransfer, LegacyOneKilobyteV2CodecStillStagesOriginalContainer) {
   g_q.clear();
   MotaManifest manifest;
   ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 1024u);
   OtaManager server, client;
   OtaStoreRam<4096> store;
   SendTo to_client{&client}, to_server{&server};
@@ -2028,6 +2209,78 @@ TEST(OtaTransfer, TransportCodecInflatesBeforeProofAndStagesOriginalContainer) {
   EXPECT_EQ(decoder.calls, manifest.block_count);
   ASSERT_EQ(store.staged_size(), SIM_MOTA_1K_LEN);
   EXPECT_EQ(0, memcmp(store.data(), SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+}
+
+TEST(OtaTransfer, TwoKilobyteExtendedV2TransfersFullAndShortRawBlocks) {
+  g_q.clear();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 2048u);
+  ASSERT_EQ(manifest.block_count, SIM_MOTA_2K_BLOCKS);
+  ASSERT_EQ(manifest.block_count, 2u);
+  ASSERT_GT(manifest.payload_size, manifest.block_size());
+  ASSERT_LT(manifest.payload_size - manifest.block_size(), manifest.block_size());
+
+  OtaManager server, client;
+  OtaStoreRam<4096> store;
+  ExtendedV2Trace trace{};
+  trace.manifest = &manifest;
+  TracedSendTo to_client{&client, &trace}, to_server{&server, &trace};
+  server.begin(0, traced_sim_send, &to_client);
+  client.begin(SIM_TARGET_ID, traced_sim_send, &to_server);
+  client.set_fetch_store(&store);
+  client.set_autofetch(OtaManager::AUTOFETCH_ANY);
+  ASSERT_TRUE(server.serve(SIM_MOTA_2K, SIM_MOTA_2K_LEN));
+
+  server.announce();
+  pump(client, &server);
+
+  EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  EXPECT_GT(trace.extended_requests, 0u);
+  EXPECT_EQ(trace.legacy_requests, 0u);
+  EXPECT_TRUE(trace.full_raw);
+  EXPECT_TRUE(trace.tail_raw);
+  EXPECT_FALSE(trace.full_deflated);
+  EXPECT_FALSE(trace.tail_deflated);
+  ASSERT_EQ(store.staged_size(), SIM_MOTA_2K_LEN);
+  EXPECT_EQ(0, memcmp(store.data(), SIM_MOTA_2K, SIM_MOTA_2K_LEN));
+}
+
+TEST(OtaTransfer, TwoKilobyteExtendedV2InflatesFullAndShortBlocksBeforeProof) {
+  g_q.clear();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 2048u);
+  ASSERT_EQ(manifest.block_count, SIM_MOTA_2K_BLOCKS);
+
+  OtaManager server, client;
+  OtaStoreRam<4096> store;
+  ExtendedV2Trace trace{};
+  trace.manifest = &manifest;
+  TracedSendTo to_client{&client, &trace}, to_server{&server, &trace};
+  VectorDeflateCodec encoder{};
+  encoder.manifest = &manifest;
+  server.begin(0, traced_sim_send, &to_client);
+  server.set_transport_deflate_encoder(vector_2k_wire_encode, &encoder);
+  client.begin(SIM_TARGET_ID, traced_sim_send, &to_server);
+  client.set_transport_deflate_decoder(ota_transport_inflate);
+  client.set_fetch_store(&store);
+  client.set_autofetch(OtaManager::AUTOFETCH_ANY);
+  ASSERT_TRUE(server.serve(SIM_MOTA_2K, SIM_MOTA_2K_LEN));
+
+  server.announce();
+  pump(client, &server);
+
+  EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  EXPECT_EQ(encoder.calls, manifest.block_count);
+  EXPECT_GT(trace.extended_requests, 0u);
+  EXPECT_EQ(trace.legacy_requests, 0u);
+  EXPECT_TRUE(trace.full_deflated);
+  EXPECT_TRUE(trace.tail_deflated);
+  EXPECT_FALSE(trace.full_raw);
+  EXPECT_FALSE(trace.tail_raw);
+  ASSERT_EQ(store.staged_size(), SIM_MOTA_2K_LEN);
+  EXPECT_EQ(0, memcmp(store.data(), SIM_MOTA_2K, SIM_MOTA_2K_LEN));
 }
 
 static void deliver_manifest_fragment(OtaManager& client, const uint8_t mid[4], uint8_t frag_idx,
@@ -2103,7 +2356,11 @@ static void deliver_verified_v2_raw_block(OtaManager& client, const MotaManifest
     DataMsg data{};
     memcpy(data.manifest_id, manifest.merkle_root, 4);
     data.block_idx = (uint16_t)block;
-    ASSERT_TRUE(ota_data_v2_pack((uint8_t)fragment, block_len, false, data.frag_off));
+    if (block_size > OTA_DATA_V2_LEGACY_MAX_ENCODED) {
+      ASSERT_TRUE(ota_data_v2_pack_extended((uint8_t)fragment, block_len, data.frag_off));
+    } else {
+      ASSERT_TRUE(ota_data_v2_pack((uint8_t)fragment, block_len, false, data.frag_off));
+    }
     data.data = body;
     data.data_len = (uint16_t)(sizeof(stream_id) + length);
     const uint16_t wire_len = encode_data(wire, sizeof(wire), data);
@@ -2119,6 +2376,65 @@ static void deliver_verified_v2_raw_block(OtaManager& client, const MotaManifest
   proof.block_idx = (uint16_t)block;
   proof.n_proof = sibling_count;
   proof.proof = siblings;
+  const uint16_t wire_len = encode_proof(wire, sizeof(wire), proof);
+  ASSERT_GT(wire_len, 0);
+  ASSERT_TRUE(client.on_message(wire, wire_len));
+}
+
+static void deliver_v2_representation(OtaManager& client, const MotaManifest& manifest,
+                                      uint32_t block, const uint8_t* representation,
+                                      uint16_t representation_len) {
+  ASSERT_LT(block, manifest.block_count);
+  ASSERT_NE(representation, nullptr);
+  const uint32_t block_offset = block * manifest.block_size();
+  const uint16_t raw_len = (uint16_t)std::min<uint32_t>(
+      manifest.block_size(), manifest.payload_size - block_offset);
+  ASSERT_GT(representation_len, 0u);
+  ASSERT_LT(representation_len, raw_len);
+
+  uint8_t stream_id[OTA_DATA_V2_STREAM_ID_BYTES];
+  mh4(stream_id, representation, representation_len);
+  const uint32_t fragments =
+      (representation_len + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  for (uint32_t fragment = 0; fragment < fragments; fragment++) {
+    const uint32_t offset = fragment * OTA_FRAG_DATA_V2;
+    const uint16_t length = (uint16_t)std::min<uint32_t>(
+        OTA_FRAG_DATA_V2, representation_len - offset);
+    uint8_t body[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+    memcpy(body, stream_id, sizeof(stream_id));
+    memcpy(body + sizeof(stream_id), representation + offset, length);
+    DataMsg data{};
+    memcpy(data.manifest_id, manifest.merkle_root, 4);
+    data.block_idx = (uint16_t)block;
+    if (manifest.block_size() > OTA_DATA_V2_LEGACY_MAX_ENCODED) {
+      ASSERT_TRUE(ota_data_v2_pack_extended(
+          (uint8_t)fragment, representation_len, data.frag_off));
+    } else {
+      ASSERT_TRUE(ota_data_v2_pack(
+          (uint8_t)fragment, representation_len, true, data.frag_off));
+    }
+    data.data = body;
+    data.data_len = (uint16_t)(sizeof(stream_id) + length);
+    const uint16_t wire_len = encode_data(wire, sizeof(wire), data);
+    ASSERT_GT(wire_len, 0);
+    ASSERT_TRUE(client.on_message(wire, wire_len));
+  }
+}
+
+static void deliver_block_proof(OtaManager& client, const MotaManifest& manifest,
+                                uint32_t block) {
+  ASSERT_LT(block, manifest.block_count);
+  std::vector<uint8_t> scratch(manifest.block_count * 4);
+  uint8_t siblings[32 * 4];
+  const uint8_t sibling_count = merkle_gen_proof(
+      manifest.leaves, manifest.block_count, block, scratch.data(), siblings);
+  ProofMsg proof{};
+  memcpy(proof.manifest_id, manifest.merkle_root, 4);
+  proof.block_idx = (uint16_t)block;
+  proof.n_proof = sibling_count;
+  proof.proof = siblings;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
   const uint16_t wire_len = encode_proof(wire, sizeof(wire), proof);
   ASSERT_GT(wire_len, 0);
   ASSERT_TRUE(client.on_message(wire, wire_len));
@@ -2174,6 +2490,59 @@ TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) 
   ASSERT_TRUE(decode_proof(sent.items.back().data(),
                            (uint16_t)sent.items.back().size(), proof));
   EXPECT_EQ(proof.block_idx, 0);
+  EXPECT_EQ(server.pendingServeJobs(), 0u);
+}
+
+TEST(OtaTransfer, LiteralLegacyFullMaskServesTwoKilobyteBlockInThirteenFragments) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 2048u);
+
+  OtaManager server;
+  CapturedMessages sent;
+  server.begin(0, capture_send, &sent);
+  ASSERT_TRUE(server.serve(SIM_MOTA_2K, SIM_MOTA_2K_LEN));
+
+  ReqMsg request{};
+  memcpy(request.manifest_id, manifest.merkle_root, 4);
+  request.block_idx = 0;
+  request.want_mask = 0xFFFFu;                            // deployed legacy "all fragments"
+  EXPECT_FALSE(ota_req_is_v2(request.want_mask));
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  const uint16_t request_len = encode_req(wire, sizeof(wire), request);
+  ASSERT_GT(request_len, 0);
+  ASSERT_TRUE(server.on_message(wire, request_len));
+
+  const uint32_t fragment_count =
+      (manifest.block_size() + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+  ASSERT_EQ(fragment_count, 13u);
+  for (uint32_t fragment = 0; fragment < fragment_count; fragment++) {
+    server.serviceEgress();
+    ASSERT_EQ(sent.items.size(), fragment + 1);
+    DataMsg data{};
+    ASSERT_TRUE(decode_data(sent.items.back().data(),
+                            (uint16_t)sent.items.back().size(), data));
+    EXPECT_EQ(data.block_idx, 0u);
+    EXPECT_EQ(data.frag_off, fragment * OTA_FRAG_DATA);
+    const uint16_t expected_len = (uint16_t)std::min<uint32_t>(
+        OTA_FRAG_DATA, manifest.block_size() - fragment * OTA_FRAG_DATA);
+    EXPECT_EQ(data.data_len, expected_len);
+    EXPECT_EQ(0, memcmp(data.data,
+                        manifest.payload + fragment * OTA_FRAG_DATA,
+                        expected_len));
+  }
+  EXPECT_EQ(sent.items.size(), 13u);                      // no v2 12-fragment interpretation
+  EXPECT_EQ(server.pendingServeJobs(), 1u);
+
+  server.serviceEgress();                                 // establish proof turnaround deadline
+  ASSERT_EQ(sent.items.size(), 13u);
+  server.set_clock(OTA_MANIFEST_EGRESS_MIN_GAP_MS);
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 14u);
+  ProofMsg proof{};
+  ASSERT_TRUE(decode_proof(sent.items.back().data(),
+                           (uint16_t)sent.items.back().size(), proof));
+  EXPECT_EQ(proof.block_idx, 0u);
   EXPECT_EQ(server.pendingServeJobs(), 0u);
 }
 
@@ -2498,6 +2867,55 @@ TEST(OtaTransfer, NewClientRequestsV2ThenRetriesLegacyWhenNoV2DataArrives) {
   EXPECT_EQ(fallback.want_mask, 0x007Fu);
 }
 
+TEST(OtaTransfer, TwoKilobyteClientAcceptsCanonicalLegacyFallbackThroughBitTwelve) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 2048u);
+  ASSERT_EQ(manifest.block_count, 2u);
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.set_clock(100);
+  ASSERT_EQ(client.pull(manifest.merkle_root, manifest.target_id), OtaManager::PULL_STARTED);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg extended{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(),
+                         (uint16_t)sent.items[0].size(), extended));
+  EXPECT_TRUE(ota_req_is_v2(extended.want_mask));
+  EXPECT_TRUE(ota_req_v2_extended_length(extended.want_mask));
+  EXPECT_EQ(ota_req_v2_fragments(extended.want_mask), 0x0FFFu);
+
+  // The first canonical legacy slice selects the fallback geometry.  Completing the 2 KiB block then
+  // necessarily receives fragment bit 12 (offset 1920) before its proof can authenticate and commit it.
+  ASSERT_EQ((manifest.block_size() + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA, 13u);
+  deliver_verified_block(client, manifest, 0);
+  ASSERT_EQ(client.blocksHave(), 1u);
+
+  ASSERT_EQ(sent.items.size(), 2u);
+  ReqMsg next{};
+  ASSERT_TRUE(decode_req(sent.items.back().data(),
+                         (uint16_t)sent.items.back().size(), next));
+  EXPECT_EQ(next.block_idx, 1u);
+  EXPECT_FALSE(ota_req_is_v2(next.want_mask));
+  EXPECT_EQ(next.want_mask, 0x0003u);                     // short tail remains legacy after downgrade
+
+  deliver_verified_block(client, manifest, 1);
+  EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  EXPECT_EQ(client.blocksHave(), client.blocksTotal());
+  ASSERT_EQ(store.staged_size(), SIM_MOTA_2K_LEN);
+  EXPECT_EQ(0, memcmp(store.data(), SIM_MOTA_2K, SIM_MOTA_2K_LEN));
+}
+
 TEST(OtaTransfer, MalformedLegacyDataCannotForceV2SessionDowngrade) {
   MotaManifest manifest;
   ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
@@ -2595,6 +3013,78 @@ TEST(OtaTransfer, PartialV2SeederCanDisappearAndLegacySeederTakesOver) {
 
   deliver_verified_block(client, manifest, 0);              // an old seeder can now make forward progress
   EXPECT_EQ(client.blocksHave(), 1u);
+}
+
+TEST(OtaTransfer, FailedTwoKilobyteInflateRetriesRawWithoutLeavingExtendedV2) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 2048u);
+  ASSERT_EQ(manifest.block_count, 2u);
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  RejectWireDecode decoder{};
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_transport_deflate_decoder(reject_wire_decode, &decoder);
+  client.set_fetch_store(&store);
+  client.set_clock(100);
+  ASSERT_EQ(client.pull(manifest.merkle_root, manifest.target_id), OtaManager::PULL_STARTED);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg first{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(),
+                         (uint16_t)sent.items[0].size(), first));
+  EXPECT_TRUE(ota_req_is_v2(first.want_mask));
+  EXPECT_TRUE(ota_req_v2_extended_length(first.want_mask));
+  EXPECT_NE(first.want_mask & OTA_REQ_V2_ALLOW_DEFLATE, 0u);
+
+  sent.items.clear();
+  deliver_v2_representation(
+      client, manifest, 0,
+      SIM_MOTA_2K_DEFLATED + SIM_MOTA_2K_DEFLATED_OFFSETS[0],
+      SIM_MOTA_2K_DEFLATED_LENGTHS[0]);
+  EXPECT_EQ(decoder.calls, 1u);
+  EXPECT_EQ(client.blocksHave(), 0u);
+  EXPECT_TRUE(sent.items.empty());                         // retry is paced by the normal deadline
+
+  const uint32_t timeout = client.fetchRetryTimeoutMs();
+  client.set_clock(100 + timeout);
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg retry{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(),
+                         (uint16_t)sent.items[0].size(), retry));
+  EXPECT_EQ(retry.block_idx, 0u);
+  EXPECT_TRUE(ota_req_is_v2(retry.want_mask));
+  EXPECT_TRUE(ota_req_v2_extended_length(retry.want_mask));
+  EXPECT_EQ(retry.want_mask & OTA_REQ_V2_ALLOW_DEFLATE, 0u);
+  EXPECT_EQ(ota_req_v2_fragments(retry.want_mask), 0x0FFFu);
+
+  sent.items.clear();
+  deliver_verified_v2_raw_block(client, manifest, 0);
+  ASSERT_EQ(client.blocksHave(), 1u);
+  EXPECT_EQ(decoder.calls, 1u);                            // raw v2 bypasses the failed decoder
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg next{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(),
+                         (uint16_t)sent.items[0].size(), next));
+  EXPECT_EQ(next.block_idx, 1u);
+  EXPECT_TRUE(ota_req_is_v2(next.want_mask));
+  EXPECT_TRUE(ota_req_v2_extended_length(next.want_mask));
+  EXPECT_EQ(next.want_mask & OTA_REQ_V2_ALLOW_DEFLATE, 0u);
+
+  deliver_verified_v2_raw_block(client, manifest, 1);
+  EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  EXPECT_EQ(client.blocksHave(), client.blocksTotal());
+  EXPECT_EQ(decoder.calls, 1u);
+  ASSERT_EQ(store.staged_size(), SIM_MOTA_2K_LEN);
+  EXPECT_EQ(0, memcmp(store.data(), SIM_MOTA_2K, SIM_MOTA_2K_LEN));
 }
 
 TEST(OtaTransfer, ConfirmedV2SeederCanDisappearBetweenBlocksAndLegacySeederTakesOver) {
@@ -2721,6 +3211,59 @@ TEST(OtaTransfer, V2NeverMixesDifferentCompressedRepresentationsAcrossSeeders) {
   EXPECT_EQ(client.blocksHave(), 1u);
   const uint32_t payload_offset = (uint32_t)(manifest.payload - SIM_MOTA_1K);
   EXPECT_EQ(0, memcmp(store.data() + payload_offset, manifest.payload, manifest.block_size()));
+}
+
+TEST(OtaTransfer, ExtendedCompressedRepresentationReassemblesThroughFragmentEight) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 2048u);
+
+  std::vector<uint8_t> representation(1500);
+  for (uint32_t i = 0; i < representation.size(); i++) {
+    representation[i] = (uint8_t)(i * 29u + 7u);
+  }
+  ASSERT_GT(representation.size(), 1024u);
+  ASSERT_LT(representation.size(), manifest.block_size());
+  ASSERT_EQ((representation.size() + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2, 9u);
+
+  SyntheticRepresentationDecode decoder{};
+  decoder.representation = representation.data();
+  decoder.representation_len = (uint16_t)representation.size();
+  decoder.decoded = manifest.payload;
+  decoder.decoded_len = (uint16_t)manifest.block_size();
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_transport_deflate_decoder(synthetic_representation_decode, &decoder);
+  client.set_fetch_store(&store);
+  ASSERT_EQ(client.pull(manifest.merkle_root, manifest.target_id), OtaManager::PULL_STARTED);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg request{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(),
+                         (uint16_t)sent.items[0].size(), request));
+  EXPECT_TRUE(ota_req_v2_extended_length(request.want_mask));
+  EXPECT_NE(request.want_mask & OTA_REQ_V2_ALLOW_DEFLATE, 0u);
+
+  sent.items.clear();
+  deliver_v2_representation(client, manifest, 0,
+                            representation.data(), (uint16_t)representation.size());
+  EXPECT_EQ(decoder.calls, 1u);                            // fragment 8 completed reassembly + decode
+  EXPECT_EQ(client.blocksHave(), 0u);                      // proof still gates the decoded bytes
+  EXPECT_TRUE(sent.items.empty());
+
+  deliver_block_proof(client, manifest, 0);
+  EXPECT_EQ(client.blocksHave(), 1u);
+  const uint32_t payload_offset = (uint32_t)(manifest.payload - SIM_MOTA_2K);
+  EXPECT_EQ(0, memcmp(store.data() + payload_offset,
+                      manifest.payload, manifest.block_size()));
 }
 
 TEST(OtaTransfer, NewClientFallsBackWhenLegacySourceServesOnlyFirstWindowRow) {
@@ -3244,7 +3787,7 @@ TEST(OtaCatalog, RetainsProtocolMaximumRows) {
 TEST(OtaCatalog, RejectsAdvertisedSourceWithOversizedBlocks) {
   OtaManager server;
   server.begin(0, nullptr, nullptr);
-  SyntheticCatalogSource source(1, 11);              // 2048-byte blocks exceed OTA_MAX_BLOCK
+  SyntheticCatalogSource source(1, 12);              // 4096-byte blocks exceed OTA_MAX_BLOCK
   ASSERT_TRUE(server.add_source(&source));
   EXPECT_EQ(server.servedCount(), 0);
 }
