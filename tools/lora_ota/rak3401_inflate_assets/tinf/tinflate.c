@@ -664,4 +664,3 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 #endif
 
 #endif /* MESHCORE_TINF_IMPLEMENTATION */
-

@@ -152,4 +152,3 @@ unsigned int TINFCC tinf_crc32(const void *data, unsigned int length);
 #endif
 
 #endif /* TINF_H_INCLUDED */
-
