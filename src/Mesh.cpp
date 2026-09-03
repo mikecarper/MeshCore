@@ -1076,7 +1076,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 #if defined(ENABLE_OTA)
       ota::ota_ctx().manager.set_clock(_ms->getMillis());                 // discovery jitter/ages
       ota::ota_ctx().manager.note_rx_path_hops(n);                        // adaptive fetch timing
-      terminal_ota = ota::ota_ctx().manager.on_message(pkt->payload, pkt->payload_len);
+      terminal_ota = ota::ota_ctx().on_message(pkt->payload, pkt->payload_len);
                                                                          // central OTA receive (all roles)
       ota::ota_ctx().track_session(ota::ota_ctx().manager.fetchState(), _ms->getMillis());
       onOtaRecv(pkt);                                                     // optional per-example hook

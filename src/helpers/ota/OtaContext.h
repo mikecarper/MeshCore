@@ -4,6 +4,9 @@
 #include <stdlib.h>         // malloc/free (lazy ESP32 manual-stage buffer)
 #include <string.h>         // strncmp/strncpy (hw_id)
 #include "OtaManager.h"
+#if defined(OTA_TRANSPORT_DEFLATE_RX)
+  #include "OtaDeflate.h"
+#endif
 #include "OtaStore.h"
 #include "SignerAllowlist.h"
 #include "OtaApply.h"
@@ -62,6 +65,9 @@ class FolderMotaStore;   // pull destination over the seeder link (full type onl
 
 struct OtaContext {
   OtaManager manager;
+#if defined(OTA_TRANSPORT_DEFLATE_RX)
+  OtaTransportInflateReceiver transport_inflate;
+#endif
 #if defined(OTA_SEEDER_ONLY)
   // A seeder-only node never stages an image for itself. Keep a valid default
   // store object for OtaManager, while folder captures replace it with the
@@ -424,6 +430,14 @@ struct OtaContext {
     }
   }
 
+  bool on_message(const uint8_t* msg, uint16_t len) {
+#if defined(OTA_TRANSPORT_DEFLATE_RX)
+    return transport_inflate.on_message(msg, len);
+#else
+    return manager.on_message(msg, len);
+#endif
+  }
+
   void begin(uint32_t target_id, OtaSend send, void* ctx, const char* hw = nullptr) {
     // Prefer the firmware's SELF-DESCRIBING EndF identity (docs Section 2) over the build-flag values the caller
     // passed - it's correct on any build (build.sh injection, bare IDE build, ...), so `ota ls`/`status`
@@ -438,7 +452,11 @@ struct OtaContext {
     // prevents auto-selection of firmware for the seeder itself.
     target_id = 0;
 #endif
+#if defined(OTA_TRANSPORT_DEFLATE_RX)
+    transport_inflate.begin(manager, target_id, send, ctx);
+#else
     manager.begin(target_id, send, ctx);
+#endif
     fetch_to_folder = false;
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }
     // a node only fetches firmware it can apply: ESP32 A/B -> sequential, nRF52 single-slot -> in-place

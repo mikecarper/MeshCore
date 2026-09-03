@@ -1698,6 +1698,13 @@ void OtaManager::loop() {
 
 // ---------------- dispatch ----------------
 
+uint16_t OtaManager::requestedBlockLength(const uint8_t* manifest_id, uint16_t block) const {
+  if (!manifest_id || !_fetch || _fstate != FETCHING || block >= _fbc ||
+      memcmp(manifest_id, _fid, sizeof(_fid)) != 0 || findReassemblySlot(block) < 0) return 0;
+  const uint32_t len = blockLen(block);
+  return len <= OTA_MAX_BLOCK ? (uint16_t)len : 0;
+}
+
 bool OtaManager::on_message(const uint8_t* msg, uint16_t len) {
   switch (ota_msg_type(msg, len)) {
     case OTA_ADV:          handleAdv(msg, len); return false;
