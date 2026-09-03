@@ -760,9 +760,75 @@ def all_jobs(images: list[dict[str, object]]) -> list[Job]:
     return jobs
 
 
-def job_needs_transport_stats(job: Job, images: list[dict[str, object]],
-                              objective: str) -> bool:
-    return objective == "transport" and source_uses_v2(images, job[0])
+def feasible_forward_pairs(
+    rows: list[dict[str, object]], images: list[dict[str, object]]
+) -> set[tuple[int, int]]:
+    """Collapse feasible workspace rows into the forward route graph."""
+    pairs = {(0, 1)}
+    for row in rows:
+        source = int(row["source"])
+        target = int(row["target"])
+        if not (0 <= source < len(images) and 0 <= target < len(images)):
+            raise RouteSearchError(f"geometry edge {source}->{target} is out of range")
+        if (
+            source != 0
+            and truth(row.get("feasible", False))
+            and is_forward_progress(images, source, target)
+        ):
+            pairs.add((source, target))
+    return pairs
+
+
+def minimum_hop_pairs(
+    rows: list[dict[str, object]], images: list[dict[str, object]]
+) -> set[tuple[int, int]]:
+    """Return exactly the edges lying on at least one shortest endpoint route."""
+    pairs = feasible_forward_pairs(rows, images)
+    endpoint = len(images) - 1
+    outgoing: dict[int, list[int]] = {}
+    for source, target in pairs:
+        outgoing.setdefault(source, []).append(target)
+
+    infinity = sys.maxsize
+    from_start = [infinity] * len(images)
+    from_start[0] = 0
+    for source in range(endpoint):
+        if from_start[source] == infinity:
+            continue
+        for target in outgoing.get(source, []):
+            from_start[target] = min(from_start[target], from_start[source] + 1)
+    if from_start[endpoint] == infinity:
+        return set()
+
+    to_endpoint = [infinity] * len(images)
+    to_endpoint[endpoint] = 0
+    for source in range(endpoint - 1, -1, -1):
+        for target in outgoing.get(source, []):
+            if to_endpoint[target] != infinity:
+                to_endpoint[source] = min(
+                    to_endpoint[source], to_endpoint[target] + 1
+                )
+    shortest = from_start[endpoint]
+    return {
+        (source, target)
+        for source, target in pairs
+        if from_start[source] != infinity
+        and to_endpoint[target] != infinity
+        and from_start[source] + 1 + to_endpoint[target] == shortest
+    }
+
+
+def job_needs_transport_stats(
+    job: Job,
+    images: list[dict[str, object]],
+    objective: str,
+    relevant_pairs: set[tuple[int, int]] | None = None,
+) -> bool:
+    return (
+        objective == "transport"
+        and source_uses_v2(images, job[0])
+        and (relevant_pairs is None or (job[0], job[1]) in relevant_pairs)
+    )
 
 
 def cache_satisfies_job(
@@ -928,7 +994,8 @@ def source_transport_pipeline(images: list[dict[str, object]], source: int) -> i
 
 
 def transport_encoder_for_rows(
-    rows: list[dict[str, object]], images: list[dict[str, object]]
+    rows: list[dict[str, object]], images: list[dict[str, object]],
+    relevant_pairs: set[tuple[int, int]] | None = None,
 ) -> str | None:
     """Require one exact live-seeder encoder across comparable measurements."""
     encoders = {
@@ -936,6 +1003,10 @@ def transport_encoder_for_rows(
         for row in rows
         if truth(row.get("feasible", False))
         and source_uses_v2(images, int(row["source"]))
+        and (
+            relevant_pairs is None
+            or (int(row["source"]), int(row["target"])) in relevant_pairs
+        )
         and transport_stats_complete(row)
     }
     if len(encoders) > 1:
@@ -980,6 +1051,10 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
                  objective: str = "container", relay_hops: int = 0) -> dict[str, object]:
     if objective not in ("container", "transport"):
         raise RouteSearchError(f"unknown route objective: {objective}")
+    if objective == "transport" and not complete:
+        raise RouteSearchError(
+            "transport objective requires complete geometry before shortest-DAG sizing"
+        )
     if not 0 <= relay_hops <= OTA_MAX_HOPS:
         raise RouteSearchError(f"relay hops must be between 0 and {OTA_MAX_HOPS}")
     endpoint = len(images) - 1
@@ -994,6 +1069,11 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
     }
     if objective == "transport":
         baseline_row["payload"] = payload_size_from_container(baseline_size)
+    all_feasible_pairs = feasible_forward_pairs(rows, images)
+    relevant_pairs = (
+        minimum_hop_pairs(rows, images)
+        if objective == "transport" else all_feasible_pairs
+    )
     edges: dict[tuple[int, int], dict[str, object]] = {(0, 1): baseline_row}
     for row in rows:
         source = int(row["source"])
@@ -1010,6 +1090,8 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
         if not truth(row.get("feasible", False)):
             continue
         key = source, target
+        if key not in relevant_pairs:
+            continue
         if objective == "transport":
             transport_bytes = int(
                 edge_transport_cost(row, images, relay_hops)["linear_path_bytes"]
@@ -1070,10 +1152,12 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
     common = {"schema": 2, "app_base": f"0x{APP_BASE:X}",
               "stage_ceiling": f"0x{STAGE_CEILING:X}", "node_count": len(images),
               "search_complete": complete, "candidate_geometries": len(rows),
-              "feasible_edges": len(edges),
+              "feasible_edges": len(all_feasible_pairs),
               "objective": objective_text}
     if objective == "transport":
-        transport_encoder = transport_encoder_for_rows(rows, images)
+        transport_encoder = transport_encoder_for_rows(
+            rows, images, relevant_pairs
+        )
         common["transport_accounting"] = {
             "relay_hops": relay_hops,
             "source_capability_field": TRANSPORT_CAPABILITY,
@@ -1093,7 +1177,8 @@ def select_route(rows: list[dict[str, object]], images: list[dict[str, object]],
         result = {**common, "status": "unreachable", "reachable_nodes": sorted(best),
                   "endpoint_node": endpoint,
                   "endpoint_incoming_feasible": sorted(
-                      source for source, target in edges if target == endpoint
+                      source for source, target in all_feasible_pairs
+                      if target == endpoint
                   )}
     else:
         nodes = best[endpoint][2]
@@ -1237,26 +1322,16 @@ def main(argv: list[str] | None = None) -> int:
 
         jobs = all_jobs(images)
         required = {cache_key(job[5], job[6], job[2]) for job in jobs}
-        remaining = [
+        geometry_remaining = [
             job for job in jobs
-            if not cache_satisfies_job(
-                cache.get(cache_key(job[5], job[6], job[2])),
-                job_needs_transport_stats(job, images, args.objective),
-                frozen_transport_tool_sha256,
-            )
+            if cache_key(job[5], job[6], job[2]) not in cache
         ]
         print(
             f"nodes={len(images)} geometries={len(jobs)} "
-            f"reused={len(required & cache.keys())} remaining={len(remaining)}"
+            f"reused={len(required & cache.keys())} "
+            f"geometry_remaining={len(geometry_remaining)}"
         )
-        if remaining and not args.no_generate:
-            if frozen_transport_tool is None and any(
-                job_needs_transport_stats(job, images, args.objective)
-                for job in remaining
-            ):
-                parser.error(
-                    "--motatool is required to measure transport costs for capable sources"
-                )
+        if geometry_remaining and not args.no_generate:
             # Patch payloads are disposable worker scratch. Keep them in a
             # uniquely owned directory so cleanup can never remove a caller's
             # pre-existing `work-dir/patches` tree.
@@ -1267,13 +1342,9 @@ def main(argv: list[str] | None = None) -> int:
                 with ProcessPoolExecutor(max_workers=args.workers) as pool:
                     futures = [
                         pool.submit(
-                            geometry_job,
-                            (*job, str(patches),
-                             str(frozen_transport_tool) if job_needs_transport_stats(
-                                 job, images, args.objective
-                             ) else ""),
+                            geometry_job, (*job, str(patches), "")
                         )
-                        for job in remaining
+                        for job in geometry_remaining
                     ]
                     for done, future in enumerate(as_completed(futures), 1):
                         row = future.result()
@@ -1284,18 +1355,91 @@ def main(argv: list[str] | None = None) -> int:
                         )
                         cache[key] = row
                         if done % 100 == 0 or done == len(futures):
-                            print(f"measured={done}/{len(remaining)}", flush=True)
-        completed = {
-            cache_key(job[5], job[6], job[2]) for job in jobs
-            if cache_satisfies_job(
-                cache.get(cache_key(job[5], job[6], job[2])),
-                job_needs_transport_stats(job, images, args.objective),
-                frozen_transport_tool_sha256,
-            )
-        }
-        rows = project_cache(cache, images, completed)
+                            print(
+                                f"geometry_measured={done}/{len(geometry_remaining)}",
+                                flush=True,
+                            )
+        geometry_completed = required & cache.keys()
+        rows = project_cache(cache, images, geometry_completed)
         write_csv(args.work_dir / "geometry.csv", rows)
-        complete = completed == required
+        geometry_complete = geometry_completed == required
+
+        complete = geometry_complete
+        if args.objective == "transport":
+            if not geometry_complete:
+                raise RouteSearchError(
+                    "transport objective requires complete geometry before "
+                    "shortest-DAG sizing"
+                )
+            relevant_pairs = minimum_hop_pairs(rows, images)
+            transport_remaining = [
+                job for job in jobs
+                if not cache_satisfies_job(
+                    cache.get(cache_key(job[5], job[6], job[2])),
+                    job_needs_transport_stats(
+                        job, images, args.objective, relevant_pairs
+                    ),
+                    frozen_transport_tool_sha256,
+                )
+            ]
+            print(
+                f"shortest_dag_pairs={len(relevant_pairs)} "
+                f"transport_remaining={len(transport_remaining)}"
+            )
+            if transport_remaining and args.no_generate:
+                raise RouteSearchError(
+                    "shortest-DAG transport statistics are incomplete"
+                )
+            if transport_remaining and frozen_transport_tool is None:
+                parser.error(
+                    "--motatool is required to measure shortest-DAG transport costs"
+                )
+            if transport_remaining:
+                with tempfile.TemporaryDirectory(
+                    prefix=".transport-patches-", dir=args.work_dir
+                ) as patches_raw:
+                    with ProcessPoolExecutor(max_workers=args.workers) as pool:
+                        futures = [
+                            pool.submit(
+                                geometry_job,
+                                (*job, patches_raw, str(frozen_transport_tool)),
+                            )
+                            for job in transport_remaining
+                        ]
+                        for done, future in enumerate(as_completed(futures), 1):
+                            row = future.result()
+                            key = cache_key(
+                                str(row["source_sha256"]),
+                                str(row["target_sha256"]),
+                                int(row["memory"]),
+                            )
+                            old = cache.get(key)
+                            if old is None or any(
+                                str(old.get(field, "")) != str(row.get(field, ""))
+                                for field in comparable
+                            ):
+                                raise RouteSearchError(
+                                    f"transport regeneration changed geometry for {key}"
+                                )
+                            cache[key] = row
+                            if done % 100 == 0 or done == len(futures):
+                                print(
+                                    f"transport_measured={done}/"
+                                    f"{len(transport_remaining)}",
+                                    flush=True,
+                                )
+                rows = project_cache(cache, images, geometry_completed)
+                write_csv(args.work_dir / "geometry.csv", rows)
+            complete = all(
+                cache_satisfies_job(
+                    cache.get(cache_key(job[5], job[6], job[2])),
+                    job_needs_transport_stats(
+                        job, images, args.objective, relevant_pairs
+                    ),
+                    frozen_transport_tool_sha256,
+                )
+                for job in jobs
+            )
         result = select_route(
             rows, images, baseline_size, args.work_dir / "route.json",
             complete=complete,

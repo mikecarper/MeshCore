@@ -509,6 +509,66 @@ class RouteSearchTests(unittest.TestCase):
             )
             self.assertEqual(container["nodes"], [0, 1, 3, 4])
 
+    def test_transport_stats_are_required_only_on_the_shortest_hop_dag(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline = search.container_size(64)
+            manifest, _ = self.write_inventory(
+                root, [b"0", b"1", b"2", b"3", b"4", b"5"],
+                baseline_size=baseline,
+                transport_capabilities=[False, False, True, False, False, False],
+                transport_pipelines=[None, None, 1, None, None, None],
+            )
+            images = search.load_inventory(manifest)
+
+            def edge(
+                source: int, target: int, memory: int = 0x1000,
+                *, transport: bool = False,
+            ) -> dict[str, object]:
+                row: dict[str, object] = {
+                    "source": source, "target": target, "memory": memory,
+                    "payload": 100, "container": search.container_size(100),
+                    "stage_start": 0xC0000, "margin": 100, "feasible": True,
+                }
+                if transport:
+                    row.update({
+                        "payload_sha256": f"{memory:064x}",
+                        "transport_encoder_sha256": "d" * 64,
+                        "v2_wire_bytes": 50, "v2_deflate_bytes": 50,
+                        "v2_deflate_blocks": 1, "v2_data_packets": 1,
+                    })
+                return row
+
+            rows = [
+                edge(1, 2), edge(2, 5, transport=True),
+                edge(1, 3), edge(3, 5),
+                # Feasible, but adding 2->3 makes a four-hop route. Its capable
+                # source therefore does not need a transport measurement.
+                edge(2, 3),
+            ]
+            expected_pairs = {(0, 1), (1, 2), (2, 5), (1, 3), (3, 5)}
+            self.assertEqual(search.minimum_hop_pairs(rows, images), expected_pairs)
+            result = search.select_route(
+                rows, images, baseline, root / "route.json", True,
+                objective="transport",
+            )
+            self.assertEqual(result["shortest_package_count"], 3)
+
+            # Every feasible workspace for a relevant capable-source pair is
+            # comparable. A blank second 2->5 workspace must fail closed.
+            rows.append(edge(2, 5, memory=0x2000))
+            with self.assertRaisesRegex(search.RouteSearchError, "missing transport"):
+                search.select_route(
+                    rows, images, baseline, root / "missing.json", True,
+                    objective="transport",
+                )
+
+            with self.assertRaisesRegex(search.RouteSearchError, "complete geometry"):
+                search.select_route(
+                    rows[:-1], images, baseline, root / "partial.json", False,
+                    objective="transport",
+                )
+
     def test_transport_geometry_rank_includes_per_packet_stream_id_and_framing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
