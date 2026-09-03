@@ -83,7 +83,11 @@ void OtaTransportInflateReceiver::send(const uint8_t* msg, uint16_t len, bool fl
   ReqMsg request;
   if (ota_msg_type(msg, len) == OTA_REQ && decode_req(msg, len, request)) {
     if (!is_active(request.manifest_id, request.block_idx)) {
-      reset_representation();
+      // resumeStaged() can enter FETCHING without sending GET_MANIFEST first. A different MID is therefore
+      // an independent negotiation even when this shim retained conservative fallback state from an earlier
+      // transfer in the same boot. Preserve that state only while moving between blocks of the same MID.
+      if (!_active || memcmp(request.manifest_id, _mid, sizeof(_mid)) != 0) reset_session();
+      else reset_representation();
       _active = true;
       _block = request.block_idx;
       memcpy(_mid, request.manifest_id, sizeof(_mid));
