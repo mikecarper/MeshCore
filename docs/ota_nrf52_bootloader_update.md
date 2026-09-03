@@ -103,7 +103,8 @@ manifest identity:
 | `ThinkNode_M3_repeater_lora_ota_no_external_sensors` | `239A00DA / TNM3_DFU` | `0CA41DB2` |
 | `RAK_3401_repeater_lora_ota_no_external_sensors` | `239A0029 / 3401_DFU` | `23818A80` |
 | RAK4631 lean repeater and both lean RS232 bridges | `239A0029 / 4631_DFU` | `2D0DF000` |
-| GAT562 30S/Tracker Pro/EVB Pro and R1Neo lean carrier aliases | `239A0029 / 4631_DFU` | `2D0DF000` |
+| GAT562 30S/Tracker Pro/EVB Pro lean targets | `239A0029 / GAT562_DFU` | `D50D2D44` |
+| `R1Neo_repeater_lora_ota_no_external_sensors` | `239A0029 / 4631_DFU` | `2D0DF000` |
 | `RAK_WisMesh_Tag_repeater_lora_ota_no_external_sensors` | `239A0029 / RTAG_DFU` | `C72E9C9C` |
 
 Board IDs are not globally unique. For generic targets, the signed hardware ID
@@ -117,6 +118,12 @@ The Python reference builder and release tooling audit these boot targets for
 duplicates and collisions with application target IDs. Generic image parsing
 can inspect a future canonical identity, but signing/building a package fails
 until that exact identity is in the qualified inventory.
+
+Earlier GAT562 installations may report the RAK-compatible `4631_DFU`
+identity. The installed and candidate identity pair must match exactly, so a
+remote bootloader update cannot migrate one of those devices to `GAT562_DFU`.
+Provision the GAT562-specific OTAFIX bootloader once through USB/BLE DFU or SWD;
+subsequent signed bootloader mOTA updates use target `D50D2D44`.
 
 ## Embedded continuity and version policy
 

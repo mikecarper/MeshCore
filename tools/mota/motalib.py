@@ -119,6 +119,7 @@ BOOT_REQUIRED_APP_CODEC_MASK = ((1 << CODEC_FULL) |
 # aliases use the same installed bootloader identity and therefore do not add
 # rows here.
 INTERNAL_BOOTLOADER_IDENTITIES = (
+    (0x239A0029, "GAT562_DFU"),
     (0x239A0071, "TOWER_V2_OTA"),
     (0x239A0071, "T096_DFU"),
     (0x239A0071, "T1_DFU"),

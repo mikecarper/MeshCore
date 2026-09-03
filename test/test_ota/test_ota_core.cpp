@@ -378,14 +378,19 @@ TEST(OtaBootPackage, SdApprovalTokenBindsTheAuthenticatedImageHash) {
 
 TEST(OtaBootPackage, GenericIdentityUsesBoardAndNameForCollisionSafeTarget) {
   const uint32_t shared_board_id = 0x239A0029u;
+  const uint8_t gat562_name[16] = {'G','A','T','5','6','2','_','D','F','U',0,0,0,0,0,0};
   const uint8_t rak3401_name[16] = {'3','4','0','1','_','D','F','U',0,0,0,0,0,0,0,0};
   const uint8_t rak4631_name[16] = {'4','6','3','1','_','D','F','U',0,0,0,0,0,0,0,0};
-  uint8_t hw3401[32], hw4631[32];
+  uint8_t hw_gat562[32], hw3401[32], hw4631[32];
+  ASSERT_TRUE(ota_bootloader_hw_id(shared_board_id, gat562_name, hw_gat562));
   ASSERT_TRUE(ota_bootloader_hw_id(shared_board_id, rak3401_name, hw3401));
   ASSERT_TRUE(ota_bootloader_hw_id(shared_board_id, rak4631_name, hw4631));
+  EXPECT_EQ(0, memcmp(hw_gat562, "NRF_BL_239A0029_GAT562_DFU", 26));
   EXPECT_EQ(0, memcmp(hw3401, "NRF_BL_239A0029_3401_DFU", 24));
   EXPECT_EQ(0, memcmp(hw4631, "NRF_BL_239A0029_4631_DFU", 24));
+  EXPECT_NE(0, memcmp(hw_gat562, hw4631, sizeof(hw_gat562)));
   EXPECT_NE(0, memcmp(hw3401, hw4631, sizeof(hw3401)));
+  EXPECT_EQ(ota_bootloader_target_id(shared_board_id, gat562_name), 0xD50D2D44u);
   EXPECT_EQ(ota_bootloader_target_id(shared_board_id, rak3401_name), 0x23818A80u);
   EXPECT_EQ(ota_bootloader_target_id(shared_board_id, rak4631_name), 0x2D0DF000u);
 
@@ -418,6 +423,7 @@ TEST(OtaBootPackage, GenericIdentityUsesBoardAndNameForCollisionSafeTarget) {
 
   struct KnownIdentity { uint32_t board_id; const char* name; uint32_t target_id; };
   const KnownIdentity known[] = {
+      {0x239A0029u, "GAT562_DFU",    0xD50D2D44u},
       {0x239A0071u, "TOWER_V2_OTA",   0x1150F50Eu},
       {0x239A0071u, "T096_DFU",       0x42354C85u},
       {0x239A0071u, "T1_DFU",         0xFC556FFCu},

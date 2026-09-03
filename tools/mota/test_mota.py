@@ -53,6 +53,13 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
     ]
     assert len(inventory) == len(set(inventory))
     assert len(inventory) == 21
+    gat_targets = {
+        "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors",
+        "GAT562_Mesh_Tracker_Pro_repeater_lora_ota_no_external_sensors",
+        "GAT562_Mesh_EVB_Pro_repeater_lora_ota_no_external_sensors",
+    }
+    assert gat_targets <= set(inventory)
+    assert not any("GAT562_Mesh_Watch13" in target for target in inventory)
 
     target_header = (root / "src/helpers/ota/OtaTargets.h").read_text(encoding="utf-8")
     for target in inventory:
@@ -1379,6 +1386,38 @@ def test_generic_internal_bootloader_build_parse_and_strict_contract():
         pass
 
 
+def test_gat562_internal_bootloader_profile_is_exact():
+    priv = Ed25519PrivateKey.generate()
+    image = _generic_bootloader_image(device_name="GAT562_DFU")
+    identity = ml.validate_bootloader_image(image)
+    assert (identity.board_id, identity.device_name) == (0x239A0029, "GAT562_DFU")
+    profile = ml.bootloader_qualified_platform_profile(
+        identity.board_id, identity.device_name)
+    assert profile == (
+        ml.BOOT_CONTINUITY_FAMILY_S140,
+        ml.BOOTLOADER_S140_V6_FWID,
+        ml.NRF52_APP_BASE_S140_V6,
+        ml.BOOT_CONTINUITY_LAYOUT_ABI,
+    )
+    storages = ml.bootloader_qualified_storage_profiles(
+        identity.board_id, identity.device_name)
+    assert storages == (ml.BOOT_STORAGE_INTERNAL_UPDATE,)
+
+    target = ml.bootloader_target_id(identity.board_id, identity.device_name)
+    expected_hw = b"NRF_BL_239A0029_GAT562_DFU".ljust(32, b"\0")
+    assert target == 0xD50D2D44
+    assert ml.bootloader_hw_id(identity.board_id, identity.device_name) == expected_hw
+    manifest = ml.build_manifest(
+        target_id=target, fw_version=identity.boot_version,
+        image_size=len(image), payload=image, block_size=1024,
+        image_hash=ml.mh32(image), codec_id=ml.CODEC_FULL, is_full=True,
+        sign_priv=priv, bootloader=True)
+    parsed = ml.parse_container(ml.build_container(manifest, image))
+    assert parsed.manifest.target_id == target
+    assert parsed.manifest.hw_id == expected_hw
+    assert ml.verify(parsed, expect_pub=ml.ed25519_public_bytes(priv)) == []
+
+
 def test_meshtower_sd_bootloader_profile_builds_the_same_exact_identity():
     priv = Ed25519PrivateKey.generate()
     image = _generic_bootloader_image(
@@ -1418,6 +1457,7 @@ def test_bootloader_build_inventory_is_unique_and_disjoint_from_app_targets():
     import re
 
     expected = {
+        (0x239A0029, "GAT562_DFU"): 0xD50D2D44,
         (0x239A0071, "TOWER_V2_OTA"): 0x1150F50E,
         (0x239A0071, "T096_DFU"): 0x42354C85,
         (0x239A0071, "T1_DFU"): 0xFC556FFC,
