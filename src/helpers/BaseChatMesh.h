@@ -85,6 +85,7 @@ class BaseChatMesh : public mesh::Mesh {
   int sort_array[MAX_CONTACTS+MAX_ANON_CONTACTS];
 #endif
   int num_contacts;
+  uint32_t contact_table_revision;
   int matching_peer_indexes[MAX_SEARCH_RESULTS];
   unsigned long txt_send_timeout;
 #ifdef MAX_GROUP_CHANNELS
@@ -107,6 +108,7 @@ protected:
     sort_array = sort_array_fallback;
     contact_capacity = CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS;
 #endif
+    contact_table_revision = 0;
     resetContacts();
 
   #ifdef MAX_GROUP_CHANNELS
@@ -129,6 +131,7 @@ protected:
     }
 #endif
     num_contacts = MAX_ANON_CONTACTS;  // seed the first contacts for anon requests
+    contact_table_revision++;
   }
   void populateContactFromAdvert(ContactInfo& ci, const mesh::Identity& id, const AdvertDataParser& parser, uint32_t timestamp);
   ContactInfo* allocateContactSlot(bool transient_only=false); // helper to find slot for new contact
@@ -139,7 +142,11 @@ protected:
   virtual void onContactsFull() {};
   virtual bool shouldOverwriteWhenFull() const { return false; }
   virtual uint8_t getAutoAddMaxHops() const { return 0; }  // 0 = no limit, 1 = direct (0 hops), N = up to N-1 hops
-  virtual void onContactOverwrite(const uint8_t* pub_key) {};
+  virtual bool canMutateContacts() const { return true; }
+  // Return false to preserve the exact selected contact when a subclass cannot
+  // safely retire its associated persistent state. A refusal must not mutate
+  // the contact or its backing state.
+  virtual bool onContactOverwrite(const ContactInfo&) { return true; };
   virtual void onDiscoveredContact(ContactInfo& contact, bool is_new, uint8_t path_len, const uint8_t* path) = 0;
   virtual ContactInfo* processAck(const uint8_t *data) = 0;
   virtual void onContactPathUpdated(const ContactInfo& contact) = 0;
@@ -209,10 +216,15 @@ public:
   void scanRecentContacts(int last_n, ContactVisitor* visitor);
   ContactInfo* searchContactsByPrefix(const char* name_prefix);
   ContactInfo* lookupContactByPubKey(const uint8_t* pub_key, int prefix_len);
+  ContactInfo* lookupTransientContactByPubKey(const uint8_t* pub_key, int prefix_len);
+  ContactInfo* lookupPersistentContactByPubKey(const uint8_t* pub_key, int prefix_len);
+  bool isTransientContact(const ContactInfo& contact) const;
+  bool clearTransientContact(ContactInfo& contact);
   bool  removeContact(ContactInfo& contact);
   bool  addContact(const ContactInfo& contact);
   int getTotalContactSlots() const { return num_contacts; }
   int getNumContacts() const { return num_contacts - MAX_ANON_CONTACTS; }  // don't include the reserved slots at start
+  uint32_t getContactTableRevision() const { return contact_table_revision; }
   bool getContactByIdx(uint32_t idx, ContactInfo& contact);
   ContactInfo* getContactPtrByIdx(uint32_t idx) {
     return idx < (uint32_t)num_contacts ? &contacts[idx] : NULL;

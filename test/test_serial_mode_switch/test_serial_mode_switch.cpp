@@ -51,6 +51,11 @@ public:
 
 static const char START_TOKEN[] = "+++MESHCORE-TERM-START";
 static const char SEEDER_TOKEN[] = "ota folder on";
+static bool serial_client_connected = false;
+
+static bool isSerialClientConnected() {
+  return serial_client_connected;
+}
 
 TEST(UsbHwcdcSession, IgnoresWholeExpectedSelfResetBurstUntilActivity) {
   mesh::UsbSelfResetBurstGuard guard;
@@ -823,6 +828,37 @@ TEST(SerialFlowControl, KeepsAFrameQueuedUntilUsbHasSpace) {
   interface.loop();
   const std::vector<uint8_t> expected = {'>', 3, 0, 0x05, 0xA5, 0x5A};
   EXPECT_EQ(stream.output, expected);
+  EXPECT_FALSE(interface.hasPendingIO());
+}
+
+TEST(SerialFlowControl, DisconnectedRequiredFrameReportsFailure) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enableFlowControl(true);
+  interface.setConnectedCheck(isSerialClientConnected);
+  interface.enable();
+  serial_client_connected = false;
+
+  const uint8_t response[] = {0x03, 0x42};
+  EXPECT_EQ(interface.writeFrame(response, sizeof(response)), 0u);
+  EXPECT_TRUE(stream.output.empty());
+  EXPECT_FALSE(interface.hasPendingIO());
+}
+
+TEST(SerialFlowControl, DisconnectedBestEffortPushMayBeDropped) {
+  BufferStream stream;
+  ArduinoSerialInterface interface;
+  interface.begin(stream);
+  interface.enableFlowControl(true);
+  interface.setConnectedCheck(isSerialClientConnected);
+  interface.enable();
+  serial_client_connected = false;
+
+  const uint8_t advert_push[] = {0x80, 0x42};
+  EXPECT_EQ(interface.writeFrame(advert_push, sizeof(advert_push)),
+            sizeof(advert_push));
+  EXPECT_TRUE(stream.output.empty());
   EXPECT_FALSE(interface.hasPendingIO());
 }
 

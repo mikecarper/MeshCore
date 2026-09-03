@@ -21,7 +21,8 @@ TEST(PersistentStoreFormat, ContactHeaderRoundTripsAndRejectsDamage) {
   raw[0] ^= 1;
   EXPECT_FALSE(decodeContactPageHeader(raw, 2, decoded));
   writeLE32(&raw[8], 1UL << CONTACTS_PER_PAGE);
-  EXPECT_FALSE(decodeContactPageHeader(raw, 3, decoded));
+  EXPECT_TRUE(decodeContactPageHeader(raw, 3, decoded));
+  EXPECT_NE(decoded.occupied & ~contactPageValidSlotMask(), 0u);
 }
 
 TEST(PersistentStoreFormat, CRCDetectsPayloadChanges) {
@@ -33,6 +34,18 @@ TEST(PersistentStoreFormat, CRCDetectsPayloadChanges) {
   uint32_t split = updateCRC32(0xFFFFFFFFUL, payload, 2);
   split = updateCRC32(split, payload + 2, sizeof(payload) - 2);
   EXPECT_EQ(split, expected);
+}
+
+TEST(PersistentStoreFormat, OccupancyCanBeDerivedFromCrcProtectedRecords) {
+  uint8_t empty[CONTACT_RECORD_SIZE] = {};
+  EXPECT_FALSE(contactRecordHasData(empty));
+
+  for (uint16_t offset : {uint16_t(0), uint16_t(31),
+                          uint16_t(CONTACT_RECORD_SIZE - 1)}) {
+    uint8_t populated[CONTACT_RECORD_SIZE] = {};
+    populated[offset] = 1;
+    EXPECT_TRUE(contactRecordHasData(populated));
+  }
 }
 
 TEST(PersistentStoreFormat, DirtyPagesStayPendingUntilExplicitlyCleared) {
@@ -53,6 +66,18 @@ TEST(PersistentStoreFormat, LegacyCountIgnoresPartialTailAndCapsAtCapacity) {
   EXPECT_EQ(legacyContactCountForSize(CONTACT_RECORD_SIZE - 1), 0);
   EXPECT_EQ(legacyContactCountForSize(63 * CONTACT_RECORD_SIZE + 17), 63);
   EXPECT_EQ(legacyContactCountForSize(999 * CONTACT_RECORD_SIZE), 350);
+}
+
+TEST(PersistentStoreFormat, LegacyFileSizeValidationRejectsUnsafeSources) {
+  const size_t capacity = CONTACT_PAGE_COUNT * CONTACTS_PER_PAGE;
+  EXPECT_TRUE(isValidLegacyContactFileSize(0));
+  EXPECT_TRUE(isValidLegacyContactFileSize(CONTACT_RECORD_SIZE));
+  EXPECT_TRUE(isValidLegacyContactFileSize(capacity * CONTACT_RECORD_SIZE));
+  EXPECT_FALSE(isValidLegacyContactFileSize(CONTACT_RECORD_SIZE - 1));
+  EXPECT_FALSE(isValidLegacyContactFileSize(
+      63 * CONTACT_RECORD_SIZE + 17));
+  EXPECT_FALSE(isValidLegacyContactFileSize(
+      (capacity + 1) * CONTACT_RECORD_SIZE));
 }
 
 TEST(PersistentStoreFormat, LegacyMigrationMovesTailOnePageAtATime) {
@@ -107,6 +132,40 @@ TEST(PersistentStoreFormat, SlotAllocationIsStableAndReusable) {
   EXPECT_FALSE(slots.release(CONTACT_PAGE_COUNT * CONTACTS_PER_PAGE));
 }
 
+TEST(PersistentStoreFormat, ReleasedSlotCanBeRestoredPastAnEarlierHole) {
+  ContactSlotMap slots;
+  ASSERT_TRUE(slots.reserve(0));
+  ASSERT_TRUE(slots.reserve(CONTACTS_PER_PAGE));
+  ASSERT_TRUE(slots.release(CONTACTS_PER_PAGE));
+
+  // Slot 1 is the allocator's earliest hole, but transaction rollback must be
+  // able to reclaim the exact page-1 slot which was just released.
+  EXPECT_TRUE(slots.reserve(CONTACTS_PER_PAGE));
+  EXPECT_FALSE(slots.isUsed(1));
+  EXPECT_TRUE(slots.isUsed(CONTACTS_PER_PAGE));
+  EXPECT_EQ(slots.pageMask(0), 1u);
+  EXPECT_EQ(slots.pageMask(1), 1u);
+}
+
+TEST(PersistentStoreFormat, FailedSlotAllocationAndReleaseAreNonMutating) {
+  ContactSlotMap slots;
+  for (uint16_t slot = 0;
+       slot < CONTACT_PAGE_COUNT * CONTACTS_PER_PAGE; slot++) {
+    ASSERT_EQ(slots.allocate(), slot);
+  }
+
+  uint32_t full_masks[CONTACT_PAGE_COUNT];
+  for (uint8_t page = 0; page < CONTACT_PAGE_COUNT; page++) {
+    full_masks[page] = slots.pageMask(page);
+  }
+
+  EXPECT_EQ(slots.allocate(), CONTACT_SLOT_NONE);
+  EXPECT_FALSE(slots.release(CONTACT_SLOT_NONE));
+  for (uint8_t page = 0; page < CONTACT_PAGE_COUNT; page++) {
+    EXPECT_EQ(slots.pageMask(page), full_masks[page]);
+  }
+}
+
 TEST(PersistentStoreFormat, LegacyMarkerSelectsResumableMigrationPath) {
   EXPECT_EQ(chooseContactStoreSource(true, true), ContactStoreSource::LEGACY);
   EXPECT_EQ(chooseContactStoreSource(true, false), ContactStoreSource::LEGACY);
@@ -116,6 +175,54 @@ TEST(PersistentStoreFormat, LegacyMarkerSelectsResumableMigrationPath) {
   EXPECT_FALSE(trustMigratedContactPages(true, false));
   EXPECT_TRUE(trustMigratedContactPages(true, true));
   EXPECT_TRUE(trustMigratedContactPages(false, false));
+}
+
+TEST(PersistentStoreFormat, RawPathStatDistinguishesAbsenceFromIoFailure) {
+  constexpr int no_entry = -2;
+  EXPECT_EQ(classifyContactPathStat(0, no_entry), ContactPathState::PRESENT);
+  EXPECT_EQ(classifyContactPathStat(no_entry, no_entry),
+            ContactPathState::ABSENT);
+  EXPECT_EQ(classifyContactPathStat(-5, no_entry),
+            ContactPathState::IO_ERROR);
+  EXPECT_EQ(classifyContactPathStat(1, no_entry),
+            ContactPathState::IO_ERROR);
+}
+
+TEST(PersistentStoreFormat, MigrationPresenceScanFailsClosedOnAnyIoError) {
+  constexpr int no_entry = -2;
+  const int empty_scan[] = {no_entry, no_entry, no_entry};
+  bool empty_has_source = false;
+  for (int result : empty_scan) {
+    const ContactPathState state = classifyContactPathStat(result, no_entry);
+    ASSERT_NE(state, ContactPathState::IO_ERROR);
+    empty_has_source = empty_has_source || state == ContactPathState::PRESENT;
+  }
+  EXPECT_FALSE(empty_has_source);
+
+  const int populated_scan[] = {no_entry, 0, no_entry};
+  bool populated_has_source = false;
+  for (int result : populated_scan) {
+    const ContactPathState state = classifyContactPathStat(result, no_entry);
+    ASSERT_NE(state, ContactPathState::IO_ERROR);
+    populated_has_source =
+        populated_has_source || state == ContactPathState::PRESENT;
+  }
+  EXPECT_TRUE(populated_has_source);
+
+  const int failed_scan[] = {no_entry, -5, 0};
+  bool scan_ok = true;
+  bool failed_has_source = false;
+  for (int result : failed_scan) {
+    const ContactPathState state = classifyContactPathStat(result, no_entry);
+    if (state == ContactPathState::IO_ERROR) {
+      scan_ok = false;
+      break;
+    }
+    failed_has_source =
+        failed_has_source || state == ContactPathState::PRESENT;
+  }
+  EXPECT_FALSE(scan_ok);
+  EXPECT_FALSE(failed_has_source);
 }
 
 int main(int argc, char** argv) {

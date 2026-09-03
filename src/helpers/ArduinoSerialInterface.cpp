@@ -226,7 +226,10 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
   if (_passthroughMode) return len;
   if (_flow_ctl) {
     if (!isConnected()) {
-      return len;   // nobody is listening, drop instead of filling the TX buffer
+      // Best-effort pushes may be discarded while nobody is listening. A
+      // command response or required push must report failure so a multi-frame
+      // producer can retry it without silently skipping an item.
+      return mesh::companionFrameRequiresDelivery(src, len) ? 0 : len;
     }
     if (!enqueueFrame(src, len)) return 0;
     serviceTransmit();

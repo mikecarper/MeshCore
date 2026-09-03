@@ -28,23 +28,31 @@ class DataStore {
 #if defined(NRF52_PLATFORM)
   mesh::storage::ContactSlotMap _contact_slots;
   mesh::storage::DirtyPageSet _dirty_contact_pages;
+  mesh::storage::DirtyPageSet _unread_contact_pages;
+  bool _contact_load_incomplete = false;
+  bool _identity_creation_blocked = false;
+  bool _primary_storage_unavailable = false;
+  bool _secondary_authority_unknown = false;
+  bool _prefs_load_incomplete = false;
   uint32_t _contact_page_generations[mesh::storage::CONTACT_PAGE_COUNT];
   bool _legacy_contacts_pending_cleanup;
   bool _legacy_migration_ready;
   uint16_t _legacy_contact_count;
 
   bool prepareLegacyContactMigration();
-  bool loadContactPages(DataStoreHost* host, uint16_t minimum_slot = 0);
+  bool loadContactPages(DataStoreHost* host, uint16_t minimum_slot,
+                        uint32_t expected_page_mask);
   bool writeContactPage(DataStoreHost* host, uint8_t page,
                         bool (*filter)(const ContactInfo& c));
   bool truncateLegacyContacts(uint16_t remaining_contacts);
-  void resetContactPageState();
+  void resetContactPageState(bool clear_incomplete = false);
 #if defined(EXTRAFS) && !defined(QSPIFLASH)
   bool reinitializeInternalExtraFS();
 #endif
 #endif
 
-  void loadPrefsInt(const char *filename, CompanionNodePrefs& prefs, double& node_lat, double& node_lon);
+  bool loadPrefsInt(const char *filename, CompanionNodePrefs& prefs,
+                    double& node_lat, double& node_lon);
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   void checkAdvBlobFile();
 #endif
@@ -57,18 +65,23 @@ public:
   bool repairInternalExtraFS();
   FILESYSTEM* getPrimaryFS() const { return _fs; }
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
-  void disableSecondaryFS() { _fsExtra = nullptr; }
+  void markPrimaryFSUnavailable();
+  void disableSecondaryFS(bool authority_unknown = true);
   bool loadMainIdentity(mesh::LocalIdentity &identity);
+  bool canCreateMainIdentity() const;
   bool saveMainIdentity(const mesh::LocalIdentity &identity);
-  void loadPrefs(CompanionNodePrefs& prefs, double& node_lat, double& node_lon);
+  bool loadPrefs(CompanionNodePrefs& prefs, double& node_lat,
+                 double& node_lon);
   bool savePrefs(const CompanionNodePrefs& prefs, double node_lat, double node_lon);
   void loadContacts(DataStoreHost* host);
   bool saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool markContactDirty(const ContactInfo& contact);
   bool releaseContact(const ContactInfo& contact);
+  bool restoreContactSlot(const ContactInfo& contact, uint16_t slot);
   bool serviceContactWrites(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool flushContactWrites(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool hasPendingContactWrites() const;
+  bool hasIncompleteContactLoad() const;
   void loadChannels(DataStoreHost* host);
   bool saveChannels(DataStoreHost* host);
   bool migrateToSecondaryFS();

@@ -62,9 +62,8 @@ class CompanionContactSleepContractTest(unittest.TestCase):
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
 
         for signature in (
-            "void MyMesh::scheduleContactWrite(const ContactInfo& contact)",
-            "void MyMesh::scheduleContactWriteAfterRelease("
-            "const ContactInfo& contact)",
+            "bool MyMesh::scheduleContactWrite(const ContactInfo& contact)",
+            "bool MyMesh::scheduleContactWriteAfterRelease(",
         ):
             body = function_body(mesh, signature)
             self.assertIn("mesh::scheduleLazyPersistenceMutation(", body)

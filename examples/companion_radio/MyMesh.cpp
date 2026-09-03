@@ -13,6 +13,11 @@
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 #include "helpers/radiolib/CadTiming.h"
 
+#if defined(MESHCORE_EXTRAFS_HIL) \
+    && (!defined(NRF52_PLATFORM) || !defined(EXTRAFS) || defined(QSPIFLASH))
+#error "MESHCORE_EXTRAFS_HIL requires an nRF52 internal ExtraFS build"
+#endif
+
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
 #include <helpers/CompanionTerminalDiagnostics.h>
 #endif
@@ -148,6 +153,7 @@ static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 1;
 #define RESP_CODE_CONTACTS_START      2  // first reply to CMD_GET_CONTACTS
 #define RESP_CODE_CONTACT             3  // multiple of these (after CMD_GET_CONTACTS)
 #define RESP_CODE_END_OF_CONTACTS     4  // last reply to CMD_GET_CONTACTS
+#define CONTACT_STREAM_FRAME_INTERVAL_MS 5 // let slow USB hosts drain accepted frames
 #define RESP_CODE_SELF_INFO           5  // reply to CMD_APP_START
 #define RESP_CODE_SENT                6  // reply to CMD_SEND_TXT_MSG
 #define RESP_CODE_CONTACT_MSG_RECV    7  // a reply to CMD_SYNC_NEXT_MESSAGE (ver < 3)
@@ -309,7 +315,7 @@ void MyMesh::writeDisabledFrame() {
   _serial->writeFrame(buf, 1);
 }
 
-void MyMesh::writeContactRespFrame(uint8_t code, const ContactInfo &contact) {
+bool MyMesh::writeContactRespFrame(uint8_t code, const ContactInfo &contact) {
   int i = 0;
   out_frame[i++] = code;
   memcpy(&out_frame[i], contact.id.pub_key, PUB_KEY_SIZE);
@@ -329,18 +335,49 @@ void MyMesh::writeContactRespFrame(uint8_t code, const ContactInfo &contact) {
   i += 4;
   memcpy(&out_frame[i], &contact.lastmod, 4);
   i += 4;
-  _serial->writeFrame(out_frame, i);
+  return _serial->writeFrame(out_frame, i) == (size_t)i;
 }
 
 void MyMesh::stopContactsIterator() {
   if (!_iter_started) return;
   _iter_started = false;
+  _iter_start_pending = false;
+  _iter_contact_pending = false;
+  _iter_next_frame_at = 0;
   if (_serial != NULL) _serial->unlockReplyRoute();
 }
 
-void MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, const uint8_t *frame, int len) {
-  int i = 0;
-  uint8_t code = frame[i++]; // eg. CMD_ADD_UPDATE_CONTACT
+static constexpr int CONTACT_UPDATE_FRAME_MIN_LEN =
+    1 + PUB_KEY_SIZE + 1 + 1 + 1 + MAX_PATH_SIZE + 32 + 4;
+static constexpr int CONTACT_UPDATE_FRAME_GPS_LEN =
+    CONTACT_UPDATE_FRAME_MIN_LEN + 8;
+static constexpr int CONTACT_UPDATE_FRAME_LASTMOD_LEN =
+    CONTACT_UPDATE_FRAME_GPS_LEN + 4;
+
+static bool isPersistentContactType(uint8_t type) {
+  return type == ADV_TYPE_CHAT || type == ADV_TYPE_REPEATER
+      || type == ADV_TYPE_ROOM || type == ADV_TYPE_SENSOR;
+}
+
+bool MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, const uint8_t *frame, int len) {
+  if (frame == NULL || len < CONTACT_UPDATE_FRAME_MIN_LEN
+      || (len > CONTACT_UPDATE_FRAME_MIN_LEN
+          && len < CONTACT_UPDATE_FRAME_GPS_LEN)
+      || (len > CONTACT_UPDATE_FRAME_GPS_LEN
+          && len < CONTACT_UPDATE_FRAME_LASTMOD_LEN)
+      || frame[0] != CMD_ADD_UPDATE_CONTACT) {
+    return false;
+  }
+
+  const uint8_t type = frame[1 + PUB_KEY_SIZE];
+  const uint8_t out_path_len = frame[1 + PUB_KEY_SIZE + 1 + 1];
+  if (!isPersistentContactType(type)
+      || (out_path_len != OUT_PATH_UNKNOWN
+          && !mesh::Packet::isValidPathLen(out_path_len))) {
+    return false;
+  }
+
+  int i = 1;  // command byte
   memcpy(contact.id.pub_key, &frame[i], PUB_KEY_SIZE);
   i += PUB_KEY_SIZE;
   contact.type = frame[i++];
@@ -349,18 +386,20 @@ void MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, co
   memcpy(contact.out_path, &frame[i], MAX_PATH_SIZE);
   i += MAX_PATH_SIZE;
   memcpy(contact.name, &frame[i], 32);
+  contact.name[sizeof(contact.name) - 1] = 0;
   i += 32;
   memcpy(&contact.last_advert_timestamp, &frame[i], 4);
   i += 4;
-  if (len >= i + 8) { // optional fields
+  if (len >= CONTACT_UPDATE_FRAME_GPS_LEN) { // optional fields
     memcpy(&contact.gps_lat, &frame[i], 4);
     i += 4;
     memcpy(&contact.gps_lon, &frame[i], 4);
     i += 4;
-    if (len >= i + 4) {
+    if (len >= CONTACT_UPDATE_FRAME_LASTMOD_LEN) {
       memcpy(&last_mod, &frame[i], 4);
     }
   }
+  return true;
 }
 
 bool MyMesh::Frame::isChannelMsg() const {
@@ -593,15 +632,36 @@ uint8_t MyMesh::getAutoAddMaxHops() const {
   return _prefs.autoadd_max_hops;
 }
 
-void MyMesh::onContactOverwrite(const uint8_t* pub_key) {
-  ContactInfo* contact = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
-  if (contact) scheduleContactWriteAfterRelease(*contact);
-  _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE); // delete from storage
+bool MyMesh::canMutateContacts() const {
+  return !_store->hasIncompleteContactLoad();
+}
+
+bool MyMesh::onContactOverwrite(const ContactInfo& contact) {
+  uint16_t released_slot = mesh::storage::CONTACT_SLOT_NONE;
+  if (!scheduleContactWriteAfterRelease(contact, released_slot)) {
+    MESH_DEBUG_PRINTLN(
+        "Contact overwrite refused: persistent slot release failed");
+    return false;
+  }
+  if (!_store->deleteBlobByKey(contact.id.pub_key, PUB_KEY_SIZE)) {
+    // releaseContact() is failure-atomic and this single-threaded path still
+    // owns the just-freed slot. Put it back before refusing the overwrite so a
+    // full filesystem cannot silently retain stale advert state for a contact
+    // which the live table has already replaced.
+    if (!restoreContactWriteAfterRelease(contact, released_slot)) {
+      MESH_DEBUG_PRINTLN(
+          "Contact overwrite rollback failed after advert-cache error");
+    }
+    MESH_DEBUG_PRINTLN(
+        "Contact overwrite refused: advert-cache deletion failed");
+    return false;
+  }
   if (_serial != NULL && _serial->isConnected()) {
     out_frame[0] = PUSH_CODE_CONTACT_DELETED;
-    memcpy(&out_frame[1], pub_key, PUB_KEY_SIZE);
+    memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);
     _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE);
   }
+  return true;
 }
 
 void MyMesh::onContactsFull() {
@@ -1451,6 +1511,11 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
       _serial(NULL), _mota_source_control(NULL),
       telemetry(MAX_PACKET_PAYLOAD - 4), _store(&store), _ui(ui), _iter(0) {
   _iter_started = false;
+  _iter_start_pending = false;
+  _iter_contact_pending = false;
+  _iter_next_frame_at = 0;
+  _iter_total_count = 0;
+  _iter_table_revision = 0;
   _cli_rescue = false;
 #ifdef ENABLE_USB_INTERFACE
   _terminal_mode = false;
@@ -1586,19 +1651,27 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   initializeOfflineQueue();
   BaseChatMesh::begin();
 
-  const bool is_new_install = !_store->loadMainIdentity(self_id)
+  const bool identity_loaded = _store->loadMainIdentity(self_id);
+  const bool is_new_install = !identity_loaded
       || mesh::hasReservedIdentityPrefix(self_id);
+  if (is_new_install && !_store->canCreateMainIdentity()) {
+    MESH_DEBUG_PRINTLN(
+        "Identity unavailable from persistent storage; rebooting without replacement");
+    board.reboot();
+    return;
+  }
+
   bool identity_ready = true;
   if (is_new_install) {
     identity_ready = mesh::generateUsableLocalIdentity(self_id, radio_new_identity);
-    if (identity_ready) _store->saveMainIdentity(self_id);
+    if (identity_ready) identity_ready = _store->saveMainIdentity(self_id);
   }
 
 #if defined(ESP32_PLATFORM)
   mesh::discardESP32TrueRandom();
 #endif
   if (!identity_ready) {
-    MESH_DEBUG_PRINTLN("Identity generation exhausted all attempts; rebooting");
+    MESH_DEBUG_PRINTLN("Identity generation/save failed; rebooting");
     board.reboot();
     return;
   }
@@ -1625,7 +1698,8 @@ void MyMesh::begin(bool has_display, bool radio_available) {
 #endif
 
   // load persisted prefs
-  _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
+  const bool prefs_ready =
+      _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
 
   // v1.17.1.2 repairs the Companion default-off regression for both fresh
   // installs and devices that already persisted the regressed value. The
@@ -1693,8 +1767,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
-  if (power_saving_default_migrated || bluetooth_name_repaired
-      || display_rotation_repaired) {
+  if (prefs_ready
+      && (power_saving_default_migrated || bluetooth_name_repaired
+          || display_rotation_repaired)) {
     _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
   }
 #if MESH_USB_LOGGING_AVAILABLE
@@ -3502,7 +3577,15 @@ void MyMesh::handleCmdFrame(size_t len) {
       text[tlen] = 0; // ensure null
 
       reply_buf[0] = 0;
-      if (!handleCommand(text, 0, reply_buf)) {
+      bool handled = false;
+#if defined(MESHCORE_EXTRAFS_HIL)
+      // This hook is deliberately reachable only from a directly attached
+      // Companion frame. It is not part of handleCommand(), so an on-air
+      // administrator command can never fill, corrupt, or reset the device.
+      handled = handleExtraFsHilCommand(text, reply_buf, sizeof(reply_buf));
+#endif
+      if (!handled) handled = handleCommand(text, 0, reply_buf);
+      if (!handled) {
         strcat(reply_buf, "Unknown command");   // reply_buf may have cmd prefix from 'text'
       }
       out_frame[0] = RESP_CODE_CLI_REPLY;
@@ -3680,6 +3763,10 @@ void MyMesh::handleCmdFrame(size_t len) {
   } else if (cmd_frame[0] == CMD_GET_CONTACTS) { // get Contact list
     if (_iter_started) {
       writeErrFrame(ERR_CODE_BAD_STATE); // iterator is currently busy
+    } else if (_store->hasIncompleteContactLoad()) {
+      // Never present a transiently unread page as an authoritative partial
+      // contact list. A reboot can retry the untouched source page.
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     } else {
       if (len >= 5) { // has optional 'since' param
         memcpy(&_iter_filter_since, &cmd_frame[1], 4);
@@ -3692,13 +3779,20 @@ void MyMesh::handleCmdFrame(size_t len) {
       _serial->lockReplyRoute();
       _iter = startContactsIterator();
       _iter_started = true;
+      _iter_start_pending = true;
+      _iter_contact_pending = false;
+      _iter_next_frame_at = 0;
+      _iter_total_count = getNumContacts();
+      _iter_table_revision = getContactTableRevision();
       _most_recent_lastmod = 0;
 
       uint8_t reply[5];
       reply[0] = RESP_CODE_CONTACTS_START;
-      uint32_t count = getNumContacts(); // total, NOT filtered count
-      memcpy(&reply[1], &count, 4);
-      _serial->writeFrame(reply, 5);
+      memcpy(&reply[1], &_iter_total_count, 4); // total, NOT filtered count
+      if (_serial->writeFrame(reply, 5) == 5) {
+        _iter_start_pending = false;
+        _iter_next_frame_at = futureMillis(CONTACT_STREAM_FRAME_INTERVAL_MS);
+      }
     }
   } else if (cmd_frame[0] == CMD_SET_ADVERT_NAME && len >= 2) {
     int nlen = len - 1;
@@ -3762,52 +3856,123 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_TABLE_FULL);
     }
   } else if (cmd_frame[0] == CMD_RESET_PATH && len >= 1 + 32) {
-    uint8_t *pub_key = &cmd_frame[1];
-    ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
-    if (recipient) {
-      recipient->out_path_len = OUT_PATH_UNKNOWN;
-      // recipient->lastmod = ??   shouldn't be needed, app already has this version of contact
-      scheduleContactWrite(*recipient);
-      writeOKFrame();
+    if (_store->hasIncompleteContactLoad()) {
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     } else {
-      writeErrFrame(ERR_CODE_NOT_FOUND); // unknown contact
-    }
-  } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT && len >= 1 + 32 + 2 + 1) {
-    uint8_t *pub_key = &cmd_frame[1];
-    ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
-    uint32_t last_mod = getRTCClock()->getCurrentTime();  // fallback value if not present in cmd_frame
-    if (recipient) {
-      updateContactFromFrame(*recipient, last_mod, cmd_frame, len);
-      recipient->lastmod = last_mod;
-      scheduleContactWrite(*recipient);
-      updateGpsTelemetryPolicy();
-      writeOKFrame();
-    } else {
-      ContactInfo contact;
-      updateContactFromFrame(contact, last_mod, cmd_frame, len);
-      contact.lastmod = last_mod;
-      contact.sync_since = 0;
-      if (addContact(contact)) {
-        ContactInfo* added = lookupContactByPubKey(contact.id.pub_key, PUB_KEY_SIZE);
-        if (added) scheduleContactWrite(*added);
-        updateGpsTelemetryPolicy();
-        writeOKFrame();
+      uint8_t *pub_key = &cmd_frame[1];
+      ContactInfo *recipient = lookupPersistentContactByPubKey(pub_key, PUB_KEY_SIZE);
+      if (recipient) {
+        const uint8_t previous_out_path_len = recipient->out_path_len;
+        recipient->out_path_len = OUT_PATH_UNKNOWN;
+        // recipient->lastmod = ??   shouldn't be needed, app already has this version of contact
+        if (scheduleContactWrite(*recipient)) {
+          ContactInfo* transient = lookupTransientContactByPubKey(
+              pub_key, PUB_KEY_SIZE);
+          if (transient != NULL) clearTransientContact(*transient);
+          writeOKFrame();
+        } else {
+          recipient->out_path_len = previous_out_path_len;
+          writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+        }
       } else {
-        writeErrFrame(ERR_CODE_TABLE_FULL);
+        writeErrFrame(ERR_CODE_NOT_FOUND); // unknown contact
+      }
+    }
+  } else if (cmd_frame[0] == CMD_ADD_UPDATE_CONTACT) {
+    if (len < CONTACT_UPDATE_FRAME_MIN_LEN) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (_store->hasIncompleteContactLoad()) {
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+    } else {
+      uint8_t *pub_key = &cmd_frame[1];
+      ContactInfo *recipient = lookupPersistentContactByPubKey(pub_key, PUB_KEY_SIZE);
+      ContactInfo candidate = {};
+      if (recipient != NULL) candidate = *recipient;
+
+      uint32_t last_mod = getRTCClock()->getCurrentTime();  // fallback value if not present in cmd_frame
+      if (!updateContactFromFrame(candidate, last_mod, cmd_frame, len)) {
+        writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+      } else {
+        candidate.lastmod = last_mod;
+        if (recipient == NULL) candidate.sync_since = 0;
+
+        ContactInfo* transient = lookupTransientContactByPubKey(
+            pub_key, PUB_KEY_SIZE);
+        ContactInfo previous_transient = {};
+        if (transient != NULL) previous_transient = *transient;
+
+        if (recipient != NULL) {
+          const ContactInfo previous = *recipient;
+          *recipient = candidate;
+          if (scheduleContactWrite(*recipient)) {
+            // A prior anonymous request can leave a same-key entry in the
+            // reserved prefix. Retire it in place; never compact that prefix.
+            if (transient != NULL) clearTransientContact(*transient);
+            updateGpsTelemetryPolicy();
+            writeOKFrame();
+          } else {
+            *recipient = previous;
+            writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+          }
+        } else {
+          // Promotion must free the exact transient prefix slot before lookup
+          // of the newly-added persistent record. Restore it on every failure.
+          if (transient != NULL) clearTransientContact(*transient);
+          if (addContact(candidate)) {
+            ContactInfo* added = lookupPersistentContactByPubKey(
+                candidate.id.pub_key, PUB_KEY_SIZE);
+            if (added != NULL && scheduleContactWrite(*added)) {
+              updateGpsTelemetryPolicy();
+              writeOKFrame();
+            } else {
+              if (added != NULL) removeContact(*added);
+              if (transient != NULL) *transient = previous_transient;
+              writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+            }
+          } else {
+            if (transient != NULL) *transient = previous_transient;
+            writeErrFrame(ERR_CODE_TABLE_FULL);
+          }
+        }
       }
     }
   } else if (cmd_frame[0] == CMD_REMOVE_CONTACT && len >= 1 + PUB_KEY_SIZE) {
-    uint8_t *pub_key = &cmd_frame[1];
-    ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
-    ContactInfo removed;
-    if (recipient) removed = *recipient;
-    if (recipient && removeContact(*recipient)) {
-      scheduleContactWriteAfterRelease(removed);
-      _store->deleteBlobByKey(pub_key, PUB_KEY_SIZE);
-      updateGpsTelemetryPolicy();
-      writeOKFrame();
+    if (_store->hasIncompleteContactLoad()) {
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     } else {
-      writeErrFrame(ERR_CODE_NOT_FOUND); // not found, or unable to remove
+      uint8_t *pub_key = &cmd_frame[1];
+      ContactInfo *recipient = lookupPersistentContactByPubKey(pub_key, PUB_KEY_SIZE);
+      if (recipient == NULL) {
+        writeErrFrame(ERR_CODE_NOT_FOUND);
+      } else {
+        ContactInfo removed = *recipient;
+        // releaseContact() is failure-atomic, so reserve the persistent deletion
+        // before changing the live table. A failed release must not be ACKed.
+        uint16_t released_slot = mesh::storage::CONTACT_SLOT_NONE;
+        if (!scheduleContactWriteAfterRelease(removed, released_slot)) {
+          writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+        } else if (!_store->deleteBlobByKey(pub_key, PUB_KEY_SIZE)) {
+          // Keep the live contact and restore ownership of its persistent slot.
+          // A full filesystem must not turn a failed cache deletion into an
+          // acknowledged contact removal with stale share data left behind.
+          if (!restoreContactWriteAfterRelease(*recipient, released_slot)) {
+            MESH_DEBUG_PRINTLN(
+                "Contact removal rollback failed after advert-cache error");
+          }
+          writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+        } else if (!removeContact(*recipient)) {
+          // The lookup above makes this unreachable in the single-threaded mesh
+          // loop, but restore persistence bookkeeping if that invariant changes.
+          restoreContactWriteAfterRelease(*recipient, released_slot);
+          writeErrFrame(ERR_CODE_BAD_STATE);
+        } else {
+          ContactInfo* transient = lookupTransientContactByPubKey(
+              pub_key, PUB_KEY_SIZE);
+          if (transient != NULL) clearTransientContact(*transient);
+          updateGpsTelemetryPolicy();
+          writeOKFrame();
+        }
+      }
     }
   } else if (cmd_frame[0] == CMD_SHARE_CONTACT && len >= 1 + PUB_KEY_SIZE) {
     uint8_t *pub_key = &cmd_frame[1];
@@ -3860,7 +4025,12 @@ void MyMesh::handleCmdFrame(size_t len) {
       }
     }
   } else if (cmd_frame[0] == CMD_IMPORT_CONTACT && len > 2 + 32 + 64) {
-    if (importContact(&cmd_frame[1], len - 1)) {
+    if (_store->hasIncompleteContactLoad()) {
+      // importContact() is asynchronous: without this admission gate the
+      // queued advert would be ACKed here and then deliberately discarded by
+      // BaseChatMesh's incomplete-table mutation veto on the next loop.
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+    } else if (importContact(&cmd_frame[1], len - 1)) {
       updateGpsTelemetryPolicy();
       writeOKFrame();
     } else {
@@ -4308,15 +4478,23 @@ void MyMesh::handleCmdFrame(size_t len) {
     writeErrFrame(ERR_CODE_UNSUPPORTED_CMD); // not supported (yet)
   } else if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 16) {
     uint8_t channel_idx = cmd_frame[1];
+    ChannelDetails previous;
     ChannelDetails channel;
     StrHelper::strncpy(channel.name, (char *)&cmd_frame[2], 32);
     memset(channel.channel.secret, 0, sizeof(channel.channel.secret));
     memcpy(channel.channel.secret, &cmd_frame[2 + 32], 16); // NOTE: only 128-bit supported
-    if (setChannel(channel_idx, channel)) {
-      saveChannels();
+    if (!getChannel(channel_idx, previous)
+        || !setChannel(channel_idx, channel)) {
+      writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
+    } else if (saveChannels()) {
       writeOKFrame();
     } else {
-      writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
+      // AtomicFileWriter preserves the last complete channels file. Keep the
+      // live table consistent with it when a full or failing filesystem cannot
+      // commit this update, and never acknowledge a change that will disappear
+      // after reboot.
+      setChannel(channel_idx, previous);
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     }
   } else if (cmd_frame[0] == CMD_SIGN_START) {
     BaseSerialInterface* signing_route = _serial->captureReplyRoute();
@@ -4890,20 +5068,48 @@ bool MyMesh::prepareForUiShutdown() {
   return flushContactsBeforeReboot();
 }
 
-void MyMesh::scheduleContactWrite(const ContactInfo& contact) {
-  if (_store->markContactDirty(contact)) {
-    mesh::scheduleLazyPersistenceMutation(
-        dirty_contacts_expiry, dirty_contacts_failures,
-        futureMillis(LAZY_CONTACTS_WRITE_DELAY));
+bool MyMesh::scheduleContactWrite(const ContactInfo& contact) {
+  // Anonymous contacts live only in the reserved transient prefix and are
+  // deliberately excluded from contact storage. Never allocate a persistent
+  // slot for one when a path/message callback updates its runtime state.
+  if (contact.type == ADV_TYPE_NONE || isTransientContact(contact)) return true;
+  if (!_store->markContactDirty(contact)) {
+    MESH_DEBUG_PRINTLN(
+        "Contact persistence scheduling failed: no persistent slot");
+    return false;
   }
+  mesh::scheduleLazyPersistenceMutation(
+      dirty_contacts_expiry, dirty_contacts_failures,
+      futureMillis(LAZY_CONTACTS_WRITE_DELAY));
+  return true;
 }
 
-void MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact) {
-  if (_store->releaseContact(contact)) {
-    mesh::scheduleLazyPersistenceMutation(
-        dirty_contacts_expiry, dirty_contacts_failures,
-        futureMillis(LAZY_CONTACTS_WRITE_DELAY));
+bool MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact,
+                                              uint16_t& released_slot) {
+#if defined(NRF52_PLATFORM)
+  released_slot = contact.storage_slot;
+#else
+  released_slot = mesh::storage::CONTACT_SLOT_NONE;
+#endif
+  if (!_store->releaseContact(contact)) {
+    MESH_DEBUG_PRINTLN(
+        "Contact removal scheduling failed: persistent slot was not reserved");
+    return false;
   }
+  mesh::scheduleLazyPersistenceMutation(
+      dirty_contacts_expiry, dirty_contacts_failures,
+      futureMillis(LAZY_CONTACTS_WRITE_DELAY));
+  return true;
+}
+
+bool MyMesh::restoreContactWriteAfterRelease(const ContactInfo& contact,
+                                             uint16_t released_slot) {
+  if (!_store->restoreContactSlot(contact, released_slot)) {
+    MESH_DEBUG_PRINTLN(
+        "Contact removal rollback failed: released slot was not restored");
+    return false;
+  }
+  return true;
 }
 
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
@@ -4912,8 +5118,22 @@ void MyMesh::repairInternalExtraFS(Stream& output) {
   // active this is a non-destructive retry of any incomplete migration, not a
   // format. Do not overwrite it from RAM until every authoritative source file
   // has been copied, verified, and retired from primary storage.
+  const bool authoritative_reload_required =
+      _store->hasIncompleteContactLoad();
   if (!_store->repairInternalExtraFS()) {
     output.println("  Error: internal ExtraFS repair/migration failed; retry repair extrafs");
+    return;
+  }
+
+  if (authoritative_reload_required) {
+    // This boot intentionally loaded no/partial contacts while secondary
+    // authority was unknown. The repair has made the filesystem available,
+    // but rebuilding it from that RAM image would destroy the data just
+    // recovered. Reboot and reload the verified store before permitting any
+    // normal persistence.
+    output.println(
+        "  > internal ExtraFS repaired; rebooting to reload authoritative data");
+    _scheduled_reboot_at = futureMillis(1000);
     return;
   }
 
@@ -4936,6 +5156,440 @@ void MyMesh::repairInternalExtraFS(Stream& output) {
     output.println("  Error: ExtraFS is active, but data rebuild/verification failed; retry repair extrafs");
   }
 }
+
+#if defined(MESHCORE_EXTRAFS_HIL)
+bool MyMesh::handleExtraFsHilCommand(const char* command, char* reply,
+                                     size_t reply_size) {
+  static const char* const fill_path = "/__hil.fill";
+  static const char* const contact_failure_marker = "/__hil.readfail";
+  static const uint8_t contact_stat_failure_flag = 0x80;
+  static const char* const prefix = "hil extrafs ";
+  if (strncmp(command, prefix, strlen(prefix)) != 0) return false;
+
+  FILESYSTEM* fs = _store->getSecondaryFS();
+  const char* action = command + strlen(prefix);
+  auto armContactPageFailure = [fs](uint8_t encoded_failure) -> int8_t {
+    if (fs == nullptr) return 0;
+    // Do not replace an unread/read-failure request with a stat-failure request
+    // (or vice versa).  One marker allocation represents exactly one fault.
+    if (fs->exists(contact_failure_marker)) return -1;
+
+    File marker = fs->open(contact_failure_marker, FILE_O_WRITE);
+    const bool written = marker
+        && marker.write(&encoded_failure, 1) == 1;
+    if (marker) {
+      marker.flush();
+      marker.close();
+    }
+    File verify = fs->open(contact_failure_marker, FILE_O_READ);
+    const bool durable = written && verify && verify.size() == 1
+        && verify.read() == encoded_failure;
+    if (verify) verify.close();
+    if (!durable && fs->exists(contact_failure_marker)) {
+      fs->remove(contact_failure_marker);
+    }
+    return durable ? 1 : 0;
+  };
+  auto findHilContact = [this](const char* encoded,
+                               size_t encoded_len) -> ContactInfo* {
+    // Seven bytes match the advert-cache key width and keep the direct-only
+    // HIL command below the Companion CLI frame limit.
+    if (encoded_len != 14) return nullptr;
+    char text[15];
+    memcpy(text, encoded, encoded_len);
+    text[encoded_len] = 0;
+    uint8_t key_prefix[7];
+    if (!mesh::Utils::fromHex(key_prefix, sizeof(key_prefix), text)) {
+      return nullptr;
+    }
+    return lookupPersistentContactByPubKey(
+        key_prefix, sizeof(key_prefix));
+  };
+  if (strcmp(action, "status") == 0) {
+    uint32_t fill_size = 0;
+    if (fs != nullptr) {
+      File fill = fs->open(fill_path, FILE_O_READ);
+      if (fill) {
+        fill_size = fill.size();
+        fill.close();
+      }
+    }
+    snprintf(reply, reply_size,
+             "HIL ExtraFS active=%u used=%luKiB total=%luKiB fill=%lu",
+             fs != nullptr ? 1U : 0U,
+             (unsigned long)_store->getStorageUsedKb(),
+             (unsigned long)_store->getStorageTotalKb(),
+             (unsigned long)fill_size);
+    return true;
+  }
+
+  if (strcmp(action, "clear") == 0) {
+    if (fs == nullptr) {
+      snprintf(reply, reply_size, "HIL ExtraFS unavailable");
+    } else if ((!fs->exists(fill_path) || fs->remove(fill_path))
+               && !fs->exists(fill_path)) {
+      snprintf(reply, reply_size, "HIL ExtraFS filler cleared");
+    } else {
+      snprintf(reply, reply_size, "HIL ExtraFS filler clear failed");
+    }
+    return true;
+  }
+
+  static const char* const contact_slot_prefix = "contact-slot ";
+  if (strncmp(action, contact_slot_prefix,
+              strlen(contact_slot_prefix)) == 0) {
+    const char* encoded = action + strlen(contact_slot_prefix);
+    ContactInfo* contact = findHilContact(encoded, strlen(encoded));
+    if (contact == nullptr) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs contact-slot <14 hex chars>");
+    } else {
+      snprintf(reply, reply_size, "HIL contact slot=%u",
+               (unsigned)contact->storage_slot);
+    }
+    return true;
+  }
+
+  static const char* const seed_advert_prefix = "seed-advert ";
+  if (strncmp(action, seed_advert_prefix,
+              strlen(seed_advert_prefix)) == 0) {
+    const char* encoded = action + strlen(seed_advert_prefix);
+    static const char* const confirm = " CONFIRM";
+    const size_t value_len = strlen(encoded);
+    const size_t confirm_len = strlen(confirm);
+    ContactInfo* contact = value_len == 14 + confirm_len
+        && strcmp(encoded + 14, confirm) == 0
+        ? findHilContact(encoded, 14) : nullptr;
+    if (contact == nullptr || fs == nullptr) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs seed-advert <14 hex chars> CONFIRM");
+      return true;
+    }
+
+    uint8_t advert[PUB_KEY_SIZE + 4 + SIGNATURE_SIZE];
+    memset(advert, 0xA5, sizeof(advert));
+    memcpy(advert, contact->id.pub_key, PUB_KEY_SIZE);
+    uint8_t verify[MAX_PACKET_PAYLOAD];
+    const bool saved = _store->putBlobByKey(
+        contact->id.pub_key, PUB_KEY_SIZE, advert, sizeof(advert));
+    const uint8_t stored = saved ? _store->getBlobByKey(
+        contact->id.pub_key, PUB_KEY_SIZE, verify) : 0;
+    if (!saved || stored != sizeof(advert)
+        || memcmp(advert, verify, sizeof(advert)) != 0) {
+      snprintf(reply, reply_size, "HIL advert seed failed");
+    } else {
+      snprintf(reply, reply_size, "HIL advert seeded slot=%u",
+               (unsigned)contact->storage_slot);
+    }
+    return true;
+  }
+
+  static const char* const clear_advert_prefix = "clear-advert ";
+  if (strncmp(action, clear_advert_prefix,
+              strlen(clear_advert_prefix)) == 0) {
+    const char* encoded = action + strlen(clear_advert_prefix);
+    static const char* const confirm = " CONFIRM";
+    const size_t value_len = strlen(encoded);
+    const size_t confirm_len = strlen(confirm);
+    ContactInfo* contact = value_len == 14 + confirm_len
+        && strcmp(encoded + 14, confirm) == 0
+        ? findHilContact(encoded, 14) : nullptr;
+    if (contact == nullptr || fs == nullptr) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs clear-advert <14 hex chars> CONFIRM");
+    } else if (!_store->deleteBlobByKey(
+                   contact->id.pub_key, PUB_KEY_SIZE)) {
+      snprintf(reply, reply_size, "HIL advert clear failed");
+    } else {
+      uint8_t verify[MAX_PACKET_PAYLOAD];
+      const uint8_t stored = _store->getBlobByKey(
+          contact->id.pub_key, PUB_KEY_SIZE, verify);
+      snprintf(reply, reply_size, stored == 0
+               ? "HIL advert cleared" : "HIL advert clear verify failed");
+    }
+    return true;
+  }
+
+  static const char* const fail_stat_prefix = "fail-stat-page ";
+  if (strncmp(action, fail_stat_prefix, strlen(fail_stat_prefix)) == 0) {
+    const char* value = action + strlen(fail_stat_prefix);
+    char* end = nullptr;
+    const unsigned long page = strtoul(value, &end, 10);
+    char page_path[24];
+    snprintf(page_path, sizeof(page_path), "/contacts4_%02lu", page);
+    if (value == end || strcmp(end, " CONFIRM") != 0
+        || page >= mesh::storage::CONTACT_PAGE_COUNT || fs == nullptr
+        || !fs->exists(page_path) || _store->hasPendingContactWrites()
+        || _store->hasIncompleteContactLoad()) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs fail-stat-page <0..%u> CONFIRM",
+               (unsigned)(mesh::storage::CONTACT_PAGE_COUNT - 1));
+      return true;
+    }
+    const int8_t armed = armContactPageFailure(
+        contact_stat_failure_flag | static_cast<uint8_t>(page));
+    if (armed < 0) {
+      snprintf(reply, reply_size, "HIL contact failure already armed");
+    } else if (armed == 0) {
+      snprintf(reply, reply_size, "HIL stat-failure marker write failed");
+    } else {
+      snprintf(reply, reply_size,
+               "HIL contact page %lu stat failure armed", page);
+    }
+    return true;
+  }
+
+  static const char* const fail_read_prefix = "fail-read-page ";
+  if (strncmp(action, fail_read_prefix, strlen(fail_read_prefix)) == 0) {
+    const char* value = action + strlen(fail_read_prefix);
+    char* end = nullptr;
+    const unsigned long page = strtoul(value, &end, 10);
+    char page_path[24];
+    snprintf(page_path, sizeof(page_path), "/contacts4_%02lu", page);
+    if (value == end || strcmp(end, " CONFIRM") != 0
+        || page >= mesh::storage::CONTACT_PAGE_COUNT || fs == nullptr
+        || !fs->exists(page_path) || _store->hasPendingContactWrites()
+        || _store->hasIncompleteContactLoad()) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs fail-read-page <0..%u> CONFIRM",
+               (unsigned)(mesh::storage::CONTACT_PAGE_COUNT - 1));
+      return true;
+    }
+    const int8_t armed = armContactPageFailure(static_cast<uint8_t>(page));
+    if (armed < 0) {
+      snprintf(reply, reply_size, "HIL contact failure already armed");
+    } else if (armed == 0) {
+      snprintf(reply, reply_size, "HIL read-failure marker write failed");
+    } else {
+      snprintf(reply, reply_size,
+               "HIL contact page %lu read failure armed", page);
+    }
+    return true;
+  }
+
+  static const char* const fill_prefix = "fill ";
+  if (strncmp(action, fill_prefix, strlen(fill_prefix)) == 0) {
+    const char* value = action + strlen(fill_prefix);
+    char* end = nullptr;
+    const unsigned long requested = strtoul(value, &end, 10);
+    if (value == end || *end != 0 || requested > 128UL * 1024UL) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs fill <0..131072>");
+      return true;
+    }
+    if (fs == nullptr) {
+      snprintf(reply, reply_size, "HIL ExtraFS unavailable");
+      return true;
+    }
+    if (fs->exists(fill_path) && !fs->remove(fill_path)) {
+      snprintf(reply, reply_size, "HIL ExtraFS old filler remove failed");
+      return true;
+    }
+
+    uint8_t chunk[128];
+    memset(chunk, 0xA5, sizeof(chunk));
+    uint32_t committed = 0;
+    while (committed < requested) {
+      // LittleFS can accept buffered writes which are all rolled back when the
+      // final sync runs out of blocks. Commit and read-verify each small extent
+      // so the filler represents durable pressure, not an optimistic write()
+      // count for a file which disappears on close.
+      File fill = fs->open(fill_path, FILE_O_WRITE);
+      if (!fill || fill.size() != committed || !fill.seek(committed)) {
+        if (fill) fill.close();
+        break;
+      }
+
+      const uint32_t extent_end = committed + 1024UL < requested
+          ? committed + 1024UL : requested;
+      bool extent_written = true;
+      while (committed < extent_end) {
+        const size_t remaining = extent_end - committed;
+        const size_t count = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
+        if (fill.write(chunk, count) != count) {
+          extent_written = false;
+          break;
+        }
+        committed += count;
+      }
+      fill.flush();
+      fill.close();
+
+      File verify = fs->open(fill_path, FILE_O_READ);
+      const uint32_t durable_size = verify ? verify.size() : 0;
+      if (verify) verify.close();
+      if (!extent_written || durable_size != committed) {
+        committed = durable_size;
+        break;
+      }
+    }
+    snprintf(reply, reply_size,
+             "HIL ExtraFS fill requested=%lu written=%lu used=%luKiB total=%luKiB",
+             requested, (unsigned long)committed,
+             (unsigned long)_store->getStorageUsedKb(),
+             (unsigned long)_store->getStorageTotalKb());
+    return true;
+  }
+
+  static const char* const corrupt_prefix = "corrupt-page ";
+  static const char* const page_mask_prefix = "page-mask ";
+  if (strncmp(action, page_mask_prefix, strlen(page_mask_prefix)) == 0) {
+    const char* value = action + strlen(page_mask_prefix);
+    char* end = nullptr;
+    const unsigned long page = strtoul(value, &end, 10);
+    if (value == end || *end != 0
+        || page >= mesh::storage::CONTACT_PAGE_COUNT || fs == nullptr) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs page-mask <0..%u>",
+               (unsigned)(mesh::storage::CONTACT_PAGE_COUNT - 1));
+      return true;
+    }
+
+    char path[24];
+    snprintf(path, sizeof(path), "/contacts4_%02lu", page);
+    File page_file = fs->open(path, FILE_O_READ);
+    uint8_t raw_header[mesh::storage::CONTACT_PAGE_HEADER_SIZE];
+    mesh::storage::ContactPageHeader header = {};
+    const bool valid = page_file
+        && page_file.read(raw_header, sizeof(raw_header)) == sizeof(raw_header)
+        && mesh::storage::decodeContactPageHeader(
+            raw_header, static_cast<uint8_t>(page), header);
+    if (page_file) page_file.close();
+    if (!valid) {
+      snprintf(reply, reply_size, "HIL contact page unavailable");
+    } else {
+      snprintf(reply, reply_size,
+               "HIL contact page %lu occupied=%08lx", page,
+               (unsigned long)header.occupied);
+    }
+    return true;
+  }
+
+  static const char* const corrupt_occupied_prefix = "corrupt-occupied ";
+  if (strncmp(action, corrupt_occupied_prefix,
+              strlen(corrupt_occupied_prefix)) == 0) {
+    const char* value = action + strlen(corrupt_occupied_prefix);
+    char* page_end = nullptr;
+    const unsigned long page = strtoul(value, &page_end, 10);
+    const char* slot_value = page_end;
+    while (*slot_value == ' ') slot_value++;
+    char* slot_end = nullptr;
+    const unsigned long slot = strtoul(slot_value, &slot_end, 10);
+    if (value == page_end || slot_value == slot_end
+        || strcmp(slot_end, " CONFIRM") != 0
+        || page >= mesh::storage::CONTACT_PAGE_COUNT || slot >= 32
+        || fs == nullptr || _store->hasPendingContactWrites()
+        || _store->hasIncompleteContactLoad()) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs corrupt-occupied <page> <bit 0..31> CONFIRM");
+      return true;
+    }
+
+    char path[24];
+    snprintf(path, sizeof(path), "/contacts4_%02lu", page);
+    const uint32_t byte_offset = 8 + slot / 8;
+    File original = fs->open(path, FILE_O_READ);
+    if (!original || !original.seek(byte_offset)) {
+      if (original) original.close();
+      snprintf(reply, reply_size, "HIL contact page unavailable");
+      return true;
+    }
+    const int prior = original.read();
+    original.close();
+    if (prior < 0) {
+      snprintf(reply, reply_size, "HIL contact page read failed");
+      return true;
+    }
+
+    const uint8_t changed = static_cast<uint8_t>(prior)
+        ^ static_cast<uint8_t>(1U << (slot % 8));
+    File update = fs->open(path, FILE_O_WRITE);
+    if (!update || !update.seek(byte_offset)
+        || update.write(&changed, 1) != 1) {
+      if (update) update.close();
+      snprintf(reply, reply_size, "HIL contact occupancy corrupt failed");
+      return true;
+    }
+    update.flush();
+    update.close();
+
+    File verify = fs->open(path, FILE_O_READ);
+    const bool changed_on_flash = verify && verify.seek(byte_offset)
+        && verify.read() == changed;
+    if (verify) verify.close();
+    snprintf(reply, reply_size, changed_on_flash
+             ? "HIL contact page %lu occupancy bit %lu corrupted"
+             : "HIL contact occupancy corrupt verify failed", page, slot);
+    return true;
+  }
+
+  if (strncmp(action, corrupt_prefix, strlen(corrupt_prefix)) == 0) {
+    const char* value = action + strlen(corrupt_prefix);
+    char* end = nullptr;
+    const unsigned long page = strtoul(value, &end, 10);
+    if (value == end || strcmp(end, " CONFIRM") != 0
+        || page >= mesh::storage::CONTACT_PAGE_COUNT) {
+      snprintf(reply, reply_size,
+               "HIL usage: hil extrafs corrupt-page <0..%u> CONFIRM",
+               (unsigned)(mesh::storage::CONTACT_PAGE_COUNT - 1));
+      return true;
+    }
+    if (fs == nullptr || _store->hasPendingContactWrites()
+        || _store->hasIncompleteContactLoad()) {
+      snprintf(reply, reply_size, "HIL ExtraFS unavailable or contacts pending");
+      return true;
+    }
+
+    char path[24];
+    snprintf(path, sizeof(path), "/contacts4_%02lu", page);
+    File original = fs->open(path, FILE_O_READ);
+    if (!original || original.size() != mesh::storage::CONTACT_PAGE_FILE_SIZE
+        || !original.seek(mesh::storage::CONTACT_PAGE_HEADER_SIZE)) {
+      if (original) original.close();
+      snprintf(reply, reply_size, "HIL contact page unavailable");
+      return true;
+    }
+    const int prior = original.read();
+    original.close();
+    if (prior < 0) {
+      snprintf(reply, reply_size, "HIL contact page read failed");
+      return true;
+    }
+
+    const uint8_t changed = static_cast<uint8_t>(prior) ^ 0xA5U;
+    File update = fs->open(path, FILE_O_WRITE);
+    if (!update || !update.seek(mesh::storage::CONTACT_PAGE_HEADER_SIZE)
+        || update.write(&changed, 1) != 1) {
+      if (update) update.close();
+      snprintf(reply, reply_size, "HIL contact page corrupt failed");
+      return true;
+    }
+    update.flush();
+    update.close();
+
+    File verify = fs->open(path, FILE_O_READ);
+    const bool changed_on_flash = verify
+        && verify.seek(mesh::storage::CONTACT_PAGE_HEADER_SIZE)
+        && verify.read() == changed;
+    if (verify) verify.close();
+    snprintf(reply, reply_size, changed_on_flash
+             ? "HIL contact page %lu CRC corrupted"
+             : "HIL contact page corrupt verify failed", page);
+    return true;
+  }
+
+  if (strcmp(action, "unsafe-reset CONFIRM") == 0) {
+    // Intentionally bypass all persistence hooks so HIL can prove that a
+    // mutation was already committed before an event-driven sleep.
+    NVIC_SystemReset();
+    while (true) {}
+  }
+
+  snprintf(reply, reply_size,
+           "HIL usage: hil extrafs <status|fill N|clear|contact-slot K|seed-advert K CONFIRM|clear-advert K CONFIRM|fail-read-page N CONFIRM|page-mask N|corrupt-occupied N B CONFIRM|corrupt-page N CONFIRM|unsafe-reset CONFIRM>");
+  return true;
+}
+#endif
 #endif
 
 bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
@@ -5465,6 +6119,7 @@ void MyMesh::handleTerminalPath(ContactInfo& recipient,
       return;
   }
 
+  const ContactInfo previous = recipient;
   memset(recipient.out_path, 0, sizeof(recipient.out_path));
   if (path.mode == mesh::cli::TerminalPathMode::Clear) {
     recipient.out_path_len = OUT_PATH_UNKNOWN;
@@ -5472,7 +6127,12 @@ void MyMesh::handleTerminalPath(ContactInfo& recipient,
     recipient.out_path_len = mesh::Packet::copyPath(
         recipient.out_path, _terminal_tmp_buf, path.encoded_len);
   }
-  scheduleContactWrite(recipient);
+  if (!scheduleContactWrite(recipient)) {
+    recipient = previous;
+    terminalOutput().print(
+        "  ERROR: contact storage is unavailable; reboot and retry\r\n");
+    return;
+  }
   printTerminalPath(recipient);
 }
 
@@ -5510,6 +6170,12 @@ void MyMesh::rememberTerminalAck(ContactInfo& recipient, const char* text,
 }
 
 void MyMesh::importTerminalCard(char* command) {
+  if (_store->hasIncompleteContactLoad()) {
+    terminalOutput().print(
+        "  ERROR: contact storage is unavailable; reboot and retry\r\n");
+    return;
+  }
+
   while (*command == ' ') command++;
   if (strncmp(command, "meshcore://", 11) != 0) {
     terminalOutput().print("  ERROR: invalid card format\r\n");
@@ -6147,9 +6813,15 @@ void MyMesh::handleTerminalCommand(char* command) {
     if (recipient == NULL) {
       terminalOutput().print("  ERROR: no recipient selected\r\n");
     } else {
+      const uint8_t previous_out_path_len = recipient->out_path_len;
       resetPathTo(*recipient);
-      scheduleContactWrite(*recipient);
-      terminalOutput().print("  Done.\r\n");
+      if (scheduleContactWrite(*recipient)) {
+        terminalOutput().print("  Done.\r\n");
+      } else {
+        recipient->out_path_len = previous_out_path_len;
+        terminalOutput().print(
+            "  ERROR: contact storage is unavailable; reboot and retry\r\n");
+      }
     }
   } else if (strcmp(command, "card") == 0) {
     mesh::Packet* packet = _prefs.advert_loc_policy == ADVERT_LOC_NONE
@@ -6936,22 +7608,62 @@ void MyMesh::checkSerialInterface() {
   if (len > 0) {
     handleCmdFrame(len);
   } else if (_iter_started              // check if our ContactsIterator is 'running'
+             && (_iter_next_frame_at == 0
+                 || _iter_next_frame_at == _ms->getMillis()
+                 || millisHasNowPassed(_iter_next_frame_at))
              && !_serial->isWriteBusy() // don't spam the Serial Interface too quickly!
   ) {
-    ContactInfo contact;
-    if (_iter.hasNext(this, contact)) {
-      if (contact.lastmod > _iter_filter_since) { // apply the 'since' filter
-        writeContactRespFrame(RESP_CODE_CONTACT, contact);
-        if (contact.lastmod > _most_recent_lastmod) {
-          _most_recent_lastmod = contact.lastmod; // save for the RESP_CODE_END_OF_CONTACTS frame
-        }
+    if (_iter_table_revision != getContactTableRevision()) {
+      // The paced stream walks the live compacting table. If an advert, app
+      // command, or overwrite changes its membership mid-stream, start a fresh
+      // snapshot marker before reading another entry. Clients already reset
+      // their accumulation on CONTACTS_START, so they can never accept a
+      // skipped, duplicated, or wrong-count list.
+      _iter = startContactsIterator();
+      _iter_start_pending = true;
+      _iter_contact_pending = false;
+      _iter_total_count = getNumContacts();
+      _iter_table_revision = getContactTableRevision();
+      _most_recent_lastmod = 0;
+    }
+
+    if (_iter_start_pending) {
+      uint8_t reply[5];
+      reply[0] = RESP_CODE_CONTACTS_START;
+      memcpy(&reply[1], &_iter_total_count, 4);
+      if (_serial->writeFrame(reply, sizeof(reply)) == sizeof(reply)) {
+        _iter_start_pending = false;
+        _iter_next_frame_at = futureMillis(CONTACT_STREAM_FRAME_INTERVAL_MS);
       }
-    } else { // EOF
-      out_frame[0] = RESP_CODE_END_OF_CONTACTS;
-      memcpy(&out_frame[1], &_most_recent_lastmod,
-             4); // include the most recent lastmod, so app can update their 'since'
-      _serial->writeFrame(out_frame, 5);
-      stopContactsIterator();
+      return;
+    }
+
+    if (!_iter_contact_pending) {
+      ContactInfo contact;
+      if (_iter.hasNext(this, contact)) {
+        if (contact.lastmod <= _iter_filter_since) return;
+        _iter_pending_contact = contact;
+        _iter_contact_pending = true;
+      } else { // EOF
+        out_frame[0] = RESP_CODE_END_OF_CONTACTS;
+        memcpy(&out_frame[1], &_most_recent_lastmod,
+               4); // include the most recent lastmod, so app can update their 'since'
+        if (_serial->writeFrame(out_frame, 5) == 5) {
+          stopContactsIterator();
+        }
+        return;
+      }
+    }
+
+    // Do not advance past a contact until its complete frame has been accepted
+    // by the selected transport. A transiently full/lost route must not turn a
+    // successful CONTACTS_START/END transaction into a silently short list.
+    if (writeContactRespFrame(RESP_CODE_CONTACT, _iter_pending_contact)) {
+      if (_iter_pending_contact.lastmod > _most_recent_lastmod) {
+        _most_recent_lastmod = _iter_pending_contact.lastmod;
+      }
+      _iter_contact_pending = false;
+      _iter_next_frame_at = futureMillis(CONTACT_STREAM_FRAME_INTERVAL_MS);
     }
   //} else if (!_serial->isWriteBusy()) {
   //  checkConnections();    // TODO - deprecate the 'Connections' stuff

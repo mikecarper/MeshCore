@@ -5,6 +5,7 @@
 using mesh::storage::InternalSecondaryFsRepairResult;
 using mesh::storage::InternalSecondaryFsBootResult;
 using mesh::storage::isInternalExtraFsReservedByApplication;
+using mesh::storage::isErasedFlashRange;
 using mesh::storage::isExpectedInternalExtraFsGeometry;
 using mesh::storage::prepareInternalSecondaryFilesystem;
 using mesh::storage::repairInternalSecondaryFilesystem;
@@ -18,6 +19,36 @@ TEST(InternalSecondaryFsBoot, RequiresExact100KiBGeometry) {
   EXPECT_TRUE(isInternalExtraFsReservedByApplication(0xC0000));
   EXPECT_FALSE(isInternalExtraFsReservedByApplication(0xD4001));
   EXPECT_FALSE(isInternalExtraFsReservedByApplication(0xED000));
+}
+
+TEST(InternalSecondaryFsBoot, ErasedRangeScansEveryWordExactlyOnce) {
+  const uint32_t start = 0xED000;
+  const uint32_t size = 7 * 4096;
+  uint32_t reads = 0;
+  EXPECT_TRUE(isErasedFlashRange(
+      start, size, [&](uint32_t address) {
+        EXPECT_EQ(address, start + reads * sizeof(uint32_t));
+        reads++;
+        return 0xFFFFFFFFUL;
+      }));
+  EXPECT_EQ(reads, size / sizeof(uint32_t));
+}
+
+TEST(InternalSecondaryFsBoot, ErasedRangeRejectsAnyProgrammedWord) {
+  const uint32_t start = 0xED000;
+  const uint32_t size = 7 * 4096;
+  const uint32_t programmed_address = start + size - sizeof(uint32_t);
+  EXPECT_FALSE(isErasedFlashRange(
+      start, size, [&](uint32_t address) {
+        return address == programmed_address ? 0xFFFFFFFEUL : 0xFFFFFFFFUL;
+      }));
+}
+
+TEST(InternalSecondaryFsBoot, ErasedRangeRejectsIncompleteGeometry) {
+  auto erased = [](uint32_t) { return 0xFFFFFFFFUL; };
+  EXPECT_FALSE(isErasedFlashRange(0xED000, 0, erased));
+  EXPECT_FALSE(isErasedFlashRange(0xED001, 7 * 4096, erased));
+  EXPECT_FALSE(isErasedFlashRange(0xED000, 7 * 4096 - 1, erased));
 }
 
 TEST(InternalSecondaryFsBoot, HealthyFilesystemMountsWithoutOtherAccess) {

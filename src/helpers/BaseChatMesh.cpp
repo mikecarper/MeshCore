@@ -129,7 +129,9 @@ ContactInfo* BaseChatMesh::allocateContactSlot(bool transient_only) {
 #else
     if (num_contacts < MAX_ANON_CONTACTS+MAX_CONTACTS) {
 #endif
-      return &contacts[num_contacts++];
+      ContactInfo* allocated = &contacts[num_contacts++];
+      contact_table_revision++;
+      return allocated;
     } else if (shouldOverwriteWhenFull()) {
       // Find oldest non-favourite contact by oldest lastmod timestamp
       for (int i = MAX_ANON_CONTACTS; i < num_contacts; i++) {
@@ -140,7 +142,10 @@ ContactInfo* BaseChatMesh::allocateContactSlot(bool transient_only) {
         }
       }
       if (oldest_idx >= 0) {
-        onContactOverwrite(contacts[oldest_idx].id.pub_key);
+        if (!onContactOverwrite(contacts[oldest_idx])) {
+          return NULL;
+        }
+        contact_table_revision++;
         return &contacts[oldest_idx];
       }
     }
@@ -169,6 +174,11 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
   AdvertDataParser parser(app_data, app_data_len);
   if (!(parser.isValid() && parser.hasName())) {
     MESH_DEBUG_PRINTLN("onAdvertRecv: invalid app_data, or name is missing: len=%d", app_data_len);
+    return;
+  }
+  if (!canMutateContacts()) {
+    MESH_DEBUG_PRINTLN(
+        "onAdvertRecv: contact store incomplete; ignoring contact mutation");
     return;
   }
 
@@ -287,7 +297,9 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
     data[len] = 0; // need to make a C string again, with null terminator
 
     if (flags == TXT_TYPE_PLAIN) {
-      from.lastmod = getRTCClock()->getCurrentTime(); // update last heard time
+      if (canMutateContacts()) {
+        from.lastmod = getRTCClock()->getCurrentTime(); // update last heard time
+      }
       onMessageRecv(from, packet, sender_timestamp, (const char *) &data[5]);  // let UI know
 
       int text_len = strlen((char *)&data[5]);
@@ -345,10 +357,12 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
         }
       }
     } else if (flags == TXT_TYPE_SIGNED_PLAIN) {
-      if (sender_timestamp > from.sync_since) {  // make sure 'sync_since' is up-to-date
-        from.sync_since = sender_timestamp;
+      if (canMutateContacts()) {
+        if (sender_timestamp > from.sync_since) {  // make sure 'sync_since' is up-to-date
+          from.sync_since = sender_timestamp;
+        }
+        from.lastmod = getRTCClock()->getCurrentTime(); // update last heard time
       }
-      from.lastmod = getRTCClock()->getCurrentTime(); // update last heard time
       onSignedMessageRecv(from, packet, sender_timestamp, &data[5], (const char *) &data[9]);  // let UI know
 
       uint32_t ack_hash;    // calc truncated hash of the message timestamp + text + OUR pub_key, to prove to sender that we got it
@@ -410,10 +424,12 @@ bool BaseChatMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const ui
 bool BaseChatMesh::onContactPathRecv(ContactInfo& from, uint8_t* in_path, uint8_t in_path_len, uint8_t* out_path, uint8_t out_path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) {
   // NOTE: default impl, we just replace the current 'out_path' regardless, whenever sender sends us a new out_path.
   // FUTURE: could store multiple out_paths per contact, and try to find which is the 'best'(?)
-  from.out_path_len = mesh::Packet::copyPath(from.out_path, out_path, out_path_len);  // store a copy of path, for sendDirect()
-  from.lastmod = getRTCClock()->getCurrentTime();
+  if (canMutateContacts()) {
+    from.out_path_len = mesh::Packet::copyPath(from.out_path, out_path, out_path_len);  // store a copy of path, for sendDirect()
+    from.lastmod = getRTCClock()->getCurrentTime();
 
-  onContactPathUpdated(from);
+    onContactPathUpdated(from);
+  }
 
   if (extra_type == PAYLOAD_TYPE_ACK && extra_len >= 4) {
     // also got an encoded ACK!
@@ -992,6 +1008,38 @@ ContactInfo* BaseChatMesh::lookupContactByPubKey(const uint8_t* pub_key, int pre
   return NULL;  // not found
 }
 
+ContactInfo* BaseChatMesh::lookupTransientContactByPubKey(const uint8_t* pub_key, int prefix_len) {
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
+    auto c = &contacts[i];
+    if (memcmp(c->id.pub_key, pub_key, prefix_len) == 0) return c;
+  }
+  return NULL;  // not found
+}
+
+ContactInfo* BaseChatMesh::lookupPersistentContactByPubKey(const uint8_t* pub_key, int prefix_len) {
+  for (int i = MAX_ANON_CONTACTS; i < num_contacts; i++) {
+    auto c = &contacts[i];
+    if (memcmp(c->id.pub_key, pub_key, prefix_len) == 0) return c;
+  }
+  return NULL;  // not found
+}
+
+bool BaseChatMesh::isTransientContact(const ContactInfo& contact) const {
+  for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
+    if (&contacts[i] == &contact) return true;
+  }
+  return false;
+}
+
+bool BaseChatMesh::clearTransientContact(ContactInfo& contact) {
+  if (!isTransientContact(contact)) return false;
+  memset(&contact, 0, sizeof(contact));
+#if defined(NRF52_PLATFORM)
+  contact.storage_slot = mesh::storage::CONTACT_SLOT_NONE;
+#endif
+  return true;
+}
+
 bool BaseChatMesh::addContact(const ContactInfo& contact) {
   ContactInfo* dest = allocateContactSlot(contact.type == ADV_TYPE_NONE);
   if (dest) {
@@ -1003,8 +1051,10 @@ bool BaseChatMesh::addContact(const ContactInfo& contact) {
 }
 
 bool BaseChatMesh::removeContact(ContactInfo& contact) {
-  int idx = 0;
-  while (idx < num_contacts && !contacts[idx].id.matches(contact.id)) {
+  // removeContact() is for stored contacts only. Match the exact live object so
+  // duplicate keys cannot remove a transient prefix slot or a different record.
+  int idx = MAX_ANON_CONTACTS;
+  while (idx < num_contacts && &contacts[idx] != &contact) {
     idx++;
   }
   if (idx >= num_contacts) return false;   // not found
@@ -1015,6 +1065,7 @@ bool BaseChatMesh::removeContact(ContactInfo& contact) {
     contacts[idx] = contacts[idx + 1];
     idx++;
   }
+  contact_table_revision++;
   return true;  // Success
 }
 

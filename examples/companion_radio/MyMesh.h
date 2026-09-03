@@ -250,8 +250,9 @@ protected:
   bool shouldAutoAddContactType(uint8_t type) const override;
   bool shouldOverwriteWhenFull() const override;
   uint8_t getAutoAddMaxHops() const override;
+  bool canMutateContacts() const override;
   void onContactsFull() override;
-  void onContactOverwrite(const uint8_t* pub_key) override;
+  bool onContactOverwrite(const ContactInfo& contact) override;
   bool onContactPathRecv(ContactInfo& from, uint8_t* in_path, uint8_t in_path_len, uint8_t* out_path, uint8_t out_path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path_len, const uint8_t* path) override;
   void onContactPathUpdated(const ContactInfo &contact) override;
@@ -325,9 +326,9 @@ private:
                      BaseSerialInterface* route = nullptr);
   size_t writePendingSerialFrame(const uint8_t frame[], size_t len);
   void writeDisabledFrame();
-  void writeContactRespFrame(uint8_t code, const ContactInfo &contact);
+  bool writeContactRespFrame(uint8_t code, const ContactInfo &contact);
   void stopContactsIterator();
-  void updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, const uint8_t *frame, int len);
+  bool updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, const uint8_t *frame, int len);
   void addToOfflineQueue(const uint8_t frame[], int len);
   int getFromOfflineQueue(uint8_t frame[]);
   int getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]) override { 
@@ -421,10 +422,17 @@ private:
   bool flushContactsBeforeReboot();
   bool prepareForOtaReboot() override;
   bool prepareForUiShutdown() override;
-  void scheduleContactWrite(const ContactInfo& contact);
-  void scheduleContactWriteAfterRelease(const ContactInfo& contact);
+  bool scheduleContactWrite(const ContactInfo& contact);
+  bool scheduleContactWriteAfterRelease(const ContactInfo& contact,
+                                        uint16_t& released_slot);
+  bool restoreContactWriteAfterRelease(const ContactInfo& contact,
+                                       uint16_t released_slot);
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
   void repairInternalExtraFS(Stream& output);
+#if defined(MESHCORE_EXTRAFS_HIL)
+  bool handleExtraFsHilCommand(const char* command, char* reply,
+                               size_t reply_size);
+#endif
 #endif
 
   DataStore* _store;
@@ -455,10 +463,16 @@ private:
   AbstractUITask* _ui;
 
   ContactsIterator _iter;
+  ContactInfo _iter_pending_contact;
   uint32_t _iter_filter_since;
+  uint32_t _iter_next_frame_at;
+  uint32_t _iter_total_count;
+  uint32_t _iter_table_revision;
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
   bool _iter_started;
+  bool _iter_start_pending;
+  bool _iter_contact_pending;
   bool _cli_rescue;
 #ifdef ENABLE_USB_INTERFACE
   bool _terminal_mode;

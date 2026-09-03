@@ -156,13 +156,23 @@ static bool isNetworkTerminalActive();
 // platform file system
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   #include <InternalFileSystem.h>
+  #if defined(NRF52_PLATFORM)
+    #include <flash/flash_nrf5x.h>
+    #include <helpers/nrf52/InternalSecondaryFsRepair.h>
+    #if defined(NRF52840_XXAA)
+      static const uint32_t INTERNAL_PRIMARY_FS_START = 0x000ED000UL;
+    #else
+      static const uint32_t INTERNAL_PRIMARY_FS_START = 0x0006D000UL;
+    #endif
+    static const uint32_t INTERNAL_PRIMARY_FS_SIZE =
+        7UL * FLASH_NRF52_PAGE_SIZE;
+  #endif
   #if defined(QSPIFLASH)
     #include <CustomLFS_QSPIFlash.h>
     DataStore store(InternalFS, QSPIFlash, rtc_clock);
   #else
     #if defined(EXTRAFS)
       #include <CustomLFS.h>
-      #include <helpers/nrf52/InternalSecondaryFsRepair.h>
       extern "C" uint32_t __flash_arduino_end[];
       CustomLFS ExtraFS(0xD4000, 0x19000, 128);
       DataStore store(InternalFS, ExtraFS, rtc_clock);
@@ -2072,7 +2082,46 @@ void setup() {
 #endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+#if defined(NRF52_PLATFORM)
+  // InternalFileSystem::begin() auto-formats the entire primary store after a
+  // mount failure. The base mount plus a full raw scan distinguishes a virgin
+  // erased device from nonblank/corrupt identity storage. Only proven-erased
+  // media may be initialized automatically; format is followed by a required
+  // base remount because Adafruit_LittleFS::format() does not remount an
+  // already-unmounted instance.
+  const mesh::storage::InternalSecondaryFsBootResult primary_fs_boot =
+      mesh::storage::prepareInternalSecondaryFilesystem(
+          []() -> bool {
+            return InternalFS.Adafruit_LittleFS::begin();
+          },
+          []() -> bool {
+            return mesh::storage::isErasedFlashRange(
+                INTERNAL_PRIMARY_FS_START, INTERNAL_PRIMARY_FS_SIZE,
+                [](uint32_t address) -> uint32_t {
+                  return *reinterpret_cast<const volatile uint32_t*>(address);
+                });
+          },
+          []() -> bool {
+            InternalFS.end();
+            return InternalFS.format();
+          });
+  if (primary_fs_boot
+          == mesh::storage::InternalSecondaryFsBootResult::PreservedNonBlank
+      || primary_fs_boot
+          == mesh::storage::InternalSecondaryFsBootResult::InitializationFailed) {
+    if (primary_fs_boot
+        == mesh::storage::InternalSecondaryFsBootResult::PreservedNonBlank) {
+      MESH_DEBUG_PRINTLN(
+          "InternalFS: mount failed; preserving nonblank primary storage and blocking startup writes");
+    } else {
+      MESH_DEBUG_PRINTLN(
+          "InternalFS: erased primary storage initialization failed; blocking startup writes");
+    }
+    store.markPrimaryFSUnavailable();
+  }
+#else
   InternalFS.begin();
+#endif
   #if defined(QSPIFLASH)
     if (!QSPIFlash.begin()) {
       // debug output might not be available at this point, might be too early. maybe should fall back to InternalFS here?
@@ -2086,7 +2135,7 @@ void setup() {
       NRF_QSPI->TASKS_DEACTIVATE = 1;
       NRF_QSPI->ENABLE = QSPI_ENABLE_ENABLE_Disabled;
 #endif
-      store.disableSecondaryFS();
+      store.disableSecondaryFS(true);
     } else {
       MESH_DEBUG_PRINTLN("CustomLFS_QSPIFlash: initialized successfully");
     }
@@ -2134,7 +2183,10 @@ void setup() {
         } else {
           MESH_DEBUG_PRINTLN("CustomLFS: blank internal ExtraFS initialization failed; using primary storage");
         }
-        store.disableSecondaryFS();
+        const bool secondary_authority_unknown = !extra_fs_geometry_valid
+            || extra_fs_boot
+                == mesh::storage::InternalSecondaryFsBootResult::PreservedNonBlank;
+        store.disableSecondaryFS(secondary_authority_unknown);
       }
   #endif
   #endif

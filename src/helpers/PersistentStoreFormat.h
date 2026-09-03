@@ -22,6 +22,10 @@ static const uint16_t CONTACT_SLOT_NONE = 0xFFFF;
 static const uint8_t CONTACT_PAGE_VERSION = 1;
 static const uint8_t CONTACT_PAGE_MAGIC[4] = {'M', 'C', 'P', '4'};
 
+inline uint32_t contactPageValidSlotMask() {
+  return (1UL << CONTACTS_PER_PAGE) - 1UL;
+}
+
 struct ContactPageHeader {
   uint8_t page_index;
   uint32_t occupied;
@@ -34,6 +38,22 @@ enum class ContactStoreSource : uint8_t {
   LEGACY,
   PAGED,
 };
+
+enum class ContactPathState : uint8_t {
+  ABSENT,
+  PRESENT,
+  IO_ERROR,
+};
+
+// Adafruit_LittleFS::exists() collapses every lfs_stat() error into false.
+// Keep the raw result distinguishable so a transient media error can never be
+// treated as proof that an authoritative stored source or journal is absent.
+inline ContactPathState classifyContactPathStat(int result,
+                                                int no_entry_result) {
+  if (result == 0) return ContactPathState::PRESENT;
+  if (result == no_entry_result) return ContactPathState::ABSENT;
+  return ContactPathState::IO_ERROR;
+}
 
 // A retained legacy file means migration is still in progress. Its complete
 // record count is the authoritative prefix boundary; page records at or above
@@ -57,6 +77,12 @@ inline uint16_t legacyContactCountForSize(size_t file_size) {
   const size_t count = file_size / CONTACT_RECORD_SIZE;
   const size_t capacity = CONTACT_PAGE_COUNT * CONTACTS_PER_PAGE;
   return (uint16_t)(count < capacity ? count : capacity);
+}
+
+inline bool isValidLegacyContactFileSize(size_t file_size) {
+  const size_t capacity = CONTACT_PAGE_COUNT * CONTACTS_PER_PAGE;
+  return file_size % CONTACT_RECORD_SIZE == 0
+      && file_size <= capacity * CONTACT_RECORD_SIZE;
 }
 
 inline uint8_t legacyMigrationPage(uint16_t legacy_contact_count) {
@@ -112,6 +138,13 @@ inline uint32_t updateCRC32(uint32_t crc, const uint8_t* data, size_t len) {
   return crc;
 }
 
+inline bool contactRecordHasData(
+    const uint8_t record[CONTACT_RECORD_SIZE]) {
+  uint8_t combined = 0;
+  for (uint16_t i = 0; i < CONTACT_RECORD_SIZE; i++) combined |= record[i];
+  return combined != 0;
+}
+
 inline void encodeContactPageHeader(uint8_t dest[CONTACT_PAGE_HEADER_SIZE],
                                     const ContactPageHeader& header) {
   memcpy(dest, CONTACT_PAGE_MAGIC, sizeof(CONTACT_PAGE_MAGIC));
@@ -126,7 +159,6 @@ inline void encodeContactPageHeader(uint8_t dest[CONTACT_PAGE_HEADER_SIZE],
 inline bool decodeContactPageHeader(const uint8_t src[CONTACT_PAGE_HEADER_SIZE],
                                     uint8_t expected_page,
                                     ContactPageHeader& header) {
-  const uint32_t valid_slots = (1UL << CONTACTS_PER_PAGE) - 1UL;
   if (memcmp(src, CONTACT_PAGE_MAGIC, sizeof(CONTACT_PAGE_MAGIC)) != 0
       || src[4] != CONTACT_PAGE_VERSION || src[5] != expected_page
       || readLE16(&src[6]) != CONTACT_RECORD_SIZE) {
@@ -137,7 +169,10 @@ inline bool decodeContactPageHeader(const uint8_t src[CONTACT_PAGE_HEADER_SIZE],
   header.occupied = readLE32(&src[8]);
   header.generation = readLE32(&src[12]);
   header.payload_crc = readLE32(&src[16]);
-  return (header.occupied & ~valid_slots) == 0;
+  // Occupancy is repairable from the CRC-protected record payload. Keep the
+  // header parseable even when an unused high bit was upset so load can retain
+  // the page's contacts and rewrite the corrected mask.
+  return true;
 }
 
 class DirtyPageSet {

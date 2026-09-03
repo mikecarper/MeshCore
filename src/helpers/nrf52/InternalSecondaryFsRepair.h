@@ -20,6 +20,21 @@ inline bool isInternalExtraFsReservedByApplication(uint32_t application_end) {
   return application_end <= INTERNAL_EXTRAFS_START;
 }
 
+// Read flash through an injected word reader so the erased-media decision can
+// be covered by native tests. Refuse malformed/empty ranges: only a complete,
+// word-aligned scan can authorize a boot-time format.
+template <typename ReadWord>
+bool isErasedFlashRange(uint32_t start, uint32_t size, ReadWord read_word) {
+  if (size == 0 || (start % sizeof(uint32_t)) != 0
+      || (size % sizeof(uint32_t)) != 0) {
+    return false;
+  }
+  for (uint32_t offset = 0; offset < size; offset += sizeof(uint32_t)) {
+    if (read_word(start + offset) != 0xFFFFFFFFUL) return false;
+  }
+  return true;
+}
+
 enum class InternalSecondaryFsBootResult {
   Mounted,
   InitializedBlank,
