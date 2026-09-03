@@ -105,13 +105,18 @@ void DataStore::begin() {
     _fsExtra = nullptr;
     return;
   }
+#if defined(EXTRAFS) && !defined(QSPIFLASH)
+  // Validate primary first: automatic secondary recovery must never hide a
+  // primary/identity fault. Retry or rebuild before loading any RAM state.
+  recoverInternalExtraFSOnBoot();
+#else
   if (_fsExtra != nullptr && !validateLfsFilesystem(_fsExtra)) {
-    // A traversal-failed filesystem may still be recoverable offline. Keep
-    // both removable QSPI and managed on-chip ExtraFS intact until an explicit
-    // local repair/factory-reset operation authorizes erasing it.
+    // Automatic destructive recovery is restricted to reserved internal
+    // ExtraFS. Removable/external QSPI still requires an explicit repair.
     MESH_DEBUG_PRINTLN("DataStore: secondary LittleFS metadata is corrupt; preserving it and using primary storage");
     disableSecondaryFS(true);
   }
+#endif
   if (primary_ready) cleanupAtomicTempFiles(_fs);
   if (_fsExtra != nullptr) cleanupAtomicTempFiles(_fsExtra);
 #endif
@@ -210,6 +215,53 @@ static void cleanupAtomicTempFiles(FILESYSTEM* fs) {
 }
 
 #if defined(EXTRAFS) && !defined(QSPIFLASH)
+bool DataStore::recoverInternalExtraFSOnBoot() {
+  if (_configuredFsExtra == nullptr) return false;
+
+  CustomLFS* extra = static_cast<CustomLFS*>(_configuredFsExtra);
+  if (_primary_storage_unavailable
+      || !mesh::storage::isExpectedInternalExtraFsGeometry(
+          extra->getFlashAddr(), extra->getFlashSize(), extra->getBlockSize())
+      || !mesh::storage::isInternalExtraFsReservedByApplication(
+          (uint32_t)(uintptr_t)__flash_arduino_end)) {
+    disableSecondaryFS(true);
+    MESH_DEBUG_PRINTLN("DataStore: refusing automatic ExtraFS recovery outside reserved 100 KiB region");
+    return false;
+  }
+
+  const mesh::storage::InternalSecondaryFsRecoveryResult result =
+      mesh::storage::recoverInternalSecondaryFilesystem(
+          [this]() -> bool {
+            return _fsExtra == _configuredFsExtra
+                && validateLfsFilesystem(_fsExtra);
+          },
+          [this, extra]() -> bool {
+            MESH_DEBUG_PRINTLN("DataStore: retrying internal ExtraFS mount before recovery");
+            _fsExtra = nullptr;
+            extra->end();
+            if (!extra->Adafruit_LittleFS::begin()) return false;
+            _fsExtra = _configuredFsExtra;
+            return true;
+          },
+          [this]() -> bool {
+            MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS remains unusable; rebuilding 100 KiB (secondary-only data may be lost)");
+            return reinitializeInternalExtraFS();
+          });
+  if (result == mesh::storage::InternalSecondaryFsRecoveryResult::Failed) {
+    disableSecondaryFS(true);
+    return false;
+  }
+
+  // This runs only before migration and user-data loading. Clear the initial
+  // mount quarantine, not errors from a later incomplete contact/prefs load.
+  // Migration below establishes authority again and can re-latch any error.
+  _secondary_authority_unknown = false;
+  _contact_load_incomplete = false;
+  _identity_creation_blocked = false;
+  _prefs_load_incomplete = false;
+  return true;
+}
+
 bool DataStore::reinitializeInternalExtraFS() {
   if (_configuredFsExtra == nullptr) return false;
 

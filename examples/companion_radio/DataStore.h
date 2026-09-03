@@ -19,8 +19,8 @@ class DataStore {
   FILESYSTEM* _fs;
   FILESYSTEM* _fsExtra;
   // Keep the configured secondary even when normal I/O falls back to the
-  // primary filesystem. An explicit local repair/factory reset must still be
-  // able to address the inactive on-chip ExtraFS.
+  // primary filesystem. Boot recovery and explicit local repair must still
+  // be able to address the inactive on-chip ExtraFS.
   FILESYSTEM* _configuredFsExtra;
   mesh::RTCClock* _clock;
   IdentityStore identity_store;
@@ -47,6 +47,7 @@ class DataStore {
   bool truncateLegacyContacts(uint16_t remaining_contacts);
   void resetContactPageState(bool clear_incomplete = false);
 #if defined(EXTRAFS) && !defined(QSPIFLASH)
+  bool recoverInternalExtraFSOnBoot();
   bool reinitializeInternalExtraFS();
 #endif
 #endif

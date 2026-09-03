@@ -4,17 +4,23 @@
 
 using mesh::storage::InternalSecondaryFsRepairResult;
 using mesh::storage::InternalSecondaryFsBootResult;
+using mesh::storage::InternalSecondaryFsRecoveryResult;
 using mesh::storage::isInternalExtraFsReservedByApplication;
 using mesh::storage::isErasedFlashRange;
 using mesh::storage::isExpectedInternalExtraFsGeometry;
 using mesh::storage::prepareInternalSecondaryFilesystem;
 using mesh::storage::repairInternalSecondaryFilesystem;
+using mesh::storage::recoverInternalSecondaryFilesystem;
 
 TEST(InternalSecondaryFsBoot, RequiresExact100KiBGeometry) {
   EXPECT_TRUE(isExpectedInternalExtraFsGeometry(0xD4000, 0x19000, 128));
   EXPECT_FALSE(isExpectedInternalExtraFsGeometry(0xED000, 0x7000, 128));
   EXPECT_FALSE(isExpectedInternalExtraFsGeometry(0xD4000, 0x7000, 128));
   EXPECT_FALSE(isExpectedInternalExtraFsGeometry(0xD4000, 0x19000, 4096));
+  EXPECT_FALSE(isExpectedInternalExtraFsGeometry(0xD3000, 0x1A000, 128));
+  EXPECT_FALSE(isExpectedInternalExtraFsGeometry(0xD4000, 0x19001, 128));
+  EXPECT_FALSE(isExpectedInternalExtraFsGeometry(0xD4000, 0x18FFF, 128));
+  EXPECT_FALSE(isExpectedInternalExtraFsGeometry(0xD4000, 0, 128));
   EXPECT_TRUE(isInternalExtraFsReservedByApplication(0xD4000));
   EXPECT_TRUE(isInternalExtraFsReservedByApplication(0xC0000));
   EXPECT_FALSE(isInternalExtraFsReservedByApplication(0xD4001));
@@ -169,6 +175,131 @@ TEST(InternalSecondaryFsRepair, RejectsFilesystemWhichRemainsInvalid) {
       []() { return false; });
 
   EXPECT_EQ(result, InternalSecondaryFsRepairResult::ValidationFailed);
+}
+
+TEST(InternalSecondaryFsRecovery, HealthyFilesystemNeverRemountsOrRepairs) {
+  int ready_calls = 0;
+  int remount_calls = 0;
+  int repair_calls = 0;
+  const auto result = recoverInternalSecondaryFilesystem(
+      [&]() { ready_calls++; return true; },
+      [&]() { remount_calls++; return true; },
+      [&]() { repair_calls++; return true; });
+
+  EXPECT_EQ(result, InternalSecondaryFsRecoveryResult::Ready);
+  EXPECT_EQ(ready_calls, 1);
+  EXPECT_EQ(remount_calls, 0);
+  EXPECT_EQ(repair_calls, 0);
+}
+
+TEST(InternalSecondaryFsRecovery, SuccessfulRetryIsValidatedWithoutRepair) {
+  int sequence = 0;
+  int ready_calls = 0;
+  int repair_calls = 0;
+  const auto result = recoverInternalSecondaryFilesystem(
+      [&]() {
+        ready_calls++;
+        EXPECT_EQ(++sequence, ready_calls == 1 ? 1 : 3);
+        return ready_calls == 2;
+      },
+      [&]() { EXPECT_EQ(++sequence, 2); return true; },
+      [&]() { repair_calls++; return true; });
+
+  EXPECT_EQ(result, InternalSecondaryFsRecoveryResult::Remounted);
+  EXPECT_EQ(ready_calls, 2);
+  EXPECT_EQ(repair_calls, 0);
+  EXPECT_EQ(sequence, 3);
+}
+
+TEST(InternalSecondaryFsRecovery, FailedRemountSkipsTraversalAndRepairsOnce) {
+  int ready_calls = 0;
+  int remount_calls = 0;
+  int repair_calls = 0;
+  const auto result = recoverInternalSecondaryFilesystem(
+      [&]() { ready_calls++; return false; },
+      [&]() { remount_calls++; return false; },
+      [&]() {
+        EXPECT_EQ(ready_calls, 1);
+        EXPECT_EQ(remount_calls, 1);
+        repair_calls++;
+        return true;
+      });
+
+  EXPECT_EQ(result, InternalSecondaryFsRecoveryResult::Reinitialized);
+  EXPECT_EQ(ready_calls, 1);
+  EXPECT_EQ(remount_calls, 1);
+  EXPECT_EQ(repair_calls, 1);
+}
+
+TEST(InternalSecondaryFsRecovery, MountedButStillCorruptFilesystemIsRepairedOnce) {
+  int ready_calls = 0;
+  int remount_calls = 0;
+  int repair_calls = 0;
+  const auto result = recoverInternalSecondaryFilesystem(
+      [&]() { ready_calls++; return false; },
+      [&]() { remount_calls++; return true; },
+      [&]() {
+        EXPECT_EQ(ready_calls, 2);
+        repair_calls++;
+        return true;
+      });
+
+  EXPECT_EQ(result, InternalSecondaryFsRecoveryResult::Reinitialized);
+  EXPECT_EQ(ready_calls, 2);
+  EXPECT_EQ(remount_calls, 1);
+  EXPECT_EQ(repair_calls, 1);
+}
+
+TEST(InternalSecondaryFsRecovery, RepairFailureRemainsFailedWithoutRetryLoop) {
+  int ready_calls = 0;
+  int remount_calls = 0;
+  int repair_calls = 0;
+  const auto result = recoverInternalSecondaryFilesystem(
+      [&]() { ready_calls++; return false; },
+      [&]() { remount_calls++; return false; },
+      [&]() { repair_calls++; return false; });
+
+  EXPECT_EQ(result, InternalSecondaryFsRecoveryResult::Failed);
+  EXPECT_EQ(ready_calls, 1);
+  EXPECT_EQ(remount_calls, 1);
+  EXPECT_EQ(repair_calls, 1);
+}
+
+TEST(InternalSecondaryFsRecovery, ReinitializationRequiresFormatMountAndValidation) {
+  // The recovery policy delegates destructive work, but the real repair
+  // callback must never report success after only formatting or mounting.
+  for (int failing_step = 1; failing_step <= 3; failing_step++) {
+    int sequence = 0;
+    const auto result = recoverInternalSecondaryFilesystem(
+        []() { return false; },
+        []() { return false; },
+        [&]() {
+          const auto repaired = repairInternalSecondaryFilesystem(
+              [&]() { return ++sequence != failing_step; },
+              [&]() { return ++sequence != failing_step; },
+              [&]() { return ++sequence != failing_step; });
+          return repaired == InternalSecondaryFsRepairResult::Repaired;
+        });
+    EXPECT_EQ(result, InternalSecondaryFsRecoveryResult::Failed);
+    EXPECT_EQ(sequence, failing_step);
+  }
+}
+
+TEST(InternalSecondaryFsRecovery, VerifiedReinitializationCompletesExactlyOnce) {
+  int sequence = 0;
+  const auto result = recoverInternalSecondaryFilesystem(
+      []() { return false; },
+      []() { return false; },
+      [&]() {
+        const auto repaired = repairInternalSecondaryFilesystem(
+            [&]() { EXPECT_EQ(++sequence, 1); return true; },
+            [&]() { EXPECT_EQ(++sequence, 2); return true; },
+            [&]() { EXPECT_EQ(++sequence, 3); return true; });
+        return repaired == InternalSecondaryFsRepairResult::Repaired;
+      });
+
+  EXPECT_EQ(result, InternalSecondaryFsRecoveryResult::Reinitialized);
+  EXPECT_EQ(sequence, 3);
 }
 
 int main(int argc, char** argv) {

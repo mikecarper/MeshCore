@@ -365,30 +365,50 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         self.assertEqual(size, 100 * 1024)
         self.assertEqual(start + size, 0xED000)
 
-    def test_boot_mount_is_non_destructive_and_checks_runtime_geometry(self):
+    def test_initial_secondary_mount_defers_repair_until_primary_validation(self):
         main = MAIN.read_text(encoding="utf-8")
         setup = function_body(main, "void setup()")
         self.assertIn("isExpectedInternalExtraFsGeometry(", setup)
         self.assertIn("isInternalExtraFsReservedByApplication(", setup)
         self.assertIn("uint32_t __flash_arduino_end[]", main)
         self.assertIn("(uintptr_t)__flash_arduino_end", setup)
-        self.assertIn("prepareInternalSecondaryFilesystem(", setup)
-        self.assertIn(
-            "ExtraFS.Adafruit_LittleFS::begin()", setup
-        )
+        geometry_at = setup.index("isExpectedInternalExtraFsGeometry(")
+        store_begin_at = setup.index("store.begin()", geometry_at)
+        secondary_mount = setup[geometry_at:store_begin_at]
+        self.assertIn("ExtraFS.Adafruit_LittleFS::begin()", secondary_mount)
         self.assertNotIn("ExtraFS.begin()", setup)
-        self.assertIn("PreservedNonBlank", setup)
-        self.assertIn(
-            "store.disableSecondaryFS(secondary_authority_unknown);", setup
-        )
-        self.assertLess(
-            setup.index("prepareInternalSecondaryFilesystem("),
-            setup.index("store.begin()"),
-        )
+        self.assertNotIn("prepareInternalSecondaryFilesystem(", secondary_mount)
+        self.assertNotIn("ExtraFS.format()", secondary_mount)
+        self.assertNotIn("isErasedFlashRange(", secondary_mount)
+        self.assertIn("store.disableSecondaryFS(true);", secondary_mount)
 
-    def test_corrupt_secondary_is_preserved_until_explicit_repair(self):
+    def test_boot_recovery_runs_only_for_internal_secondary_after_primary_validation(self):
         store = STORE.read_text(encoding="utf-8")
         begin = function_body(store, "void DataStore::begin()")
+        primary_failure = function_body(begin, "if (!primary_ready)")
+        self.assertIn("return;", primary_failure)
+        self.assertNotIn("recoverInternalExtraFSOnBoot", primary_failure)
+        self.assertLess(
+            begin.index("if (!primary_ready)"),
+            begin.index("recoverInternalExtraFSOnBoot()"),
+        )
+        internal = re.search(
+            r"#if defined\(EXTRAFS\) && !defined\(QSPIFLASH\)(.*?)#else",
+            begin,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(internal)
+        self.assertIn("recoverInternalExtraFSOnBoot()", internal.group(1))
+        self.assertLess(
+            begin.index("recoverInternalExtraFSOnBoot()"),
+            begin.index("cleanupAtomicTempFiles(_fs)"),
+        )
+        migration_at = begin.index("migrateToSecondaryFS()")
+        self.assertLess(begin.index("recoverInternalExtraFSOnBoot()"), migration_at)
+        self.assertNotIn("reinitializeInternalExtraFS", begin[migration_at:])
+        self.assertNotIn("recoverInternalExtraFSOnBoot", begin[migration_at:])
+
+        # QSPI/removable secondary storage retains the non-destructive path.
         invalid = re.search(
             r"if\s*\(_fsExtra\s*!=\s*nullptr\s*&&\s*"
             r"!validateLfsFilesystem\(_fsExtra\)\)\s*\{(.*?)\}",
@@ -400,6 +420,23 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         self.assertNotIn("format", invalid.group(1))
         self.assertNotIn("reinitializeInternalExtraFS", invalid.group(1))
 
+    def test_boot_recovery_retains_configured_secondary_and_checks_exact_region(self):
+        store = STORE.read_text(encoding="utf-8")
+        recover = function_body(store, "bool DataStore::recoverInternalExtraFSOnBoot()")
+        self.assertIn("_configuredFsExtra == nullptr", recover)
+        policy_at = recover.index("recoverInternalSecondaryFilesystem(")
+        geometry_at = recover.index("isExpectedInternalExtraFsGeometry(")
+        reservation_at = recover.index("isInternalExtraFsReservedByApplication(")
+        self.assertLess(geometry_at, policy_at)
+        self.assertLess(reservation_at, policy_at)
+        self.assertIn("(uintptr_t)__flash_arduino_end", recover)
+        self.assertIn("extra->getFlashAddr()", recover)
+        self.assertIn("extra->getFlashSize()", recover)
+        self.assertIn("extra->getBlockSize()", recover)
+        self.assertIn("return false;", recover[geometry_at:policy_at])
+        self.assertNotIn("->format(", recover)
+        self.assertNotIn("_fs->", recover)
+
         header = STORE_HEADER.read_text(encoding="utf-8")
         self.assertIn("FILESYSTEM* _configuredFsExtra;", header)
         extra_constructor = re.search(
@@ -409,6 +446,40 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         )
         self.assertIsNotNone(extra_constructor)
         self.assertIn("_configuredFsExtra(&fsExtra)", extra_constructor.group(0))
+
+    def test_boot_recovery_retries_nonformatting_mount_before_guarded_reinitialization(self):
+        store = STORE.read_text(encoding="utf-8")
+        recover = function_body(store, "bool DataStore::recoverInternalExtraFSOnBoot()")
+        policy_at = recover.index("recoverInternalSecondaryFilesystem(")
+        ready_at = recover.index("validateLfsFilesystem(_fsExtra)", policy_at)
+        unmount_at = recover.index("extra->end()", ready_at)
+        remount_at = recover.index("extra->Adafruit_LittleFS::begin()", unmount_at)
+        repair_at = recover.index("reinitializeInternalExtraFS()", remount_at)
+        self.assertLess(ready_at, unmount_at)
+        self.assertLess(unmount_at, remount_at)
+        self.assertLess(remount_at, repair_at)
+        self.assertIn("_fsExtra = _configuredFsExtra", recover[remount_at:repair_at])
+        self.assertNotIn("extra->begin()", recover)
+        self.assertNotIn("migrateToSecondaryFS()", recover)
+
+    def test_boot_recovery_only_clears_authority_latches_after_verified_success(self):
+        store = STORE.read_text(encoding="utf-8")
+        recover = function_body(store, "bool DataStore::recoverInternalExtraFSOnBoot()")
+        failure_at = recover.index("InternalSecondaryFsRecoveryResult::Failed")
+        clear_at = recover.index("_secondary_authority_unknown = false;")
+        failure = recover[failure_at:clear_at]
+        self.assertIn("disableSecondaryFS(true);", failure)
+        self.assertIn("return false;", failure)
+        success = recover[clear_at:]
+        for flag in (
+            "_secondary_authority_unknown",
+            "_identity_creation_blocked",
+            "_contact_load_incomplete",
+            "_prefs_load_incomplete",
+        ):
+            self.assertIn(f"{flag} = false;", success)
+        self.assertNotIn("_primary_storage_unavailable = false", recover)
+        self.assertIn("return true;", success)
 
     def test_repair_is_internal_only_and_revalidates_before_activation(self):
         store = STORE.read_text(encoding="utf-8")
@@ -865,21 +936,17 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         self.assertEqual(setup.count("InternalFS.begin();"), 1)
         self.assertGreater(setup.index("#else", primary_policy), primary_format)
         self.assertIn("store.disableSecondaryFS(true);", setup)
-        authority = setup.index(
-            "const bool secondary_authority_unknown = !extra_fs_geometry_valid"
+        secondary_geometry = setup.index(
+            "const bool extra_fs_geometry_valid ="
         )
-        disable_call = setup.index(
-            "store.disableSecondaryFS(secondary_authority_unknown)", authority
+        secondary_disable = setup.index(
+            "store.disableSecondaryFS(true);", secondary_geometry
         )
-        authority_expression = setup[authority:disable_call]
-        self.assertIn(
-            "InternalSecondaryFsBootResult::PreservedNonBlank",
-            authority_expression,
-        )
-        self.assertNotIn(
-            "InternalSecondaryFsBootResult::InitializationFailed",
-            authority_expression,
-        )
+        secondary_guard = setup[secondary_geometry:secondary_disable]
+        self.assertIn("if (!extra_fs_geometry_valid", secondary_guard)
+        self.assertIn("!ExtraFS.Adafruit_LittleFS::begin()", secondary_guard)
+        self.assertNotIn("ExtraFS.format()", secondary_guard)
+        self.assertNotIn("isErasedFlashRange(", secondary_guard)
 
         begin = function_body(mesh, "void MyMesh::begin(")
         load_at = begin.index("const bool identity_loaded =")

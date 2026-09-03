@@ -63,9 +63,8 @@ enum class InternalSecondaryFsRepairResult {
   ValidationFailed,
 };
 
-// Repair is deliberately separate from the normal boot path. A filesystem
-// which mounts but fails a full metadata traversal may still be forensically
-// recoverable, so erasing it requires an explicit local operator action.
+// The caller must authorize and bound the erase. In particular, automatic
+// recovery is only for the reserved secondary region, never identity storage.
 template <typename Format, typename Mount, typename Validate>
 InternalSecondaryFsRepairResult repairInternalSecondaryFilesystem(
     Format format, Mount mount, Validate validate) {
@@ -73,6 +72,27 @@ InternalSecondaryFsRepairResult repairInternalSecondaryFilesystem(
   if (!mount()) return InternalSecondaryFsRepairResult::MountFailed;
   if (!validate()) return InternalSecondaryFsRepairResult::ValidationFailed;
   return InternalSecondaryFsRepairResult::Repaired;
+}
+
+enum class InternalSecondaryFsRecoveryResult {
+  Ready,
+  Remounted,
+  Reinitialized,
+  Failed,
+};
+
+// A failed initial mount/traversal may be transient. Retry non-destructively
+// before rebuilding, and attempt the destructive repair at most once. Repair
+// must include its own mount and validation before reporting success.
+template <typename IsReady, typename Remount, typename Repair>
+InternalSecondaryFsRecoveryResult recoverInternalSecondaryFilesystem(
+    IsReady is_ready, Remount remount, Repair repair) {
+  if (is_ready()) return InternalSecondaryFsRecoveryResult::Ready;
+  if (remount() && is_ready()) {
+    return InternalSecondaryFsRecoveryResult::Remounted;
+  }
+  if (repair()) return InternalSecondaryFsRecoveryResult::Reinitialized;
+  return InternalSecondaryFsRecoveryResult::Failed;
 }
 
 } // namespace storage
