@@ -2187,14 +2187,16 @@ mode when the hardware can report disconnect. A USB-to-UART bridge may not be
 able to report this event. A different baud rate, including 57600, does not
 select ASCII mode.</p>
 <p>On an ESP32 Full Companion built with <code>OTA_FOLDER_SERIAL</code>, <code>motatool</code> can keep
-the shared serial console open as an mOTA folder source when WiFi is
-unavailable:</p>
+the USB serial port open as an mOTA folder source when WiFi is unavailable:</p>
 <pre><code class="language-sh">motatool serve --serial /dev/ttyACM0 --dir ./motas -v
 </code></pre>
-<p>The tool sends <code>ota folder on</code> through the text CLI, then uses the shared
-serial mOTA framing. This is separate from the nRF52 exclusive USB ownership
-mode described below. TCP port 5001 remains the preferred unattended source
-transport.</p>
+<p>The tool sends the exact completed <code>ota folder on</code> line when it opens the port.
+Firmware recognizes it in startup ASCII or idle Binary Companion mode, then
+transfers the port to exclusive USB mOTA ownership before binary request/reply
+frames begin. The text terminal and Binary Companion are unavailable on that
+TTY until <code>motatool</code> detaches the folder. This matches the nRF52 ownership
+behavior described below. TCP port 5001 remains the preferred unattended
+source transport.</p>
 <h2 id="nrf52-usb-mota-mode">nRF52 USB mOTA mode</h2>
 <p>The nRF52 full target has a third, exclusive USB mode for the host folder.
 Unmodified <code>motatool serve --serial</code> sends <code>ota folder on</code> when it opens the

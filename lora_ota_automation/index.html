@@ -1671,8 +1671,10 @@ rebooted, its separate interface <code>02</code> continues to provide plaintext 
 and is not a controller or source port. With default logging off, interface
 <code>02</code> is not enumerated. BLE remains available.</p>
 <p>ESP32 Full Companion normally uses its dedicated TCP seeder on port 5001.
-ESP32 builds that also retain serial folder support use the shared-console
-mOTA framing rather than the nRF52 exclusive USB ownership state.</p>
+ESP32 builds that also retain serial folder support use the same exclusive USB
+mOTA ownership state as nRF52. The exact <code>ota folder on</code> line transfers the USB
+port from startup ASCII or idle Binary Companion mode before binary mOTA frames
+begin; neither console mode shares that port until the folder detaches.</p>
 <h2 id="destination-requirements">Destination requirements</h2>
 <table>
 <thead>
@@ -1798,6 +1800,12 @@ reported bootloader ABI and codec mask against the selected package. If the
 version command is unavailable on older firmware, the script warns and falls
 back to the legacy <code>ota self</code> platform marker. If an nRF52 bootloader lacks
 the required capabilities, install the exact-board OTAFIX bootloader first.
+Current firmware also reports <code>maxblk:2048</code> near the front of both OTA replies.
+The runner treats a missing marker as the deployed 1 KiB receive limit, rejects
+a ready 2 KiB package for such a target before transfer, and passes the live
+limit to <code>motatool --block-size</code> when it builds from raw firmware. Thus updating
+an older target from a release ZIP produces a compatible 1 KiB package while a
+current target retains the 2 KiB application default.
 <code>ota stats</code> is only an optional EndF version probe. It uses one bounded retry
 cycle; unsupported firmware or a lost reply falls back directly to the
 required <code>ver</code> command instead of entering an operator continuation loop.</p>
@@ -2162,7 +2170,8 @@ the destination.</p>
    capabilities, and save the controller's normal radio tuple.</li>
 <li>Select or build one compatible <strong>v2 application</strong> mOTA and verify all block
    hashes, Merkle root, full-image hash where applicable, identity fields,
-   signature, codec, base, and the firmware's 1024-byte maximum block size.
+   signature, codec, base, and the live firmware's reported maximum block size
+   (1 KiB for legacy replies without <code>maxblk</code>, currently 2 KiB otherwise).
    Version-3 bootloader packages are refused before any target state changes.</li>
 <li>Read every participant's version, save the destination's RXPS state,
    select the qualified destination policy, and show the confirmation prompt.</li>
