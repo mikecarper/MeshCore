@@ -148,7 +148,7 @@ bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
   // independent transport-DEFLATE stream more useful history than the deployed 1 KiB geometry. A ~530 KiB
   // image is about 265 blocks (roughly 1 KiB of leaves) instead of ~4,240 128-byte leaves.
   const uint32_t image_size = fi.image_len, BS = OTA_DEFAULT_BLOCK_SIZE;
-  const uint32_t bc = (image_size + BS - 1) / BS;
+  const uint32_t bc = image_size / BS + (image_size % BS != 0 ? 1u : 0u);
   if ((uint64_t)bc * 4 > OTA_SELF_LEAVES_MAX) return false;
 
   free(c.serve_self_leaves); free(c.serve_self_proof);
