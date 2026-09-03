@@ -6629,7 +6629,9 @@ get clock.sync.status
 <h4 id="view-or-set-the-direct-path-override-for-the-current-remote-client">View or set the direct path override for the current remote client</h4>
 <p><strong>Usage:</strong>
 - <code>get outpath</code>
+- <code>get outpath path</code>
 - <code>set outpath &lt;hop1_hex,hop2_hex,...&gt;</code>
+- <code>set outpath path</code>
 - <code>set outpath direct</code>
 - <code>set outpath clear</code>
 - <code>set outpath flood</code></p>
@@ -6637,8 +6639,16 @@ get clock.sync.status
 - <code>hopN_hex</code>: Hop hash with <code>2</code>, <code>4</code>, or <code>6</code> hexadecimal characters. Every hop must use the same width.</p>
 <p><strong>Notes:</strong>
 - These commands require remote client context and update the caller's ACL entry.
+- <code>get outpath path</code> reports the reciprocal <code>PAYLOAD_TYPE_PATH</code> received after
+  the caller's latest flood login without changing the selected output route.
+  Because that packet is asynchronous, an immediate query can report
+  <code>&gt; path pending</code>; retry shortly. The observation window expires after one
+  minute, and the captured login path is not automatically selected.
+- <code>set outpath path</code> copies that observed route to <code>outpath</code> and saves it. It
+  returns an error without changing <code>outpath</code> if no route was received.
 - <code>direct</code> selects a zero-hop route for a directly reachable caller.
-- <code>clear</code> forgets the override so normal path discovery can repopulate it.
+- <code>clear</code> forgets the override, replies <code>&gt; outpath cleared</code>, and allows normal
+  path discovery to repopulate it.
 - <code>flood</code> forces replies to use flood packets until the client logs in again.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-repeat-flag">View or change this node's repeat flag</h4>

@@ -1818,7 +1818,9 @@ hex characters, and all hops in one path must use the same width. Hex input is
 case-insensitive. Replies use uppercase hex and retain the commas, so the value
 can be copied directly into another <code>set outpath</code> or <code>set altpath</code> command.</p>
 <pre><code class="language-text">get outpath
+get outpath path
 set outpath A1B2C3,D4E5F6
+set outpath path
 set outpath direct
 set outpath clear
 set outpath flood
@@ -1832,10 +1834,17 @@ set altpath clear
 </code></pre>
 <p>The first CLI word is case-insensitive (<code>set</code>, <code>Set</code>, and <code>SET</code> are the same,
 as are <code>get</code>, <code>Get</code>, and the other command verbs). Argument case is preserved.</p>
+<p><code>get outpath path</code> reports the reciprocal path received after the latest flood
+login without changing <code>outpath</code>. That packet arrives asynchronously, so retry
+shortly if the first query reports <code>&gt; path pending</code>; the observation window
+expires after one minute. The login path is not automatically selected.
+<code>set outpath path</code> copies the observed route into <code>outpath</code> and saves it; it
+leaves the current route unchanged when no observed route is available.</p>
 <p><code>set outpath direct</code> sets a zero-hop direct route for a client reachable without
-repeaters. <code>set outpath clear</code> forgets the override and lets normal path
-discovery fill it again. <code>set outpath flood</code> forces replies to use flood packets
-until the client logs in again.</p>
+repeaters. <code>set outpath clear</code> forgets the override, replies
+<code>&gt; outpath cleared</code>, and lets normal path discovery fill it again.
+<code>set outpath flood</code> forces replies to use flood packets until the client logs in
+again.</p>
 <p>When <code>outpath</code> is a valid direct path and <code>altpath</code> is also a valid, different
 direct path, repeater DM replies send two packets: one on <code>outpath</code> and one on
 <code>altpath</code>. The secondary <code>altpath</code> copy does not create its own direct-retry
