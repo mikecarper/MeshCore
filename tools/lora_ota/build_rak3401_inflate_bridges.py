@@ -52,23 +52,23 @@ INFLATE_ASSETS = {
     ),
     "src/helpers/ota/OtaTinf.c": (
         "OtaTinf.c",
-        "e1344c73f3ef7ea9b19ab1358990f7aed70b9011aa2b370b5e0872c6699d60e8",
+        "faf6e28f6f7b719926b27968e7223930f44ab45ed146c79b7ee19bcaa26a15f7",
     ),
     "src/helpers/ota/tinf/LICENSE": (
         "tinf/LICENSE",
-        "bf5d1b9b3eb2917e32e030d64dd963356b76751b41a7a432f1187bb199cb0b00",
+        "f39b507b81b9ba1edce7fe742bbd68fda4b852063ce7299274ae97991d48814b",
     ),
     "src/helpers/ota/tinf/README.meshcore.txt": (
         "tinf/README.meshcore.txt",
-        "8d1f4ae316ff71c58efaf4f85ed8d0ef6d10729919c5db37565c50ccc64ea041",
+        "1973f6495907341e3fc1319324f7fcb04275bb40efe37496b31d811270de1052",
     ),
     "src/helpers/ota/tinf/tinf.h": (
         "tinf/tinf.h",
-        "831b59414b3ddf3ecb2e5082a7d8e03b56b7eecc05385c868c0e6537e9c57941",
+        "f51fbba69e6efd3495fac28559df1e875e742951d4c1df1db8086785a6da4761",
     ),
     "src/helpers/ota/tinf/tinflate.c": (
         "tinf/tinflate.c",
-        "f5bc68a32a50f7e34c63928a8c176e65a5dc496256338b758ed8b714e24a2982",
+        "a01033388bb784b859d36a1f04c16a2eb087539249144dd2a1f50278f07db610",
     ),
 }
 

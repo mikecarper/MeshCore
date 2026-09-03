@@ -21,4 +21,3 @@ firmware links no decoder code or persistent RAM.
 Only the raw RFC 1951 decoder is integrated. The zlib/gzip wrappers and checksum
 sources are intentionally omitted. The original zlib license is preserved in
 LICENSE and in the source headers.
-
