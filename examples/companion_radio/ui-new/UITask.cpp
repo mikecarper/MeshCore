@@ -1154,7 +1154,11 @@ public:
   #define UI_COMPACT_MESSAGE_STATUS 0
 #endif
 #ifndef UI_MESSAGE_CHANNEL_FOOTER
-  #define UI_MESSAGE_CHANNEL_FOOTER 1
+  #if defined(MESHCORE_HAS_SMALL_DISPLAY)
+    #define UI_MESSAGE_CHANNEL_FOOTER 0
+  #else
+    #define UI_MESSAGE_CHANNEL_FOOTER 1
+  #endif
 #endif
 
 class MsgPreviewScreen : public UIScreen {
