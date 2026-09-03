@@ -2903,6 +2903,7 @@ declare_build_capability_contract() {
     record_build_expectation "companion.bluetooth" \
       "Companion: starting Bluetooth"
     record_build_expectation "companion.usb_logging" "get usb.logging"
+    record_build_expectation "companion.usb_mota_source" "ota folder on"
     if is_nrf52_companion_radio_full_target "$env_name"; then
       record_build_expectation "companion.dedicated_usb_logging" \
         "get usb.logging"
@@ -2924,7 +2925,6 @@ declare_build_capability_contract() {
         record_build_expectation "companion.direct_mqtt" "mqtt.status"
       fi
     else
-      record_build_expectation "companion.usb_mota_source" "ota folder on"
       record_build_expectation "companion.ble_mota_source" \
         "Bluetooth mOTA source"
     fi
@@ -3427,7 +3427,7 @@ apply_companion_radio_full_profile() {
   # release matrix (ESP32_FULL_BUILD remains 0 in that path). Mark that
   # layout explicitly so Full-only runtime policies, including the bounded
   # first-boot WebConfig window, cannot silently compile with legacy defaults.
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1 -DMESHCORE_EXPANDED_PARTITION_PROFILE=1"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1 -DMESHCORE_EXPANDED_PARTITION_PROFILE=1"
 
   # Both Indicator radio layouts share the same original NVS/SPIFFS data
   # placement. The LoRa WiFi base names that map directly; the ESP-NOW USB

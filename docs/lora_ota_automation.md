@@ -63,8 +63,10 @@ and is not a controller or source port. With default logging off, interface
 `02` is not enumerated. BLE remains available.
 
 ESP32 Full Companion normally uses its dedicated TCP seeder on port 5001.
-ESP32 builds that also retain serial folder support use the shared-console
-mOTA framing rather than the nRF52 exclusive USB ownership state.
+ESP32 builds that also retain serial folder support use the same exclusive USB
+mOTA ownership state as nRF52. The exact `ota folder on` line transfers the USB
+port from startup ASCII or idle Binary Companion mode before binary mOTA frames
+begin; neither console mode shares that port until the folder detaches.
 
 ## Destination requirements
 

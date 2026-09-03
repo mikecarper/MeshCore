@@ -433,6 +433,8 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
     || fail "$full_env Full Companion omitted its capability identity"
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"BLE_PIN_CODE=123456"* ]] \
     || fail "$full_env Full Companion omitted Bluetooth pairing"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_USB_MOTA_SOURCE=1"* ]] \
+    || fail "$full_env Full Companion left the serial folder source sharing the USB text parser"
   case "${full_env,,}" in
     sensecapindicator-espnow_companion_radio_full|\
     sensecapindicator-lora_companion_radio_full)
@@ -1015,6 +1017,8 @@ declare_build_capability_contract \
 expectations=" ${BUILD_EXPECTATIONS[*]} "
 [[ "$expectations" == *"companion.direct_mqtt=mqtt.status"* ]] \
   || fail "MQTT-capable ESP32 Full contract omitted direct MQTT"
+[[ "$expectations" == *"companion.usb_mota_source=ota folder on"* ]] \
+  || fail "ESP32 Full contract omitted exclusive USB folder seeding"
 
 PIO_ENV_PLATFORM_BY_NAME[RAK_3401_companion_radio_full]=NRF52_PLATFORM
 BUILD_CAPABILITIES=()

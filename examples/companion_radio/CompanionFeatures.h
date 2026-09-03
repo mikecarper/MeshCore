@@ -24,7 +24,12 @@
       #define COMPANION_FEATURE_DEDICATED_USB_LOGGING 1
     #endif
   #endif
-  #if defined(NRF52_PLATFORM) && defined(OTA_FOLDER_SERIAL)
+  // A Full Companion cannot leave its line-oriented terminal active while the
+  // serial folder source exchanges binary request/reply frames on that same
+  // stream.  Both nRF52 CDC and ESP32's inherited OTA_FOLDER_SERIAL transport
+  // therefore use the exclusive USB mOTA owner state in main.cpp.
+  #if defined(OTA_FOLDER_SERIAL) \
+      && (defined(NRF52_PLATFORM) || defined(ESP32_PLATFORM))
     #ifndef COMPANION_FEATURE_USB_MOTA_SOURCE
       #define COMPANION_FEATURE_USB_MOTA_SOURCE 1
     #endif
@@ -68,9 +73,10 @@
 #endif
 
 #if COMPANION_FEATURE_USB_MOTA_SOURCE \
-    && !(defined(NRF52_PLATFORM) && defined(OTA_FOLDER_SERIAL) \
-         && defined(ENABLE_USB_INTERFACE) && defined(ENABLE_OTA))
-  #error "COMPANION_FEATURE_USB_MOTA_SOURCE requires nRF52 USB folder seeding"
+    && !((defined(NRF52_PLATFORM) || defined(ESP32_PLATFORM)) \
+         && defined(OTA_FOLDER_SERIAL) && defined(ENABLE_USB_INTERFACE) \
+         && defined(ENABLE_OTA))
+  #error "COMPANION_FEATURE_USB_MOTA_SOURCE requires a USB serial folder source"
 #endif
 
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE \

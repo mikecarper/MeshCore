@@ -8,6 +8,27 @@ root = Path(__file__).resolve().parents[1]
 source = (root / "examples/companion_radio/MyMesh.cpp").read_text()
 features = (root / "examples/companion_radio/CompanionFeatures.h").read_text()
 
+# Every Full Companion which inherits OTA_FOLDER_SERIAL must put that shared
+# byte stream under the exclusive mOTA owner.  Otherwise the ASCII terminal can
+# consume and echo a delayed lowercase `ms` host response between source
+# transactions while valid uppercase `MS` requests continue.
+assert re.search(
+    r"#if defined\(OTA_FOLDER_SERIAL\)\s*\\?\s*"
+    r"&& \(defined\(NRF52_PLATFORM\) \|\| defined\(ESP32_PLATFORM\)\)\s*"
+    r"#ifndef COMPANION_FEATURE_USB_MOTA_SOURCE\s+"
+    r"#define COMPANION_FEATURE_USB_MOTA_SOURCE 1",
+    features,
+)
+assert re.search(
+    r"#if COMPANION_FEATURE_USB_MOTA_SOURCE\s*\\?\s*"
+    r"&& !\(\(defined\(NRF52_PLATFORM\) \|\| defined\(ESP32_PLATFORM\)\)\s*\\?\s*"
+    r'&& defined\(OTA_FOLDER_SERIAL\).*?defined\(ENABLE_USB_INTERFACE\).*?'
+    r'defined\(ENABLE_OTA\)\)\s+'
+    r'#error "COMPANION_FEATURE_USB_MOTA_SOURCE requires a USB serial folder source"',
+    features,
+    re.DOTALL,
+)
+
 local_start = source.index("bool MyMesh::handleLocalControlCommand(")
 local_end = source.index("\n#if COMPANION_FEATURE_TEMP_RADIO\nvoid MyMesh::serviceTempRadio()", local_start)
 local = source[local_start:local_end]
