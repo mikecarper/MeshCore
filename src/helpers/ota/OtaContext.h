@@ -4,6 +4,7 @@
 #include <stdlib.h>         // malloc/free (lazy ESP32 manual-stage buffer)
 #include <string.h>         // strncmp/strncpy (hw_id)
 #include "OtaManager.h"
+#include "OtaDeflate.h"
 #include "OtaStore.h"
 #include "SignerAllowlist.h"
 #include "OtaApply.h"
@@ -562,6 +563,10 @@ struct OtaContext {
     target_id = 0;
 #endif
     manager.begin(target_id, send, ctx);
+    // Every OTA-capable application can receive ordinary raw RFC1951 transport blocks. OtaManager advertises
+    // that permission only because this exact, bounded decoder is registered; non-OTA builds do not compile
+    // OtaContext or link the decoder implementation.
+    manager.set_transport_deflate_decoder(ota_transport_inflate);
     manager.set_auto_version_floor(_fi.valid ? _fi.fw_version : 0, true);
     fetch_to_folder = false;
     if (hw) { strncpy(hw_id, hw, sizeof(hw_id) - 1); hw_id[sizeof(hw_id) - 1] = 0; }

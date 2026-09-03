@@ -544,8 +544,13 @@ All offsets after the 1-byte type. Encoders/decoders in `OtaProtocol.cpp`; const
 OTA_GET_MANIFEST:  manifest_id[4]  want_mask(uint16)   # bit k = send manifest fragment k; 0xFFFF = all
 OTA_MANIFEST:      manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]     # up to OTA_MF_FRAG=176 B/frag
 OTA_REQ:           manifest_id[4]  { block_idx(uint16)  want_mask(uint16) }[1..4]
-                   # one or more rows; bit k = send fragment k of that block
-OTA_DATA:          manifest_id[4]  block_idx(uint16)  frag_off(uint16)  data[]   # up to OTA_FRAG_DATA=160 B
+                   # legacy: bit k requests its 160-byte fragment
+                   # v2: bit15=marker, bit14=allow transport DEFLATE, bits0..12=fragment bitmap
+OTA_DATA legacy:   manifest_id[4]  block_idx(uint16)  frag_off(uint16)  data[<=160]
+OTA_DATA v2:       manifest_id[4]  block_idx(uint16)  descriptor(uint16)
+                   stream_id[4]  data[<=171]
+                   # descriptor: bit15=marker, bit14=DEFLATE, bits13..10=fragment,
+                   #             bits9..0=complete encoded length minus one
 OTA_REQ_PROOF:     manifest_id[4]  block_idx(uint16)
 OTA_PROOF:         manifest_id[4]  block_idx(uint16)  n_proof(1)  proof[]   # n_proof x 4 bytes
 OTA_GET_LEAVES:    manifest_id[4]  want_mask(uint16)   # bit k = send leaves fragment k; 0xFFFF = all
@@ -565,10 +570,30 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   fetch. **Normal P2P nodes never use this** - they target only the blocks they want; the only always-on part
   is answering `OTA_GET_LEAVES` with leaves the node already holds, so any node's firmware can be captured.
 
-- **Block <-> fragments:** a 1 KB block remains split into self-describing `OTA_DATA` fragments. `frag_off` is the
-  byte offset of `data` within the block, so the global position is `block_idx*block_size + frag_off` -
-  a fragment is self-placing when returned by the source. The fetcher tracks a
-  per-block slice bitmap and reassembles before requesting the proof.
+- **Negotiated 171-byte fragments:** the deployed profile remains unchanged: `frag_off` is a byte offset and
+  `data[]` carries at most 160 bytes. A new fetcher marks an `OTA_REQ` row as v2 and includes all seven legacy
+  bits on its first request. Old sources ignore/mask the high flags and can therefore return a complete legacy
+  block immediately; receipt of an untagged `OTA_DATA` switches that fetch session to the old geometry. If no
+  v2 data appears by the first adaptive deadline, the fetcher retries with an ordinary legacy mask. New
+  sources answer v2 with a packed descriptor, a repeated 4-byte representation ID, and exactly 171 data bytes
+  except the final fragment. A raw 1 KiB block therefore falls from seven data packets to six. Message type
+  IDs do not change, so multi-hop relays continue to forward request/data/proof packets opaquely with the same
+  priority.
+- **Transport-only DEFLATE:** a fetcher sets the v2 DEFLATE-permission bit only when its application includes
+  and configures the decoder. A source may encode each logical block as an independent raw RFC 1951 stream
+  with full stored, fixed-Huffman, and dynamic-Huffman support (`BTYPE=0/1/2`). Compression is used only when
+  strictly smaller, otherwise the source returns raw v2 data. The
+  receiver inflates to the manifest-derived block length, then performs the unchanged Merkle proof and writes
+  the original bytes to staging. Thus existing `.mota` containers, signatures, resume markers, and legacy
+  bootloader apply remain unchanged. The 4-byte `stream_id` is SHA-256:4 of the complete raw or compressed
+  representation and appears in every fragment. A receiver locks `{encoding, encoded length, stream_id}` for
+  a block, preventing fragments from independently encoded seeders from being mixed. After one sparse retry,
+  a second stalled interval clears the full in-flight window and switches the session to legacy geometry, so
+  a vanished v2 seeder cannot prevent an older source from taking over; proof verification remains unchanged.
+  Every `ENABLE_OTA` MeshCore application registers the vendored tinf 1.2.1 full raw decoder; its wrapper
+  bounds output to the exact logical block length and rejects truncation, malformed streams, and trailing
+  whole bytes. Builds without OTA do not link the decoder. This application capability is independent of the
+  bootloader because transport data is inflated before the unchanged staged container is written.
 - **Adaptive flight size is not signed block size.** The container continues to use 1 KiB Merkle leaves and
   each slot is one existing 1 KiB block. A clean link changes how many of those blocks one `OTA_REQ` names:
   1, then 2, then 3, then the compiled cap. The manifest stores `block_size_log2`, so 3 KiB is not a valid
@@ -589,7 +614,8 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
   half-duplex radios: re-requesting a whole multi-fragment burst let the periodic retry (a transmit) collide
   with the tail of the in-flight burst and drop the same fragment forever - a hang. Requesting only the hole
   removes the burst, so there is nothing to collide with. The block/manifest mask matches the 16-bit
-  reassembly bitmap (<=16 fragments/block; 1 KB blocks = 7). `OTA_PROOF` is a single packet and needs no mask.
+  reassembly bitmap (<=16 fragments/block; legacy 1 KB blocks = 7, raw v2 = 6). `OTA_PROOF` is a single packet
+  and needs no mask.
 - **Data and proof remain separate packets, without a normal extra round trip.** A server retains requested
   blocks in a bounded descriptor queue, admits at most one response per main-loop pass, and sends one
   `OTA_PROOF` after each block's requested fragments. Before admitting that proactive proof, the source leaves
@@ -605,7 +631,8 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
 
 | message | fixed overhead | payload/packet |
 |---|---|---|
-| `OTA_DATA` | 9 B (type+mid4+idx2+off2) | `OTA_FRAG_DATA = 160` -> 7 frags per 1 KB block |
+| `OTA_DATA` legacy | 9 B (type+mid4+idx2+off2) | `OTA_FRAG_DATA = 160` -> 7 frags per 1 KB block |
+| `OTA_DATA` v2 | 13 B (legacy header + stream ID) | `OTA_FRAG_DATA_V2 = 171` -> 6 raw frags per 1 KB block; fewer when compressed |
 | `OTA_MANIFEST` | 7 B | `OTA_MF_FRAG = 176` -> signed manifest ~ 2 frags |
 | `OTA_HAVE` | 12 B | 10 rows x 16 B per fragment |
 | `OTA_PROOF` | 8 B | up to ~44 sibling digests (>> any real tree) |
@@ -715,12 +742,15 @@ drives USB-serial, BLE, a WiFi URL list, an NFS/samba mount, etc. - only `read()
 ```cpp
 struct MotaDesc {                      // catalog metadata + region offsets (no whole image in RAM)
   uint8_t mid[4]; uint32_t target_id, fw_version; uint8_t codec_id, flags;
+  uint8_t block_size_log2, source_caps;
   uint32_t total_size, leaves_off, block_count, payload_off, payload_size;
 };
 class MotaSource {
   virtual uint8_t count();                                  // # mOTAs offered
   virtual bool    describe(uint8_t idx, MotaDesc& out);     // metadata + offsets
   virtual bool    read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len);   // random-access bytes
+  virtual bool    read_deflated_block(uint8_t idx, uint16_t block,
+                                      uint8_t* buf, uint16_t cap, uint16_t* len); // optional raw RFC 1951
 };
 ```
 
@@ -745,9 +775,11 @@ response (host -> device):  'm' 's'  op(1)  status(1)  payload...    xsum(1 = XO
 OP_COUNT     0x01   args: -            -> payload: count(1)
 OP_DESCRIBE  0x02   args: idx(1)       -> payload: MotaDesc wire (38 B)
 OP_READ      0x03   args: idx(1) off(4) len(2)  -> payload: len bytes
+OP_DEFLATE_BLOCK 0x09 args: idx(1) block(2) off(2) len(2)
+                         -> payload: total_encoded_len(2) + requested bytes
 MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1)
                       total_size(4) leaves_off(4) block_count(4) payload_off(4) payload_size(4)
-                      block_size_log2(1) reserved(3)
+                      block_size_log2(1) source_caps(1) reserved(2)
 status: 0 = OK, non-zero = error (out of range / past EOF).
 ```
 
@@ -757,6 +789,15 @@ normally 1 KiB; requesting either in one transaction can overrun common USB
 CDC/UART receive rings even though the host successfully wrote the complete
 reply. Chunking is internal to the transport and does not change `OP_READ` or
 the `MotaSource` random-access contract.
+
+`OP_DEFLATE_BLOCK` lets a host-folder source perform the optional transport compression without linking an
+encoder into the embedded seeder. `len=0, off=0` queries the exact encoded length; subsequent chunks are at
+most 190 bytes, keeping the total response payload at 192 bytes. The host independently encodes each manifest
+payload block as ordinary raw RFC 1951 at level 9. It returns an error for an invalid range, an unsupported
+operation, or a result that is not smaller than the raw block; `SerialMotaSource` then serves the ordinary raw
+v2 representation. A supporting host sets `source_caps bit 0` in every descriptor. Older hosts leave that
+formerly-reserved byte zero, so upgraded firmware skips the optional request instead of waiting for an old
+daemon that silently ignores unknown operations.
 
 Manifest fragments are retained as bounded response jobs and admitted one at
 a time. Their source-side gap follows the active maximum packet airtime and

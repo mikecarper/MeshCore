@@ -86,7 +86,8 @@ bool SerialMotaSource::describe(uint8_t idx, MotaDesc& out) {
   out.payload_off  = rd_u32le(w + 26);
   out.payload_size = rd_u32le(w + 30);
   out.block_size_log2 = w[34];
-  // bytes [35,38) remain reserved (zero) for forward compatibility.
+  out.source_caps = w[35];
+  // bytes [36,38) remain reserved (zero) for forward compatibility.
   return true;
 }
 
@@ -104,6 +105,36 @@ bool SerialMotaSource::read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t le
     if (!txn(MS_OP_READ, args, 7, buf + done, chunk)) return false;
     done += chunk;
   }
+  return true;
+}
+
+bool SerialMotaSource::read_deflated_block(uint8_t idx, uint16_t block, uint8_t* buf,
+                                           uint16_t cap, uint16_t* len) {
+  if (!buf || !len || cap == 0) return false;
+  *len = 0;
+
+  uint8_t args[7] = { idx };
+  args[1] = (uint8_t)(block & 0xFF); args[2] = (uint8_t)(block >> 8);
+  // Query the independently compressed representation's exact size first. The old host returns an error for
+  // the unknown operation, which is the intentional raw fallback during a rolling deployment.
+  uint8_t total_wire[2];
+  if (!txn(MS_OP_DEFLATE_BLOCK, args, sizeof(args), total_wire, sizeof(total_wire))) return false;
+  const uint16_t total = rd_u16le(total_wire);
+  if (total == 0 || total > cap) return false;
+
+  uint16_t done = 0;
+  while (done < total) {
+    const uint16_t chunk = (uint16_t)((total - done > MOTA_SEEDER_DEFLATE_CHUNK_MAX)
+        ? MOTA_SEEDER_DEFLATE_CHUNK_MAX : total - done);
+    args[3] = (uint8_t)(done & 0xFF); args[4] = (uint8_t)(done >> 8);
+    args[5] = (uint8_t)(chunk & 0xFF); args[6] = (uint8_t)(chunk >> 8);
+    uint8_t response[2 + MOTA_SEEDER_DEFLATE_CHUNK_MAX];
+    if (!txn(MS_OP_DEFLATE_BLOCK, args, sizeof(args), response, (uint16_t)(2 + chunk)) ||
+        rd_u16le(response) != total) return false;
+    memcpy(buf + done, response + 2, chunk);
+    done = (uint16_t)(done + chunk);
+  }
+  *len = total;
   return true;
 }
 

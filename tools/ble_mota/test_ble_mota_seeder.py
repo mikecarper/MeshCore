@@ -1,8 +1,76 @@
 #!/usr/bin/env python3
 
+import struct
+import tempfile
 import unittest
+import zlib
+from pathlib import Path
 
 import ble_mota_seeder as seeder
+
+
+def request_frame(op: int, args: bytes) -> bytes:
+    return b"MS" + bytes((op,)) + args + bytes((seeder.xor_bytes(args, op),))
+
+
+def response_payload(response: bytes, op: int) -> tuple[int, bytes]:
+    assert response[:2] == b"ms"
+    assert response[2] == op
+    assert response[-1] == seeder.xor_bytes(response[:-1])
+    return response[3], response[4:-1]
+
+
+class TransportDeflateTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = Path(self.directory.name) / "test.mota"
+        # This distribution makes zlib level 9 choose a dynamic-Huffman block, proving the
+        # host is not silently constrained to the bootloader's separate fixed-only profile.
+        self.raw = bytes(i % 31 if i % 7 else 0 for i in range(1024))
+        payload_offset = 256
+        self.path.write_bytes(bytes(payload_offset) + self.raw)
+        descriptor = bytearray(seeder.MOTA_DESC_WIRE)
+        struct.pack_into("<I", descriptor, 22, 1)  # block_count
+        struct.pack_into("<I", descriptor, 26, payload_offset)
+        struct.pack_into("<I", descriptor, 30, len(self.raw))
+        descriptor[34] = 10
+        mota = seeder.MotaFile(self.path, self.path.stat().st_size, bytes(descriptor))
+        self.catalog = seeder.Catalog([mota], False)
+
+    def tearDown(self):
+        seeder.MotaFile.deflated_block.cache_clear()
+        self.directory.cleanup()
+
+    def exchange(self, block: int, offset: int, length: int) -> tuple[int, bytes]:
+        args = struct.pack("<BHHH", 0, block, offset, length)
+        response = self.catalog.handle_request(
+            request_frame(seeder.OP_DEFLATE_BLOCK, args)
+        )
+        self.assertIsNotNone(response)
+        return response_payload(response, seeder.OP_DEFLATE_BLOCK)
+
+    def test_serves_independent_raw_deflate_in_bounded_chunks(self):
+        status, payload = self.exchange(0, 0, 0)
+        self.assertEqual(status, seeder.STATUS_OK)
+        total = struct.unpack("<H", payload)[0]
+        self.assertLess(total, len(self.raw))
+
+        encoded = bytearray()
+        for offset in range(0, total, seeder.MOTA_DEFLATE_CHUNK_MAX):
+            length = min(seeder.MOTA_DEFLATE_CHUNK_MAX, total - offset)
+            status, payload = self.exchange(0, offset, length)
+            self.assertEqual(status, seeder.STATUS_OK)
+            self.assertEqual(struct.unpack_from("<H", payload)[0], total)
+            encoded.extend(payload[2:])
+        self.assertEqual((encoded[0] >> 1) & 0x03, 2)  # dynamic Huffman (BTYPE=2)
+        self.assertEqual(zlib.decompress(bytes(encoded), wbits=-10), self.raw)
+
+    def test_rejects_bad_block_range_and_oversized_chunk(self):
+        self.assertEqual(self.exchange(1, 0, 0)[0], seeder.STATUS_ERR)
+        self.assertEqual(
+            self.exchange(0, 0, seeder.MOTA_DEFLATE_CHUNK_MAX + 1)[0],
+            seeder.STATUS_ERR,
+        )
 
 
 class SourceStatusTests(unittest.TestCase):

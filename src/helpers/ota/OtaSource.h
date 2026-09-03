@@ -18,6 +18,11 @@
 namespace mesh {
 namespace ota {
 
+// Optional operations exposed by a MotaSource. Serial/TCP sources carry these
+// bits in byte 35 of their unchanged 38-byte descriptor; deployed hosts leave
+// the formerly-reserved byte zero.
+static const uint8_t MOTA_SOURCE_CAP_DEFLATE_BLOCK = 0x01;
+
 // A parsed top-level descriptor of one `.mota` a source provides: enough to advertise it in the catalog
 // AND to locate every region for serving, WITHOUT holding the whole image in RAM. Offsets are absolute
 // byte positions within the `.mota` container (which always begins MAGIC(4) total(4) manifest...).
@@ -28,6 +33,7 @@ struct MotaDesc {
   uint8_t  codec_id = 0;
   uint8_t  flags = 0;
   uint8_t  block_size_log2 = 0; // serve geometry; 0 means a legacy descriptor that must be inspected
+  uint8_t  source_caps = 0;     // MOTA_SOURCE_CAP_*; zero preserves deployed source behavior
   uint32_t total_size = 0;      // full `.mota` length (bytes)
   uint32_t leaves_off = 0;      // byte offset of the merkle leaves[] (manifest-minus-leaves = [8, leaves_off))
   uint32_t block_count = 0;     // == number of leaves (== number of payload blocks)
@@ -50,6 +56,15 @@ public:
   // exactly `len` bytes were produced. May block on the transport (serial round-trip); implementations
   // should keep active-transfer reads prompt because requested OTA traffic is primary traffic.
   virtual bool    read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) = 0;
+  // Optional transport-only raw-DEFLATE representation of one logical payload block. Implementations which
+  // can generate/cache it off-device return a stream strictly smaller than the raw block. The default keeps
+  // every existing source source-compatible and makes OtaManager fall back to raw 171-byte DATA.
+  virtual bool    read_deflated_block(uint8_t idx, uint16_t block, uint8_t* buf,
+                                      uint16_t cap, uint16_t* len) {
+    (void)idx; (void)block; (void)buf; (void)cap;
+    if (len) *len = 0;
+    return false;
+  }
 };
 
 } // namespace ota

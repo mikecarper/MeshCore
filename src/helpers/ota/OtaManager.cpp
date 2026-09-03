@@ -69,6 +69,7 @@ bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
   if (!mota_parse(mota, len, _view0.m)) return false;
   _view0.mfl = (uint16_t)(_view0.m.leaves - _view0.m.manifest_start);  // contiguous container
   _view0.read = nullptr; _view0.read_ctx = nullptr;                    // payload is contiguous _view0.m.payload
+  _view0.read_deflated = nullptr; _view0.deflate_ctx = nullptr;
   _view0.scratch = scratch; _view0.scratch_sz = OTA_PROOFGEN_SCRATCH;  // <=1024 blocks (RAM .mota is small)
   _view0.valid = true;
   clearPendingEgress();
@@ -86,6 +87,7 @@ bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t
   _view0.m.payload  = nullptr;       // read on demand via `read`
   _view0.m.block_count = block_count;
   _view0.mfl = mfl; _view0.read = read; _view0.read_ctx = ctx;
+  _view0.read_deflated = nullptr; _view0.deflate_ctx = nullptr;
   _view0.scratch = proof_scratch; _view0.scratch_sz = proof_scratch_sz;   // sized for our (large) image
   _view0.valid = true;
   clearPendingEgress();
@@ -259,6 +261,9 @@ bool OtaManager::loadSource(const ServeEntry& e) {
   _srcv_rdctx.src = e.src; _srcv_rdctx.idx = e.src_idx;
   _srcv_rdctx.payload_off = d.payload_off;
   _srcv.read = srcReadTramp; _srcv.read_ctx = &_srcv_rdctx;
+  _srcv.read_deflated = (d.source_caps & MOTA_SOURCE_CAP_DEFLATE_BLOCK)
+      ? srcDeflateReadTramp : nullptr;
+  _srcv.deflate_ctx = _srcv.read_deflated ? &_srcv_rdctx : nullptr;
   _srcv.scratch = scratch; _srcv.scratch_sz = OTA_PROOFGEN_SCRATCH;
   memcpy(_srcv_mid, d.mid, 4);
   _srcv.valid = true;
@@ -269,6 +274,12 @@ bool OtaManager::loadSource(const ServeEntry& e) {
 bool OtaManager::srcReadTramp(void* c, uint32_t off, uint8_t* buf, uint32_t len) {
   SrcReadCtx* x = (SrcReadCtx*)c;
   return x->src->read(x->idx, x->payload_off + off, buf, len);
+}
+
+bool OtaManager::srcDeflateReadTramp(void* c, uint16_t block, uint8_t* buf,
+                                     uint16_t cap, uint16_t* len) {
+  SrcReadCtx* x = (SrcReadCtx*)c;
+  return x->src->read_deflated_block(x->idx, block, buf, cap, len);
 }
 
 // sha2-256:4 over the SORTED set of mids we serve - peers use it to tell if our offering changed. Sorting
@@ -414,10 +425,15 @@ static inline uint16_t frag_full_mask(uint32_t nf) {
 // Retain a bounded descriptor instead of allocating every DATA packet inline. Repeated requests that arrive
 // while a block is already queued merge only fragments not yet admitted to the radio queue; a later retry can
 // enqueue the block again if one of those admitted packets was actually lost over the air.
-bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask) {
+bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask,
+                               bool wire_v2, bool allow_deflate) {
   for (uint8_t i = 0; i < _n_serve_jobs; i++) {
     ServeJob& job = _serve_jobs[i];
     if (job.block != block || memcmp(job.mid, mid, 4) != 0) continue;
+    // A proof-only request can complete whichever representation is already queued. DATA requests with
+    // different geometries remain distinct because their bitmap positions do not describe the same bytes.
+    if (want_mask != 0 && (job.wire_v2 != wire_v2 ||
+        (wire_v2 && job.allow_deflate != allow_deflate))) continue;
     job.pending_mask |= (uint16_t)(want_mask & ~job.emitted_mask);
     if (want_mask == 0) job.proof_requested = true;
     return true;
@@ -430,6 +446,8 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
   job.emitted_mask = 0;
   job.proof_ready_at = 0;
   job.proof_requested = want_mask == 0;
+  job.wire_v2 = wire_v2;
+  job.allow_deflate = allow_deflate;
   return true;
 }
 
@@ -475,6 +493,10 @@ void OtaManager::clearPendingEgress() {
   _n_serve_jobs = 0;
   _serve_block_len = 0;
   _serve_block_loaded = false;
+  _serve_wire_block = nullptr;
+  _serve_wire_len = 0;
+  _serve_wire_deflated = false;
+  memset(_serve_wire_id, 0, sizeof(_serve_wire_id));
 }
 
 void OtaManager::popManifestJob() {
@@ -546,6 +568,10 @@ void OtaManager::popServeJob() {
   _n_serve_jobs--;
   _serve_block_len = 0;
   _serve_block_loaded = false;
+  _serve_wire_block = nullptr;
+  _serve_wire_len = 0;
+  _serve_wire_deflated = false;
+  memset(_serve_wire_id, 0, sizeof(_serve_wire_id));
 }
 
 bool OtaManager::loadActiveServeBlock() {
@@ -563,6 +589,30 @@ bool OtaManager::loadActiveServeBlock() {
     memcpy(_serve_block, v->m.payload + off, blen);
   }
   _serve_block_len = (uint16_t)blen;
+  _serve_wire_block = _serve_block;
+  _serve_wire_len = _serve_block_len;
+  _serve_wire_deflated = false;
+
+  // A host-backed MotaSource can provide a pre-compressed block without putting an encoder in firmware.
+  // Other sources may opt into a caller-supplied encoder. Both write into the proof scratch, which is safe
+  // until every DATA fragment has left; proof generation reuses it only after that point.
+  if (job.wire_v2 && job.allow_deflate && v->scratch && v->scratch_sz >= blen) {
+    uint16_t encoded_len = 0;
+    bool encoded = false;
+    if (v->read_deflated) {
+      encoded = v->read_deflated(v->deflate_ctx, job.block, v->scratch,
+                                  (uint16_t)blen, &encoded_len);
+    } else if (_deflate_encode) {
+      encoded = _deflate_encode(_deflate_encode_ctx, _serve_block, (uint16_t)blen,
+                                v->scratch, (uint16_t)blen, &encoded_len);
+    }
+    if (encoded && encoded_len > 0 && encoded_len < blen) {
+      _serve_wire_block = v->scratch;
+      _serve_wire_len = encoded_len;
+      _serve_wire_deflated = true;
+    }
+  }
+  mh4(_serve_wire_id, _serve_wire_block, _serve_wire_len);
   _serve_block_loaded = true;
   return true;
 }
@@ -580,9 +630,17 @@ bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
     uint32_t blen = block_size;
     const uint32_t off = idx * block_size;
     if (off + blen > v->m.payload_size) blen = v->m.payload_size - off;
-    const uint16_t valid_mask = frag_full_mask((blen + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
-    const uint16_t want = (uint16_t)(rq.items[i].want_mask & valid_mask);
-    if (want != 0) accepted |= queueServeJob(v->m.merkle_root, (uint16_t)idx, want);
+    const bool wire_v2 = ota_req_is_v2(rq.items[i].want_mask);
+    const bool allow_deflate = wire_v2 &&
+        (rq.items[i].want_mask & OTA_REQ_V2_ALLOW_DEFLATE) != 0;
+    const uint16_t valid_mask = frag_full_mask((blen +
+        (wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA) - 1) /
+        (wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA));
+    const uint16_t requested = wire_v2
+        ? ota_req_v2_fragments(rq.items[i].want_mask) : rq.items[i].want_mask;
+    const uint16_t want = (uint16_t)(requested & valid_mask);
+    if (want != 0) accepted |= queueServeJob(v->m.merkle_root, (uint16_t)idx, want,
+                                             wire_v2, allow_deflate);
   }
   return accepted;
 }
@@ -630,21 +688,41 @@ void OtaManager::serviceEgress() {
       popServeJob();
       return;
     }
+    const uint16_t fragment_data = job.wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+    const uint16_t valid_mask = frag_full_mask(
+        (_serve_wire_len + fragment_data - 1u) / fragment_data);
+    job.pending_mask &= valid_mask;
+    if (job.pending_mask == 0) {
+      job.proof_ready_at = _now_ms + proofEgressGapMs();
+      return;
+    }
     uint8_t fragment = 0;
     while (fragment < 16 && !(job.pending_mask & (1u << fragment))) fragment++;
-    uint32_t frag_off = (uint32_t)fragment * OTA_FRAG_DATA;
-    if (fragment >= 16 || frag_off >= _serve_block_len) {
+    uint32_t frag_off = (uint32_t)fragment * fragment_data;
+    if (fragment >= 16 || frag_off >= _serve_wire_len) {
       job.pending_mask = 0;
       return;
     }
-    uint32_t frag_len = _serve_block_len - frag_off;
-    if (frag_len > OTA_FRAG_DATA) frag_len = OTA_FRAG_DATA;
+    uint32_t frag_len = _serve_wire_len - frag_off;
+    if (frag_len > fragment_data) frag_len = fragment_data;
     DataMsg dm;
     memcpy(dm.manifest_id, job.mid, 4);
     dm.block_idx = job.block;
-    dm.frag_off = (uint16_t)frag_off;
-    dm.data = _serve_block + frag_off;
-    dm.data_len = (uint16_t)frag_len;
+    uint8_t v2_data[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+    if (job.wire_v2) {
+      if (!ota_data_v2_pack(fragment, _serve_wire_len, _serve_wire_deflated, dm.frag_off)) {
+        popServeJob();
+        return;
+      }
+      memcpy(v2_data, _serve_wire_id, OTA_DATA_V2_STREAM_ID_BYTES);
+      memcpy(v2_data + OTA_DATA_V2_STREAM_ID_BYTES, _serve_wire_block + frag_off, frag_len);
+      dm.data = v2_data;
+      dm.data_len = (uint16_t)(OTA_DATA_V2_STREAM_ID_BYTES + frag_len);
+    } else {
+      dm.frag_off = (uint16_t)frag_off;
+      dm.data = _serve_block + frag_off;
+      dm.data_len = (uint16_t)frag_len;
+    }
     uint8_t b[MAX_PACKET_PAYLOAD];
     if (emit(b, encode_data(b, sizeof(b), dm), false)) {
       const uint16_t bit = (uint16_t)(1u << fragment);
@@ -944,6 +1022,11 @@ void OtaManager::clearReassemblySlot(uint8_t slot) {
   _reasm[slot].need = 0;
   _reasm[slot].awaiting_proof = false;
   _reasm[slot].proof_request_at = 0;
+  _reasm[slot].encoded_len = 0;
+  _reasm[slot].wire_v2 = false;
+  _reasm[slot].deflated = false;
+  memset(_reasm[slot].stream_id, 0, sizeof(_reasm[slot].stream_id));
+  _reasm[slot].wire_stalls = 0;
 }
 
 // Forget all blocks currently being reassembled or awaiting proofs.
@@ -954,6 +1037,35 @@ void OtaManager::clearReassembly() {
   _pipeline_width = OTA_FETCH_PIPELINE_INITIAL;
   _flight_dirty = false;
   noteFetchActivity();
+}
+
+bool OtaManager::anyWireDataReceived() const {
+  for (uint8_t slot = 0; slot < OTA_FETCH_PIPELINE; slot++) {
+    if (_reasm[slot].block != NO_BLOCK && _reasm[slot].mask != 0) return true;
+  }
+  return false;
+}
+
+void OtaManager::downgradeWireToLegacy() {
+  if (!_wire_v2_session) return;
+  _wire_v2_session = false;
+  _wire_v2_confirmed = false;
+  _wire_allow_deflate = false;
+  _wire_empty_stalls = 0;
+  for (uint8_t i = 0; i < OTA_FETCH_PIPELINE; i++) {
+    ReassemblySlot& slot = _reasm[i];
+    if (slot.block == NO_BLOCK) continue;
+    slot.mask = 0;
+    slot.need = frag_full_mask((blockLen(slot.block) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
+    slot.awaiting_proof = false;
+    slot.proof_request_at = 0;
+    slot.encoded_len = 0;
+    slot.wire_v2 = false;
+    slot.deflated = false;
+    memset(slot.stream_id, 0, sizeof(slot.stream_id));
+    slot.wire_stalls = 0;
+  }
+  OTA_DBG("OTA: source uses legacy 160-byte DATA geometry\n");
 }
 
 int OtaManager::findReassemblySlot(uint32_t block) const {
@@ -1007,7 +1119,8 @@ uint32_t OtaManager::fetchRetryTimeoutMs() const {
         : (uint32_t)count_mask_bits((uint16_t)(slot.need & ~slot.mask)) + 1u;
   }
   if (active == 0) {
-    const uint32_t fragments = (_fbs + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+    const uint32_t fragment_data = _wire_v2_session ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+    const uint32_t fragments = (_fbs + fragment_data - 1) / fragment_data;
     packets += (fragments + 1) * _pipeline_width;
   }
   uint32_t path_transmissions = _observed_path_transmissions;
@@ -1129,6 +1242,10 @@ OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t targe
   if (!_fetch) return PULL_NO_STORE;
   if (fetchActive()) return PULL_BUSY;
   _fetch_error = FETCH_ERROR_NONE;
+  _wire_v2_session = _wire_v2_enabled;
+  _wire_v2_confirmed = false;
+  _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
+  _wire_empty_stalls = 0;
   _fexpected_target = target;
   _validate = validate;                          // motatool folder-capture warm-start (seed leaf-diff)
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
@@ -1149,6 +1266,10 @@ OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t targe
 bool OtaManager::resumeStagedExplicit(const uint8_t* want_mid, uint32_t expected_target) {
   if (!want_mid || !_fetch || fetchActive()) return false;
   _fetch_error = FETCH_ERROR_NONE;
+  _wire_v2_session = _wire_v2_enabled;
+  _wire_v2_confirmed = false;
+  _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
+  _wire_empty_stalls = 0;
   _validate = false;
   _archive_fetch = false;
   _desired_target = expected_target;
@@ -1350,6 +1471,10 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
       || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED) {
     return false;
   }
+  _wire_v2_session = _wire_v2_enabled;
+  _wire_v2_confirmed = false;
+  _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
+  _wire_empty_stalls = 0;
   if (!_fetch->reopen()) return false;                  // nothing persisted in the store
   uint32_t total = _fetch->staged_size();
   uint8_t hdr[8];
@@ -1509,19 +1634,100 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
   if (slot_index < 0) return false;                         // not one of this node's requested blocks
   ReassemblySlot& slot = _reasm[slot_index];
   uint32_t blen = blockLen(dm.block_idx);
-  if (dm.frag_off % OTA_FRAG_DATA != 0) return false;       // canonical FRAG_DATA-aligned slices only
-  if ((uint32_t)dm.frag_off + dm.data_len > blen) return false; // slice out of the block
-  uint32_t expected_len = blen - dm.frag_off;
-  if (expected_len > OTA_FRAG_DATA) expected_len = OTA_FRAG_DATA;
-  if (dm.data_len != expected_len) return false;            // do not mark a short slice as complete
-  uint32_t kf = dm.frag_off / OTA_FRAG_DATA;
-  if (kf >= 16) return false;
-  const uint16_t bit = (uint16_t)(1u << kf);
-  if (slot.mask & bit) return true;                         // duplicate flood/retry copy is terminal too
-  memcpy(slot.buf + dm.frag_off, dm.data, dm.data_len);
-  slot.mask |= bit;
+
+  if ((dm.frag_off & OTA_DATA_V2_MARK) == 0) {
+    if (dm.frag_off % OTA_FRAG_DATA != 0) return false;       // canonical legacy-aligned slices only
+    if ((uint32_t)dm.frag_off + dm.data_len > blen) return false;
+    uint32_t expected_len = blen - dm.frag_off;
+    if (expected_len > OTA_FRAG_DATA) expected_len = OTA_FRAG_DATA;
+    if (dm.data_len != expected_len) return false;            // do not mark a short slice as complete
+    uint32_t kf = dm.frag_off / OTA_FRAG_DATA;
+    if (kf >= 16) return false;
+    // A deployed source ignores the v2 request bits, masks them against its seven-fragment geometry, and
+    // responds here. Only a fully canonical legacy slice may select that profile; malformed matching-MID
+    // traffic must not force a session-wide downgrade. Never mix it with already accepted v2 bytes.
+    if (_wire_v2_session) {
+      if (_wire_v2_confirmed || anyWireDataReceived()) return false;
+      downgradeWireToLegacy();
+    }
+    const uint16_t bit = (uint16_t)(1u << kf);
+    if (slot.mask & bit) return true;                          // duplicate flood/retry copy is terminal too
+    memcpy(slot.buf + dm.frag_off, dm.data, dm.data_len);
+    slot.mask |= bit;
+  } else {
+    if (!_wire_v2_session || dm.data_len <= OTA_DATA_V2_STREAM_ID_BYTES) return false;
+    uint8_t fragment = 0;
+    uint16_t encoded_len = 0;
+    bool deflated = false;
+    if (!ota_data_v2_unpack(dm.frag_off, fragment, encoded_len, deflated)) return false;
+    if (encoded_len > blen || (deflated ? encoded_len >= blen : encoded_len != blen)) return false;
+    const uint16_t fragment_len = (uint16_t)(dm.data_len - OTA_DATA_V2_STREAM_ID_BYTES);
+    const uint32_t fragment_off = (uint32_t)fragment * OTA_FRAG_DATA_V2;
+    if (fragment_off >= encoded_len || fragment_off + fragment_len > encoded_len) return false;
+    uint32_t expected_len = encoded_len - fragment_off;
+    if (expected_len > OTA_FRAG_DATA_V2) expected_len = OTA_FRAG_DATA_V2;
+    if (fragment_len != expected_len) return false;
+    _wire_v2_confirmed = true;
+
+    const uint8_t* stream_id = dm.data;
+    if (slot.encoded_len == 0) {
+      slot.encoded_len = encoded_len;
+      slot.wire_v2 = true;
+      slot.deflated = deflated;
+      memcpy(slot.stream_id, stream_id, sizeof(slot.stream_id));
+      slot.mask = 0;
+      slot.need = frag_full_mask((encoded_len + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2);
+    } else if (!slot.wire_v2 || slot.encoded_len != encoded_len || slot.deflated != deflated ||
+               memcmp(slot.stream_id, stream_id, sizeof(slot.stream_id)) != 0) {
+      return false;                                          // another seeder's representation; never mix
+    }
+    _wire_empty_stalls = 0;                                  // a valid v2 source is still serving this flight
+    const uint16_t bit = (uint16_t)(1u << fragment);
+    if (!(slot.need & bit)) return false;
+    if (slot.mask & bit) return true;
+    memcpy(slot.buf + fragment_off, dm.data + OTA_DATA_V2_STREAM_ID_BYTES, fragment_len);
+    slot.mask |= bit;
+    slot.wire_stalls = 0;
+  }
   noteFetchActivity();
   if (slot.mask != slot.need || slot.awaiting_proof) return true;
+
+  if (slot.wire_v2) {
+    uint8_t stream_id[4];
+    mh4(stream_id, slot.buf, slot.encoded_len);
+    if (memcmp(stream_id, slot.stream_id, sizeof(stream_id)) != 0) {
+      slot.mask = 0;                                         // complete bytes do not match their representation id
+      slot.encoded_len = 0;
+      slot.wire_v2 = false;
+      slot.deflated = false;
+      memset(slot.stream_id, 0, sizeof(slot.stream_id));
+      notePipelineStall();
+      return true;
+    }
+    if (slot.deflated) {
+      uint16_t decoded_len = 0;
+      bool decoded = _deflate_decode && _deflate_decode(
+          _deflate_decode_ctx, slot.buf, slot.encoded_len,
+          _serve_block, (uint16_t)blen, &decoded_len);
+      // _serve_block is also the outbound server cache. Invalidate it even on failure so a simultaneous
+      // serve job reloads its own authenticated block rather than transmitting decoder workspace.
+      _serve_block_loaded = false;
+      _serve_wire_block = nullptr;
+      _serve_wire_len = 0;
+      if (!decoded || decoded_len != blen) {
+        _wire_allow_deflate = false;                         // retry this/future blocks as raw v2
+        slot.mask = 0;
+        slot.need = frag_full_mask((blen + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2);
+        slot.encoded_len = 0;
+        slot.wire_v2 = false;
+        slot.deflated = false;
+        memset(slot.stream_id, 0, sizeof(slot.stream_id));
+        notePipelineStall();
+        return true;
+      }
+      memcpy(slot.buf, _serve_block, blen);
+    }
+  }
   // The paced server sends a proof immediately after this block's requested DATA. Wait briefly so that proof
   // can arrive without another request/response turn. An older server, or a lost proof, falls back through
   // serviceEgress() to the existing REQ_PROOF wire message.
@@ -1579,6 +1785,22 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   return true;
 }
 
+uint16_t OtaManager::wireRequestMask(uint32_t block, uint16_t need, uint16_t received,
+                                     uint16_t encoded_len) const {
+  uint16_t want = (uint16_t)(need & ~received);
+  if (_wire_v2_session) {
+    // Until a v2 representation answers, include every legacy fragment bit. A deployed source ignores the
+    // high profile flags and can therefore return a complete seven-fragment block on this very first request.
+    if (encoded_len == 0) {
+      want = frag_full_mask((blockLen(block) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
+    }
+    if (want == 0) want = need;
+    return ota_req_make_v2(want, _wire_allow_deflate);
+  }
+  if (want == 0) want = need;
+  return want;
+}
+
 bool OtaManager::requestSlot(uint8_t slot_index) {
   if (_fstate != FETCHING || slot_index >= OTA_FETCH_PIPELINE) return false;
   ReassemblySlot& slot = _reasm[slot_index];
@@ -1597,8 +1819,7 @@ bool OtaManager::requestSlot(uint8_t slot_index) {
     }
     return sent;
   }
-  uint16_t want = (uint16_t)(slot.need & ~slot.mask);
-  if (want == 0) want = slot.need;                  // safety: never send an empty request
+  uint16_t want = wireRequestMask(slot.block, slot.need, slot.mask, slot.encoded_len);
   ReqMsg rq; memcpy(rq.manifest_id, _fid, 4);
   rq.block_idx = (uint16_t)slot.block; rq.want_mask = want;
   uint8_t b[16];
@@ -1619,8 +1840,7 @@ bool OtaManager::requestFlight() {
     if (slot.block == NO_BLOCK || slot.awaiting_proof) continue;
     ReqItem& item = request.items[request.n_items++];
     item.block_idx = (uint16_t)slot.block;
-    item.want_mask = (uint16_t)(slot.need & ~slot.mask);
-    if (item.want_mask == 0) item.want_mask = slot.need;
+    item.want_mask = wireRequestMask(slot.block, slot.need, slot.mask, slot.encoded_len);
   }
   if (request.n_items == 0) return false;
   _req_start = request.items[0].block_idx;
@@ -1645,7 +1865,8 @@ bool OtaManager::fillPipeline() {
     ReassemblySlot& slot = _reasm[slot_index];
     slot.block = block;
     slot.mask = 0;
-    slot.need = frag_full_mask((blockLen(block) + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA);
+    const uint16_t fragment_data = _wire_v2_session ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+    slot.need = frag_full_mask((blockLen(block) + fragment_data - 1) / fragment_data);
     slot.awaiting_proof = false;
     slot.proof_request_at = 0;
     assigned++;
@@ -1660,13 +1881,42 @@ void OtaManager::requestMissing() {
   if (_fstate != FETCHING) return;
   if (activePipelineSlots() == 0) { fillPipeline(); return; }
 
+  // No v2 DATA at all means the request may have reached only deployed sources which ignored its profile
+  // bits (or the first response burst was lost). Retry once in the universal legacy profile instead of
+  // pinning the session to a feature it has not observed on air.
+  if (_wire_v2_session && !_wire_v2_confirmed && !anyWireDataReceived()) {
+    downgradeWireToLegacy();
+    notePipelineStall();
+    requestFlight();
+    return;
+  }
+
   // The airtime-aware deadline expired. Retry one slot's holes per deadline, round-robin, so a weak block
   // cannot trigger a simultaneous multi-block re-burst on a half-duplex channel. Recovery dirties the
   // flight; its successor is reduced (4->2, 3->2, 2->1) after all current slots finish.
   notePipelineStall();
+
+  // Once v2 has been confirmed, the source can still disappear cleanly between blocks (or after a bad
+  // representation is discarded), leaving every active slot empty. Give the v2 flight one sparse retry,
+  // then clear the whole flight and ask again in the universal legacy profile so an old seeder can take over.
+  if (_wire_v2_session && _wire_v2_confirmed && !anyWireDataReceived() &&
+      ++_wire_empty_stalls >= 2) {
+    downgradeWireToLegacy();
+    requestFlight();
+    return;
+  }
+
   for (uint8_t offset = 0; offset < OTA_FETCH_PIPELINE; offset++) {
     uint8_t slot = (uint8_t)((_retry_slot + offset) % OTA_FETCH_PIPELINE);
     if (_reasm[slot].block == NO_BLOCK) continue;
+    ReassemblySlot& reassembly = _reasm[slot];
+    if (_wire_v2_session && reassembly.wire_v2 && reassembly.mask != 0 &&
+        !reassembly.awaiting_proof && ++reassembly.wire_stalls >= 2) {
+      // A v2 seeder may disappear after establishing a representation while only deployed legacy seeders
+      // remain. Keep one sparse retry, then fall back the whole flight to the universal profile. Clearing
+      // every slot prevents geometry/representation mixing and guarantees that old sources can take over.
+      downgradeWireToLegacy();
+    }
     if (requestSlot(slot)) _retry_slot = (uint8_t)((slot + 1) % OTA_FETCH_PIPELINE);
     return;
   }

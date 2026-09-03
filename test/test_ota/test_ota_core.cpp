@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <array>
 #include <vector>
 #include <cstring>
@@ -16,6 +17,7 @@
 #include "helpers/ota/OtaStore.h"
 #include "helpers/ota/OtaProtocol.h"
 #include "helpers/ota/OtaManager.h"
+#include "helpers/ota/OtaDeflate.h"
 #include "helpers/ota/OtaApply.h"
 #include "helpers/ota/OtaBlInfo.h"
 #include "helpers/ota/OtaFlashLayout_nrf52.h"
@@ -773,6 +775,71 @@ private:
   size_t response_pos = 0;
 };
 
+class FakeDeflateMotaSeederStream : public Stream {
+public:
+  using Stream::write;
+
+  FakeDeflateMotaSeederStream() {
+    encoded.resize(421);
+    for (size_t i = 0; i < encoded.size(); i++) encoded[i] = (uint8_t)(i * 17u + 3u);
+  }
+
+  size_t write(const uint8_t* request, size_t len) override {
+    request_valid = len == 11 && request[0] == MOTA_SEEDER_REQ_MAGIC0
+        && request[1] == MOTA_SEEDER_REQ_MAGIC1 && request[2] == MS_OP_DEFLATE_BLOCK;
+    uint8_t checksum = request_valid ? request[2] : 0;
+    for (size_t i = 3; request_valid && i + 1 < len; i++) checksum ^= request[i];
+    request_valid = request_valid && checksum == request[len - 1];
+    if (!request_valid) return len;
+
+    const uint16_t block = rd_u16le(request + 4);
+    const uint16_t offset = rd_u16le(request + 6);
+    const uint16_t read_len = rd_u16le(request + 8);
+    blocks.push_back(block);
+    offsets.push_back(offset);
+    lengths.push_back(read_len);
+
+    response.clear();
+    response_pos = 0;
+    response.push_back(MOTA_SEEDER_RSP_MAGIC0);
+    response.push_back(MOTA_SEEDER_RSP_MAGIC1);
+    response.push_back(MS_OP_DEFLATE_BLOCK);
+    const bool valid_range = offset <= encoded.size() && read_len <= encoded.size() - offset;
+    const uint8_t status = reject || !valid_range ? MS_STATUS_ERR : MS_STATUS_OK;
+    response.push_back(status);
+    if (status == MS_STATUS_OK) {
+      response.push_back((uint8_t)(encoded.size() & 0xFF));
+      response.push_back((uint8_t)(encoded.size() >> 8));
+      response.insert(response.end(), encoded.begin() + offset,
+                      encoded.begin() + offset + read_len);
+    }
+    uint8_t response_checksum = 0;
+    for (uint8_t byte : response) response_checksum ^= byte;
+    response.push_back(response_checksum);
+    return len;
+  }
+
+  int read() override {
+    if (response_pos < response.size()) return response[response_pos++];
+    ++g_mock_millis;
+    return -1;
+  }
+
+  void flush() override { ++flush_calls; }
+
+  std::vector<uint8_t> encoded;
+  std::vector<uint16_t> blocks;
+  std::vector<uint16_t> offsets;
+  std::vector<uint16_t> lengths;
+  bool request_valid = true;
+  bool reject = false;
+  size_t flush_calls = 0;
+
+private:
+  std::vector<uint8_t> response;
+  size_t response_pos = 0;
+};
+
 static_assert(!std::is_constructible<SerialMotaSource, Stream&>::value,
               "mOTA source callers must choose a stream write policy");
 static_assert(!std::is_constructible<SerialMotaSource, Stream&, uint32_t>::value,
@@ -835,6 +902,37 @@ TEST(MotaSourceSerial, WrongFlushPolicyDemonstratesNetworkReplyLoss) {
 
   EXPECT_FALSE(source.read(0, 0x3000, data.data(), data.size()));
   EXPECT_EQ(stream.flush_calls, 1U);
+}
+
+TEST(MotaSourceSerial, ReadsIndependentDeflateBlockInBoundedChunks) {
+  resetArduinoMock();
+  FakeDeflateMotaSeederStream stream;
+  SerialMotaSource source(stream, MotaStreamWritePolicy::FlushTransmit);
+  std::array<uint8_t, 1024> data{};
+  uint16_t encoded_len = 0;
+
+  ASSERT_TRUE(source.read_deflated_block(2, 37, data.data(), data.size(), &encoded_len));
+  EXPECT_TRUE(stream.request_valid);
+  EXPECT_EQ(encoded_len, stream.encoded.size());
+  EXPECT_EQ(stream.blocks, (std::vector<uint16_t>{37, 37, 37, 37}));
+  EXPECT_EQ(stream.offsets, (std::vector<uint16_t>{0, 0, 190, 380}));
+  EXPECT_EQ(stream.lengths, (std::vector<uint16_t>{0, 190, 190, 41}));
+  EXPECT_EQ(stream.flush_calls, 4u);
+  EXPECT_EQ(0, memcmp(data.data(), stream.encoded.data(), encoded_len));
+}
+
+TEST(MotaSourceSerial, DeflateExtensionFailureLeavesRawFallbackAvailable) {
+  resetArduinoMock();
+  FakeDeflateMotaSeederStream stream;
+  stream.reject = true;                                // deployed host does not implement operation 0x09
+  SerialMotaSource source(stream, MotaStreamWritePolicy::FlushTransmit);
+  std::array<uint8_t, 1024> data{};
+  uint16_t encoded_len = 999;
+
+  EXPECT_FALSE(source.read_deflated_block(0, 0, data.data(), data.size(), &encoded_len));
+  EXPECT_EQ(encoded_len, 0u);
+  EXPECT_EQ(stream.offsets, (std::vector<uint16_t>{0}));
+  EXPECT_EQ(stream.lengths, (std::vector<uint16_t>{0}));
 }
 
 class FakeFolderMotaSeederStream : public Stream {
@@ -1329,6 +1427,104 @@ TEST(OtaStoreDiscardTest, ConservativeDefaultCannotClaimDurableInvalidation) {
   EXPECT_TRUE(store.cleared);
 }
 
+TEST(OtaDeflate, AcceptsStoredFixedDynamicAndMultiBlockRawStreams) {
+  static const uint8_t stored[] = {
+    0x01,0x40,0x00,0xBF,0xFF,0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,
+    0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,
+    0x19,0x1A,0x1B,0x1C,0x1D,0x1E,0x1F,0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,
+    0x28,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F,0x30,0x31,0x32,0x33,0x34,0x35,0x36,
+    0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D,0x3E,0x3F,
+  };
+  static const uint8_t fixed[] = {
+    0xF3,0x4D,0x2D,0xCE,0x70,0xCE,0x2F,0x4A,0x55,0x28,0x29,0x4A,0xCC,0x2B,0x2E,0xC8,
+    0x2F,0x2A,0x51,0x48,0xCB,0xAC,0x48,0x4D,0x51,0xF0,0x28,0x4D,0x4B,0xCB,0x4D,0xCC,
+    0x53,0x28,0x49,0x2D,0x2E,0xD1,0x53,0xF0,0x1D,0x55,0x46,0x1B,0x65,0x00,
+  };
+  static const uint8_t dynamic[] = {
+    0xED,0xCF,0xD9,0x0D,0x83,0x30,0x14,0x44,0xD1,0x0B,0xC1,0x2C,0xC1,0x2C,0xC1,0x2C,
+    0xB1,0x81,0xF4,0x5F,0x66,0x9E,0x26,0x05,0xA4,0x01,0x7F,0x5F,0x1D,0x69,0x86,0xA2,
+    0x7C,0x54,0xAE,0xA6,0xED,0x9E,0xBD,0x1F,0x98,0xE6,0xD7,0x12,0x56,0xF6,0xE3,0x1D,
+    0xD3,0xC9,0xFD,0xC1,0x32,0xAE,0x6E,0x2C,0xE3,0x87,0xD1,0x32,0x61,0xDD,0x2C,0x93,
+    0xCE,0xCB,0x32,0xD2,0x0D,0xD2,0x23,0xD2,0x1B,0xD2,0x17,0xD2,0x15,0xD2,0x3D,0xD2,
+    0x0B,0xD2,0x11,0xE9,0x02,0xE9,0x16,0xE9,0x09,0xE9,0x1D,0xE9,0x1B,0x69,0x87,0xB4,
+    0x47,0x3A,0x20,0x9D,0x90,0x2E,0x91,0xEE,0x90,0x9E,0x91,0x3E,0x88,0xBF,0x69,0xF9,
+    0x58,0x3E,0x96,0x8F,0xFD,0x3B,0xF6,0x05,
+  };
+  static const uint8_t multi_block[] = {
+    0x4A,0xCB,0x2C,0x2A,0x2E,0xD1,0x4D,0xCA,0xC9,0x4F,0xCE,0xD6,0x4D,0x1B,0x66,0x6C,
+    0x00,0x00,0x00,0x00,0xFF,0xFF,0x2B,0x4E,0x4D,0xCE,0xCF,0x4B,0x81,0x0A,0x8C,0x72,
+    0xF0,0x72,0x00,
+  };
+
+  EXPECT_EQ((stored[0] >> 1) & 3u, 0u);
+  EXPECT_EQ((fixed[0] >> 1) & 3u, 1u);
+  EXPECT_EQ((dynamic[0] >> 1) & 3u, 2u);
+
+  std::array<uint8_t, 1024> output{};
+  uint16_t output_len = 0;
+  ASSERT_TRUE(ota_transport_inflate(nullptr, stored, sizeof(stored), output.data(), 64, &output_len));
+  ASSERT_EQ(output_len, 64u);
+  for (uint16_t i = 0; i < output_len; i++) EXPECT_EQ(output[i], (uint8_t)i);
+
+  static const char fixed_phrase[] = "MeshCore transport fixed Huffman test. ";
+  ASSERT_TRUE(ota_transport_inflate(nullptr, fixed, sizeof(fixed), output.data(), 384, &output_len));
+  ASSERT_EQ(output_len, 384u);
+  for (uint16_t i = 0; i < output_len; i++)
+    EXPECT_EQ(output[i], (uint8_t)fixed_phrase[i % (sizeof(fixed_phrase) - 1)]);
+
+  ASSERT_TRUE(ota_transport_inflate(nullptr, dynamic, sizeof(dynamic), output.data(), 1024, &output_len));
+  ASSERT_EQ(output_len, 1024u);
+  for (uint16_t i = 0; i < output_len; i++)
+    EXPECT_EQ(output[i], (uint8_t)((i % 7u) ? i % 31u : 0u));
+
+  ASSERT_TRUE(ota_transport_inflate(nullptr, multi_block, sizeof(multi_block), output.data(), 520,
+                                    &output_len));
+  ASSERT_EQ(output_len, 520u);
+  static const char first_phrase[] = "first-block-";
+  static const char second_phrase[] = "second-block-";
+  for (uint16_t i = 0; i < 220; i++)
+    EXPECT_EQ(output[i], (uint8_t)first_phrase[i % (sizeof(first_phrase) - 1)]);
+  for (uint16_t i = 220; i < output_len; i++)
+    EXPECT_EQ(output[i], (uint8_t)second_phrase[(i - 220) % (sizeof(second_phrase) - 1)]);
+}
+
+TEST(OtaDeflate, RejectsTruncationBoundsWrongLengthTrailingBytesAndMalformedTrees) {
+  static const uint8_t dynamic[] = {
+    0xED,0xCF,0xD9,0x0D,0x83,0x30,0x14,0x44,0xD1,0x0B,0xC1,0x2C,0xC1,0x2C,0xC1,0x2C,
+    0xB1,0x81,0xF4,0x5F,0x66,0x9E,0x26,0x05,0xA4,0x01,0x7F,0x5F,0x1D,0x69,0x86,0xA2,
+    0x7C,0x54,0xAE,0xA6,0xED,0x9E,0xBD,0x1F,0x98,0xE6,0xD7,0x12,0x56,0xF6,0xE3,0x1D,
+    0xD3,0xC9,0xFD,0xC1,0x32,0xAE,0x6E,0x2C,0xE3,0x87,0xD1,0x32,0x61,0xDD,0x2C,0x93,
+    0xCE,0xCB,0x32,0xD2,0x0D,0xD2,0x23,0xD2,0x1B,0xD2,0x17,0xD2,0x15,0xD2,0x3D,0xD2,
+    0x0B,0xD2,0x11,0xE9,0x02,0xE9,0x16,0xE9,0x09,0xE9,0x1D,0xE9,0x1B,0x69,0x87,0xB4,
+    0x47,0x3A,0x20,0x9D,0x90,0x2E,0x91,0xEE,0x90,0x9E,0x91,0x3E,0x88,0xBF,0x69,0xF9,
+    0x58,0x3E,0x96,0x8F,0xFD,0x3B,0xF6,0x05,
+  };
+  static const uint8_t invalid_distance[] = {0x63,0x00,0x3E,0x00};
+  static const uint8_t invalid_tree[] = {
+    0x0D,0xCE,0x81,0x00,0x00,0x00,0x00,0x80,0xA0,0xFD,0xA9,0xBB,0x1F,0xA0,0x01,
+  };
+  std::array<uint8_t, 1025> output{};
+  uint16_t output_len = 999;
+
+  EXPECT_FALSE(ota_transport_inflate(nullptr, dynamic, sizeof(dynamic) - 1,
+                                     output.data(), 1024, &output_len));
+  EXPECT_EQ(output_len, 0u);
+  EXPECT_FALSE(ota_transport_inflate(nullptr, dynamic, sizeof(dynamic),
+                                     output.data(), 1023, &output_len));
+  EXPECT_FALSE(ota_transport_inflate(nullptr, dynamic, sizeof(dynamic),
+                                     output.data(), 1025, &output_len));
+
+  std::array<uint8_t, sizeof(dynamic) + 1> trailing{};
+  memcpy(trailing.data(), dynamic, sizeof(dynamic));
+  trailing.back() = 0x00;
+  EXPECT_FALSE(ota_transport_inflate(nullptr, trailing.data(), trailing.size(),
+                                     output.data(), 1024, &output_len));
+  EXPECT_FALSE(ota_transport_inflate(nullptr, invalid_distance, sizeof(invalid_distance),
+                                     output.data(), 4, &output_len));
+  EXPECT_FALSE(ota_transport_inflate(nullptr, invalid_tree, sizeof(invalid_tree),
+                                     output.data(), 4, &output_len));
+}
+
 // --- merkle proof GENERATION (server side) matches the Python oracle ---------------------------
 
 TEST(OtaMerkle, GenProofMatchesPythonAndVerifies) {
@@ -1484,6 +1680,40 @@ TEST(OtaProtocol, CodecRoundTrips) {
   EXPECT_EQ(0, memcmp(pm2.proof, proof, 12));
 }
 
+TEST(OtaProtocol, V2ProfilePacks171ByteFragmentsInsideExistingMessages) {
+  const uint16_t request = ota_req_make_v2(0x007Fu, true);
+  EXPECT_TRUE(ota_req_is_v2(request));
+  EXPECT_EQ(ota_req_v2_fragments(request), 0x007Fu);
+  EXPECT_NE(request & OTA_REQ_V2_ALLOW_DEFLATE, 0u);
+  EXPECT_FALSE(ota_req_is_v2((uint16_t)(request | OTA_REQ_V2_RESERVED)));
+  EXPECT_FALSE(ota_req_is_v2(0x007Fu));
+
+  uint16_t descriptor = 0;
+  ASSERT_TRUE(ota_data_v2_pack(5, 1024, true, descriptor));
+  uint8_t fragment = 0;
+  uint16_t encoded_len = 0;
+  bool deflated = false;
+  ASSERT_TRUE(ota_data_v2_unpack(descriptor, fragment, encoded_len, deflated));
+  EXPECT_EQ(fragment, 5u);
+  EXPECT_EQ(encoded_len, 1024u);
+  EXPECT_TRUE(deflated);
+  EXPECT_FALSE(ota_data_v2_pack(16, 1024, false, descriptor));
+  EXPECT_FALSE(ota_data_v2_pack(0, 0, false, descriptor));
+  EXPECT_FALSE(ota_data_v2_pack(0, 1025, false, descriptor));
+
+  std::array<uint8_t, OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2> payload{};
+  ASSERT_TRUE(ota_data_v2_pack(0, 1024, false, descriptor));
+  DataMsg message{{1, 2, 3, 4}, 9, descriptor, payload.data(),
+                  (uint16_t)payload.size()};
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  const uint16_t wire_len = encode_data(wire, sizeof(wire), message);
+  EXPECT_EQ(wire_len, MAX_PACKET_PAYLOAD);
+  DataMsg decoded{};
+  ASSERT_TRUE(decode_data(wire, wire_len, decoded));
+  EXPECT_EQ(decoded.data_len,
+            (uint16_t)(OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2));
+}
+
 // --- full transfer simulation between two OtaManagers (P4b) ------------------------------------
 
 namespace {
@@ -1507,6 +1737,60 @@ static bool gated_capture_send(void* ctx, const uint8_t* msg, uint16_t len, bool
   GatedCapture* capture = (GatedCapture*)ctx;
   if (!capture->accept) return false;
   capture->items.emplace_back(msg, msg + len);
+  return true;
+}
+
+// Tiny reversible stand-in for the separately tested RFC1951 implementation. These callbacks isolate the
+// OtaManager negotiation/reassembly path: each payload block is represented by its authenticated block index,
+// then expanded from the immutable test manifest before the normal Merkle proof is checked.
+struct TestWireCodec {
+  const MotaManifest* manifest = nullptr;
+  uint32_t calls = 0;
+};
+
+static bool test_wire_encode(void* context, const uint8_t* source, uint16_t source_len,
+                             uint8_t* destination, uint16_t capacity, uint16_t* encoded_len) {
+  TestWireCodec* codec = (TestWireCodec*)context;
+  if (!codec || !codec->manifest || !source || !destination || !encoded_len || capacity < 2) return false;
+  const MotaManifest& manifest = *codec->manifest;
+  const uint32_t block_size = manifest.block_size();
+  for (uint32_t block = 0; block < manifest.block_count && block <= 0xFFu; block++) {
+    const uint32_t offset = block * block_size;
+    const uint32_t length = std::min<uint32_t>(block_size, manifest.payload_size - offset);
+    if (length == source_len && memcmp(source, manifest.payload + offset, length) == 0) {
+      destination[0] = 0xD1;
+      destination[1] = (uint8_t)block;
+      *encoded_len = 2;
+      codec->calls++;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool test_wire_decode(void* context, const uint8_t* source, uint16_t source_len,
+                             uint8_t* destination, uint16_t capacity, uint16_t* decoded_len) {
+  TestWireCodec* codec = (TestWireCodec*)context;
+  if (!codec || !codec->manifest || !source || !destination || !decoded_len || source_len != 2 ||
+      source[0] != 0xD1 || source[1] >= codec->manifest->block_count) return false;
+  const MotaManifest& manifest = *codec->manifest;
+  const uint32_t offset = (uint32_t)source[1] * manifest.block_size();
+  const uint32_t length = std::min<uint32_t>(manifest.block_size(), manifest.payload_size - offset);
+  if (length != capacity) return false;
+  memcpy(destination, manifest.payload + offset, length);
+  *decoded_len = (uint16_t)length;
+  codec->calls++;
+  return true;
+}
+
+static bool test_representation_decode(void* context, const uint8_t* source, uint16_t source_len,
+                                       uint8_t* destination, uint16_t capacity,
+                                       uint16_t* decoded_len) {
+  const MotaManifest* manifest = (const MotaManifest*)context;
+  if (!manifest || !source || !destination || !decoded_len || source_len != 300 ||
+      (source[0] != 0xA1 && source[0] != 0xB2) || capacity != manifest->block_size()) return false;
+  memcpy(destination, manifest->payload, capacity);
+  *decoded_len = capacity;
   return true;
 }
 
@@ -1585,6 +1869,8 @@ private:
 class RamMotaSource : public mesh::ota::MotaSource {
 public:
   void add(const uint8_t* buf, uint32_t len) { if (_n < 8) { _buf[_n] = buf; _len[_n] = len; _n++; } }
+  void setSourceCaps(uint8_t caps) { _source_caps = caps; }
+  uint32_t deflateCalls() const { return _deflate_calls; }
   uint8_t count() override { return _n; }
   bool describe(uint8_t idx, mesh::ota::MotaDesc& d) override {
     if (idx >= _n) return false;
@@ -1594,6 +1880,7 @@ public:
     d.target_id = m.target_id; d.fw_version = m.fw_version;
     d.codec_id = m.codec_id; d.flags = m.flags;
     d.block_size_log2 = m.block_size_log2;
+    d.source_caps = _source_caps;
     d.total_size = _len[idx];
     d.leaves_off = (uint32_t)(m.leaves - _buf[idx]);
     d.block_count = m.block_count;
@@ -1606,8 +1893,15 @@ public:
     std::memcpy(out, _buf[idx] + off, len);
     return true;
   }
+  bool read_deflated_block(uint8_t, uint16_t, uint8_t*, uint16_t, uint16_t* len) override {
+    _deflate_calls++;
+    if (len) *len = 0;
+    return false;
+  }
 private:
   const uint8_t* _buf[8] = {nullptr}; uint32_t _len[8] = {0}; uint8_t _n = 0;
+  uint8_t _source_caps = 0;
+  uint32_t _deflate_calls = 0;
 };
 
 class SyntheticCatalogSource : public mesh::ota::MotaSource {
@@ -1706,6 +2000,36 @@ TEST(OtaTransfer, TwoManagersFullTransfer) {
   EXPECT_TRUE(mota_check_image_hash_full(m));
 }
 
+TEST(OtaTransfer, TransportCodecInflatesBeforeProofAndStagesOriginalContainer) {
+  g_q.clear();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  OtaManager server, client;
+  OtaStoreRam<4096> store;
+  SendTo to_client{&client}, to_server{&server};
+  TestWireCodec encoder;
+  TestWireCodec decoder;
+  encoder.manifest = &manifest;
+  decoder.manifest = &manifest;
+
+  server.begin(0, sim_send, &to_client);
+  server.set_transport_deflate_encoder(test_wire_encode, &encoder);
+  client.begin(SIM_TARGET_ID, sim_send, &to_server);
+  client.set_transport_deflate_decoder(test_wire_decode, &decoder);
+  client.set_fetch_store(&store);
+  client.set_autofetch(OtaManager::AUTOFETCH_ANY);
+  ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+
+  server.announce();
+  pump(client, &server);
+
+  EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  EXPECT_GT(encoder.calls, 0u);
+  EXPECT_EQ(decoder.calls, manifest.block_count);
+  ASSERT_EQ(store.staged_size(), SIM_MOTA_1K_LEN);
+  EXPECT_EQ(0, memcmp(store.data(), SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+}
+
 static void deliver_manifest_fragment(OtaManager& client, const uint8_t mid[4], uint8_t frag_idx,
                                       const uint8_t* bytes, uint16_t len) {
   uint8_t wire[MAX_PACKET_PAYLOAD];
@@ -1754,6 +2078,48 @@ static void deliver_verified_block(OtaManager& client, const MotaManifest& manif
   proof.n_proof = sibling_count;
   proof.proof = siblings;
   uint16_t wire_len = encode_proof(wire, sizeof(wire), proof);
+  ASSERT_GT(wire_len, 0);
+  ASSERT_TRUE(client.on_message(wire, wire_len));
+}
+
+static void deliver_verified_v2_raw_block(OtaManager& client, const MotaManifest& manifest,
+                                          uint32_t block) {
+  ASSERT_LT(block, manifest.block_count);
+  const uint32_t block_size = manifest.block_size();
+  const uint32_t block_off = block * block_size;
+  const uint16_t block_len = (uint16_t)(block_off + block_size <= manifest.payload_size
+      ? block_size : manifest.payload_size - block_off);
+  const uint32_t fragments = (block_len + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2;
+  uint8_t stream_id[OTA_DATA_V2_STREAM_ID_BYTES];
+  mh4(stream_id, manifest.payload + block_off, block_len);
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  for (uint32_t fragment = 0; fragment < fragments; fragment++) {
+    const uint32_t offset = fragment * OTA_FRAG_DATA_V2;
+    uint16_t length = (uint16_t)(block_len - offset);
+    if (length > OTA_FRAG_DATA_V2) length = OTA_FRAG_DATA_V2;
+    uint8_t body[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+    memcpy(body, stream_id, sizeof(stream_id));
+    memcpy(body + sizeof(stream_id), manifest.payload + block_off + offset, length);
+    DataMsg data{};
+    memcpy(data.manifest_id, manifest.merkle_root, 4);
+    data.block_idx = (uint16_t)block;
+    ASSERT_TRUE(ota_data_v2_pack((uint8_t)fragment, block_len, false, data.frag_off));
+    data.data = body;
+    data.data_len = (uint16_t)(sizeof(stream_id) + length);
+    const uint16_t wire_len = encode_data(wire, sizeof(wire), data);
+    ASSERT_GT(wire_len, 0);
+    ASSERT_TRUE(client.on_message(wire, wire_len));
+  }
+  std::vector<uint8_t> scratch(manifest.block_count * 4);
+  uint8_t siblings[32 * 4];
+  const uint8_t sibling_count = merkle_gen_proof(
+      manifest.leaves, manifest.block_count, block, scratch.data(), siblings);
+  ProofMsg proof{};
+  memcpy(proof.manifest_id, manifest.merkle_root, 4);
+  proof.block_idx = (uint16_t)block;
+  proof.n_proof = sibling_count;
+  proof.proof = siblings;
+  const uint16_t wire_len = encode_proof(wire, sizeof(wire), proof);
   ASSERT_GT(wire_len, 0);
   ASSERT_TRUE(client.on_message(wire, wire_len));
 }
@@ -1809,6 +2175,58 @@ TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) 
                            (uint16_t)sent.items.back().size(), proof));
   EXPECT_EQ(proof.block_idx, 0);
   EXPECT_EQ(server.pendingServeJobs(), 0u);
+}
+
+TEST(OtaTransfer, NegotiatedV2Carries171RawBytesAndRepeatsRepresentationId) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_EQ(manifest.block_size(), 1024u);
+
+  OtaManager server;
+  CapturedMessages sent;
+  server.begin(0, capture_send, &sent);
+  ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+
+  ReqMsg request;
+  memcpy(request.manifest_id, manifest.merkle_root, 4);
+  request.block_idx = 0;
+  request.want_mask = ota_req_make_v2(0x007Fu, true); // no encoder installed: source must fall back to raw
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  const uint16_t request_len = encode_req(wire, sizeof(wire), request);
+  ASSERT_GT(request_len, 0);
+  ASSERT_TRUE(server.on_message(wire, request_len));
+
+  const uint32_t fragment_count =
+      (manifest.block_size() + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2;
+  ASSERT_EQ(fragment_count, 6u);
+  std::array<uint8_t, 1024> reassembled{};
+  uint8_t expected_stream_id[4];
+  mh4(expected_stream_id, manifest.payload, manifest.block_size());
+
+  for (uint32_t i = 0; i < fragment_count; i++) {
+    server.serviceEgress();
+    ASSERT_EQ(sent.items.size(), i + 1);
+    DataMsg data{};
+    ASSERT_TRUE(decode_data(sent.items.back().data(),
+                            (uint16_t)sent.items.back().size(), data));
+    uint8_t fragment = 0;
+    uint16_t encoded_len = 0;
+    bool deflated = true;
+    ASSERT_TRUE(ota_data_v2_unpack(data.frag_off, fragment, encoded_len, deflated));
+    EXPECT_EQ(fragment, i);
+    EXPECT_EQ(encoded_len, manifest.block_size());
+    EXPECT_FALSE(deflated);
+    ASSERT_GE(data.data_len, OTA_DATA_V2_STREAM_ID_BYTES);
+    EXPECT_EQ(0, memcmp(data.data, expected_stream_id, sizeof(expected_stream_id)));
+    const uint16_t slice_len =
+        (uint16_t)(data.data_len - OTA_DATA_V2_STREAM_ID_BYTES);
+    const uint32_t offset = i * OTA_FRAG_DATA_V2;
+    EXPECT_EQ(slice_len, (uint16_t)std::min<uint32_t>(OTA_FRAG_DATA_V2,
+                                                      manifest.block_size() - offset));
+    if (i + 1 < fragment_count) EXPECT_EQ(sent.items.back().size(), MAX_PACKET_PAYLOAD);
+    memcpy(reassembled.data() + offset, data.data + OTA_DATA_V2_STREAM_ID_BYTES, slice_len);
+  }
+  EXPECT_EQ(0, memcmp(reassembled.data(), manifest.payload, manifest.block_size()));
 }
 
 TEST(OtaTransfer, LegacyProofRequestBypassesProactiveProofTurnaround) {
@@ -2044,6 +2462,265 @@ TEST(OtaTransfer, ClientUsesQuietBatchedFlightsAndAcceptsOutOfOrderBlocks) {
   EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
   EXPECT_EQ(client.blocksHave(), 3u);
   EXPECT_EQ(sent.items.size(), 2u);                       // no continuous-refill request was emitted
+}
+
+TEST(OtaTransfer, NewClientRequestsV2ThenRetriesLegacyWhenNoV2DataArrives) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.set_clock(100);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg first{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(), (uint16_t)sent.items[0].size(), first));
+  EXPECT_TRUE(ota_req_is_v2(first.want_mask));
+  EXPECT_EQ(ota_req_v2_fragments(first.want_mask), 0x007Fu); // remains a complete old-source request
+  EXPECT_EQ(first.want_mask & OTA_REQ_V2_ALLOW_DEFLATE, 0u); // no decoder was linked/configured
+
+  const uint32_t timeout = client.fetchRetryTimeoutMs();
+  client.set_clock(100 + timeout);
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 2u);
+  ReqMsg fallback{};
+  ASSERT_TRUE(decode_req(sent.items[1].data(), (uint16_t)sent.items[1].size(), fallback));
+  EXPECT_FALSE(ota_req_is_v2(fallback.want_mask));
+  EXPECT_EQ(fallback.want_mask, 0x007Fu);
+}
+
+TEST(OtaTransfer, MalformedLegacyDataCannotForceV2SessionDowngrade) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  DataMsg malformed;
+  memcpy(malformed.manifest_id, manifest.merkle_root, 4);
+  malformed.block_idx = 0;
+  malformed.frag_off = 1;                                // not canonical 160-byte legacy alignment
+  malformed.data = manifest.payload;
+  malformed.data_len = OTA_FRAG_DATA;
+  uint16_t wire_len = encode_data(wire, sizeof(wire), malformed);
+  ASSERT_GT(wire_len, 0);
+  EXPECT_FALSE(client.on_message(wire, wire_len));
+
+  uint8_t body[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+  mh4(body, manifest.payload, manifest.block_size());
+  memcpy(body + OTA_DATA_V2_STREAM_ID_BYTES, manifest.payload, OTA_FRAG_DATA_V2);
+  DataMsg valid;
+  memcpy(valid.manifest_id, manifest.merkle_root, 4);
+  valid.block_idx = 0;
+  ASSERT_TRUE(ota_data_v2_pack(0, (uint16_t)manifest.block_size(), false, valid.frag_off));
+  valid.data = body;
+  valid.data_len = sizeof(body);
+  wire_len = encode_data(wire, sizeof(wire), valid);
+  ASSERT_EQ(wire_len, MAX_PACKET_PAYLOAD);
+  EXPECT_TRUE(client.on_message(wire, wire_len));          // malformed legacy packet left v2 negotiation intact
+}
+
+TEST(OtaTransfer, PartialV2SeederCanDisappearAndLegacySeederTakesOver) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_transport_deflate_decoder(ota_transport_inflate);
+  client.set_fetch_store(&store);
+  client.set_clock(100);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+
+  uint8_t body[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+  mh4(body, manifest.payload, manifest.block_size());
+  memcpy(body + OTA_DATA_V2_STREAM_ID_BYTES, manifest.payload, OTA_FRAG_DATA_V2);
+  DataMsg partial{};
+  memcpy(partial.manifest_id, manifest.merkle_root, 4);
+  partial.block_idx = 0;
+  ASSERT_TRUE(ota_data_v2_pack(0, (uint16_t)manifest.block_size(), false, partial.frag_off));
+  partial.data = body;
+  partial.data_len = sizeof(body);
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  uint16_t wire_len = encode_data(wire, sizeof(wire), partial);
+  ASSERT_EQ(wire_len, MAX_PACKET_PAYLOAD);
+  ASSERT_TRUE(client.on_message(wire, wire_len));
+
+  sent.items.clear();
+  uint32_t now = 100;
+  uint32_t timeout = client.fetchRetryTimeoutMs();
+  now += timeout;
+  client.set_clock(now);
+  client.loop();                                            // one sparse v2 retry
+  ASSERT_FALSE(sent.items.empty());
+  ReqMsg retry{};
+  ASSERT_TRUE(decode_req(sent.items.back().data(), (uint16_t)sent.items.back().size(), retry));
+  EXPECT_TRUE(ota_req_is_v2(retry.want_mask));
+
+  sent.items.clear();
+  timeout = client.fetchRetryTimeoutMs();
+  now += timeout;
+  client.set_clock(now);
+  client.loop();                                            // bounded whole-session legacy fallback
+  ASSERT_FALSE(sent.items.empty());
+  ReqMsg fallback{};
+  ASSERT_TRUE(decode_req(sent.items.back().data(), (uint16_t)sent.items.back().size(), fallback));
+  EXPECT_FALSE(ota_req_is_v2(fallback.want_mask));
+  EXPECT_EQ(fallback.want_mask, 0x007Fu);
+
+  deliver_verified_block(client, manifest, 0);              // an old seeder can now make forward progress
+  EXPECT_EQ(client.blocksHave(), 1u);
+}
+
+TEST(OtaTransfer, ConfirmedV2SeederCanDisappearBetweenBlocksAndLegacySeederTakesOver) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_GE(manifest.block_count, 2u);
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.set_clock(100);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+
+  deliver_verified_v2_raw_block(client, manifest, 0);
+  ASSERT_EQ(client.blocksHave(), 1u);
+  sent.items.clear();                                      // v2 source vanishes before the next flight answers
+
+  uint32_t now = 100;
+  uint32_t timeout = client.fetchRetryTimeoutMs();
+  now += timeout;
+  client.set_clock(now);
+  client.loop();                                           // one sparse v2 retry
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqWindowMsg retry{};
+  ASSERT_TRUE(decode_req_window(sent.items.back().data(),
+                                (uint16_t)sent.items.back().size(), retry));
+  ASSERT_EQ(retry.n_items, 1u);
+  EXPECT_TRUE(ota_req_is_v2(retry.items[0].want_mask));
+
+  sent.items.clear();
+  timeout = client.fetchRetryTimeoutMs();
+  now += timeout;
+  client.set_clock(now);
+  client.loop();                                           // whole empty flight falls back to legacy
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqWindowMsg fallback{};
+  ASSERT_TRUE(decode_req_window(sent.items.back().data(),
+                                (uint16_t)sent.items.back().size(), fallback));
+  ASSERT_GE(fallback.n_items, 1u);
+  for (uint8_t i = 0; i < fallback.n_items; i++) {
+    EXPECT_FALSE(ota_req_is_v2(fallback.items[i].want_mask));
+  }
+
+  deliver_verified_block(client, manifest, 1);             // deployed source resumes the same session
+  EXPECT_EQ(client.blocksHave(), 2u);
+}
+
+TEST(OtaTransfer, V2NeverMixesDifferentCompressedRepresentationsAcrossSeeders) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_transport_deflate_decoder(test_representation_decode, &manifest);
+  client.set_fetch_store(&store);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  sent.items.clear();
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg request{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(), (uint16_t)sent.items[0].size(), request));
+  EXPECT_NE(request.want_mask & OTA_REQ_V2_ALLOW_DEFLATE, 0u);
+
+  std::array<uint8_t, 300> representation_a{};
+  std::array<uint8_t, 300> representation_b{};
+  representation_a.fill(0xA1);
+  representation_b.fill(0xB2);
+  uint8_t id_a[4], id_b[4];
+  mh4(id_a, representation_a.data(), representation_a.size());
+  mh4(id_b, representation_b.data(), representation_b.size());
+  ASSERT_NE(0, memcmp(id_a, id_b, sizeof(id_a)));
+
+  auto deliver_fragment = [&](const std::array<uint8_t, 300>& representation,
+                              const uint8_t id[4], uint8_t fragment) {
+    const uint32_t offset = (uint32_t)fragment * OTA_FRAG_DATA_V2;
+    const uint16_t length = (uint16_t)std::min<uint32_t>(OTA_FRAG_DATA_V2,
+                                                         representation.size() - offset);
+    std::array<uint8_t, OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2> body{};
+    memcpy(body.data(), id, OTA_DATA_V2_STREAM_ID_BYTES);
+    memcpy(body.data() + OTA_DATA_V2_STREAM_ID_BYTES, representation.data() + offset, length);
+    uint16_t descriptor = 0;
+    if (!ota_data_v2_pack(fragment, (uint16_t)representation.size(), true, descriptor)) return false;
+    DataMsg data;
+    memcpy(data.manifest_id, manifest.merkle_root, 4);
+    data.block_idx = 0;
+    data.frag_off = descriptor;
+    data.data = body.data();
+    data.data_len = (uint16_t)(OTA_DATA_V2_STREAM_ID_BYTES + length);
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    const uint16_t wire_len = encode_data(wire, sizeof(wire), data);
+    return wire_len != 0 && client.on_message(wire, wire_len);
+  };
+
+  ASSERT_TRUE(deliver_fragment(representation_a, id_a, 0));
+  EXPECT_FALSE(deliver_fragment(representation_b, id_b, 1)); // valid stream, wrong representation id
+  ASSERT_TRUE(deliver_fragment(representation_a, id_a, 1));
+
+  std::vector<uint8_t> scratch(manifest.block_count * 4);
+  uint8_t siblings[32 * 4];
+  const uint8_t sibling_count = merkle_gen_proof(
+      manifest.leaves, manifest.block_count, 0, scratch.data(), siblings);
+  ProofMsg proof;
+  memcpy(proof.manifest_id, manifest.merkle_root, 4);
+  proof.block_idx = 0;
+  proof.n_proof = sibling_count;
+  proof.proof = siblings;
+  uint8_t proof_wire[MAX_PACKET_PAYLOAD];
+  const uint16_t proof_len = encode_proof(proof_wire, sizeof(proof_wire), proof);
+  ASSERT_GT(proof_len, 0);
+  ASSERT_TRUE(client.on_message(proof_wire, proof_len));
+  EXPECT_EQ(client.blocksHave(), 1u);
+  const uint32_t payload_offset = (uint32_t)(manifest.payload - SIM_MOTA_1K);
+  EXPECT_EQ(0, memcmp(store.data() + payload_offset, manifest.payload, manifest.block_size()));
 }
 
 TEST(OtaTransfer, NewClientFallsBackWhenLegacySourceServesOnlyFirstWindowRow) {
@@ -2428,6 +3105,34 @@ TEST(OtaFolder, ServesSelfPlusFolderAndFetchesExternal) {
   ASSERT_TRUE(mota_parse(store.data(), store.staged_size(), got));
   EXPECT_TRUE(mota_check_root(got));
   EXPECT_TRUE(mota_check_image_hash_full(got));
+}
+
+TEST(OtaFolder, OldHostCapabilityZeroSkipsUnsupportedDeflateOperation) {
+  g_q.clear();
+  OtaManager server, client;
+  OtaStoreRam<4096> store;
+  SendTo to_client{&client}, to_server{&server};
+  server.begin(0, sim_send, &to_client);
+  client.begin(SIM_TARGET_ID, sim_send, &to_server);
+  client.set_transport_deflate_decoder(ota_transport_inflate);
+  client.set_fetch_store(&store);
+
+  RamMotaSource old_host;
+  old_host.add(SIM_MOTA_1K, SIM_MOTA_1K_LEN);
+  old_host.setSourceCaps(0);                                // deployed descriptor's reserved byte
+  ASSERT_TRUE(server.add_source(&old_host));
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+
+  server.announce();
+  pump(client, &server);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  pump(client, &server);
+
+  EXPECT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  EXPECT_EQ(old_host.deflateCalls(), 0u);                   // no per-block timeout on unknown op 0x09
+  ASSERT_EQ(store.staged_size(), SIM_MOTA_1K_LEN);
+  EXPECT_EQ(0, memcmp(store.data(), SIM_MOTA_1K, SIM_MOTA_1K_LEN));
 }
 
 TEST(OtaCatalog, QueryCanRequestOnlyMissingHaveFragment) {

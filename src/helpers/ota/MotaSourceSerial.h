@@ -22,6 +22,8 @@ public:
   uint8_t count() override;
   bool    describe(uint8_t idx, MotaDesc& out) override;
   bool    read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) override;
+  bool    read_deflated_block(uint8_t idx, uint16_t block, uint8_t* buf,
+                              uint16_t cap, uint16_t* len) override;
 
 private:
   // Send a request (op+args) and read its response header; on OK, `payload` (if non-null) receives

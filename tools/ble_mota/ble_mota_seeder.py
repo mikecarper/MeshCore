@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import dataclasses
+import functools
 import shutil
 import signal
 import struct
 import subprocess
 import sys
+import zlib
 from pathlib import Path
 
 BLEAK_IMPORT_ERROR: ImportError | None = None
@@ -50,10 +52,13 @@ MOTA_FLAG_ANOTHER_LINK_ACTIVE = 0x04
 OP_COUNT = 0x01
 OP_DESCRIBE = 0x02
 OP_READ = 0x03
+OP_DEFLATE_BLOCK = 0x09
 STATUS_OK = 0
 STATUS_ERR = 1
 MOTA_READ_MAX = 192
+MOTA_DEFLATE_CHUNK_MAX = 190
 MOTA_DESC_WIRE = 38
+MOTA_SOURCE_CAP_DEFLATE_BLOCK = 0x01
 MOTA_HEADER_LEN = 8
 MOTA_MANIFEST_LEN = 197
 MOTA_TRAILER = b"vk496"
@@ -71,6 +76,28 @@ class MotaFile:
     path: Path
     size: int
     descriptor: bytes
+
+    @functools.lru_cache(maxsize=16)
+    def deflated_block(self, block_index: int) -> bytes | None:
+        """Return one smaller raw-DEFLATE payload block, cached for chunk reads."""
+        block_count = struct.unpack_from("<I", self.descriptor, 22)[0]
+        payload_offset = struct.unpack_from("<I", self.descriptor, 26)[0]
+        payload_size = struct.unpack_from("<I", self.descriptor, 30)[0]
+        block_size = 1 << self.descriptor[34]
+        if block_index < 0 or block_index >= block_count:
+            return None
+        raw_offset = block_index * block_size
+        raw_length = min(block_size, payload_size - raw_offset)
+        if raw_length <= 0 or raw_length > 1024 or self.path.stat().st_size != self.size:
+            return None
+        with self.path.open("rb") as stream:
+            stream.seek(payload_offset + raw_offset)
+            raw = stream.read(raw_length)
+        if len(raw) != raw_length:
+            return None
+        compressor = zlib.compressobj(level=9, method=zlib.DEFLATED, wbits=-10)
+        encoded = compressor.compress(raw) + compressor.flush()
+        return encoded if 0 < len(encoded) < len(raw) else None
 
     @staticmethod
     def load(path: Path) -> "MotaFile":
@@ -117,6 +144,7 @@ class MotaFile:
         struct.pack_into("<I", descriptor, 26, payload_offset)
         struct.pack_into("<I", descriptor, 30, payload_size)
         descriptor[34] = block_size_log2
+        descriptor[35] = MOTA_SOURCE_CAP_DEFLATE_BLOCK
         return MotaFile(path=path, size=size, descriptor=bytes(descriptor))
 
 
@@ -195,6 +223,21 @@ class Catalog:
                                 status = STATUS_OK
                     except OSError:
                         payload = b""
+        elif op == OP_DEFLATE_BLOCK and len(args) == 7:
+            index = args[0]
+            block = struct.unpack_from("<H", args, 1)[0]
+            offset = struct.unpack_from("<H", args, 3)[0]
+            length = struct.unpack_from("<H", args, 5)[0]
+            if index < len(self.files) and length <= MOTA_DEFLATE_CHUNK_MAX:
+                try:
+                    encoded = self.files[index].deflated_block(block)
+                    end = offset + length
+                    if (encoded is not None and end >= offset and end <= len(encoded)
+                            and (length != 0 or offset == 0)):
+                        payload = struct.pack("<H", len(encoded)) + encoded[offset:end]
+                        status = STATUS_OK
+                except (OSError, zlib.error):
+                    payload = b""
 
         response = bytearray(b"ms")
         response.extend((op, status))
@@ -207,6 +250,11 @@ class Catalog:
                 detail = f"index={args[0]}"
             elif op == OP_READ and len(args) == 7:
                 detail = f"index={args[0]} offset={struct.unpack_from('<I', args, 1)[0]}"
+            elif op == OP_DEFLATE_BLOCK and len(args) == 7:
+                detail = (
+                    f"index={args[0]} block={struct.unpack_from('<H', args, 1)[0]} "
+                    f"offset={struct.unpack_from('<H', args, 3)[0]}"
+                )
             else:
                 detail = "invalid"
             print(f"mOTA op=0x{op:02x} {detail} status={status}")

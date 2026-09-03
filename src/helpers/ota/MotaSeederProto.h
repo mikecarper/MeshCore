@@ -17,10 +17,17 @@
 //   OP_COUNT     0x01  args: -            resp payload: count(1)
 //   OP_DESCRIBE  0x02  args: idx(1)       resp payload: MotaDesc wire (38 B, see below) [status OK]
 //   OP_READ      0x03  args: idx(1) off(4) len(2)   resp payload: len bytes [status OK]
+//   OP_DEFLATE_BLOCK 0x09 args: idx(1) block(2) off(2) len(2)
+//                           resp payload: total_encoded_len(2) + len encoded bytes [status OK]
+//                     `len=0` queries the size. Chunks are <=190 bytes so the full response payload remains
+//                     <=192. The host returns ERR unless independent raw-RFC1951 compression is smaller than
+//                     the original logical block; callers then use ordinary OP_READ/raw OTA_DATA v2.
 //
 //   MotaDesc wire (38 B): mid[4] target_id(4) fw_version(4) codec(1) flags(1) total_size(4)
 //                         leaves_off(4) block_count(4) payload_off(4) payload_size(4)
-//                         block_size_log2(1) reserved(3)
+//                         block_size_log2(1) source_caps(1) reserved(2)
+//   source_caps bit 0 = OP_DEFLATE_BLOCK is implemented. Deployed hosts send zero, so a new node never
+//                       waits on an unsupported operation during a rolling host upgrade.
 //
 // --- STORAGE ops (device -> host WRITE): "pull to folder". The device is fetching a `.mota` off the mesh
 // (e.g. a neighbour's self-served firmware it has no local copy of) and streams it into the host folder as
@@ -52,14 +59,16 @@ static const uint8_t  MS_OP_BEGIN    = 0x05;   // storage: create/truncate <mid>
 static const uint8_t  MS_OP_WRITE    = 0x06;   // storage: write bytes at offset
 static const uint8_t  MS_OP_SREAD    = 0x07;   // storage: read bytes back (resume: recompute missing blocks)
 static const uint8_t  MS_OP_FIN      = 0x08;   // storage: transfer complete - validate + make servable
+static const uint8_t  MS_OP_DEFLATE_BLOCK = 0x09; // source: independently compressed payload block/chunk
 
 static const uint8_t  MS_STATUS_OK   = 0x00;
 static const uint8_t  MS_STATUS_ERR  = 0x01;
 
-static const uint16_t MOTA_DESC_WIRE = 38;   // existing reserved bytes carry block geometry; wire size is unchanged
+static const uint16_t MOTA_DESC_WIRE = 38;   // existing reserved bytes carry geometry/caps; wire size is unchanged
 // Keep host-to-device replies below common 256-byte USB CDC/UART receive rings. Manifest leaves can exceed
 // that ring, and payload reads are normally 1 KB; splitting them here prevents silent overrun/checksum loss.
 static const uint16_t MOTA_SEEDER_READ_MAX = 192;
+static const uint16_t MOTA_SEEDER_DEFLATE_CHUNK_MAX = 190; // plus uint16 total length = 192-byte response payload
 static const uint16_t MOTA_SEEDER_WRITE_MAX = 512;  // max data bytes per OP_WRITE/OP_SREAD (bounds frames)
 
 } // namespace ota

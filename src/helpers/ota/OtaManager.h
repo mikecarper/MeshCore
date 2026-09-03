@@ -31,6 +31,22 @@ typedef bool (*OtaSend)(void* ctx, const uint8_t* msg, uint16_t len, bool flood)
 // error. nullptr means the payload is a contiguous RAM buffer (the staged `.mota`).
 typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len);
 
+// Optional full raw-RFC1951 transport codec (stored, fixed-Huffman, and dynamic-Huffman blocks). Compression
+// is a wire optimization only: the receiver inflates exactly one authenticated logical block before Merkle
+// verification and writes the original `.mota` bytes to its store. Returning false, an empty result, or a
+// result no smaller than the source selects raw v2 DATA. A decoder must reject output overflow, truncated
+// streams, and trailing compressed input; OtaManager also checks that it produced exactly the manifest-derived
+// block length before accepting a proof.
+typedef bool (*OtaDeflateEncodeFn)(void* ctx, const uint8_t* src, uint16_t src_len,
+                                   uint8_t* dst, uint16_t dst_cap, uint16_t* dst_len);
+typedef bool (*OtaDeflateDecodeFn)(void* ctx, const uint8_t* src, uint16_t src_len,
+                                   uint8_t* dst, uint16_t dst_cap, uint16_t* dst_len);
+// Optional source-side fast path for a host/archive that already has an independently compressed logical
+// block. It avoids carrying a DEFLATE encoder on the embedded seeder. The result has the same strict bounds
+// and deterministic-per-block contract as OtaDeflateEncodeFn.
+typedef bool (*ServeDeflateReadFn)(void* ctx, uint16_t block, uint8_t* dst,
+                                   uint16_t dst_cap, uint16_t* dst_len);
+
 #ifndef OTA_PROOFGEN_SCRATCH
   #if defined(OTA_SD_STORE)
     #define OTA_PROOFGEN_SCRATCH 8192  // SD archive can seed <=2048 blocks (about 2 MB at 1 KB/block)
@@ -147,7 +163,10 @@ typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len)
 #define OTA_SERVE_SUPPRESS_MS 1500  // don't re-serve a block whose DATA we just overheard another holder send
 #endif                              // (so multiple sources of the same mota don't duplicate-broadcast it)
 #ifndef OTA_FRAG_DATA
-#define OTA_FRAG_DATA 160           // data bytes per DATA fragment (<= MAX_PACKET_PAYLOAD - 9-byte header)
+#define OTA_FRAG_DATA 160           // deployed legacy DATA geometry; never change in place
+#endif
+#ifndef OTA_FRAG_DATA_V2
+#define OTA_FRAG_DATA_V2 171        // negotiated DATA geometry (13-byte overhead => 184-byte packet payload)
 #endif
 #ifndef OTA_SERVE_QUEUE
 #define OTA_SERVE_QUEUE 4           // requested blocks retained without allocating one packet per fragment
@@ -245,6 +264,8 @@ public:
     uint16_t      mfl = 0;                 // manifest-minus-leaves length (the OTA_MANIFEST payload)
     ServeReadFn   read = nullptr;          // payload reader (nullptr => m.payload is contiguous in RAM)
     void*         read_ctx = nullptr;
+    ServeDeflateReadFn read_deflated = nullptr; // optional host/source-generated raw-DEFLATE block
+    void*         deflate_ctx = nullptr;
     uint8_t*      scratch = nullptr;       // proof-gen working buffer (>= block_count*4)
     uint32_t      scratch_sz = 0;
   };
@@ -302,6 +323,18 @@ public:
 
   // --- fetch ---  Provide the staging store; fetching starts on a matching OTA_ADV.
   void set_fetch_store(OtaStore* s) { _fetch = s; }
+  // Install either side of the optional per-block transport codec. A receiver with no decoder still uses
+  // negotiated 171-byte raw DATA; a source with no encoder automatically returns raw DATA. Context lifetimes
+  // are caller-owned and independent because a relay/seeder may fetch and serve at the same time.
+  void set_transport_deflate_encoder(OtaDeflateEncodeFn fn, void* ctx = nullptr) {
+    _deflate_encode = fn; _deflate_encode_ctx = ctx;
+  }
+  void set_transport_deflate_decoder(OtaDeflateDecodeFn fn, void* ctx = nullptr) {
+    _deflate_decode = fn; _deflate_decode_ctx = ctx;
+  }
+  // Defaults on for moving-forward 171-byte transfers. This switch exists for qualification and emergency
+  // rollback; disabling it produces byte-for-byte legacy OTA_REQ/OTA_DATA behavior.
+  void set_wire_v2_enabled(bool on) { _wire_v2_enabled = on; }
 
   // Resume a fetch from a container already persisted in the store (after a reboot). want_mid=nullptr is
   // automatic adoption and rechecks current autofetch/target/version policy; a non-null MID is an explicit
@@ -441,6 +474,7 @@ public:
     _lv_retries = 0; _loop_last_lvmask = 0;
     _resume_verify_idx = 0; _resume_invalidated = false;
     _resume_merkle.reset();
+    _wire_empty_stalls = 0;
   }
 
   FetchState fetchState() const { return _fstate; }
@@ -525,7 +559,10 @@ private:
   bool loadSource(const ServeEntry& e);                   // load an external mota into _srcv (head+leaves)
   void registerSelfEntry();                               // (re)build entry[0] from view0
   static bool srcReadTramp(void* c, uint32_t off, uint8_t* buf, uint32_t len);  // source payload reader
-  bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask);
+  static bool srcDeflateReadTramp(void* c, uint16_t block, uint8_t* buf,
+                                  uint16_t cap, uint16_t* len);
+  bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask,
+                     bool wire_v2 = false, bool allow_deflate = false);
   bool queueManifestJob(const uint8_t* mid, uint16_t want_mask);
   uint32_t manifestEgressGapMs() const;
   uint32_t proofEgressGapMs() const;
@@ -556,6 +593,10 @@ private:
   bool requestFlight();                                   // send all newly assigned blocks in one OTA_REQ
   bool fillPipeline();                                    // assign + send a new flight only when the old one ended
   void requestMissing();                                  // start a flight, or recover one stalled slot
+  uint16_t wireRequestMask(uint32_t block, uint16_t need, uint16_t received,
+                           uint16_t encoded_len) const;
+  void downgradeWireToLegacy();                           // old source answered/ignored the v2 request profile
+  bool anyWireDataReceived() const;
   uint32_t blockLen(uint32_t i) const;
 
   uint32_t _target = 0;
@@ -593,6 +634,8 @@ private:
     uint16_t emitted_mask = 0;
     uint32_t proof_ready_at = 0;
     bool proof_requested = false;
+    bool wire_v2 = false;
+    bool allow_deflate = false;
   };
   ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
   uint8_t    _n_serve_jobs = 0;
@@ -607,6 +650,15 @@ private:
   uint8_t    _serve_block[OTA_MAX_BLOCK];
   uint16_t   _serve_block_len = 0;
   bool       _serve_block_loaded = false;
+  const uint8_t* _serve_wire_block = nullptr;       // raw _serve_block or DEFLATE bytes in ServeView::scratch
+  uint16_t   _serve_wire_len = 0;
+  bool       _serve_wire_deflated = false;
+  uint8_t    _serve_wire_id[4] = {0};              // SHA-256:4 of this exact encoded representation
+
+  OtaDeflateEncodeFn _deflate_encode = nullptr;
+  void*              _deflate_encode_ctx = nullptr;
+  OtaDeflateDecodeFn _deflate_decode = nullptr;
+  void*              _deflate_decode_ctx = nullptr;
 
   // fetch
   OtaStore*  _fetch = nullptr;
@@ -638,6 +690,11 @@ private:
   uint16_t   _advert_mins = OTA_ADVERT_INTERVAL_MINS;    // beacon re-advertise cadence, minutes; 0=off (persisted)
   uint8_t    _max_hops = OTA_HOP_LIMIT_DEFAULT;          // OTA flood reach in hops; 0=direct only (persisted)
   uint8_t    _fflags = 0;                       // flags of the manifest currently being fetched
+  bool       _wire_v2_enabled = true;            // advertise v2 in OTA_REQ while retaining transparent fallback
+  bool       _wire_v2_session = true;            // false after an old source responds or the first request stalls
+  bool       _wire_v2_confirmed = false;          // at least one structurally valid v2 DATA packet was observed
+  bool       _wire_allow_deflate = false;        // session may request compressed blocks only with a decoder
+  uint8_t    _wire_empty_stalls = 0;             // confirmed v2 source may vanish between otherwise empty flights
   // Bounded adaptive multi-block client flight. Each slot independently reassembles DATA and awaits its
   // Merkle proof. One append-only OTA_REQ packet opens the whole flight; the receiver then stays quiet until
   // every slot completes or an airtime-aware deadline expires. Clean flights grow 1->2->3->4; any recovery
@@ -648,6 +705,11 @@ private:
     uint16_t need = 0;                         // full bitmap for this block
     bool awaiting_proof = false;
     uint32_t proof_request_at = 0;              // proactive-proof grace deadline; 0 after fallback is sent
+    uint16_t encoded_len = 0;                   // v2 wire length; zero until the first DATA fragment establishes it
+    bool wire_v2 = false;
+    bool deflated = false;
+    uint8_t stream_id[4] = {0};                 // locks fragments to one encoded representation across seeders
+    uint8_t wire_stalls = 0;                    // eventually unlock a vanished representation and retry cleanly
     uint8_t buf[OTA_MAX_BLOCK];
   };
   ReassemblySlot _reasm[OTA_FETCH_PIPELINE];
