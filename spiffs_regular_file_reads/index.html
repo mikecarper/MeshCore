@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_nrf52_bootloader_update/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/spiffs_regular_file_reads/">
       
       
-        <link rel="prev" href="../ota_meshtower_v2_sdcard/">
+        <link rel="prev" href="../rak3401_mota_chain/">
       
       
-        <link rel="next" href="../ota_nrf52_qspi/">
+        <link rel="next" href="../stats_binary_frames/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>nRF52 bootloader updates over LoRa - MeshCore Docs</title>
+        <title>SPIFFS regular-file reads and login replay state - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#nrf52-bootloader-updates-over-lora" class="md-skip">
+        <a href="#spiffs-regular-file-reads-and-login-replay-state" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              nRF52 bootloader updates over LoRa
+              SPIFFS regular-file reads and login replay state
             
           </span>
         </div>
@@ -931,37 +931,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    nRF52 bootloader updates over LoRa
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
         
   
   
@@ -977,81 +950,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#storage-layouts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage layouts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#internal-flash-target-inventory" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Internal-flash target inventory
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#embedded-continuity-and-version-policy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Embedded continuity and version policy
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#explicit-install-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Explicit install workflow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#failure-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Failure behavior
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1249,10 +1147,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../spiffs_regular_file_reads/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPIFFS regular-file reads and login replay state
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1268,6 +1193,59 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#regression-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regression checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1407,10 +1385,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#storage-layouts" class="md-nav__link">
+  <a href="#fix" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Storage layouts
+        Fix
       
     </span>
   </a>
@@ -1418,10 +1396,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#internal-flash-target-inventory" class="md-nav__link">
+  <a href="#audit-boundary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Internal-flash target inventory
+        Audit boundary
       
     </span>
   </a>
@@ -1429,32 +1407,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#embedded-continuity-and-version-policy" class="md-nav__link">
+  <a href="#regression-checks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Embedded continuity and version policy
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#explicit-install-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Explicit install workflow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#failure-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Failure behavior
+        Regression checks
       
     </span>
   </a>
@@ -1478,7 +1434,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_nrf52_bootloader_update.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/spiffs_regular_file_reads.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1486,312 +1442,59 @@
   
 
 
-<h1 id="nrf52-bootloader-updates-over-lora">nRF52 bootloader updates over LoRa</h1>
-<p>Selected nRF52840 repeater LoRa-OTA builds can replace their matching OTAFIX
-bootloader without replacing the running application. This is a privileged
-maintenance path, not a normal firmware update. A stock bootloader must first
-be replaced with the exact ABI-3 self-update-capable OTAFIX build over USB/BLE
-DFU or SWD. MeshTower SD also requires the BLM2 retained-auth version to be
-provisioned locally before either application or bootloader OTA.</p>
-<h2 id="storage-layouts">Storage layouts</h2>
-<table>
-<thead>
-<tr>
-<th>Layout</th>
-<th style="text-align: right;">Application limit</th>
-<th style="text-align: right;">Staged boot package</th>
-<th style="text-align: right;">Work area</th>
-<th>Handoff / capability</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>XIAO-module raw QSPI</td>
-<td style="text-align: right;">below <code>0xE0000</code></td>
-<td style="text-align: right;">external QSPI offset 0</td>
-<td style="text-align: right;">dedicated internal <code>0xE0000..0xEA000</code> scratch</td>
-<td>source <code>0x51</code>, flags <code>0x0E</code></td>
-</tr>
-<tr>
-<td>Qualified internal-flash target</td>
-<td style="text-align: right;">normal <code>0xED000</code> limit</td>
-<td style="text-align: right;">shared internal slot, exact start <code>0xE2000</code></td>
-<td style="text-align: right;">the same eleven-page slot; no second reservation</td>
-<td>source <code>0xED</code>, flags <code>0x0A</code></td>
-</tr>
-<tr>
-<td>MeshTower V2 microSD</td>
-<td style="text-align: right;">normal <code>0xED000</code> limit</td>
-<td style="text-align: right;">contiguous <code>/meshcore-ota.mota</code></td>
-<td style="text-align: right;">dynamic internal <code>0xE0000..0xEA000</code> scratch; live image must end by <code>0xE0000</code></td>
-<td>source <code>0x53</code>, flags <code>0x09</code></td>
-</tr>
-</tbody>
-</table>
-<p>The exact SD target is
-<code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>. Its normal
-application FULL and delta updates continue to use the SD file without the
-bootloader-update scratch restriction. For a bootloader package only, both
-MeshCore and OTAFIX require a hash-valid live <code>EndF</code> proving the complete
-running image ends at or below <code>0xE0000</code>. If boot settings carry a nonzero app
-bank CRC, the recorded bank size must also cover that full EndF-inclusive
-image and stop by <code>0xE0000</code>; erased or explicitly CRC-disabled settings remain
-valid. OTAFIX then copies the verified 40
-KiB payload from SD into <code>0xE0000..0xEA000</code> and uses the MBR copy operation to
-replace <code>0xF4000..0xFE000</code>. The application linker remains at <code>0xED000</code>; a
-future application extending above <code>0xE0000</code> can still use application mOTA
-but must update its bootloader through local DFU/SWD.</p>
-<p>The removable SD authorization is fail-closed for both application and
-bootloader packages. MeshCore directly authenticates one exact signed
-manifest, requires the streamed copy to remain byte-identical, verifies all
-leaves/payload/image bytes, and computes a normalized full-container SHA-256 in
-that same pass (<code>APRV</code> bytes are treated as zero). After syncing <code>APRV</code>, it
-publishes a 72-byte <code>MOTASDA2</code> record in reset-retained RAM at <code>0x20006008</code>.
-That record binds purpose/format, first LBA, sector count, total length, card
-sector count, and the normalized digest. OTAFIX copies, validates, and clears
-the record before SD access. A card swap/mutation or a power cycle therefore
-fails closed; there is no general sector-1 ownership inference.</p>
-<p>For fmt3, MeshCore also writes and readback-verifies a 64-byte <code>MOTASDBL</code> token
-at <code>0xE0000</code>. That token contains the exact container length and the exact
-authenticated signed manifest <code>image_hash</code>. OTAFIX requires the same hash in
-the parsed manifest, streamed payload, and final scratch image. The page is
-consumed as scratch during success and is not permanently reserved.</p>
-<p>The first BLM2-capable MeshTower bootloader cannot be delivered to preview.12
-through the retained-RAM protocol that preview.12 predates. MeshCore does not
-write a raw-sector compatibility record because a blank sector is not proof of
-ownership. Upgrade preview.12 through USB/BLE DFU or SWD. Both fmt2 application
-and fmt3 bootloader OTA then require the installed BLM2 metadata to match the
-live SoftDevice/application layout; neither MeshCore nor OTAFIX uses sector 1.</p>
-<p>The internal path does not change the application linker or permanently set
-aside separate app-OTA, boot-package, and scratch regions. The ordinary
-bottom-aligned internal store holds one container at a time: either an
-application delta or a bootloader package.</p>
-<p>The exact bootloader container is 41,330 bytes: 365 bytes of signed mOTA
-metadata, a 40 KiB payload, and the five-byte trailer. Below the normal
-<code>0xED000</code> store ceiling it bottom-aligns at <code>0xE2000</code>. Admission requires a
-hash-valid live <code>EndF</code> proving the current application, including its trailer,
-ends at or before <code>0xE2000</code>. OTAFIX then reads each source window before
-erasing and compacts the payload forward in place to the page-aligned raw range
-<code>0xE2000..0xEC000</code>; it verifies every page and the whole image before asking the
-MBR to copy that image over <code>0xF4000..0xFE000</code>.</p>
-<p>An ordinary application delta can be smaller or larger than this eleven-page
-shape. It bottom-aligns dynamically below <code>0xED000</code> and may begin below
-<code>0xE2000</code>; its detools workspace must stop at its actual container start, while
-the reconstructed application must stop below <code>0xED000</code>. The two package kinds
-are mutually exclusive because they use the same store.</p>
-<p>For internal-self-update builds, an absent or corrupt live <code>EndF</code> disables
-<strong>all</strong> internal staging before the first erase. The older 608 KiB rescue
-estimate is unsafe when a normally linked application may extend to
-<code>0xED000</code>. Builds without this feature retain the legacy rescue behavior.</p>
-<h2 id="internal-flash-target-inventory">Internal-flash target inventory</h2>
-<p>The release builder consumes the allowlist in
-<code>tools/mota/nrf52_internal_bootloader_targets.txt</code>. Ten names are also literal
-PlatformIO environments and are enabled automatically when built directly.
-The other eleven are release aliases assembled from a base environment plus
-the lean OTA overlay; build them through <code>build.sh</code>, which passes the same
-allowlist decision to the common pre-build guard. These lean repeater/bridge
-targets have no OTA-owned SD/QSPI store and have an exact curated OTAFIX
-manifest identity:</p>
-<table>
-<thead>
-<tr>
-<th>Build target(s)</th>
-<th>Installed OTAFIX identity</th>
-<th style="text-align: right;">Boot target ID</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Heltec_tower_v2_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0071 / TOWER_V2_OTA</code></td>
-<td style="text-align: right;"><code>1150F50E</code></td>
-</tr>
-<tr>
-<td>T096 lean repeater and RS232 bridge</td>
-<td><code>239A0071 / T096_DFU</code></td>
-<td style="text-align: right;"><code>42354C85</code></td>
-</tr>
-<tr>
-<td><code>Heltec_t1_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0071 / T1_DFU</code></td>
-<td style="text-align: right;"><code>FC556FFC</code></td>
-</tr>
-<tr>
-<td>T114 display and without-display lean repeaters</td>
-<td><code>239A0071 / T114_DFU</code></td>
-<td style="text-align: right;"><code>0C3F2902</code></td>
-</tr>
-<tr>
-<td><code>Mesh_pocket_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0071 / MESH_POCKET_OTA</code></td>
-<td style="text-align: right;"><code>059277F4</code></td>
-</tr>
-<tr>
-<td><code>KeepteenLT1_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A00B3 / KeepteenLT1_OTA</code></td>
-<td style="text-align: right;"><code>DB2E7B51</code></td>
-</tr>
-<tr>
-<td><code>Minewsemi_me25ls01_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0029 / MX25_DFU</code></td>
-<td style="text-align: right;"><code>026AA982</code></td>
-</tr>
-<tr>
-<td><code>ProMicro_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A00B3 / PROM_DFU</code></td>
-<td style="text-align: right;"><code>AF79E8CC</code></td>
-</tr>
-<tr>
-<td><code>t1000e_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>28860057 / T1KE_DFU</code></td>
-<td style="text-align: right;"><code>E6F5F03F</code></td>
-</tr>
-<tr>
-<td><code>ThinkNode_M3_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A00DA / TNM3_DFU</code></td>
-<td style="text-align: right;"><code>0CA41DB2</code></td>
-</tr>
-<tr>
-<td><code>RAK_3401_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0029 / 3401_DFU</code></td>
-<td style="text-align: right;"><code>23818A80</code></td>
-</tr>
-<tr>
-<td>RAK4631 lean repeater and both lean RS232 bridges</td>
-<td><code>239A0029 / 4631_DFU</code></td>
-<td style="text-align: right;"><code>2D0DF000</code></td>
-</tr>
-<tr>
-<td>GAT562 30S/Tracker Pro/EVB Pro lean targets</td>
-<td><code>239A0029 / GAT562_DFU</code></td>
-<td style="text-align: right;"><code>D50D2D44</code></td>
-</tr>
-<tr>
-<td><code>R1Neo_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0029 / 4631_DFU</code></td>
-<td style="text-align: right;"><code>2D0DF000</code></td>
-</tr>
-<tr>
-<td><code>RAK_WisMesh_Tag_repeater_lora_ota_no_external_sensors</code></td>
-<td><code>239A0029 / RTAG_DFU</code></td>
-<td style="text-align: right;"><code>C72E9C9C</code></td>
-</tr>
-</tbody>
-</table>
-<p>Board IDs are not globally unique. For generic targets, the signed hardware ID
-is the exact NUL-padded 32-byte value
-<code>NRF_BL_&lt;BOARD_ID&gt;_&lt;DEVICE_NAME&gt;</code>. The wire target is the little-endian first
-four SHA-256 bytes of all 32 padded bytes. The installed and candidate embedded
-manifest pairs must match exactly. XIAO retains its deployed
-<code>XIAO_BL_28860044</code> / <code>XIAO_BL_28860045</code> identity and raw board-ID target.</p>
-<p>The Python reference builder and release tooling audit these boot targets for
-duplicates and collisions with application target IDs. Generic image parsing
-can inspect a future canonical identity, but signing/building a package fails
-until that exact identity is in the qualified inventory.</p>
-<p>Earlier GAT562 installations may report the RAK-compatible <code>4631_DFU</code>
-identity. The installed and candidate identity pair must match exactly, so a
-remote bootloader update cannot migrate one of those devices to <code>GAT562_DFU</code>.
-Provision the GAT562-specific OTAFIX bootloader once through USB/BLE DFU or SWD;
-subsequent signed bootloader mOTA updates use target <code>D50D2D44</code>.</p>
-<h2 id="embedded-continuity-and-version-policy">Embedded continuity and version policy</h2>
-<p>Every remotely supplied successor retains the legacy 44-byte CRC-valid <code>BLMF</code>
-v1 record for identity continuity and diagnostics. Immediately after that
-record is a 32-byte <code>BLM2</code>/<code>SOFT</code> extension. The complete 76-byte envelope is
-fixed at the final raw-image offset <code>0x9FB4</code>; relocated candidates are refused,
-while installed legacy-v1 discovery remains a generic diagnostic scan. The extension carries the actual packed
-bootloader version, SoftDevice family and FWID, application base, layout ABI,
-and zero compatibility/reserved fields; the legacy whole-image CRC covers the
-extension too. Scanners first count CRC-valid 44-byte base manifests, then
-interpret continuity only after one base identity remains. A malformed claimed
-extension therefore cannot make a duplicate identity disappear, and a sole
-half-present extension is rejected rather than treated as legacy.</p>
-<p>MeshCore requires the candidate extension, exact equality between its embedded
-version and the signed outer mOTA version, and exact agreement with the running
-SoftDevice family/FWID/application layout. Qualified internal/QSPI paths may
-bootstrap a CRC-valid installed legacy-v1 image once; the SD path never does
-and requires local BLM2 provisioning. Once the installed bootloader has BLM2
-metadata, the candidate version must be strictly greater. Preview low bytes are <code>1..254</code>, a
-stable release uses <code>0xFF</code>, and low-byte zero or all-ones values are rejected.
-There is no remote rollback/migration override; intentional rollback uses
-USB/BLE DFU or SWD.</p>
-<p>The legacy <code>no_external_sensors</code> profiles trim selected optional environmental
-and ranging drivers to preserve flash headroom; they do not generally disable
-the I2C bus. Reduced RAK3401 and RAK4631 recipes retain INA219, INA226, INA260,
-and INA3221 voltage/current monitors. Those are entries in the optional sensor
-table, not the complete set of I2C consumers: the SSD1306 OLED, supported
-autodiscovered RTCs, and RAK12500 GPS remain separate I2C peripherals where the
-exact board recipe enables them. RAK3401 retains its compatible RAK12500 I2C
-and RAK12501/L76K UART GPS paths in sensor slot A. The plain RAK4631 repeater
-and Serial2 bridge retain GPS. Its RAK12501 path uses Serial1; the explicitly
-compiled Serial1 RS232 bridge therefore omits the combined GPS provider,
-including RAK12500, even though RAK12500 itself is I2C rather than UART.</p>
-<p>The firmware-configured INA3221 and RAK12500 addresses are both <code>0x42</code>. They
-cannot coexist on the same bus at those addresses. Leave RAK12500 at <code>0x42</code>,
-strap INA3221 A0 to SCL for <code>0x43</code>, and use firmware built with
-<code>-DTELEM_INA3221_ADDRESS=0x43</code> when both modules are installed.</p>
-<p>Boards with onboard external flash are not silently redirected to internal
-staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo
-Lite/Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and
-need a separately matched QSPI path where available. Full Companions, other
-SD/QSPI/ExtraFS roles, Ethernet roles, source-only roles, and unqualified
-full-sensor roles are excluded from the internal-flash inventory. The exact
-MeshTower V2 SD role above is separately qualified for its SD path.</p>
-<p>This internal layout is limited to nRF52840 devices with 1 MiB internal flash,
-the exact S140 v6/v7 map, and the 40 KiB boot region at
-<code>0xF4000..0xFE000</code>. nRF52833 and smaller nRF52 parts cannot provide that map
-plus a non-overlapping 41,330-byte live staging slot, so configuration fails
-closed instead of selecting smaller or overlapping geometry.</p>
-<h2 id="explicit-install-workflow">Explicit install workflow</h2>
-<p>Check the installed identity and capability marker:</p>
-<pre><code class="language-text">ota bootloader
-</code></pre>
-<p>The response must show a CRC-valid exact identity, ABI 3 or newer, both FULL
-and INPLACE application codecs (<code>codecs=0x5</code>), and exact flags <code>0x09</code> for
-MeshTower V2 SD, <code>0x0A</code> for internal shared storage, or <code>0x0E</code> for XIAO QSPI. A
-bootloader row is visible in <code>ota ls</code>, but it is never autofetched or
-autoinstalled. Fetch its exact MID, then explicitly arm it:</p>
-<pre><code class="language-text">ota pull &lt;MID8&gt; flash
-# wait for ota status to report the download ready
-ota bootloader
-ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
-</code></pre>
-<p>Copy both confirmation values from the second <code>ota bootloader</code> response.
-Ordinary <code>ota install</code> rejects a bootloader package; the bootloader command
-rejects an application package. The FULL-codec exception exists only for that
-manual bootloader MID. Ordinary application FULL remains disabled on an
-internal single-slot node, bootloader autofetch remains off, and a partial
-bootloader package is not automatically resumed after an application reboot.</p>
-<p>Before writing <code>APRV</code>, the application authenticates and authorizes the
-package: exact v3 geometry, trusted Ed25519 signer, signed/embedded identity,
-one unambiguous capability marker, embedded CRC, sane vectors, complete
-Merkle/payload/image hashes, storage-specific safe live placement, and the
-typed MID/hash confirmation. The manifest root and target inside the received
-manifest must also equal the MID/target that opened the fetch before any store
-is allocated. On SD, <code>APRV</code>, the retained geometry/container authorization,
-and the internal signed-image-hash token are published in that order before
-the reset trigger. OTAFIX consumes that application-written authorization and
-then
-independently rechecks the safety/integrity subset: strict v3 structure,
-canonical identity/capabilities, vectors, full payload SHA, embedded manifest
-CRC, the applicable live <code>EndF</code>/bank-settings no-overlap geometry, the SD token
-binding where applicable, scratch readback, and final
-copy hash. It does not re-run Ed25519, the signer allowlist, Merkle leaves/root,
-or the typed operator confirmation. Success is reported as <code>blup:C8</code>.</p>
-<h2 id="failure-behavior">Failure behavior</h2>
-<p>The feature fails closed when the MCU/map is wrong, required valid <code>EndF</code>
-headroom is insufficient, an unsupported external/ExtraFS role owns the target,
-the exact installed capability marker is absent or ambiguous, identity cannot be derived
-unambiguously, or any package check fails. Before the storage-specific
-scratch/copy step, the application and bootloader are unchanged. OTAFIX
-consumes the trigger and authorization before its first destructive action, so
-an interrupted operation cannot automatically retry a partly consumed
-package. On SD, the retained-RAM authorization is zero-consumed before media
-access; <code>APRV</code> and the fmt3 flash token may persist but are inert without a new
-explicit authenticated re-arm and reset trigger. No SD raw-sector handoff is
-created or consumed.
-Use USB/BLE DFU or SWD for initial provisioning and local recovery.</p>
-<p>For XIAO and ordinary external-QSPI details, see
-<a href="../ota_nrf52_qspi/">nRF52 repeater LoRa OTA with external QSPI</a>.</p>
+<h1 id="spiffs-regular-file-reads-and-login-replay-state">SPIFFS regular-file reads and login replay state</h1>
+<p>Arduino-ESP32 SPIFFS can return a truthy directory handle from a read-open of a
+nonexistent filename. <code>File::operator bool()</code> alone does not prove that a
+regular file exists. A directory's <code>size()</code> and <code>read()</code> are zero.</p>
+<p>The first privileged login on an upgraded G2 encountered this in
+<code>ClientACL::writeClientLoginReplayCeiling()</code>: opening the not-yet-created
+<code>/s_login_replay</code> appeared successful, then subtracting the eight-byte trailer
+from size zero underflowed. Copying the supposed records failed and login was
+rejected. Waiting or changing the repeater clock cannot fix that file-open bug.</p>
+<h2 id="fix">Fix</h2>
+<p>Use <code>mesh::openFileRead()</code> for regular-file reads. It checks existence and
+rejects directory handles, while preserving real empty files. Replay record
+counts also validate the minimum trailer size, record alignment, and maximum
+count before subtraction. An existing replay file that becomes unreadable is
+not treated as a new store.</p>
+<p>No replay records are cleared and authentication is not weakened. Invalid or
+unwritable replay state still fails closed. The first successful privileged
+login creates a 44-byte file: one 36-byte identity/ceiling record plus its
+eight-byte integrity trailer.</p>
+<p>Setting the repeater clock must not clear this file. Admission compares the
+sender's timestamp with that sender's saved boundary, not with the repeater's
+current time. Clearing the boundary could make captured requests reusable. A
+sender clock rollback is a separate condition and remains subject to the saved
+boundary after this fix.</p>
+<p>Companion directory enumeration uses the separate <code>openDirectory()</code> API,
+which deliberately permits SPIFFS virtual directories. Regular-file reads are
+also enforced for companion data, repeater/room logs, flood-rule verification,
+and HTTP packet-log downloads (missing logs return 404; real empty logs 200).</p>
+<h2 id="audit-boundary">Audit boundary</h2>
+<p>The audit covered file opens and size arithmetic in <code>src</code> and <code>examples</code>.
+Identity, region, clock, and common preference loaders already gate reads with
+filesystem existence checks; SPIFFS's <code>exists()</code> explicitly excludes directory
+handles. Relevant MQTT length subtraction follows validated headers and exact
+reads. ESP32 OTA staging uses partition APIs, not these SPIFFS file handles.
+Intentional directory enumeration must not be changed to a regular-file read.</p>
+<h2 id="regression-checks">Regression checks</h2>
+<ul>
+<li><code>test/test_client_acl_spiffs.py</code> compiles the actual <code>ClientACL.cpp</code> against
+  a filesystem that reproduces the misleading missing-file directory handle.
+  It covers first creation, fresh/stale login, reboot ceilings, corrupt and
+  unreadable state, short writes, failed publication, and truncated sources.</li>
+<li><code>test/test_regular_file_reads.py</code> executes production companion readers,
+  flood-file verification, and HTTP log delivery with the same filesystem
+  behavior, including platform-specific file API differences.</li>
+<li><code>test/test_esp32_tinyusb_cooperative_output.py</code> exercises both real role log
+  pumps, including missing logs and bounded output.</li>
+<li>Native ACL transaction, login persistence, and client-path persistence suites
+  retain the existing security and recovery coverage.</li>
+</ul>
+<p>The pre-fix actual ACL code was reproduced as <code>first_login=rejected</code>, one
+missing read-open, and no replay file. The fixed code accepted that identical
+scenario without a missing read-open and created the valid 44-byte record.
+Host simulations do not replace a post-flash LoRa login test on the G2.</p>
 
 
 
