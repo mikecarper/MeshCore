@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import struct
+import time
 import unittest
 
 import esp32_companion_serial_stress as companion
@@ -61,6 +62,18 @@ def fast_config(**overrides):
 
 
 class PayloadValidationTest(unittest.TestCase):
+    def test_automatic_dtr_matches_transport_session_requirements(self):
+        self.assertTrue(hil._resolve_dtr(fast_config(protocol="cli")))
+        self.assertTrue(hil._resolve_dtr(fast_config(
+            port="/dev/serial/by-id/usb-Heltec_HT-n5262G_test-if00",
+        )))
+        self.assertFalse(hil._resolve_dtr(fast_config(
+            port="/dev/serial/by-id/usb-Espressif_USB_JTAG_test-if00",
+        )))
+        self.assertFalse(hil._resolve_dtr(fast_config(
+            protocol="cli", dtr="off",
+        )))
+
     def test_fem_get_and_set_payloads(self):
         self.assertTrue(hil.validate_fem_get_response(b"\x00\x01")["enabled"])
         self.assertFalse(hil.validate_fem_get_response(b"\x00\x00")["enabled"])
@@ -81,6 +94,60 @@ class PayloadValidationTest(unittest.TestCase):
         self.assertEqual(parsed["rx_air_seconds"], 456)
         with self.assertRaises(companion.ProtocolError):
             hil.validate_radio_stats_response(payload[:-1])
+
+    def test_cli_fem_and_radio_stats_parsers(self):
+        self.assertTrue(hil.parse_cli_fem_state("> on"))
+        self.assertFalse(hil.parse_cli_fem_state("off"))
+        parsed = hil.parse_cli_radio_stats(
+            '{"noise_floor":-111,"last_rssi":-70,"last_snr":4.25,'
+            '"tx_air_secs":2,"rx_air_secs":3}'
+        )
+        self.assertEqual(parsed["noise_floor_dbm"], -111)
+        self.assertEqual(parsed["last_snr_db"], 4.25)
+        with self.assertRaises(companion.ProtocolError):
+            hil.parse_cli_fem_state("Error: unsupported")
+        with self.assertRaises(companion.ProtocolError):
+            hil.parse_cli_radio_stats('{"last_rssi":-70}')
+
+    def test_cli_command_retries_missing_reply(self):
+        class FlakyPort:
+            def __init__(self):
+                self.writes = 0
+                self.pending = b""
+
+            def reset_input_buffer(self):
+                self.pending = b""
+
+            def write(self, request):
+                self.writes += 1
+                if self.writes == 1:
+                    self.pending = request
+                else:
+                    self.pending = request + b"  -> Heltec V4.3 OLED\r\n"
+                return len(request)
+
+            def flush(self):
+                pass
+
+            @property
+            def in_waiting(self):
+                return len(self.pending)
+
+            def read(self, size):
+                chunk, self.pending = self.pending[:size], self.pending[size:]
+                if not chunk:
+                    time.sleep(0.0001)
+                return chunk
+
+        config = fast_config(
+            protocol="cli", response_timeout=0.002,
+            read_poll_timeout=0.001, command_attempts=2,
+        )
+        transport = hil.CliFemTransport(config)
+        transport.port = FlakyPort()
+        self.assertEqual(transport._command("board"), "Heltec V4.3 OLED")
+        self.assertEqual(transport.commands_sent, 2)
+        self.assertEqual(transport.command_retries, 1)
 
 
 class FemExerciseTest(unittest.TestCase):

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Verify an external LoRa FEM RX-gain path with paired noise floors.
 
-The test uses the framed Companion USB protocol. Each OFF and ON reading is
-taken after a real state transition so firmware starts a fresh 64-sample noise
-floor calibration. The original FEM state is restored even when the test
-fails. It is intended for T096 and V4/V4.3 KCT8103L RX paths. Mesh Tower V2
-uses its KCT8103L as a transmit PA only and therefore is not an RX-toggle
+The test supports both the framed Companion USB protocol and the line-oriented
+CLI used by repeater, room-server, and sensor builds. Each OFF and ON reading
+is taken after a real state transition so firmware starts a fresh 64-sample
+noise-floor calibration. The original FEM state is restored even when the
+test fails. It is intended for T096 and V4/V4.3 KCT8103L RX paths. Mesh Tower
+V2 uses its KCT8103L as a transmit PA only and therefore is not an RX-toggle
 target.
 
 Examples::
@@ -17,6 +18,10 @@ Examples::
     python tools/hil/fem_noise_floor_test.py \
         --port /dev/serial/by-id/usb-Espressif_USB_JTAG_...-if00 \
         --expect-manufacturer "Heltec V4" --dtr off
+
+    python tools/hil/fem_noise_floor_test.py \
+        --protocol cli --port /dev/serial/by-id/usb-Heltec_HT-n5262G_...-if00 \
+        --expect-manufacturer "Heltec T096"
 
 Exactly one JSON result is written to stdout. A successful test requires the
 reported ON noise floor to rise by at least ``--min-gain-db`` relative to OFF
@@ -52,6 +57,7 @@ class FemTestError(RuntimeError):
 @dataclass(frozen=True)
 class FemTestConfig:
     port: str
+    protocol: str = "companion"
     cycles: int = 3
     settle_seconds: float = 2.5
     min_gain_db: float = 3.0
@@ -62,6 +68,7 @@ class FemTestConfig:
     response_timeout: float = 6.0
     read_poll_timeout: float = 0.05
     write_timeout: float = 2.0
+    command_attempts: int = 3
 
 
 def validate_fem_get_response(payload: bytes) -> Dict[str, Any]:
@@ -139,10 +146,11 @@ def _resolve_dtr(config: FemTestConfig) -> bool:
         return True
     if config.dtr == "off":
         return False
-    # Adafruit nRF52 USB CDC requires DTR before it will return data. ESP32-S3
-    # USB-Serial-JTAG has no DTR concept and should not receive reset-line
-    # signaling from the host.
-    return "HT-n5262" in config.port
+    # Text consoles require an asserted host session on both nRF52 USB CDC and
+    # ESP32-S3 USB-Serial/JTAG. Companion framing on V4 remains usable without
+    # DTR and avoids changing the device's host-session state during a binary
+    # protocol test.
+    return config.protocol == "cli" or "HT-n5262" in config.port
 
 
 class CompanionFemTransport:
@@ -216,11 +224,179 @@ class CompanionFemTransport:
         return asdict(self.counters)
 
 
+def parse_cli_fem_state(reply: str) -> bool:
+    state = reply.strip()
+    if state.startswith(">"):
+        state = state[1:].strip()
+    if state == "on":
+        return True
+    if state == "off":
+        return False
+    raise companion.ProtocolError(f"invalid FEM state reply {reply!r}")
+
+
+def parse_cli_radio_stats(reply: str) -> Dict[str, Any]:
+    text = reply.strip()
+    if text.startswith(">"):
+        text = text[1:].strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise companion.ProtocolError(
+            f"stats-radio reply is not JSON: {reply!r}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise companion.ProtocolError("stats-radio reply is not an object")
+    noise_floor = parsed.get("noise_floor")
+    if not isinstance(noise_floor, (int, float)) or isinstance(noise_floor, bool):
+        raise companion.ProtocolError("stats-radio has no numeric noise_floor")
+    if not -160 <= noise_floor <= -1:
+        raise companion.ProtocolError(
+            f"noise floor {noise_floor} dBm is not a calibrated reading"
+        )
+    return {
+        "noise_floor_dbm": noise_floor,
+        "last_rssi_dbm": parsed.get("last_rssi"),
+        "last_snr_db": parsed.get("last_snr"),
+        "tx_air_seconds": parsed.get("tx_air_secs"),
+        "rx_air_seconds": parsed.get("rx_air_secs"),
+    }
+
+
+class CliFemTransport:
+    _REPLY_PATTERN = re.compile(
+        rb"(?:^|[\r\n])[ \t]*->[ \t]*([^\r\n]*)[\r\n]"
+    )
+
+    def __init__(self, config: FemTestConfig) -> None:
+        self.config = config
+        self.port: Any = None
+        self.commands_sent = 0
+        self.command_retries = 0
+        self.request_bytes_sent = 0
+        self.response_bytes_received = 0
+
+    def open(self) -> None:
+        try:
+            import serial  # type: ignore
+        except ImportError as exc:
+            raise companion.DependencyError(
+                "pyserial is required; install it with "
+                "'python -m pip install pyserial'"
+            ) from exc
+
+        port = serial.Serial()
+        port.port = self.config.port
+        port.baudrate = self.config.baudrate
+        port.timeout = min(
+            self.config.read_poll_timeout, self.config.response_timeout
+        )
+        port.write_timeout = self.config.write_timeout
+        port.dtr = _resolve_dtr(self.config)
+        port.rts = False
+        port.open()
+        self.port = port
+        try:
+            if self.config.open_delay:
+                time.sleep(self.config.open_delay)
+            port.reset_input_buffer()
+            port.reset_output_buffer()
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        if self.port is None:
+            return
+        port, self.port = self.port, None
+        port.flush()
+        port.close()
+        if bool(getattr(port, "is_open", False)):
+            raise FemTestError("serial close returned while the port remained open")
+
+    def _command_once(self, command: str) -> str:
+        if self.port is None:
+            raise FemTestError("serial transport is not open")
+        request = command.encode("utf-8") + b"\r\n"
+        self.port.reset_input_buffer()
+        written = self.port.write(request)
+        if written != len(request):
+            raise FemTestError(
+                f"{command}: serial write accepted {written!r} of "
+                f"{len(request)} bytes"
+            )
+        self.port.flush()
+        self.commands_sent += 1
+        self.request_bytes_sent += len(request)
+
+        deadline = time.monotonic() + self.config.response_timeout
+        response = bytearray()
+        while time.monotonic() < deadline:
+            waiting = max(0, int(getattr(self.port, "in_waiting", 0)))
+            chunk = self.port.read(min(max(waiting, 1), 512))
+            if not chunk:
+                continue
+            response.extend(chunk)
+            self.response_bytes_received += len(chunk)
+            match = self._REPLY_PATTERN.search(response)
+            if match is not None:
+                return match.group(1).decode("utf-8", "replace").strip()
+        tail = bytes(response[-240:]).decode("utf-8", "replace")
+        raise companion.FrameTimeout(
+            f"{command}: timed out waiting for CLI reply; tail={tail!r}"
+        )
+
+    def _command(self, command: str) -> str:
+        last_error: Optional[BaseException] = None
+        for attempt in range(1, self.config.command_attempts + 1):
+            try:
+                return self._command_once(command)
+            except (companion.FrameTimeout, OSError) as exc:
+                last_error = exc
+                if attempt == self.config.command_attempts:
+                    raise
+                self.command_retries += 1
+                time.sleep(0.25)
+        raise FemTestError(f"{command}: retry loop ended unexpectedly: {last_error}")
+
+    def identify(self) -> Dict[str, Any]:
+        return {
+            "manufacturer": self._command("board"),
+            "firmware": self._command("ver"),
+        }
+
+    def get_enabled(self) -> bool:
+        return parse_cli_fem_state(self._command("get radio.fem.rxgain"))
+
+    def set_enabled(self, enabled: bool) -> None:
+        state = "on" if enabled else "off"
+        reply = self._command(f"set radio.fem.rxgain {state}")
+        if not reply.startswith("OK"):
+            raise companion.ProtocolError(
+                f"FEM {state} command failed: {reply}"
+            )
+
+    def radio_stats(self) -> Dict[str, Any]:
+        return parse_cli_radio_stats(self._command("stats-radio"))
+
+    def transport_summary(self) -> Dict[str, Any]:
+        return {
+            "commands_sent": self.commands_sent,
+            "command_retries": self.command_retries,
+            "request_bytes_sent": self.request_bytes_sent,
+            "response_bytes_received": self.response_bytes_received,
+        }
+
+
 def _validate_config(config: FemTestConfig) -> None:
     if not config.port:
         raise ValueError("port must not be empty")
     if config.cycles < 1:
         raise ValueError("cycles must be at least 1")
+    if config.command_attempts < 1:
+        raise ValueError("command_attempts must be at least 1")
+    if config.protocol not in ("companion", "cli"):
+        raise ValueError("protocol must be companion or cli")
     if config.settle_seconds < 0:
         raise ValueError("settle_seconds must not be negative")
     if config.min_gain_db < 0:
@@ -264,7 +440,11 @@ def run_fem_test(
     }
     started = time.monotonic()
     active_phase = "setup"
-    test_transport = transport or CompanionFemTransport(config)
+    test_transport = transport or (
+        CliFemTransport(config)
+        if config.protocol == "cli"
+        else CompanionFemTransport(config)
+    )
     opened = False
     original: Optional[bool] = None
     pending_error: Optional[BaseException] = None
@@ -425,9 +605,13 @@ def _nonnegative_float(value: str) -> float:
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Toggle a Companion board's LoRa FEM and compare noise floors."
+        description="Toggle a board's LoRa FEM and compare noise floors."
     )
     parser.add_argument("--port", required=True)
+    parser.add_argument(
+        "--protocol", choices=("companion", "cli"), default="companion",
+        help="firmware's USB protocol (default: companion)",
+    )
     parser.add_argument("--cycles", type=_positive_int, default=3)
     parser.add_argument(
         "--settle-seconds", type=_nonnegative_float, default=2.5,
@@ -444,6 +628,10 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--response-timeout", type=_positive_float, default=6.0)
     parser.add_argument("--read-poll-timeout", type=_positive_float, default=0.05)
     parser.add_argument("--write-timeout", type=_positive_float, default=2.0)
+    parser.add_argument(
+        "--command-attempts", type=_positive_int, default=3,
+        help="attempt each idempotent CLI command this many times (default: 3)",
+    )
     parser.add_argument("--pretty", action="store_true")
     return parser
 
@@ -452,6 +640,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_argument_parser().parse_args(argv)
     config = FemTestConfig(
         port=args.port,
+        protocol=args.protocol,
         cycles=args.cycles,
         settle_seconds=args.settle_seconds,
         min_gain_db=args.min_gain_db,
@@ -462,6 +651,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         response_timeout=args.response_timeout,
         read_poll_timeout=args.read_poll_timeout,
         write_timeout=args.write_timeout,
+        command_attempts=args.command_attempts,
     )
     summary = run_fem_test(config)
     print(json.dumps(summary, indent=2 if args.pretty else None, sort_keys=True))
