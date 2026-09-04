@@ -1,6 +1,7 @@
 #include "UITask.h"
 #include "target.h"
 #include <Arduino.h>
+#include <helpers/UsbLogging.h>
 #include <helpers/CommonCLI.h>
 #include <helpers/ui/WiFiSetupQrDisplay.h>
 
@@ -42,7 +43,7 @@ void UITask::applyDisplayFlip() {
   _display->setFlipped(_flip_seen != 0);
   // Logged unconditionally: this is persisted config, so it survives a reflash
   // and is otherwise invisible when someone is chasing a wrong orientation.
-  Serial.printf("Display: flip %s\n", _flip_seen ? "on (rotated 180)" : "off");
+  mesh::usbConsolePort().printf("Display: flip %s\n", _flip_seen ? "on (rotated 180)" : "off");
 #ifdef DISPLAY_REDRAW_ON_CHANGE
   _frame_valid = false;
 #endif
@@ -368,7 +369,7 @@ void UITask::toggleDisplay(const char* source) {
     _display->turnOn();
   }
 #ifdef DISPLAY_TOUCH_DEBUG
-  Serial.printf("Display: %s -> %s\n", source, _display->isOn() ? "on" : "off");
+  mesh::usbConsolePort().printf("Display: %s -> %s\n", source, _display->isOn() ? "on" : "off");
 #else
   (void)source;
 #endif
@@ -408,7 +409,7 @@ void UITask::loop() {
 #endif
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
       _display->turnOn();
-      Serial.println("Powering Off");
+      mesh::usbConsolePort().printf("Powering Off\r\n");
       _powering_off_at = millis() + POWEROFF_DELAY;
 #ifdef DISPLAY_REDRAW_ON_CHANGE
       _frame_valid = false;

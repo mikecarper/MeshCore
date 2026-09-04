@@ -465,6 +465,27 @@ public:
   const RecentRepeaterInfo* getRecentRepeaterBySortedIdx(int idx_wanted) const {
     return getRecentRepeaterBySortedIdxFiltered(idx_wanted, NULL, 0);
   }
+  // Advance a cooperative live view in one bounded table scan. Unlike a
+  // rank lookup, this never replays every earlier rank as the list grows.
+  // The caller copies the last accepted row: intervening RX may change the
+  // live ordering, but cannot invalidate that saved sort key or force a
+  // snapshot allocation. The existing paginated/rank APIs are unchanged.
+  const RecentRepeaterInfo* getNextRecentRepeaterBySortKey(
+      const RecentRepeaterInfo* after, int after_index, int& result_index) const {
+    const RecentRepeaterInfo* best = NULL;
+    result_index = -1;
+    for (int i = 0; i < _recent_repeater_count; ++i) {
+      const RecentRepeaterInfo* info = &_recent_repeaters[i];
+      if (after != NULL && !recentRepeaterComesBefore(*after, after_index, *info, i)) {
+        continue;
+      }
+      if (best == NULL || recentRepeaterComesBefore(*info, i, *best, result_index)) {
+        best = info;
+        result_index = i;
+      }
+    }
+    return best;
+  }
   int getRecentRepeaterMatchingCount(const uint8_t* search_prefix,
                                      uint8_t search_prefix_len) const {
     if (_max_recent_repeaters == 0 || search_prefix == NULL

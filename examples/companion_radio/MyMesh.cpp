@@ -7465,7 +7465,7 @@ void MyMesh::checkCLIRescueCmd() {
       output.printf("Listing files in %s\n", path);
 
       // log each file and directory
-      File root = _store->openRead(path);
+      File root = _store->openDirectory(path);
       if (is_fs2 == false) {
         if (root) {
           File file = root.openNextFile();
@@ -7485,7 +7485,7 @@ void MyMesh::checkCLIRescueCmd() {
 
       if (is_fs2 == true || strlen(path) == 0 || strcmp(path, "/") == 0) {
         if (_store->getSecondaryFS() != nullptr) {
-          File root2 = _store->openRead(_store->getSecondaryFS(), path);
+          File root2 = _store->openDirectory(_store->getSecondaryFS(), path);
           File file = root2.openNextFile();
           while (file) {
             if (file.isDirectory()) {

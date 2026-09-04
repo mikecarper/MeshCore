@@ -94,6 +94,7 @@
 #include <helpers/HostCliBridge.h>
 #endif
 #include <helpers/RemoteCliReplyCache.h>
+#include <helpers/ReplayResetCommand.h>
 #include <helpers/RemoteCliRequest.h>
 #include <helpers/TempRadioReplyBarrier.h>
 #include <helpers/TempRadioLeaseDeadline.h>
@@ -287,11 +288,28 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   };
 
   FILESYSTEM* _fs;
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  File serial_log_dump;
+  size_t serial_log_remaining = 0;
+  size_t serial_log_pending_size = 0;
+  char serial_log_pending[640];
+  bool serial_log_active = false;
+  bool serial_log_eof_pending = false;
+  bool serial_log_skip_line = false;
+  int serial_recent_next = -1;
+  int serial_recent_count = 0;
+  bool serial_recent_header = false;
+  bool serial_recent_has_cursor = false;
+  SimpleMeshTables::RecentRepeaterInfo serial_recent_cursor;
+  int serial_recent_cursor_index = -1;
+#endif
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
   mesh::DeferredCliCommand deferred_cli_command;
   mesh::RemoteCliReplyCache remote_cli_reply_cache;
+  mesh::ReplayResetNonce replay_reset_nonce;
+  bool replay_clock_set = false;
   mesh::TempRadioReplyBarrier temp_radio_reply_barrier;
   TransportKey deferred_cli_reply_scope;
   bool deferred_cli_reply_scoped;
@@ -964,6 +982,12 @@ public:
   }
 
   void dumpLogFile() override;
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  // Large local-only replies advance between radio service passes.
+  bool hasPendingSerialOutput() const;
+  void servicePendingSerialOutput();
+  void cancelPendingSerialOutput();
+#endif
   bool setTxPower(int8_t power_dbm) override;
   bool setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) override;
   bool supportsRxPowerSavingRfRxDisable() const override;
@@ -991,10 +1015,17 @@ public:
 
   void handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char* command,
                      char* reply, int gpio_client_index = -1,
-                     uint8_t gpio_path_hash_size = 1);
+                     uint8_t gpio_path_hash_size = 1, bool usb_origin = false);
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     handleCommand(sender_timestamp, NULL, command, reply);
   }
+  // Only the physical console input loop may grant USB-only recovery access.
+  // Web, Ethernet and execCommand callbacks deliberately keep the default.
+  void handleUsbCommand(char* command, char* reply) {
+    handleCommand(0, NULL, command, reply, -1, 1, true);
+  }
+  bool handleReplayResetCommand(ClientInfo* sender, const char* command,
+                                char* reply, bool usb_origin);
 #if MESH_ENABLE_HOST_CLI
   bool handleHostCliSerialReply(const char* command, char* reply);
 #endif

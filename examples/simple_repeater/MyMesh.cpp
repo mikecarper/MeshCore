@@ -1,4 +1,6 @@
 #include "MyMesh.h"
+#include <helpers/UsbLogging.h>
+#include <helpers/FileRead.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <algorithm>
@@ -403,11 +405,7 @@ static bool buildRepeatersChannel(mesh::GroupChannel& channel) {
 }
 
 static File openFloodSettingsRead(FILESYSTEM* fs, const char* filename) {
-#if defined(RP2040_PLATFORM)
-  return fs->open(filename, "r");
-#else
-  return fs->open(filename);
-#endif
+  return mesh::openFileRead(fs, filename);
 }
 
 static File openFloodSettingsWrite(FILESYSTEM* fs, const char* filename) {
@@ -2400,14 +2398,25 @@ void MyMesh::formatRecentRepeatersReply(char *reply, int page,
 void MyMesh::printRecentRepeatersSerial() {
   const SimpleMeshTables* tables = static_cast<const SimpleMeshTables*>(getTables());
   if (tables == NULL) {
-    Serial.println("Error: unsupported");
+    mesh::usbConsolePort().printf("Error: unsupported\r\n");
     return;
   }
 
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  if (hasPendingSerialOutput()) {
+    mesh::usbConsolePort().printf("Err - USB output busy\r\n");
+    return;
+  }
+  serial_recent_count = tables->getRecentRepeaterCount();
+  serial_recent_next = 0;
+  serial_recent_header = true;
+  serial_recent_has_cursor = false;
+  servicePendingSerialOutput();
+#else
   int count = tables->getRecentRepeaterCount();
-  Serial.printf("Recent repeaters (%d):\n", count);
+  mesh::usbConsolePort().printf("Recent repeaters (%d):\n", count);
   if (count <= 0) {
-    Serial.println("-none-");
+    mesh::usbConsolePort().printf("-none-\r\n");
     return;
   }
 
@@ -2419,8 +2428,9 @@ void MyMesh::printRecentRepeatersSerial() {
     mesh::Utils::toHex(prefix, info->prefix, info->prefix_len);
     prefix[info->prefix_len * 2] = 0;
     formatLocalSnrX4(snr, sizeof(snr), info->snr_x4);
-    Serial.printf("%s,%s%s\n", prefix, snr[0] == '-' ? "" : " ", snr);
+    mesh::usbConsolePort().printf("%s,%s%s\n", prefix, snr[0] == '-' ? "" : " ", snr);
   }
+#endif
 }
 
 bool MyMesh::setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) {
@@ -2768,12 +2778,19 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
 
       char *command = (char *)&data[5];
       size_t command_len = strlen(command);
+      mesh::ReplayResetRequest replay_request;
+      const bool replay_command = mesh::parseReplayResetCommand(command, replay_request)
+          != mesh::ReplayResetKind::NotReplay;
+      const bool replay_prepare = replay_request.kind == mesh::ReplayResetKind::ExactKey;
       uint32_t request_id = sender_timestamp;
       mesh::RemoteCliRequest::parse(data, len, 5, request_id);
       uint32_t command_fingerprint =
           mesh::RemoteCliReplyCache::fingerprint(command, command_len);
       const char* cached_response = NULL;
-      const bool cached_retry = remote_cli_reply_cache.lookup(
+      // A cached challenge response can outlive its disclosure window or name
+      // a token from an earlier attempt. Re-evaluate preparation against the
+      // live nonce policy instead; confirmation results remain cacheable.
+      const bool cached_retry = !replay_prepare && remote_cli_reply_cache.lookup(
           client->id.pub_key, request_id, command_fingerprint,
           &cached_response);
 
@@ -2783,7 +2800,11 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         MESH_DEBUG_PRINTLN("onPeerDataRecv: possible replay attack detected");
       } else {
         const bool repeated_timestamp = sender_timestamp == client->last_timestamp;
-        if (sender_timestamp > client->last_timestamp) {
+        // Recovery uses a one-time challenge, not its packet's future clock.
+        // Never let a consumed/malformed/cached recovery packet re-poison the
+        // sender's floor after their own entry was clamped. Normal admission
+        // and current-role authentication still apply above and in the handler.
+        if (!replay_command && sender_timestamp > client->last_timestamp) {
           client->last_timestamp = sender_timestamp;
         }
         client->last_activity = getRTCClock()->getCurrentTime();
@@ -3059,7 +3080,7 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
       record[6U + signed_content_len] = ' ';
       mesh::Utils::toHex(record + 6U + signed_content_len + 1U,
                          signature, sizeof(signature));
-      Serial.println(record);
+      mesh::usbConsolePort().printf("%s\r\n", record);
       host_cli_claim_emit = false;
       host_cli_claim_emit_at = 0;
       host_cli_claimed = true;
@@ -3107,7 +3128,7 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
         record[6U + signed_content_len] = ' ';
         mesh::Utils::toHex(record + 6U + signed_content_len + 1U,
                            signature, sizeof(signature));
-        Serial.println(record);
+        mesh::usbConsolePort().printf("%s\r\n", record);
         host_cli_waiting = true;
         host_cli_claimed = false;
         host_cli_claim_emit = false;
@@ -3682,7 +3703,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   if (start_webui) {
     char wc_reply[160];
     startWebConfig(false, wc_reply);
-    Serial.println(wc_reply);
+    mesh::usbConsolePort().printf("%s\r\n", wc_reply);
   }
 #endif
 
@@ -4824,20 +4845,180 @@ void MyMesh::updateFloodAdvertTimer() {
 }
 
 void MyMesh::dumpLogFile() {
-#if defined(RP2040_PLATFORM)
-  File f = _fs->open(PACKET_LOG_FILE, "r");
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  if (hasPendingSerialOutput()) {
+    mesh::usbConsolePort().printf("Err - USB output busy\r\n");
+    return;
+  }
+  serial_log_dump = mesh::openFileRead(_fs, PACKET_LOG_FILE);
+  serial_log_active = static_cast<bool>(serial_log_dump);
+  serial_log_remaining = serial_log_active ? serial_log_dump.size() : 0;
+  serial_log_pending_size = 0;
+  serial_log_eof_pending = true;
+  serial_log_skip_line = false;
 #else
-  File f = _fs->open(PACKET_LOG_FILE);
-#endif
+  File f = mesh::openFileRead(_fs, PACKET_LOG_FILE);
   if (f) {
     while (f.available()) {
       int c = f.read();
       if (c < 0) break;
-      Serial.print((char)c);
+      mesh::usbConsolePort().print((char)c);
     }
     f.close();
   }
+#endif
 }
+
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+bool MyMesh::hasPendingSerialOutput() const {
+  return serial_log_active || serial_log_eof_pending || serial_recent_next >= 0;
+}
+
+void MyMesh::cancelPendingSerialOutput() {
+  if (serial_log_active) serial_log_dump.close();
+  serial_log_active = false;
+  serial_log_eof_pending = false;
+  serial_log_skip_line = false;
+  serial_log_remaining = 0;
+  serial_log_pending_size = 0;
+  serial_recent_next = -1;
+  serial_recent_count = 0;
+  serial_recent_header = false;
+  serial_recent_has_cursor = false;
+  serial_recent_cursor_index = -1;
+}
+
+void MyMesh::servicePendingSerialOutput() {
+  Stream& console = mesh::usbConsolePort();
+
+  if (serial_recent_next >= 0) {
+    char record[64];
+    int length = 0;
+    const SimpleMeshTables::RecentRepeaterInfo* next_info = nullptr;
+    int next_index = -1;
+    if (serial_recent_header) {
+      length = snprintf(record, sizeof(record), "Recent repeaters (%d):\n",
+                        serial_recent_count);
+    } else if (serial_recent_count == 0) {
+      length = snprintf(record, sizeof(record), "-none-\r\n");
+    } else if (serial_recent_next < serial_recent_count) {
+      const auto* tables = static_cast<const SimpleMeshTables*>(getTables());
+      const auto* info = tables ? tables->getNextRecentRepeaterBySortKey(
+          serial_recent_has_cursor ? &serial_recent_cursor : nullptr,
+          serial_recent_cursor_index, next_index) : nullptr;
+      if (info == nullptr) {
+        serial_recent_next = -1;
+        return;
+      }
+      next_info = info;
+      char prefix[MAX_ROUTE_HASH_BYTES * 2 + 1];
+      char snr[12];
+      mesh::Utils::toHex(prefix, info->prefix, info->prefix_len);
+      formatLocalSnrX4(snr, sizeof(snr), info->snr_x4);
+      length = snprintf(record, sizeof(record), "%s,%s%s\n", prefix,
+                        snr[0] == '-' ? "" : " ", snr);
+    } else {
+      serial_recent_next = -1;
+      return;
+    }
+    // One complete row per pass, admitted atomically only when it fits.
+    if (length <= 0 || static_cast<size_t>(length) >= sizeof(record)) {
+      serial_recent_next = -1;
+      return;
+    }
+    if (console.availableForWrite() < length
+        || console.write(reinterpret_cast<const uint8_t*>(record), length)
+            != static_cast<size_t>(length)) return;
+    if (serial_recent_header) {
+      serial_recent_header = false;
+    } else {
+      if (next_info != nullptr) {
+        serial_recent_cursor = *next_info;
+        serial_recent_cursor_index = next_index;
+        serial_recent_has_cursor = true;
+      }
+      if (serial_recent_count == 0 || ++serial_recent_next >= serial_recent_count) {
+        serial_recent_next = -1;
+      }
+    }
+    return;
+  }
+  if (!serial_log_active) {
+    // CommonCLI's synchronous EOF is suppressed until the queued dump ends.
+    static const char eof[] = "  ->    EOF\r\n";
+    if (serial_log_eof_pending
+        && console.availableForWrite() >= static_cast<int>(sizeof(eof) - 1)
+        && console.write(reinterpret_cast<const uint8_t*>(eof), sizeof(eof) - 1)
+            == sizeof(eof) - 1) {
+      serial_log_eof_pending = false;
+    }
+    return;
+  }
+
+  // Read at most one bounded record per mesh pass. Snapshotting the original
+  // file size prevents a busy radio's newly appended log from extending this
+  // command forever. A retained suffix survives temporary USB backpressure.
+  if (serial_log_skip_line) {
+    // Do not split a malformed overlong stored line around live packet logs.
+    // Skip it in bounded passes and substitute one explicit complete record.
+    size_t budget = sizeof(serial_log_pending);
+    while (budget-- > 0 && serial_log_remaining > 0) {
+      const int value = serial_log_dump.read();
+      if (value < 0) {
+        serial_log_remaining = 0;
+        break;
+      }
+      --serial_log_remaining;
+      if (value == '\n') {
+        serial_log_skip_line = false;
+        break;
+      }
+    }
+    if (serial_log_remaining == 0) serial_log_skip_line = false;
+    if (serial_log_skip_line) return;
+    static const char omitted[] = "[USB log line omitted: exceeds 640 bytes]\r\n";
+    memcpy(serial_log_pending, omitted, sizeof(omitted) - 1);
+    serial_log_pending_size = sizeof(omitted) - 1;
+  } else if (serial_log_pending_size == 0) {
+    while (serial_log_remaining > 0
+        && serial_log_pending_size < sizeof(serial_log_pending)) {
+      const int value = serial_log_dump.read();
+      if (value < 0) {
+        serial_log_remaining = 0;
+        break;
+      }
+      --serial_log_remaining;
+      serial_log_pending[serial_log_pending_size++] = static_cast<char>(value);
+      if (value == '\n') break;
+    }
+    if (serial_log_pending_size == sizeof(serial_log_pending)
+        && serial_log_pending[serial_log_pending_size - 1] != '\n') {
+      serial_log_pending_size = 0;
+      serial_log_skip_line = true;
+      return;
+    }
+    if (serial_log_remaining == 0 && serial_log_pending_size > 0
+        && serial_log_pending[serial_log_pending_size - 1] != '\n') {
+      serial_log_pending[serial_log_pending_size++] = '\n';
+    }
+  }
+  if (serial_log_pending_size > 0
+      && console.availableForWrite() >= static_cast<int>(serial_log_pending_size)) {
+    size_t written = console.write(
+        reinterpret_cast<const uint8_t*>(serial_log_pending), serial_log_pending_size);
+    if (written > serial_log_pending_size) written = serial_log_pending_size;
+    serial_log_pending_size -= written;
+    if (written > 0 && serial_log_pending_size > 0) {
+      memmove(serial_log_pending, serial_log_pending + written, serial_log_pending_size);
+    }
+  }
+  if (serial_log_remaining == 0 && serial_log_pending_size == 0) {
+    serial_log_dump.close();
+    serial_log_active = false;
+  }
+}
+#endif
+
 
 bool MyMesh::setTxPower(int8_t power_dbm) {
   return radio_driver.setTxPower(power_dbm);
@@ -9624,6 +9805,8 @@ void MyMesh::suppressMeshClockSyncForBoot(uint8_t source) {
 }
 
 void MyMesh::onManualClockSet() {
+  replay_clock_set = true;
+  replay_reset_nonce.clear();
   suppressMeshClockSyncForBoot(CLOCK_SYNC_MESH_SUPPRESS_CLI);
 }
 
@@ -10168,7 +10351,10 @@ static const char* clockSyncMeshSuppressionName(uint8_t source) {
   return "unavailable";
 }
 
-void MyMesh::onManualClockSet() {}
+void MyMesh::onManualClockSet() {
+  replay_clock_set = true;
+  replay_reset_nonce.clear();
+}
 
 #endif
 
@@ -10794,14 +10980,130 @@ static bool isFilterMgrAllowed(const char* cmd) {
       || commandFamilyMatches(cmd, "set repeat");
 }
 
+bool MyMesh::handleReplayResetCommand(ClientInfo* sender, const char* command,
+                                      char* reply, bool usb_origin) {
+  mesh::ReplayResetRequest request;
+  const mesh::ReplayResetKind kind = mesh::parseReplayResetCommand(command, request);
+  if (kind == mesh::ReplayResetKind::NotReplay) return false;
+  const char* prefix = mesh::replay_reset_detail::skipSpace(command);
+  if (prefix[0] != 0 && prefix[1] != 0 && prefix[2] == '|') {
+    memcpy(reply, prefix, 3);
+    reply += 3;
+  }
+
+  // A null sender also identifies web/Ethernet/internal callbacks: it is not
+  // proof of physical-console access. Non-admin authenticated peers cannot
+  // mint or consume a recovery challenge, including for their own identity.
+  if ((!usb_origin && sender == NULL) || (sender != NULL && !sender->isAdmin())) {
+    strcpy(reply, "Err - replay recovery requires USB or LoRa admin");
+    return true;
+  }
+  if (kind == mesh::ReplayResetKind::Invalid) {
+    strcpy(reply, "Err - use: replay reset <64-hex-public-key> [token]; USB: replay reset all CONFIRM");
+    return true;
+  }
+  const bool all = kind == mesh::ReplayResetKind::AllConfirm;
+  if (all && !usb_origin) {
+    strcpy(reply, "Err - replay reset all is USB-only");
+    return true;
+  }
+
+  const uint32_t now = getRTCClock()->getCurrentTime();
+  const bool clock_observed = replay_clock_set
+      || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE
+      || (clock_sync_last_result >= CLOCK_SYNC_RESULT_WITHIN_DRIFT
+          && clock_sync_last_result <= CLOCK_SYNC_RESULT_CORRECTED_BACKWARD);
+  if (!clock_observed || !clockSyncEpochIsValid(now)) {
+    strcpy(reply, "Err - set/sync and verify the repeater clock before replay recovery");
+    return true;
+  }
+
+  if (!usb_origin) {
+    const uint32_t now_ms = millis();
+    if (kind == mesh::ReplayResetKind::ExactKey) {
+      uint8_t random_token[16];
+      getRNG()->random(random_token, sizeof(random_token));
+      const auto issued = replay_reset_nonce.issue(
+          sender->id.pub_key, request.key, random_token, now_ms, now);
+      if (issued == mesh::ReplayResetNonce::IssueResult::Busy) {
+        strcpy(reply, "Err - another replay confirmation is pending (up to 300 seconds)");
+      } else if (issued == mesh::ReplayResetNonce::IssueResult::AwaitingConfirmation) {
+        snprintf(reply, 156, "Err - token is confirmation-only; use earlier reply or wait %lus for expiry",
+                 (unsigned long)replay_reset_nonce.remainingSeconds(now_ms, now));
+      } else if (issued == mesh::ReplayResetNonce::IssueResult::Invalid) {
+        strcpy(reply, "Err - could not create replay confirmation");
+      } else {
+        char key_hex[65], token_hex[33];
+        mesh::Utils::toHex(key_hex, request.key, sizeof(request.key));
+        mesh::Utils::toHex(token_hex, replay_reset_nonce.token(), sizeof(random_token));
+        snprintf(reply, 156, "now=%lu ttl=%lus; confirm: replay reset %s %s",
+                 (unsigned long)now,
+                 (unsigned long)replay_reset_nonce.remainingSeconds(now_ms, now),
+                 key_hex, token_hex);
+      }
+      return true;
+    }
+    // Consume before writing. A failed write needs a new challenge, and a
+    // reboot forgets all challenges, so no durable replay-command exception
+    // or growing nonce history is necessary.
+    if (!replay_reset_nonce.consume(sender->id.pub_key, request.key,
+                                    request.token, now_ms, now)) {
+      strcpy(reply, "Err - expired/used replay token or clock changed; request a new reset");
+      return true;
+    }
+  } else if (kind == mesh::ReplayResetKind::ExactKeyConfirm) {
+    strcpy(reply, "Err - USB uses: replay reset <64-hex-public-key> (no token)");
+    return true;
+  }
+
+  ClientLoginReplayClampResult result;
+  const uint8_t* target = all ? NULL : request.key;
+  if (!acl.clampLoginReplayTimestamps(target, now, result)) {
+    strcpy(reply, "Err - replay storage unavailable; no live timestamps changed");
+    return true;
+  }
+  replay_reset_nonce.clear();
+  // A USB recovery may interrupt a previously admitted host/remote command
+  // for the affected identity. Do not execute that stale mailbox afterwards.
+  // The executing LoRa reset owns the mailbox until its reply is sent.
+  if (usb_origin && deferred_cli_command.pending) {
+    const int index = deferred_cli_command.client_index;
+    if (all || (index >= 0 && index < acl.getNumClients()
+        && memcmp(acl.getClientByIdx(index)->id.pub_key, target, PUB_KEY_SIZE) == 0)) {
+      clearDeferredCliCommand();
+    }
+  }
+  for (int index = 0; index < acl.getNumClients(); ++index) {
+    ClientInfo* client = acl.getClientByIdx(index);
+    if (all || memcmp(client->id.pub_key, target, PUB_KEY_SIZE) == 0) {
+      client->observed_path_pending = false;
+    }
+  }
+  // Preserve the response cache: exact cached retries may resend their result
+  // but must not execute again. The receive path never advances replay-command
+  // timestamps, even if a reset reply survives in this cache.
+  if (result.stored_matched == 0 && result.live_matched == 0) {
+    strcpy(reply, "Err - no matching replay entries; nothing created");
+  } else {
+    snprintf(reply, 156, "OK - clamped to %lu: stored=%u live=%u; records retained",
+             (unsigned long)now, (unsigned)result.stored_changed,
+             (unsigned)result.live_changed);
+  }
+  return true;
+}
+
 void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *command,
                            char *reply, int gpio_client_index,
-                           uint8_t gpio_path_hash_size) {
+                           uint8_t gpio_path_hash_size, bool usb_origin) {
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   _gpio_reply_tracker.beginCommand(gpio_client_index, gpio_path_hash_size,
                                    sender == NULL ? NULL : sender->id.pub_key);
 #endif
   char* reply_start = reply;
+  // Parse the original wire text exactly once, also before region-load mode.
+  // Parsing again after stripping a prefix would let nested prefixes bypass
+  // the receive path's recovery-family timestamp guard.
+  if (handleReplayResetCommand(sender, command, reply, usb_origin)) return;
 
   // Remote admin clients may include a line ending in the command payload.
   // Normalize it here so exact-match commands such as `get outpath` behave the
@@ -11234,6 +11536,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   // Compatibility path for manually defined legacy portable builds. Current
   // release builds use FULL and do not enter this branch.
   _cli.handleCommand(sender_timestamp, command, reply);
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  if (sender_timestamp == 0 && serial_log_eof_pending
+      && strcmp(reply, "   EOF") == 0) reply[0] = 0;
+#endif
   return;
 #endif
 
@@ -11473,14 +11779,16 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     printRecentRepeatersSerial();
     reply_start[0] = 0;
   } else if (sender_timestamp == 0 && strcmp(command, "get acl") == 0) {
-    Serial.println("ACL:");
+    mesh::usbConsolePort().printf("ACL:\r\n");
     for (int i = 0; i < acl.getNumClients(); i++) {
       auto c = acl.getClientByIdx(i);
       if (c->permissions == 0) continue;  // skip deleted (or guest) entries
 
-      Serial.printf("%02X ", c->permissions);
-      mesh::Utils::printHex(Serial, c->id.pub_key, PUB_KEY_SIZE);
-      Serial.printf("\n");
+      // Admit each line together so concurrent USB diagnostics cannot split
+      // a public key or insert text between its permission prefix and value.
+      char public_key[PUB_KEY_SIZE * 2 + 1];
+      mesh::Utils::toHex(public_key, c->id.pub_key, PUB_KEY_SIZE);
+      mesh::usbConsolePort().printf("%02X %s\n", c->permissions, public_key);
     }
     reply[0] = 0;
   } else if (handleClientPathCommand(sender, command, reply)) {
@@ -11634,6 +11942,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 #endif
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+    if (sender_timestamp == 0 && serial_log_eof_pending
+        && strcmp(reply, "   EOF") == 0) reply[0] = 0;
+#endif
   }
 }
 
@@ -11644,6 +11956,9 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  servicePendingSerialOutput();
+#endif
   _cli.loop();
   processDeferredCliCommand();
   servicePostMeshLoop();
@@ -11992,7 +12307,7 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
     // headroom, then flash: otaFromManifest reboots into the new image on success
     // (so this never returns); on any abort (already up to date, partition change,
     // download error) it returns and we resume the bridge.
-    Serial.println("OTA: starting update");
+    mesh::usbConsolePort().printf("OTA: starting update\r\n");
     // Flush the START alert (and CLI reply) out the radio BEFORE teardown blocks
     // the loop until reboot - otherwise a packet still queued here (busy /
     // duty-limited channel) is lost when the flash spins the loop and reboots.
@@ -12007,11 +12322,11 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
     // firmware then is the observed teardown heap-panic path - so abort and
     // resume the bridge instead of flashing under uncertain ownership.
     if (mqtt_bridge && !mqtt_bridge->canFlashAfterStop()) {
-      Serial.println("OTA: aborted, MQTT stop did not complete cleanly - resuming bridge");
+      mesh::usbConsolePort().printf("OTA: aborted, MQTT stop did not complete cleanly - resuming bridge\r\n");
       otaAlert("OTA aborted: MQTT stop unclean, bridge resumed");
       setBridgeState(true);
     } else if (!_cli.getBoard()->otaFromManifest(getFirmwareVer(), false, ota_reply)) {
-      Serial.print("OTA: aborted, resuming bridge - "); Serial.println(ota_reply);
+      mesh::usbConsolePort().printf("OTA: aborted, resuming bridge - %s\r\n", ota_reply);
       char ota_alert_msg[160];
       snprintf(ota_alert_msg, sizeof(ota_alert_msg), "OTA aborted: %s", ota_reply);
       otaAlert(ota_alert_msg);
@@ -12027,7 +12342,7 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
   if (WebConfigServer::takeButtonToggleRequest()) {
     char wc_reply[160];
     setWebUIEnabled(!WebConfigServer::loadEnabled(false), wc_reply);
-    Serial.println(wc_reply);
+    mesh::usbConsolePort().printf("%s\r\n", wc_reply);
   }
   if (_webconfig) {
     _webconfig->tick(millis());

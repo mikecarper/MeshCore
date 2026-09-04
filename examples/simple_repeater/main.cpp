@@ -72,6 +72,9 @@ static unsigned long userBtnDownAt = 0;
 
 void setup() {
   Serial.begin(115200);
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  mesh::beginUsbLoggingPort();
+#endif
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
@@ -109,10 +112,14 @@ void setup() {
       // power cut merely because its radio is temporarily unavailable. Keep
       // the MCU alive and retry in place; target radio_init() performs the
       // board-specific regulator/reset/wake recovery on each attempt.
-      Serial.println("Radio unavailable; retrying in 60 seconds");
+      mesh::usbConsolePort().println("Radio unavailable; retrying in 60 seconds");
       radioinit_attempts = 0;
       const uint32_t retry_started = millis();
       while (millis() - retry_started < 60000UL) {
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+        mesh::serviceUsbLoggingPort();
+        mesh::serviceUsbTerminalPort();
+#endif
 #if defined(NRF52_PLATFORM)
         board.feedWatchdog();
 #endif
@@ -168,11 +175,12 @@ void setup() {
 
   // Print the running firmware version at boot so it's visible after an OTA
   // reboot without having to issue `ver` manually.
-  Serial.print("Firmware: "); Serial.print(FIRMWARE_VERSION);
-  Serial.print(" (built "); Serial.print(FIRMWARE_BUILD_DATE); Serial.println(")");
+  Stream& console = mesh::usbConsolePort();
+  console.print("Firmware: "); console.print(FIRMWARE_VERSION);
+  console.print(" (built "); console.print(FIRMWARE_BUILD_DATE); console.println(")");
 
-  Serial.print("Repeater ID: ");
-  mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
+  console.print("Repeater ID: ");
+  mesh::Utils::printHex(console, the_mesh.self_id.pub_key, PUB_KEY_SIZE); console.println();
 
   command[0] = 0;
 #ifdef ETHERNET_ENABLED
@@ -215,14 +223,31 @@ void setup() {
 }
 
 static void __attribute__((noinline)) serviceCommandInterfaces() {
+  bool usb_ready = true;
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  mesh::serviceUsbLoggingPort();
+  mesh::serviceUsbTerminalPort();
+  if (mesh::takeUsbTerminalSessionReset()) {
+    command[0] = 0;
+    command_overflow = false;
+    the_mesh.cancelPendingSerialOutput();
+  }
+  // A busy USB session cleanup may defer the CLI, never the radio loop.
+  usb_ready = mesh::tryCompleteUsbTerminalSessionReset();
+  // Large listings advance from MyMesh::loop without blocking radio service.
+  usb_ready = usb_ready && !the_mesh.hasPendingSerialOutput()
+      && mesh::canAcceptUsbConsoleCommand();
+#endif
+  Stream& console = mesh::usbConsolePort();
   // Handle Serial CLI
   int len = strlen(command);
   bool line_complete = false;
   bool overlong_line_complete = false;
-  while (Serial.available()) {
-    char c = Serial.read();
+  size_t read_budget = 256;
+  while (usb_ready && read_budget-- > 0 && console.available()) {
+    char c = console.read();
     if (c == '\n') continue;
-    Serial.print(c);
+    console.print(c);
 
     if (command_overflow) {
       if (c == '\r') {
@@ -249,37 +274,37 @@ static void __attribute__((noinline)) serviceCommandInterfaces() {
   }
 
   if (overlong_line_complete) {
-    Serial.print('\n');
-    Serial.println("  -> Err - command too long");
+    console.print('\n');
+    console.println("  -> Err - command too long");
     command[0] = 0;
     return;
   }
 
   if (line_complete) {
-    Serial.print('\n');
+    console.print('\n');
     char reply[160];
     reply[0] = 0;
 #ifdef ETHERNET_ENABLED
     if (!ethernet_handle_command(command, reply)) {
 #if MESH_ENABLE_HOST_CLI
       if (!the_mesh.handleHostCliSerialReply(command, reply)) {
-        the_mesh.handleCommand(0, command, reply);
+        the_mesh.handleUsbCommand(command, reply);
       }
 #else
-      the_mesh.handleCommand(0, command, reply);
+      the_mesh.handleUsbCommand(command, reply);
 #endif
     }
 #else
 #if MESH_ENABLE_HOST_CLI
     if (!the_mesh.handleHostCliSerialReply(command, reply)) {
-      the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
+      the_mesh.handleUsbCommand(command, reply);
     }
 #else
-    the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
+    the_mesh.handleUsbCommand(command, reply);
 #endif
 #endif
     if (reply[0]) {
-      Serial.print("  -> "); Serial.println(reply);
+      console.printf("  -> %s\r\n", reply);
     }
 
     command[0] = 0;  // reset command buffer
@@ -312,7 +337,7 @@ void loop() {
     if (userBtnDownAt == 0) {
       userBtnDownAt = millis();
     } else if ((unsigned long)(millis() - userBtnDownAt) >= USER_BTN_HOLD_OFF_MILLIS) {
-      Serial.println("Powering off...");
+      mesh::usbConsolePort().println("Powering off...");
       board.powerOff();  // does not return
     }
   } else {
@@ -326,6 +351,9 @@ void loop() {
   if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  mesh::serviceUsbTerminalPort();
+#endif
 
 #ifdef TBEAM_1W
   board.updateFanControl();

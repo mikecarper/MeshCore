@@ -1,4 +1,6 @@
 #include "MyMesh.h"
+#include <helpers/UsbLogging.h>
+#include <helpers/FileRead.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ClientLoginPersistence.h>
@@ -1429,7 +1431,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   if (start_webui) {
     char wc_reply[160];
     startWebConfig(false, wc_reply);
-    Serial.println(wc_reply);
+    mesh::usbConsolePort().printf("%s\r\n", wc_reply);
   }
 #endif
 
@@ -1575,20 +1577,122 @@ void MyMesh::updateFloodAdvertTimer() {
 }
 
 void MyMesh::dumpLogFile() {
-#if defined(RP2040_PLATFORM)
-  File f = _fs->open(PACKET_LOG_FILE, "r");
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  if (hasPendingSerialOutput()) {
+    mesh::usbConsolePort().printf("Err - USB output busy\r\n");
+    return;
+  }
+  serial_log_dump = mesh::openFileRead(_fs, PACKET_LOG_FILE);
+  serial_log_active = static_cast<bool>(serial_log_dump);
+  serial_log_remaining = serial_log_active ? serial_log_dump.size() : 0;
+  serial_log_pending_size = 0;
+  serial_log_eof_pending = true;
+  serial_log_skip_line = false;
 #else
-  File f = _fs->open(PACKET_LOG_FILE);
-#endif
+  File f = mesh::openFileRead(_fs, PACKET_LOG_FILE);
   if (f) {
     while (f.available()) {
       int c = f.read();
       if (c < 0) break;
-      Serial.print((char)c);
+      mesh::usbConsolePort().print((char)c);
     }
     f.close();
   }
+#endif
 }
+
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+bool MyMesh::hasPendingSerialOutput() const {
+  return serial_log_active || serial_log_eof_pending;
+}
+
+void MyMesh::cancelPendingSerialOutput() {
+  if (serial_log_active) serial_log_dump.close();
+  serial_log_active = false;
+  serial_log_eof_pending = false;
+  serial_log_skip_line = false;
+  serial_log_remaining = 0;
+  serial_log_pending_size = 0;
+}
+
+void MyMesh::servicePendingSerialOutput() {
+  Stream& console = mesh::usbConsolePort();
+  if (!serial_log_active) {
+    // CommonCLI's synchronous EOF is suppressed until the queued dump ends.
+    static const char eof[] = "  ->    EOF\r\n";
+    if (serial_log_eof_pending
+        && console.availableForWrite() >= static_cast<int>(sizeof(eof) - 1)
+        && console.write(reinterpret_cast<const uint8_t*>(eof), sizeof(eof) - 1)
+            == sizeof(eof) - 1) {
+      serial_log_eof_pending = false;
+    }
+    return;
+  }
+
+  // Read at most one bounded record per mesh pass. Snapshotting the original
+  // file size prevents a busy radio's newly appended log from extending this
+  // command forever. A retained suffix survives temporary USB backpressure.
+  if (serial_log_skip_line) {
+    // Do not split a malformed overlong stored line around live packet logs.
+    // Skip it in bounded passes and substitute one explicit complete record.
+    size_t budget = sizeof(serial_log_pending);
+    while (budget-- > 0 && serial_log_remaining > 0) {
+      const int value = serial_log_dump.read();
+      if (value < 0) {
+        serial_log_remaining = 0;
+        break;
+      }
+      --serial_log_remaining;
+      if (value == '\n') {
+        serial_log_skip_line = false;
+        break;
+      }
+    }
+    if (serial_log_remaining == 0) serial_log_skip_line = false;
+    if (serial_log_skip_line) return;
+    static const char omitted[] = "[USB log line omitted: exceeds 640 bytes]\r\n";
+    memcpy(serial_log_pending, omitted, sizeof(omitted) - 1);
+    serial_log_pending_size = sizeof(omitted) - 1;
+  } else if (serial_log_pending_size == 0) {
+    while (serial_log_remaining > 0
+        && serial_log_pending_size < sizeof(serial_log_pending)) {
+      const int value = serial_log_dump.read();
+      if (value < 0) {
+        serial_log_remaining = 0;
+        break;
+      }
+      --serial_log_remaining;
+      serial_log_pending[serial_log_pending_size++] = static_cast<char>(value);
+      if (value == '\n') break;
+    }
+    if (serial_log_pending_size == sizeof(serial_log_pending)
+        && serial_log_pending[serial_log_pending_size - 1] != '\n') {
+      serial_log_pending_size = 0;
+      serial_log_skip_line = true;
+      return;
+    }
+    if (serial_log_remaining == 0 && serial_log_pending_size > 0
+        && serial_log_pending[serial_log_pending_size - 1] != '\n') {
+      serial_log_pending[serial_log_pending_size++] = '\n';
+    }
+  }
+  if (serial_log_pending_size > 0
+      && console.availableForWrite() >= static_cast<int>(serial_log_pending_size)) {
+    size_t written = console.write(
+        reinterpret_cast<const uint8_t*>(serial_log_pending), serial_log_pending_size);
+    if (written > serial_log_pending_size) written = serial_log_pending_size;
+    serial_log_pending_size -= written;
+    if (written > 0 && serial_log_pending_size > 0) {
+      memmove(serial_log_pending, serial_log_pending + written, serial_log_pending_size);
+    }
+  }
+  if (serial_log_remaining == 0 && serial_log_pending_size == 0) {
+    serial_log_dump.close();
+    serial_log_active = false;
+  }
+}
+#endif
+
 
 bool MyMesh::setTxPower(int8_t power_dbm) {
   return radio_driver.setTxPower(power_dbm);
@@ -2241,14 +2345,16 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       }
     }
   } else if (sender_timestamp == 0 && strcmp(command, "get acl") == 0) {
-    Serial.println("ACL:");
+    mesh::usbConsolePort().printf("ACL:\r\n");
     for (int i = 0; i < acl.getNumClients(); i++) {
       auto c = acl.getClientByIdx(i);
       if (c->permissions == 0) continue;  // skip deleted (or guest) entries
 
-      Serial.printf("%02X ", c->permissions);
-      mesh::Utils::printHex(Serial, c->id.pub_key, PUB_KEY_SIZE);
-      Serial.printf("\n");
+      // Admit each line together so concurrent USB diagnostics cannot split
+      // a public key or insert text between its permission prefix and value.
+      char public_key[PUB_KEY_SIZE * 2 + 1];
+      mesh::Utils::toHex(public_key, c->id.pub_key, PUB_KEY_SIZE);
+      mesh::usbConsolePort().printf("%02X %s\n", c->permissions, public_key);
     }
     reply[0] = 0;
 #if defined(WITH_MQTT_NEIGHBORS)
@@ -2309,6 +2415,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     // handled by the role-independent mesh clock synchronizer
   } else {
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+    if (sender_timestamp == 0 && serial_log_eof_pending
+        && strcmp(reply, "   EOF") == 0) reply[0] = 0;
+#endif
   }
 }
 
@@ -2323,6 +2433,9 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing can take time, so we prioritize radio reception
   mesh::Mesh::loop();
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  servicePendingSerialOutput();
+#endif
   _cli.loop();
   _clock_sync.loop();
 #if MESH_ENABLE_TELEMETRY_HISTORY
@@ -2477,7 +2590,7 @@ void MyMesh::loop() {
     // blocks the loop until reboot, then free a running bridge for heap headroom.
     // Remember its state: an OTA request must not enable MQTT that an operator
     // had deliberately stopped.
-    Serial.println("OTA: starting update");
+    mesh::usbConsolePort().printf("OTA: starting update\r\n");
     const bool bridge_was_running = bridge && bridge->isRunning();
     drainOutbound(OTA_TX_DRAIN_TIMEOUT_MS);
 
@@ -2492,18 +2605,18 @@ void MyMesh::loop() {
       // ownership is uncertain until a subsequent clean start/stop cycle.
       may_flash = bridge && bridge->canFlashAfterStop();
       if (!may_flash) {
-        Serial.println("OTA: aborted, MQTT stop did not complete cleanly");
+        mesh::usbConsolePort().printf("OTA: aborted, MQTT stop did not complete cleanly\r\n");
       } else {
         // TODO: Replace this mitigation with a real MQTT task-exit/join barrier.
         delay(OTA_MQTT_STOP_SETTLE_MS);
       }
     } else if (!may_flash) {
-      Serial.println("OTA: aborted, prior MQTT stop did not complete cleanly");
+      mesh::usbConsolePort().printf("OTA: aborted, prior MQTT stop did not complete cleanly\r\n");
     }
 
     char ota_reply[160];
     if (may_flash && !_cli.getBoard()->otaFromManifest(getFirmwareVer(), false, ota_reply)) {
-      Serial.print("OTA: aborted - "); Serial.println(ota_reply);
+      mesh::usbConsolePort().printf("OTA: aborted - %s\r\n", ota_reply);
       may_flash = false;
     }
 
@@ -2511,7 +2624,7 @@ void MyMesh::loop() {
     // bridge that was running before this attempt; leave an intentionally
     // stopped bridge stopped after any OTA refusal or download failure.
     if (!may_flash && bridge_was_running) {
-      Serial.println("OTA: resuming bridge");
+      mesh::usbConsolePort().printf("OTA: resuming bridge\r\n");
       setBridgeState(true);
     }
   }

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include <helpers/FloodFilterPolicy.h>
+#include <helpers/FileRead.h>
 #include <helpers/RegionNameUtils.h>
 
 namespace {
@@ -350,7 +351,7 @@ static bool commandMatches(const char* command, const char* base) {
 }
 
 static File openRead(FILESYSTEM* fs, const char* path) {
-  return fs->open(path);
+  return mesh::openFileRead(fs, path);
 }
 
 static File openWrite(FILESYSTEM* fs, const char* path) {

@@ -3,6 +3,7 @@
 #include "ESP32Board.h"
 #include <target.h>
 #include "UsbLogging.h"
+#include "FileRead.h"
 #include "UserGpioPinPolicy.h"
 
 namespace mesh {
@@ -116,7 +117,7 @@ class LightweightOTAServer {
   }
 
   void sendLog(WiFiClient& client) {
-    File log = SPIFFS.open("/packet_log", FILE_READ);
+    File log = mesh::openFileRead(&SPIFFS, "/packet_log");
     if (!log) {
       static const char missing[] = "packet log not found";
       sendResponse(client, 404, "Not Found", "text/plain", missing, sizeof(missing) - 1);
@@ -1123,8 +1124,13 @@ void ESP32Board::enterDeepSleep(uint32_t secs) {
     sensors.getLocationProvider()->stop();
   }
 
-  // Flush serial buffers
+  // Native TinyUSB must not wait for a host which has stopped reading.
+  // Keep the original flush behavior for UART and USB-Serial-JTAG targets.
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  mesh::serviceUsbTerminalPort();
+#else
   Serial.flush();
+#endif
   delay(100);
 
   // Clear stale wakeup sources to avoid ghost wakeup

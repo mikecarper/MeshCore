@@ -3,6 +3,7 @@
 #if defined(ARDUINO)
 #include <Arduino.h>
 #include <atomic>
+#include <stdio.h>
 
 #if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
@@ -14,8 +15,12 @@
   #define MESH_ESP32_HWCDC_SESSION_GUARD 0
 #endif
 
-#if defined(NRF52_PLATFORM) || MESH_ESP32_HWCDC_SESSION_GUARD
+#if defined(NRF52_PLATFORM) || MESH_ESP32_HWCDC_SESSION_GUARD \
+    || MESH_ESP32_TINYUSB_NONBLOCKING
   #include "NonBlockingWriteStream.h"
+#endif
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  #include "esp32-hal-tinyusb.h"
 #endif
 #if MESH_ESP32_HWCDC_SESSION_GUARD
   #include "UsbAsciiBinarySwitch.h"
@@ -71,6 +76,208 @@ class NullUsbLoggingStream : public Stream {
 };
 
 static NullUsbLoggingStream null_usb_logging_stream;
+
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+// Arduino-ESP32 2.0.17 constructs Serial as USBCDC(0). Keep its RX queue and
+// existing descriptors/callbacks, but never call its potentially unbounded
+// write()/flush() or its mutex-taking availableForWrite(). The native CDC
+// application API makes one FIFO attempt and can safely return short; its
+// flush starts an available endpoint transfer without waiting for the host.
+// TinyUSB still takes short RTOS FIFO/endpoint mutexes internally: this is a
+// no-host-progress-wait contract, not a claim that the USB stack is lock-free.
+static std::atomic<uint32_t> esp32_tinyusb_reset_generation{0};
+static std::atomic<uint32_t> esp32_tinyusb_clean_generation{0};
+static std::atomic_flag esp32_tinyusb_queue_busy = ATOMIC_FLAG_INIT;
+static std::atomic<bool> esp32_tinyusb_terminal_discard_pending{false};
+static std::atomic<uint32_t> esp32_tinyusb_terminal_dropped_bytes{0};
+static uint32_t esp32_tinyusb_terminal_reported_dropped_bytes = 0;
+static uint32_t esp32_tinyusb_taken_reset_generation = 0;
+static bool esp32_tinyusb_event_handler_registered = false;
+static bool esp32_tinyusb_was_connected = false;
+
+static bool canAccessEsp32TinyUsb(void*) {
+  return !xPortInIsrContext() && tud_cdc_n_connected(0)
+      && esp32_tinyusb_clean_generation.load(std::memory_order_acquire)
+          == esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
+}
+
+static void handleEsp32TinyUsbEvent(void*, esp_event_base_t, int32_t event_id,
+                                    void* event_data) {
+  // This is the Arduino event task, not TinyUSB's owner. Only publish an
+  // epoch: queue cleanup and endpoint access remain in application service.
+  bool closed = event_id == ARDUINO_USB_CDC_DISCONNECTED_EVENT;
+  if (event_id == ARDUINO_USB_CDC_LINE_STATE_EVENT && event_data != nullptr) {
+    const auto* event = static_cast<const arduino_usb_cdc_event_data_t*>(event_data);
+    closed = !event->line_state.dtr;
+  }
+  if (closed) {
+    esp32_tinyusb_reset_generation.fetch_add(1, std::memory_order_acq_rel);
+  }
+}
+
+class Esp32TinyUsbFifoStream : public Stream {
+ public:
+  int available() override {
+    const int count = Serial.available();
+    return count > 0 ? count : 0;
+  }
+  int read() override { return Serial.read(); }
+  int peek() override { return Serial.peek(); }
+  void flush() override {}
+  int availableForWrite() override {
+    return canAccessEsp32TinyUsb(nullptr)
+        ? static_cast<int>(tud_cdc_n_write_available(0)) : 0;
+  }
+  size_t write(uint8_t value) override { return write(&value, 1); }
+  size_t write(const uint8_t* data,
+               size_t size) override {
+    if (data == nullptr || size == 0 || !canAccessEsp32TinyUsb(nullptr)) return 0;
+    const size_t available = tud_cdc_n_write_available(0);
+    const size_t attempt = size < available ? size : available;
+    if (attempt == 0) return 0;
+    const size_t written = tud_cdc_n_write(0, data, attempt);
+    (void)tud_cdc_n_write_flush(0);
+    return written;
+  }
+};
+
+static Esp32TinyUsbFifoStream esp32_tinyusb_fifo_port;
+static size_t writeEsp32TinyUsbOnce(void*, const uint8_t* data, size_t size) {
+  return esp32_tinyusb_fifo_port.write(data, size);
+}
+static SingleAttemptNonBlockingStream nonblocking_esp32_tinyusb_port(
+    esp32_tinyusb_fifo_port, writeEsp32TinyUsbOnce, nullptr,
+    canAccessEsp32TinyUsb);
+static AtomicWholeRecordNonBlockingStream<11> nonblocking_esp32_tinyusb_mota_port(
+    nonblocking_esp32_tinyusb_port);
+
+// The ESP32 CDC FIFO is just 64 bytes. Retain complete producer writes in ONE
+// chronological queue: independent log/reply queues would interleave their
+// partial lines as that small FIFO drains. Diagnostics leave most of the bounded
+// queue reserved for functional replies; congestion drops records, not LoRa.
+static constexpr size_t esp32_tinyusb_text_capacity = 4096;
+static constexpr size_t esp32_tinyusb_functional_reserve = 3072;
+static constexpr size_t esp32_tinyusb_log_record_capacity = 640;
+// ESP32 Print::printf has no Adafruit 256-byte scratch-length bug. Disable
+// that nRF52-specific sentinel without changing the existing nRF52 facade.
+static BufferedNonBlockingWriteStream<esp32_tinyusb_text_capacity,
+    esp32_tinyusb_text_capacity + 1> esp32_tinyusb_text_queue(
+        nonblocking_esp32_tinyusb_port);
+
+template <bool Diagnostic>
+class Esp32TinyUsbBufferedStream : public Stream {
+ public:
+  int available() override { return nonblocking_esp32_tinyusb_port.available(); }
+  int read() override { return nonblocking_esp32_tinyusb_port.read(); }
+  int peek() override { return nonblocking_esp32_tinyusb_port.peek(); }
+  void flush() override { serviceUsbTerminalPort(); }
+  int availableForWrite() override {
+    if (esp32_tinyusb_queue_busy.test_and_set(std::memory_order_acquire)) return 0;
+    const int available = canQueue()
+        ? esp32_tinyusb_text_queue.availableForWrite() : 0;
+    esp32_tinyusb_queue_busy.clear(std::memory_order_release);
+    if (!Diagnostic) return available;
+    // SerialLogLine must admit its entire <=640-byte record instead of
+    // splitting it when only a few bytes of diagnostic capacity remain.
+    return available >= static_cast<int>(esp32_tinyusb_functional_reserve
+                                         + esp32_tinyusb_log_record_capacity)
+        ? available - esp32_tinyusb_functional_reserve : 0;
+  }
+  size_t write(uint8_t value) override { return write(&value, 1); }
+  size_t write(const uint8_t* data,
+               size_t size) override {
+    if (data == nullptr || size == 0) return 0;
+    if (esp32_tinyusb_queue_busy.test_and_set(std::memory_order_acquire)) {
+      noteDropped(size);
+      return 0;
+    }
+    size_t written = 0;
+    if (canQueue()) {
+      const size_t available = esp32_tinyusb_text_queue.availableForWrite();
+      if (!Diagnostic || (available >= esp32_tinyusb_functional_reserve
+          && size <= available - esp32_tinyusb_functional_reserve)) {
+        written = esp32_tinyusb_text_queue.write(data, size);
+      }
+    }
+    if (written != size) noteDropped(size - written);
+    esp32_tinyusb_queue_busy.clear(std::memory_order_release);
+    return written;
+  }
+
+ private:
+  bool canQueue() const {
+    return canAccessEsp32TinyUsb(nullptr)
+        && (Diagnostic ? isUsbLoggingEnabled()
+                       : !esp32_tinyusb_terminal_discard_pending.load(
+                             std::memory_order_acquire));
+  }
+  void noteDropped(size_t size) {
+    if (!Diagnostic && !xPortInIsrContext() && tud_cdc_n_connected(0)) {
+      esp32_tinyusb_terminal_dropped_bytes.fetch_add(
+          static_cast<uint32_t>(size), std::memory_order_relaxed);
+    }
+  }
+};
+
+static Esp32TinyUsbBufferedStream<true> buffered_esp32_tinyusb_logging_port;
+static Esp32TinyUsbBufferedStream<false> buffered_esp32_tinyusb_terminal_port;
+
+static void clearEsp32TinyUsbTx(void*) {
+  (void)tud_cdc_n_write_clear(0);
+}
+
+static void serviceEsp32TinyUsbPorts() {
+  if (xPortInIsrContext()) return;
+  if (esp32_tinyusb_queue_busy.test_and_set(std::memory_order_acquire)) return;
+  // Polling also catches a physical disconnect without a CDC line-state
+  // event. Events capture quick close/reopen pairs between service calls.
+  const bool connected = tud_cdc_n_connected(0);
+  if (esp32_tinyusb_was_connected && !connected) {
+    esp32_tinyusb_reset_generation.fetch_add(1, std::memory_order_acq_rel);
+  }
+  esp32_tinyusb_was_connected = connected;
+  const uint32_t generation =
+      esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
+  if (generation != esp32_tinyusb_clean_generation.load(std::memory_order_acquire)) {
+    if (!nonblocking_esp32_tinyusb_port.tryRunExclusive(clearEsp32TinyUsbTx)) {
+      esp32_tinyusb_queue_busy.clear(std::memory_order_release);
+      return;
+    }
+    esp32_tinyusb_text_queue.discardPending();
+    esp32_tinyusb_terminal_reported_dropped_bytes =
+        esp32_tinyusb_terminal_dropped_bytes.load(std::memory_order_relaxed);
+    // Do not purge Serial's RX queue here: the new host may already have sent
+    // its first query. Protocol owners reset their partial parser separately.
+    esp32_tinyusb_clean_generation.store(generation, std::memory_order_release);
+  }
+  if (esp32_tinyusb_terminal_discard_pending.exchange(false,
+                                                     std::memory_order_acq_rel)) {
+    esp32_tinyusb_text_queue.discardPending();
+    esp32_tinyusb_terminal_reported_dropped_bytes =
+        esp32_tinyusb_terminal_dropped_bytes.load(std::memory_order_relaxed);
+  }
+  if (canAccessEsp32TinyUsb(nullptr)) {
+    esp32_tinyusb_text_queue.service();
+    const uint32_t dropped =
+        esp32_tinyusb_terminal_dropped_bytes.load(std::memory_order_relaxed);
+    if (dropped != esp32_tinyusb_terminal_reported_dropped_bytes
+        && esp32_tinyusb_text_queue.availableForWrite() >= 96) {
+      char marker[96];
+      const int length = snprintf(marker, sizeof(marker),
+          "\r\n[USB terminal output dropped %lu bytes]\r\n",
+          static_cast<unsigned long>(
+              dropped - esp32_tinyusb_terminal_reported_dropped_bytes));
+      if (length > 0 && static_cast<size_t>(length) < sizeof(marker)
+          && esp32_tinyusb_text_queue.write(
+              reinterpret_cast<const uint8_t*>(marker), length)
+              == static_cast<size_t>(length)) {
+        esp32_tinyusb_terminal_reported_dropped_bytes = dropped;
+      }
+    }
+  }
+  esp32_tinyusb_queue_busy.clear(std::memory_order_release);
+}
+#endif
 
 #if MESH_ESP32_HWCDC_SESSION_GUARD
 // Every primary HWCDC role shares one producer gate. In particular, returning
@@ -317,7 +524,13 @@ static uint32_t primary_usb_terminal_taken_reset_generation = 0;
 #endif
 
 static void setPlatformDebugOutputEnabled(bool enabled) {
-#if defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  // The framework putc hook bypasses the common producer gate. MeshCore
+  // diagnostics remain enabled through usbLoggingPort(); keep raw framework
+  // bytes from racing a binary mOTA/Companion record's capacity preflight.
+  (void)enabled;
+  Serial.setDebugOutput(false);
+#elif defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   // Arduino-ESP32 log_e()/ESP-IDF diagnostics otherwise write straight to
   // the same UART/CDC stream used by Binary Companion.
 #if MESH_ESP32_HWCDC_SESSION_GUARD
@@ -549,9 +762,18 @@ bool isUsbLoggingEnabled() {
 }
 
 void setUsbLoggingEnabled(bool enabled) {
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  const bool was_enabled = isUsbLoggingEnabled();
+#endif
   usb_logging_enabled.store(enabled, std::memory_order_relaxed);
   usb_logging_preference_known.store(true, std::memory_order_relaxed);
   setPlatformDebugOutputEnabled(enabled);
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  // Text shares one chronological queue. When leaving logging mode, discard
+  // its residual application bytes before later Binary/mOTA traffic can start.
+  // An in-flight producer is gated immediately and cleaned by the next service.
+  if (was_enabled && !enabled) discardUsbTerminalOutput();
+#endif
 }
 
 bool saveUsbLoggingBootPreference(bool enabled) {
@@ -573,6 +795,12 @@ void beginUsbLoggingPort() {
   // ESP32 Companion stream; setUsbLoggingEnabled() restores them only when the
   // saved setting explicitly enables logging.
   setPlatformDebugOutputEnabled(isUsbLoggingEnabled());
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  if (!esp32_tinyusb_event_handler_registered) {
+    Serial.onEvent(ARDUINO_USB_CDC_ANY_EVENT, handleEsp32TinyUsbEvent);
+    esp32_tinyusb_event_handler_registered = true;
+  }
+#endif
 #if MESH_ESP32_HWCDC_SESSION_GUARD
   if (!esp32_hwcdc_event_handler_registered) {
     Serial.onEvent(ARDUINO_HW_CDC_ANY_EVENT, handleEsp32HwcdcEvent);
@@ -603,6 +831,9 @@ void beginUsbLoggingPort() {
 }
 
 void serviceUsbLoggingPort() {
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  serviceEsp32TinyUsbPorts();
+#endif
 #if defined(MESH_DUAL_CDC_LOGGING)
   const bool connected = dedicated_usb_logging_port_started
       && dedicated_usb_logging_port.dtr();
@@ -702,7 +933,12 @@ static void purgeEsp32HwcdcQueues(void* opaque) {
 #endif
 
 bool resetUsbCompanionTransport() {
-#if MESH_ESP32_HWCDC_SESSION_GUARD
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  esp32_tinyusb_reset_generation.fetch_add(1, std::memory_order_acq_rel);
+  serviceEsp32TinyUsbPorts();
+  return esp32_tinyusb_clean_generation.load(std::memory_order_acquire)
+      == esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
   // HWCDC owns RTOS queues, a TX mutex, an ISR, and an event task. Calling
   // end()/begin() here can delete those objects while a WiFi/MQTT/diagnostic
   // producer is writing. Close the independent transport gate first. Runtime
@@ -776,7 +1012,9 @@ Stream& usbLoggingPort() {
   return null_usb_logging_stream;
 #else
   if (!isUsbLoggingEnabled()) return null_usb_logging_stream;
-  #if MESH_ESP32_HWCDC_SESSION_GUARD
+  #if MESH_ESP32_TINYUSB_NONBLOCKING
+    return buffered_esp32_tinyusb_logging_port;
+  #elif MESH_ESP32_HWCDC_SESSION_GUARD
     return guarded_esp32_hwcdc_port;
   #elif defined(NRF52_PLATFORM)
     return nonblocking_primary_usb_logging_port;
@@ -787,7 +1025,9 @@ Stream& usbLoggingPort() {
 }
 
 Stream& usbCompanionPort() {
-#if MESH_ESP32_HWCDC_SESSION_GUARD
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  return nonblocking_esp32_tinyusb_port;
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
   return guarded_esp32_hwcdc_port;
 #elif MESH_NRF52_PRIMARY_USB_NONBLOCKING
   return nonblocking_primary_usb_companion_port;
@@ -797,7 +1037,9 @@ Stream& usbCompanionPort() {
 }
 
 Stream& usbMotaPort() {
-#if MESH_ESP32_HWCDC_SESSION_GUARD
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  return nonblocking_esp32_tinyusb_mota_port;
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
   return guarded_esp32_hwcdc_mota_port;
 #elif MESH_NRF52_PRIMARY_USB_NONBLOCKING
   return nonblocking_primary_usb_mota_port;
@@ -807,15 +1049,36 @@ Stream& usbMotaPort() {
 }
 
 Stream& usbTerminalPort() {
-#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  return buffered_esp32_tinyusb_terminal_port;
+#elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   return buffered_primary_usb_terminal_port;
 #else
   return usbCompanionPort();
 #endif
 }
 
+Stream& usbConsolePort() {
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  return buffered_esp32_tinyusb_terminal_port;
+#else
+  return Serial;
+#endif
+}
+
+bool canAcceptUsbConsoleCommand() {
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  return buffered_esp32_tinyusb_terminal_port.availableForWrite()
+      >= static_cast<int>(esp32_tinyusb_functional_reserve);
+#else
+  return true;
+#endif
+}
+
 void serviceUsbTerminalPort() {
-#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  serviceEsp32TinyUsbPorts();
+#elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   const uint32_t reset_generation =
       primaryUsbSessionGeneration();
   if (reset_generation != primary_usb_terminal_seen_reset_generation) {
@@ -829,21 +1092,48 @@ void serviceUsbTerminalPort() {
 }
 
 void discardUsbTerminalOutput() {
-#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  esp32_tinyusb_terminal_discard_pending.store(true, std::memory_order_release);
+  if (esp32_tinyusb_queue_busy.test_and_set(std::memory_order_acquire)) return;
+  esp32_tinyusb_text_queue.discardPending();
+  esp32_tinyusb_terminal_reported_dropped_bytes =
+      esp32_tinyusb_terminal_dropped_bytes.load(std::memory_order_relaxed);
+  esp32_tinyusb_terminal_discard_pending.store(false, std::memory_order_release);
+  esp32_tinyusb_queue_busy.clear(std::memory_order_release);
+#elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   buffered_primary_usb_terminal_port.discardPending();
 #endif
 }
 
 bool hasPendingUsbTerminalOutput() {
-#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  if (esp32_tinyusb_queue_busy.test_and_set(std::memory_order_acquire)) return true;
+  const bool pending = esp32_tinyusb_text_queue.queuedByteCount() != 0;
+  esp32_tinyusb_queue_busy.clear(std::memory_order_release);
+  return pending;
+#elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   return buffered_primary_usb_terminal_port.queuedByteCount() != 0;
 #else
   return false;
 #endif
 }
 
+uint32_t usbTerminalDroppedBytes() {
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  return esp32_tinyusb_terminal_dropped_bytes.load(std::memory_order_relaxed);
+#else
+  return 0;
+#endif
+}
+
 bool takeUsbTerminalSessionReset() {
-#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  const uint32_t reset_generation =
+      esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
+  if (reset_generation == esp32_tinyusb_taken_reset_generation) return false;
+  esp32_tinyusb_taken_reset_generation = reset_generation;
+  return true;
+#elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   const uint32_t reset_generation =
       primaryUsbSessionGeneration();
   if (reset_generation == primary_usb_terminal_taken_reset_generation) {
@@ -881,7 +1171,11 @@ static void completePrimaryUsbSessionReset(void*) {
 #endif
 
 bool tryCompleteUsbTerminalSessionReset() {
-#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  serviceEsp32TinyUsbPorts();
+  return esp32_tinyusb_clean_generation.load(std::memory_order_acquire)
+      == esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
+#elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   const uint32_t settle_until =
       primary_usb_reset_settle_until.load(std::memory_order_acquire);
   if ((int32_t)(millis() - settle_until) < 0) return false;

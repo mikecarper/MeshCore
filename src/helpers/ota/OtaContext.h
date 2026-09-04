@@ -23,8 +23,10 @@
 #endif
 #if defined(OTA_FOLDER_SERIAL)
   #include "MotaSourceSerial.h"   // relay an external folder served by a host daemon over the USB serial
+  #include "../UsbLogging.h"
   #ifndef OTA_FOLDER_SERIAL_STREAM
     #if defined(NRF52_PLATFORM) \
+        || MESH_ESP32_TINYUSB_NONBLOCKING \
         || (defined(ESP32) && defined(ARDUINO_USB_MODE) \
             && ARDUINO_USB_MODE == 1 \
             && defined(ARDUINO_USB_CDC_ON_BOOT) \
@@ -33,7 +35,6 @@
       // Native USB serial-folder requests share the primary session facade.
       // It prevents a host reset from racing a cached mOTA Stream reference;
       // dedicated-UART overrides retain their normal stream.
-      #include "../UsbLogging.h"
       #define OTA_FOLDER_SERIAL_STREAM ::mesh::usbMotaPort()
       #define MESH_OTA_FOLDER_SERIAL_NONBLOCKING_USB 1
     #else

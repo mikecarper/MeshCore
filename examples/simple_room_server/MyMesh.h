@@ -158,6 +158,15 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
 #endif
 {
   FILESYSTEM* _fs;
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  File serial_log_dump;
+  size_t serial_log_remaining = 0;
+  size_t serial_log_pending_size = 0;
+  char serial_log_pending[640];
+  bool serial_log_active = false;
+  bool serial_log_eof_pending = false;
+  bool serial_log_skip_line = false;
+#endif
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
@@ -454,6 +463,12 @@ public:
   }
 
   void dumpLogFile() override;
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  // Large local-only replies advance between radio service passes.
+  bool hasPendingSerialOutput() const;
+  void servicePendingSerialOutput();
+  void cancelPendingSerialOutput();
+#endif
   bool setTxPower(int8_t power_dbm) override;
   bool setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) override;
   void recalibrateNoiseFloor() override { _radio->recalibrateNoiseFloor(); }

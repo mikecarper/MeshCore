@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <stdlib.h>
 #include "DataStore.h"
+#include <helpers/FileRead.h>
 
 #if defined(NRF52_PLATFORM)
 #include <helpers/AtomicFileWriter.h>
@@ -381,23 +382,33 @@ uint32_t DataStore::getStorageTotalKb() const {
 }
 
 File DataStore::openRead(const char* filename) {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  return _fs->open(filename, FILE_O_READ);
-#elif defined(RP2040_PLATFORM)
-  return _fs->open(filename, "r");
-#else
-  return _fs->open(filename, "r", false);
-#endif
+  return openRead(_fs, filename);
 }
 
 File DataStore::openRead(FILESYSTEM* fs, const char* filename) {
+  return mesh::openFileRead(fs, filename);
+}
+
+File DataStore::openDirectory(const char* path) {
+  return openDirectory(_fs, path);
+}
+
+File DataStore::openDirectory(FILESYSTEM* fs, const char* path) {
+  if (fs == nullptr || path == nullptr) return mesh::emptyFile(fs);
+  // SPIFFS has virtual directories: do not use the regular-file existence
+  // check here. Only the explicit listing API may return directory handles.
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  return fs->open(filename, FILE_O_READ);
+  File directory = fs->open(path, FILE_O_READ);
 #elif defined(RP2040_PLATFORM)
-  return fs->open(filename, "r");
+  File directory = fs->open(path, "r");
 #else
-  return fs->open(filename, "r", false);
+  File directory = fs->open(path, "r", false);
 #endif
+  if (directory && !directory.isDirectory()) {
+    directory.close();
+    return mesh::emptyFile(fs);
+  }
+  return directory;
 }
 
 bool DataStore::removeFile(const char* filename) {

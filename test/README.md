@@ -21,8 +21,17 @@ python3 test/test_color_theme.py                # shared color-display dark-pale
 python3 test/test_indicator_font_recovery.py  # Indicator TLS/SD font recovery contract
 python3 test/test_companion_terminal_profile.py  # Companion CLI capability gates
 python3 test/test_client_login_profile_contract.py  # ACL login ordering/role contract
+python3 test/test_client_acl_spiffs.py          # Actual ACL: first login, replay/reboot, failed storage
+python3 test/test_replay_reset_command.py       # Strict full keys and one-use recovery confirmations
+python3 test/test_replay_reset_integration.py   # Actual repeater handler: USB/LoRa permissions and persistence ordering
+python3 test/test_regular_file_reads.py         # SPIFFS phantom directories, listings, log HTTP status
 python3 test/test_esp32_full_partition.py       # Full partition-preservation policy
 python3 test/test_esp32_usb_serial_hygiene.py   # Single-TTY diagnostics/NVS contract
+python3 test/test_esp32_tinyusb_role_hygiene.py # G2/room USB write coverage and bounded-list contracts
+python3 test/test_esp32_tinyusb_cooperative_output.py # Real role dump/list pumps with host C++ stubs
+python3 test/test_esp32_tinyusb_nonblocking.py # Native CDC stalled-host/64-byte-FIFO simulation (C++17 compiler)
+python3 test/test_esp32_tinyusb_role_hygiene.py # Repeater/room nonblocking console and paced large replies
+python3 test/test_esp32_tinyusb_cooperative_output.py # Real role pumps: large logs/listings, EOF, backpressure
 python3 test/test_temp_radio_reply_delivery_contract.py  # TempRadio ACK path/barrier integration
 python3 test/test_tls_download_clock_gates.py   # Fresh-NTP/TLS download integration contract
 ```

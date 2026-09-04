@@ -2605,6 +2605,73 @@ eviction like administrators.
 
 ---
 
+#### Recover a repeater's future-dated replay timestamp
+
+This is an explicit recovery operation after correcting a bad clock, not a
+contact deletion. It lowers selected replay timestamps to the repeater's
+current UTC epoch only when they are later than that epoch. Earlier values,
+public keys, permissions, stored paths, and historical identity records remain.
+The replay file is committed before the live table changes. No extra 60-second
+login reservation is added by this command.
+
+First set/synchronize and verify the repeater's clock (`clock`); a build-default
+clock without a manual or observed synchronization is not accepted. Also fix
+the companion's clock before its next login.
+
+USB console:
+
+```text
+replay reset <full-64-hex-public-key>
+replay reset all CONFIRM
+```
+
+Authenticated LoRa admin, including a resumed admin session:
+
+```text
+replay reset <full-64-hex-public-key>
+```
+
+The reply shows `now=<epoch>`, `ttl=<remaining-seconds>s`, and a confirmation command containing the same
+full key and a one-use 32-hex-character token. Verify the displayed time and send
+that command before the original 300-second deadline. During the first 120
+seconds, repeated requests for the same key by the same admin return the same
+token without restarting either timer. From 120 through 300 seconds, the token
+is retained for confirmation only: requests do not resend or replace it. This
+leaves at least 180 seconds to deliver a confirmation after the last permitted
+token response is generated (radio transit time still counts toward expiry).
+At 300 seconds it expires and a new request can receive a new token. Confirmation
+can succeed immediately; there is no requirement to wait for the resend window
+to close. The displayed TTL decreases on retries and is measured when the reply
+is generated, not when it reaches the companion.
+
+It can target the caller's own key or another
+exact key; prefixes, `self`, wildcards, and `all` are not allowed over LoRa.
+Tokens are bound to both the requesting admin and target, expire on reboot,
+and are invalid after use or a clock correction outside the five-second
+confirmation tolerance. A failed write requires a new confirmation. Challenge
+requests consult live token state instead of replaying cached challenge text;
+completed confirmation results remain cacheable without executing the reset
+again. Normal packet freshness checks still apply to retries.
+
+Only the physical serial console grants `all` access. Ethernet, browser and
+internal command callbacks do not count as USB. Guest, read-only, region-manager
+and filter-manager roles cannot reset replay state. This command is implemented
+in repeater firmware; room-server and sensor CLI are unchanged.
+
+Normal login and command admission checks remain in force: a fully locked-out
+caller that cannot send an accepted admin command needs another working admin
+or USB access. A corrupt/unreadable replay file fails closed and is not erased
+or formatted by this operation. Unknown keys do not create records.
+
+Security trade-off: lowering a replay boundary can admit previously captured
+future-dated login/command packets above the new boundary, including packets
+that could raise it again. The one-use token prevents the recovery command
+itself from being repeatedly executed; it does not replace the protocol's
+timestamp-based replay protection. Use recovery only after verifying clocks.
+Setting a clock alone never automatically resets this table.
+
+---
+
 #### View or change this room server's 'read-only' flag
 **Usage:**
 - `get allow.read.only`

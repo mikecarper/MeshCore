@@ -44,6 +44,9 @@ unsigned long POWERSAVING_FIRSTSLEEP_SECS = 120; // The first sleep (if enabled)
 
 void setup() {
   Serial.begin(115200);
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  mesh::beginUsbLoggingPort();
+#endif
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
@@ -112,8 +115,9 @@ void setup() {
     return;
   }
 
-  Serial.print("Room ID: ");
-  mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
+  Stream& console = mesh::usbConsolePort();
+  console.print("Room ID: ");
+  mesh::Utils::printHex(console, the_mesh.self_id.pub_key, PUB_KEY_SIZE); console.println();
 
   command[0] = 0;
 #ifdef ETHERNET_ENABLED
@@ -152,14 +156,27 @@ void loop() {
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
 #endif
+  bool usb_ready = true;
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  mesh::serviceUsbLoggingPort();
+  mesh::serviceUsbTerminalPort();
+  if (mesh::takeUsbTerminalSessionReset()) {
+    command[0] = 0;
+    the_mesh.cancelPendingSerialOutput();
+  }
+  usb_ready = mesh::tryCompleteUsbTerminalSessionReset();
+  usb_ready = usb_ready && !the_mesh.hasPendingSerialOutput()
+      && mesh::canAcceptUsbConsoleCommand();
+#endif
+  Stream& console = mesh::usbConsolePort();
   int len = strlen(command);
-  while (Serial.available() && len < sizeof(command)-1) {
-    char c = Serial.read();
+  while (usb_ready && console.available() && len < sizeof(command)-1) {
+    char c = console.read();
     if (c != '\n') {
       command[len++] = c;
       command[len] = 0;
     }
-    Serial.print(c);
+    console.print(c);
   }
   if (len == sizeof(command)-1) {  // command buffer full
     command[sizeof(command)-1] = '\r';
@@ -177,7 +194,7 @@ void loop() {
     the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
 #endif
     if (reply[0]) {
-      Serial.print("  -> "); Serial.println(reply);
+      console.printf("  -> %s\r\n", reply);
     }
 
     command[0] = 0;  // reset command buffer
@@ -202,6 +219,9 @@ void loop() {
   if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
+#if MESH_ESP32_TINYUSB_NONBLOCKING
+  mesh::serviceUsbTerminalPort();
+#endif
 #ifdef TBEAM_1W
   board.updateFanControl();
 #endif

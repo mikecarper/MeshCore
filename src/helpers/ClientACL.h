@@ -51,6 +51,13 @@ struct ClientInfo {
   #define MAX_CLIENTS           32
 #endif
 
+struct ClientLoginReplayClampResult {
+  uint16_t stored_matched;
+  uint16_t stored_changed;
+  uint16_t live_matched;
+  uint16_t live_changed;
+};
+
 class ClientACL {
   FILESYSTEM* _fs;
   ClientInfo clients[MAX_CLIENTS];
@@ -80,6 +87,15 @@ public:
                                uint32_t sender_timestamp,
                                uint32_t runtime_last_timestamp,
                                uint8_t login_permissions);
+
+  // Explicitly authorized recovery only: the caller validates its transport,
+  // permissions and clock. A non-null selector is a complete PUB_KEY_SIZE key;
+  // null selects all records, including historical identities outside the ACL.
+  // Only lower existing values to now. Never insert/delete records or raise a
+  // floor. Publish durable changes before live changes; false returns zero
+  // counts and leaves live state untouched. Counts include duplicate records.
+  bool clampLoginReplayTimestamps(const uint8_t* pubkey, uint32_t now,
+                                  ClientLoginReplayClampResult& result);
 
   ClientInfo* getClient(const uint8_t* pubkey, int key_len);
   ClientInfo* putClient(const mesh::Identity& id, uint8_t init_perms);

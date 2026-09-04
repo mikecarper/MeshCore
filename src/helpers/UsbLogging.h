@@ -14,6 +14,16 @@
 #if defined(ARDUINO)
 #include <Arduino.h>
 
+// ESP32-S2/S3 native USB CDC uses USBCDC, not the hardware USB-Serial-JTAG
+// driver. Its write timeout only bounds a mutex, not waiting for FIFO space.
+// All roles sharing this CDC therefore need the single-attempt transport.
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  #define MESH_ESP32_TINYUSB_NONBLOCKING 1
+#else
+  #define MESH_ESP32_TINYUSB_NONBLOCKING 0
+#endif
+
 namespace mesh {
 
 #ifndef MESH_ESP32_USB_TX_BUFFER_SIZE
@@ -59,11 +69,12 @@ void beginUsbLoggingPort();
 // such as /dev/ttyACM1 or COM7.
 void serviceUsbLoggingPort();
 Stream& usbLoggingPort();
-// Primary USB Companion data stream. On nRF52 this uses one direct TinyUSB
-// FIFO attempt per write so a host-side open/close race cannot trap the main
-// loop in Adafruit_USBD_CDC::write(). Other platforms retain Serial.
+// Primary USB Companion data stream. Native TinyUSB on nRF52 and ESP32 uses
+// one FIFO attempt per write, never the framework's wait-for-space loop.
+// Callers retain and retry unwritten suffixes. Other platforms retain Serial
+// or their hardware-CDC session facade.
 Stream& usbCompanionPort();
-// Serial mOTA requests are binary records of at most 11 bytes. On nRF52 this
+// Serial mOTA requests are binary records of at most 11 bytes. On TinyUSB this
 // facade admits a request only when the complete record fits in CDC0's current
 // TX capacity, so a retry can never append to a prefix from the prior attempt.
 Stream& usbMotaPort();
@@ -72,11 +83,21 @@ Stream& usbMotaPort();
 // it from the application loop; discard it before changing the CDC protocol or
 // after a host disconnect so stale text cannot prefix a later Binary session.
 Stream& usbTerminalPort();
+// Repeater/room-server console: protect ESP32 TinyUSB while preserving the
+// historical raw Serial behavior of other platforms and roles.
+Stream& usbConsolePort();
+// Diagnostic backlog alone must not starve console input. Native ESP32 CDC
+// admits another command when its reserved functional capacity is available;
+// other platforms preserve their existing command-processing policy.
+bool canAcceptUsbConsoleCommand();
 void serviceUsbTerminalPort();
 void discardUsbTerminalOutput();
 bool hasPendingUsbTerminalOutput();
+// Bytes refused while an ESP32 TinyUSB terminal host was connected. A visible
+// overflow marker is emitted once queue capacity recovers; other ports return 0.
+uint32_t usbTerminalDroppedBytes();
 // Consume a primary-USB session boundary reported by the USB owner task:
-// CDC0 DTR-low on nRF52, or a hardware CDC bus reset on ESP32. This is
+// CDC0 DTR-low on TinyUSB, or a hardware CDC bus reset on ESP32. This is
 // independent of polling current line/SOF state; ESP32 retains that poll as a
 // fallback because its bundled framework event queue is finite.
 bool takeUsbTerminalSessionReset();

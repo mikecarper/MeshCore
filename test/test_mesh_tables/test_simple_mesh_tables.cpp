@@ -347,6 +347,76 @@ TEST(SimpleMeshTables, ExpirationKeepsOccupiedEntriesPacked) {
     EXPECT_EQ(0, storage[3].prefix_len);
 }
 
+TEST(SimpleMeshTables, CooperativeRecentCursorMatchesUnchangedRankOrder) {
+    SimpleMeshTables::RecentRepeaterInfo storage[8];
+    SimpleMeshTables t(storage, 8);
+    for (int i = 0; i < 8; ++i) {
+        const uint8_t prefix[] = {static_cast<uint8_t>(0x10 + i), 0x22, 0x33};
+        ASSERT_TRUE(t.setRecentRepeater(prefix, 1 + i % 3, (i / 2) * 4));
+    }
+    SimpleMeshTables::RecentRepeaterInfo cursor{};
+    int cursor_index = -1;
+    for (int rank = 0; rank < 8; ++rank) {
+        int found_index = -1;
+        const auto* found = t.getNextRecentRepeaterBySortKey(
+            rank == 0 ? nullptr : &cursor, cursor_index, found_index);
+        ASSERT_NE(nullptr, found);
+        EXPECT_EQ(t.getRecentRepeaterBySortedIdx(rank), found);
+        cursor = *found;
+        cursor_index = found_index;
+    }
+    int found_index = 123;
+    EXPECT_EQ(nullptr, t.getNextRecentRepeaterBySortKey(&cursor, cursor_index, found_index));
+    EXPECT_EQ(-1, found_index);
+}
+
+TEST(SimpleMeshTables, CooperativeRecentCursorSurvivesLiveStorageCompaction) {
+    SimpleMeshTables::RecentRepeaterInfo storage[3];
+    SimpleMeshTables t(storage, 3);
+    const uint8_t first[] = {0x10};
+    const uint8_t second[] = {0x20};
+    const uint8_t third[] = {0x30};
+    ASSERT_TRUE(t.setRecentRepeater(first, 1, 12));
+    ASSERT_TRUE(t.setRecentRepeater(second, 1, 8));
+    ASSERT_TRUE(t.setRecentRepeater(third, 1, 4));
+    int cursor_index = -1;
+    const auto* first_row = t.getNextRecentRepeaterBySortKey(nullptr, -1, cursor_index);
+    ASSERT_NE(nullptr, first_row);
+    const auto cursor = *first_row;
+    storage[0].last_heard_millis = 0;
+    storage[1].last_heard_millis = 100;
+    storage[2].last_heard_millis = 100;
+    ASSERT_EQ(1, t.expireRecentRepeaters(101, 50));
+    int next_index = -1;
+    const auto* next = t.getNextRecentRepeaterBySortKey(&cursor, cursor_index, next_index);
+    ASSERT_NE(nullptr, next);
+    EXPECT_EQ(0x20, next->prefix[0]);
+    EXPECT_EQ(0x10, cursor.prefix[0]);
+}
+
+TEST(SimpleMeshTables, CooperativeRecentCursorTraverses2048Rows) {
+    SimpleMeshTables::RecentRepeaterInfo storage[2048];
+    SimpleMeshTables t(storage, 2048);
+    for (int i = 0; i < 2048; ++i) {
+        const uint8_t prefix[] = {0x80, static_cast<uint8_t>(i >> 8),
+                                  static_cast<uint8_t>(i)};
+        ASSERT_TRUE(t.setRecentRepeater(prefix, 3, 4));
+    }
+    SimpleMeshTables::RecentRepeaterInfo cursor{};
+    int cursor_index = -1;
+    for (int i = 0; i < 2048; ++i) {
+        int found_index = -1;
+        const auto* found = t.getNextRecentRepeaterBySortKey(
+            i == 0 ? nullptr : &cursor, cursor_index, found_index);
+        ASSERT_NE(nullptr, found);
+        EXPECT_EQ(static_cast<uint8_t>(i >> 8), found->prefix[1]);
+        EXPECT_EQ(static_cast<uint8_t>(i), found->prefix[2]);
+        cursor = *found;
+        cursor_index = found_index;
+    }
+    EXPECT_EQ(nullptr, t.getNextRecentRepeaterBySortKey(&cursor, cursor_index, cursor_index));
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

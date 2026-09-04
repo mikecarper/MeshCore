@@ -3,6 +3,7 @@
 #include "ClientACLFileIntegrity.h"
 #include "ClientLoginPersistence.h"
 #include "ClientPathPersistence.h"
+#include "FileRead.h"
 #if defined(NRF52_PLATFORM)
 #include "AtomicFileWriter.h"
 #endif
@@ -11,11 +12,7 @@ static const uint8_t CONTACT_RECORD_VERSION_ALT_PATH = 1;
 static const uint8_t EMPTY_OUT_PATH[MAX_PATH_SIZE] = {};
 
 static File openRead(FILESYSTEM* fs, const char* filename) {
-#if defined(RP2040_PLATFORM)
-  return fs->open(filename, "r");
-#else
-  return fs->open(filename);
-#endif
+  return mesh::openFileRead(fs, filename);
 }
 
 #if !defined(NRF52_PLATFORM)
@@ -106,14 +103,17 @@ static mesh::StoredClientPathView storedClientPathForSave(
 #if !defined(NRF52_PLATFORM)
 
 static File openWrite(FILESYSTEM* _fs, const char* filename) {
+  if (_fs == NULL) return mesh::emptyFile(_fs);
   #if defined(STM32_PLATFORM)
     _fs->remove(filename);
-    return _fs->open(filename, FILE_O_WRITE);
+    File file = _fs->open(filename, FILE_O_WRITE);
   #elif defined(RP2040_PLATFORM)
-    return _fs->open(filename, "w");
+    File file = _fs->open(filename, "w");
   #else
-    return _fs->open(filename, "w", true);
+    File file = _fs->open(filename, "w", true);
   #endif
+  if (file && file.isDirectory()) file.close();
+  return file;
 }
 
 static bool readMatches(File& file, const uint8_t* expected, size_t length) {
@@ -220,21 +220,24 @@ static bool verifyContactsFile(
 }
 #endif
 
+static bool loginReplayRecordCount(File& file, size_t* count) {
+  if (!file || file.isDirectory()) return false;
+  const size_t size = file.size();
+  if (size < mesh::CLIENT_LOGIN_REPLAY_TRAILER_SIZE) return false;
+  const size_t payload_size =
+      size - mesh::CLIENT_LOGIN_REPLAY_TRAILER_SIZE;
+  if (payload_size % mesh::CLIENT_LOGIN_REPLAY_RECORD_SIZE != 0
+      || payload_size / mesh::CLIENT_LOGIN_REPLAY_RECORD_SIZE
+          > mesh::MAX_CLIENT_LOGIN_REPLAY_IDENTITIES) return false;
+  *count = payload_size / mesh::CLIENT_LOGIN_REPLAY_RECORD_SIZE;
+  return true;
+}
+
 static bool validateLoginReplayFileIntegrity(FILESYSTEM* fs,
                                              const char* filename) {
   File file = openRead(fs, filename);
-  if (!file) return false;
-  const size_t size = file.size();
-  if (size < mesh::CLIENT_LOGIN_REPLAY_TRAILER_SIZE) {
-    file.close();
-    return false;
-  }
-  const size_t payload_size =
-      size - mesh::CLIENT_LOGIN_REPLAY_TRAILER_SIZE;
-  const size_t record_count =
-      payload_size / mesh::CLIENT_LOGIN_REPLAY_RECORD_SIZE;
-  if (payload_size % mesh::CLIENT_LOGIN_REPLAY_RECORD_SIZE != 0
-      || record_count > mesh::MAX_CLIENT_LOGIN_REPLAY_IDENTITIES) {
+  size_t record_count = 0;
+  if (!loginReplayRecordCount(file, &record_count)) {
     file.close();
     return false;
   }
@@ -284,10 +287,11 @@ static bool readClientLoginReplayCeiling(
     return false;
   }
   File file = openRead(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
-  if (!file) return false;
-  const size_t record_count =
-      (file.size() - mesh::CLIENT_LOGIN_REPLAY_TRAILER_SIZE)
-      / mesh::CLIENT_LOGIN_REPLAY_RECORD_SIZE;
+  size_t record_count = 0;
+  if (!loginReplayRecordCount(file, &record_count)) {
+    file.close();
+    return false;
+  }
   bool success = true;
   for (size_t i = 0; success && i < record_count; i++) {
     uint8_t record_pubkey[PUB_KEY_SIZE];
@@ -344,11 +348,18 @@ static bool writeClientLoginReplayCeiling(
   }
 #endif
 
-  File source = openRead(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
-  const size_t record_count = source
-      ? (source.size() - mesh::CLIENT_LOGIN_REPLAY_TRAILER_SIZE)
-          / mesh::CLIENT_LOGIN_REPLAY_RECORD_SIZE
-      : 0;
+  File source = mesh::emptyFile(fs);
+  size_t record_count = 0;
+  if (fs->exists(mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
+    source = openRead(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+    // A previously present image becoming unreadable is not a first login.
+    // Check again after opening so disappearance/truncation cannot underflow
+    // the trailer subtraction or replace historical replay boundaries.
+    if (!loginReplayRecordCount(source, &record_count)) {
+      source.close();
+      return false;
+    }
+  }
 #if defined(NRF52_PLATFORM)
   mesh::AtomicFileWriter destination(
       fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
@@ -419,9 +430,147 @@ static bool writeClientLoginReplayCeiling(
 #endif
 }
 
+// Scan the complete source, including its CRC, even when no record is selected.
+// The optional destination preserves every record in its original order. This
+// also handles duplicate historical identities without dropping tombstones.
+template <typename Writer>
+static bool copyClampedLoginReplay(
+    File& source, Writer* destination, const uint8_t* selected_pubkey,
+    uint32_t now, ClientLoginReplayClampResult& result, uint32_t& source_crc) {
+  size_t record_count = 0;
+  if (!loginReplayRecordCount(source, &record_count)) return false;
+  uint32_t original_crc = 0xFFFFFFFFUL;
+  uint32_t output_crc = 0xFFFFFFFFUL;
+  for (size_t i = 0; i < record_count; i++) {
+    uint8_t pubkey[PUB_KEY_SIZE];
+    uint32_t ceiling;
+    if (source.read(pubkey, sizeof(pubkey)) != (int)sizeof(pubkey)
+        || source.read((uint8_t*)&ceiling, sizeof(ceiling))
+            != (int)sizeof(ceiling)
+        || ceiling == 0) return false;
+    original_crc = mesh::updateClientLoginReplayCRC(
+        original_crc, pubkey, sizeof(pubkey));
+    original_crc = mesh::updateClientLoginReplayCRC(
+        original_crc, (const uint8_t*)&ceiling, sizeof(ceiling));
+    if (selected_pubkey == NULL
+        || memcmp(pubkey, selected_pubkey, PUB_KEY_SIZE) == 0) {
+      result.stored_matched++;
+      if (ceiling > now) {
+        ceiling = now;
+        result.stored_changed++;
+      }
+    }
+    if (destination != NULL && !writeClientLoginReplayRecord(
+            *destination, pubkey, ceiling, &output_crc)) return false;
+  }
+  uint8_t magic[sizeof(mesh::CLIENT_LOGIN_REPLAY_MAGIC)];
+  uint32_t stored_crc;
+  if (source.read(magic, sizeof(magic)) != (int)sizeof(magic)
+      || source.read((uint8_t*)&stored_crc, sizeof(stored_crc))
+          != (int)sizeof(stored_crc)
+      || memcmp(magic, mesh::CLIENT_LOGIN_REPLAY_MAGIC, sizeof(magic)) != 0
+      || stored_crc != (original_crc ^ 0xFFFFFFFFUL)) return false;
+  source_crc = stored_crc;
+  if (destination == NULL) return true;
+  const uint32_t final_crc = output_crc ^ 0xFFFFFFFFUL;
+  return destination->write(magic, sizeof(magic)) == sizeof(magic)
+      && destination->write((const uint8_t*)&final_crc, sizeof(final_crc))
+          == sizeof(final_crc);
+}
+
+bool ClientACL::clampLoginReplayTimestamps(
+    const uint8_t* pubkey, uint32_t now,
+    ClientLoginReplayClampResult& result) {
+  result = {};
+  if (_fs == NULL || !login_replay_store_available || now == 0) return false;
+
+  ClientLoginReplayClampResult pending = {};
+  if (_fs->exists(mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
+    File source = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+    uint32_t original_crc = 0;
+    const bool valid = copyClampedLoginReplay(
+        source, (File*)NULL, pubkey, now, pending, original_crc);
+    source.close();
+    if (!valid) {
+      login_replay_store_available = false;
+      return false;
+    }
+    if (pending.stored_changed != 0) {
+#if !defined(NRF52_PLATFORM)
+      // A validated live image is authoritative. Only discard a stale backup
+      // after validation, and never enter publication with an uncleared one.
+      if (!mesh::removeClientLoginReplayArtifact(
+              _fs, mesh::CLIENT_LOGIN_REPLAY_BACKUP_PATH)) return false;
+#endif
+      source = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+#if defined(NRF52_PLATFORM)
+      mesh::AtomicFileWriter destination(
+          _fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+#else
+      File destination = openWrite(_fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH);
+#endif
+      if (!destination) {
+        source.close();
+        return false;
+      }
+      ClientLoginReplayClampResult copied = {};
+      uint32_t copied_crc = 0;
+      const bool copied_ok = copyClampedLoginReplay(
+          source, &destination, pubkey, now, copied, copied_crc)
+          && copied_crc == original_crc
+          && copied.stored_matched == pending.stored_matched
+          && copied.stored_changed == pending.stored_changed;
+      source.close();
+#if defined(NRF52_PLATFORM)
+      const bool published = destination.commit(copied_ok);
+#else
+      destination.close();
+      const bool verified = copied_ok && validateLoginReplayFileIntegrity(
+          _fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH);
+      const bool published = mesh::publishClientLoginReplayTemp(
+          _fs, verified, validateLoginReplayFileIntegrity);
+#endif
+      if (!published) {
+        // Ordinary failed writes retain the old store. If rollback or a read
+        // also failed, do not let a missing/corrupt image become a first login.
+        File retained = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+        ClientLoginReplayClampResult ignored = {};
+        uint32_t retained_crc = 0;
+        const bool retained_ok = copyClampedLoginReplay(
+            retained, (File*)NULL, pubkey, now, ignored, retained_crc)
+            && retained_crc == original_crc;
+        retained.close();
+        if (!retained_ok) login_replay_store_available = false;
+        return false;
+      }
+    }
+  } else if (_fs->exists(mesh::CLIENT_LOGIN_REPLAY_BACKUP_PATH)
+             || _fs->exists(mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH)) {
+    // Recovery is performed by load(). Do not mistake an interrupted/corrupt
+    // transaction for a never-created store during this explicit operation.
+    login_replay_store_available = false;
+    return false;
+  }
+
+  for (int i = 0; i < num_clients; i++) {
+    ClientInfo& client = clients[i];
+    if (pubkey != NULL && memcmp(client.id.pub_key, pubkey, PUB_KEY_SIZE) != 0)
+      continue;
+    pending.live_matched++;
+    if (client.last_timestamp > now) {
+      client.last_timestamp = now;
+      pending.live_changed++;
+    }
+  }
+  result = pending;
+  return true;
+}
+
 void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   _fs = fs;
   num_clients = 0;
+  login_replay_store_available = false;
+  if (_fs == NULL) return;
 #if defined(NRF52_PLATFORM)
   // AtomicFileWriter may leave only a harmless temp image when reset before
   // rename.  The live image remains authoritative.
@@ -447,11 +596,7 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   }
 #endif
   if (_fs->exists("/s_contacts")) {
-  #if defined(RP2040_PLATFORM)
-    File file = _fs->open("/s_contacts", "r");
-  #else
-    File file = _fs->open("/s_contacts");
-  #endif
+    File file = openRead(_fs, "/s_contacts");
     if (file) {
       bool full = false;
       while (!full) {
