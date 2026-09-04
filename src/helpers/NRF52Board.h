@@ -63,6 +63,7 @@ public:
   virtual uint8_t getStartupReason() const override { return startup_reason; }
   virtual float getMCUTemperature() override;
   virtual void reboot() override { NVIC_SystemReset(); }
+  bool rebootToUf2Bootloader() override;
   virtual void shutdownPeripherals();
   virtual void powerOff() override;
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;

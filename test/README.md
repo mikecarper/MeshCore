@@ -20,6 +20,7 @@ python3 test/test_companion_transport_selector.py  # Indicator transport-selecto
 python3 test/test_color_theme.py                # shared color-display dark-palette contract
 python3 test/test_indicator_font_recovery.py  # Indicator TLS/SD font recovery contract
 python3 test/test_companion_terminal_profile.py  # Companion CLI capability gates
+python3 test/test_nrf52_uf2reset_cli.py          # all nRF52 text-CLI reset dispatchers
 python3 test/test_client_login_profile_contract.py  # ACL login ordering/role contract
 python3 test/test_client_acl_spiffs.py          # Actual ACL: first login, replay/reboot, failed storage
 python3 test/test_replay_reset_command.py       # Strict full keys and one-use recovery confirmations

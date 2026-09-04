@@ -13,6 +13,7 @@
 #endif
 
 #include <helpers/ArduinoHelpers.h>
+#include <helpers/CLICommandUtils.h>
 #include <helpers/IdentityGeneration.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/SimpleMeshTables.h>
@@ -595,6 +596,10 @@ public:
       } else {
         Serial.printf("  ERROR: unknown config: %s\n", config);
       }
+    } else if (mesh::cli::isUf2ResetCommand(command)) {
+      if (!board.rebootToUf2Bootloader()) {
+        Serial.println("  ERROR: UF2 bootloader is unavailable");
+      }
     } else if (memcmp(command, "ver", 3) == 0) {
       Serial.println(FIRMWARE_VER_TEXT);
     } else if (memcmp(command, "help", 4) == 0) {
@@ -617,6 +622,9 @@ public:
       Serial.println("   advert");
       Serial.println("   reset path");
       Serial.println("   public <text>");
+#if defined(NRF52_PLATFORM)
+      Serial.println("   uf2reset");
+#endif
     } else {
       Serial.print("   ERROR: unknown command: "); Serial.println(command);
     }

@@ -68,6 +68,7 @@ over the normal binary USB, BLE, or TCP connection:
 | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Companion on a board with controllable LoRa FEM LNA |
 | [`get/set wifi.powersave`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WiFi Companion; active transport constraints still apply |
 | [`get/set bluetooth.name`](cli_commands.md#view-or-change-the-independent-bluetooth-name-companion) | Companion firmware |
+| [`uf2reset`](cli_commands.md#enter-the-uf2-bootloader-nrf52-only) | Every nRF52 Companion text terminal and local command `0x42`; local only |
 
 Deprecated binary aliases remain receive-only for older clients; new clients
 should use command `0x42`. See [Companion radio binary protocol](companion_protocol.md).

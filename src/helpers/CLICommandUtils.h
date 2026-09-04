@@ -517,6 +517,10 @@ inline NoArgCommandMatch matchNoArgCommand(const char* command,
                     : NoArgCommandMatch::HasArguments;
 }
 
+inline bool isUf2ResetCommand(const char* command) {
+  return matchNoArgCommand(command, "uf2reset") == NoArgCommandMatch::Exact;
+}
+
 inline void formatUnknownSetting(char* reply, size_t capacity,
                                  const char* setting) {
   if (reply == nullptr || capacity == 0) return;

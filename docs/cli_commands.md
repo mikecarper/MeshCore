@@ -63,6 +63,8 @@ arguments such as node names, passwords, and keys is left unchanged.
 **Serial Only:** Yes
 
 **Note:** Reboots directly into the UF2 bootloader on supported nRF52 boards.
+This includes the Repeater, Room Server, Sensor, Companion, and Terminal Chat
+local serial command surfaces. It is never accepted as a remote mesh command.
 
 ---
 

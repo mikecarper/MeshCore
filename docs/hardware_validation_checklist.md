@@ -5,15 +5,15 @@ when its log identifies the physical device, firmware artifact, artifact hash,
 command result, and cold/warm boot outcome. Do not infer success from a tool's
 exit code when the tool has a documented false-success mode.
 
-## Current marathon ledger (through 2026-09-01)
+## Current marathon ledger (through 2026-09-04)
 
 | Hardware | Stable identity | Current state | Next blocking check |
 | --- | --- | --- | --- |
-| Seeed XIAO nRF52840 | `B35E71C1C3726CE7` | A stalled Companion transport survived the stop token and exact USB reset, then recovered after a 36-second exact application DFU. Current Full Companion USB, bonded BLE, clock sync, terminal/Binary switching, serial-mOTA folder attach, and reversible dual-CDC logging all pass | Prove current-build cold persistence; separately reproduce the stall before using a power cut to test whether power alone clears it; then transfer an actual image through BLE-controlled LoRa OTA |
-| Seeed Tracker T1000-E | `34A9141999729D5D` | A temporary Full Companion and one of two same-visible-version OTAFIX candidates are running; the exact candidate bytes are not yet proven. The bonded warm baseline passed at 3.34 kB/s. Two lab-only pre-START 15 ms/latency-0 DFUs with `0/0` no-preference event-length hints passed at 6.23 and 6.52 kB/s; a 10 ms event-length control timed out before START | Prove installed bootloader bytes by readback, exercise a physical cold 20-to-244-byte readiness transition, restore the protected Repeater identity, cold boot, then force LR1110 reset |
+| Seeed XIAO nRF52840 | `B35E71C1C3726CE7` | OTAFIX candidate `0x02040405` passed exact serial install and corrected Legacy DIS model gates; the patched Bluetooth repeater-updater application was restored over BLE and returned as exact `2886:8044` USB | Use the updater for an identity-gated Bluetooth transfer to another repeater, then prove current-build cold persistence |
+| Seeed Tracker T1000-E | `34A9141999729D5D` | OTAFIX candidate `0x02040405` and the `uf2reset`-fixed Full Companion are installed. The real text command returned exact `2886:0057` boot USB, the same fixed app was restored, and refreshed bonded BLE services pass as `MeshCore-09848C15` | Restore the protected Repeater identity when Companion qualification is complete; cold boot, then force LR1110 reset |
 | RAK3401 | `0B81C9C68D8D01B4`; FICR `8D8D01B4 0B81C9C6` | OTAFIX test version `0x02040403` passes bidirectional application UF2, exact SWD application/bootloader readback, unchanged UICR, and a 74-block direct V4 LoRa apply from exact `3caf9dcf` to current HEAD `9fd580c8`. Post-apply USB and LoRa identity/hash checks pass and the temporary 0 dBm bench setting is restored to 22 dBm | Add exact RF packet counters, then repeat the supported-bandwidth and controlled/passive/mixed routed-hop matrix |
-| Heltec T096 | `651F8E496197F882` | OTAFIX HIL candidate `0x02040401`, serial DFU, signed LoRa bootloader OTA, warm-watchdog recovery, physical power-removal cold persistence, bonded Legacy BLE application DFU, serial mOTA ownership, button/display wake, and Full Companion dual-CDC reconnect checks pass on `keymindCascade` `fcd1f8cc`. The final T096-only no-footer Full Companion image is installed | Perform a privileged or physical host-driven USB bus reset without resetting the MCU; complete the deferred multi-click/long-press physical matrix |
-| Heltec MeshTower V2 with SD | `9352162A72082314` | Exact SD LoRa-OTA Repeater `e26d48e4` is running after identity-gated BLE recovery. Card format/cooldown/forced-format/raw-erase/remount pass; live bootloader contract reports ABI 3, FULL+INPLACE, and SD apply | Signed interrupted-download resume, corruption/signature rejection, then full/delta apply |
+| Heltec T096 | `651F8E496197F882` | OTAFIX candidate `0x02040405` and the `uf2reset`-fixed no-footer Full Companion are installed. The real text command returned exact boot USB, and final USB terminal/Binary mode, dual CDC, version, help, and BLE identity pass | Perform a privileged or physical host-driven USB bus reset without resetting the MCU; complete the deferred multi-click/long-press physical matrix |
+| Heltec MeshTower V2 with SD | `9352162A72082314` | OTAFIX candidate `0x02040405` passed serial combined install, the historical cached DIS handles, BLE application restore, and exact application USB return. Card format/cooldown/forced-format/raw-erase/remount and the live SD apply contract passed earlier | Signed interrupted-download resume, corruption/signature rejection, then full/delta apply |
 | Heltec V4 | USB MAC `44:1B:F6:6A:E8:44`; BLE `44:1B:F6:6A:E8:45` | USB/BLE/Wi-Fi and all three TCP services pass on hardware. The final fresh-NTP-gated Full Companion image builds with 4.31 MB app space free | Flash the exact final NTP build, prove NTP-before-TLS success/failure ordering, then OTA seeding |
 | SenseCAP Indicator LoRa | CH340 plus USB MAC `D8:3B:DA:75:23:AC`; BLE `D8:3B:DA:75:23:AD` | The current dark-layout application is SHA-256 `81bebdc07b6a8349c1c975cb5a0e30c5f6019d35bcac641e5f3d4df951f7406b`; identity-gated flash, USB ASCII/Binary switching, runtime logging, and separate configured-Wi-Fi, BLE, and TCP checks pass. Fresh-NTP HTTPS recovery, strict Range resume, STAGEV2 install, and RP USB readback passed on earlier exact artifacts; the final coordinator source still needs its blocked-UDP/123 hardware gate | Physical display-wrap and four-mode render/heap checks, exact-final blocked-NTP recovery gate, LoRa/TempRadio, and non-empty OTA seeding |
 
@@ -644,6 +644,26 @@ network, and reboot record in that manifest.
 
 ## Seeed Tracker T1000-E
 
+- [x] The cross-role `uf2reset` repair was hardware-qualified with Full
+      Companion ZIP SHA-256
+      `16e470c0d66bec14e1e9f2d4ebe04d83ffb30efa606465f885cbe9fc3d004a14`.
+      It was built from `f2c15225` with GCC 14.2.1, the USA Cascadia/Cascade
+      profile, and embedded version
+      `v1.17.1-uf2reset-f2c15225-f2c15225`. Serial DFU took 32.196 seconds and
+      stable application USB returned in 35.888 seconds. Terminal entry,
+      version, help, the exact no-argument command, application disconnect, and
+      stable `2886:0057` boot USB all passed in one 8.898-second script. The same
+      image was restored in 32.204 seconds and stable `239a:8029` USB returned
+      in 36.313 seconds; a final terminal check returned Binary mode cleanly.
+- [x] The fixed application advertises live as `MeshCore-09848C15` at
+      `D1:A0:86:CD:BB:C6`. The obsolete Pi bond for the earlier temporary
+      identity was removed, and the exact address was paired again with the
+      qualification PIN. Paired, bonded, and trusted state, an encrypted BLEDfu
+      revision read, and the Nordic UART service all passed. The pre-run old
+      application enumerated but produced neither a terminal response nor a
+      live advertisement, so this run does not claim continuity of that
+      temporary identity or of application-owned settings across a combined
+      SoftDevice/bootloader recovery install.
 - [x] Stable application identity `34A9141999729D5D` is recorded and is not
       confused with the RAK3401 even though both currently enumerate with USB
       product ID `239a:8029`. Application is `239a:8029`; the exercised
@@ -946,6 +966,16 @@ network, and reboot record in that manifest.
 
 ## Heltec T096
 
+- [x] The cross-role `uf2reset` repair was hardware-qualified on the exact
+      no-footer Full Companion image. ZIP SHA-256 is
+      `0585bee1c0b278a68788f78af384bcbdb5633d57f9ea301fc14f1c80c4275489`;
+      embedded version is `v1.17.1-uf2reset-f2c15225-f2c15225`. Terminal entry
+      and help passed, the exact command disconnected application USB in
+      1.031 seconds, and stable boot USB returned in 2.026 seconds. The final
+      Full image installed over serial in 38.900 seconds and stable application
+      USB returned in 41.672 seconds. Final primary terminal/Binary switching,
+      dedicated logging interface, version, help entry, and live
+      `MeshCore-8E229D0A` advertisement at `CF:A8:18:36:DE:8B` all passed.
 - [x] Stable USB serial `651F8E496197F882` distinguishes the application
       (`239A:8029`) from the OTAFIX serial-DFU interface. Every flash followed
       that identity across the host-assigned `COM9 -> COM6 -> COM9` transition;

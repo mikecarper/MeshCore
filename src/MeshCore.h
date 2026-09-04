@@ -137,6 +137,10 @@ public:
   virtual void onBeforeTransmit() { }
   virtual void onAfterTransmit() { }
   virtual void reboot() = 0;
+  // Reboot into a UF2-capable bootloader when the platform supports the
+  // retained reset request. Returns false only when unsupported or rejected;
+  // a successful implementation resets and does not return.
+  virtual bool rebootToUf2Bootloader() { return false; }
   virtual void powerOff() { /* no op */ }
   // Reload an already-running system watchdog without enabling one. Long,
   // internally bounded operations can use this while retaining their own

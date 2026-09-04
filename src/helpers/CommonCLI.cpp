@@ -18,29 +18,6 @@
 #include <new>
 #include <stddef.h>
 
-#if defined(NRF52_PLATFORM)
-#include <nrf.h>
-#include <nrf_soc.h>
-
-#ifndef DFU_MAGIC_UF2_RESET
-#define DFU_MAGIC_UF2_RESET 0x57
-#endif
-
-static void resetToUf2Bootloader() {
-  uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
-
-  if (sd_enabled) {
-    sd_power_gpregret_clr(0, 0xFF);
-    sd_power_gpregret_set(0, DFU_MAGIC_UF2_RESET);
-  } else {
-    NRF_POWER->GPREGRET = DFU_MAGIC_UF2_RESET;
-  }
-
-  NVIC_SystemReset();
-}
-#endif
-
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 #if defined(ENABLE_OTA)
@@ -2486,12 +2463,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _board->powerOff();  // doesn't return
     } else if (memcmp(command, "reboot", 6) == 0) {
       _board->reboot();  // doesn't return
-    } else if (sender_timestamp == 0 && memcmp(command, "uf2reset", 8) == 0 && (command[8] == 0 || command[8] == ' ')) {
-#if defined(NRF52_PLATFORM)
-      resetToUf2Bootloader();  // doesn't return
-#else
-      strcpy(reply, "ERR: unsupported");
-#endif
+    } else if (sender_timestamp == 0
+               && mesh::cli::isUf2ResetCommand(command)) {
+      if (!_board->rebootToUf2Bootloader()) {
+        strcpy(reply, "ERR: unsupported");
+      }
     } else if (memcmp(command, "clkreboot", 9) == 0) {
       // Reset clock
       getRTCClock()->setCurrentTime(1715770351);  // 15 May 2024, 8:50pm

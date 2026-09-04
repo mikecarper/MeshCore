@@ -719,6 +719,15 @@ TEST(CLICommandUtils, MatchesDiscoverNeighborsWithoutPrefixCollisions) {
                 "discover.neighbors.extra", "discover.neighbors"));
 }
 
+TEST(CLICommandUtils, MatchesOnlyACompleteUf2ResetCommand) {
+  EXPECT_TRUE(mesh::cli::isUf2ResetCommand("uf2reset"));
+  EXPECT_TRUE(mesh::cli::isUf2ResetCommand("uf2reset   "));
+  EXPECT_FALSE(mesh::cli::isUf2ResetCommand("uf2reset now"));
+  EXPECT_FALSE(mesh::cli::isUf2ResetCommand("uf2reset.extra"));
+  EXPECT_FALSE(mesh::cli::isUf2ResetCommand("uf2"));
+  EXPECT_FALSE(mesh::cli::isUf2ResetCommand(nullptr));
+}
+
 TEST(CLICommandUtils, ParsesRecentRepeaterListAndPageQueries) {
   using mesh::cli::RecentRepeaterGetMatch;
   mesh::cli::RecentRepeaterGetQuery query;

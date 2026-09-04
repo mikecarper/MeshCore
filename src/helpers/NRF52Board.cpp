@@ -33,6 +33,10 @@ static bool ota_ble_started = false;
 #define NRF52_WATCHDOG_TIMEOUT_SECONDS 60UL
 #endif
 
+#ifndef DFU_MAGIC_UF2_RESET
+#define DFU_MAGIC_UF2_RESET 0x57
+#endif
+
 #if NRF52_WATCHDOG_TIMEOUT_SECONDS > 131071UL
 #error "NRF52_WATCHDOG_TIMEOUT_SECONDS exceeds the nRF52 WDT counter range"
 #endif
@@ -94,6 +98,23 @@ bool NRF52Board::isUserGpioAvailable(uint8_t pin) const {
   (void)pin;
   return false;
 #endif
+}
+
+bool NRF52Board::rebootToUf2Bootloader() {
+  uint8_t sd_enabled = 0;
+  if (sd_softdevice_is_enabled(&sd_enabled) != NRF_SUCCESS) return false;
+
+  if (sd_enabled) {
+    if (sd_power_gpregret_clr(0, 0xFF) != NRF_SUCCESS
+        || sd_power_gpregret_set(0, DFU_MAGIC_UF2_RESET) != NRF_SUCCESS) {
+      return false;
+    }
+  } else {
+    NRF_POWER->GPREGRET = DFU_MAGIC_UF2_RESET;
+  }
+
+  NVIC_SystemReset();
+  return true;
 }
 
 static void connect_callback(uint16_t conn_handle) {

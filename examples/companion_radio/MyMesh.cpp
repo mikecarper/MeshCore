@@ -7214,6 +7214,9 @@ void MyMesh::handleTerminalCommand(char* command) {
 #endif
     terminalOutput().print("  reboot\r\n");
     terminalOutput().print("  ver\r\n");
+#if defined(NRF52_PLATFORM)
+    terminalOutput().println("  uf2reset");
+#endif
     if (_terminal_mode) {
       terminalOutput().print("  +++MESHCORE-TERM-STOP\r\n");
     } else {
@@ -7280,6 +7283,13 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     return true;
   }
 #endif
+
+  if (sender_timestamp == 0 && mesh::cli::isUf2ResetCommand(command)) {
+    if (!board.rebootToUf2Bootloader()) {
+      snprintf(reply, reply_capacity, "ERR: unsupported");
+    }
+    return true;
+  }
 
   if (handleLocalControlCommand(command, reply, reply_capacity)) return true;
 
