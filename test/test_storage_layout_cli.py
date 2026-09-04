@@ -108,6 +108,14 @@ int main() {
         companion = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         formatter = (ROOT / "src/helpers/StorageLayout.cpp").read_text()
 
+        stm32_include = formatter.index("#elif defined(STM32_PLATFORM)")
+        stm32_include_end = formatter.index("#endif", stm32_include)
+        stm32_headers = formatter[stm32_include:stm32_include_end]
+        self.assertLess(
+            stm32_headers.index("#include <Arduino.h>"),
+            stm32_headers.index("#include <InternalFileSystem.h>"),
+        )
+
         self.assertIn('#include "StorageLayout.h"', common)
         self.assertIn(
             "mesh::cli::handleStorageLayoutGet(config, *_board, reply, 160)",

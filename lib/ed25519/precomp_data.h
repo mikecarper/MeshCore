@@ -43,6 +43,7 @@ static const ge_precomp Bi[8] = {
 
 
 /* base[i][j] = (j+1)*256^i*B */
+#ifndef ED25519_COMPACT_BASE
 static const ge_precomp base[32][8] = {
     {
         {
@@ -1389,3 +1390,4 @@ static const ge_precomp base[32][8] = {
         },
     },
 };
+#endif

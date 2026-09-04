@@ -500,9 +500,26 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
     || fail "$full_env Full Companion omitted USB folder seeding"
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_BLE_MOTA_SOURCE=1"* ]] \
     || fail "$full_env Full Companion omitted BLE folder seeding"
+  if ! pio_env_option_contains "$pio_env" build_src_filter "helpers/ota/*.cpp" \
+      && [[ "$PLATFORMIO_BUILD_SRC_FILTER" != *"helpers/ota/*.cpp"* ]]; then
+    fail "$full_env Full Companion omitted the OTA C++ implementation"
+  fi
 done
 unset PLATFORMIO_BUILD_FLAGS PLATFORMIO_BUILD_UNFLAGS \
   PLATFORMIO_BUILD_SRC_FILTER
+
+# An environment that includes only the tiny OTA inflater still needs the C++
+# protocol implementation when build.sh overlays LoRa OTA.
+reduced_nrf_ota_env=RAK_3401_repeater_lora_ota_no_external_sensors
+reduced_nrf_pio_env=$(get_pio_build_env "$reduced_nrf_ota_env")
+PLATFORMIO_BUILD_SRC_FILTER=""
+PLATFORMIO_EXTRA_SCRIPTS=""
+apply_nrf52_lora_ota_build_recipe "$reduced_nrf_ota_env" "$reduced_nrf_pio_env"
+if ! pio_env_option_contains "$reduced_nrf_pio_env" build_src_filter "helpers/ota/*.cpp" \
+    && [[ "$PLATFORMIO_BUILD_SRC_FILTER" != *"helpers/ota/*.cpp"* ]]; then
+  fail "$reduced_nrf_ota_env omitted the OTA C++ implementation"
+fi
+unset PLATFORMIO_BUILD_SRC_FILTER PLATFORMIO_EXTRA_SCRIPTS
 
 # The bounded AsyncTCP task stack belongs to every ESP32 Full profile, including
 # expanded non-Companion builds, but must not leak into ordinary or nRF52
@@ -763,6 +780,29 @@ MQTT_BRIDGE_OVERRIDE=""
 if declare -f run_logging_matrix_build_targets | grep -q 'Profile 2'; then
   fail "logging matrix still labels a separate Profile 2"
 fi
+
+# Option 3 must not publish an oversized standard ESP32 image, but its expected
+# portable-slot status is satisfied by the mandatory expanded FULL pass.
+saved_supports_esp32_full_build=$(declare -f supports_esp32_full_build)
+supports_esp32_full_build() { [ "$1" = esp32_portable_overflow ]; }
+build_firmware() { return 42; }
+saved_output_dir=$OUTPUT_DIR
+OUTPUT_DIR=$version_test_dir
+LOGGING_MATRIX_FAILURES=()
+LOGGING_MATRIX_DEFERRED_TARGETS=()
+DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL=1
+FIRMWARE_FILENAME_INFIX=""
+MQTT_BRIDGE_OVERRIDE="off"
+if ! run_logged_build_targets esp32_portable_overflow >/dev/null; then
+  fail "portable ESP32 overflow made the logging pass fail"
+fi
+[ ${#LOGGING_MATRIX_FAILURES[@]} -eq 0 ] \
+  || fail "portable ESP32 overflow remained a logging-matrix failure"
+[ "${LOGGING_MATRIX_DEFERRED_TARGETS[*]}" = esp32_portable_overflow ] \
+  || fail "portable ESP32 overflow was not deferred to FULL"
+OUTPUT_DIR=$saved_output_dir
+unset DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL
+eval "$saved_supports_esp32_full_build"
 
 calls=()
 build_firmware() {

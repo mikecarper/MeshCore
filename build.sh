@@ -57,6 +57,7 @@ PIO_BUILD_DIR_OVERRIDE=""
 RESOLVED_BUILD_TARGETS=()
 RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
 LOGGING_MATRIX_FAILURES=()
+LOGGING_MATRIX_DEFERRED_TARGETS=()
 RADIO_PRESET_SELECTION=""
 KISS_MODE_OVERRIDE="${KISS_MODE_OVERRIDE-}"
 PARSED_COMMAND_ARGS=()
@@ -3291,7 +3292,7 @@ apply_nrf52_lora_ota_build_recipe() {
   # recipe, but a new board may not. Add only the missing pieces so ENABLE_OTA
   # never reaches the linker without its implementation or the EndF
   # trailer/zip post-build step.
-  if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
+  if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/*.cpp"; then
     append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
   fi
   if ! pio_env_option_contains "$pio_env_name" extra_scripts "tools/mota/pio_endf.py"; then
@@ -3409,7 +3410,7 @@ apply_companion_radio_full_profile() {
     append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_BLE_MOTA_SOURCE=1 -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
 
-    if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/"; then
+    if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/ota/*.cpp"; then
       append_platformio_build_src_filter "+<helpers/ota/*.cpp>"
     fi
     if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/nrf52/*.cpp" \
@@ -4903,7 +4904,14 @@ run_logged_build_targets() {
       else
         mv -f -- "$log_tmp" "$log_path"
       fi
-      if [ "$build_status" -ne 0 ]; then
+      if [ "$build_status" -eq 42 ] \
+          && [ "${DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL:-0}" = "1" ] \
+          && [ "$profile" = "standard" ] \
+          && supports_esp32_full_build "$env"; then
+        LOGGING_MATRIX_DEFERRED_TARGETS+=("$env")
+        echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required."
+        echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required." >> "$log_path"
+      elif [ "$build_status" -ne 0 ]; then
         overall_status=1
         LOGGING_MATRIX_FAILURES+=("${env} (${profile}) -> ${log_path}")
         echo "FAILED: ${env} (${profile}), status ${build_status}"
@@ -5015,7 +5023,14 @@ run_logged_build_targets() {
     else
       mv -f -- "$log_tmp" "$log_path"
     fi
-    if [ "$build_status" -ne 0 ]; then
+    if [ "$build_status" -eq 42 ] \
+        && [ "${DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL:-0}" = "1" ] \
+        && [ "$profile" = "standard" ] \
+        && supports_esp32_full_build "$env"; then
+      LOGGING_MATRIX_DEFERRED_TARGETS+=("$env")
+      echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required."
+      echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required." >> "$log_path"
+    elif [ "$build_status" -ne 0 ]; then
       overall_status=1
       LOGGING_MATRIX_FAILURES+=("${env} (${profile}) -> ${log_path}")
       echo "FAILED: ${env} (${profile}), status ${build_status}"
@@ -5199,12 +5214,14 @@ run_logging_matrix_build_targets() {
   local constrained_merged_logging_count=0
   local build_status=0
   local pass_status=0
+  local DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL=0
 
   if [ ${#targets[@]} -eq 0 ]; then
     echo "No build targets resolved."
     return 1
   fi
   LOGGING_MATRIX_FAILURES=()
+  LOGGING_MATRIX_DEFERRED_TARGETS=()
   PROFILE_BUILD_WORKERS=$OPTION3_BUILD_WORKERS
   echo "Option 3 PlatformIO policy: one target build at a time, ${OPTION3_PIO_JOBS} compiler job(s) inside that process."
 
@@ -5238,8 +5255,10 @@ run_logging_matrix_build_targets() {
   MQTT_BRIDGE_OVERRIDE="off"
   FIRMWARE_FILENAME_INFIX=""
   if [ ${#standard_targets[@]} -gt 0 ]; then
+    DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL=1
     run_logged_build_targets "${standard_targets[@]}"
     pass_status=$?
+    DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL=0
     if [ "$pass_status" -eq 130 ]; then return 130; fi
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
@@ -5262,6 +5281,10 @@ run_logging_matrix_build_targets() {
   ESP32_FULL_BUILD=$original_esp32_full_build
   PROFILE_BUILD_WORKERS=$original_profile_build_workers
 
+  if [ ${#LOGGING_MATRIX_DEFERRED_TARGETS[@]} -gt 0 ]; then
+    echo "${#LOGGING_MATRIX_DEFERRED_TARGETS[@]} standard ESP32 target(s) exceeded the portable OTA slot and were deferred to the expanded FULL pass:"
+    printf '  %s\n' "${LOGGING_MATRIX_DEFERRED_TARGETS[@]}"
+  fi
   if [ ${#LOGGING_MATRIX_FAILURES[@]} -gt 0 ]; then
     echo "Logging matrix completed with ${#LOGGING_MATRIX_FAILURES[@]} failed build(s):"
     printf '  %s\n' "${LOGGING_MATRIX_FAILURES[@]}"

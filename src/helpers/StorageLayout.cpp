@@ -9,6 +9,7 @@
 #include <nrf.h>
 #include "ota/OtaFlashLayout_nrf52.h"
 #elif defined(STM32_PLATFORM)
+#include <Arduino.h>
 #include <InternalFileSystem.h>
 #endif
 

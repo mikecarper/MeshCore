@@ -340,6 +340,7 @@ static unsigned char equal(signed char b, signed char c) {
     return (unsigned char) y;
 }
 
+#ifndef ED25519_COMPACT_BASE
 static unsigned char negative(signed char b) {
     uint64_t x = b; /* 18446744073709551361..18446744073709551615: yes; 0..255: no */
     x >>= 63; /* 1: yes; 0: no */
@@ -432,6 +433,83 @@ void ge_scalarmult_base(ge_p3 *h, const unsigned char *a) {
         ge_p1p1_to_p3(h, &r);
     }
 }
+#else
+/*
+ * Space-constrained fixed-base multiplication.
+ *
+ * The usual ref10 implementation uses a 30 KiB table containing shifted
+ * multiples of the public Ed25519 base point.  Small STM32 targets cannot
+ * afford that table alongside OTA, packet logging, the CLI, and their 16 KiB
+ * filesystem.  Build the much smaller 0B..7B table in RAM and consume the
+ * scalar in fixed three-bit windows instead.  The loop counts and selections
+ * do not depend on secret scalar bits.
+ */
+static void cached_cmov(ge_cached *t, const ge_cached *u, unsigned char b) {
+    fe_cmov(t->YplusX, u->YplusX, b);
+    fe_cmov(t->YminusX, u->YminusX, b);
+    fe_cmov(t->Z, u->Z, b);
+    fe_cmov(t->T2d, u->T2d, b);
+}
+
+static unsigned char scalar_window3(const unsigned char *a, int window) {
+    const int bit = window * 3;
+    const int byte = bit >> 3;
+    const int shift = bit & 7;
+    unsigned int value = a[byte] >> shift;
+
+    if (shift > 5 && byte < 31) {
+        value |= (unsigned int)a[byte + 1] << (8 - shift);
+    }
+    return (unsigned char)(value & 7U);
+}
+
+void ge_scalarmult_base(ge_p3 *h, const unsigned char *a) {
+    ge_cached multiples[8];
+    ge_cached base_cached;
+    ge_cached selected;
+    ge_p1p1 r;
+    ge_p3 base_point;
+    ge_p3 current;
+    unsigned char digit;
+    int i;
+    int j;
+
+    /* Bi[0] is B in precomputed form; add it to the identity to recover B. */
+    ge_p3_0(&base_point);
+    ge_madd(&r, &base_point, &Bi[0]);
+    ge_p1p1_to_p3(&base_point, &r);
+    ge_p3_to_cached(&base_cached, &base_point);
+
+    ge_p3_0(&current);
+    ge_p3_to_cached(&multiples[0], &current);
+    multiples[1] = base_cached;
+    current = base_point;
+    for (i = 2; i < 8; ++i) {
+        ge_add(&r, &current, &base_cached);
+        ge_p1p1_to_p3(&current, &r);
+        ge_p3_to_cached(&multiples[i], &current);
+    }
+
+    ge_p3_0(h);
+    /* a[31] <= 127, so 85 windows cover all possible scalar bits. */
+    for (i = 84; i >= 0; --i) {
+        ge_p3_dbl(&r, h);
+        ge_p1p1_to_p3(h, &r);
+        ge_p3_dbl(&r, h);
+        ge_p1p1_to_p3(h, &r);
+        ge_p3_dbl(&r, h);
+        ge_p1p1_to_p3(h, &r);
+
+        selected = multiples[0];
+        digit = scalar_window3(a, i);
+        for (j = 1; j < 8; ++j) {
+            cached_cmov(&selected, &multiples[j], equal((signed char)digit, (signed char)j));
+        }
+        ge_add(&r, h, &selected);
+        ge_p1p1_to_p3(h, &r);
+    }
+}
+#endif
 
 
 /*
