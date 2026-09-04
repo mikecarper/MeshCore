@@ -783,8 +783,8 @@ fi
 
 # Option 3 must not publish an oversized standard ESP32 image, but its expected
 # portable-slot status is satisfied by the mandatory expanded FULL pass.
-saved_supports_esp32_full_build=$(declare -f supports_esp32_full_build)
-supports_esp32_full_build() { [ "$1" = esp32_portable_overflow ]; }
+saved_has_esp32_full_profile=$(declare -f has_esp32_full_profile)
+has_esp32_full_profile() { [ "$1" = esp32_portable_overflow ]; }
 build_firmware() { return 42; }
 saved_output_dir=$OUTPUT_DIR
 OUTPUT_DIR=$version_test_dir
@@ -802,7 +802,13 @@ fi
   || fail "portable ESP32 overflow was not deferred to FULL"
 OUTPUT_DIR=$saved_output_dir
 unset DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL
-eval "$saved_supports_esp32_full_build"
+eval "$saved_has_esp32_full_profile"
+
+reduced_full_alias=Tbeam_SX1262_repeater_lora_ota_no_external_sensors
+[ "$(get_esp32_full_profile_target "$reduced_full_alias")" = Tbeam_SX1262_repeater ] \
+  || fail "reduced ESP32 LoRa OTA alias did not resolve to its FULL base target"
+has_esp32_full_profile "$reduced_full_alias" \
+  || fail "reduced ESP32 LoRa OTA alias lost its expanded FULL replacement"
 
 calls=()
 build_firmware() {

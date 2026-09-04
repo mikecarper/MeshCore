@@ -4907,7 +4907,7 @@ run_logged_build_targets() {
       if [ "$build_status" -eq 42 ] \
           && [ "${DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL:-0}" = "1" ] \
           && [ "$profile" = "standard" ] \
-          && supports_esp32_full_build "$env"; then
+          && has_esp32_full_profile "$env"; then
         LOGGING_MATRIX_DEFERRED_TARGETS+=("$env")
         echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required."
         echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required." >> "$log_path"
@@ -5026,7 +5026,7 @@ run_logged_build_targets() {
     if [ "$build_status" -eq 42 ] \
         && [ "${DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL:-0}" = "1" ] \
         && [ "$profile" = "standard" ] \
-        && supports_esp32_full_build "$env"; then
+        && has_esp32_full_profile "$env"; then
       LOGGING_MATRIX_DEFERRED_TARGETS+=("$env")
       echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required."
       echo "DEFERRED: ${env} (${profile}) exceeds the portable OTA slot; the expanded FULL pass is required." >> "$log_path"
@@ -5059,10 +5059,27 @@ run_logged_build_targets() {
   return "$overall_status"
 }
 
-has_esp32_full_profile() {
+get_esp32_full_profile_target() {
   local target=$1
+
+  # Synthetic reduced LoRa-OTA aliases share an expanded FULL replacement
+  # with their complete base repeater. Resolve that base before looking for
+  # MQTT/unified siblings so a portable overflow is deferred only when the
+  # replacement can actually be built.
+  if is_lora_ota_only_target "$target"; then
+    local complete_target=${PIO_ENV_COMPLETE_OTA_BASE_BY_NAME[$target]:-${target%_lora_ota_no_external_sensors}}
+    if is_supported_build_env "$complete_target"; then
+      target=$complete_target
+    fi
+  fi
+  echo "$target"
+}
+
+has_esp32_full_profile() {
+  local target
   local candidate=""
 
+  target=$(get_esp32_full_profile_target "$1")
   candidate=$(get_mqtt_enabled_target "$target") || candidate=""
   if [ -n "$candidate" ] && supports_esp32_full_build "$candidate"; then
     return 0
@@ -5077,6 +5094,7 @@ run_full_esp32_profile() {
   shift 2
   local targets=("$@")
   local target
+  local full_profile_target
   local full_target
   local mqtt_target
   local full_targets=()
@@ -5091,17 +5109,18 @@ run_full_esp32_profile() {
   local pass_status=0
 
   for target in "${targets[@]}"; do
+    full_profile_target=$(get_esp32_full_profile_target "$target")
     full_target=""
     if [ "$profile_mode" = "fallback" ]; then
       # A matching MQTT environment is emitted once by the unified profile;
       # do not also build its former non-MQTT FULL-logging twin.
-      mqtt_target=$(get_mqtt_enabled_target "$target") || mqtt_target=""
+      mqtt_target=$(get_mqtt_enabled_target "$full_profile_target") || mqtt_target=""
       if [ -n "$mqtt_target" ] && supports_esp32_full_build "$mqtt_target"; then
         continue
       fi
-      full_target=$(get_mqtt_disabled_target "$target") || full_target=""
+      full_target=$(get_mqtt_disabled_target "$full_profile_target") || full_target=""
     else
-      full_target=$(get_mqtt_enabled_target "$target") || full_target=""
+      full_target=$(get_mqtt_enabled_target "$full_profile_target") || full_target=""
     fi
     if [ -z "$full_target" ] || ! supports_esp32_full_build "$full_target"; then
       continue
