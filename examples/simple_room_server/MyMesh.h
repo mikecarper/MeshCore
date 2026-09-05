@@ -158,7 +158,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
 #endif
 {
   FILESYSTEM* _fs;
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   File serial_log_dump;
   size_t serial_log_remaining = 0;
   size_t serial_log_pending_size = 0;
@@ -463,7 +463,7 @@ public:
   }
 
   void dumpLogFile() override;
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   // Large local-only replies advance between radio service passes.
   bool hasPendingSerialOutput() const;
   void servicePendingSerialOutput();

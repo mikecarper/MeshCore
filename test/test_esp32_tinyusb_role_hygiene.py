@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep native-TinyUSB repeater/room output away from blocking Arduino writes."""
+"""Keep ESP32 native-USB role output away from blocking Arduino writes."""
 
 from pathlib import Path
 import re
@@ -22,6 +22,8 @@ class Esp32TinyUsbRoleHygieneTest(unittest.TestCase):
             r"Stream& usbConsolePort\(\)\s*\{\s*"
             r"#if MESH_ESP32_TINYUSB_NONBLOCKING\s+"
             r"return buffered_esp32_tinyusb_terminal_port;\s+"
+            r"#elif MESH_ESP32_HWCDC_SESSION_GUARD\s+"
+            r"return guarded_esp32_hwcdc_port;\s+"
             r"#else\s+return Serial;\s+#endif",
         )
 
@@ -98,14 +100,49 @@ class Esp32TinyUsbRoleHygieneTest(unittest.TestCase):
                 text = source(f"examples/{role}/main.cpp")
                 setup = text[text.index("void setup()") : text.index("void loop()")]
                 loop = text[text.index("void loop()") :]
+                self.assertLess(
+                    setup.index("mesh::prepareUsbLoggingPort();"),
+                    setup.index("Serial.begin(115200);"),
+                )
                 self.assertIn("mesh::beginUsbLoggingPort();", setup)
                 self.assertIn("mesh::serviceUsbTerminalPort();", loop)
+
+    def test_sensor_uses_the_same_guarded_console_lifecycle(self):
+        main = source("examples/simple_sensor/main.cpp")
+        sensor = source("examples/simple_sensor/SensorMesh.cpp")
+        setup = main[main.index("void setup()") : main.index("void loop()")]
+        loop = main[main.index("void loop()") :]
+        self.assertLess(
+            setup.index("mesh::prepareUsbLoggingPort();"),
+            setup.index("Serial.begin(115200);"),
+        )
+        self.assertIn("mesh::beginUsbLoggingPort();", setup)
+        self.assertIn("mesh::takeUsbTerminalSessionReset()", loop)
+        self.assertIn("mesh::tryCompleteUsbTerminalSessionReset()", loop)
+        self.assertIn("mesh::canAcceptUsbConsoleCommand()", loop)
+        for text in (main, sensor):
+            self.assertNotRegex(
+                text,
+                r"\bSerial\s*\.\s*(?:print|println|printf|write|flush|available|read|peek)\s*\(",
+            )
+            self.assertNotRegex(text, r"\bprintHex\s*\(\s*Serial\b")
+        self.assertIn("mesh::usbConsolePort()", main)
+        self.assertIn("mesh::usbConsolePort()", sensor)
+
+    def test_hwcdc_guard_is_not_limited_to_companion_builds(self):
+        header = source("src/helpers/UsbLogging.h")
+        start = header.index("#if defined(ESP32) && defined(ARDUINO_USB_MODE)",
+                             header.index("MESH_ESP32_HWCDC_SESSION_GUARD") - 300)
+        end = header.index("#if MESH_ESP32_TINYUSB_NONBLOCKING", start)
+        guard = header[start:end]
+        self.assertIn("ARDUINO_USB_MODE == 1", guard)
+        self.assertNotIn("ENABLE_USB_INTERFACE", guard)
 
     def test_sleep_keeps_raw_flush_only_for_other_esp32_transports(self):
         text = source("src/helpers/ESP32Board.cpp")
         sleep = text[text.index("void ESP32Board::enterDeepSleep(") :]
         guard = re.search(
-            r"#if MESH_ESP32_TINYUSB_NONBLOCKING\s+"
+            r"#if MESH_ESP32_USB_CONSOLE_COOPERATIVE\s+"
             r"mesh::serviceUsbTerminalPort\(\);\s+"
             r"#else\s+Serial\.flush\(\);\s+#endif",
             sleep,

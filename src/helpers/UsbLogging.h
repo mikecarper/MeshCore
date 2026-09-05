@@ -24,6 +24,23 @@
   #define MESH_ESP32_TINYUSB_NONBLOCKING 0
 #endif
 
+// ESP32-S3 USB-Serial/JTAG (HWCDC) has a software TX ring which can retain a
+// previous host's bytes across a USB bus reset. This capability is independent
+// of the Companion role: room, repeater, and sensor consoles need the same
+// session gate and bounded writes.
+#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  #define MESH_ESP32_HWCDC_SESSION_GUARD 1
+#else
+  #define MESH_ESP32_HWCDC_SESSION_GUARD 0
+#endif
+
+#if MESH_ESP32_TINYUSB_NONBLOCKING || MESH_ESP32_HWCDC_SESSION_GUARD
+  #define MESH_ESP32_USB_CONSOLE_COOPERATIVE 1
+#else
+  #define MESH_ESP32_USB_CONSOLE_COOPERATIVE 0
+#endif
+
 namespace mesh {
 
 #ifndef MESH_ESP32_USB_TX_BUFFER_SIZE
@@ -59,8 +76,13 @@ bool saveUsbLoggingBootPreference(bool enabled);
 // instead of mistaking an allocation failure for a permanently non-empty ring.
 void setUsbCompanionTxBufferCapacity(size_t capacity);
 
+// Configure ESP32 HWCDC's bounded write timeout and TX ring before Serial.begin
+// creates its mutex and enables the USB ISR. Safe as a no-op on other ports.
+void prepareUsbLoggingPort();
+
 // Start the optional dedicated USB logging interface. Ordinary and single-TTY
-// builds use Serial; nRF52 Full Companion uses a second CDC ACM port.
+// builds use Serial; nRF52 Full Companion uses a second CDC ACM port. Call this
+// after Serial.begin() so native USB roles also register session events.
 void beginUsbLoggingPort();
 // Enable owner-task service when a host opens the dedicated logging endpoint.
 // That task emits the identity marker from the actual TinyUSB write result and
@@ -83,8 +105,8 @@ Stream& usbMotaPort();
 // it from the application loop; discard it before changing the CDC protocol or
 // after a host disconnect so stale text cannot prefix a later Binary session.
 Stream& usbTerminalPort();
-// Repeater/room-server console: protect ESP32 TinyUSB while preserving the
-// historical raw Serial behavior of other platforms and roles.
+// Repeater/room-server/sensor console: protect both ESP32 native USB transports
+// while preserving the historical raw Serial behavior of other platforms.
 Stream& usbConsolePort();
 // Diagnostic backlog alone must not starve console input. Native ESP32 CDC
 // admits another command when its reserved functional capacity is available;

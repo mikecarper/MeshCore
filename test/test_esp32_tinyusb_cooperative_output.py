@@ -24,6 +24,7 @@ HARNESS = r'''
 #include <cstdint>
 #include <helpers/FileRead.h>
 #define MESH_ESP32_TINYUSB_NONBLOCKING 1
+#define MESH_ESP32_USB_CONSOLE_COOPERATIVE 1
 #define MAX_ROUTE_HASH_BYTES 3
 #define PACKET_LOG_FILE "/packet_log"
 static void require(bool ok, const char* what) {
@@ -248,7 +249,7 @@ class CooperativeOutputTest(unittest.TestCase):
             with self.subTest(role=role), tempfile.TemporaryDirectory() as temporary:
                 text = (ROOT / f"examples/{role}/MyMesh.cpp").read_text()
                 dump_start = text.index("void MyMesh::dumpLogFile()")
-                dump_end = text.index("\n#if MESH_ESP32_TINYUSB_NONBLOCKING\nbool MyMesh::hasPendingSerialOutput", dump_start)
+                dump_end = text.index("\n#if MESH_ESP32_USB_CONSOLE_COOPERATIVE\nbool MyMesh::hasPendingSerialOutput", dump_start)
                 pump_start = text.index("bool MyMesh::hasPendingSerialOutput()", dump_end)
                 pump_end = text.index("\n#endif", pump_start)
                 methods = text[dump_start:dump_end] + "\n" + text[pump_start:pump_end]

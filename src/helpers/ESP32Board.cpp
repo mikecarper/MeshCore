@@ -1124,9 +1124,9 @@ void ESP32Board::enterDeepSleep(uint32_t secs) {
     sensors.getLocationProvider()->stop();
   }
 
-  // Native TinyUSB must not wait for a host which has stopped reading.
-  // Keep the original flush behavior for UART and USB-Serial-JTAG targets.
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+  // Native USB must not wait for a host which has stopped reading.
+  // Keep the original flush behavior for UART targets.
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::serviceUsbTerminalPort();
 #else
   Serial.flush();

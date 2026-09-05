@@ -18,13 +18,17 @@ class Esp32TinyUsbNonblockingTest(unittest.TestCase):
         if compiler is None:
             self.skipTest("a host C++17 compiler is required")
         with tempfile.TemporaryDirectory(prefix=".tmp-usb-mode0-", dir=ROOT) as temporary:
-            for mode, companion in ((0, False), (0, True), (1, False)):
-                with self.subTest(usb_mode=mode, companion=companion):
+            for mode, companion, cdc_on_boot in (
+                (0, False, 1), (0, True, 1), (1, False, 0)
+            ):
+                with self.subTest(usb_mode=mode, companion=companion,
+                                  cdc_on_boot=cdc_on_boot):
                     binary = Path(temporary) / f"usb-mode-{mode}-{companion}.exe"
                     command = [
                         compiler, "-std=c++17", "-DARDUINO=1", "-DESP32=1",
                         "-DESP32_PLATFORM=1", "-DMESH_DEBUG=1",
-                        "-DARDUINO_USB_CDC_ON_BOOT=1", f"-DARDUINO_USB_MODE={mode}",
+                        f"-DARDUINO_USB_CDC_ON_BOOT={cdc_on_boot}",
+                        f"-DARDUINO_USB_MODE={mode}",
                         f"-I{FIXTURE / 'mocks'}", f"-I{ROOT / 'src'}",
                         str(FIXTURE / "test_esp32_tinyusb_nonblocking.cpp"),
                         str(ROOT / "src/helpers/UsbLogging.cpp"),

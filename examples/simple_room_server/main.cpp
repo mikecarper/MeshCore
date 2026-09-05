@@ -43,8 +43,9 @@ static char ethernet_command[MAX_POST_TEXT_LEN+1];
 unsigned long POWERSAVING_FIRSTSLEEP_SECS = 120; // The first sleep (if enabled) from boot
 
 void setup() {
+  mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::beginUsbLoggingPort();
 #endif
 #if MESH_PACKET_LOGGING
@@ -157,7 +158,7 @@ void loop() {
   board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
 #endif
   bool usb_ready = true;
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::serviceUsbLoggingPort();
   mesh::serviceUsbTerminalPort();
   if (mesh::takeUsbTerminalSessionReset()) {
@@ -219,7 +220,7 @@ void loop() {
   if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::serviceUsbTerminalPort();
 #endif
 #ifdef TBEAM_1W

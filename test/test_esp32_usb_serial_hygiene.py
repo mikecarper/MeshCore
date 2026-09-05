@@ -53,9 +53,9 @@ class Esp32UsbSerialHygieneTest(unittest.TestCase):
         hwcdc = main[start : main.index("#elif", start)]
 
         serial_begin = main.index("Serial.begin(115200);")
-        tx_buffer = main.index("Serial.setTxBufferSize(candidate);")
+        prepare = main.index("mesh::prepareUsbLoggingPort();")
         logging_begin = main.index("mesh::beginUsbLoggingPort();")
-        self.assertLess(tx_buffer, serial_begin)
+        self.assertLess(prepare, serial_begin)
         self.assertLess(serial_begin, logging_begin)
 
         self.assertIn("board.isUsbHostConnected()", hwcdc)
@@ -151,12 +151,20 @@ class Esp32UsbSerialHygieneTest(unittest.TestCase):
         self.assertNotIn("Serial.begin(", purge)
 
         setup = main[main.index("void setup()") : main.index("board.begin();")]
-        self.assertIn("static const size_t usb_tx_sizes[]", setup)
-        self.assertIn("Serial.setTxBufferSize(candidate)", setup)
-        self.assertIn("usb_tx_capacity = Serial.availableForWrite();", setup)
-        self.assertIn(
-            "mesh::setUsbCompanionTxBufferCapacity(usb_tx_capacity)", setup
-        )
+        self.assertIn("mesh::prepareUsbLoggingPort();", setup)
+        prepare_start = logging.index("void prepareUsbLoggingPort()")
+        prepare = logging[prepare_start : logging.index(
+            "void beginUsbLoggingPort()", prepare_start
+        )]
+        self.assertIn("static const size_t usb_tx_sizes[]", prepare)
+        self.assertIn("Serial.setTxBufferSize(candidate)", prepare)
+        self.assertIn("Serial.setTxTimeoutMs(5);", prepare)
+        begin_start = logging.index("void beginUsbLoggingPort()")
+        begin = logging[begin_start : logging.index(
+            "void serviceUsbLoggingPort()", begin_start
+        )]
+        self.assertIn("Serial.availableForWrite()", begin)
+        self.assertIn("setUsbCompanionTxBufferCapacity(", begin)
 
         debug_start = logging.index(
             "static void setPlatformDebugOutputEnabled(bool enabled)"
@@ -189,9 +197,7 @@ class Esp32UsbSerialHygieneTest(unittest.TestCase):
             ota_context.index("#ifndef OTA_FOLDER_SERIAL_STREAM") :
             ota_context.index("#ifndef OTA_FOLDER_SERIAL_BAUD")
         ]
-        self.assertIn("defined(ESP32)", ota_stream)
-        self.assertIn("ARDUINO_USB_MODE == 1", ota_stream)
-        self.assertIn("defined(ENABLE_USB_INTERFACE)", ota_stream)
+        self.assertIn("MESH_ESP32_USB_CONSOLE_COOPERATIVE", ota_stream)
         self.assertIn("::mesh::usbMotaPort()", ota_stream)
 
         self.assertIn(

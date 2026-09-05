@@ -24,7 +24,7 @@
 #define MAX_TRANS_UNIT      255
 
 #if defined(ARDUINO) && \
-    (defined(NRF52_PLATFORM) || MESH_ESP32_TINYUSB_NONBLOCKING) && \
+    (defined(NRF52_PLATFORM) || MESH_ESP32_USB_CONSOLE_COOPERATIVE) && \
     ((defined(MESH_DEBUG) && MESH_DEBUG) || \
      (defined(BRIDGE_DEBUG) && BRIDGE_DEBUG) || \
      (defined(POWERSAVING_DEBUG) && POWERSAVING_DEBUG))
@@ -86,7 +86,7 @@ inline size_t nrf52DebugPrintf(const char* format, ...) {
 
 #if MESH_DEBUG && ARDUINO
   #include <Arduino.h>
-  #if defined(NRF52_PLATFORM) || MESH_ESP32_TINYUSB_NONBLOCKING
+  #if defined(NRF52_PLATFORM) || MESH_ESP32_USB_CONSOLE_COOPERATIVE
     #define MESH_DEBUG_PRINT(F, ...) do { mesh::nrf52DebugPrintf("DEBUG: " F, ##__VA_ARGS__); } while(0)
     #define MESH_DEBUG_PRINTLN(F, ...) do { mesh::nrf52DebugPrintf("DEBUG: " F "\n", ##__VA_ARGS__); } while(0)
   #else
@@ -99,7 +99,7 @@ inline size_t nrf52DebugPrintf(const char* format, ...) {
 #endif
 
 #if BRIDGE_DEBUG && ARDUINO
-  #if defined(NRF52_PLATFORM) || MESH_ESP32_TINYUSB_NONBLOCKING
+  #if defined(NRF52_PLATFORM) || MESH_ESP32_USB_CONSOLE_COOPERATIVE
     #define BRIDGE_DEBUG_PRINTLN(F, ...) do { mesh::nrf52DebugPrintf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } while(0)
   #else
     #define BRIDGE_DEBUG_PRINTLN(F, ...) do { if (mesh::isUsbLoggingEnabled() && mesh::usbLoggingPort().availableForWrite() > 0) { mesh::usbLoggingPort().printf("%s BRIDGE: " F, getLogDateTime(), ##__VA_ARGS__); } } while(0)
@@ -110,7 +110,7 @@ inline size_t nrf52DebugPrintf(const char* format, ...) {
 
 #if POWERSAVING_DEBUG && ARDUINO
   #include <Arduino.h>
-  #if defined(NRF52_PLATFORM) || MESH_ESP32_TINYUSB_NONBLOCKING
+  #if defined(NRF52_PLATFORM) || MESH_ESP32_USB_CONSOLE_COOPERATIVE
     #define POWERSAVING_DEBUG_PRINT(F, ...) do { mesh::nrf52DebugPrintf("POWERSAVING: " F, ##__VA_ARGS__); } while(0)
     #define POWERSAVING_DEBUG_PRINTLN(F, ...) do { mesh::nrf52DebugPrintf("POWERSAVING: " F "\n", ##__VA_ARGS__); } while(0)
   #else

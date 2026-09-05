@@ -2402,7 +2402,7 @@ void MyMesh::printRecentRepeatersSerial() {
     return;
   }
 
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   if (hasPendingSerialOutput()) {
     mesh::usbConsolePort().printf("Err - USB output busy\r\n");
     return;
@@ -4845,7 +4845,7 @@ void MyMesh::updateFloodAdvertTimer() {
 }
 
 void MyMesh::dumpLogFile() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   if (hasPendingSerialOutput()) {
     mesh::usbConsolePort().printf("Err - USB output busy\r\n");
     return;
@@ -4869,7 +4869,7 @@ void MyMesh::dumpLogFile() {
 #endif
 }
 
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
 bool MyMesh::hasPendingSerialOutput() const {
   return serial_log_active || serial_log_eof_pending || serial_recent_next >= 0;
 }
@@ -11536,7 +11536,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   // Compatibility path for manually defined legacy portable builds. Current
   // release builds use FULL and do not enter this branch.
   _cli.handleCommand(sender_timestamp, command, reply);
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   if (sender_timestamp == 0 && serial_log_eof_pending
       && strcmp(reply, "   EOF") == 0) reply[0] = 0;
 #endif
@@ -11942,7 +11942,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 #endif
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
     if (sender_timestamp == 0 && serial_log_eof_pending
         && strcmp(reply, "   EOF") == 0) reply[0] = 0;
 #endif
@@ -11956,7 +11956,7 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   servicePendingSerialOutput();
 #endif
   _cli.loop();

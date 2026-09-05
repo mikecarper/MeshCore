@@ -71,8 +71,9 @@ static unsigned long userBtnDownAt = 0;
 #endif
 
 void setup() {
+  mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::beginUsbLoggingPort();
 #endif
 #if MESH_PACKET_LOGGING
@@ -116,7 +117,7 @@ void setup() {
       radioinit_attempts = 0;
       const uint32_t retry_started = millis();
       while (millis() - retry_started < 60000UL) {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
         mesh::serviceUsbLoggingPort();
         mesh::serviceUsbTerminalPort();
 #endif
@@ -224,7 +225,7 @@ void setup() {
 
 static void __attribute__((noinline)) serviceCommandInterfaces() {
   bool usb_ready = true;
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::serviceUsbLoggingPort();
   mesh::serviceUsbTerminalPort();
   if (mesh::takeUsbTerminalSessionReset()) {
@@ -351,7 +352,7 @@ void loop() {
   if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::serviceUsbTerminalPort();
 #endif
 

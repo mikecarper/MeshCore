@@ -5,14 +5,9 @@
 #include <atomic>
 #include <stdio.h>
 
-#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
-    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
-    && defined(ENABLE_USB_INTERFACE)
-  #define MESH_ESP32_HWCDC_SESSION_GUARD 1
+#if MESH_ESP32_HWCDC_SESSION_GUARD
   #include "esp_idf_version.h"
   #include "hal/usb_serial_jtag_ll.h"
-#else
-  #define MESH_ESP32_HWCDC_SESSION_GUARD 0
 #endif
 
 #if defined(NRF52_PLATFORM) || MESH_ESP32_HWCDC_SESSION_GUARD \
@@ -296,8 +291,7 @@ static std::atomic<bool> esp32_hwcdc_tx_kick_pending{false};
 static portMUX_TYPE esp32_hwcdc_session_mux = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t esp32_hwcdc_taken_bus_reset_generation = 0;
 static bool esp32_hwcdc_event_handler_registered = false;
-static std::atomic<size_t> esp32_hwcdc_tx_buffer_capacity{
-    MESH_ESP32_USB_TX_BUFFER_SIZE};
+static std::atomic<size_t> esp32_hwcdc_tx_buffer_capacity{0};
 // A busy writer or temporary allocation failure may require more than one main
 // loop to purge. Keep the original detach state/generation across retries so a
 // failed attempt never reattaches stale bytes or turns into a reboot loop.
@@ -530,7 +524,8 @@ static void setPlatformDebugOutputEnabled(bool enabled) {
   // bytes from racing a binary mOTA/Companion record's capacity preflight.
   (void)enabled;
   Serial.setDebugOutput(false);
-#elif defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+#elif defined(ESP32_PLATFORM) \
+    && (defined(ENABLE_USB_INTERFACE) || MESH_ESP32_HWCDC_SESSION_GUARD)
   // Arduino-ESP32 log_e()/ESP-IDF diagnostics otherwise write straight to
   // the same UART/CDC stream used by Binary Companion.
 #if MESH_ESP32_HWCDC_SESSION_GUARD
@@ -789,6 +784,23 @@ void setUsbCompanionTxBufferCapacity(size_t capacity) {
 #endif
 }
 
+void prepareUsbLoggingPort() {
+#if MESH_ESP32_HWCDC_SESSION_GUARD
+  // HWCDC::setTxBufferSize() deletes/recreates its ring without taking the TX
+  // mutex or masking the USB ISR. Resize only during early setup, before
+  // Serial.begin() creates that mutex and enables the interrupt handler.
+  static const size_t usb_tx_sizes[] = {
+      MESH_ESP32_USB_TX_BUFFER_SIZE, 2048, 1024, 512, 256};
+  size_t capacity = 0;
+  for (size_t candidate : usb_tx_sizes) {
+    capacity = Serial.setTxBufferSize(candidate);
+    if (capacity == candidate) break;
+  }
+  Serial.setTxTimeoutMs(5);
+  setUsbCompanionTxBufferCapacity(capacity);
+#endif
+}
+
 void beginUsbLoggingPort() {
   // setup() calls this once before role preferences are loaded and again
   // afterwards. The first call silences framework diagnostics on a protected
@@ -802,6 +814,11 @@ void beginUsbLoggingPort() {
   }
 #endif
 #if MESH_ESP32_HWCDC_SESSION_GUARD
+  // If every pre-begin resize failed, begin() may have recovered by allocating
+  // HWCDC's built-in ring. Discover it without replacing a live ISR-owned ring.
+  if (esp32_hwcdc_tx_buffer_capacity.load(std::memory_order_acquire) == 0) {
+    setUsbCompanionTxBufferCapacity(Serial.availableForWrite());
+  }
   if (!esp32_hwcdc_event_handler_registered) {
     Serial.onEvent(ARDUINO_HW_CDC_ANY_EVENT, handleEsp32HwcdcEvent);
     esp32_hwcdc_event_handler_registered = true;
@@ -833,6 +850,8 @@ void beginUsbLoggingPort() {
 void serviceUsbLoggingPort() {
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   serviceEsp32TinyUsbPorts();
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
+  serviceEsp32HwcdcTxKick();
 #endif
 #if defined(MESH_DUAL_CDC_LOGGING)
   const bool connected = dedicated_usb_logging_port_started
@@ -1061,6 +1080,8 @@ Stream& usbTerminalPort() {
 Stream& usbConsolePort() {
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   return buffered_esp32_tinyusb_terminal_port;
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
+  return guarded_esp32_hwcdc_port;
 #else
   return Serial;
 #endif
@@ -1070,6 +1091,10 @@ bool canAcceptUsbConsoleCommand() {
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   return buffered_esp32_tinyusb_terminal_port.availableForWrite()
       >= static_cast<int>(esp32_tinyusb_functional_reserve);
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
+  // Leave enough room for a complete ordinary CLI response. Larger listings
+  // already retain and retry a short write from their cooperative pump.
+  return guarded_esp32_hwcdc_port.availableForWrite() >= 256;
 #else
   return true;
 #endif
@@ -1141,7 +1166,7 @@ bool takeUsbTerminalSessionReset() {
   }
   primary_usb_terminal_taken_reset_generation = reset_generation;
   return true;
-#elif MESH_ESP32_HWCDC_SESSION_GUARD && defined(ENABLE_USB_INTERFACE)
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
   const uint32_t reset_generation =
       esp32_hwcdc_bus_reset_generation.load(std::memory_order_acquire);
   if (reset_generation == esp32_hwcdc_taken_bus_reset_generation) {
@@ -1181,6 +1206,13 @@ bool tryCompleteUsbTerminalSessionReset() {
   if ((int32_t)(millis() - settle_until) < 0) return false;
   return nonblocking_primary_usb_companion_port.tryRunExclusive(
       completePrimaryUsbSessionReset);
+#elif MESH_ESP32_HWCDC_SESSION_GUARD
+  if (!esp32_hwcdc_cleanup_pending
+      && esp32_hwcdc_allowed_generation.load(std::memory_order_acquire)
+          == esp32_hwcdc_access_generation.load(std::memory_order_acquire)) {
+    return true;
+  }
+  return resetUsbCompanionTransport();
 #else
   return true;
 #endif

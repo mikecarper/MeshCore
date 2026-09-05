@@ -4,6 +4,7 @@
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/LazyPersistence.h>
 #include <helpers/radiolib/RXPowerSaving.h>
+#include <helpers/UsbLogging.h>
 
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;
@@ -623,14 +624,15 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
       }
     }
   } else if (sender_timestamp == 0 && strcmp(command, "get acl") == 0) {
-    Serial.println("ACL:");
+    Stream& console = mesh::usbConsolePort();
+    console.println("ACL:");
     for (int i = 0; i < acl.getNumClients(); i++) {
       auto c = acl.getClientByIdx(i);
       if (c->permissions == 0) continue;  // skip deleted entries
 
-      Serial.printf("%02X ", c->permissions);
-      mesh::Utils::printHex(Serial, c->id.pub_key, PUB_KEY_SIZE);
-      Serial.printf("\n");
+      console.printf("%02X ", c->permissions);
+      mesh::Utils::printHex(console, c->id.pub_key, PUB_KEY_SIZE);
+      console.print('\n');
     }
     reply[0] = 0;
   } else if (memcmp(command, "io ", 2) == 0) { // io {value}: write, io: read 

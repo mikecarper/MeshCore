@@ -1,5 +1,6 @@
 #include "SensorMesh.h"
 #include <helpers/IdentityGeneration.h>
+#include <helpers/UsbLogging.h>
 
 #if defined(ESP32_PLATFORM)
   #include <helpers/ESP32TrueRandom.h>
@@ -59,7 +60,11 @@ static char command[160];
 static const unsigned long POWERSAVING_FIRST_SLEEP_SECS = 120;
 
 void setup() {
+  mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
+  mesh::beginUsbLoggingPort();
+#endif
   delay(1000);
 
   board.begin();
@@ -124,8 +129,10 @@ void setup() {
     return;
   }
 
-  Serial.print("Sensor ID: ");
-  mesh::Utils::printHex(Serial, the_mesh.self_id.pub_key, PUB_KEY_SIZE); Serial.println();
+  Stream& console = mesh::usbConsolePort();
+  console.print("Sensor ID: ");
+  mesh::Utils::printHex(console, the_mesh.self_id.pub_key, PUB_KEY_SIZE);
+  console.println();
 
   command[0] = 0;
 
@@ -149,14 +156,23 @@ void loop() {
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
 #endif
+  bool usb_ready = true;
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
+  mesh::serviceUsbLoggingPort();
+  mesh::serviceUsbTerminalPort();
+  if (mesh::takeUsbTerminalSessionReset()) command[0] = 0;
+  usb_ready = mesh::tryCompleteUsbTerminalSessionReset()
+      && mesh::canAcceptUsbConsoleCommand();
+#endif
+  Stream& console = mesh::usbConsolePort();
   int len = strlen(command);
-  while (Serial.available() && len < sizeof(command)-1) {
-    char c = Serial.read();
+  while (usb_ready && console.available() && len < sizeof(command)-1) {
+    char c = console.read();
     if (c != '\n') {
       command[len++] = c;
       command[len] = 0;
     }
-    Serial.print(c);
+    console.print(c);
   }
   if (len == sizeof(command)-1) {  // command buffer full
     command[sizeof(command)-1] = '\r';
@@ -168,7 +184,8 @@ void loop() {
     reply[0] = 0;
     the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
     if (reply[0]) {
-      Serial.print("  -> "); Serial.println(reply);
+      console.print("  -> ");
+      console.println(reply);
     }
 
     command[0] = 0;  // reset command buffer
@@ -180,6 +197,9 @@ void loop() {
   ui_task.loop();
 #endif
   rtc_clock.tick();
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
+  mesh::serviceUsbTerminalPort();
+#endif
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif

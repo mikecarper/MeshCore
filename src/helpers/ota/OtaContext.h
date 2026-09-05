@@ -26,12 +26,7 @@
   #include "../UsbLogging.h"
   #ifndef OTA_FOLDER_SERIAL_STREAM
     #if defined(NRF52_PLATFORM) \
-        || MESH_ESP32_TINYUSB_NONBLOCKING \
-        || (defined(ESP32) && defined(ARDUINO_USB_MODE) \
-            && ARDUINO_USB_MODE == 1 \
-            && defined(ARDUINO_USB_CDC_ON_BOOT) \
-            && ARDUINO_USB_CDC_ON_BOOT \
-            && defined(ENABLE_USB_INTERFACE))
+        || MESH_ESP32_USB_CONSOLE_COOPERATIVE
       // Native USB serial-folder requests share the primary session facade.
       // It prevents a host reset from racing a cached mOTA Stream reference;
       // dedicated-UART overrides retain their normal stream.

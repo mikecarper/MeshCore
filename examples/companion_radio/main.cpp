@@ -1978,37 +1978,8 @@ void halt() {
 #endif
 
 void setup() {
-#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
-    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
-    && defined(ENABLE_USB_INTERFACE)
-  // Configure HWCDC before begin() allocates its mutex and enables the USB ISR.
-  // The bundled setTxBufferSize() deletes/recreates its ring without taking the
-  // TX mutex or masking that ISR, so even an otherwise-quiet post-begin resize
-  // can race the interrupt handler.
-  // A failed resize deletes HWCDC's existing ring. Try progressively smaller
-  // queues while setup still has no producers, and tell reset cleanup the exact
-  // capacity it must observe before reopening a host session.
-  static const size_t usb_tx_sizes[] = {
-      MESH_ESP32_USB_TX_BUFFER_SIZE, 2048, 1024, 512, 256};
-  size_t usb_tx_capacity = 0;
-  for (size_t candidate : usb_tx_sizes) {
-    usb_tx_capacity = Serial.setTxBufferSize(candidate);
-    if (usb_tx_capacity == candidate) break;
-  }
-  Serial.setTxTimeoutMs(5);
-#endif
+  mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
-#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
-    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
-    && defined(ENABLE_USB_INTERFACE)
-  // If every pre-begin allocation failed, begin() may have recovered by
-  // creating its built-in 256-byte ring. Discover that ring without replacing
-  // it after the ISR is live; a zero result leaves reset cleanup quarantined.
-  if (usb_tx_capacity == 0) {
-    usb_tx_capacity = Serial.availableForWrite();
-  }
-  mesh::setUsbCompanionTxBufferCapacity(usb_tx_capacity);
-#endif
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
