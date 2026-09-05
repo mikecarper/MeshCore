@@ -57,6 +57,10 @@
          <lastmod>2026-09-05</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/full_companion_features/</loc>
+         <lastmod>2026-09-05</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/full_companion_usb_switcher/</loc>
          <lastmod>2026-09-05</lastmod>
     </url>
@@ -158,6 +162,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/usb_serial_backpressure/</loc>
+         <lastmod>2026-09-05</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/releases/1.17.1.5/</loc>
          <lastmod>2026-09-05</lastmod>
     </url>
 </urlset>
