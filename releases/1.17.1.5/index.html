@@ -1561,6 +1561,14 @@ alone does not count as self-update support. ESP32 qualification checks both
 application slots and OTA metadata; nRF52 Bluetooth qualification checks the
 linked DFU service and its application ZIP. LoRa installation on nRF52 still
 requires the exact matching OTAFIX bootloader and storage arrangement.</p>
+<p>Classic ESP32 capacity limits are recorded in each artifact's capability
+manifest. Generic E22, Heltec V2, Meshadventurer, and T-Beam OTA repeaters,
+plus the TLora MQTT repeater, use 50 neighbors where needed to preserve the
+required internal RAM reserve.
+T-Beam MQTT repeater profiles retain the full rule engine with 31 flood rules;
+constrained classic ESP32 ESP-NOW bridges with logging use 47.
+Meshadventurer Full uses 100 contacts, 30 group channels, and a 16-frame
+offline queue while retaining its MOTA and transport features.</p>
 <p>Since 1.17.1.4, this branch also includes USB session and contact-persistence
 fixes, automatic nRF52 ExtraFS recovery, improved Indicator setup/display
 handling, compressed MOTA transport, and measured ESP32 memory limits.</p>
@@ -1584,7 +1592,9 @@ infrastructure also needs a verified update method. Any failed target leaves
 the matrix unsuccessful and must be resolved before publication.</p>
 <p><code>--allow-no-ota</code> is an explicit development override for cable-only
 infrastructure. Those outputs do not belong in this OTA-required release.
-Use a separate output directory when changing the radio or settings profile.</p>
+Use a separate output directory when changing the radio or settings profile.
+Use a fresh release output directory after changing the source revision or
+firmware version so packaging cannot mix old and new binaries.</p>
 
 
 
