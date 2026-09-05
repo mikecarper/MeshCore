@@ -15,13 +15,13 @@ A reboot clears it.
 | RP2040 | 256 |
 | STM32 | 16 |
 | Known constrained classic ESP32 target override | 128 |
-| Meshadventurer Full Companion | 64 |
+| Meshadventurer Full Companion | 16 |
 | Constrained Full ESP32 fallback | 16 |
 
 An explicit target `OFFLINE_QUEUE_SIZE` overrides the platform default. The
 Heltec V2 and TLora V2 Full Companion profiles, for example, use 16 frames so
 their combined WiFi, BLE, and LoRa mOTA image retains enough internal DRAM.
-Meshadventurer SX1262 and SX1268 Full Companion use 64 frames together with 160
+Meshadventurer SX1262 and SX1268 Full Companion use 16 frames together with 100
 contacts and 30 group channels; their ordinary transport-specific images keep
 128 frames and 40 channels.
 

@@ -161,3 +161,8 @@ and the board's matching BLE-DFU-capable bootloader/SoftDevice. USB remains
 the fallback when the installed bootloader does not support that procedure.
 Bluetooth DFU updates the Companion; the separate Bluetooth MOTA source
 service feeds packages to other mesh nodes.
+
+For OTAFIX installations, use the exact board/storage profile from
+[OTAFIX 2.4.5](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.5).
+Its release notes cover the Bluetooth reconnect fix and upgrades from older
+bootloaders, including the special UF2-drive precautions for version 2.4.3.

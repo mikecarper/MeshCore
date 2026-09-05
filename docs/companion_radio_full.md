@@ -314,9 +314,9 @@ partition layout. Other boards with 8 MB or more retain dual application
 partitions.
 Heltec V2 and TLora V2 use 100 contacts, 8 group channels, and a 16-frame offline
 queue in this combined profile because of internal DRAM limits. Meshadventurer
-SX1262 and SX1268 retain 160 contacts, use 30 group channels, and use a
-64-frame queue. That is the smallest measured reduction which cleared their
-classic ESP32 internal-DRAM link limit; their ordinary transport-specific
+SX1262 and SX1268 use 100 contacts, 30 group channels, and a 16-frame queue.
+These capacities preserve the required 8 KiB static internal-DRAM reserve
+alongside MOTA and all Full transports; their ordinary transport-specific
 images retain 160 contacts, 40 channels, and 128 queued frames.
 
 Full Companions normally retain 256 pending Companion message frames. ESP32

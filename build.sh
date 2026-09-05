@@ -2641,6 +2641,24 @@ requires_dram_limited_neighbors() {
   # ESP32 MQTT observers exhaust internal DRAM, while the 256 KiB STM32WL
   # targets exhaust their fixed application region because initialized table
   # storage is part of the image.
+  # These measured classic ESP32 LoRa OTA images fall below the required
+  # 8 KiB static reserve at 254 neighbors. Use their board-declared 50-entry
+  # tables when the OTA manager is included.
+  case "${1,,}" in
+    generic_e22_sx1262_repeater_lora_ota_no_external_sensors|\
+    generic_e22_sx1268_repeater_lora_ota_no_external_sensors|\
+    heltec_v2_repeater_lora_ota_no_external_sensors|\
+    meshadventurer_sx1262_repeater_lora_ota_no_external_sensors|\
+    meshadventurer_sx1268_repeater_lora_ota_no_external_sensors|\
+    tbeam_sx1262_repeater_lora_ota_no_external_sensors|\
+    tbeam_sx1276_repeater_lora_ota_no_external_sensors)
+      return 0 ;;
+    generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
+    heltec_v2_repeater|meshadventurer_sx1262_repeater|\
+    meshadventurer_sx1268_repeater|tbeam_sx1262_repeater|\
+    tbeam_sx1276_repeater)
+      if [ "$ESP32_FULL_BUILD" = "1" ]; then return 0; fi ;;
+  esac
   #
   # Classic ESP32 bridge targets only need the lower limit when the expanded
   # FULL profile also enables packet logging. Keep their ordinary and
@@ -2662,6 +2680,8 @@ requires_dram_limited_neighbors() {
     esac
   fi
   case "${1,,}" in
+    lilygo_tlora_v2_1_1_6_repeater_observer_mqtt_)
+      return 0 ;;
     tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt|rak_3x72_repeater|tiny_relay_repeater|wio-e5-mini_repeater|wio-e5-repeater_bridge_rs232|wio-e5_repeater) return 0 ;;
     *) return 1 ;;
   esac
@@ -2993,6 +3013,7 @@ declare_build_capability_contract() {
 
 apply_esp32_lora_ota_size_profile() {
   local env_name=$1
+  local max_neighbours=$ESP32_FULL_MAX_NEIGHBOURS
 
   if [ "$BUILD_PROFILE_FOR_TARGET" != "standard" ] \
       || ! requires_esp32_portable_app_slot "$env_name"; then
@@ -3018,12 +3039,18 @@ apply_esp32_lora_ota_size_profile() {
       || requires_esp32_field_browser_ota "$env_name"; then
     # The no-external-sensors image is also the self-updatable field image. Keep
     # manual browser OTA available on every ESP32 family through the compact
-    # uploader, the complete role CLI, and the full one-byte neighbor-index
-    # range. MeshCore and this source-built dependency set do not use C++
+    # uploader, the complete role CLI, and the target's safe neighbor capacity.
+    # MeshCore and this source-built dependency set do not use C++
     # exceptions, so omit their otherwise forced runtime tables instead of
     # dropping WiFi OTA, LoRa OTA, USB seeding, or CLI commands.
-    append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8 -fexceptions"
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -DMAX_NEIGHBOURS=${ESP32_FULL_MAX_NEIGHBOURS} -fno-exceptions"
+    append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -DMAX_NEIGHBOURS=8 -fexceptions"
+    if requires_dram_limited_neighbors "$env_name"; then
+      max_neighbours=$DRAM_LIMITED_MAX_NEIGHBOURS
+      append_platformio_build_unflags "-DMAX_NEIGHBOURS=254"
+    else
+      append_platformio_build_unflags "-DMAX_NEIGHBOURS=50"
+    fi
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -DMAX_NEIGHBOURS=${max_neighbours} -fno-exceptions"
     record_build_capability "web.lightweight_browser_ota"
   else
     append_platformio_build_unflags "-DLIGHTWEIGHT_WIFI_OTA=1"
@@ -3089,6 +3116,32 @@ apply_esp32_full_size_profile() {
     append_platformio_build_unflags "-DMAX_NEIGHBOURS=50 -DMAX_NEIGHBOURS=8"
   fi
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${max_neighbours}"
+
+  case "${env_name,,}" in
+    tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt)
+      # MQTT/TLS plus OTA left only 3.3 KiB of static-region headroom with
+      # 63 rules. Retain the complete rule engine with a 31-entry table.
+      append_platformio_build_unflags "-DFLOOD_PACKET_FILTER_SLOTS=63"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_PACKET_FILTER_SLOTS=31"
+      record_build_reduction \
+        "mesh.flood_rules limited to 31 by measured internal DRAM; complete rule engine retained"
+      ;;
+    generic_e22_sx1262_repeater_bridge_espnow|\
+    generic_e22_sx1268_repeater_bridge_espnow|\
+    heltec_v2_repeater_bridge_espnow|\
+    lilygo_tlora_v2_1_1_6_repeater_bridge_espnow|\
+    meshadventurer_sx1262_repeater_bridge_espnow|\
+    meshadventurer_sx1268_repeater_bridge_espnow|\
+    tbeam_sx1262_repeater_bridge_espnow|\
+    tbeam_sx1276_repeater_bridge_espnow)
+      if [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ]; then
+        append_platformio_build_unflags "-DFLOOD_PACKET_FILTER_SLOTS=63"
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_PACKET_FILTER_SLOTS=47"
+        record_build_reduction \
+          "mesh.flood_rules limited to 47 by measured internal DRAM; complete rule engine retained"
+      fi
+      ;;
+  esac
 
   # Restore the full ElegantOTA implementation only when the target already
   # declares its dependency. Some ESP32-C6 targets intentionally have no
@@ -3540,9 +3593,9 @@ apply_companion_radio_full_profile() {
     meshadventurer_sx1262_companion_radio_full|\
     meshadventurer_sx1268_companion_radio_full)
       append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=30 -DOFFLINE_QUEUE_SIZE=64"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 -DOFFLINE_QUEUE_SIZE=16"
       record_build_reduction \
-        "companion.capacity limited to 160 contacts, 30 channels, and 64 queued frames by measured internal DRAM"
+        "companion.capacity limited to 100 contacts, 30 channels, and 16 queued frames by measured internal DRAM"
       ;;
     *)
       if requires_esp32_companion_full_ota_fallback "$pio_env_name"; then
