@@ -161,6 +161,13 @@ def main():
             summaries.append({**manifest, "files": [path.name for path in record["files"]]})
             rows.append(f"<tr><td>{html.escape(manifest['artifact_target'])}</td><td>{html.escape(manifest['build_profile'])}</td><td>{html.escape(methods)}</td><td>{' · '.join(file_links)}</td></tr>")
         (destination / "TARGET-MANIFEST.json").write_text(json.dumps(summaries, indent=2) + "\n")
+        columns = ("artifact_target", "target", "platform", "build_profile",
+                   "ota_update_methods", "files")
+        (destination / "TARGET-MANIFEST.tsv").write_text(
+            "\t".join(columns) + "\n" + "".join(
+                "\t".join(",".join(row.get(key, [])) if isinstance(row.get(key), list)
+                          else str(row.get(key, "")) for key in columns) + "\n"
+                for row in summaries))
         guide = (ROOT / "docs/full_companion_features.md").read_text()
         guide = re.sub(r"\]\(([^)]+)\)",
                        lambda match: "](" + urljoin(source_url + "/docs/", match[1]) + ")", guide)
@@ -178,6 +185,7 @@ def main():
                 "Firmware and capability checks passed in the build matrix. Hardware update testing across every board was not performed.\n\n"
                 + links + "\n")
         (args.output / (group["key"] + "-notes.md")).write_text(body)
+        (destination / "BUILD-NOTES.txt").write_text(body)
     picker = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
               f"<title>MeshCore {html.escape(args.version)} USA Cascade</title>"
               "<style>body{font:16px system-ui;margin:2rem}input{font:inherit;padding:.5rem;width:90%;max-width:40rem}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:.7rem;border-bottom:1px solid #ccc}td:first-child{overflow-wrap:anywhere}a{color:#165acb}</style>"
@@ -188,6 +196,15 @@ def main():
               "<table><thead><tr><th>Target</th><th>Profile</th><th>Self-update</th><th>Downloads</th></tr></thead><tbody>"
               + "\n".join(rows) + "</tbody></table>"
               "<script>document.getElementById('search').oninput=function(){const q=this.value.toLowerCase();document.querySelectorAll('tbody tr').forEach(r=>r.hidden=!r.textContent.toLowerCase().includes(q))}</script>")
+    local_picker = picker
+    for group in groups:
+        local_picker = local_picker.replace(
+            f"https://github.com/{args.repo}/releases/download/{group['tag']}/",
+            group["key"] + "/")
+    local_picker = local_picker.replace(
+        f"{source_url}/docs/full_companion_features.md",
+        groups[0]["key"] + "/FULL-COMPANION-FEATURES.md")
+    (args.output / f"FIRMWARE-PICKER-{args.version}.html").write_text(local_picker)
     for group in groups:
         destination = args.output / group["key"]
         (destination / f"FIRMWARE-PICKER-{args.version}.html").write_text(picker)

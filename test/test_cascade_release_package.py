@@ -83,6 +83,13 @@ class ReleaseQualificationTest(unittest.TestCase):
             self.assertEqual(plan["groups"][0]["tag"], label + "-deadbeef")
             self.assertTrue(plan["groups"][0]["prerelease"])
             assets = directory / "stage/companion"
+            picker = (directory / "stage/FIRMWARE-PICKER-1.17.1.5.html").read_text()
+            self.assertIn(f'companion/{stem}.bin', picker)
+            self.assertNotIn("/releases/download/", picker)
+            self.assertIn("companion/FULL-COMPANION-FEATURES.md", picker)
+            self.assertIn("/releases/download/", (assets / "FIRMWARE-PICKER-1.17.1.5.html").read_text())
+            self.assertIn(stem + ".bin", (assets / "TARGET-MANIFEST.tsv").read_text())
+            self.assertIn("910.525", (assets / "BUILD-NOTES.txt").read_text())
             for line in (assets / "SHA256SUMS.txt").read_text().splitlines():
                 digest, name = line.split("  ", 1)
                 self.assertEqual(hashlib.sha256((assets / name).read_bytes()).hexdigest(), digest)

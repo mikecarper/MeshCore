@@ -163,6 +163,9 @@ Bluetooth DFU updates the Companion; the separate Bluetooth MOTA source
 service feeds packages to other mesh nodes.
 
 For OTAFIX installations, use the exact board/storage profile from
-[OTAFIX 2.4.5](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.5).
-Its release notes cover the Bluetooth reconnect fix and upgrades from older
-bootloaders, including the special UF2-drive precautions for version 2.4.3.
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6).
+It includes the Bluetooth reconnect fix from 2.4.5. Its release notes cover
+upgrades from older bootloaders, including the special UF2-drive precautions
+for version 2.4.3. The new 64 KiB retained-RAM staging feature applies to
+qualified internal-flash nRF52840 receivers; Full Companions continue to
+serve host-supplied packages without needing that receiver storage layout.
