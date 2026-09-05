@@ -73,6 +73,7 @@ NRF52_APP_END = 0x000ED000
 NRF52_BOOT_CONTAINER_SIZE = 41330
 NRF52_SHARED_BOOT_STAGE_START = 0x000E2000
 NRF52_FLASH_PAGE = 4096
+NRF52_HYBRID_RAM_SIZE = 65536
 
 # A validated nRF52 firmware carries this record immediately before EndF. It lets an offline packager
 # derive the actual app base and staging ceiling from the built artifact, without a board-name allowlist.
@@ -84,6 +85,7 @@ NRF52_LAYOUT_FLAG_SD = 0x01
 NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS = 0x02
 NRF52_LAYOUT_FLAG_QSPI = 0x04
 NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH = 0x08
+NRF52_LAYOUT_FLAG_HYBRID_RAM = 0x10
 
 XIAO_BOOT_BOARD_ID_BASE = 0x28860044
 XIAO_BOOT_BOARD_ID_SENSE = 0x28860045
@@ -302,6 +304,10 @@ class Nrf52Layout:
     def bootloader_scratch(self) -> bool:
         return bool(self.flags & NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH)
 
+    @property
+    def hybrid_ram(self) -> bool:
+        return bool(self.flags & NRF52_LAYOUT_FLAG_HYBRID_RAM)
+
 def nrf52_stage_ceiling_for_layout(linked_app_end: int, uses_internal_extrafs: bool) -> int:
     """Select a safe staging ceiling from linker geometry and actual secondary-storage type."""
     if uses_internal_extrafs:
@@ -309,6 +315,33 @@ def nrf52_stage_ceiling_for_layout(linked_app_end: int, uses_internal_extrafs: b
     if linked_app_end in (NRF52_EXTRAFS_START, NRF52_BOOT_SCRATCH_START, NRF52_APP_END):
         return NRF52_APP_END
     return NRF52_EXTRAFS_START
+
+
+def nrf52_hybrid_stage_plan(total_size: int, app_base: int, app_end: int,
+                            stage_ceiling: int) -> Optional[Tuple[int, int, int]]:
+    """Return the frozen (flash_start, flash_len, ram_len) split, or None.
+
+    Keep this byte-for-byte equivalent to
+    mota_nrf52_hybrid_stage_plan() in OtaFlashLayout_nrf52.h. Hybrid is an
+    expanded ED000-only profile; at least one complete flash page contains the
+    header, manifest, leaves, and APRV word.
+    """
+    if (stage_ceiling != NRF52_APP_END or
+            app_base not in (NRF52_APP_BASE_S140_V6,
+                             NRF52_APP_BASE_S140_V7) or
+            not (app_base <= app_end <= stage_ceiling) or
+            total_size < 8 + 197 + 5 or total_size > 0xFFFFFFFF):
+        return None
+    flash_needed = max(NRF52_FLASH_PAGE,
+                       max(0, total_size - NRF52_HYBRID_RAM_SIZE))
+    flash_len = ((flash_needed + NRF52_FLASH_PAGE - 1) //
+                 NRF52_FLASH_PAGE) * NRF52_FLASH_PAGE
+    if flash_len >= total_size or flash_len > stage_ceiling - app_end:
+        return None
+    ram_len = total_size - flash_len
+    if not (0 < ram_len <= NRF52_HYBRID_RAM_SIZE):
+        return None
+    return stage_ceiling - flash_len, flash_len, ram_len
 
 
 def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
@@ -322,13 +355,22 @@ def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
     if not (layout.app_base < layout.linked_app_end <= NRF52_APP_END):
         raise ValueError("invalid nRF52 app region")
     known_flags = (NRF52_LAYOUT_FLAG_SD | NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS |
-                   NRF52_LAYOUT_FLAG_QSPI | NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH)
+                   NRF52_LAYOUT_FLAG_QSPI | NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH |
+                   NRF52_LAYOUT_FLAG_HYBRID_RAM)
     if layout.flags & ~known_flags:
         raise ValueError(f"unsupported nRF52 layout flags 0x{layout.flags:X}")
     if layout.sd_backed and layout.qspi_backed:
         raise ValueError("nRF52 layout cannot use both SD and QSPI staging")
     if layout.external_backed and layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS:
         raise ValueError("nRF52 external staging cannot also reserve internal ExtraFS")
+    if layout.hybrid_ram:
+        if (layout.external_backed or
+                layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS):
+            raise ValueError("nRF52 hybrid RAM staging requires internal flash without ExtraFS")
+        if (layout.linked_app_end != NRF52_APP_END or
+                layout.stage_ceiling != NRF52_APP_END):
+            raise ValueError(
+                "nRF52 hybrid RAM staging requires the exact 0xED000 internal-only profile")
     if layout.bootloader_scratch:
         qspi_shape = (layout.qspi_backed and not layout.sd_backed and
                       layout.linked_app_end == NRF52_BOOT_SCRATCH_START)

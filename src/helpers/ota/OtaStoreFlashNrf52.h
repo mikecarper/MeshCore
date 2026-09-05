@@ -4,6 +4,7 @@
 
 #include "OtaStore.h"
 #include "OtaFlashLayout_nrf52.h"
+#include "OtaHybridHandoff.h"
 
 // Persistent flash-backed OtaStore for nRF52840. Stages the received `.mota` below the selected
 // filesystem-safe ceiling, bottom-aligned so the bootloader can find it. Internal ExtraFS roles stop
@@ -37,12 +38,18 @@ class OtaStoreFlashNrf52 : public OtaStore {
 
   uint32_t _write_start = 0;        // flash address of container offset 0 (page-aligned)
   uint32_t _stage_ceiling = MOTA_NRF52_STAGE_CEILING_LEGACY;
+  uint32_t _flash_len = 0;          // logical prefix backed by internal flash
+  uint32_t _ram_len = 0;            // logical suffix backed by the fixed SRAM arena
   uint32_t _total = 0;              // staged container size (0 = none)
+  bool     _hybrid = false;          // flash prefix + reset-retained SRAM suffix
   bool     _flushed = false;        // finalize() committed everything to flash
   bool     _io_ok = true;           // cleared on a failed/out-of-bounds flash write or readback mismatch
   bool     _planned_bootloader = false; // manifest-kind decision made before begin()/any erase
+  bool     _planned_hybrid = false;
   uint32_t _planned_total = 0;
   uint32_t _planned_start = 0;
+  uint32_t _planned_flash_len = 0;
+  uint32_t _planned_ram_len = 0;
 
   uint8_t  _meta_page[PG];          // pinned flash page 0 (header + manifest + leaves + 1st payload)
   uint8_t  _pay_page[PG];           // sliding buffer for one payload page (index _pay_idx)
@@ -63,6 +70,7 @@ class OtaStoreFlashNrf52 : public OtaStore {
   static bool invalidate_staged_header(void* context, uint32_t address);
 
 public:
+  OtaStoreFlashNrf52();
   bool plan_layout(bool is_full, uint32_t image_size, uint32_t payload_off,
                    uint32_t payload_size, bool is_bootloader) override;
   bool begin(uint32_t total_size) override;
@@ -77,6 +85,12 @@ public:
   void checkpoint() override;   // persist page 0 (leaves) + the open payload page so a reboot can resume
   bool reopen() override;       // re-attach to a container already staged in flash (scan for it)
 
+  // Mark a verified application package approved. For a hybrid package this
+  // also prepares (but does not yet publish) the reset-retained authorization;
+  // publication happens immediately before the software-reset handoff.
+  bool approve_for_application(const uint8_t normalized_container_hash[32]);
+  bool publish_hybrid_handoff();
+
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
   // Clear the manifest approval word only after the privileged signed-image gates pass. OTAFIX scans
   // this page-aligned shared container after the ED handoff and repeats the structural, identity,
@@ -88,8 +102,18 @@ public:
 
   // Contiguous view (flash is memory-mapped). VALID ONLY AFTER finalize() - before that, page 0 and the
   // tail are still in RAM. OtaManager/OtaCli/verify use this only once the transfer is COMPLETE.
-  const uint8_t* data() const { return (_flushed && _io_ok) ? (const uint8_t*)(uintptr_t)_write_start : nullptr; }
+  const uint8_t* data() const {
+    return (_flushed && _io_ok && !_hybrid)
+        ? (const uint8_t*)(uintptr_t)_write_start : nullptr;
+  }
   uint32_t write_start() const { return _write_start; }
+  uint32_t flash_len() const { return _flash_len; }
+  uint32_t ram_len() const { return _ram_len; }
+  bool is_hybrid() const { return _hybrid; }
+
+private:
+  uint8_t _hybrid_handoff[MOTA_HYBRID_AUTH_LEN] = {0};
+  bool _hybrid_handoff_ready = false;
 };
 
 } // namespace ota

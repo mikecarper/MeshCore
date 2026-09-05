@@ -39,7 +39,7 @@ TEST(OtaBootResult, AcceptsOnlyOtafixApplyDiagnostics) {
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB0), 0xB0);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB8), 0xB8);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBC), 0xBC);
-  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBD), 0xBD); // SD authorization failure
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBD), 0xBD); // retained-source authorization/handoff failure
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xC0), 0xC0);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xC8), 0xC8);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xCF), 0xCF);
@@ -671,6 +671,96 @@ TEST(OtaBootPackage, CapabilityScannerRejectsAnOtherwiseValidUnalignedMarker) {
   memcpy(image + 4, marker, sizeof(marker));
   image[4 + 12] = OTA_BL_STORAGE_BOOT_UPDATE;
   EXPECT_FALSE(ota_bl_caps_scan_aligned(image, sizeof(image), true, qspi_profile).present);
+}
+
+TEST(OtaHybridCapability, RequiresOneExactAlignedMOTARAMARecord) {
+  uint8_t marker[16] = {0};
+  memcpy(marker, MOTA_RAM_CAP_MAGIC, sizeof(MOTA_RAM_CAP_MAGIC));
+  mota_hybrid_wr16(marker + 8u, MOTA_RAM_CAP_ABI);
+  mota_hybrid_wr16(marker + 10u, MOTA_HYBRID_AUTH_LEN);
+  mota_hybrid_wr32(marker + 12u, MOTA_NRF52_HYBRID_RAM_SIZE);
+
+  OtaRamCaps parsed;
+  ASSERT_TRUE(ota_ram_caps_marker_parse(marker, parsed));
+  EXPECT_TRUE(ota_bootloader_supports_hybrid(parsed));
+  EXPECT_EQ(parsed.abi, MOTA_RAM_CAP_ABI);
+  EXPECT_EQ(parsed.record_len, MOTA_HYBRID_AUTH_LEN);
+  EXPECT_EQ(parsed.arena_size, MOTA_NRF52_HYBRID_RAM_SIZE);
+
+  uint8_t image[64];
+  memset(image, 0xFF, sizeof(image));
+  memcpy(image + 1u, marker, sizeof(marker));
+  EXPECT_FALSE(ota_ram_caps_scan_aligned(image, sizeof(image)).present);
+
+  memset(image, 0xFF, sizeof(image));
+  memcpy(image + 4u, marker, sizeof(marker));
+  EXPECT_TRUE(ota_bootloader_supports_hybrid(
+      ota_ram_caps_scan_aligned(image, sizeof(image))));
+
+  // Two valid capabilities are ambiguous; a malformed decoy is ignored.
+  memcpy(image + 24u, marker, sizeof(marker));
+  EXPECT_FALSE(ota_ram_caps_scan_aligned(image, sizeof(image)).present);
+  image[24u + 12u] ^= 1u;
+  EXPECT_TRUE(ota_ram_caps_scan_aligned(image, sizeof(image)).present);
+
+  uint8_t bad[sizeof(marker)];
+  memcpy(bad, marker, sizeof(bad));
+  bad[8] = 2u;
+  EXPECT_FALSE(ota_ram_caps_marker_parse(bad, parsed));
+  memcpy(bad, marker, sizeof(bad));
+  bad[10] = (uint8_t)(MOTA_HYBRID_AUTH_LEN - 1u);
+  EXPECT_FALSE(ota_ram_caps_marker_parse(bad, parsed));
+  memcpy(bad, marker, sizeof(bad));
+  bad[12] ^= 1u;
+  EXPECT_FALSE(ota_ram_caps_marker_parse(bad, parsed));
+}
+
+TEST(OtaHybridHandoff, EncodesExactGeometryAndRejectsCorruption) {
+  const uint32_t total = 17u * MOTA_NRF52_FLASH_PAGE;
+  uint32_t start = 0, flash = 0, ram = 0;
+  ASSERT_TRUE(mota_nrf52_hybrid_stage_plan(
+      total, MOTA_NRF52_APP_BASE_S140_V6,
+      MOTA_NRF52_APP_BASE_S140_V6 + 512u * 1024u,
+      MOTA_NRF52_STAGE_CEILING_EXPANDED, start, flash, ram));
+  ASSERT_EQ(flash, MOTA_NRF52_FLASH_PAGE);
+  ASSERT_EQ(ram, MOTA_NRF52_HYBRID_RAM_SIZE);
+
+  uint8_t hash[32];
+  for (uint8_t i = 0; i < sizeof(hash); ++i) hash[i] = (uint8_t)(i * 7u);
+  uint8_t record[MOTA_HYBRID_AUTH_LEN];
+  ASSERT_TRUE(mota_hybrid_auth_encode(
+      record, total, start, flash, ram, hash));
+  EXPECT_TRUE(mota_hybrid_auth_valid(record));
+  EXPECT_EQ(memcmp(record, MOTA_HYBRID_AUTH_MAGIC, 8u), 0);
+  EXPECT_EQ(mota_hybrid_rd16(record + 8u), MOTA_HYBRID_AUTH_VERSION);
+  EXPECT_EQ(mota_hybrid_rd16(record + 10u), MOTA_HYBRID_AUTH_LEN);
+  EXPECT_EQ(record[12], MOTA_HYBRID_AUTH_PURPOSE_APP);
+  EXPECT_EQ(record[13], MOTA_HYBRID_AUTH_FORMAT_APP);
+  EXPECT_EQ(mota_hybrid_rd32(record + 16u), total);
+  EXPECT_EQ(mota_hybrid_rd32(record + 20u), start);
+  EXPECT_EQ(mota_hybrid_rd32(record + 24u), flash);
+  EXPECT_EQ(mota_hybrid_rd32(record + 28u), ram);
+  EXPECT_EQ(memcmp(record + 32u, hash, sizeof(hash)), 0);
+  const uint32_t crc = mota_hybrid_rd32(record + 64u);
+  EXPECT_EQ(crc, mota_hybrid_crc32(record, 64u));
+  EXPECT_EQ(mota_hybrid_rd32(record + 68u), ~crc);
+
+  record[32] ^= 1u;
+  EXPECT_FALSE(mota_hybrid_auth_valid(record));
+  record[32] ^= 1u;
+  record[68] ^= 1u;
+  EXPECT_FALSE(mota_hybrid_auth_valid(record));
+
+  // The descriptor accepts only the frozen minimum flash charge and ED000
+  // ceiling. Legacy-D4000 or overcharged splits cannot be authorized.
+  EXPECT_FALSE(mota_hybrid_auth_encode(
+      record, total, start - MOTA_NRF52_FLASH_PAGE,
+      flash + MOTA_NRF52_FLASH_PAGE,
+      ram - MOTA_NRF52_FLASH_PAGE, hash));
+  EXPECT_FALSE(mota_hybrid_auth_encode(
+      record, total,
+      MOTA_NRF52_STAGE_CEILING_LEGACY - MOTA_NRF52_FLASH_PAGE,
+      MOTA_NRF52_FLASH_PAGE, ram, hash));
 }
 
 TEST(OtaBootPackage, LegacyAndCurrentBootloadersHaveSeparateCapabilityViews) {

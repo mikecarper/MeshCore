@@ -394,7 +394,9 @@ There is no separate availability structure. **Block `i` is present <=> `leaves[
 
 **Commit order per block (crash-safe):** (1) verify proof, (2) write block payload to its offset, (3) write
 `leaves[i]` **last**. A power loss before step 3 leaves the slot erased -> the block is simply re-fetched
-(idempotent). On boot a node rebuilds an in-RAM present-bitmap by scanning `leaves[]`.
+(idempotent). On boot a node rebuilds an in-RAM present-bitmap by scanning `leaves[]` for a persistent,
+reopenable store. A hybrid nRF52 transfer is the deliberate exception: its SRAM-backed payload suffix is
+volatile, so the application refuses to adopt that staged header instead of rebuilding partial progress.
 
 **Resume (`OtaManager::resumeStaged` + `OtaStore::checkpoint`/`reopen`):** an interrupted fetch resumes from
 the staged container after a reboot - re-parse the stored manifest, recompute geometry, count present
@@ -407,11 +409,14 @@ package and keeps target `0` as a MID-only wildcard. Stores keep `leaves[]` in R
 auto-GC, preserving resumable progress. The debug/operator equivalent is `ota dev resume <MID8>`; after a
 reboot the MID is mandatory, while a no-argument form may only reuse a still-active session MID. It never
 uses the `nullptr` automatic-adoption path, so a malformed MID or no active MID fails closed.
+Hybrid nRF52 staging cannot enter this resume path after an application restart, even if its flash prefix
+still contains metadata; the complete logical container must be fetched again.
 
 **Flash-store note (RX-safe writes):** a flash page-erase halts the CPU (~85 ms on nRF52) and starves LoRa
 RX, so the flash stores (`OtaStoreFlashNrf52`/`OtaStoreFlashEsp32`) **coalesce writes to the erase unit**
-(4 KB page / sector) and commit each once off the per-packet path - RAM stays O(one page), not O(image). A
-small delta that fits page 0 does zero flash I/O until COMPLETE.
+(4 KB page / sector) and commit each once off the per-packet path. Ordinary stores keep RAM at O(one page),
+not O(image); a qualified hybrid nRF52 profile additionally reserves one fixed 64 KiB staging arena. A small
+delta that fits page 0 does zero flash I/O until COMPLETE.
 
 ---
 
@@ -932,16 +937,26 @@ retains its `.part` file; it does not erase the unrelated manual-install store.
 - **nRF52 internal staging ceiling:** an internal-store application derives the ceiling from facts available
   in every build, not a board-name list. A companion that actually links the internal ExtraFS datastore stays
   below `0xD4000`; a default linker region or a role that does not mount ExtraFS can reclaim the unused
-  100 KiB through `0xED000`. An internal bootloader-self-update target keeps that normal linker and ceiling;
-  it does not reserve a second boot-package or scratch region. The application uses a larger-than-legacy
-  window only when the
-  installed bootloader advertises the GPREGRET2 ceiling-handoff capability. The bootloader treats every
-  unknown/legacy handoff value as
-  `0xD4000`, and accepts a container only at the bottom-aligned position for the selected ceiling.
+  100 KiB through `0xED000`. A qualified internal bootloader-self-update target keeps that normal flash
+  ceiling and does not reserve a second boot-package or flash-scratch region, but it uses a dedicated
+  application linker that reserves the top 64 KiB of SRAM (`0x20030000..0x20040000`) plus a 72-byte
+  retained authorization record after the existing persistent clock bytes. Application deltas larger than
+  one flash page use a deterministic page-aligned flash prefix ending at `0xED000` and place up to 64 KiB
+  of the logical container tail in that SRAM. Packages of one page or less, and bootloader-update packages,
+  remain wholly in flash. Hybrid staging is enabled only when the installed bootloader contains exactly one
+  valid `MOTARAMA` capability marker; otherwise a larger hybrid-profile fetch fails before erase. Immediately
+  before a software reset the application publishes a valid-last `MOTAHYB1` record binding the split geometry
+  and normalized container hash. The bootloader consumes it once and rejects power-loss, stale-reset, corrupt,
+  or mismatched-RAM cases before its first application write. A hybrid transfer cannot resume after an
+  application restart because its suffix is deliberately volatile. The bootloader treats every unknown/legacy
+  GPREGRET2 handoff value as `0xD4000`, and accepts a flash-only container only at the bottom-aligned position
+  for the selected ceiling.
 - **nRF52 dynamic apply window:** the post-build hook records the resolved app base, linked app end,
-  internal-ExtraFS/SD/QSPI storage flags, and desired staging ceiling immediately before `EndF`. `motatool` reads that authenticated
-  firmware record and chooses `memory_size` from the actual patch size and bottom-aligned stage address;
-  firmware without the record retains the conservative `0x98000` default. Before writing `APRV`, an
+  internal-ExtraFS/SD/QSPI/hybrid-RAM storage flags, and desired staging ceiling immediately before `EndF`.
+  `motatool` reads that authenticated firmware record and chooses `memory_size` from the actual patch size
+  and bottom-aligned stage address. For a hybrid base it charges only the deterministic flash prefix against
+  that workspace; the retained-RAM suffix is still part of the same hashed logical container.
+  Firmware without the record retains the conservative `0x98000` default. Before writing `APRV`, an
   internal-store app validates the staged-address bound; an external SD/QSPI app validates the full detools
   geometry against the application workspace. The bootloader independently parses and validates the same
   geometry before its first application write. Expanded auto-sized packages require a bootloader
@@ -1013,10 +1028,11 @@ retains its `.part` file; it does not erase the unrelated manual-install store.
   It holds either an ordinary app delta or the exact 41,330-byte v3 container, never both. The boot package
   bottom-aligns at `0xE2000`; a hash-valid live `EndF` must prove the complete running image ends at or below
   that address before the first erase. OTAFIX reads each source window before erasing and compacts the
-  payload forward in the same eleven pages to raw `0xE2000..0xEC000`; no separate scratch bank or special
-  application linker exists. GPREGRET `0x6B` plus GPREGRET2 `0xED` selects boot update, while ordinary app
-  apply uses GPREGRET `0x6A` plus the same storage source. Exact installed/candidate capability flags are
-  `0x0A` (`STAGE_CEILING|BOOT_UPDATE`). Ordinary deltas remain dynamically sized, may start below
+  payload forward in the same eleven pages to raw `0xE2000..0xEC000`; no separate flash scratch bank exists.
+  The qualified application linker reserves a 64 KiB SRAM arena only for hybrid application deltas; the
+  bootloader package remains wholly in flash. GPREGRET `0x6B` plus GPREGRET2 `0xED` selects boot update,
+  while ordinary app apply uses GPREGRET `0x6A` plus the same storage source. Exact installed/candidate
+  capability flags are `0x0A` (`STAGE_CEILING|BOOT_UPDATE`). Ordinary deltas remain dynamically sized, may start below
   `0xE2000`, and reconstruct only below the normal `0xED000` app ceiling. The same signature, explicit
   confirmation, exact identity, vector, CRC, and single-marker rules as the XIAO path apply. Bootloader FULL
   admission is isolated from ordinary application FULL policy, and privileged partials are never resumed

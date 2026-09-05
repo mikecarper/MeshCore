@@ -183,6 +183,60 @@ TEST(OtaFlashPlan, ExpandedCeilingAddsExactly100KiBForV6AndV7) {
   EXPECT_EQ(start + CAP_V7_EXPANDED, EXPANDED);
 }
 
+TEST(OtaFlashPlan, HybridUsesTheFrozenFlashChargeAndRamSuffix) {
+  uint32_t start = 0, flash = 0, ram = 0;
+  const uint32_t page = MOTA_NRF52_FLASH_PAGE;
+  ASSERT_TRUE(mota_nrf52_hybrid_stage_plan(
+      page + 1u, APP_V6, APP_END_V6, EXPANDED, start, flash, ram));
+  EXPECT_EQ(start, EXPANDED - page);
+  EXPECT_EQ(flash, page);
+  EXPECT_EQ(ram, 1u);
+
+  ASSERT_TRUE(mota_nrf52_hybrid_stage_plan(
+      17u * page, APP_V6, APP_END_V6, EXPANDED, start, flash, ram));
+  EXPECT_EQ(start, EXPANDED - page);
+  EXPECT_EQ(flash, page);
+  EXPECT_EQ(ram, MOTA_NRF52_HYBRID_RAM_SIZE);
+
+  ASSERT_TRUE(mota_nrf52_hybrid_stage_plan(
+      17u * page + 1u, APP_V6, APP_END_V6,
+      EXPANDED, start, flash, ram));
+  EXPECT_EQ(start, EXPANDED - 2u * page);
+  EXPECT_EQ(flash, 2u * page);
+  EXPECT_EQ(ram, 15u * page + 1u);
+
+  ASSERT_TRUE(mota_nrf52_hybrid_stage_plan(
+      17u * page, APP_V7, APP_END_V7,
+      EXPANDED, start, flash, ram));
+  EXPECT_EQ(start, EXPANDED - page);
+  EXPECT_EQ(flash, page);
+  EXPECT_EQ(ram, MOTA_NRF52_HYBRID_RAM_SIZE);
+}
+
+TEST(OtaFlashPlan, HybridFailsClosedOutsideItsExactProfile) {
+  uint32_t start = 0xAAAAAAAAu, flash = 0xBBBBBBBBu, ram = 0xCCCCCCCCu;
+  const uint32_t page = MOTA_NRF52_FLASH_PAGE;
+  EXPECT_FALSE(mota_nrf52_hybrid_stage_plan(
+      MOTA_NRF52_CONTAINER_MIN_SIZE, APP_V6, APP_END_V6,
+      EXPANDED, start, flash, ram));
+  EXPECT_FALSE(mota_nrf52_hybrid_stage_plan(
+      page, APP_V6, APP_END_V6, EXPANDED, start, flash, ram));
+  EXPECT_FALSE(mota_nrf52_hybrid_stage_plan(
+      17u * page, APP_V6, APP_END_V6, LEGACY, start, flash, ram));
+  EXPECT_FALSE(mota_nrf52_hybrid_stage_plan(
+      17u * page + 1u, APP_V6, EXPANDED - page,
+      EXPANDED, start, flash, ram));
+  EXPECT_FALSE(mota_nrf52_hybrid_stage_plan(
+      17u * page, 0x00028000u, 0x00028000u,
+      EXPANDED, start, flash, ram));
+  EXPECT_FALSE(mota_nrf52_hybrid_stage_plan(
+      UINT32_MAX, APP_V6, APP_END_V6,
+      EXPANDED, start, flash, ram));
+  EXPECT_EQ(start, 0xAAAAAAAAu);
+  EXPECT_EQ(flash, 0xBBBBBBBBu);
+  EXPECT_EQ(ram, 0xCCCCCCCCu);
+}
+
 TEST(OtaFlashPlan, RejectsAppOutsideSelectedRegion) {
   uint32_t start = 0x1234ABCD;
   EXPECT_FALSE(mota_nrf52_stage_plan(4096, APP_V6, LEGACY + 1, LEGACY, start));

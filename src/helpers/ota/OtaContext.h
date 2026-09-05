@@ -258,13 +258,21 @@ struct OtaContext {
     bool ok;
 #if defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     ok = ota_apply_mota_nrf52(fetch_store, allow, apply_st, msg);
-#elif defined(NRF52_PLATFORM)
+#elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
     if (rescue_base_hash) {
-      ok = ota_rescue_mota_nrf52(fetch_store.data(), fetch_store.staged_size(), allow,
-                                 rescue_base_hash, manager.target(), apply_st, msg);
+      if (fetch_store.is_hybrid()) {
+        strncpy(msg, "rescue cannot use volatile hybrid staging", 96);
+        msg[95] = 0;
+        ok = false;
+      } else {
+        ok = ota_rescue_mota_nrf52(fetch_store.data(), fetch_store.staged_size(), allow,
+                                   rescue_base_hash, manager.target(), apply_st, msg);
+      }
     } else {
-      ok = ota_apply_mota_nrf52(fetch_store.data(), fetch_store.staged_size(), allow, apply_st, msg);
+      ok = ota_apply_mota_nrf52(fetch_store, allow, apply_st, msg);
     }
+#elif defined(NRF52_PLATFORM)
+    ok = ota_apply_mota_nrf52(fetch_store.data(), fetch_store.staged_size(), allow, apply_st, msg);
 #elif defined(ESP32_PLATFORM) && defined(OTA_FLASH_STORE)
     ok = ota_apply_detools_mota(fetch_store, allow, apply_st, msg);
 #else

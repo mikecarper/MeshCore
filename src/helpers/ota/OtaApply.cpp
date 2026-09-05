@@ -458,6 +458,39 @@ bool ota_apply_verify_slot(ApplyState&) { return false; }
 bool ota_apply_arm() { return false; }
 bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, ApplyState& st, char* msg) { st = ApplyState(); strcpy(msg, "use ota_apply_mota_nrf52"); return false; }
 
+#if defined(OTA_FLASH_STORE)
+// Points at OtaContext's long-lived member only after the application package
+// has passed every gate and APRV was committed. The retained descriptor must
+// not be published until the command reply has drained and reset is imminent.
+static OtaStoreFlashNrf52* g_nrf52_apply_store = nullptr;
+#endif
+
+static void ota_nrf52_set_reset_handoff(uint8_t request, uint8_t source) {
+  uint8_t sd_en = 0;
+  sd_softdevice_is_enabled(&sd_en);
+  if (sd_en) {                                 // POWER is SD-restricted while the SoftDevice runs
+    sd_power_gpregret_clr(1, 0xFFFFFFFF);
+    sd_power_gpregret_set(1, source);
+    sd_power_gpregret_clr(0, 0xFFFFFFFF);
+    if (request) sd_power_gpregret_set(0, request);
+  } else {
+    NRF_POWER->GPREGRET2 = source;
+    NRF_POWER->GPREGRET = request;
+  }
+}
+
+static bool ota_nrf52_clear_reset_reasons() {
+  uint8_t sd_en = 0;
+  if (sd_softdevice_is_enabled(&sd_en) != NRF_SUCCESS) return false;
+  if (sd_en) {
+    return sd_power_reset_reason_clr(0xFFFFFFFFu) == NRF_SUCCESS;
+  }
+  NRF_POWER->RESETREAS = NRF_POWER->RESETREAS;
+  __DMB();
+  __DSB();
+  return NRF_POWER->RESETREAS == 0u;
+}
+
 void ota_reboot_to_apply() {                   // public: set the apply magic + reset (does not return)
   uint8_t stage_handoff = GPREGRET2_OTA_STAGE_LEGACY;
 #if defined(OTA_SD_STORE)
@@ -465,19 +498,24 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
 #elif defined(OTA_QSPI_STORE)
   stage_handoff = GPREGRET2_OTA_STAGE_QSPI;
 #elif defined(OTA_FLASH_STORE)
-  stage_handoff = mota_nrf52_flash_stage_handoff(ota_nrf52_effective_stage_ceiling());
-#endif
-  uint8_t sd_en = 0;
-  sd_softdevice_is_enabled(&sd_en);
-  if (sd_en) {                                 // POWER is SD-restricted while the SoftDevice runs
-    sd_power_gpregret_clr(1, 0xFFFFFFFF);
-    sd_power_gpregret_set(1, stage_handoff);
-    sd_power_gpregret_clr(0, 0xFFFFFFFF);
-    sd_power_gpregret_set(0, GPREGRET_OTA_APPLY);
+  if (g_nrf52_apply_store && g_nrf52_apply_store->is_hybrid()) {
+    // The bootloader admits retained SRAM only after a clean software-reset
+    // handoff. Clear every prior reset reason immediately before publishing
+    // the valid-last descriptor, then make A6/6A the only apply trigger.
+    if (!ota_nrf52_clear_reset_reasons() ||
+        !g_nrf52_apply_store->publish_hybrid_handoff()) {
+      // Never fall back to scanning the flash prefix as a legacy container:
+      // it intentionally advertises a total larger than its flash span.
+      ota_nrf52_set_reset_handoff(0u, 0xBDu);
+      NVIC_SystemReset();
+      return;
+    }
+    stage_handoff = GPREGRET2_OTA_STAGE_HYBRID;
   } else {
-    NRF_POWER->GPREGRET2 = stage_handoff;
-    NRF_POWER->GPREGRET = GPREGRET_OTA_APPLY;
+    stage_handoff = mota_nrf52_flash_stage_handoff(ota_nrf52_effective_stage_ceiling());
   }
+#endif
+  ota_nrf52_set_reset_handoff(GPREGRET_OTA_APPLY, stage_handoff);
   NVIC_SystemReset();                          // does not return
 }
 
@@ -514,6 +552,9 @@ static bool ota_apply_mota_nrf52_impl(const uint8_t* buf, uint32_t len,
                                       const uint8_t* rescue_base_hash,
                                       uint32_t local_target_id,
                                       ApplyState& st, char* msg) {
+#if defined(OTA_FLASH_STORE)
+  g_nrf52_apply_store = nullptr;
+#endif
   st = ApplyState();
   MotaManifest m;
   if (!mota_parse(buf, len, m)) { strcpy(msg, "parse failed"); return false; }
@@ -637,6 +678,164 @@ bool ota_rescue_mota_nrf52(const uint8_t* buf, uint32_t len, const SignerAllowli
                            ApplyState& st, char* msg) {
   return ota_apply_mota_nrf52_impl(buf, len, allow, operator_base_hash, local_target_id, st, msg);
 }
+
+#if defined(OTA_FLASH_STORE)
+bool ota_apply_mota_nrf52(OtaStoreFlashNrf52& store,
+                          const SignerAllowlist& allow,
+                          ApplyState& st, char* msg) {
+  static const size_t CAP = 96;
+  g_nrf52_apply_store = nullptr;
+  st = ApplyState();
+
+  uint8_t header[8];
+  uint8_t manifest[MOTA_MFL];
+  const uint32_t total = store.staged_size();
+  if (total < MOTA_NRF52_CONTAINER_MIN_SIZE ||
+      !store.read(0, header, sizeof(header)) ||
+      memcmp(header, MOTA_MAGIC, sizeof(MOTA_MAGIC)) != 0 ||
+      rd_u32le(header + 4u) != total ||
+      !store.read(8u, manifest, sizeof(manifest))) {
+    strcpy(msg, "internal container parse failed");
+    return false;
+  }
+
+  MotaManifest m;
+  if (!mota_parse_manifest(manifest, sizeof(manifest), m)) {
+    strcpy(msg, "internal manifest parse failed");
+    return false;
+  }
+  if (m.is_bootloader()) {
+    strcpy(msg, "use explicit ota bootloader install");
+    return false;
+  }
+  if (m.is_full() || m.codec_id != CODEC_DETOOLS_INPLACE) {
+    strcpy(msg, "not an in-place delta");
+    return false;
+  }
+
+  const uint64_t payload_off64 =
+      8u + MOTA_MFL + (uint64_t)m.block_count * 4u;
+  if (payload_off64 > UINT32_MAX ||
+      payload_off64 + m.payload_size + 5u != total) {
+    strcpy(msg, "internal container layout mismatch");
+    return false;
+  }
+  const uint32_t payload_off = (uint32_t)payload_off64;
+  const uint32_t app_base = mota_nrf52_app_base();
+  const uint32_t app_ceiling = mota_nrf52_application_ceiling();
+  if (!mota_nrf52_target_image_fits(app_base, m.image_size,
+                                     app_ceiling)) {
+    strcpy(msg, "target image exceeds linked application region");
+    return false;
+  }
+
+  st.image_size = m.image_size;
+  memcpy(st.image_hash, m.image_hash, sizeof(st.image_hash));
+  st.manifest_ok = true;
+
+  const OtaBlCaps bl = ota_bootloader_app_caps();
+  if (!bl.present) {
+    strcpy(msg, "bootloader has no OTA-apply support; update it first");
+    return false;
+  }
+  if (bl.apply_abi < m.format_ver ||
+      !(bl.codec_mask & (1u << m.codec_id))) {
+    snprintf(msg, CAP,
+             "bootloader cannot apply update (abi=%u codecs=0x%x; need %u/%u)",
+             bl.apply_abi, bl.codec_mask, m.format_ver, m.codec_id);
+    return false;
+  }
+  if (store.is_hybrid() &&
+      !ota_bootloader_supports_hybrid(ota_bootloader_ram_caps())) {
+    strcpy(msg, "bootloader lacks hybrid RAM staging support");
+    return false;
+  }
+
+  // Verify through the logical OtaStore. A hybrid container is deliberately
+  // non-contiguous; data() is never consulted by this path. The resulting SHA
+  // is normalized across APRV bytes and is the handoff-record hash contract.
+  VerifyResult vr = ota_verify(
+      static_cast<const OtaStore&>(store), allow, manifest);
+  st.sig_ok = vr.sig_ok;
+  st.trusted = vr.trusted;
+  if (!vr.root_ok || !vr.payload_ok || !vr.image_ok ||
+      !vr.container_hash_ok) {
+    strcpy(msg, "payload hash mismatch (incomplete or corrupt .mota)");
+    return false;
+  }
+
+  SelfFwInfo fi;
+  if (!ota_self_firmware(fi) || !fi.valid) {
+    strcpy(msg, "cannot read running firmware (no EndF)");
+    return false;
+  }
+  if (!m.base_hash || memcmp(m.base_hash, fi.body_hash, 8u) != 0) {
+    strcpy(msg, "not built for the running firmware (base mismatch)");
+    return false;
+  }
+  st.slot_ok = true;
+  if (vr.is_signed) {
+    if (!vr.sig_ok) {
+      strcpy(msg, "bad signature");
+      return false;
+    }
+    if (!vr.trusted) {
+      strcpy(msg, "untrusted signer (pubkey not in allowlist)");
+      return false;
+    }
+  }
+
+  uint8_t patch_header[32];
+  const uint32_t patch_header_len =
+      m.payload_size < sizeof(patch_header)
+          ? m.payload_size : (uint32_t)sizeof(patch_header);
+  InplacePatchDims d;
+  if (!store.read(payload_off, patch_header, patch_header_len) ||
+      !parse_inplace_patch_dims(patch_header, patch_header_len, d)) {
+    strcpy(msg, "bad in-place patch header");
+    return false;
+  }
+  if (d.memory == 0u || d.segment != MOTA_NRF52_FLASH_PAGE ||
+      d.shift > d.memory || d.shift % d.segment != 0u ||
+      d.from > d.memory - d.shift || d.from != fi.image_len ||
+      d.to > d.memory || d.to != m.image_size ||
+      !mota_nrf52_internal_patch_workspace_valid(
+          d.memory, app_base, store.write_start(), m.image_size,
+          app_ceiling)) {
+    strcpy(msg, "invalid in-place patch geometry");
+    return false;
+  }
+
+  if (store.is_hybrid()) {
+    uint32_t planned_start = 0, planned_flash = 0, planned_ram = 0;
+    if (fi.image_len > UINT32_MAX - app_base ||
+        !mota_nrf52_hybrid_stage_plan(
+            total, app_base, app_base + fi.image_len,
+            MOTA_NRF52_STAGE_CEILING_EXPANDED,
+            planned_start, planned_flash, planned_ram) ||
+        planned_start != store.write_start() ||
+        planned_flash != store.flash_len() ||
+        planned_ram != store.ram_len()) {
+      strcpy(msg, "hybrid staging geometry mismatch");
+      return false;
+    }
+  } else if (store.ram_len() != 0u) {
+    strcpy(msg, "internal staging geometry mismatch");
+    return false;
+  }
+
+  if (!store.approve_for_application(vr.container_hash)) {
+    strcpy(msg, "internal approval/handoff preparation failed");
+    return false;
+  }
+  g_nrf52_apply_store = &store;
+  snprintf(msg, CAP,
+           "verified%s%s; rebooting into bootloader after this reply",
+           vr.is_signed ? " (signer trusted)" : " (unsigned)",
+           store.is_hybrid() ? " in flash+RAM" : "");
+  return true;
+}
+#endif
 
 #if defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE)
 static const size_t NRF52_APPLY_MSG_CAP = 96;

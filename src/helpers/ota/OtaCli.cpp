@@ -1127,7 +1127,8 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       strcpy(reply, "ERR completed fetch is in the host folder, not local verification storage");
       return true;
     }
-#if defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
+#if defined(NRF52_PLATFORM) && \
+    (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE) || defined(OTA_FLASH_STORE))
     if (c.manager.fetchState() == OtaManager::COMPLETE) {
       VerifyResult r = ota_verify(static_cast<const OtaStore&>(c.fetch_store), c.allow);
       sprintf(reply, "verify parsed=%d root=%d payload=%d img=%d signed=%d sig=%d trust=%d | ok=%d auto=%d",
@@ -1137,7 +1138,8 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     }
 #endif
     const uint8_t* buf; uint32_t len;
-#if defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
+#if defined(NRF52_PLATFORM) && \
+    (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE) || defined(OTA_FLASH_STORE))
     buf = c.serve_buf; len = c.serve_buf ? c.serve_expected : 0;
 #else
     if (c.manager.fetchState() == OtaManager::COMPLETE) { buf = c.fetch_store.data(); len = c.fetch_store.staged_size(); }
@@ -1184,6 +1186,10 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
     }
 
   } else if (strncmp(d, "clear", 5) == 0) {
+    if (c.apply_pending) {
+      strcpy(reply, "ERR update is armed; reboot is pending");
+      return true;
+    }
     const bool was_folder = c.fetch_to_folder;
     bool was_sd_archive = false;
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)

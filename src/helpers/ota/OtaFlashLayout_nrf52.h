@@ -15,7 +15,9 @@ namespace ota {
 
 static const uint32_t MOTA_NRF52_APP_BASE_S140_V6 = 0x00026000u;
 static const uint32_t MOTA_NRF52_APP_BASE_S140_V7 = 0x00027000u;
-#if defined(NRF52_PLATFORM)
+#if defined(MOTA_NRF52_TEST_APP_BASE)
+inline uint32_t mota_nrf52_app_base() { return MOTA_NRF52_TEST_APP_BASE; }
+#elif defined(NRF52_PLATFORM)
 extern "C" uint32_t __flash_arduino_start[];       // nrf52_common.ld: ORIGIN(FLASH)
 extern "C" uint32_t __flash_arduino_end[];         // nrf52_common.ld: ORIGIN(FLASH) + LENGTH(FLASH)
 extern "C" const uint8_t g_meshcore_internal_extrafs __attribute__((weak));
@@ -54,6 +56,13 @@ static const uint8_t  GPREGRET2_OTA_STAGE_LEGACY   = 0xD4u;
 static const uint8_t  GPREGRET2_OTA_STAGE_EXPANDED = 0xEDu;
 static const uint8_t  GPREGRET2_OTA_STAGE_QSPI     = 0x51u;
 static const uint8_t  GPREGRET2_OTA_STAGE_SD       = 0x53u;
+static const uint8_t  GPREGRET2_OTA_STAGE_HYBRID   = 0xA6u;
+
+// Fixed SRAM reserved by the dedicated internal-only mOTA linker. A hybrid
+// container is one logical stream: a page-aligned flash prefix followed by a
+// reset-retained suffix at this address.
+static const uint32_t MOTA_NRF52_HYBRID_RAM_START = 0x20030000u;
+static const uint32_t MOTA_NRF52_HYBRID_RAM_SIZE  = 0x00010000u;
 
 inline uint8_t mota_nrf52_flash_stage_handoff(uint32_t effective_stage_ceiling) {
   if (effective_stage_ceiling == MOTA_NRF52_STAGE_CEILING_EXPANDED)
@@ -123,7 +132,9 @@ inline uint32_t mota_nrf52_stage_ceiling_for_layout(uint32_t linked_app_end,
 }
 
 inline uint32_t mota_nrf52_layout_stage_ceiling() {
-#if defined(NRF52_PLATFORM)
+#if defined(MOTA_NRF52_TEST_LAYOUT_STAGE_CEILING)
+  return MOTA_NRF52_TEST_LAYOUT_STAGE_CEILING;
+#elif defined(NRF52_PLATFORM)
   // DataStore.cpp defines this symbol only for a companion that really constructs internal ExtraFS.
   // An undefined weak symbol has address zero, so other roles do not inherit nrf52_base's broad EXTRAFS
   // feature define as a false-positive storage reservation.
@@ -273,6 +284,51 @@ inline bool mota_nrf52_stage_plan(uint32_t total_size, uint32_t app_base, uint32
                                mota_nrf52_layout_stage_ceiling(), out_start);
 }
 
+// Plan the exact split used by a hybrid-capable profile for every application
+// delta larger than one page. Reserve as little flash as possible (but always
+// one complete page for the header/manifest/approval), leaving the largest
+// possible detools workspace below it. The remainder is the reset-retained
+// SRAM suffix.
+inline bool mota_nrf52_hybrid_stage_plan(uint32_t total_size,
+                                          uint32_t app_base,
+                                          uint32_t app_end,
+                                          uint32_t stage_ceiling,
+                                          uint32_t& out_start,
+                                          uint32_t& out_flash_len,
+                                          uint32_t& out_ram_len) {
+  if (stage_ceiling != MOTA_NRF52_STAGE_CEILING_EXPANDED ||
+      (app_base != MOTA_NRF52_APP_BASE_S140_V6 &&
+       app_base != MOTA_NRF52_APP_BASE_S140_V7) ||
+      !mota_nrf52_layout_valid(app_base, stage_ceiling) ||
+      app_end < app_base || app_end > stage_ceiling ||
+      total_size < MOTA_NRF52_CONTAINER_MIN_SIZE) {
+    return false;
+  }
+
+  uint32_t flash_needed = total_size > MOTA_NRF52_HYBRID_RAM_SIZE
+      ? total_size - MOTA_NRF52_HYBRID_RAM_SIZE : 0u;
+  if (flash_needed < MOTA_NRF52_FLASH_PAGE)
+    flash_needed = MOTA_NRF52_FLASH_PAGE;
+  if (flash_needed > UINT32_MAX - (MOTA_NRF52_FLASH_PAGE - 1u))
+    return false;
+  const uint32_t flash_len =
+      (flash_needed + MOTA_NRF52_FLASH_PAGE - 1u) &
+      ~(MOTA_NRF52_FLASH_PAGE - 1u);
+  if (flash_len >= total_size || flash_len > stage_ceiling - app_end)
+    return false;
+
+  const uint32_t start = stage_ceiling - flash_len;
+  const uint32_t ram_len = total_size - flash_len;
+  if (start < app_end || ram_len == 0u ||
+      ram_len > MOTA_NRF52_HYBRID_RAM_SIZE)
+    return false;
+
+  out_start = start;
+  out_flash_len = flash_len;
+  out_ram_len = ram_len;
+  return true;
+}
+
 // Durable internal-store cancellation has to work even when the live
 // OtaStore object is empty (for example, autofetch is off after a reboot). It
 // also has to invalidate every older bottom-aligned header: invalidating only
@@ -290,6 +346,15 @@ inline bool mota_nrf52_staged_header_matches_layout(
   uint32_t planned = 0;
   if (mota_nrf52_stage_plan(total_size, app_base, app_end,
                             effective_stage_ceiling, planned) &&
+      planned == address) {
+    return true;
+  }
+
+  uint32_t hybrid_flash_len = 0, hybrid_ram_len = 0;
+  if (effective_stage_ceiling == MOTA_NRF52_STAGE_CEILING_EXPANDED &&
+      mota_nrf52_hybrid_stage_plan(
+          total_size, app_base, app_end, effective_stage_ceiling,
+          planned, hybrid_flash_len, hybrid_ram_len) &&
       planned == address) {
     return true;
   }

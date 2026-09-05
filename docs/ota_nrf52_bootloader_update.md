@@ -12,7 +12,7 @@ provisioned locally before either application or bootloader OTA.
 | Layout | Application limit | Staged boot package | Work area | Handoff / capability |
 | --- | ---: | ---: | ---: | --- |
 | XIAO-module raw QSPI | below `0xE0000` | external QSPI offset 0 | dedicated internal `0xE0000..0xEA000` scratch | source `0x51`, flags `0x0E` |
-| Qualified internal-flash target | normal `0xED000` limit | shared internal slot, exact start `0xE2000` | the same eleven-page slot; no second reservation | source `0xED`, flags `0x0A` |
+| Qualified internal-flash target | normal `0xED000` flash limit; top 64 KiB SRAM reserved for application-delta staging | shared internal slot, exact start `0xE2000` | the same eleven-page slot; no second flash reservation | source `0xED`, flags `0x0A` |
 | MeshTower V2 microSD | normal `0xED000` limit | contiguous `/meshcore-ota.mota` | dynamic internal `0xE0000..0xEA000` scratch; live image must end by `0xE0000` | source `0x53`, flags `0x09` |
 
 The exact SD target is
@@ -53,10 +53,13 @@ ownership. Upgrade preview.12 through USB/BLE DFU or SWD. Both fmt2 application
 and fmt3 bootloader OTA then require the installed BLM2 metadata to match the
 live SoftDevice/application layout; neither MeshCore nor OTAFIX uses sector 1.
 
-The internal path does not change the application linker or permanently set
-aside separate app-OTA, boot-package, and scratch regions. The ordinary
-bottom-aligned internal store holds one container at a time: either an
-application delta or a bootloader package.
+The internal path does not change the application's `0xED000` flash limit or
+permanently set aside separate app-OTA, boot-package, and flash-scratch
+regions. Qualified applications do use a dedicated linker that reserves the
+top 64 KiB of SRAM for hybrid application-delta staging and a retained
+authorization record. That SRAM is never part of a bootloader-update package.
+The ordinary bottom-aligned internal flash store holds one container prefix at
+a time: either an application delta or the complete bootloader package.
 
 The exact bootloader container is 41,330 bytes: 365 bytes of signed mOTA
 metadata, a 40 KiB payload, and the five-byte trailer. Below the normal
@@ -68,10 +71,13 @@ erasing and compacts the payload forward in place to the page-aligned raw range
 MBR to copy that image over `0xF4000..0xFE000`.
 
 An ordinary application delta can be smaller or larger than this eleven-page
-shape. It bottom-aligns dynamically below `0xED000` and may begin below
-`0xE2000`; its detools workspace must stop at its actual container start, while
-the reconstructed application must stop below `0xED000`. The two package kinds
-are mutually exclusive because they use the same store.
+shape. On the qualified profile, a delta larger than one page uses the minimum
+page-aligned flash prefix ending at `0xED000` and keeps up to 64 KiB of its
+logical tail in reset-retained SRAM; its detools workspace must stop at the
+actual flash-prefix start. A one-page-or-smaller delta stays wholly in flash.
+In either case the reconstructed application must stop below `0xED000`. The
+two package kinds are mutually exclusive because they use the same flash
+store, and a bootloader package never uses the volatile SRAM suffix.
 
 For internal-self-update builds, an absent or corrupt live `EndF` disables
 **all** internal staging before the first erase. The older 608 KiB rescue

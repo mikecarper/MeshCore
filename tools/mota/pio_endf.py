@@ -91,6 +91,57 @@ def _cppdef(name):                                # value of a -D<name>=<value> 
     return None
 
 
+def _normalized_linker_path(value, project_dir):
+    """Resolve one SCons linker-path value without guessing among candidates."""
+    if isinstance(value, (list, tuple)):
+        if len(value) != 1:
+            return ""
+        value = value[0]
+    if hasattr(value, "get_abspath"):
+        value = value.get_abspath()
+    raw = str(value or "").strip().strip('"').strip("'")
+    if not raw:
+        return ""
+    if not os.path.isabs(raw):
+        raw = os.path.join(str(project_dir), raw)
+    return os.path.normcase(os.path.abspath(raw))
+
+
+def _validate_nrf52_hybrid_profile(app_start, linked_app_end,
+                                    hybrid_ram, internal_bootloader_update,
+                                    active_linker, configured_linker,
+                                    project_dir):
+    """Fail closed unless both macros and the dedicated SRAM linker agree."""
+    if hybrid_ram != internal_bootloader_update:
+        raise RuntimeError(
+            "nRF52 hybrid RAM staging and internal bootloader update must be enabled together")
+    if not hybrid_ram:
+        return
+
+    suffix_by_base = {
+        ml.NRF52_APP_BASE_S140_V6: "v6",
+        ml.NRF52_APP_BASE_S140_V7: "v7",
+    }
+    suffix = suffix_by_base.get(app_start)
+    if suffix is None or linked_app_end != ml.NRF52_APP_END:
+        raise RuntimeError(
+            "nRF52 hybrid RAM staging requires the exact S140 v6/v7 0xED000 profile")
+
+    expected = os.path.join(
+        str(project_dir), "boards", f"nrf52840_s140_{suffix}_mota64.ld")
+    expected = _normalized_linker_path(expected, project_dir)
+    if not expected or not os.path.isfile(expected):
+        raise RuntimeError("nRF52 hybrid RAM linker is missing")
+    for label, value in (("active", active_linker),
+                         ("configured", configured_linker)):
+        actual = _normalized_linker_path(value, project_dir)
+        if actual != expected:
+            shown = str(value or "none")
+            raise RuntimeError(
+                f"nRF52 hybrid RAM staging requires {expected}; "
+                f"{label} linker is {shown}")
+
+
 def _board_maximum_size(build_env):
     """Return PlatformIO's resolved application-size limit, including per-env overrides."""
     try:
@@ -215,8 +266,14 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     sd_backed = _cppdef("OTA_SD_STORE") is not None
     qspi_backed = _cppdef("OTA_QSPI_STORE") is not None
     qspi_bootloader_update = _cppdef("OTA_QSPI_BOOTLOADER_UPDATE") is not None
+    hybrid_ram = _cppdef("OTA_HYBRID_RAM_STORE") is not None
     internal_bootloader_update = _cppdef("OTA_INTERNAL_BOOTLOADER_UPDATE") is not None
     sd_bootloader_update = _cppdef("OTA_SD_BOOTLOADER_UPDATE") is not None
+    board = env.BoardConfig()
+    _validate_nrf52_hybrid_profile(
+        app_start, linked_app_end, hybrid_ram, internal_bootloader_update,
+        env.get("LDSCRIPT_PATH", ""), board.get("build.ldscript", ""),
+        env["PROJECT_DIR"])
     if sd_backed and qspi_backed:
         raise RuntimeError("nRF52 build cannot enable both SD and QSPI OTA stores")
     if qspi_backed and _cppdef("QSPIFLASH") is not None:
@@ -242,7 +299,8 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     layout_flags = ((ml.NRF52_LAYOUT_FLAG_SD if sd_backed else 0) |
                     (ml.NRF52_LAYOUT_FLAG_QSPI if qspi_backed else 0) |
                     (ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS if internal_extrafs else 0) |
-                    (ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH if qspi_bootloader_update else 0))
+                    (ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH if qspi_bootloader_update else 0) |
+                    (ml.NRF52_LAYOUT_FLAG_HYBRID_RAM if hybrid_ram else 0))
     layout = ml.Nrf52Layout(app_start, linked_app_end, stage_ceiling, layout_flags)
     body = ml.ensure_nrf52_layout(raw_body, layout)
     ident = _firmware_ident()

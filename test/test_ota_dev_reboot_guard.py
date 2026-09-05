@@ -61,6 +61,32 @@ class OtaDevRebootGuardContractTest(unittest.TestCase):
         reboot_at = maintenance.index("ota::ota_reboot_to_apply()")
         self.assertLess(guard_at, reboot_at)
 
+    def test_dev_clear_cannot_mutate_an_armed_update(self):
+        cli = (ROOT / "src/helpers/ota/OtaCli.cpp").read_text()
+        dev = function_body(
+            cli,
+            "static bool handle_dev(const char* d, char* reply, OtaContext& c) {",
+        )
+
+        clear_at = dev.index('strncmp(d, "clear", 5)')
+        clear = dev[
+            clear_at : dev.index(
+                '} else {\n    strcpy(reply, "ota dev:', clear_at
+            )
+        ]
+        guard_at = clear.index("if (c.apply_pending)")
+        mutations = (
+            "c.manager.clear_primary()",
+            "c.releaseServeBuffer()",
+            "c.manager.reset_session()",
+            "c.fetch_store.discard()",
+        )
+        for mutation in mutations:
+            self.assertLess(guard_at, clear.index(mutation), mutation)
+        guard = clear[guard_at : clear.index("const bool was_folder")]
+        self.assertIn('strcpy(reply, "ERR update is armed; reboot is pending")', guard)
+        self.assertIn("return true", guard)
+
 
 if __name__ == "__main__":
     unittest.main()

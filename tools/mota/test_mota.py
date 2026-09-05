@@ -60,6 +60,13 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
     }
     assert gat_targets <= set(inventory)
     assert not any("GAT562_Mesh_Watch13" in target for target in inventory)
+    assert not any("xiao" in target.lower() for target in inventory)
+    assert not any("sdcard" in target.lower() for target in inventory)
+    assert {
+        "Heltec_t096_repeater_lora_ota_no_external_sensors",
+        "Heltec_t114_repeater_lora_ota_no_external_sensors",
+        "RAK_3401_repeater_lora_ota_no_external_sensors",
+    } <= set(inventory)
 
     target_header = (root / "src/helpers/ota/OtaTargets.h").read_text(encoding="utf-8")
     for target in inventory:
@@ -74,6 +81,83 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
     recipe = recipe.split("supports_nrf52_internal_bootloader_update()", 1)[0]
     assert "scripts/nrf52_internal_bootloader_link.py" not in recipe
     assert "export MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE=1" in recipe
+
+    selector = (root / "scripts/nrf52_internal_bootloader_link.py").read_text(
+        encoding="utf-8")
+    assert '"OTA_HYBRID_RAM_STORE"' in selector
+    assert "nrf52840_s140_%s_mota64.ld" in selector
+    assert "env[\"PIOENV\"] in direct_targets" in selector
+
+    for version, app_base in (("v6", "0x26000"), ("v7", "0x27000")):
+        linker = (root / f"boards/nrf52840_s140_{version}_mota64.ld").read_text(
+            encoding="utf-8")
+        assert f"ORIGIN = {app_base}" in linker
+        assert "PERSISTENT_RAM (rwx) : ORIGIN = 0x20006000, LENGTH = 80" in linker
+        assert "MOTA_RAM (rwx) : ORIGIN = 0x20030000, LENGTH = 0x10000" in linker
+        assert ".mota_ram (NOLOAD)" in linker
+        ordinary = (root / f"boards/nrf52840_s140_{version}.ld").read_text(
+            encoding="utf-8")
+        assert "MOTA_RAM" not in ordinary
+
+    # Explicit external-storage and ExtraFS profiles remain on their existing
+    # linkers and are absent from the exact activation inventory.
+    tower = (root / "variants/heltec_tower_v2/platformio.ini").read_text(
+        encoding="utf-8")
+    assert "[env:Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors]" in tower
+    assert "board_build.ldscript = boards/nrf52840_s140_v6_sd_ota.ld" in tower
+    assert "board_build.ldscript = boards/nrf52840_s140_v6_extrafs.ld" in tower
+    xiao = (root / "variants/xiao_nrf52/platformio.ini").read_text(
+        encoding="utf-8")
+    assert "board_build.ldscript = boards/nrf52840_s140_v7.ld" in xiao
+
+
+def test_nrf52_hybrid_endf_profile_fails_closed():
+    root = Path(__file__).resolve().parents[2]
+    script = root / "tools/mota/pio_endf.py"
+    spec = importlib.util.spec_from_file_location("pio_endf_policy_test", script)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    module.Import = lambda _name: None
+    module.env = {"PROJECT_DIR": str(root), "CPPDEFINES": []}
+    spec.loader.exec_module(module)
+
+    validate = module._validate_nrf52_hybrid_profile
+    correct = root / "boards/nrf52840_s140_v6_mota64.ld"
+    validate(ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+             True, True, correct, correct, root)
+    correct_v7 = root / "boards/nrf52840_s140_v7_mota64.ld"
+    validate(ml.NRF52_APP_BASE_S140_V7, ml.NRF52_APP_END,
+             True, True, [correct_v7], correct_v7, root)
+    # Ordinary profiles do not need a linker proof.
+    validate(ml.NRF52_APP_BASE_S140_V6, ml.NRF52_EXTRAFS_START,
+             False, False, "", "", root)
+
+    def rejected(*args):
+        try:
+            validate(*args)
+            assert False, "invalid nRF52 hybrid build profile accepted"
+        except RuntimeError as exc:
+            return str(exc)
+
+    assert "enabled together" in rejected(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+        True, False, correct, correct, root)
+    assert "enabled together" in rejected(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+        False, True, correct, correct, root)
+    assert "exact S140" in rejected(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_EXTRAFS_START,
+        True, True, correct, correct, root)
+    assert "exact S140" in rejected(
+        0x00028000, ml.NRF52_APP_END,
+        True, True, correct, correct, root)
+    ordinary = root / "boards/nrf52840_s140_v6.ld"
+    assert "active linker" in rejected(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+        True, True, ordinary, correct, root)
+    assert "configured linker" in rejected(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+        True, True, correct, ordinary, root)
 
 
 def test_full_esp32_profile_unifies_usb_logging_and_wifi_mqtt():
@@ -437,10 +521,9 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
     assert "+<helpers/esp32/SerialWifiInterface.cpp>" in profile
     assert "meshadventurer_sx1262_companion_radio_full" in profile
     assert "meshadventurer_sx1268_companion_radio_full" in profile
-    assert "-DMAX_CONTACTS=160" in profile
-    assert "-DMAX_GROUP_CHANNELS=30" in profile
-    assert "-DOFFLINE_QUEUE_SIZE=64" in profile
-    assert "160 contacts, 30 channels, and 64 queued frames" in profile
+    assert ("-DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 "
+            "-DOFFLINE_QUEUE_SIZE=16") in profile
+    assert "100 contacts, 30 channels, and 16 queued frames" in profile
 
 
 def test_full_companion_wireless_startup_and_psram_contacts_are_resilient():
@@ -1083,6 +1166,19 @@ def test_nrf52_layout_record_roundtrip_and_policy():
         ml.ensure_nrf52_layout(_fw(9, 2048), shared_internal))
     assert ml.parse_nrf52_layout(shared_internal_image) == shared_internal
     assert not shared_internal.bootloader_scratch
+    hybrid = ml.Nrf52Layout(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+        ml.NRF52_APP_END, ml.NRF52_LAYOUT_FLAG_HYBRID_RAM)
+    hybrid_image, _ = ml.ensure_endf(
+        ml.ensure_nrf52_layout(_fw(10, 2048), hybrid))
+    assert ml.parse_nrf52_layout(hybrid_image) == hybrid
+    assert hybrid.hybrid_ram and not hybrid.external_backed
+    assert ml.build_nrf52_layout(hybrid) == bytes.fromhex(
+        "6d4f54414c617931011018000060020000d00e0000d00e00")
+    hybrid_v7 = ml.Nrf52Layout(
+        ml.NRF52_APP_BASE_S140_V7, ml.NRF52_APP_END,
+        ml.NRF52_APP_END, ml.NRF52_LAYOUT_FLAG_HYBRID_RAM)
+    assert ml.build_nrf52_layout(hybrid_v7)
     assert ((ml.NRF52_APP_END - ml.NRF52_BOOT_CONTAINER_SIZE) &
             ~(ml.NRF52_FLASH_PAGE - 1)) == ml.NRF52_SHARED_BOOT_STAGE_START
     try:
@@ -1095,7 +1191,10 @@ def test_nrf52_layout_record_roundtrip_and_policy():
     for flags in (
         ml.NRF52_LAYOUT_FLAG_SD | ml.NRF52_LAYOUT_FLAG_QSPI,
         ml.NRF52_LAYOUT_FLAG_QSPI | ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS,
-        0x10,
+        ml.NRF52_LAYOUT_FLAG_HYBRID_RAM | ml.NRF52_LAYOUT_FLAG_SD,
+        ml.NRF52_LAYOUT_FLAG_HYBRID_RAM | ml.NRF52_LAYOUT_FLAG_QSPI,
+        ml.NRF52_LAYOUT_FLAG_HYBRID_RAM |
+        ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS,
     ):
         try:
             ml.build_nrf52_layout(ml.Nrf52Layout(
@@ -1104,6 +1203,50 @@ def test_nrf52_layout_record_roundtrip_and_policy():
             assert False, "conflicting nRF52 layout flags accepted"
         except ValueError:
             pass
+
+    # The flag is also a promise that the application used the dedicated
+    # mota64 RAM linker. A shorter flash linker with no ExtraFS mounted may
+    # ordinarily reclaim ED000 for staging, but it cannot reserve SRAM.
+    for linked_end, ceiling in (
+        (ml.NRF52_EXTRAFS_START, ml.NRF52_APP_END),
+        (ml.NRF52_APP_END, ml.NRF52_EXTRAFS_START),
+    ):
+        try:
+            ml.build_nrf52_layout(ml.Nrf52Layout(
+                ml.NRF52_APP_BASE_S140_V6, linked_end, ceiling,
+                ml.NRF52_LAYOUT_FLAG_HYBRID_RAM))
+            assert False, "non-mota64 hybrid layout accepted"
+        except ValueError:
+            pass
+
+
+def test_nrf52_hybrid_stage_plan_matches_frozen_geometry():
+    app = ml.NRF52_APP_BASE_S140_V6
+    app_end = app + 512 * 1024
+    page = ml.NRF52_FLASH_PAGE
+    ceiling = ml.NRF52_APP_END
+
+    assert ml.nrf52_hybrid_stage_plan(8 + 197 + 5, app, app_end, ceiling) is None
+    assert ml.nrf52_hybrid_stage_plan(page, app, app_end, ceiling) is None
+    assert ml.nrf52_hybrid_stage_plan(page + 1, app, app_end, ceiling) == (
+        ceiling - page, page, 1)
+    assert ml.nrf52_hybrid_stage_plan(17 * page, app, app_end, ceiling) == (
+        ceiling - page, page, 16 * page)
+    assert ml.nrf52_hybrid_stage_plan(17 * page + 1, app, app_end, ceiling) == (
+        ceiling - 2 * page, 2 * page, 15 * page + 1)
+
+    # Hybrid is never admitted against the D4000/ExtraFS ceiling, and exact
+    # runtime app headroom must fit the charged flash prefix.
+    assert ml.nrf52_hybrid_stage_plan(
+        17 * page, app, app_end, ml.NRF52_EXTRAFS_START) is None
+    assert ml.nrf52_hybrid_stage_plan(
+        17 * page + 1, app, ceiling - page, ceiling) is None
+    assert ml.nrf52_hybrid_stage_plan(
+        17 * page, 0x00028000, app_end, ceiling) is None
+    v7 = ml.NRF52_APP_BASE_S140_V7
+    assert ml.nrf52_hybrid_stage_plan(
+        17 * page, v7, v7 + 512 * 1024, ceiling) == (
+            ceiling - page, page, 16 * page)
 
 
 def _write_boot_continuity(image, offset, *, version=0x0117010D,

@@ -80,6 +80,13 @@ bool ota_apply_detools_mota(const uint8_t* buf, uint32_t len,
 // Returns true (msg = "verified...") when approved, false (msg = the first failing gate) otherwise.
 bool ota_apply_mota_nrf52(const uint8_t* buf, uint32_t len,
                           const SignerAllowlist& allow, ApplyState& st, char* msg);
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
+class OtaStoreFlashNrf52;
+// Streaming internal-store path. Required for the hybrid source because its
+// flash prefix and retained-SRAM suffix have no single contiguous address.
+bool ota_apply_mota_nrf52(OtaStoreFlashNrf52& store,
+                          const SignerAllowlist& allow, ApplyState& st, char* msg);
+#endif
 // Recovery for failed app-side EndF validation. This is available only through the explicit
 // `ota rescue install <base_hash16>` CLI command and never through normal or automatic installation.
 bool ota_rescue_mota_nrf52(const uint8_t* buf, uint32_t len,
@@ -115,7 +122,6 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreQspiNrf52& store,
 #endif
 #if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && \
     defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
-class OtaStoreFlashNrf52;
 bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
                                          const SignerAllowlist& allow,
                                          const OtaBootloaderIdentity& installed,
@@ -137,7 +143,7 @@ bool ota_installed_bootloader_identity(OtaBootloaderIdentity& out);
 inline uint8_t ota_nrf52_boot_result_or_zero(uint8_t value) {
   return ((value >= 0x90u && value <= 0x9Fu) ||
           // B0..BC are the ordinary apply progress/failure/success results;
-          // SD-backed OTAFIX additionally uses BD for an authorization failure.
+          // Retained-source OTAFIX paths use BD for authorization/handoff failure.
           (value >= 0xB0u && value <= 0xBDu) ||
           (value >= 0xC0u && value <= 0xCFu)) ? value : 0u;
 }

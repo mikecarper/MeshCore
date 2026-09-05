@@ -15,6 +15,7 @@
 #if defined(NRF52_PLATFORM)
   #include "OtaFlashLayout_nrf52.h"
 #endif
+#include "OtaHybridHandoff.h"
 
 namespace mesh {
 namespace ota {
@@ -28,6 +29,56 @@ struct OtaBlCaps {
   uint16_t codec_mask = 0;   // bit i set => can apply codec_id i (in-place delta = bit 2)
   uint8_t  storage_flags = 0; // OTA_BL_STORAGE_* capability bits
 };
+
+// Independent marker for the reset-retained hybrid source. Keep this separate
+// from MOTABLDR: bootloader self-update policy relies on the exact deployed
+// storage_flags byte, and older applications must continue to parse it.
+struct OtaRamCaps {
+  bool present = false;
+  uint16_t abi = 0;
+  uint16_t record_len = 0;
+  uint32_t arena_size = 0;
+};
+
+inline bool ota_ram_caps_marker_parse(const uint8_t raw[16],
+                                      OtaRamCaps& out) {
+  out = OtaRamCaps();
+  if (!raw || memcmp(raw, MOTA_RAM_CAP_MAGIC,
+                     sizeof(MOTA_RAM_CAP_MAGIC)) != 0) {
+    return false;
+  }
+  const uint16_t abi = mota_hybrid_rd16(raw + 8u);
+  const uint16_t record_len = mota_hybrid_rd16(raw + 10u);
+  const uint32_t arena_size = mota_hybrid_rd32(raw + 12u);
+  if (abi != MOTA_RAM_CAP_ABI || record_len != MOTA_HYBRID_AUTH_LEN ||
+      arena_size != MOTA_NRF52_HYBRID_RAM_SIZE) {
+    return false;
+  }
+  out.present = true;
+  out.abi = abi;
+  out.record_len = record_len;
+  out.arena_size = arena_size;
+  return true;
+}
+
+inline OtaRamCaps ota_ram_caps_scan_aligned(const uint8_t* bytes, size_t len) {
+  OtaRamCaps result;
+  if (!bytes) return result;
+  uint8_t matches = 0;
+  for (size_t off = 0; off + 16u <= len; off += 4u) {
+    OtaRamCaps candidate;
+    if (!ota_ram_caps_marker_parse(bytes + off, candidate)) continue;
+    if (++matches != 1u) return OtaRamCaps();
+    result = candidate;
+  }
+  return matches == 1u ? result : OtaRamCaps();
+}
+
+inline bool ota_bootloader_supports_hybrid(const OtaRamCaps& caps) {
+  return caps.present && caps.abi == MOTA_RAM_CAP_ABI &&
+         caps.record_len == MOTA_HYBRID_AUTH_LEN &&
+         caps.arena_size == MOTA_NRF52_HYBRID_RAM_SIZE;
+}
 
 static const uint8_t OTA_BL_STORAGE_SD            = 0x01;
 static const uint8_t OTA_BL_STORAGE_STAGE_CEILING = 0x02;
@@ -181,6 +232,16 @@ inline OtaBlCaps ota_bootloader_app_caps() {
   return ota_bl_app_caps_scan(lo, (size_t)(hi - lo));
 #else
   return OtaBlCaps();
+#endif
+}
+
+inline OtaRamCaps ota_bootloader_ram_caps() {
+#if defined(NRF52_PLATFORM) && defined(OTA_HYBRID_RAM_STORE)
+  const uint8_t* lo = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_START;
+  const uint8_t* hi = (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_END;
+  return ota_ram_caps_scan_aligned(lo, (size_t)(hi - lo));
+#else
+  return OtaRamCaps();
 #endif
 }
 
