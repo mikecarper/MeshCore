@@ -29,3 +29,11 @@ env.AddCustomTarget(
     description="Use uf2conv to convert hex binary into uf2",
     always_build=True,
 )
+
+# Debug-probe upload defaults (for example WM1110's J-Link) must not omit the
+# application DFU ZIP from releases. Depend on the HEX builder so all its
+# post-actions, including EndF, finish before the DFU package is generated.
+# This does not change the board's selected upload protocol.
+if env.subst("$UPLOAD_PROTOCOL") != "nrfutil":
+    dfu_package = env.PackageDfu("$BUILD_DIR/${PROGNAME}", firmware_hex)
+    env.Alias("buildprog", dfu_package)

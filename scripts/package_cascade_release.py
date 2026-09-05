@@ -8,8 +8,9 @@ import hashlib
 import html
 import json
 from pathlib import Path
+import re
 import shutil
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +80,11 @@ def category(record):
         return "full-profiles"
     if "lora_ota" in manifest["target"].lower():
         return "lora-ota"
-    return "infrastructure"
+    if "logging" in manifest["artifact_target"].lower():
+        return "logging"
+    if any(role in manifest["target"].lower() for role in ("sensor", "terminal")):
+        return "utility"
+    return "repeater-room"
 
 
 def sha256(path):
@@ -102,18 +107,22 @@ def main():
     output_directory = Path(status["working_directory"]) / status["output_directory"]
     if output_directory.resolve() != args.input.resolve():
         raise ValueError("build status belongs to another output directory")
-    if status.get("source_commit") != args.commit or status.get("firmware_version") != "v" + args.version:
+    firmware_label = f"v{args.version}-halo-keymind-cascade-dev"
+    if status.get("source_commit") != args.commit or status.get("firmware_version") != firmware_label:
         raise ValueError("build status belongs to another source revision or version")
     if status.get("firmware_profile") != "cascade":
         raise ValueError("matrix did not use Cascade runtime defaults")
     radio = {key: status["radio_" + key] for key in ("frequency", "bandwidth", "sf", "cr")}
     if args.output.exists() and any(args.output.iterdir()):
         raise ValueError("staging directory must be empty; existing releases are never overwritten")
-    version = f"v{args.version}-{args.commit[:8]}"
+    version = f"{firmware_label}-{args.commit[:8]}"
     records = collect_artifacts(args.input, version)
-    base_tag = f"v{args.version}-usa-cascade-{args.commit[:8]}"
+    base_tag = version
     groups = []
-    for name in ("companion", "infrastructure", "lora-ota", "full-profiles"):
+    titles = {"companion": "Companion builds", "repeater-room": "Repeater and Room Server builds",
+              "utility": "Sensor and Terminal utilities", "logging": "USB packet logging builds",
+              "lora-ota": "LoRa OTA builds", "full-profiles": "Expanded FULL ESP32 profiles"}
+    for name in titles:
         current = []
         count = 0
         chunks = []
@@ -128,7 +137,10 @@ def main():
         for index, chunk in enumerate(chunks):
             key = name + (f"-{index + 1}" if index else "")
             tag = base_tag if key == "companion" else f"{key}-{base_tag}"
-            groups.append({"key": key, "tag": tag, "records": chunk})
+            title = f"MeshCore {args.version} Dev - {titles[name]}"
+            if index:
+                title += f" (part {index + 1})"
+            groups.append({"key": key, "tag": tag, "title": title, "prerelease": True, "records": chunk})
     links = "\n".join(f"- [{g['key']}](https://github.com/{args.repo}/releases/tag/{g['tag']})" for g in groups)
     source_url = f"https://github.com/{args.repo}/blob/{args.commit}"
     rows = []
@@ -149,11 +161,15 @@ def main():
             summaries.append({**manifest, "files": [path.name for path in record["files"]]})
             rows.append(f"<tr><td>{html.escape(manifest['artifact_target'])}</td><td>{html.escape(manifest['build_profile'])}</td><td>{html.escape(methods)}</td><td>{' · '.join(file_links)}</td></tr>")
         (destination / "TARGET-MANIFEST.json").write_text(json.dumps(summaries, indent=2) + "\n")
-        shutil.copy2(ROOT / "docs/full_companion_features.md", destination / "FULL-COMPANION-FEATURES.md")
+        guide = (ROOT / "docs/full_companion_features.md").read_text()
+        guide = re.sub(r"\]\(([^)]+)\)",
+                       lambda match: "](" + urljoin(source_url + "/docs/", match[1]) + ")", guide)
+        (destination / "FULL-COMPANION-FEATURES.md").write_text(guide)
         exclusions = args.input / "ota-excluded-targets.txt"
         if exclusions.is_file():
             shutil.copy2(exclusions, destination / exclusions.name)
-        body = (f"# MeshCore {args.version} — USA Cascade\n\n"
+        body = (f"> **Development prerelease.** Firmware identifier: **{base_tag}**.\n\n"
+                f"# MeshCore {args.version} Dev — USA Cascade\n\n"
                 f"Source: `{args.commit}`. USA/Canada: **{radio['frequency']} MHz, BW{radio['bandwidth']}, SF{radio['sf']}, CR{radio['cr']}**; Cascade defaults.\n\n"
                 f"This page contains **{len(summaries)} qualified firmware profiles**. Full Companions send MOTA and normally update over USB. Infrastructure has a verified wireless update path; see each capability manifest.\n\n"
                 f"[Feature on/off and update directions]({source_url}/docs/full_companion_features.md) · "
