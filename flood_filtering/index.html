@@ -475,6 +475,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../esp32_memory_budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classic ESP32 image memory budget
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../faq/" class="md-nav__link">
         
   
@@ -1898,7 +1925,7 @@ replaced.</p>
 <ul>
 <li>Roomy ESP32 builds: 255 rewrite slots and 32 regionless-target slots, 10,204
   bytes RAM.</li>
-<li>DRAM-tight classic ESP32 LoRa-OTA repeaters, nRF52, and other normal
+<li>Classic ESP32 repeaters, nRF52, and other normal
   constrained builds: 31 rewrite and regionless-target slots, 2,108 bytes RAM.</li>
 <li>Very-tight STM32WL builds: 15 rewrite slots and one reusable regionless-target
   slot, 572 bytes RAM.</li>
@@ -1906,6 +1933,12 @@ replaced.</p>
   regionless-target slots, 272 bytes RAM. This minimum holds the
   three wildcard classes and one exact channel mapping.</li>
 </ul>
+<p>Classic ESP32 uses the 31-slot default even on boards with PSRAM because these
+tables live in internal static DRAM. The separate channel-requirement table
+defaults to the same capacity and uses another 34 bytes per slot. Together,
+the 31-slot defaults save 15,712 bytes of static RAM compared with 255 slots.
+Custom builds can override <code>FLOOD_CHANNEL_SCOPE_SLOTS</code> and
+<code>FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS</code> with build flags.</p>
 <p>Each rule retains its 36-byte record. A separate table holds 32-byte normalized
 names for up to the smaller of the rule count or 32 distinct regionless
 targets, except that very-tight STM32WL builds retain one reusable direct

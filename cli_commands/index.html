@@ -2478,6 +2478,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../esp32_memory_budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classic ESP32 image memory budget
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../faq/" class="md-nav__link">
         
   
@@ -6998,7 +7025,7 @@ removed. The fixed-size STM32WL FPF6 build cannot match authenticated channels.<
 - <code>del flood.channel.scope all</code></p>
 <p><strong>Parameters:</strong>
 - <code>n</code>: Slot number within the table compiled for the target. Roomy ESP32 builds
-  provide <code>1-255</code>; DRAM-tight classic ESP32 LoRa-OTA repeaters and nRF52/other
+  provide <code>1-255</code>; classic ESP32 repeaters and nRF52/other
   normal constrained builds provide <code>1-31</code>; very-tight STM32WL repeaters provide
   <code>1-15</code>; the no-PSRAM LilyGo T-LoRa V2.1 repeater/observer provides <code>1-4</code>.
 - <code>channel</code>: <code>public</code>, a public <code>#channel</code>, or a 128/256-bit channel key in hex.
@@ -8243,6 +8270,10 @@ set direct.retry.cr 4.0,2.0,0,-4.0
 - <code>snr_db</code>: Optional SNR in dB. If omitted or invalid, defaults to <code>3.0</code>.
 - <code>page</code>: 1-based result page.</p>
 <p><strong>Note:</strong> These commands are repeater-only.</p>
+<p>The default capacity is 256 entries on classic ESP32, 2,048 on other ESP32
+chips, 512 on nRF52, and 64 on other platforms. Builds can override it with
+<code>MAX_RECENT_REPEATERS</code>. Classic ESP32's history uses 3,072 bytes of startup
+heap instead of 24,576 bytes, leaving more memory for the packet pool and Wi-Fi.</p>
 <p><strong>Output order:</strong>
 - <code>get recent.repeater</code> lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.
 - Within each prefix length, entries are sorted from highest SNR to lowest SNR.
