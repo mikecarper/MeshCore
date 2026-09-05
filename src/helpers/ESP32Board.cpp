@@ -55,15 +55,25 @@ bool ESP32Board::isUserGpioAvailable(uint8_t pin) const {
   return !UserGpioPinPolicy::isFirmwareReserved(pin);
 }
 
-#if defined(ADMIN_PASSWORD) && defined(LIGHTWEIGHT_WIFI_OTA)
+#if defined(LIGHTWEIGHT_WIFI_OTA) && \
+    (defined(ADMIN_PASSWORD) || defined(COMPANION_RADIO_FULL))
 #include <WiFi.h>
 #include <Update.h>
+#include <esp_ota_ops.h>
 #include <SPIFFS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <strings.h>
 
 static bool lightweight_ota_started_ap;
+
+// Full Companion keeps WebConfig on port 80 while an explicitly started
+// updater uses 8080. Infrastructure retains its established /update URL.
+#if defined(COMPANION_RADIO_FULL)
+static constexpr uint16_t LIGHTWEIGHT_OTA_PORT = 8080;
+#else
+static constexpr uint16_t LIGHTWEIGHT_OTA_PORT = 80;
+#endif
 
 static const char LIGHTWEIGHT_OTA_PAGE[] = R"HTML(<!doctype html>
 <html><head><meta name="viewport" content="width=device-width"><title>MeshCore OTA</title>
@@ -78,7 +88,7 @@ x.onload=()=>{s.textContent=x.responseText;b.disabled=false};x.onerror=()=>{s.te
 </script></body></html>)HTML";
 
 class LightweightOTAServer {
-  WiFiServer server{80};
+  WiFiServer server{LIGHTWEIGHT_OTA_PORT};
   TaskHandle_t task = nullptr;
   volatile bool running = false;
   ESP32Board* board = nullptr;
@@ -265,6 +275,14 @@ static LightweightOTAServer lightweight_ota_server;
 
 bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   (void)id;
+#if defined(COMPANION_RADIO_FULL)
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  if (!running || !next || running->address == next->address) {
+    strcpy(reply, "ERR: this partition layout requires a USB firmware update");
+    return false;
+  }
+#endif
   inhibit_sleep = true;
 
   IPAddress ip;
@@ -296,7 +314,12 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
     ota_server = &lightweight_ota_server;
   }
 
-  snprintf(reply, 160, "Started: http://%s/update", ip.toString().c_str());
+  if (LIGHTWEIGHT_OTA_PORT == 80) {
+    snprintf(reply, 160, "Started: http://%s/update", ip.toString().c_str());
+  } else {
+    snprintf(reply, 160, "Started: http://%s:%u/update", ip.toString().c_str(),
+             static_cast<unsigned>(LIGHTWEIGHT_OTA_PORT));
+  }
   MESH_DEBUG_PRINTLN("startOTAUpdate: %s", reply);
   return true;
 }

@@ -2184,6 +2184,38 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
 
+#if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+  if (strcmp(command, "start ota") == 0
+      || strcmp(command, "start ota ap") == 0) {
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    if (!isCompanionWiFiEnabled()) {
+      snprintf(reply, reply_size,
+               "ERR: select WiFi transport and reboot before starting WiFi OTA");
+      return true;
+    }
+#endif
+    // Board implementations use the common 160-byte CLI reply contract.
+    // Binary Companion callers may supply a shorter buffer.
+    char ota_reply[160] = {0};
+    if (!board.startOTAUpdate(_prefs.node_name, ota_reply,
+                             strcmp(command, "start ota ap") == 0)) {
+      snprintf(reply, reply_size, "%s",
+               ota_reply[0] ? ota_reply : "ERR: WiFi OTA unavailable");
+    } else {
+      snprintf(reply, reply_size, "%s", ota_reply);
+    }
+    return true;
+  }
+  if (strcmp(command, "stop ota") == 0) {
+    char ota_reply[160] = {0};
+    if (!board.stopOTAUpdate(ota_reply) && !ota_reply[0]) {
+      snprintf(ota_reply, sizeof(ota_reply), "ERR: WiFi OTA unavailable");
+    }
+    snprintf(reply, reply_size, "%s", ota_reply);
+    return true;
+  }
+#endif
+
   if (strcmp(command, "board") == 0) {
     const char* hardware_name = board.getManufacturerName();
     snprintf(reply, reply_size, "%s",
@@ -7150,6 +7182,10 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  set usb.logging <on|off> [reboot]\r\n");
 #endif
 #if defined(ESP32) && defined(WIFI_SSID)
+#if defined(COMPANION_RADIO_FULL)
+    terminalOutput().print("  start ota [ap] (WiFi firmware update on port 8080)\r\n");
+    terminalOutput().print("  stop ota\r\n");
+#endif
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
     terminalOutput().print("  get companion.transport\r\n");
     terminalOutput().print("  set companion.transport <wifi|ble>\r\n");

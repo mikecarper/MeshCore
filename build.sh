@@ -56,6 +56,8 @@ PIO_BUILD_JOBS_OVERRIDE=""
 PIO_BUILD_DIR_OVERRIDE=""
 RESOLVED_BUILD_TARGETS=()
 RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
+REQUIRE_OTA_UPDATES="${REQUIRE_OTA_UPDATES:-}"
+OTA_EXCLUDED_TARGETS=()
 LOGGING_MATRIX_FAILURES=()
 LOGGING_MATRIX_DEFERRED_TARGETS=()
 RADIO_PRESET_SELECTION=""
@@ -140,6 +142,10 @@ Options:
   --auto|--standard|--full: Short forms of --build-profile.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
+  --require-ota: Require a verified wireless self-update path for infrastructure.
+                 Default for Option 3; Companion USB updates remain supported.
+                 Cable-only infrastructure platforms are reported and omitted.
+  --allow-no-ota: Include cable-only development targets instead.
   --background: Run the selected build as a persistent detached job. Its log
                 and status live outside OUTPUT_DIR so --clean cannot erase them.
 
@@ -998,6 +1004,14 @@ parse_cli_options() {
       --background)
         BUILD_BACKGROUND_REQUESTED=1
         BUILD_BACKGROUND_EXPLICIT=1
+        shift
+        ;;
+      --require-ota)
+        REQUIRE_OTA_UPDATES=1
+        shift
+        ;;
+      --allow-no-ota)
+        REQUIRE_OTA_UPDATES=0
         shift
         ;;
       --)
@@ -2841,6 +2855,26 @@ declare_build_capability_contract() {
 
   record_build_capability "profile.${BUILD_PROFILE_FOR_TARGET}"
 
+  if [ "$env_platform" = "NRF52_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
+    # Prove the real DFU service is linked, not merely a generic OTA CLI stub.
+    record_build_expectation "ota.update.bluetooth" "_ZN6BLEDfu5beginEv"
+  fi
+
+  if [ "$env_platform" = "ESP32_PLATFORM" ]; then
+    if is_companion_radio_full_target "$env_name" \
+        || { [ "$BUILD_PROFILE_FOR_TARGET" = "standard" ] \
+             && requires_esp32_field_browser_ota "$env_name"; }; then
+      record_build_expectation "ota.update.wifi" "MeshCore firmware update"
+    elif ! is_companion_build "$env_name" \
+        && [ "${PIO_ENV_FULL_WIFI_OTA_BY_NAME[$env_name]:-0}" = "1" ] \
+        && [ "$BUILD_PROFILE_FOR_TARGET" = "full" ]; then
+      record_build_expectation "ota.update.wifi" "Started: http://%s/update"
+    fi
+    if is_lora_ota_build "$env_name" && ! is_companion_radio_full_target "$env_name"; then
+      record_build_expectation "ota.update.lora" "image_hash MISMATCH after decode"
+    fi
+  fi
+
   if is_repeater_role_target "$env_name" \
       || is_room_server_role_target "$env_name"; then
     record_build_expectation "cli.retry_preset" "retry.preset"
@@ -2905,6 +2939,8 @@ declare_build_capability_contract() {
       "Companion: starting Bluetooth"
     record_build_expectation "companion.usb_logging" "get usb.logging"
     record_build_expectation "companion.usb_mota_source" "ota folder on"
+    record_build_expectation "companion.mota_sender" \
+      "_ZN4mesh3ota16SerialMotaSource4read"
     if is_nrf52_companion_radio_full_target "$env_name"; then
       record_build_expectation "companion.dedicated_usb_logging" \
         "get usb.logging"
@@ -3429,6 +3465,8 @@ apply_companion_radio_full_profile() {
   # layout explicitly so Full-only runtime policies, including the bounded
   # first-boot WebConfig window, cannot silently compile with legacy defaults.
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1 -DMESHCORE_EXPANDED_PARTITION_PROFILE=1"
+  append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -fexceptions"
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -fno-exceptions"
 
   # Both Indicator radio layouts share the same original NVS/SPIFFS data
   # placement. The LoRa WiFi base names that map directly; the ESP-NOW USB
@@ -3626,6 +3664,16 @@ write_build_capability_manifest() {
   )
   local item
 
+  if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ] && ! is_companion_build "$env_name"; then
+    checker_args+=(--require-ota)
+  fi
+  if [ "$env_platform" = "ESP32_PLATFORM" ]; then
+    checker_args+=(--firmware-bin "${build_output_dir}/firmware.bin"
+                   --partitions "${build_output_dir}/partitions.bin")
+  elif [ "$env_platform" = "NRF52_PLATFORM" ]; then
+    checker_args+=(--dfu-package "${build_output_dir}/firmware.zip")
+  fi
+
   for item in "${BUILD_CAPABILITIES[@]}"; do
     checker_args+=(--capability "$item")
   done
@@ -3722,6 +3770,16 @@ build_artifacts_exist() {
   output_artifact_exists "${firmware_filename}.capabilities.json" || return 1
   grep -q '"verified": true' \
     "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" || return 1
+  if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ]; then
+    python3 - "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" <<'PY' || return 1
+import json, sys
+manifest = json.load(open(sys.argv[1]))
+target = manifest.get("target", "").lower()
+companion = "companion" in target or "comp_radio" in target
+sys.exit(0 if manifest.get("schema_version", 0) >= 2 and
+         (companion or manifest.get("ota_update_verified")) else 1)
+PY
+  fi
 
   case "$env_platform" in
     ESP32_PLATFORM)
@@ -3729,7 +3787,9 @@ build_artifacts_exist() {
         && output_artifact_exists "${firmware_filename}-merged.bin"
       ;;
     NRF52_PLATFORM)
-      output_artifact_exists "${firmware_filename}.uf2"
+      output_artifact_exists "${firmware_filename}.uf2" \
+        && { [ "${REQUIRE_OTA_UPDATES:-0}" != "1" ] \
+             || output_artifact_exists "${firmware_filename}.zip"; }
       ;;
     STM32_PLATFORM)
       output_artifact_exists "${firmware_filename}.bin" \
@@ -4665,6 +4725,33 @@ resolve_command_targets() {
     fi
   fi
 
+  OTA_EXCLUDED_TARGETS=()
+  if [ -z "$REQUIRE_OTA_UPDATES" ]; then
+    REQUIRE_OTA_UPDATES=0
+    if is_logging_matrix_command "$1"; then REQUIRE_OTA_UPDATES=1; fi
+  fi
+  if [ "$REQUIRE_OTA_UPDATES" = "1" ]; then
+    local ota_targets=()
+    for target in "${RESOLVED_BUILD_TARGETS[@]}"; do
+      if is_companion_build "$target"; then
+        ota_targets+=("$target")
+        continue
+      fi
+      case "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" in
+        ESP32_PLATFORM|NRF52_PLATFORM) ota_targets+=("$target") ;;
+        *) OTA_EXCLUDED_TARGETS+=("$target") ;;
+      esac
+    done
+    if [ ${#OTA_EXCLUDED_TARGETS[@]} -gt 0 ]; then
+      echo "No wireless updater exists for these cable-only targets:"
+      printf '  %s\n' "${OTA_EXCLUDED_TARGETS[@]}"
+      if [ "$1" = "build-firmware" ]; then return 1; fi
+    fi
+    RESOLVED_BUILD_TARGETS=("${ota_targets[@]}")
+    [ ${#RESOLVED_BUILD_TARGETS[@]} -gt 0 ] || return 1
+    echo "OTA required: infrastructure must prove a WiFi, Bluetooth, or LoRa self-update path; Companions may update over USB."
+  fi
+
   # Keep one queue so parallel workers stay saturated. The scheduler may pull
   # a later target forward when a generated alias shares an active PlatformIO
   # base environment, so this is a best-effort start order rather than a phase
@@ -4673,7 +4760,7 @@ resolve_command_targets() {
     mapfile -t RESOLVED_BUILD_TARGETS < <(
       sort_build_targets_by_platform_and_name "${RESOLVED_BUILD_TARGETS[@]}"
     )
-    echo "Bulk target start order: nRF52, ESP32, RP2040, STM32; alphabetical within each platform (best effort with parallel workers)."
+    echo "Bulk target order: nRF52, ESP32, RP2040, STM32; alphabetical within each platform, one PlatformIO process at a time."
   fi
 }
 
@@ -5247,6 +5334,9 @@ run_logging_matrix_build_targets() {
   fi
   LOGGING_MATRIX_FAILURES=()
   LOGGING_MATRIX_DEFERRED_TARGETS=()
+  if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ]; then
+    printf '%s\n' "${OTA_EXCLUDED_TARGETS[@]}" > "${OUTPUT_DIR}/ota-excluded-targets.txt"
+  fi
   PROFILE_BUILD_WORKERS=$OPTION3_BUILD_WORKERS
   echo "Option 3 PlatformIO policy: one target build at a time, ${OPTION3_PIO_JOBS} compiler job(s) inside that process."
 
@@ -5531,6 +5621,14 @@ write_background_build_status() {
       printf 'exit_code=%s\n' "$exit_code"
     fi
     printf 'working_directory=%s\n' "$PWD"
+    printf 'output_directory=%s\n' "$OUTPUT_DIR"
+    printf 'source_commit=%s\n' "$(git rev-parse HEAD)"
+    printf 'firmware_version=%s\n' "${FIRMWARE_VERSION:-}"
+    printf 'firmware_profile=%s\n' "$FIRMWARE_PROFILE_OVERRIDE"
+    printf 'radio_frequency=%s\n' "$RADIO_FREQ_OVERRIDE"
+    printf 'radio_bandwidth=%s\n' "$RADIO_BW_OVERRIDE"
+    printf 'radio_sf=%s\n' "$RADIO_SF_OVERRIDE"
+    printf 'radio_cr=%s\n' "$RADIO_CR_OVERRIDE"
     printf 'log=%s\n' "$BUILD_BACKGROUND_LOG_FILE"
   } > "$status_tmp"
   mv -f -- "$status_tmp" "$BUILD_BACKGROUND_STATUS_FILE"
@@ -5632,7 +5730,7 @@ launch_background_build() {
     MESHDEBUG_OVERRIDE PACKET_LOGGING_OVERRIDE MQTT_BRIDGE_OVERRIDE
     MQTT_DEBUG_OVERRIDE RADIO_SETTING_TITLE RADIO_FREQ_OVERRIDE
     RADIO_BW_OVERRIDE RADIO_SF_OVERRIDE RADIO_CR_OVERRIDE
-    RESUME_BUILD_OUTPUT KISS_MODE_OVERRIDE
+    RESUME_BUILD_OUTPUT KISS_MODE_OVERRIDE REQUIRE_OTA_UPDATES
     SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE CURL_CA_BUNDLE
     GIT_CONFIG_GLOBAL
   )

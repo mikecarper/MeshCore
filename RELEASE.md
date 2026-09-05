@@ -1,5 +1,10 @@
 # Releasing Firmware
 
+For the USA Cascade 1.17.1.5 matrix, use
+[the option 3 release instructions](docs/releases/1.17.1.5.md).
+The [Full Companion feature guide](docs/full_companion_features.md) is intended
+to accompany the release assets.
+
 GitHub Actions is set up to automatically build and release firmware.
 
 It will automatically build firmware when one of the following tag formats are pushed.

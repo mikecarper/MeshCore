@@ -1,5 +1,8 @@
 # Full Companion
 
+For practical on/off commands and update directions, see
+[Full Companion feature switches](full_companion_features.md).
+
 `companion_radio_full` combines every qualified Companion transport for its
 platform into one artifact and acts as a host-backed LoRa mOTA source for
 updating other nodes. Most targets can run those transports simultaneously;
@@ -21,6 +24,7 @@ firmware as an mOTA image.
 | Hardware serial Companion | On targets with assigned serial pins | On targets with assigned serial pins |
 | Ethernet Companion | On targets with an Ethernet module | On RAK4631 with RAK13800 |
 | LoRa self-update | No | No |
+| Optional self-update | WiFi on existing dual-app layouts; USB on single-app layouts | Bluetooth DFU with a compatible bootloader; USB always supported |
 
 ### SenseCAP Indicator transport and rendering exception
 
