@@ -35,6 +35,11 @@
   // Only repeater firmware supplies this RAM-heavy history storage.
   #if !MESH_ENABLE_RECENT_REPEATERS
     #define MAX_RECENT_REPEATERS  0
+  #elif defined(CONFIG_IDF_TARGET_ESP32)
+    // This history is allocated before setup(), when classic ESP32 must also
+    // retain internal heap for startup, the packet pool, and WiFi. Moving the
+    // old 24 KiB table off .bss alone does not reduce that heap pressure.
+    #define MAX_RECENT_REPEATERS  256
   #elif defined(ESP32) || defined(ESP32_PLATFORM)
     #define MAX_RECENT_REPEATERS  2048
   #elif defined(NRF52_PLATFORM)
@@ -196,7 +201,12 @@ struct NeighbourInfo {
     (FLOOD_PACKET_FILTER_PATH_PREFIX_HOPS_MAX * 3)
 
 #ifndef FLOOD_CHANNEL_SCOPE_SLOTS
-  #if defined(ESP32)
+  #if defined(CONFIG_IDF_TARGET_ESP32)
+    // The rewrite and require tables share this capacity. Their 255-slot
+    // default leaves almost no static DRAM headroom in classic ESP32 builds;
+    // PSRAM cannot hold these inline members of the global MyMesh object.
+    #define FLOOD_CHANNEL_SCOPE_SLOTS 31
+  #elif defined(ESP32)
     #define FLOOD_CHANNEL_SCOPE_SLOTS 255
   #elif defined(STM32_PLATFORM)
     #define FLOOD_CHANNEL_SCOPE_SLOTS 15

@@ -1916,7 +1916,7 @@ removed. The fixed-size STM32WL FPF6 build cannot match authenticated channels.
 
 **Parameters:**
 - `n`: Slot number within the table compiled for the target. Roomy ESP32 builds
-  provide `1-255`; DRAM-tight classic ESP32 LoRa-OTA repeaters and nRF52/other
+  provide `1-255`; classic ESP32 repeaters and nRF52/other
   normal constrained builds provide `1-31`; very-tight STM32WL repeaters provide
   `1-15`; the no-PSRAM LilyGo T-LoRa V2.1 repeater/observer provides `1-4`.
 - `channel`: `public`, a public `#channel`, or a 128/256-bit channel key in hex.
@@ -3390,6 +3390,11 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 - `page`: 1-based result page.
 
 **Note:** These commands are repeater-only.
+
+The default capacity is 256 entries on classic ESP32, 2,048 on other ESP32
+chips, 512 on nRF52, and 64 on other platforms. Builds can override it with
+`MAX_RECENT_REPEATERS`. Classic ESP32's history uses 3,072 bytes of startup
+heap instead of 24,576 bytes, leaving more memory for the packet pool and Wi-Fi.
 
 **Output order:**
 - `get recent.repeater` lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.

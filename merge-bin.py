@@ -4,7 +4,7 @@
 
 import os
 
-Import("env", "projenv")
+Import("env")
 
 board_config = env.BoardConfig()
 firmware_bin = "${BUILD_DIR}/${PROGNAME}.bin"
@@ -12,8 +12,13 @@ merged_bin = os.environ.get("MERGED_BIN_PATH", "${BUILD_DIR}/${PROGNAME}-merged.
 
 
 def merge_bin_action(source, target, env):
+    extra_images = env.Flatten(env.get("FLASH_EXTRA_IMAGES", []))
+    if not extra_images:
+        print("Cannot merge a bootable image without the bootloader/partition "
+              "flash layout. Run the mergebin target without nobuild.")
+        return 1
     flash_images = [
-        *env.Flatten(env.get("FLASH_EXTRA_IMAGES", [])),
+        *extra_images,
         "$ESP32_APP_OFFSET",
         source[0].get_abspath(),
     ]
@@ -35,7 +40,7 @@ def merge_bin_action(source, target, env):
             *flash_images,
         ]
     )
-    env.Execute(merge_cmd)
+    return env.Execute(merge_cmd)
 
 
 env.AddCustomTarget(

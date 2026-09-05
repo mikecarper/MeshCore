@@ -4011,6 +4011,12 @@ build_firmware() {
     unset MESHCORE_COMPANION_RADIO_FULL
   fi
 
+  if [ "$env_platform" = "ESP32_PLATFORM" ] \
+      && ! pio_env_option_contains "$pio_env_name" extra_scripts \
+          "scripts/check_esp32_dram.py"; then
+    append_platformio_extra_script "post:scripts/check_esp32_dram.py"
+  fi
+
   print_build_flags "$pio_env_name" "$env_name"
   build_status=0
   if [ "$env_platform" = "ESP32_PLATFORM" ]; then

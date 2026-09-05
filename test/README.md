@@ -27,6 +27,7 @@ python3 test/test_replay_reset_command.py       # Strict full keys and one-use r
 python3 test/test_replay_reset_integration.py   # Actual repeater handler: USB/LoRa permissions and persistence ordering
 python3 test/test_regular_file_reads.py         # SPIFFS phantom directories, listings, log HTTP status
 python3 test/test_esp32_full_partition.py       # Full partition-preservation policy
+python3 test/test_esp32_dram.py                 # Classic ESP32 static limits and cached-image build gates
 python3 test/test_esp32_usb_serial_hygiene.py   # Single-TTY diagnostics/NVS contract
 python3 test/test_esp32_tinyusb_role_hygiene.py # G2/room USB write coverage and bounded-list contracts
 python3 test/test_esp32_tinyusb_cooperative_output.py # Real role dump/list pumps with host C++ stubs

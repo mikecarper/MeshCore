@@ -182,13 +182,20 @@ Capacity is selected at build time:
 
 - Roomy ESP32 builds: 255 rewrite slots and 32 regionless-target slots, 10,204
   bytes RAM.
-- DRAM-tight classic ESP32 LoRa-OTA repeaters, nRF52, and other normal
+- Classic ESP32 repeaters, nRF52, and other normal
   constrained builds: 31 rewrite and regionless-target slots, 2,108 bytes RAM.
 - Very-tight STM32WL builds: 15 rewrite slots and one reusable regionless-target
   slot, 572 bytes RAM.
 - The no-PSRAM LilyGo T-LoRa V2.1 repeater/observer: 4 rewrite and
   regionless-target slots, 272 bytes RAM. This minimum holds the
   three wildcard classes and one exact channel mapping.
+
+Classic ESP32 uses the 31-slot default even on boards with PSRAM because these
+tables live in internal static DRAM. The separate channel-requirement table
+defaults to the same capacity and uses another 34 bytes per slot. Together,
+the 31-slot defaults save 15,712 bytes of static RAM compared with 255 slots.
+Custom builds can override `FLOOD_CHANNEL_SCOPE_SLOTS` and
+`FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS` with build flags.
 
 Each rule retains its 36-byte record. A separate table holds 32-byte normalized
 names for up to the smaller of the rule count or 32 distinct regionless
