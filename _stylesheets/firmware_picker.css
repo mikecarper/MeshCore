@@ -43,6 +43,20 @@
   color: var(--md-default-fg-color--light);
 }
 
+.firmware-picker-chip-family {
+  border-bottom: 1px solid var(--picker-border);
+  padding-bottom: 0.75rem;
+}
+
+.firmware-picker-chip-family summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.firmware-picker-chip-family p {
+  color: var(--md-default-fg-color--light);
+}
+
 .firmware-picker-control {
   min-width: 0;
   margin: 0;
