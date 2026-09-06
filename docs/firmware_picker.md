@@ -1,7 +1,10 @@
 # Firmware picker
 
-After selecting an image, use [feature switches by role](role_feature_switches.md)
-to turn MQTT, logging, power saving, and other former variant settings on/off.
+Each result now includes **Restore your settings after flashing**. Its commands
+follow the selected logging mode and the exact image's verified role/hardware
+controls. Select On, Off, or Check to view and copy the commands; Companion
+MQTT and GPS show their app/WebConfig steps instead. See
+[feature switches by role](role_feature_switches.md) for the full reference.
 The [USB web console](https://flasher.meshcore.io/console) works with the
 default ASCII terminal on Full Companion and infrastructure roles.
 
@@ -12,7 +15,7 @@ The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.
 
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -294,3 +297,36 @@ plaintext CLI/logger and disables framed USB Companion until logging is turned
 off and the normal ASCII-to-binary mode switch occurs. nRF52 Full Companion
 retains its optional dedicated interface `02`.
 Exact filename search still finds old aliases from earlier releases.
+
+## Maintaining the runtime directions
+
+The online picker and downloadable HTML use the same command renderer.
+Hardware-specific controls are enabled only when `_data/firmware_controls.json`
+matches the selected release family and exact target. If that metadata is
+missing or belongs to another release, the picker retains basic role/logging
+directions and links the complete guide without inventing hardware support.
+
+After qualifying a new release, resolve its PlatformIO configuration with no
+other PlatformIO process running, then generate the controls from that source
+revision and its staged manifests:
+
+```bash
+pio project config --json-output > /tmp/meshcore-picker-pio-config.json
+python3 scripts/generate_picker_controls.py \
+  --stage /path/to/staged-release \
+  --pio-config /tmp/meshcore-picker-pio-config.json
+```
+
+For the downloadable version, save the release family's public GitHub release
+objects as a JSON array, then package the same picker UI and controls:
+
+```bash
+python3 scripts/package_firmware_picker.py \
+  --releases-json /path/to/releases.json \
+  --output /path/to/FIRMWARE-PICKER.html
+```
+
+This HTML embeds its catalog and directions, so selections work without an
+internet connection. Firmware downloads and the USB web console still need
+network access. When replacing the downloadable picker on release pages,
+update its entry in each page's `SHA256SUMS.txt` as well.

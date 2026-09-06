@@ -797,7 +797,7 @@ assert.deepStrictEqual(
 );
 assert.strictEqual(
   picker.INSTALL_LABELS["merged-bin"],
-  "Erase & fresh install (merged .bin)"
+  "Full install / layout migration (merged .bin)"
 );
 assert.strictEqual(
   picker.INSTALL_LABELS.bin,
@@ -863,3 +863,53 @@ assert.strictEqual(
 );
 
 console.log("generalized firmware picker tests passed");
+
+// User-selected output paths must produce role-correct commands. In
+// particular, a Full Companion with MQTT must never get CommonCLI setters.
+const controls = require('../docs/_data/firmware_controls.json');
+const liveFamily = controls.familyTag;
+const controlledReleases = [release(liveFamily, '2026-09-01T00:00:00Z', [
+  asset('heltec_v4_2_v4_3_companion_radio_full_femon-' + liveFamily + '.bin'),
+  asset('RAK_4631_companion_radio_full-' + liveFamily + '.uf2'),
+  asset('SenseCapIndicator-LoRa_companion_radio_full-' + liveFamily + '.bin'),
+]), release('full-profiles-' + liveFamily, '2026-09-01T00:00:00Z', [
+  asset('heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-' + liveFamily + '.bin'),
+]), release('repeater-room-' + liveFamily, '2026-09-01T00:00:00Z', [
+  asset('RAK_4631_repeater-' + liveFamily + '.uf2'),
+])];
+const controlled = picker.buildCatalog(controlledReleases, controls);
+const findControlled = name => controlled.profiles.find(p => p.target === name);
+const commands = sections => sections.flatMap(s => s.actions.flatMap(a => a.commands || []));
+const observer = findControlled('heltec_v4_repeater_observer_mqtt-full-usb-wifi');
+for (const mode of ['none', 'usb', 'wifi', 'both']) {
+  const directions = picker.runtimeDirections(observer, {logging: mode});
+  assert.deepStrictEqual(directions[0].actions[0].commands,
+    ['set logging.output ' + (mode === 'none' ? 'off' : mode), 'get logging.output']);
+}
+const mqttCompanion = findControlled('heltec_v4_2_v4_3_companion_radio_full_femon');
+assert.deepStrictEqual(mqttCompanion.loggingModes, ['none', 'usb', 'wifi', 'both']);
+const companionWifi = picker.runtimeDirections(mqttCompanion, {logging: 'wifi'});
+assert.deepStrictEqual(companionWifi[0].actions[0].commands, ['set usb.logging off']);
+assert(companionWifi[0].actions[0].text.includes('enable the desired MQTT'));
+assert(commands(companionWifi).every(c => !/logging.output|bridge.enabled|set mqtt\./.test(c)));
+assert(companionWifi.some(s => s.title === 'GPS' && s.actions[0].text.includes('gps=1')));
+const companionOff = picker.runtimeDirections(mqttCompanion, {logging: 'none'});
+assert(companionOff[0].actions[0].text.includes('none for every MQTT'));
+const nrf = findControlled('RAK_4631_companion_radio_full');
+assert.deepStrictEqual(picker.runtimeDirections(nrf, {logging: 'usb'})[0].actions[0].commands,
+  ['set usb.logging on reboot']);
+const rakRepeater = findControlled('RAK_4631_repeater');
+const rakCommands = picker.runtimeDirections(rakRepeater, {logging: 'usb', mode: 'standard'});
+assert.deepStrictEqual(rakCommands[0].actions[0].commands, ['set usb.logging on']);
+assert.strictEqual(rakCommands.find(s => s.title.startsWith('RS232')).actions[0].label, 'Off');
+assert(commands(rakCommands).includes('gps on'));
+assert(!rakCommands.some(s => s.title === 'MQTT broker connections'));
+const indicator = picker.runtimeDirections(findControlled('SenseCapIndicator-LoRa_companion_radio_full'), {});
+assert(commands(indicator).includes('set companion.transport ble'));
+assert(!indicator.some(s => s.title.startsWith('MQTT')));
+// Never apply old hardware capabilities to another release, or to an unknown
+// exact target. Fall back to role documentation rather than invented switches.
+const stale = picker.buildCatalog(controlledReleases, {...controls, familyTag: 'v0.0.0'});
+assert(stale.profiles.every(p => !p.controls));
+assert(!picker.runtimeDirections({...mqttCompanion, controls: undefined}, {}).some(s => s.title === 'GPS'));
+console.log('role-specific runtime directions tests passed');
