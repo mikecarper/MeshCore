@@ -1456,6 +1456,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#local-release-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local release staging
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1503,6 +1514,17 @@
     <span class="md-ellipsis">
       
         Build using option 3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-release-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local release staging
       
     </span>
   </a>
@@ -1571,7 +1593,18 @@ Meshadventurer Full uses 100 contacts, 30 group channels, and a 16-frame
 offline queue while retaining its MOTA and transport features.</p>
 <p>Since 1.17.1.4, this branch also includes USB session and contact-persistence
 fixes, automatic nRF52 ExtraFS recovery, improved Indicator setup/display
-handling, compressed MOTA transport, and measured ESP32 memory limits.</p>
+handling, compressed MOTA transport, and measured ESP32 memory limits.
+Qualified internal-flash nRF52840 receivers now reserve 64 KiB of retained
+RAM to extend application MOTA staging beyond the available flash prefix.
+This handoff requires the exact board's
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6 bootloader</a>.
+Install that bootloader before relying on LoRa updates from these new hybrid
+receiver images: they reject application containers larger than one flash
+page when the installed bootloader lacks the retained-RAM capability.
+QSPI/microSD roles and Full Companions retain their existing storage layouts.
+An interrupted hybrid download must be fetched again after an application
+restart or power cycle. See the <a href="../../ota_protocol/">protocol</a> for the exact
+admission and reset checks.</p>
 <h2 id="build-using-option-3">Build using option 3</h2>
 <p>The equivalent reproducible command is:</p>
 <pre><code class="language-bash">OUTPUT_DIR=.releases/1.17.1.5-halo-keymind-cascade-dev \
@@ -1595,6 +1628,14 @@ infrastructure. Those outputs do not belong in this OTA-required release.
 Use a separate output directory when changing the radio or settings profile.
 Use a fresh release output directory after changing the source revision or
 firmware version so packaging cannot mix old and new binaries.</p>
+<h2 id="local-release-staging">Local release staging</h2>
+<p>After the matrix completes successfully, <code>scripts/package_cascade_release.py</code>
+groups the qualified images using the previous GitHub release naming. Each
+group includes the firmware files, capability manifests, TSV/JSON inventory,
+checksums, build notes, and Full Companion directions. The staging directory's
+root <code>FIRMWARE-PICKER-1.17.1.5.html</code> opens the local downloads; the copies inside
+each release group use the planned GitHub download URLs. Staging does not
+push commits, create remote tags, or publish a GitHub release.</p>
 
 
 
