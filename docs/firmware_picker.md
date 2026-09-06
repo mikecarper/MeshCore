@@ -1,5 +1,10 @@
 # Firmware picker
 
+After selecting an image, use [feature switches by role](role_feature_switches.md)
+to turn MQTT, logging, power saving, and other former variant settings on/off.
+The [USB web console](https://flasher.meshcore.io/console) works with the
+default ASCII terminal on Full Companion and infrastructure roles.
+
 Pick the choices in any order. Every selection narrows all the other controls
 to firmware combinations that were actually built in the current release set.
 
@@ -250,7 +255,7 @@ update package.
 
 nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board. There
 is no universal bootloader file. Use the
-[latest stable OTAFIX release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest)
+[OTAFIX 2.4.6 for this release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
 and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.
 
 ## Hardware and variant names

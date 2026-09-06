@@ -1,5 +1,12 @@
 # Mesh America provider catalogs
 
+**Legacy catalog snapshot:** these checked-in catalogs still reference
+1.17.1.1/1.17.1.2. They are not the 1.17.1.5 release inventory. Use the
+[current firmware picker](../docs/firmware_picker.md) and
+[1.17.1.5 release guide](../docs/releases/1.17.1.5.md) for current downloads.
+The commands below document maintenance of the older catalogs; publishing a
+release does not update these JSON files automatically.
+
 Generated provider catalogs for the Keymind Cascade MeshCore release assets.
 The provider URLs stay stable when a new firmware release is published.
 

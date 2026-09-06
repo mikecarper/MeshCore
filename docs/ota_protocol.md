@@ -153,8 +153,9 @@ The firmware-configured INA3221 address and RAK12500 address are both `0x42`, so
 one bus at those addresses. Keep RAK12500 at `0x42`, strap INA3221 A0 to SCL for `0x43`, and use firmware
 built with `-DTELEM_INA3221_ADDRESS=0x43` when both are installed.
 
-ESP32 siblings retain the compact browser WiFi updater and use the full
-254-entry neighbor table. RP2040 and STM32 targets are not offered because
+ESP32 siblings retain the compact browser WiFi updater and use up to
+254 neighbors. Internal-DRAM-constrained targets use 50 as recorded in the
+artifact capability manifest; see [ESP32 memory budget](esp32_memory_budget.md). RP2040 and STM32 targets are not offered because
 those platforms do not yet have a safe bootloader/apply path.
 
 nRF52 LoRa-OTA siblings use size optimization rather than the Adafruit platform's default `-Ofast`. This

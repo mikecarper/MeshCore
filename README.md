@@ -1,5 +1,10 @@
 ## About MeshCore
 
+For **1.17.1.5 USA Cascade**, start with the [release guide](docs/releases/1.17.1.5.md),
+[firmware picker](docs/firmware_picker.md), and [feature switches by role](docs/role_feature_switches.md).
+Use the [USB web console](https://flasher.meshcore.io/console) for the default
+ASCII terminal on Full Companion, Repeater, Room Server, and Sensor images.
+
 MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios. It is designed for developers who want to create resilient, decentralized communication networks that work without the internet.
 
 ## [SEARCH] What is MeshCore?
@@ -7,7 +12,7 @@ MeshCore is a lightweight, portable C++ library that enables multi-hop packet ro
 MeshCore now supports a range of LoRa devices, allowing for easy flashing without the need to compile firmware manually. Users can flash a pre-built binary using tools like Adafruit ESPTool and interact with the network through a serial console.
 MeshCore provides the ability to create wireless mesh networks, similar to Meshtastic and Reticulum but with a focus on lightweight multi-hop packet routing for embedded projects. Unlike Meshtastic, which is tailored for casual LoRa communication, or Reticulum, which offers advanced networking, MeshCore balances simplicity with scalability, making it ideal for custom embedded solutions, where devices (nodes) can communicate over long distances by relaying messages through intermediate nodes. This is especially useful in off-grid, emergency, or tactical situations where traditional communication infrastructure is unavailable.
 
-> **WiFi and MQTT** - Prebuilt observer firmware, release notes, and browser-based
+> **Upstream Observer WiFi and MQTT** - Observer firmware, release notes, and browser-based
 > flashing are available at [observer.gessaman.com](https://observer.gessaman.com/).
 > See [WiFi and MQTT by Firmware Type](./docs/WiFi.md) for the
 > role/build matrix and setup overview. For the complete MQTT command and

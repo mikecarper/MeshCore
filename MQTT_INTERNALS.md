@@ -195,9 +195,11 @@ it loses is the settings the newer build added.
 
 That asymmetry is the whole point. Refusing the file costs the operator the network
 itself -- `/mqtt_prefs` holds `wifi_ssid`/`wifi_password` as well as the broker config,
-so a node that falls back to defaults has no WiFi, no portal, and no OTA, recoverable
-only over serial. Reading it costs a feature's settings. Losing later settings is the
-acceptable half of that trade; losing the node is not.
+so falling back to defaults loses the saved station connection and broker
+configuration. A compiled setup AP or on-demand OTA service may still provide
+local recovery; LoRa OTA availability is separate. A remotely deployed node
+can nevertheless become unreachable through its former WiFi management path.
+Reading the compatible prefix preserves that path at the cost of later settings.
 
 The tail survives until something actually writes. `saveMQTTPrefs()` rewrites at this
 binary's own length, so a rollback that changes no observer setting and is later rolled

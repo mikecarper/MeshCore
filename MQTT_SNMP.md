@@ -1,5 +1,9 @@
 # SNMP Agent for MeshCore Observer Firmware
 
+These are infrastructure CommonCLI commands, not Full Companion MQTT controls.
+See [feature switches by role](docs/role_feature_switches.md) and the
+[USB web console](https://flasher.meshcore.io/console).
+
 This document describes the optional SNMP v2c agent that allows network monitoring tools to poll MeshCore observer nodes for health and performance metrics.
 
 ## Overview
@@ -112,27 +116,34 @@ The agent starts automatically once WiFi connects and `snmp_enabled = 1` in pref
 ## Build Configuration
 
 SNMP is enabled at compile time with the `WITH_SNMP=1` build flag. It is
-currently included in these observer firmware targets:
+included in these base observer environments (resolved for 1.17.1.5):
 
-- `Heltec_v3_repeater_observer_mqtt`
-- `Heltec_v3_room_server_observer_mqtt`
 - `Heltec_WSL3_repeater_observer_mqtt`
 - `Heltec_WSL3_room_server_observer_mqtt`
-- `heltec_v4_repeater_observer_mqtt`
-- `heltec_v4_room_server_observer_mqtt`
-- `heltec_v4_expansionkit_repeater_observer_mqtt`
-- `heltec_v4_expansionkit_room_server_observer_mqtt`
+- `Heltec_v3_repeater_observer_mqtt`
+- `Heltec_v3_repeater_observer_mqtt_sim` (simulation environment)
+- `Heltec_v3_room_server_observer_mqtt`
+- `RAK_3112_repeater_observer_mqtt`
+- `RAK_3112_room_server_observer_mqtt`
 - `Station_G2_repeater_observer_mqtt`
 - `Station_G2_room_server_observer_mqtt`
 - `Station_G3_ESP32_repeater_observer_mqtt`
 - `Station_G3_ESP32_room_server_observer_mqtt`
-- `RAK_3112_repeater_observer_mqtt`
-- `RAK_3112_room_server_observer_mqtt`
 - `ThinkNode_M7_repeater_observer_mqtt`
 - `ThinkNode_M7_room_server_observer_mqtt`
+- `heltec_v4_expansionkit_repeater_observer_mqtt`
+- `heltec_v4_expansionkit_room_server_observer_mqtt`
+- `heltec_v4_r8_repeater_observer_mqtt`
+- `heltec_v4_r8_room_server_observer_mqtt`
+- `heltec_v4_r8_tft_portrait_repeater_observer_mqtt`
+- `heltec_v4_r8_tft_portrait_room_server_observer_mqtt`
+- `heltec_v4_r8_tft_repeater_observer_mqtt`
+- `heltec_v4_r8_tft_room_server_observer_mqtt`
+- `heltec_v4_repeater_observer_mqtt`
+- `heltec_v4_room_server_observer_mqtt`
 
-The build flag in each variant's `platformio.ini` is authoritative; update this
-list whenever SNMP is added to or removed from an environment.
+The resolved build flags, including inherited sections and release overlays,
+are authoritative. Update this list when environments change.
 
 To add SNMP to another observer variant, add the following to its `platformio.ini`:
 

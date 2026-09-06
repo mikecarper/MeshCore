@@ -12,9 +12,11 @@ purposes:
 - ESP-NOW bridging, which uses the ESP32's 2.4 GHz radio but is not a connection
   to a WiFi access point.
 
-The firmware role and the build profile are separate choices. For example, a
-logging repeater is not an MQTT observer, and a WiFi companion does not publish
-to MQTT unless its target name also contains `mqtt`.
+The firmware role and the build profile are separate choices. USB logging does
+not itself provide MQTT. MQTT-capable Full Companions include that feature
+without `mqtt` in their filename; check the artifact capability manifest.
+See [feature switches by role](role_feature_switches.md) for the different
+Companion and infrastructure controls and the USB web console.
 
 ## Quick reference
 
@@ -26,7 +28,8 @@ to MQTT unless its target name also contains `mqtt`.
 | `*_room_server_observer_mqtt` | Yes | Yes | Runs the room server and uplinks radio traffic |
 | `*_companion_radio_wifi` | Yes | No | Exposes the MeshCore companion protocol on TCP port 5000 |
 | `*_companion_radio_wifi_mqtt` | Yes | Yes | Runs both the TCP companion interface and the MQTT uplink |
-| USB, BLE, or serial companion | No | No | Uses the transport named by the target instead |
+| `*_companion_radio_full*` | ESP32, subject to board/transport selection | Where compiled on ESP32 | Includes supported USB/wireless transports; configure MQTT through WebConfig |
+| Dedicated USB, BLE, or serial companion (not Full) | No | No | Uses the transport named by the target instead |
 | `*_repeater_bridge_espnow` | Build-dependent on ESP32 | No | Uses ESP-NOW for its bridge; `bridge.format wrapped|raw` selects legacy bridge framing or primary-ESP-NOW compatibility; a FULL build also exposes the TCP 5001 LoRa-OTA seeder whenever WiFi is usable |
 | RS232 bridge | No | No | Bridges through a serial interface |
 | Ethernet repeater/room server | No WiFi | No | Uses wired Ethernet for its role-specific network interface |
@@ -58,7 +61,7 @@ flood filters and forwarding decision. A packet may therefore be observed on
 MQTT even when a later scope, path, region, duplicate, or repeat rule prevents
 the node from forwarding it over LoRa.
 
-MQTT publication and LoRa repetition are separate:
+On infrastructure observer builds, MQTT publication and LoRa repetition are separate:
 
 - `set repeat on|off` controls whether an observer repeats eligible LoRa
   packets;
@@ -421,8 +424,11 @@ The companion owns WiFi connection and recovery in this build. The MQTT bridge
 waits for that connection rather than creating a second one. Stopping MQTT does
 not disable the TCP companion service.
 
-The same WebConfig page contains the MQTT settings. MQTT companions have no
-text admin CLI, so browser configuration is the normal setup method.
+MQTT-capable Full Companions also combine these services. The WebConfig page
+contains MQTT settings; Full Companion has a USB/TCP text terminal, but does
+not expose the infrastructure `mqtt.*`, `bridge.enabled`, or `logging.output`
+commands there. Select `none` for every broker slot and save to disable MQTT;
+restore the desired presets/settings and save to enable it.
 
 ## WebConfig without MQTT
 
@@ -530,18 +536,18 @@ meaning can change when the service reorders or adds presets.
 | MQTT | Builds explicit MQTT observer or WiFi-companion-MQTT targets with USB packet logging off. Non-companion ESP32 MQTT observers always use FULL expanded partitions. |
 | FULL ESP32 USB + WiFi | Uses the board's MQTT target with USB packet logging and direct WiFi MQTT together, expanded dual-OTA partitions, up to 254 neighbors, LoRa OTA, and full-size ESP32 features such as WebConfig where supported. `get/set logging.output off\|usb\|wifi\|both` persists the active paths. Classic T-Beam MQTT observers retain their 50-entry table because their persistent discovery state exhausts internal DRAM at 254. |
 | FULL ESP32 logging fallback | Uses the board's non-MQTT target only when no matching WiFi MQTT environment exists. It keeps debug and packet logging, expanded dual-OTA partitions, up to 254 neighbors, and LoRa OTA. Persistent `usb.logging off` also provides normal output-off operation, so ESP-NOW FULL roles need no second non-logging image. |
-| LoRa-OTA no-external-sensors | A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors. |
+| LoRa-OTA no-external-sensors | A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and up to 254 neighbors, subject to target RAM limits. |
 
-All repeater profiles use the full 254-entry neighbor table, including standard,
-logging, bridge, and LoRa-OTA builds on every supported platform. The classic
-T-Beam SX1262 and SX1276 MQTT observer repeaters retain 50 entries because their
-persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.
+Repeater profiles use up to 254 neighbors. Selected Generic E22, Heltec V2,
+Meshadventurer, T-Beam OTA/MQTT, and TLora MQTT profiles use 50 to preserve
+internal-DRAM reserves. Consult the artifact capability manifest and
+[ESP32 memory budget](esp32_memory_budget.md) for the exact target.
 
 The interactive Option 1 **FULL everything** choice and the standalone FULL
 command select the unified USB + WiFi image when a matching MQTT target exists;
 otherwise they select the logging fallback. The build matrix no longer emits
 any separate standard logging image, or a non-MQTT FULL twin for a role covered
-by the unified image. All FULL profiles include LoRa OTA, WebConfig where supported,
+by the unified image. Expanded Full infrastructure profiles include LoRa OTA, WebConfig where supported,
 up to 254 neighbors, and expanded dual-OTA partitions. Target-specific
 internal-DRAM limits still apply.
 
@@ -601,8 +607,8 @@ Check the complete firmware filename and role. In particular:
 - `logging` does not mean MQTT;
 - `ota` does not mean MQTT;
 - `companion_radio_wifi` does not mean MQTT;
-- the filename must contain `observer_mqtt` or `wifi_mqtt` for the corresponding
-  on-device MQTT feature.
+- `observer_mqtt` and `wifi_mqtt` identify explicit MQTT targets, but Full
+  Companion can include MQTT without either marker; inspect its capabilities.
 
 Rolling firmware back does not restore settings erased by a full flash or a
 partition-table change. If the correct MQTT target still has no configuration,
@@ -638,4 +644,5 @@ setup AP. Full Companion targets whose primary mesh radio is ESP-NOW use
 b/g/n+LR instead and keep the setup AP, infrastructure station, and mesh on the
 persisted `espnow.channel` (channel 1 by default). Their configured 2.4 GHz
 router and every other primary ESP-NOW node must use that same channel.
-MQTT diagnostics apply only to a `wifi_mqtt` companion target.
+On MQTT-capable Companions, inspect MQTT status in WebConfig; the infrastructure
+MQTT text diagnostic commands above are not Companion terminal commands.

@@ -1,5 +1,12 @@
 # Frequently Asked Questions
 
+For this fork's **1.17.1.5 USA Cascade** release, start with
+[feature switches by role](role_feature_switches.md) and the
+[USB web console](https://flasher.meshcore.io/console). For nRF52 OTAFIX use
+the exact board/storage build from
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6);
+older bootloader links below provide upstream/background context.
+
 A list of frequently-asked questions and answers for MeshCore
 
 - [Frequently Asked Questions](#frequently-asked-questions)

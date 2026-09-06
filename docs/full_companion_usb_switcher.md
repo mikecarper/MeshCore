@@ -254,6 +254,6 @@ such as `get radio.cad`. If binary bytes appear, send the exact terminal start
 token or reboot.
 
 The switch policy is implemented in
-[`UsbAsciiBinarySwitch.h`](../src/helpers/UsbAsciiBinarySwitch.h), with stream
-ownership in [`main.cpp`](../examples/companion_radio/main.cpp) and framing in
-[`ArduinoSerialInterface.cpp`](../src/helpers/ArduinoSerialInterface.cpp).
+[`UsbAsciiBinarySwitch.h`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/src/helpers/UsbAsciiBinarySwitch.h), with stream
+ownership in [`main.cpp`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/examples/companion_radio/main.cpp) and framing in
+[`ArduinoSerialInterface.cpp`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/src/helpers/ArduinoSerialInterface.cpp).

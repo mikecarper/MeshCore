@@ -1,5 +1,14 @@
 # Updating your node over the air (OTA) - user guide
 
+For **1.17.1.5**, use the exact board/storage profile from
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
+for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
+its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
+matching bootloader profiles. Earlier preview versions mentioned below
+describe compatibility/migration history, not the current recommended download.
+Full Companion is a MOTA source and normally updates itself over USB.
+
+
 This guide is for **node operators**: how to update your MeshCore device's firmware over the radio, in
 plain language. No cables, no programmer - your node can download a new firmware from a neighbour and
 install it. (For the technical wire format, see [the OTA protocol spec](ota_protocol.md).)
@@ -16,13 +25,13 @@ only while `tempradio` is actually running on that node. Every source, receiver,
 therefore have an overlapping temporary-radio window.
 
 The recommended temporary OTA settings use 250 kHz bandwidth, SF5, CR5, and a 120-minute window. For a
-North American node currently configured for 909.950 MHz, run this on every participating node:
+North American node currently configured for 910.525 MHz, run this on every participating node:
 
 ```text
-tempradio 909.950,250,5,5,120
+tempradio 910.525,250,5,5,120
 ```
 
-Use the node's current permitted regional frequency in place of `909.950` when necessary.
+Use the node's current permitted regional frequency in place of `910.525` when necessary.
 
 The scripted updater checks the firmware version of the receiver and every
 sender before deciding whether RX power saving can remain active. At

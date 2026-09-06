@@ -5,7 +5,9 @@ This page is the command-by-command companion to
 links to its detailed documentation.
 
 The tables cover the text administration CLI used by repeater, room-server,
-sensor, and bridge firmware. Companion firmware uses the companion protocol,
+sensor, and bridge firmware. Full Companion also has its own ASCII USB/TCP
+terminal; see [feature switches by role](role_feature_switches.md). Companion
+apps use the companion protocol,
 KISS firmware uses framed KISS/TNC commands, and terminal-chat firmware has its
 own interface, so those build roles are not represented here.
 

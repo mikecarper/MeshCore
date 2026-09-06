@@ -58,9 +58,10 @@ A command belonging to a different role is not considered a profile cut. For
 example, adding FULL features to a sensor does not turn it into a repeater
 administrator.
 
-Repeater profiles use 254 neighbor entries across supported platforms. The
-classic T-Beam SX1262 and SX1276 MQTT observer repeaters are the exception and
-retain 50 because their MQTT discovery tables are constrained by internal DRAM.
+Repeater profiles use up to 254 neighbor entries. Measured internal-DRAM
+limits reduce selected Generic E22, Heltec V2, Meshadventurer, T-Beam OTA/MQTT,
+and TLora MQTT profiles to 50. Check the artifact capability manifest and
+[ESP32 memory budget](esp32_memory_budget.md) for the exact target.
 
 ## Profile matrix
 
@@ -68,7 +69,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.
 |---|---|
 | Standard non-MQTT repeater or room server | Keeps the normal role CLI and, where USB is a safe plaintext console, embeds debug/packet logging behind persistent `get/set usb.logging`. The explicitly selected portable policy can omit WebConfig and browser WiFi OTA, so those commands are unavailable and the omission is recorded in the capability manifest. |
 | Legacy standard logging | No longer emitted separately. Its behavior is compiled into the ordinary artifact. Size-constrained STM32 targets embed packet logging without verbose `MESH_DEBUG`. |
-| LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. ESP32 `no_external_sensors` artifacts retain the compact browser WiFi uploader, the complete CLI, and a 254-entry neighbor table. |
+| LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. ESP32 `no_external_sensors` artifacts retain the compact browser WiFi uploader, the complete CLI, and up to 254 neighbors, subject to recorded internal-DRAM reductions. |
 | Internal-flash nRF52 repeater auto pair | `full-ota` retains the board's external-sensor drivers; `reduced-ota` omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured cost below 5 KiB. Both artifacts carry the same stable OTA target identity and are checked for `ota ...` and `retry.preset`; RAK artifacts also verify the retained monitor drivers. |
 | ESP32 MQTT observer or ESP-NOW bridge | Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot. |
 | FULL ESP32 USB + WiFi | Uses the matching MQTT target with packet logging on, verbose debug off, and the complete command surface supported by that role and hardware. `get/set logging.output off\|usb\|wifi\|both` selects and persists the active output paths. |

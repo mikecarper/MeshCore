@@ -1,5 +1,14 @@
 # Easy firmware updates over LoRa
 
+For **1.17.1.5**, use the exact board/storage profile from
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
+for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
+its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
+matching bootloader profiles. Earlier preview versions mentioned below
+describe compatibility/migration history, not the current recommended download.
+Full Companion is a MOTA source and normally updates itself over USB.
+
+
 This guide shows the shortest manual path for sending firmware from a computer to a MeshCore node over
 LoRa. Choose the package type for the **destination** node:
 
@@ -28,7 +37,7 @@ locally over USB/BLE DFU or SWD first; there is no raw-card compatibility handof
 
 | Setting | Value |
 | --- | --- |
-| Center frequency | 909.950 MHz |
+| Center frequency | 910.525 MHz |
 | Bandwidth | 250 kHz |
 | Spreading factor | SF5 |
 | Coding rate used in this guide | CR5 |
@@ -37,7 +46,7 @@ locally over USB/BLE DFU or SWD first; there is no raw-card compatibility handof
 The copy/paste command is:
 
 ```text
-tempradio 909.950,250,5,5,120
+tempradio 910.525,250,5,5,120
 ```
 
 The fourth value is the transmit coding rate. This guide uses CR5, but the participating nodes' coding rates
@@ -117,7 +126,8 @@ RAK13302 share a chip-select and cannot be used together. Other
 normal repeaters can still serve as intermediate relays but cannot necessarily
 install an update themselves. ESP32
 `-ota-` siblings also retain the lightweight browser WiFi uploader (`start
-ota`), the complete CLI, and a 254-entry neighbor table. RP2040 and STM32
+ota`), the complete CLI, and up to 254 neighbors; constrained targets use 50
+as recorded in their capability manifests. RP2040 and STM32
 repeaters do not currently have a safe self-apply path, but current repeater
 firmware can still relay OTA packets opaquely during TempRadio.
 
@@ -375,7 +385,7 @@ especially with older single-block receivers. Use `hops 1` only when one real in
 On the source node, destination node, and every intermediate repeater, then run:
 
 ```text
-tempradio 909.950,250,5,5,120
+tempradio 910.525,250,5,5,120
 ```
 
 All participating nodes must use the same frequency, bandwidth, and spreading factor. Their time windows must
@@ -404,7 +414,7 @@ cable-free source is:
 python3 tools/ble_mota/ble_mota_seeder.py \
   --device MeshCore-MyCompanion \
   --dir ./motas \
-  --local 'tempradio 909.950,250,5,5,120'
+  --local 'tempradio 910.525,250,5,5,120'
 ```
 
 Leave this command running until the destination finishes downloading.
@@ -490,7 +500,7 @@ ota status
 ## Quick troubleshooting
 
 - **Nothing appears in `ota ls`:** confirm that `motatool serve` is still running and every required node
-  has an active `tempradio 909.950,250,5,5,120` window.
+  has an active `tempradio 910.525,250,5,5,120` window.
 - **The CLI says LoRa OTA is not included:** that firmware does not contain the LoRa OTA feature.
   If it is the source or destination, install a supported `-ota-` build over WiFi or USB first. An intermediate
   repeater does not need the OTA CLI and can relay opaquely while its matching `tempradio` window is active.

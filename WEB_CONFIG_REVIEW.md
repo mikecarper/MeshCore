@@ -2,7 +2,7 @@
 
 > **Historical review (2026-07-18).** This file preserves the findings against
 > the commits named below; its line numbers and present-tense statements are not
-> a current audit of the 2026-08-18 tree. Consult [docs/WiFi.md](docs/WiFi.md),
+> an audit of the current tree. Consult [docs/WiFi.md](docs/WiFi.md),
 > [MQTT_IMPLEMENTATION.md](MQTT_IMPLEMENTATION.md), and
 > [test/README.md](test/README.md) for current operation and test coverage.
 > Findings are left in their original form unless a resolution is explicitly

@@ -1,5 +1,14 @@
 # nRF52 repeater LoRa OTA with external QSPI
 
+For **1.17.1.5**, use the exact board/storage profile from
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
+for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
+its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
+matching bootloader profiles. Earlier preview versions mentioned below
+describe compatibility/migration history, not the current recommended download.
+Full Companion is a MOTA source and normally updates itself over USB.
+
+
 Selected nRF52840 repeater builds use their dedicated external QSPI NOR flash as
 a raw LoRa OTA staging device. This removes the internal-flash staging conflict:
 the complete `.mota` stays off-chip, and the bootloader can use the entire
@@ -81,6 +90,8 @@ RAK15001. Firmware cannot independently select or detect those two chips, so a
 stock RAK3401 + RAK15001 assembly cannot provide reliable OTA staging without
 a hardware chip-select rework. This restriction does not apply to the
 separate-CS W25Q16 wiring below.
+
+<a id="one-w25q16-wiring-for-rak4631-or-rak3401--rak13302"></a>
 
 ### One W25Q16 wiring for RAK4631 or RAK3401 + RAK13302
 

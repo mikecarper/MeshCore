@@ -1,10 +1,15 @@
 # CLI Commands
 
+For copy/paste on/off recipes and the differences from Full Companion, see
+[feature switches by role](role_feature_switches.md). The
+[USB web console](https://flasher.meshcore.io/console) opens the default ASCII
+terminal at 115200 baud; it does not require on-device WebConfig or WiFi.
+
 This document provides an overview of CLI commands that can be sent to MeshCore Repeaters, Room Servers and Sensors.
 
 See [CLI Availability by Firmware Build](cli_build_matrix.md) for the role and
-profile matrix, including the commands intentionally omitted from portable
-firmware.
+profile matrix. Commands depend on compiled features; some portable builds
+omit WebConfig while retaining the complete role CLI and compact WiFi updater.
 
 See [CLI Command Availability Matrix](cli_command_availability.md) for the
 command-by-command nRF52 and ESP32 build tables.
@@ -156,7 +161,10 @@ See [LoRa CLI host service](host_cli_service.md) for the complete
 - `start ota ap`
 - `stop ota`
 
-`start ota` serves the web upload page on the station IP when connected to WiFi;
+On nRF52, `start ota` invokes Bluetooth DFU with the matching bootloader and
+application DFU ZIP. The WiFi/AP instructions below apply to ESP32.
+
+On ESP32, `start ota` serves the web upload page on the station IP when connected to WiFi;
 otherwise it raises the `MeshCore-OTA` access point. `start ota ap` always raises
 the access point, which is useful when the normal network uses client isolation.
 
@@ -1496,7 +1504,12 @@ get clock.sync.status
 
 **Default:** `on` for fresh Cascade-profile builds and Companion firmware; `off` for other infrastructure profiles
 
-**Note:** Infrastructure firmware enters sleep between radio transmissions. It refuses to enable power saving from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.
+**Note:** Infrastructure sleep depends on the board implementation. The bare
+`powersaving on` command rejects local serial requests or an active USB data
+connection on nRF52 and standalone ESP32; ESP32 bridge builds reject that bare
+enable command. USB power alone does not block a remote enable request.
+The separate `set powersaving on` form saves/applies the preference without
+those guards; it is also the form used by infrastructure WebConfig.
 
 Companion firmware defaults this setting to `on`. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. `powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`). Infrastructure WebConfig uses the `set powersaving` form; enabling it can put the node to sleep and make WiFi temporarily unavailable.
 
@@ -3672,7 +3685,9 @@ Requires WiFi connected and the MQTT bridge running.
 - `set bridge.baud <rate>`
 
 **Parameters:**
-- `rate`: Baud rate (`9600`, `19200`, `38400`, `57600`, or `115200`)
+- `rate`: Integer baud rate from `9600` through the board's compiled
+  `BRIDGE_MAX_BAUD` (commonly `500000`); for example `115200`. Stop the bridge
+  with `set bridge.enabled off` before changing it, then enable it again.
 
 **Default:** `115200`
 

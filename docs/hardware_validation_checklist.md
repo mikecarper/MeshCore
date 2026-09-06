@@ -1,5 +1,10 @@
 # Hardware validation checklist
 
+This file records dated hardware observations and open validation tasks.
+Historical defaults, versions, and test frequencies below describe the tested
+revision, not necessarily the current release. For current ASCII USB defaults
+and runtime switches, use [feature switches by role](role_feature_switches.md).
+
 Use this checklist for release-candidate hardware runs. A check is complete only
 when its log identifies the physical device, firmware artifact, artifact hash,
 command result, and cold/warm boot outcome. Do not infer success from a tool's

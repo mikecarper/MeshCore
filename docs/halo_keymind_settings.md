@@ -1,7 +1,10 @@
 # Halo and Keymind Branch Settings
 
 This file covers only CLI settings and helper commands added by the Halo or
-Keymind branches. Use `docs/cli_commands.md` for the general MeshCore CLI.
+Keymind branches. Use [CLI commands](cli_commands.md) for the general infrastructure CLI.
+For MQTT, logging, and former variant controls, use
+[feature switches by role](role_feature_switches.md); Full Companion uses
+different controls for some of these settings.
 See [Repeater Flood Filtering and Moderation](flood_filtering.md) for a focused
 filter setup and troubleshooting guide.
 

@@ -1,5 +1,9 @@
 # Full Companion
 
+For runtime on/off commands and board exceptions, see
+[feature switches by role](role_feature_switches.md). Open the
+[USB web console](https://flasher.meshcore.io/console) for the default ASCII terminal.
+
 For practical on/off commands and update directions, see
 [Full Companion feature switches](full_companion_features.md).
 

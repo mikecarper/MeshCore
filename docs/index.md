@@ -4,6 +4,11 @@ Welcome to the MeshCore documentation.
 
 Below are a few quick start guides.
 
+- [1.17.1.5 Markdown audit](./releases/1.17.1.5-doc-audit.md)
+- [1.17.1.5 USA Cascade release](./releases/1.17.1.5.md)
+- [Feature switches by role: Companion, Repeater, Room Server, Sensor](./role_feature_switches.md)
+- [USB web console](https://flasher.meshcore.io/console)
+- [Full Companion feature switches](./full_companion_features.md)
 - [Frequently Asked Questions](./faq.md)
 - [Firmware Picker](./firmware_picker.md)
 - [CLI Commands](./cli_commands.md)
@@ -27,4 +32,4 @@ Below are a few quick start guides.
 
 If you find a mistake in any of our documentation, or find something is missing, please feel free to open a pull request for us to review.
 
-- [Documentation Source](https://github.com/meshcore-dev/MeshCore/tree/main/docs)
+- [Documentation Source](https://github.com/mikecarper/MeshCore/tree/keymindCascade/docs)

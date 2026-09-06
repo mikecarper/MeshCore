@@ -1,5 +1,14 @@
 # MeshTower V2 microSD LoRa OTA
 
+For **1.17.1.5**, use the exact board/storage profile from
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
+for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
+its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
+matching bootloader profiles. Earlier preview versions mentioned below
+describe compatibility/migration history, not the current recommended download.
+Full Companion is a MOTA source and normally updates itself over USB.
+
+
 The `Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors` target uses the MeshTower V2 onboard
 microSD socket as persistent storage for its own LoRa OTA downloads. It accepts
 full application images, in-place application deltas, and explicitly selected

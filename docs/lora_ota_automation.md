@@ -1,5 +1,14 @@
 # Scripted LoRa OTA from start to finish
 
+For **1.17.1.5**, use the exact board/storage profile from
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
+for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
+its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
+matching bootloader profiles. Earlier preview versions mentioned below
+describe compatibility/migration history, not the current recommended download.
+Full Companion is a MOTA source and normally updates itself over USB.
+
+
 The dedicated [RAK3401 chain report](rak3401_mota_chain.md) records the
 physical failures of withdrawn migrations and the physically qualified compact
 nine-step replacement. Its runner blocks the withdrawn chains and pins every

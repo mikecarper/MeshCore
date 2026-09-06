@@ -1,24 +1,31 @@
 # MQTT Bridge Implementation for MeshCore
 
-This document describes the MQTT bridge implementation that allows MeshCore repeaters to uplink packet data to multiple MQTT brokers.
+This document describes the on-device ESP32 MQTT bridge for observer
+infrastructure and MQTT-capable Companions. The text `mqtt.*`, `bridge.*`,
+and `logging.output` commands below apply to infrastructure CommonCLI.
+Full Companion configures MQTT through WebConfig instead; see
+[feature switches by role](docs/role_feature_switches.md). Use the
+[USB web console](https://flasher.meshcore.io/console) for ASCII commands.
 
 ## Quick Start Guide
 
 ### Browser setup (recommended)
 
-Normal ESP32 MQTT repeater-, room-server-, and WiFi-companion builds include an
-all-in-one WebConfig portal. The same page is used by non-MQTT ESP32 builds,
-where the MQTT tab and wizard step are removed at runtime.
+Expanded Full ESP32 observer builds and supported WiFi/Full Companions include
+WebConfig. Non-MQTT builds with WebConfig omit its MQTT controls. Some portable
+images omit the portal while retaining the compact WiFi firmware uploader;
+check the exact artifact capability manifest.
 
 1. Flash an observer build such as `heltec_v4_repeater_observer_mqtt`.
-2. On a fresh node with no saved WiFi SSID, join the open
+2. Enable the portal with `set webui on` if it is off.
+   On a fresh node with no saved WiFi SSID, join the open
    `MeshCore-Setup-XXXX` access point. The captive page should open
    automatically; otherwise browse to <http://192.168.4.1/>.
 3. Complete the wizard, review the settings, and choose **Save & Reboot**. The
    MQTT bridge remains stopped while the setup AP owns WiFi and starts normally
    after the reboot.
 4. Verify the connections on the portal's status page or with
-   `get mqtt.status` from the CLI.
+   `get mqtt.status` from the infrastructure CLI. Companion users check the portal.
 
 The setup AP stops after 10 minutes with no connected client. WiFi companion
 builds enable the WebUI by default. Repeater and room-server builds default it
@@ -50,11 +57,10 @@ stop webconfig
 set bridge.enabled on
 ```
 
-The classic 4 MB ESP32
-`LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_` and
-`LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_` targets omit the browser
-portal because the async web-server code does not fit while retaining two app
-slots for LoRa OTA. Configure those two builds with the CLI below.
+The 1.17.1.5 expanded Full TLora V2.1-1.6 MQTT artifacts include WebConfig,
+as verified in their capability manifests. Older/slimmer direct PlatformIO
+recipes can omit it; use the infrastructure CLI for those images. A board's
+flash size alone does not establish whether the release contains WebConfig.
 
 MQTT WiFi companions use this same wizard instead of the former two-page setup.
 The portal remains on the companion's station IP, alongside the companion
@@ -63,12 +69,18 @@ LAN page is intentionally unauthenticated; use a trusted WiFi network.
 
 ### CLI setup and fallback
 
-For CLI setup, you need console access over serial (115200 baud) or a repeater
-login through the companion app.
+The commands in this section are for MQTT-capable Repeater/Room Server
+infrastructure. Use the USB web console at 115200 baud or an authenticated
+remote login through the Companion app. For Full Companion, use the MQTT
+WebConfig cards; these infrastructure MQTT commands are not accepted by its
+text terminal.
 
 **1. Flash the observer firmware to your device**
 
-The easiest route is the [MeshCore Observer Flasher](https://observer.gessaman.com/) -- pick
+For this fork's 1.17.1.5 USA Cascade images, use the
+[firmware picker](docs/firmware_picker.md). The upstream
+[MeshCore Observer Flasher](https://observer.gessaman.com/) offers a separate
+Observer distribution -- pick
 **MQTT Observer Firmware**, select your device, and flash from the browser (Chrome or Edge).
 To build it yourself instead, use one of the observer build targets (e.g.
 `heltec_v4_repeater_observer_mqtt`) -- see [Build Configuration](#build-configuration).
@@ -280,7 +292,7 @@ pio run -e ThinkNode_M7_room_server_observer_mqtt
 **ThinkNode M7 -- WiFi only:** the M7 has an onboard CH390 Ethernet controller,
 and `ThinkNode_M7_companion_radio_ethernet` uses it, but the MQTT bridge link
 management is bound to the WiFi station API, so observer environments uplink
-over WiFi. See `UPSTREAM_BUGS.md` for the Ethernet gap. The board has PSRAM, so
+over WiFi. The bridge still uses WiFi even when the Companion image also includes Ethernet. The board has PSRAM, so
 these builds get neighbors publication (`WITH_MQTT_NEIGHBORS`) automatically.
 
 **TLora naming:** The env prefix `LilyGo_TLora_V2_1_1_6` is LilyGo's **T-LoRa V2.1-1.6** board (SX1276); PlatformIO selects **`ttgo-lora32-v1`** (TTGO LoRa32 V1.0). **MQTT observer** envs extend a slim base **without** `sensor_base` so they retain dual-app OTA on the 4 MB flash; **all other** `LilyGo_TLora_V2_1_1_6_*` targets still use optional I2C environmental sensors as before. The repeater observer also keeps 256 recent-repeater entries instead of the normal ESP32 default of 2,048. The **`lilygo_tlora_c6`** variant is separate hardware (ESP32-C6).
@@ -289,7 +301,13 @@ these builds get neighbors publication (`WITH_MQTT_NEIGHBORS`) automatically.
 
 ### Partition Table Changes - Merged Firmware Required
 
-Some MQTT observer builds use a non-default partition table to accommodate the larger firmware size (MQTT libraries, TLS, cert bundle, etc.). **When a board's partition table changes, you must flash the merged firmware (`*-merged.bin`) the first time** so the new partition layout and bootloader are written together. After that initial flash, standard OTA or non-merged updates will work normally.
+The table below describes **base PlatformIO recipes**, not every `build.sh`
+release overlay. Option 3 promotes MQTT infrastructure to expanded Full
+layouts; inspect that artifact's partition/capability metadata and the installed
+layout before updating. To install a changed partition table, flash the
+matching `*-merged.bin` over USB. An application-only OTA upload does not
+change the partition table. Subsequent OTA updates require an image that fits
+the installed application slots and satisfies the updater's compatibility checks.
 
 | Environment | Partition Table | Flash Size | App Slot Size | Notes |
 |-------------|----------------|------------|---------------|-------|
@@ -304,14 +322,16 @@ Some MQTT observer builds use a non-default partition table to accommodate the l
 | `LilyGo_TBeam_1W_repeater_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | Set in `boards/t_beam_1w.json`; required vs implicit `default.csv` |
 | `LilyGo_TBeam_1W_room_server_observer_mqtt` | `default_16MB.csv` | 16 MB | 6.25 MB | same |
 
-Boards absent from this table need no special first flash: their observer envs use the
-same partition table as the board's other firmwares.
+A board absent from the base-recipe table can still need a layout migration
+when installing an expanded Full release image. A merged flash writes the
+bootloader and partition table, but it does **not inherently erase NVS**.
+An erase operation, relocated/resized storage, or incompatible filesystem
+layout can lose settings; unchanged storage can retain them. Back up identity
+and configuration before a layout migration and check them afterward.
 
-Flashing a **full merged image** (`*-merged.bin` at offset `0x0`) writes a new bootloader **and** partition table. If that layout **differs** from what is already on the device, **NVS is typically wiped or invalidated** - expect to lose stored configuration (admin preferences, WiFi, MQTT slots, name, etc.) and reconfigure from scratch.
-
-- **`LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_`:** This uses the custom `dual_ota_1984k.csv` layout. Install its merged image when coming from a standard TLora build, the room-server observer, or any older `huge_app.csv` build; expect to reconfigure after that partition change.
-- **`LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_`:** This retains the normal `min_spiffs.csv` layout. Moving from another `min_spiffs` TLora build does not itself require a partition change, but coming from the repeater observer's custom layout, `huge_app.csv`, or a non-MeshCore layout does.
-- **`Station_G2_*_observer_mqtt`** and **`LilyGo_TBeam_1W_*_observer_mqtt`**: These use `default_16MB.csv` to accommodate the larger size of the MQTT observer firmware. Installing MQTT observer firmware on these devices requires a **merged** flash the first time. The same applies if you move **from** firmware built with a **different** partition table: the first merged flash that installs this layout will **wipe** stored settings.
+For example, the base TLora repeater observer uses `dual_ota_1984k.csv` while
+its room-server sibling uses `min_spiffs.csv`. Compare those with the actual
+release layout rather than assuming a filename or role change is compatible.
 
 **How to flash the merged firmware:**
 
@@ -327,7 +347,10 @@ You can flash the merged firmware using either the web flasher or the command li
   esptool.py write_flash 0x0 .pio/build/LilyGo_T3S3_sx1262_repeater_observer_mqtt/firmware-merged.bin
   ```
 
-> **Note:** If the **partition layout is unchanged** (e.g. updating the MQTT observer build in place), device configuration in NVS is usually retained; Bluetooth pairings may still be cleared on some upgrade paths. If the **partition table is new to the device**, see **NVS / settings when the partition layout changes** above - stored settings are typically lost. After the first merged flash **for a given layout**, subsequent updates on that board can use OTA or the standard non-merged binary when applicable.
+When the installed partition layout is unchanged, normal application updates
+usually retain preferences. Full Companion and infrastructure can use different
+layouts on the same board; follow the exact image's installation directions.
+
 ### Build Flags
 - `WITH_MQTT_BRIDGE=1` - Enable MQTT bridge (required)
 - `WITH_SNMP=1` - Enable SNMP agent (optional, see [MQTT_SNMP.md](MQTT_SNMP.md))

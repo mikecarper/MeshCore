@@ -1,5 +1,9 @@
 # Full Companion: turn features on and off
 
+For side-by-side Companion and infrastructure commands, see
+[feature switches by role](role_feature_switches.md). MQTT and logging controls
+differ between these roles.
+
 Use the exact `companion_radio_full` image for your board. Full includes its
 supported transports and MOTA sending in one firmware; ordinary settings do
 not require rebuilding it. USB remains the normal way to update the Companion
@@ -9,7 +13,8 @@ MOTA packages on itself.
 ## Open the text terminal
 
 Close the app or serial monitor using the USB port, then open a terminal at
-115200 baud. A fresh boot starts in text mode. If it is already in Binary
+115200 baud, or use the [USB web console](https://flasher.meshcore.io/console).
+A fresh Full Companion boot starts in ASCII text mode. If it is already in Binary
 Companion mode, send this line once and wait for the terminal banner:
 
 ```text
@@ -92,7 +97,9 @@ and configure a broker slot to enable it; choose the `none` preset for every
 slot to disable broker connections. The MQTT status, packets, raw, receive,
 and transmit switches control their individual functions. Save the settings
 and follow any reboot instruction shown. Builds without MQTT omit these
-controls. There is no need for a separate logging or WiFi-MQTT Companion
+controls. Full Companion does not accept infrastructure text commands such as
+`set bridge.enabled`, `set logging.output`, or `set mqtt1.preset`; use these
+WebConfig controls for MQTT. There is no need for a separate logging or WiFi-MQTT Companion
 image when that feature is included in Full.
 
 ## Send MOTA from any Full Companion
@@ -115,7 +122,7 @@ This works on both ESP32 and nRF52 Full. Close the text terminal first.
 `motatool` automatically sends `ota folder on` and owns USB while serving.
 Stop the host tool to detach the source; use `normalradio` afterward to
 return early, or let the window expire. A `.bin`, `.uf2`, or DFU `.zip` is
-not itself a `.mota`; use [motatool](../tools/mota/README.md) to prepare the
+not itself a `.mota`; use [motatool](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/mota/README.md) to prepare the
 package for the exact destination firmware and hardware.
 
 ESP32 also accepts a host over WiFi:
