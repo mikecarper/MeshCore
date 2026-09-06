@@ -36,7 +36,7 @@
   const LOGGING_LABELS = Object.freeze({
     none: "None / normal operation",
     usb: "USB logging / USB-connected MQTT",
-    wifi: "Wi-Fi MQTT observer",
+    wifi: "Wi-Fi MQTT",
     both: "USB logging + Wi-Fi MQTT",
     runtime: "Runtime selectable: off / USB / Wi-Fi / both",
     "usb-runtime": "Runtime selectable: off / USB",
@@ -67,7 +67,7 @@
   });
 
   const INSTALL_LABELS = Object.freeze({
-    "merged-bin": "Erase & fresh install (merged .bin)",
+    "merged-bin": "Full install / layout migration (merged .bin)",
     bin: "Update existing install (.bin)",
     zip: "nRF52 update / Serial DFU (.zip)",
     uf2: "UF2 install / update (.uf2)",
@@ -631,7 +631,7 @@
       profiles.length <= CANDIDATE_RESULT_LIMIT;
   }
 
-  function buildCatalog(releases) {
+  function buildCatalog(releases, controlData) {
     const releaseSet = selectReleaseSet(releases);
     if (!releaseSet) {
       return { releaseSet: null, rows: [], profiles: [] };
@@ -685,6 +685,16 @@
       return profile.hardware;
     })));
     profiles.forEach(function (profile) {
+      if (controlData && controlData.familyTag === releaseSet.familyTag &&
+          controlData.profiles && controlData.profiles[profile.target]) {
+        profile.controls = controlData.profiles[profile.target];
+        if (isFullCompanion(profile) && profile.controls.mqtt) {
+          profile.loggingModes = ["none", "usb", "wifi", "both"];
+        }
+        if (profile.controls.rs232 && profile.role === "repeater" && profile.mode === "standard") {
+          profile.connectionModes = ["standard", "rs232"];
+        }
+      }
       profile.hardwareFamily = hardwareFamilyFor(
         profile.hardware,
         hardwareNames
@@ -858,10 +868,10 @@
     const byKind = {
       "merged-bin": [
         "Flash the merged image over a data-capable USB connection.",
-        "Use this erase/fresh-install path for a first install, recovery, or partition/profile migration.",
+        "Use this path for first installation, recovery, or a partition migration. Erase flash only when you intend to reset saved data.",
       ],
       bin: [
-        "Use this app-only image only when the installed board, role, and partition layout already match.",
+        "Use this app-only image for the exact board and role, with compatible installed application slots large enough for the image.",
         "Do not use an app-only image to migrate partition layouts.",
       ],
       zip: [
@@ -915,6 +925,201 @@
     return common.concat(byKind[kind] || [], extra);
   }
 
+  // These are instructions only: changing a picker choice never changes a node.
+  function runtimeDirections(profile, selection) {
+    const chosen = selection || {};
+    const info = profile.controls;
+    const full = isFullCompanion(profile);
+    const companion = profile.role === "companion";
+    const infrastructure = ["repeater", "room", "sensor"].includes(profile.role);
+    const sections = [];
+    function section(title, actions, note) {
+      sections.push({ title: title, actions: actions, note: note || "" });
+    }
+    function toggle(title, command, read, note) {
+      section(title, [
+        { label: "On", commands: [command + " on"] },
+        { label: "Off", commands: [command + " off"] },
+        { label: "Check", commands: [read] },
+      ], note);
+    }
+    if (profile.logging === "runtime" || profile.logging === "usb-runtime") {
+      const modes = chosen.logging ? [chosen.logging] : profile.loggingModes;
+      const actions = modes.filter(function (mode) {
+        return profile.loggingModes.includes(mode);
+      }).map(function (mode) {
+        const enabled = mode === "usb" || mode === "both";
+        const commands = profile.logging === "runtime"
+          ? ["set logging.output " + (mode === "none" ? "off" : mode), "get logging.output"]
+          : ["set usb.logging " + (enabled ? "on" : "off") +
+              (profile.dedicatedUsbLogging ? " reboot" : "")];
+        return {
+          label: LOGGING_LABELS[mode], commands: commands,
+          text: full && info && info.mqtt
+            ? (mode === "wifi" || mode === "both"
+              ? "In WebConfig, enable the desired MQTT broker presets/settings and save."
+              : "In WebConfig, choose none for every MQTT broker slot and save to stop MQTT connections.")
+            : "",
+        };
+      });
+      section("Restore the selected logging mode", actions,
+        full ? (profile.dedicatedUsbLogging
+          ? "Reboot adds/removes the second logging port. Keep Companion/MOTA on primary interface 00."
+          : "USB logs and binary Companion share one port. Turn logging off, send +++MESHCORE-TERM-STOP, and close the console before connecting the app or MOTA host.")
+          : "Saved settings survive updates. These commands restore your selected output mode; downloading alone does not change it.");
+    }
+    if (!info) return sections;
+    if (full || infrastructure) {
+      toggle("Device power saving", full ? "powersaving" : "set powersaving", "powersaving",
+        full ? "Controls device/GPS power saving separately from LoRa RXPS and WiFi modem sleep."
+          : "The set form saves/applies without the bare powersaving on command's USB/bridge guards. Actual sleep depends on the board and can interrupt WiFi. Bare powersaving on rejects local/USB requests on nRF52 and standalone ESP32, and is unavailable on ESP32 bridge builds.");
+      if (info.rxps && !info.primaryEspnow) toggle("LoRa RX power saving", "set radio.rxps", "get radio.rxps");
+      if (info.rxgain && !info.primaryEspnow) toggle("Radio RX boost", "set radio.rxgain", "get radio.rxgain");
+      if (info.femRx) toggle("External FEM receive gain", "set radio.fem.rxgain", "get radio.fem.rxgain", "Requires the controllable FEM on the installed board revision; check the reply for hardware support.");
+      if (info.femTx) toggle("External FEM transmit gain", "set radio.fem.txgain", "get radio.fem.txgain", "Requires the controllable PA on the installed board revision.");
+    }
+    if (info.gps && (companion || infrastructure)) {
+      if (companion) section("GPS", [
+        { label: "On", text: "In the Companion app's custom sensor settings, set gps=1." },
+        { label: "Off", text: "In the Companion app's custom sensor settings, set gps=0." },
+      ], "These are app settings, not USB terminal commands. Connect the board's supported GPS hardware; sharing location is a separate setting.");
+      else toggle("GPS", "gps", "gps", "Requires the supported GPS hardware to be installed.");
+    }
+    if (info.webconfig) {
+      toggle("WiFi settings website (WebConfig)", "set webui", "get webui");
+      if (infrastructure) toggle("WebConfig command terminal", "set wifi.cli", "get wifi.cli", "This is the node's WiFi browser terminal. The USB web console is independent and needs no WiFi.");
+    }
+    if (info.platform === "ESP32_PLATFORM" && (info.webconfig || info.mqtt)) {
+      section("WiFi modem power saving", [
+        { label: "On (minimum sleep)", commands: ["set wifi.powersave min"] },
+        { label: "Off", commands: ["set wifi.powersave none"] },
+        { label: "Check", commands: ["get wifi.powersave"] },
+      ], "Separate from device sleep and LoRa RXPS. Bluetooth coexistence can constrain the effective mode.");
+    }
+    if (info.mqtt) {
+      if (companion) section("MQTT broker connections", [
+        { label: "On", commands: ["set webui on", "get webui"], text: "Open the reported WebConfig URL, select/configure a broker preset, and save. Repeat for each desired slot." },
+        { label: "Off", text: "Open WebConfig, set every broker slot's preset to none, and save. Turning status publication off does not disconnect a broker." },
+      ], "Companion configures MQTT through WebConfig; infrastructure MQTT text commands are not available in its terminal.");
+      else {
+        toggle("MQTT bridge", "set bridge.enabled", "get bridge.running", "Configure WiFi and broker slots first. get mqtt.status shows connections. This switch does not disable LoRa repeating.");
+        ["status", "packets", "raw", "rx"].forEach(function (name) {
+          toggle("MQTT " + (name === "rx" ? "receive capture" : name + " publication"), "set mqtt." + name, "get mqtt." + name,
+            name === "status" ? "Only controls status publishing; connections remain enabled. The check command reports connection status." : "");
+        });
+        section("MQTT transmit capture", ["off", "advert", "on"].map(function (mode) {
+          return { label: mode, commands: ["set mqtt.tx " + mode] };
+        }));
+      }
+    }
+    if (info.snmp && infrastructure) section("SNMP", [
+      { label: "On", commands: ["set snmp on", "reboot"] },
+      { label: "Off", commands: ["set snmp off", "reboot"] },
+      { label: "Check", commands: ["get snmp"] },
+    ]);
+    if (profile.role === "repeater") toggle("Repeat mesh traffic", "set repeat", "get repeat");
+    if (info.rs232 && infrastructure) {
+      const mode = chosen.mode;
+      section("RS232 bridge" + (mode === "rs232" ? " — selected" : ""), [
+        { label: "On", commands: ["set bridge.enabled on", "get bridge.running"] },
+        { label: "Off", commands: ["set bridge.enabled off"] },
+        { label: "Set baud", commands: ["set bridge.enabled off", "set bridge.baud 115200", "set bridge.enabled on"] },
+      ].sort(function (a, b) {
+        return mode === "standard" ? Number(b.label === "Off") - Number(a.label === "Off") : 0;
+      }), "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.");
+    }
+    if (info.espnowBridge && infrastructure) {
+      toggle("ESP-NOW bridge", "set bridge.enabled", "get bridge.running");
+      section("ESP-NOW bridge framing", ["wrapped", "raw"].map(function (mode) {
+        return { label: mode, commands: ["set bridge.format " + mode] };
+      }), "Set bridge.channel to the bridge channel. Primary ESP-NOW mesh uses set espnow.channel instead; see the board guide before changing channels.");
+    }
+    if (full && /sensecapindicator/i.test(profile.target)) section("Indicator wireless transport", [
+      { label: "WiFi", commands: ["set companion.transport wifi", "reboot"] },
+      { label: "Bluetooth", commands: ["set companion.transport ble", "reboot"] },
+      { label: "Check", commands: ["get companion.transport"] },
+    ], "USB stays available. This changes the secondary wireless transport, not the image's primary LoRa/ESP-NOW mesh.");
+    if ((info.updateMethods || []).includes("wifi")) section("WiFi firmware uploader", [
+      { label: "On (existing WiFi)", commands: ["start ota"] },
+      { label: "On (setup access point)", commands: ["start ota ap"] },
+      { label: "Off", commands: ["stop ota"] },
+    ], full ? "Upload the exact application .bin to the returned URL on port 8080. Requires a compatible two-slot layout; never upload a merged image here."
+      : "Stop WebConfig first if it is running. The uploader uses port 80; upload the exact application .bin, not a merged image.");
+    if (infrastructure && (info.updateMethods || []).includes("bluetooth")) section("Bluetooth firmware update", [
+      { label: "Start DFU", commands: ["start ota"], text: "Use the exact board's application DFU ZIP with the matching Bluetooth-capable bootloader." },
+    ]);
+    if (full && info.display) section("Display rotation", [0, 90, 180, 270].map(function (angle) {
+      return { label: angle === 0 ? "Board default" : angle + " degrees", commands: ["set display.rotation " + angle] };
+    }), "Use on supported displays; 0 restores the board default. Check with get display.rotation.");
+    return sections;
+  }
+
+  function renderRuntimeDirections(card, profile, selection) {
+    const panel = createElement("section");
+    panel.className = "firmware-picker-runtime";
+    panel.appendChild(createElement("h4", "Restore your settings after flashing"));
+    panel.appendChild(createElement("p", "These directions change with the selected firmware and logging mode. Choose On, Off, or Check below to see the exact steps. Nothing is sent to your device by this page."));
+    const links = createElement("p");
+    const consoleLink = createElement("a", "Open USB web console");
+    consoleLink.href = "https://flasher.meshcore.io/console";
+    links.appendChild(consoleLink);
+    links.appendChild(document.createTextNode(" · "));
+    const guide = createElement("a", "Complete role commands and board exceptions");
+    guide.href = "https://github.com/mikecarper/MeshCore/blob/keymindCascade/docs/role_feature_switches.md";
+    links.appendChild(guide);
+    panel.appendChild(links);
+    if (isFullCompanion(profile) || ["repeater", "room", "sensor"].includes(profile.role)) {
+      panel.appendChild(createElement("p", "Use a data-capable USB cable and 115200 baud. Full Companion and infrastructure start in ASCII mode. " + (profile.role === "companion"
+        ? "If already in binary mode, send +++MESHCORE-TERM-START. Use board and version to identify the node."
+        : "Use board and ver to identify the node.")));
+    }
+    if (!profile.controls) panel.appendChild(createElement("p", "Additional hardware controls have not been verified for this exact release image. Use the role guide for those settings."));
+    runtimeDirections(profile, selection).forEach(function (item, index) {
+      const details = createElement("details");
+      details.open = index === 0;
+      details.appendChild(createElement("summary", item.title));
+      if (item.note) details.appendChild(createElement("p", item.note));
+      const label = createElement("label", "Show steps for ");
+      const select = createElement("select");
+      select.setAttribute("aria-label", item.title);
+      item.actions.forEach(function (action, i) {
+        const option = createElement("option", action.label);
+        option.value = String(i);
+        select.appendChild(option);
+      });
+      label.appendChild(select);
+      details.appendChild(label);
+      const output = createElement("div");
+      function show() {
+        output.replaceChildren();
+        const action = item.actions[Number(select.value) || 0];
+        if (action.text) output.appendChild(createElement("p", action.text));
+        if (action.commands) {
+          const pre = createElement("pre");
+          pre.appendChild(createElement("code", action.commands.join("\n")));
+          output.appendChild(pre);
+          const button = createElement("button", "Copy commands");
+          button.type = "button";
+          button.addEventListener("click", function () {
+            if (!global.navigator || !global.navigator.clipboard) {
+              button.textContent = "Select and copy the commands above";
+              return;
+            }
+            global.navigator.clipboard.writeText(action.commands.join("\n")).then(function () {
+              button.textContent = "Copied";
+            }).catch(function () { button.textContent = "Select and copy the commands above"; });
+          });
+          output.appendChild(button);
+        }
+      }
+      select.addEventListener("change", show);
+      show();
+      details.appendChild(output);
+      panel.appendChild(details);
+    });
+    card.appendChild(panel);
+  }
+
   function replaceFacts(container, facts) {
     container.replaceChildren();
     facts.forEach(function (fact) {
@@ -923,7 +1128,7 @@
     });
   }
 
-  function renderProfileCard(container, profile, asset, installKind) {
+  function renderProfileCard(container, profile, asset, installKind, selection) {
     const card = createElement("article");
     card.className = "firmware-picker-card";
     card.appendChild(createElement(
@@ -942,7 +1147,7 @@
           return labelFor("mode", mode);
         }).join(" / "),
       ],
-      ["Logging", labelFor("logging", profile.logging)],
+      ["Logging", labelFor("logging", selection && selection.logging || profile.logging)],
       ["OTA", labelFor("ota", profile.ota)],
       ["Feature profile", labelFor("feature", profile.feature)],
       ["Variant", labelFor("variant", profile.variant)],
@@ -980,6 +1185,7 @@
     });
     steps.appendChild(list);
     card.appendChild(steps);
+    renderRuntimeDirections(card, profile, selection);
     container.appendChild(card);
   }
 
@@ -1155,7 +1361,8 @@
                 resultList,
                 entry.profile,
                 entry.asset,
-                entry.installKind
+                entry.installKind,
+          filters
               );
             });
             result.hidden = false;
@@ -1185,7 +1392,8 @@
           resultList,
           entry.profile,
           entry.asset,
-          entry.installKind
+          entry.installKind,
+          filters
         );
       });
       result.hidden = false;
@@ -1247,15 +1455,25 @@
       encodeURIComponent(repo.split("/")[0]) + "/" +
       encodeURIComponent(repo.split("/")[1]) +
       "/releases?per_page=20";
-    fetch(endpoint, { headers: { Accept: "application/vnd.github+json" } })
+    const embeddedElement = document.getElementById("firmware-picker-data");
+    const embedded = embeddedElement ? JSON.parse(embeddedElement.textContent) : null;
+    const controlUrl = root.getAttribute("data-controls-url");
+    const controlRequest = embedded ? Promise.resolve(embedded.controls) : controlUrl ? fetch(controlUrl).then(function (response) {
+      return response.ok ? response.json() : null;
+    }).catch(function () { return null; }) : Promise.resolve(null);
+    const releaseRequest = embedded ? Promise.resolve(embedded.releases) :
+      fetch(endpoint, { headers: { Accept: "application/vnd.github+json" } })
       .then(function (response) {
         if (!response.ok) {
           throw new Error("GitHub returned HTTP " + response.status);
         }
         return response.json();
+      });
+    releaseRequest.then(function (data) {
+        return controlRequest.then(function (controls) { return { releases: data, controls: controls }; });
       })
       .then(function (data) {
-        catalog = buildCatalog(data);
+        catalog = buildCatalog(data.releases, data.controls);
         if (!catalog.releaseSet || !catalog.profiles.length) {
           throw new Error("no complete release family was found");
         }
@@ -1329,6 +1547,8 @@
     canonicalAsset: canonicalAsset,
     resolveProfileAssets: resolveProfileAssets,
     shouldShowCandidateResults: shouldShowCandidateResults,
+    runtimeDirections: runtimeDirections,
+    renderRuntimeDirections: renderRuntimeDirections,
     installSteps: installSteps,
     humanizeHardware: humanizeHardware,
     humanizeVariant: humanizeVariant,

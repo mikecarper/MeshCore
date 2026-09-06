@@ -282,3 +282,40 @@
     margin-top: 0.35rem;
   }
 }
+
+.firmware-picker-runtime {
+  border-top: 1px solid var(--picker-border);
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+}
+
+.firmware-picker-runtime details {
+  border: 1px solid var(--picker-border);
+  border-radius: 0.4rem;
+  margin: 0.65rem 0;
+  padding: 0.7rem;
+}
+
+.firmware-picker-runtime summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.firmware-picker-runtime select,
+.firmware-picker-runtime button {
+  padding: 0.5rem;
+  margin: 0.4rem 0;
+  font: inherit;
+  color: inherit;
+  background: var(--md-default-bg-color, white);
+  border: 1px solid var(--picker-border);
+  border-radius: 0.3rem;
+  max-width: 100%;
+}
+
+.firmware-picker-runtime pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.8rem;
+  background: var(--md-code-bg-color, #f3f5f7);
+}
