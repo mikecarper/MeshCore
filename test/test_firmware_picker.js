@@ -726,6 +726,7 @@ assert.deepStrictEqual(
 assert.deepStrictEqual(
   picker.FACET_FIELDS,
   [
+    "chipFamily",
     "hardwareFamily",
     "hardware",
     "role",
@@ -913,3 +914,25 @@ const stale = picker.buildCatalog(controlledReleases, {...controls, familyTag: '
 assert(stale.profiles.every(p => !p.controls));
 assert(!picker.runtimeDirections({...mqttCompanion, controls: undefined}, {}).some(s => s.title === 'GPS'));
 console.log('role-specific runtime directions tests passed');
+
+assert.strictEqual(nrf.chipFamily, 'nrf52');
+assert.strictEqual(mqttCompanion.chipFamily, 'esp32');
+assert.deepStrictEqual(picker.facetValues(controlled.profiles, {chipFamily: 'nrf52'}, 'hardwareFamily'), ['RAK_4631']);
+assert(stale.profiles.every(p => p.chipFamily === 'unknown'));
+
+const chipReleases = [release(family, '2026-09-01T00:00:00Z', [
+  asset('pico_repeater-' + family + '.uf2'),
+  asset('pico_room_server-' + family + '.uf2'),
+  asset('wio-e5-repeater-' + family + '.hex'),
+  asset('unlisted_repeater-' + family + '.uf2'),
+])];
+const chipCatalog = picker.buildCatalog(chipReleases, {familyTag: family, profiles: {
+  pico_repeater: {platform: 'RP2040_PLATFORM'},
+  'wio-e5-repeater': {platform: 'STM32_PLATFORM'},
+}});
+assert.deepStrictEqual(picker.uniqueValues(chipCatalog.profiles, 'chipFamily').sort(), ['rp2040', 'stm32', 'unknown']);
+const sibling = chipCatalog.profiles.find(p => p.target === 'pico_room_server');
+assert.strictEqual(sibling.chipFamily, 'rp2040');
+assert.strictEqual(sibling.controls, undefined, 'Chip inheritance must not invent runtime controls');
+assert.strictEqual(chipCatalog.profiles.find(p => p.target === 'unlisted_repeater').chipFamily, 'unknown', 'UF2 does not identify a chip family');
+console.log('chip-family filtering tests passed');

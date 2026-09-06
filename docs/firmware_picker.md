@@ -10,6 +10,8 @@ default ASCII terminal on Full Companion and infrastructure roles.
 
 Pick the choices in any order. Every selection narrows all the other controls
 to firmware combinations that were actually built in the current release set.
+The optional chip-family filter (ESP32, nRF52, RP2040, or STM32) can narrow the
+hardware list first. You can skip it: picking hardware fills it in automatically.
 
 The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
@@ -22,7 +24,7 @@ from the published firmware assets.
     <p>
       For a new installation, choose the exact board and role, prefer a
       <strong>FULL / complete profile</strong> when it is available, and select
-      <strong>Erase &amp; fresh install (merged .bin)</strong>. Narrower profiles
+      <strong>Full install / layout migration (merged .bin)</strong>. Narrower profiles
       remain available when their reduced transport or feature set is intentional.
     </p>
   </div>
@@ -33,6 +35,17 @@ from the published firmware assets.
   </p>
 
   <form class="firmware-picker-form" data-role="form">
+    <details class="firmware-picker-chip-family firmware-picker-wide">
+      <summary data-role="chip-family-summary">Optional: chip family</summary>
+      <p id="firmware-picker-chip-help">Skip this if you know your board. Picking hardware selects its chip family automatically. Choose Any to clear this filter.</p>
+      <div class="firmware-picker-control firmware-picker-select-control">
+        <label for="firmware-picker-chip-family">Chip family</label>
+        <select id="firmware-picker-chip-family" data-field="chipFamily" aria-describedby="firmware-picker-chip-help" disabled>
+          <option value="">Any chip family — skip this filter</option>
+        </select>
+      </div>
+    </details>
+
     <div class="firmware-picker-control firmware-picker-select-control">
       <label for="firmware-picker-hardware-family">Hardware</label>
       <select id="firmware-picker-hardware-family" data-field="hardwareFamily" disabled>

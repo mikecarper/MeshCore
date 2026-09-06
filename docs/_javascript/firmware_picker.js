@@ -11,6 +11,7 @@
   ]);
 
   const FILTER_FIELDS = Object.freeze([
+    "chipFamily",
     "hardwareFamily",
     "hardware",
     "role",
@@ -22,6 +23,14 @@
   ]);
 
   const FACET_FIELDS = Object.freeze(FILTER_FIELDS.concat(["install"]));
+
+  const CHIP_FAMILY_LABELS = Object.freeze({
+    esp32: "ESP32",
+    nrf52: "nRF52",
+    rp2040: "RP2040",
+    stm32: "STM32",
+    unknown: "Other / unspecified",
+  });
 
   const ROLE_LABELS = Object.freeze({
     companion: "Companion",
@@ -701,6 +710,27 @@
       );
     });
 
+    // Use release-bound platform metadata, never a filename extension (UF2
+    // is used by both nRF52 and RP2040). Legacy images may inherit the chip
+    // family, but no runtime capabilities, from the same exact hardware.
+    profiles.forEach(function (profile) {
+      const platform = profile.controls && profile.controls.platform;
+      profile.chipFamily = platform
+        ? platform.replace(/_PLATFORM$/, "").toLowerCase() : "";
+    });
+    const knownChips = new Map();
+    profiles.forEach(function (profile) {
+      if (!profile.chipFamily) return;
+      if (!knownChips.has(profile.hardware)) knownChips.set(profile.hardware, new Set());
+      knownChips.get(profile.hardware).add(profile.chipFamily);
+    });
+    profiles.forEach(function (profile) {
+      const chips = knownChips.get(profile.hardware);
+      if (!profile.chipFamily) {
+        profile.chipFamily = chips && chips.size === 1 ? Array.from(chips)[0] : "unknown";
+      }
+    });
+
     return {
       releaseSet: releaseSet,
       rows: firmwareRows,
@@ -807,6 +837,7 @@
   }
 
   function labelFor(field, value) {
+    if (field === "chipFamily") return CHIP_FAMILY_LABELS[value] || value;
     if (field === "hardwareFamily") return humanizeHardware(value);
     if (field === "hardware") return humanizeHardware(value);
     if (field === "role") return ROLE_LABELS[value] || value;
@@ -1209,6 +1240,7 @@
     });
     let catalog = { releaseSet: null, rows: [], profiles: [] };
     const filters = {};
+    let automaticChipFamily = false;
     const groupPrefix = "firmware-picker-" + (++pickerInstanceCount);
 
     function matchingProfiles(ignoredField) {
@@ -1220,6 +1252,7 @@
     function setSelectOptions(select, field, values, selected) {
       select.replaceChildren();
       const placeholders = {
+        chipFamily: "Any chip family — skip this filter",
         hardwareFamily: "Any hardware",
         hardware: "Choose a hardware variant",
         mode: "Any connection / mode",
@@ -1279,11 +1312,16 @@
     }
 
     function valuesForField(field) {
+      const ignored = field === "chipFamily" ? ["hardwareFamily", "hardware"]
+        : field === "hardwareFamily" ? ["hardware"] : [];
+      if (automaticChipFamily && (field === "hardwareFamily" || field === "hardware")) {
+        ignored.push("chipFamily");
+      }
       return facetValues(
         catalog.profiles,
         filters,
         field,
-        field === "hardwareFamily" ? ["hardware"] : []
+        ignored
       );
     }
 
@@ -1315,7 +1353,12 @@
     }
 
     function refreshFacets() {
+      if (automaticChipFamily) filters.chipFamily = "";
       stabilizeFilters();
+      if (automaticChipFamily && filters.hardwareFamily) {
+        const chips = uniqueValues(matchingProfiles("chipFamily"), "chipFamily");
+        filters.chipFamily = chips.length === 1 ? chips[0] : "";
+      }
       FACET_FIELDS.forEach(function (field) {
         setControlOptions(field, valuesForField(field));
       });
@@ -1325,6 +1368,9 @@
       );
       hardwareVariantControl.hidden = !filters.hardwareFamily ||
         hardwareVariants.length <= 1;
+      const chipSummary = root.querySelector('[data-role="chip-family-summary"]');
+      if (chipSummary) chipSummary.textContent = "Optional: chip family" +
+        (filters.chipFamily ? " — " + labelFor("chipFamily", filters.chipFamily) : "");
       render();
     }
 
@@ -1333,12 +1379,12 @@
       missing.hidden = true;
       resultList.replaceChildren();
       const missingFields = FACET_FIELDS.filter(function (field) {
-        return !filters[field];
+        return field !== "chipFamily" && !filters[field];
       });
       const matches = matchingProfiles();
 
       if (missingFields.length) {
-        if (missingFields.length === FACET_FIELDS.length) {
+        if (missingFields.length === FACET_FIELDS.length - 1 && !filters.chipFamily) {
           status.textContent = "Pick options in any order. " +
             matches.length + " compatible configurations are available.";
         } else {
@@ -1437,6 +1483,19 @@
       const target = event.target;
       const field = target.dataset.choiceField || target.dataset.field;
       if (!FACET_FIELDS.includes(field)) return;
+      if (field === "chipFamily") {
+        automaticChipFamily = false;
+        // A deliberate family switch takes precedence over an old board.
+        if (target.value && !matchingProfiles("chipFamily").some(function (profile) {
+          return profile.chipFamily === target.value;
+        })) {
+          filters.hardwareFamily = "";
+          filters.hardware = "";
+        }
+      }
+      if (field === "hardwareFamily" || field === "hardware") {
+        automaticChipFamily = true;
+      }
       if (field === "hardwareFamily") filters.hardware = "";
       filters[field] = target.value;
       refreshFacets();
@@ -1444,6 +1503,7 @@
     form.addEventListener("reset", function (event) {
       event.preventDefault();
       if (!catalog.profiles.length) return;
+      automaticChipFamily = false;
       FACET_FIELDS.forEach(function (field) {
         filters[field] = "";
       });
