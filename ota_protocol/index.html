@@ -1567,6 +1567,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -1710,10 +1737,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -1731,8 +1758,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1741,6 +1768,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -2406,8 +2461,9 @@ including RAK12500, even though RAK12500 itself does not use the UART.</p>
 <p>The firmware-configured INA3221 address and RAK12500 address are both <code>0x42</code>, so those devices cannot share
 one bus at those addresses. Keep RAK12500 at <code>0x42</code>, strap INA3221 A0 to SCL for <code>0x43</code>, and use firmware
 built with <code>-DTELEM_INA3221_ADDRESS=0x43</code> when both are installed.</p>
-<p>ESP32 siblings retain the compact browser WiFi updater and use the full
-254-entry neighbor table. RP2040 and STM32 targets are not offered because
+<p>ESP32 siblings retain the compact browser WiFi updater and use up to
+254 neighbors. Internal-DRAM-constrained targets use 50 as recorded in the
+artifact capability manifest; see <a href="../esp32_memory_budget/">ESP32 memory budget</a>. RP2040 and STM32 targets are not offered because
 those platforms do not yet have a safe bootloader/apply path.</p>
 <p>nRF52 LoRa-OTA siblings use size optimization rather than the Adafruit platform's default <code>-Ofast</code>. This
 keeps the runtime software Ed25519 fallback from being expanded into tens of kilobytes of repeated curve

@@ -1306,6 +1306,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -1449,10 +1476,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -1470,8 +1497,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1480,6 +1507,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1623,6 +1678,9 @@
 
 
 <h1 id="full-companion-turn-features-on-and-off">Full Companion: turn features on and off</h1>
+<p>For side-by-side Companion and infrastructure commands, see
+<a href="../role_feature_switches/">feature switches by role</a>. MQTT and logging controls
+differ between these roles.</p>
 <p>Use the exact <code>companion_radio_full</code> image for your board. Full includes its
 supported transports and MOTA sending in one firmware; ordinary settings do
 not require rebuilding it. USB remains the normal way to update the Companion
@@ -1630,7 +1688,8 @@ itself. WiFi/Bluetooth updates are optional, and Full does not install LoRa
 MOTA packages on itself.</p>
 <h2 id="open-the-text-terminal">Open the text terminal</h2>
 <p>Close the app or serial monitor using the USB port, then open a terminal at
-115200 baud. A fresh boot starts in text mode. If it is already in Binary
+115200 baud, or use the <a href="https://flasher.meshcore.io/console">USB web console</a>.
+A fresh Full Companion boot starts in ASCII text mode. If it is already in Binary
 Companion mode, send this line once and wait for the terminal banner:</p>
 <pre><code class="language-text">+++MESHCORE-TERM-START
 </code></pre>
@@ -1759,7 +1818,9 @@ and configure a broker slot to enable it; choose the <code>none</code> preset fo
 slot to disable broker connections. The MQTT status, packets, raw, receive,
 and transmit switches control their individual functions. Save the settings
 and follow any reboot instruction shown. Builds without MQTT omit these
-controls. There is no need for a separate logging or WiFi-MQTT Companion
+controls. Full Companion does not accept infrastructure text commands such as
+<code>set bridge.enabled</code>, <code>set logging.output</code>, or <code>set mqtt1.preset</code>; use these
+WebConfig controls for MQTT. There is no need for a separate logging or WiFi-MQTT Companion
 image when that feature is included in Full.</p>
 <h2 id="send-mota-from-any-full-companion">Send MOTA from any Full Companion</h2>
 <p>Place valid, destination-specific <code>.mota</code> files in a host directory. Set the
@@ -1774,7 +1835,7 @@ temporary radio tuple. For USA Cascade on LoRa hardware:</p>
 <code>motatool</code> automatically sends <code>ota folder on</code> and owns USB while serving.
 Stop the host tool to detach the source; use <code>normalradio</code> afterward to
 return early, or let the window expire. A <code>.bin</code>, <code>.uf2</code>, or DFU <code>.zip</code> is
-not itself a <code>.mota</code>; use <a href="../tools/mota/README.md">motatool</a> to prepare the
+not itself a <code>.mota</code>; use <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/mota/README.md">motatool</a> to prepare the
 package for the exact destination firmware and hardware.</p>
 <p>ESP32 also accepts a host over WiFi:</p>
 <pre><code class="language-bash">motatool serve --tcp DEVICE_IP:5001 --dir ./motas -v

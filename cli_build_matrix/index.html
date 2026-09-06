@@ -1328,6 +1328,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -1471,10 +1498,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -1492,8 +1519,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1502,6 +1529,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1757,9 +1812,10 @@ an old or failed artifact without a verified sidecar.</p>
 <p>A command belonging to a different role is not considered a profile cut. For
 example, adding FULL features to a sensor does not turn it into a repeater
 administrator.</p>
-<p>Repeater profiles use 254 neighbor entries across supported platforms. The
-classic T-Beam SX1262 and SX1276 MQTT observer repeaters are the exception and
-retain 50 because their MQTT discovery tables are constrained by internal DRAM.</p>
+<p>Repeater profiles use up to 254 neighbor entries. Measured internal-DRAM
+limits reduce selected Generic E22, Heltec V2, Meshadventurer, T-Beam OTA/MQTT,
+and TLora MQTT profiles to 50. Check the artifact capability manifest and
+<a href="../esp32_memory_budget/">ESP32 memory budget</a> for the exact target.</p>
 <h2 id="profile-matrix">Profile matrix</h2>
 <table>
 <thead>
@@ -1779,7 +1835,7 @@ retain 50 because their MQTT discovery tables are constrained by internal DRAM.<
 </tr>
 <tr>
 <td>LoRa-OTA (<code>-ota-</code>)</td>
-<td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader, the complete CLI, and a 254-entry neighbor table.</td>
+<td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader, the complete CLI, and up to 254 neighbors, subject to recorded internal-DRAM reductions.</td>
 </tr>
 <tr>
 <td>Internal-flash nRF52 repeater auto pair</td>

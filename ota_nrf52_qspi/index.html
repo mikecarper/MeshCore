@@ -1334,6 +1334,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -1477,10 +1504,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -1498,8 +1525,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1508,6 +1535,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1679,6 +1734,13 @@
 
 
 <h1 id="nrf52-repeater-lora-ota-with-external-qspi">nRF52 repeater LoRa OTA with external QSPI</h1>
+<p>For <strong>1.17.1.5</strong>, use the exact board/storage profile from
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6</a>
+for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
+its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
+matching bootloader profiles. Earlier preview versions mentioned below
+describe compatibility/migration history, not the current recommended download.
+Full Companion is a MOTA source and normally updates itself over USB.</p>
 <p>Selected nRF52840 repeater builds use their dedicated external QSPI NOR flash as
 a raw LoRa OTA staging device. This removes the internal-flash staging conflict:
 the complete <code>.mota</code> stays off-chip, and the bootloader can use the entire
@@ -1750,6 +1812,7 @@ RAK15001. Firmware cannot independently select or detect those two chips, so a
 stock RAK3401 + RAK15001 assembly cannot provide reliable OTA staging without
 a hardware chip-select rework. This restriction does not apply to the
 separate-CS W25Q16 wiring below.</p>
+<p><a id="one-w25q16-wiring-for-rak4631-or-rak3401--rak13302"></a></p>
 <h3 id="one-w25q16-wiring-for-rak4631-or-rak3401-rak13302">One W25Q16 wiring for RAK4631 or RAK3401 + RAK13302</h3>
 <p>An external Winbond W25Q16JV breakout can remain attached to a RAK19007 while
 the core is changed between RAK4631 and RAK3401 + RAK13302. It shares only the

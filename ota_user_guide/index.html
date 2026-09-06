@@ -1450,6 +1450,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -1593,10 +1620,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -1614,8 +1641,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1624,6 +1651,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1911,6 +1966,13 @@
 
 
 <h1 id="updating-your-node-over-the-air-ota-user-guide">Updating your node over the air (OTA) - user guide</h1>
+<p>For <strong>1.17.1.5</strong>, use the exact board/storage profile from
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6</a>
+for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
+its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
+matching bootloader profiles. Earlier preview versions mentioned below
+describe compatibility/migration history, not the current recommended download.
+Full Companion is a MOTA source and normally updates itself over USB.</p>
 <p>This guide is for <strong>node operators</strong>: how to update your MeshCore device's firmware over the radio, in
 plain language. No cables, no programmer - your node can download a new firmware from a neighbour and
 install it. (For the technical wire format, see <a href="../ota_protocol/">the OTA protocol spec</a>.)</p>
@@ -1925,10 +1987,10 @@ forwarding filters, duplicate checks, and flood limits. OTA radio traffic is acc
 only while <code>tempradio</code> is actually running on that node. Every source, receiver, and intermediate repeater must
 therefore have an overlapping temporary-radio window.</p>
 <p>The recommended temporary OTA settings use 250 kHz bandwidth, SF5, CR5, and a 120-minute window. For a
-North American node currently configured for 909.950 MHz, run this on every participating node:</p>
-<pre><code class="language-text">tempradio 909.950,250,5,5,120
+North American node currently configured for 910.525 MHz, run this on every participating node:</p>
+<pre><code class="language-text">tempradio 910.525,250,5,5,120
 </code></pre>
-<p>Use the node's current permitted regional frequency in place of <code>909.950</code> when necessary.</p>
+<p>Use the node's current permitted regional frequency in place of <code>910.525</code> when necessary.</p>
 <p>The scripted updater checks the firmware version of the receiver and every
 sender before deciding whether RX power saving can remain active. At
 SF5/BW250, an all-v1.17.1.5-or-newer path can use effective RXPS level 8 with

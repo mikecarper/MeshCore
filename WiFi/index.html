@@ -1378,6 +1378,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -1521,10 +1548,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -1542,8 +1569,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1552,6 +1579,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1779,9 +1834,11 @@ purposes:</p>
 <li>ESP-NOW bridging, which uses the ESP32's 2.4 GHz radio but is not a connection
   to a WiFi access point.</li>
 </ul>
-<p>The firmware role and the build profile are separate choices. For example, a
-logging repeater is not an MQTT observer, and a WiFi companion does not publish
-to MQTT unless its target name also contains <code>mqtt</code>.</p>
+<p>The firmware role and the build profile are separate choices. USB logging does
+not itself provide MQTT. MQTT-capable Full Companions include that feature
+without <code>mqtt</code> in their filename; check the artifact capability manifest.
+See <a href="../role_feature_switches/">feature switches by role</a> for the different
+Companion and infrastructure controls and the USB web console.</p>
 <h2 id="quick-reference">Quick reference</h2>
 <table>
 <thead>
@@ -1830,7 +1887,13 @@ to MQTT unless its target name also contains <code>mqtt</code>.</p>
 <td>Runs both the TCP companion interface and the MQTT uplink</td>
 </tr>
 <tr>
-<td>USB, BLE, or serial companion</td>
+<td><code>*_companion_radio_full*</code></td>
+<td style="text-align: right;">ESP32, subject to board/transport selection</td>
+<td style="text-align: right;">Where compiled on ESP32</td>
+<td>Includes supported USB/wireless transports; configure MQTT through WebConfig</td>
+</tr>
+<tr>
+<td>Dedicated USB, BLE, or serial companion (not Full)</td>
 <td style="text-align: right;">No</td>
 <td style="text-align: right;">No</td>
 <td>Uses the transport named by the target instead</td>
@@ -1890,7 +1953,7 @@ Receive capture happens before the packet is passed to the normal MeshCore
 flood filters and forwarding decision. A packet may therefore be observed on
 MQTT even when a later scope, path, region, duplicate, or repeat rule prevents
 the node from forwarding it over LoRa.</p>
-<p>MQTT publication and LoRa repetition are separate:</p>
+<p>On infrastructure observer builds, MQTT publication and LoRa repetition are separate:</p>
 <ul>
 <li><code>set repeat on|off</code> controls whether an observer repeats eligible LoRa
   packets;</li>
@@ -2189,8 +2252,11 @@ attached and available for LoRa OTA service.</p>
 <p>The companion owns WiFi connection and recovery in this build. The MQTT bridge
 waits for that connection rather than creating a second one. Stopping MQTT does
 not disable the TCP companion service.</p>
-<p>The same WebConfig page contains the MQTT settings. MQTT companions have no
-text admin CLI, so browser configuration is the normal setup method.</p>
+<p>MQTT-capable Full Companions also combine these services. The WebConfig page
+contains MQTT settings; Full Companion has a USB/TCP text terminal, but does
+not expose the infrastructure <code>mqtt.*</code>, <code>bridge.enabled</code>, or <code>logging.output</code>
+commands there. Select <code>none</code> for every broker slot and save to disable MQTT;
+restore the desired presets/settings and save to enable it.</p>
 <h2 id="webconfig-without-mqtt">WebConfig without MQTT</h2>
 <p>Full-size ESP32 repeater and room-server builds can include WebConfig even when
 MQTT is absent. The portal then shows node, radio, and WiFi-related controls but
@@ -2302,19 +2368,19 @@ meaning can change when the service reorders or adds presets.</p>
 </tr>
 <tr>
 <td>LoRa-OTA no-external-sensors</td>
-<td>A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and 254 neighbors.</td>
+<td>A lean repeater image with no MQTT; ESP32 builds retain the compact on-demand browser WiFi uploader and up to 254 neighbors, subject to target RAM limits.</td>
 </tr>
 </tbody>
 </table>
-<p>All repeater profiles use the full 254-entry neighbor table, including standard,
-logging, bridge, and LoRa-OTA builds on every supported platform. The classic
-T-Beam SX1262 and SX1276 MQTT observer repeaters retain 50 entries because their
-persistent MQTT discovery state leaves insufficient internal-DRAM margin at 254.</p>
+<p>Repeater profiles use up to 254 neighbors. Selected Generic E22, Heltec V2,
+Meshadventurer, T-Beam OTA/MQTT, and TLora MQTT profiles use 50 to preserve
+internal-DRAM reserves. Consult the artifact capability manifest and
+<a href="../esp32_memory_budget/">ESP32 memory budget</a> for the exact target.</p>
 <p>The interactive Option 1 <strong>FULL everything</strong> choice and the standalone FULL
 command select the unified USB + WiFi image when a matching MQTT target exists;
 otherwise they select the logging fallback. The build matrix no longer emits
 any separate standard logging image, or a non-MQTT FULL twin for a role covered
-by the unified image. All FULL profiles include LoRa OTA, WebConfig where supported,
+by the unified image. Expanded Full infrastructure profiles include LoRa OTA, WebConfig where supported,
 up to 254 neighbors, and expanded dual-OTA partitions. Target-specific
 internal-DRAM limits still apply.</p>
 <p>FULL images change the ESP32 partition layout. Flash the matching
@@ -2364,8 +2430,8 @@ report <code>Unsupported in this firmware</code> when a command was cut for spac
 <li><code>logging</code> does not mean MQTT;</li>
 <li><code>ota</code> does not mean MQTT;</li>
 <li><code>companion_radio_wifi</code> does not mean MQTT;</li>
-<li>the filename must contain <code>observer_mqtt</code> or <code>wifi_mqtt</code> for the corresponding
-  on-device MQTT feature.</li>
+<li><code>observer_mqtt</code> and <code>wifi_mqtt</code> identify explicit MQTT targets, but Full
+  Companion can include MQTT without either marker; inspect its capabilities.</li>
 </ul>
 <p>Rolling firmware back does not restore settings erased by a full flash or a
 partition-table change. If the correct MQTT target still has no configuration,
@@ -2396,7 +2462,8 @@ setup AP. Full Companion targets whose primary mesh radio is ESP-NOW use
 b/g/n+LR instead and keep the setup AP, infrastructure station, and mesh on the
 persisted <code>espnow.channel</code> (channel 1 by default). Their configured 2.4 GHz
 router and every other primary ESP-NOW node must use that same channel.
-MQTT diagnostics apply only to a <code>wifi_mqtt</code> companion target.</p>
+On MQTT-capable Companions, inspect MQTT status in WebConfig; the infrastructure
+MQTT text diagnostic commands above are not Companion terminal commands.</p>
 
 
 

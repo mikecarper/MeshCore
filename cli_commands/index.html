@@ -3207,6 +3207,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -3350,10 +3377,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -3371,8 +3398,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -3381,6 +3408,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -5425,10 +5480,14 @@
 
 
 <h1 id="cli-commands">CLI Commands</h1>
+<p>For copy/paste on/off recipes and the differences from Full Companion, see
+<a href="../role_feature_switches/">feature switches by role</a>. The
+<a href="https://flasher.meshcore.io/console">USB web console</a> opens the default ASCII
+terminal at 115200 baud; it does not require on-device WebConfig or WiFi.</p>
 <p>This document provides an overview of CLI commands that can be sent to MeshCore Repeaters, Room Servers and Sensors.</p>
 <p>See <a href="../cli_build_matrix/">CLI Availability by Firmware Build</a> for the role and
-profile matrix, including the commands intentionally omitted from portable
-firmware.</p>
+profile matrix. Commands depend on compiled features; some portable builds
+omit WebConfig while retaining the complete role CLI and compact WiFi updater.</p>
 <p>See <a href="../cli_command_availability/">CLI Command Availability Matrix</a> for the
 command-by-command nRF52 and ESP32 build tables.</p>
 <p>The first word of a command is case-insensitive, so <code>set</code>, <code>Set</code>, and <code>SET</code>
@@ -5549,7 +5608,9 @@ See <a href="../host_cli_service/">LoRa CLI host service</a> for the complete
 - <code>start ota</code>
 - <code>start ota ap</code>
 - <code>stop ota</code></p>
-<p><code>start ota</code> serves the web upload page on the station IP when connected to WiFi;
+<p>On nRF52, <code>start ota</code> invokes Bluetooth DFU with the matching bootloader and
+application DFU ZIP. The WiFi/AP instructions below apply to ESP32.</p>
+<p>On ESP32, <code>start ota</code> serves the web upload page on the station IP when connected to WiFi;
 otherwise it raises the <code>MeshCore-OTA</code> access point. <code>start ota ap</code> always raises
 the access point, which is useful when the normal network uses client isolation.</p>
 <p>On an ESP32 build with WebConfig, the manual OTA uploader and WebConfig both use HTTP
@@ -6830,7 +6891,12 @@ get clock.sync.status
 - <code>on</code>: enable power saving
 - <code>off</code>: disable power saving</p>
 <p><strong>Default:</strong> <code>on</code> for fresh Cascade-profile builds and Companion firmware; <code>off</code> for other infrastructure profiles</p>
-<p><strong>Note:</strong> Infrastructure firmware enters sleep between radio transmissions. It refuses to enable power saving from the local serial console or while an active USB serial data connection is detected; USB power alone does not block power saving.</p>
+<p><strong>Note:</strong> Infrastructure sleep depends on the board implementation. The bare
+<code>powersaving on</code> command rejects local serial requests or an active USB data
+connection on nRF52 and standalone ESP32; ESP32 bridge builds reject that bare
+enable command. USB power alone does not block a remote enable request.
+The separate <code>set powersaving on</code> form saves/applies the preference without
+those guards; it is also the form used by infrastructure WebConfig.</p>
 <p>Companion firmware defaults this setting to <code>on</code>. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. <code>powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>). Infrastructure WebConfig uses the <code>set powersaving</code> form; enabling it can put the node to sleep and make WiFi temporarily unavailable.</p>
 <hr />
 <h4 id="view-or-set-the-reboot-interval-repeater-and-room-server">View or set the reboot interval (Repeater and room server)</h4>
@@ -8591,7 +8657,9 @@ non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>.</p>
 - <code>get bridge.baud</code>
 - <code>set bridge.baud &lt;rate&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>rate</code>: Baud rate (<code>9600</code>, <code>19200</code>, <code>38400</code>, <code>57600</code>, or <code>115200</code>)</p>
+- <code>rate</code>: Integer baud rate from <code>9600</code> through the board's compiled
+  <code>BRIDGE_MAX_BAUD</code> (commonly <code>500000</code>); for example <code>115200</code>. Stop the bridge
+  with <code>set bridge.enabled off</code> before changing it, then enable it again.</p>
 <p><strong>Default:</strong> <code>115200</code></p>
 <hr />
 <h4 id="view-or-change-the-uart-used-by-the-bridge-rs-232-only">View or change the UART used by the bridge (RS-232 only)</h4>

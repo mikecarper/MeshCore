@@ -145,6 +145,10 @@
          <lastmod>2026-09-06</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/role_feature_switches/</loc>
+         <lastmod>2026-09-06</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/spiffs_regular_file_reads/</loc>
          <lastmod>2026-09-06</lastmod>
     </url>
@@ -162,6 +166,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/usb_serial_backpressure/</loc>
+         <lastmod>2026-09-06</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/releases/1.17.1.5-doc-audit/</loc>
          <lastmod>2026-09-06</lastmod>
     </url>
     <url>

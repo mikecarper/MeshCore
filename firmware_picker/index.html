@@ -1306,6 +1306,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../spiffs_regular_file_reads/" class="md-nav__link">
         
   
@@ -1449,10 +1476,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_42" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_43" >
         
           
-          <label class="md-nav__link" for="__nav_42" id="__nav_42_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_43" id="__nav_43_label" tabindex="0">
             
   
   
@@ -1470,8 +1497,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_42_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_42">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_43_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_43">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1480,6 +1507,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1623,6 +1678,10 @@
 
 
 <h1 id="firmware-picker">Firmware picker</h1>
+<p>After selecting an image, use <a href="../role_feature_switches/">feature switches by role</a>
+to turn MQTT, logging, power saving, and other former variant settings on/off.
+The <a href="https://flasher.meshcore.io/console">USB web console</a> works with the
+default ASCII terminal on Full Companion and infrastructure roles.</p>
 <p>Pick the choices in any order. Every selection narrows all the other controls
 to firmware combinations that were actually built in the current release set.</p>
 <p>The picker reads public release metadata from GitHub. It does not upload device
@@ -1917,7 +1976,7 @@ compatible partition signature, matching radio settings, and the correct
 update package.</p>
 <p>nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board. There
 is no universal bootloader file. Use the
-<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest">latest stable OTAFIX release</a>
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6 for this release</a>
 and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.</p>
 <h2 id="hardware-and-variant-names">Hardware and variant names</h2>
 <p>Hardware families with multiple released targets get a second hardware-variant
