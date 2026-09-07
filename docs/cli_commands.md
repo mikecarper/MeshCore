@@ -18,6 +18,12 @@ The first word of a command is case-insensitive, so `set`, `Set`, and `SET`
 are equivalent, as are `get`, `Get`, and the other command verbs. The case of
 arguments such as node names, passwords, and keys is left unchanged.
 
+Use the site search or your browser's Find command with everyday wording such
+as **tx retries**, **retry attempts**, **serial logging**, or **tx power**.
+**Search terms** below are alternative wording to help find a command, not
+additional CLI aliases. Enter the syntax shown under **Usage**; supported
+command aliases are listed there explicitly.
+
 ## Navigation
 
 - [Operational](#operational)
@@ -45,6 +51,9 @@ arguments such as node names, passwords, and keys is left unchanged.
 ## Operational
 
 ### Reboot the node
+
+**Search terms:** restart, restart node, reboot device.
+
 **Usage:** 
 - `reboot`
 
@@ -53,6 +62,9 @@ arguments such as node names, passwords, and keys is left unchanged.
 ---
 
 ### Power-off the node
+
+**Search terms:** turn off device, shut down, power off.
+
 **Usage:**
 - `poweroff`, or
 - `shutdown`
@@ -62,6 +74,9 @@ arguments such as node names, passwords, and keys is left unchanged.
 ---
 
 ### Enter the UF2 bootloader (nRF52 only)
+
+**Search terms:** bootloader mode, USB firmware update, UF2 mode.
+
 **Usage:**
 - `uf2reset`
 
@@ -156,6 +171,9 @@ See [LoRa CLI host service](host_cli_service.md) for the complete
 ---
 
 ### Start or stop an Over-The-Air (OTA) firmware update
+
+**Search terms:** WiFi OTA, wireless firmware update, OTA uploader, update firmware.
+
 **Usage:**
 - `start ota`
 - `start ota ap`
@@ -182,6 +200,9 @@ folder transport.
 ---
 
 ### Browser configuration portal (ESP32 repeater and room server)
+
+**Search terms:** web UI, web interface, WiFi settings page, configuration website, WebConfig.
+
 
 **Usage:**
 
@@ -341,6 +362,9 @@ remain available.
 ---
 
 ### Erase/Factory Reset
+
+**Search terms:** factory defaults, reset settings, erase configuration.
+
 **Usage:**
 - `erase`
 
@@ -353,6 +377,9 @@ remain available.
 ## Neighbors (Repeater Only)
 
 ### List nearby neighbors
+
+**Search terms:** nearby nodes, neighbor list, neighbour list.
+
 **Usage:** 
 - `neighbors`
 
@@ -415,6 +442,9 @@ Elsewhere it replies `Err - neighbors not enabled in this build`. If a
 
 <a id="stats-radio"></a>
 ### Radio Stats - Noise floor, Last RSSI/SNR, Airtime, Receive errors
+
+**Search terms:** signal strength, signal quality, RSSI, SNR, radio noise.
+
 **Usage:** `stats-radio`
 
 **Serial Only:** Yes
@@ -707,6 +737,9 @@ emitted only when that hardware/role has no matching WiFi MQTT environment.
 
 ### Control live USB logging
 
+**Search terms:** serial logging, USB debug log, enable logging, disable logging, debug output.
+
+
 **Usage:**
 
 ```text
@@ -774,6 +807,9 @@ the downstream setup deduplicates messages. Fresh unified FULL installs start
 in `both` mode.
 
 ### Begin capture of rx log to node storage
+
+**Search terms:** save logs, record received packets, RX logging, stored packet log.
+
 **Usage:** `log start`
 
 ---
@@ -862,6 +898,9 @@ minimum and return to it exactly when it is safe.
 ---
 
 #### View or change this node's transmit power
+
+**Search terms:** tx power, transmit strength, radio output power, dBm.
+
 **Usage:**
 - `get tx`
 - `set tx <dbm>`
@@ -969,6 +1008,9 @@ automation treats that version as the wire-format capability boundary.
 ---
 
 #### View or change this node's frequency
+
+**Search terms:** radio frequency, LoRa frequency, MHz.
+
 **Usage:**
 - `get freq`
 - `set freq <frequency>`
@@ -984,6 +1026,9 @@ automation treats that version as the wire-format capability boundary.
 ---
 
 #### View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)
+
+**Search terms:** RX boost, receive gain, receiver sensitivity, boosted reception.
+
 **Usage:**
 - `get radio.rxgain`
 - `set radio.rxgain <state>`
@@ -1003,6 +1048,9 @@ Station G2/G3 targets default to `off`.
 ---
 
 #### View or change RX duty-cycle power saving
+
+**Search terms:** RX power saving, receiver sleep, radio power saving, RXPS.
+
 **Usage:**
 - `get radio.rxps`
 - `get radio.rxps.config`
@@ -1491,6 +1539,9 @@ get clock.sync.status
 ---
 
 #### View or change this node's power saving flag
+
+**Search terms:** battery saver, device power saving, low power mode.
+
 **Usage:**
 - `powersaving`
 - `powersaving on`
@@ -1592,6 +1643,9 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 ---
 
 #### View or change this node's repeat flag
+
+**Search terms:** enable repeating, disable repeating, packet forwarding, stop relaying.
+
 **Usage:**
 - `get repeat`
 - `set repeat <state>`
@@ -1644,6 +1698,9 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 ---
 
 #### View or change the retransmit delay factor for flood traffic
+
+**Search terms:** flood forwarding delay, flood retransmit delay, flood TX delay.
+
 **Usage:**
 - `get txdelay`
 - `set txdelay <value>`
@@ -1658,6 +1715,9 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 ---
 
 #### View or change the retransmit delay factor for direct traffic
+
+**Search terms:** direct forwarding delay, direct retransmit delay, direct TX delay.
+
 **Usage:**
 - `get direct.txdelay`
 - `set direct.txdelay <value>`
@@ -1826,6 +1886,9 @@ reduce false recoveries when no traffic is expected.
 ---
 
 #### Limit the number of hops for a flood message
+
+**Search terms:** hop limit, maximum hops, max hops, flood distance.
+
 **Usage:**
 - `get flood.max`
 - `set flood.max <value>`
@@ -2956,6 +3019,9 @@ and sensor firmware. Recent-repeater/SNR controls are repeater-only because the
 other roles do not keep the repeater reachability table they require.
 
 #### View or change direct retry state
+
+**Search terms:** enable tx retries, disable tx retries, stop direct retries, turn off retransmissions.
+
 **Usage:**
 - `get direct.retry`
 - `set direct.retry <state>`
@@ -3001,6 +3067,9 @@ set direct.retry.heard off
 ---
 
 #### View or apply a retry preset
+
+**Search terms:** retry profile, retry defaults, rooftop retries, mobile retries, infrastructure retries.
+
 **Usage:**
 - `get retry.preset`
 - `set retry.preset <preset>`
@@ -3035,6 +3104,9 @@ firmware. Flood forwarding must also be enabled for retries to run. Prefix,
 ignore, bridge, and bucket controls are repeater-only.
 
 #### View or change flood retry count
+
+**Search terms:** flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.
+
 **Usage:**
 - `get flood.retry.count`
 - `set flood.retry.count <count>`
@@ -3213,6 +3285,9 @@ set flood.retry.bucket 2 none
 ---
 
 #### View or change direct retry count
+
+**Search terms:** tx retries, transmit retries, direct retries, retry count, retry attempts, retransmission count, message retries, DM retries.
+
 **Usage:**
 - `get direct.retry.count`
 - `set direct.retry.count <count>`
@@ -3252,6 +3327,9 @@ set direct.retry.count 15
 ---
 
 #### View or change direct retry base delay
+
+**Search terms:** retry delay, retry timeout, retransmission timeout, wait between retries.
+
 **Usage:**
 - `get direct.retry.base`
 - `set direct.retry.base <ms>`
@@ -3283,6 +3361,9 @@ set direct.retry.base 500
 ---
 
 #### View or change direct retry step delay
+
+**Search terms:** retry backoff, increasing retry delay, retry interval step.
+
 **Usage:**
 - `get direct.retry.step`
 - `set direct.retry.step <ms>`
@@ -3316,6 +3397,9 @@ set direct.retry.step 250
 ---
 
 #### View or change direct retry SNR margin
+
+**Search terms:** retry signal threshold, retry SNR threshold, retry signal margin.
+
 **Usage:**
 - `get direct.retry.margin`
 - `set direct.retry.margin <snr_db>`
@@ -3462,6 +3546,9 @@ clear recent.repeater
 ### GPS (When GPS support is compiled in)
 
 #### View or change GPS state
+
+**Search terms:** enable GPS, disable GPS, turn GPS on, turn GPS off.
+
 **Usage:**
 - `gps`
 - `gps <state>`
@@ -3557,6 +3644,9 @@ still overrides the first-boot default after an update.
 ---
 
 #### View or change the bridge enabled flag
+
+**Search terms:** enable bridge, disable bridge, serial bridge, RS232 bridge.
+
 **Usage:**
 - `get bridge.enabled`
 - `get bridge.running`
@@ -3601,6 +3691,9 @@ repeater images default to `off`; dedicated bridge images may default to `on`.
 ---
 
 #### View or change MQTT RX packet uplinking
+
+**Search terms:** MQTT receive logging, MQTT RX capture, publish received packets.
+
 **Usage:**
 - `get mqtt.rx`
 - `set mqtt.rx <on|off>`
@@ -3614,6 +3707,9 @@ repeater images default to `off`; dedicated bridge images may default to `on`.
 ---
 
 #### View or change MQTT TX packet uplinking
+
+**Search terms:** MQTT transmit logging, MQTT TX capture, publish sent packets.
+
 **Usage:**
 - `get mqtt.tx`
 - `set mqtt.tx <on|off|advert>`

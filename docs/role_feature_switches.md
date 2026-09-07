@@ -11,7 +11,12 @@ previous release entries to 1,325 covered choices or 36 excluded entries.
 Many old choices share one current image; the command tables below explain
 how to select their former behavior. Excluded entries have no download.
 
+**Search terms** are alternative wording for finding these instructions, not
+CLI aliases. Use the commands in the role-specific tables and examples.
+
 ## Open the USB web console
+
+**Search terms:** USB terminal, serial console, ASCII terminal, browser terminal, web serial.
 
 Open the [MeshCore USB web console](https://flasher.meshcore.io/console) in
 Chrome or Edge, connect a data-capable USB cable, close other applications
@@ -37,6 +42,8 @@ browser command terminal (`set wifi.cli on`); Companion WebConfig does not.
 Full ESP32 Companion also has a text terminal at TCP port **5002**.
 
 ## Which old variant setting should I use?
+
+**Search terms:** old firmware variants, restore features, turn features on or off, enable MQTT, disable MQTT.
 
 These controls apply to every board with the corresponding compiled feature;
 use the board exceptions below when the command differs.
@@ -86,6 +93,8 @@ port is for logs; use the primary port for Companion/MOTA. Adding/removing the
 second port requires the `reboot` suffix shown above.
 
 ### Companion MQTT: use WebConfig, not infrastructure CLI commands
+
+**Search terms:** Companion MQTT settings, Companion MQTT on, Companion MQTT off, broker configuration.
 
 1. Run `set webui on` and open the URL reported by `get webui`, or run
    `start webconfig ap` and join the setup network.
@@ -158,6 +167,8 @@ Infrastructure `set usb.logging` has **no `reboot` suffix**, including nRF52.
 
 ### Infrastructure MQTT and logging output
 
+**Search terms:** MQTT settings, MQTT on, MQTT off, logging output, USB and WiFi logging.
+
 On unified Full infrastructure with both MQTT and USB logging compiled:
 
 | Command | USB logs | MQTT bridge |
@@ -225,6 +236,8 @@ For infrastructure WebConfig on the LAN, use `start webconfig` /
 `stop webconfig` and restore `set bridge.enabled on` if you did not reboot.
 
 ## Updating and sending MOTA
+
+**Search terms:** mOTA, LoRa OTA, update over LoRa, wireless firmware transfer.
 
 All released Full Companions can serve MOTA to other nodes. Close the console
 and run `motatool serve --serial /dev/ttyACM0 --dir ./motas -v` on the USB host.
