@@ -936,3 +936,35 @@ assert.strictEqual(sibling.chipFamily, 'rp2040');
 assert.strictEqual(sibling.controls, undefined, 'Chip inheritance must not invent runtime controls');
 assert.strictEqual(chipCatalog.profiles.find(p => p.target === 'unlisted_repeater').chipFamily, 'unknown', 'UF2 does not identify a chip family');
 console.log('chip-family filtering tests passed');
+
+const shareBase = 'https://example.com/firmware_picker/?h=storage#installation-methods';
+const shareFilters = {hardwareFamily: 'RAK_4631', hardware: 'RAK_4631',
+  chipFamily: 'nrf52', role: 'companion', mode: 'full', feature: 'full',
+  logging: 'usb', ota: 'lora-source', variant: 'default', install: 'uf2'};
+const shareUrl = picker.selectionUrl(shareBase, shareFilters, true);
+const restoredShare = picker.selectionFromUrl(shareUrl, controlled.profiles);
+assert.deepStrictEqual(restoredShare.unavailable, []);
+assert.strictEqual(restoredShare.automaticChipFamily, true);
+for (const field of picker.FACET_FIELDS.filter(f => f !== 'chipFamily')) {
+  assert.strictEqual(restoredShare.filters[field], shareFilters[field], field);
+}
+assert.strictEqual(new URL(shareUrl).searchParams.get('h'), 'storage');
+assert.strictEqual(new URL(shareUrl).hash, '#installation-methods');
+assert.strictEqual(picker.selectionUrl(shareUrl, {}, false), shareBase);
+const anyChip = picker.selectionFromUrl(picker.selectionUrl(shareBase,
+  {...shareFilters, chipFamily: ''}, false), controlled.profiles);
+assert.strictEqual(anyChip.automaticChipFamily, false);
+assert(!anyChip.filters.chipFamily);
+const partialShare = picker.selectionFromUrl(shareBase + '&unused=value', controlled.profiles);
+assert.deepStrictEqual(partialShare.filters, {});
+const hardwareOnly = picker.selectionFromUrl('https://example.com/?hardware=RAK_4631', controlled.profiles);
+assert.strictEqual(hardwareOnly.filters.hardwareFamily, 'RAK_4631');
+assert.strictEqual(hardwareOnly.automaticChipFamily, true);
+const staleShare = picker.selectionFromUrl('https://example.com/?hardware=RAK_4631&role=companion&variant=removed&install=bin', controlled.profiles);
+assert.strictEqual(staleShare.filters.hardware, 'RAK_4631');
+assert.strictEqual(staleShare.filters.role, 'companion');
+assert.deepStrictEqual(staleShare.unavailable, ['variant=removed', 'install=bin']);
+const escapedShare = picker.selectionFromUrl('https://example.com/?role=%3Cscript%3E', controlled.profiles);
+assert.deepStrictEqual(escapedShare.filters, {});
+assert.deepStrictEqual(escapedShare.unavailable, ['role=<script>']);
+console.log('shareable picker URL tests passed');

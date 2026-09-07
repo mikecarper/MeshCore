@@ -144,6 +144,19 @@
   grid-column: 1 / -1;
 }
 
+.firmware-picker-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.firmware-picker-form-actions [data-role="link-status"] {
+  flex-basis: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .firmware-picker-form-actions button {
   min-height: 2.35rem;
   padding: 0.4rem 0.75rem;

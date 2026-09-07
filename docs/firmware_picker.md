@@ -17,7 +17,7 @@ The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.
 
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -31,7 +31,8 @@ from the published firmware assets.
 
   <p class="firmware-picker-order-note">
     Pick in any order. Use <strong>Any</strong> to clear one choice, or clear
-    everything with the button below.
+    everything with the button below. The address bar updates with your choices;
+    copy its URL to reopen or share the same selection.
   </p>
 
   <form class="firmware-picker-form" data-role="form">
@@ -111,6 +112,9 @@ from the published firmware assets.
 
     <div class="firmware-picker-form-actions firmware-picker-wide">
       <button type="reset" data-action="clear" disabled>Clear all choices</button>
+      <button type="button" data-action="copy-link" disabled>Copy link to settings</button>
+      <a data-role="share-link" hidden>Link to these settings</a>
+      <p data-role="link-status" aria-live="polite"></p>
     </div>
   </form>
 
@@ -182,6 +186,30 @@ For Heltec V4 specifically, `companion_radio_full` is still a LoRa-primary
 Companion; choose the existing `heltec_v4_repeater_bridge_espnow` firmware to
 make that board the LoRa/ESP-NOW gateway. Use its exact merged artifact when
 changing roles or partition layouts.
+
+## Share a selection
+
+Select any combination of choices, then copy the address bar or use **Copy link
+to settings**. Opening the link restores those choices after the release
+catalog loads. Partial selections work too, so you can share a board and role
+while leaving other choices open. **Clear all choices** removes the picker
+parameters from the URL. Changes update the current browser-history entry
+without reloading the page or adding a Back-button entry for every click.
+
+For example, [RAK3401 repeater with internal storage](?hardware=RAK_3401&role=repeater&ota=lora-receiver&variant=no-external-sensors)
+preselects that board, role, OTA capability, and storage profile.
+
+The query parameters are `chipFamily`, `hardwareFamily`, `hardware`, `role`,
+`logging`, `ota`, `mode`, `feature`, `variant`, and `install`. Values use the
+picker's internal identifiers rather than the displayed labels. The generated
+link also records `chipAuto` so automatic chip-family selection or an explicit
+**Any** choice behaves the same after reopening. Existing section anchors and
+unrelated query parameters are preserved.
+
+Links use the current release catalog. If a linked choice is no longer available
+or conflicts with another choice, the picker identifies it and asks you to
+review the remaining selections. The downloadable HTML's **Copy link to
+settings** button creates a public website link that other people can open.
 
 ## FULL versus standard
 
