@@ -792,6 +792,52 @@
     }).filter(Boolean)));
   }
 
+  function selectionUrl(url, filters, automaticChipFamily) {
+    const result = new URL(url);
+    FACET_FIELDS.forEach(function (field) {
+      result.searchParams.delete(field);
+      if (filters[field]) result.searchParams.set(field, filters[field]);
+    });
+    result.searchParams.delete("chipAuto");
+    if (filters.hardwareFamily || filters.hardware) {
+      result.searchParams.set("chipAuto", automaticChipFamily ? "1" : "0");
+    }
+    return result.href;
+  }
+
+  function selectionFromUrl(url, profiles) {
+    const params = new URL(url).searchParams;
+    const requested = {};
+    const filters = {};
+    const unavailable = [];
+    FACET_FIELDS.forEach(function (field) {
+      requested[field] = params.get(field) || "";
+    });
+    // Handwritten links may specify just the exact hardware variant.
+    if (requested.hardware && !requested.hardwareFamily) {
+      const profile = profiles.find(function (item) {
+        return item.hardware === requested.hardware;
+      });
+      if (profile) requested.hardwareFamily = profile.hardwareFamily;
+    }
+    const automaticChipFamily = params.get("chipAuto") === "1" ||
+      (params.get("chipAuto") !== "0" && !requested.chipFamily &&
+        Boolean(requested.hardwareFamily || requested.hardware));
+    if (automaticChipFamily) requested.chipFamily = "";
+    // Validate in picker order so a stale variant cannot discard valid hardware.
+    FACET_FIELDS.forEach(function (field) {
+      const value = requested[field];
+      if (!value) return;
+      if ((field !== "hardware" || filters.hardwareFamily) &&
+          facetValues(profiles, filters, field).includes(value)) {
+        filters[field] = value;
+      } else {
+        unavailable.push(field + "=" + value);
+      }
+    });
+    return { filters: filters, automaticChipFamily: automaticChipFamily, unavailable: unavailable };
+  }
+
   function humanizeHardware(value) {
     return String(value || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -1249,6 +1295,9 @@
     const search = root.querySelector('[data-field="asset-search"]');
     const assetResults = root.querySelector('[data-role="asset-results"]');
     const clearButton = form.querySelector('[data-action="clear"]');
+    const shareLink = root.querySelector('[data-role="share-link"]');
+    const copyLinkButton = root.querySelector('[data-action="copy-link"]');
+    const linkStatus = root.querySelector('[data-role="link-status"]');
     const controls = {};
     FACET_FIELDS.forEach(function (field) {
       controls[field] = form.querySelector('[data-field="' + field + '"]');
@@ -1257,6 +1306,53 @@
     const filters = {};
     let automaticChipFamily = false;
     const groupPrefix = "firmware-picker-" + (++pickerInstanceCount);
+
+    function updateSelectionUrl() {
+      const url = selectionUrl(global.location.href, filters, automaticChipFamily);
+      if (url !== global.location.href) {
+        try {
+          global.history.replaceState(global.history.state, "", url);
+        } catch (error) {
+          // Some local-file viewers block History API writes. The share link
+          // still carries the complete selection on the public web picker.
+        }
+      }
+      if (shareLink) {
+        const base = global.location.protocol === "file:"
+          ? root.getAttribute("data-share-url") : url;
+        shareLink.href = selectionUrl(base || url, filters, automaticChipFamily);
+        shareLink.hidden = false;
+      }
+      if (copyLinkButton) copyLinkButton.disabled = false;
+    }
+
+    function restoreSelectionUrl() {
+      if (!catalog.profiles.length) return;
+      const restored = selectionFromUrl(global.location.href, catalog.profiles);
+      FACET_FIELDS.forEach(function (field) {
+        filters[field] = restored.filters[field] || "";
+      });
+      automaticChipFamily = restored.automaticChipFamily;
+      if (linkStatus) linkStatus.textContent = restored.unavailable.length
+        ? "Some linked choices are unavailable or incompatible in the current release: " +
+          restored.unavailable.join(", ") + ". Review the remaining choices before downloading."
+        : "";
+      refreshFacets();
+    }
+
+    if (copyLinkButton && shareLink) copyLinkButton.addEventListener("click", function () {
+      const copy = global.navigator.clipboard && global.navigator.clipboard.writeText;
+      if (!copy) {
+        linkStatus.textContent = "Copy the address bar, or copy the ‘Link to these settings’ link.";
+        return;
+      }
+      global.navigator.clipboard.writeText(shareLink.href).then(function () {
+        linkStatus.textContent = "Link copied.";
+      }).catch(function () {
+        linkStatus.textContent = "Copy the address bar, or copy the ‘Link to these settings’ link.";
+      });
+    });
+    global.addEventListener("popstate", restoreSelectionUrl);
 
     function matchingProfiles(ignoredField) {
       return catalog.profiles.filter(function (profile) {
@@ -1387,6 +1483,7 @@
       if (chipSummary) chipSummary.textContent = "Optional: chip family" +
         (filters.chipFamily ? " — " + labelFor("chipFamily", filters.chipFamily) : "");
       render();
+      updateSelectionUrl();
     }
 
     function render() {
@@ -1498,6 +1595,7 @@
       const target = event.target;
       const field = target.dataset.choiceField || target.dataset.field;
       if (!FACET_FIELDS.includes(field)) return;
+      if (linkStatus) linkStatus.textContent = "";
       if (field === "chipFamily") {
         automaticChipFamily = false;
         // A deliberate family switch takes precedence over an old board.
@@ -1519,6 +1617,7 @@
       event.preventDefault();
       if (!catalog.profiles.length) return;
       automaticChipFamily = false;
+      if (linkStatus) linkStatus.textContent = "";
       FACET_FIELDS.forEach(function (field) {
         filters[field] = "";
       });
@@ -1572,7 +1671,7 @@
           releaseSetStatus.appendChild(link);
         }
         clearButton.disabled = false;
-        refreshFacets();
+        restoreSelectionUrl();
       })
       .catch(function (error) {
         status.textContent =
@@ -1619,6 +1718,8 @@
     profileMatchesFacets: profileMatchesFacets,
     facetValues: facetValues,
     uniqueValues: uniqueValues,
+    selectionUrl: selectionUrl,
+    selectionFromUrl: selectionFromUrl,
     canonicalAsset: canonicalAsset,
     resolveProfileAssets: resolveProfileAssets,
     shouldShowCandidateResults: shouldShowCandidateResults,

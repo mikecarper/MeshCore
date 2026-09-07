@@ -627,6 +627,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#share-a-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share a selection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#full-versus-standard" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1620,6 +1631,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#share-a-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Share a selection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#full-versus-standard" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1714,7 +1736,7 @@ hardware list first. You can skip it: picking hardware fills it in automatically
 <p>The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.</p>
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -1728,7 +1750,8 @@ from the published firmware assets.</p>
 
   <p class="firmware-picker-order-note">
     Pick in any order. Use <strong>Any</strong> to clear one choice, or clear
-    everything with the button below.
+    everything with the button below. The address bar updates with your choices;
+    copy its URL to reopen or share the same selection.
   </p>
 
   <form class="firmware-picker-form" data-role="form">
@@ -1808,6 +1831,9 @@ from the published firmware assets.</p>
 
     <div class="firmware-picker-form-actions firmware-picker-wide">
       <button type="reset" data-action="clear" disabled>Clear all choices</button>
+      <button type="button" data-action="copy-link" disabled>Copy link to settings</button>
+      <a data-role="share-link" hidden>Link to these settings</a>
+      <p data-role="link-status" aria-live="polite"></p>
     </div>
   </form>
 
@@ -1917,6 +1943,25 @@ For Heltec V4 specifically, <code>companion_radio_full</code> is still a LoRa-pr
 Companion; choose the existing <code>heltec_v4_repeater_bridge_espnow</code> firmware to
 make that board the LoRa/ESP-NOW gateway. Use its exact merged artifact when
 changing roles or partition layouts.</p>
+<h2 id="share-a-selection">Share a selection</h2>
+<p>Select any combination of choices, then copy the address bar or use <strong>Copy link
+to settings</strong>. Opening the link restores those choices after the release
+catalog loads. Partial selections work too, so you can share a board and role
+while leaving other choices open. <strong>Clear all choices</strong> removes the picker
+parameters from the URL. Changes update the current browser-history entry
+without reloading the page or adding a Back-button entry for every click.</p>
+<p>For example, <a href="?hardware=RAK_3401&amp;role=repeater&amp;ota=lora-receiver&amp;variant=no-external-sensors">RAK3401 repeater with internal storage</a>
+preselects that board, role, OTA capability, and storage profile.</p>
+<p>The query parameters are <code>chipFamily</code>, <code>hardwareFamily</code>, <code>hardware</code>, <code>role</code>,
+<code>logging</code>, <code>ota</code>, <code>mode</code>, <code>feature</code>, <code>variant</code>, and <code>install</code>. Values use the
+picker's internal identifiers rather than the displayed labels. The generated
+link also records <code>chipAuto</code> so automatic chip-family selection or an explicit
+<strong>Any</strong> choice behaves the same after reopening. Existing section anchors and
+unrelated query parameters are preserved.</p>
+<p>Links use the current release catalog. If a linked choice is no longer available
+or conflicts with another choice, the picker identifies it and asks you to
+review the remaining selections. The downloadable HTML's <strong>Copy link to
+settings</strong> button creates a public website link that other people can open.</p>
 <h2 id="full-versus-standard">FULL versus standard</h2>
 <p>For a new installation, use the FULL / complete profile when it exists and the
 board has enough flash. FULL profiles keep the complete supported feature set
