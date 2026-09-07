@@ -3222,8 +3222,24 @@ set flood.retry.bucket 2 none
 
 **Default:** `15` with the `rooftop` preset
 
-**Note:** Direct-routed type 2 text packets always use 21 retry attempts in the
-shared retry logic, regardless of this setting or the repeater short-path cap.
+**Note:** This setting limits retries for eligible direct-routed packets such as
+traces, requests, responses, and ACKs. Direct-routed **text messages (type 2)**
+are an exception: they allow **up to 21 retries after the original send**,
+regardless of `direct.retry.count` or the repeater short-path cap. For example,
+`set direct.retry.count 1` limits eligible non-text packets to one retry, but
+does not reduce the text-message limit.
+
+These are maximums, not a fixed number of transmissions. Retries stop early
+when the node hears the next hop forward the packet. The special final-hop
+retry sends only one duplicate because the destination does not forward the
+packet. Repeater non-text retries are also capped at 8 for a retry path of up
+to 3 hops, 12 for 4 hops, and 15 for longer paths; these caps never increase a
+lower configured count.
+
+Use `set direct.retry off` to disable this node's direct retries, including
+text-message retries, and `set direct.retry on` to enable them again. A count
+of `0` is not supported. Sending apps and other nodes may have their own retry
+behavior; this setting does not change it.
 
 **Examples:**
 ```
