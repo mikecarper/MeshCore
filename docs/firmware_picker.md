@@ -281,8 +281,11 @@ menu. It separates revisions, display type, expansion kit, radio/PA layout,
 pin map, and other physical differences without crowding the first menu. The
 firmware-variant menu separately exposes choices that still require different
 code or wiring, such as serial port or the legacy `no_external_sensors` target
-suffix. The picker labels that suffix **Reduced optional environmental/ranging drivers**:
-it does not disable generic I2C or unrelated board-integrated peripherals.
+suffix. For RAK3401 and RAK4631, the picker labels that compact LoRa OTA option
+**Internal storage (no external storage board)**. Its result details explain
+the omitted optional environmental/ranging sensor drivers; the reduction does
+not disable generic I2C or unrelated board-integrated peripherals. Other boards
+retain the **Reduced optional environmental/ranging drivers** label.
 Reduced RAK3401 and RAK4631 targets retain INA219/INA226/INA260/INA3221 as
 voltage/current entries in the optional sensor table. They are not the only I2C
 users: the SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS remain
@@ -297,7 +300,9 @@ rather than separate recommended firmware files. Do not substitute a similarly
 named physical target.
 
 The header-wired RAK19007 W25Q16 LoRa-OTA recipes are also exact hardware
-variants. Choose the W25Q16 variant for RAK4631 or for RAK3401 + RAK13302 only
+variants, labeled **External storage board (W25Q16)** in the picker. W25Q16 is
+the flash-memory part on the added storage board; RAK13302 identifies the radio
+module, not the storage board. Choose this variant for RAK4631 or for RAK3401 + RAK13302 only
 when that core/radio combination, the `EF4015` flash wiring, and its matching
 OTAFIX bootloader are all present. The common base-board wiring does not make
 the two firmware or bootloader identities interchangeable.

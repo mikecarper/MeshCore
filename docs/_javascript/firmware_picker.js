@@ -796,7 +796,7 @@
     return String(value || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
   }
 
-  function humanizeVariant(value) {
+  function humanizeVariant(value, hardware) {
     if (!value || value === "default") return "Default";
     const tokenLabels = {
       ps: "Power save",
@@ -807,8 +807,8 @@
       serial2: "Serial 2",
       sim: "SIM",
       rak15001: "RAK15001",
-      rak13302: "RAK13302",
-      w25q16: "W25Q16",
+      rak13302: value.includes("w25q16") ? "RAK13302 +" : "RAK13302",
+      w25q16: "External storage board (W25Q16)",
       qspi: "QSPI",
       lora: "LoRa",
       ota: "OTA",
@@ -823,7 +823,9 @@
       ) {
         // The legacy target token is an OTA identity, not a literal statement
         // that the I2C bus and every external peripheral have been removed.
-        labels.push("Reduced optional environmental/ranging drivers");
+        labels.push(/^RAK_(3401|4631)$/i.test(hardware || "")
+          ? "Internal storage (no external storage board)"
+          : "Reduced optional environmental/ranging drivers");
         index += 2;
         continue;
       }
@@ -836,7 +838,7 @@
     return labels.join(" ");
   }
 
-  function labelFor(field, value) {
+  function labelFor(field, value, hardware) {
     if (field === "chipFamily") return CHIP_FAMILY_LABELS[value] || value;
     if (field === "hardwareFamily") return humanizeHardware(value);
     if (field === "hardware") return humanizeHardware(value);
@@ -845,7 +847,7 @@
     if (field === "ota") return OTA_LABELS[value] || value;
     if (field === "mode") return MODE_LABELS[value] || value;
     if (field === "feature") return FEATURE_LABELS[value] || value;
-    if (field === "variant") return humanizeVariant(value);
+    if (field === "variant") return humanizeVariant(value, hardware);
     if (field === "install") return INSTALL_LABELS[value] || value;
     return value;
   }
@@ -919,6 +921,19 @@
       ],
     };
     const extra = [];
+    if (profile.variant.includes("w25q16")) {
+      extra.push(
+        "Requires the external W25Q16 storage board, its exact documented wiring, and the matching storage-aware OTAFIX bootloader."
+      );
+    }
+    if (profile.variant.includes("no-external-sensors")) {
+      if (/^RAK_(3401|4631)$/i.test(profile.hardware)) {
+        extra.push("This profile uses internal storage for LoRa OTA; no external storage board is required.");
+      }
+      extra.push(
+        "This compact profile omits selected optional environmental/ranging sensor drivers. Generic I2C and supported board peripherals remain available; see the hardware and variant notes for retained sensors."
+      );
+    }
     if (profile.ota === "lora-receiver") {
       extra.push(
         "This installs the LoRa OTA repeater profile. The later update package must still match the exact target and partition signature."
@@ -1181,7 +1196,7 @@
       ["Logging", labelFor("logging", selection && selection.logging || profile.logging)],
       ["OTA", labelFor("ota", profile.ota)],
       ["Feature profile", labelFor("feature", profile.feature)],
-      ["Variant", labelFor("variant", profile.variant)],
+      ["Variant", labelFor("variant", profile.variant, profile.hardware)],
       ["Install operation", labelFor("install", installKind)],
       ["File", asset.name],
       ["Size", formatBytes(asset.size)],
@@ -1266,7 +1281,7 @@
       }).forEach(function (value) {
         const label = field === "hardware"
           ? humanizeHardwareVariant(value, filters.hardwareFamily)
-          : labelFor(field, value);
+          : labelFor(field, value, filters.hardware || filters.hardwareFamily);
         const option = createElement("option", label);
         option.value = value;
         select.appendChild(option);

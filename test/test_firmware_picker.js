@@ -852,7 +852,7 @@ assert.deepStrictEqual(
 assert.strictEqual(picker.humanizeHardware("RAK_4631"), "RAK 4631");
 assert.strictEqual(
   picker.humanizeVariant("rak13302-w25q16-lora-ota"),
-  "RAK13302 W25Q16 LoRa OTA"
+  "RAK13302 + External storage board (W25Q16) LoRa OTA"
 );
 assert.strictEqual(picker.formatBytes(2097152), "2.00 MiB");
 assert.strictEqual(
