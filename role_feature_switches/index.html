@@ -1800,7 +1800,10 @@ For exact old device/variant names, search the
 previous release entries to 1,325 covered choices or 36 excluded entries.
 Many old choices share one current image; the command tables below explain
 how to select their former behavior. Excluded entries have no download.</p>
+<p><strong>Search terms</strong> are alternative wording for finding these instructions, not
+CLI aliases. Use the commands in the role-specific tables and examples.</p>
 <h2 id="open-the-usb-web-console">Open the USB web console</h2>
+<p><strong>Search terms:</strong> USB terminal, serial console, ASCII terminal, browser terminal, web serial.</p>
 <p>Open the <a href="https://flasher.meshcore.io/console">MeshCore USB web console</a> in
 Chrome or Edge, connect a data-capable USB cable, close other applications
 using that port, and select the device. Use <strong>115200 baud</strong> when prompted.
@@ -1819,6 +1822,7 @@ served by supported ESP32 images. Infrastructure WebConfig can include a
 browser command terminal (<code>set wifi.cli on</code>); Companion WebConfig does not.
 Full ESP32 Companion also has a text terminal at TCP port <strong>5002</strong>.</p>
 <h2 id="which-old-variant-setting-should-i-use">Which old variant setting should I use?</h2>
+<p><strong>Search terms:</strong> old firmware variants, restore features, turn features on or off, enable MQTT, disable MQTT.</p>
 <p>These controls apply to every board with the corresponding compiled feature;
 use the board exceptions below when the command differs.</p>
 <table>
@@ -1966,6 +1970,7 @@ off before handing USB to an app/MOTA host. <strong>nRF52:</strong> the optional
 port is for logs; use the primary port for Companion/MOTA. Adding/removing the
 second port requires the <code>reboot</code> suffix shown above.</p>
 <h3 id="companion-mqtt-use-webconfig-not-infrastructure-cli-commands">Companion MQTT: use WebConfig, not infrastructure CLI commands</h3>
+<p><strong>Search terms:</strong> Companion MQTT settings, Companion MQTT on, Companion MQTT off, broker configuration.</p>
 <ol>
 <li>Run <code>set webui on</code> and open the URL reported by <code>get webui</code>, or run
    <code>start webconfig ap</code> and join the setup network.</li>
@@ -2110,6 +2115,7 @@ from some portable builds. The USB browser console still works without it.</p>
 <code>log start/stop</code> records to storage independently of live USB logging. Use
 <code>log erase</code> to delete that capture.</p>
 <h3 id="infrastructure-mqtt-and-logging-output">Infrastructure MQTT and logging output</h3>
+<p><strong>Search terms:</strong> MQTT settings, MQTT on, MQTT off, logging output, USB and WiFi logging.</p>
 <p>On unified Full infrastructure with both MQTT and USB logging compiled:</p>
 <table>
 <thead>
@@ -2187,6 +2193,7 @@ use <code>set espnow.channel &lt;1..13&gt;</code> and reboot; this is a differen
 <code>set bridge.enabled off</code>, then <code>start webconfig ap</code>. When finished, run
 <code>stop webconfig</code> and restore <code>set bridge.enabled on</code> if you did not reboot.</p>
 <h2 id="updating-and-sending-mota">Updating and sending MOTA</h2>
+<p><strong>Search terms:</strong> mOTA, LoRa OTA, update over LoRa, wireless firmware transfer.</p>
 <p>All released Full Companions can serve MOTA to other nodes. Close the console
 and run <code>motatool serve --serial /dev/ttyACM0 --dir ./motas -v</code> on the USB host.
 See <a href="../full_companion_features/">Full Companion instructions</a> for WiFi/BLE

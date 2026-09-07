@@ -5493,6 +5493,11 @@ command-by-command nRF52 and ESP32 build tables.</p>
 <p>The first word of a command is case-insensitive, so <code>set</code>, <code>Set</code>, and <code>SET</code>
 are equivalent, as are <code>get</code>, <code>Get</code>, and the other command verbs. The case of
 arguments such as node names, passwords, and keys is left unchanged.</p>
+<p>Use the site search or your browser's Find command with everyday wording such
+as <strong>tx retries</strong>, <strong>retry attempts</strong>, <strong>serial logging</strong>, or <strong>tx power</strong>.
+<strong>Search terms</strong> below are alternative wording to help find a command, not
+additional CLI aliases. Enter the syntax shown under <strong>Usage</strong>; supported
+command aliases are listed there explicitly.</p>
 <h2 id="navigation">Navigation</h2>
 <ul>
 <li><a href="#operational">Operational</a></li>
@@ -5522,17 +5527,20 @@ arguments such as node names, passwords, and keys is left unchanged.</p>
 <hr />
 <h2 id="operational">Operational</h2>
 <h3 id="reboot-the-node">Reboot the node</h3>
+<p><strong>Search terms:</strong> restart, restart node, reboot device.</p>
 <p><strong>Usage:</strong> 
 - <code>reboot</code></p>
 <p><strong>Note:</strong> No reply is sent.</p>
 <hr />
 <h3 id="power-off-the-node">Power-off the node</h3>
+<p><strong>Search terms:</strong> turn off device, shut down, power off.</p>
 <p><strong>Usage:</strong>
 - <code>poweroff</code>, or
 - <code>shutdown</code></p>
 <p><strong>Note:</strong> No reply is sent.</p>
 <hr />
 <h3 id="enter-the-uf2-bootloader-nrf52-only">Enter the UF2 bootloader (nRF52 only)</h3>
+<p><strong>Search terms:</strong> bootloader mode, USB firmware update, UF2 mode.</p>
 <p><strong>Usage:</strong>
 - <code>uf2reset</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
@@ -5604,6 +5612,7 @@ See <a href="../host_cli_service/">LoRa CLI host service</a> for the complete
 <code>meshcoretomqtt</code> setup and security model.</p>
 <hr />
 <h3 id="start-or-stop-an-over-the-air-ota-firmware-update">Start or stop an Over-The-Air (OTA) firmware update</h3>
+<p><strong>Search terms:</strong> WiFi OTA, wireless firmware update, OTA uploader, update firmware.</p>
 <p><strong>Usage:</strong>
 - <code>start ota</code>
 - <code>start ota ap</code>
@@ -5624,6 +5633,7 @@ active. The TCP connection auto-attaches and detaches the folder; do not run
 folder transport.</p>
 <hr />
 <h3 id="browser-configuration-portal-esp32-repeater-and-room-server">Browser configuration portal (ESP32 repeater and room server)</h3>
+<p><strong>Search terms:</strong> web UI, web interface, WiFi settings page, configuration website, WebConfig.</p>
 <p><strong>Usage:</strong></p>
 <ul>
 <li><code>start webconfig</code></li>
@@ -5766,6 +5776,7 @@ retaining the two app slots required for LoRa OTA. Their normal CLI settings
 remain available.</p>
 <hr />
 <h3 id="erasefactory-reset">Erase/Factory Reset</h3>
+<p><strong>Search terms:</strong> factory defaults, reset settings, erase configuration.</p>
 <p><strong>Usage:</strong>
 - <code>erase</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
@@ -5773,6 +5784,7 @@ remain available.</p>
 <hr />
 <h2 id="neighbors-repeater-only">Neighbors (Repeater Only)</h2>
 <h3 id="list-nearby-neighbors">List nearby neighbors</h3>
+<p><strong>Search terms:</strong> nearby nodes, neighbor list, neighbour list.</p>
 <p><strong>Usage:</strong> 
 - <code>neighbors</code></p>
 <p><strong>Note:</strong> The output of this command is limited to the 8 most recent adverts.</p>
@@ -5813,6 +5825,7 @@ Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If 
 <hr />
 <p><a id="stats-radio"></a></p>
 <h3 id="radio-stats-noise-floor-last-rssisnr-airtime-receive-errors">Radio Stats - Noise floor, Last RSSI/SNR, Airtime, Receive errors</h3>
+<p><strong>Search terms:</strong> signal strength, signal quality, RSSI, SNR, radio noise.</p>
 <p><strong>Usage:</strong> <code>stats-radio</code></p>
 <p><strong>Serial Only:</strong> Yes</p>
 <hr />
@@ -6213,6 +6226,7 @@ emitted. Use the separately named <code>-ota-</code> artifact when LoRa OTA is r
 LoRa OTA, and the expanded FULL feature set. A <code>-full-logging-ota-</code> artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.</p>
 <h3 id="control-live-usb-logging">Control live USB logging</h3>
+<p><strong>Search terms:</strong> serial logging, USB debug log, enable logging, disable logging, debug output.</p>
 <p><strong>Usage:</strong></p>
 <pre><code class="language-text">get usb.logging
 set usb.logging on
@@ -6268,6 +6282,7 @@ stream to both consumers; do not point both consumers at the same broker unless
 the downstream setup deduplicates messages. Fresh unified FULL installs start
 in <code>both</code> mode.</p>
 <h3 id="begin-capture-of-rx-log-to-node-storage">Begin capture of rx log to node storage</h3>
+<p><strong>Search terms:</strong> save logs, record received packets, RX logging, stored packet log.</p>
 <p><strong>Usage:</strong> <code>log start</code></p>
 <hr />
 <h3 id="end-capture-of-rx-log-to-node-storage">End capture of rx log to node storage</h3>
@@ -6330,6 +6345,7 @@ level through 10 is safe. Slower settings recalculate from the saved RXPS
 minimum and return to it exactly when it is safe.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-transmit-power">View or change this node's transmit power</h4>
+<p><strong>Search terms:</strong> tx power, transmit strength, radio output power, dBm.</p>
 <p><strong>Usage:</strong>
 - <code>get tx</code>
 - <code>set tx &lt;dbm&gt;</code></p>
@@ -6478,6 +6494,7 @@ contract; a shorter legacy sender would create a receive gap. LoRa OTA
 automation treats that version as the wire-format capability boundary.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-frequency">View or change this node's frequency</h4>
+<p><strong>Search terms:</strong> radio frequency, LoRa frequency, MHz.</p>
 <p><strong>Usage:</strong>
 - <code>get freq</code>
 - <code>set freq &lt;frequency&gt;</code></p>
@@ -6488,6 +6505,7 @@ automation treats that version as the wire-format capability boundary.</p>
 <strong>Serial Only:</strong> <code>set freq &lt;frequency&gt;</code></p>
 <hr />
 <h4 id="view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141">View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)</h4>
+<p><strong>Search terms:</strong> RX boost, receive gain, receiver sensitivity, boosted reception.</p>
 <p><strong>Usage:</strong>
 - <code>get radio.rxgain</code>
 - <code>set radio.rxgain &lt;state&gt;</code></p>
@@ -6502,6 +6520,7 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - Existing installations retain their previously saved value after an upgrade.</p>
 <hr />
 <h4 id="view-or-change-rx-duty-cycle-power-saving">View or change RX duty-cycle power saving</h4>
+<p><strong>Search terms:</strong> RX power saving, receiver sleep, radio power saving, RXPS.</p>
 <p><strong>Usage:</strong>
 - <code>get radio.rxps</code>
 - <code>get radio.rxps.config</code>
@@ -6881,6 +6900,7 @@ get clock.sync.status
 <p><strong>Usage:</strong> <code>get role</code></p>
 <hr />
 <h4 id="view-or-change-this-nodes-power-saving-flag">View or change this node's power saving flag</h4>
+<p><strong>Search terms:</strong> battery saver, device power saving, low power mode.</p>
 <p><strong>Usage:</strong>
 - <code>powersaving</code>
 - <code>powersaving on</code>
@@ -6959,6 +6979,7 @@ those guards; it is also the form used by infrastructure WebConfig.</p>
 - <code>flood</code> forces replies to use flood packets until the client logs in again.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-repeat-flag">View or change this node's repeat flag</h4>
+<p><strong>Search terms:</strong> enable repeating, disable repeating, packet forwarding, stop relaying.</p>
 <p><strong>Usage:</strong>
 - <code>get repeat</code>
 - <code>set repeat &lt;state&gt;</code></p>
@@ -6995,6 +7016,7 @@ those guards; it is also the form used by infrastructure WebConfig.</p>
 <p><strong>Example:</strong> If preference is <code>loop.detect minimal</code>, and a 1-byte path size packet is received, the repeater will see if its own ID/hash is already in the path. If it's already encoded 4 times, it will reject the packet.  If the packet uses 2-byte path size, and repeater's own ID/hash is already encoded 2 times, it rejects. If the packet uses 3-byte path size, and the repeater's own ID/hash is already encoded 1 time, it rejects. </p>
 <hr />
 <h4 id="view-or-change-the-retransmit-delay-factor-for-flood-traffic">View or change the retransmit delay factor for flood traffic</h4>
+<p><strong>Search terms:</strong> flood forwarding delay, flood retransmit delay, flood TX delay.</p>
 <p><strong>Usage:</strong>
 - <code>get txdelay</code>
 - <code>set txdelay &lt;value&gt;</code></p>
@@ -7004,6 +7026,7 @@ those guards; it is also the form used by infrastructure WebConfig.</p>
 <p><strong>Note:</strong> When multiple nearby repeaters all hear the same flood packet, each waits a random amount of time before retransmitting to avoid simultaneous collisions. This factor scales the size of that random window. Higher values reduce collision risk at the cost of added latency. <code>0</code> disables the window entirely.</p>
 <hr />
 <h4 id="view-or-change-the-retransmit-delay-factor-for-direct-traffic">View or change the retransmit delay factor for direct traffic</h4>
+<p><strong>Search terms:</strong> direct forwarding delay, direct retransmit delay, direct TX delay.</p>
 <p><strong>Usage:</strong>
 - <code>get direct.txdelay</code>
 - <code>set direct.txdelay &lt;value&gt;</code></p>
@@ -7124,6 +7147,7 @@ reduce false recoveries when no traffic is expected.</p>
 <p><strong>Default:</strong> <code>0</code></p>
 <hr />
 <h4 id="limit-the-number-of-hops-for-a-flood-message">Limit the number of hops for a flood message</h4>
+<p><strong>Search terms:</strong> hop limit, maximum hops, max hops, flood distance.</p>
 <p><strong>Usage:</strong>
 - <code>get flood.max</code>
 - <code>set flood.max &lt;value&gt;</code></p>
@@ -8111,6 +8135,7 @@ region save
 and sensor firmware. Recent-repeater/SNR controls are repeater-only because the
 other roles do not keep the repeater reachability table they require.</p>
 <h4 id="view-or-change-direct-retry-state">View or change direct retry state</h4>
+<p><strong>Search terms:</strong> enable tx retries, disable tx retries, stop direct retries, turn off retransmissions.</p>
 <p><strong>Usage:</strong>
 - <code>get direct.retry</code>
 - <code>set direct.retry &lt;state&gt;</code></p>
@@ -8142,6 +8167,7 @@ set direct.retry.heard off
 </code></pre>
 <hr />
 <h4 id="view-or-apply-a-retry-preset">View or apply a retry preset</h4>
+<p><strong>Search terms:</strong> retry profile, retry defaults, rooftop retries, mobile retries, infrastructure retries.</p>
 <p><strong>Usage:</strong>
 - <code>get retry.preset</code>
 - <code>set retry.preset &lt;preset&gt;</code></p>
@@ -8167,6 +8193,7 @@ another qualifying repeater.</p>
 firmware. Flood forwarding must also be enabled for retries to run. Prefix,
 ignore, bridge, and bucket controls are repeater-only.</p>
 <h4 id="view-or-change-flood-retry-count">View or change flood retry count</h4>
+<p><strong>Search terms:</strong> flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.</p>
 <p><strong>Usage:</strong>
 - <code>get flood.retry.count</code>
 - <code>set flood.retry.count &lt;count&gt;</code></p>
@@ -8291,6 +8318,7 @@ set flood.retry.bucket 2 none
 </code></pre>
 <hr />
 <h4 id="view-or-change-direct-retry-count">View or change direct retry count</h4>
+<p><strong>Search terms:</strong> tx retries, transmit retries, direct retries, retry count, retry attempts, retransmission count, message retries, DM retries.</p>
 <p><strong>Usage:</strong>
 - <code>get direct.retry.count</code>
 - <code>set direct.retry.count &lt;count&gt;</code></p>
@@ -8321,6 +8349,7 @@ set direct.retry.count 15
 </code></pre>
 <hr />
 <h4 id="view-or-change-direct-retry-base-delay">View or change direct retry base delay</h4>
+<p><strong>Search terms:</strong> retry delay, retry timeout, retransmission timeout, wait between retries.</p>
 <p><strong>Usage:</strong>
 - <code>get direct.retry.base</code>
 - <code>set direct.retry.base &lt;ms&gt;</code></p>
@@ -8345,6 +8374,7 @@ set direct.retry.base 500
 </code></pre>
 <hr />
 <h4 id="view-or-change-direct-retry-step-delay">View or change direct retry step delay</h4>
+<p><strong>Search terms:</strong> retry backoff, increasing retry delay, retry interval step.</p>
 <p><strong>Usage:</strong>
 - <code>get direct.retry.step</code>
 - <code>set direct.retry.step &lt;ms&gt;</code></p>
@@ -8371,6 +8401,7 @@ set direct.retry.step 250
 </code></pre>
 <hr />
 <h4 id="view-or-change-direct-retry-snr-margin">View or change direct retry SNR margin</h4>
+<p><strong>Search terms:</strong> retry signal threshold, retry SNR threshold, retry signal margin.</p>
 <p><strong>Usage:</strong>
 - <code>get direct.retry.margin</code>
 - <code>set direct.retry.margin &lt;snr_db&gt;</code></p>
@@ -8495,6 +8526,7 @@ clear recent.repeater
 <hr />
 <h3 id="gps-when-gps-support-is-compiled-in">GPS (When GPS support is compiled in)</h3>
 <h4 id="view-or-change-gps-state">View or change GPS state</h4>
+<p><strong>Search terms:</strong> enable GPS, disable GPS, turn GPS on, turn GPS off.</p>
 <p><strong>Usage:</strong>
 - <code>gps</code>
 - <code>gps &lt;state&gt;</code></p>
@@ -8560,6 +8592,7 @@ still overrides the first-boot default after an update.</p>
 <p><strong>Usage:</strong> <code>get bridge.type</code></p>
 <hr />
 <h4 id="view-or-change-the-bridge-enabled-flag">View or change the bridge enabled flag</h4>
+<p><strong>Search terms:</strong> enable bridge, disable bridge, serial bridge, RS232 bridge.</p>
 <p><strong>Usage:</strong>
 - <code>get bridge.enabled</code>
 - <code>get bridge.running</code>
@@ -8593,6 +8626,7 @@ repeater images default to <code>off</code>; dedicated bridge images may default
 </blockquote>
 <hr />
 <h4 id="view-or-change-mqtt-rx-packet-uplinking">View or change MQTT RX packet uplinking</h4>
+<p><strong>Search terms:</strong> MQTT receive logging, MQTT RX capture, publish received packets.</p>
 <p><strong>Usage:</strong>
 - <code>get mqtt.rx</code>
 - <code>set mqtt.rx &lt;on|off&gt;</code></p>
@@ -8602,6 +8636,7 @@ repeater images default to <code>off</code>; dedicated bridge images may default
 <p><strong>Default:</strong> <code>on</code></p>
 <hr />
 <h4 id="view-or-change-mqtt-tx-packet-uplinking">View or change MQTT TX packet uplinking</h4>
+<p><strong>Search terms:</strong> MQTT transmit logging, MQTT TX capture, publish sent packets.</p>
 <p><strong>Usage:</strong>
 - <code>get mqtt.tx</code>
 - <code>set mqtt.tx &lt;on|off|advert&gt;</code></p>
