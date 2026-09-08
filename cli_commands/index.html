@@ -9144,6 +9144,23 @@ them.</p>
 <hr />
 <h4 id="view-the-bootloader-version-nrf52-only">View the bootloader version (nRF52 only)</h4>
 <p><strong>Usage:</strong> <code>get bootloader.ver</code></p>
+<p>Applies to every nRF52 board/role that exposes this getter, including Companion,
+repeater, and room-server firmware. It reads the installed bootloader region
+selected by the MBR/UICR boot address and bounded by the chip's flash geometry;
+it does not search application firmware or staged update files.</p>
+<p>The reader preserves a complete Adafruit/UF2 version string, including OTAFIX,
+preview, and vendor/build suffixes. If that string is absent or ambiguous, it
+uses the existing whole-image CRC and unique BLMF/BLM2 validation to read the
+embedded OTAFIX version (for example, <code>&gt; OTAFIX2.4.6</code>). Some current release
+images, including MeshTower V2 SD 2.4.6, omit the UF2 text entirely. As a last
+fallback, the Adafruit core's startup-captured version is explicitly labelled
+<code>(base)</code>; it cannot identify an OTAFIX/fork revision.</p>
+<p><code>unknown</code> remains possible for a bootloader exposing none of these version
+sources, invalid geometry/vectors, or unresolved ambiguity. There is no universal
+version field shared by every third-party bootloader. This is diagnostic only:
+displaying a version neither grants OTA capability nor bypasses install checks.
+The fix is in MeshCore application firmware; installing another bootloader alone
+does not update an older application's version reader.</p>
 <hr />
 <h4 id="view-power-management-support">View power management support</h4>
 <p><strong>Usage:</strong> <code>get pwrmgt.support</code></p>

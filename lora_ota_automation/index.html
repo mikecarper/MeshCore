@@ -2470,14 +2470,29 @@ get bootloader.ver
 ota self
 ota stats
 </code></pre>
-<p>The script uses <code>get bootloader.ver</code> to distinguish ESP32 from nRF52 and, for
-nRF52, report the installed bootloader version. It then requires <code>ota self</code> to
+<p>The script uses <code>get bootloader.ver</code> as an optional platform/version hint, not
+as an install gate. It makes one attempt without an interactive retry loop.
+<code>unknown</code>, an unsupported/missing command, an unrecognized reply, or a lost reply
+produces a warning and does not by itself block the run. In particular, older
+MeshCore firmware can report <code>unknown</code> for the installed signed OTAFIX 2.4.6
+MeshTower V2 SD image because it omits the legacy UF2 version string. Both the
+shell and PowerShell launchers use this same behavior; no application or
+Companion firmware update is required for this host-side workaround. The runner
+also accepts the new <code>OTAFIX2.4.6</code> and explicitly labelled <code>0.11.0 (base)</code> formats.</p>
+<p>The runner still requires <code>ota self</code> to
 report <code>bootloader: apply OK</code>, <code>bootloader: QSPI apply OK</code>, or
 <code>bootloader: SD apply OK</code> and checks the
 reported bootloader ABI and codec mask against the selected package. If the
 version command is unavailable on older firmware, the script warns and falls
 back to the legacy <code>ota self</code> platform marker. If an nRF52 bootloader lacks
 the required capabilities, install the exact-board OTAFIX bootloader first.
+Positive nRF52 capability markers take precedence over a generic unsupported
+getter response, so it cannot silently skip nRF52 safety checks. Bootloader
+packages still require the independently checked <code>ota bootloader status</code> board,
+target, ABI, codec and storage identity; missing version text never bypasses
+package signature checks or the explicit bootloader-install workflow. The
+separate hardware-qualified <code>rak3401_mota_chain.py</code> retains its exact deployed
+version restriction; it is not a general OTAFIX 2.4.6 update runner.
 Current firmware also reports <code>maxblk:2048</code> near the front of both OTA replies.
 The runner treats a missing marker as the deployed 1 KiB receive limit, rejects
 a ready 2 KiB package for such a target before transfer, and passes the live
