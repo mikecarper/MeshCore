@@ -1843,6 +1843,13 @@ frame at an empty prompt. The explicit start/stop tokens remain available. See
 <a href="../full_companion_usb_switcher/">Full Companion USB CLI and binary switcher</a>
 for the state machine and limitations.</p>
 <h2 id="commands">Commands</h2>
+<p>ESP32 and nRF52 Full Companions include an offline World English Bible lookup:</p>
+<pre><code class="language-text">get John 3:16
+</code></pre>
+<p>This returns a single complete verse from John, using plain ASCII punctuation
+with unchanged wording and capitalization, through the local USB/TCP terminal.
+See <a href="../tools/bible/README.md">John lookup and compression</a> for the
+source, supported build profiles and memory costs.</p>
 <pre><code>set freq {frequency}
 </code></pre>
 <p>Set the LoRa frequency. Example:  set freq 915.8</p>
