@@ -2276,8 +2276,10 @@ public key, or unique hexadecimal key prefix. The runner reads the controller's
 existing contact table and binds each selection to a full key before remote
 commands, so emoji names need not be typed and later name changes cannot
 redirect the run. Duplicate names, ambiguous prefixes, or the same radio under
-different participant aliases stop with an actionable error. Missing contacts
-must first be imported or discovered; a key alone does not create a contact.</p>
+different participant aliases stop with an actionable error. Missing destination
+and relay contacts must first be imported or discovered. A missing connected
+source can be imported with the confirmation prompt below; a key alone does not
+create a contact.</p>
 <p>For a separate source with a managed USB/TCP console, automatic source selection
 reads the physical source's full public key and matches it in the controller's
 contacts. Repeaters use <code>get public.key</code>. Full Companion does not implement
@@ -2296,9 +2298,29 @@ the runner does not guess a key from the node name or skip the identity check.</
 <p>Source selection does not require the source's current name to match an
 old saved advert, and duplicate/emoji names cannot redirect this lookup. An
 explicit <code>--source-contact</code> must identify that same physical source. If its key
-really is missing, import the source contact or advertise/discover it on the
-normal channel first; the normal/TempRadio on-air ACK checks still require the
-contact. The script does not silently create contacts or skip those checks.
+is missing, an interactive run offers:</p>
+<pre><code class="language-text">Add the connected OTA source to this controller's contacts? [y/N]
+</code></pre>
+<p>This works through both the shell and PowerShell launchers. The runner reads the
+source's existing <code>card</code> command over USB/TCP, checks the full key in its contact
+card against the connected source, and shows its name/key before asking. On
+approval it rechecks the source/controller identities and live contact table,
+then uses MeshCore's existing <code>import_contact</code> API. Signature validation remains
+with the controller's normal advert importer. For manual-add controllers it can
+approve only that exact source through <code>add_pending</code>; it does not enable general
+auto-add. A fresh <code>reload_contacts</code> must confirm the full source key before OTA
+continues. No LoRa advertisement or firmware update is required for this import.</p>
+<p>The default answer is <strong>No</strong>; <code>--yes</code> does not approve adding a contact. A
+noninteractive run stops with instructions to rerun in a terminal. Unsupported
+<code>card</code> firmware, malformed/mismatched cards, and unverified imports stop with
+manual-import/discovery guidance. To protect existing contacts, the controller's
+overwrite-oldest policy must be verifiably disabled; otherwise the runner stops
+and shows how to disable that bit without changing other auto-add flags. It does
+not change this policy itself. A full table or rejected import cannot be worked
+around by deleting another contact; an uncertain import is not automatically
+retried. An approved contact remains on the controller for subsequent runs.</p>
+<p>The normal/TempRadio on-air ACK checks still run; adding a contact does not prove
+radio reachability or skip those checks.
 When the controller and source are the same TCP Full Companion, use the verified
 <code>--source-shares-controller</code> topology; it does not need a contact for itself.</p>
 <h2 id="destination-requirements">Destination requirements</h2>
