@@ -1626,7 +1626,7 @@
   <span class="md-ellipsis">
     
   
-    Small-screen Picopixel message font
+    Small-screen message fonts
   
 
     
@@ -1885,9 +1885,9 @@ linked RAM margins, V4/RAK hardware tests and the mOTA queue policy.</p>
 It is not the generic XIAO profile for separately wired radio modules. Both
 boards retain their parent Full Companion features, USB mOTA sender, WiFi
 update slots, and PSRAM-backed offline queue. The V4 also retains direct MQTT.</p>
-<p>The <a href="../v4_pixel5_font_trial/">small-screen Picopixel layout</a> uses 5-pixel
-capital letters, a compact channel/sender line and full message previews.
-A named V4 trial profile is available for hardware qualification.</p>
+<p>The <a href="../v4_pixel5_font_trial/">small-screen message layout</a> uses 6-pixel capitals
+on 128x64 panels and 5-pixel capitals on very tiny panels. It includes a compact
+channel/sender line and full message previews. Font selection is automatic.</p>
 <h2 id="build">Build</h2>
 <p>Enable the optional configuration in the ignored <code>platformio.local.ini</code>:</p>
 <pre><code class="language-ini">[platformio]

@@ -27,7 +27,7 @@
     
     
       
-        <title>Small-screen Picopixel message font - MeshCore Docs</title>
+        <title>Small-screen message fonts - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#small-screen-picopixel-message-font" class="md-skip">
+        <a href="#small-screen-message-fonts" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Small-screen Picopixel message font
+              Small-screen message fonts
             
           </span>
         </div>
@@ -1544,7 +1544,7 @@
   <span class="md-ellipsis">
     
   
-    Small-screen Picopixel message font
+    Small-screen message fonts
   
 
     
@@ -1562,7 +1562,7 @@
   <span class="md-ellipsis">
     
   
-    Small-screen Picopixel message font
+    Small-screen message fonts
   
 
     
@@ -1610,10 +1610,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#hardware-and-build-results-2026-09-08" class="md-nav__link">
+  <a href="#automatic-5px6px-results-2026-09-08" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Hardware and build results, 2026-09-08
+        Automatic 5px/6px results, 2026-09-08
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earlier-5px-hardware-and-build-results-2026-09-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Earlier 5px hardware and build results, 2026-09-08
       
     </span>
   </a>
@@ -1787,10 +1798,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#hardware-and-build-results-2026-09-08" class="md-nav__link">
+  <a href="#automatic-5px6px-results-2026-09-08" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Hardware and build results, 2026-09-08
+        Automatic 5px/6px results, 2026-09-08
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#earlier-5px-hardware-and-build-results-2026-09-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Earlier 5px hardware and build results, 2026-09-08
       
     </span>
   </a>
@@ -1822,23 +1844,51 @@
   
 
 
-<h1 id="small-screen-picopixel-message-font">Small-screen Picopixel message font</h1>
-<p>Small-screen Companion builds use Picopixel for received message text and the
-channel/sender line, including <code>Ch 0 Public</code>. This covers SSD1306 and SH1106
-OLEDs, ST7735 small TFTs, and the U8g2 T-Echo Card display. The shared renderer
-uses the same font data on every driver. Larger displays keep their existing
-font. Menus, Bluetooth PINs and WiFi setup QR codes keep their normal layout.</p>
-<p>Capital letters are 5 logical pixels high; descenders can occupy a sixth
-pixel, so lines advance by 7 pixels. Most characters advance by 4 pixels
-horizontally. The normal OLED font uses 7-pixel letters, 8-pixel line spacing
-and 6-pixel character advances. Small TFTs retain their existing logical to
-physical scaling.</p>
-<p>On a 128 x 64 OLED, compacting the channel/sender line moves message text from
-y=25 to y=21. Six complete small-font rows fit instead of five, roughly 30
-additional characters depending on the letters. Text wraps at character
-boundaries; the last line ends with <code>...</code> if it still cannot fit. Unsupported
-characters appear as <code>?</code>. Long channel/sender names are ellipsized so they
-cannot overlap the message.</p>
+<h1 id="small-screen-message-fonts">Small-screen message fonts</h1>
+<p>Small-screen Companion builds automatically select a compact font for received
+message text and the channel/sender line, including <code>Ch 0 Public</code>. This covers
+SSD1306 and SH1106 OLEDs, ST7735 small TFTs, and the U8g2 T-Echo Card display.
+The shared renderer selects by logical panel dimensions, including rotation:</p>
+<table>
+<thead>
+<tr>
+<th>Panel size</th>
+<th>Font</th>
+<th style="text-align: right;">Capital height</th>
+<th style="text-align: right;">Line spacing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>At least 128 x 64, or 64 x 128 rotated</td>
+<td>Squeezed Regular 6</td>
+<td style="text-align: right;">6 pixels</td>
+<td style="text-align: right;">8 pixels</td>
+</tr>
+<tr>
+<td>Smaller panels, including 72 x 40, 128 x 32 and 64 x 48</td>
+<td>Picopixel</td>
+<td style="text-align: right;">5 pixels</td>
+<td style="text-align: right;">7 pixels</td>
+</tr>
+</tbody>
+</table>
+<p>Both fonts allow one pixel for descenders and one blank pixel row between
+lines. Character widths vary: most letters advance by 4 pixels, with narrow
+letters taking less space and <code>M</code> and <code>W</code> taking 6 pixels. Squeezed Regular 6
+is a <a href="https://github.com/olikraus/u8g2/wiki/fntgrpu8g#squeezed_r6">public-domain font by Oliver Kraus</a>.
+Its bitmap data is stored as constants without heap allocation.</p>
+<p>On a 128 x 64 OLED, the compact channel/sender line starts at y=14 and message
+text at y=22. Five complete 6px-font rows fit. The software comparison fits
+three representative 160-character messages in those five rows. Capacity
+depends on the characters; messages with many wide letters can still overflow.
+Text wraps at character boundaries, with <code>...</code> on the last line if necessary.
+Unsupported characters appear as <code>?</code>. Long channel/sender names are ellipsized
+to stay on their own line. An enabled channel footer reserves its own space.</p>
+<p>Larger display classes keep their existing font. Menus, Bluetooth PINs and WiFi
+setup QR codes keep their normal layout. Small TFTs retain their existing
+logical to physical scaling. The normal OLED font uses 7-pixel letters,
+8-pixel line spacing and 6-pixel character advances.</p>
 <p>The preview buffer holds a complete 160-byte MeshCore message plus its
 terminator. Previously the main message UI allocated 78 bytes, leaving room
 for only 77 bytes of text. It still retains 32 previews; larger records add
@@ -1851,14 +1901,16 @@ screen fills. Incoming text does not replace an active Bluetooth pairing PIN.</p
 <h2 id="v4-hardware-trial">V4 hardware trial</h2>
 <p>Enable <code>platformio.nimble.ini</code> in the ignored <code>platformio.local.ini</code> as shown
 in the <a href="../nimble_companion_trial/#build">NimBLE trial guide</a>, then run:</p>
-<pre><code class="language-sh">OUTPUT_DIR=.releases/v4-pixel5 bash build.sh build-firmware \
-  heltec_v4_2_v4_3_companion_radio_full_femon_nimble_pixel5 \
-  --firmware-version v1.17.1.5-halo-keymind-cascade-pixel5-trial \
+<pre><code class="language-sh">OUTPUT_DIR=.releases/v4-smallfont bash build.sh build-firmware \
+  heltec_v4_2_v4_3_companion_radio_full_femon_nimble \
+  --firmware-version v1.17.1.5-halo-keymind-cascade-squeezed6-trial \
   --radio-preset usa-cascadia --profile cascade --standard --require-ota
 </code></pre>
-<p>The named trial keeps NimBLE, 350 contacts, 40 channels, the V4's 512-frame
+<p>This build keeps NimBLE, 350 contacts, 40 channels, the V4's 512-frame
 PSRAM queue, USB mOTA sending and WiFi OTA support. The smaller font is also
-the default in ordinary small-screen Companion builds from this source.</p>
+the default in ordinary small-screen Companion builds from this source.
+The older <code>_nimble_pixel5</code> environment name remains available, but also uses
+the automatic 5px/6px selection.</p>
 <p>Use the application <code>.bin</code> for WiFi OTA. A clean USB install uses the merged
 image at address 0. When manually writing the application at <code>0x10000</code>, an
 existing OTA selector may still boot app1. Check the running <code>ver</code> afterward.
@@ -1874,15 +1926,83 @@ No settings erase is necessary when changing between matching V4 layouts.</p>
 python3 -B test/test_firmware_ram.py
 pio test -e native -f test_display_driver -f test_companion_message_history
 </code></pre>
-<p>The native tests exercise the shared renderer, five-pixel capitals, complete
-rows at display edges, long sender lines, overflow markers and tiny/rotated
-screen geometry. The additional Adafruit comparison checks all 95 printable
-ASCII glyphs pixel for pixel against the original Picopixel font, under
-address/undefined-behavior sanitizers. That comparison needs a cached
+<p>The native tests exercise both capital heights, automatic font selection,
+160-character messages, complete rows at display edges, long sender lines,
+reserved footers, overflow markers and tiny/rotated screen geometry. The
+additional rendering comparison checks all 95 printable ASCII glyphs in each
+font, under address/undefined-behavior sanitizers. Picopixel is compared pixel
+for pixel with Adafruit GFX; Squeezed Regular 6 is compared with the upstream
+BDF fixture independently of the converted C++ tables. This needs a cached
 PlatformIO Adafruit GFX library; set <code>MESHCORE_GFX_LIBRARY</code> to its directory
 if needed. It reports a skip when the library is absent. The native tests do
 not require that dependency. Run only one PlatformIO command at a time.</p>
-<h2 id="hardware-and-build-results-2026-09-08">Hardware and build results, 2026-09-08</h2>
+<h2 id="automatic-5px6px-results-2026-09-08">Automatic 5px/6px results, 2026-09-08</h2>
+<p>Source revision <code>469b47d1</code> passed five representative firmware builds. All
+five retained the same static RAM usage and startup heap margin as their
+earlier 5px builds. The four Full profiles also passed required OTA packaging.</p>
+<table>
+<thead>
+<tr>
+<th>Hardware/profile</th>
+<th>Display</th>
+<th style="text-align: right;">Selected capital height</th>
+<th style="text-align: right;">RAM beyond the required startup budget, bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>V4.2/V4.3 Full NimBLE</td>
+<td>SSD1306</td>
+<td style="text-align: right;">6 pixels</td>
+<td style="text-align: right;">88,072</td>
+</tr>
+<tr>
+<td>T096 Full, FEM on</td>
+<td>ST7735</td>
+<td style="text-align: right;">6 pixels</td>
+<td style="text-align: right;">24,778</td>
+</tr>
+<tr>
+<td>Station G3 ESP32 Full</td>
+<td>SH1106</td>
+<td style="text-align: right;">6 pixels</td>
+<td style="text-align: right;">82,080</td>
+</tr>
+<tr>
+<td>RAK3401 Full</td>
+<td>SSD1306</td>
+<td style="text-align: right;">6 pixels</td>
+<td style="text-align: right;">46,108</td>
+</tr>
+<tr>
+<td>T-Echo Card BLE Companion</td>
+<td>U8g2, 72 x 40</td>
+<td style="text-align: right;">5 pixels</td>
+<td style="text-align: right;">30,992</td>
+</tr>
+</tbody>
+</table>
+<p>The native display/history suites passed 36 tests. The Python font, RAM,
+pairing, display-profile, queue and QR checks passed 38 tests, including
+pixel comparisons for all 95 ASCII glyphs in each font. The actual SSD1306
+software rendering matches the approved 6px comparison image pixel for pixel.</p>
+<p>Both <code>NimBLE-V4-VM</code> and <code>NimBLE-V4-Trial</code> were flashed with
+<code>v1.17.1.5-halo-keymind-cascade-squeezed6-trial-469b47d1</code>. Their partition tables
+and application hashes were verified, their settings retained, and running
+versions confirmed. Each passed 201 USB protocol requests without error flags.
+The Mercerwood V4 reconnected over bonded Bluetooth at MTU 179 and retained
+the factory-address policy.</p>
+<p>The XIAO sent a private 160-byte LoRa message to the Mercerwood V4. All bytes
+arrived, and the V4 stayed responsive through 20 seconds of display refreshes
+with no uptime reset or error flags. Both temporary channel settings were
+restored. After that interval the V4 had 147,196 bytes of free internal heap,
+a minimum of 146,328 bytes, and a largest free block of 139,252 bytes.</p>
+<p>These are short functional checks. Physical readability remains a user
+judgment. A message with many wide characters can still need truncation.</p>
+<p>V4 application size: 1,778,936 bytes (1,152 bytes larger than the earlier
+5px trial). SHA-256:
+<code>8e6797b90741bf013b3757668e5a23378ac8c0b0ed9c75830939f13305c56a68</code>.</p>
+<h2 id="earlier-5px-hardware-and-build-results-2026-09-08">Earlier 5px hardware and build results, 2026-09-08</h2>
 <p>Source revision <code>eeea15ef</code> passed seven representative firmware builds:</p>
 <table>
 <thead>
