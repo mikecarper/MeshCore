@@ -2064,13 +2064,13 @@ the USB host. Espressif documents the underlying
 <p>To enable <strong>USB logging on an ESP32 1.17.1.5 image with logging support</strong>,
 disable power saving first. Use the role's text terminal, or the repeater's
 remote admin CLI if USB has already disappeared:</p>
-<pre><code class="language-text">powersaving off
+<pre><code class="language-text">set powersaving off
 set usb.logging on
-powersaving
+get powersaving
 get usb.logging
 </code></pre>
 <p>The read-back commands should report power saving <code>off</code> and USB logging <code>on</code>.
-For an image without USB logging, use just <code>powersaving off</code> and <code>powersaving</code>
+For an image without USB logging, use just <code>set powersaving off</code> and <code>get powersaving</code>
 to apply/check the sleep workaround. Disabling power saving saves the setting and takes
 effect immediately; it does not erase the node or change LoRa RX power
 saving (<code>radio.rxps</code>). If USB does not reappear after disabling sleep
@@ -2078,16 +2078,17 @@ remotely, power-cycle once and check that the port and display button remain
 usable beyond the two-minute mark. Ordinary reflashing can retain the
 saved power-saving setting, so check it during comparisons with another
 firmware build too.</p>
-<p>On unified Full infrastructure, also run <code>powersaving off</code> before enabling
+<p>On unified Full infrastructure, also run <code>set powersaving off</code> before enabling
 USB through <code>set logging.output usb</code> or <code>set logging.output both</code>. These are
 separate commands. Turning logging off does not automatically restore the
 saved power-saving setting. nRF52 logging does not need this ESP32 workaround.</p>
-<p><strong>WiFi/MQTT-only logging does not need <code>powersaving off</code> while the
+<p><strong>WiFi/MQTT-only logging does not need <code>set powersaving off</code> while the
 Repeater/Room Server MQTT bridge is running.</strong> The original <code>26303793</code> code
 already prevents device sleep in that state. Select <code>set logging.output wifi</code>
-where supported and check <code>get bridge.running</code>; <code>get bridge.enabled</code> alone
-only checks the saved preference. Full Companion MQTT uses WebConfig instead
-of infrastructure <code>logging.output</code>/<code>bridge.*</code> commands.</p>
+where supported and check <code>get mqtt.running</code>; <code>get mqtt.enabled</code> alone
+only checks the saved preference. MQTT-capable Full Companion now uses the
+same <code>mqtt.enabled</code> and <code>logging.output</code> commands as infrastructure. Disabling
+MQTT preserves broker settings; the MQTT tab exposes the same master switch.</p>
 <p>The source correction keeps native USB serviced while a host is enumerated,
 including when its terminal is closed. Enabled live USB logging also blocks
 ESP32 light sleep, even without a host. FreeRTOS can still idle/yield; this

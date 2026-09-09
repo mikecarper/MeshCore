@@ -1460,10 +1460,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#companion-mqtt-use-webconfig-not-infrastructure-cli-commands" class="md-nav__link">
+  <a href="#mqtt-controls-shared-by-companion-and-infrastructure" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Companion MQTT: use WebConfig, not infrastructure CLI commands
+        MQTT controls shared by Companion and infrastructure
       
     </span>
   </a>
@@ -1499,10 +1499,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#infrastructure-mqtt-and-logging-output" class="md-nav__link">
+  <a href="#shared-mqtt-and-logging-output" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Infrastructure MQTT and logging output
+        Shared MQTT and logging output
       
     </span>
   </a>
@@ -1877,10 +1877,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#companion-mqtt-use-webconfig-not-infrastructure-cli-commands" class="md-nav__link">
+  <a href="#mqtt-controls-shared-by-companion-and-infrastructure" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Companion MQTT: use WebConfig, not infrastructure CLI commands
+        MQTT controls shared by Companion and infrastructure
       
     </span>
   </a>
@@ -1916,10 +1916,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#infrastructure-mqtt-and-logging-output" class="md-nav__link">
+  <a href="#shared-mqtt-and-logging-output" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Infrastructure MQTT and logging output
+        Shared MQTT and logging output
       
     </span>
   </a>
@@ -1997,7 +1997,7 @@ CLI aliases. Use the commands in the role-specific tables and examples.</p>
 Chrome or Edge, connect a data-capable USB cable, close other applications
 using that port, and select the device. Use <strong>115200 baud</strong> when prompted.
 Full Companion, Repeater, Room Server, and Sensor start with an <strong>ASCII USB
-terminal</strong>. Run <code>board</code>, then <code>version</code> on a Companion or <code>ver</code> on infrastructure.</p>
+terminal</strong>. Run <code>board</code>, then <code>ver</code> on any role.</p>
 <p>If a Companion app has already switched USB to its binary protocol, send:</p>
 <pre><code class="language-text">+++MESHCORE-TERM-START
 </code></pre>
@@ -2007,13 +2007,14 @@ USB/BLE/WiFi Companion images can start in binary mode; use the start token
 there too. KISS firmware uses its modem protocol and is outside this release.</p>
 <p>The linked console runs in your computer's browser over <strong>USB</strong>. It does not
 need node WiFi or <code>set webui on</code>. <strong>WebConfig</strong> is a separate settings website
-served by supported ESP32 images. Infrastructure WebConfig can include a
-browser command terminal (<code>set wifi.cli on</code>); Companion WebConfig does not.
-Full ESP32 Companion also has a text terminal at TCP port <strong>5002</strong>.</p>
+served by supported ESP32 images. Both infrastructure and WiFi Companion
+WebConfig include a browser command terminal (<code>set wifi.cli on</code>), enabled by
+default on the LAN. Full ESP32 Companion also has a text terminal at TCP port <strong>5002</strong>
+for its complete chat and streaming command surface.</p>
 <h2 id="which-old-variant-setting-should-i-use">Which old variant setting should I use?</h2>
 <p><strong>Search terms:</strong> old firmware variants, restore features, turn features on or off, enable MQTT, disable MQTT.</p>
 <p>These controls apply to every board with the corresponding compiled feature;
-use the board exceptions below when the command differs.</p>
+check the hardware requirements below.</p>
 <table>
 <thead>
 <tr>
@@ -2027,16 +2028,16 @@ use the board exceptions below when the command differs.</p>
 <td>Same role's canonical image; <code>set usb.logging on</code> / <code>off</code></td>
 </tr>
 <tr>
-<td>Infrastructure USB logging, WiFi MQTT, or both</td>
-<td>Unified MQTT-capable Full infrastructure; <code>set logging.output usb</code>, <code>wifi</code>, <code>both</code>, or <code>off</code></td>
+<td>USB logging, WiFi MQTT, or both</td>
+<td>MQTT-capable image with USB logging; <code>set logging.output usb</code>, <code>wifi</code>, <code>both</code>, or <code>off</code></td>
 </tr>
 <tr>
 <td>Companion WiFi-MQTT variant</td>
-<td>MQTT-capable Full Companion; configure broker slots in WebConfig</td>
+<td><code>set mqtt.enabled on</code> / <code>off</code>; configure broker slots through the CLI or WebConfig</td>
 </tr>
 <tr>
 <td><code>_ps</code> power-saving variant</td>
-<td><code>powersaving on</code> / <code>off</code> on Companion; infrastructure forms and restrictions below</td>
+<td><code>set powersaving on</code> / <code>off</code>; check <code>get powersaving</code> on every role</td>
 </tr>
 <tr>
 <td><code>_femoff</code> / FEM-gain variant</td>
@@ -2068,9 +2069,12 @@ use the board exceptions below when the command differs.</p>
 </tr>
 </tbody>
 </table>
-<p>Full infrastructure and Full Companion are different roles. In particular,
-<strong><code>logging.output</code> and <code>bridge.enabled</code> are infrastructure commands</strong>, not
-Full Companion MQTT switches.</p>
+<p>Companion, Repeater, Room Server, and Sensor use the same command names for
+shared settings. Use <code>get &lt;setting&gt;</code> to check and <code>set &lt;setting&gt; &lt;value&gt;</code> to
+change them. A command requires its feature to be compiled into the build.
+<code>set usb.logging on|off</code> changes only USB logging. On MQTT-capable builds,
+<code>set mqtt.enabled on|off</code> changes only MQTT and keeps broker settings;
+<code>set logging.output off|usb|wifi|both</code> selects both outputs together.</p>
 <h2 id="full-companion-commands">Full Companion commands</h2>
 <table>
 <thead>
@@ -2084,9 +2088,9 @@ Full Companion MQTT switches.</p>
 <tbody>
 <tr>
 <td>Device power saving</td>
-<td><code>powersaving on</code></td>
-<td><code>powersaving off</code></td>
-<td><code>powersaving</code></td>
+<td><code>set powersaving on</code></td>
+<td><code>set powersaving off</code></td>
+<td><code>get powersaving</code></td>
 </tr>
 <tr>
 <td>LoRa RX power saving</td>
@@ -2114,9 +2118,9 @@ Full Companion MQTT switches.</p>
 </tr>
 <tr>
 <td>ESP32 USB logging</td>
-<td><code>powersaving off</code>, then <code>set usb.logging on</code></td>
+<td><code>set powersaving off</code>, then <code>set usb.logging on</code></td>
 <td><code>set usb.logging off</code></td>
-<td><code>powersaving</code>, <code>get usb.logging</code></td>
+<td><code>get powersaving</code>, <code>get usb.logging</code></td>
 </tr>
 <tr>
 <td>nRF52 second USB logging port</td>
@@ -2125,10 +2129,22 @@ Full Companion MQTT switches.</p>
 <td><code>get usb.logging</code></td>
 </tr>
 <tr>
+<td>MQTT master</td>
+<td><code>set mqtt.enabled on</code></td>
+<td><code>set mqtt.enabled off</code></td>
+<td><code>get mqtt.enabled</code>, <code>get mqtt.running</code>, <code>get mqtt.status</code></td>
+</tr>
+<tr>
 <td>ESP32 persistent WebConfig</td>
 <td><code>set webui on</code></td>
 <td><code>set webui off</code></td>
 <td><code>get webui</code></td>
+</tr>
+<tr>
+<td>ESP32 WebConfig browser console</td>
+<td><code>set wifi.cli on</code></td>
+<td><code>set wifi.cli off</code></td>
+<td><code>get wifi.cli</code></td>
 </tr>
 <tr>
 <td>ESP32 temporary setup AP</td>
@@ -2157,24 +2173,31 @@ existing saved preferences win after an update.</p>
 <p><strong>ESP32:</strong> logging and binary Companion traffic share one USB port. Turn logging
 off before handing USB to an app/MOTA host. <strong>nRF52:</strong> the optional second CDC
 port is for logs; use the primary port for Companion/MOTA. Adding/removing the
-second port requires the <code>reboot</code> suffix shown above.</p>
-<h3 id="companion-mqtt-use-webconfig-not-infrastructure-cli-commands">Companion MQTT: use WebConfig, not infrastructure CLI commands</h3>
-<p><strong>Search terms:</strong> Companion MQTT settings, Companion MQTT on, Companion MQTT off, broker configuration.</p>
-<ol>
-<li>Run <code>set webui on</code> and open the URL reported by <code>get webui</code>, or run
-   <code>start webconfig ap</code> and join the setup network.</li>
-<li>In the MQTT cards, select a broker preset and configure its required
-   details. Save to enable that slot.</li>
-<li>To disable MQTT connections, select <strong><code>none</code> for every broker slot</strong> and
-   save. To enable them again, restore the desired presets/settings and save.</li>
-<li>Use the separate status, packets, raw, receive, and transmit controls to
-   choose what is published. Turning off status publication alone leaves
-   broker connections enabled.</li>
-</ol>
-<p>Full Companion has no USB text equivalents for <code>set mqtt1.preset</code>,
-<code>set bridge.enabled</code>, or <code>set logging.output</code>. Use its WebConfig controls.
-USB logging is independent of those broker slots. Images without MQTT code
-do not show MQTT cards.</p>
+second port requires a reboot; the optional suffix shown above requests it.</p>
+<h3 id="mqtt-controls-shared-by-companion-and-infrastructure">MQTT controls shared by Companion and infrastructure</h3>
+<p><strong>Search terms:</strong> Companion MQTT settings, MQTT on, MQTT off, broker configuration.</p>
+<p>Configure a broker through the MQTT tab or with the same commands on either
+role. For example:</p>
+<pre><code class="language-text">set mqtt.iata SEA
+set mqtt1.preset custom
+set mqtt1.server broker.example.com
+set mqtt1.port 1883
+set mqtt.enabled on
+get mqtt.enabled
+get mqtt.running
+get mqtt.status
+</code></pre>
+<p><code>set mqtt.enabled off</code> disconnects brokers while preserving their settings.
+<code>set mqtt.enabled on</code> allows configured brokers to reconnect. An enabled switch
+is separate from a running connection: check <code>get mqtt.running</code> and
+<code>get mqtt.status</code>. The MQTT tab's <strong>Enable MQTT</strong> checkbox controls this same
+saved switch. Slot credentials and presets are available through <code>get/set
+mqtt1.*</code>, <code>mqtt2.*</code>, and the remaining supported slots; secrets stay masked in
+the browser. WiFi Companion accepts these commands through its USB terminal
+and browser CLI; Full Companion also accepts TCP port 5002.</p>
+<p><code>set mqtt1.preset none</code> disables just that slot. Publication controls such as
+<code>set mqtt.status off</code> do not disconnect brokers. USB logging is independent.
+Images without MQTT code do not show MQTT cards or accept MQTT controls.</p>
 <h3 id="companion-wifi-bluetooth-gps-and-board-exceptions">Companion WiFi, Bluetooth, GPS, and board exceptions</h3>
 <p>Configure ESP32 WiFi with:</p>
 <pre><code class="language-text">set wifi.ssid MyNetwork
@@ -2191,9 +2214,10 @@ There is no universal Bluetooth-off or Ethernet-off text command.</p>
 <code>reboot</code> selects WiFi; <code>set companion.transport ble</code> followed by <code>reboot</code>
 selects Bluetooth. Check <code>get companion.transport</code>. USB remains available.
 Primary ESP-NOW Indicator images keep their mesh radio in either selection.</p>
-<p><strong>GPS-equipped Companions:</strong> use <code>gps=1</code> / <code>gps=0</code> in the Companion app's
-custom sensor settings. These are app settings, not ASCII terminal commands.
-See <a href="../gps_tracking/">GPS tracking</a> for location-sharing settings.</p>
+<p><strong>GPS-equipped builds:</strong> use <code>get gps</code>, <code>set gps on</code>, and <code>set gps off</code> on
+Companion and infrastructure. The Companion app's <code>gps=1</code> / <code>gps=0</code> custom
+setting controls the same GPS. See <a href="../gps_tracking/">GPS tracking</a> for
+location-sharing settings.</p>
 <h2 id="repeater-room-server-and-sensor-commands">Repeater, Room Server, and Sensor commands</h2>
 <p>These roles use CommonCLI. Feature-dependent commands require the relevant
 hardware/build; MQTT is present in observer builds, and WebConfig is absent
@@ -2210,9 +2234,9 @@ from some portable builds. The USB browser console still works without it.</p>
 <tbody>
 <tr>
 <td>Live USB logging</td>
-<td>ESP32 1.17.1.5: <code>powersaving off</code>, then <code>set usb.logging on</code>; other platforms: <code>set usb.logging on</code></td>
+<td>ESP32 1.17.1.5: <code>set powersaving off</code>, then <code>set usb.logging on</code>; other platforms: <code>set usb.logging on</code></td>
 <td><code>set usb.logging off</code></td>
-<td><code>powersaving</code>, <code>get usb.logging</code></td>
+<td><code>get powersaving</code>, <code>get usb.logging</code></td>
 </tr>
 <tr>
 <td>Capture RX log to node storage</td>
@@ -2221,7 +2245,7 @@ from some portable builds. The USB browser console still works without it.</p>
 <td><code>log</code> prints the capture locally</td>
 </tr>
 <tr>
-<td>MQTT / RS232 / ESP-NOW bridge master</td>
+<td>RS232 / ESP-NOW bridge master</td>
 <td><code>set bridge.enabled on</code></td>
 <td><code>set bridge.enabled off</code></td>
 <td><code>get bridge.enabled</code>, <code>get bridge.running</code>, <code>get bridge.type</code></td>
@@ -2263,6 +2287,12 @@ from some portable builds. The USB browser console still works without it.</p>
 <td><code>get mqtt.tx</code></td>
 </tr>
 <tr>
+<td>MQTT master</td>
+<td><code>set mqtt.enabled on</code></td>
+<td><code>set mqtt.enabled off</code></td>
+<td><code>get mqtt.enabled</code>, <code>get mqtt.running</code>, <code>get mqtt.status</code></td>
+</tr>
+<tr>
 <td>ESP32 persistent WebConfig</td>
 <td><code>set webui on</code></td>
 <td><code>set webui off</code></td>
@@ -2294,20 +2324,22 @@ from some portable builds. The USB browser console still works without it.</p>
 </tr>
 <tr>
 <td>GPS, when compiled</td>
-<td><code>gps on</code></td>
-<td><code>gps off</code></td>
-<td><code>gps</code></td>
+<td><code>set gps on</code></td>
+<td><code>set gps off</code></td>
+<td><code>get gps</code></td>
 </tr>
 </tbody>
 </table>
-<p>Infrastructure <code>set usb.logging</code> has <strong>no <code>reboot</code> suffix</strong>, including nRF52.
-<code>log start/stop</code> records to storage independently of live USB logging. Use
+<p>Use <code>set usb.logging on|off</code> on every role. Adding the optional <code>reboot</code> suffix
+requests a reboot only when changing the USB interfaces requires it, as on
+nRF52 Full Companion. <code>log start/stop</code> records to storage independently of live
+USB logging. Use
 <code>log erase</code> to delete that capture.</p>
 <p>For <strong>ESP32 1.17.1.5 USB logging</strong>, run these as separate commands in the
 role's text terminal (or remote admin CLI on infrastructure):</p>
-<pre><code class="language-text">powersaving off
+<pre><code class="language-text">set powersaving off
 set usb.logging on
-powersaving
+get powersaving
 get usb.logging
 </code></pre>
 <p>Check for power saving <code>off</code> and USB logging <code>on</code>. This avoids the released
@@ -2321,10 +2353,10 @@ available. <code>set usb.logging off</code> removes that blocker; an attached na
 host still prevents sleep. On Full infrastructure, <code>set logging.output usb</code>
 and <code>both</code> enable the same USB blocker; <code>wifi</code> and <code>off</code> remove it. File capture
 with <code>log start</code> is independent. The original 1.17.1.5 binaries require the
-<code>powersaving off</code> workaround described in the release note.</p>
-<h3 id="infrastructure-mqtt-and-logging-output">Infrastructure MQTT and logging output</h3>
+<code>set powersaving off</code> workaround described in the release note.</p>
+<h3 id="shared-mqtt-and-logging-output">Shared MQTT and logging output</h3>
 <p><strong>Search terms:</strong> MQTT settings, MQTT on, MQTT off, logging output, USB and WiFi logging.</p>
-<p>On unified Full infrastructure with both MQTT and USB logging compiled:</p>
+<p>On any Companion or infrastructure build with both MQTT and USB logging compiled:</p>
 <table>
 <thead>
 <tr>
@@ -2340,7 +2372,7 @@ with <code>log start</code> is independent. The original 1.17.1.5 binaries requi
 <td>Off</td>
 </tr>
 <tr>
-<td><code>powersaving off</code>, then <code>set logging.output usb</code></td>
+<td><code>set powersaving off</code>, then <code>set logging.output usb</code></td>
 <td>On</td>
 <td>Off</td>
 </tr>
@@ -2350,31 +2382,32 @@ with <code>log start</code> is independent. The original 1.17.1.5 binaries requi
 <td>On</td>
 </tr>
 <tr>
-<td><code>powersaving off</code>, then <code>set logging.output both</code></td>
+<td><code>set powersaving off</code>, then <code>set logging.output both</code></td>
 <td>On</td>
 <td>On</td>
 </tr>
 </tbody>
 </table>
-<p><code>get logging.output</code> reports the selection. Fresh unified Full preferences
-select <code>both</code>; saved settings override this. To toggle only MQTT while keeping
-USB logging unchanged, use <code>set bridge.enabled off</code> / <code>on</code>. Neither setting
+<p><code>get logging.output</code> reports the selection. Fresh unified Full infrastructure
+preferences select <code>both</code>; Full Companion starts with USB logging off. Saved
+settings override these defaults. To toggle only MQTT while keeping
+USB logging unchanged, use <code>set mqtt.enabled off</code> / <code>on</code>. Neither setting
 turns LoRa repeating off. Repeater forwarding uses <code>set repeat off</code> / <code>on</code>
 and <code>get repeat</code> separately.</p>
-<p>The <code>powersaving off</code> step above is the <strong>1.17.1.5 ESP32 USB workaround</strong>.
+<p>The <code>set powersaving off</code> step above is the <strong>1.17.1.5 ESP32 USB workaround</strong>.
 <strong>WiFi/MQTT-only logging does not need it while the Repeater/Room Server MQTT
 bridge is running:</strong> that sleep guard already exists in the released firmware.
-Use <code>get bridge.running</code> to check that the bridge is running; an enabled
+Use <code>get mqtt.running</code> to check that MQTT is running; an enabled
 preference alone is not the running state. <code>set logging.output wifi</code> keeps
 USB logging off and uses that MQTT guard.</p>
-<p>For a custom broker on an MQTT-capable Repeater or Room Server:</p>
+<p>For a custom broker on an MQTT-capable Companion, Repeater, or Room Server:</p>
 <pre><code class="language-text">set wifi.ssid MyNetwork
 set wifi.pwd my-password
 set mqtt.iata SEA
 set mqtt1.preset custom
 set mqtt1.server broker.example.com
 set mqtt1.port 1883
-set bridge.enabled on
+set mqtt.enabled on
 get mqtt.status
 </code></pre>
 <p>Set <code>mqtt1.username</code> / <code>mqtt1.password</code> if required by that broker. Configure only
@@ -2383,14 +2416,10 @@ other configured slots remain enabled. <code>set mqtt.status off</code> disables
 messages, not MQTT itself. See the <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md">MQTT reference</a>
 for presets, TLS, credentials, and slot limits.</p>
 <h3 id="infrastructure-power-saving-and-bridges">Infrastructure power saving and bridges</h3>
-<p><code>powersaving</code> reads the saved device setting. The bare <strong><code>powersaving on</code></strong>
-command rejects local/USB-connected requests on nRF52 and standalone ESP32;
-use it remotely with USB data disconnected. ESP32 bridge builds reject that
-bare enable command. <code>powersaving off</code> disables it.</p>
-<p>The separate <strong><code>set powersaving on</code> / <code>set powersaving off</code></strong> form, also used
-by infrastructure WebConfig, saves/applies the preference without those
-bare-command guards. Actual sleep depends on the board implementation and
-can interrupt WiFi. Do not assume it behaves like Companion CPU/GPS saving.</p>
+<p>Use <code>get powersaving</code>, <code>set powersaving on</code>, and <code>set powersaving off</code> on every
+role. The preference is saved. Hardware and active USB/network services decide
+when sleeping is possible; the command names do not change between roles.
+Device power saving is separate from WiFi modem sleep and LoRa RXPS.</p>
 <p>On RS232-capable repeater images, stop the bridge before changing its serial
 port or baud rate, then restart it:</p>
 <pre><code class="language-text">set bridge.enabled off
@@ -2404,8 +2433,8 @@ GPS-free image. <strong>ESP-NOW bridge:</strong> use <code>set bridge.channel &l
 use <code>set espnow.channel &lt;1..13&gt;</code> and reboot; this is a different radio setting.</p>
 <p>For infrastructure WebConfig on the LAN, use <code>start webconfig</code> /
 <code>stop webconfig</code>. To force a setup AP on an observer, first run
-<code>set bridge.enabled off</code>, then <code>start webconfig ap</code>. When finished, run
-<code>stop webconfig</code> and restore <code>set bridge.enabled on</code> if you did not reboot.</p>
+<code>set mqtt.enabled off</code>, then <code>start webconfig ap</code>. When finished, run
+<code>stop webconfig</code> and restore <code>set mqtt.enabled on</code> if you did not reboot.</p>
 <h2 id="updating-and-sending-mota">Updating and sending MOTA</h2>
 <p><strong>Search terms:</strong> mOTA, LoRa OTA, update over LoRa, wireless firmware transfer.</p>
 <p>All released Full Companions can serve MOTA to other nodes. Close the console

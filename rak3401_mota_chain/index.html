@@ -2650,7 +2650,7 @@ ota self
 get bootloader.ver
 get system.watchdog
 get radio.rxps
-powersaving
+get powersaving
 get rxdelay
 get af
 ota config
@@ -2665,7 +2665,7 @@ about 60 seconds. Reconnect, wait at least 90 seconds from the command, and
 require <code>get system.watchdog</code> to report <code>&gt; off</code> before continuing.</p>
 <p>For a direct bench link, apply these temporary transfer guardrails to the RAK
 after every bridge reboot:</p>
-<pre><code class="language-text">powersaving off
+<pre><code class="language-text">set powersaving off
 set radio.rxps off
 set rxdelay 0
 ota config hops 0
@@ -2676,7 +2676,7 @@ firmware's saved airtime wait during this bounded maintenance window. Record
 <code>get af</code> first and restore that exact value after the final step. Current
 firmware grants the bounded TempRadio transfer budget without overwriting the
 saved airtime factor.</p>
-<p><code>powersaving off</code> is an isolation guardrail, not the fix for the observed
+<p><code>set powersaving off</code> is an isolation guardrail, not the fix for the observed
 failure. The actual source failure was an oversized USB CDC reply; current
 firmware splits those reads. Some historical bridge builds may report RXPS as
 unsupported while already operating continuously. Verify the reported state
@@ -2928,7 +2928,7 @@ the same RXPS policy as the generic runner.
 The mixed historical chain therefore verifies <code>radio.rxps off</code> after every
 bridge reboot; a future all-v1.17.1.5-or-newer SF5/BW250 chain would instead
 keep RXPS on under the qualified level-8/preamble-64 boundary. It also verifies
-<code>powersaving off</code> and <code>rxdelay 0</code>, plus <code>af 0</code> when
+<code>set powersaving off</code> and <code>rxdelay 0</code>, plus <code>af 0</code> when
 <code>--legacy-full-airtime</code> was explicitly selected. It restores every original
 value only after the exact endpoint is proven. An interrupted run deliberately
 leaves those transfer guardrails active; rerun the same command with the same

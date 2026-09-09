@@ -2146,7 +2146,7 @@ the node from forwarding it over LoRa.</p>
 <ul>
 <li><code>set repeat on|off</code> controls whether an observer repeats eligible LoRa
   packets;</li>
-<li><code>set bridge.enabled on|off</code> starts or stops the MQTT bridge;</li>
+<li><code>set mqtt.enabled on|off</code> starts or stops MQTT and preserves broker settings;</li>
 <li><code>set mqtt.rx on|off</code> controls uplinking of received packets;</li>
 <li><code>set mqtt.tx off|advert|on</code> controls uplinking of transmitted packets.</li>
 </ul>
@@ -2226,7 +2226,7 @@ and passwords at most 63. Leave the password value empty for an open network.</p
 get wifi.status
 get wifi.powersave
 get wifi.cli
-get bridge.enabled
+get mqtt.enabled
 get mqtt.rx
 get mqtt.tx
 get mqtt.status
@@ -2239,13 +2239,13 @@ enabled after every reboot:</p>
 </code></pre>
 <p>This uses the LAN when WiFi is connected. To force the setup AP, the MQTT bridge
 must release WiFi first:</p>
-<pre><code class="language-text">set bridge.enabled off
+<pre><code class="language-text">set mqtt.enabled off
 start webconfig ap
 </code></pre>
 <p>After provisioning, use <strong>Save &amp; Reboot</strong>, or stop the temporary portal and
 restart the bridge:</p>
 <pre><code class="language-text">stop webconfig
-set bridge.enabled on
+set mqtt.enabled on
 </code></pre>
 <p>Current MQTT observer artifacts use the expanded FULL partition profile so
 WebConfig and the complete role CLI are retained. Install the matching merged
@@ -2353,7 +2353,7 @@ tracking prevents an individual bridge from immediately echoing a packet back.</
 <p>If the configured network remains unavailable for two minutes, the companion
 opens its setup AP so the credentials can be repaired. It continues retrying
 the saved network. WiFi modem sleep has its own persisted <code>wifi.powersave</code>
-setting and is independent of the Companion device <code>powersaving</code> setting. The
+setting and is independent of the Companion device power-saving setting. The
 WiFi card in Companion WebConfig exposes <code>none</code>, <code>min</code>, and <code>max</code>. Fresh
 Cascade-profile builds select <code>min</code>; target-default builds select <code>none</code>.
 A saved setting takes precedence after an upgrade.</p>
@@ -2442,10 +2442,10 @@ attached and available for LoRa OTA service.</p>
 waits for that connection rather than creating a second one. Stopping MQTT does
 not disable the TCP companion service.</p>
 <p>MQTT-capable Full Companions also combine these services. The WebConfig page
-contains MQTT settings; Full Companion has a USB/TCP text terminal, but does
-not expose the infrastructure <code>mqtt.*</code>, <code>bridge.enabled</code>, or <code>logging.output</code>
-commands there. Select <code>none</code> for every broker slot and save to disable MQTT;
-restore the desired presets/settings and save to enable it.</p>
+contains MQTT settings, and the USB/TCP and browser terminals accept the same
+<code>mqtt.*</code> settings as infrastructure for shared features. Use
+<code>set mqtt.enabled on|off</code> to control MQTT without discarding broker settings.
+Use <code>set logging.output off|usb|wifi|both</code> to select both outputs together.</p>
 <h2 id="webconfig-without-mqtt">WebConfig without MQTT</h2>
 <p>Full-size ESP32 repeater and room-server builds can include WebConfig even when
 MQTT is absent. The portal then shows node, radio, and WiFi-related controls but
@@ -2605,13 +2605,13 @@ WiFi only, not LoRa transmit power.</p>
 <h2 id="recognizing-the-wrong-firmware">Recognizing the wrong firmware</h2>
 <p><code>get wifi.status</code>, <code>get wifi.ssid</code>, <code>get wifi.powersave</code>, and <code>get wifi.cli</code>
 are available on MQTT observers and on FULL non-MQTT repeater/room-server
-builds with WebConfig. ESP32 WiFi Companions expose the first three commands,
-credential setters, and <code>start webconfig [ap]</code> through their USB text terminal;
-<code>get/set wifi.cli</code> explicitly report that the repeater/room-server browser CLI
-is unavailable. Full Companion instead exposes its complete role-specific text
-terminal on TCP port 5002.
-MQTT commands such as <code>get mqtt.status</code> and <code>set mqtt1.preset ...</code> still require
-an MQTT observer target. Unknown settings return <code>Error: unknown setting:
+builds with WebConfig. ESP32 WiFi Companions also expose all four commands,
+credential setters, and <code>start webconfig [ap]</code> through their USB text terminal.
+Their browser CLI defaults to on in station/LAN mode.
+Full Companion also exposes its complete role-specific text terminal on TCP
+port 5002, including chat and streaming commands.
+MQTT commands such as <code>get mqtt.status</code> and <code>set mqtt1.preset ...</code> require
+MQTT code in the image, on Companion or infrastructure. Unknown settings return <code>Error: unknown setting:
 &lt;name&gt;</code>. Older firmware that used the discontinued compact CLI can instead
 report <code>Unsupported in this firmware</code> when a command was cut for space.</p>
 <p>Check the complete firmware filename and role. In particular:</p>
@@ -2628,7 +2628,7 @@ provision WiFi and MQTT again.</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <p>For an MQTT observer:</p>
 <pre><code class="language-text">get wifi.status
-get bridge.enabled
+get mqtt.enabled
 get mqtt.status
 get mqtt1.diag
 get mqtt2.diag
@@ -2651,8 +2651,9 @@ setup AP. Full Companion targets whose primary mesh radio is ESP-NOW use
 b/g/n+LR instead and keep the setup AP, infrastructure station, and mesh on the
 persisted <code>espnow.channel</code> (channel 1 by default). Their configured 2.4 GHz
 router and every other primary ESP-NOW node must use that same channel.
-On MQTT-capable Companions, inspect MQTT status in WebConfig; the infrastructure
-MQTT text diagnostic commands above are not Companion terminal commands.</p>
+MQTT-capable Companions also accept <code>get mqtt.enabled</code>, <code>get mqtt.running</code>,
+and <code>get mqtt.status</code> in their USB/TCP and browser terminals. Extended slot
+and NTP diagnostics remain infrastructure features.</p>
 
 
 

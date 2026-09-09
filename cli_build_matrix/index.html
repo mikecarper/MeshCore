@@ -2048,7 +2048,7 @@ and TLora MQTT profiles to 50. Check the artifact capability manifest and
 </tr>
 <tr>
 <td>ESP32 single-TTY Full Companion</td>
-<td>Every ESP32 Full image starts with the ASCII terminal on its one USB TTY and automatically hands a complete <code>&lt;</code> frame to framed Companion. On 1.17.1.5, run <code>powersaving off</code> first. <code>set usb.logging on</code> switches that TTY to an input-capable plaintext logging terminal and makes framed Companion unavailable on USB; <code>set usb.logging off</code> stops logging but leaves the TTY in normal ASCII mode. The terminal stop token or a valid incoming framed probe then performs the ordinary switch to Binary Companion. A saved logging-on setting starts directly in that logging terminal and disables automatic frame detection. BLE, WiFi, and source-only LoRa OTA remain available. ESP32 Full uses Arduino-ESP32 2.x where supported; RC32 and ESP32-C6 keep their board-required Arduino 3.x platform but still expose only one TTY.</td>
+<td>Every ESP32 Full image starts with the ASCII terminal on its one USB TTY and automatically hands a complete <code>&lt;</code> frame to framed Companion. On 1.17.1.5, run <code>set powersaving off</code> first. <code>set usb.logging on</code> switches that TTY to an input-capable plaintext logging terminal and makes framed Companion unavailable on USB; <code>set usb.logging off</code> stops logging but leaves the TTY in normal ASCII mode. The terminal stop token or a valid incoming framed probe then performs the ordinary switch to Binary Companion. A saved logging-on setting starts directly in that logging terminal and disables automatic frame detection. BLE, WiFi, and source-only LoRa OTA remain available. ESP32 Full uses Arduino-ESP32 2.x where supported; RC32 and ESP32-C6 keep their board-required Arduino 3.x platform but still expose only one TTY.</td>
 </tr>
 <tr>
 <td><code>no_external_sensors</code></td>
@@ -2073,7 +2073,7 @@ USB logging is runtime controlled.</p>
 available from a canonical image:</p>
 <ul>
 <li>Companion <code>_ps</code> names are replaced by the ordinary Companion image plus the
-  persisted <code>powersaving on|off</code> setting.</li>
+  persisted <code>set powersaving on|off</code> setting.</li>
 <li>Companion <code>_femoff</code> names are replaced by the matching controllable-FEM
   image plus <code>radio.fem.rxgain on|off</code>. The old names remain explicit build
   targets for compatibility.</li>
@@ -2157,9 +2157,10 @@ does not exist on that target:</p>
   commands. ESP32 WiFi Companions with WebConfig expose WiFi credentials,
   connection status, WebConfig, and power-save controls from their USB
   text terminal as well as power saving through WebConfig and the binary
-  protocol. The browser CLI tab and <code>wifi.cli</code> setting are repeater/room-server
-  features. Full Companion instead exposes its complete role-specific text
-  terminal on TCP port 5002.</li>
+  protocol. All ESP32 WiFi Companions with WebConfig also expose the browser
+  CLI tab and <code>wifi.cli</code> switch, enabled by default in station/LAN mode. Older
+  Companion firmware needs an update to support it. Full Companion additionally
+  exposes its complete chat and streaming text terminal on TCP port 5002.</li>
 <li>MQTT commands require an MQTT observer target.</li>
 <li><code>discover.scopes</code> requires an MQTT observer with compiled neighbor support;
   it does not independently require PSRAM or the FULL parser.</li>

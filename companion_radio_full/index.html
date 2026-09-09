@@ -2280,9 +2280,9 @@ a second <code>companion_radio_wifi_mqtt</code> image. V4 TFT and expansion-kit 
 remain separate hardware images because their display and I2C wiring differs.</p>
 <p>Device power saving is separate from LoRa RXPS. It can be changed in WebConfig
 with the <strong>Device power saving</strong> switch or from the text terminal:</p>
-<pre><code class="language-text">powersaving
-powersaving on
-powersaving off
+<pre><code class="language-text">get powersaving
+set powersaving on
+set powersaving off
 </code></pre>
 <p>On ESP32, WiFi modem power saving is a third independent setting. Select it in
 the WebConfig <strong>WiFi</strong> card, or use the Full Companion text terminal:</p>
@@ -2297,10 +2297,18 @@ set wifi.powersave max
 start webconfig
 stop webconfig
 </code></pre>
-<p>Full Companion does not expose the repeater/room-server browser CLI tab, so
-<code>get/set wifi.cli</code> explicitly report that the browser terminal is unavailable.
-Its complete Companion text terminal remains available over USB and TCP port
-5002; this does not reduce that command surface.</p>
+<p>ESP32 WiFi Companions with WebConfig, including Full Companion, expose a
+<strong>CLI</strong> tab at the node's LAN address. It defaults to on; use <code>get wifi.cli</code>,
+<code>set wifi.cli on</code>, or <code>set wifi.cli off</code>. Older builds that report the browser
+terminal as unavailable need a firmware update. The open setup AP does not
+expose this tab.</p>
+<p>The browser accepts Companion configuration commands, including <code>get powersaving</code>,
+<code>set usb.logging on|off</code>, WiFi controls, and MQTT settings. <code>set mqtt.enabled on|off</code> controls MQTT
+without erasing broker settings; <code>get mqtt.enabled</code>, <code>get mqtt.running</code>, and
+<code>get mqtt.status</code> distinguish the saved switch from current connections.
+<code>set logging.output off|usb|wifi|both</code> selects both outputs together. Chat, recipient
+selection, streaming output, and USB MOTA session commands use the complete
+Companion text terminal over USB or TCP port 5002.</p>
 <p>On the two primary-ESP-NOW Full targets, the same terminal also provides
 <code>get espnow.channel</code> and <code>set espnow.channel &lt;1-13&gt;</code>. A channel change is
 persisted and requires a reboot, unlike a WiFi power-save change.</p>
@@ -2338,7 +2346,7 @@ after reboot.</p>
 <p>Companion firmware defaults device power saving to on. Version 1.17.1.2 also
 turns it on once when upgrading an older Companion preference file, including
 one written by the short-lived default-off regression. After that one-time
-migration, an explicit <code>powersaving off</code> selection remains persistent.</p>
+migration, an explicit <code>set powersaving off</code> selection remains persistent.</p>
 <p>On ESP32, enabling it lowers the CPU clock to 80 MHz, enables idle yielding,
 and enables the configured GPS duty cycle. Disabling it restores the normal CPU
 clock and keeps GPS awake. Active Full Companion transports remain available in
@@ -2548,7 +2556,7 @@ starts as the ASCII terminal unless a saved logging-on preference boots
 directly into the logging terminal. If it is already binary, enter its text
 terminal with <code>+++MESHCORE-TERM-START</code>. For an ESP32 1.17.1.5 USB logging session,
 run these separate commands:</p>
-<pre><code class="language-text">powersaving off
+<pre><code class="language-text">set powersaving off
 set usb.logging on
 </code></pre>
 <p>The first command is the release's USB power-saving workaround. The same

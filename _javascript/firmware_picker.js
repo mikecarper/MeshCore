@@ -506,10 +506,8 @@
     return (profiles || []).map(function (profile) {
       if (!isFullCompanion(profile)) return profile;
 
-      // Every Full Companion controls diagnostics with usb.logging. Some
-      // qualified boards also contain a direct MQTT bridge, but the Companion
-      // command parser does not implement the observer-only logging.output
-      // selector, so never advertise its off/USB/WiFi/both modes here.
+      // Every Full Companion has USB logging. Resolved build metadata expands
+      // these modes to include WiFi/both only when the resolved build has MQTT.
       profile.logging = "usb-runtime";
       profile.loggingModes = ["none", "usb"];
       profile.dedicatedUsbLogging = false;
@@ -1034,7 +1032,7 @@
     }
     if (needsUsbLoggingSleepWorkaround(profile) &&
         (profile.logging === "runtime" || profile.logging === "usb-runtime")) {
-      extra.push("1.17.1.5 ESP32 USB logging: run powersaving off before enabling USB logs. This saved workaround also applies to USB + WiFi logging; WiFi-only logging does not need the USB step.");
+      extra.push("1.17.1.5 ESP32 USB logging: run set powersaving off before enabling USB logs. This saved workaround also applies to USB + WiFi logging; WiFi-only logging does not need the USB step.");
     }
     return common.concat(byKind[kind] || [], extra);
   }
@@ -1063,19 +1061,19 @@
         return profile.loggingModes.includes(mode);
       }).map(function (mode) {
         const enabled = mode === "usb" || mode === "both";
-        const commands = profile.logging === "runtime"
+        const commands = profile.logging === "runtime" || (info && info.mqtt)
           ? ["set logging.output " + (mode === "none" ? "off" : mode), "get logging.output"]
           : ["set usb.logging " + (enabled ? "on" : "off") +
               (profile.dedicatedUsbLogging ? " reboot" : "")];
         if (enabled && needsUsbLoggingSleepWorkaround(profile)) {
-          commands.unshift("powersaving off");
+          commands.unshift("set powersaving off");
         }
         return {
           label: LOGGING_LABELS[mode], commands: commands,
           text: full && info && info.mqtt
             ? (mode === "wifi" || mode === "both"
               ? "In WebConfig, enable the desired MQTT broker presets/settings and save."
-              : "In WebConfig, choose none for every MQTT broker slot and save to stop MQTT connections.")
+              : "MQTT is disabled while the saved broker settings are kept.")
             : "",
         };
       });
@@ -1084,33 +1082,28 @@
           : "USB logs and binary Companion share one port. Turn logging off, send +++MESHCORE-TERM-STOP, and close the console before connecting the app or MOTA host.")
           : "Saved settings survive updates. These commands restore your selected output mode; downloading alone does not change it.";
       if (needsUsbLoggingSleepWorkaround(profile)) {
-        loggingNote += " For 1.17.1.5 USB logging, powersaving off prevents the released USB sleep problem. Turning logging off does not restore power saving.";
+        loggingNote += " For 1.17.1.5 USB logging, set powersaving off prevents the released USB sleep problem. Turning logging off does not restore power saving.";
         if (infrastructure && profile.logging === "runtime") {
-          loggingNote += " WiFi-only MQTT already blocks sleep while the bridge is running; check get bridge.running.";
+          loggingNote += " WiFi-only MQTT already blocks sleep while the bridge is running; check get mqtt.running.";
         }
       }
       section("Restore the selected logging mode", actions, loggingNote);
     }
     if (!info) return sections;
     if (full || infrastructure) {
-      toggle("Device power saving", full ? "powersaving" : "set powersaving", "powersaving",
-        full ? "Controls device/GPS power saving separately from LoRa RXPS and WiFi modem sleep."
-          : "The set form saves/applies without the bare powersaving on command's USB/bridge guards. Actual sleep depends on the board and can interrupt WiFi. Bare powersaving on rejects local/USB requests on nRF52 and standalone ESP32, and is unavailable on ESP32 bridge builds.");
+      toggle("Device power saving", "set powersaving", "get powersaving",
+        "Separate from LoRa RXPS and WiFi modem sleep. USB activity and active logging can keep the device awake.");
       if (info.rxps && !info.primaryEspnow) toggle("LoRa RX power saving", "set radio.rxps", "get radio.rxps");
       if (info.rxgain && !info.primaryEspnow) toggle("Radio RX boost", "set radio.rxgain", "get radio.rxgain");
       if (info.femRx) toggle("External FEM receive gain", "set radio.fem.rxgain", "get radio.fem.rxgain", "Requires the controllable FEM on the installed board revision; check the reply for hardware support.");
       if (info.femTx) toggle("External FEM transmit gain", "set radio.fem.txgain", "get radio.fem.txgain", "Requires the controllable PA on the installed board revision.");
     }
     if (info.gps && (companion || infrastructure)) {
-      if (companion) section("GPS", [
-        { label: "On", text: "In the Companion app's custom sensor settings, set gps=1." },
-        { label: "Off", text: "In the Companion app's custom sensor settings, set gps=0." },
-      ], "These are app settings, not USB terminal commands. Connect the board's supported GPS hardware; sharing location is a separate setting.");
-      else toggle("GPS", "gps", "gps", "Requires the supported GPS hardware to be installed.");
+      toggle("GPS", "set gps", "get gps", "Requires supported GPS hardware. Sharing location is a separate setting.");
     }
     if (info.webconfig) {
       toggle("WiFi settings website (WebConfig)", "set webui", "get webui");
-      if (infrastructure) toggle("WebConfig command terminal", "set wifi.cli", "get wifi.cli", "This is the node's WiFi browser terminal. The USB web console is independent and needs no WiFi.");
+      toggle("WebConfig command terminal", "set wifi.cli", "get wifi.cli", "Enabled by default when connected to your WiFi network. The USB web console is independent and needs no WiFi.");
     }
     if (info.platform === "ESP32_PLATFORM" && (info.webconfig || info.mqtt)) {
       section("WiFi modem power saving", [
@@ -1120,20 +1113,15 @@
       ], "Separate from device sleep and LoRa RXPS. Bluetooth coexistence can constrain the effective mode.");
     }
     if (info.mqtt) {
-      if (companion) section("MQTT broker connections", [
-        { label: "On", commands: ["set webui on", "get webui"], text: "Open the reported WebConfig URL, select/configure a broker preset, and save. Repeat for each desired slot." },
-        { label: "Off", text: "Open WebConfig, set every broker slot's preset to none, and save. Turning status publication off does not disconnect a broker." },
-      ], "Companion configures MQTT through WebConfig; infrastructure MQTT text commands are not available in its terminal.");
-      else {
-        toggle("MQTT bridge", "set bridge.enabled", "get bridge.running", "Configure WiFi and broker slots first. get mqtt.status shows connections. This switch does not disable LoRa repeating.");
-        ["status", "packets", "raw", "rx"].forEach(function (name) {
-          toggle("MQTT " + (name === "rx" ? "receive capture" : name + " publication"), "set mqtt." + name, "get mqtt." + name,
-            name === "status" ? "Only controls status publishing; connections remain enabled. The check command reports connection status." : "");
-        });
-        section("MQTT transmit capture", ["off", "advert", "on"].map(function (mode) {
-          return { label: mode, commands: ["set mqtt.tx " + mode] };
-        }));
-      }
+      toggle("MQTT broker connections", "set mqtt.enabled", "get mqtt.enabled",
+        "Configure WiFi and broker slots first, using WebConfig or set mqtt1.preset/settings. Off keeps those settings. get mqtt.running checks the runtime; get mqtt.status shows connections.");
+      ["status", "packets", "raw", "rx"].forEach(function (name) {
+        toggle("MQTT " + (name === "rx" ? "receive capture" : name + " publication"), "set mqtt." + name, "get mqtt." + name,
+          name === "status" ? "Only controls status publishing; connections remain enabled. The check command reports connection status." : "");
+      });
+      section("MQTT transmit capture", ["off", "advert", "on"].map(function (mode) {
+        return { label: mode, commands: ["set mqtt.tx " + mode] };
+      }));
     }
     if (info.snmp && infrastructure) section("SNMP", [
       { label: "On", commands: ["set snmp on", "reboot"] },

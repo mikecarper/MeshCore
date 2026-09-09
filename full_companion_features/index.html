@@ -1908,8 +1908,8 @@ editor does not necessarily forward them.</p>
 <tbody>
 <tr>
 <td>Device power saving</td>
-<td><code>powersaving on</code></td>
-<td><code>powersaving off</code></td>
+<td><code>set powersaving on</code></td>
+<td><code>set powersaving off</code></td>
 <td>Immediately; saved</td>
 </tr>
 <tr>
@@ -1938,7 +1938,7 @@ editor does not necessarily forward them.</p>
 </tr>
 <tr>
 <td>ESP32 USB packet/debug logging</td>
-<td>For 1.17.1.5: <code>powersaving off</code>, then <code>set usb.logging on</code></td>
+<td>For 1.17.1.5: <code>set powersaving off</code>, then <code>set usb.logging on</code></td>
 <td><code>set usb.logging off</code></td>
 <td>Immediately; saved; logging owns the USB terminal</td>
 </tr>
@@ -1975,12 +1975,12 @@ editor does not necessarily forward them.</p>
 </tbody>
 </table>
 <p>Check a saved switch with the corresponding <code>get</code> command, for example
-<code>get usb.logging</code>, <code>get radio.rxps</code>, or <code>get webui</code>. Use <code>powersaving</code> to
+<code>get usb.logging</code>, <code>get radio.rxps</code>, or <code>get webui</code>. Use <code>get powersaving</code> to
 inspect device power saving. Fresh installations enable device power saving
 and leave USB logging off. Existing saved preferences take precedence.</p>
 <p>For an <strong>ESP32 1.17.1.5 USB logging session</strong>, use this sequence in the text
 terminal:</p>
-<pre><code class="language-text">powersaving off
+<pre><code class="language-text">set powersaving off
 set usb.logging on
 </code></pre>
 <p>The power-saving step is the documented USB-session workaround for this
@@ -2015,19 +2015,20 @@ reboot
 <p>Use <code>set companion.transport ble</code> followed by <code>reboot</code> to select Bluetooth
 instead. USB stays available. The ESP-NOW layout keeps its primary ESP-NOW
 mesh active in either mode.</p>
-<p>For GPS-equipped boards, use the Companion app's GPS/custom sensor setting:
-<code>gps=1</code> enables GPS and <code>gps=0</code> disables it. Only boards with a compiled GPS
-provider expose this setting. This is separate from sharing location with
-contacts.</p>
-<p>When the exact Full image includes MQTT, use WebConfig's MQTT cards. Select
-and configure a broker slot to enable it; choose the <code>none</code> preset for every
-slot to disable broker connections. The MQTT status, packets, raw, receive,
-and transmit switches control their individual functions. Save the settings
-and follow any reboot instruction shown. Builds without MQTT omit these
-controls. Full Companion does not accept infrastructure text commands such as
-<code>set bridge.enabled</code>, <code>set logging.output</code>, or <code>set mqtt1.preset</code>; use these
-WebConfig controls for MQTT. There is no need for a separate logging or WiFi-MQTT Companion
-image when that feature is included in Full.</p>
+<p>For GPS-equipped boards, use <code>get gps</code>, <code>set gps on</code>, and <code>set gps off</code>.
+The Companion app's <code>gps=1</code> / <code>gps=0</code> custom setting controls the same GPS.
+Only boards with a compiled GPS provider expose this setting. Sharing location
+with contacts is a separate setting.</p>
+<p>When the exact Full image includes MQTT, use WebConfig's MQTT cards or the
+same CLI settings used by infrastructure, such as <code>set mqtt1.preset custom</code>
+and <code>set mqtt1.server broker.example.com</code>. <code>set mqtt.enabled on|off</code> controls
+MQTT without erasing the configured slots; check <code>get mqtt.enabled</code>,
+<code>get mqtt.running</code>, and <code>get mqtt.status</code>. The MQTT tab's <strong>Enable MQTT</strong>
+checkbox controls the same saved switch. <code>set logging.output off|usb|wifi|both</code>
+selects USB and MQTT outputs together. Status, packets, raw, receive, and
+transmit switches control their individual publications. Builds without MQTT
+omit these controls. There is no need for a separate logging or WiFi-MQTT
+Companion image when that feature is included in Full.</p>
 <h2 id="send-mota-from-any-full-companion">Send MOTA from any Full Companion</h2>
 <p>Place valid, destination-specific <code>.mota</code> files in a host directory. Set the
 source, destination, controller, and required relays to the same bounded
