@@ -4,6 +4,7 @@
 #include <helpers/UsbLogging.h>
 #include <helpers/CommonCLI.h>
 #include <helpers/ui/WiFiSetupQrDisplay.h>
+#include <helpers/ui/CompanionHomeLayout.h>
 
 #ifdef DISPLAY_REDRAW_ON_CHANGE
 #include <helpers/ui/DisplayFrameSignature.h>
@@ -209,42 +210,38 @@ void UITask::renderCurrScreen() {
     renderDashboard();
     return;
 #endif
-    // node name
-    _display->setCursor(0, 0);
+    // Reserve a full measured font-height for each row on OLED/TFT/e-paper.
+    mesh::ui::BoundedTextRows rows(*_display,
+        {0, 0, _display->width(), _display->height()});
     _display->setTextSize(1);
     _display->setColor(UIColor::primary_txt);
-    _display->print(_node_prefs->node_name);
+    rows.draw(_node_prefs->node_name, false);
 
     // freq / sf
-    _display->setCursor(0, 20);
     sprintf(tmp, "FREQ: %06.3f SF%d", _node_prefs->freq, _node_prefs->sf);
-    _display->print(tmp);
+    rows.draw(tmp, false);
 
     // bw / cr
-    _display->setCursor(0, 30);
     sprintf(tmp, "BW: %03.2f CR: %d", _node_prefs->bw, _node_prefs->cr);
-    _display->print(tmp);
+    rows.draw(tmp, false);
 
 #ifdef WITH_MQTT_BRIDGE
     // Display IP address for MQTT bridge devices
     if (WiFi.status() == WL_CONNECTED) {
       IPAddress ip = WiFi.localIP();
-      _display->setCursor(0, 40);
       _display->setColor(UIColor::primary_txt);
       snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-      _display->print(tmp);
+      rows.draw(tmp, false);
     } else
 #endif
     {
-      _display->setCursor(0, 40);
       snprintf(tmp, sizeof(tmp), "BAT: %.2fV", _board->getBattMilliVolts() / 1000.0f);
-      _display->print(tmp);
+      rows.draw(tmp, false);
     }
 
-    // Keep power-saving state visible even when the MQTT IP occupies row 40.
-    _display->setCursor(0, 50);
+    // Keep power-saving state visible even when the MQTT IP replaces battery.
     snprintf(tmp, sizeof(tmp), "PowerSaving: %s", _node_prefs->powersaving_enabled ? "ON" : "off");
-    _display->print(tmp);
+    rows.draw(tmp, false);
   }
 }
 

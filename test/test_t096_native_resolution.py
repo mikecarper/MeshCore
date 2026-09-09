@@ -16,7 +16,7 @@ class T096NativeResolutionTest(unittest.TestCase):
         source = (FIXTURE / "render.cpp").read_text() + "\n"
         source += "\n".join(line for line in driver.splitlines()
                             if line.startswith("#define SCALE_")) + "\n"
-        for name in ("setTextSize", "setColor", "setCursor", "print", "fillRect",
+        for name in ("setTextSize", "textLineHeight", "setColor", "setCursor", "print", "fillRect",
                      "drawRect", "drawXbm", "getTextWidth"):
             start = driver.index(f"ST7735Display::{name}(")
             start = driver.rfind("\n", 0, start) + 1

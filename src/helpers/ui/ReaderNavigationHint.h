@@ -12,34 +12,27 @@ struct ButtonReaderHintLayout {
   const char* lines[3];
 };
 
-// Alternate page and group navigation within the same footer. Measure both
-// views so changing the hint never repaginates text or hides a message row.
+// All gestures stay visible: no blinking between page and channel controls.
+// Separate the controls where space permits, retaining the existing font.
+// Narrow displays use the compact hint before needing additional rows.
 inline ButtonReaderHintLayout makeButtonReaderHintLayout(
     DisplayDriver& text, int line_height, int bottom, bool show_groups = false) {
+  (void)show_groups;  // Kept for source compatibility; no timed alternation.
   ButtonReaderHintLayout layout = {
-      0, line_height, 1, {"<- 2 tap  1 tap ->  long press: exit", nullptr, nullptr}};
-  const char* group_line = "<<- 4 tap  3 tap ->>";
-  if (text.getTextWidth(layout.lines[0]) > text.width()
-      && text.getTextWidth("<-2 tap 1 tap-> hold: X") <= text.width()) {
-    layout.lines[0] = "<-2 tap 1 tap-> hold: X";
-  }
-  if (text.getTextWidth(layout.lines[0]) > text.width()
-      || text.getTextWidth(group_line) > text.width()) {
+      0, line_height, 1, {"4 <<-  2 <- tap -> 1  ->> 3  hold: Exit", nullptr, nullptr}};
+  if (text.getTextWidth(layout.lines[0]) > text.width())
+    layout.lines[0] = "4<<2<tap>1>>3 hold:X";
+  if (text.getTextWidth(layout.lines[0]) > text.width()) {
     layout.line_count = 2;
-    layout.lines[0] = "<- 2 tap  1 tap ->";
-    layout.lines[1] = "long press: exit";
+    layout.lines[0] = "4<<2<tap>1>>3";
+    layout.lines[1] = "hold:X";
     if (text.getTextWidth(layout.lines[0]) > text.width()
-        || text.getTextWidth(group_line) > text.width()
         || text.getTextWidth(layout.lines[1]) > text.width()) {
       layout.line_count = 3;
-      layout.lines[0] = "<- 2 tap";
-      layout.lines[1] = "1 tap ->";
-      layout.lines[2] = "hold: X";
+      layout.lines[0] = "4<<2<";
+      layout.lines[1] = ">1>>3";
+      layout.lines[2] = "holdX";
     }
-  }
-  if (show_groups) {
-    layout.lines[0] = layout.line_count < 3 ? group_line : "<<- 4 tap";
-    if (layout.line_count == 3) layout.lines[1] = "3 tap ->>";
   }
   layout.top = bottom - layout.line_count * line_height;
   if (layout.top < 0) layout.top = 0;

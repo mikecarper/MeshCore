@@ -32,18 +32,19 @@ Readers without the button hint retain the y=14 origin and y=22 message text.
 
 On V4 and other single-button builds using this reader, the home screen says
 `hold button: inbox`. Hold the user button for about 1.2 seconds to open it.
-The bottom alternates between `<- 2 tap  1 tap ->  long press: exit` and
-`<<- 4 tap  3 tap ->>` every three seconds. Double tap goes to the previous
+The bottom continuously shows `4 <<-  2 <- tap -> 1  ->> 3  hold: Exit` without alternating or
+blinking. Double tap goes to the previous
 message, one tap advances, three taps select the next channel, and four taps
 select the previous channel. Channel selection cycles through All, configured
 channels, and direct messages, starting at the newest message in each filter.
 The header shows `All`, `Ch N`, or `DM`, including when a channel is empty.
 Hold to return home; advancing past the last message also returns home.
-The hints share the same footer space and use `hold: X` when the longer exit
-label does not fit. Both fit in the V4's existing 8-pixel footer at y=56, leaving
-five message rows. Narrower screens split the hint across lines; switching
-hints does not change the space reserved for text. The hints appear even when
-the inbox is empty. These are button taps. Touchscreen and joystick builds retain
+The complete hint fits in the V4's existing 8-pixel footer at y=56, leaving
+five message rows. The footer keeps the same 6px font, using 108 pixels with
+10-pixel margins on the V4. Narrower screens first use the compact `hold:X`
+hint without the extra spaces or arrow dashes, then split the
+same controls across fixed lines. The hint appears even when the inbox is
+empty. These are button taps. Touchscreen and joystick builds retain
 instructions appropriate to their controls. During the first eight
 seconds after startup, holding the button on an ordinary home page enters
 CLI rescue instead; wait for that startup window to finish before opening

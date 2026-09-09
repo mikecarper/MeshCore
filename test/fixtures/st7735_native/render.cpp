@@ -3,6 +3,7 @@
 #include <vector>
 #include <helpers/ui/ST7735Display.h>
 #include <helpers/ui/SmallMessageText.h>
+#include <helpers/ui/CompanionHomeLayout.h>
 
 ColorVal UIColor::window_bkg = 0, UIColor::title_bkg = 0, UIColor::title_txt = 1;
 ColorVal UIColor::primary_txt = 1, UIColor::secondary_txt = 1, UIColor::warning_txt = 1;
@@ -16,6 +17,7 @@ struct Canvas {
   void setTextColor(int) {}
   void print(const char*) { ++prints; }
   int textWidth(const char* s) { return std::strlen(s) * 6 * size; }
+  int fontHeight() { return 8 * size; }
   void fillRect(int xx, int yy, int w, int h, int) {
     assert(xx >= 0 && yy >= 0 && xx + w <= 160 && yy + h <= 80);
     for (int row = yy; row < yy + h; ++row)
@@ -45,6 +47,10 @@ int main() {
   display.setCursor(159, 79);
   assert(canvas.x == 159 && canvas.y == 79);
   assert(display.getTextWidth("MMMM") == 24);
+  assert(display.textLineHeight() == 8);
+  display.setTextSize(2);
+  assert(display.textLineHeight() == 16);
+  display.setTextSize(1);
   assert(!display.useSmallMessageFont());
   // Every logical pixel covers its own exact physical cell, without gaps or
   // overlap. In native mode each of these cells must be exactly one pixel.

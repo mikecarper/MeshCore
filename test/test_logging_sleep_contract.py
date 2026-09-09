@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def method(path, signature):
-    text = (ROOT / path).read_text()
+    text = (ROOT / path).read_text(encoding="utf-8")
     start = text.index(signature)
     end = text.index("{", start) + 1
     depth = 1
@@ -98,7 +98,7 @@ class LoggingSleepContractTest(unittest.TestCase):
             "docs/firmware_picker.md", "docs/releases/1.17.1.5.md",
         ):
             with self.subTest(path=path):
-                text = (ROOT / path).read_text()
+                text = (ROOT / path).read_text(encoding="utf-8")
                 blocks = re.findall(r"```text\n(.*?)```", text, re.S)
                 self.assertTrue(any("powersaving off\nset usb.logging on\n" in block
                                     for block in blocks), path)
@@ -108,9 +108,25 @@ class LoggingSleepContractTest(unittest.TestCase):
         for path in ("docs/cli_commands.md", "docs/role_feature_switches.md",
                      "docs/releases/1.17.1.5.md"):
             with self.subTest(path=path):
-                text = " ".join((ROOT / path).read_text().split())
-                self.assertRegex(text, r"WiFi/MQTT-only logging.*?does not need")
-                self.assertIn("get bridge.running", text)
+                text = (ROOT / path).read_text(encoding="utf-8")
+                paragraphs = [
+                    " ".join(block.split())
+                    for block in re.split(r"\n\s*\n", text)
+                    if "WiFi/MQTT-only logging" in block
+                ]
+                self.assertTrue(paragraphs, f"{path}: missing WiFi-only sleep guidance")
+                for paragraph in paragraphs:
+                    self.assertTrue(
+                        re.search(r"WiFi/MQTT-only logging.*?does not need", paragraph),
+                        f"{path}: missing running-MQTT sleep exception",
+                    )
+                    # Check the actual guidance, not an unrelated bridge-command
+                    # reference elsewhere in the document. MQTT has its own
+                    # shared running-state command across firmware roles.
+                    self.assertTrue(
+                        "`get mqtt.running`" in paragraph,
+                        f"{path}: WiFi-only sleep guidance must check `get mqtt.running`",
+                    )
 
     def test_running_mqtt_prevents_sleep_in_repeater_and_room(self):
         running = method("src/helpers/bridges/MQTTBridge.h",

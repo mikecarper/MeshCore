@@ -98,12 +98,14 @@ void SSD1306Display::startFrame(ColorVal bkg) {
   display.clearDisplay();  // TODO: apply 'bkg'
   _color = SSD1306_WHITE;
   display.setTextColor(_color);
-  display.setTextSize(1);
+  setTextSize(1);
+  display.setTextWrap(false);  // Layout/ellipsis owns wrapping and row spacing.
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
 }
 
 void SSD1306Display::setTextSize(int sz) {
-  display.setTextSize(sz);
+  _text_size = sz > 0 ? sz : 1;
+  display.setTextSize(_text_size);
 }
 
 void SSD1306Display::setColor(ColorVal c) {

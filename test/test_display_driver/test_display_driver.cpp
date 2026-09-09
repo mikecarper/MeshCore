@@ -292,10 +292,27 @@ TEST(SmallMessageText, GroupHintFitsV4FooterWithoutLosingMessageRows) {
   const auto hint = mesh::ui::makeButtonReaderHintLayout(
       text, text.lineHeight(), display.height(), true);
   ASSERT_EQ(1, hint.line_count);
-  EXPECT_STREQ("<<- 4 tap  3 tap ->>", hint.lines[0]);
+  EXPECT_STREQ("4 <<-  2 <- tap -> 1  ->> 3  hold: Exit", hint.lines[0]);
+  EXPECT_EQ(6, text.capitalHeight());
+  EXPECT_EQ(108, text.getTextWidth(hint.lines[0]));
+  EXPECT_GT(text.getTextWidth(hint.lines[0]), text.getTextWidth("4<<2<tap>1>>3 hold:X"));
   EXPECT_LE(text.getTextWidth(hint.lines[0]), 128);
   EXPECT_EQ(56, hint.top);
   EXPECT_EQ(5, text.lineCount(2 * text.lineHeight(), hint.top));
+}
+
+TEST(SmallMessageText, HintDropsExtraSpacesBeforeAddingRows) {
+  for (int width : {64, 107, 108, 128}) {
+    TestDisplay display(width, 128);
+    mesh::ui::SmallMessageText text(display);
+    const auto hint = mesh::ui::makeButtonReaderHintLayout(
+        text, text.lineHeight(), display.height());
+    ASSERT_EQ(1, hint.line_count);
+    EXPECT_STREQ(width >= text.getTextWidth("4 <<-  2 <- tap -> 1  ->> 3  hold: Exit")
+        ? "4 <<-  2 <- tap -> 1  ->> 3  hold: Exit" : "4<<2<tap>1>>3 hold:X", hint.lines[0]);
+    EXPECT_LE(text.getTextWidth(hint.lines[0]), width);
+    EXPECT_EQ(120, hint.top);
+  }
 }
 
 TEST(SmallMessageText, Full160CharacterSamplesFitInFiveRows) {

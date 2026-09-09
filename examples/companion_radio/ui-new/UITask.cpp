@@ -656,7 +656,11 @@ public:
 #else
       display.setTextSize(2);
       sprintf(tmp, "INBOX: %d", _task->getPreviewCount());
-      display.drawTextCentered(display.width() / 2, body_top + 2, tmp);
+      const int home_content_top = body_top + 2 + display.textLineHeight()
+          + (display.height() > 64 ? 2 : 0);
+      mesh::ui::drawTextCenteredEllipsized(display,
+          {0, body_top + 2, display.width(), display.textLineHeight()},
+          body_top + 2, tmp);
 #endif
 #ifdef UI_DEDICATED_PAIRING_BLOCK
       const mesh::ui::CompanionHomeLayout layout =
@@ -770,15 +774,7 @@ public:
           mesh::ui::shouldDisplayBluetoothPairingPin(
               bluetooth_enabled, bluetooth_connected, bluetooth_pin)
           && (!_task->isPairingPromptActive() || display.height() > 64);
-      const bool compact_pairing =
-          mesh::ui::usesCompactCompanionPairingLayout(
-              display.width(), display.height())
-          && (bluetooth_connected || show_bluetooth_pin);
-
-      if (compact_pairing) {
-        const mesh::ui::CompactCompanionPairingLayout layout =
-            mesh::ui::makeCompactCompanionPairingLayout(
-                display.width(), display.height());
+      if (bluetooth_connected || show_bluetooth_pin) {
         char pairing_pin[16];
         const char* pairing_label = bluetooth_connected
             ? "BLUETOOTH" : "BLUETOOTH PIN";
@@ -789,22 +785,15 @@ public:
           pairing_value = pairing_pin;
         }
 
-        // This repaint deliberately removes the ordinary instruction and
-        // Wi-Fi/IP rows. Both occupy this same lower area on a 128x64 screen.
-        display.setColor(UIColor::title_bkg);
-        mesh::ui::clearDisplayRegion(display, layout.pairing);
-        display.setColor(UIColor::title_txt);
-        display.setTextSize(1);
-        mesh::ui::drawTextCenteredEllipsized(
-            display, layout.pairing, layout.pairing_label_y, pairing_label);
-        display.setTextSize(2);
-        mesh::ui::drawTextCenteredEllipsized(
-            display, layout.pairing, layout.pairing_value_y, pairing_value);
+        mesh::ui::drawBottomPairingBlock(display, home_content_top,
+                                        pairing_label, pairing_value);
       } else {
+        mesh::ui::BoundedTextRows rows(display,
+            {0, home_content_top, display.width(),
+             display.height() - home_content_top});
         display.setTextSize(1);
         display.setColor(UIColor::secondary_txt);
-        display.drawTextCentered(display.width() / 2, 43,
-                                 PRESS_LABEL ": inbox");
+        rows.draw(PRESS_LABEL ": inbox");
 
         #ifdef UI_SHOW_CLOCK
         display.setTextSize(3);
@@ -813,10 +802,10 @@ public:
         now += (int32_t)tz * 3600;
         DateTime dt (now);
         sprintf(tmp, "%02d:%02d", dt.hour(), dt.minute());
-        display.drawTextCentered(display.width() / 2, 60, tmp);
+        rows.draw(tmp);
         display.setTextSize(1);
         sprintf(tmp, "%02d/%02d/%d", dt.day(), dt.month(), dt.year());
-        display.drawTextCentered(display.width() / 2, 80, tmp);
+        rows.draw(tmp);
         #endif
 
         #ifdef WIFI_SSID
@@ -832,31 +821,8 @@ public:
             strcpy(tmp, "WiFi: SETUP");
           }
           display.setTextSize(1);
-          display.drawTextCentered(display.width() / 2, 54, tmp);
+          rows.draw(tmp);
         #endif
-
-        if (bluetooth_connected) {
-          display.setColor(UIColor::warning_txt);
-          display.setTextSize(1);
-          #ifdef UI_SHOW_CLOCK
-          display.drawTextCentered(display.width() / 2, 110,
-                                   "< Connected >");
-          #else
-          display.drawTextCentered(display.width() / 2, 43,
-                                   "< Connected >");
-          #endif
-        } else if (show_bluetooth_pin) { // BT pin
-          display.setColor(UIColor::warning_txt);
-          snprintf(tmp, sizeof(tmp), "Pin:%06u",
-                   (unsigned int)bluetooth_pin);
-        #ifdef UI_SHOW_CLOCK
-          display.setTextSize(1);
-          display.drawTextCentered(display.width() / 2, 110, tmp);
-        #else
-          display.setTextSize(2);
-          display.drawTextCentered(display.width() / 2, 43, tmp);
-        #endif
-        }
       }
 #endif
 #if UI_MESSAGES_HOME_PAGE == 1
@@ -1500,8 +1466,7 @@ public:
   #endif
     const mesh::ui::ButtonReaderHintLayout hint =
         mesh::ui::makeButtonReaderHintLayout(
-            reader_text, hint_line_height, body_bottom,
-            (millis() / 3000U) % 2 != 0);
+            reader_text, hint_line_height, body_bottom);
     body_bottom = hint.top;
     DisplayDriver& header = reader_text;
 #else

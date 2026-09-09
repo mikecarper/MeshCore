@@ -605,12 +605,17 @@ void ST7735Display::startFrame(ColorVal bkg) {
   sprite->setTextColor(curr_color = UIColor::primary_txt);
   sprite->setFreeFont();
   sprite->setTextSize(1);      // This one affects size of Please wait... message
+  sprite->setTextWrap(false);
   //sprite->cp437(true);         // Use full 256 char 'Code Page 437' font
 }
 
 void ST7735Display::setTextSize(int sz) {
   if (!spriteReady()) return;
   sprite->setTextSize(sz);
+}
+
+int ST7735Display::textLineHeight() {
+  return spriteReady() ? sprite->fontHeight() : 8;
 }
 
 void ST7735Display::setColor(ColorVal c) {

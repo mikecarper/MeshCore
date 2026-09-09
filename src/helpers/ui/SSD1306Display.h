@@ -26,6 +26,7 @@ class SSD1306Display : public DisplayDriver {
   uint8_t _base_rotation = 0;
 #endif
   uint8_t _color;
+  int _text_size = 1;
   RefCountedDigitalPin* _peripher_power;
 
   bool i2c_probe(TwoWire& wire, uint8_t addr);
@@ -48,6 +49,7 @@ public:
   void clear() override;
   void startFrame(ColorVal bkg = UIColor::window_bkg) override;
   void setTextSize(int sz) override;
+  int textLineHeight() override { return 8 * _text_size; }
   void setColor(ColorVal c) override;
   void setCursor(int x, int y) override;
   void print(const char* str) override;

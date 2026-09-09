@@ -157,5 +157,67 @@ inline void drawTextCenteredEllipsized(DisplayDriver& display,
   }
 }
 
+// Stack real font-height rows, never fixed ten-pixel baselines. E-paper's
+// smallest font is already taller than an entire OLED row.
+class BoundedTextRows {
+  DisplayDriver& display;
+  DisplayRegion region;
+  int next_y;
+  int gap;
+public:
+  BoundedTextRows(DisplayDriver& d, const DisplayRegion& r, int spacing = 2)
+      : display(d), region(r), next_y(r.y), gap(spacing) {}
+
+  bool draw(const char* text, bool centered = true) {
+    const int height = display.textLineHeight();
+    if (height <= 0 || !displayRegionContainsLine(region, next_y, height))
+      return false;
+    if (centered) {
+      drawTextCenteredEllipsized(display, region, next_y, text);
+    } else {
+      display.drawTextEllipsized(region.x, next_y, region.width, text);
+    }
+    next_y += height + gap;
+    return true;
+  }
+};
+
+// PIN/connection status owns the bottom of every non-Indicator home screen,
+// including native 160x80 T096 and 250x122 MeshPocket panels. The caller must
+// not draw ordinary instructions/network rows in this same area.
+inline void drawBottomPairingBlock(DisplayDriver& display, int content_top,
+                                    const char* label, const char* value) {
+  const int bottom = display.height() - (display.height() > 64 ? 2 : 0);
+  const int available = bottom - content_top;
+  const int margin = display.width() >= 16 ? 4 : 0;
+  const int width = display.width() - 2 * margin;
+  if (available <= 0 || width <= 0) return;
+  display.setTextSize(1);
+  const int label_height = display.textLineHeight();
+  int value_size = 2;
+  display.setTextSize(value_size);
+  if (display.getTextWidth(value) > width
+      || display.textLineHeight() > available) {
+    display.setTextSize(value_size = 1);
+  }
+  const int value_height = display.textLineHeight();
+  if (value_height <= 0 || value_height > available) return;
+  // Prefer a readable complete PIN; omit its label on unusually short
+  // viewports instead of colliding with the title or clipping the digits.
+  const bool show_label = label_height > 0
+      && label_height + 2 + value_height <= available;
+  const int block_height = value_height + (show_label ? label_height + 2 : 0);
+  const DisplayRegion region = {margin, bottom - block_height, width, block_height};
+  display.setColor(UIColor::title_bkg);
+  clearDisplayRegion(display, region);
+  display.setColor(UIColor::title_txt);
+  if (show_label) {
+    display.setTextSize(1);
+    drawTextCenteredEllipsized(display, region, region.y, label);
+  }
+  display.setTextSize(value_size);
+  drawTextCenteredEllipsized(display, region, bottom - value_height, value);
+}
+
 }  // namespace ui
 }  // namespace mesh
