@@ -1846,9 +1846,11 @@
 
 <h1 id="small-screen-message-fonts">Small-screen message fonts</h1>
 <p>Small-screen Companion builds automatically select a compact font for received
-message text and the channel/sender line, including <code>Ch 0 Public</code>. This covers
-SSD1306 and SH1106 OLEDs, ST7735 small TFTs, and the U8g2 T-Echo Card display.
-The shared renderer selects by logical panel dimensions, including rotation:</p>
+message text and the channel/sender line, including <code>Ch 0 Public</code>. SSD1306 and
+SH1106 OLEDs and the U8g2 T-Echo Card display use this on panels smaller than
+160 pixels on both axes. ST7735 TFTs now use their native 160x80 dimensions
+and normal font. The shared renderer selects by panel dimensions, including
+rotation:</p>
 <table>
 <thead>
 <tr>
@@ -1860,7 +1862,7 @@ The shared renderer selects by logical panel dimensions, including rotation:</p>
 </thead>
 <tbody>
 <tr>
-<td>At least 128 x 64, or 64 x 128 rotated</td>
+<td>At least 128 x 64, or 64 x 128 rotated; both axes below 160</td>
 <td>Squeezed Regular 6</td>
 <td style="text-align: right;">6 pixels</td>
 <td style="text-align: right;">8 pixels</td>
@@ -1871,6 +1873,12 @@ The shared renderer selects by logical panel dimensions, including rotation:</p>
 <td style="text-align: right;">5 pixels</td>
 <td style="text-align: right;">7 pixels</td>
 </tr>
+<tr>
+<td>Either axis at least 160</td>
+<td>Normal display font</td>
+<td style="text-align: right;">Depends on panel</td>
+<td style="text-align: right;">Depends on panel</td>
+</tr>
 </tbody>
 </table>
 <p>Both fonts allow one pixel for descenders and one blank pixel row between
@@ -1878,16 +1886,36 @@ lines. Character widths vary: most letters advance by 4 pixels, with narrow
 letters taking less space and <code>M</code> and <code>W</code> taking 6 pixels. Squeezed Regular 6
 is a <a href="https://github.com/olikraus/u8g2/wiki/fntgrpu8g#squeezed_r6">public-domain font by Oliver Kraus</a>.
 Its bitmap data is stored as constants without heap allocation.</p>
-<p>On a 128 x 64 OLED, the compact channel/sender line starts at y=14 and message
-text at y=22. Five complete 6px-font rows fit. The software comparison fits
-three representative 160-character messages in those five rows. Capacity
+<p>On a 128 x 64 OLED with the single-button message reader, the compact
+channel/sender line starts at y=8 and message text at y=16. The header uses
+the same small font. Five complete 6px-font rows fit above the navigation
+hint at y=56. The software comparison fits three representative 160-character
+messages in those five rows. Capacity
 depends on the characters; messages with many wide letters can still overflow.
 Text wraps at character boundaries, with <code>...</code> on the last line if necessary.
 Unsupported characters appear as <code>?</code>. Long channel/sender names are ellipsized
-to stay on their own line. An enabled channel footer reserves its own space.</p>
+to stay on their own line. An enabled channel footer reserves its own space.
+Readers without the button hint retain the y=14 origin and y=22 message text.</p>
+<p>On V4 and other single-button builds using this reader, the home screen says
+<code>hold button: inbox</code>. Hold the user button for about 1.2 seconds to open it.
+The bottom of the reader shows <code>&lt;- 2 tap  1 tap -&gt;  long press: exit</code>: double tap
+the button for the previous message, tap once for the next, and hold to
+return home. Advancing past the last message also returns home. The hint
+appears even when the inbox is empty and reflows onto additional lines on
+narrower screens. It replaces the unusable channel selector on single-button
+builds. These are button taps. Touchscreen and joystick builds retain
+instructions appropriate to their controls. During the first eight
+seconds after startup, holding the button on an ordinary home page enters
+CLI rescue instead; wait for that startup window to finish before opening
+the inbox. Exiting a message preview and the WiFi setup page's hold action
+remain available immediately.</p>
+<p>The hidden <a href="../tools/bible/README.md#on-device-reader">John reader</a>, opened
+by a long press on the radio page, uses the same button hint. It reserves the
+hint before pagination and resumes saved bookmarks at the page containing
+the same text, even after the available page size changes.</p>
 <p>Larger display classes keep their existing font. Menus, Bluetooth PINs and WiFi
-setup QR codes keep their normal layout. Small TFTs retain their existing
-logical to physical scaling. The normal OLED font uses 7-pixel letters,
+setup QR codes keep their normal layout. TFT drivers use native panel
+coordinates; the SenseCAP Indicator retains its existing scaling. The normal OLED font uses 7-pixel letters,
 8-pixel line spacing and 6-pixel character advances.</p>
 <p>The preview buffer holds a complete 160-byte MeshCore message plus its
 terminator. Previously the main message UI allocated 78 bytes, leaving room
@@ -1928,8 +1956,9 @@ pio test -e native -f test_display_driver -f test_companion_message_history
 </code></pre>
 <p>The native tests exercise both capital heights, automatic font selection,
 160-character messages, complete rows at display edges, long sender lines,
-reserved footers, overflow markers and tiny/rotated screen geometry. The
-additional rendering comparison checks all 95 printable ASCII glyphs in each
+navigation hints, reserved footers, overflow markers and tiny/rotated screen
+geometry. The additional rendering comparison checks all 95 printable ASCII
+glyphs in each
 font, under address/undefined-behavior sanitizers. Picopixel is compared pixel
 for pixel with Adafruit GFX; Squeezed Regular 6 is compared with the upstream
 BDF fixture independently of the converted C++ tables. This needs a cached

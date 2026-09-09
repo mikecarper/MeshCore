@@ -1976,6 +1976,11 @@ border. The normal open setup network fits a 44 x 44 pixel code, with 2 x 2
 pixel modules. The SSID, portal address and <code>HOLD STOP</code> hint remain beside it.
 Short-click to leave the page; hold the button on this page to start or stop
 the setup AP. From USB, <code>start webconfig ap</code> starts the same setup session.</p>
+<p>When the setup AP is inactive and the node has joined WiFi, this page shows
+<code>WIFI CONNECTED</code>, <code>IP &lt;address&gt;</code>, <code>SETUP AP INACTIVE</code>, then <code>HOLD START AP</code> from
+top to bottom. The address appears once assigned and clears when the station
+disconnects. While the setup AP is active, the QR page shows the setup portal's
+address instead.</p>
 <h2 id="regression-checks">Regression checks</h2>
 <pre><code class="language-sh">python3 -B test/test_nimble_companion.py
 python3 -B test/test_bluetooth_mac_contract.py
