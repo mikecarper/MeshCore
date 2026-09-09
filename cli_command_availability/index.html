@@ -2129,7 +2129,11 @@ sensor, and bridge firmware. Full Companion also has its own ASCII USB/TCP
 terminal; see <a href="../role_feature_switches/">feature switches by role</a>. Companion
 apps use the companion protocol,
 KISS firmware uses framed KISS/TNC commands, and terminal-chat firmware has its
-own interface, so those build roles are not represented here.</p>
+own interface, so those build roles are not represented in the main matrices.
+The Companion section below lists its framed maintenance commands.
+Infrastructure <code>get password</code> is available locally in every profile; LoRa
+requests cannot read it. <code>get acl</code> and stored packet <code>log</code> are infrastructure
+features, not Companion contact or live USB-logging commands.</p>
 <p>Build columns mean:</p>
 <ul>
 <li><strong>Standard</strong> - the ordinary non-MQTT artifact, without an explicit <code>ota</code>
@@ -2163,7 +2167,9 @@ INA3221 A0 to SCL for <code>0x43</code>, and use a build with
 <li><strong>No</strong> - the profile does not expose the command.</li>
 <li><strong>Feature</strong> - available only when the target compiles the feature or hardware
   named in Scope.</li>
-<li><strong>Serial</strong> - available only from the local serial console.</li>
+<li><strong>Local</strong> - a direct USB, BLE/binary Companion, TCP/Ethernet, or LAN browser
+  connection, when that transport and command exist on the role; unavailable
+  over LoRa.</li>
 <li><strong>Manifest</strong> - available only when the MQTT target defines
   <code>OTA_MANIFEST_BASE</code>.</li>
 <li><strong>Limited</strong> - the family exists, but the limitation in Scope applies.</li>
@@ -2183,6 +2189,26 @@ over the normal binary USB, BLE, or TCP connection:</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>stats-core</code>, <code>stats-radio</code>, <code>stats-radio-diag</code>, <code>stats-packets</code></td>
+<td>Local terminal and binary command <code>0x42</code></td>
+</tr>
+<tr>
+<td><code>erase</code>, <code>set freq &lt;MHz&gt;</code></td>
+<td>Local terminal and binary command <code>0x42</code>; stored changes apply on reboot</td>
+</tr>
+<tr>
+<td><code>get prv.key</code></td>
+<td>Local terminal and binary command <code>0x42</code>; requires private key export enabled</td>
+</tr>
+<tr>
+<td><code>get password</code></td>
+<td>Reports that Companion has no admin password; infrastructure returns its password locally</td>
+</tr>
+<tr>
+<td><code>get wifi.pwd</code>, <code>get mqttN.password</code>, <code>get mqttN.token</code></td>
+<td>Local terminal and binary command <code>0x42</code>; corresponding WiFi/MQTT feature required</td>
+</tr>
 <tr>
 <td><a href="../cli_commands/#show-the-hardware-name"><code>board</code></a></td>
 <td>Every Companion text terminal and command <code>0x42</code></td>
@@ -2259,10 +2285,10 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Operational</td>
 <td><a href="../cli_commands/#enter-the-uf2-bootloader-nrf52-only"><code>uf2reset</code></a></td>
-<td>Local serial; supported UF2 boards</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection; supported UF2 boards</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Operational</td>
@@ -2315,10 +2341,10 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Operational</td>
 <td><a href="../cli_commands/#erasefactory-reset"><code>erase</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Information</td>
@@ -2411,34 +2437,34 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Statistics</td>
 <td><a href="../cli_commands/#stats-core"><code>stats-core</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
 <td><a href="../cli_commands/#stats-radio"><code>stats-radio</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
 <td><a href="#stats-radio-diag"><code>stats-radio-diag</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
 <td><a href="../cli_commands/#stats-packets"><code>stats-packets</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
@@ -2467,10 +2493,10 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Logging</td>
 <td><a href="../cli_commands/#print-the-captured-log-to-the-serial-terminal"><code>log</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Logging</td>
@@ -2515,7 +2541,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-frequency"><code>get freq</code>; <code>set freq &lt;mhz&gt;</code></a></td>
-<td><code>set</code> is local serial only</td>
+<td><code>set</code> requires a local connection</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2579,15 +2605,15 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>System</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-identity-private-key"><code>get/set prv.key</code></a></td>
-<td><code>get</code> is local serial only</td>
+<td><code>get</code> requires a local connection</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
 </tr>
 <tr>
 <td>System</td>
-<td><a href="../cli_commands/#change-this-nodes-admin-password"><code>password &lt;new_password&gt;</code></a></td>
-<td>Administrator</td>
+<td><a href="../cli_commands/#change-this-nodes-admin-password"><code>get password</code>; <code>password &lt;new_password&gt;</code></a></td>
+<td><code>get</code> requires a local connection; setter requires administrator</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -2915,10 +2941,10 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>ACL</td>
 <td><a href="../cli_commands/#view-the-current-acl"><code>get acl</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>ACL</td>
@@ -3459,7 +3485,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>MQTT</td>
 <td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
-<td>MQTT observer; <code>get</code> is local serial only</td>
+<td>MQTT observer; <code>get</code> requires a local connection</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>
@@ -3630,12 +3656,12 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Operational</td>
 <td><a href="../cli_commands/#erasefactory-reset"><code>erase</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Display</td>
@@ -3760,42 +3786,42 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Statistics</td>
 <td><a href="../cli_commands/#stats-core"><code>stats-core</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
 <td><a href="../cli_commands/#stats-radio"><code>stats-radio</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
 <td><a href="#stats-radio-diag"><code>stats-radio-diag</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
 <td><a href="../cli_commands/#stats-packets"><code>stats-packets</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Statistics</td>
@@ -3830,12 +3856,12 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Logging</td>
 <td><a href="../cli_commands/#print-the-captured-log-to-the-serial-terminal"><code>log</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>Logging</td>
@@ -3890,7 +3916,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-frequency"><code>get freq</code>; <code>set freq &lt;mhz&gt;</code></a></td>
-<td><code>set</code> is local serial only</td>
+<td><code>set</code> requires a local connection</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3980,7 +4006,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>System</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-identity-private-key"><code>get/set prv.key</code></a></td>
-<td><code>get</code> is local serial only</td>
+<td><code>get</code> requires a local connection</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3989,8 +4015,8 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 </tr>
 <tr>
 <td>System</td>
-<td><a href="../cli_commands/#change-this-nodes-admin-password"><code>password &lt;new_password&gt;</code></a></td>
-<td>Administrator</td>
+<td><a href="../cli_commands/#change-this-nodes-admin-password"><code>get password</code>; <code>password &lt;new_password&gt;</code></a></td>
+<td><code>get</code> requires a local connection; setter requires administrator</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -4400,12 +4426,12 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>ACL</td>
 <td><a href="../cli_commands/#view-the-current-acl"><code>get acl</code></a></td>
-<td>Local serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
-<td>Serial</td>
+<td>Local connection</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
+<td>Local</td>
 </tr>
 <tr>
 <td>ACL</td>
@@ -5080,7 +5106,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>MQTT</td>
 <td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#mqtt-shared-commands"><code>get/set mqtt.owner</code>; <code>get/set mqtt.email</code></a></td>
-<td>MQTT observer; <code>get</code> is local serial only</td>
+<td>MQTT observer; <code>get</code> requires a local connection</td>
 <td>No</td>
 <td>No</td>
 <td>No</td>

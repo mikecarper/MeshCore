@@ -799,10 +799,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#print-the-captured-log-to-the-serial-terminal" class="md-nav__link">
+  <a href="#print-the-captured-log-to-the-requesting-terminal" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Print the captured log to the serial terminal
+        Print the captured log to the requesting terminal
       
     </span>
   </a>
@@ -1082,10 +1082,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#change-this-nodes-admin-password" class="md-nav__link">
+  <a href="#view-or-change-this-nodes-admin-password" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Change this node's admin password
+        View or change this node's admin password
       
     </span>
   </a>
@@ -4120,10 +4120,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#print-the-captured-log-to-the-serial-terminal" class="md-nav__link">
+  <a href="#print-the-captured-log-to-the-requesting-terminal" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Print the captured log to the serial terminal
+        Print the captured log to the requesting terminal
       
     </span>
   </a>
@@ -4403,10 +4403,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#change-this-nodes-admin-password" class="md-nav__link">
+  <a href="#view-or-change-this-nodes-admin-password" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Change this node's admin password
+        View or change this node's admin password
       
     </span>
   </a>
@@ -5798,7 +5798,8 @@ command aliases are listed there explicitly.</p>
 <p><strong>Search terms:</strong> bootloader mode, USB firmware update, UF2 mode.</p>
 <p><strong>Usage:</strong>
 - <code>uf2reset</code></p>
-<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
+command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <p><strong>Note:</strong> Reboots directly into the UF2 bootloader on supported nRF52 boards.
 This includes the Repeater, Room Server, Sensor, Companion, and Terminal Chat
 local serial command surfaces. It is never accepted as a remote mesh command.</p>
@@ -5898,6 +5899,7 @@ folder transport.</p>
 <li><code>set webui off</code></li>
 <li><code>get webui</code></li>
 <li><code>get wifi.ssid</code></li>
+<li><code>get wifi.pwd</code></li>
 <li><code>get wifi.status</code></li>
 <li><code>get wifi.powersave</code></li>
 <li><code>get wifi.cli</code></li>
@@ -5934,8 +5936,8 @@ their profile's idle timeout.</p>
 <p>Every ESP32 build with WebConfig supports the browser command terminal,
 including WiFi Companion and Full Companion. Companions use their complete
 USB/TCP terminal on the trusted LAN, including contact import, chat, recipient
-selection, and delayed replies. Repeater and Room Server use the authenticated
-admin parser.</p>
+selection, and delayed replies. Repeater and Room Server use their local CLI
+after admin authentication.</p>
 <p>To add a Companion contact, run <code>import meshcore://&lt;full-contact-card-data&gt;</code>,
 then <code>list</code> to confirm it appears. Get the complete card with <code>card</code> on the
 other Companion. A public key alone is insufficient. See the
@@ -5946,8 +5948,12 @@ the <strong>CLI</strong> tab.
 <code>get wifi.cli</code> reports <code>off</code>, <code>on, waiting for WiFi client</code>, or <code>on, active</code>.
 The saved setting becomes active only in station/LAN mode while the WiFi client
 is connected. It is deliberately unavailable on the open setup access point.
-The tab displays each reply in the browser. Commands explicitly restricted to
-a physical serial connection remain unavailable.
+The tab displays each reply in the browser, including local diagnostics,
+<code>get password</code>, private-key and WiFi/MQTT credential reads, <code>erase</code>, and
+<code>set freq</code>. Infrastructure <code>get acl</code> and raw <code>log</code> stream to the requesting
+browser, with backpressure for slow clients. LoRa callers retain their
+restrictions. The bounded <code>/api/cli</code> endpoint accepts local maintenance
+commands; use <code>/api/terminal</code> for complete ACL and log listings.
 Select <strong>Command block</strong> to paste up to 100 commands with one command per line.
 Blank lines are ignored, and every nonblank line must fit the normal 159-byte
 CLI command limit. The browser sends the lines sequentially and waits for each
@@ -5979,8 +5985,9 @@ ordinary passphrases remain limited to 63 characters. Other 64-character values
 and all longer values are rejected. MQTT observer WiFi passwords retain their
 fixed 63-character limit.
 Power-save changes are applied immediately when WiFi is running and otherwise
-take effect on the next connection. <code>get wifi.pwd</code> is intentionally unavailable
-so the standalone password is never returned by the CLI.</p>
+take effect on the next connection. <code>get wifi.pwd</code> returns the saved password
+on a local connection. It remains unavailable or masked over LoRa, and the
+configuration form continues to mask stored secrets.</p>
 <p>ESP32 WiFi Companion WebConfig exposes the same <code>wifi.powersave</code> values in its
 WiFi card. Every ESP32 WiFi Companion with WebConfig exposes the standalone
 <code>wifi.ssid</code>, <code>wifi.status</code>, <code>wifi.powersave</code>, <code>wifi.cli</code>, and WebConfig command
@@ -5990,7 +5997,9 @@ restarting the WiFi station, so a TCP client should expect to reconnect at the
 new address; USB password input is masked. Binary Companion clients can use
 USB, BLE, or TCP port 5000 without the terminal-start token: send command
 <code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>) followed by the same CLI text, such as
-<code>get wifi.powersave</code> or <code>set wifi.powersave min</code>. WiFi-only Companions accept
+<code>get wifi.powersave</code>, <code>get wifi.pwd</code>, <code>stats-core</code>, or <code>set wifi.powersave min</code>.
+See <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>
+for the complete access rules. WiFi-only Companions accept
 all three modes. A Full Companion that runs BLE and infrastructure WiFi
 simultaneously rejects <code>none</code> because coexistence requires modem sleep.
 Companion device power saving and LoRa <code>radio.rxps</code> remain independent. On an
@@ -6042,7 +6051,8 @@ remain available.</p>
 <p><strong>Search terms:</strong> factory defaults, reset settings, erase configuration.</p>
 <p><strong>Usage:</strong>
 - <code>erase</code></p>
-<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
+command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <p><strong>Warning:</strong> <em><strong>This is destructive!</strong></em></p>
 <hr />
 <h2 id="neighbors-repeater-only">Neighbors (Repeater Only)</h2>
@@ -6084,18 +6094,21 @@ Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If 
 <h3 id="system-stats-battery-uptime-queue-length-and-debug-flags">System Stats - Battery, Uptime, Queue Length and Debug Flags</h3>
 <p><strong>Usage:</strong> 
 - <code>stats-core</code></p>
-<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
+command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <hr />
 <p><a id="stats-radio"></a></p>
 <h3 id="radio-stats-noise-floor-last-rssisnr-airtime-receive-errors">Radio Stats - Noise floor, Last RSSI/SNR, Airtime, Receive errors</h3>
 <p><strong>Search terms:</strong> signal strength, signal quality, RSSI, SNR, radio noise.</p>
 <p><strong>Usage:</strong> <code>stats-radio</code></p>
-<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
+command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <hr />
 <p><a id="stats-packets"></a></p>
 <h3 id="packet-stats-packet-counters-received-sent">Packet stats - Packet counters: Received, Sent</h3>
 <p><strong>Usage:</strong> <code>stats-packets</code></p>
-<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
+command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <hr />
 <p><a id="read-repeater-telemetry-history"></a></p>
 <h3 id="read-repeater-and-room-server-telemetry-history">Read repeater and room-server telemetry history</h3>
@@ -6570,9 +6583,11 @@ only <code>get mqtt.enabled</code>. WiFi modem power saving is a separate settin
 <h3 id="erase-captured-log">Erase captured log</h3>
 <p><strong>Usage:</strong> <code>log erase</code></p>
 <hr />
-<h3 id="print-the-captured-log-to-the-serial-terminal">Print the captured log to the serial terminal</h3>
+<p><a id="print-the-captured-log-to-the-serial-terminal"></a></p>
+<h3 id="print-the-captured-log-to-the-requesting-terminal">Print the captured log to the requesting terminal</h3>
 <p><strong>Usage:</strong> <code>log</code></p>
-<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
+command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <hr />
 <h2 id="info">Info</h2>
 <h3 id="get-the-version">Get the Version</h3>
@@ -6781,7 +6796,8 @@ automation treats that version as the wire-format capability boundary.</p>
 - <code>frequency</code>: Frequency in MHz</p>
 <p><strong>Default:</strong> <code>869.525</code></p>
 <p><strong>Note:</strong> Requires reboot to apply
-<strong>Serial Only:</strong> <code>set freq &lt;frequency&gt;</code></p>
+<strong>Local connection only:</strong> <code>set freq &lt;frequency&gt;</code>. USB, browser/TCP/Ethernet
+CLI, and Companion binary command <code>0x42</code> can set it; LoRa cannot.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141">View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)</h4>
 <p><strong>Search terms:</strong> RX boost, receive gain, receiver sensitivity, boosted reception.</p>
@@ -7003,19 +7019,25 @@ for the tested XIAO handoff and host-cache caveats.</p>
 - <code>set prv.key &lt;private_key&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>private_key</code>: Private key in hex format (64 hex characters)</p>
-<p><strong>Serial Only:</strong>
-- <code>get prv.key</code>: Yes
-- <code>set prv.key</code>: No</p>
+<p><strong>Local connection only:</strong> <code>get prv.key</code>. Companion also requires
+<code>ENABLE_PRIVATE_KEY_EXPORT=1</code>; use binary command <code>0x42</code> or the text terminal.
+Infrastructure <code>set prv.key</code> retains its administrator access rules.</p>
 <p><strong>Note:</strong> Requires reboot to take effect after setting</p>
 <hr />
-<h4 id="change-this-nodes-admin-password">Change this node's admin password</h4>
+<p><a id="change-this-nodes-admin-password"></a></p>
+<h4 id="view-or-change-this-nodes-admin-password">View or change this node's admin password</h4>
 <p><strong>Usage:</strong>
+- <code>get password</code>
 - <code>password &lt;new_password&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>new_password</code>: New admin password</p>
 <p><strong>Set by build flag:</strong> <code>ADMIN_PASSWORD</code></p>
 <p><strong>Default:</strong> <code>password</code></p>
-<p><strong>Note:</strong> Command reply echoes the updated password for confirmation.</p>
+<p><code>get password</code> returns the current admin password only on a local connection:
+USB, Ethernet, or the authenticated LAN browser CLI. It is rejected over LoRa.
+Companion has no local admin password and reports that explicitly, including
+through binary command <code>0x42</code>; this command does not report the Bluetooth PIN.</p>
+<p><strong>Note:</strong> The password setter replies with confirmation.</p>
 <p><strong>Note:</strong> Any node using this password will be added to the admin ACL list.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-guest-password">View or change this node's guest password</h4>
@@ -8270,7 +8292,8 @@ eviction like administrators.</p>
 <h4 id="view-the-current-acl">View the current ACL</h4>
 <p><strong>Usage:</strong> 
 - <code>get acl</code></p>
-<p><strong>Serial Only:</strong> Yes</p>
+<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
+command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <hr />
 <h4 id="recover-a-repeaters-future-dated-replay-timestamp">Recover a repeater's future-dated replay timestamp</h4>
 <p>This is an explicit recovery operation after correcting a bad clock, not a
