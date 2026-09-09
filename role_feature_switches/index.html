@@ -2412,7 +2412,10 @@ get mqtt.status
 </code></pre>
 <p>Set <code>mqtt1.username</code> / <code>mqtt1.password</code> if required by that broker. Configure only
 as many slots as the board supports. <code>set mqtt1.preset none</code> disables slot 1;
-other configured slots remain enabled. <code>set mqtt.status off</code> disables status
+other configured slots remain enabled, within the build's supported slot count.
+Disabled and partially configured slots remain saved across reboot. For a custom
+server URL, <code>set mqtt1.port 0</code> clears the port override so the URI supplies it.
+<code>set mqtt.status off</code> disables status
 messages, not MQTT itself. See the <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md">MQTT reference</a>
 for presets, TLS, credentials, and slot limits.</p>
 <h3 id="infrastructure-power-saving-and-bridges">Infrastructure power saving and bridges</h3>
