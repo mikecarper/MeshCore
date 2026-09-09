@@ -853,6 +853,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../home_text_spacing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home-screen text spacing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../host_cli_service/" class="md-nav__link">
         
   
@@ -1654,10 +1681,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_50" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_51" >
         
           
-          <label class="md-nav__link" for="__nav_50" id="__nav_50_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_51" id="__nav_51_label" tabindex="0">
             
   
   
@@ -1675,8 +1702,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_50_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_50">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_51_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_51">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1898,18 +1925,19 @@ to stay on their own line. An enabled channel footer reserves its own space.
 Readers without the button hint retain the y=14 origin and y=22 message text.</p>
 <p>On V4 and other single-button builds using this reader, the home screen says
 <code>hold button: inbox</code>. Hold the user button for about 1.2 seconds to open it.
-The bottom alternates between <code>&lt;- 2 tap  1 tap -&gt;  long press: exit</code> and
-<code>&lt;&lt;- 4 tap  3 tap -&gt;&gt;</code> every three seconds. Double tap goes to the previous
+The bottom continuously shows <code>4 &lt;&lt;-  2 &lt;- tap -&gt; 1  -&gt;&gt; 3  hold: Exit</code> without alternating or
+blinking. Double tap goes to the previous
 message, one tap advances, three taps select the next channel, and four taps
 select the previous channel. Channel selection cycles through All, configured
 channels, and direct messages, starting at the newest message in each filter.
 The header shows <code>All</code>, <code>Ch N</code>, or <code>DM</code>, including when a channel is empty.
 Hold to return home; advancing past the last message also returns home.
-The hints share the same footer space and use <code>hold: X</code> when the longer exit
-label does not fit. Both fit in the V4's existing 8-pixel footer at y=56, leaving
-five message rows. Narrower screens split the hint across lines; switching
-hints does not change the space reserved for text. The hints appear even when
-the inbox is empty. These are button taps. Touchscreen and joystick builds retain
+The complete hint fits in the V4's existing 8-pixel footer at y=56, leaving
+five message rows. The footer keeps the same 6px font, using 108 pixels with
+10-pixel margins on the V4. Narrower screens first use the compact <code>hold:X</code>
+hint without the extra spaces or arrow dashes, then split the
+same controls across fixed lines. The hint appears even when the inbox is
+empty. These are button taps. Touchscreen and joystick builds retain
 instructions appropriate to their controls. During the first eight
 seconds after startup, holding the button on an ordinary home page enters
 CLI rescue instead; wait for that startup window to finish before opening

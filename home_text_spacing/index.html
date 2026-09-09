@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/number_allocations/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/home_text_spacing/">
       
       
-        <link rel="prev" href="../nrf52_power_management/">
+        <link rel="prev" href="../hardware_validation_checklist/">
       
       
-        <link rel="next" href="../ota_easy/">
+        <link rel="next" href="../host_cli_service/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Number Allocations - MeshCore Docs</title>
+        <title>Home-screen text spacing - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#number-allocations" class="md-skip">
+        <a href="#home-screen-text-spacing" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Number Allocations
+              Home-screen text spacing
             
           </span>
         </div>
@@ -850,10 +850,19 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../home_text_spacing/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -869,6 +878,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -1093,19 +1103,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
         
   
   
@@ -1121,7 +1122,6 @@
   
 
       </a>
-      
     </li>
   
 
@@ -1730,7 +1730,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/number_allocations.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/home_text_spacing.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1738,50 +1738,25 @@
   
 
 
-<h1 id="number-allocations">Number Allocations</h1>
-<p>This document lists unique numbers/identifiers used in various MeshCore protocol payloads.</p>
-<h1 id="group-data-types">Group Data Types</h1>
-<p>The <code>PAYLOAD_TYPE_GRP_DATA</code> payloads have a 16-bit data-type field, which identifies which application the packet is for.</p>
-<p>To make sure multiple applications can function without interfering with each other, the table below is for reserving various ranges of data-type values. Just modify this table, adding a row, then submit a PR to have it authorised/merged.</p>
-<p>NOTE: the range FF00 - FFFF is for use while you're developing, doing POC, and for these you don't need to request to use/allocate.</p>
-<p>Once you have a working app/project, you need to be able to demonstrate it exists/works, and THEN request type IDs. So, just use the testing/dev range while developing, then request IDs before you transition to publishing your project.</p>
-<table>
-<thead>
-<tr>
-<th>Data-Type range</th>
-<th>App name</th>
-<th>Contact</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0000 - 00FF</td>
-<td>-reserved for internal use-</td>
-<td></td>
-</tr>
-<tr>
-<td>0100</td>
-<td>MeshCore Open</td>
-<td>zsylvester@monitormx.com - https://github.com/zjs81/meshcore-open</td>
-</tr>
-<tr>
-<td>0110 - 011F</td>
-<td>Ripple</td>
-<td>ripple_biz@protonmail.com - https://buymeacoffee.com/ripplebiz</td>
-</tr>
-<tr>
-<td>0120</td>
-<td>MCO Advanced</td>
-<td>most.original.address@gmail.com - https://github.com/HDDen/meshcore-open/tree/rename-mco-advanced</td>
-</tr>
-<tr>
-<td>FF00 - FFFF</td>
-<td>-reserved for testing/dev-</td>
-<td></td>
-</tr>
-</tbody>
-</table>
-<p>(add rows, inside the range 0100 - FEFF for custom apps)</p>
+<h1 id="home-screen-text-spacing">Home-screen text spacing</h1>
+<p>On non-Indicator companions, a visible Bluetooth PIN or connection status owns
+a separate bottom-aligned block. It replaces the ordinary inbox instruction,
+clock and WiFi rows while displayed. The PIN stays below the inbox title; the
+label and value use measured font heights, including the MeshPocket's larger
+e-paper font. An unusually short viewport may omit the label, never overlap
+the title or clip the PIN. Indicator's dedicated pairing layout is unchanged.</p>
+<p>The repeater home page also stacks measured font-height rows instead of fixed
+ten-pixel offsets. Long names and status lines are ellipsized horizontally.</p>
+<p>Run <code>python3 -m unittest discover -s test -p test_home_text_spacing.py -v</code> on a
+host with a C++ compiler. This renders the actual companion and repeater home
+branches, recording every text rectangle and rejecting overlaps or clipping.
+It covers 128x64 OLED, 160x80 T096, 250x122 MeshPocket and larger viewports,
+PIN/connected/disabled/prompt states, WiFi variants, long strings and a sweep
+of font heights. It also checks the static reader hint. The separate native
+display and T096 tests exercise the driver drawing/measurement methods.</p>
+<p>Hardware acceptance: check that the full six-digit PIN is near the bottom,
+with no text over it; connect/disconnect Bluetooth and verify no stale digits;
+then check the repeater's five rows and the V4's non-blinking reader footer.</p>
 
 
 
