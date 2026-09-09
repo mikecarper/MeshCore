@@ -2306,9 +2306,12 @@ expose this tab.</p>
 <code>set usb.logging on|off</code>, WiFi controls, and MQTT settings. <code>set mqtt.enabled on|off</code> controls MQTT
 without erasing broker settings; <code>get mqtt.enabled</code>, <code>get mqtt.running</code>, and
 <code>get mqtt.status</code> distinguish the saved switch from current connections.
-<code>set logging.output off|usb|wifi|both</code> selects both outputs together. Chat, recipient
-selection, streaming output, and USB MOTA session commands use the complete
-Companion text terminal over USB or TCP port 5002.</p>
+<code>set logging.output off|usb|wifi|both</code> selects both outputs together. The browser
+also uses the complete Companion terminal for <code>card</code>, <code>import meshcore://...</code>,
+<code>list</code>, <code>to</code>, <code>send</code>, <code>login</code>, <code>cmd</code>, and delayed replies, with the same syntax
+as USB and TCP port 5002. See the <a href="../terminal_chat_cli/">terminal command guide</a>
+for contact import and session ownership. USB MOTA session commands require
+the USB connection; WiFi host folders use port 5001.</p>
 <p>On the two primary-ESP-NOW Full targets, the same terminal also provides
 <code>get espnow.channel</code> and <code>set espnow.channel &lt;1-13&gt;</code>. A channel change is
 persisted and requires a reboot, unlike a WiFi power-save change.</p>

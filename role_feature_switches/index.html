@@ -2009,8 +2009,10 @@ there too. KISS firmware uses its modem protocol and is outside this release.</p
 need node WiFi or <code>set webui on</code>. <strong>WebConfig</strong> is a separate settings website
 served by supported ESP32 images. Both infrastructure and WiFi Companion
 WebConfig include a browser command terminal (<code>set wifi.cli on</code>), enabled by
-default on the LAN. Full ESP32 Companion also has a text terminal at TCP port <strong>5002</strong>
-for its complete chat and streaming command surface.</p>
+default on the LAN. The Companion browser CLI uses the same terminal commands
+as USB, including contact import, chat, recipient selection, and streaming
+replies. Full ESP32 Companion also exposes this terminal at TCP port <strong>5002</strong>.
+See the <a href="../terminal_chat_cli/#companion-wifi-browser-terminal">terminal command guide</a>.</p>
 <h2 id="which-old-variant-setting-should-i-use">Which old variant setting should I use?</h2>
 <p><strong>Search terms:</strong> old firmware variants, restore features, turn features on or off, enable MQTT, disable MQTT.</p>
 <p>These controls apply to every board with the corresponding compiled feature;

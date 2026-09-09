@@ -5932,10 +5932,15 @@ again without rebooting. Once an SSID is saved, the cutoff no longer applies
 and the selected WiFi/MQTT mode keeps reconnecting. Other setup sessions retain
 their profile's idle timeout.</p>
 <p>Every ESP32 build with WebConfig supports the browser command terminal,
-including WiFi Companion and Full Companion. Companions use their own bounded
-configuration commands on the trusted LAN; chat and streaming commands remain
-in the USB/TCP terminal. Repeater and Room Server use the authenticated admin
-parser.</p>
+including WiFi Companion and Full Companion. Companions use their complete
+USB/TCP terminal on the trusted LAN, including contact import, chat, recipient
+selection, and delayed replies. Repeater and Room Server use the authenticated
+admin parser.</p>
+<p>To add a Companion contact, run <code>import meshcore://&lt;full-contact-card-data&gt;</code>,
+then <code>list</code> to confirm it appears. Get the complete card with <code>card</code> on the
+other Companion. A public key alone is insufficient. See the
+<a href="../terminal_chat_cli/#companion-wifi-browser-terminal">terminal command guide</a>
+for <code>to</code>, <code>send</code>, <code>login</code>, and <code>cmd</code> examples and session ownership.</p>
 <p>The saved <code>wifi.cli</code> setting defaults to <code>on</code>. Use <code>set wifi.cli off</code> to disable
 the <strong>CLI</strong> tab.
 <code>get wifi.cli</code> reports <code>off</code>, <code>on, waiting for WiFi client</code>, or <code>on, active</code>.

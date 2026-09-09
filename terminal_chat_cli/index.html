@@ -1534,6 +1534,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#companion-wifi-browser-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion WiFi browser terminal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-usb-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1754,6 +1765,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#companion-wifi-browser-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion WiFi browser terminal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-usb-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1802,6 +1824,37 @@
 
 <h1 id="terminal-chat-cli">Terminal Chat CLI</h1>
 <p>Below are the commands you can enter into the Terminal Chat clients:</p>
+<h2 id="companion-wifi-browser-terminal">Companion WiFi browser terminal</h2>
+<p>On ESP32 WiFi Companions with WebConfig, open the node's LAN IP address and
+select <strong>CLI</strong>. The browser runs the same commands as the USB terminal and
+Full Companion's TCP terminal on port 5002, including contact import, contact
+selection, messages, remote login/commands, and delayed RF replies. Run <code>help</code>
+to list commands compiled into the device. Enable the tab with
+<code>set wifi.cli on</code>; the open setup AP does not expose it.</p>
+<p>For example, copy the complete <code>meshcore://...</code> string from <code>card</code> on another
+Companion, then run these commands on the receiving Companion:</p>
+<pre><code class="language-text">import meshcore://&lt;full-contact-card-data&gt;
+list
+to &lt;contact-name-or-prefix&gt;
+</code></pre>
+<p>Replace the placeholders; a bare public key is not a contact card. Import is
+queued for signature validation, so use <code>list</code> to confirm the contact appears.
+Explicit import works with manual contact addition enabled and bypasses the
+automatic discovery type/hop filters. It still respects contact storage limits;
+a full contact table follows the configured overwrite policy. <code>to</code>
+remains selected for subsequent <code>send</code>, <code>path</code>, <code>login</code>, and <code>cmd</code> commands
+within this terminal session.</p>
+<p>Only one USB, TCP, or browser text terminal owns the session at a time. An
+idle startup USB prompt can be borrowed by WiFi. Use <code>disconnect</code> or the
+browser's <strong>disconnect</strong> button to release it. Closing the page releases the
+session; if the connection disappears, it expires after 60 seconds without a
+poll. Long replies page into the browser automatically, and incoming replies
+continue appearing after a command finishes. Terminal scrollback starts at
+4 KiB and can grow to 32 KiB for unread output, preferring PSRAM; it shrinks
+after reading and is freed when the session expires. If output exceeds the
+available buffer while unread, the browser reports the missing output.</p>
+<p>USB protocol-switch and USB MOTA ownership commands still apply to the USB
+connection. Use the WiFi MOTA seeder on port 5001 for a host folder over WiFi.</p>
 <h2 id="companion-usb-mode">Companion USB mode</h2>
 <p>An ordinary Companion USB build starts in the normal binary Companion protocol
 at 115200 baud. Use this command to switch the same USB connection into terminal
