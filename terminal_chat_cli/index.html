@@ -1903,10 +1903,6 @@ the corresponding feature:</p>
 <td>Infrastructure admin password; Companion reports that it has no admin password</td>
 </tr>
 <tr>
-<td><code>set freq &lt;MHz&gt;</code></td>
-<td>Save the frequency; reboot to apply</td>
-</tr>
-<tr>
 <td><code>erase</code></td>
 <td>Erase stored identity and settings; reboot for a fresh node</td>
 </tr>
@@ -1930,11 +1926,16 @@ switching into terminal mode. The response is <code>0x1D</code> (<code>RESP_CODE
 followed by the reply text. For example, payload <code>42 67 65 74 20 70 61 73 73 77
 6f 72 64</code> runs <code>get password</code>. USB framing remains the normal Companion frame;
 BLE and TCP use their existing Companion transport framing.</p>
+<p><code>set freq &lt;MHz&gt;</code> is available on these local connections and through authorized
+LoRa administration, just like <code>set radio</code>. It saves the frequency without
+changing bandwidth, spreading factor, or coding rate and requires a reboot to
+apply. Infrastructure roles also apply the board's transmit-power limit.</p>
 <p>Commands relayed to another node using <code>cmd</code> travel over LoRa and retain the
-remote restrictions. These local permissions do not add an ACL or packet-log
-store to Companion. Use <code>list</code> or the binary contacts operations for Companion
-contacts. Interactive chat commands still use the text terminal or their
-corresponding binary protocol operations.</p>
+remote restrictions on local-only maintenance and secret reads. These local
+permissions do not add an ACL or packet-log store to Companion. Use <code>list</code> or
+the binary contacts operations for Companion contacts. Interactive chat
+commands still use the text terminal or their corresponding binary protocol
+operations.</p>
 <p>The browser CLI requires station/LAN mode and <code>wifi.cli on</code>. Infrastructure
 uses its admin login; Companion uses the trusted LAN. Configuration forms keep
 password fields masked; explicit local CLI getters return their values.</p>
@@ -1988,7 +1989,8 @@ See <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/bi
 source, supported build profiles and memory costs.</p>
 <pre><code>set freq {frequency}
 </code></pre>
-<p>Set the LoRa frequency. Example:  set freq 915.8</p>
+<p>Set the saved LoRa frequency. Example: <code>set freq 915.8</code>. Available over local
+connections and authorized LoRa CLI; reboot to apply.</p>
 <pre><code>set tx {tx-power-dbm}
 </code></pre>
 <p>Sets LoRa-chip transmit power in dBm. The firmware rejects values outside the

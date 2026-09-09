@@ -2194,8 +2194,12 @@ over the normal binary USB, BLE, or TCP connection:</p>
 <td>Local terminal and binary command <code>0x42</code></td>
 </tr>
 <tr>
-<td><code>erase</code>, <code>set freq &lt;MHz&gt;</code></td>
-<td>Local terminal and binary command <code>0x42</code>; stored changes apply on reboot</td>
+<td><code>erase</code></td>
+<td>Local terminal and binary command <code>0x42</code>; reboot after erasing stored settings</td>
+</tr>
+<tr>
+<td><code>set freq &lt;MHz&gt;</code></td>
+<td>Local terminal, binary command <code>0x42</code>, and authorized LoRa CLI; reboot to apply</td>
 </tr>
 <tr>
 <td><code>get prv.key</code></td>
@@ -2541,7 +2545,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-frequency"><code>get freq</code>; <code>set freq &lt;mhz&gt;</code></a></td>
-<td><code>set</code> requires a local connection</td>
+<td>Local or authorized LoRa CLI</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3916,7 +3920,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-frequency"><code>get freq</code>; <code>set freq &lt;mhz&gt;</code></a></td>
-<td><code>set</code> requires a local connection</td>
+<td>Local or authorized LoRa CLI</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>

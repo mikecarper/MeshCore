@@ -3384,11 +3384,13 @@ may prefix the CLI text with any two-character correlation tag and <code>|</code
 example, <code>A7|get radio.rxgain</code>); the reply preserves that prefix.</p>
 <p>Direct USB, BLE, WiFi TCP, and Ethernet clients can also use this command for
 <code>stats-core</code>, <code>stats-radio</code>, <code>stats-radio-diag</code>, <code>stats-packets</code>, <code>erase</code>,
-<code>set freq &lt;MHz&gt;</code>, and <code>get prv.key</code> (when private key export is enabled).
+and <code>get prv.key</code> (when private key export is enabled).
 WiFi/MQTT builds accept <code>get wifi.pwd</code>, <code>get mqttN.password</code>, and
 <code>get mqttN.token</code>. <code>get password</code> reports that Companion has no admin password;
 infrastructure roles return their own admin password on a local CLI connection.
-These privileges do not apply to CLI commands relayed over LoRa. See
+These privileges do not apply to CLI commands relayed over LoRa.
+<code>set freq &lt;MHz&gt;</code> works through command <code>0x42</code> and authorized LoRa CLI, like
+<code>set radio</code>; it saves the frequency and requires reboot to apply. See
 <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>
 for role differences and the text-terminal equivalents.</p>
 <p>Full Companion clients can send <code>version</code> through this command to receive the

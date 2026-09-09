@@ -5949,11 +5949,12 @@ the <strong>CLI</strong> tab.
 The saved setting becomes active only in station/LAN mode while the WiFi client
 is connected. It is deliberately unavailable on the open setup access point.
 The tab displays each reply in the browser, including local diagnostics,
-<code>get password</code>, private-key and WiFi/MQTT credential reads, <code>erase</code>, and
-<code>set freq</code>. Infrastructure <code>get acl</code> and raw <code>log</code> stream to the requesting
-browser, with backpressure for slow clients. LoRa callers retain their
-restrictions. The bounded <code>/api/cli</code> endpoint accepts local maintenance
-commands; use <code>/api/terminal</code> for complete ACL and log listings.
+<code>get password</code>, private-key and WiFi/MQTT credential reads, and <code>erase</code>.
+Infrastructure <code>get acl</code> and raw <code>log</code> stream to the requesting browser, with
+backpressure for slow clients. These maintenance commands retain their LoRa
+restrictions. <code>set freq</code> works both here and through authorized LoRa CLI.
+The bounded <code>/api/cli</code> endpoint accepts local maintenance commands; use
+<code>/api/terminal</code> for complete ACL and log listings.
 Select <strong>Command block</strong> to paste up to 100 commands with one command per line.
 Blank lines are ignored, and every nonblank line must fit the normal 159-byte
 CLI command limit. The browser sends the lines sequentially and waits for each
@@ -6795,9 +6796,12 @@ automation treats that version as the wire-format capability boundary.</p>
 <p><strong>Parameters:</strong>
 - <code>frequency</code>: Frequency in MHz</p>
 <p><strong>Default:</strong> <code>869.525</code></p>
-<p><strong>Note:</strong> Requires reboot to apply
-<strong>Local connection only:</strong> <code>set freq &lt;frequency&gt;</code>. USB, browser/TCP/Ethernet
-CLI, and Companion binary command <code>0x42</code> can set it; LoRa cannot.</p>
+<p><strong>Note:</strong> Requires reboot to apply</p>
+<p><strong>Connections:</strong> USB, browser/TCP/Ethernet CLI, Companion binary command
+<code>0x42</code> (USB/BLE/TCP), and authorized LoRa CLI. <code>set freq</code> saves the frequency;
+bandwidth, spreading factor, and coding rate stay as configured. Infrastructure
+roles also clamp transmit power to the board's limit for that frequency. Like
+<code>set radio</code>, it requires permission to configure the destination node.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141">View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)</h4>
 <p><strong>Search terms:</strong> RX boost, receive gain, receiver sensitivity, boosted reception.</p>
