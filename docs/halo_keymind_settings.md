@@ -332,6 +332,16 @@ The shared retry preset sets these flood defaults:
 | `rooftop` | `3` | `2` | `1` |
 | `mobile` | `15` | `1` | `1` |
 
+Hop-zero flood retries use the direct-retry CR ladder starting at the active
+radio CR. With CR5, `infra` allows CR5, CR7; `rooftop` allows CR5, CR7, CR7,
+CR8, CR8, CR8; `mobile` allows CR5, CR7, CR7, then CR8 through retry 15.
+These lists exclude the initial send and remain subject to payload caps and
+echo cancellation. Floods with recorded hops keep the active CR.
+`flood.retry.count 0` still disables every automatic flood retry, including
+hop zero, without changing direct-retry settings or their CR schedule.
+See [hop-zero flood retry coding rate](cli_commands.md#hop-zero-flood-retry-coding-rate)
+for every starting CR and the payload limits.
+
 Example for path-gated retry:
 
 ```text

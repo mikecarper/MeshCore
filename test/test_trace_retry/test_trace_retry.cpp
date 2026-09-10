@@ -6,6 +6,7 @@
 #include <helpers/FloodAdvertCLI.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/ota/OtaFormat.h>
+#include <vector>
 
 class TraceTestClock : public mesh::MillisecondClock {
 public:
@@ -163,6 +164,186 @@ static mesh::Packet makeFloodPacket(uint8_t payload_type) {
   packet.payload_len = 1;
   packet.payload[0] = 0x42;
   return packet;
+}
+
+class RetryCodingRateRadio : public TraceTestRadio {
+public:
+  uint8_t cr = 5;
+  std::vector<uint8_t> transmitted_crs;
+
+  bool setCodingRate(uint8_t value) override { cr = value; return true; }
+  bool startSendRaw(const uint8_t* bytes, int length) override {
+    transmitted_crs.push_back(cr);
+    return TraceTestRadio::startSendRaw(bytes, length);
+  }
+};
+
+class RetryCodingRateMesh : public TraceTestMesh {
+public:
+  using TraceTestMesh::TraceTestMesh;
+  uint8_t base_cr = 5;
+  uint8_t flood_attempts = 15;
+  uint8_t direct_attempts = 15;
+
+  uint8_t getDefaultTxCodingRate() const override { return base_cr; }
+  uint8_t getFloodRetryMaxAttempts(const mesh::Packet*) const override { return flood_attempts; }
+  uint8_t getDirectRetryMaxAttempts(const mesh::Packet*) const override { return direct_attempts; }
+  bool allowDirectRetry(const mesh::Packet*, const uint8_t*, uint8_t) const override { return true; }
+
+  uint8_t floodCR(const mesh::Packet& packet, uint8_t attempt) {
+    mesh::Packet retry = packet;
+    configureFloodRetryPacket(&retry, &packet, attempt);
+    return retry.tx_cr;
+  }
+  uint8_t directCR(uint8_t attempt) {
+    mesh::Packet original, retry;
+    configureDirectRetryPacket(&retry, &original, attempt);
+    return retry.tx_cr;
+  }
+  void disableFloodRetries() {
+    flood_attempts = 0;
+    floodRetriesAllowed = false;
+    cancelAllFloodRetries();
+  }
+};
+
+class RetryCodingRateTest : public testing::Test {
+protected:
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  RetryCodingRateRadio radio;
+  TraceTestTables tables;
+  StaticPoolPacketManager manager{12};
+  RetryCodingRateMesh node{radio, clock, rng, rtc, manager, tables};
+
+  void SetUp() override { node.begin(); }
+
+  void transmitNext() {
+    clock.now += 10000;
+    node.loop();
+    ASSERT_TRUE(radio.sending);
+    radio.complete = true;
+    ++clock.now;
+    node.loop();
+    EXPECT_FALSE(radio.sending);
+    EXPECT_EQ(node.base_cr, radio.cr);  // the next packet and RX use the normal CR
+  }
+
+  void queueFlood(bool scoped = false) {
+    auto* packet = manager.allocNew();
+    ASSERT_NE(nullptr, packet);
+    *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+    if (scoped) {
+      uint16_t codes[] = {0x1234, 0x5678};
+      ASSERT_TRUE(node.sendFlood(packet, codes, 0, 3));
+    } else {
+      ASSERT_TRUE(node.sendFlood(packet));
+    }
+  }
+};
+
+TEST_F(RetryCodingRateTest, HopZeroMatchesDirectLadderFromEveryRadioCR) {
+  for (uint8_t cr : {4, 5, 6, 7, 8}) {
+    node.base_cr = cr;
+    for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD}) {
+      auto packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+      packet.header = route | (PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT);
+      packet.tx_cr = 8;  // a previous retry must not advance the ladder twice
+      for (uint8_t hash_size : {1, 2, 3}) {
+        packet.setPathHashSizeAndCount(hash_size, 0);
+        for (uint8_t attempt = 1; attempt <= 15; ++attempt) {
+          SCOPED_TRACE(testing::Message() << "CR" << int(cr) << " retry " << int(attempt));
+          EXPECT_EQ(node.directCR(attempt), node.floodCR(packet, attempt));
+        }
+      }
+    }
+  }
+}
+
+TEST_F(RetryCodingRateTest, ForwardedFloodsKeepActiveCRAtEveryAttempt) {
+  auto packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  packet.tx_cr = 8;
+  for (uint8_t cr : {5, 6, 7, 8}) {
+    node.base_cr = cr;
+    for (uint8_t hash_size : {1, 2, 3}) {
+      for (uint8_t hops : {1, 2, 8}) {
+        packet.setPathHashSizeAndCount(hash_size, hops);
+        for (uint8_t attempt = 1; attempt <= 15; ++attempt) {
+          EXPECT_EQ(cr, node.floodCR(packet, attempt));
+        }
+      }
+    }
+  }
+}
+
+TEST_F(RetryCodingRateTest, HopZeroCR5ScheduleReachesTheRadioForEachPresetBudget) {
+  // infra, rooftop, mobile hop-zero budgets; the production preset/role
+  // calculations are exercised separately by test_retry_cr_presets.py.
+  for (uint8_t attempts : {2, 6, 15}) {
+    for (bool scoped : {false, true}) {
+      node.begin();
+      node.flood_attempts = attempts;
+      radio.transmitted_crs.clear();
+      queueFlood(scoped);
+      std::vector<uint8_t> expected{5};  // initial transmission
+      for (uint8_t i = 0; i <= attempts; ++i) {
+        if (i > 0) expected.push_back(i == 1 ? 5 : i <= 3 ? 7 : 8);
+        transmitNext();
+      }
+      EXPECT_EQ(expected, radio.transmitted_crs);
+      EXPECT_EQ(0, manager.getOutboundTotal());
+    }
+  }
+}
+
+TEST_F(RetryCodingRateTest, DisabledFloodRetrySendsOnlyTheInitialPacket) {
+  node.disableFloodRetries();
+  queueFlood();
+  transmitNext();
+  EXPECT_EQ((std::vector<uint8_t>{5}), radio.transmitted_crs);
+  EXPECT_EQ(0, manager.getOutboundTotal());
+}
+
+TEST_F(RetryCodingRateTest, DisablingFloodRetryMidSequenceCancelsEscalatedCopies) {
+  queueFlood();
+  transmitNext();
+  transmitNext();
+  transmitNext();
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  EXPECT_EQ(7, manager.getOutboundByIdx(0)->tx_cr);
+  node.disableFloodRetries();
+  clock.now += 10000;
+  node.loop();
+  EXPECT_FALSE(radio.sending);
+  EXPECT_EQ(0, manager.getOutboundTotal());
+  EXPECT_EQ((std::vector<uint8_t>{5, 5, 7}), radio.transmitted_crs);
+}
+
+TEST_F(RetryCodingRateTest, DirectTransmissionsKeepTheirScheduleWithFloodRetryOff) {
+  for (uint8_t attempts : {4, 15}) {
+    for (bool flood_enabled : {true, false}) {
+      node.begin();
+      node.direct_attempts = attempts;
+      node.floodRetriesAllowed = flood_enabled;
+      node.flood_attempts = flood_enabled ? 15 : 0;
+      radio.transmitted_crs.clear();
+      auto* packet = node.obtainNewPacket();
+      ASSERT_NE(nullptr, packet);
+      packet->header = PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT;
+      packet->payload_len = 4;
+      memset(packet->payload, 0x34, packet->payload_len);
+      const uint8_t path[] = {0x12, 0x34};
+      ASSERT_TRUE(node.sendDirect(packet, path, sizeof(path)));
+      std::vector<uint8_t> expected{5};
+      for (uint8_t i = 0; i <= attempts; ++i) {
+        if (i > 0) expected.push_back(i == 1 ? 5 : i <= 3 ? 7 : 8);
+        transmitNext();
+      }
+      EXPECT_EQ(expected, radio.transmitted_crs);
+      EXPECT_EQ(0, manager.getOutboundTotal());
+    }
+  }
 }
 
 static mesh::Packet makeOtaManifestFragment(uint8_t format_version) {

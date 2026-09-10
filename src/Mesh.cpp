@@ -145,6 +145,19 @@ void Mesh::configureDirectRetryPacket(Packet* retry, const Packet* original, uin
   retry->tx_cr = getDirectRetryCodingRateForAttempt(default_cr, retry_attempt);
 }
 
+void Mesh::configureFloodRetryPacket(Packet* retry, const Packet* original, uint8_t retry_attempt) {
+  if (retry == NULL) return;
+
+  // Always start from the active radio setting, not the previous retry's
+  // override. Only the originating sender has no hops recorded yet; bridge
+  // path adjustments must not make a forwarded packet eligible for this.
+  const uint8_t default_cr = getDefaultTxCodingRate();
+  retry->tx_cr = original != NULL && original->isRouteFlood()
+      && original->getPathHashCount() == 0
+      ? getDirectRetryCodingRateForAttempt(default_cr, retry_attempt)
+      : default_cr;
+}
+
 static bool isPrimaryOtaTraffic(const uint8_t* msg, uint16_t len) {
   return msg && len && ota::ota_is_transfer_message(msg[0]);
 }
@@ -2367,7 +2380,7 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
       }
 
       *retry = *packet;
-      retry->tx_cr = getDefaultTxCodingRate();
+      configureFloodRetryPacket(retry, packet, _flood_retries[i].retry_attempts_sent + 1);
       uint32_t retry_delay = getFloodRetryAttemptDelay(packet, _flood_retries[i].retry_attempts_sent);
       if (queueOutboundPacket(retry, _flood_retries[i].priority, retry_delay)) {
         _flood_retries[i].packet = retry;
@@ -2403,7 +2416,7 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
     }
 
     *retry = *packet;
-    retry->tx_cr = getDefaultTxCodingRate();
+    configureFloodRetryPacket(retry, packet, 1);
     if (queueOutboundPacket(retry, _flood_retries[i].priority, _flood_retries[i].retry_delay)) {
       unsigned long now = _ms->getMillis();
       _flood_retries[i].packet = retry;

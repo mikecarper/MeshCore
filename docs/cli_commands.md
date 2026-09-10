@@ -3344,6 +3344,49 @@ The count, path, group-data path, and advert controls work on repeater, room-ser
 firmware. Flood forwarding must also be enabled for retries to run. Prefix,
 ignore, bridge, and bucket controls are repeater-only.
 
+#### Hop-zero flood retry coding rate
+
+Flood packets with no path hops recorded yet use the same CR escalation ladder
+as direct retries. The starting point is the active radio CR, since a flood has
+no single next-hop repeater whose SNR can select a starting CR. Each retry uses
+its attempt number and the active radio setting; it does not restart the ladder
+from the previous retry's override. Forwarded packets with one or more recorded
+hops use the active radio CR on every retry, including bridge retries whose
+effective path length discounts ignored hops.
+
+The initial transmission uses the active radio CR. This table lists retries
+after that initial transmission; any later retries remain at CR8:
+
+| Starting CR | Retry 1 | Retry 2 | Retry 3 | Retry 4 | Retry 5+ |
+| --- | --- | --- | --- | --- | --- |
+| CR4 | CR4 | CR5 | CR7 | CR7 | CR8 |
+| CR5 | CR5 | CR7 | CR7 | CR8 | CR8 |
+| CR6 | CR6 | CR7 | CR7 | CR8 | CR8 |
+| CR7 | CR7 | CR7 | CR8 | CR8 | CR8 |
+| CR8 | CR8 | CR8 | CR8 | CR8 | CR8 |
+
+The ladder is shared across presets. Presets change the retry budget, not the
+CR steps. At CR5, the maximum hop-zero schedules are:
+
+| Preset | Configured flood count | Hop-zero retries | CR schedule after the initial send |
+| --- | ---: | ---: | --- |
+| `infra` | 1 | 2 | CR5, CR7 |
+| `rooftop` | 3 | 6 | CR5, CR7, CR7, CR8, CR8, CR8 |
+| `mobile` | 15 | 15 | CR5, CR7, CR7, then CR8 for retries 4-15 |
+
+These budgets apply to group text and the origin login/message family
+(`RESPONSE`, `TXT_MSG`, `ANON_REQ`, `PATH`). Existing payload caps, echo
+cancellation, and retry eligibility still apply: `REQ` and OTA do not use
+generic flood retries; other payloads allow at most one retry. An eligible
+advert at CR5 therefore gets only its first CR5 retry.
+
+`set flood.retry.count 0` continues to disable all automatic flood retries,
+including hop zero. It leaves the initial transmission and all direct-retry
+settings and CR schedules unchanged. Direct retry's `direct.retry.cr` switch
+and SNR thresholds continue to control direct retries only. Per-packet CR
+overrides are restored after transmission and do not change the saved radio
+setting or physical preamble.
+
 #### View or change flood retry count
 
 **Search terms:** flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.
@@ -3690,7 +3733,7 @@ set direct.retry.margin 10
 - Non-repeater retry packets start at the current radio CR and follow the same escalation pattern, clamped at CR8. With the normal CR5 radio setting this is CR5, CR7, CR7, then CR8.
 - Room-server and sensor firmware accept `on` or `off`; numeric SNR thresholds
   are repeater-only because those roles do not keep recent-repeater SNR data.
-- `off` disables per-packet retry CR overrides and uses the current radio CR.
+- `off` disables per-packet direct-retry CR overrides and uses the current radio CR.
 - Retry packets may use a different coding rate, but they keep the radio's normal physical preamble.
 - Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
 - A failed unknown repeater is seeded at `+2.75 dB`.

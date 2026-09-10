@@ -417,6 +417,12 @@ protected:
   static uint8_t getDirectRetryCodingRateForAttempt(uint8_t start_cr, uint8_t retry_attempt);
 
   /**
+   * \brief  Apply the direct-retry CR ladder to hop-zero flood retries, starting
+   *         from the active radio CR. Forwarded floods keep the active CR.
+   */
+  void configureFloodRetryPacket(Packet* retry, const Packet* original, uint8_t retry_attempt);
+
+  /**
    * \brief  Optional hook to set local-only transmit options on a retry packet before it is queued.
    */
   virtual void configureDirectRetryPacket(Packet* retry, const Packet* original, uint8_t retry_attempt);
