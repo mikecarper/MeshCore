@@ -661,6 +661,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#clear-automatic-flood-advert-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Automatic Flood Advert History
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#clear-stats" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4009,6 +4020,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#clear-automatic-flood-advert-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Automatic Flood Advert History
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#clear-stats" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6115,6 +6137,14 @@ Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If 
 <code>discover.neighbors</code> refresh is already in flight, the scope pass is queued behind it.</p>
 <hr />
 <h2 id="statistics">Statistics</h2>
+<h3 id="clear-automatic-flood-advert-history">Clear Automatic Flood Advert History</h3>
+<p><strong>Usage:</strong> <code>clear flood.advert all</code> or <code>clear flood.advert &lt;64-hex-full-public-key&gt;</code></p>
+<p>Clears automatic advert forwarding quotas, first strikes, and seven-day bad-list
+history for all keys or one exact full key. Available on repeaters, room servers,
+and forwarding sensors through their ordinary local/admin CLI (including admin
+LoRa CLI). A missing selector, a key prefix, or a malformed key is rejected.
+It does not change saved settings or manual flood rules. Reboot also clears this
+RAM-only history. See <a href="../flood_filtering/#automatic-flood-advert-limits">automatic advert limits</a>.</p>
 <h3 id="clear-stats">Clear Stats</h3>
 <p><strong>Usage:</strong> <code>clear stats</code></p>
 <hr />

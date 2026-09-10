@@ -724,6 +724,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#automatic-flood-advert-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic flood-advert limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automatic flood-advert limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#continuing-abuse-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continuing abuse and recovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scope-and-resource-bounds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope and resource bounds
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#before-making-changes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1942,6 +1981,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#automatic-flood-advert-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic flood-advert limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Automatic flood-advert limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#continuing-abuse-and-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continuing abuse and recovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scope-and-resource-bounds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope and resource bounds
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#before-making-changes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2168,6 +2246,121 @@ The route and payload values follow the upstream
 <a href="https://docs.meshcore.io/packet_format/">packet-format reference</a> and
 <a href="https://docs.meshcore.io/payloads/">payload layouts</a>, with this fork's LoRa
 OTA assignment noted below.</p>
+<h2 id="automatic-flood-advert-limits">Automatic flood-advert limits</h2>
+<p>Repeaters, room servers (including non-FULL builds), and forwarding sensors
+automatically limit relayed <code>ADVERT</code> packets. No CLI rule is needed. Companions
+and the repeater's receive-only MQTT observer do not allocate this history.
+This is separate from discovery-response limits, self-advert timers, hop caps,
+and the per-rule <code>rate=N/min</code> setting below.</p>
+<p>The ordinary quota is shared by the <strong>first 12 public-key hex characters</strong>
+(six bytes of the advertised origin key, not a path hash). Each prefix has a
+fixed 180-minute window starting with its first tracked valid flood advert.</p>
+<table>
+<thead>
+<tr>
+<th>Shortest received hops in that window</th>
+<th>Distinct adverts forwarded per 180 minutes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0–1</td>
+<td>10</td>
+</tr>
+<tr>
+<td>2</td>
+<td>9</td>
+</tr>
+<tr>
+<td>3</td>
+<td>8</td>
+</tr>
+<tr>
+<td>4</td>
+<td>6</td>
+</tr>
+<tr>
+<td>5</td>
+<td>5</td>
+</tr>
+<tr>
+<td>6</td>
+<td>4</td>
+</tr>
+<tr>
+<td>7</td>
+<td>3</td>
+</tr>
+<tr>
+<td>8+</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<p>The minimum received hop <strong>count</strong>, before adding this relay, sets the quota;
+one-, two-, and three-byte path hashes have the same policy. A shorter valid
+duplicate may increase the quota without restarting the window or clearing
+its count. Longer routes never decrease the allowance during that window.
+The payload signature must verify before any history changes. Path metadata
+itself is not signed, so this is a received-distance heuristic, not proof of
+physical distance.</p>
+<h3 id="continuing-abuse-and-recovery">Continuing abuse and recovery</h3>
+<ul>
+<li>A full public key that exceeds the normal level in one window receives a
+  first strike. If it exceeds that level again in the immediately following
+  window, it enters the bad list. A quiet intervening window breaks this chain.</li>
+<li>The bad list matches <strong>all 32 public-key bytes</strong>, not the prefix. Different
+  full keys sharing a prefix share the ordinary forwarding quota, but their
+  received counts are not combined to accuse an innocent key of ongoing abuse.</li>
+<li>A bad-listed key may have at most one distinct advert forwarded every
+  <strong>12 hours</strong>, measured from its last admitted forward (including before
+  escalation). Ordinary forwarding filters still apply.</li>
+<li>Removal requires <strong>seven uninterrupted days without exceeding the normal
+  hop-based level</strong>. Recovery is measured against received distinct adverts,
+  not the much smaller number allowed to be forwarded. Silence also qualifies.</li>
+<li>Each over-limit window restarts recovery from that window's end. Continued
+  abuse can therefore extend the restriction indefinitely; it does not expire
+  automatically seven days after the first offence.</li>
+</ul>
+<p>All timers use rollover-safe uptime, so setting the clock forward or backward
+cannot clear the restriction. This history is currently RAM-only: rebooting
+the relay clears it, and time while powered off is not tracked. A manual clear
+also resets both the ordinary quota and abuse history for its selected target:</p>
+<pre><code class="language-text">clear flood.advert all
+clear flood.advert &lt;64-hex-full-public-key&gt;
+</code></pre>
+<p>These use the ordinary local/admin CLI authorization, including authenticated
+admin LoRa CLI. A prefix is never accepted for a targeted clear; missing or
+invalid selectors do not clear anything. Clearing an exact key preserves other
+full keys even when their 12-hex prefixes match. No preferences, contacts,
+neighbours, replay timestamps, or manually configured flood rules are erased.</p>
+<h3 id="scope-and-resource-bounds">Scope and resource bounds</h3>
+<p>Only forwarding is suppressed. Valid adverts remain available to local
+contact/neighbour handling and can still appear in raw RX logs or MQTT. This
+cannot prevent the origin or upstream repeaters from transmitting. Direct
+adverts, discovery control responses, messages, OTA packets, and this node's
+own scheduled adverts are not charged. Existing physical retry attempts of
+an admitted advert are not additional <strong>distinct</strong> adverts.</p>
+<p>The limiter retains up to eleven 64-bit payload hashes per full key per
+window: ten possible ordinary admissions plus evidence of exceeding the
+largest quota. Paths and transport scopes do not change these hashes.
+Retained duplicate hashes cannot consume additional quota even if the general
+packet-seen cache has evicted them. Once the eleven distinct receive slots are
+full, additional unretained payloads are suppressed until the next window.
+Only packets passing all ordinary forwarding gates consume forwarding quota;
+valid received traffic still supplies abuse evidence when another gate blocks it.</p>
+<p>The default is 128 full-key slots (18,432 bytes of entry storage plus small
+bookkeeping), 96 on nRF52 (13,824 bytes, preserving the mOTA runtime RAM
+reserve), or eight on RAM-constrained STM32 builds (1,152 bytes).
+<code>FLOOD_ADVERT_SOURCE_SLOTS</code> overrides the capacity at compile time. When full,
+the <strong>least-recently-heard normal key is removed first</strong>. Valid retained
+duplicates update last-heard too. Evicting a normal key discards its ordinary
+quota history, so capacity should still be sized for the deployment's active
+origins. First-strike evidence and bad-list entries are protected from eviction:
+if every slot protects abuse history, untracked origins are not forwarded until
+a slot expires or an administrator clears history. Table churn cannot erase an
+existing bad-list penalty. No heap allocation or per-packet filesystem writes
+are used.</p>
 <h2 id="before-making-changes">Before making changes</h2>
 <p>On a repeater, show the current forwarding controls:</p>
 <pre><code class="language-text">get repeat
