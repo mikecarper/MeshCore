@@ -62,9 +62,18 @@ public:
   std::vector<Line> lines;
   std::vector<uint8_t> pixels;
   Display(int w, int h) : DisplayDriver(w, h), pixels(w * h, 0) {}
-  int bodyY() const { return width() < 64 ? 22 : 12; }
+  int bodyY() const {
+    const int content_height = width() < 64 ? 20 : 10;
+#if UI_READER_TOUCH_BAR
+    return mesh::ui::readerTouchHeaderHeight(content_height) + 2;
+#else
+    return content_height + 2;
+#endif
+  }
   int bodyBottom() {
-#if UI_BUTTON_READER_HINT
+#if UI_READER_TOUCH_BAR
+    return mesh::ui::makeReaderTouchBar(*this, height()).top;
+#elif UI_BUTTON_READER_HINT
     mesh::ui::SmallMessageText compact(*this);
     const bool small = useSmallMessageFont();
     DisplayDriver& hint_text = small ? static_cast<DisplayDriver&>(compact) : *this;
@@ -164,8 +173,12 @@ int main(int argc, char** argv) {
     {128,64,6}, {64,128,6}, {160,80,0}, {80,160,0}, {240,135,0},
     {159,80,6}, {80,159,6}, {320,240,0}, {240,320,0}, {250,122,0}, {200,200,0},
     {72,40,5}, {40,72,5}, {128,32,5}, {32,128,5}, {64,48,5}, {48,64,5},
+    {160,160,0},
   };
   for (const auto& dimensions : cases) {
+#if UI_READER_TOUCH_BAR
+    if (dimensions[0] != 160 || dimensions[1] != 160) continue;
+#endif
     Display display(dimensions[0], dimensions[1]);
     Display expected(dimensions[0], dimensions[1]);
     const int top = expected.bodyY();
@@ -196,9 +209,14 @@ int main(int argc, char** argv) {
     const bool small_hint = footer.useSmallMessageFont();
     DisplayDriver& hint_text = small_hint
         ? static_cast<DisplayDriver&>(hint_compact) : footer;
+#if UI_READER_TOUCH_BAR
+    const auto hint = mesh::ui::makeReaderTouchBar(hint_text, footer.height());
+    mesh::ui::drawReaderTouchBar(hint_text, hint);
+#else
     const auto hint = mesh::ui::makeButtonReaderHintLayout(hint_text,
         small_hint ? hint_compact.glyphHeight() : 10, footer.height());
     mesh::ui::drawButtonReaderHint(hint_text, hint);
+#endif
     if (small_hint) {
       // Compare the real reader's hint pixels independently of the body.
       auto first = footer.pixels.begin() + hint.top * footer.width();
@@ -262,7 +280,57 @@ int main(int argc, char** argv) {
     assert(display.body() == expected_pages.front()); // no wrap before start
     screen.handleInput(KEY_ENTER);
     assert(task.closed);
+#if UI_READER_TOUCH_BAR
+    task.closed = false;
+    mesh::ui::TouchInput input(true, true, 70, true, false);
+    auto touch_gesture = [&](int sx, int sy, int ex, int ey) {
+      display.clear(); screen.render(display);
+      const auto* bar = screen.readerTouchBar();
+      input.update(true, display.width()-1-sx, sy, display.width(), display.height(), false, nullptr, bar);
+      input.update(true, display.width()-1-ex, ey, display.width(), display.height(), false, nullptr, bar);
+      input.update(false, -1, -1, display.width(), display.height(), false, nullptr, bar);
+      const auto action = input.update(false, -1, -1, display.width(), display.height(), false, nullptr, bar);
+      switch (action) {
+        case mesh::ui::TouchAction::Next: screen.handleInput(KEY_NEXT); break;
+        case mesh::ui::TouchAction::Previous: screen.handleInput(KEY_PREV); break;
+        case mesh::ui::TouchAction::VerticalNext: screen.handleInput(KEY_DOWN); break;
+        case mesh::ui::TouchAction::VerticalPrevious: screen.handleInput(KEY_UP); break;
+        case mesh::ui::TouchAction::Select: screen.handleInput(KEY_ENTER); break;
+        default: assert(false);
+      }
+    };
+    auto tap = [&](int cell) {
+      const int x = display.width() * (2 * cell + 1) / 10;
+      touch_gesture(x, screen.readerTouchBar()->top, x, screen.readerTouchBar()->top);
+    };
+    tap(2); assert(screen.flush());
+    Position saved; assert(the_mesh.loadJohnBookmark(saved) && saved.verse == 1);
+    tap(1); assert(screen.flush());
+    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    tap(3); assert(screen.flush());
+    assert(the_mesh.loadJohnBookmark(saved) && referenceAt(saved.verse).chapter == 2);
+    tap(0); assert(screen.flush());
+    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    tap(4); assert(task.closed);
+    task.closed = false;
+    touch_gesture(120,70,120,70); assert(screen.flush());
+    assert(the_mesh.loadJohnBookmark(saved) && saved.verse == 1);
+    touch_gesture(40,70,40,70); assert(screen.flush());
+    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    touch_gesture(120,70,40,70); assert(screen.flush());
+    assert(the_mesh.loadJohnBookmark(saved) && saved.verse == 1);
+    touch_gesture(40,70,120,70); assert(screen.flush());
+    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    touch_gesture(80,100,80,50); assert(screen.flush());
+    assert(the_mesh.loadJohnBookmark(saved) && referenceAt(saved.verse).chapter == 2);
+    touch_gesture(80,50,80,100); assert(screen.flush());
+    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    touch_gesture(80,0,80,0); assert(task.closed);
+#endif
   }
+#if UI_READER_TOUCH_BAR
+  return 0; // The remaining fault-injection cases use tiny non-touch viewports.
+#endif
 
   // Group navigation starts at verse one of the adjacent chapter, resets
   // the page offset, stops at book boundaries, and checkpoints normally.

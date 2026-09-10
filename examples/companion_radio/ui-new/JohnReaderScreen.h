@@ -14,6 +14,9 @@ class JohnReaderScreen : public UIScreen {
   mesh::bible::ReaderBookmark _bookmark;
   uint32_t _retry_at = 0;
   bool _loaded = false;
+#if UI_READER_TOUCH_BAR
+  mesh::ui::TouchNavigationBar _touch_bar;
+#endif
 
   __attribute__((noinline)) void process(int direction, bool draw) {
     using namespace mesh::bible;
@@ -27,7 +30,14 @@ class JohnReaderScreen : public UIScreen {
     // Narrow/rotated panels need separate reference and progress lines.
     const bool stacked_header = width < _display->getTextWidth("88:88")
         + _display->getTextWidth("88/88") + 4;
-    const int top = header_height * (stacked_header ? 2 : 1) + 2;
+    const int header_content_height = header_height * (stacked_header ? 2 : 1);
+#if UI_READER_TOUCH_BAR
+    const int padded_header_height = mesh::ui::readerTouchHeaderHeight(header_content_height);
+#else
+    const int padded_header_height = header_content_height;
+#endif
+    const int header_text_y = (padded_header_height - header_content_height) / 2;
+    const int top = padded_header_height + 2;
 #if UI_SMALL_MESSAGE_FONT || UI_BUTTON_READER_HINT
     // Share message font selection and metrics, including rotated/tiny panels.
     mesh::ui::SmallMessageText compact(*_display);
@@ -39,10 +49,15 @@ class JohnReaderScreen : public UIScreen {
     const bool small_hint = _display->useSmallMessageFont();
     DisplayDriver& hint_text = small_hint
         ? static_cast<DisplayDriver&>(compact) : *_display;
+#if UI_READER_TOUCH_BAR
+    _touch_bar = mesh::ui::makeReaderTouchBar(hint_text, bottom, top - 1);
+    bottom = _touch_bar.top;
+#else
     const auto hint = mesh::ui::makeButtonReaderHintLayout(hint_text,
         small_hint ? compact.glyphHeight() : header_height, bottom,
         (millis() / 3000U) % 2 != 0);
     bottom = hint.top;
+#endif
 #endif
 #if UI_SMALL_MESSAGE_FONT
     const bool small = _display->useSmallMessageFont();
@@ -71,7 +86,11 @@ class JohnReaderScreen : public UIScreen {
           body.setColor(UIColor::warning_txt);
           body.drawTextEllipsized(0, top, width, "John unavailable");
 #if UI_BUTTON_READER_HINT
+#if UI_READER_TOUCH_BAR
+          mesh::ui::drawReaderTouchBar(hint_text, _touch_bar);
+#else
           mesh::ui::drawButtonReaderHint(hint_text, hint);
+#endif
 #endif
         } else _task->showAlert("John data error", 1500);
         return;
@@ -101,8 +120,8 @@ class JohnReaderScreen : public UIScreen {
       if (stacked_header || _display->getTextWidth(label) > width - progress_width - 4)
         snprintf(label, sizeof(label), "%u:%u", ref.chapter, ref.verse);
       _display->setColor(UIColor::title_txt);
-      _display->drawTextEllipsized(0, 0, stacked_header ? width : width - progress_width - 4, label);
-      _display->drawTextRightAlign(width, stacked_header ? header_height : 0, progress);
+      _display->drawTextEllipsized(0, header_text_y, stacked_header ? width : width - progress_width - 4, label);
+      _display->drawTextRightAlign(width, header_text_y + (stacked_header ? header_height : 0), progress);
       _display->drawRect(0, top - 2, width, 1);
       body.setColor(UIColor::primary_txt);
       uint16_t offset = page.start;
@@ -114,13 +133,20 @@ class JohnReaderScreen : public UIScreen {
         body.print(filtered);
       }
 #if UI_BUTTON_READER_HINT
+#if UI_READER_TOUCH_BAR
+      mesh::ui::drawReaderTouchBar(hint_text, _touch_bar);
+#else
       mesh::ui::drawButtonReaderHint(hint_text, hint);
+#endif
 #endif
       return;
     }
   }
 
 public:
+#if UI_READER_TOUCH_BAR
+  const mesh::ui::TouchNavigationBar* readerTouchBar() const { return &_touch_bar; }
+#endif
   JohnReaderScreen(UITask* task, DisplayDriver* display) : _task(task), _display(display) {}
   void open() {
     if (!_loaded) {

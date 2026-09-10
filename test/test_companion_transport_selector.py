@@ -5,12 +5,81 @@ import subprocess
 import tempfile
 import unittest
 
+from test_reader_touch_coordinates import PREAMBLE
+from test_replay_reset_integration import extract_braced
 
 ROOT = Path(__file__).resolve().parents[1]
 UI = ROOT / "examples" / "companion_radio" / "ui-new" / "UITask.cpp"
 
 
 class CompanionTransportSelectorTest(unittest.TestCase):
+    def test_centered_choices_fit_and_preserve_full_height_navigation(self):
+        actual = extract_braced(UI.read_text(), "static void drawCompanionTransportChoice(")
+        generic = extract_braced(
+            (ROOT / "src/helpers/ui/LGFXDisplay.cpp").read_text(),
+            "bool LGFXDisplay::getTouch(")
+        scenarios = r'''
+#include <helpers/ui/CompanionTransportSelectorLayout.h>
+using namespace mesh::ui;
+struct MeasuredDisplay : LGFXDisplay {
+  int size=1,bx=0,by=0,bw=160,bh=160,last_bottom=0;
+  void setTextSize(int s) override { size=s; }
+  uint16_t getTextWidth(const char* text) override { return strlen(text)*6*size; }
+  void print(const char* text) override {
+    assert(cx>=bx+2 && cx+getTextWidth(text)<=bx+bw-2);
+    assert(cy>=by && cy+8*size<=by+bh);
+    assert(cy>=last_bottom);
+    last_bottom=cy+8*size;
+    LGFXDisplay::print(text);
+  }
+};
+int main() {
+  const auto layout=makeCompanionTransportSelectorLayout(160,160,70);
+  assert(layout.side_nav_width==24);
+  assert(layout.wifi.x==26 && layout.wifi.width==52);
+  assert(layout.bluetooth.x==82 && layout.bluetooth.width==52);
+  const TouchSplitSelector selector={layout.wifi.x,layout.wifi.width,
+      layout.bluetooth.x,layout.bluetooth.width,layout.wifi.y,
+      layout.wifi.height,layout.side_nav_width};
+  for(bool mirror : {false,true}) for(int y=0;y<160;++y) for(int x=0;x<160;++x) {
+    TouchAction expected=TouchAction::None;
+    if(x<24) expected=TouchAction::Previous;
+    else if(x>=136) expected=TouchAction::Next;
+    else if(y>=40 && y<140) {
+      if(x>=26 && x<78) expected=TouchAction::SelectLeft;
+      if(x>=82 && x<134) expected=TouchAction::SelectRight;
+    }
+    TouchInput input(true,true,70,mirror,false);
+    const int tx=mirror ? 159-x : x;
+    input.update(true,tx,y,160,160,false,&selector);
+    input.update(false,-1,-1,160,160,false,&selector);
+    assert(input.update(false,-1,-1,160,160,false,&selector)==expected);
+  }
+  for(int canvas : {320,480}) for(bool wifi : {false,true})
+      for(bool active : {false,true}) for(bool selected : {false,true}) {
+    MeasuredDisplay d;
+    d._coordinateScale=canvas/160; d._outputZoom=480.0f/canvas;
+    const auto& box=wifi ? layout.wifi : layout.bluetooth;
+    d.bx=box.x; d.by=box.y; d.bw=box.width; d.bh=box.height;
+    drawCompanionTransportChoice(d,box.x,box.y,box.width,box.height,
+        wifi ? "WiFi" : "BLE",active,selected);
+    assert(d.labels.size()==(active || selected ? 2 : 1));
+  }
+  assert(4*6*3<=160-2*layout.side_nav_width); // MODE
+  assert(9*6*2<=160-2*layout.side_nav_width); // TAP A BOX
+}
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            binary = Path(temp) / "centered_transport"
+            compiled = subprocess.run(["c++", "-std=c++11", "-O1",
+                "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+                f"-I{ROOT / 'src'}", "-x", "c++", "-", "-o", str(binary)],
+                input=PREAMBLE + generic + actual + scenarios,
+                text=True, capture_output=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            tested = subprocess.run([str(binary)], text=True, capture_output=True)
+            self.assertEqual(tested.returncode, 0, tested.stderr)
+
     def test_indicator_layout_has_room_for_large_transport_text(self):
         source = r'''
 #include <helpers/ui/CompanionTransportSelectorLayout.h>
@@ -195,12 +264,12 @@ int main() {
         self.assertIn('large_transport_text ? "NEXT" : "NEXT BOOT"', source)
         self.assertIn('display.setTextSize(3);', source)
         self.assertIn('display.width() / 2, layout.title_y, "MODE"', source)
-        self.assertIn('layout.show_title ? "TAP SIDE" : "tap a box"', source)
+        self.assertIn('layout.show_title ? "TAP A BOX" : "tap a box"', source)
         self.assertIn("makeCompanionTransportSelectorLayout", source)
 
         handler_start = source.index(
             "if (_page == HomePage::TRANSPORT\n"
-            "        && (c == KEY_ENTER || c == KEY_UP || c == KEY_DOWN))"
+            "        && (key == KEY_ENTER || key == KEY_UP || key == KEY_DOWN))"
         )
         handler_end = source.index("#else", handler_start)
         handler = source[handler_start:handler_end]
@@ -239,7 +308,8 @@ int main() {
             "->isTransportSelectorPage()",
             source,
         )
-        self.assertIn("curr == msg_preview, split_transport_selector", source)
+        self.assertIn("curr == msg_preview && UI_MESSAGE_CHANNEL_FOOTER == 1,", source)
+        self.assertIn("split_transport_selector, reader_touch_bar);", source)
         self.assertIn(
             "case mesh::ui::TouchAction::SelectLeft:\n"
             "          c = checkDisplayOn(KEY_UP);",

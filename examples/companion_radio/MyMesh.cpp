@@ -2546,6 +2546,31 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
+  if (strcmp(command, "get display.touch") == 0) {
+    if (_ui == NULL || !_ui->supportsTouchDebug()) {
+      snprintf(reply, reply_size, "Error: touchscreen diagnostics unsupported");
+    } else {
+      snprintf(reply, reply_size, "display.touch %s (off after reboot)",
+               _ui->isTouchDebugEnabled() ? "on" : "off");
+    }
+    return true;
+  }
+  if (strncmp(command, "set display.touch", 17) == 0
+      && (command[17] == 0 || command[17] == ' ' || command[17] == '\t')) {
+    const char* value = command + 17;
+    while (*value == ' ' || *value == '\t') value++;
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      snprintf(reply, reply_size, "Error: use set display.touch on|off");
+    } else if (_ui == NULL || !_ui->supportsTouchDebug()) {
+      snprintf(reply, reply_size, "Error: touchscreen diagnostics unsupported");
+    } else if (!_ui->setTouchDebugEnabled(strcmp(value, "on") == 0)) {
+      snprintf(reply, reply_size, "Error: touchscreen diagnostics unavailable");
+    } else {
+      snprintf(reply, reply_size, "OK - display.touch %s (off after reboot)", value);
+    }
+    return true;
+  }
+
   if (strcmp(command, "get display.rotation") == 0) {
     if (_ui == NULL || !_ui->supportsDisplayRotation()) {
       snprintf(reply, reply_size, "Error: display rotation is unsupported");
@@ -7897,6 +7922,8 @@ void MyMesh::handleTerminalCommand(char* command) {
 #endif
     terminalOutput().print("  get display.rotation\r\n");
     terminalOutput().print("  set display.rotation <0|90|180|270>\r\n");
+    terminalOutput().print("  get display.touch\r\n");
+    terminalOutput().print("  set display.touch <on|off> (this boot only)\r\n");
     terminalOutput().print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
     terminalOutput().print("  get bluetooth.name\r\n");
     terminalOutput().print("  set bluetooth.name <name|default>\r\n");

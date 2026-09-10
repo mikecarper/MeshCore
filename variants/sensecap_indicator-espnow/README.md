@@ -27,6 +27,32 @@ wakes it without selecting anything.
 
 ## Touch navigation
 
+Touch diagnostics are available on all touchscreen builds using the shared UI,
+and are **off by default at every boot**. Use the CLI without rebuilding:
+
+```text
+get display.touch
+set display.touch on
+set display.touch off
+```
+
+Enabling wakes the screen without selecting an action. The setting is temporary
+and is not written to flash; rebooting turns it off. It is available through
+the Companion text terminal and framed CLI over USB, BLE or TCP, where supported.
+Non-touchscreen or legacy UIs return an unsupported error.
+Dotted yellow boxes outline every stationary tap area: three on ordinary main
+screens, four on the WiFi/BLE selector (two choices and two page edges), and
+eight in either reader (header Exit,
+two body halves, five footer controls). The outlines use the active screen's
+logical hit geometry and scale with the rendering; the font and actions do not
+change. Turn the option off when the diagnostic overlay is no longer needed.
+No boxes are shown while the pairing screen is consuming all navigation.
+The box containing the currently detected touch turns dotted green on press,
+returns to yellow on release, and follows a held finger between regions. This
+uses the same visual-coordinate correction as the tap handler; press, release
+and region changes request an immediate redraw without changing the gesture
+action, which still waits for stable release.
+
 - Swipe horizontally to move between home pages. The dots under the status bar
   show the current page.
 - The middle 70% of the panel is the Select tap target. The outer 15% on each
@@ -35,13 +61,49 @@ wakes it without selecting anything.
   are ignored so one swipe cannot become a second, opposite endpoint tap.
 - The SenseCAP controller reports a mirrored physical X coordinate. The board
   profile corrects stationary visual left/right taps independently from its
-  existing swipe-direction correction.
+  existing swipe-direction correction. Its Y coordinate also runs opposite
+  to the rendered image; the Indicator display driver reverses Y once, before
+  gesture detection and green press feedback, on both canvas sizes.
 - The transport page is the exception for a very quick stationary contact:
   either tall, outlined WiFi/BLE box can accept one sampled point after the
-  same stable-release debounce. Taps in the title, center gap, or footer stay
-  inert, and a moving contact is still handled as a swipe first.
+  same stable-release debounce. Both choices fit inside the middle 70%, leaving
+  full-height 15% Previous/Next strips on the edges. Taps in the central title,
+  gap, or prompt stay inert; moving contacts are handled as swipes first.
 
 ## Reading messages
+
+The physical button now supports the message reader controls as well as touch:
+
+- One click goes forward; two quick clicks go back one page. This also works
+  on the main screens. Clicks are grouped until 450 ms after the last release,
+  so a double click does not first advance the page. RGB redraws wait until
+  the gesture finishes so they cannot interrupt polling between clicks.
+- Three/four clicks select the next/previous channel in the inbox, or the
+  next/previous chapter in the offline reader.
+- Hold for one second to exit either reader. From the main screens, holding
+  selects the current page's action. Three/four clicks are reader group
+  controls; they do not change the main screens (the Indicator has no buzzer).
+- Both readers have five evenly spaced footer touch targets: `4<<`, `2<`,
+  `>1`, `>>3`, and `X`. Tap the full area around an arrow for its action, or
+  `X` to exit. The numbers indicate physical-button click counts, not required
+  touchscreen taps. The controls are blue with a horizontal line above them,
+  and occupy the bottom row without a second channel bar. The row is 72
+  physical pixels high and each cell is 96 pixels wide on the 480x480 panel.
+  Touch coordinates map to the same logical layout with either the 480px
+  native canvas or the 320px scaled canvas; the font size is unchanged.
+- Tap the top header to exit. It is padded to at least 72 physical pixels high,
+  with the text centered vertically and the message starting below its divider.
+  In the message body (between header and footer),
+  tap the left/right half to move backward/forward. A left swipe moves forward,
+  a right swipe moves backward. Swipe up for the next channel/chapter (`>>`),
+  down for the previous one (`<<`). Vertical direction is independent of the
+  controller's mirrored X axis.
+- Header and footer controls accept taps, not drags. A body tap or a slightly
+  missed arrow cannot fall through to Exit; only the top header or footer `X`
+  exits. A swipe that starts in the body stays a swipe when it crosses a bar.
+- The first button gesture when the screen is off only wakes it; it does not
+  also navigate. A touch anywhere can still wake a sleeping reader; the main
+  screens retain their existing left/right/center targets.
 
 The message preview is a non-destructive local inbox, newest first:
 
@@ -56,8 +118,9 @@ The message preview is a non-destructive local inbox, newest first:
   view. Horizontal swipes continue to move among the eight home pages.
 - The first home page shows the retained local `INBOX` count, which remains
   useful when a USB host has already drained the protocol's unread count. Tap
-  the center to open the inbox and channel selector even when the count is 0.
-- `Message 1/N` is the newest buffered preview.
+  the center to open the inbox even when the count is 0.
+- `Ch 0 1/N`, `DM 1/N`, or `All 1/N` identifies the selected filter and the
+  newest buffered preview. The filter stays visible even when it is empty.
 - Each preview retains the complete 160-byte maximum chat payload. Long UTF-8
   messages wrap through the available middle of the screen instead of being
   cut at the small-display 78-byte limit.
@@ -66,14 +129,14 @@ The message preview is a non-destructive local inbox, newest first:
   remains available from the summary page and inbox.
 - Swipe left for an older preview and right for a newer preview. Navigation
   stops at the oldest and newest entries instead of wrapping.
-- The bottom bar shows the active inbox filter. Its large `<` and `>` end
-  buttons select the previous or next filter; swipe up or down does the same.
+- Tap `4<<` / `>>3` to select the previous/next filter; swipe up or down
+  does the same. The header shows the selected filter.
   Filters include `All channels`, `Direct`, and configured channels such as
   `Ch 1 #testing`. A newly received message automatically selects its source
-  channel. On the 480x480 Indicator, the full inbox's top status strip and
-  bottom selector use a compact 24-physical-pixel font; their visual heights
-  are 27 and 42 pixels while the forgiving arrow touch regions remain 120x120.
-- Tap the center to return home without deleting the previews.
+  channel. On the 480x480 Indicator, the status and navigation text use the
+  compact font. Each of the five navigation targets is 96 physical pixels
+  wide and 72 pixels tall, including the empty space around its label.
+- Tap the header or footer `X` to return home without deleting the previews.
 - On the first home page, tap the wide center target to reopen the previews,
   including when `INBOX` is zero.
 
@@ -81,7 +144,7 @@ Channel messages identify both the configured slot and name, such as
 `Ch 0 Public` or `Ch 1 #testing`. The value in brackets after it is the route,
 for example `[0h]` for a zero-hop flood or `[direct]` for a direct route.
 
-The bottom selector filters received messages; it does not change the outbound
+The reader's group controls filter received messages; they do not change the outbound
 channel because the device UI does not include a text composer. Select the
 outbound channel in the connected application, or list and address channel
 slots from the CLI with `get_channels`, `public <message>`, or `chan <slot>
@@ -141,11 +204,13 @@ Bluetooth controller and host memory. BLE mode does not start infrastructure
 WiFi, WebConfig, MQTT, OTA networking, or TCP Companion services. USB remains
 available in both modes for recovery.
 
-The Indicator transport page presents WiFi and BLE as full-height side-by-side
-choices. Tapping either choice saves it and reboots only when it differs from
-the active mode. WiFi is split over two size-4 rows, BLE uses size 4, and the
-short `ON`/`NEXT` state uses size 3; all render at the same physical size in
-the 320 and 480 profiles. On a retained native 480 canvas, the first home page
+The Indicator transport page presents WiFi and BLE as tall side-by-side
+choices within the middle 70% tap zone. Each choice is 156 physical pixels
+wide, leaving a 72-pixel full-height page-navigation strip at each edge.
+Tapping either choice saves it and reboots only when it differs from the
+active mode. Labels and `ON`/`NEXT` status shrink to fit their own boxes;
+all render at the same physical size in the 320 and 480 profiles.
+On a retained native 480 canvas, the first home page
 uses separate full-width size-4 `INBOX` and count rows plus a large lower
 action or BLE-status block. Long IP addresses retain a smaller bounded row
 instead of clipping.

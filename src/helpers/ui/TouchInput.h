@@ -23,6 +23,16 @@ struct TouchSplitSelector {
   int right_width;
   int top_y;
   int height;
+  // Full-height page-navigation strips, zero for legacy selector layouts.
+  int side_nav_width;
+};
+
+// Reader footer has five controls (<<, <, >, >>, X); the top header exits.
+// All bounds are logical UI units supplied by the screen that draws them.
+struct TouchNavigationBar {
+  int top = 0;
+  int height = 0;
+  int exit_height = 0;
 };
 
 // Converts one-finger touch samples into actions understood by the
@@ -31,6 +41,7 @@ struct TouchSplitSelector {
 class TouchInput {
   bool _active = false;
   bool _reverse_swipes;
+  bool _reverse_vertical_swipes;
   bool _separate_vertical_swipes;
   bool _mirror_tap_x;
   uint8_t _center_zone_percent;
@@ -50,17 +61,27 @@ class TouchInput {
 
   TouchAction verticalSwipeAction(bool negative_direction) const {
     if (!_separate_vertical_swipes) return swipeAction(negative_direction);
-    const bool next = negative_direction != _reverse_swipes;
+    const bool next = negative_direction != _reverse_vertical_swipes;
     return next ? TouchAction::VerticalNext
                 : TouchAction::VerticalPrevious;
   }
 
 public:
+  int centerZonePercent() const { return _center_zone_percent; }
+  bool hasSeparateVerticalSwipes() const { return _separate_vertical_swipes; }
+
   explicit TouchInput(bool reverse_swipes = false,
                       bool separate_vertical_swipes = false,
                       uint8_t center_zone_percent = 34,
                       bool mirror_tap_x = false)
+      : TouchInput(reverse_swipes, separate_vertical_swipes,
+                   center_zone_percent, mirror_tap_x, reverse_swipes) {}
+
+  TouchInput(bool reverse_swipes, bool separate_vertical_swipes,
+             uint8_t center_zone_percent, bool mirror_tap_x,
+             bool reverse_vertical_swipes)
       : _reverse_swipes(reverse_swipes),
+        _reverse_vertical_swipes(reverse_vertical_swipes),
         _separate_vertical_swipes(separate_vertical_swipes),
         _mirror_tap_x(mirror_tap_x),
         _center_zone_percent(center_zone_percent > 100
@@ -69,7 +90,8 @@ public:
 
   TouchAction update(bool touched, int x, int y, int width, int height,
                      bool bottom_selector = false,
-                     const TouchSplitSelector* split_selector = nullptr) {
+                     const TouchSplitSelector* split_selector = nullptr,
+                     const TouchNavigationBar* navigation_bar = nullptr) {
     if (touched) {
       _release_samples = 0;
       if (!_active) {
@@ -98,7 +120,7 @@ public:
     // boxes are unambiguous stationary targets, and rejecting a quick contact
     // makes a normal tap disappear when it lands within one polling interval.
     if (_touch_samples == 0 || width <= 0 || height <= 0
-        || (_touch_samples < 2 && split_selector == nullptr)) {
+        || (_touch_samples < 2 && split_selector == nullptr && navigation_bar == nullptr)) {
       return TouchAction::None;
     }
 
@@ -109,10 +131,19 @@ public:
     const int horizontal_threshold = width / 8 > 8 ? width / 8 : 8;
     const int vertical_threshold = height / 8 > 8 ? height / 8 : 8;
 
+    // Explicit header/footer controls are tap targets, not swipe surfaces.
+    // Gestures begun in the body may cross them without activating a button.
+    const bool in_reader_chrome = navigation_bar != nullptr
+        && (_start_y < navigation_bar->exit_height
+            || (_start_y >= navigation_bar->top
+                && _start_y < navigation_bar->top + navigation_bar->height));
+
     if (abs_dx >= abs_dy && abs_dx >= horizontal_threshold) {
+      if (in_reader_chrome) return TouchAction::None;
       return swipeAction(dx < 0);
     }
     if (abs_dy > abs_dx && abs_dy >= vertical_threshold) {
+      if (in_reader_chrome) return TouchAction::None;
       return verticalSwipeAction(dy < 0);
     }
 
@@ -121,6 +152,39 @@ public:
     // coordinates are different concerns. Apply the panel correction only
     // after movement has been ruled out so it cannot alter swipe detection.
     const int tap_x = _mirror_tap_x ? width - 1 - _start_x : _start_x;
+
+    // Explicit reader controls take priority over the older, broad bottom
+    // channel-selector zone. Swipes still win over every stationary target.
+    if (navigation_bar != nullptr) {
+      if (tap_x < 0 || tap_x >= width || _start_y < 0 || _start_y >= height)
+        return TouchAction::None;
+      if (_start_y < navigation_bar->exit_height)
+        return _last_y >= 0 && _last_y < navigation_bar->exit_height
+            ? TouchAction::Select : TouchAction::None;
+      if (_start_y >= navigation_bar->top
+          && _start_y < navigation_bar->top + navigation_bar->height) {
+        if (_last_y < navigation_bar->top
+            || _last_y >= navigation_bar->top + navigation_bar->height)
+          return TouchAction::None;
+        const int end_x = _mirror_tap_x ? width - 1 - _last_x : _last_x;
+        if (end_x < 0 || end_x >= width) return TouchAction::None;
+        const TouchAction actions[] = {TouchAction::VerticalPrevious,
+            TouchAction::Previous, TouchAction::Next,
+            TouchAction::VerticalNext, TouchAction::Select};
+        for (int cell = 0; cell < 5; ++cell) {
+          const int left = width * cell / 5;
+          const int right = width * (cell + 1) / 5;
+          if (tap_x < right)
+            return end_x >= left && end_x < right ? actions[cell] : TouchAction::None;
+        }
+      }
+      // Missing an arrow must never fall through to the ordinary center tap
+      // (Select), which closes the reader. Body halves move pages instead.
+      if (_touch_samples < 2) return TouchAction::None;
+      return tap_x < width / 2 ? TouchAction::Previous : TouchAction::Next;
+    }
+    // A quick single sample is accepted only inside an explicit target.
+    if (_touch_samples < 2 && split_selector == nullptr) return TouchAction::None;
 
     // Message screens may reserve the otherwise empty ends of their bottom
     // status bar as forgiving arrow buttons. Keep the label in the middle
@@ -140,6 +204,10 @@ public:
     // selections. Swipe detection above retains priority, so page navigation
     // gestures cannot accidentally activate either choice.
     if (split_selector != nullptr) {
+      if (tap_x >= 0 && tap_x < split_selector->side_nav_width)
+        return TouchAction::Previous;
+      if (tap_x >= width - split_selector->side_nav_width && tap_x < width)
+        return TouchAction::Next;
       if (_start_y < split_selector->top_y
           || _start_y >= split_selector->top_y + split_selector->height) {
         return TouchAction::None;

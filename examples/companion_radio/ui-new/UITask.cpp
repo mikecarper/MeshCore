@@ -4,6 +4,9 @@
 #include <helpers/ui/CompanionHomeLayout.h>
 #include <helpers/ui/CompanionMessageHistory.h>
 #include <helpers/ui/ReaderNavigationHint.h>
+#ifdef HAS_TOUCH
+  #include <helpers/ui/TouchDebugOverlay.h>
+#endif
 #include <helpers/ui/DisplayTextLayout.h>
 #if UI_SMALL_MESSAGE_FONT == 1
   #include <helpers/ui/SmallMessageText.h>
@@ -85,11 +88,13 @@ static uint64_t companionMessageElapsedMillis(uint64_t heard_millis) {
   #define SELECT_LABEL "HOLD"
 #endif
 
+#ifndef UI_BUTTON_READER_HINT
 #if !defined(HAS_TOUCH) && !UI_HAS_JOYSTICK && !defined(UI_HAS_NAV_INPUT) \
     && (defined(PIN_USER_BTN) || defined(PIN_USER_BTN_ANA))
   #define UI_BUTTON_READER_HINT 1
 #else
   #define UI_BUTTON_READER_HINT 0
+#endif
 #endif
 
 #if COMPANION_FEATURE_JOHN
@@ -114,7 +119,14 @@ static void drawCompanionTransportChoice(DisplayDriver& display,
 
   const bool large_transport_text = display.height() >= 96;
   const bool show_status_label = height >= 44;
-  if (large_transport_text) {
+  if (large_transport_text && width < 76) {
+    // Fit choices inside the central tap zone without consuming page arrows.
+    int size = 2;
+    display.setTextSize(size);
+    while (size > 1 && display.getTextWidth(label) > width - 4)
+      display.setTextSize(--size);
+    display.drawTextCentered(x + width / 2, y + 20, label);
+  } else if (large_transport_text) {
     display.setTextSize(4);
     if (strcmp(label, "WiFi") == 0) {
       // A single size-4 "WiFi" row is wider than one half of the screen.
@@ -131,6 +143,13 @@ static void drawCompanionTransportChoice(DisplayDriver& display,
   }
   if (show_status_label && (active || selected)) {
     display.setTextSize(large_transport_text ? 3 : 1);
+    const char* status = active ? (large_transport_text ? "ON" : "ACTIVE")
+        : (large_transport_text ? "NEXT" : "NEXT BOOT");
+    if (large_transport_text) {
+      int size = 3;
+      while (size > 1 && display.getTextWidth(status) > width - 4)
+        display.setTextSize(--size);
+    }
     display.drawTextCentered(
         x + width / 2,
         y + height - (large_transport_text ? 25 : 17),
@@ -885,11 +904,15 @@ public:
           == CompanionTransportMode::WiFi;
       const mesh::ui::CompanionTransportSelectorLayout layout =
           mesh::ui::makeCompanionTransportSelectorLayout(
-              display.width(), display.height());
+              display.width(), display.height()
+#ifdef HAS_TOUCH
+              , TOUCH_CENTER_ZONE_PERCENT
+#endif
+              );
 
       // Keep this page independent of the additional native-480 text boost.
-      // Its deliberately reflowed size-4 choices then retain the same large
-      // physical dimensions in the 320 and 480 render profiles.
+      // Fit the choices inside the center zone at identical physical sizes
+      // in the 320 and 480 render profiles, leaving page edges available.
       display.setCompactText(true);
       if (layout.show_title) {
         display.setColor(UIColor::primary_txt);
@@ -911,7 +934,7 @@ public:
 #ifdef HAS_TOUCH
       display.drawTextCentered(
           display.width() / 2, layout.prompt_y,
-          layout.show_title ? "TAP SIDE" : "tap a box");
+          layout.show_title ? "TAP A BOX" : "tap a box");
 #else
       display.drawTextCentered(
           display.width() / 2, layout.prompt_y, PRESS_LABEL);
@@ -1089,17 +1112,19 @@ public:
   }
 
   bool handleInput(char c) override {
-    if (c == KEY_LEFT || c == KEY_PREV) {
+    // Navigation codes exceed 0x7f; keep them valid with signed char too.
+    const uint8_t key = static_cast<uint8_t>(c);
+    if (key == KEY_LEFT || key == KEY_PREV) {
       _page = (_page + HomePage::Count - 1) % HomePage::Count;
       return true;
     }
 #if COMPANION_FEATURE_JOHN
-    if (c == KEY_ENTER && _page == HomePage::RADIO) {
+    if (key == KEY_ENTER && _page == HomePage::RADIO) {
       _task->showJohnReader();
       return true;
     }
 #endif
-    if (c == KEY_NEXT || c == KEY_RIGHT) {
+    if (key == KEY_NEXT || key == KEY_RIGHT) {
       _page = (_page + 1) % HomePage::Count;
       if (_page == HomePage::RECENT) {
         _task->showAlert("Recent adverts", 800);
@@ -1108,15 +1133,15 @@ public:
     }
 #ifdef COMPANION_EXCLUSIVE_WIFI_BLE
     if (_page == HomePage::TRANSPORT
-        && (c == KEY_ENTER || c == KEY_UP || c == KEY_DOWN)) {
+        && (key == KEY_ENTER || key == KEY_UP || key == KEY_DOWN)) {
       const CompanionTransportMode selected = getCompanionTransportMode();
       const CompanionTransportMode active = isCompanionWiFiEnabled()
           ? CompanionTransportMode::WiFi
           : CompanionTransportMode::Bluetooth;
       CompanionTransportMode requested = selected;
-      if (c == KEY_UP) {
+      if (key == KEY_UP) {
         requested = CompanionTransportMode::WiFi;
-      } else if (c == KEY_DOWN) {
+      } else if (key == KEY_DOWN) {
         requested = CompanionTransportMode::Bluetooth;
       } else {
         requested = active == CompanionTransportMode::WiFi
@@ -1133,7 +1158,7 @@ public:
       return true;
     }
 #else
-    if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
+    if (key == KEY_ENTER && _page == HomePage::BLUETOOTH) {
       if (_task->isBluetoothEnabled()) {  // toggle Bluetooth on/off
         _task->disableBluetooth();
       } else {
@@ -1142,18 +1167,18 @@ public:
       return true;
     }
 #endif
-    if (c == KEY_ENTER && _page == HomePage::FIRST) {
+    if (key == KEY_ENTER && _page == HomePage::FIRST) {
       _task->showMessages();
       return true;
     }
 #if UI_MESSAGES_HOME_PAGE == 1
-    if (c == KEY_ENTER && _page == HomePage::MESSAGES) {
+    if (key == KEY_ENTER && _page == HomePage::MESSAGES) {
       _task->showMessages();
       return true;
     }
 #endif
 #if UI_WIFI_SETUP_HOME_PAGE == 1
-    if (c == KEY_ENTER && _page == HomePage::WIFI_SETUP) {
+    if (key == KEY_ENTER && _page == HomePage::WIFI_SETUP) {
       if (WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) {
         requestCompanionWiFiSetupStop();
         _task->showAlert("Stopping setup AP", 1000);
@@ -1164,7 +1189,7 @@ public:
       return true;
     }
 #endif
-    if (c == KEY_ENTER && _page == HomePage::ADVERT) {
+    if (key == KEY_ENTER && _page == HomePage::ADVERT) {
       _task->notify(UIEventType::ack);
       if (the_mesh.advert()) {
         _task->showAlert("Advert sent!", 1000);
@@ -1174,20 +1199,20 @@ public:
       return true;
     }
 #if ENV_INCLUDE_GPS == 1
-    if (c == KEY_ENTER && _page == HomePage::GPS) {
+    if (key == KEY_ENTER && _page == HomePage::GPS) {
       _task->toggleGPS();
       return true;
     }
 #endif
 #if UI_SENSORS_PAGE == 1
-    if (c == KEY_ENTER && _page == HomePage::SENSORS) {
+    if (key == KEY_ENTER && _page == HomePage::SENSORS) {
       _task->toggleGPS();
       next_sensors_refresh=0;
       return true;
     }
 #endif
 #ifndef UI_NO_HIBERNATE
-    if (c == KEY_ENTER && _page == HomePage::SHUTDOWN) {
+    if (key == KEY_ENTER && _page == HomePage::SHUTDOWN) {
       _shutdown_init = true;  // need to wait for button to be released
       return true;
     }
@@ -1218,6 +1243,9 @@ public:
 
 class MsgPreviewScreen : public UIScreen {
   UITask* _task;
+#if UI_READER_TOUCH_BAR
+  mesh::ui::TouchNavigationBar _touch_bar;
+#endif
 
   static constexpr int CHANNEL_FILTER_ALL = -2;
   static constexpr int CHANNEL_FILTER_DIRECT = -1;
@@ -1347,6 +1375,9 @@ class MsgPreviewScreen : public UIScreen {
   }
 
 public:
+#if UI_READER_TOUCH_BAR
+  const mesh::ui::TouchNavigationBar* readerTouchBar() const { return &_touch_bar; }
+#endif
   explicit MsgPreviewScreen(UITask* task)
       : _task(task), view_offset(0), channel_filter(CHANNEL_FILTER_ALL) {}
 
@@ -1446,6 +1477,7 @@ public:
     int body_bottom = UI_MESSAGE_CHANNEL_FOOTER == 1
         ? display.height() - layout.filter_height : display.height();
     display.setCompactText(layout.compact_text);
+    int header_text_y = 0;
 #if UI_BUTTON_READER_HINT == 1
   #if UI_SMALL_MESSAGE_FONT == 1
     mesh::ui::SmallMessageText compact(display);
@@ -1462,12 +1494,26 @@ public:
     }
   #else
     DisplayDriver& reader_text = display;
+  #if !UI_READER_TOUCH_BAR
     const int hint_line_height = display.textLineHeight();
   #endif
+  #endif
+#if UI_READER_TOUCH_BAR
+    const int header_extra = mesh::ui::readerTouchHeaderHeight(
+        layout.header_divider_y + 1) - (layout.header_divider_y + 1);
+    header_text_y = header_extra / 2;
+    layout.header_divider_y += header_extra;
+    layout.origin_y += header_extra;
+    layout.message_y += header_extra;
+    _touch_bar = mesh::ui::makeReaderTouchBar(reader_text, body_bottom,
+        layout.header_divider_y + 1);
+    body_bottom = _touch_bar.top;
+#else
     const mesh::ui::ButtonReaderHintLayout hint =
         mesh::ui::makeButtonReaderHintLayout(
             reader_text, hint_line_height, body_bottom);
     body_bottom = hint.top;
+#endif
     DisplayDriver& header = reader_text;
 #else
     DisplayDriver& header = display;
@@ -1475,9 +1521,9 @@ public:
     char tmp[24];
     int filtered_count = filteredCount();
     if (view_offset >= filtered_count) view_offset = 0;
-    header.setCursor(0, 0);
+    header.setCursor(0, header_text_y);
     header.setColor(UIColor::corp_blue);
-#if UI_BUTTON_READER_HINT == 1
+#if UI_BUTTON_READER_HINT == 1 && UI_MESSAGE_CHANNEL_FOOTER == 0
     // Keep the selected filter visible even when that channel has no messages.
     char channel[12];
     if (channel_filter == CHANNEL_FILTER_ALL) strcpy(channel, "All");
@@ -1504,7 +1550,7 @@ public:
         && header.getTextWidth(tmp) + header.getTextWidth(age) + 4 <= display.width();
     const int header_width = display.width()
         - (show_age ? header.getTextWidth(age) + 4 : 0);
-    header.drawTextEllipsized(0, 0, header_width, tmp);
+    header.drawTextEllipsized(0, header_text_y, header_width, tmp);
 
     if (p == nullptr) {
       display.drawRect(0, layout.header_divider_y, display.width(), 1);
@@ -1514,7 +1560,11 @@ public:
       display.setCompactText(layout.compact_text);
       reader_text.drawTextEllipsized(0, layout.origin_y, display.width(),
                                     "No buffered messages");
+#if UI_READER_TOUCH_BAR
+      mesh::ui::drawReaderTouchBar(reader_text, _touch_bar);
+#else
       mesh::ui::drawButtonReaderHint(reader_text, hint);
+#endif
       display.setCompactText(false);
 #else
       display.drawTextCentered(display.width() / 2, 40,
@@ -1525,7 +1575,7 @@ public:
     }
 
     if (show_age) {
-      header.setCursor(display.width() - header.getTextWidth(age) - 2, 0);
+      header.setCursor(display.width() - header.getTextWidth(age) - 2, header_text_y);
       header.print(age);
     }
 
@@ -1540,7 +1590,7 @@ public:
     display.setColor(UIColor::secondary_txt);
     char filtered_origin[sizeof(p->origin)];
     display.translateUTF8ToBlocks(filtered_origin, p->origin, sizeof(filtered_origin));
-    display.print(filtered_origin);
+    display.drawTextEllipsized(0, layout.origin_y, display.width(), filtered_origin);
 
     display.setCursor(0, layout.message_y);
     display.setColor(UIColor::primary_txt);
@@ -1557,7 +1607,11 @@ public:
 
 #if UI_BUTTON_READER_HINT == 1
     display.setCompactText(layout.compact_text);
+#if UI_READER_TOUCH_BAR
+    mesh::ui::drawReaderTouchBar(reader_text, _touch_bar);
+#else
     mesh::ui::drawButtonReaderHint(reader_text, hint);
+#endif
     display.setCompactText(false);
 #endif
     renderChannelFilter(display);
@@ -1928,6 +1982,17 @@ bool UITask::isButtonPressed() const {
 #endif
 }
 
+bool UITask::isButtonGesturePending() const {
+#if UI_DEFER_RENDER_DURING_BUTTON_GESTURE && defined(PIN_USER_BTN)
+  // RGB painting/presentation is synchronous. Service the polled button
+  // through debounce and the final multi-click deadline before redrawing.
+  // Check the raw level too, in case an edge arrived since this loop's poll.
+  return user_btn.needsPolling() || user_btn.isPressed();
+#else
+  return false;
+#endif
+}
+
 void UITask::loop() {
   serviceWiFiToggleButton();
   servicePairingState();
@@ -2025,26 +2090,33 @@ void UITask::loop() {
     const bool touched = _display->getTouch(&touch_x, &touch_y);
     mesh::ui::TouchSplitSelector transport_touch_selector = {};
     const mesh::ui::TouchSplitSelector* split_transport_selector = nullptr;
-#ifdef COMPANION_EXCLUSIVE_WIFI_BLE
-    if (curr == home
-        && static_cast<HomeScreen*>(home)->isTransportSelectorPage()) {
-      const mesh::ui::CompanionTransportSelectorLayout layout =
-          mesh::ui::makeCompanionTransportSelectorLayout(
-              _display->width(), _display->height());
-      transport_touch_selector = {
-          layout.wifi.x,
-          layout.wifi.width,
-          layout.bluetooth.x,
-          layout.bluetooth.width,
-          layout.wifi.y,
-          layout.wifi.height,
-      };
-      split_transport_selector = &transport_touch_selector;
+    const mesh::ui::TouchNavigationBar* reader_touch_bar = nullptr;
+    getTouchControls(transport_touch_selector, split_transport_selector, reader_touch_bar);
+    // A sleeping reader still accepts an ordinary wake gesture anywhere;
+    // checkDisplayOn consumes it before navigation. Awake readers use their
+    // rendered header/footer targets and page-only body taps.
+    if (!_display->isOn()) reader_touch_bar = nullptr;
+    if (_touch_debug_enabled) {
+      // Highlight the detected visual point, using the same X correction as
+      // stationary input. Redraw on press/release or a region change only, not
+      // every sample, so diagnostics do not continuously stall touch polling.
+      _touch_debug_x = touched
+          ? (TOUCH_MIRROR_TAP_X_ENABLED ? _display->width() - 1 - touch_x : touch_x) : -1;
+      _touch_debug_y = touched ? touch_y : -1;
+      const auto debug_areas = mesh::ui::makeTouchDebugAreas(
+          _display->width(), _display->height(), touch_input.centerZonePercent(),
+          curr == msg_preview && UI_MESSAGE_CHANNEL_FOOTER == 1
+              && touch_input.hasSeparateVerticalSwipes(),
+          split_transport_selector, reader_touch_bar);
+      const int debug_area = mesh::ui::touchDebugAreaAt(debug_areas, _touch_debug_x, _touch_debug_y);
+      if (debug_area != _touch_debug_area || curr != _touch_debug_screen) _next_refresh = 0;
+      _touch_debug_area = debug_area;
+      _touch_debug_screen = curr;
     }
-#endif
     const mesh::ui::TouchAction action = touch_input.update(
         touched, touch_x, touch_y, _display->width(), _display->height(),
-        curr == msg_preview, split_transport_selector);
+        curr == msg_preview && UI_MESSAGE_CHANNEL_FOOTER == 1,
+        split_transport_selector, reader_touch_bar);
     const bool on_transport_selector = split_transport_selector != nullptr;
     if (c == 0) {
       switch (action) {
@@ -2118,7 +2190,7 @@ void UITask::loop() {
   }
 
   if (_display != NULL && _display->isOn()) {
-    if (millis() >= _next_refresh && curr) {
+    if (millis() >= _next_refresh && curr && !isButtonGesturePending()) {
       _display->startFrame();
       int delay_millis = curr->render(*_display);
       renderPairingBanner();
@@ -2135,6 +2207,21 @@ void UITask::loop() {
       } else {
         _next_refresh = millis() + delay_millis;
       }
+#ifdef HAS_TOUCH
+      if (_touch_debug_enabled && !isPairingScreenActive()) {
+        mesh::ui::TouchSplitSelector transport = {};
+        const mesh::ui::TouchSplitSelector* split = nullptr;
+        const mesh::ui::TouchNavigationBar* reader = nullptr;
+        getTouchControls(transport, split, reader);
+        mesh::ui::drawTouchDebugAreas(*_display,
+            mesh::ui::makeTouchDebugAreas(_display->width(), _display->height(),
+                touch_input.centerZonePercent(),
+                curr == msg_preview && UI_MESSAGE_CHANNEL_FOOTER == 1
+                    && touch_input.hasSeparateVerticalSwipes(), split, reader),
+            _touch_debug_screen == curr ? _touch_debug_x : -1,
+            _touch_debug_screen == curr ? _touch_debug_y : -1);
+      }
+#endif
       _display->endFrame();
     }
 #if AUTO_OFF_MILLIS > 0
@@ -2185,6 +2272,37 @@ void UITask::loop() {
 #endif
 }
 
+#ifdef HAS_TOUCH
+void UITask::getTouchControls(mesh::ui::TouchSplitSelector& transport_touch_selector,
+    const mesh::ui::TouchSplitSelector*& split_transport_selector,
+    const mesh::ui::TouchNavigationBar*& reader_touch_bar) {
+  split_transport_selector = nullptr;
+  reader_touch_bar = nullptr;
+#ifdef COMPANION_EXCLUSIVE_WIFI_BLE
+    if (curr == home
+        && static_cast<HomeScreen*>(home)->isTransportSelectorPage()) {
+      const mesh::ui::CompanionTransportSelectorLayout layout =
+          mesh::ui::makeCompanionTransportSelectorLayout(
+              _display->width(), _display->height(), TOUCH_CENTER_ZONE_PERCENT);
+      transport_touch_selector = {
+          layout.wifi.x, layout.wifi.width,
+          layout.bluetooth.x, layout.bluetooth.width,
+          layout.wifi.y, layout.wifi.height, layout.side_nav_width,
+      };
+      split_transport_selector = &transport_touch_selector;
+    }
+#endif
+#if UI_READER_TOUCH_BAR
+    if (curr == msg_preview)
+      reader_touch_bar = static_cast<MsgPreviewScreen*>(msg_preview)->readerTouchBar();
+#if COMPANION_FEATURE_JOHN
+    else if (isJohnReaderActive())
+      reader_touch_bar = static_cast<JohnReaderScreen*>(john_reader)->readerTouchBar();
+#endif
+#endif
+}
+#endif
+
 char UITask::checkDisplayOn(char c) {
   if (_display != NULL) {
     if (!_display->isOn()) {
@@ -2231,6 +2349,7 @@ char UITask::handleDoubleClick(char c) {
 }
 
 char UITask::handleMultiClick(char c, bool backwards) {
+  MESH_DEBUG_PRINTLN("UITask: %s-click triggered", backwards ? "quadruple" : "triple");
   if (curr == msg_preview
 #if COMPANION_FEATURE_JOHN
       || isJohnReaderActive()

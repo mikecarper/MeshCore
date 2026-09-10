@@ -83,6 +83,7 @@ over the normal binary USB, BLE, or TCP connection:
 | [`get/set wifi.powersave`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WiFi Companion; active transport constraints still apply |
 | [`get/set bluetooth.name`](cli_commands.md#view-or-change-the-independent-bluetooth-name-companion) | Companion firmware |
 | [`get/set bluetooth.mac`](cli_commands.md#view-or-change-the-bluetooth-address-ble-companion) | Every Companion build with Bluetooth |
+| [`get/set display.touch`](cli_commands.md#show-touchscreen-touch-areas) | Touchscreen Companions using the shared UI; text terminal and framed CLI; off after reboot |
 | [`uf2reset`](cli_commands.md#enter-the-uf2-bootloader-nrf52-only) | Every nRF52 Companion text terminal and local command `0x42`; local only |
 
 Deprecated binary aliases remain receive-only for older clients; new clients

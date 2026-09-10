@@ -262,6 +262,14 @@ public:
   SCIndicatorDisplay() : LGFXDisplay(480, 480, disp) {}
 #endif
 
+  bool getTouch(int* x, int* y) override {
+    if (!LGFXDisplay::getTouch(x, y)) return false;
+    // Touch Y runs bottom-to-top relative to this panel's rendered image.
+    // Correct it once before both gesture detection and debug feedback.
+    *y = height() - 1 - *y;
+    return true;
+  }
+
   bool begin() {
     begin_status = 1;
     const bool controllers_prepared = prepareControllers();

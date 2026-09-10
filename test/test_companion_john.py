@@ -130,10 +130,11 @@ class CompanionJohnTest(unittest.TestCase):
             self.run_checked([cc, "-Os", *flags, "-c", str(ROOT / "src/helpers/ota/OtaTinf.c"),
                               "-o", str(obj)])
             for small_font in (0, 1):
-                for button_hint in (0, 1):
+                for button_hint, touch_bar in ((0, 0), (1, 0), (1, 1)):
                     self.run_checked([cxx, "-std=c++11", "-Os", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
                                       *flags, f"-DUI_SMALL_MESSAGE_FONT={small_font}",
                                       f"-DUI_BUTTON_READER_HINT={button_hint}",
+                                      f"-DUI_READER_TOUCH_BAR={touch_bar}",
                                       "-I" + str(ROOT / "src"), "-I" + str(FIXTURE),
                                       str(FIXTURE / "test_reader.cpp"), str(ROOT / "src/helpers/CompanionJohn.cpp"),
                                       str(obj), "-o", str(binary)])

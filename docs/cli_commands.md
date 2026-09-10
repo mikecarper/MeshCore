@@ -713,6 +713,31 @@ board's compiled default. Unsupported display drivers return an error.
 
 ---
 
+## Show touchscreen touch areas
+
+All touchscreen Companion builds using the shared touch UI support temporary
+diagnostic outlines, including both SenseCAP Indicator rendering sizes:
+
+```text
+get display.touch
+set display.touch on
+set display.touch off
+```
+
+The default is **off at every boot**. Enabling wakes the display without
+selecting anything. Dotted yellow borders mark the actual scaled tap targets;
+the area under a held finger turns green and returns to yellow on release.
+Disabling removes the borders on the next redraw. Pairing screens suppress the
+overlay while they consume navigation. This option does not change the font,
+touch calibration, navigation actions, or saved settings, and is not persisted.
+
+Use the text terminal or Companion framed CLI (`0x42`) through an available
+USB, BLE, or TCP connection. Non-touchscreen, missing-display, and legacy UI
+builds report `Error: touchscreen diagnostics unsupported`. No Indicator-only
+build flag is needed.
+
+---
+
 ## Set MQTT observer display timeout and flip
 
 MQTT observer builds with a display support a persisted inactivity timeout:

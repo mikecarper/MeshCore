@@ -32,6 +32,8 @@ constexpr ColorVal WARNING_TEXT = rgb565(248, 176, 72);
 // semantic slots by their RGB565 value before selecting a palette entry.
 constexpr ColorVal POPUP_BACKGROUND = rgb565(20, 48, 70);
 constexpr ColorVal ACCENT = rgb565(64, 176, 240);
+constexpr ColorVal TOUCH_OUTLINE = rgb565(255, 255, 0);
+constexpr ColorVal TOUCH_PRESSED = rgb565(0, 255, 0);
 
 enum IndexedColor : uint8_t {
   INDEX_BACKGROUND = 0,
@@ -41,6 +43,8 @@ enum IndexedColor : uint8_t {
   INDEX_WARNING_TEXT = 4,
   INDEX_POPUP_BACKGROUND = 5,
   INDEX_ACCENT = 6,
+  INDEX_TOUCH_PRESSED = 8,
+  INDEX_TOUCH_OUTLINE = 11,
 };
 
 }  // namespace color_theme

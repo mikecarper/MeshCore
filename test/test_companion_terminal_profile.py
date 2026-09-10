@@ -94,9 +94,16 @@ assert re.search(
 
 # Terminal-specific handlers keep precedence, then both the generic `set`
 # fallthrough and the final unknown-command fallthrough delegate to the shared
-# framed/rescue command surface.  This keeps get/set radio, get name, and
-# variant commands available without routing terminal-only commands twice.
-assert terminal.count("handleCommand(command, 0, local_reply)") == 2
+# framed/rescue command surface. The explicit frequency branch also delegates
+# to the strict shared frequency parser; it is not a third fallthrough.
+freq_branch = re.search(
+    r'else if \(strncmp\(config, "freq ", 5\) == 0\) \{([^{}]*)\}', terminal
+)
+assert freq_branch is not None
+assert "handleCommand(command, 0, local_reply)" in freq_branch.group(1)
+assert terminal.replace(freq_branch.group(0), "").count(
+    "handleCommand(command, 0, local_reply)"
+) == 2
 assert terminal.index('strncmp(config, "tx ", 3)') < terminal.index(
     "handleCommand(command, 0, local_reply)"
 )

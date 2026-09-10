@@ -200,7 +200,11 @@ int main() {
         self.assertIn("isCompanionWiFiConnected()", page)
         self.assertIn("hasCompanionWiFiCredentials()", page)
         self.assertIn("CompanionWiFiDisplayState::NotConfigured", page)
-        self.assertIn('"TAP TO START"', page)
+        # The shared page uses the input-specific label; Indicator's touch
+        # profile must still resolve it to TAP, not the button-only HOLD.
+        self.assertIn('SELECT_LABEL " TO START"', page)
+        touch_labels = ui.split("#ifdef HAS_TOUCH", 1)[1].split("#elif", 1)[0]
+        self.assertIn('#define SELECT_LABEL "TAP"', touch_labels)
         self.assertIn("wifi_connected != _wifi_was_connected", ui)
         self.assertIn("CompanionWiFiDisplayState::Ready", page)
         self.assertIn("display.clear()", page)

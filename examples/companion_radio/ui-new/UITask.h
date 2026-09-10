@@ -64,12 +64,22 @@ class UITask : public AbstractUITask {
   #else
   static constexpr bool TOUCH_MIRROR_TAP_X_ENABLED = false;
   #endif
+  #ifndef TOUCH_REVERSE_VERTICAL_SWIPE
+    #define TOUCH_REVERSE_VERTICAL_SWIPE TOUCH_REVERSE_SWIPE_ENABLED
+  #endif
   mesh::ui::TouchInput touch_input{
       TOUCH_REVERSE_SWIPE_ENABLED,
       TOUCH_SEPARATE_VERTICAL_SWIPES_ENABLED,
       TOUCH_CENTER_ZONE_PERCENT,
-      TOUCH_MIRROR_TAP_X_ENABLED};
+      TOUCH_MIRROR_TAP_X_ENABLED,
+      TOUCH_REVERSE_VERTICAL_SWIPE != 0};
   unsigned long next_touch_check = 0;
+  void getTouchControls(mesh::ui::TouchSplitSelector& transport,
+      const mesh::ui::TouchSplitSelector*& split,
+      const mesh::ui::TouchNavigationBar*& reader);
+  bool _touch_debug_enabled = false;  // Diagnostic only; reset at every boot.
+  int _touch_debug_x = -1, _touch_debug_y = -1, _touch_debug_area = -1;
+  UIScreen* _touch_debug_screen = nullptr;
 #endif
 #ifdef PIN_STATUS_LED
   int led_state = 0;
@@ -96,6 +106,7 @@ class UITask : public AbstractUITask {
   char handleLongPress(char c);
   char handleDoubleClick(char c);
   char handleMultiClick(char c, bool backwards);
+  bool isButtonGesturePending() const;
 
   void setCurrScreen(UIScreen* c);
   bool isPairingScreenActive() const;
@@ -133,6 +144,19 @@ public:
   int getPreviewCount() const;
   void renderMessageSummary(DisplayDriver& display) const;
   bool hasDisplay() const { return _display != NULL; }
+#ifdef HAS_TOUCH
+  bool supportsTouchDebug() const override { return _display != nullptr; }
+  bool isTouchDebugEnabled() const override { return _touch_debug_enabled; }
+  bool setTouchDebugEnabled(bool enabled) override {
+    if (!supportsTouchDebug()) return false;
+    _touch_debug_enabled = enabled;
+    _touch_debug_x = _touch_debug_y = _touch_debug_area = -1;
+    _touch_debug_screen = nullptr;
+    _next_refresh = 0;  // Also removes already-drawn outlines when disabling.
+    if (enabled) checkDisplayOn(0);  // Wake without selecting or navigating.
+    return true;
+  }
+#endif
   bool supportsDisplayRotation() const override {
     return _display != NULL && _display->supportsRotation();
   }

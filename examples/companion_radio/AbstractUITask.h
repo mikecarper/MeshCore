@@ -91,6 +91,14 @@ public:
     (void)degrees;
     return false;
   }
+  // Optional, runtime-only touch diagnostics. Non-touch and legacy UIs
+  // explicitly report unsupported rather than accepting an invisible toggle.
+  virtual bool supportsTouchDebug() const { return false; }
+  virtual bool isTouchDebugEnabled() const { return false; }
+  virtual bool setTouchDebugEnabled(bool enabled) {
+    (void)enabled;
+    return false;
+  }
   // Display implementations that surface an incoming BLE passkey request can
   // override these hooks. The default keeps setup-screen routing compatible
   // with older UIs that handle pairing only from their regular loop.

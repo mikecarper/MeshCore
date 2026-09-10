@@ -27,9 +27,9 @@ EnvironmentSensorManager sensors = EnvironmentSensorManager();
 #ifdef DISPLAY_CLASS
   DISPLAY_CLASS display;
   #ifdef PIN_USER_BTN
-  // Touch supplies the other navigation actions, so dispatch the physical
-  // button's single click immediately instead of waiting for a multi-click.
-  MomentaryButton user_btn(PIN_USER_BTN, 1000, true, true, false);
+  // The physical button uses the same 1/2/3/4-click navigation as other
+  // single-button companions, independently of the touchscreen controls.
+  MomentaryButton user_btn(PIN_USER_BTN, 1000, true, true, true);
   #endif
 #endif
 

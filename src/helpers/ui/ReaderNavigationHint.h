@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplayDriver.h"
+#include "TouchInput.h"
 
 namespace mesh {
 namespace ui {
@@ -49,6 +50,40 @@ inline void drawButtonReaderHint(DisplayDriver& text,
     text.drawTextCentered(text.width() / 2,
                           layout.top + row * layout.line_height,
                           layout.lines[row]);
+  }
+}
+
+// Enlarge the header exit target without enlarging text. Reserve this same
+// height for content, touch detection and diagnostic outlines.
+inline int readerTouchHeaderHeight(int content_height) {
+  return content_height + 8 < 24 ? 24 : content_height + 8;
+}
+
+// Touch readers use five equal, full-width hit cells. A 24-unit row is 72
+// physical pixels high on both Indicator render profiles; keep the same font.
+inline TouchNavigationBar makeReaderTouchBar(DisplayDriver& text, int bottom,
+                                              int exit_height = 0) {
+  TouchNavigationBar bar;
+  const int line_height = text.textLineHeight();
+  bar.height = line_height + 4 < 24 ? 24 : line_height + 4;
+  if (bar.height > bottom) bar.height = bottom;
+  bar.top = bottom - bar.height;
+  bar.exit_height = exit_height < 0 ? 0 : exit_height > bar.top ? bar.top : exit_height;
+  return bar;
+}
+
+inline void drawReaderTouchBar(DisplayDriver& text, const TouchNavigationBar& bar) {
+  static const char* const labels[] = {"4<<", "2<", ">1", ">>3", "X"};
+  text.setColor(UIColor::window_bkg);
+  text.fillRect(0, bar.top, text.width(), bar.height);
+  text.setColor(UIColor::corp_blue);
+  text.drawRect(0, bar.top, text.width(), 1);
+  const int line_height = text.textLineHeight();
+  const int y = bar.top + (bar.height - line_height) / 2;
+  for (int cell = 0; cell < 5; ++cell) {
+    const int left = text.width() * cell / 5;
+    const int right = text.width() * (cell + 1) / 5;
+    text.drawTextCentered((left + right) / 2, y, labels[cell]);
   }
 }
 

@@ -1,6 +1,5 @@
 #include "MomentaryButton.h"
 
-#define MULTI_CLICK_WINDOW_MS  280
 #define BUTTON_DEBOUNCE_MS      25
 
 #if defined(NRF52_PLATFORM) && \
@@ -31,7 +30,7 @@ MomentaryButton::MomentaryButton(int8_t pin, int long_press_millis, bool reverse
   _press_active = false;
   _click_count = 0;
   _last_click_time = 0;
-  _multi_click_window = multiclick ? MULTI_CLICK_WINDOW_MS : 0;
+  _multi_click_window = multiclick ? MOMENTARY_BUTTON_MULTI_CLICK_MS : 0;
   _pending_click = false;
   _candidate_level = prev;
   _candidate_since = 0;
@@ -50,7 +49,7 @@ MomentaryButton::MomentaryButton(int8_t pin, int long_press_millis, int analog_t
   _press_active = false;
   _click_count = 0;
   _last_click_time = 0;
-  _multi_click_window = MULTI_CLICK_WINDOW_MS;
+  _multi_click_window = MOMENTARY_BUTTON_MULTI_CLICK_MS;
   _pending_click = false;
   _candidate_level = prev;
   _candidate_since = 0;

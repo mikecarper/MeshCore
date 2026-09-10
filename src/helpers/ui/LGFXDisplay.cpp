@@ -1,6 +1,7 @@
 #include "LGFXDisplay.h"
 #include "ColorTheme.h"
 #include "IndicatorRenderProfile.h"
+#include "DisplayTouchCoordinates.h"
 #include <lgfx/utility/lgfx_qrcode.h>
 
 #ifndef DISPLAY_ROTATION
@@ -97,7 +98,9 @@ static const uint32_t UI_PALETTE[16] = {
   mesh::ui::color_theme::rgb888(mesh::ui::color_theme::POPUP_BACKGROUND),
   mesh::ui::color_theme::rgb888(mesh::ui::color_theme::ACCENT),
   0xE53935,
-  0x43A047, 0x1E88E5, 0x8E24AA, 0xFDD835,
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::TOUCH_PRESSED),
+  0x1E88E5, 0x8E24AA,
+  mesh::ui::color_theme::rgb888(mesh::ui::color_theme::TOUCH_OUTLINE),
   0x6D4C41, 0x00ACC1, 0xF06292, 0xFF00FF,
 };
 
@@ -497,16 +500,14 @@ void LGFXDisplay::endFrame() {
 }
 
 bool LGFXDisplay::getTouch(int* x, int* y) {
+  if (x == nullptr || y == nullptr) return false;
+  *x = *y = -1;
   lgfx::v1::touch_point_t point = {};
   if (display->getTouch(&point) == 0) return false;
-  if (_outputZoom * _coordinateScale != 1.0f) {
-    *x = point.x / (_outputZoom * _coordinateScale);
-    *y = point.y / (_outputZoom * _coordinateScale);
-  } else {
-    *x = point.x;
-    *y = point.y;
-  }
-  return *x >= 0 && *x < width() && *y >= 0 && *y < height();
+  // LovyanGFX has already applied panel rotation and touch calibration. Use
+  // its live output dimensions, not the sprite resolution or build flags.
+  return mesh::ui::panelTouchToLogical(point.x, point.y,
+      display->width(), display->height(), width(), height(), x, y);
 }
 
 bool LGFXDisplay::installRuntimeFont(uint8_t* data, size_t size) {
@@ -548,6 +549,8 @@ uint32_t LGFXDisplay::renderColor(ColorVal color) const {
   if (color == UIColor::warning_txt) return INDEX_WARNING_TEXT;
   if (color == UIColor::popup_bkg) return INDEX_POPUP_BACKGROUND;
   if (color == UIColor::corp_blue) return INDEX_ACCENT;
+  if (color == TOUCH_OUTLINE) return INDEX_TOUCH_OUTLINE;
+  if (color == TOUCH_PRESSED) return INDEX_TOUCH_PRESSED;
   return color & 0x0F;
 #else
   return color;

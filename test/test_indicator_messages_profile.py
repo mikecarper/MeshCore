@@ -12,6 +12,25 @@ UI = ROOT / "examples" / "companion_radio" / "ui-new" / "UITask.cpp"
 
 
 class IndicatorMessagesProfileTest(unittest.TestCase):
+    def test_touch_profile_has_one_navigation_bar_and_no_hidden_channel_targets(self):
+        profile = PROFILE.read_text()
+        ui = UI.read_text()
+        for flag in ("UI_BUTTON_READER_HINT", "UI_READER_TOUCH_BAR"):
+            self.assertIn(f"-D {flag}=1", profile)
+        self.assertIn("-D UI_MESSAGE_CHANNEL_FOOTER=0", profile)
+        self.assertIn("curr == msg_preview && UI_MESSAGE_CHANNEL_FOOTER == 1", ui)
+        # Compile the real gate: HAS_TOUCH must not overwrite the explicit
+        # physical-button footer setting with zero.
+        start = ui.index("#ifndef UI_BUTTON_READER_HINT")
+        gate = ui[start:ui.index("#if COMPANION_FEATURE_JOHN", start)]
+        result = subprocess.run(["c++", "-E", "-P", "-x", "c++", "-"],
+            input="#define HAS_TOUCH 1\n#define UI_BUTTON_READER_HINT 1\n" + gate +
+                  "\n#if UI_BUTTON_READER_HINT != 1\n#error reader hint disabled\n#endif\n",
+            text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("static_cast<MsgPreviewScreen*>(msg_preview)->readerTouchBar()", ui)
+        self.assertIn("static_cast<JohnReaderScreen*>(john_reader)->readerTouchBar()", ui)
+
     def test_indicator_enables_messages_home_page(self):
         profile = PROFILE.read_text()
         ui = UI.read_text()
