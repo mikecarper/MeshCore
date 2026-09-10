@@ -2595,6 +2595,15 @@ freshness or the retry ignore list.</p>
 </tr>
 </tbody>
 </table>
+<p>Hop-zero flood retries use the direct-retry CR ladder starting at the active
+radio CR. With CR5, <code>infra</code> allows CR5, CR7; <code>rooftop</code> allows CR5, CR7, CR7,
+CR8, CR8, CR8; <code>mobile</code> allows CR5, CR7, CR7, then CR8 through retry 15.
+These lists exclude the initial send and remain subject to payload caps and
+echo cancellation. Floods with recorded hops keep the active CR.
+<code>flood.retry.count 0</code> still disables every automatic flood retry, including
+hop zero, without changing direct-retry settings or their CR schedule.
+See <a href="../cli_commands/#hop-zero-flood-retry-coding-rate">hop-zero flood retry coding rate</a>
+for every starting CR and the payload limits.</p>
 <p>Example for path-gated retry:</p>
 <pre><code class="language-text">set retry.preset rooftop
 set flood.retry.path 1

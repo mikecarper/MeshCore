@@ -1871,6 +1871,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#hop-zero-flood-retry-coding-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hop-zero flood retry coding rate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-flood-retry-count" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5277,6 +5288,17 @@
   
     <nav class="md-nav" aria-label="Flood Retry">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#hop-zero-flood-retry-coding-rate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hop-zero flood retry coding rate
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#view-or-change-flood-retry-count" class="md-nav__link">
@@ -8783,6 +8805,113 @@ another qualifying repeater.</p>
 <p>The count, path, group-data path, and advert controls work on repeater, room-server, and sensor
 firmware. Flood forwarding must also be enabled for retries to run. Prefix,
 ignore, bridge, and bucket controls are repeater-only.</p>
+<h4 id="hop-zero-flood-retry-coding-rate">Hop-zero flood retry coding rate</h4>
+<p>Flood packets with no path hops recorded yet use the same CR escalation ladder
+as direct retries. The starting point is the active radio CR, since a flood has
+no single next-hop repeater whose SNR can select a starting CR. Each retry uses
+its attempt number and the active radio setting; it does not restart the ladder
+from the previous retry's override. Forwarded packets with one or more recorded
+hops use the active radio CR on every retry, including bridge retries whose
+effective path length discounts ignored hops.</p>
+<p>The initial transmission uses the active radio CR. This table lists retries
+after that initial transmission; any later retries remain at CR8:</p>
+<table>
+<thead>
+<tr>
+<th>Starting CR</th>
+<th>Retry 1</th>
+<th>Retry 2</th>
+<th>Retry 3</th>
+<th>Retry 4</th>
+<th>Retry 5+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CR4</td>
+<td>CR4</td>
+<td>CR5</td>
+<td>CR7</td>
+<td>CR7</td>
+<td>CR8</td>
+</tr>
+<tr>
+<td>CR5</td>
+<td>CR5</td>
+<td>CR7</td>
+<td>CR7</td>
+<td>CR8</td>
+<td>CR8</td>
+</tr>
+<tr>
+<td>CR6</td>
+<td>CR6</td>
+<td>CR7</td>
+<td>CR7</td>
+<td>CR8</td>
+<td>CR8</td>
+</tr>
+<tr>
+<td>CR7</td>
+<td>CR7</td>
+<td>CR7</td>
+<td>CR8</td>
+<td>CR8</td>
+<td>CR8</td>
+</tr>
+<tr>
+<td>CR8</td>
+<td>CR8</td>
+<td>CR8</td>
+<td>CR8</td>
+<td>CR8</td>
+<td>CR8</td>
+</tr>
+</tbody>
+</table>
+<p>The ladder is shared across presets. Presets change the retry budget, not the
+CR steps. At CR5, the maximum hop-zero schedules are:</p>
+<table>
+<thead>
+<tr>
+<th>Preset</th>
+<th style="text-align: right;">Configured flood count</th>
+<th style="text-align: right;">Hop-zero retries</th>
+<th>CR schedule after the initial send</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>infra</code></td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">2</td>
+<td>CR5, CR7</td>
+</tr>
+<tr>
+<td><code>rooftop</code></td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">6</td>
+<td>CR5, CR7, CR7, CR8, CR8, CR8</td>
+</tr>
+<tr>
+<td><code>mobile</code></td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">15</td>
+<td>CR5, CR7, CR7, then CR8 for retries 4-15</td>
+</tr>
+</tbody>
+</table>
+<p>These budgets apply to group text and the origin login/message family
+(<code>RESPONSE</code>, <code>TXT_MSG</code>, <code>ANON_REQ</code>, <code>PATH</code>). Existing payload caps, echo
+cancellation, and retry eligibility still apply: <code>REQ</code> and OTA do not use
+generic flood retries; other payloads allow at most one retry. An eligible
+advert at CR5 therefore gets only its first CR5 retry.</p>
+<p><code>set flood.retry.count 0</code> continues to disable all automatic flood retries,
+including hop zero. It leaves the initial transmission and all direct-retry
+settings and CR schedules unchanged. Direct retry's <code>direct.retry.cr</code> switch
+and SNR thresholds continue to control direct retries only. Per-packet CR
+overrides are restored after transmission and do not change the saved radio
+setting or physical preamble.</p>
 <h4 id="view-or-change-flood-retry-count">View or change flood retry count</h4>
 <p><strong>Search terms:</strong> flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.</p>
 <p><strong>Usage:</strong>
@@ -9032,7 +9161,7 @@ set direct.retry.margin 10
 - Non-repeater retry packets start at the current radio CR and follow the same escalation pattern, clamped at CR8. With the normal CR5 radio setting this is CR5, CR7, CR7, then CR8.
 - Room-server and sensor firmware accept <code>on</code> or <code>off</code>; numeric SNR thresholds
   are repeater-only because those roles do not keep recent-repeater SNR data.
-- <code>off</code> disables per-packet retry CR overrides and uses the current radio CR.
+- <code>off</code> disables per-packet direct-retry CR overrides and uses the current radio CR.
 - Retry packets may use a different coding rate, but they keep the radio's normal physical preamble.
 - Unknown repeaters start at <code>+3.00 dB</code> for adaptive CR selection.
 - A failed unknown repeater is seeded at <code>+2.75 dB</code>.
