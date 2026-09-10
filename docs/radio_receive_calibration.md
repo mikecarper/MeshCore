@@ -46,7 +46,7 @@ currently receiving packet owns the radio and blocks CAD. A packet interrupt
 arriving during re-arm is retained. Failed re-arm and a newly arrived packet
 both defer transmission.
 
-SX126x wrappers additionally verify the chip's operating mode at most once per
+SX126x wrappers additionally run a recovery watchdog at most once per
 10 seconds while continuous RX is expected. RXPS sleep, busy SPI, pending packets,
 and invalid status reads do not count as non-RX evidence. Two confirmed non-RX
 observations request soft recovery; a third uses the existing hard recovery path
