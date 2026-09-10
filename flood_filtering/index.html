@@ -747,6 +747,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#inspect-the-current-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspect the current limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear history
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#scope-and-resource-bounds" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2031,6 +2053,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#inspect-the-current-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspect the current limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear history
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#scope-and-resource-bounds" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2349,6 +2393,19 @@ physical distance.</p>
   abuse can therefore extend the restriction indefinitely; it does not expire
   automatically seven days after the first offence.</li>
 </ul>
+<h3 id="inspect-the-current-limits">Inspect the current limits</h3>
+<p>Use <code>get flood.advert</code> to list rate-limited origins, three per page. Continue
+with <code>get flood.advert 2</code>, etc. Rows show a 12-hex public-key prefix, the reason
+(<code>quota</code>, <code>history</code>, or <code>bad</code>), and the wait before another new advert is
+eligible under the automatic limiter. <code>get flood.advert key 1</code> shows the full
+key and counters for row 1, including the remaining bad-list recovery time.
+A bad-listed key remains visible with <code>wait=0s</code> when its next single forward
+is due. Prefix collisions appear as separate full-key entries.</p>
+<p>This is a live, read-only view: expiry can change row indices between queries,
+but reading never resets quotas or extends recovery. Sources rejected solely
+because the protected-history table is full are not retained, so they cannot
+be listed. See the <a href="../cli_commands/#list-rate-limited-flood-adverts">CLI reference</a>.</p>
+<h3 id="clear-history">Clear history</h3>
 <p>All timers use rollover-safe uptime, so setting the clock forward or backward
 cannot clear the restriction. This history is currently RAM-only: rebooting
 the relay clears it, and time while powered off is not tracked. A manual clear

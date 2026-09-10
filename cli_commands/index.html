@@ -661,6 +661,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#list-rate-limited-flood-adverts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Rate-Limited Flood Adverts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#clear-automatic-flood-advert-history" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4058,6 +4069,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#list-rate-limited-flood-adverts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Rate-Limited Flood Adverts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#clear-automatic-flood-advert-history" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6186,6 +6208,33 @@ Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If 
 <code>discover.neighbors</code> refresh is already in flight, the scope pass is queued behind it.</p>
 <hr />
 <h2 id="statistics">Statistics</h2>
+<h3 id="list-rate-limited-flood-adverts">List Rate-Limited Flood Adverts</h3>
+<p><strong>Usage:</strong> <code>get flood.advert [page]</code> or <code>get flood.advert key &lt;index&gt;</code></p>
+<p>Lists tracked advert origins currently subject to a forwarding limit. Page 1
+is the default, with three entries per page so replies fit both USB and admin
+LoRa CLI. Each row shows its index, the first 12 public-key hex characters,
+the limit reason, and the minimum wait before another new advert can pass
+the automatic limiter. Ordinary forwarding filters still apply.</p>
+<pre><code class="language-text">get flood.advert
+get flood.advert 2
+get flood.advert key 1
+</code></pre>
+<p>Reasons are <code>quota</code> (the prefix's three-hour forwarding allowance is spent),
+<code>history</code> (distinct receive history is full), and <code>bad</code> (the full key is under
+the stricter one-advert-per-12-hours rule). A <code>bad</code> key remains listed when
+<code>wait=0s</code>: one forward is eligible, but its seven-day recovery is not complete.
+If several limits apply, <code>bad</code> takes precedence over <code>history</code>, then <code>quota</code>;
+the displayed wait accounts for all applicable limits.</p>
+<p>The <code>key</code> form returns the complete 64-hex public key, reason, wait, shared
+prefix forwarding count/quota, shortest received hop count, and remaining
+bad-list recovery time. Different full keys with the same 12-hex prefix remain
+separate entries. Indices refer to the current live list and can change as
+history expires; read the full key before using a targeted clear.</p>
+<p>Queries do not clear history, spend quota, or refresh abuse/recovery timers.
+Elapsed history expires normally. Origins rejected only because every table
+slot protects abuse history are not retained and cannot be enumerated.
+Available on repeaters, room servers, and forwarding sensors through their
+ordinary local/admin CLI. Companions do not have this table.</p>
 <h3 id="clear-automatic-flood-advert-history">Clear Automatic Flood Advert History</h3>
 <p><strong>Usage:</strong> <code>clear flood.advert all</code> or <code>clear flood.advert &lt;64-hex-full-public-key&gt;</code></p>
 <p>Clears automatic advert forwarding quotas, first strikes, and seven-day bad-list
