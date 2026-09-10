@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <stdlib.h>  // for qsort()
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ClientACLCLI.h>
 #include <helpers/ClockSyncUtils.h>
 #include <helpers/ClientLoginPersistence.h>
 #include <helpers/ClientPathObservation.h>
@@ -11809,6 +11810,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       && (strcmp(command, "get recent.repeater") == 0 || strcmp(command, "get recent.repeaters") == 0)) {
     printRecentRepeatersSerial();
     reply_start[0] = 0;
+  } else if (mesh::cli::handleACLGet(acl, command, reply, 160 - 3,
+                                    sender_timestamp == 0)) {
+    // The page fits one LoRa reply, including an optional CLI prefix.
   } else if (sender_timestamp == 0 && strcmp(command, "get acl") == 0) {
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
     if (_command_output) {

@@ -103,4 +103,5 @@ public:
 
   int getNumClients() const { return num_clients; }
   ClientInfo* getClientByIdx(int idx) { return &clients[idx]; }
+  const ClientInfo* getClientByIdx(int idx) const { return &clients[idx]; }
 };

@@ -82,11 +82,15 @@ static bool apply_actual_receive_cache_gate(const char* command, bool cache_hit,
         null_sender = extract_braced(header, "void handleCommand(uint32_t sender_timestamp, char* command, char* reply)")
         self.assertIn("handleCommand(sender_timestamp, NULL, command, reply)", null_sender)
         console_start = main.index("if (line_complete)")
-        ethernet_start = main.index("if (ethernet_read_line(", console_start)
+        ethernet_gate = "if (!the_mesh.hasPendingLocalOutput() && ethernet_read_line("
+        ethernet_start = main.index(ethernet_gate, console_start)
         self.assertIn("the_mesh.handleUsbCommand(command, reply)", main[console_start:ethernet_start])
-        ethernet = extract_braced(main, "if (ethernet_read_line(")
+        ethernet = extract_braced(main, ethernet_gate)
         self.assertNotIn("handleUsbCommand", ethernet)
-        self.assertIn("the_mesh.handleCommand(0, ethernet_command, reply)", ethernet)
+        self.assertIn("the_mesh.handleLocalCommand(ethernet_command, reply, ethernet_client)", ethernet)
+        local = extract_braced(header, "void handleLocalCommand(")
+        self.assertIn("handleCommand(0, command, reply)", local)
+        self.assertNotIn("handleUsbCommand", local)
         # No web/internal callback is allowed to adopt the physical entry point.
         cpp = SOURCE.read_text(encoding="utf-8")
         self.assertNotIn("handleUsbCommand(", cpp)
@@ -118,7 +122,11 @@ static bool apply_actual_receive_cache_gate(const char* command, bool cache_hit,
         handler = extract_braced(source, "void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender,")
         recovery = handler.index("handleReplayResetCommand(sender, command, reply, usb_origin)")
         self.assertLess(recovery, handler.index("_cli.handleCommand("))
-        self.assertNotIn("sender_timestamp == 0", handler[:recovery])
+        # A remote zero timestamp is normalized so it cannot enter a local
+        # streaming handler. It must not grant USB recovery authorization.
+        normalization = "if (sender != nullptr && sender_timestamp == 0) sender_timestamp = 1;"
+        self.assertIn(normalization, handler[:recovery])
+        self.assertNotIn("sender_timestamp == 0", handler[:recovery].replace(normalization, ""))
 
 
 if __name__ == "__main__":

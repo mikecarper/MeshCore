@@ -3,6 +3,7 @@
 #include <helpers/FileRead.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ClientACLCLI.h>
 #include <helpers/ClientLoginPersistence.h>
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/LazyPersistence.h>
@@ -2356,6 +2357,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
         strcpy(reply, "Err - bad pubkey");
       }
     }
+  } else if (mesh::cli::handleACLGet(acl, command, reply, 160 - 3,
+                                    sender_timestamp == 0)) {
+    // The page fits one LoRa reply, including an optional CLI prefix.
   } else if (sender_timestamp == 0 && strcmp(command, "get acl") == 0) {
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
     if (_command_output) {

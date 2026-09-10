@@ -2900,11 +2900,27 @@ eviction like administrators.
 ---
 
 #### View the current ACL
-**Usage:** 
-- `get acl`
 
-**Local connection only:** USB, direct network CLI, or Companion binary
-command `0x42` where the role supports the command; unavailable over LoRa.
+**Usage:**
+
+- `get acl` - full listing locally; first page over LoRa
+- `get acl <page>` - a numbered page, starting at 1, locally or over LoRa
+
+Available on repeaters, room servers, and sensors. Over LoRa, an authenticated
+admin session is required; guests, read-only/read-write clients, and delegated
+region/filter managers cannot read the ACL.
+
+Each page starts with `ACL <page>/<pages>` and contains up to two entries.
+Each entry is a two-digit hexadecimal permission byte followed by the full
+64-character public key. For example, use `get acl 2` for the second page.
+An empty list returns `ACL: empty`. Deleted/guest entries with permission byte
+`00` are omitted, matching the local listing. Pages reflect the current live
+ACL, so entries can move between pages if permissions or clients change.
+
+Bare `get acl` keeps the full streamed listing on USB and direct network CLI,
+or via Companion binary command `0x42` where the role supports the command.
+The listing contains public keys and permissions, not passwords or shared
+secrets, and does not change the ACL.
 
 ---
 

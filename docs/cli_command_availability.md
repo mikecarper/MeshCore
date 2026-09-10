@@ -177,7 +177,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes |
 | Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes |
 | ACL | [`setperm <pubkey> <permissions>`](cli_commands.md#add-update-or-remove-permissions-for-a-companion) | Repeater, room server, or sensor | Yes | Yes | Yes |
-| ACL | [`get acl`](cli_commands.md#view-the-current-acl) | Local connection | Local | Local | Local |
+| ACL | [`get acl [page]`](cli_commands.md#view-the-current-acl) | Repeater, room server, or sensor; admin over LoRa | Yes | Yes | Yes |
 | ACL | [`get/set allow.read.only`](cli_commands.md#view-or-change-this-room-servers-read-only-flag) | Room server | Yes | Yes | No |
 | Regions | [`region load`](cli_commands.md#bulk-load-region-lists); [`region save`](cli_commands.md#save-any-changes-to-regions-made-since-reboot) | Role with region storage | Yes | Yes | Yes |
 | Regions | [`region allowf`](cli_commands.md#allow-a-region); [`region denyf`](cli_commands.md#block-a-region) | Role with region storage | Yes | Yes | Yes |
@@ -344,7 +344,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes | Yes | Yes |
 | ACL | [`setperm <pubkey> <permissions>`](cli_commands.md#add-update-or-remove-permissions-for-a-companion) | Repeater, room server, or sensor | Yes | Yes | Yes | Yes | Yes |
-| ACL | [`get acl`](cli_commands.md#view-the-current-acl) | Local connection | Local | Local | Local | Local | Local |
+| ACL | [`get acl [page]`](cli_commands.md#view-the-current-acl) | Repeater, room server, or sensor; admin over LoRa | Yes | Yes | Yes | Yes | Yes |
 | ACL | [`get/set allow.read.only`](cli_commands.md#view-or-change-this-room-servers-read-only-flag) | Room server | Yes | Yes | No | Yes | Yes |
 | Regions | [`region load`](cli_commands.md#bulk-load-region-lists); [`region save`](cli_commands.md#save-any-changes-to-regions-made-since-reboot) | Role with region storage | Yes | Yes | Yes | Yes | Yes |
 | Regions | [`region allowf`](cli_commands.md#allow-a-region); [`region denyf`](cli_commands.md#block-a-region) | Role with region storage | Yes | Yes | Yes | Yes | Yes |
