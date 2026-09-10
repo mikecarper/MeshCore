@@ -58,6 +58,21 @@ jobs:
       - name: Run Unit Tests
         run: pio test -e native -e native_kiss_modem -vv
 
+      - name: Verify receive recovery and pinned radio status transport
+        run: |
+          python3 -B test/test_radio_receive_contract.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+          dependency = re.search(r'https://github.com/jgromes/RadioLib.git#[0-9a-f]{40}',
+                                 Path('platformio.ini').read_text()).group(0)
+          Path('.pio/libdeps/radio-status-test').mkdir(parents=True, exist_ok=True)
+          subprocess.run(['pio', 'pkg', 'install', '--global', '--library', dependency,
+                          '--storage-dir', '.pio/libdeps/radio-status-test'], check=True)
+          PY
+          python3 -B test/test_sx126x_receive_mode.py
+
       - name: Verify ESP32 static DRAM budget
         run: python3 -B test/test_esp32_dram.py
 
