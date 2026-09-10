@@ -8467,10 +8467,24 @@ eviction like administrators.</p>
 <p><strong>Note:</strong> Removes the entry when <code>permissions</code> is omitted</p>
 <hr />
 <h4 id="view-the-current-acl">View the current ACL</h4>
-<p><strong>Usage:</strong> 
-- <code>get acl</code></p>
-<p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
-command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get acl</code> - full listing locally; first page over LoRa</li>
+<li><code>get acl &lt;page&gt;</code> - a numbered page, starting at 1, locally or over LoRa</li>
+</ul>
+<p>Available on repeaters, room servers, and sensors. Over LoRa, an authenticated
+admin session is required; guests, read-only/read-write clients, and delegated
+region/filter managers cannot read the ACL.</p>
+<p>Each page starts with <code>ACL &lt;page&gt;/&lt;pages&gt;</code> and contains up to two entries.
+Each entry is a two-digit hexadecimal permission byte followed by the full
+64-character public key. For example, use <code>get acl 2</code> for the second page.
+An empty list returns <code>ACL: empty</code>. Deleted/guest entries with permission byte
+<code>00</code> are omitted, matching the local listing. Pages reflect the current live
+ACL, so entries can move between pages if permissions or clients change.</p>
+<p>Bare <code>get acl</code> keeps the full streamed listing on USB and direct network CLI,
+or via Companion binary command <code>0x42</code> where the role supports the command.
+The listing contains public keys and permissions, not passwords or shared
+secrets, and does not change the ACL.</p>
 <hr />
 <h4 id="recover-a-repeaters-future-dated-replay-timestamp">Recover a repeater's future-dated replay timestamp</h4>
 <p>This is an explicit recovery operation after correcting a bad clock, not a
