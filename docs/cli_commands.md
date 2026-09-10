@@ -447,6 +447,41 @@ Elsewhere it replies `Err - neighbors not enabled in this build`. If a
 
 ## Statistics
 
+### List Rate-Limited Flood Adverts
+
+**Usage:** `get flood.advert [page]` or `get flood.advert key <index>`
+
+Lists tracked advert origins currently subject to a forwarding limit. Page 1
+is the default, with three entries per page so replies fit both USB and admin
+LoRa CLI. Each row shows its index, the first 12 public-key hex characters,
+the limit reason, and the minimum wait before another new advert can pass
+the automatic limiter. Ordinary forwarding filters still apply.
+
+```text
+get flood.advert
+get flood.advert 2
+get flood.advert key 1
+```
+
+Reasons are `quota` (the prefix's three-hour forwarding allowance is spent),
+`history` (distinct receive history is full), and `bad` (the full key is under
+the stricter one-advert-per-12-hours rule). A `bad` key remains listed when
+`wait=0s`: one forward is eligible, but its seven-day recovery is not complete.
+If several limits apply, `bad` takes precedence over `history`, then `quota`;
+the displayed wait accounts for all applicable limits.
+
+The `key` form returns the complete 64-hex public key, reason, wait, shared
+prefix forwarding count/quota, shortest received hop count, and remaining
+bad-list recovery time. Different full keys with the same 12-hex prefix remain
+separate entries. Indices refer to the current live list and can change as
+history expires; read the full key before using a targeted clear.
+
+Queries do not clear history, spend quota, or refresh abuse/recovery timers.
+Elapsed history expires normally. Origins rejected only because every table
+slot protects abuse history are not retained and cannot be enumerated.
+Available on repeaters, room servers, and forwarding sensors through their
+ordinary local/admin CLI. Companions do not have this table.
+
 ### Clear Automatic Flood Advert History
 
 **Usage:** `clear flood.advert all` or `clear flood.advert <64-hex-full-public-key>`

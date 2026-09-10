@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <helpers/FloodAdvertLimiter.h>
 #include <helpers/FloodAdvertCLI.h>
+#include <helpers/RemoteCliReplyCache.h>
 #include <array>
 
 using Limiter = mesh::FloodAdvertLimiter;
@@ -301,6 +302,169 @@ TEST_F(FloodAdvertLimit, CliInvalidSelectorsNeverClearAnything) {
   EXPECT_FALSE(mesh::cli::handleFloodAdvertClear(&limiter, "clear flood.advertisement all", reply));
   EXPECT_FALSE(mesh::cli::handleFloodAdvertClear(&limiter, "clear stats", reply));
   EXPECT_TRUE(mesh::cli::handleFloodAdvertClear(nullptr, "clear flood.advert all", reply));
+  EXPECT_STREQ("ERR: advert limiter unavailable on this role", reply);
+}
+
+TEST_F(FloodAdvertLimit, CliListsOnlyLimitedKeysAndReturnsFullKeyDetails) {
+  char reply[160] = {};
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert", reply, 0));
+  EXPECT_STREQ("> no rate-limited adverts", reply);
+  receive(1, 8, 0);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert", reply, 0));
+  EXPECT_STREQ("> no rate-limited adverts", reply);
+  receive(2, 8, 0);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert 1", reply, 1000));
+  EXPECT_STREQ("> page 1/1 limited=1\n1 BADBEE5C0000 quota wait=10799s", reply);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert key 1", reply, 1000));
+  char hex[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(hex, key.data(), PUB_KEY_SIZE);
+  EXPECT_EQ(std::string("> ") + hex + "\nquota wait=10799s sent=2/2 hops=8 recovery=0s", reply);
+  // Reading neither spends more quota nor resets it.
+  EXPECT_EQ(Decision::Quota, receive(3, 8, 1000));
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert", reply, W));
+  EXPECT_STREQ("> no rate-limited adverts", reply);
+}
+
+TEST_F(FloodAdvertLimit, CliPagesTheWholeListWithoutTruncationOrChangingIt) {
+  for (unsigned i = 0; i < 4; ++i) {
+    auto source = key;
+    source[0] += i;
+    receive(1, 8, 0, source.data());
+    receive(2, 8, 0, source.data());
+  }
+  struct { char before = '!'; char reply[160] = {}; char after = '?'; } guarded;
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert", guarded.reply, 0));
+  EXPECT_STREQ("> page 1/2 limited=4\n1 BADBEE5C0000 quota wait=10800s\n2 BBDBEE5C0000 quota wait=10800s\n3 BCDBEE5C0000 quota wait=10800s", guarded.reply);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert\t2\r\n", guarded.reply, 1));
+  EXPECT_STREQ("> page 2/2 limited=4\n4 BDDBEE5C0000 quota wait=10800s", guarded.reply);
+  EXPECT_EQ('!', guarded.before);
+  EXPECT_EQ('?', guarded.after);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert 3", guarded.reply, 1));
+  EXPECT_STREQ("ERR: advert list index out of range", guarded.reply);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert key 4", guarded.reply, 1));
+  EXPECT_NE(nullptr, strstr(guarded.reply, "BDDBEE5C0000"));
+  EXPECT_EQ(4U, limiter.listLimited(1, 0, nullptr, 0));
+}
+
+TEST_F(FloodAdvertLimit, ListedPrefixCollisionsPreserveFullKeyIdentity) {
+  auto collision = key;
+  collision[31] = 1;
+  receive(1, 8, 0);
+  receive(1, 8, 1, collision.data());
+  Limiter::LimitedEntry rows[2];
+  ASSERT_EQ(2U, limiter.listLimited(100, 0, rows, 2));
+  EXPECT_EQ(0, memcmp(rows[0].key, rows[1].key, Limiter::PREFIX_BYTES));
+  EXPECT_NE(0, memcmp(rows[0].key, rows[1].key, PUB_KEY_SIZE));
+  for (const auto& row : rows) {
+    EXPECT_EQ(Limiter::WindowQuota, row.reasons);
+    EXPECT_EQ(2, row.forwarded);
+    EXPECT_EQ(2, row.quota);
+    EXPECT_EQ(W - 100, row.wait_ms);
+  }
+  char reply[160];
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert key 2", reply, 100));
+  char hex[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(hex, collision.data(), PUB_KEY_SIZE);
+  EXPECT_NE(nullptr, strstr(reply, hex));
+}
+
+TEST_F(FloodAdvertLimit, LargestSupportedTableFitsUsbAndRemoteReplies) {
+  mesh::StaticFloodAdvertLimiter<128> large;
+  for (unsigned i = 0; i < 128; ++i) {
+    auto source = key;
+    source[0] = i;
+    for (uint8_t seq = 0; seq < Limiter::HASH_SLOTS; ++seq) {
+      uint8_t hash[MAX_HASH_SIZE] = {seq};
+      large.observe(source.data(), hash, 0, 0);
+    }
+  }
+  struct { char before = '!'; char reply[160] = {}; char after = '?'; } guarded;
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&large, "get flood.advert 34", guarded.reply, 0));
+  EXPECT_STREQ("> page 34/43 limited=128\n100 63DBEE5C0000 history wait=10800s\n101 64DBEE5C0000 history wait=10800s\n102 65DBEE5C0000 history wait=10800s", guarded.reply);
+  EXPECT_LE(strlen(guarded.reply), mesh::RemoteCliReplyCache::MAX_REPLY_TEXT);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&large, "get flood.advert key 128", guarded.reply, 0));
+  EXPECT_NE(nullptr, strstr(guarded.reply, "history wait=10800s sent=0/10 hops=0 recovery=0s"));
+  EXPECT_LE(strlen(guarded.reply), mesh::RemoteCliReplyCache::MAX_REPLY_TEXT);
+  EXPECT_EQ('!', guarded.before);
+  EXPECT_EQ('?', guarded.after);
+}
+
+TEST_F(FloodAdvertLimit, ListingUsesTheSameShortestPrefixPathAsForwarding) {
+  receive(1, 8, 0);
+  receive(2, 8, 1);
+  ASSERT_EQ(1U, limiter.listLimited(1, 0, nullptr, 0));
+  uint8_t hash[MAX_HASH_SIZE] = {1};
+  limiter.observe(key.data(), hash, 1, 2, true);
+  EXPECT_EQ(0U, limiter.listLimited(2, 0, nullptr, 0));
+  EXPECT_EQ(Decision::Allow, receive(3, 8, 2));
+}
+
+TEST_F(FloodAdvertLimit, ListingShowsSaturatedReceiveHistoryWithoutSpentQuota) {
+  for (unsigned i = 0; i < Limiter::HASH_SLOTS; ++i) receive(i, 1, 0, nullptr, false);
+  Limiter::LimitedEntry row;
+  ASSERT_EQ(1U, limiter.listLimited(0, 0, &row, 1));
+  EXPECT_EQ(Limiter::ReceiveHistory, row.reasons);
+  EXPECT_EQ(0, row.forwarded);
+  EXPECT_EQ(10, row.quota);
+  EXPECT_EQ(W, row.wait_ms);
+  char reply[160];
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert", reply, 0));
+  EXPECT_NE(nullptr, strstr(reply, "history wait=10800s"));
+  EXPECT_EQ(Decision::Quota, receive(99, 1, 0));
+}
+
+TEST_F(FloodAdvertLimit, ListingReportsBadKeyCooldownAndDoesNotExtendRecovery) {
+  bad();
+  Limiter::LimitedEntry row;
+  ASSERT_EQ(1U, limiter.listLimited(W, 0, &row, 1));
+  EXPECT_TRUE(row.reasons & Limiter::BadListRule);
+  EXPECT_EQ(H12, row.wait_ms);
+  EXPECT_EQ(D7, row.recovery_ms);
+  char reply[160];
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert", reply, W));
+  EXPECT_NE(nullptr, strstr(reply, "bad wait=43200s"));
+  // Bad-list membership is still visible when its next single forward is due.
+  ASSERT_EQ(1U, limiter.listLimited(W + H12, 0, &row, 1));
+  EXPECT_TRUE(row.reasons & Limiter::BadListRule);
+  EXPECT_EQ(0U, row.wait_ms);
+  EXPECT_EQ(D7 - (H12 - W), row.recovery_ms);
+  for (uint32_t now = W + H12; now < 2 * W + D7; now += W) {
+    EXPECT_EQ(1U, limiter.listLimited(now, 0, nullptr, 0));
+  }
+  EXPECT_EQ(0U, limiter.listLimited(2 * W + D7, 0, nullptr, 0));
+  EXPECT_FALSE(limiter.isBad(key.data(), 2 * W + D7));
+}
+
+TEST_F(FloodAdvertLimit, ListingWaitsAndExpiryWorkAcrossMillisWrap) {
+  const uint32_t start = UINT32_MAX - W / 2;
+  bad(start);
+  Limiter::LimitedEntry row;
+  ASSERT_EQ(1U, limiter.listLimited(start + W + 1, 0, &row, 1));
+  EXPECT_EQ(H12 - 1, row.wait_ms);
+  EXPECT_EQ(D7 - 1, row.recovery_ms);
+  EXPECT_EQ(0U, limiter.listLimited(start + 2 * W + D7, 0, &row, 1));
+}
+
+TEST_F(FloodAdvertLimit, CliInvalidListSelectorsDoNotChangeHistoryOrStealOtherCommands) {
+  bad();
+  const char* invalid[] = {
+    "get flood.advert 0", "get flood.advert -1", "get flood.advert 65536",
+    "get flood.advert 99999999999999999999", "get flood.advert 1.5",
+    "get flood.advert all", "get flood.advert 1 extra", "get flood.advert key",
+    "get flood.advert key 0", "get flood.advert key -1", "get flood.advert key 1 extra"
+  };
+  for (const char* command : invalid) {
+    char reply[160] = {};
+    ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&limiter, command, reply, W));
+    EXPECT_EQ(0, strncmp(reply, "ERR:", 4)) << command;
+    EXPECT_TRUE(limiter.isBad(key.data(), W));
+  }
+  char reply[160] = "unchanged";
+  EXPECT_FALSE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advert.interval", reply, W));
+  EXPECT_FALSE(mesh::cli::handleFloodAdvertGet(&limiter, "get flood.advertisement", reply, W));
+  EXPECT_FALSE(mesh::cli::handleFloodAdvertGet(&limiter, "clear flood.advert all", reply, W));
+  EXPECT_STREQ("unchanged", reply);
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(nullptr, "get flood.advert", reply, W));
   EXPECT_STREQ("ERR: advert limiter unavailable on this role", reply);
 }
 

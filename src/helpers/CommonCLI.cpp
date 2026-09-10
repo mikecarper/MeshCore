@@ -2461,6 +2461,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
     // live in CommonCLI_Observer.cpp.
     if (handleObserverCommand(sender_timestamp, command, reply)) return;
+    if (mesh::cli::handleFloodAdvertGet(_callbacks->getFloodAdvertLimiter(), command, reply, millis())) return;
     if (mesh::cli::handleFloodAdvertClear(_callbacks->getFloodAdvertLimiter(), command, reply)) return;
     if (memcmp(command, "poweroff", 8) == 0 || memcmp(command, "shutdown", 8) == 0) {
       _board->powerOff();  // doesn't return

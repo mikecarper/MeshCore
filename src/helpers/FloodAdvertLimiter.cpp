@@ -183,4 +183,51 @@ bool FloodAdvertLimiter::isBad(const uint8_t* key, uint32_t now) {
   return entry && (entry->flags & BAD);
 }
 
+size_t FloodAdvertLimiter::listLimited(uint32_t now, size_t offset,
+                                      LimitedEntry* dest, size_t count) {
+  refresh(now);
+  size_t total = 0;
+  for (size_t i = 0; i < _capacity; ++i) {
+    const Entry& entry = _entries[i];
+    if (!(entry.flags & ACTIVE)) continue;
+    unsigned forwarded = 0;
+    uint8_t hops = entry.min_hops;
+    for (size_t j = 0; j < _capacity; ++j) {
+      const Entry& other = _entries[j];
+      if (!(other.flags & ACTIVE) || memcmp(other.key, entry.key, PREFIX_BYTES) != 0) continue;
+      if (other.min_hops < hops) hops = other.min_hops;
+      for (uint16_t bits = other.forwarded; bits; bits &= bits - 1) ++forwarded;
+    }
+    const uint8_t quota = allowance(hops);
+    uint8_t reasons = 0;
+    if (forwarded >= quota) reasons |= WindowQuota;
+    // Once receive history fills, a new distinct payload is refused even if
+    // another forwarding filter prevented earlier payloads spending quota.
+    if (entry.count == HASH_SLOTS) reasons |= ReceiveHistory;
+    if (entry.flags & BAD) reasons |= BadListRule;
+    if (!reasons) continue;
+
+    if (dest && total >= offset && total - offset < count) {
+      LimitedEntry& out = dest[total - offset];
+      memcpy(out.key, entry.key, PUB_KEY_SIZE);
+      out.forwarded = forwarded;
+      out.quota = quota;
+      out.hops = hops;
+      out.reasons = reasons;
+      out.wait_ms = reasons & (WindowQuota | ReceiveHistory)
+          ? WINDOW_MS - uint32_t(now - entry.window_start) : 0;
+      out.recovery_ms = 0;
+      if (reasons & BadListRule) {
+        out.recovery_ms = RECOVERY_MS - uint32_t(now - entry.last_violation);
+        if (entry.flags & HAS_FORWARDED) {
+          const uint32_t bad_wait = BAD_INTERVAL_MS - uint32_t(now - entry.last_forwarded);
+          if (bad_wait > out.wait_ms) out.wait_ms = bad_wait;
+        }
+      }
+    }
+    ++total;
+  }
+  return total;
+}
+
 } // namespace mesh

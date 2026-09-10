@@ -69,6 +69,23 @@ physical distance.
   abuse can therefore extend the restriction indefinitely; it does not expire
   automatically seven days after the first offence.
 
+### Inspect the current limits
+
+Use `get flood.advert` to list rate-limited origins, three per page. Continue
+with `get flood.advert 2`, etc. Rows show a 12-hex public-key prefix, the reason
+(`quota`, `history`, or `bad`), and the wait before another new advert is
+eligible under the automatic limiter. `get flood.advert key 1` shows the full
+key and counters for row 1, including the remaining bad-list recovery time.
+A bad-listed key remains visible with `wait=0s` when its next single forward
+is due. Prefix collisions appear as separate full-key entries.
+
+This is a live, read-only view: expiry can change row indices between queries,
+but reading never resets quotas or extends recovery. Sources rejected solely
+because the protected-history table is full are not retained, so they cannot
+be listed. See the [CLI reference](cli_commands.md#list-rate-limited-flood-adverts).
+
+### Clear history
+
 All timers use rollover-safe uptime, so setting the clock forward or backward
 cannot clear the restriction. This history is currently RAM-only: rebooting
 the relay clears it, and time while powered off is not tracked. A manual clear

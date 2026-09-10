@@ -3,6 +3,7 @@
 #include <Ed25519.h>
 #include <Mesh.h>
 #include <helpers/ClockSyncUtils.h>
+#include <helpers/FloodAdvertCLI.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/ota/OtaFormat.h>
 
@@ -1075,6 +1076,26 @@ TEST_F(AdvertReceiveLimit, StopsOnlyForwardingAndKeepsLocalAdvertCallbacks) {
   tables.seen = false;
   auto message = makeFloodPacket(PAYLOAD_TYPE_RAW_CUSTOM);
   EXPECT_NE(ACTION_RELEASE, node.receivePacket(&message));
+}
+
+TEST_F(AdvertReceiveLimit, CliListsTheActualReceiveLimitWithoutChangingForwarding) {
+  char reply[160];
+  ASSERT_NE(ACTION_RELEASE, receive(1));
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&node.limiter, "get flood.advert", reply, clock.now));
+  EXPECT_STREQ("> no rate-limited adverts", reply);
+  ASSERT_NE(ACTION_RELEASE, receive(2));
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&node.limiter, "get flood.advert", reply, clock.now));
+  EXPECT_NE(nullptr, strstr(reply, "BA0000000000 quota wait=10800s"));
+  ASSERT_EQ(ACTION_RELEASE, receive(3));
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&node.limiter, "get flood.advert key 1", reply, clock.now));
+  EXPECT_NE(nullptr, strstr(reply, "sent=2/2 hops=8"));
+  EXPECT_EQ(3U, node.advert_callbacks);
+  EXPECT_EQ(2U, node.forwarding_checks);
+  // An authenticated shorter duplicate changes the actual allowance and list.
+  ASSERT_EQ(ACTION_RELEASE, receive(1, 1, true));
+  ASSERT_TRUE(mesh::cli::handleFloodAdvertGet(&node.limiter, "get flood.advert", reply, clock.now));
+  EXPECT_STREQ("> no rate-limited adverts", reply);
+  EXPECT_NE(ACTION_RELEASE, receive(4));
 }
 
 TEST_F(AdvertReceiveLimit, VerifiedShorterDuplicateRaisesAllowanceWithoutRelayingIt) {

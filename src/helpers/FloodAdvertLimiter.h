@@ -41,6 +41,17 @@ public:
     uint8_t flags;
   };
 
+  enum LimitReason : uint8_t { WindowQuota = 1, ReceiveHistory = 2, BadListRule = 4 };
+  struct LimitedEntry {
+    uint8_t key[PUB_KEY_SIZE];
+    uint32_t wait_ms;
+    uint32_t recovery_ms;
+    uint16_t forwarded;
+    uint8_t quota;
+    uint8_t hops;
+    uint8_t reasons;
+  };
+
   void reset();
   void clear(const uint8_t* full_key);
   void tick(uint32_t now);
@@ -54,6 +65,10 @@ public:
   Decision check(const uint8_t* key, const uint8_t* hash, uint32_t now);
   void commit(const uint8_t* key, const uint8_t* hash, uint32_t now);
   bool isBad(const uint8_t* key, uint32_t now);
+  // Return the total number of limited full keys and copy the requested slice.
+  // Queries only expire elapsed history; they never consume quota, refresh
+  // last-heard, or add abuse evidence. Prefix collisions remain separate keys.
+  size_t listLimited(uint32_t now, size_t offset, LimitedEntry* dest, size_t count);
 
 protected:
   FloodAdvertLimiter(Entry* entries, size_t capacity) : _entries(entries), _capacity(capacity) {}
