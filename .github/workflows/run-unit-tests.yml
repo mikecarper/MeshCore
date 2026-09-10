@@ -88,6 +88,7 @@ jobs:
           python3 -B test/test_cascade_release_package.py
           python3 -B test/test_t096_full_memory.py
           python3 -B test/test_nrf52_ble_startup.py
+          python3 -B test/test_nrf52_usb_power.py
           python3 -B test/test_shared_mota_queue.py
 
       - name: Verify Companion Bluetooth settings and WebConfig
