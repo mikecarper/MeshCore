@@ -3,13 +3,14 @@
 #include <stdint.h>
 #include <math.h>
 
-// PR #2933's spaced median and bounded rise hold, retaining Cascade's
-// fractional dBm and 25% previous / 75% new weighting. No radio or clock I/O.
+// Spaced idle RSSI sampling with a low-percentile estimate and bounded rise hold.
+// Retains Cascade's fractional dBm and 25% previous / 75% new weighting.
+// No radio or clock I/O.
 class NoiseFloorEstimator {
 public:
   static constexpr uint16_t SAMPLE_COUNT = 64;
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 50;
-  static constexpr uint32_t WINDOW_TIMEOUT_MS = 10000;
+  static constexpr uint32_t WINDOW_TIMEOUT_MS = 30000;
   static constexpr uint8_t MAX_HELD_BLOCKS = 3;
   static constexpr int32_t MAX_RISE_CENTI_DB = 1500;
 
@@ -54,18 +55,22 @@ public:
       }
       _samples[j] = key;
     }
-    int32_t median = (int32_t(_samples[SAMPLE_COUNT / 2 - 1])
-        + _samples[SAMPLE_COUNT / 2]) / 2;
-    if (median < -12000) median = -12000;
-    if (previous_valid && median > floor_centi_dbm + MAX_RISE_CENTI_DB) {
+    // Off-SF traffic can dominate the accepted samples. The median (and even
+    // the lower quartile) followed that traffic in hardware captures. The
+    // 12.5th percentile retained the quiet background while rejecting sparse
+    // low outliers. It still requires enough clean, settled samples per block.
+    const uint16_t upper = SAMPLE_COUNT / 8;
+    int32_t candidate = (int32_t(_samples[upper - 1]) + _samples[upper]) / 2;
+    if (candidate < -12000) candidate = -12000;
+    if (previous_valid && candidate > floor_centi_dbm + MAX_RISE_CENTI_DB) {
       if (++_held_blocks < MAX_HELD_BLOCKS) return false;
     }
     _held_blocks = 0;
     if (previous_valid) {
-      const int32_t weighted = floor_centi_dbm + 3 * median;
+      const int32_t weighted = floor_centi_dbm + 3 * candidate;
       floor_centi_dbm = (weighted - 2) / 4;
     } else {
-      floor_centi_dbm = median;
+      floor_centi_dbm = candidate;
     }
     return true;
   }

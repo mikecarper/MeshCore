@@ -139,7 +139,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_persistent_store_format` | `src/helpers/PersistentStoreFormat.h` | contact-page headers and CRCs, dirty-page state, stable slot allocation, and bounded resumable legacy migration across power loss |
 | `test_power_management` | `src/helpers/PowerManagementUtils.h` | median filtering of a brownout outlier and valid-reading requirements for the boot lock |
 | `test_rx_power_saving` | `src/helpers/radiolib/RXPowerSaving.h` | guarded timer/capture bounds across SF5-SF12, bandwidths, TCXO delays and wire preambles; experimental profiles; retuning and strict CLI parsing |
-| `test_noise_floor_estimator` | `src/helpers/radiolib/NoiseFloorEstimator.h` | spaced median, weighting, outliers, persistent rises, timeout/reset semantics and clock rollover |
+| `test_noise_floor_estimator` | `src/helpers/radiolib/NoiseFloorEstimator.h` | spaced low percentile, captured off-SF traffic, weighting, contamination limits, persistent rises, resets and clock rollover |
 | `test_region_names` | `src/helpers/RegionNameUtils.h` | canonical public-region markers while preserving distinct private and differently named regions |
 | `test_datagram_payload_limits` | `src/helpers/DatagramPayloadLimits.h` | encrypted datagram plaintext ceilings, including the anonymous region-reply prefix and worst-case cipher padding |
 | `test_serial_packet_log` | `src/helpers/SerialPacketLog.h` | bounded USB packet logging and dropped-line reporting |

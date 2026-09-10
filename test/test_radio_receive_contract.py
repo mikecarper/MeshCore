@@ -149,7 +149,7 @@ int main() {
     assert(w.isChannelActive());
     assert(state == (STATE_RX | STATE_INT_READY)); // preserves the new packet
   }
-  // A quiet ten-second window completes in ~3.2 s and powersaving resumes.
+  // A quiet bounded window completes in ~3.2 s and powersaving resumes.
   for (bool ps : {false, true}) {
     RadioLibWrapper w;
     w._rx_ps_enabled = w._rx_ps_armed = ps;
@@ -164,6 +164,21 @@ int main() {
     assert(w._rx_ps_armed == ps);
     assert(w.reads == 64); // no unnecessary SPI RSSI reads between accepted samples
   }
+  // Each receive re-arm needs fresh frontend settling before sampling RSSI.
+  {
+    RadioLibWrapper w;
+    w.startRecv();
+    for (; now_ms < 120; ++now_ms) w.loop();
+    assert(w.reads == 0);
+    w.loop();
+    assert(w.reads == 1);
+    now_ms = 200;
+    w.startRecv(); // CAD/TX re-arm must settle again, retaining earlier samples
+    for (; now_ms < 220; ++now_ms) w.loop();
+    assert(w.reads == 1 && w._floor_estimator.count() == 1);
+    w.loop();
+    assert(w.reads == 2 && w._floor_estimator.count() == 2);
+  }
   // Repeated scheduled requests must not reset a partial block.
   {
     RadioLibWrapper w;
@@ -177,7 +192,7 @@ int main() {
   {
     RadioLibWrapper w;
     w.packet = true;
-    for (; now_ms <= 10101; ++now_ms) w.loop();
+    for (; now_ms <= NoiseFloorEstimator::WINDOW_TIMEOUT_MS + 101; ++now_ms) w.loop();
     assert(!w._nf_refresh_requested);
     assert(w._noise_floor_centi_dbm == -10500);
     assert(w.reads == 0);
@@ -221,6 +236,76 @@ int main() {
 '''
 
 class RadioReceiveContractTest(unittest.TestCase):
+    def test_real_rxps_setter_preserves_intent_and_rejects_bad_values(self):
+        common = (ROOT / 'src/helpers/CommonCLI.cpp').read_text()
+        setter = method(common, 'if (memcmp(config, "radio.rxps ", 11) == 0)')
+        calculator = method(common, 'bool CommonCLI::calculateRxPowerSavingLevel(')
+        source = r'''
+#include <cassert>
+#include <cstring>
+#include <initializer_list>
+#include <helpers/CLICommandUtils.h>
+#include <helpers/radiolib/RXPowerSaving.h>
+struct NodePrefs {
+  uint8_t rx_powersaving_enabled = 1, rx_ps_level = 6, rx_ps_preamble = 32, sf = 8;
+  uint32_t rx_ps_rx_us = 40000, rx_ps_sleep_us = 32000;
+  float bw = 62.5;
+};
+struct Callbacks {
+  bool accept = true;
+  unsigned calls = 0;
+  bool setRxPowerSaving(bool, uint32_t, uint32_t) { ++calls; return accept; }
+};
+struct CommonCLI {
+  NodePrefs* _prefs;
+  Callbacks* _callbacks;
+  unsigned saves = 0;
+  void savePrefs() { ++saves; }
+  bool calculateRxPowerSavingLevel(uint32_t, uint8_t, float, uint32_t, uint32_t*, uint32_t*);
+  void set(const char* config, char* reply);
+};
+void appendRxPowerSavingAdjustmentNote(char*, const NodePrefs*, uint8_t, float) {}
+@CALCULATOR@
+void CommonCLI::set(const char* config, char* reply) { @SETTER@ }
+int main() {
+  NodePrefs p;
+  Callbacks callbacks;
+  CommonCLI cli{&p, &callbacks};
+  char reply[160] = {};
+  cli.set("radio.rxps level 8 preamble 32", reply);
+  assert(p.rx_powersaving_enabled && p.rx_ps_level == 8 && p.rx_ps_preamble == 32);
+  const uint32_t rx = p.rx_ps_rx_us, sleep = p.rx_ps_sleep_us;
+  cli.set("radio.rxps off \t", reply);
+  assert(!p.rx_powersaving_enabled && p.rx_ps_level == 8 && p.rx_ps_preamble == 32);
+  assert(p.rx_ps_rx_us == rx && p.rx_ps_sleep_us == sleep && cli.saves == 2);
+  for (const char* command : {"radio.rxps level 264 preamble 32",
+      "radio.rxps level 8 preamble 288", "radio.rxps level 4294967296",
+      "radio.rxps 32 1000", "radio.rxps max extra"}) {
+    cli.set(command, reply);
+    assert(cli.saves == 2 && callbacks.calls == 2);
+    assert(!p.rx_powersaving_enabled && p.rx_ps_level == 8 && p.rx_ps_preamble == 32);
+  }
+  cli.set("radio.rxps 12345 67890", reply);
+  assert(p.rx_powersaving_enabled && p.rx_ps_level == 0 && p.rx_ps_preamble == 0);
+  assert(p.rx_ps_rx_us == 12345 && p.rx_ps_sleep_us == 67890 && cli.saves == 3);
+  callbacks.accept = false;
+  cli.set("radio.rxps max", reply);
+  assert(p.rx_ps_level == 0 && p.rx_ps_rx_us == 12345 && cli.saves == 3);
+  callbacks.accept = true;
+  cli.set("radio.rxps max", reply);
+  assert(p.rx_ps_level == 8 && p.rx_ps_preamble == 16 && cli.saves == 4);
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='meshcore-rxps-cli-') as tmp:
+            cpp, binary = Path(tmp) / 'test.cpp', Path(tmp) / 'test'
+            cpp.write_text(source.replace('@CALCULATOR@', calculator).replace('@SETTER@', setter))
+            result = subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1',
+                '-I', str(ROOT / 'test/mocks'), '-I', str(ROOT / 'src'),
+                str(cpp), '-o', str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_production_transitions(self):
         source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         names = [('int16_t','performChannelScanWithTimeout'), ('bool','isPacketPendingOrReceiving'),

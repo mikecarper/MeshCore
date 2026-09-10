@@ -3550,7 +3550,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       // Remember the intent so the timings can auto-retune when SF/BW change.
       _prefs->rx_ps_level = level;
       _prefs->rx_ps_preamble = preamble_overridden ? preamble : 0;   // 0 = auto (derive from SF)
-    } else if (strcmp(value, "off") != 0) {
+    } else if (parsed.mode != RxPowerSavingArgumentMode::Off) {
       // manual <rx_us> <sleep_us> timings are fixed, not level-derived
       // (the named profiles set level_requested and are handled above)
       _prefs->rx_ps_level = 0;

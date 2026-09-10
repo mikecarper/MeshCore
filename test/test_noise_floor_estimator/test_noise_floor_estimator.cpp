@@ -19,20 +19,22 @@ TEST(NoiseFloorEstimator, RequiresACompleteSpacedBlock) {
   EXPECT_GT(NoiseFloorEstimator::WINDOW_TIMEOUT_MS, 3150U);
 }
 
-TEST(NoiseFloorEstimator, MedianRejectsMinorityOutliersAndKeepsFractionalDbm) {
+TEST(NoiseFloorEstimator, RejectsSparseLowOutliersAndMajorityTraffic) {
   NoiseFloorEstimator n;
   int32_t floor = 0;
   for (unsigned i = 0; i < 64; ++i) {
-    ASSERT_TRUE(n.add(i < 15 ? -30 : i > 48 ? -127 : -103.25f, i * 50));
+    ASSERT_TRUE(n.add(i < 7 ? -127 : i >= 16 ? -30 : -103.25f, i * 50));
   }
   EXPECT_TRUE(n.publish(floor, false));
   EXPECT_EQ(-10325, floor);
 }
 
-TEST(NoiseFloorEstimator, HandlesEvenMedianAndClampsAtMinus120) {
+TEST(NoiseFloorEstimator, InterpolatesPercentileAndClampsAtMinus120) {
   NoiseFloorEstimator n;
   int32_t floor = 0;
-  for (unsigned i = 0; i < 64; ++i) n.add(i < 32 ? -105.5f : -104.5f, i * 50);
+  for (unsigned i = 0; i < 64; ++i) {
+    n.add(i < 7 ? -106 : i == 7 ? -105.5f : i == 8 ? -104.5f : -104, i * 50);
+  }
   ASSERT_TRUE(n.publish(floor, false));
   EXPECT_EQ(-10500, floor);
   n.reset(); fill(n, -127);
@@ -97,15 +99,61 @@ TEST(NoiseFloorEstimator, SpacingSurvivesMillisRolloverAndRejectsInvalidReads) {
   EXPECT_TRUE(n.add(-105, 0x22));
 }
 
-TEST(NoiseFloorEstimator, MajorityContaminationIsAnExplicitLimit) {
+TEST(NoiseFloorEstimator, NearlyContinuousInterferenceIsAnExplicitLimit) {
   NoiseFloorEstimator n;
   int32_t floor = -10500;
   for (unsigned block = 0; block < 3; ++block) {
     n.reset();
-    for (unsigned i = 0; i < 64; ++i) n.add(i < 48 ? -60 : -105, i * 50);
+    for (unsigned i = 0; i < 64; ++i) n.add(i < 60 ? -60 : -105, i * 50);
     EXPECT_EQ(block == 2, n.publish(floor, true));
   }
-  EXPECT_EQ(-7125, floor); // a median cannot distinguish sustained energy from noise
+  EXPECT_EQ(-7125, floor); // too few quiet samples to distinguish traffic from noise
+}
+
+TEST(NoiseFloorEstimator, LowTailContaminationRequiresSettledReceiverSamples) {
+  NoiseFloorEstimator n;
+  int32_t floor = -10500;
+  for (unsigned i = 0; i < 64; ++i) n.add(i < 15 ? -127 : -105, i * 50);
+  ASSERT_TRUE(n.publish(floor, true));
+  EXPECT_EQ(-11625, floor); // the RX wrapper must exclude unsettled frontend readings
+}
+
+TEST(NoiseFloorEstimator, CapturedOffSfTrafficDoesNotBecomeTheBackgroundFloor) {
+  // Mercerwood Heltec V4: matching T1000-E frames plus dense RAK3401 traffic
+  // at another SF/BW. Sorted centi-dBm captures retain the sparse low outliers.
+  const int16_t quiet[64] = {
+    -8300, -8200, -8100, -8100, -7000, -7000, -7000, -7000,
+    -7000, -7000, -7000, -7000, -7000, -7000, -7000, -7000,
+    -7000, -7000, -7000, -7000, -7000, -7000, -6900, -6900,
+    -6900, -6900, -6900, -6900, -6900, -6900, -6900, -6900,
+    -6900, -6900, -6900, -6900, -6900, -6900, -6900, -6900,
+    -6900, -6900, -6900, -6900, -6900, -6900, -6900, -6900,
+    -6900, -6900, -6900, -6900, -6900, -6900, -6900, -6900,
+    -6900, -6900, -6900, -6900, -6900, -6800, -6500, -1100
+  };
+  const int16_t noisy[64] = {
+    -8200, -8200, -7000, -7000, -6900, -6900, -6900, -6900,
+    -6900, -6900, -6900, -6900, -6900, -6400, -4500, -4200,
+    -3600, -3600, -3500, -3400, -3400, -3300, -3200, -3200,
+    -3100, -3000, -3000, -3000, -2900, -2800, -2600, -2600,
+    -2500, -2400, -2400, -2400, -2300, -2300, -2300, -2300,
+    -2300, -2300, -2300, -2200, -2200, -2200, -2200, -2200,
+    -2100, -2100, -2100, -2000, -2000, -2000, -1900, -1900,
+    -1900, -1900, -1800, -1800, -1800, -1800, -1100, -1100
+  };
+  NoiseFloorEstimator n;
+  int32_t floor = 0;
+  for (unsigned i = 0; i < 64; ++i) n.add(quiet[i] / 100.0f, i * 50);
+  ASSERT_TRUE(n.publish(floor, false));
+  EXPECT_GE(floor, -7300);
+  EXPECT_LE(floor, -6800);
+  for (unsigned block = 0; block < 5; ++block) {
+    n.reset();
+    for (unsigned i = 0; i < 64; ++i) n.add(noisy[i] / 100.0f, i * 50);
+    n.publish(floor, true);
+    EXPECT_GE(floor, -7300);
+    EXPECT_LE(floor, -6800); // a median or lower quartile follows the interferer
+  }
 }
 
 int main(int argc, char** argv) {

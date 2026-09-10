@@ -544,6 +544,9 @@ void RadioLibWrapper::startRecv() {
     noInterrupts();
     state = (state & STATE_INT_READY) | STATE_RX;
     interrupts();
+    // RSSI is unsettled after every RX entry, including CAD/TX completion.
+    // Keep the partial block, but wait for the frontend before its next sample.
+    _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
     _startrx_fails = 0;
     if (_rx_ps_armed) {
       // (re)base the duty-cycle watchdog on the freshly armed cycle

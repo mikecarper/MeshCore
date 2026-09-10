@@ -2,29 +2,37 @@
 
 Noise calibration collects 64 idle RSSI samples at least 50 ms apart. A quiet
 block takes about 3.2 seconds. Both continuous RX and temporary RXPS calibration
-windows allow up to 10 seconds; a partial block times out without publishing.
+windows allow up to 30 seconds; a partial block times out without publishing.
 Periodic requests coalesce while a block is active. RXPS resumes after a complete
 block, including a held block, or at timeout. Receive and transmit activity are
 never interrupted just to finish calibration.
 
-The block estimate is the median, retaining fractional dBm. A published update
-uses 25% of the previous floor and 75% of the new median, with a -120 dBm lower
-bound. Initial calibration and explicit gain/tuning changes seed a new baseline.
+The block estimate is the 12.5th percentile: the average of the eighth and
+ninth sorted samples, retaining fractional dBm. A published update uses 25% of
+the previous floor and 75% of the new estimate, with a -120 dBm lower bound. Initial calibration and explicit gain/tuning changes seed a new baseline.
 The old published value remains available while collecting. An AGC reset drops
 partial samples while retaining a valid baseline for channel checks.
 
-A median more than 15 dB above the established floor is held twice. The third
+An estimate more than 15 dB above the established floor is held twice. The third
 consecutive complete high block is accepted, allowing recovery after a permanent
 ambient rise. A normal or quieter complete block clears the hold. Partial
 blocks do not advance it. There is no admission threshold based on the old
 floor, so an old low baseline cannot reject every sample from a higher floor.
 
-The median handles minority outliers. If interference occupies most accepted
-samples, the median eventually represents that energy; it cannot prove whether
-the energy is ambient noise or sustained traffic. The rise hold delays that
-change but does not distinguish the two. Busy-channel completion and recovery
-times therefore depend on traffic. Longer sampling also spends more time in
-continuous RX during calibration than the previous rapid 64-sample average.
+Hardware captures with sustained different-SF/BW traffic showed the median and
+lower quartile following the interferer. The 12.5th percentile retained the
+quiet background in those captures. It needs at least nine background samples
+out of 64 to avoid higher-valued traffic entirely. Nearly continuous
+interference or enough low outliers can still mislead it. The rise hold delays
+large changes but cannot identify their source.
+
+RSSI sampling waits 20 ms after every receive re-arm, including CAD and TX
+completion, to avoid unsettled frontend readings. The ten-second trial window
+often failed to complete during heavy traffic with that settling guard; the
+30-second cap allows more idle opportunities. Partial blocks still time out
+without publishing. Longer collection spends more time in continuous RX when
+RXPS is enabled. A quiet minimum is about 3.2 seconds; real completion time
+also depends on packet activity and main-loop scheduling.
 
 CAD has a bounded wait, stops RX duty cycling before scanning, and re-arms the
 configured receive mode on success, busy detection, or error. A completed or
