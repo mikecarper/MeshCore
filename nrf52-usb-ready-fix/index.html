@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/full_companion_usb_switcher/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/nrf52-usb-ready-fix/">
       
       
-        <link rel="prev" href="../full_companion_features/">
+        <link rel="prev" href="../nimble_companion_trial_results/">
       
       
-        <link rel="next" href="../gps_tracking/">
+        <link rel="next" href="../nrf52_companion_storage_recovery/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Full Companion USB CLI and binary switcher - MeshCore Docs</title>
+        <title>nRF52 USB READY hang - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#full-companion-usb-cli-and-binary-switcher" class="md-skip">
+        <a href="#nrf52-usb-ready-hang" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Full Companion USB CLI and binary switcher
+              nRF52 USB READY hang
             
           </span>
         </div>
@@ -715,37 +715,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Full Companion USB CLI and binary switcher
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
         
   
   
@@ -761,186 +734,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#wire-formats" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Wire formats
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#state-transitions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        State transitions
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-automatic-detection-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How automatic detection works
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#manual-controls" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Manual controls
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#logging-and-mota-ownership" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Logging and mOTA ownership
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shortcomings-and-edge-cases" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shortcomings and edge cases
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Shortcomings and edge cases">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#it-is-startup-selection-not-per-connection-negotiation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        It is startup selection, not per-connection negotiation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#detection-works-only-at-an-empty-prompt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Detection works only at an empty prompt
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#the-first-frame-has-a-one-second-deadline" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The first frame has a one-second deadline
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#framing-confirmation-is-not-authentication" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Framing confirmation is not authentication
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#the-terminal-banner-is-best-effort" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The terminal banner is best effort
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#text-and-binary-output-cannot-be-interleaved" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Text and binary output cannot be interleaved
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#a-literal-leading-briefly-hides-the-prompt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        A literal leading &lt; briefly hides the prompt
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1246,10 +1039,19 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../nrf52-usb-ready-fix/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1265,6 +1067,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -1939,174 +1742,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#wire-formats" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Wire formats
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#state-transitions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        State transitions
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-automatic-detection-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How automatic detection works
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#manual-controls" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Manual controls
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#logging-and-mota-ownership" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Logging and mOTA ownership
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shortcomings-and-edge-cases" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shortcomings and edge cases
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Shortcomings and edge cases">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#it-is-startup-selection-not-per-connection-negotiation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        It is startup selection, not per-connection negotiation
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#detection-works-only-at-an-empty-prompt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Detection works only at an empty prompt
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#the-first-frame-has-a-one-second-deadline" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The first frame has a one-second deadline
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#framing-confirmation-is-not-authentication" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Framing confirmation is not authentication
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#the-terminal-banner-is-best-effort" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The terminal banner is best effort
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#text-and-binary-output-cannot-be-interleaved" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Text and binary output cannot be interleaved
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#a-literal-leading-briefly-hides-the-prompt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        A literal leading &lt; briefly hides the prompt
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -2122,7 +1757,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/full_companion_usb_switcher.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/nrf52-usb-ready-fix.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2130,223 +1765,43 @@
   
 
 
-<h1 id="full-companion-usb-cli-and-binary-switcher">Full Companion USB CLI and binary switcher</h1>
-<p>Full Companion uses one primary USB serial interface for two incompatible wire
-formats:</p>
+<h1 id="nrf52-usb-ready-hang">nRF52 USB READY hang</h1>
+<p>The RAK3401 on Mercer was found stuck in the framework's TinyUSB power handler:
+USBD was enabled and attached, but its write-one-to-clear READY event was
+already consumed. The duplicate-event guard also required HFCLK to be running.
+If that guard missed the completed initialization, the following unbounded
+READY wait could stop application startup. A bootloader update alone cannot
+replace this USB driver in an already installed MeshCore application.</p>
+<p>The wait and guard were inherited through the pinned Adafruit nRF52 Arduino
+framework, not introduced by the recent OTAFIX upstream merge. TinyUSB's wait
+dates back at least to 2019; the guard was added in
+<a href="https://github.com/hathach/tinyusb/commit/7d9efd06979f6cdde2a4093f0c26e8100312c92c">upstream commit 7d9efd0697</a>.
+OTAFIX's August 24 HFCLK backport addressed a later clock wait, leaving this
+earlier READY wait uncovered. The exact live interrupt ordering is not known;
+the stalled program counter and consumed event were read directly over SWD.</p>
+<p>All nRF52 environments inherit <code>pre:scripts/nrf52_usb_power_fix.py</code>. It compiles
+a build-local replacement for the matching framework driver, without changing
+PlatformIO's shared SDK or affecting ESP32 builds. A changed/unrecognized
+framework implementation stops the build for review. The backport:</p>
 <ul>
-<li>a human-readable ASCII command line;</li>
-<li>the framed Binary Companion protocol used by MeshCore apps and <code>meshcli</code>.</li>
+<li>requests HFCLK before checking the consumed READY event;</li>
+<li>rechecks attachment while waiting, including completion by another callback;</li>
+<li>bounds both waits with one 100,000-poll budget, independent of OS ticks;</li>
+<li>ignores stale READY on a disabled peripheral and exits if it is removed.</li>
 </ul>
-<p>The primary interface starts in the ASCII terminal after each boot. A Binary
-Companion client does not need to send a special mode command: its first valid
-frame automatically hands the interface to the binary parser.</p>
-<p>This automatic behavior is compiled only into <code>companion_radio_full</code> targets.
-Ordinary USB Companion builds continue to use the explicit
-<code>+++MESHCORE-TERM-START</code> and <code>+++MESHCORE-TERM-STOP</code> controls described in the
-<a href="../terminal_chat_cli/">Terminal Chat CLI guide</a>.</p>
-<h2 id="wire-formats">Wire formats</h2>
-<p>Host-to-device Binary Companion frames use this layout:</p>
-<pre><code class="language-text">'&lt;'  length-low  length-high  payload[length]
-</code></pre>
-<p>Device-to-host frames use the same little-endian length with a different
-marker:</p>
-<pre><code class="language-text">'&gt;'  length-low  length-high  payload[length]
-</code></pre>
-<p>For example, a representative two-byte device query is:</p>
-<pre><code class="language-text">3C 02 00 16 03
-</code></pre>
-<p>The ASCII terminal is line-oriented and accepts commands such as:</p>
-<pre><code class="language-text">get radio.cad
-set display.rotation 90
-reboot
-</code></pre>
-<p>Changing the configured baud rate does not select a mode. Use 115200 for
-compatibility even though native USB CDC hardware does not use UART timing.</p>
-<h2 id="state-transitions">State transitions</h2>
-<pre><code class="language-text">                         complete '&lt;' frame
-                 +--------------------------------+
-                 |                                v
-boot ------&gt; ASCII terminal                  Binary Companion
-                 ^                                |
-                 |                                | +++MESHCORE-TERM-START
-                 | incomplete '&lt;' probe           |
-                 | (one-second timeout)            |
-                 +--------------------------------+
-
-ASCII terminal -- +++MESHCORE-TERM-STOP ------&gt; Binary Companion
-ASCII terminal -- observable USB disconnect ---&gt; Binary Companion
-ESP32 logging terminal -- usb.logging off -----&gt; ASCII terminal
-any mode ------- reboot ------------------------&gt; ASCII terminal
-</code></pre>
-<p>Serial mOTA and single-TTY logging add exclusive ownership states described
-below. BLE, WiFi, Ethernet, and hardware-serial Companion transports are not
-switched; they remain binary.</p>
-<h2 id="how-automatic-detection-works">How automatic detection works</h2>
-<ol>
-<li>Full Companion initializes the normal USB Binary Companion interface, then
-   gives its primary stream to the ASCII terminal before normal loop service
-   begins.</li>
-<li>While the prompt has no buffered input, the terminal peeks at the next byte.
-   It does not remove that byte.</li>
-<li>If the byte is <code>&lt;</code>, the terminal temporarily releases the stream and enables
-   the existing <code>ArduinoSerialInterface</code> frame parser.</li>
-<li>The parser consumes the original <code>&lt;</code>, the two-byte length, and the payload.
-   There is no second parser and no copied or synthetic frame.</li>
-<li>A monotonically increasing completed-frame counter confirms that the parser
-   received a complete frame. The interface then remains in Binary Companion
-   mode.</li>
-<li>If no complete frame arrives within one second, the parser state is reset
-   and the ASCII terminal prints a new banner and prompt.</li>
-</ol>
-<p>The switcher checks framing, not client identity. Any syntactically complete
-Binary Companion frame confirms binary mode; it does not require the first
-command to be <code>CMD_APP_START</code> or <code>CMD_DEVICE_QUERY</code>. Normal command validation
-still occurs after the frame parser returns the payload.</p>
-<p>The empty-prompt requirement prevents a literal <code>&lt;</code> in the middle of a command
-from silently changing modes. A literal <code>&lt;</code> typed as the first character does
-start a probe, but the terminal returns after the one-second timeout if no
-binary header and payload follow.</p>
-<h2 id="manual-controls">Manual controls</h2>
-<p>The original controls remain available.</p>
-<p>From Binary Companion, send this exact unframed line while the parser is idle:</p>
-<pre><code class="language-text">+++MESHCORE-TERM-START
-</code></pre>
-<p>Terminate it with CR or LF. The binary parser accepts control tokens only as
-complete delimiter-bounded lines; prefixes, suffixes, and partial tokens are
-ignored.</p>
-<p>From the ASCII terminal, send this exact sequence to return to binary mode:</p>
-<pre><code class="language-text">+++MESHCORE-TERM-STOP
-</code></pre>
-<p>The stop sequence takes effect as soon as its last byte arrives in ASCII mode.
-The start sequence is recognized only as a completed line while the binary
-parser is idle and is not examined inside a length-prefixed frame.</p>
-<p><code>meshcli</code> can normally connect directly after boot:</p>
-<pre><code class="language-bash">meshcli -s /dev/ttyACM0 -b 115200 ver
-</code></pre>
-<p>An explicit terminal start token is still useful when the device is already in
-binary mode:</p>
-<pre><code class="language-bash">picocom -b 115200 \
-  --imap spchex \
-  --initstring $'+++MESHCORE-TERM-START\r' \
-  /dev/ttyACM0
-</code></pre>
-<h2 id="logging-and-mota-ownership">Logging and mOTA ownership</h2>
-<p>The switcher never attempts to mix ASCII, framed Companion traffic, or binary
-mOTA traffic on the same stream.</p>
-<table>
-<thead>
-<tr>
-<th>Situation</th>
-<th>Primary USB behavior</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Full Companion after boot</td>
-<td>ASCII; a complete <code>&lt;</code> frame switches to Binary Companion</td>
-</tr>
-<tr>
-<td>nRF52 logging enabled</td>
-<td>Primary interface still follows the switcher; logs use the optional second interface</td>
-</tr>
-<tr>
-<td>ESP32 logging enabled at boot</td>
-<td>Logging terminal owns the only USB TTY; automatic <code>&lt;</code> detection is disabled</td>
-</tr>
-<tr>
-<td>nRF52 USB serial mOTA active</td>
-<td>mOTA owns primary USB; ASCII and Binary Companion are unavailable there</td>
-</tr>
-<tr>
-<td>BLE/WiFi/Ethernet/hardware serial</td>
-<td>Always Binary Companion and unaffected by the USB mode</td>
-</tr>
-</tbody>
-</table>
-<p>On every ESP32 Full Companion, use <code>set usb.logging off</code> in its logging terminal
-before trying to use USB with an app. That command stops logging and returns to
-the ordinary ASCII terminal; it does not select Binary Companion. The app's
-first valid framed probe can perform the normal automatic switch, or a human
-can send <code>+++MESHCORE-TERM-STOP</code> first. The framed/binary Companion parser is
-disabled while logging owns that TTY. BLE and WiFi Companion transports remain
-available while USB is logging. ESP32 Full builds use the Arduino-ESP32 2.x
-base where supported; RC32 and ESP32-C6 keep their board-required Arduino 3.x
-platform but follow the same one-TTY policy. No ESP32 Full build enumerates a
-second CDC interface.</p>
-<p>On nRF52, serial <code>motatool</code> is also text-first. Its exact initial
-<code>ota folder on</code> line is recognized in either startup ASCII or Binary Companion
-mode. From ASCII, the firmware leaves terminal mode and directly enters
-exclusive mOTA ownership; from binary, the idle frame parser recognizes the
-same control sequence. The following mOTA request/reply frames therefore cannot
-be consumed by the ASCII line editor. <code>motatool serve --serial</code> can be the
-first client after boot and does not require a terminal token or disconnect
-workaround.</p>
-<p>Only the exact completed line selects mOTA from ASCII. Extra arguments,
-leading/trailing whitespace, or a partial line remain ordinary terminal input.</p>
-<h2 id="shortcomings-and-edge-cases">Shortcomings and edge cases</h2>
-<p>This mechanism is deliberately small and deterministic, but it is not a full
-protocol negotiation layer.</p>
-<h3 id="it-is-startup-selection-not-per-connection-negotiation">It is startup selection, not per-connection negotiation</h3>
-<p>After the first complete binary frame, the device stays in Binary Companion
-mode. Closing <code>meshcli</code> does not automatically restore ASCII. Use the terminal
-start token or reboot when an ASCII prompt is needed again.</p>
-<p>Conversely, closing an ASCII terminal on native USB normally changes the port
-to binary mode because the firmware can observe USB DTR/data disconnect. The
-next client therefore sees binary mode, not a new ASCII session. A USB-to-UART
-bridge often cannot report disconnect, so it can remain in ASCII until the stop
-token or a reboot.</p>
-<h3 id="detection-works-only-at-an-empty-prompt">Detection works only at an empty prompt</h3>
-<p>If part of an ASCII command is already buffered, an incoming <code>&lt;</code> is treated as
-ordinary terminal input. Clear or submit the line before starting a Binary
-Companion client. Only one process should have the serial port open.</p>
-<h3 id="the-first-frame-has-a-one-second-deadline">The first frame has a one-second deadline</h3>
-<p>The complete marker, length, and payload must arrive within the probe window.
-This is generous for local USB but may reject a heavily buffered serial proxy,
-a debugger that pauses the MCU, or a tool that writes the header and body with
-a long delay. A timed-out client can retry after the ASCII banner appears.</p>
-<h3 id="framing-confirmation-is-not-authentication">Framing confirmation is not authentication</h3>
-<p>Any complete length-prefixed frame selects binary mode, even if its command is
-unknown or malformed at the application layer. This is safe for stream
-separation but means a random complete frame can leave the device in binary
-mode until manually switched back.</p>
-<h3 id="the-terminal-banner-is-best-effort">The terminal banner is best effort</h3>
-<p>The firmware enters ASCII mode during boot, often before a host opens the CDC
-device. The banner may therefore be absent even though the terminal is ready;
-send a newline or a harmless <code>get</code> command rather than treating a missing
-banner as proof of binary mode.</p>
-<p>A host that remains connected across a reboot may receive ASCII banner and
-prompt bytes before the first binary response. Binary clients should discard
-leading bytes until a plausible <code>&gt;</code> frame marker and length are found, reject
-implausible lengths, and resynchronize. The ordinary open-after-boot path has
-been tested with <code>meshcli</code>, but third-party clients that assume byte zero is
-always <code>&gt;</code> may fail.</p>
-<h3 id="text-and-binary-output-cannot-be-interleaved">Text and binary output cannot be interleaved</h3>
-<p>Primary USB suppresses Binary Companion output while the terminal owns the
-stream. Packet/debug logging must use its dedicated CDC interface or the
-exclusive single-TTY logging mode. Writing diagnostic text directly to the
-primary binary stream will corrupt clients regardless of the switcher.</p>
-<h3 id="a-literal-leading-briefly-hides-the-prompt">A literal leading <code>&lt;</code> briefly hides the prompt</h3>
-<p>Typing <code>&lt;</code> as the first terminal character begins a binary probe. With no
-complete frame, the prompt returns after one second and the banner is printed
-again. There is currently no escape syntax for entering a literal leading <code>&lt;</code>;
-prefix it with another character if it is needed as command text.</p>
-<h2 id="troubleshooting">Troubleshooting</h2>
-<p>If <code>meshcli</code> cannot connect:</p>
-<ol>
-<li>close every terminal or logging reader using the primary interface;</li>
-<li>on ESP32, confirm that saved USB logging is off;</li>
-<li>reboot and let <code>meshcli</code> be the first process to open the data interface;</li>
-<li>use the stable <code>/dev/serial/by-id/*-if00</code> path on Linux when available;</li>
-<li>if a prompt appears after one second, the client's first frame was not
-   completed inside the probe window.</li>
-</ol>
-<p>If an ASCII terminal shows no banner, press Enter and issue a harmless query
-such as <code>get radio.cad</code>. If binary bytes appear, send the exact terminal start
-token or reboot.</p>
-<p>The switch policy is implemented in
-<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/src/helpers/UsbAsciiBinarySwitch.h"><code>UsbAsciiBinarySwitch.h</code></a>, with stream
-ownership in <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/examples/companion_radio/main.cpp"><code>main.cpp</code></a> and framing in
-<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/src/helpers/ArduinoSerialInterface.cpp"><code>ArduinoSerialInterface.cpp</code></a>.</p>
+<p>The poll budget is an iteration limit, not a promised elapsed-time timeout.
+If the clock/peripheral never becomes ready, the caller returns instead of
+freezing the application. A later power event can retry; permanent electrical
+failure can still require reconnecting USB. This does not establish or fix the
+separate Pi hub/controller fault.</p>
+<p>Run <code>python3 -B test/test_nrf52_usb_power.py -v</code>. The tests compile the actual
+patched handler from the pinned-framework fixture, model W1C event semantics,
+and cover duplicate/nested callbacks, delayed/missing clocks and READY, removal,
+retry, and detached USB. Restoring the inherited READY prefix must reproduce
+the infinite wait under a subprocess deadline. Additional tests check SDK
+isolation, idempotence, fail-closed patching, and all nRF52 environment hooks.
+The harness is shared with OTAFIX's TinyUSB fork at
+<code>test/otafix/nrf5x_power_test.py</code>; keep the two copies in sync when extending it.</p>
 
 
 
