@@ -225,7 +225,18 @@ uint8_t SensorMesh::handleRequest(uint8_t perms, uint32_t sender_timestamp, uint
     if (telemetry_permissions & TELEM_PERM_BASE) {
       telemetry.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
     }
+    if (telemetry_permissions & TELEM_PERM_BASE) {
+      const float temperature = board.getMCUTemperature();
+      if (!isnan(temperature)) {
+        telemetry.addTemperature(TELEM_CHANNEL_SELF, temperature);
+      }
+    }
     // query other sensors -- target specific
+    if ((telemetry_permissions & TELEM_PERM_LOCATION)
+        && sensors.getLocationProvider() != nullptr
+        && sensors.getLocationProvider()->getGPSPowerSaving()) {
+      sensors.getLocationProvider()->syncTime();
+    }
     sensors.querySensors(telemetry_permissions, telemetry);
     // TODO: let requester know permissions they have:  telemetry.addPresence(TELEM_CHANNEL_SELF, perms);
 

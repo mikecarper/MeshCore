@@ -2,6 +2,7 @@
 
 #include <RadioLib.h>
 #include "MeshCore.h"
+#include "RXPowerSaving.h"
 #include "LR1110RxRecovery.h"
 
 #ifndef LR11X0_TX_BUSY_TIMEOUT_MS
@@ -17,6 +18,26 @@ class CustomLR1110 : public LR1110 {
 
   public:
     CustomLR1110(Module *mod) : LR1110(mod) { }
+
+    // Apply the measured TCXO delay on every initialization, including recovery.
+    int16_t begin(float freq = 434.0, float bw = 125.0, uint8_t sf = 9, uint8_t cr = 7,
+                  uint8_t syncWord = RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE, int8_t power = 10,
+                  uint16_t preambleLength = 8, float tcxoVoltage = 1.6) {
+      int16_t state = LR1110::begin(freq, bw, sf, cr, syncWord, power, preambleLength,
+                                    tcxoVoltage);
+      if (state == RADIOLIB_ERR_NONE) state = applyMeshCoreTcxoDelay();
+      return state;
+    }
+
+    int16_t applyMeshCoreTcxoDelay() {
+      if (tcxoVoltage <= 0.0f) return RADIOLIB_ERR_NONE;
+      int16_t state = setTCXO(tcxoVoltage, MC_TCXO_DELAY_US);
+      RADIOLIB_ASSERT(state);
+      state = calibrate(0x3F);
+      RADIOLIB_ASSERT(state);          // all blocks; setTCXO moved the gating window
+      delay(50);
+      return RADIOLIB_ERR_NONE;
+    }
 
     // MeshCore keeps the LR1110 in LoRa mode. Calculate from RadioLib's cached
     // parameters so an airtime query never issues GetPacketType while RX duty

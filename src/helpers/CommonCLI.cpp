@@ -452,7 +452,7 @@ static void appendRxPowerSavingAdjustmentNote(char* reply, const NodePrefs* pref
   char note[96] = {};
   if (rxPowerSavingUsesContinuousFallback(rx_us, sleep_us)) {
     snprintf(note, sizeof(note),
-             "; RXPS continuous-fast (no safe level %u-10)",
+             "; RXPS continuous-fast (requested level %u)",
              (unsigned)prefs->rx_ps_level);
   } else {
     const uint8_t requested_preamble = prefs->rx_ps_preamble == 0
@@ -3477,48 +3477,38 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     rx_us = _prefs->rx_ps_rx_us;
     sleep_us = _prefs->rx_ps_sleep_us;
 
-    if (strcmp(value, "off") == 0) {
+    mesh::cli::RxPowerSavingArguments parsed = {};
+    if (!mesh::cli::parseRxPowerSavingArgumentsStrict(value, parsed)) {
+      strcpy(reply, "ERROR: use off|on|conservative|balanced|max|overdrive|riskyWorkingMax|level <1-10>|<rx_us> <sleep_us>");
+      return;
+    }
+    using mesh::cli::RxPowerSavingArgumentMode;
+    if (parsed.mode == RxPowerSavingArgumentMode::Off) {
       enable = 0;
-    } else if (strcmp(value, "on") == 0 || strcmp(value, "conservative") == 0) {
+    } else if (parsed.mode == RxPowerSavingArgumentMode::Manual) {
+      rx_us = parsed.rx_us;
+      sleep_us = parsed.sleep_us;
       enable = 1;
-      level = RX_POWERSAVING_CONSERVATIVE_LEVEL;
-      preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
-      level_requested = true;
-      preamble_overridden = true;
-    } else if (strcmp(value, "balanced") == 0) {
-      enable = 1;
-      level = RX_POWERSAVING_BALANCED_LEVEL;
-      preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
-      level_requested = true;
-      preamble_overridden = true;
+      manual_timings_requested = true;
     } else {
-      StrHelper::strncpy(tmp, value, sizeof(tmp));
-      const char *parts[4];
-      int num = mesh::Utils::parseTextParts(tmp, parts, 4, ' ');
-      if (num == 1 && isNumeric(parts[0])) {
-        level = _atoi(parts[0]);
-        level_requested = true;
-        enable = 1;
-      } else if (num == 2 && strcmp(parts[0], "level") == 0 && isNumeric(parts[1])) {
-        level = _atoi(parts[1]);
-        level_requested = true;
-        enable = 1;
-      } else if (num == 4 && strcmp(parts[0], "level") == 0 && isNumeric(parts[1]) &&
-                 strcmp(parts[2], "preamble") == 0 && isNumeric(parts[3])) {
-        level = _atoi(parts[1]);
-        preamble = _atoi(parts[3]);
-        level_requested = true;
-        preamble_overridden = true;
-        enable = 1;
-      } else if (num == 2 && isNumeric(parts[0]) && isNumeric(parts[1])) {
-        rx_us = _atoi(parts[0]);
-        sleep_us = _atoi(parts[1]);
-        enable = 1;
-        manual_timings_requested = true;
-      } else {
-        strcpy(reply, "ERROR: use off|on|conservative|balanced|level <1-10>|<rx_us> <sleep_us>");
+      uint32_t requested_level = parsed.level;
+      uint32_t requested_preamble = parsed.preamble;
+      if (parsed.mode == RxPowerSavingArgumentMode::Conservative
+          || parsed.mode == RxPowerSavingArgumentMode::Balanced) {
+        requested_level = parsed.mode == RxPowerSavingArgumentMode::Conservative
+            ? RX_POWERSAVING_CONSERVATIVE_LEVEL : RX_POWERSAVING_BALANCED_LEVEL;
+        requested_preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
+      }
+      if (requested_level < 1 || requested_level > 10
+          || (requested_preamble != 0 && requested_preamble != 16 && requested_preamble != 32)) {
+        strcpy(reply, "ERROR: level range is 1-10; preamble is 16 or 32");
         return;
       }
+      level = requested_level;
+      if (requested_preamble != 0) preamble = requested_preamble;
+      preamble_overridden = requested_preamble != 0;
+      level_requested = true;
+      enable = 1;
     }
 
     if (level_requested && preamble_overridden

@@ -13,6 +13,8 @@ require integration or target testing; see "Local testing without hardware" in
 pio test -e native                      # all suites except KISS modem
 pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
+python3 test/test_radio_receive_contract.py # real CAD/re-arm/calibration/mode-watchdog methods
+python3 test/test_sx126x_receive_mode.py    # pinned RadioLib SPI transport/status-byte regression
 python3 test/test_firmware_ram.py        # every firmware hook, ELF heaps, reservations, RAM report binding
 python3 test/test_indicator_display_profile.py  # Indicator RAM/scale contract
 python3 test/test_indicator_render_profile.py   # four-mode Indicator canvas matrix/fallback contract
@@ -136,7 +138,8 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_packet_manager` | `src/Packet.cpp`, `src/Dispatcher.cpp`, `src/helpers/StaticPoolPacketManager.cpp` | truncated-packet rejection, unavailable-radio behavior, scoped RX-delay replacement, queue/CAD scheduling, and staged radio/TX recovery |
 | `test_persistent_store_format` | `src/helpers/PersistentStoreFormat.h` | contact-page headers and CRCs, dirty-page state, stable slot allocation, and bounded resumable legacy migration across power loss |
 | `test_power_management` | `src/helpers/PowerManagementUtils.h` | median filtering of a brownout outlier and valid-reading requirements for the boot lock |
-| `test_rx_power_saving` | `src/helpers/radiolib/RXPowerSaving.h` | level-derived timing, tuple-selected 32/64/128-symbol wire preambles, equivalent SF7/BW500, SF6/BW250, and SF5/BW125 profiles, SF5/BW250 and SF6/BW500 level-8/64 timing, SF5/BW500 level-8/128 timing, SF5/BW62.5 with a 16-symbol timing assumption, automatic retuning, and SX1262 TCXO timing thresholds |
+| `test_rx_power_saving` | `src/helpers/radiolib/RXPowerSaving.h` | guarded timer/capture bounds across SF5-SF12, bandwidths, TCXO delays and wire preambles; experimental profiles; retuning and strict CLI parsing |
+| `test_noise_floor_estimator` | `src/helpers/radiolib/NoiseFloorEstimator.h` | spaced median, weighting, outliers, persistent rises, timeout/reset semantics and clock rollover |
 | `test_region_names` | `src/helpers/RegionNameUtils.h` | canonical public-region markers while preserving distinct private and differently named regions |
 | `test_datagram_payload_limits` | `src/helpers/DatagramPayloadLimits.h` | encrypted datagram plaintext ceilings, including the anonymous region-reply prefix and worst-case cipher padding |
 | `test_serial_packet_log` | `src/helpers/SerialPacketLog.h` | bounded USB packet logging and dropped-line reporting |

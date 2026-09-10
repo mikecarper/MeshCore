@@ -1,5 +1,7 @@
 #pragma once
 
+#include "NoiseFloorEstimator.h"
+
 #include <Mesh.h>
 #include <RadioLib.h>
 #include "CadTiming.h"
@@ -36,8 +38,9 @@ protected:
   uint32_t _cad_scan_timeout_override_ms;
   bool _noise_floor_valid;
   bool _nf_refresh_requested;
-  uint16_t _num_floor_samples;
-  int32_t _floor_sample_sum_centi_dbm;
+  NoiseFloorEstimator _floor_estimator;
+  uint32_t _rx_mode_checked_at = 0;
+  uint8_t _rx_mode_failures = 0;
   unsigned long last_recv_millis;
   unsigned long last_radio_interrupt_millis;  // updated on any ISR event, even CRC errors
   bool _rx_ps_enabled;
@@ -141,6 +144,8 @@ protected:
   bool restoreAfterDeepInit();
   float packetScoreInt(float snr, int sf, int packet_len);
   virtual bool isReceivingPacket() =0;
+  virtual int8_t readReceiveMode() { return -1; }
+  void checkReceiveMode(uint32_t now);
   virtual void doResetAGC();
 
 public:
@@ -244,7 +249,7 @@ public:
   // the app's hasPendingWork() to keep the MCU out of light sleep for the window
   bool isWatchdogObserving() const { return _wd_observe_until != 0; }
   // true while a noise-floor batch needs prompt loop service; the app's
-  // hasPendingWork() keeps the MCU awake only for this short sample burst.
+  // hasPendingWork() keeps the MCU awake for the bounded spaced-sample window.
   bool isCalibratingNoiseFloor() const {
     return _nf_calib_active
         || (_nf_refresh_requested

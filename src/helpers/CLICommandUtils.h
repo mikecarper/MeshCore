@@ -730,6 +730,13 @@ struct RxPowerSavingArguments {
   uint32_t sleep_us;
 };
 
+inline uint8_t rxPowerSavingNamedLevel(const char* name) {
+  if (strcmp(name, "max") == 0) return 8;
+  if (strcmp(name, "overdrive") == 0) return 9;
+  if (strcmp(name, "riskyWorkingMax") == 0) return 10;
+  return 0;
+}
+
 // Parse every documented radio.rxps spelling while leaving hardware-specific
 // period and level ranges to the caller. Exact token shapes prevent suffixes or
 // injected extra arguments from being silently accepted.
@@ -753,6 +760,10 @@ inline bool parseRxPowerSavingArgumentsStrict(
       parsed.mode = RxPowerSavingArgumentMode::Conservative;
     } else if (strcmp(fields[0], "balanced") == 0) {
       parsed.mode = RxPowerSavingArgumentMode::Balanced;
+    } else if (rxPowerSavingNamedLevel(fields[0]) != 0) {
+      parsed.mode = RxPowerSavingArgumentMode::Level;
+      parsed.level = rxPowerSavingNamedLevel(fields[0]);
+      parsed.preamble = 16;
     } else if (parseUnsignedIntegerStrict(fields[0], parsed.level)) {
       parsed.mode = RxPowerSavingArgumentMode::Level;
     } else {
@@ -769,6 +780,12 @@ inline bool parseRxPowerSavingArgumentsStrict(
       }
       parsed.mode = RxPowerSavingArgumentMode::Manual;
     }
+  } else if (field_count == 3
+             && rxPowerSavingNamedLevel(fields[0]) != 0
+             && strcmp(fields[1], "preamble") == 0
+             && parseUnsignedIntegerStrict(fields[2], parsed.preamble)) {
+    parsed.mode = RxPowerSavingArgumentMode::Level;
+    parsed.level = rxPowerSavingNamedLevel(fields[0]);
   } else if (field_count == 4
              && strcmp(fields[0], "level") == 0
              && strcmp(fields[2], "preamble") == 0

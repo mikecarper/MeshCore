@@ -19,6 +19,30 @@ class CustomSX1262 : public SX1262 {
   public:
     CustomSX1262(Module *mod) : SX1262(mod) { }
 
+    // Apply the measured TCXO delay on every initialization, including recovery.
+    int16_t begin(float freq = 434.0, float bw = 125.0, uint8_t sf = 9, uint8_t cr = 7,
+                  uint8_t syncWord = RADIOLIB_SX126X_SYNC_WORD_PRIVATE, int8_t power = 10,
+                  uint16_t preambleLength = 8, float tcxoVoltage = 1.6,
+                  bool useRegulatorLDO = false) {
+      int16_t state = SX1262::begin(freq, bw, sf, cr, syncWord, power, preambleLength,
+                                    tcxoVoltage, useRegulatorLDO);
+      if (state == RADIOLIB_ERR_NONE) state = applyMeshCoreTcxoDelay();
+      return state;
+    }
+
+    // Read tcxoVoltage back from the chip object rather than from the argument:
+    // begin() zeroes it when it falls back to an XTAL, and re-asserting a TCXO
+    // supply on DIO3 for a board that has none would be worse than a long delay.
+    int16_t applyMeshCoreTcxoDelay() {
+      if (tcxoVoltage <= 0.0f) return RADIOLIB_ERR_NONE;
+      int16_t state = setTCXO(tcxoVoltage, MC_TCXO_DELAY_US);
+      RADIOLIB_ASSERT(state);
+      state = calibrate(RADIOLIB_SX126X_CALIBRATE_ALL);
+      RADIOLIB_ASSERT(state);
+      delay(50);
+      return RADIOLIB_ERR_NONE;
+    }
+
     // MeshCore keeps the SX1262 in LoRa mode. Use RadioLib's cached modem
     // parameters instead of issuing GetPacketType while RX duty cycling may
     // have the chip asleep. A failed live query otherwise becomes an encoded
@@ -111,12 +135,12 @@ class CustomSX1262 : public SX1262 {
 #endif
       }
 
-      // RadioLib's default DIO3 TCXO delay is 5 ms and its RX duty-cycle
+      // MeshCore configures the DIO3 TCXO delay and the RX duty-cycle
       // command adds another 1 ms for sleep/wake transitions. If begin()
       // fell back to a crystal, only the fixed 1 ms transition remains. Use
       // RadioLib's resolved oscillator mode: it only falls back after reading
       // the SX126x XOSC_START_ERR device flag, not for an arbitrary SPI error.
-      _rxDutyCycleTransitionUs = this->tcxoVoltage > 0.0f ? 6000UL : 1000UL;
+      _rxDutyCycleTransitionUs = this->tcxoDelay + 1000UL;
     
       setCRC(1);
   

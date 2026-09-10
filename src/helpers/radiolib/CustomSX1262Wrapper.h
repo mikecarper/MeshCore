@@ -1,4 +1,5 @@
 #pragma once
+#include "SX126xReceiveMode.h"
 
 #include "CustomSX1262.h"
 #include "RadioLibWrappers.h"
@@ -9,6 +10,9 @@
 #endif
 
 class CustomSX1262Wrapper : public RadioLibWrapper {
+protected:
+  int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+
 public:
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 

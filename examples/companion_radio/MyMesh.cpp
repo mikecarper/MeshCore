@@ -6787,7 +6787,7 @@ void MyMesh::appendRxPowerSavingAdjustmentNote(char* reply, size_t reply_size,
 
   if (rxPowerSavingUsesContinuousFallback(rx_us, sleep_us)) {
     snprintf(reply + used, reply_size - used,
-             "; RXPS continuous-fast (no safe level %u-10)",
+             "; RXPS continuous-fast (requested level %u)",
              (unsigned)_prefs.rx_ps_level);
     return;
   }

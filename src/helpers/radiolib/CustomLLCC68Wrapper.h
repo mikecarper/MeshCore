@@ -1,10 +1,14 @@
 #pragma once
+#include "SX126xReceiveMode.h"
 
 #include "CustomLLCC68.h"
 #include "RadioLibWrappers.h"
 #include "SX126xReset.h"
 
 class CustomLLCC68Wrapper : public RadioLibWrapper {
+protected:
+  int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+
 public:
   CustomLLCC68Wrapper(CustomLLCC68& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 

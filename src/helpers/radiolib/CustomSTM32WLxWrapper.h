@@ -1,4 +1,5 @@
 #pragma once
+#include "SX126xReceiveMode.h"
 
 #include "CustomSTM32WLx.h"
 #include "RadioLibWrappers.h"
@@ -6,6 +7,9 @@
 #include <math.h>
 
 class CustomSTM32WLxWrapper : public RadioLibWrapper {
+protected:
+  int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+
 public:
   CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
