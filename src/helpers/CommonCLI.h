@@ -446,6 +446,7 @@ struct LegacyObserverTail {
 
 class CommonCLICallbacks {
 public:
+  virtual mesh::FloodAdvertLimiter* getFloodAdvertLimiter() { return nullptr; }
   // Ordinary CommonCLI setters mutate NodePrefs and therefore save only the
   // common image. Observer setters explicitly request Observer; only
   // cross-file migration and mixed-owner setters request Both.

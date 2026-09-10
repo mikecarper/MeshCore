@@ -52,6 +52,8 @@
 
 class SensorMesh : public mesh::Mesh, public CommonCLICallbacks,
                    public mesh::MeshClockSyncCallbacks {
+  mesh::StaticFloodAdvertLimiter<> flood_advert_limiter;
+  mesh::FloodAdvertLimiter* getFloodAdvertLimiter() override { return &flood_advert_limiter; }
 public:
   SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   void begin(FILESYSTEM* fs);

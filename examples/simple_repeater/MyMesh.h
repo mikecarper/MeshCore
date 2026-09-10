@@ -299,6 +299,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   };
 
   FILESYSTEM* _fs;
+#ifndef PORTABLE_MQTT_OBSERVER
+  mesh::StaticFloodAdvertLimiter<> flood_advert_limiter;
+  mesh::FloodAdvertLimiter* getFloodAdvertLimiter() override { return &flood_advert_limiter; }
+#endif
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
 #ifdef NRF52_PLATFORM
   mesh::LocalCliOutput<File> _local_cli_output{File(InternalFS)};

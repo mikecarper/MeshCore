@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
 #include "CLICommandUtils.h"
+#include "FloodAdvertCLI.h"
 #include "StorageLayout.h"
 #include "radiolib/RadioPowerLimits.h"
 #include "radiolib/LR2021SideDetectorConfig.h"
@@ -2460,6 +2461,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
     // live in CommonCLI_Observer.cpp.
     if (handleObserverCommand(sender_timestamp, command, reply)) return;
+    if (mesh::cli::handleFloodAdvertClear(_callbacks->getFloodAdvertLimiter(), command, reply)) return;
     if (memcmp(command, "poweroff", 8) == 0 || memcmp(command, "shutdown", 8) == 0) {
       _board->powerOff();  // doesn't return
     } else if (memcmp(command, "reboot", 6) == 0) {

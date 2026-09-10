@@ -159,6 +159,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
 #endif
 {
   FILESYSTEM* _fs;
+  mesh::StaticFloodAdvertLimiter<> flood_advert_limiter;
+  mesh::FloodAdvertLimiter* getFloodAdvertLimiter() override { return &flood_advert_limiter; }
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
 #ifdef NRF52_PLATFORM
   mesh::LocalCliOutput<File> _local_cli_output{File(InternalFS)};

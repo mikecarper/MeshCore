@@ -192,6 +192,7 @@ uint8_t Mesh::getOtaHopLimit() const { return ota::ota_hop_limit(); }
 #endif
 
 void Mesh::begin() {
+  if (auto* limiter = getFloodAdvertLimiter()) limiter->reset();
   _active_direct_retry_count = 0;
   _active_flood_retry_count = 0;
   _waiting_direct_retry_count = 0;
@@ -285,6 +286,7 @@ bool Mesh::hasPendingOtaApply() const {
 }
 
 void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
+  if (auto* limiter = getFloodAdvertLimiter()) limiter->tick(_ms->getMillis());
   if (_waiting_direct_retry_count != 0
       && millisHasNowPassed(_next_direct_retry_timeout)) {
     for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
@@ -1006,6 +1008,13 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete advertisement packet", getLogDateTime());
         break;
       }
+      // Do not accept unsigned trailing data by truncating it for signature
+      // verification. An attacker could vary that tail to manufacture distinct
+      // packet hashes and falsely accumulate abuse against an authentic key.
+      if (pkt->payload_len > min_advert_len + MAX_ADVERT_DATA_SIZE) {
+        MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): oversized advertisement packet", getLogDateTime());
+        break;
+      }
 
       int i = 0;
       Identity id;
@@ -1017,11 +1026,21 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 
       if (self_id.matches(id.pub_key)) {
         MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): receiving SELF advert packet", getLogDateTime());
-      } else if (!_tables->wasSeen(pkt)) {
-        _tables->markSeen(pkt);
+      } else {
+        const bool seen = _tables->wasSeen(pkt);
+        auto* limiter = pkt->isRouteFlood() ? getFloodAdvertLimiter() : nullptr;
+        const uint32_t now = _ms->getMillis();
+        if (seen && limiter) {
+          uint8_t hash[MAX_HASH_SIZE];
+          pkt->calculatePacketHash(hash);
+          limiter->noteKnownCopy(id.pub_key, hash, now);
+        }
+        // Even a duplicate can reveal a shorter route. Re-verify its signature
+        // before using that evidence, without delivering or relaying it twice.
+        if (seen && !(limiter && limiter->needsShorterPath(id.pub_key, pkt->getPathHashCount(), now))) break;
+        if (!seen) _tables->markSeen(pkt);
         uint8_t* app_data = &pkt->payload[i];
         int app_data_len = pkt->payload_len - i;
-        if (app_data_len > MAX_ADVERT_DATA_SIZE) { app_data_len = MAX_ADVERT_DATA_SIZE; }
 
         // check that signature is valid
         bool is_ok;
@@ -1036,8 +1055,15 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         }
         if (is_ok) {
           MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): valid advertisement received!", getLogDateTime());
-          onAdvertRecv(pkt, id, timestamp, app_data, app_data_len);
-          action = routeRecvPacket(pkt);
+          if (limiter) {
+            uint8_t hash[MAX_HASH_SIZE];
+            pkt->calculatePacketHash(hash);
+            limiter->observe(id.pub_key, hash, pkt->getPathHashCount(), now, seen);
+          }
+          if (!seen) {
+            onAdvertRecv(pkt, id, timestamp, app_data, app_data_len);
+            action = routeRecvPacket(pkt);
+          }
         } else {
           MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): received advertisement with forged signature! (app_data_len=%d)", getLogDateTime(), app_data_len);
         }
@@ -1158,7 +1184,20 @@ DispatcherAction Mesh::routeRecvPacket(Packet* packet) {
 
   uint8_t n = packet->getPathHashCount();
   if (packet->isRouteFlood() && !packet->isMarkedDoNotRetransmit()
-    && (n + 1)*packet->getPathHashSize() <= MAX_PATH_SIZE && allowPacketForward(packet)) {
+    && (n + 1)*packet->getPathHashSize() <= MAX_PATH_SIZE) {
+    auto* limiter = packet->getPayloadType() == PAYLOAD_TYPE_ADVERT ? getFloodAdvertLimiter() : nullptr;
+    uint8_t hash[MAX_HASH_SIZE];
+    const uint32_t now = _ms->getMillis();
+    if (limiter) {
+      packet->calculatePacketHash(hash);
+      auto decision = limiter->check(packet->payload, hash, now);
+      if (decision != FloodAdvertLimiter::Decision::Allow) {
+        MESH_DEBUG_PRINTLN("%s Mesh::routeRecvPacket(): advert limited (reason=%u)", getLogDateTime(), unsigned(decision));
+        return ACTION_RELEASE;
+      }
+    }
+    if (!allowPacketForward(packet)) return ACTION_RELEASE;
+    if (limiter) limiter->commit(packet->payload, hash, now);
     // append this node's hash to 'path'
     self_id.copyHashTo(&packet->path[n * packet->getPathHashSize()], packet->getPathHashSize());
     packet->setPathHashCount(n + 1);

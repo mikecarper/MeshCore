@@ -447,6 +447,17 @@ Elsewhere it replies `Err - neighbors not enabled in this build`. If a
 
 ## Statistics
 
+### Clear Automatic Flood Advert History
+
+**Usage:** `clear flood.advert all` or `clear flood.advert <64-hex-full-public-key>`
+
+Clears automatic advert forwarding quotas, first strikes, and seven-day bad-list
+history for all keys or one exact full key. Available on repeaters, room servers,
+and forwarding sensors through their ordinary local/admin CLI (including admin
+LoRa CLI). A missing selector, a key prefix, or a malformed key is rejected.
+It does not change saved settings or manual flood rules. Reboot also clears this
+RAM-only history. See [automatic advert limits](flood_filtering.md#automatic-flood-advert-limits).
+
 ### Clear Stats
 **Usage:** `clear stats`
 

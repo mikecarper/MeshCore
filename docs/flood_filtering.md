@@ -20,6 +20,102 @@ The route and payload values follow the upstream
 [payload layouts](https://docs.meshcore.io/payloads/), with this fork's LoRa
 OTA assignment noted below.
 
+## Automatic flood-advert limits
+
+Repeaters, room servers (including non-FULL builds), and forwarding sensors
+automatically limit relayed `ADVERT` packets. No CLI rule is needed. Companions
+and the repeater's receive-only MQTT observer do not allocate this history.
+This is separate from discovery-response limits, self-advert timers, hop caps,
+and the per-rule `rate=N/min` setting below.
+
+The ordinary quota is shared by the **first 12 public-key hex characters**
+(six bytes of the advertised origin key, not a path hash). Each prefix has a
+fixed 180-minute window starting with its first tracked valid flood advert.
+
+| Shortest received hops in that window | Distinct adverts forwarded per 180 minutes |
+| --- | --- |
+| 0–1 | 10 |
+| 2 | 9 |
+| 3 | 8 |
+| 4 | 6 |
+| 5 | 5 |
+| 6 | 4 |
+| 7 | 3 |
+| 8+ | 2 |
+
+The minimum received hop **count**, before adding this relay, sets the quota;
+one-, two-, and three-byte path hashes have the same policy. A shorter valid
+duplicate may increase the quota without restarting the window or clearing
+its count. Longer routes never decrease the allowance during that window.
+The payload signature must verify before any history changes. Path metadata
+itself is not signed, so this is a received-distance heuristic, not proof of
+physical distance.
+
+### Continuing abuse and recovery
+
+- A full public key that exceeds the normal level in one window receives a
+  first strike. If it exceeds that level again in the immediately following
+  window, it enters the bad list. A quiet intervening window breaks this chain.
+- The bad list matches **all 32 public-key bytes**, not the prefix. Different
+  full keys sharing a prefix share the ordinary forwarding quota, but their
+  received counts are not combined to accuse an innocent key of ongoing abuse.
+- A bad-listed key may have at most one distinct advert forwarded every
+  **12 hours**, measured from its last admitted forward (including before
+  escalation). Ordinary forwarding filters still apply.
+- Removal requires **seven uninterrupted days without exceeding the normal
+  hop-based level**. Recovery is measured against received distinct adverts,
+  not the much smaller number allowed to be forwarded. Silence also qualifies.
+- Each over-limit window restarts recovery from that window's end. Continued
+  abuse can therefore extend the restriction indefinitely; it does not expire
+  automatically seven days after the first offence.
+
+All timers use rollover-safe uptime, so setting the clock forward or backward
+cannot clear the restriction. This history is currently RAM-only: rebooting
+the relay clears it, and time while powered off is not tracked. A manual clear
+also resets both the ordinary quota and abuse history for its selected target:
+
+```text
+clear flood.advert all
+clear flood.advert <64-hex-full-public-key>
+```
+
+These use the ordinary local/admin CLI authorization, including authenticated
+admin LoRa CLI. A prefix is never accepted for a targeted clear; missing or
+invalid selectors do not clear anything. Clearing an exact key preserves other
+full keys even when their 12-hex prefixes match. No preferences, contacts,
+neighbours, replay timestamps, or manually configured flood rules are erased.
+
+### Scope and resource bounds
+
+Only forwarding is suppressed. Valid adverts remain available to local
+contact/neighbour handling and can still appear in raw RX logs or MQTT. This
+cannot prevent the origin or upstream repeaters from transmitting. Direct
+adverts, discovery control responses, messages, OTA packets, and this node's
+own scheduled adverts are not charged. Existing physical retry attempts of
+an admitted advert are not additional **distinct** adverts.
+
+The limiter retains up to eleven 64-bit payload hashes per full key per
+window: ten possible ordinary admissions plus evidence of exceeding the
+largest quota. Paths and transport scopes do not change these hashes.
+Retained duplicate hashes cannot consume additional quota even if the general
+packet-seen cache has evicted them. Once the eleven distinct receive slots are
+full, additional unretained payloads are suppressed until the next window.
+Only packets passing all ordinary forwarding gates consume forwarding quota;
+valid received traffic still supplies abuse evidence when another gate blocks it.
+
+The default is 128 full-key slots (18,432 bytes of entry storage plus small
+bookkeeping), 96 on nRF52 (13,824 bytes, preserving the mOTA runtime RAM
+reserve), or eight on RAM-constrained STM32 builds (1,152 bytes).
+`FLOOD_ADVERT_SOURCE_SLOTS` overrides the capacity at compile time. When full,
+the **least-recently-heard normal key is removed first**. Valid retained
+duplicates update last-heard too. Evicting a normal key discards its ordinary
+quota history, so capacity should still be sized for the deployment's active
+origins. First-strike evidence and bad-list entries are protected from eviction:
+if every slot protects abuse history, untracked origins are not forwarded until
+a slot expires or an administrator clears history. Table churn cannot erase an
+existing bad-list penalty. No heap allocation or per-packet filesystem writes
+are used.
+
 ## Before making changes
 
 On a repeater, show the current forwarding controls:

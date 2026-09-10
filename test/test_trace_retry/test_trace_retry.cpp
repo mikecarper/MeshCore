@@ -1016,6 +1016,199 @@ TEST(MessageRetry, ReplacementWorksAcrossFloodAndDirectRoutes) {
   EXPECT_NE(old_retry, manager.getOutboundByIdx(0));
 }
 
+class AdvertLimitedTestMesh : public TraceTestMesh {
+public:
+  mesh::StaticFloodAdvertLimiter<4> limiter;
+  unsigned advert_callbacks = 0;
+  unsigned forwarding_checks = 0;
+  using TraceTestMesh::TraceTestMesh;
+  mesh::FloodAdvertLimiter* getFloodAdvertLimiter() override { return &limiter; }
+  bool allowPacketForward(const mesh::Packet* packet) override {
+    ++forwarding_checks;
+    return TraceTestMesh::allowPacketForward(packet);
+  }
+  void onAdvertRecv(mesh::Packet*, const mesh::Identity&, uint32_t,
+                    const uint8_t*, size_t) override { ++advert_callbacks; }
+};
+
+class AdvertReceiveLimit : public ::testing::Test {
+protected:
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager{12};
+  AdvertLimitedTestMesh node{radio, clock, rng, rtc, manager, tables};
+
+  void SetUp() override {
+    node.begin();
+    node.forwardFloods = true;
+    node.floodRetriesAllowed = false;
+    g_mock_ed25519_verify_result = true;
+    g_mock_ed25519_verify_calls = 0;
+  }
+  void TearDown() override { g_mock_ed25519_verify_result = true; }
+  mesh::Packet advert(unsigned seq, uint8_t hops = 8, uint8_t hash_size = 1) {
+    mesh::Packet packet = makeFloodPacket(PAYLOAD_TYPE_ADVERT);
+    packet.payload_len = PUB_KEY_SIZE + 4 + SIGNATURE_SIZE;
+    memset(packet.payload, 0, packet.payload_len);
+    packet.payload[0] = 0xBA;
+    memcpy(packet.payload + PUB_KEY_SIZE, &seq, 4);
+    memset(packet.path, 0x45, sizeof(packet.path));
+    packet.setPathHashSizeAndCount(hash_size, hops);
+    return packet;
+  }
+  mesh::DispatcherAction receive(unsigned seq, uint8_t hops = 8, bool seen = false) {
+    tables.seen = seen;
+    auto packet = advert(seq, hops);
+    return node.receivePacket(&packet);
+  }
+};
+
+TEST_F(AdvertReceiveLimit, StopsOnlyForwardingAndKeepsLocalAdvertCallbacks) {
+  EXPECT_NE(ACTION_RELEASE, receive(1));
+  EXPECT_NE(ACTION_RELEASE, receive(2));
+  EXPECT_EQ(ACTION_RELEASE, receive(3));
+  EXPECT_EQ(3U, node.advert_callbacks);
+  EXPECT_EQ(2U, node.forwarding_checks); // before side-effectful rule counters
+  tables.seen = false;
+  auto message = makeFloodPacket(PAYLOAD_TYPE_RAW_CUSTOM);
+  EXPECT_NE(ACTION_RELEASE, node.receivePacket(&message));
+}
+
+TEST_F(AdvertReceiveLimit, VerifiedShorterDuplicateRaisesAllowanceWithoutRelayingIt) {
+  receive(1);
+  receive(2);
+  EXPECT_EQ(ACTION_RELEASE, receive(1, 1, true));
+  EXPECT_EQ(3U, g_mock_ed25519_verify_calls);
+  EXPECT_EQ(2U, node.advert_callbacks);
+  for (unsigned seq = 3; seq <= 10; ++seq) EXPECT_NE(ACTION_RELEASE, receive(seq));
+  EXPECT_EQ(ACTION_RELEASE, receive(11));
+}
+
+TEST_F(AdvertReceiveLimit, ForgedShorterDuplicateCannotRaiseAllowance) {
+  receive(1);
+  receive(2);
+  g_mock_ed25519_verify_result = false;
+  EXPECT_EQ(ACTION_RELEASE, receive(1, 0, true));
+  g_mock_ed25519_verify_result = true;
+  EXPECT_EQ(ACTION_RELEASE, receive(3));
+  EXPECT_EQ(3U, node.advert_callbacks);
+}
+
+TEST_F(AdvertReceiveLimit, InvalidSelfAndMalformedAdvertsCannotCreateAbuseHistory) {
+  g_mock_ed25519_verify_result = false;
+  for (unsigned seq = 0; seq < 20; ++seq) EXPECT_EQ(ACTION_RELEASE, receive(seq));
+  g_mock_ed25519_verify_result = true;
+  auto self = advert(30);
+  memcpy(self.payload, node.self_id.pub_key, PUB_KEY_SIZE);
+  tables.seen = false;
+  EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&self));
+  auto malformed = advert(31);
+  malformed.payload_len = PUB_KEY_SIZE;
+  EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&malformed));
+  EXPECT_NE(ACTION_RELEASE, receive(40));
+  EXPECT_NE(ACTION_RELEASE, receive(41));
+  EXPECT_EQ(2U, node.advert_callbacks);
+}
+
+TEST_F(AdvertReceiveLimit, AdvertDuplicatesStaySuppressedAfterGeneralSeenCacheEviction) {
+  receive(1);
+  for (unsigned i = 0; i < 300; ++i) EXPECT_EQ(ACTION_RELEASE, receive(1));
+  EXPECT_NE(ACTION_RELEASE, receive(2));
+  EXPECT_EQ(ACTION_RELEASE, receive(3));
+}
+
+TEST_F(AdvertReceiveLimit, UnsignedTrailingDataCannotManufactureDistinctAdverts) {
+  for (unsigned seq = 0; seq < 20; ++seq) {
+    auto packet = advert(1);
+    packet.payload_len += MAX_ADVERT_DATA_SIZE + 1;
+    memset(packet.payload + PUB_KEY_SIZE + 4 + SIGNATURE_SIZE, 0, MAX_ADVERT_DATA_SIZE + 1);
+    packet.payload[packet.payload_len - 1] = seq;
+    tables.seen = false;
+    EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+  }
+  EXPECT_EQ(0U, g_mock_ed25519_verify_calls);
+  EXPECT_EQ(0U, node.advert_callbacks);
+  EXPECT_NE(ACTION_RELEASE, receive(2));
+  EXPECT_NE(ACTION_RELEASE, receive(3));
+  // The maximum supported signed app data remains valid.
+  auto largest = advert(4);
+  largest.payload_len += MAX_ADVERT_DATA_SIZE;
+  memset(largest.payload + PUB_KEY_SIZE + 4 + SIGNATURE_SIZE, 0, MAX_ADVERT_DATA_SIZE);
+  tables.seen = false;
+  EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&largest)); // quota, not parser rejection
+  EXPECT_EQ(3U, node.advert_callbacks);
+}
+
+TEST_F(AdvertReceiveLimit, UsesHopCountNotPathBytesAndIgnoresRtcJumps) {
+  for (uint8_t size = 1; size <= 3; ++size) {
+    node.limiter.reset();
+    for (unsigned seq = 1; seq <= 3; ++seq) {
+      auto packet = advert(seq, 8, size);
+      tables.seen = false;
+      rtc.now = seq == 2 ? UINT32_MAX : 1;
+      auto action = node.receivePacket(&packet);
+      if (seq <= 2) EXPECT_NE(ACTION_RELEASE, action);
+      else EXPECT_EQ(ACTION_RELEASE, action);
+    }
+  }
+}
+
+TEST_F(AdvertReceiveLimit, DirectAdvertsAreNotFloodQuotaOrAbuseEvidence) {
+  for (unsigned seq = 0; seq < 20; ++seq) {
+    auto packet = advert(seq, 0);
+    packet.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT);
+    tables.seen = false;
+    EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+  }
+  EXPECT_NE(ACTION_RELEASE, receive(30));
+  EXPECT_NE(ACTION_RELEASE, receive(31));
+}
+
+TEST_F(AdvertReceiveLimit, SuppressedTrafficStillEscalatesAndRemainsLocallyVisible) {
+  for (unsigned seq = 1; seq <= 3; ++seq) receive(seq);
+  clock.now = mesh::FloodAdvertLimiter::WINDOW_MS;
+  for (unsigned seq = 4; seq <= 6; ++seq) receive(seq);
+  auto packet = advert(7);
+  ASSERT_TRUE(node.limiter.isBad(packet.payload, clock.now));
+  EXPECT_EQ(ACTION_RELEASE, receive(7));
+  EXPECT_EQ(7U, node.advert_callbacks);
+  node.begin(); // reboot clears both abuse and ordinary quota history
+  EXPECT_FALSE(node.limiter.isBad(packet.payload, clock.now));
+  EXPECT_NE(ACTION_RELEASE, receive(8));
+  EXPECT_NE(ACTION_RELEASE, receive(9));
+}
+
+TEST_F(AdvertReceiveLimit, SeenVerifiedDuplicateRefreshesLastHeardWithoutSignatureWork) {
+  for (unsigned source = 0; source < 4; ++source) {
+    auto packet = advert(1);
+    packet.payload[0] += source;
+    tables.seen = false;
+    clock.now = source;
+    ASSERT_NE(ACTION_RELEASE, node.receivePacket(&packet));
+  }
+  clock.now = 10;
+  ASSERT_EQ(ACTION_RELEASE, receive(1, 8, true));
+  EXPECT_EQ(4U, g_mock_ed25519_verify_calls);
+  auto new_source = advert(1);
+  new_source.payload[0] += 4;
+  tables.seen = false;
+  clock.now = 11;
+  EXPECT_NE(ACTION_RELEASE, node.receivePacket(&new_source));
+  auto oldest = advert(1);
+  oldest.payload[0] += 1;
+  uint8_t hash[MAX_HASH_SIZE];
+  oldest.calculatePacketHash(hash);
+  EXPECT_EQ(mesh::FloodAdvertLimiter::Decision::Capacity,
+            node.limiter.check(oldest.payload, hash, clock.now));
+  auto refreshed = advert(1);
+  refreshed.calculatePacketHash(hash);
+  EXPECT_EQ(mesh::FloodAdvertLimiter::Decision::Duplicate,
+            node.limiter.check(refreshed.payload, hash, clock.now));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

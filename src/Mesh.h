@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Dispatcher.h>
+#include <helpers/FloodAdvertLimiter.h>
 
 // OTA-over-LoRa transport is understood by every Mesh role even when the OTA manager/installer is not
 // compiled in. Repeaters can therefore relay PAYLOAD_TYPE_OTA opaquely while they are on TempRadio.
@@ -227,6 +228,9 @@ protected:
    *     Is sub-classes responsibility to make sure given packet is only transmitted ONCE (by this node)
    */
   virtual bool allowPacketForward(const Packet* packet);
+
+  // Forwarding roles own the RAM; companions need no advert-limiter table.
+  virtual FloodAdvertLimiter* getFloodAdvertLimiter() { return nullptr; }
 
   /**
    * \returns  number of milliseconds delay to apply to retransmitting the given packet.
