@@ -71,13 +71,18 @@ struct RadioLibWrapper {
   int32_t _noise_floor_centi_dbm = -10500;
   int arm_result = 0, chip_mode = 1;
   float rssi = -100;
-  unsigned arms = 0, stops = 0, soft = 0, hard = 0, reads = 0;
+  unsigned arms = 0, stops = 0, soft = 0, hard = 0, reads = 0, mode_reads = 0;
+  bool inject_mode_irq = false;
   NoiseFloorEstimator _floor_estimator;
   RadioLibWrapper() { state = STATE_RX; now_ms = 100; }
   bool isChipBusy() { return busy; }
   bool isReceivingPacket() { return packet; }
   float getCurrentRSSI() { ++reads; return rssi; }
-  int8_t readReceiveMode() { return chip_mode; }
+  int8_t readReceiveMode() {
+    ++mode_reads;
+    if (inject_mode_irq) state |= STATE_INT_READY;
+    return chip_mode;
+  }
   bool recoverRadio(bool use_hard) { use_hard ? ++hard : ++soft; return true; }
   void rxPsWatchdogCheck() {}
   unsigned long getEstAirtimeFor(int) { return 10; }
@@ -187,6 +192,38 @@ int main() {
       w.loop();
     }
     assert(w._noise_floor_centi_dbm == -10125);
+  }
+  // Hardware standby RSSI is not background noise, even if software says RX.
+  {
+    RadioLibWrapper w;
+    w._floor_estimator.add(-100, 0);
+    w.chip_mode = 0;
+    w.rssi = -127;
+    for (; now_ms < 4100; ++now_ms) w.loop();
+    assert(w._noise_floor_centi_dbm == -10500);
+    assert(w._floor_estimator.count() == 0 && w.reads == 0);
+    assert(w.mode_reads == 80); // rejected samples are also limited to 20 Hz
+    w.chip_mode = 1;
+    w.rssi = -100;
+    for (; now_ms < 8100; ++now_ms) w.loop();
+    assert(w.reads == 64 && !w._nf_refresh_requested);
+    assert(w._noise_floor_centi_dbm == -10125);
+  }
+  // A BUSY chip or a packet arriving during the mode probe must block RSSI I/O.
+  for (bool busy : {false, true}) {
+    RadioLibWrapper w;
+    w.busy = busy;
+    w.inject_mode_irq = !busy;
+    w.loop();
+    assert(w.reads == 0);
+    assert(w.mode_reads == (busy ? 0U : 1U));
+  }
+  // Families without a mode probe retain the existing RSSI sampling path.
+  {
+    RadioLibWrapper w;
+    w.chip_mode = -1;
+    w.loop();
+    assert(w.reads == 1);
   }
   // Busy continuous RX times out without changing the published floor.
   {

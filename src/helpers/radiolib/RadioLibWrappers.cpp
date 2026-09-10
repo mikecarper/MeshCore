@@ -528,10 +528,22 @@ void RadioLibWrapper::loop() {
     if (!_rx_ps_armed
         && _floor_estimator.ready(static_cast<uint32_t>(now))
         && !(_nf_sample_from != 0 && (long)(now - _nf_sample_from) < 0)
-        && !isReceivingPacket()) {
+        && !isChipBusy() && !isPacketPendingOrReceiving()) {
+      // Silent RX loss can leave software in STATE_RX while standby RSSI is
+      // meaningless. Reject that observation before it can lower the floor.
+      // Space rejected attempts too; an empty block must not hammer SPI.
+      _nf_sample_from = now + NoiseFloorEstimator::SAMPLE_INTERVAL_MS;
+      if (readReceiveMode() == 0) {
+        _floor_estimator.reset(true);
+        return;
+      }
       // Admission is independent of the old floor, allowing upward recovery.
+      // A mode probe is unavailable on some radio families; keep their existing
+      // RSSI path. Preserve a packet IRQ arriving during the status transaction.
       // The estimator enforces 50 ms spacing and rejects invalid radio readings.
-      _floor_estimator.add(getCurrentRSSI(), static_cast<uint32_t>(now));
+      if (!isPacketPendingOrReceiving()) {
+        _floor_estimator.add(getCurrentRSSI(), static_cast<uint32_t>(now));
+      }
     }
   }
 }

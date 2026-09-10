@@ -34,6 +34,12 @@ without publishing. Longer collection spends more time in continuous RX when
 RXPS is enabled. A quiet minimum is about 3.2 seconds; real completion time
 also depends on packet activity and main-loop scheduling.
 
+On radios with a mode probe, each eligible RSSI sample first checks that the
+chip has not silently left RX. Confirmed standby/non-RX discards the partial
+block without changing the published floor. Rejected attempts are also spaced
+50 ms apart. BUSY and packet ownership block sampling; families without a mode
+probe retain their existing RSSI path.
+
 CAD has a bounded wait, stops RX duty cycling before scanning, and re-arms the
 configured receive mode on success, busy detection, or error. A completed or
 currently receiving packet owns the radio and blocks CAD. A packet interrupt
