@@ -151,6 +151,9 @@ public:
   // Default no-op: boards that don't care need not implement anything.
   virtual void onBootComplete() { /* no op */ }
   virtual uint32_t getIRQGpio() { return -1; } // not supported. Returns DIO1 (SX1262) and DIO0 (SX127x)
+  // Hold off sleep while something needs the MCU awake. Boards that do not
+  // sleep can ignore it.
+  virtual void setInhibitSleep(bool /*inhibit*/) { /* no op */ }
   virtual void sleep(uint32_t secs)  {
     (void)secs;
 #if defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)

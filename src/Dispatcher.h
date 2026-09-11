@@ -120,6 +120,11 @@ public:
 
   virtual bool isInRecvMode() const = 0;
 
+  // True while an unmodulated carrier is deliberately held. The radio sits
+  // outside RX with the PA keyed, which the watchdogs would otherwise read as
+  // a stuck radio.
+  virtual bool isCarrierWaveActive() const { return false; }
+
   virtual bool supportsRxPowerSaving() const { return false; }
   virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
   virtual bool isRxPowerSavingContinuousFallback() const { return false; }

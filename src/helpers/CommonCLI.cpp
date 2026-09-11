@@ -2486,6 +2486,26 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       // send zerohop advert
       _callbacks->sendSelfAdvertisement(1500, false);  // longer delay, give CLI response time to be sent first
       strcpy(reply, "OK - zerohop advert sent");
+    } else if (memcmp(command, "cw", 2) == 0 && (command[2] == 0 || command[2] == ' ')) {
+      // Unmodulated carrier at the current TX power, for measuring output or
+      // checking an antenna. This keys the PA continuously - a duty cycle most
+      // amplifiers here were never specified for - so keep it brief.
+      const char* arg = &command[2];
+      while (*arg == ' ') arg++;
+      if (memcmp(arg, "on", 2) == 0) {
+        if (_callbacks->setCarrierWave(true)) {
+          sprintf(reply, "OK - carrier ON, node off the mesh, drops after %us unless repeated",
+                  (unsigned)_callbacks->carrierWaveHoldSecs());
+        } else {
+          strcpy(reply, "Err - carrier wave not supported by this radio");
+        }
+      } else if (memcmp(arg, "off", 3) == 0) {
+        strcpy(reply, _callbacks->setCarrierWave(false)
+                        ? "OK - carrier off, receive resumed"
+                        : "Err - failed to restore receive; reboot advised");
+      } else {
+        sprintf(reply, "> %s", _callbacks->isCarrierWaveActive() ? "on" : "off");
+      }
     } else if (memcmp(command, "advert", 6) == 0) {
       // send flood advert
       _callbacks->sendSelfAdvertisement(1500, true);  // longer delay, give CLI response time to be sent first

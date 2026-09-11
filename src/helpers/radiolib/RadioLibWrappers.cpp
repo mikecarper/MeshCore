@@ -85,6 +85,22 @@ uint32_t RadioLibWrapper::getRngSeed() {
 }
 
 bool RadioLibWrapper::setTxPower(int8_t dbm) {
+  if (_cw_active) {
+    // Keyed for diagnostics. beginReconfigure() would refuse: the radio is not
+    // in RX, and on SX127x isReceivingPacket() reads LoRa modem-status
+    // registers that mean nothing once the FSK modem is driving the carrier.
+    // Sweeping power against a meter is the whole point of CW, so apply it.
+    const int16_t cw_status = applyCachedTxPower(dbm);
+    if (cw_status == RADIOLIB_ERR_NONE) {
+      _cur_dbm = dbm;
+      _dbm_valid = true;
+      return true;
+    }
+    MESH_DEBUG_PRINTLN("RadioLibWrapper: TX power %d rejected in CW (%d)",
+                       (int)dbm, (int)cw_status);
+    return false;
+  }
+
   const uint8_t resume_rx = beginReconfigure();
   if (resume_rx > 1) return false;
 
@@ -209,7 +225,43 @@ bool RadioLibWrapper::setRxBoostedGainMode(bool enabled) {
   return success;
 }
 
+bool RadioLibWrapper::setCarrierWave(bool on) {
+  if (on && _cw_active) {
+    _cw_deadline = millis() + CW_HOLD_TIMEOUT_MS;   // asked again, keep going
+    return true;
+  }
+  if (on == _cw_active) return true;
+
+  if (on) {
+    // Light sleep powers down the RTC peripheral domain, and that is where the
+    // ESP32's DACs live. On a board whose amplifier gain is a DAC voltage the
+    // carrier would collapse at the first sleep with nothing in the logs.
+    _board->setInhibitSleep(true);
+    _radio->standby();
+    _rx_hold_continuous = false;
+    _rx_ps_armed = false;
+    const int16_t status = enterCarrierWave();
+    if (status != RADIOLIB_ERR_NONE) {
+      MESH_DEBUG_PRINTLN("RadioLibWrapper: carrier wave refused (%d)", (int)status);
+      _board->setInhibitSleep(false);
+      startRecv();              // _cw_active still false, so this re-arms
+      return false;
+    }
+    _cw_active = true;
+    _cw_deadline = millis() + CW_HOLD_TIMEOUT_MS;
+    state = STATE_IDLE;         // nothing is being received while keyed
+    return true;
+  }
+
+  _cw_active = false;           // cleared first so the guards below release
+  _board->setInhibitSleep(false);
+  const int16_t status = exitCarrierWave();
+  startRecv();
+  return status == RADIOLIB_ERR_NONE;
+}
+
 void RadioLibWrapper::idle() {
+  if (_cw_active) return;   // held in carrier wave for diagnostics
   _radio->standby();
   _rx_hold_continuous = false;
   state = STATE_IDLE;   // need another startReceive()
@@ -471,6 +523,13 @@ void RadioLibWrapper::checkReceiveMode(uint32_t now) {
 }
 
 void RadioLibWrapper::loop() {
+  if (_cw_active) {
+    if ((long)(millis() - _cw_deadline) >= 0) {
+      MESH_DEBUG_PRINTLN("RadioLibWrapper: carrier wave timed out, dropping");
+      setCarrierWave(false);
+    }
+    return;                     // nothing else here applies while keyed
+  }
   if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
     rxPsWatchdogCheck();
   }
@@ -549,6 +608,7 @@ void RadioLibWrapper::loop() {
 }
 
 void RadioLibWrapper::startRecv() {
+  if (_cw_active) return;   // held in carrier wave for diagnostics
   int err = startReceiveMode();
   if (err == RADIOLIB_ERR_NONE) {
     // A very short frame may complete while startReceiveMode() returns.

@@ -253,7 +253,7 @@ public:
 #endif
   }
 
-  void setInhibitSleep(bool inhibit) {
+  void setInhibitSleep(bool inhibit) override {
     inhibit_sleep = inhibit;
   }
 

@@ -5061,6 +5061,18 @@ bool MyMesh::setTxPower(int8_t power_dbm) {
   return radio_driver.setTxPower(power_dbm);
 }
 
+bool MyMesh::setCarrierWave(bool on) {
+  return radio_driver.setCarrierWave(on);
+}
+
+bool MyMesh::isCarrierWaveActive() const {
+  return radio_driver.isCarrierWaveActive();
+}
+
+uint32_t MyMesh::carrierWaveHoldSecs() const {
+  return radio_driver.carrierWaveHoldSecs();
+}
+
 bool MyMesh::setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) {
   bool ok = radio_driver.setRxPowerSaving(enable, rx_us, sleep_us);
   MESH_DEBUG_PRINTLN("RX Power Saving: %s (%lu/%lu us)%s",

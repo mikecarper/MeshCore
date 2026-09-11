@@ -1026,6 +1026,9 @@ public:
   void cancelPendingSerialOutput();
 #endif
   bool setTxPower(int8_t power_dbm) override;
+  bool setCarrierWave(bool on) override;
+  bool isCarrierWaveActive() const override;
+  uint32_t carrierWaveHoldSecs() const override;
   bool setRxPowerSaving(bool enable, uint32_t rx_us, uint32_t sleep_us) override;
   bool supportsRxPowerSavingRfRxDisable() const override;
   bool setRxPowerSavingRfRxDisabled(bool disabled) override;

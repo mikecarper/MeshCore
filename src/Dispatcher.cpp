@@ -308,6 +308,14 @@ void Dispatcher::loop() {
   }
   _radio->loop();
 
+  // A held carrier parks the radio outside RX with the PA keyed on purpose, so
+  // the node is off the mesh until it drops. Everything below is hostile to
+  // that: the stuck-outside-RX check resets the chip after 8 s and tears the
+  // carrier down mid-measurement, and the outbound pump would transmit packets
+  // straight into it. Radio::loop() above is what expires the carrier, so it
+  // has to run first.
+  if (_radio->isCarrierWaveActive()) return;
+
   const unsigned long now = _ms->getMillis();
   const unsigned long latest_irq = _radio->getLastRadioInterruptMillis();
   if (latest_irq != 0 && latest_irq != last_observed_radio_irq) {
