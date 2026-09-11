@@ -138,7 +138,7 @@ Options:
   --firmware-version <version>: Firmware version to embed.
   --radio-preset <name|number>: Override the USA Cascadia radio default. Stable names are usa-cascadia and target; legacy menu numbers remain accepted.
   --profile <default|cascade>: Override runtime settings embedded in the firmware (not its feature set).
-  --build-profile <auto|standard|full>: Select feature/partition policy. Auto first builds complete LoRa-OTA-capable firmware. A measured size failure triggers the reduced recipe; internal-flash nRF52 repeaters also publish the reduced image for extra delta-staging headroom. Standard applies declared portable-image reductions immediately; full requires the expanded ESP32 recipe.
+  --build-profile <auto|standard|full>: Select feature/partition policy. Auto uses the combined Full MQTT/USB/WiFi recipe when it covers the plain infrastructure target; otherwise it first builds complete LoRa-OTA-capable firmware with a measured-size fallback. Internal-flash nRF52 repeaters also publish the reduced image for delta-staging headroom. Standard preserves portable images, including the 1.25 MiB slot; full requires the expanded ESP32 recipe.
   --auto|--standard|--full: Short forms of --build-profile.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
@@ -2340,6 +2340,57 @@ get_mqtt_disabled_target() {
   echo "$candidate"
 }
 
+get_unified_full_infrastructure_target() {
+  local target=$1
+  local candidate
+  local base=${target%_}
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = "ESP32_PLATFORM" ] || return 1
+  case "${base,,}" in
+    *_repeater|*_room_server|*_repeater_observer_mqtt|*_room_server_observer_mqtt) ;;
+    *) return 1 ;;
+  esac
+
+  # These plain Full recipes retain more routing capacity than their MQTT
+  # siblings (T-Beam flood rules / room neighbors, TLora repeater neighbors).
+  # They are intentional alternatives, not duplicate Full artifacts.
+  case "${base,,}" in
+    tbeam_sx1262_repeater|tbeam_sx1276_repeater|\
+    tbeam_sx1262_room_server|tbeam_sx1276_room_server|\
+    lilygo_tlora_v2_1_1_6_repeater) return 1 ;;
+  esac
+
+  # Some exact hardware recipes have a trailing underscore on either side.
+  # Require the same board as well as the same role/hardware name; never fold
+  # a display, radio, storage, Ethernet, or serial-bridge variant into this.
+  for candidate in "$target" "${base}_observer_mqtt" "${base}_observer_mqtt_"; do
+    if is_mqtt_bridge_target "$candidate" \
+        && supports_esp32_full_build "$candidate" \
+        && [ -n "${PIO_ENV_BOARD_BY_NAME[$target]:-}" ] \
+        && [ "${PIO_ENV_BOARD_BY_NAME[$target]}" = "${PIO_ENV_BOARD_BY_NAME[$candidate]:-}" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+configure_unified_full_infrastructure_output() {
+  [ "$ESP32_FULL_BUILD" = "1" ] && is_mqtt_bridge_target "$1" || return 0
+  case "${1,,}" in
+    *_repeater_observer_mqtt|*_repeater_observer_mqtt_|\
+    *_room_server_observer_mqtt|*_room_server_observer_mqtt_) ;;
+    *) return 0 ;;
+  esac
+  # A direct/auto observer build and a matrix build must produce the same
+  # runtime-selectable artifact, not MQTT-only and USB+MQTT Full twins.
+  MESHDEBUG_OVERRIDE="off"
+  PACKET_LOGGING_OVERRIDE="on"
+  MQTT_BRIDGE_OVERRIDE="on"
+  MQTT_DEBUG_OVERRIDE="off"
+  FIRMWARE_FILENAME_INFIX="full-usb-wifi"
+}
+
 normalize_resolved_targets_for_mqtt() {
   local command=$1
   local target
@@ -4013,6 +4064,10 @@ build_firmware() {
   local inherited_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
   local ESP32_FULL_BUILD=$inherited_esp32_full_build
   local FIRMWARE_FILENAME_INFIX=$inherited_firmware_filename_infix
+  local MESHDEBUG_OVERRIDE=$MESHDEBUG_OVERRIDE
+  local PACKET_LOGGING_OVERRIDE=$PACKET_LOGGING_OVERRIDE
+  local MQTT_BRIDGE_OVERRIDE=$MQTT_BRIDGE_OVERRIDE
+  local MQTT_DEBUG_OVERRIDE=$MQTT_DEBUG_OVERRIDE
 
   env_platform=$(get_platform_for_env "$env_name")
   if ! is_supported_platform "$env_platform"; then
@@ -4046,6 +4101,7 @@ build_firmware() {
       || is_companion_radio_full_target "$env_name"; then
     BUILD_PROFILE_FOR_TARGET="full"
   fi
+  configure_unified_full_infrastructure_output "$env_name"
   echo "Effective feature profile for ${env_name}: ${BUILD_PROFILE_FOR_TARGET}"
 
   commit_hash=$(git rev-parse --short HEAD)
@@ -4874,6 +4930,7 @@ configure_effective_build_profile() {
   local command_name=$1
   local target=""
   local reduced_target=""
+  local unified_target=""
 
   if [ "${#RESOLVED_BUILD_TARGETS[@]}" -eq 1 ]; then
     target=${RESOLVED_BUILD_TARGETS[0]}
@@ -4908,6 +4965,12 @@ configure_effective_build_profile() {
             && [ "${#RESOLVED_BUILD_TARGETS[@]}" -eq 1 ]; then
           if is_companion_radio_full_target "$target"; then
             BUILD_PROFILE_EFFECTIVE="full"
+          elif unified_target=$(get_unified_full_infrastructure_target "$target"); then
+            BUILD_PROFILE_EFFECTIVE="full"
+            SINGLE_TARGET_FULL_BUILD=1
+            RESOLVED_BUILD_TARGETS=("$unified_target")
+            echo "Using ${unified_target} as the combined Full image for ${target}; logging/MQTT are runtime settings."
+            echo "Use --build-profile standard for the original portable partition/OTA target contract."
           elif supports_esp32_full_build "$target"; then
             BUILD_PROFILE_EFFECTIVE="full"
             AUTO_PREFER_FULL_BUILD=1
@@ -5309,6 +5372,12 @@ run_full_esp32_profile() {
 
   for target in "${targets[@]}"; do
     full_profile_target=$(get_esp32_full_profile_target "$target")
+    # Use the same exact-board choice as single-target auto builds, including
+    # historical trailing-underscore recipes such as Heltec T190.
+    mqtt_target=$(get_unified_full_infrastructure_target "$full_profile_target") || mqtt_target=""
+    if [ -n "$mqtt_target" ]; then
+      full_profile_target=$mqtt_target
+    fi
     full_target=""
     if [ "$profile_mode" = "fallback" ]; then
       # A matching MQTT environment is emitted once by the unified profile;
