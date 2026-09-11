@@ -776,6 +776,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-inbox-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion inbox behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-mqtt-observer-display-flip" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4233,6 +4244,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-inbox-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion inbox behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-mqtt-observer-display-flip" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6781,6 +6803,52 @@ cannot distinguish USB from solar charging. Other boards without a power
 detector may require a USB host to recognize USB power. Wi-Fi/MQTT connection or
 BLE pairing is not evidence of USB power. E-paper panels can retain their last
 image when powered off.</p>
+<h2 id="set-companion-inbox-behavior">Set Companion inbox behavior</h2>
+<p>The shared Companion UI (including T114 and R8) defaults to <strong>History</strong>: the
+last 32 received text previews remain available on the radio after an app
+downloads them. <strong>Pending</strong> separately counts frames waiting for the app,
+including non-text frames. Downloading a frame clears it from Pending; it does
+not mean someone read it. The phone's delivery queue is independent of the
+32-entry preview history and is never drained by reading on the radio.</p>
+<pre><code class="language-text">get display.inbox
+set display.inbox history
+set display.inbox pending
+set display.inbox unread
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Display behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>history</code> (default)</td>
+<td>Shows <strong>HISTORY</strong> with the retained preview count, plus <strong>Pending</strong>. Downloaded previews remain browseable.</td>
+</tr>
+<tr>
+<td><code>pending</code></td>
+<td>Shows <strong>INBOX</strong> with the app queue count and limits the reader to previews still waiting for the app. Non-text frames count toward Pending but have no text preview.</td>
+</tr>
+<tr>
+<td><code>unread</code></td>
+<td>Shows <strong>UNREAD</strong> with the number of retained previews not yet displayed on the radio, plus <strong>Pending</strong>. Opening a preview on a lit display marks it read; app downloads do not. Read previews remain browseable.</td>
+</tr>
+</tbody>
+</table>
+<p>All modes retain up to 32 previews internally; switching from <code>pending</code> back to
+<code>history</code> makes retained downloaded previews visible again. Evicted or rejected
+queue entries are not shown as pending. Previews and local read state are in RAM
+and reset on reboot. The mode applies immediately and survives reboot in
+<code>/display_prefs</code>; existing version-1 display settings load with <code>history</code> as the
+default. Legacy and tiny Companion UIs report <code>Error: inbox modes unsupported</code>.</p>
+<p>Incoming messages automatically open their preview only when no client is
+connected. While connected, new messages neither select another page nor move
+the preview being read; history stays accessible by button or touch. The home
+screen identifies connected USB and Bluetooth clients (or both), and TCP,
+Ethernet, or serial clients where supported. Actual BLE pairing prompts retain
+priority over connection status.</p>
 <h2 id="set-mqtt-observer-display-flip">Set MQTT observer display flip</h2>
 <p>Supported observer displays, including the R8 OLED and ST7789 panels, can also
 be turned 180 degrees relative to their compiled orientation:</p>
