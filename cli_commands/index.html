@@ -6235,9 +6235,14 @@ command <code>0x42</code> where the role supports the command; unavailable over 
 <hr />
 <h3 id="remove-a-neighbor">Remove a neighbor</h3>
 <p><strong>Usage:</strong> 
-- <code>neighbor.remove &lt;pubkey_prefix&gt;</code></p>
+- <code>neighbor.remove &lt;pubkey_prefix&gt;</code>
+- <code>neighbor.remove</code> — remove all neighbors</p>
 <p><strong>Parameters:</strong> 
-- <code>pubkey_prefix</code>: The public key of the node to remove from the neighbors list</p>
+- <code>pubkey_prefix</code>: An even-length hexadecimal prefix (up to the full 64-character
+  public key). All neighbors matching it are removed. Invalid keys are rejected.</p>
+<p>Omitting the prefix clears the table. An empty or whitespace-only prefix is
+also accepted for compatibility with the mobile app's <strong>Remove All Neighbors</strong>
+action. Newly heard zero-hop adverts can populate the table again.</p>
 <hr />
 <h3 id="discover-zero-hop-neighbors">Discover zero hop neighbors</h3>
 <p><strong>Usage:</strong> 

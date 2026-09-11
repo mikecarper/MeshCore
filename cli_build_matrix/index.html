@@ -2044,6 +2044,20 @@ ESP32 Full Companion, TempRadio/OTA controls for install-capable Companions,
 host-mOTA controls for Full Companion, and the
 advanced flood-rule engine for Full room servers. Resume mode will not accept
 an old or failed artifact without a verified sidecar.</p>
+<p>For a single ESP32 repeater or room-server target, <code>auto</code> selects its matching
+combined Full MQTT/USB/WiFi image when that image covers the plain Full recipe.
+The direct observer and Full-matrix paths use the same <code>full-usb-wifi-ota</code>
+artifact and runtime output controls. Plain Full T-Beam SX1262/SX1276 profiles
+and the TLora V2 repeater remain alternatives because their MQTT siblings have
+lower routing-table capacities.</p>
+<p>Standard and reduced OTA images, including images that fit the 1.25 MiB
+portable application slot, remain available and remain in the standard matrix
+pass. Select <code>--build-profile standard</code> to retain the original target and
+partition contract. Moving from a plain target to its MQTT sibling changes the
+LoRa OTA target identity; existing nodes need an appropriate wired migration.
+The default <code>cascade</code> settings profile enables device and LoRa RX power saving;
+saved preferences take precedence, and active USB/network services can prevent
+device sleep. <code>--profile default</code> instead uses the upstream power-saving defaults.</p>
 <h2 id="role-comes-first">Role comes first</h2>
 <table>
 <thead>
