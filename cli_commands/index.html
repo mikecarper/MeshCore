@@ -3473,6 +3473,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../radio_receive_calibration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio receive calibration and recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../rak3401_mota_chain/" class="md-nav__link">
         
   
@@ -3697,10 +3724,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_52" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_53" >
         
           
-          <label class="md-nav__link" for="__nav_52" id="__nav_52_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_53" id="__nav_53_label" tabindex="0">
             
   
   
@@ -3718,8 +3745,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_52_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_52">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_53_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_53">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -6894,7 +6921,8 @@ settings use a safe effective power without replacing the saved preference.</p>
   accepted but will use continuous receive because no safe duty-cycle level is
   available. Returning to slower settings recalculates from the saved RXPS
   minimum.</p>
-<p>On SX1262+TCXO boards, the fast-setting boundaries are:</p>
+<p>With the measured RXPS model and the default 1600 us TCXO startup delay
+(2600 us total transition), a requested minimum level 1 gives:</p>
 <table>
 <thead>
 <tr>
@@ -6902,7 +6930,7 @@ settings use a safe effective power without replacing the saved preference.</p>
 <th style="text-align: right;">BW (kHz)</th>
 <th style="text-align: right;">Wire preamble</th>
 <th style="text-align: right;">Effective timing preamble</th>
-<th style="text-align: right;">Minimum effective RXPS level</th>
+<th style="text-align: right;">Effective RXPS level</th>
 <th style="text-align: right;">RX / sleep</th>
 </tr>
 </thead>
@@ -6912,76 +6940,77 @@ settings use a safe effective power without replacing the saved preference.</p>
 <td style="text-align: right;">500</td>
 <td style="text-align: right;">32</td>
 <td style="text-align: right;">32</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">2731 / 6101 us</td>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">5594 / 3022 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">6</td>
 <td style="text-align: right;">250</td>
 <td style="text-align: right;">32</td>
 <td style="text-align: right;">32</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">2731 / 6101 us</td>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">5844 / 3022 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">5</td>
 <td style="text-align: right;">125</td>
 <td style="text-align: right;">32</td>
 <td style="text-align: right;">32</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">2731 / 6101 us</td>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">5844 / 3022 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">5</td>
 <td style="text-align: right;">250</td>
 <td style="text-align: right;">64</td>
 <td style="text-align: right;">64</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">1252 / 6424 us</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">3829 / 5100 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">6</td>
 <td style="text-align: right;">500</td>
 <td style="text-align: right;">64</td>
 <td style="text-align: right;">64</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">1252 / 6424 us</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">3829 / 5100 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">5</td>
 <td style="text-align: right;">500</td>
 <td style="text-align: right;">128</td>
 <td style="text-align: right;">128</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">626 / 6398 us</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">2563 / 6647 us</td>
 </tr>
 <tr>
 <td style="text-align: right;">5</td>
 <td style="text-align: right;">62.5</td>
 <td style="text-align: right;">32</td>
 <td style="text-align: right;">16</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">4096 / 6272 us</td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">11922 / 2975 us</td>
 </tr>
 </tbody>
 </table>
-<p>SF7/BW500, SF6/BW250, and SF5/BW125 are timing-equivalent because each has a
-256 us LoRa symbol. SF5/BW250 and SF6/BW500 have 128 us symbols; both need 64
-wire symbols to cover the 6 ms transition. SF5/BW500 has 64 us symbols and
-needs 128.</p>
-<p>The wire preamble is a firmware property, not a <code>radio.rxps</code> preference. The
-effective preamble is the conservative length RXPS uses for its timing window,
-which is why SF5/BW62.5 can retain a saved 16-symbol assumption while the radio
-transmits 32. Starting with v1.17.1.5, firmware tries 32 first at SF5-SF8, then
-64 and 128 only when each shorter length cannot enable RXPS at any level. It
-uses 16 at SF9-SF12. Every packet on a tuple, including retries, uses that
-tuple's selected length.</p>
-<p>Cascade/USA builds on a Heltec V4 and WisMesh Tag (RAK4631 target) passed 16/16
-packets in each direction at both SF5/BW250/64 and SF5/BW500/128, CR5,
-909.950 MHz. A 64- or 128-symbol timing window is safe only when every possible
-sender to the RXPS receiver follows the v1.17.1.5-or-newer adaptive-preamble
-contract; a shorter legacy sender would create a receive gap. LoRa OTA
-automation treats that version as the wire-format capability boundary.</p>
+<p>These values include the actual transmitted preamble, explicit header, and a
+one-symbol timer margin. SF5/SF6 need two more sync symbols than SF7, so their
+receive windows differ even when symbol duration and sleep time match.</p>
+<p>The wire preamble remains compatible with the existing Cascade convention:
+32 symbols at SF5-SF8, extended to 64 for SF5/BW250 and SF6/BW500, or 128 for
+SF5/BW500; SF9-SF12 use 16. Local RXPS settings and oscillator delays never
+change the sender's preamble choice. The receiver may use a shorter catch
+assumption, but its header timeout covers the full transmitted preamble.</p>
+<p>Automatic adjustment stops at guarded level 8. If no guarded timing fits,
+the radio receives continuously until the tuple changes. For example, a board
+configured with the previous 5000 us TCXO delay uses continuous RX at SF7/BW500;
+it cannot fit the new guard within that tuple's 32-symbol wire preamble.
+Experimental levels 9 and 10 require an explicit selection.</p>
+<p>Earlier firmware passed 16/16 packets in each direction between Heltec V4 and
+WisMesh Tag at SF5/BW250/64 and SF5/BW500/128, CR5, 909.950 MHz. That result
+established the existing wire-preamble convention; it does not validate the
+new timing model. All senders to an RXPS receiver must use a compatible wire
+preamble. LoRa OTA treats v1.17.1.5 as that capability boundary.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-frequency">View or change this node's frequency</h4>
 <p><strong>Search terms:</strong> radio frequency, LoRa frequency, MHz.</p>
@@ -7025,25 +7054,46 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - <code>set radio.rxps on</code>
 - <code>set radio.rxps conservative</code>
 - <code>set radio.rxps balanced</code>
+- <code>set radio.rxps max</code>
+- <code>set radio.rxps max preamble &lt;16|32&gt;</code>
+- <code>set radio.rxps overdrive</code>
+- <code>set radio.rxps overdrive preamble &lt;16|32&gt;</code>
+- <code>set radio.rxps riskyWorkingMax</code>
+- <code>set radio.rxps riskyWorkingMax preamble &lt;16|32&gt;</code>
 - <code>set radio.rxps &lt;1-10&gt;</code>
 - <code>set radio.rxps level &lt;1-10&gt;</code>
 - <code>set radio.rxps level &lt;1-10&gt; preamble &lt;16|32&gt;</code>
 - <code>set radio.rxps &lt;rx_us&gt; &lt;sleep_us&gt;</code></p>
 <p><strong>Parameters:</strong>
 - <code>rx_us</code>, <code>sleep_us</code>: Receive and sleep durations in microseconds (<code>1000</code>-<code>30000000</code>).
-- <code>level</code>: A power-saving level from <code>1</code> (most conservative) to <code>10</code> (least power saving).
+- <code>level</code>: Guarded levels <code>1</code>-<code>8</code>, followed by experimental levels <code>9</code> and <code>10</code>. Higher guarded levels allow more sleep.
 - <code>preamble</code>: RXPS timing assumption in symbols; <code>16</code> or <code>32</code>. This does not
   change the radio's actual transmitted preamble.
 - <code>state</code>: <code>on</code> or <code>off</code>.</p>
 <p><strong>Notes:</strong>
-- <code>get rxps.wd</code> reports the RXPS watchdog's soft and hard recovery counts.
+- <code>get rxps.wd</code> reports the radio watchdogs' soft and hard recovery counts.
+  See <a href="../radio_receive_calibration/">receive calibration and recovery</a> for
+  noise sampling, CAD handling, and the continuous-RX mode check.
 - <code>get radio.rxps.config</code> adds the persisted level and preamble assumption to
   the on/off and timing values. Deployment tools use it to restore a
   level-based preference without converting it to fixed manual timings.
 - <code>radio.rxps.rfrx_disabled</code> is a runtime-only diagnostic setting and resets to <code>off</code> after reboot.
 - Its default <code>off</code> state keeps the host-controlled SX1262 receive path enabled during RX duty-cycle mode. Setting it to <code>on</code> reproduces the old missing-RF_RX behavior and can significantly reduce receive sensitivity, making remote commands harder to receive.
 - <code>radio.rxps.rfrx_disabled</code> is supported only on SX1262 targets with a host-controlled RX enable pin.
-- <code>on</code> and <code>conservative</code> select level <code>1</code> with a 16-symbol preamble; <code>balanced</code> selects level <code>5</code> with a 16-symbol preamble.
+- <code>on</code> and <code>conservative</code> select level <code>3</code>, <code>balanced</code> selects level <code>6</code>, and
+  <code>max</code> selects level <code>8</code>; each named profile assumes a 16-symbol preamble.
+- The guarded catch ladders for levels 1-8 are <code>15,14,13,12,11,10,9,8</code> symbols
+  for preamble 16 and <code>24,20,16,14,12,10,9,8</code> for preamble 32 or longer.
+  Generated sleep leaves another 0.2 symbols of margin. The receive timer covers
+  the actual wire preamble, sync, explicit header, and one extra symbol.
+- <code>overdrive</code> selects level <code>9</code>; <code>riskyWorkingMax</code> selects level <code>10</code>. Both
+  operate outside the guarded timer condition. Upstream bench measurements
+  found packet loss at level 10; neither profile is a general guarantee of
+  reliable delivery. They are never selected by automatic level adjustment.
+- Named experimental profiles accept <code>preamble 32</code>; numeric levels keep the
+  existing automatic-preamble selection. Manual timings bypass the level model.
+- <code>MC_TCXO_DELAY_US</code> defaults to 1600 us. Initialization applies it and checks
+  TCXO/calibration errors. A board can override it for its oscillator.
 - Fresh Cascade-profile builds start with RXPS on at level <code>8</code> and a 16-symbol preamble. Saved operator settings still take precedence after an upgrade.
 - Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom <code>&lt;rx_us&gt; &lt;sleep_us&gt;</code> timings remain fixed.
 - <code>get radio.rxps</code> keeps the legacy on/off, RX, and sleep reply. The new

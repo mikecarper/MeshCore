@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_meshtower_v2_sdcard/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/radio_receive_calibration/">
       
       
-        <link rel="prev" href="../ota_easy/">
+        <link rel="prev" href="../qr_codes/">
       
       
-        <link rel="next" href="../ota_nrf52_bootloader_update/">
+        <link rel="next" href="../rak3401_mota_chain/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>MeshTower V2 microSD LoRa OTA - MeshCore Docs</title>
+        <title>Radio receive calibration and recovery - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#meshtower-v2-microsd-lora-ota" class="md-skip">
+        <a href="#radio-receive-calibration-and-recovery" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              MeshTower V2 microSD LoRa OTA
+              Radio receive calibration and recovery
             
           </span>
         </div>
@@ -1174,37 +1174,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    MeshTower V2 microSD LoRa OTA
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
         
   
   
@@ -1220,109 +1193,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#card-requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Card requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#capacity-and-update-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Capacity and update types
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#signed-bootloader-update" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Signed bootloader update
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sd-card-cli" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SD card CLI
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Persistent OTA archive and seeder
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Preload many mOTAs from a computer
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Serve the preloaded archive over TempRadio
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1520,10 +1390,19 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../radio_receive_calibration/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1539,6 +1418,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -1889,97 +1769,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#card-requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Card requirements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#capacity-and-update-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Capacity and update types
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#signed-bootloader-update" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Signed bootloader update
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#sd-card-cli" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        SD card CLI
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#persistent-ota-archive-and-seeder" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Persistent OTA archive and seeder
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Persistent OTA archive and seeder">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#preload-many-motas-from-a-computer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Preload many mOTAs from a computer
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#serve-the-preloaded-archive-over-tempradio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Serve the preloaded archive over TempRadio
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1995,7 +1784,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_meshtower_v2_sdcard.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/radio_receive_calibration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2003,360 +1792,59 @@
   
 
 
-<h1 id="meshtower-v2-microsd-lora-ota">MeshTower V2 microSD LoRa OTA</h1>
-<p>For <strong>1.17.1.5</strong>, use the exact board/storage profile from
-<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6</a>
-for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
-its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
-matching bootloader profiles. Earlier preview versions mentioned below
-describe compatibility/migration history, not the current recommended download.
-Full Companion is a MOTA source and normally updates itself over USB.</p>
-<p>The <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code> target uses the MeshTower V2 onboard
-microSD socket as persistent storage for its own LoRa OTA downloads. It accepts
-full application images, in-place application deltas, and explicitly selected
-signed v3 bootloader packages. After verification, the matching SD-aware OTAFIX
-bootloader reads the staged file from the card and programs the selected
-nRF52840 application or bootloader region.</p>
-<p>The pin assignment follows the
-<a href="https://resource.heltec.cn/download/MeshTower-V2/schematic/MeshTower_V2_Partial_Reference_Circuit.pdf">Heltec MeshTower V2 partial reference circuit</a>:</p>
-<table>
-<thead>
-<tr>
-<th>Signal</th>
-<th style="text-align: right;">nRF52840 pin</th>
-<th style="text-align: right;">Arduino pin number</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>SD CS</td>
-<td style="text-align: right;">P1.00</td>
-<td style="text-align: right;">32</td>
-</tr>
-<tr>
-<td>SD MOSI</td>
-<td style="text-align: right;">P1.01</td>
-<td style="text-align: right;">33</td>
-</tr>
-<tr>
-<td>SD SCK</td>
-<td style="text-align: right;">P0.06</td>
-<td style="text-align: right;">6</td>
-</tr>
-<tr>
-<td>SD MISO</td>
-<td style="text-align: right;">P0.26</td>
-<td style="text-align: right;">26</td>
-</tr>
-</tbody>
-</table>
-<p>The SD socket uses its own SPI peripheral, so card traffic does not change the
-LoRa radio pinout.</p>
-<h2 id="card-requirements">Card requirements</h2>
-<p>Use a FAT16, FAT32, or exFAT card accepted by the bundled SdFat version. The
-normal update path imposes no additional MBR/sector-1 layout requirement;
-filesystem layouts SdFat cannot mount are still rejected. MeshCore creates
-<code>/meshcore-ota.mota</code> as a contiguous file and passes its exact sector range to
-OTAFIX in reset-retained MCU RAM.</p>
-<p>MeshCore never reads or writes raw sector 1 and does not infer ownership from
-blank card sectors. Both application and bootloader OTA require a locally
-provisioned BLM2-capable bootloader that understands the retained-RAM record.
-Preview.12 must first be upgraded over USB/BLE DFU or SWD.</p>
-<h2 id="capacity-and-update-types">Capacity and update types</h2>
-<p>The card removes the internal-flash staging limit. The <code>.mota</code> container may be
-much larger than the old internal staging gap, and either a full image or an
-in-place delta may be downloaded. The installed firmware itself must still fit
-the nRF52840 application region below InternalFS (ending at <code>0xED000</code>); SD
-storage does not increase the MCU's executable flash.</p>
-<p>For this S140 v6 target, the maximum application image including its <code>EndF</code>
-trailer is <code>0xC7000</code> bytes (815,104 bytes). To package a full self-update:</p>
-<pre><code class="language-bash">motatool build --fw ./Heltec_tower_v2_sdcard-new.hex \
-  --sign ./trusted-signer.key --out-dir ./motas
-motatool verify ./motas/*.mota
-</code></pre>
-<p>A delta uses the exact installed image as its base. The normal <code>0x98000</code>
-workspace remains compatible. If either image is larger than that legacy
-limit, build the patch with the SD target's larger workspace:</p>
-<pre><code class="language-bash">motatool build \
-  --base ./Heltec_tower_v2_sdcard-running.hex \
-  --fw ./Heltec_tower_v2_sdcard-new.hex \
-  --patch-type in-place \
-  --inplace-memory 0xC7000 \
-  --sign ./trusted-signer.key \
-  --out-dir ./motas
-motatool verify ./motas/*.mota
-</code></pre>
-<p>The download is resumable because the partial <code>.mota</code> stays on the card.
-Once it reaches <code>ready</code>, <code>ota install</code> performs the final verification,
-publishes a one-reset authorization record, and reboots. SD application
-installation requires a valid signature from a key in the node's allowlist.
-Keep the card inserted through the reboot and installation.</p>
-<p>The BLM2 retained-auth SD-aware bootloader is mandatory for application OTA.
-<code>ota install</code> refuses to reboot if its continuity metadata does not match the
-running S140 family/FWID/application layout or if its capability marker does
-not advertise SD staging and the selected codec. Existing
-<code>Heltec_tower_v2_repeater</code> firmware continues to use the internal-flash delta
-path and is unchanged.</p>
-<h2 id="signed-bootloader-update">Signed bootloader update</h2>
-<p>Only this exact SD build exposes the privileged LoRa bootloader-update command.
-It requires an already installed exact-board ABI-3 OTAFIX bootloader whose one
-unambiguous capability marker is exactly <code>0x09</code> (<code>SD|BOOT_UPDATE</code>) and whose
-codec mask is <code>0x0005</code> (<code>FULL|INPLACE</code>). Requiring both application codecs
-prevents a bootloader self-update from disabling either normal SD application
-path. A stock bootloader still requires USB/BLE DFU or SWD. The sole remote
-bootstrap is intentionally absent: preview.12 and any other legacy-v1 image
-must be upgraded locally before either SD application or bootloader OTA.</p>
-<p>The signed v3 container is exactly 41,330 bytes and carries a 40 KiB candidate
-for the installed <code>239A0071 / TOWER_V2_OTA</code> identity (boot target <code>1150F50E</code>).
-It uses the same contiguous <code>/meshcore-ota.mota</code> file as an application update.
-GPREGRET <code>0x6B</code> plus the distinct SD source marker <code>0x53</code> selects the bootloader
-path; LoRa transport remains payload type <code>0x0C</code>.</p>
-<p>The application linker still ends at <code>0xED000</code>, but OTAFIX needs
-<code>0xE0000..0xEA000</code> as temporary scratch while replacing itself. Before a boot
-package can be downloaded or approved, MeshCore requires a hash-valid live
-<code>EndF</code> proving the complete running image ends by <code>0xE0000</code>; OTAFIX repeats
-that no-overlap check before its first erase. An application extending above
-that boundary can still receive normal FULL or delta application updates from
-SD, but its bootloader must be updated locally.</p>
-<p>MeshCore also checks the live boot settings before touching that scratch page.
-Erased settings and a valid-app record with CRC disabled are allowed. When a
-nonzero bank CRC is active, its recorded <code>bank_0_size</code> must cover the complete
-EndF-inclusive running image and must end by <code>0xE0000</code>; an undersized or
-oversized record refuses the operation and requires local DFU/SWD.</p>
-<p>Because the card is removable, approval is bound to the exact bytes that were
-authenticated. For both fmt2 application and fmt3 bootloader packages,
-MeshCore authenticates one exact signed manifest, requires every streamed
-manifest byte to match it, and verifies the leaves, payload, and image. During
-that same pass it hashes the entire container with only the mutable four-byte
-<code>APRV</code> field normalized to zero. After writing and syncing <code>APRV</code>, MeshCore
-publishes a 72-byte <code>MOTASDA2</code> record at reset-retained RAM address
-<code>0x20006008</code>. The record binds package purpose/format, exact LBA range, card
-size, container length, and that normalized SHA-256. OTAFIX consumes and clears
-the record before reading the card; changing the card or file can only fail.
-A power loss erases the authorization and also fails closed.</p>
-<p>For fmt3, MeshCore additionally writes and readback-verifies the temporary
-64-byte <code>MOTASDBL</code> token at <code>0xE0000</code>, binding the exact total and signed
-manifest <code>image_hash</code>. OTAFIX requires the parsed manifest, streamed payload,
-and final scratch image to match it. The token page becomes scratch during a
-successful boot update and is not permanently reserved.</p>
-<p>Every new candidate also carries a backward-compatible <code>BLM2</code>/<code>SOFT</code>
-continuity extension next to its legacy embedded manifest. The complete
-76-byte envelope is fixed at final raw-image offset <code>0x9FB4</code>; a relocated copy
-is not a valid candidate. Its embedded
-bootloader version must equal the outer package version, match the runtime
-SoftDevice family/FWID, application base, and layout ABI, and be strictly newer
-than an installed BLM2 version. Preview values use low bytes <code>1..254</code> and a
-stable release uses <code>0xFF</code>; zero-preview and all-ones versions are invalid.
-Remote bootloader rollback is not supported; use local DFU/SWD when rollback
-or migration is intentional.</p>
-<p>Bootloader packages are never autofetched or autoinstalled. Select and confirm
-one exact package manually:</p>
-<pre><code class="language-text">ota ls
-ota pull &lt;MID8&gt; flash
-# wait for ota status to report the bootloader download ready
-ota bootloader
-ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
-</code></pre>
-<p>Copy the MID and first 16 image-hash hex digits from <code>ota bootloader</code>. Ordinary
-<code>ota install</code> rejects this package, and the bootloader command rejects an
-application package. Keep the SD card inserted through the reboot. A later
-<code>ota status</code> value of <code>blup:C8</code> reports a successful bootloader replacement.</p>
-<p>After reboot, <code>ota bootloader</code> displays the installed board identity, CRC and
-capabilities. Its <code>mid</code> and <code>hash</code> fields describe a <strong>currently staged download</strong>,
-not the installed bootloader, so <code>staged:none mid=- hash=-</code> is not an install
-failure. <code>blrc:00</code> means no retained apply result is available; it does not by
-itself prove either success or failure.</p>
-<p>Older MeshCore application firmware can report <code>get bootloader.ver</code> as <code>unknown</code>
-for OTAFIX 2.4.6 because this bootloader image omits the legacy <code>UF2 Bootloader</code>
-text. The updated getter also reads the CRC-validated BLM2 version. For the
-official signed <strong>MeshTower V2 SD 2.4.6</strong> <code>.mota</code>, the installed identity is
-<code>TOWER_V2_OTA</code>, CRC <code>5DACDB3D</code>, ABI <code>3</code>, and capabilities <code>09</code>. Compare the exact
-board/storage package when interpreting these values; the non-SD image differs.</p>
-<h2 id="sd-card-cli">SD card CLI</h2>
-<p>The SD-backed target provides these CLI commands:</p>
-<pre><code class="language-text">set sdcard format [--force]
-set sdcard erase [--force]
-get sdcard
-get sdcard *
-get sdcard format
-get sdcard erase
-get sdcard free
-get sdcard ls
-get sdcard ls 2
-get sdcard dir 3
-</code></pre>
-<p><code>format</code> creates a new FAT16, FAT32, or exFAT filesystem according to card
-size. <code>erase</code> first uses the card's raw media erase command and then formats it,
-so a successful erase finishes with a usable filesystem. Both operations
-destroy all data on the card and cancel any staged OTA download.</p>
-<p>The firmware records successful format and erase completion times in RAM.
-Repeating the same operation within five minutes is rejected unless <code>--force</code>
-is present. Format and erase have independent cooldowns. Because erase also
-formats the card, a successful erase updates both timestamps. The timestamps
-reset when the device reboots. The <code>get sdcard</code> age queries report how long ago
-each operation completed. <code>get sdcard free</code> reports used and free filesystem
-space in human-readable binary units.</p>
-<p><code>get sdcard ls</code> and <code>get sdcard dir</code> recursively list files on the card, two
-files per page. A bare command shows page 1; append a positive page number to
-move through the remaining results. Each row includes the path and a compact
-file size. The header reports the selected page, total pages, and total files.</p>
-<h2 id="persistent-ota-archive-and-seeder">Persistent OTA archive and seeder</h2>
-<p>On the SD-backed target, automatic OTA archiving is on by default. While the
-temporary OTA radio is active, the node requests full catalogs from seeders and
-saves every complete mOTA it discovers, including firmware for other hardware
-targets and codecs that this node cannot install. Archive downloads use the
-same per-block Merkle proof checks as an install download, but archived images
-are never selected for local installation.</p>
-<p>Completed containers are stored as <code>/mota/&lt;manifest-id&gt;.mota</code>. An interrupted
-download remains <code>/mota/&lt;manifest-id&gt;.part</code> and resumes when that mOTA is seen
-again. Completed files survive reboot, are enumerated on the first archive
-access or TempRadio window, and are advertised and served directly from SD.
-The SD target supports the protocol maximum served set: its own running
-firmware plus up to 254 archived mOTAs.</p>
-<p>Automatic capture preserves an 8 MiB free-space reserve for manual
-<code>/meshcore-ota.mota</code> installation staging. It stops starting new archive files
-when the next file would cross that reserve. Archive allocation first tries the
-fast contiguous path and then falls back to an ordinary fragmented FAT file;
-only the bootloader staging file requires contiguous sectors.</p>
-<h3 id="preload-many-motas-from-a-computer">Preload many mOTAs from a computer</h3>
-<p>You can populate the archive much faster on a computer than over LoRa. Use only
-complete, verified <code>.mota</code> containers. Do not copy firmware <code>.bin</code>, <code>.hex</code>,
-<code>.zip</code>, or <code>.part</code> files into the archive.</p>
-<p>Install the standalone <a href="https://github.com/vk496/motatool"><code>motatool</code></a> first if
-it is not already available:</p>
-<pre><code class="language-bash">git clone https://github.com/vk496/motatool.git
-cargo install --path ./motatool
-</code></pre>
-<p>The on-card filename is part of the archive index and has a strict format:</p>
-<pre><code class="language-text">/mota/&lt;merkle_root&gt;.mota
-</code></pre>
-<p><code>&lt;merkle_root&gt;</code> is the eight-hex-digit value printed by <code>motatool inspect</code>. It
-is also the mOTA's four-byte manifest ID. The extension must be lowercase, the
-file must be directly inside <code>/mota</code>, and descriptive release filenames are
-not indexed. For example, if inspection reports:</p>
-<pre><code class="language-text">merkle_root    : ABCD1234
-</code></pre>
-<p>copy that container to:</p>
-<pre><code class="language-text">/mota/abcd1234.mota
-</code></pre>
-<p>If two containers have the same Merkle root, they have the same protocol ID
-and cannot both be present. Keep only the intended one. The current SD seeder
-can index up to 254 archived files. A served file must use a logical block size
-of at most 1024 bytes and contain at most 2048 blocks; check <code>block_size</code> and
-<code>block_count</code> in <code>motatool inspect</code> when importing unusually large images.
-Files outside that serve geometry are not counted or advertised. If a malformed
-<code>/mota/&lt;id&gt;.mota</code> conflicts with a newly discovered valid image, the repeater
-preserves the malformed file as <code>&lt;id&gt;.bad</code> through <code>&lt;id&gt;.bad9</code> and downloads a
-clean replacement instead of treating path existence as a valid cache hit.</p>
-<p>To prepare and load the card:</p>
-<ol>
-<li>Format it as described under <a href="#card-requirements">Card requirements</a>. The
-   easiest route is to insert it in the repeater, run <code>set sdcard format</code>, power
-   the repeater off, and then move the card to the computer. Formatting destroys
-   the existing card contents.</li>
-<li>Mount the card on the computer and create a directory named <code>mota</code> at the
-   filesystem root. Do not use a nested directory such as <code>/firmware/mota</code>.</li>
-<li>Run <code>motatool verify FILE.mota</code> for every source file. Do not copy a file
-   that reports <code>FAIL</code>.</li>
-<li>Run <code>motatool inspect FILE.mota</code>, read its <code>merkle_root</code>, and copy the file
-   to <code>/mota/&lt;lowercase-merkle-root&gt;.mota</code> on the card.</li>
-<li>Flush pending writes, safely eject the card, power the repeater off, insert
-   the card, and boot
-   <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>.</li>
-</ol>
-<p>On Linux or macOS, this Bash example verifies and imports every <code>.mota</code> from
-<code>./motas</code>. Replace the example mount path before running it:</p>
-<pre><code class="language-bash">card_mount=/media/YOU/MESHCORE
-mkdir -p &quot;$card_mount/mota&quot;
-
-shopt -s nullglob
-for image in ./motas/*.mota; do
-  motatool verify &quot;$image&quot; || exit 1
-  mid=$(motatool inspect &quot;$image&quot; |
-    awk '$1 == &quot;merkle_root&quot; { print tolower($3) }')
-  if [[ ! $mid =~ ^[0-9a-f]{8}$ ]]; then
-    echo &quot;Could not read the Merkle root from: $image&quot; &gt;&amp;2
-    exit 1
-  fi
-
-  destination=&quot;$card_mount/mota/$mid.mota&quot;
-  if [[ -e $destination ]]; then
-    cmp -s &quot;$image&quot; &quot;$destination&quot; || {
-      echo &quot;Different containers have the same ID: $mid&quot; &gt;&amp;2
-      exit 1
-    }
-  else
-    cp &quot;$image&quot; &quot;$destination&quot;
-  fi
-done
-sync
-</code></pre>
-<p>On Windows, create <code>E:\mota</code>, inspect each source with <code>motatool inspect</code>, and
-rename it to the reported lowercase root in the same way. Safely eject the
-drive after all copies finish.</p>
-<p>After boot, scan the archive and confirm the card contents from the repeater
-console:</p>
-<pre><code class="language-text">get sdcard ls
-get sdcard ls 2
-ota cache
-ota folder
-</code></pre>
-<p><code>ota cache</code> should report the imported count. <code>ota folder</code> reports the current
-served count; once OTA serving starts in TempRadio, that set also includes the
-repeater's running firmware. If the files appear in <code>get sdcard ls</code> but not in
-the served count, check their exact names, run <code>motatool verify</code> again, and
-inspect their block geometry. It is fine to run <code>ota cache off</code> for a curated,
-read-mostly archive: that disables capture of new mOTAs but continues serving
-every valid file already on the card.</p>
-<h3 id="serve-the-preloaded-archive-over-tempradio">Serve the preloaded archive over TempRadio</h3>
-<p>LoRa OTA traffic exists only during an active temporary-radio window. The SD
-repeater, each receiving node, and every intermediate repeater in the path need
-overlapping windows on the same temporary channel. Use a frequency permitted
-for the node's configured region. This North American example uses the
-recommended fast OTA settings and a 120-minute window:</p>
-<pre><code class="language-text">tempradio 909.950,250,5,5,120
-</code></pre>
-<p>Start the farthest receiving node first, then intermediate repeaters, and the
-SD source last so their windows overlap for as long as possible. Before or
-during the source window, <code>ota cache</code> makes the source scan and attach the SD
-archive. Entry into TempRadio automatically triggers an OTA advertisement
-burst; <code>ota announce</code> can send another advertisement immediately.</p>
-<p>On a receiving OTA-capable node, allow a few seconds for catalog exchange,
-then run:</p>
-<pre><code class="language-text">ota ls
-ota ls 2
-ota get &lt;mid8&gt; flash
-ota status
-</code></pre>
-<p>Use <code>ota ls 2</code>, <code>ota ls 3</code>, and so on when the source advertises more than the
-two rows that fit in one remote CLI reply. Each row includes a stable
-eight-hex-digit manifest ID. Use that ID instead of a list number, because
-asynchronous catalog refreshes can reorder rows between the list and pull
-commands. A receiver retains the complete protocol catalog and verifies every
-transferred block. It still applies its normal target, hardware, codec,
-signature, and installation checks. The SD
-repeater may advertise images for many hardware families; it never installs
-those archive files merely because it serves them.</p>
-<p>When a temporary window expires or a node reboots, it returns to its saved
-radio settings and OTA transfer stops. The archive remains on the card. Start
-another set of overlapping <code>tempradio</code> windows to resume an interrupted
-download, or use synchronized <code>tempradioat</code> entries for a scheduled window.</p>
-<p>Archive capture is lower priority than operator work. An explicit <code>ota pull</code>
-to install storage or a host folder immediately takes the single receive slot;
-the archive partial is checkpointed and resumes later. Existing cached files
-can still answer peer requests while another archive file is downloading.</p>
-<p>Use these commands to inspect or control automatic capture:</p>
-<pre><code class="language-text">ota cache
-ota cache on
-ota cache off
-ota config cache on
-ota config cache off
-</code></pre>
-<p>The on/off choice is saved on the SD card. Turning capture off stops new
-downloads but keeps serving files already cached. Formatting or erasing the
-card removes both the archive and its off marker, so a newly formatted card
-returns to the default-on setting. <code>ota config sdseed on|off</code> is also accepted
-as an alias.</p>
+<h1 id="radio-receive-calibration-and-recovery">Radio receive calibration and recovery</h1>
+<p>Noise calibration collects 64 idle RSSI samples at least 50 ms apart. A quiet
+block takes about 3.2 seconds. Both continuous RX and temporary RXPS calibration
+windows allow up to 30 seconds; a partial block times out without publishing.
+Periodic requests coalesce while a block is active. RXPS resumes after a complete
+block, including a held block, or at timeout. Receive and transmit activity are
+never interrupted just to finish calibration.</p>
+<p>The block estimate is the 12.5th percentile: the average of the eighth and
+ninth sorted samples, retaining fractional dBm. A published update uses 25% of
+the previous floor and 75% of the new estimate, with a -120 dBm lower bound. Initial calibration and explicit gain/tuning changes seed a new baseline.
+The old published value remains available while collecting. An AGC reset drops
+partial samples while retaining a valid baseline for channel checks.</p>
+<p>An estimate more than 15 dB above the established floor is held twice. The third
+consecutive complete high block is accepted, allowing recovery after a permanent
+ambient rise. A normal or quieter complete block clears the hold. Partial
+blocks do not advance it. There is no admission threshold based on the old
+floor, so an old low baseline cannot reject every sample from a higher floor.</p>
+<p>Hardware captures with sustained different-SF/BW traffic showed the median and
+lower quartile following the interferer. The 12.5th percentile retained the
+quiet background in those captures. It needs at least nine background samples
+out of 64 to avoid higher-valued traffic entirely. Nearly continuous
+interference or enough low outliers can still mislead it. The rise hold delays
+large changes but cannot identify their source.</p>
+<p>RSSI sampling waits 20 ms after every receive re-arm, including CAD and TX
+completion, to avoid unsettled frontend readings. The ten-second trial window
+often failed to complete during heavy traffic with that settling guard; the
+30-second cap allows more idle opportunities. Partial blocks still time out
+without publishing. Longer collection spends more time in continuous RX when
+RXPS is enabled. A quiet minimum is about 3.2 seconds; real completion time
+also depends on packet activity and main-loop scheduling.</p>
+<p>On radios with a mode probe, each eligible RSSI sample first checks that the
+chip has not silently left RX. Confirmed standby/non-RX discards the partial
+block without changing the published floor. Rejected attempts are also spaced
+50 ms apart. BUSY and packet ownership block sampling; families without a mode
+probe retain their existing RSSI path.</p>
+<p>CAD has a bounded wait, stops RX duty cycling before scanning, and re-arms the
+configured receive mode on success, busy detection, or error. A completed or
+currently receiving packet owns the radio and blocks CAD. A packet interrupt
+arriving during re-arm is retained. Failed re-arm and a newly arrived packet
+both defer transmission.</p>
+<p>SX126x wrappers additionally run a recovery watchdog at most once per
+10 seconds while continuous RX is expected. RXPS sleep, busy SPI, pending packets,
+and invalid status reads do not count as non-RX evidence. Two confirmed non-RX
+observations request soft recovery; a third uses the existing hard recovery path
+where supported. An observed healthy RX state clears the sequence. Recovery
+preserves tuning, TX power, receive gain, and the operator's power-saving intent.
+The existing radio liveness and RXPS watchdogs remain active for other failures.</p>
+<p>The status read uses the two-byte GetStatus transaction. The pinned RadioLib
+getStatus() helper requests zero copied data bytes, so its return value is not
+usable for this mode check. The dedicated read restores the normal SPI command
+layout afterward and does not wake a duty-cycling radio to inspect its mode.</p>
+<p>Validation lives in <code>test_noise_floor_estimator</code>, <code>test_rx_power_saving</code>,
+<code>test_radio_receive_contract.py</code>, and <code>test_sx126x_receive_mode.py</code>.</p>
 
 
 
