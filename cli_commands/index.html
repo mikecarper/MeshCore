@@ -765,10 +765,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#set-mqtt-observer-display-timeout-and-flip" class="md-nav__link">
+  <a href="#set-display-modes-and-timeouts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Set MQTT observer display timeout and flip
+        Set display modes and timeouts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#set-mqtt-observer-display-flip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set MQTT observer display flip
       
     </span>
   </a>
@@ -4211,10 +4222,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#set-mqtt-observer-display-timeout-and-flip" class="md-nav__link">
+  <a href="#set-display-modes-and-timeouts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Set MQTT observer display timeout and flip
+        Set display modes and timeouts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#set-mqtt-observer-display-flip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set MQTT observer display flip
       
     </span>
   </a>
@@ -6687,16 +6709,79 @@ USB, BLE, or TCP connection. Non-touchscreen, missing-display, and legacy UI
 builds report <code>Error: touchscreen diagnostics unsupported</code>. No Indicator-only
 build flag is needed.</p>
 <hr />
-<h2 id="set-mqtt-observer-display-timeout-and-flip">Set MQTT observer display timeout and flip</h2>
-<p>MQTT observer builds with a display support a persisted inactivity timeout:</p>
-<pre><code class="language-text">get display.timeout
-set display.timeout 0
-set display.timeout 60
+<h2 id="set-display-modes-and-timeouts">Set display modes and timeouts</h2>
+<p>Display-equipped Companions, repeaters, room servers, and sensors have four
+saved settings. The WebConfig <strong>Display</strong> card exposes the same controls:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>CLI</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Battery mode</td>
+<td><code>get/set display.mode</code></td>
+<td><code>button-pairing</code> on BLE Companions; <code>button</code> elsewhere</td>
+</tr>
+<tr>
+<td>Battery timeout, seconds</td>
+<td><code>get/set display.timeout</code></td>
+<td><code>15</code></td>
+</tr>
+<tr>
+<td>USB mode</td>
+<td><code>get/set display.usb.mode</code></td>
+<td>Same as battery mode</td>
+</tr>
+<tr>
+<td>USB timeout, seconds</td>
+<td><code>get/set display.usb.timeout</code></td>
+<td><code>15</code></td>
+</tr>
+</tbody>
+</table>
+<p>Modes are <code>off</code>, <code>on</code>, <code>button</code>, <code>pairing</code>, <code>button-pairing</code>, and <code>automatic</code>.
+Pairing modes are available only on builds supporting BLE pairing.</p>
+<ul>
+<li><code>off</code>: stays dark, including boot and pairing.</li>
+<li><code>on</code>: stays on while the device is awake.</li>
+<li><code>button</code>: a physical button, keyboard/navigation input, or supported touch
+  wakes the display and restarts the timeout.</li>
+<li><code>pairing</code>: wakes only for an actual BLE PIN request, until pairing ends or
+  expires. The inactivity timeout does not shorten the pairing prompt.</li>
+<li><code>button-pairing</code>: combines the button and pairing behaviors.</li>
+<li><code>automatic</code>: shows startup briefly (at most four seconds), and wakes for
+  messages while the app is disconnected. An app connection blanks the screen;
+  buttons and pairing requests can still wake it. Disconnecting alone does not
+  wake it. Network traffic and screen redraws do not extend the timeout.</li>
+</ul>
+<p>Timeouts are whole seconds from <code>1</code> to <code>3600</code>. Use mode <code>on</code> for a permanent
+display rather than timeout <code>0</code>. The timeout is retained but unused in <code>off</code>,
+<code>on</code>, and <code>pairing</code> modes. Settings apply immediately, including while blanked;
+changing power source applies the other profile without carrying over a wake
+from the previous profile. Settings survive reboot and filesystem-preserving
+updates in <code>/display_prefs</code>; erasing the filesystem restores the defaults.
+An existing observer timeout that differs from its old 60-second default is
+migrated once to both power profiles; an old zero timeout becomes mode <code>on</code>.</p>
+<pre><code class="language-text">set display.mode button-pairing
+set display.timeout 15
+set display.usb.mode on
+set display.usb.timeout 60
 </code></pre>
-<p>The value is seconds. <code>0</code> keeps the display on; <code>1</code> through <code>3600</code> blanks it
-after that much inactivity. The default is <code>60</code>. A change applies immediately
-and restarts the countdown. On the Heltec V4 R8 Expansion Kit V2 observer, a
-panel tap or USER-button click can also blank or wake the display.</p>
+<p>USB profile selection uses the board's external-power detector, with USB-host
+detection as a fallback. VBUS-capable boards detect chargers without a data
+connection. Heltec V4 R8 uses either a detected USB host or a calibrated battery
+voltage above 4.21 V. The voltage estimate is checked every five seconds and
+clears at 4.20 V or below; host detection takes effect immediately. This estimate
+can miss a charger while the battery is low, depends on ADC calibration, and
+cannot distinguish USB from solar charging. Other boards without a power
+detector may require a USB host to recognize USB power. Wi-Fi/MQTT connection or
+BLE pairing is not evidence of USB power. E-paper panels can retain their last
+image when powered off.</p>
+<h2 id="set-mqtt-observer-display-flip">Set MQTT observer display flip</h2>
 <p>Supported observer displays, including the R8 OLED and ST7789 panels, can also
 be turned 180 degrees relative to their compiled orientation:</p>
 <pre><code class="language-text">get display.flip
@@ -6708,8 +6793,8 @@ different from Full Companion <code>display.rotation</code>: observer <code>disp
 relative 180-degree mounting choice and cannot switch between portrait and
 landscape. The value is harmless on an observer display driver that does not
 support flipping.</p>
-<p>Both settings survive reboot and firmware updates that preserve the filesystem;
-erasing flash restores the <code>60</code>/<code>off</code> defaults. The boot log reports the saved
+<p>Flip survives reboot and firmware updates that preserve the filesystem;
+erasing flash restores the <code>off</code> default. The boot log reports the saved
 flip state on display-enabled observer builds.</p>
 <hr />
 <h2 id="logging">Logging</h2>
