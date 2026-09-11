@@ -110,7 +110,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Diagnostics | [`sensor`](#sensor-hardware-summary) | Hardware wiring summary | Yes | Yes | Yes |
 | Diagnostics | [`powerlog`](#powerlog) | Reset, shutdown, and boot-voltage summary | Yes | Yes | Yes |
 | Neighbors | [`neighbors`](cli_commands.md#list-nearby-neighbors) | Role with a neighbor table | Yes | Yes | Yes |
-| Neighbors | [`neighbor.remove <pubkey_prefix>`](cli_commands.md#remove-a-neighbor) | Role with a mutable neighbor table | Yes | Yes | Yes |
+| Neighbors | [`neighbor.remove [pubkey_prefix]`](cli_commands.md#remove-a-neighbor) | Role with a mutable neighbor table; omit prefix to clear all | Yes | Yes | Yes |
 | Neighbors | [`discover.neighbors`](cli_commands.md#discover-zero-hop-neighbors) | Repeater; some MQTT room servers | Yes | Yes | Yes |
 | Neighbors | [`discover.scopes`](cli_commands.md#discover-neighbor-scopes-mqtt-observer-neighbors-feature) | MQTT observer with compiled neighbor support | No | No | No |
 | Statistics | [`clear stats`](cli_commands.md#clear-stats) | All full-parser text CLI roles | Yes | Yes | Yes |
@@ -276,7 +276,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Diagnostics | [`sensor`](#sensor-hardware-summary) | Hardware wiring summary | Yes | Yes | Yes | Yes | Yes |
 | Diagnostics | [`powerlog`](#powerlog) | Reset-reason summary | Yes | Yes | Yes | Yes | Yes |
 | Neighbors | [`neighbors`](cli_commands.md#list-nearby-neighbors) | Role with a neighbor table | Yes | Yes | Yes | Yes | Yes |
-| Neighbors | [`neighbor.remove <pubkey_prefix>`](cli_commands.md#remove-a-neighbor) | Role with a mutable neighbor table | Yes | Yes | Yes | Yes | Yes |
+| Neighbors | [`neighbor.remove [pubkey_prefix]`](cli_commands.md#remove-a-neighbor) | Role with a mutable neighbor table; omit prefix to clear all | Yes | Yes | Yes | Yes | Yes |
 | Neighbors | [`discover.neighbors`](cli_commands.md#discover-zero-hop-neighbors) | Repeater; some MQTT room servers | Yes | Yes | Yes | Yes | Yes |
 | Neighbors | [`discover.scopes`](cli_commands.md#discover-neighbor-scopes-mqtt-observer-neighbors-feature) | MQTT observer with compiled neighbor support | No | No | No | Feature | No |
 | Statistics | [`clear stats`](cli_commands.md#clear-stats) | Full parser | Yes | Yes | Yes | Yes | Yes |

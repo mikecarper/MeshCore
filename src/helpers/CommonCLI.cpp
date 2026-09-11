@@ -2569,12 +2569,19 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       }
     } else if (memcmp(command, "neighbors", 9) == 0) {
       _callbacks->formatNeighborsReply(reply);
-    } else if (memcmp(command, "neighbor.remove ", 16) == 0) {
-      const char* hex = &command[16];
+    } else if (strncmp(command, "neighbor.remove", 15) == 0
+        && (command[15] == 0 || command[15] == ' ' || command[15] == '\t')) {
+      const char* hex = &command[15];
+      while (*hex == ' ' || *hex == '\t' || *hex == '\r' || *hex == '\n') hex++;
       uint8_t pubkey[PUB_KEY_SIZE];
       size_t hex_len = strlen(hex);
       int pubkey_len = (int)(hex_len / 2);
-      if (hex_len > 0 && hex_len <= PUB_KEY_SIZE * 2 && (hex_len & 1) == 0
+      if (hex_len == 0) {
+        // Mobile clients clear all neighbors with an empty prefix. The
+        // repeater's command normalization may already have trimmed its space.
+        _callbacks->removeNeighbor(NULL, 0);
+        strcpy(reply, "OK");
+      } else if (hex_len <= PUB_KEY_SIZE * 2 && (hex_len & 1) == 0
           && mesh::Utils::fromHex(pubkey, pubkey_len, hex)) {
         _callbacks->removeNeighbor(pubkey, pubkey_len);
         strcpy(reply, "OK");

@@ -2083,9 +2083,10 @@ void MyMesh::formatNeighborsReply(char *reply) {
 
 void MyMesh::removeNeighbor(const uint8_t *pubkey, int key_len) {
 #if defined(WITH_MQTT_NEIGHBORS)
+  if (key_len < 0 || key_len > PUB_KEY_SIZE || (key_len > 0 && pubkey == NULL)) return;
   for (int i = 0; i < MAX_NEIGHBOURS; i++) {
     NeighbourInfo *neighbour = &neighbours[i];
-    if (memcmp(neighbour->id.pub_key, pubkey, key_len) == 0) {
+    if (key_len == 0 || memcmp(neighbour->id.pub_key, pubkey, key_len) == 0) {
       neighbours[i] = NeighbourInfo(); // clear neighbour entry
     }
   }

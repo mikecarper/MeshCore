@@ -413,9 +413,15 @@ command `0x42` where the role supports the command; unavailable over LoRa.
 ### Remove a neighbor
 **Usage:** 
 - `neighbor.remove <pubkey_prefix>`
+- `neighbor.remove` — remove all neighbors
 
 **Parameters:** 
-- `pubkey_prefix`: The public key of the node to remove from the neighbors list
+- `pubkey_prefix`: An even-length hexadecimal prefix (up to the full 64-character
+  public key). All neighbors matching it are removed. Invalid keys are rejected.
+
+Omitting the prefix clears the table. An empty or whitespace-only prefix is
+also accepted for compatibility with the mobile app's **Remove All Neighbors**
+action. Newly heard zero-hop adverts can populate the table again.
 
 ---
 

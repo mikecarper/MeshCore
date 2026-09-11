@@ -476,6 +476,8 @@ public:
   virtual void dumpLogFile() = 0;
   virtual bool setTxPower(int8_t power_dbm) = 0;
   virtual void formatNeighborsReply(char *reply) = 0;
+  // A zero-length prefix clears the whole table; pubkey may be null then.
+  // Nonempty prefixes must contain 1..PUB_KEY_SIZE bytes.
   virtual void removeNeighbor(const uint8_t* pubkey, int key_len) {
     // no op by default
   };
