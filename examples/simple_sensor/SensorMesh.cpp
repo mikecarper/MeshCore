@@ -6,6 +6,9 @@
 #include <helpers/LazyPersistence.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <helpers/UsbLogging.h>
+#if defined(ENABLE_OTA)
+#include <helpers/ota/OtaContext.h>
+#endif
 
 static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
   uint8_t shift = failure_count < 5 ? failure_count : 5;
@@ -1358,6 +1361,9 @@ void SensorMesh::loop() {
           (unsigned long)retry_delay);
     }
   }
+#if defined(ENABLE_OTA) && OTA_DYNAMIC_CONTEXT
+  mesh::ota::ota_service_temp_radio_context(isTempRadioActive());
+#endif
 }
 
 bool SensorMesh::isMillisTimerDue(unsigned long timestamp) const {

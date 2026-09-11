@@ -4,6 +4,7 @@
 #include <helpers/radiolib/RadioPowerLimits.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <algorithm>
+#include <new>       // std::nothrow (heap-allocated flood rule table)
 #include <stdlib.h>  // for qsort()
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ClientACLCLI.h>
@@ -3330,6 +3331,15 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       , bridge(&_prefs, _mgr, &rtc)
 #endif
 {
+  // Global constructors run before setup(), while the heap is still
+  // unfragmented. A failed allocation leaves flood_packet_filter_slots at 0:
+  // every rule loop is bounded by it, so the node forwards unfiltered instead
+  // of dereferencing a null table. saveFloodPacketFilters() refuses to write
+  // in that state so a stored ruleset is never overwritten with an empty one.
+  flood_packet_filters =
+      new (std::nothrow) FloodPacketFilterEntry[FLOOD_PACKET_FILTER_SLOTS];
+  flood_packet_filter_slots = flood_packet_filters ? FLOOD_PACKET_FILTER_SLOTS : 0;
+
   static_cast<StaticPoolPacketManager*>(_mgr)->setFloodScopePreference(
       scoreFloodTransportScope, this);
   last_millis = 0;
@@ -3381,7 +3391,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   recv_pkt_channel_scope_bypass = false;
   recv_pkt_channel_scope_rejected = false;
   recv_pkt_filter_match_mask = 0;
-  memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+  if (flood_packet_filters) memset(flood_packet_filters, 0, sizeof(FloodPacketFilterEntry) * flood_packet_filter_slots);
   flood_packet_filter_blacklist_count = 0;
   memset(flood_packet_filter_blacklist, 0, sizeof(flood_packet_filter_blacklist));
   memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
@@ -5668,6 +5678,9 @@ static void formatFloodModerationPath(
     const uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX]);
 
 void MyMesh::seedDefaultFloodPacketFilters() {
+  // Slots 0 and 1 carry the built-in defaults; without a table there is
+  // nothing to seed and the node forwards unfiltered.
+  if (flood_packet_filter_slots == 0) return;
   auto& entry = flood_packet_filters[0];
   memset(&entry, 0, sizeof(entry));
   entry.active = true;
@@ -5680,6 +5693,7 @@ void MyMesh::seedDefaultFloodPacketFilters() {
 
   // Preserve the former channel-block default as a normal FPF7 rule. Channel
   // authentication limits this any-type row to GRP_TXT and GRP_DATA packets.
+  if (flood_packet_filter_slots < 2) return;
   auto& wardriving = flood_packet_filters[1];
   memset(&wardriving, 0, sizeof(wardriving));
   wardriving.active = true;
@@ -5707,6 +5721,7 @@ static_assert(PUB_KEY_SIZE == FloodFilterPolicy::CHANNEL_KEY_256_LEN,
               "flood rule 256-bit key encoding changed");
 
 bool MyMesh::loadFloodPacketFilters() {
+  if (flood_packet_filter_slots == 0) return false;
   if (_fs == NULL) {
     seedDefaultFloodPacketFilters();
     return true;
@@ -5714,7 +5729,7 @@ bool MyMesh::loadFloodPacketFilters() {
 
   enum class FileState : uint8_t { Missing, Valid, Invalid, Unreadable };
   auto loadFile = [this](const char* filename) -> FileState {
-    memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+    if (flood_packet_filters) memset(flood_packet_filters, 0, sizeof(FloodPacketFilterEntry) * flood_packet_filter_slots);
     flood_channel_data_rule_slot = 0xFF;
     flood_channel_data_rule_max_hops = FLOOD_CHANNEL_HOPS_ALL;
     memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
@@ -5738,7 +5753,7 @@ bool MyMesh::loadFloodPacketFilters() {
   success = (version_6 || version_7)
       && file.read(&count, sizeof(count)) == sizeof(count)
       && FloodFilterPolicy::forwardPersistenceCountSupported(
-          count, FLOOD_PACKET_FILTER_SLOTS);
+          count, flood_packet_filter_slots);
 
   for (int i = 0; success && i < count; i++) {
     uint8_t active = 0;
@@ -6073,7 +6088,7 @@ bool MyMesh::loadFloodPacketFilters() {
   }
     file.close();
     if (!success) {
-      memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+      if (flood_packet_filters) memset(flood_packet_filters, 0, sizeof(FloodPacketFilterEntry) * flood_packet_filter_slots);
       memset(flood_channel_scopes, 0, sizeof(flood_channel_scopes));
       memset(flood_channel_direct_scopes, 0,
              sizeof(flood_channel_direct_scopes));
@@ -6178,7 +6193,7 @@ bool MyMesh::isFloodChannelDataRule(
 }
 
 int MyMesh::findFloodChannelDataRule() const {
-  if (flood_channel_data_rule_slot >= FLOOD_PACKET_FILTER_SLOTS) return -1;
+  if (flood_channel_data_rule_slot >= flood_packet_filter_slots) return -1;
   return isFloodChannelDataRule(
       flood_packet_filters[flood_channel_data_rule_slot])
       ? flood_channel_data_rule_slot : -1;
@@ -6231,7 +6246,7 @@ void MyMesh::setFloodChannelData(const char* value, char* reply) {
   int current = findFloodChannelDataRule();
   int slot = current;
   if (!enable && slot < 0) {
-    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    for (int i = 0; i < flood_packet_filter_slots; i++) {
       if (!flood_packet_filters[i].active) {
         slot = i;
         break;
@@ -6312,7 +6327,7 @@ bool MyMesh::migrateLegacyFloodChannelData() {
   if (_prefs.flood_channel_data_enabled) return true;
 
   int slot = -1;
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     if (!flood_packet_filters[i].active) {
       slot = i;
       break;
@@ -6438,7 +6453,7 @@ bool MyMesh::migrateLegacyFloodChannelBlocks() {
 
     bool duplicate = false;
     int free_slot = -1;
-    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    for (int i = 0; i < flood_packet_filter_slots; i++) {
       const auto& entry = flood_packet_filters[i];
       if (!entry.active) {
         if (free_slot < 0) free_slot = i;
@@ -6499,6 +6514,9 @@ bool MyMesh::migrateLegacyFloodChannelBlocks() {
 bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase,
                                     bool empty_forward_phase) {
   if (_fs == NULL) return false;
+  // Without a rule table there is nothing to persist. Writing the file anyway
+  // would replace the operator's stored ruleset with an empty one.
+  if (flood_packet_filter_slots == 0) return false;
   // Recovery owns transaction remnants; overwriting one could erase the only
   // complete image after a failed publish boundary.
   if (_fs->exists(FLOOD_PACKET_FILTER_TEMP_FILE)
@@ -6521,7 +6539,7 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase,
 
   const uint8_t magic[4] = {'F', 'P', 'F', '7'};
   const uint8_t count = FloodFilterPolicy::forwardPersistenceCount(
-      flood_packet_filters, FLOOD_PACKET_FILTER_SLOTS,
+      flood_packet_filters, flood_packet_filter_slots,
       empty_forward_phase);
   bool success = writeExact(magic, sizeof(magic))
       && writeExact(&count, sizeof(count));
@@ -6644,7 +6662,8 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase,
 }
 #else
 bool MyMesh::loadFloodPacketFilters() {
-  memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+  if (flood_packet_filter_slots == 0) return false;
+  if (flood_packet_filters) memset(flood_packet_filters, 0, sizeof(FloodPacketFilterEntry) * flood_packet_filter_slots);
   if (_fs == NULL) {
     seedDefaultFloodPacketFilters();
     return true;
@@ -6664,7 +6683,7 @@ bool MyMesh::loadFloodPacketFilters() {
   bool version_6 = success && memcmp(magic, "FPF6", sizeof(magic)) == 0;
   success = version_6
       && file.read(&count, sizeof(count)) == sizeof(count)
-      && count <= FLOOD_PACKET_FILTER_SLOTS;
+      && count <= flood_packet_filter_slots;
 
   for (int i = 0; success && i < count; i++) {
     uint8_t active = 0;
@@ -6729,7 +6748,7 @@ bool MyMesh::loadFloodPacketFilters() {
   file.close();
 
   // A truncated or invalid file fails open; filtering must never be enabled by corrupt bytes.
-  if (!success) memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+  if (!success && flood_packet_filters) memset(flood_packet_filters, 0, sizeof(FloodPacketFilterEntry) * flood_packet_filter_slots);
   return success;
 }
 
@@ -6737,16 +6756,18 @@ bool MyMesh::saveFloodPacketFilters(bool empty_scope_phase,
                                     bool empty_forward_phase) {
   (void)empty_scope_phase;
   if (_fs == NULL) return false;
+  // As above: never replace a stored ruleset with an empty file.
+  if (flood_packet_filter_slots == 0) return false;
   File file = openFloodSettingsWrite(_fs, FLOOD_PACKET_FILTER_FILE);
   if (!file) return false;
 
   const uint8_t magic[4] = {'F', 'P', 'F', '6'};
-  uint8_t count = FLOOD_PACKET_FILTER_SLOTS;
+  uint8_t count = flood_packet_filter_slots;
   bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
       && file.write(&count, sizeof(count)) == sizeof(count);
   FloodPacketFilterEntry empty_entry;
   memset(&empty_entry, 0, sizeof(empty_entry));
-  for (int i = 0; success && i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; success && i < flood_packet_filter_slots; i++) {
     const auto& entry = empty_forward_phase
         ? empty_entry : flood_packet_filters[i];
     uint8_t active = entry.active ? 1 : 0;
@@ -6863,7 +6884,7 @@ bool MyMesh::authenticateFloodPacketFilterChannel(
 }
 
 bool MyMesh::hasFloodPacketFilterRetryRules() const {
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     if (flood_packet_filters[i].active
         && flood_packet_filters[i].retry_on_match) return true;
   }
@@ -6871,7 +6892,7 @@ bool MyMesh::hasFloodPacketFilterRetryRules() const {
 }
 
 bool MyMesh::floodPacketFilterAllowsRetry(uint64_t match_mask) const {
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     if ((match_mask & ((uint64_t)1U << i)) != 0
         && flood_packet_filters[i].retry_on_match) return true;
   }
@@ -6882,14 +6903,14 @@ int MyMesh::nextFloodPacketFilterMatch(uint64_t match_mask,
                                        uint64_t visited_mask) const {
   uint8_t priorities[FLOOD_PACKET_FILTER_SLOTS];
   uint8_t specificities[FLOOD_PACKET_FILTER_SLOTS];
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     priorities[i] = flood_packet_filters[i].priority;
     specificities[i] = FloodFilterPolicy::channelMatcherSpecificity(
         flood_packet_filters[i].channel_key_len);
   }
   return FloodFilterPolicy::nextOrderedRule(
       match_mask, visited_mask, priorities, specificities,
-      FLOOD_PACKET_FILTER_SLOTS);
+      flood_packet_filter_slots);
 }
 
 bool MyMesh::resolveFloodPacketFilterTargetRegion(
@@ -6911,7 +6932,7 @@ uint64_t MyMesh::applyFloodPacketFilterStop(uint64_t match_mask) {
   uint8_t priorities[FLOOD_PACKET_FILTER_SLOTS];
   uint8_t specificities[FLOOD_PACKET_FILTER_SLOTS];
   uint8_t stop_flags[FLOOD_PACKET_FILTER_SLOTS];
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     priorities[i] = flood_packet_filters[i].priority;
     const auto& entry = flood_packet_filters[i];
     specificities[i] = FloodFilterPolicy::channelMatcherSpecificity(
@@ -6929,7 +6950,7 @@ uint64_t MyMesh::applyFloodPacketFilterStop(uint64_t match_mask) {
   }
   return FloodFilterPolicy::truncateRulesAtStop(
       match_mask, priorities, specificities, stop_flags,
-      FLOOD_PACKET_FILTER_SLOTS);
+      flood_packet_filter_slots);
 }
 
 uint64_t MyMesh::evaluateFloodPacketFilterMatches(
@@ -6945,7 +6966,7 @@ uint64_t MyMesh::evaluateFloodPacketFilterMatches(
   bool channel_auth_checked[FLOOD_PACKET_FILTER_SLOTS] = { false };
   bool channel_auth_valid[FLOOD_PACKET_FILTER_SLOTS] = { false };
   uint64_t matches = 0;
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     const auto& entry = flood_packet_filters[i];
     if (!floodPacketFilterFieldsMatch(
             entry, packet, incoming_is_scoped, incoming_transport_code,
@@ -7057,7 +7078,7 @@ bool MyMesh::shouldBlockFloodPacketForward(const mesh::Packet* packet) const {
 void MyMesh::commitFloodPacketFilterRates(const mesh::Packet* packet) {
   if (packet == NULL || !packet->isRouteFlood()) return;
   uint32_t now = _ms->getMillis();
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     auto& entry = flood_packet_filters[i];
     if ((recv_pkt_filter_match_mask & ((uint64_t)1U << i)) == 0
         || !entry.rate_limit_enabled) {
@@ -7099,7 +7120,7 @@ uint64_t MyMesh::evaluateFloodPacketFilterMatches(
     const RegionEntry* incoming_region) {
   (void)incoming_region;
   uint64_t matches = 0;
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     const auto& entry = flood_packet_filters[i];
     if (floodPacketFilterFieldsMatch(entry, packet, false, 0,
                                      incoming_region_allowed, NULL)
@@ -7119,7 +7140,7 @@ bool MyMesh::applyFloodPacketFilterScope(mesh::Packet* packet,
   scope_set = false;
   fast_track = false;
   if (packet == NULL || !packet->isRouteFlood()) return false;
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     const auto& entry = flood_packet_filters[i];
     if ((match_mask & ((uint64_t)1U << i)) == 0
         || entry.scope_name[0] == 0) continue;
@@ -7146,7 +7167,7 @@ bool MyMesh::shouldBlockFloodPacketForward(const mesh::Packet* packet) const {
   if (packet == NULL || !packet->isRouteFlood()) return false;
   uint8_t type = packet->getPayloadType();
   uint8_t hops = packet->getPathHashCount();
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     const auto& entry = flood_packet_filters[i];
     if ((recv_pkt_filter_match_mask & ((uint64_t)1U << i)) != 0
         && entry.scope_name[0] == 0) {
@@ -7176,7 +7197,7 @@ static bool floodRuleRegionNamePresent(const RegionMap& map,
 }
 
 void MyMesh::formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const {
-  if (index < 0 || index >= FLOOD_PACKET_FILTER_SLOTS || !flood_packet_filters[index].active) {
+  if (index < 0 || index >= flood_packet_filter_slots || !flood_packet_filters[index].active) {
     snprintf(reply, reply_len, "Err - empty filter slot");
     return;
   }
@@ -7337,8 +7358,8 @@ void MyMesh::formatFloodPacketFilters(const char* args, char* reply) const {
   if (*selector == '.') selector = skipFloodFilterSpaces(selector + 1);
   if (*selector != 0) {
     uint8_t slot;
-    if (!parseFloodFilterUnsigned(selector, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
-      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+    if (!parseFloodFilterUnsigned(selector, flood_packet_filter_slots, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", flood_packet_filter_slots);
       return;
     }
     formatFloodPacketFilterDetail(slot - 1, reply, 160);
@@ -7348,7 +7369,7 @@ void MyMesh::formatFloodPacketFilters(const char* args, char* reply) const {
   size_t used = (size_t)snprintf(reply, 160, ">");
   int active_count = 0;
   bool truncated = false;
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     const auto& entry = flood_packet_filters[i];
     if (!entry.active) continue;
     active_count++;
@@ -7408,14 +7429,14 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
     size_t slot_len = (size_t)(cursor - slot_start);
     char slot_text[8];
     if (slot_len == 0 || slot_len >= sizeof(slot_text)) {
-      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", flood_packet_filter_slots);
       return;
     }
     memcpy(slot_text, slot_start, slot_len);
     slot_text[slot_len] = 0;
     uint8_t slot;
-    if (!parseFloodFilterUnsigned(slot_text, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
-      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+    if (!parseFloodFilterUnsigned(slot_text, flood_packet_filter_slots, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", flood_packet_filter_slots);
       return;
     }
     requested_slot = slot - 1;
@@ -7830,7 +7851,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
 
   int slot = requested_slot;
   if (slot < 0) {
-    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    for (int i = 0; i < flood_packet_filter_slots; i++) {
       // Keep the compatibility-owned row distinct from an ordinary rule with
       // identical match/action fields. Otherwise a generic, unnumbered set
       // would silently detach flood.channel.data from its own row.
@@ -7846,7 +7867,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
     }
   }
   if (slot < 0) {
-    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    for (int i = 0; i < flood_packet_filter_slots; i++) {
       if (!flood_packet_filters[i].active) {
         slot = i;
         break;
@@ -7877,7 +7898,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
 }
 #else
 void MyMesh::formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const {
-  if (index < 0 || index >= FLOOD_PACKET_FILTER_SLOTS || !flood_packet_filters[index].active) {
+  if (index < 0 || index >= flood_packet_filter_slots || !flood_packet_filters[index].active) {
     snprintf(reply, reply_len, "Err - empty filter slot");
     return;
   }
@@ -7910,8 +7931,8 @@ void MyMesh::formatFloodPacketFilters(const char* args, char* reply) const {
   if (*selector == '.') selector = skipFloodFilterSpaces(selector + 1);
   if (*selector != 0) {
     uint8_t slot;
-    if (!parseFloodFilterUnsigned(selector, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
-      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+    if (!parseFloodFilterUnsigned(selector, flood_packet_filter_slots, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", flood_packet_filter_slots);
       return;
     }
     formatFloodPacketFilterDetail(slot - 1, reply, 160);
@@ -7921,7 +7942,7 @@ void MyMesh::formatFloodPacketFilters(const char* args, char* reply) const {
   size_t used = (size_t)snprintf(reply, 160, ">");
   int active_count = 0;
   bool truncated = false;
-  for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+  for (int i = 0; i < flood_packet_filter_slots; i++) {
     const auto& entry = flood_packet_filters[i];
     if (!entry.active) continue;
     active_count++;
@@ -7963,14 +7984,14 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
     size_t slot_len = (size_t)(cursor - slot_start);
     char slot_text[8];
     if (slot_len == 0 || slot_len >= sizeof(slot_text)) {
-      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", flood_packet_filter_slots);
       return;
     }
     memcpy(slot_text, slot_start, slot_len);
     slot_text[slot_len] = 0;
     uint8_t slot;
-    if (!parseFloodFilterUnsigned(slot_text, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
-      snprintf(reply, 160, "Err - filter slot must be 1-%d", FLOOD_PACKET_FILTER_SLOTS);
+    if (!parseFloodFilterUnsigned(slot_text, flood_packet_filter_slots, slot) || slot == 0) {
+      snprintf(reply, 160, "Err - filter slot must be 1-%d", flood_packet_filter_slots);
       return;
     }
     requested_slot = slot - 1;
@@ -8082,7 +8103,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
 
   int slot = requested_slot;
   if (slot < 0) {
-    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    for (int i = 0; i < flood_packet_filter_slots; i++) {
       const auto& entry = flood_packet_filters[i];
       if (entry.active && entry.payload_type == payload_type
           && entry.min_hops == min_hops && entry.max_hops == max_hops
@@ -8096,7 +8117,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
     }
   }
   if (slot < 0) {
-    for (int i = 0; i < FLOOD_PACKET_FILTER_SLOTS; i++) {
+    for (int i = 0; i < flood_packet_filter_slots; i++) {
       if (!flood_packet_filters[i].active) {
         slot = i;
         break;
@@ -8138,7 +8159,7 @@ void MyMesh::deleteFloodPacketFilter(const char* args, char* reply) {
     if (!saveFloodPacketFilters(false, true)) {
       strcpy(reply, "Err - unable to save flood filter");
     } else {
-      memset(flood_packet_filters, 0, sizeof(flood_packet_filters));
+      if (flood_packet_filters) memset(flood_packet_filters, 0, sizeof(FloodPacketFilterEntry) * flood_packet_filter_slots);
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
       flood_channel_data_rule_slot = 0xFF;
 #endif
@@ -8148,8 +8169,8 @@ void MyMesh::deleteFloodPacketFilter(const char* args, char* reply) {
   }
 
   uint8_t slot;
-  if (!parseFloodFilterUnsigned(selector, FLOOD_PACKET_FILTER_SLOTS, slot) || slot == 0) {
-    snprintf(reply, 160, "Err - use: del flood.filter.<1-%d>|all", FLOOD_PACKET_FILTER_SLOTS);
+  if (!parseFloodFilterUnsigned(selector, flood_packet_filter_slots, slot) || slot == 0) {
+    snprintf(reply, 160, "Err - use: del flood.filter.<1-%d>|all", flood_packet_filter_slots);
     return;
   }
   int index = slot - 1;
@@ -12021,6 +12042,9 @@ void MyMesh::loop() {
   _cli.loop();
   processDeferredCliCommand();
   servicePostMeshLoop();
+#if defined(ENABLE_OTA) && OTA_DYNAMIC_CONTEXT
+  mesh::ota::ota_service_temp_radio_context(isTempRadioActive());
+#endif
 }
 
 #if MESH_ENABLE_TELEMETRY_HISTORY

@@ -3,6 +3,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/IdentityStore.h>
+#include <new>         // std::nothrow (heap-allocated client table)
 
 #define PERM_ACL_ROLE_MASK     7   // lower 3 bits
 #define PERM_ACL_GUEST         0
@@ -51,6 +52,9 @@ struct ClientInfo {
   #define MAX_CLIENTS           32
 #endif
 
+static_assert(sizeof(void*) != 4 || sizeof(ClientInfo) <= 320,
+              "Update the client-table runtime RAM budget in check_firmware_ram.py");
+
 struct ClientLoginReplayClampResult {
   uint16_t stored_matched;
   uint16_t stored_changed;
@@ -60,17 +64,29 @@ struct ClientLoginReplayClampResult {
 
 class ClientACL {
   FILESYSTEM* _fs;
-  ClientInfo clients[MAX_CLIENTS];
+  ClientInfo* clients;
+  int capacity;      // 0 when the table could not be allocated
   int num_clients;
   bool login_replay_store_available;
 
 public:
+  // MAX_CLIENTS entries run to several kilobytes. Classic ESP32's link-time
+  // static DRAM window is much smaller than its runtime heap, so the table is
+  // allocated here instead of living in .bss. This constructor runs before
+  // setup(), while the heap is still unfragmented. A failed allocation leaves
+  // a zero-capacity ACL that refuses new clients rather than writing through
+  // a null table; putClient() returns NULL and callers already handle that.
   ClientACL() {
     _fs = NULL;
-    memset(clients, 0, sizeof(clients));
+    clients = new (std::nothrow) ClientInfo[MAX_CLIENTS];
+    capacity = clients ? MAX_CLIENTS : 0;
+    if (clients) memset(clients, 0, sizeof(ClientInfo) * (size_t)capacity);
     num_clients = 0;
     login_replay_store_available = false;
   }
+  ~ClientACL() { delete[] clients; }
+  ClientACL(const ClientACL&) = delete;
+  ClientACL& operator=(const ClientACL&) = delete;
   void load(FILESYSTEM* _fs, const mesh::LocalIdentity& self_id);
   bool save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
   bool clear();

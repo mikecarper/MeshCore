@@ -24,6 +24,19 @@
   #include <helpers/nrf52/EthernetCLI.h>
 #endif
 
+#if defined(ESP32) && defined(CONFIG_BT_ENABLED) && !defined(BLE_PIN_CODE)
+// A repeater has no Bluetooth transport, but the Arduino SDK is built with the
+// BT controller enabled, so its memory stays reserved unless the application
+// says otherwise. initArduino() calls esp_bt_controller_mem_release() when
+// this weak hook returns false, handing that region to the heap. Note this
+// only grows the *runtime heap*: the same reservation is also carved out of
+// the linker's dram0_0_seg (0xdb5c on classic ESP32), and no runtime call can
+// give those static bytes back. It is what makes the heap-allocated tables
+// above comfortable, not a substitute for them.
+extern "C" bool btInUse();
+extern "C" bool btInUse() { return false; }
+#endif
+
 StdRNG fast_rng;
 #if MAX_RECENT_REPEATERS > 0
   #if defined(ESP32)

@@ -466,7 +466,16 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   };
   mutable FloodRetryBridgeState flood_retry_bridge_states[MAX_FLOOD_RETRY_SLOTS];
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
-  FloodPacketFilterEntry flood_packet_filters[FLOOD_PACKET_FILTER_SLOTS];
+  static_assert(sizeof(FloodPacketFilterEntry) <= (MESH_ENABLE_FLOOD_RULE_ENGINE ? 200 : 40),
+                "Update the flood-table runtime RAM budget in check_firmware_ram.py");
+  // The rule table is the single largest member of this object. It is heap
+  // allocated in the constructor (before setup(), while the heap is still
+  // unfragmented) so classic ESP32's small link-time static DRAM window does
+  // not have to hold it. flood_packet_filter_slots is the live capacity, and
+  // is 0 when the allocation failed: every loop below is bounded by it, so a
+  // zero-capacity node simply forwards without rule filtering.
+  FloodPacketFilterEntry* flood_packet_filters;
+  uint8_t flood_packet_filter_slots;
   uint8_t flood_packet_filter_blacklist_count;
   uint8_t flood_packet_filter_blacklist[FLOOD_PACKET_FILTER_BLACKLIST_MAX]
                                        [FLOOD_PACKET_FILTER_PATH_ID_SIZE];
@@ -941,6 +950,9 @@ protected:
 
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
+  ~MyMesh() { delete[] flood_packet_filters; }
+  MyMesh(const MyMesh&) = delete;
+  MyMesh& operator=(const MyMesh&) = delete;
 
   void begin(FILESYSTEM* fs);
   void sendNodeDiscoverReq();

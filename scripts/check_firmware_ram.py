@@ -89,6 +89,17 @@ def requirements(platform, defines, target):
         parts["core_filesystems_sensors"] = 8192
     # Packet bytes plus all three queue tables and allocation overhead.
     parts["radio_packet_pool"] = 5120 if companion else 10240
+    # These tables moved out of .bss, so linker heap bounds now include their
+    # space. Count it as startup allocation instead; C++ assertions bind the
+    # per-entry bounds to the production structures.
+    if re.search(r"repeater|room_server|sensor", target, re.I) or "COMPANION_MESH_CLOCK_SYNC" in defines:
+        parts["client_table"] = integer(defines, "MAX_CLIENTS", 32) * 320 + 16
+    if "repeater" in target.lower():
+        engine = integer(defines, "MESH_ENABLE_FLOOD_RULE_ENGINE", int(platform != "STM32_PLATFORM"))
+        slots = integer(defines, "FLOOD_PACKET_FILTER_SLOTS", 63 if engine else 16)
+        parts["flood_filter_table"] = slots * (200 if engine else 40) + 16
+    if "ENABLE_OTA" in defines and "OTA_HEAP_CONTEXT" in defines:
+        parts["ota_context"] = 16384 + 16
     if display and display != "NullDisplayDriver":
         parts["display_pixels_and_driver"] = display_heap
         parts["screen_objects_and_history"] = 8192 if companion else 2048
@@ -113,6 +124,8 @@ def requirements(platform, defines, target):
     largest = max(display_heap, parts["radio_packet_pool"], 8192 if platform == "ESP32_PLATFORM" else 0)
     if "expanded_message_previews" in parts:
         largest = max(largest, 8192 + parts["expanded_message_previews"])
+    for name in ("client_table", "flood_filter_table", "ota_context"):
+        largest = max(largest, parts.get(name, 0))
     return {"required_heap_bytes": required, "required_contiguous_bytes": largest,
             "components": parts, "display": display, "full_companion": full}
 

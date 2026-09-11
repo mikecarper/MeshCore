@@ -66,6 +66,25 @@ def esp_fixture(path, modern=False, fragmented=False):
 
 
 class FirmwareRamTest(unittest.TestCase):
+    def test_heap_tables_and_ota_remain_in_runtime_budget(self):
+        policy = ram.requirements("ESP32_PLATFORM", {
+            "ENABLE_OTA": 1, "OTA_HEAP_CONTEXT": 1,
+        }, "GEPRC_Linkflow_900_repeater")
+        self.assertEqual(policy["components"]["client_table"], 32 * 320 + 16)
+        self.assertEqual(policy["components"]["flood_filter_table"], 63 * 200 + 16)
+        self.assertEqual(policy["components"]["ota_context"], 16384 + 16)
+        self.assertGreaterEqual(policy["required_contiguous_bytes"], 16384 + 16)
+        reduced = ram.requirements("STM32_PLATFORM", {
+            "MAX_CLIENTS": 2, "FLOOD_PACKET_FILTER_SLOTS": 8,
+        }, "wio_repeater")
+        self.assertEqual(reduced["components"]["client_table"], 2 * 320 + 16)
+        self.assertEqual(reduced["components"]["flood_filter_table"], 8 * 40 + 16)
+        companion = ram.requirements("NRF52_PLATFORM", {}, "t114_companion_radio_ble")
+        self.assertNotIn("client_table", companion["components"])
+        self.assertNotIn("flood_filter_table", companion["components"])
+        sensor = ram.requirements("NRF52_PLATFORM", {}, "t114_sensor")
+        self.assertEqual(sensor["components"]["client_table"], 32 * 320 + 16)
+
     def test_browser_terminal_reserves_internal_session_and_psram_aware_scrollback(self):
         defines = {"ENABLE_USB_INTERFACE": 1, "WIFI_SSID": "", "DISPLAY_CLASS": "SSD1306Display"}
         base = ram.requirements("ESP32_PLATFORM", {**defines, "WEBCONFIG_DISABLED": 1}, "v4_companion")

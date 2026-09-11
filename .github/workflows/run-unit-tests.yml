@@ -74,7 +74,11 @@ jobs:
           python3 -B test/test_sx126x_receive_mode.py
 
       - name: Verify ESP32 static DRAM budget
-        run: python3 -B test/test_esp32_dram.py
+        run: |
+          python3 -B test/test_esp32_dram.py
+          python3 -B test/test_elrs_power.py
+          python3 -B test/test_ota_heap_context.py
+          python3 -B test/test_client_acl_spiffs.py
 
       - name: Verify ESP32 USB sleep and G3 button wake
         run: python3 -B test/test_esp32_usb_sleep.py

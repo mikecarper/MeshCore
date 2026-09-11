@@ -12,6 +12,9 @@
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/UsbAsciiBinarySwitch.h>
 #include <helpers/UsbLogging.h>
+#if defined(ENABLE_OTA) && defined(OTA_HEAP_CONTEXT)
+#include <helpers/ota/OtaContext.h>
+#endif
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 #include "helpers/radiolib/CadTiming.h"
@@ -8626,6 +8629,12 @@ void MyMesh::loop() {
 #endif
 #if defined(OTA_SHARED_COMPANION_QUEUE)
   mesh::ota::ota_release_context_if_idle(isTempRadioActive() || _temp_radio_set_at != 0);
+#elif defined(ENABLE_OTA) && defined(OTA_HEAP_CONTEXT)
+  mesh::ota::ota_service_temp_radio_context(isTempRadioActive()
+#if COMPANION_FEATURE_TEMP_RADIO
+      || _temp_radio_set_at != 0
+#endif
+  );
 #endif
   BaseChatMesh::loop();
 #ifdef COMPANION_MESH_CLOCK_SYNC

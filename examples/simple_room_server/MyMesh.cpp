@@ -1,5 +1,8 @@
 #include "MyMesh.h"
 #include <helpers/UsbLogging.h>
+#if defined(ENABLE_OTA)
+#include <helpers/ota/OtaContext.h>
+#endif
 #include <helpers/FileRead.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <helpers/CLICommandUtils.h>
@@ -2778,6 +2781,9 @@ void MyMesh::loop() {
         getTotalAirTime() / 1000, uptime_millis / 1000);
     }
   }
+#endif
+#if defined(ENABLE_OTA) && OTA_DYNAMIC_CONTEXT
+  mesh::ota::ota_service_temp_radio_context(isTempRadioActive());
 #endif
 }
 

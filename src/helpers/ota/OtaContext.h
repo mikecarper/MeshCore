@@ -11,6 +11,19 @@
 #include "OtaFormat.h"
 #include "OtaSelf.h"          // ota_self_firmware() - prefer self-describing EndF identity at begin()
 #include "OtaBlInfo.h"        // bootloader OTA-apply capability marker (nRF52); cached after first read
+
+// Storage policy for the mOTA context. A "dynamic" context is created on demand
+// and handed back once idle, so its multi-kilobyte workspace only occupies RAM
+// while an OTA operation is actually in flight:
+//   OTA_SHARED_COMPANION_QUEUE - borrows the Companion's offline message queue
+//   OTA_HEAP_CONTEXT           - allocates from the heap, failing softly
+// Every other build keeps the plain .bss singleton.
+#if defined(OTA_SHARED_COMPANION_QUEUE) || defined(OTA_HEAP_CONTEXT)
+  #define OTA_DYNAMIC_CONTEXT 1
+#else
+  #define OTA_DYNAMIC_CONTEXT 0
+#endif
+
 #if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
   #include "OtaStoreQspiNrf52.h"
 #elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
@@ -82,7 +95,7 @@ class FolderMotaStore;   // pull destination over the seeder link (full type onl
 #endif
 
 struct OtaContext {
-#if defined(OTA_SHARED_COMPANION_QUEUE)
+#if OTA_DYNAMIC_CONTEXT
   // Release at a main-loop boundary, after callers finish using this context.
   bool release_when_idle = false;
 #endif
@@ -131,6 +144,22 @@ struct OtaContext {
   // count (the manager's fixed 4 KiB scratch covers <=1024 blocks, about 2 MiB at the new default).
   uint8_t* serve_self_leaves = nullptr;
   uint8_t* serve_self_proof  = nullptr;
+
+  // These raw buffers are owned by the context and are otherwise only freed
+  // when self-serve re-allocates them. A dynamic-storage build destroys the
+  // context between operations (OTA_HEAP_CONTEXT deletes it; the Companion's
+  // borrowed queue runs ~OtaContext() in place), so teardown has to release
+  // them or every acquire/release cycle leaks. A self-serving node reaches
+  // release with both buffers populated, so this is the normal path, not an
+  // edge case.
+  ~OtaContext() {
+    releaseServeBuffer();          // no-op where serve_buf is a fixed array
+    free(serve_self_leaves);
+    free(serve_self_proof);
+  }
+  OtaContext() = default;
+  OtaContext(const OtaContext&) = delete;             // would double-free above
+  OtaContext& operator=(const OtaContext&) = delete;
   uint8_t  serve_self_manifest[MOTA_MFL];   // fixed-layout full+unsigned manifest-minus-leaves (197 B)
   ApplyState apply_st;           // pending apply (P6)
 
@@ -409,7 +438,7 @@ struct OtaContext {
       return false;
     }
     folder_active = true;
-#if defined(OTA_SHARED_COMPANION_QUEUE)
+#if OTA_DYNAMIC_CONTEXT
     release_when_idle = false;
 #endif
     _folder_link = link;
@@ -439,7 +468,7 @@ struct OtaContext {
     folder_active = false;
     _folder_link = FOLDER_LINK_NONE;
     _folder_source = nullptr;
-#if defined(OTA_SHARED_COMPANION_QUEUE)
+#if OTA_DYNAMIC_CONTEXT
     release_when_idle = true;
 #endif
   }
@@ -626,10 +655,15 @@ private:
 #endif
 };
 
-OtaContext& ota_ctx();   // process-wide singleton
+#if defined(OTA_HEAP_CONTEXT)
+static_assert(sizeof(OtaContext) <= 16384,
+              "Update the heap OTA runtime RAM budget in check_firmware_ram.py");
+#endif
 
-// On constrained source-only Companions, the context exists only while its
-// queue-backed workspace is owned by mOTA. Other builds keep the singleton.
+OtaContext& ota_ctx();   // process-wide context
+
+// Dynamic builds return null outside an acquired workspace. Static builds
+// always return their process-wide context.
 OtaContext* ota_context_if_active();
 bool ota_acquire_context(char* reply, size_t cap);
 void ota_begin_context(uint32_t target, OtaSend send, void* ctx,
@@ -641,9 +675,33 @@ uint8_t ota_hop_limit();
     !defined(OTA_SEEDER_ONLY) || !defined(COMPANION_RADIO_FULL)
 #error "Shared mOTA queue storage requires an nRF52 or ESP32 Full source-only Companion"
 #endif
+#if defined(OTA_HEAP_CONTEXT)
+#error "OTA_HEAP_CONTEXT and OTA_SHARED_COMPANION_QUEUE both own the context storage"
+#endif
+#endif
+
+#if OTA_DYNAMIC_CONTEXT
+// ota_ctx() is only valid while storage is held. Callers that can run before a
+// successful ota_acquire_context() must gate on ota_context_if_active() first.
 void ota_set_context_storage(void* owner, OtaContext* (*acquire)(void*),
                              void (*release)(void*));
 void ota_release_context_if_idle(bool temporary_radio_active);
+
+// Loop helper for roles whose LoRa OTA only runs under the temporary radio
+// profile (repeater, room server, sensor). Nothing else acquires the context
+// on their behalf: without this, serving and announcing would stop the moment
+// the context was released, because only CLI entry points acquire. Holding it
+// for the temp-radio window keeps behaviour identical to a permanent context,
+// and the node is outside that window nearly all the time, which is where the
+// saving comes from. Also used by heap-backed Companions. Shared-queue
+// Companions must acquire only on explicit host demand instead.
+inline void ota_service_temp_radio_context(bool temporary_radio_active) {
+  if (temporary_radio_active) {
+    ota_acquire_context(nullptr, 0);   // failure is reported at the CLI entry points
+  } else {
+    ota_release_context_if_idle(false);
+  }
+}
 #endif
 
 } // namespace ota

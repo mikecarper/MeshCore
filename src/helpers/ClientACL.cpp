@@ -640,7 +640,7 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
           c.last_timestamp = UINT32_MAX;
         }
         self_id.calcSharedSecret(c.shared_secret, pub_key);  // recalculate shared secrets in case our private key changed
-        if (num_clients < MAX_CLIENTS) {
+        if (num_clients < capacity) {
           clients[num_clients++] = c;
         } else {
           full = true;
@@ -691,6 +691,8 @@ bool ClientACL::authorizeLoginTimestamp(
 }
 
 bool ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
+  // A failed allocation is not an empty ACL. Preserve the stored managers.
+  if (capacity == 0 || fs == NULL) return false;
   _fs = fs;
 #if defined(NRF52_PLATFORM)
   mesh::AtomicFileWriter file(_fs, "/s_contacts");
@@ -803,7 +805,7 @@ bool ClientACL::clear() {
   const bool files_cleared = !_fs->exists("/s_contacts")
       && !_fs->exists("/s_contacts.tmp")
       && !_fs->exists("/s_contacts.bak");
-  memset(clients, 0, sizeof(clients));
+  if (clients) memset(clients, 0, sizeof(ClientInfo) * (size_t)capacity);
   num_clients = 0;
   return files_cleared;
 }
@@ -828,7 +830,7 @@ ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
   }
 
   ClientInfo* c;
-  if (num_clients < MAX_CLIENTS) {
+  if (num_clients < capacity) {
     c = &clients[num_clients++];
   } else {
     if (oldest == NULL) return NULL;  // every entry is protected

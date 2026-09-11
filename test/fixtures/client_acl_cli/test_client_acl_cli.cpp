@@ -160,14 +160,15 @@ static void listing_does_not_mutate_acl() {
   mesh::LocalIdentity self;
   acl.load(&fs, self);
   for (unsigned i = 0; i < 5; ++i) add(acl, i, uint8_t(i));
-  const auto before = acl;
+  std::vector<ClientInfo> before;
+  for (int i = 0; i < acl.getNumClients(); ++i) before.push_back(*acl.getClientByIdx(i));
   const auto writes = fs.bytes_written;
   for (const char* command : {"get acl", "get acl 2", "get acl 3", "get acl 0"}) {
     query(acl, command);
   }
-  CHECK(acl.getNumClients() == before.getNumClients());
+  CHECK(acl.getNumClients() == int(before.size()));
   for (int i = 0; i < acl.getNumClients(); ++i) {
-    CHECK(memcmp(acl.getClientByIdx(i), before.getClientByIdx(i), sizeof(ClientInfo)) == 0);
+    CHECK(memcmp(acl.getClientByIdx(i), &before[i], sizeof(ClientInfo)) == 0);
   }
   CHECK(fs.bytes_written == writes);
 }

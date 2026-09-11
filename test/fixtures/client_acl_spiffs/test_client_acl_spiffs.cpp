@@ -10,6 +10,11 @@
   std::fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); std::exit(1); \
 } } while (0)
 
+static bool fail_client_allocation = false;
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
+  return fail_client_allocation ? nullptr : ::operator new[](size);
+}
+
 static const uint8_t KEY[PUB_KEY_SIZE] = {0x12, 0x57, 0xae, 0xe5};
 static const char* PRIMARY = mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH;
 static const char* TEMP = mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH;
@@ -447,8 +452,32 @@ static void clamp_backup_cleanup_failure_does_not_mutate_live() {
   CHECK(fs.files == before && fs.bytes_written == 0 && client->last_timestamp == 1000);
 }
 
+static void allocation_failure_preserves_saved_clients() {
+  FakeFilesystem fs;
+  {
+    ClientACL original;
+    original.load(&fs, SELF);
+    CHECK(original.putClient(mesh::Identity(KEY), PERM_ACL_ADMIN));
+    CHECK(original.save(&fs));
+  }
+  const auto saved = fs.files;
+  fail_client_allocation = true;
+  ClientACL unavailable;
+  fail_client_allocation = false;
+  unavailable.load(&fs, SELF);
+  CHECK(unavailable.getNumClients() == 0);
+  CHECK(!unavailable.putClient(mesh::Identity(SECOND_KEY), PERM_ACL_ADMIN));
+  const auto writes = fs.bytes_written;
+  CHECK(!unavailable.save(&fs));
+  CHECK(fs.files == saved && fs.bytes_written == writes);
+  ClientACL recovered;
+  recovered.load(&fs, SELF);
+  CHECK(recovered.getNumClients() == 1 && recovered.getClient(KEY, PUB_KEY_SIZE));
+}
+
 int main() {
   const struct { const char* name; void (*run)(); } tests[] = {
+    {"allocation failure preserves clients", allocation_failure_preserves_saved_clients},
     {"missing read differs from empty file", missing_read_is_not_empty_file},
     {"first admin and monotonic retries", first_admin_and_retries},
     {"reboot preserves ceiling", reboot_preserves_ceiling},
@@ -478,5 +507,5 @@ int main() {
     test.run();
     std::printf("PASS: %s\n", test.name);
   }
-  std::puts("24 ClientACL SPIFFS checks passed");
+  std::puts("25 ClientACL SPIFFS checks passed");
 }
