@@ -7737,7 +7737,9 @@ binaries.</p>
 - <code>get cad</code>
 - <code>set cad &lt;on|off&gt;</code></p>
 <p><strong>Description:</strong> When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of <code>int.thresh</code> - either, both, or none may be active.</p>
-<p>The Cascade firmware profile defaults CAD to <code>on</code>; target-default builds continue to default it to <code>off</code>.
+<p>Fresh Cascade-profile builds default CAD to <code>off</code> across all roles, including
+Companion. Saved CAD settings take precedence after an upgrade. Use <code>set cad off</code>
+to disable it on an existing node or <code>set cad on</code> to enable it explicitly.
 The repeater applies the saved toggle to the radio during its periodic
 noise-floor service. With one runnable packet, a busy result uses the normal
 CAD retry delay and allows roughly four seconds of continuous busy results.
