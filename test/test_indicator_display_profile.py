@@ -171,9 +171,9 @@ class IndicatorDisplayProfileTest(unittest.TestCase):
         # Native 480 reflows the spacious home page instead of globally
         # enlarging every dense UI row. The title, count, action, and pairing
         # state each occupy their own large row.
-        native_title = dimensions("INBOX", 4, 3, 1.2)
-        native_count = dimensions("9999", 4, 3, 1.2)
-        native_count_fallback = dimensions("99999", 3, 3, 1.2)
+        native_title = dimensions("HISTORY", 3, 3, 1.2)
+        native_count = dimensions("9999", 3, 3, 1.2)
+        native_count_fallback = dimensions("99999", 2, 3, 1.2)
         self.assertLessEqual(native_title[0], 156)
         self.assertLessEqual(native_title[1], 39)
         self.assertLessEqual(native_count[0], 156)

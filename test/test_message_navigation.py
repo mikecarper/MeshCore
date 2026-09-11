@@ -120,6 +120,7 @@ public:
   UIScreen* john_reader=nullptr;
   uint32_t _auto_off=0,_next_refresh=0;
   int buzzer_changes=0;
+  int getMsgCount() const { return 0; }
   explicit UITask(DisplayDriver& display) : _display(&display) {}
   bool isJohnReaderActive() const { return john_reader && curr==john_reader; }
   void gotoHomeScreen() { curr=home; }

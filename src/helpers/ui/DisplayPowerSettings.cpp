@@ -12,12 +12,12 @@ const char* const temporary = "/display_prefs.tmp";
 
 // Explicit bytes avoid compiler padding and preserve a small fixed format.
 void encode(const DisplayPowerPrefs& prefs, uint8_t (&data)[12]) {
-  data[0] = 'D'; data[1] = 'P'; data[2] = 1;
+  data[0] = 'D'; data[1] = 'P'; data[2] = 2;
   data[3] = uint8_t(prefs.battery.mode);
   data[4] = prefs.battery.seconds & 255; data[5] = prefs.battery.seconds >> 8;
   data[6] = uint8_t(prefs.usb.mode);
   data[7] = prefs.usb.seconds & 255; data[8] = prefs.usb.seconds >> 8;
-  data[9] = 0; data[10] = 0; data[11] = 0;
+  data[9] = uint8_t(prefs.inbox); data[10] = 0; data[11] = 0;
   for (unsigned i = 0; i < 11; ++i) data[11] ^= data[i];
 }
 bool readPrefs(const char* name, DisplayPowerPrefs& prefs) {
@@ -37,9 +37,16 @@ bool readPrefs(const char* name, DisplayPowerPrefs& prefs) {
   prefs.battery.seconds = uint16_t(data[4]) | (uint16_t(data[5]) << 8);
   prefs.usb.mode = DisplayMode(data[6]);
   prefs.usb.seconds = uint16_t(data[7]) | (uint16_t(data[8]) << 8);
+  prefs.inbox = data[2] == 1 ? DisplayInboxMode::History : DisplayInboxMode(data[9]);
   encode(prefs, expected);
+  if (data[2] == 1) {
+    // Version 1 reserved byte 9 and had no inbox preference.
+    expected[2] = 1;
+    expected[11] ^= 0x02 ^ 0x01;
+  }
   return memcmp(data, expected, sizeof(data)) == 0
-      && validDisplayProfile(prefs.battery) && validDisplayProfile(prefs.usb);
+      && validDisplayProfile(prefs.battery) && validDisplayProfile(prefs.usb)
+      && uint8_t(prefs.inbox) <= uint8_t(DisplayInboxMode::Unread);
 }
 bool savePrefs(const DisplayPowerPrefs& prefs) {
   if (!settings_fs) return false;
@@ -106,14 +113,15 @@ void migrateLegacyDisplayTimeout(uint16_t seconds) {
   savePrefs(prefs);
 }
 
-bool handleDisplayPowerCommand(const char* command, char* reply, size_t reply_size) {
+bool handleDisplayPowerCommand(const char* command, char* reply, size_t reply_size,
+                               bool inbox_supported) {
   const bool get = strncmp(command, "get ", 4) == 0;
   const bool set = strncmp(command, "set ", 4) == 0;
   if (!get && !set) return false;
   const char* key = command + 4;
-  const char* keys[] = {"display.mode", "display.timeout", "display.usb.mode", "display.usb.timeout"};
+  const char* keys[] = {"display.mode", "display.timeout", "display.usb.mode", "display.usb.timeout", "display.inbox"};
   int index = -1;
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 5; ++i) {
     const size_t len = strlen(keys[i]);
     if (strncmp(key, keys[i], len) == 0 && (key[len] == 0 || key[len] == ' ')) {
       index = i; break;
@@ -121,20 +129,34 @@ bool handleDisplayPowerCommand(const char* command, char* reply, size_t reply_si
   }
   if (index < 0) return false;
 #ifndef MESHCORE_HAS_REAL_DISPLAY
+  (void)inbox_supported;
   snprintf(reply, reply_size, "Error: display unsupported");
   return true;
 #else
   auto candidate = displayPowerPrefs();
   auto& profile = index < 2 ? candidate.battery : candidate.usb;
   const char* value = key + strlen(keys[index]);
+  if (index == 4 && !inbox_supported) {
+    snprintf(reply, reply_size, "Error: inbox modes unsupported");
+    return true;
+  }
   if (get) {
     if (*value) snprintf(reply, reply_size, "Error: unexpected argument");
+    else if (index == 4) snprintf(reply, reply_size, "> %s", displayInboxModeName(candidate.inbox));
     else if (index & 1) snprintf(reply, reply_size, "> %u", unsigned(profile.seconds));
     else snprintf(reply, reply_size, "> %s", displayModeName(profile.mode));
     return true;
   }
   while (*value == ' ') ++value;
-  if (index & 1) {
+  if (index == 4) {
+    unsigned mode = 0;
+    while (mode <= unsigned(DisplayInboxMode::Unread)
+        && strcmp(value, displayInboxModeName(DisplayInboxMode(mode))) != 0) ++mode;
+    if (mode > unsigned(DisplayInboxMode::Unread)) {
+      snprintf(reply, reply_size, "Error: use history|pending|unread"); return true;
+    }
+    candidate.inbox = DisplayInboxMode(mode);
+  } else if (index & 1) {
     uint32_t seconds = 0;
     bool valid = *value != 0;
     for (const char* p = value; *p && valid; ++p) {

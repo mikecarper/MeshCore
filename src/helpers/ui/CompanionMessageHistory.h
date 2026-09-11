@@ -84,6 +84,8 @@ class CompanionMessageHistory {
 public:
   struct Entry {
     uint64_t heard_millis;
+    int queue_index;
+    bool unread;
     int channel_idx;
     char channel_name[32];
     char origin[62];
@@ -133,12 +135,14 @@ public:
 
   void add(uint64_t heard_millis, int channel_idx,
            const char* channel_name, const char* origin,
-           const char* message) {
+           const char* message, int queue_index = -1) {
     _head = (_head + 1) % Capacity;
     if (_count < Capacity) ++_count;
 
     Entry& entry = _entries[_head];
     entry.heard_millis = heard_millis;
+    entry.queue_index = queue_index;
+    entry.unread = true;
     entry.channel_idx = channel_idx;
     copyField(entry.channel_name, sizeof(entry.channel_name), channel_name);
     copyField(entry.origin, sizeof(entry.origin), origin);
@@ -149,6 +153,30 @@ public:
     if (age >= _count) return nullptr;
     const size_t index = (_head + Capacity - age) % Capacity;
     return &_entries[index];
+  }
+
+  // Queue positions also account for non-display frames and channel eviction.
+  // Downloading to an app never marks a message as read on the radio.
+  void queueRemoved(int index) {
+    if (index < 0) return;
+    for (size_t age = 0; age < _count; ++age) {
+      Entry& entry = _entries[(_head + Capacity - age) % Capacity];
+      if (entry.queue_index == index) entry.queue_index = -1;
+      else if (entry.queue_index > index) --entry.queue_index;
+    }
+  }
+
+  void markRead(const Entry* selected) {
+    for (size_t age = 0; age < _count; ++age) {
+      Entry& entry = _entries[(_head + Capacity - age) % Capacity];
+      if (&entry == selected) { entry.unread = false; return; }
+    }
+  }
+
+  size_t unreadCount() const {
+    size_t count = 0;
+    for (size_t age = 0; age < _count; ++age) if (newest(age)->unread) ++count;
+    return count;
   }
 
   static bool sameThread(const Entry& left, const Entry& right) {

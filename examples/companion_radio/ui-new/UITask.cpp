@@ -35,9 +35,6 @@
 #ifndef AUTO_OFF_MILLIS
   #define AUTO_OFF_MILLIS     15000   // 15 seconds
 #endif
-#ifndef USB_MESSAGE_PREVIEW_MILLIS
-  #define USB_MESSAGE_PREVIEW_MILLIS 15000UL
-#endif
 #ifndef UI_RADIO_REFRESH_MILLIS
   #define UI_RADIO_REFRESH_MILLIS 2000UL
 #endif
@@ -665,20 +662,30 @@ public:
               display.renderWidth(), display.renderHeight());
       if (expanded_home) {
         display.setTextSize(4);
-        display.drawTextCentered(display.width() / 2, 20, "INBOX");
+        if (display.getTextWidth(_task->inboxTitle()) > display.width()) display.setTextSize(3);
+        display.drawTextCentered(display.width() / 2, 20, _task->inboxTitle());
       } else {
-        sprintf(tmp, "INBOX: %d", _task->getPreviewCount());
+        snprintf(tmp, sizeof(tmp), "%s: %d", _task->inboxTitle(), _task->getPreviewCount());
         display.setTextSize(2);
+        if (display.getTextWidth(tmp) > display.width()) display.setTextSize(1);
         display.drawTextCentered(display.width() / 2, body_top + 2, tmp);
       }
 #else
       display.setTextSize(2);
-      sprintf(tmp, "INBOX: %d", _task->getPreviewCount());
-      const int home_content_top = body_top + 2 + display.textLineHeight()
+      snprintf(tmp, sizeof(tmp), "%s: %d", _task->inboxTitle(), _task->getPreviewCount());
+      if (display.getTextWidth(tmp) > display.width()) display.setTextSize(1);
+      int home_content_top = body_top + 2 + display.textLineHeight()
           + (display.height() > 64 ? 2 : 0);
       mesh::ui::drawTextCenteredEllipsized(display,
           {0, body_top + 2, display.width(), display.textLineHeight()},
           body_top + 2, tmp);
+      display.setTextSize(1);
+      display.setColor(UIColor::secondary_txt);
+      snprintf(tmp, sizeof(tmp), "Pending: %d", _task->getMsgCount());
+      mesh::ui::drawTextCenteredEllipsized(display,
+          {0, home_content_top, display.width(), display.textLineHeight()},
+          home_content_top, tmp);
+      home_content_top += display.textLineHeight() + 1;
 #endif
 #ifdef UI_DEDICATED_PAIRING_BLOCK
       const mesh::ui::CompanionHomeLayout layout =
@@ -695,19 +702,23 @@ public:
 
       if (expanded_home) {
         snprintf(tmp, sizeof(tmp), "%d", _task->getPreviewCount());
-        display.setTextSize(4);
+        display.setTextSize(3);
         if (display.getTextWidth(tmp) > layout.info.width) {
-          display.setTextSize(3);
+          display.setTextSize(2);
         }
         display.setColor(UIColor::primary_txt);
         mesh::ui::drawTextCenteredEllipsized(
             display, layout.info, layout.instruction_y, tmp);
+        display.setTextSize(1);
+        snprintf(tmp, sizeof(tmp), "Pending: %d", _task->getMsgCount());
+        mesh::ui::drawTextCenteredEllipsized(
+            display, layout.info, layout.info.bottom() - display.textLineHeight(), tmp);
       } else {
         display.setTextSize(1);
         display.setColor(UIColor::secondary_txt);
+        snprintf(tmp, sizeof(tmp), "Pending: %d", _task->getMsgCount());
         mesh::ui::drawTextCenteredEllipsized(
-            display, layout.info, layout.instruction_y,
-            PRESS_LABEL ": inbox");
+            display, layout.info, layout.instruction_y, tmp);
 
         #ifdef WIFI_SSID
           if (!isCompanionWiFiEnabled()) {
@@ -731,11 +742,12 @@ public:
       const bool bluetooth_connected = _task->hasBluetoothConnection();
       const uint32_t bluetooth_pin = the_mesh.getBLEPin();
       const char* pairing_label = nullptr;
+      const char* client_label = _task->connectedClientLabel();
       const char* pairing_value = nullptr;
       int pairing_value_size = 2;
       char pairing_pin[16];
-      if (bluetooth_connected) {
-        pairing_label = expanded_home ? "BLE" : "BLUETOOTH";
+      if (client_label != nullptr && !_task->isPairingPromptActive()) {
+        pairing_label = expanded_home && strcmp(client_label, "BLUETOOTH") == 0 ? "BLE" : client_label;
         pairing_value = expanded_home ? "LINKED" : "CONNECTED";
         if (expanded_home) pairing_value_size = 3;
       } else if (mesh::ui::shouldDisplayBluetoothPairingPin(
@@ -792,12 +804,13 @@ public:
           mesh::ui::shouldDisplayBluetoothPairingPin(
               bluetooth_enabled, bluetooth_connected, bluetooth_pin)
           && (!_task->isPairingPromptActive() || display.height() > 64);
-      if (bluetooth_connected || show_bluetooth_pin) {
+      const char* client_label = _task->connectedClientLabel();
+      if (client_label != nullptr || show_bluetooth_pin) {
         char pairing_pin[16];
-        const char* pairing_label = bluetooth_connected
-            ? "BLUETOOTH" : "BLUETOOTH PIN";
+        const bool show_client = client_label != nullptr && !_task->isPairingPromptActive();
+        const char* pairing_label = show_client ? client_label : "BLUETOOTH PIN";
         const char* pairing_value = "CONNECTED";
-        if (!bluetooth_connected) {
+        if (!show_client) {
           snprintf(pairing_pin, sizeof(pairing_pin), "%06u",
                    (unsigned int)bluetooth_pin);
           pairing_value = pairing_pin;
@@ -811,7 +824,7 @@ public:
              display.height() - home_content_top});
         display.setTextSize(1);
         display.setColor(UIColor::secondary_txt);
-        rows.draw(PRESS_LABEL ": inbox");
+        rows.draw(PRESS_LABEL ": messages");
 
         #ifdef UI_SHOW_CLOCK
         display.setTextSize(3);
@@ -1257,9 +1270,14 @@ class MsgPreviewScreen : public UIScreen {
   int view_offset;
   int channel_filter;
 
+  bool visible(const MsgEntry& entry) const {
+    return mesh::ui::displayPowerPrefs().inbox != mesh::ui::DisplayInboxMode::Pending
+        || entry.queue_index >= 0;
+  }
+
   bool matchesFilter(const MsgEntry& entry) const {
-    return channel_filter == CHANNEL_FILTER_ALL
-        || entry.channel_idx == channel_filter;
+    return visible(entry) && (channel_filter == CHANNEL_FILTER_ALL
+        || entry.channel_idx == channel_filter);
   }
 
   int filteredCount() const {
@@ -1380,18 +1398,37 @@ public:
   explicit MsgPreviewScreen(UITask* task)
       : _task(task), view_offset(0), channel_filter(CHANNEL_FILTER_ALL) {}
 
-  bool hasMessages() const { return !history.empty(); }
-  int messageCount() const { return (int)history.count(); }
+  bool hasMessages() const {
+    for (size_t age = 0; age < history.count(); ++age)
+      if (visible(*history.newest(age))) return true;
+    return false;
+  }
+  int messageCount() const {
+    if (mesh::ui::displayPowerPrefs().inbox == mesh::ui::DisplayInboxMode::Unread)
+      return (int)history.unreadCount();
+    if (mesh::ui::displayPowerPrefs().inbox == mesh::ui::DisplayInboxMode::Pending)
+      return _task->getMsgCount();
+    return (int)history.count();
+  }
+  void queueRemoved(int index) { history.queueRemoved(index); }
 
   void addPreview(uint8_t path_len, const char* from_name, const char* msg,
-                  int channel_idx, const char* channel_name) {
+                  int channel_idx, const char* channel_name,
+                  int queue_index = -1, bool select = true) {
     if (channel_idx < CHANNEL_FILTER_DIRECT
         || channel_idx >= MAX_GROUP_CHANNELS) {
       channel_idx = CHANNEL_FILTER_DIRECT;
       channel_name = nullptr;
     }
-    view_offset = 0;
-    channel_filter = channel_idx;
+    if (select) {
+      view_offset = 0;
+      channel_filter = channel_idx;
+    } else if ((mesh::ui::displayPowerPrefs().inbox != mesh::ui::DisplayInboxMode::Pending
+                  || queue_index >= 0)
+               && (channel_filter == CHANNEL_FILTER_ALL || channel_filter == channel_idx)) {
+      // Retain the message being read when a connected app receives another.
+      if (filteredCount() > 0) ++view_offset;
+    }
 
     char origin[62];
     if (path_len == 0xFF) {
@@ -1401,7 +1438,7 @@ public:
                (unsigned int)path_len);
     }
     history.add(companionMessageNowMillis(), channel_idx, channel_name,
-                origin, msg);
+                origin, msg, queue_index);
   }
 
   void renderSummary(DisplayDriver& display) const {
@@ -1416,9 +1453,16 @@ public:
     for (size_t age = 0;
          age < history.count() && rendered < layout.visible_rows;
          ++age) {
-      if (history.hasNewerEntryForThread(age)) continue;
       const MsgEntry* entry = history.newest(age);
-      if (entry == nullptr) continue;
+      if (entry == nullptr || !visible(*entry)) continue;
+      bool newer_in_thread = false;
+      for (size_t newer = 0; newer < age; ++newer) {
+        const MsgEntry* candidate = history.newest(newer);
+        if (visible(*candidate) && MessageHistory::sameThread(*entry, *candidate)) {
+          newer_in_thread = true; break;
+        }
+      }
+      if (newer_in_thread) continue;
 
       const int row_y = layout.top + rendered * layout.row_height;
       char label[48];
@@ -1535,6 +1579,7 @@ public:
              filtered_count == 0 ? 0 : view_offset + 1, filtered_count);
 #endif
     const MsgEntry* p = filteredEntry(view_offset);
+    if (p != nullptr && display.isOn()) history.markRead(p);
     char age[16] = {};
     if (p != nullptr) {
       mesh::ui::formatCompanionMessageAge(
@@ -1741,6 +1786,14 @@ int UITask::getPreviewCount() const {
   return static_cast<const MsgPreviewScreen*>(msg_preview)->messageCount();
 }
 
+const char* UITask::inboxTitle() const {
+  switch (mesh::ui::displayPowerPrefs().inbox) {
+    case mesh::ui::DisplayInboxMode::Pending: return "INBOX";
+    case mesh::ui::DisplayInboxMode::Unread: return "UNREAD";
+    default: return "HISTORY";
+  }
+}
+
 void UITask::renderMessageSummary(DisplayDriver& display) const {
   static_cast<const MsgPreviewScreen*>(msg_preview)->renderSummary(display);
 }
@@ -1776,28 +1829,27 @@ switch(t){
 
 void UITask::msgRead(int msgcount) {
   _msgcount = msgcount;
-  if (msgcount == 0) {
-    _deferred_msg_preview = false;
-    const bool holding_usb_preview = curr == msg_preview && _msg_preview_until != 0
-        && static_cast<int32_t>(millis() - _msg_preview_until) < 0;
-    if (!holding_usb_preview
-#if COMPANION_FEATURE_JOHN
-        && !isJohnReaderActive()
-#endif
-    ) {
-      gotoHomeScreen();
-    }
-  }
+  _next_refresh = 0;
+}
+
+void UITask::syncMessageQueue(int msgcount, int removed_index) {
+  if (msg_preview != nullptr)
+    static_cast<MsgPreviewScreen*>(msg_preview)->queueRemoved(removed_index);
+  msgRead(msgcount);
 }
 
 void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
                     int msgcount, int channel_idx,
-                    const char* channel_name) {
+                    const char* channel_name, int queue_index) {
   _msgcount = msgcount;
 
   ((MsgPreviewScreen *)msg_preview)
-      ->addPreview(path_len, from_name, text, channel_idx, channel_name);
-  if (isPairingScreenActive()) {
+      ->addPreview(path_len, from_name, text, channel_idx, channel_name,
+                    queue_index, !hasConnection());
+  if (hasConnection()) {
+    // Keep history, but do not change the page or wake for a connected client.
+    _deferred_msg_preview = false;
+  } else if (isPairingScreenActive()) {
     // Keep the PIN visible, but retain the preview so it can be shown after
     // pairing completes or the pairing display window expires.
     _deferred_msg_preview = true;
@@ -1811,14 +1863,6 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
   else {
     setCurrScreen(msg_preview);
   }
-
-  // A connected app drains the offline queue almost immediately, which calls
-  // msgRead(0). While attached to a computer, retain the actual message screen
-  // for the configured preview interval even though the app has already
-  // consumed the message.
-  _msg_preview_until = _board->isUsbHostConnected()
-      ? millis() + USB_MESSAGE_PREVIEW_MILLIS
-      : 0;
 
   if (_display != NULL) {
     if (shouldWakeDisplayForMessage()) {
@@ -1901,7 +1945,8 @@ void UITask::showPairingPin() {
 void UITask::finishPairingScreen(bool timed_out) {
   _pairing_screen_until = 0;
 
-  if (_deferred_msg_preview && _msgcount > 0) {
+  if (_deferred_msg_preview && !hasConnection()
+      && static_cast<MsgPreviewScreen*>(msg_preview)->hasMessages()) {
     _deferred_msg_preview = false;
     setCurrScreen(msg_preview);
   } else {
@@ -2178,12 +2223,6 @@ void UITask::loop() {
 #if COMPANION_FEATURE_JOHN
   if (john_reader && curr != john_reader) john_reader->poll();
 #endif
-
-  if (_msgcount == 0 && _msg_preview_until != 0
-      && static_cast<int32_t>(millis() - _msg_preview_until) >= 0) {
-    _msg_preview_until = 0;
-    if (curr == msg_preview) gotoHomeScreen();
-  }
 
   if (_display != NULL && _display->isOn()) {
     if (millis() >= _next_refresh && curr && !isButtonGesturePending()) {

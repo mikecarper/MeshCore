@@ -7,6 +7,15 @@ namespace mesh { namespace ui {
 
 enum class DisplayMode : uint8_t { Off, On, Button, Pairing, ButtonPairing, Automatic };
 enum class DisplayWake : uint8_t { Boot, Button, Message };
+enum class DisplayInboxMode : uint8_t { History, Pending, Unread };
+
+inline const char* displayInboxModeName(DisplayInboxMode mode) {
+  switch (mode) {
+    case DisplayInboxMode::Pending: return "pending";
+    case DisplayInboxMode::Unread: return "unread";
+    default: return "history";
+  }
+}
 
 struct DisplayPowerProfile {
   DisplayMode mode = DisplayMode::Button;
@@ -15,6 +24,7 @@ struct DisplayPowerProfile {
 struct DisplayPowerPrefs {
   DisplayPowerProfile battery;
   DisplayPowerProfile usb;
+  DisplayInboxMode inbox = DisplayInboxMode::History;
 };
 
 inline DisplayPowerPrefs& displayPowerPrefs() {

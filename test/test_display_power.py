@@ -127,6 +127,31 @@ void commandTests() {
   run("get display.timeout", "> 27");
   run("get display.usb.mode", "> on");
   run("get display.usb.timeout", "> 123");
+  // Earlier 12-byte v1 profiles retain their power settings and gain History.
+  auto v1 = fs.files["/display_prefs"];
+  v1[2] = 1; v1[9] = 0; v1[11] = 0;
+  for (unsigned i = 0; i < 11; ++i) v1[11] ^= v1[i];
+  fs.files["/display_prefs"] = v1;
+  assert(loadDisplayPowerSettings(&fs, true));
+  assert(displayPowerPrefs().inbox == DisplayInboxMode::History);
+  run("get display.timeout", "> 27");
+  run("get display.inbox", "Error: inbox modes unsupported");
+  auto inbox = [&](const char* text, const char* expected) {
+    assert(handleDisplayPowerCommand(text, reply, sizeof(reply), true));
+    assert(std::string(reply) == expected);
+  };
+  inbox("get display.inbox", "> history");
+  for (const char* mode : {"pending", "unread", "history"}) {
+    inbox((std::string("set display.inbox ") + mode).c_str(), "OK");
+    assert(loadDisplayPowerSettings(&fs, true));
+    inbox("get display.inbox", (std::string("> ") + mode).c_str());
+    run("get display.timeout", "> 27");
+    run("get display.usb.timeout", "> 123");
+  }
+  inbox("set display.inbox typo", "Error: use history|pending|unread");
+  inbox("set display.inbox", "Error: use history|pending|unread");
+  inbox("get display.inbox extra", "Error: unexpected argument");
+  assert(!handleDisplayPowerCommand("get display.inboxes", reply, sizeof(reply), true));
   const auto saved = fs.files["/display_prefs"];
   for (const char* value : {"", "0", "-1", "+2", "1.5", "15seconds", "3601", "9999999999999999999999"}) {
     const std::string command = std::string("set display.timeout ") + value;
@@ -136,6 +161,8 @@ void commandTests() {
   run("set display.mode typo", "Error: use off|on|button|pairing|button-pairing|automatic");
   assert(!handleDisplayPowerCommand("set display.model off", reply, sizeof(reply)));
   fs.fail_write = true;
+  inbox("set display.inbox unread", "Error: display settings save failed");
+  assert(displayPowerPrefs().inbox == DisplayInboxMode::History);
   run("set display.mode off", "Error: display settings save failed");
   assert(displayPowerPrefs().battery.mode == DisplayMode::Automatic);
   assert(fs.files["/display_prefs"] == saved);

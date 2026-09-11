@@ -119,10 +119,14 @@ public:
   }
 
   bool isBluetoothConnected() const {
+    return isInterfaceConnected(InterfaceType::Bluetooth);
+  }
+
+  bool isInterfaceConnected(InterfaceType type) const {
     if (!_enabled) return false;
 
     for (auto iface : _interfaces) {
-      if (iface.instance && iface.type == InterfaceType::Bluetooth
+      if (iface.instance && iface.type == type
           && iface.instance->isEnabled() && iface.instance->isConnected()) {
         return true;
       }

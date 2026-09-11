@@ -470,11 +470,11 @@ void MyMesh::initializeOfflineQueue() {
 #endif
 }
 
-void MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
+bool MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
   const int capacity = getOfflineQueueCapacity();
   if (!frame || len <= 0 || len > MAX_FRAME_SIZE || capacity <= 0) {
     MESH_DEBUG_PRINTLN("WARN: invalid offline queue frame length: %d", len);
-    return;
+    return false;
   }
 
   if (offline_queue_len >= capacity) {
@@ -489,7 +489,10 @@ void MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
         Frame& tail = offlineQueueFrameAt(offline_queue_len - 1);
         tail.len = len;
         memcpy(tail.buf, frame, len);
-        return;
+#ifdef DISPLAY_CLASS
+        if (_ui) _ui->syncMessageQueue(offline_queue_len, pos);
+#endif
+        return true;
       }
       pos++;
     }
@@ -499,7 +502,12 @@ void MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
     tail.len = len;
     memcpy(tail.buf, frame, len);
     offline_queue_len++;
+#ifdef DISPLAY_CLASS
+    if (_ui) _ui->syncMessageQueue(offline_queue_len);
+#endif
+    return true;
   }
+  return false;
 }
 
 int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
@@ -514,6 +522,9 @@ int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
     } else {
       offline_queue_head = (offline_queue_head + 1) % getOfflineQueueCapacity();
     }
+#ifdef DISPLAY_CLASS
+    if (_ui) _ui->syncMessageQueue(offline_queue_len, 0);
+#endif
     return len;
   }
   return 0; // queue is empty
@@ -923,7 +934,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   }
   memcpy(&out_frame[i], text, tlen);
   i += tlen;
-  addToOfflineQueue(out_frame, i);
+  const bool queued = addToOfflineQueue(out_frame, i);
 
   if (_serial->isConnected()) {
     uint8_t frame[1];
@@ -950,7 +961,8 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   // we only want to show text messages on display, not cli data
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
   if (should_display && _ui) {
-    _ui->newMsg(path_len, from.name, text, offline_queue_len);
+    _ui->newMsg(path_len, from.name, text, offline_queue_len,
+                -1, nullptr, queued ? offline_queue_len - 1 : -1);
     if (!_serial->isConnected()) {
       _ui->notify(UIEventType::contactMessage);
     }
@@ -1120,7 +1132,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   }
   memcpy(&out_frame[i], text, tlen);
   i += tlen;
-  addToOfflineQueue(out_frame, i);
+  const bool queued = addToOfflineQueue(out_frame, i);
 
   if (_serial->isConnected()) {
     uint8_t frame[1];
@@ -1154,7 +1166,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
            (unsigned int)channel_idx, channel_name);
   if (_ui) {
     _ui->newMsg(path_len, channel_label, text, offline_queue_len,
-                channel_idx, channel_name);
+                channel_idx, channel_name, queued ? offline_queue_len - 1 : -1);
   }
 #endif
 
@@ -2555,7 +2567,11 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
-  if (mesh::ui::handleDisplayPowerCommand(command, reply, reply_size)) return true;
+  if (mesh::ui::handleDisplayPowerCommand(command, reply, reply_size,
+          _ui != nullptr && _ui->supportsInboxModes())) {
+    if (_ui) _ui->inboxModeChanged();
+    return true;
+  }
 
   if (strcmp(command, "get display.touch") == 0) {
     if (_ui == NULL || !_ui->supportsTouchDebug()) {
@@ -4573,9 +4589,6 @@ void MyMesh::handleCmdFrame(size_t len) {
     int out_len;
     if ((out_len = getFromOfflineQueue(out_frame)) > 0) {
       _serial->writeFrame(out_frame, out_len);
-#ifdef DISPLAY_CLASS
-      if (_ui) _ui->msgRead(offline_queue_len);
-#endif
     } else {
       out_frame[0] = RESP_CODE_NO_MORE_MESSAGES;
       _serial->writeFrame(out_frame, 1);
@@ -7932,6 +7945,8 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  memory\r\n");
 #endif
     terminalOutput().print("  get display.rotation\r\n");
+    terminalOutput().print("  get display.inbox\r\n");
+    terminalOutput().print("  set display.inbox <history|pending|unread>\r\n");
     terminalOutput().print("  set display.rotation <0|90|180|270>\r\n");
     terminalOutput().print("  get display.touch\r\n");
     terminalOutput().print("  set display.touch <on|off> (this boot only)\r\n");

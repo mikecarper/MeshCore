@@ -36,7 +36,6 @@ class UITask : public AbstractUITask {
   GenericVibration vibration;
 #endif
   unsigned long _next_refresh;
-  unsigned long _msg_preview_until;
   unsigned long _pairing_screen_until;
   bool _deferred_msg_preview;
   CompanionNodePrefs* _node_prefs;
@@ -93,7 +92,7 @@ class UITask : public AbstractUITask {
 
   UIScreen* splash;
   UIScreen* home;
-  UIScreen* msg_preview;
+  UIScreen* msg_preview = nullptr;
   UIScreen* curr;
 #if COMPANION_FEATURE_JOHN
   UIScreen* john_reader = nullptr;
@@ -118,7 +117,6 @@ public:
 
   UITask(mesh::MainBoard* board, MultiSerialInterface* serial) : AbstractUITask(board, serial), _display(NULL), _sensors(NULL) {
     next_batt_chck = _next_refresh = 0;
-    _msg_preview_until = 0;
     _pairing_screen_until = 0;
     _deferred_msg_preview = false;
     _msgcount = 0;
@@ -180,9 +178,14 @@ public:
 
   // from AbstractUITask
   void msgRead(int msgcount) override;
+  void syncMessageQueue(int msgcount, int removed_index = -1) override;
+  bool supportsInboxModes() const override { return _display != nullptr; }
+  void inboxModeChanged() override { _next_refresh = 0; }
+  const char* inboxTitle() const;
   void newMsg(uint8_t path_len, const char* from_name, const char* text,
               int msgcount, int channel_idx = -1,
-              const char* channel_name = nullptr) override;
+              const char* channel_name = nullptr,
+              int queue_index = -1) override;
   void notify(UIEventType t = UIEventType::none) override;
   void loop() override;
 

@@ -1886,6 +1886,7 @@ var CLI_VERBS=[
    mode: 0 = get and set, 1 = get only, 2 = set only
    values: enum offered as value completions after `set <key> ` */
 var CLI_KEYS=[
+  ["display.inbox","Companion inbox behavior",0,"history|pending|unread"],
   ["display.mode","Display on battery",0,"off|on|button|pairing|button-pairing|automatic"],
   ["display.timeout","Battery display timeout in seconds (1-3600)",0],
   ["display.usb.mode","Display on USB power",0,"off|on|button|pairing|button-pairing|automatic"],
@@ -2030,6 +2031,7 @@ var CLI_COMPANION_VERBS=[
   ["reboot","Restart the node"]
 ];
 var CLI_COMPANION_KEYS=[
+  ["display.inbox","Companion inbox behavior",0,"history|pending|unread"],
   ["display.mode","Display on battery",0,"off|on|button|pairing|button-pairing|automatic"],
   ["display.timeout","Battery display timeout in seconds (1-3600)",0],
   ["display.usb.mode","Display on USB power",0,"off|on|button|pairing|button-pairing|automatic"],

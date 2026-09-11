@@ -84,7 +84,7 @@ static_assert(mesh::ui::isBluetoothPairingPromptActive(
 
         full_ui = UI_VARIANTS[0].read_text(encoding="utf-8")
         self.assertNotIn("else if (bluetooth_pin != 0)", full_ui)
-        self.assertIn("if (bluetooth_connected || show_bluetooth_pin)", full_ui)
+        self.assertIn("if (client_label != nullptr || show_bluetooth_pin)", full_ui)
         self.assertIn("drawBottomPairingBlock(display, home_content_top,", full_ui)
         self.assertIn("_pairing_screen_until = 0;", full_ui)
 

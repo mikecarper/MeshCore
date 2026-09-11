@@ -109,6 +109,7 @@ jobs:
       - name: Verify Companion Bluetooth settings and WebConfig
         run: |
           python3 -B test/test_display_power.py
+          python3 -B test/test_companion_inbox.py
           python3 -B test/test_heltec_r8_external_power.py
           python3 -B test/test_bluetooth_mac_contract.py
           python3 -B test/test_companion_settings_persistence_contract.py

@@ -833,6 +833,42 @@ detector may require a USB host to recognize USB power. Wi-Fi/MQTT connection or
 BLE pairing is not evidence of USB power. E-paper panels can retain their last
 image when powered off.
 
+## Set Companion inbox behavior
+
+The shared Companion UI (including T114 and R8) defaults to **History**: the
+last 32 received text previews remain available on the radio after an app
+downloads them. **Pending** separately counts frames waiting for the app,
+including non-text frames. Downloading a frame clears it from Pending; it does
+not mean someone read it. The phone's delivery queue is independent of the
+32-entry preview history and is never drained by reading on the radio.
+
+```text
+get display.inbox
+set display.inbox history
+set display.inbox pending
+set display.inbox unread
+```
+
+| Mode | Display behavior |
+| --- | --- |
+| `history` (default) | Shows **HISTORY** with the retained preview count, plus **Pending**. Downloaded previews remain browseable. |
+| `pending` | Shows **INBOX** with the app queue count and limits the reader to previews still waiting for the app. Non-text frames count toward Pending but have no text preview. |
+| `unread` | Shows **UNREAD** with the number of retained previews not yet displayed on the radio, plus **Pending**. Opening a preview on a lit display marks it read; app downloads do not. Read previews remain browseable. |
+
+All modes retain up to 32 previews internally; switching from `pending` back to
+`history` makes retained downloaded previews visible again. Evicted or rejected
+queue entries are not shown as pending. Previews and local read state are in RAM
+and reset on reboot. The mode applies immediately and survives reboot in
+`/display_prefs`; existing version-1 display settings load with `history` as the
+default. Legacy and tiny Companion UIs report `Error: inbox modes unsupported`.
+
+Incoming messages automatically open their preview only when no client is
+connected. While connected, new messages neither select another page nor move
+the preview being read; history stays accessible by button or touch. The home
+screen identifies connected USB and Bluetooth clients (or both), and TCP,
+Ethernet, or serial clients where supported. Actual BLE pairing prompts retain
+priority over connection status.
+
 ## Set MQTT observer display flip
 
 Supported observer displays, including the R8 OLED and ST7789 panels, can also

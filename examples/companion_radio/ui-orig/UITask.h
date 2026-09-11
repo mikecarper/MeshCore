@@ -94,7 +94,8 @@ public:
   void msgRead(int msgcount) override;
   void newMsg(uint8_t path_len, const char* from_name, const char* text,
               int msgcount, int channel_idx = -1,
-              const char* channel_name = nullptr) override;
+              const char* channel_name = nullptr,
+              int queue_index = -1) override;
   void notify(UIEventType t = UIEventType::none) override;
   void loop() override;
 

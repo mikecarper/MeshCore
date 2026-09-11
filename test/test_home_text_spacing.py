@@ -58,6 +58,9 @@ struct Task {
   int count=0;
   bool isBluetoothEnabled(){return enabled;} bool hasBluetoothConnection(){return connected;}
   bool isPairingPromptActive(){return prompt;} int getPreviewCount(){return count;}
+  int getMsgCount(){return count;}
+  const char* inboxTitle(){return "HISTORY";}
+  const char* connectedClientLabel(){return connected ? "BLUETOOTH" : nullptr;}
 };
 struct Mesh { uint32_t pin=123456; uint32_t getBLEPin(){return pin;} } the_mesh;
 struct HomePage { enum { FIRST=0 }; };
