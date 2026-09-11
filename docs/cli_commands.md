@@ -2051,7 +2051,9 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 
 **Description:** When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of `int.thresh` - either, both, or none may be active.
 
-The Cascade firmware profile defaults CAD to `on`; target-default builds continue to default it to `off`.
+Fresh Cascade-profile builds default CAD to `off` across all roles, including
+Companion. Saved CAD settings take precedence after an upgrade. Use `set cad off`
+to disable it on an existing node or `set cad on` to enable it explicitly.
 The repeater applies the saved toggle to the radio during its periodic
 noise-floor service. With one runnable packet, a busy result uses the normal
 CAD retry delay and allows roughly four seconds of continuous busy results.

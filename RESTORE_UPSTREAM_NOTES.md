@@ -82,8 +82,9 @@ The current tree contains both restored capabilities:
 
 - **`cad_enabled`** is present in common preferences, load/save paths, and the
   `get/set cad` CLI. Repeater, room-server, sensor, and Companion integrations
-  feed it to `RadioLibWrapper::setCADEnabled()`. Target-default builds default
-  CAD off; the Cascade profile supplies `DEFAULT_CAD_ENABLED=1`.
+  feed it to `RadioLibWrapper::setCADEnabled()`. The Cascade profile supplies
+  `DEFAULT_CAD_ENABLED=0` for fresh settings across all roles; saved CAD settings
+  take precedence after an upgrade.
 - **`radio_fem_rxgain`** is persisted and exposed as
   `get/set radio.fem.rxgain`. Supported boards implement
   `setLoRaFemLnaEnabled()`; unsupported boards reject the operation rather than

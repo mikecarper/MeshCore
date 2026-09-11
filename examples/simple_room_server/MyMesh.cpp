@@ -1249,7 +1249,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
   _prefs.interference_threshold = 0; // disabled
   _prefs.radio_fem_rxgain = 1;       // LoRa FEM RX gain on by default (FEM boards)
-  _prefs.cad_enabled = DEFAULT_CAD_ENABLED; // Cascade defaults CAD on; target default remains off
+  _prefs.cad_enabled = DEFAULT_CAD_ENABLED;
   _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0;
   _prefs.rx_powersaving_enabled = DEFAULT_RXPS_ENABLED ? 1 : 0;
   _prefs.rx_ps_level = DEFAULT_RXPS_LEVEL;
