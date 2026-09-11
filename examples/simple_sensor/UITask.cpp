@@ -7,7 +7,6 @@
 #define USER_BTN_PRESSED LOW
 #endif
 
-#define AUTO_OFF_MILLIS      20000  // 20 seconds
 #define BOOT_SCREEN_MILLIS   4000   // 4 seconds
 
 // 'meshcore', 128x13px
@@ -29,9 +28,8 @@ static const uint8_t meshcore_logo [] PROGMEM = {
 
 void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version) {
   _prevBtnState = HIGH;
-  _auto_off = millis() + AUTO_OFF_MILLIS;
   _node_prefs = node_prefs;
-  _display->turnOn();
+  _display->servicePower(board.isExternalPowered() || board.isUsbHostConnected());
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
     && defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP
@@ -98,16 +96,17 @@ void UITask::renderCurrScreen() {
 }
 
 void UITask::loop() {
+  if (_display->servicePower(board.isExternalPowered() || board.isUsbHostConnected())) _next_refresh = 0;
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
     && defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP
   int ev = user_btn.check();
   if (ev != BUTTON_EVENT_NONE) {
     if (!_display->isOn()) {
-      _display->turnOn();
+      _display->wake(mesh::ui::DisplayWake::Button);
       _next_refresh = 0;
     }
-    _auto_off = millis() + AUTO_OFF_MILLIS;
+    _display->wake(mesh::ui::DisplayWake::Button);
   }
 #elif defined(PIN_USER_BTN)
   if (millis() >= _next_read) {
@@ -117,9 +116,9 @@ void UITask::loop() {
         if (_display->isOn()) {
           // TODO: any action ?
         } else {
-          _display->turnOn();
+          _display->wake(mesh::ui::DisplayWake::Button);
         }
-        _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+        _display->wake(mesh::ui::DisplayWake::Button);   // extend auto-off timer
       }
       _prevBtnState = btnState;
     }
@@ -136,10 +135,8 @@ void UITask::loop() {
       _next_refresh = millis() + 1000;   // refresh every second
     }
 #if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0 && defined(PIN_USER_BTN)
-    if (user_btn.isWakeHoldActive()) _auto_off = millis() + AUTO_OFF_MILLIS;
+    if (user_btn.isWakeHoldActive()) _display->wake(mesh::ui::DisplayWake::Button);
 #endif
-    if (millis() > _auto_off) {
-      _display->turnOff();
-    }
+
   }
 }

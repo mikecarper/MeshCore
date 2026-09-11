@@ -21,7 +21,7 @@ class UITask {
   mesh::MainBoard* _board;
 #endif
   DisplayDriver* _display;
-  unsigned long _next_read, _next_refresh, _auto_off;
+  unsigned long _next_read, _next_refresh;
   int _prevBtnState;
   NodePrefs* _node_prefs;
   char _version_info[32];
@@ -58,11 +58,9 @@ class UITask {
 #ifdef WITH_MQTT_BRIDGE
   MQTTPrefs* _observer_prefs = NULL;
 #endif
-  unsigned long _timeout_seen = 0;   // to notice a live `display.timeout` change
   uint8_t _flip_seen = 0xFF;         // 0xFF forces the first apply
   void applyDisplayFlip();
 
-  unsigned long displayTimeoutMillis() const;
 
   void renderCurrScreen();
 public:
@@ -76,8 +74,7 @@ public:
   void begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version);
 
 #ifdef WITH_MQTT_BRIDGE
-  // Supplies `display.timeout`, which is read live so a config change applies
-  // without a reboot. Call before begin().
+  // Supplies display.flip. Call before begin().
   void setObserverPrefs(MQTTPrefs* prefs) { _observer_prefs = prefs; }
 #endif
 

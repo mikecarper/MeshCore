@@ -13,9 +13,6 @@
 
 #include "NodePrefs.h"
 
-#ifndef UI_USB_AUTO_OFF_MULTIPLIER
-  #define UI_USB_AUTO_OFF_MULTIPLIER 5UL
-#endif
 
 enum class UIEventType {
     none,
@@ -50,26 +47,9 @@ protected:
         || _shutdownGuard->prepareForUiShutdown();
   }
 
-  bool isDisplayAutoOffDue(unsigned long configured_deadline,
-                           unsigned long configured_timeout_millis) const {
-    unsigned long deadline = configured_deadline;
-#if UI_USB_AUTO_OFF_MULTIPLIER > 1
-    if (_board->isUsbHostConnected()) {
-      // The configured deadline already includes the first timeout period.
-      // Add the remaining periods while attached to a computer.
-      deadline += configured_timeout_millis
-          * (UI_USB_AUTO_OFF_MULTIPLIER - 1UL);
-    }
-#endif
-    return static_cast<int32_t>(millis() - deadline) > 0;
-  }
 
-  bool shouldWakeDisplayForMessage() const {
-    // Keep the existing BLE-only behavior, where the connected companion is
-    // expected to surface the notification. A computer attached over USB is
-    // the exception: show the message on the device even if BLE is connected.
-    return !hasConnection() || _board->isUsbHostConnected();
-  }
+
+  bool shouldWakeDisplayForMessage() const { return !hasConnection(); }
 
 public:
   void setShutdownGuard(UIShutdownGuard* guard) { _shutdownGuard = guard; }

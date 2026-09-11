@@ -96,10 +96,7 @@ void setup() {
 #ifdef DISPLAY_CLASS
   display_ready = display.begin();
   if (display_ready) {
-    display.startFrame();
-    display.setCursor(0, 0);
-    display.print("Please wait...");
-    display.endFrame();
+    display.turnOff();  // Stay dark until the saved display policy is loaded.
   }
 #endif
 

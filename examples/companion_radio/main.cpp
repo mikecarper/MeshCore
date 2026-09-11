@@ -1591,7 +1591,7 @@ void halt() {
           || static_cast<int32_t>(millis() - companion_setup_display_refresh) < 0) return;
       companion_setup_display_refresh = millis() + 1000;
 
-      companion_setup_display->turnOn();
+      if (!companion_setup_display->isOn()) return;
       companion_setup_display->startFrame();
       companion_setup_display->setCompactText(false);
       companion_setup_display->setTextSize(1);
@@ -2294,12 +2294,7 @@ void setup() {
       && UI_WIFI_SETUP_HOME_PAGE != 1
     companion_setup_display = disp;
   #endif
-    disp->startFrame();
-  #ifdef ST7789
-    disp->setTextSize(2);
-  #endif
-    disp->drawTextCentered(disp->width() / 2, 28, "Loading...");
-    disp->endFrame();
+    disp->turnOff();  // No boot content before the saved policy is loaded.
   }
 #if defined(ESP32) && defined(WIFI_SSID)
   companion_display_available = disp != NULL;
@@ -2737,6 +2732,7 @@ void loop() {
   #if defined(TBEAM_1W) && defined(PIN_WIFI_BTN)
     ui_task.serviceWiFiToggleButton();
   #endif
+    ui_task.loop();  // Continue button/touch handling while the portal is active.
     renderCompanionSetupDisplay();
   } else {
     ui_task.loop();

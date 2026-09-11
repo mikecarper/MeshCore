@@ -18,9 +18,6 @@
 #include <helpers/esp32/WebConfigServer.h>   // defines WITH_WEBCONFIG on ESP32
 #endif
 
-#ifndef AUTO_OFF_MILLIS
-#define AUTO_OFF_MILLIS      20000  // 20 seconds; 0 keeps the screen on
-#endif
 
 #ifdef DISPLAY_TOUCH_TOGGLE
 #define TOUCH_POLL_MILLIS    50
@@ -54,15 +51,6 @@ void UITask::applyDisplayFlip() {
 #endif
 }
 
-// `display.timeout` when the observer prefs are available, otherwise the
-// compiled-in default. Read on every use so a `set display.timeout` takes
-// effect immediately.
-unsigned long UITask::displayTimeoutMillis() const {
-#ifdef WITH_MQTT_BRIDGE
-  if (_observer_prefs) return (unsigned long)_observer_prefs->display_timeout_secs * 1000UL;
-#endif
-  return AUTO_OFF_MILLIS;
-}
 #define BOOT_SCREEN_MILLIS   4000   // 4 seconds
 
 #ifdef DISPLAY_TOUCH_TOGGLE
@@ -88,14 +76,12 @@ static const uint8_t meshcore_logo [] PROGMEM = {
 
 void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version) {
   _prevBtnState = HIGH;
-  _timeout_seen = displayTimeoutMillis();
-  _auto_off = millis() + displayTimeoutMillis();
   _started_at = millis();
   _node_prefs = node_prefs;
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
   ObserverDashboard::applyDarkPalette();   // retunes UIColor for this target only
 #endif
-  _display->turnOn();
+  _display->servicePower(board.isExternalPowered() || board.isUsbHostConnected());
   applyDisplayFlip();
 #ifdef DISPLAY_TOUCH_TOGGLE
   _touch.begin();
@@ -342,11 +328,7 @@ void UITask::updateActivityRows() {
 
 #ifdef DISPLAY_TOUCH_TOGGLE
 void UITask::toggleDisplay(const char* source) {
-  if (_display->isOn()) {
-    _display->turnOff();
-  } else {
-    _display->turnOn();
-  }
+  _display->wake(mesh::ui::DisplayWake::Button);
 #ifdef DISPLAY_TOUCH_DEBUG
   mesh::usbConsolePort().printf("Display: %s -> %s\n", source, _display->isOn() ? "on" : "off");
 #else
@@ -359,17 +341,25 @@ void UITask::toggleDisplay(const char* source) {
   _rows_valid = false;
 #endif
   _next_refresh = 0;   // redraw at once rather than showing the stale frame
-  _auto_off = millis() + displayTimeoutMillis();
 }
 #endif
 
 void UITask::loop() {
+  if (_display->servicePower(board.isExternalPowered() || board.isUsbHostConnected())) {
+    _next_refresh = 0;
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+    _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+    _rows_valid = false;
+#endif
+  }
 #if defined(PIN_USER_BTN) && defined(DISPLAY_TOUCH_TOGGLE)
   int ev = user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
     toggleDisplay("button");
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-    _display->turnOn();
+    _display->wake(mesh::ui::DisplayWake::Button);
     mesh::usbConsolePort().printf("Powering Off\r\n");
     _powering_off_at = millis() + POWEROFF_DELAY;
 #ifdef DISPLAY_REDRAW_ON_CHANGE
@@ -390,7 +380,7 @@ void UITask::loop() {
   int ev = user_btn.check();
   if (ev != BUTTON_EVENT_NONE) {
     if (!_display->isOn()) {
-      _display->turnOn();
+      _display->wake(mesh::ui::DisplayWake::Button);
 #ifdef DISPLAY_REDRAW_ON_CHANGE
       _frame_valid = false;
 #endif
@@ -399,7 +389,7 @@ void UITask::loop() {
 #endif
       _next_refresh = 0;
     }
-    _auto_off = millis() + displayTimeoutMillis();
+    _display->wake(mesh::ui::DisplayWake::Button);
   }
 #elif defined(PIN_USER_BTN)
   if (millisReached(millis(), _next_read)) {
@@ -412,7 +402,7 @@ void UITask::loop() {
         if (_display->isOn()) {
           // TODO: any action ?
         } else {
-          _display->turnOn();
+          _display->wake(mesh::ui::DisplayWake::Button);
 #ifdef DISPLAY_REDRAW_ON_CHANGE
           _frame_valid = false;
 #endif
@@ -420,29 +410,12 @@ void UITask::loop() {
           _rows_valid = false;
 #endif
         }
-        _auto_off = millis() + displayTimeoutMillis();   // extend auto-off timer
+        _display->wake(mesh::ui::DisplayWake::Button);
 #endif
       }
       _prevBtnState = btnState;
     }
     _next_read = millis() + 200;  // 5 reads per second
-  }
-#endif
-
-#ifdef WITH_WEBCONFIG
-  // While the setup portal is up there's no user button to wake the screen
-  // reliably - keep it on so the join instructions stay visible.
-  if (WebConfigServer::getSetupInfo(NULL, 0, NULL, 0)) {
-    if (!_display->isOn()) {
-      _display->turnOn();
-#ifdef DISPLAY_REDRAW_ON_CHANGE
-      _frame_valid = false;
-#endif
-#ifdef DISPLAY_ACTIVITY_DASHBOARD
-      _rows_valid = false;
-#endif
-    }
-    _auto_off = millis() + displayTimeoutMillis();
   }
 #endif
 
@@ -455,25 +428,6 @@ void UITask::loop() {
     }
   }
 #endif
-
-  // Observe timeout changes even while the panel is blanked. In particular,
-  // `set display.timeout 0` means the display must stay on, so wake it now
-  // rather than waiting for a button/touch event that may never arrive.
-  unsigned long timeout = displayTimeoutMillis();
-  if (timeout != _timeout_seen) {
-    _timeout_seen = timeout;
-    _auto_off = millis() + timeout;
-    if (timeout == 0 && !_display->isOn()) {
-      _display->turnOn();
-#ifdef DISPLAY_REDRAW_ON_CHANGE
-      _frame_valid = false;
-#endif
-#ifdef DISPLAY_ACTIVITY_DASHBOARD
-      _rows_valid = false;
-#endif
-      _next_refresh = 0;
-    }
-  }
 
   if (_display->isOn()) {
     // Apply a live orientation change before drawing, including the first frame
@@ -502,25 +456,6 @@ void UITask::loop() {
 #endif
 
       _next_refresh = millis() + 1000;   // check for visible changes every second
-    }
-    // `_auto_off` is only armed on activity, so a timeout changed at runtime has
-    // to restart the countdown here - otherwise 0 -> 60 blanks instantly off a
-    // boot-time deadline, and 60 -> 3600 still blanks at the old 60 s mark.
-#if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0 && defined(PIN_USER_BTN)
-    if (user_btn.isWakeHoldActive()) _auto_off = millis() + timeout;
-#endif
-#ifdef DISPLAY_TOUCH_TOGGLE
-    if (_powering_off_at == 0 && timeout > 0 && millisReached(millis(), _auto_off)) {
-#else
-    if (timeout > 0 && millisReached(millis(), _auto_off)) {
-#endif
-      _display->turnOff();
-#ifdef DISPLAY_REDRAW_ON_CHANGE
-      _frame_valid = false;
-#endif
-#ifdef DISPLAY_ACTIVITY_DASHBOARD
-      _rows_valid = false;
-#endif
     }
   }
 

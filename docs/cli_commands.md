@@ -779,20 +779,61 @@ build flag is needed.
 
 ---
 
-## Set MQTT observer display timeout and flip
+## Set display modes and timeouts
 
-MQTT observer builds with a display support a persisted inactivity timeout:
+Display-equipped Companions, repeaters, room servers, and sensors have four
+saved settings. The WebConfig **Display** card exposes the same controls:
+
+| Setting | CLI | Default |
+| --- | --- | --- |
+| Battery mode | `get/set display.mode` | `button-pairing` on BLE Companions; `button` elsewhere |
+| Battery timeout, seconds | `get/set display.timeout` | `15` |
+| USB mode | `get/set display.usb.mode` | Same as battery mode |
+| USB timeout, seconds | `get/set display.usb.timeout` | `15` |
+
+Modes are `off`, `on`, `button`, `pairing`, `button-pairing`, and `automatic`.
+Pairing modes are available only on builds supporting BLE pairing.
+
+- `off`: stays dark, including boot and pairing.
+- `on`: stays on while the device is awake.
+- `button`: a physical button, keyboard/navigation input, or supported touch
+  wakes the display and restarts the timeout.
+- `pairing`: wakes only for an actual BLE PIN request, until pairing ends or
+  expires. The inactivity timeout does not shorten the pairing prompt.
+- `button-pairing`: combines the button and pairing behaviors.
+- `automatic`: shows startup briefly (at most four seconds), and wakes for
+  messages while the app is disconnected. An app connection blanks the screen;
+  buttons and pairing requests can still wake it. Disconnecting alone does not
+  wake it. Network traffic and screen redraws do not extend the timeout.
+
+Timeouts are whole seconds from `1` to `3600`. Use mode `on` for a permanent
+display rather than timeout `0`. The timeout is retained but unused in `off`,
+`on`, and `pairing` modes. Settings apply immediately, including while blanked;
+changing power source applies the other profile without carrying over a wake
+from the previous profile. Settings survive reboot and filesystem-preserving
+updates in `/display_prefs`; erasing the filesystem restores the defaults.
+An existing observer timeout that differs from its old 60-second default is
+migrated once to both power profiles; an old zero timeout becomes mode `on`.
 
 ```text
-get display.timeout
-set display.timeout 0
-set display.timeout 60
+set display.mode button-pairing
+set display.timeout 15
+set display.usb.mode on
+set display.usb.timeout 60
 ```
 
-The value is seconds. `0` keeps the display on; `1` through `3600` blanks it
-after that much inactivity. The default is `60`. A change applies immediately
-and restarts the countdown. On the Heltec V4 R8 Expansion Kit V2 observer, a
-panel tap or USER-button click can also blank or wake the display.
+USB profile selection uses the board's external-power detector, with USB-host
+detection as a fallback. VBUS-capable boards detect chargers without a data
+connection. Heltec V4 R8 uses either a detected USB host or a calibrated battery
+voltage above 4.21 V. The voltage estimate is checked every five seconds and
+clears at 4.20 V or below; host detection takes effect immediately. This estimate
+can miss a charger while the battery is low, depends on ADC calibration, and
+cannot distinguish USB from solar charging. Other boards without a power
+detector may require a USB host to recognize USB power. Wi-Fi/MQTT connection or
+BLE pairing is not evidence of USB power. E-paper panels can retain their last
+image when powered off.
+
+## Set MQTT observer display flip
 
 Supported observer displays, including the R8 OLED and ST7789 panels, can also
 be turned 180 degrees relative to their compiled orientation:
@@ -809,8 +850,8 @@ relative 180-degree mounting choice and cannot switch between portrait and
 landscape. The value is harmless on an observer display driver that does not
 support flipping.
 
-Both settings survive reboot and firmware updates that preserve the filesystem;
-erasing flash restores the `60`/`off` defaults. The boot log reports the saved
+Flip survives reboot and firmware updates that preserve the filesystem;
+erasing flash restores the `off` default. The boot log reports the saved
 flip state on display-enabled observer builds.
 
 ---

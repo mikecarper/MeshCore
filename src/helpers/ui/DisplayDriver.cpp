@@ -1,4 +1,23 @@
 #include "DisplayDriver.h"
+#include <Arduino.h>
+
+bool DisplayDriver::servicePower(bool usb_power, bool app_connected, bool pairing) {
+  _power_policy.update(mesh::ui::displayPowerPrefs(), usb_power, app_connected, pairing, millis());
+  const bool changed = isOn() != _power_policy.on();
+  if (changed) { if (_power_policy.on()) turnOn(); else turnOff(); }
+  return changed;
+}
+
+bool DisplayDriver::wake(mesh::ui::DisplayWake reason) {
+  if (!_power_policy.wake(reason, millis())) return false;
+  if (_power_policy.on() && !isOn()) turnOn();
+  return true;
+}
+
+void DisplayDriver::dismiss() {
+  _power_policy.dismiss();
+  if (!_power_policy.on() && isOn()) turnOff();
+}
 
 #if defined(ESP32_PLATFORM) && defined(MESHCORE_HAS_REAL_DISPLAY)
 

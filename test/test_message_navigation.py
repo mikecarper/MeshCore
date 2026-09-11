@@ -152,6 +152,8 @@ int main() {
   g_mock_pin_levels[7]=HIGH;
   user_btn.begin(); user_btn.enableQuadrupleClick();
   Display display;
+  display.servicePower(false);
+  display.wake(mesh::ui::DisplayWake::Button);
   UITask task(display);
   HomeScreen home(&task);
   Screen group;
@@ -393,6 +395,7 @@ class MessageNavigationTest(unittest.TestCase):
                     "-I" + str(ROOT / "src"), "-I" + str(ROOT / "test/mocks"),
                     "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
                     "-x", "c++", "-", str(ROOT / "src/helpers/ui/MomentaryButton.cpp"),
+                    str(ROOT / "src/helpers/ui/DisplayDriver.cpp"),
                     "-o", str(binary),
                 ], input=preamble + implementation + SCENARIOS, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)

@@ -35,7 +35,7 @@ class UITask : public AbstractUITask {
 #ifdef PIN_VIBRATION
   GenericVibration vibration;
 #endif
-  unsigned long _next_refresh, _auto_off;
+  unsigned long _next_refresh;
   CompanionNodePrefs* _node_prefs;
   char _alert[80];
   unsigned long _alert_expiry;

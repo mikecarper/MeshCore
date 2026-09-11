@@ -53,11 +53,11 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
   if (_display != NULL) {
     _display->setRotationDegrees(node_prefs->display_rotation_degrees);
   }
-  _auto_off = millis() + AUTO_OFF_MILLIS;
+
   clearMsgPreview();
   _node_prefs = node_prefs;
   if (_display != NULL) {
-    _display->turnOn();
+    _display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(), hasConnection());
   }
 
   // strip off dash and commit hash by changing dash to null terminator
@@ -182,13 +182,10 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
   StrHelper::strncpy(_msg, text, sizeof(_msg));
 
   if (_display != NULL) {
-    if (!_display->isOn() && shouldWakeDisplayForMessage()) {
-      _display->turnOn();
+    if (shouldWakeDisplayForMessage()) {
+      _display->wake(mesh::ui::DisplayWake::Message);
     }
-    if (_display->isOn()) {
-    _auto_off = millis() + AUTO_OFF_MILLIS;  // extend the auto-off timer
-    _need_refresh = true;
-    }
+    if (_display->isOn()) _need_refresh = true;
   }
 }
 
@@ -485,7 +482,7 @@ void UITask::showPairingPin() {
   _need_refresh = true;
   _next_refresh = 0;
   if (_display != NULL && !_display->isOn()) {
-    _display->turnOn();
+    _display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(), hasConnection(), true);
   }
 }
 
@@ -496,9 +493,7 @@ void UITask::finishPairingScreen(bool timed_out) {
   if (_display == NULL) return;
 
   if (timed_out) {
-    _display->turnOff();
-  } else {
-    _auto_off = millis() + AUTO_OFF_MILLIS;
+    _display->dismiss();
   }
 }
 
@@ -513,6 +508,12 @@ void UITask::servicePairingState() {
     if (!isPairingScreenActive()) {
       finishPairingScreen(timed_out);
     }
+  }
+  if (_display != NULL && _display->servicePower(
+      _board->isExternalPowered() || _board->isUsbHostConnected(),
+      hasConnection(), isPairingScreenActive())) {
+    _next_refresh = 0;
+    _need_refresh = true;
   }
 }
 
@@ -548,18 +549,6 @@ void UITask::loop() {
 
       _next_refresh = millis() + 1000;   // refresh every second
     }
-#ifdef KEEP_DISPLAY_ON_USB
-    // Opt-in: refresh the auto-off deadline while externally powered, so the
-    // timer counts from the moment external power is removed. Off by default
-    // because OLED panels burn in quickly; only enable for LCD targets or
-    // where the display is replaceable.
-    if (board.isExternalPowered()) {
-      _auto_off = millis() + AUTO_OFF_MILLIS;
-    }
-#endif
-    if (!isPairingScreenActive() && isDisplayAutoOffDue(_auto_off, AUTO_OFF_MILLIS)) {
-      _display->turnOff();
-    }
   }
 }
 
@@ -569,10 +558,7 @@ void UITask::handleButtonAnyPress() {
   // do not refresh the display here, as it may block the button handler
   if (_display != NULL) {
     _displayWasOn = _display->isOn();  // Track display state before any action
-    if (!_displayWasOn) {
-      _display->turnOn();
-    }
-    _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+    _display->wake(mesh::ui::DisplayWake::Button);
   }
 }
 

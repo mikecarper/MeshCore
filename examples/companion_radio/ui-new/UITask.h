@@ -35,7 +35,7 @@ class UITask : public AbstractUITask {
 #ifdef PIN_VIBRATION
   GenericVibration vibration;
 #endif
-  unsigned long _next_refresh, _auto_off;
+  unsigned long _next_refresh;
   unsigned long _msg_preview_until;
   unsigned long _pairing_screen_until;
   bool _deferred_msg_preview;

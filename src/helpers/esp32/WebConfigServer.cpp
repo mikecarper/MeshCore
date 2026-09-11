@@ -10,6 +10,8 @@ static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
 #include <ArduinoJson.h>
+#include <helpers/ui/DisplayPowerSettings.h>
+#include <helpers/ui/DisplayBuildFlags.h>
 #include <Preferences.h>
 #include <esp_wifi.h>
 #include <esp_system.h>
@@ -1791,6 +1793,15 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     radio["rxps_rx_us"] = node.rx_ps_rx_us;
     radio["rxps_sleep_us"] = node.rx_ps_sleep_us;
     radio["powersaving"] = (bool)node.power_saving;
+#ifdef MESHCORE_HAS_REAL_DISPLAY
+    JsonObject screen = doc["display"].to<JsonObject>();
+    const auto& display_prefs = mesh::ui::displayPowerPrefs();
+    screen["mode"] = mesh::ui::displayModeName(display_prefs.battery.mode);
+    screen["timeout"] = display_prefs.battery.seconds;
+    screen["usb_mode"] = mesh::ui::displayModeName(display_prefs.usb.mode);
+    screen["usb_timeout"] = display_prefs.usb.seconds;
+    screen["pairing"] = mesh::ui::displayPairingSupported();
+#endif
     radio["repeat"] = (bool)node.repeat;
     radio["flood_max"] = node.flood_max;
     radio["flood_max_advert"] = node.flood_max_advert;

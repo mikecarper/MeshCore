@@ -47,6 +47,43 @@ def embedded_page():
 
 
 class WebConfigUiRuntimeTest(unittest.TestCase):
+    def test_four_display_controls_and_pairing_capability(self):
+        status, config = self.setup_values()
+        config["display"] = {
+            "mode": "button", "timeout": 23,
+            "usb_mode": "on", "usb_timeout": 55, "pairing": False,
+        }
+        prelude = r'''<script>
+window.fetch=function(path){
+  var value=path==="/api/status"?%s:%s;
+  return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(value)}});
+};
+window.addEventListener("load",function(){
+  setTimeout(function(){enterApp()},50);
+  setTimeout(function(){
+    var card=document.getElementById("display-settings"), body=document.body;
+    body.setAttribute("data-test-display-visible",!card.classList.contains("hide"));
+    body.setAttribute("data-test-display-count",card.querySelectorAll("[data-k]").length);
+    body.setAttribute("data-test-battery-timeout",card.querySelector('[data-k="display.timeout"]').value);
+    body.setAttribute("data-test-usb-timeout",card.querySelector('[data-k="display.usb.timeout"]').value);
+    body.setAttribute("data-test-usb-disabled",card.querySelector('[data-k="display.usb.timeout"]').disabled);
+    body.setAttribute("data-test-pairing-disabled",card.querySelector('option[value="pairing"]').disabled);
+    var mode=card.querySelector('[data-k="display.mode"]');
+    mode.value="off";mode.dispatchEvent(new Event("input",{bubbles:true}));
+    body.setAttribute("data-test-battery-disabled",card.querySelector('[data-k="display.timeout"]').disabled);
+    body.setAttribute("data-test-dirty-display",st.dirty["display.mode"]);
+  },650);
+});
+</script>''' % (json.dumps(status), json.dumps(config))
+        dom = self.run_page(prelude)
+        for attribute, value in (
+            ("display-visible", "true"), ("display-count", "4"),
+            ("battery-timeout", "23"), ("usb-timeout", "55"),
+            ("usb-disabled", "true"), ("pairing-disabled", "true"),
+            ("battery-disabled", "true"), ("dirty-display", "off"),
+        ):
+            self.assertIn('data-test-%s="%s"' % (attribute, value), dom)
+
     def setup_values(self):
         sys.path.insert(0, str(ROOT / "scripts"))
         try:

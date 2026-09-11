@@ -27,7 +27,7 @@ class UITask : public AbstractUITask {
 #ifdef HAS_DRV2605
   DRV2605Vibration vibration;
 #endif
-  unsigned long _next_refresh, _auto_off;
+  unsigned long _next_refresh;
   CompanionNodePrefs* _node_prefs;
   char _version_info[32];
   char _origin[62];

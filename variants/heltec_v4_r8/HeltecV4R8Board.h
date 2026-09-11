@@ -13,6 +13,9 @@
 class HeltecV4R8Board : public ESP32Board {
 protected:
   float adc_mult = ADC_MULTIPLIER;
+  uint32_t last_power_check_ms = 0;
+  bool power_voltage_sampled = false;
+  bool voltage_external_power = false;
 
 public:
   RefCountedDigitalPin periph_power;
@@ -28,6 +31,7 @@ public:
   bool canControlLoRaFemLna() const override;
   bool isLoRaFemLnaEnabled() const override;
   uint16_t getBattMilliVolts() override;
+  bool isExternalPowered() override;
   bool setAdcMultiplier(float multiplier) override {
     if (multiplier == 0.0f) {
       adc_mult = ADC_MULTIPLIER;

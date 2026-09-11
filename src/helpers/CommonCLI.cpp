@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
+#include <helpers/ui/DisplayPowerSettings.h>
 #include "CLICommandUtils.h"
 #include "FloodAdvertCLI.h"
 #include "StorageLayout.h"
@@ -731,6 +732,8 @@ static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
 }
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
+  const bool display_settings_loaded = mesh::ui::loadDisplayPowerSettings(fs, false);
+  (void)display_settings_loaded;
   bool is_fresh_install = false;
   bool is_upgrade = false;
   bool loaded = false;
@@ -785,6 +788,8 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   MQTTPrefsAtomicStore::LegacyUpgradeGate legacy_upgrade(
       _com_prefs_needs_upgrade || node_prefs_needs_migration);
   loadMQTTPrefs(fs, &legacy_upgrade);
+  if (!display_settings_loaded && _mqtt_prefs.display_timeout_secs != DISPLAY_TIMEOUT_DEFAULT_SECS)
+    mesh::ui::migrateLegacyDisplayTimeout(_mqtt_prefs.display_timeout_secs);
   if (_mqtt_prefs_hold) legacy_upgrade.holdMqttSource();
 
   // For MQTT bridge, migrate bridge.source to RX (logRx) only on fresh installs or upgrades
@@ -2457,6 +2462,7 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     mesh::cli::normalizeCommandVerb(command);
+    if (mesh::ui::handleDisplayPowerCommand(command, reply, 160)) return;
 
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
     // live in CommonCLI_Observer.cpp.

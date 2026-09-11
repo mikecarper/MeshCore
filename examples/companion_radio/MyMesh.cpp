@@ -1,3 +1,4 @@
+#include <helpers/ui/DisplayPowerSettings.h>
 #include "MyMesh.h"
 
 #include <Arduino.h> // needed for PlatformIO
@@ -1723,6 +1724,14 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   }
 #endif
 
+  mesh::ui::loadDisplayPowerSettings(_store->getPrimaryFS(),
+#ifdef BLE_PIN_CODE
+      true
+#else
+      false
+#endif
+  );
+
   // load persisted prefs
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
@@ -2545,6 +2554,8 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     }
     return true;
   }
+
+  if (mesh::ui::handleDisplayPowerCommand(command, reply, reply_size)) return true;
 
   if (strcmp(command, "get display.touch") == 0) {
     if (_ui == NULL || !_ui->supportsTouchDebug()) {

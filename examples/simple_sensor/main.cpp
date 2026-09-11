@@ -75,9 +75,8 @@ void setup() {
 
 #ifdef DISPLAY_CLASS
   if (display.begin()) {
-    display.startFrame();
-    display.print("Please wait...");
-    display.endFrame();
+    display.turnOff();
+    // Saved display policy is applied by UITask::begin().
   }
 #endif
 

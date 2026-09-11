@@ -65,6 +65,24 @@ uint16_t HeltecV4R8Board::getBattMilliVolts() {
   return (adc_mult * raw);
 }
 
+bool HeltecV4R8Board::isExternalPowered() {
+  // R8 has no MCU-connected VBUS/charger-status pin. A USB host is definitive;
+  // otherwise use the calibrated battery voltage as a best-effort estimate.
+  if (isUsbHostConnected()) return true;
+
+  const uint32_t now = millis();
+  if (!power_voltage_sampled || uint32_t(now - last_power_check_ms) >= 5000) {
+    last_power_check_ms = now;
+    power_voltage_sampled = true;
+    // Like Meshtastic's analog power detection, enter above a full Li-ion cell
+    // plus 10 mV. Release at 4.20 V to reduce display-profile chatter. This can
+    // miss a charger while the battery is low; it is not a charging-status flag.
+    const uint16_t millivolts = getBattMilliVolts();
+    voltage_external_power = millivolts > (voltage_external_power ? 4200 : 4210);
+  }
+  return voltage_external_power;
+}
+
 const char* HeltecV4R8Board::getManufacturerName() const {
 #ifdef HELTEC_V4_R8_TFT
   return "Heltec V4 R8 TFT";
