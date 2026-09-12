@@ -41,11 +41,11 @@ TEST(RadioLivenessTracker, StagesSoftThenHardRecovery) {
   EXPECT_EQ(tracker.poll(37000, 1000, 5000), RadioRecoveryAction::SOFT);
 }
 
-TEST(RadioLivenessTracker, HardwareActivityCancelsEscalation) {
+TEST(RadioLivenessTracker, SuccessfulReceiveCancelsEscalation) {
   RadioLivenessTracker tracker;
   tracker.begin(0);
   EXPECT_EQ(tracker.poll(1000, 1000, 5000), RadioRecoveryAction::SOFT);
-  tracker.noteActivity(1200);
+  tracker.noteReceive(1200);
   EXPECT_EQ(tracker.stage(), 0);
   EXPECT_EQ(tracker.poll(2199, 1000, 5000), RadioRecoveryAction::NONE);
   EXPECT_EQ(tracker.poll(2200, 1000, 5000), RadioRecoveryAction::SOFT);
@@ -77,10 +77,21 @@ public:
   bool receiving = true;
   bool cad_busy = false;
   bool broken_rx = false;
+  bool pending_rx = false;
+  unsigned long last_irq = 0;
   int completed = 0;
   int recoveries = 0;
-  int recvRaw(uint8_t*, int) override {
+  int soft_recoveries = 0;
+  int hard_recoveries = 0;
+  int recvRaw(uint8_t* raw, int) override {
     if (!broken_rx) receiving = true;
+    if (pending_rx) {
+      pending_rx = false;
+      raw[0] = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+      raw[1] = 0;
+      raw[2] = 0x42;
+      return 3;
+    }
     return 0;
   }
   uint32_t getEstAirtimeFor(int) override { return 1000; }
@@ -91,14 +102,17 @@ public:
   }
   bool isSendComplete() override { ++completed; return true; }
   void onSendFinished() override { receiving = false; }
+  unsigned long getLastRadioInterruptMillis() const override { return last_irq; }
   bool isInRecvMode() const override { return receiving; }
   bool isReceiving() override {
     // Active CAD may leave the radio outside RX until the next recvRaw().
     if (cad_busy) receiving = false;
     return cad_busy;
   }
-  bool recoverRadio(bool) override {
+  bool recoverRadio(bool hard) override {
     ++recoveries;
+    if (hard) ++hard_recoveries;
+    else ++soft_recoveries;
     receiving = !broken_rx;
     return !broken_rx;
   }
@@ -112,7 +126,139 @@ public:
   mesh::DispatcherAction onRecvPacket(mesh::Packet*) override { return ACTION_RELEASE; }
   uint16_t errors() const { return _err_flags; }
 };
+
+constexpr unsigned long SOFT_RX_TIMEOUT = 30UL * 60UL * 1000UL;
+constexpr unsigned long HARD_RX_TIMEOUT = 12UL * 60UL * 60UL * 1000UL;
+
+void queueTransmission(WatchdogDispatcher& dispatcher, StaticPoolPacketManager& packets) {
+  auto* packet = packets.allocNew();
+  ASSERT_NE(packet, nullptr);
+  packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT);
+  packet->path_len = 0;
+  packet->payload_len = 1;
+  packet->payload[0] = 0;
+  ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
 }
+}
+
+TEST(DispatcherRadioWatchdog, TransmitSuccessDoesNotPostponeRxRecovery) {
+  AdvancingClock clock;
+  BurstRadio radio;
+  StaticPoolPacketManager packets(2);
+  WatchdogDispatcher dispatcher(radio, clock, packets);
+  dispatcher.begin();
+
+  clock.now = SOFT_RX_TIMEOUT - 100;
+  queueTransmission(dispatcher, packets);
+  dispatcher.loop();
+  clock.now = SOFT_RX_TIMEOUT - 50;
+  dispatcher.loop();
+  ASSERT_EQ(radio.completed, 1);
+
+  clock.now = SOFT_RX_TIMEOUT + 100;
+  dispatcher.loop();
+  EXPECT_EQ(radio.soft_recoveries, 1);
+  EXPECT_EQ(radio.hard_recoveries, 0);
+}
+
+TEST(DispatcherRadioWatchdog, InterruptsWithoutReceivedPacketsDoNotPostponeRecovery) {
+  AdvancingClock clock;
+  BurstRadio radio;
+  StaticPoolPacketManager packets(2);
+  WatchdogDispatcher dispatcher(radio, clock, packets);
+  dispatcher.begin();
+
+  clock.now = 1000;
+  radio.last_irq = clock.now;
+  dispatcher.loop();
+  clock.now = SOFT_RX_TIMEOUT + 100;
+  radio.last_irq = clock.now;
+  dispatcher.loop();
+  EXPECT_EQ(radio.soft_recoveries, 1);
+}
+
+TEST(DispatcherRadioWatchdog, ReceivedPacketAtDeadlinePreventsUnnecessaryRecovery) {
+  AdvancingClock clock;
+  BurstRadio radio;
+  StaticPoolPacketManager packets(2);
+  WatchdogDispatcher dispatcher(radio, clock, packets);
+  dispatcher.begin();
+
+  clock.now = SOFT_RX_TIMEOUT + 100;
+  radio.pending_rx = true;
+  dispatcher.loop();
+  EXPECT_EQ(radio.recoveries, 0);
+
+  clock.now += SOFT_RX_TIMEOUT - 100;
+  dispatcher.loop();
+  EXPECT_EQ(radio.recoveries, 0);
+  clock.now += 200;
+  dispatcher.loop();
+  EXPECT_EQ(radio.soft_recoveries, 1);
+}
+
+TEST(DispatcherRadioWatchdog, ReceivedPacketCancelsRecoveryEscalation) {
+  AdvancingClock clock;
+  BurstRadio radio;
+  StaticPoolPacketManager packets(2);
+  WatchdogDispatcher dispatcher(radio, clock, packets);
+  dispatcher.begin();
+
+  clock.now = SOFT_RX_TIMEOUT + 100;
+  dispatcher.loop();
+  ASSERT_EQ(radio.soft_recoveries, 1);
+  clock.now += 100;
+  radio.pending_rx = true;
+  dispatcher.loop();
+  clock.now += SOFT_RX_TIMEOUT - 100;
+  dispatcher.loop();
+  EXPECT_EQ(radio.soft_recoveries, 1);
+  clock.now += 200;
+  dispatcher.loop();
+  EXPECT_EQ(radio.soft_recoveries, 2);
+  EXPECT_EQ(radio.hard_recoveries, 0);
+}
+
+TEST(DispatcherRadioWatchdog, ContinuousTransmitQueueCannotStarveRxRecovery) {
+  AdvancingClock clock;
+  BurstRadio radio;
+  StaticPoolPacketManager packets(4);
+  WatchdogDispatcher dispatcher(radio, clock, packets);
+  dispatcher.begin();
+
+  clock.now = SOFT_RX_TIMEOUT - 100;
+  for (int i = 0; i < 3; ++i) queueTransmission(dispatcher, packets);
+  dispatcher.loop();
+  clock.now = SOFT_RX_TIMEOUT + 100;
+  dispatcher.loop();
+  ASSERT_EQ(radio.completed, 1);
+  EXPECT_EQ(radio.soft_recoveries, 1);
+  clock.now += 100;
+  dispatcher.loop();
+  EXPECT_EQ(radio.completed, 2);
+  EXPECT_EQ(radio.soft_recoveries, 1);
+}
+
+#ifndef RADIO_LIVENESS_SOFT_ONLY
+TEST(DispatcherRadioWatchdog, TransmitSuccessDoesNotPreventHardRxRecovery) {
+  AdvancingClock clock;
+  BurstRadio radio;
+  StaticPoolPacketManager packets(2);
+  WatchdogDispatcher dispatcher(radio, clock, packets);
+  dispatcher.begin();
+
+  clock.now = SOFT_RX_TIMEOUT + 100;
+  dispatcher.loop();
+  ASSERT_EQ(radio.soft_recoveries, 1);
+  clock.now = HARD_RX_TIMEOUT - 100;
+  queueTransmission(dispatcher, packets);
+  dispatcher.loop();
+  clock.now = HARD_RX_TIMEOUT + 100;
+  dispatcher.loop();
+  ASSERT_EQ(radio.completed, 1);
+  EXPECT_EQ(radio.hard_recoveries, 1);
+}
+#endif
 
 TEST(DispatcherRadioWatchdog, SuccessfulTxBurstDoesNotTriggerStuckRxRecovery) {
   AdvancingClock clock;

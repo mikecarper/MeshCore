@@ -975,7 +975,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 #endif
     _prefs->telemetry_access = TELEMETRY_ACCESS_ALL;
     _prefs->flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
-    _prefs->rx_watchdog_enabled = 0;
+    _prefs->rx_watchdog_enabled = mesh::RepeaterRadioTiming::DEFAULT_RX_WATCHDOG_ENABLED;
     _prefs->system_watchdog_enabled = 1;
     // A remainder larger than the smallest legacy MQTT gap (864) means an old fork
     // file with the zero-filled gap; detect and recover it below. Anything smaller
@@ -2608,15 +2608,23 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       float bw = 0.0f;
       uint8_t sf  = num > 2 ? atoi(parts[2]) : 0;
       uint8_t cr  = num > 3 ? atoi(parts[3]) : 0;
-      int temp_timeout_mins  = num > 4 ? atoi(parts[4]) : 0;
+      uint32_t temp_timeout_mins = 0;
       if (num == 5
+          && parseUint32Strict(parts[4], temp_timeout_mins)
+          && temp_timeout_mins > 0
+          && (uint64_t)getRTCClock()->getCurrentTime() + 2
+              + (uint64_t)temp_timeout_mins * 60 <= UINT32_MAX
           && mesh::cli::parseDecimalStrict(parts[0], freq)
           && mesh::cli::parseDecimalStrict(parts[1], bw)
           && freq >= 150.0f && freq <= 2500.0f
           && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
-          && isValidLoRaBandwidth(bw) && temp_timeout_mins > 0) {
+          && isValidLoRaBandwidth(bw)) {
         _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins);
-        sprintf(reply, "OK - temp params for %d mins", temp_timeout_mins);
+        char duration[64];
+        const uint32_t seconds = (uint32_t)temp_timeout_mins * 60UL;
+        mesh::RepeaterRadioTiming::formatDuration(duration, sizeof(duration), seconds);
+        snprintf(reply, 160, "OK - temp params for %s", duration);
+        _callbacks->appendTempRadioTimingNote(reply, 160, seconds);
         appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
       } else {
         strcpy(reply, "Error, invalid params");
@@ -4463,9 +4471,13 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (configKeyEquals(config, "telemetry.access")) {
     sprintf(reply, "> %s", _prefs->telemetry_access == TELEMETRY_ACCESS_ACL ? "acl" : "all");
   } else if (configKeyEquals(config, "flood.advert.interval")) {
-    sprintf(reply, "> %d", ((uint32_t) _prefs->flood_advert_interval));
+    mesh::RepeaterRadioTiming timing;
+    timing.setTempDuration(_callbacks->getTempRadioDurationSeconds());
+    sprintf(reply, "> %lu", (unsigned long)timing.floodAdvertHours(_prefs->flood_advert_interval));
   } else if (configKeyEquals(config, "advert.interval")) {
-    sprintf(reply, "> %d", ((uint32_t) _prefs->advert_interval) * 2);
+    mesh::RepeaterRadioTiming timing;
+    timing.setTempDuration(_callbacks->getTempRadioDurationSeconds());
+    sprintf(reply, "> %lu", (unsigned long)timing.localAdvertMinutes((uint32_t)_prefs->advert_interval * 2));
   } else if (configKeyEquals(config, "guest.password")) {
     sprintf(reply, "> %s", _prefs->guest_password);
   } else if (sender_timestamp == 0 && configKeyEquals(config, "prv.key")) {  // local connections only

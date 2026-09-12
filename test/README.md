@@ -48,6 +48,7 @@ python3 test/test_esp32_tinyusb_nonblocking.py # Native CDC stalled-host/64-byte
 python3 test/test_esp32_tinyusb_role_hygiene.py # Repeater/room nonblocking console and paced large replies
 python3 test/test_esp32_tinyusb_cooperative_output.py # Real role pumps: large logs/listings, EOF, backpressure
 python3 test/test_temp_radio_reply_delivery_contract.py  # TempRadio ACK path/barrier integration
+python3 test/test_repeater_radio_timing_integration.py  # Real scheduler, watchdog, hourly/flood adverts and restoration
 python3 test/test_tls_download_clock_gates.py   # Fresh-NTP/TLS download integration contract
 ```
 

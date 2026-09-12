@@ -1142,6 +1142,33 @@ settings use a safe effective power without replacing the saved preference.
 - `normalradio` cancels pending and active temporary-radio windows, then
   restores the saved radio tuple after its CLI reply has drained on the
   current channel. Permanent `radioat` entries are not removed.
+- On repeaters, the reply includes total minutes plus `NdNhNm` (days, hours,
+  minutes) and the watchdog policy for that session. For example:
+
+```text
+OK - temp params for 1440 mins (1d0h0m); rx.watchdog=12hours
+OK - temp params for 3075 mins (2d3h15m); rx.watchdog=12hours
+OK - temp params for 180 mins (0d3h0m); rx.watchdog=off (temp<12hours)
+```
+
+Repeater timing overrides apply only while a temporary window is running:
+
+| Temporary duration | No-RX reboot watchdog | Flood advert interval | Direct/local advert interval |
+| --- | --- | --- | --- |
+| Up to and including 3 hours | Off | Saved normal interval | 1 hour |
+| More than 3, less than 12 hours | Off | 3 hours | 1 hour |
+| 12 hours or longer | 12 hours | 3 hours | 1 hour |
+
+The duration is the requested window length, not the decreasing time remaining.
+The first temporary adverts are scheduled from successful radio activation;
+hourly local adverts still run when a flood advert is also due. `get
+advert.interval` and `get flood.advert.interval` report the effective intervals.
+The web configuration form continues to show and edit the saved normal advert
+settings. These include any changes made during a temporary session.
+Expiry, cancellation, reboot, or power
+loss removes the temporary overrides. Normal mode uses the saved advert
+intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
+`rx.watchdog off` remains off outside temporary sessions.
 
 ---
 
@@ -1168,6 +1195,12 @@ settings use a safe effective power without replacing the saved preference.
 - `del radioat` and `del tempradioat` delete all entries when `n` is omitted.
 - Each queue supports 3 entries. Scheduled entries are not saved across reboot.
 - `radioat` saves the new radio preferences when it fires. `tempradioat` applies temporarily, then reverts to the saved radio preferences.
+- `tempradioat` uses the repeater timing table above, with duration calculated
+  from `end_time - start_time`. Its acceptance reply includes total minutes, `NdNhNm`,
+  and the planned `rx.watchdog` setting. Queuing a future entry does not change
+  the running watchdog or advert intervals; the overrides start only after
+  the temporary radio parameters are successfully applied. If restoration
+  needs retries after expiry, the timing overrides still end with the window.
 - A successful scheduling reply notes any RXPS effective-level/preamble change
   required by the scheduled tuple. `RXPS continuous-fast` means the tuple is
   accepted but will use continuous receive because no safe duty-cycle level is
@@ -1651,12 +1684,16 @@ send text.flood checking ridge link
 - `set rx.watchdog on`
 - `set rx.watchdog off`
 
-**Default:** `off`
+**Default:** `on`, with a 24-hour no-RX timeout in normal mode.
 
 **Notes:**
-- When enabled, the first check is due after a full 12-hour observation window. The repeater then checks roughly every 12 hours and reboots if it has not successfully received a radio packet during the preceding 12 hours.
-- Enabling the watchdog starts a new 12-hour observation window. Rebooting also starts a new window, so a quiet mesh can reboot no more often than once every 12 hours.
-- The check reuses the radio driver's existing last-receive timestamp. It does not poll, sample, or wake the radio or CPU. A due check waits for the next normal loop/wake, so its actual cadence can drift around the 12-hour target. With RX power saving enabled, packets received during normal listening windows count as activity; the watchdog does not alter the RX/sleep timing.
+- In normal mode, the repeater reboots after 24 hours without a received packet passing MeshCore parsing. Each such reception restarts this timeout; checks use a sliding deadline rather than waiting for another 24-hour checkpoint.
+- While `tempradio` or `tempradioat` is running, windows of at least 12 hours use a 12-hour no-RX timeout. Shorter windows disable this reboot watchdog for the duration of the session. This temporary policy also overrides a saved normal-mode `off` setting.
+- Startup, a successful temporary-radio activation/replacement, expiry, cancellation, or manually changing this setting starts a fresh observation window. Expiry is processed before the watchdog, so a temporary window ending exactly at its watchdog deadline restores normal timing first.
+- `get rx.watchdog` reports both the effective on/off state and timeout or short-session disabled reason. `set rx.watchdog on|off` saves the normal-mode preference; temporary-session rules remain active until that session ends. Existing saved preferences are retained when upgrading; the new default applies to fresh settings or older preference files without this field.
+- The check uses the last successful MeshCore parse time, recorded before receive delays and routing filters. It does not require the packet to be addressed to this repeater or its encrypted payload to be decrypted; duplicate receptions also count. This checks MeshCore packet structure, not sender authentication.
+- It does not poll, sample, or wake the radio or CPU. A due check waits for the next normal loop/wake. With RX power saving enabled, qualifying packets received during normal listening windows count as activity; the watchdog does not alter the RX/sleep timing.
+- Transmitting, radio interrupts, and raw LoRa packets rejected by the MeshCore parser do not reset the timer. Packets dropped before parsing because the packet pool is full do not count either. This whole-board reboot setting is separate from the automatic radio-only recovery watchdog, which still measures successful raw radio reads.
 
 ---
 
@@ -2172,13 +2209,18 @@ hardware busy-result count.
 - `set radio.watchdog <minutes>`
 
 **Parameters:**
-- `minutes`: `0` to disable, or `1-120` minutes
+- `minutes`: `0` to use the standard 30-minute soft recovery interval, or `1-120` minutes to override it
 
 **Default:** `5`
 
-**Note:** This watchdog belongs to the MQTT observer runtime and is not
-available on a standalone FULL repeater. On quiet meshes, increasing it can
-reduce false recoveries when no traffic is expected.
+**Note:** This setting belongs to the MQTT observer runtime and is not
+available on a standalone FULL repeater. It sets the interval without a
+successfully received packet before soft radio recovery. Transmissions and
+interrupts alone do not restart the timer. Setting it to `0` removes the
+observer override; automatic radio recovery remains active. The normal hard
+recovery threshold is 12 hours, where the radio supports it, and recovery does
+not reboot the whole board. On quiet meshes, increasing the soft interval can
+reduce unnecessary recoveries when no traffic is expected.
 
 ---
 
@@ -4031,6 +4073,9 @@ still overrides the first-boot default after an update.
 ---
 
 ### Bridge (When bridge support is compiled in)
+
+For a complete two-repeater setup with each option explained, see the
+[ESP-NOW bridge setup guide](espnow_bridge_setup.md).
 
 #### View the compiled bridge type
 **Usage:** `get bridge.type`

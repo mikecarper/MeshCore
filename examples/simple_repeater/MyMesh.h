@@ -351,7 +351,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool pending_self_advert;
   bool pending_self_advert_flood;
   unsigned long next_battery_alert_check;
-  unsigned long next_rx_watchdog_check;
+  mesh::RxInactivityWatchdog rx_inactivity_watchdog;
+  mesh::RepeaterRadioTiming radio_timing;
   unsigned long next_recent_repeater_sweep;
   uint64_t last_battery_alert_sent;
   mesh::Packet* pending_battery_alert_packet;
@@ -725,6 +726,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool resolveBatteryAlertScope(TransportKey& scope);
   void checkBatteryAlert();
   void checkRxInactivityWatchdog();
+  void setTempRadioTiming(uint32_t duration_seconds);
   void expireRecentRepeatersIfDue();
   void printRecentRepeatersSerial();
 
@@ -854,6 +856,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void formatScheduledRadioSetting(char* reply, int setting_idx, int display_idx) const;
 
 protected:
+  uint32_t getTempRadioDurationSeconds() const override { return radio_timing.tempDuration(); }
+  void appendTempRadioTimingNote(char* reply, size_t size, uint32_t seconds) const override {
+    mesh::RepeaterRadioTiming::appendTempWatchdogNote(reply, size, seconds);
+  }
   bool isTempRadioActive() const override;
   float getAirtimeBudgetFactor() const override {
     // A bounded TempRadio window is an explicitly coordinated private OTA

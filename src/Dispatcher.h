@@ -239,9 +239,8 @@ class Dispatcher {
   Packet* outbound;  // current outbound packet
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long outbound_radio_retry_at;
-  unsigned long last_observed_radio_irq;
 #ifdef RADIO_LIVENESS_SOFT_ONLY
-  unsigned long last_radio_activity_ms;
+  unsigned long rx_watchdog_window_start;
 #else
   RadioLivenessTracker radio_liveness;
 #endif
@@ -262,6 +261,7 @@ class Dispatcher {
 #endif
   uint32_t n_sent_flood, n_sent_direct;
   uint32_t n_recv_flood, n_recv_direct;
+  uint32_t last_meshcore_recv_millis;
   unsigned long tx_budget_ms;
   unsigned long last_budget_update;
   unsigned long duty_cycle_window_ms;
@@ -289,6 +289,7 @@ protected:
     outbound_radio_retry_used = false;
     outbound_restore_cr = 0;
     total_air_time = rx_air_time = 0;
+    last_meshcore_recv_millis = 0;
     next_tx_time = ms.getMillis();
     cad_busy_start = 0;
     next_floor_calib_time = next_agc_reset_time = 0;
@@ -302,9 +303,8 @@ protected:
     tx_budget_ms = 0;
     last_budget_update = 0;
     duty_cycle_window_ms = 3600000;
-    last_observed_radio_irq = 0;
 #ifdef RADIO_LIVENESS_SOFT_ONLY
-    last_radio_activity_ms = 0;
+    rx_watchdog_window_start = 0;
 #else
     nonrx_soft_recovery_attempted = false;
 #endif
@@ -377,6 +377,9 @@ public:
   uint32_t getNumSentDirect() const { return n_sent_direct; }
   uint32_t getNumRecvFlood() const { return n_recv_flood; }
   uint32_t getNumRecvDirect() const { return n_recv_direct; }
+  // Successful MeshCore packet parsing, before receive delays and routing filters.
+  // Raw radio reads, local sends, and statistics resets do not update this clock.
+  uint32_t getLastMeshCoreRecvMillis() const { return last_meshcore_recv_millis; }
   uint16_t getErrFlags() const { return _err_flags; }  // Get error flags
   bool hasOutbound() const { return outbound != NULL; }
   bool isCurrentOutbound(const Packet* packet) const { return outbound == packet; }

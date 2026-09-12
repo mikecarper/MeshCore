@@ -193,7 +193,6 @@ static const char FLOOD_CHANNEL_SCOPE_USAGE[] =
 #define LOW_BATTERY_STARTUP_DELAY      (30ULL * 60ULL * 1000ULL)
 #define LOW_BATTERY_CHECK_INTERVAL     (30UL * 60UL * 1000UL)
 #define LOW_BATTERY_ALERT_INTERVAL     (12UL * 60UL * 60UL * 1000UL)
-#define RX_INACTIVITY_WATCHDOG_INTERVAL (12UL * 60UL * 60UL * 1000UL)
 #if MESH_ENABLE_TELEMETRY_HISTORY
 #define TELEMETRY_GPS_HEAP_RESERVE_BYTES 2048U
 #define TELEMETRY_HISTORY_TX_PREFS_FILE "/telemetry_tx"
@@ -3360,7 +3359,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   pending_self_advert = false;
   pending_self_advert_flood = false;
   next_battery_alert_check = 0;
-  next_rx_watchdog_check = 0;
   next_recent_repeater_sweep = 0;
   last_battery_alert_sent = 0;
   pending_battery_alert_packet = NULL;
@@ -4013,29 +4011,20 @@ void MyMesh::checkBatteryAlert() {
 }
 
 void MyMesh::checkRxInactivityWatchdog() {
-  if (!_prefs.rx_watchdog_enabled) {
-    next_rx_watchdog_check = 0;
-    return;
-  }
-
-  if (next_rx_watchdog_check == 0) {
-    next_rx_watchdog_check = futureMillis(RX_INACTIVITY_WATCHDOG_INTERVAL);
-    if (next_rx_watchdog_check == 0) next_rx_watchdog_check = 1;
-    return;
-  }
-  if (!millisHasNowPassed(next_rx_watchdog_check)) {
-    return;
-  }
-
-  next_rx_watchdog_check = futureMillis(RX_INACTIVITY_WATCHDOG_INTERVAL);
-  if (next_rx_watchdog_check == 0) next_rx_watchdog_check = 1;
-
-  const unsigned long now = millis();
-  const unsigned long last_rx = _radio->getLastRecvMillis();
-  if (last_rx == 0 || (uint32_t)(now - last_rx) >= RX_INACTIVITY_WATCHDOG_INTERVAL) {
-    MESH_DEBUG_PRINTLN("RX watchdog: no packet received in 12 hours, rebooting");
+  const uint32_t interval = radio_timing.watchdogMillis(_prefs.rx_watchdog_enabled);
+  if (rx_inactivity_watchdog.expired(millis(), getLastMeshCoreRecvMillis(), interval)) {
+    MESH_DEBUG_PRINTLN("RX watchdog: no MeshCore packet received in %lu hours, rebooting",
+                       (unsigned long)(interval / mesh::RepeaterRadioTiming::HOUR_MS));
+    rx_inactivity_watchdog.reset();
     _cli.getBoard()->reboot();
   }
+}
+
+void MyMesh::setTempRadioTiming(uint32_t duration_seconds) {
+  radio_timing.setTempDuration(duration_seconds);
+  rx_inactivity_watchdog.reset();
+  updateAdvertTimer();
+  updateFloodAdvertTimer();
 }
 
 bool MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
@@ -4152,6 +4141,13 @@ void MyMesh::refreshScheduledRadioState() {
   if (next_scheduled_radio_time == 0 && !saved_radio_apply_pending) {
     scheduled_radio_retry_at = 0;
     scheduled_radio_retry_failures = 0;
+  }
+  // A cancelled/expired lease releases its timing overrides even if restoring
+  // the saved modulation tuple needs another attempt. A replacement TempRadio
+  // handoff keeps the old overrides until the new tuple is actually applied.
+  if (radio_timing.isTemporary() && !scheduled_temp_radio_started
+      && !temp_radio_handoff_pending) {
+    setTempRadioTiming(0);
   }
 }
 
@@ -4394,6 +4390,13 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
            temporary ? "tempradioat" : "radioat",
            getScheduledRadioSettingIndex(temporary, slot),
            delay);
+  if (temporary) {
+    char duration[64];
+    mesh::RepeaterRadioTiming::formatDuration(duration, sizeof(duration), end_time - start_time);
+    const size_t used = strlen(reply);
+    snprintf(reply + used, 160 - used, "; for %s", duration);
+    appendTempRadioTimingNote(reply, 160, end_time - start_time);
+  }
 }
 
 void MyMesh::formatScheduledRadioParams(bool temporary, const char* selector, char* reply) {
@@ -4634,6 +4637,7 @@ void MyMesh::processScheduledRadioSettings() {
           setting.started = true;
           temp_radio_applied = true;
           temp_radio_handoff_pending = false;
+          setTempRadioTiming(setting.end_time - setting.start_time);
         } else {
           // setParams() can fail after changing only part of the modulation
           // tuple. Restore the saved tuple if this temporary window expires
@@ -4657,6 +4661,7 @@ void MyMesh::processScheduledRadioSettings() {
       radio_driver.setTxPower(_prefs.tx_power_dbm);
       saved_radio_apply_pending = false;
       temp_radio_applied = false;
+      if (radio_timing.isTemporary()) setTempRadioTiming(0);
     } else {
       apply_failed = true;
     }
@@ -4859,16 +4864,18 @@ void MyMesh::sendSelfAdvertisementNow(uint32_t delay_millis, bool flood) {
 }
 
 void MyMesh::updateAdvertTimer() {
-  if (_prefs.advert_interval > 0) { // schedule local advert timer
-    next_local_advert = futureMillis((int)((uint32_t)_prefs.advert_interval * 2 * 60 * 1000));
+  const uint32_t minutes = radio_timing.localAdvertMinutes((uint32_t)_prefs.advert_interval * 2);
+  if (minutes > 0) {
+    next_local_advert = futureMillis(minutes * 60UL * 1000UL);
   } else {
     next_local_advert = 0; // stop the timer
   }
 }
 
 void MyMesh::updateFloodAdvertTimer() {
-  if (_prefs.flood_advert_interval > 0) { // schedule flood advert timer
-    next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
+  const uint32_t hours = radio_timing.floodAdvertHours(_prefs.flood_advert_interval);
+  if (hours > 0) {
+    next_flood_advert = futureMillis(hours * mesh::RepeaterRadioTiming::HOUR_MS);
   } else {
     next_flood_advert = 0; // stop the timer
   }
@@ -10468,6 +10475,7 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.power_saving = _prefs.powersaving_enabled;
   s.mqtt_enabled = _prefs.bridge_enabled != 0;
   s.repeat = !_prefs.disable_fwd;
+  // Editable web configuration must retain the saved intervals during tempradio.
   s.advert_interval = _prefs.advert_interval * 2;
   s.flood_advert_interval = _prefs.flood_advert_interval;
   s.flood_max = _prefs.flood_max;
@@ -11886,19 +11894,24 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   } else if (strcmp(command, "get battery.alert.critical") == 0) {
     sprintf(reply, "> %u", (uint32_t)_prefs.battery_alert_critical_percent);
   } else if (strcmp(command, "get rx.watchdog") == 0) {
-    sprintf(reply, "> %s", _prefs.rx_watchdog_enabled ? "on" : "off");
+    snprintf(reply, 160, "> %s; rx.watchdog=%s%s",
+             radio_timing.watchdogMillis(_prefs.rx_watchdog_enabled) ? "on" : "off",
+             radio_timing.watchdogLabel(_prefs.rx_watchdog_enabled),
+             radio_timing.isTemporary() ? " (tempradio)" : "");
   } else if (strncmp(command, "set rx.watchdog ", 16) == 0) {
     const char* value = command + 16;
     if (strcmp(value, "on") == 0) {
       _prefs.rx_watchdog_enabled = 1;
-      next_rx_watchdog_check = 0;
+      rx_inactivity_watchdog.reset();
       savePrefs();
-      strcpy(reply, "OK - RX watchdog enabled; first check in 12 hours");
+      snprintf(reply, 160, "OK - saved on; rx.watchdog=%s",
+               radio_timing.watchdogLabel(_prefs.rx_watchdog_enabled));
     } else if (strcmp(value, "off") == 0) {
       _prefs.rx_watchdog_enabled = 0;
-      next_rx_watchdog_check = 0;
+      rx_inactivity_watchdog.reset();
       savePrefs();
-      strcpy(reply, "OK - RX watchdog disabled");
+      snprintf(reply, 160, "OK - saved off; rx.watchdog=%s",
+               radio_timing.watchdogLabel(_prefs.rx_watchdog_enabled));
     } else {
       strcpy(reply, "Err - usage: set rx.watchdog <on|off>");
     }
@@ -12349,6 +12362,10 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
     pending_self_advert = false;
     sendSelfAdvertisementNow(delay_millis, flood);
   }
+#if !defined(PORTABLE_MQTT_OBSERVER)
+  // Apply starts/expiries before checking temporary watchdog/advert deadlines.
+  processScheduledRadioSettings();
+#endif
   checkRxInactivityWatchdog();
 #if MESH_ENABLE_TELEMETRY_HISTORY
   sampleTelemetryHistory();
@@ -12371,17 +12388,16 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
     if (pkt) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
 
     updateFloodAdvertTimer(); // schedule next flood advert
-    updateAdvertTimer();      // also schedule local advert (so they don't overlap)
-  } else if (next_local_advert && millisHasNowPassed(next_local_advert)) {
+    if (!radio_timing.isTemporary()) updateAdvertTimer();
+  }
+  // During TempRadio the hourly direct advert remains independent, including
+  // hours at which a three-hour flood advert is also due.
+  if (next_local_advert && millisHasNowPassed(next_local_advert)) {
     mesh::Packet *pkt = createSelfAdvert();
     if (pkt) sendZeroHop(pkt);
 
     updateAdvertTimer(); // schedule next local advert
   }
-
-#if !defined(PORTABLE_MQTT_OBSERVER)
-  processScheduledRadioSettings();
-#endif
 
 #if defined(WITH_MQTT_BRIDGE) && defined(OTA_MANIFEST_BASE)
   if (_ota_update_at && millisHasNowPassed(_ota_update_at)) { // deferred `ota update`

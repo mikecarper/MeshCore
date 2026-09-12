@@ -73,6 +73,11 @@ jobs:
           PY
           python3 -B test/test_sx126x_receive_mode.py
 
+      - name: Verify temporary-radio timing and exact reply delivery
+        run: |
+          python3 -B test/test_repeater_radio_timing_integration.py
+          python3 -B test/test_temp_radio_reply_delivery_contract.py
+
       - name: Verify ESP32 static DRAM budget
         run: |
           python3 -B test/test_esp32_dram.py

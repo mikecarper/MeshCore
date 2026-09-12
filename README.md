@@ -4,6 +4,7 @@ For **1.17.1.5 USA Cascade**, start with the [release guide](docs/releases/1.17.
 [firmware picker](docs/firmware_picker.md), and [feature switches by role](docs/role_feature_switches.md).
 Use the [USB web console](https://flasher.meshcore.io/console) for the default
 ASCII terminal on Full Companion, Repeater, Room Server, and Sensor images.
+To connect two LoRa networks, follow the [ESP-NOW bridge setup guide](docs/espnow_bridge_setup.md).
 
 MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios. It is designed for developers who want to create resilient, decentralized communication networks that work without the internet.
 

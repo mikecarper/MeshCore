@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <helpers/RxReservePacketManager.h>
+#include <helpers/RepeaterRadioTiming.h>
 
 class TestClock : public mesh::MillisecondClock {
 public:
@@ -243,6 +244,122 @@ TEST(Dispatcher, FloodPacketWaitsForConfiguredRxDelayWithoutBypass) {
   clock.now = 1100;
   dispatcher.loop();
   EXPECT_EQ(1, dispatcher.received_packets);
+}
+
+TEST(Dispatcher, RejectedRadioPacketsCannotFeedMeshCoreRxWatchdog) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  mesh::RxInactivityWatchdog watchdog;
+  const uint32_t timeout = 24 * mesh::RepeaterRadioTiming::HOUR_MS;
+  clock.now = 1;
+  dispatcher.begin();
+  ASSERT_FALSE(watchdog.expired(clock.now, dispatcher.getLastMeshCoreRecvMillis(), timeout));
+
+  const uint8_t rejected[][3] = {
+    {ROUTE_TYPE_DIRECT | (PAYLOAD_VER_2 << PH_VER_SHIFT), 0, 0x42},
+    {ROUTE_TYPE_DIRECT, 0xC0, 0x42},  // reserved path mode
+    {ROUTE_TYPE_DIRECT, 2, 0x42},     // truncated path
+    {ROUTE_TYPE_TRANSPORT_DIRECT, 0, 0}, // truncated transport header
+  };
+  for (const auto& raw : rejected) {
+    clock.now += 1000;
+    radio.queueRx(raw, sizeof(raw));
+    dispatcher.loop();
+    EXPECT_EQ(0U, dispatcher.getLastMeshCoreRecvMillis());
+  }
+  EXPECT_EQ(0, dispatcher.received_packets);
+
+  clock.now = timeout + 1;
+  radio.queueRx(rejected[0], sizeof(rejected[0]));
+  dispatcher.loop();
+  EXPECT_TRUE(watchdog.expired(clock.now, dispatcher.getLastMeshCoreRecvMillis(), timeout));
+  // The separate radio-only watchdog can still use a successful physical read.
+  EXPECT_EQ(0, radio.soft_recoveries);
+  EXPECT_EQ(0, radio.hard_recoveries);
+}
+
+TEST(Dispatcher, MeshCorePacketAtDeadlineFeedsWatchdogBeforeForwardingDelay) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  mesh::RxInactivityWatchdog watchdog;
+  const uint32_t timeout = 24 * mesh::RepeaterRadioTiming::HOUR_MS;
+  dispatcher.forced_rx_delay = 32000;
+  clock.now = 1;
+  dispatcher.begin();
+  ASSERT_FALSE(watchdog.expired(clock.now, dispatcher.getLastMeshCoreRecvMillis(), timeout));
+  const uint8_t raw[] = {
+    ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0, 0x42
+  };
+
+  clock.now = timeout + 1;
+  radio.queueRx(raw, sizeof(raw));
+  dispatcher.loop();
+  EXPECT_EQ(0, dispatcher.received_packets); // still waiting for forwarding
+  EXPECT_EQ(clock.now, dispatcher.getLastMeshCoreRecvMillis());
+  EXPECT_FALSE(watchdog.expired(clock.now, dispatcher.getLastMeshCoreRecvMillis(), timeout));
+
+  clock.now += 32000;
+  dispatcher.loop();
+  EXPECT_EQ(1, dispatcher.received_packets);
+  EXPECT_EQ(timeout + 1, dispatcher.getLastMeshCoreRecvMillis());
+  clock.now = 2 * timeout + 1;
+  EXPECT_TRUE(watchdog.expired(clock.now, dispatcher.getLastMeshCoreRecvMillis(), timeout));
+}
+
+TEST(Dispatcher, RepeatedMeshCorePacketsFeedClockButTxAndStatsResetDoNot) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+  const uint8_t raw[] = {
+    ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0, 0x42
+  };
+  for (unsigned long received_at : {100UL, 200UL}) {
+    clock.now = received_at;
+    radio.queueRx(raw, sizeof(raw));
+    dispatcher.loop();
+    EXPECT_EQ(received_at, dispatcher.getLastMeshCoreRecvMillis());
+  }
+
+  clock.now = 300;
+  auto* outbound = dispatcher.obtainNewPacket();
+  ASSERT_NE(outbound, nullptr);
+  ASSERT_TRUE(outbound->readFrom(raw, sizeof(raw)));
+  ASSERT_TRUE(dispatcher.sendPacket(outbound, 0));
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.send_starts);
+  radio.send_complete = true;
+  clock.now = 301;
+  dispatcher.loop();
+  ASSERT_EQ(1, dispatcher.completed_packets);
+  dispatcher.resetStats();
+  radio.last_irq = ++clock.now;
+  dispatcher.loop();
+  EXPECT_EQ(200U, dispatcher.getLastMeshCoreRecvMillis());
+}
+
+TEST(Dispatcher, UnparsedPacketWhenPoolIsFullDoesNotFeedMeshCoreRxClock) {
+  RxReservePacketManager manager(1, 0);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+  auto* held = manager.allocNew();
+  ASSERT_NE(held, nullptr);
+  const uint8_t raw[] = {
+    ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0, 0x42
+  };
+  clock.now = 100;
+  radio.queueRx(raw, sizeof(raw));
+  dispatcher.loop();
+  EXPECT_EQ(0U, dispatcher.getLastMeshCoreRecvMillis());
+  EXPECT_EQ(0, dispatcher.received_packets);
+  manager.free(held);
 }
 
 TEST(Dispatcher, ScopeRewriteHookBypassesConfiguredRxDelay) {

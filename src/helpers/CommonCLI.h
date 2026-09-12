@@ -12,6 +12,7 @@
 #include <helpers/bridges/ESPNowBridgeFormat.h>
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
+#include <helpers/RepeaterRadioTiming.h>
 
 #ifndef DEFAULT_CAD_ENABLED
   #define DEFAULT_CAD_ENABLED 0
@@ -238,7 +239,7 @@ public:
   uint8_t rx_ps_preamble = 0;   // 0 = auto (derive from SF); else 16 or 32 = explicit override for level calc
   char battery_alert_region[31] = {}; // named scope for low-battery floods; empty = no alert scope
   uint8_t flood_retry_group_max_path = 0; // PAYLOAD_TYPE_GRP_DATA retry path gate; 0xFF = use only the general gate
-  uint8_t rx_watchdog_enabled = 0; // repeater RX-inactivity reboot watchdog (boolean)
+  uint8_t rx_watchdog_enabled = mesh::RepeaterRadioTiming::DEFAULT_RX_WATCHDOG_ENABLED;
   uint8_t system_watchdog_enabled = 0; // nRF52 main-loop hardware watchdog (boolean; default on)
 
 private:
@@ -511,6 +512,8 @@ public:
   virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) = 0;
+  virtual uint32_t getTempRadioDurationSeconds() const { return 0; }
+  virtual void appendTempRadioTimingNote(char* reply, size_t size, uint32_t seconds) const { }
   // Cancel pending/active temporary-radio windows and restore the saved tuple
   // after the command reply has drained on the current channel.
   virtual bool scheduleNormalRadio() { return false; }

@@ -54,10 +54,35 @@ where supported. An observed healthy RX state clears the sequence. Recovery
 preserves tuning, TX power, receive gain, and the operator's power-saving intent.
 The existing radio liveness and RXPS watchdogs remain active for other failures.
 
+The radio liveness watchdog measures time without a successfully received
+packet. Only a positive `recvRaw()` result restarts its observation window;
+TX completion, CAD interrupts, and failed packet reads do not. Reception counts
+even if application parsing rejects the packet or the packet pool is full.
+The check runs after pending RX is drained and TX completes, before the next
+queued transmission, so sustained outbound traffic cannot postpone recovery.
+
+The default silence thresholds are 30 minutes for a soft RX/AGC re-arm and
+12 hours for a radio-only hard recovery where supported. MQTT observer
+`radio.watchdog` settings can override the soft interval. A successful hard
+recovery starts a fresh observation window to limit repeated resets on a quiet
+mesh; a failed hard recovery remains escalated and retries after 30 seconds.
+Targets with `RADIO_LIVENESS_SOFT_ONLY` repeat soft recovery at the soft interval
+because their radio cannot be reset independently. These recoveries do not
+reboot the MCU. The repeater's `rx.watchdog` is a separate whole-board reboot
+watchdog, enabled by default with a 24-hour sliding deadline since the last
+received packet passed MeshCore parsing. Its timer is updated before receive
+delays and routing filters; raw LoRa reads rejected by the parser do not count.
+MeshCore parsing checks the packet structure, not sender authentication or
+decryption of traffic addressed to other nodes. Temporary
+radio windows of at least 12 hours use a 12-hour deadline; shorter windows
+disable that reboot watchdog until the window ends. The temporary timing
+overrides are held in RAM and do not replace saved normal-mode preferences.
+
 The status read uses the two-byte GetStatus transaction. The pinned RadioLib
 getStatus() helper requests zero copied data bytes, so its return value is not
 usable for this mode check. The dedicated read restores the normal SPI command
 layout afterward and does not wake a duty-cycling radio to inspect its mode.
 
 Validation lives in `test_noise_floor_estimator`, `test_rx_power_saving`,
-`test_radio_receive_contract.py`, and `test_sx126x_receive_mode.py`.
+`test_radio_liveness`, `test_radio_receive_contract.py`, and
+`test_sx126x_receive_mode.py`.
