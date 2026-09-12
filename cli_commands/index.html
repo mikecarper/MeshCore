@@ -2658,6 +2658,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP-NOW bridge: simple setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../faq/" class="md-nav__link">
         
   
@@ -3773,10 +3800,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_54" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_55" >
         
           
-          <label class="md-nav__link" for="__nav_54" id="__nav_54_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_55" id="__nav_55_label" tabindex="0">
             
   
   
@@ -3794,8 +3821,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_54_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_54">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_55_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_55">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -7078,7 +7105,54 @@ settings use a safe effective power without replacing the saved preference.</p>
 - <code>tempradio</code> is not saved to preferences and clears on reboot.
 - <code>normalradio</code> cancels pending and active temporary-radio windows, then
   restores the saved radio tuple after its CLI reply has drained on the
-  current channel. Permanent <code>radioat</code> entries are not removed.</p>
+  current channel. Permanent <code>radioat</code> entries are not removed.
+- On repeaters, the reply includes total minutes plus <code>NdNhNm</code> (days, hours,
+  minutes) and the watchdog policy for that session. For example:</p>
+<pre><code class="language-text">OK - temp params for 1440 mins (1d0h0m); rx.watchdog=12hours
+OK - temp params for 3075 mins (2d3h15m); rx.watchdog=12hours
+OK - temp params for 180 mins (0d3h0m); rx.watchdog=off (temp&lt;12hours)
+</code></pre>
+<p>Repeater timing overrides apply only while a temporary window is running:</p>
+<table>
+<thead>
+<tr>
+<th>Temporary duration</th>
+<th>No-RX reboot watchdog</th>
+<th>Flood advert interval</th>
+<th>Direct/local advert interval</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Up to and including 3 hours</td>
+<td>Off</td>
+<td>Saved normal interval</td>
+<td>1 hour</td>
+</tr>
+<tr>
+<td>More than 3, less than 12 hours</td>
+<td>Off</td>
+<td>3 hours</td>
+<td>1 hour</td>
+</tr>
+<tr>
+<td>12 hours or longer</td>
+<td>12 hours</td>
+<td>3 hours</td>
+<td>1 hour</td>
+</tr>
+</tbody>
+</table>
+<p>The duration is the requested window length, not the decreasing time remaining.
+The first temporary adverts are scheduled from successful radio activation;
+hourly local adverts still run when a flood advert is also due. <code>get
+advert.interval</code> and <code>get flood.advert.interval</code> report the effective intervals.
+The web configuration form continues to show and edit the saved normal advert
+settings. These include any changes made during a temporary session.
+Expiry, cancellation, reboot, or power
+loss removes the temporary overrides. Normal mode uses the saved advert
+intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
+<code>rx.watchdog off</code> remains off outside temporary sessions.</p>
 <hr />
 <h4 id="schedule-radio-parameter-changes">Schedule radio parameter changes</h4>
 <p><strong>Usage:</strong>
@@ -7101,6 +7175,12 @@ settings use a safe effective power without replacing the saved preference.</p>
 - <code>del radioat</code> and <code>del tempradioat</code> delete all entries when <code>n</code> is omitted.
 - Each queue supports 3 entries. Scheduled entries are not saved across reboot.
 - <code>radioat</code> saves the new radio preferences when it fires. <code>tempradioat</code> applies temporarily, then reverts to the saved radio preferences.
+- <code>tempradioat</code> uses the repeater timing table above, with duration calculated
+  from <code>end_time - start_time</code>. Its acceptance reply includes total minutes, <code>NdNhNm</code>,
+  and the planned <code>rx.watchdog</code> setting. Queuing a future entry does not change
+  the running watchdog or advert intervals; the overrides start only after
+  the temporary radio parameters are successfully applied. If restoration
+  needs retries after expiry, the timing overrides still end with the window.
 - A successful scheduling reply notes any RXPS effective-level/preamble change
   required by the scheduled tuple. <code>RXPS continuous-fast</code> means the tuple is
   accepted but will use continuous receive because no safe duty-cycle level is
@@ -7548,11 +7628,15 @@ through binary command <code>0x42</code>; this command does not report the Bluet
 - <code>get rx.watchdog</code>
 - <code>set rx.watchdog on</code>
 - <code>set rx.watchdog off</code></p>
-<p><strong>Default:</strong> <code>off</code></p>
+<p><strong>Default:</strong> <code>on</code>, with a 24-hour no-RX timeout in normal mode.</p>
 <p><strong>Notes:</strong>
-- When enabled, the first check is due after a full 12-hour observation window. The repeater then checks roughly every 12 hours and reboots if it has not successfully received a radio packet during the preceding 12 hours.
-- Enabling the watchdog starts a new 12-hour observation window. Rebooting also starts a new window, so a quiet mesh can reboot no more often than once every 12 hours.
-- The check reuses the radio driver's existing last-receive timestamp. It does not poll, sample, or wake the radio or CPU. A due check waits for the next normal loop/wake, so its actual cadence can drift around the 12-hour target. With RX power saving enabled, packets received during normal listening windows count as activity; the watchdog does not alter the RX/sleep timing.</p>
+- In normal mode, the repeater reboots after 24 hours without a received packet passing MeshCore parsing. Each such reception restarts this timeout; checks use a sliding deadline rather than waiting for another 24-hour checkpoint.
+- While <code>tempradio</code> or <code>tempradioat</code> is running, windows of at least 12 hours use a 12-hour no-RX timeout. Shorter windows disable this reboot watchdog for the duration of the session. This temporary policy also overrides a saved normal-mode <code>off</code> setting.
+- Startup, a successful temporary-radio activation/replacement, expiry, cancellation, or manually changing this setting starts a fresh observation window. Expiry is processed before the watchdog, so a temporary window ending exactly at its watchdog deadline restores normal timing first.
+- <code>get rx.watchdog</code> reports both the effective on/off state and timeout or short-session disabled reason. <code>set rx.watchdog on|off</code> saves the normal-mode preference; temporary-session rules remain active until that session ends. Existing saved preferences are retained when upgrading; the new default applies to fresh settings or older preference files without this field.
+- The check uses the last successful MeshCore parse time, recorded before receive delays and routing filters. It does not require the packet to be addressed to this repeater or its encrypted payload to be decrypted; duplicate receptions also count. This checks MeshCore packet structure, not sender authentication.
+- It does not poll, sample, or wake the radio or CPU. A due check waits for the next normal loop/wake. With RX power saving enabled, qualifying packets received during normal listening windows count as activity; the watchdog does not alter the RX/sleep timing.
+- Transmitting, radio interrupts, and raw LoRa packets rejected by the MeshCore parser do not reset the timer. Packets dropped before parsing because the packet pool is full do not count either. This whole-board reboot setting is separate from the automatic radio-only recovery watchdog, which still measures successful raw radio reads.</p>
 <hr />
 <h4 id="enable-or-disable-the-nrf52-system-watchdog">Enable or disable the nRF52 system watchdog</h4>
 <p><strong>Usage:</strong>
@@ -7951,11 +8035,16 @@ hardware busy-result count.</p>
 - <code>get radio.watchdog</code>
 - <code>set radio.watchdog &lt;minutes&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>minutes</code>: <code>0</code> to disable, or <code>1-120</code> minutes</p>
+- <code>minutes</code>: <code>0</code> to use the standard 30-minute soft recovery interval, or <code>1-120</code> minutes to override it</p>
 <p><strong>Default:</strong> <code>5</code></p>
-<p><strong>Note:</strong> This watchdog belongs to the MQTT observer runtime and is not
-available on a standalone FULL repeater. On quiet meshes, increasing it can
-reduce false recoveries when no traffic is expected.</p>
+<p><strong>Note:</strong> This setting belongs to the MQTT observer runtime and is not
+available on a standalone FULL repeater. It sets the interval without a
+successfully received packet before soft radio recovery. Transmissions and
+interrupts alone do not restart the timer. Setting it to <code>0</code> removes the
+observer override; automatic radio recovery remains active. The normal hard
+recovery threshold is 12 hours, where the radio supports it, and recovery does
+not reboot the whole board. On quiet meshes, increasing the soft interval can
+reduce unnecessary recoveries when no traffic is expected.</p>
 <hr />
 <h4 id="enable-or-disable-multi-acks-support">Enable or disable Multi-Acks support</h4>
 <p><strong>Usage:</strong>
@@ -9546,6 +9635,8 @@ still overrides the first-boot default after an update.</p>
 - <code>value</code>: The value to set the sensor to</p>
 <hr />
 <h3 id="bridge-when-bridge-support-is-compiled-in">Bridge (When bridge support is compiled in)</h3>
+<p>For a complete two-repeater setup with each option explained, see the
+<a href="../espnow_bridge_setup/">ESP-NOW bridge setup guide</a>.</p>
 <h4 id="view-the-compiled-bridge-type">View the compiled bridge type</h4>
 <p><strong>Usage:</strong> <code>get bridge.type</code></p>
 <hr />

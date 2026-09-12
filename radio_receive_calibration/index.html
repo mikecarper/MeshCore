@@ -556,6 +556,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP-NOW bridge: simple setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../faq/" class="md-nav__link">
         
   
@@ -1681,10 +1708,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_54" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_55" >
         
           
-          <label class="md-nav__link" for="__nav_54" id="__nav_54_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_55" id="__nav_55_label" tabindex="0">
             
   
   
@@ -1702,8 +1729,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_54_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_54">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_55_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_55">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1866,12 +1893,35 @@ observations request soft recovery; a third uses the existing hard recovery path
 where supported. An observed healthy RX state clears the sequence. Recovery
 preserves tuning, TX power, receive gain, and the operator's power-saving intent.
 The existing radio liveness and RXPS watchdogs remain active for other failures.</p>
+<p>The radio liveness watchdog measures time without a successfully received
+packet. Only a positive <code>recvRaw()</code> result restarts its observation window;
+TX completion, CAD interrupts, and failed packet reads do not. Reception counts
+even if application parsing rejects the packet or the packet pool is full.
+The check runs after pending RX is drained and TX completes, before the next
+queued transmission, so sustained outbound traffic cannot postpone recovery.</p>
+<p>The default silence thresholds are 30 minutes for a soft RX/AGC re-arm and
+12 hours for a radio-only hard recovery where supported. MQTT observer
+<code>radio.watchdog</code> settings can override the soft interval. A successful hard
+recovery starts a fresh observation window to limit repeated resets on a quiet
+mesh; a failed hard recovery remains escalated and retries after 30 seconds.
+Targets with <code>RADIO_LIVENESS_SOFT_ONLY</code> repeat soft recovery at the soft interval
+because their radio cannot be reset independently. These recoveries do not
+reboot the MCU. The repeater's <code>rx.watchdog</code> is a separate whole-board reboot
+watchdog, enabled by default with a 24-hour sliding deadline since the last
+received packet passed MeshCore parsing. Its timer is updated before receive
+delays and routing filters; raw LoRa reads rejected by the parser do not count.
+MeshCore parsing checks the packet structure, not sender authentication or
+decryption of traffic addressed to other nodes. Temporary
+radio windows of at least 12 hours use a 12-hour deadline; shorter windows
+disable that reboot watchdog until the window ends. The temporary timing
+overrides are held in RAM and do not replace saved normal-mode preferences.</p>
 <p>The status read uses the two-byte GetStatus transaction. The pinned RadioLib
 getStatus() helper requests zero copied data bytes, so its return value is not
 usable for this mode check. The dedicated read restores the normal SPI command
 layout afterward and does not wake a duty-cycling radio to inspect its mode.</p>
 <p>Validation lives in <code>test_noise_floor_estimator</code>, <code>test_rx_power_saving</code>,
-<code>test_radio_receive_contract.py</code>, and <code>test_sx126x_receive_mode.py</code>.</p>
+<code>test_radio_liveness</code>, <code>test_radio_receive_contract.py</code>, and
+<code>test_sx126x_receive_mode.py</code>.</p>
 
 
 

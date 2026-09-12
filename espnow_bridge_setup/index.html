@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/pr7_review_validation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/espnow_bridge_setup/">
       
       
-        <link rel="prev" href="../payloads/">
+        <link rel="prev" href="../esp32_memory_budget/">
       
       
-        <link rel="next" href="../qr_codes/">
+        <link rel="next" href="../faq/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>PR #7 review and validation - MeshCore Docs</title>
+        <title>ESP-NOW bridge: simple setup - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#pr-7-review-and-validation" class="md-skip">
+        <a href="#esp-now-bridge-simple-setup" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              PR #7 review and validation
+              ESP-NOW bridge: simple setup
             
           </span>
         </div>
@@ -553,10 +553,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../espnow_bridge_setup/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP-NOW bridge: simple setup
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -572,6 +599,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-choose-the-firmware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Choose the firmware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-set-each-boards-lora-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Set each board's LoRa network
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-configure-the-esp-now-link-on-both-boards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Configure the ESP-NOW link on both boards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-bridge-option-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each bridge option does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-check-the-link" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Check the link
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1390,37 +1492,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PR #7 review and validation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../pr7_review_validation/" class="md-nav__link">
         
   
   
@@ -1436,59 +1511,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#review-fixes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Review fixes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#automated-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Automated validation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#indicator-hardware-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Indicator hardware validation
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1900,10 +1922,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#review-fixes" class="md-nav__link">
+  <a href="#1-choose-the-firmware" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Review fixes
+        1. Choose the firmware
       
     </span>
   </a>
@@ -1911,10 +1933,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#automated-validation" class="md-nav__link">
+  <a href="#2-set-each-boards-lora-network" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Automated validation
+        2. Set each board's LoRa network
       
     </span>
   </a>
@@ -1922,10 +1944,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#indicator-hardware-validation" class="md-nav__link">
+  <a href="#3-configure-the-esp-now-link-on-both-boards" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Indicator hardware validation
+        3. Configure the ESP-NOW link on both boards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-bridge-option-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each bridge option does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-check-the-link" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Check the link
       
     </span>
   </a>
@@ -1949,7 +1993,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/pr7_review_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/espnow_bridge_setup.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1957,76 +2001,164 @@
   
 
 
-<h1 id="pr-7-review-and-validation">PR #7 review and validation</h1>
-<p>Validated on 2026-09-10 against integration commit
-<code>fa010196b130dee9a8a6fc6325d794e2f4fb9ede</code>, which combines base <code>01cc7b8a</code>
-with PR head <code>c002966c</code> and the review fixes. This includes the stacked ESP32
-memory changes already present in PR #7.</p>
-<h2 id="review-fixes">Review fixes</h2>
+<h1 id="esp-now-bridge-simple-setup">ESP-NOW bridge: simple setup</h1>
+<p>Use two ESP32 LoRa boards to join two MeshCore networks with different radio
+settings. Each board repeats on its own LoRa network, and the boards exchange
+packets directly over 2.4 GHz ESP-NOW. No router, internet connection, or manual
+peer pairing is needed.</p>
+<pre><code class="language-text">LoRa network A &lt;--&gt; Repeater A &lt;-- ESP-NOW --&gt; Repeater B &lt;--&gt; LoRa network B
+</code></pre>
+<h2 id="1-choose-the-firmware">1. Choose the firmware</h2>
+<p>Install the exact board's <strong>Full ESP-NOW bridge repeater</strong> image on each board.
+The target name ends in <code>_repeater_bridge_espnow</code>; a standard Heltec V4 uses
+<code>heltec_v4_repeater_bridge_espnow</code>. Full/MQTT and Full Companion images are
+different choices. See the <a href="../firmware_picker/">firmware picker guide</a>.</p>
+<p>Open each board's <a href="https://flasher.meshcore.io/console">USB console</a> at
+115200 baud and run:</p>
+<pre><code class="language-text">get bridge.type
+</code></pre>
+<p>The answer must be <code>espnow</code>. <code>mqtt</code>, <code>rs232</code>, or <code>none</code> means that image does
+not provide the ESP-NOW bridge described here.</p>
+<h2 id="2-set-each-boards-lora-network">2. Set each board's LoRa network</h2>
+<p>Configure one board at a time over USB. Replace the placeholders below with
+the radio settings used by the network on that board's side. Use <code>Bridge-A</code>
+for the first board and <code>Bridge-B</code> for the second, or choose your own names.</p>
+<pre><code class="language-text">set bridge.enabled off
+set name Bridge-A
+set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;
+reboot
+</code></pre>
+<p>Do not type the angle-bracket placeholders literally.</p>
+<table>
+<thead>
+<tr>
+<th>Radio option</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>freq</code></td>
+<td>LoRa frequency in MHz. Match the local network on this side.</td>
+</tr>
+<tr>
+<td><code>bw</code></td>
+<td>LoRa bandwidth in kHz. Match that network's bandwidth.</td>
+</tr>
+<tr>
+<td><code>sf</code></td>
+<td>Spreading factor, 5-12. Match that network's setting.</td>
+</tr>
+<tr>
+<td><code>cr</code></td>
+<td>Coding-rate value, 5-8. Match that network's setting.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>A label to tell the two repeaters apart. It does not pair them.</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>set radio</code> requires a reboot to apply.</strong> After reconnecting, <code>get radio</code>
+shows the saved settings. Use permanent radio settings for this setup;
+<code>tempradio</code> sessions expire.</p>
+<h2 id="3-configure-the-esp-now-link-on-both-boards">3. Configure the ESP-NOW link on both boards</h2>
+<p>Run this block on <strong>both</strong> boards. Replace <code>YourSharedKey</code> with the same
+case-sensitive secret on each board, using 1-15 characters. Channel <code>6</code> is
+an example; both boards must use the same channel.</p>
+<pre><code class="language-text">set bridge.enabled off
+set bridge.channel 6
+set bridge.format wrapped
+set bridge.secret YourSharedKey
+set bridge.source tx
+set bridge.delay 500
+set repeat on
+set bridge.enabled on
+</code></pre>
+<p>These settings are saved across reboot. Bridge changes apply immediately;
+changing an enabled bridge's channel, format, or secret restarts the bridge.
+Stopping it first lets you finish configuring both sides before connecting them.</p>
+<h2 id="what-each-bridge-option-does">What each bridge option does</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Choices and purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bridge.enabled</code></td>
+<td><code>on</code> starts the bridge; <code>off</code> stops it and keeps its saved settings.</td>
+</tr>
+<tr>
+<td><code>bridge.channel</code></td>
+<td>The 2.4 GHz channel, 1-13. Match it on both boards. This is separate from the LoRa frequency in <code>set radio</code>.</td>
+</tr>
+<tr>
+<td><code>bridge.format</code></td>
+<td><code>wrapped</code> is the default for this two-repeater setup and uses the shared secret. <code>raw</code> connects to primary-ESP-NOW nodes such as <code>Generic_ESPNOW</code> or <code>SenseCapIndicator-ESPNow</code>; it ignores the secret. Both peers must use compatible formats.</td>
+</tr>
+<tr>
+<td><code>bridge.secret</code></td>
+<td>A matching, case-sensitive value of 1-15 characters for <code>wrapped</code> mode. It separates bridge groups; it is not strong encryption. MeshCore's own message encryption remains in place.</td>
+</tr>
+<tr>
+<td><code>bridge.source</code></td>
+<td><code>tx</code> crosses packets this repeater transmits on LoRa, after its forwarding decisions; use this for the setup above. <code>rx</code> crosses received packets before those decisions and can pass traffic the local repeater would not forward.</td>
+</tr>
+<tr>
+<td><code>bridge.delay</code></td>
+<td>Wait before processing a packet received from the other bridge, in milliseconds. Range: 0-10000. Start with the default <code>500</code>.</td>
+</tr>
+<tr>
+<td><code>repeat</code></td>
+<td><code>on</code> enables normal LoRa forwarding; <code>off</code> disables forwarding. Keep it <code>on</code> on both bridge repeaters. Normal routing, scope, and packet-filter rules still apply.</td>
+</tr>
+<tr>
+<td><code>bridge.type</code></td>
+<td>Read-only firmware capability. It must report <code>espnow</code> for this guide.</td>
+</tr>
+<tr>
+<td><code>bridge.running</code></td>
+<td>Read-only runtime state. <code>on</code> means the local bridge started; it does not prove the other board is reachable.</td>
+</tr>
+</tbody>
+</table>
+<p>This fork uses <strong><code>set bridge.source tx</code></strong> or <strong><code>rx</code></strong>. Some upstream guides
+use <code>logTx</code> and <code>logRx</code>; those are not the command values used here.</p>
+<p>For a LoRa gateway connected to primary-ESP-NOW Companions instead of another
+LoRa repeater, see <a href="../WiFi/#wifi-companion-setup">raw ESP-NOW compatibility</a>.</p>
+<h2 id="4-check-the-link">4. Check the link</h2>
+<p>Run on both boards:</p>
+<pre><code class="language-text">get bridge.enabled
+get bridge.running
+get bridge.channel
+get bridge.format
+get bridge.secret
+get bridge.source
+get bridge.delay
+get repeat
+get radio
+</code></pre>
+<p>Expected: enabled and running <code>on</code>, matching channel/format/secret, source
+<code>tx</code>, delay <code>500</code>, repeat <code>on</code>, and the intended LoRa settings on each side.</p>
+<p>Send a message from a Companion on network A to one on network B, then reply
+from B to A. Check both directions; configuration readback alone does not test
+delivery.</p>
+<p>If it does not work:</p>
 <ul>
-<li>Use the <a href="https://github.com/ExpressLRS/Targets/blob/504178dcfa469ee32f4290d6ae9ba02e2f2f365e/TX/GEPRC%20900%20Linkflow.json">published ExpressLRS Linkflow calibration</a>,
-  expose 17–30 dBm, and retain the fixed +2 dBm radio drive and correct RF output
-  after radio recovery. Propagate startup and radio-setting failures.</li>
-<li>Keep Linkflow LoRa OTA enabled, as intended by the added repeater target.</li>
-<li>Preserve stored ACLs and flood filters when allocation fails. Release owned
-  buffers and prevent accidental shallow copies of their owners.</li>
-<li>Release heap OTA workspaces after self-serving windows; retain them for active
-  transfers, manual staging, folder operations, and pending application. Service
-  cleanup on Companions and reset staged-resume flags when a context disappears.</li>
-<li>Count dynamically allocated clients, filters, and OTA workspaces in the RAM
-  budget. Respect explicit OTA storage ownership in PlatformIO flags.</li>
+<li><strong>Commands are unavailable:</strong> check <code>get bridge.type</code> and the firmware choice.</li>
+<li><strong>Enabled is on but running is off:</strong> initialization failed. Reboot and
+  check again; ensure another WiFi service is not occupying the radio.</li>
+<li><strong>Both are running but traffic does not cross:</strong> compare channel, format,
+  and secret; confirm each board's LoRa settings were applied with a reboot,
+  and check the networks' forwarding and scope rules.</li>
 </ul>
-<h2 id="automated-validation">Automated validation</h2>
-<ul>
-<li><code>pio test -e native -e native_kiss_modem</code>: <strong>1,393/1,393 cases passed</strong>.</li>
-<li>Real C++ radio-power, heap-context, ACL persistence/CLI, and shared OTA queue
-  tests passed. The applicable radio-power, heap-context, and shared-queue tests
-  also passed on Linux with AddressSanitizer and UndefinedBehaviorSanitizer.</li>
-<li>Display/inbox, radio receive, static DRAM, and runtime RAM regression tests
-  passed. ACL allocation-failure coverage verifies that stored clients survive.</li>
-<li>Sequential firmware builds and their memory gates passed for:
-  <code>GEPRC_Linkflow_900_repeater</code>, <code>Heltec_v2_companion_radio_ble</code>,
-  <code>Tbeam_SX1262_repeater_observer_mqtt</code>,
-  <code>heltec_v4_r8_repeater_observer_mqtt</code>, <code>RAK_4631_repeater</code>, and
-  <code>SenseCapIndicator-LoRa_companion_radio_full</code>.</li>
-</ul>
-<h2 id="indicator-hardware-validation">Indicator hardware validation</h2>
-<p>The original SenseCAP Indicator LoRa with 8 MiB flash and 8 MiB octal PSRAM
-was reached through the MercerWoodMesh Pi over Wi-Fi. Its MAC, public identity,
-board reply, and existing partition layout were checked before updating.
-USB interfaces were absent, so this run does not qualify USB behavior.</p>
-<p>The Full profile was applied to <code>SenseCapIndicator-LoRa_comp_radio_usb_wifi</code>.
-The exact application is 2,149,208 bytes:</p>
-<ul>
-<li>Application SHA-256:
-  <code>7a2b11e731f946af79d1104818c7993d3897e6d8ec1f0121d27284c0f0c8c665</code></li>
-<li>ELF SHA-256, also verified in the application descriptor:
-  <code>24e60c7785a7aefe3fb0536b0b595bf19e1264e4d5f100d201290dc95eb1761a</code></li>
-</ul>
-<p>This direct profile build uses the repository's default <code>v1.17.1</code> version text
-and <code>14 Aug 2026</code> build-date text; the hashes above identify the tested image.</p>
-<p>The Wi-Fi updater returned HTTP 200 and booted the application in <code>app1</code> at
-<code>0x400000</code>. The previous application remains in <code>app0</code> at <code>0x10000</code>; the
-partition table, NVS, and SPIFFS were not rewritten. Public identity, radio
-parameters, and USB logging preference matched their pre-update values.</p>
-<p>The existing Companion stress harness, using a TCP socket adapter, completed
-100 persistent cycles and 100 reconnects in 109.9 seconds: <strong>501 requests and
-501 validated responses</strong>, with no discarded bytes, malformed frames, or device
-error flags. Device info, time, storage, and core statistics were exercised.
-The text terminal exposed all four display-power controls and <code>display.inbox</code>.
-The OTA folder service issued a valid <code>COUNT</code> request, received an empty-folder
-reply, and returned to its disconnected state after the client closed.</p>
-<p>After these checks, four memory snapshots showed 69,548–69,996 bytes of free
-internal heap and a 61,428-byte largest block. PSRAM availability stayed at
-6,408,731 bytes. Final uptime was 262 seconds, with zero error flags and an
-empty outbound queue. This is a short regression check, not a long-term soak.
-Raw baseline, upload, stress, and final-state records are retained on the Pi
-under <code>/home/mikec/hwtest/runs/pr7-review/</code>.</p>
-<p>No Linkflow module or RF power meter was available in this run. Linkflow power
-calibration is supported by the pinned upstream table and executable driver
-tests, not a physical RF output measurement. The Indicator's ESP32-S3 does not
-exercise the classic ESP32 heap-OTA default; host tests and classic ESP32 builds
-cover that path. Physical display readability was not inspected.</p>
+<p>A running bridge keeps the device awake, even with device power saving enabled.
+For every command's full details, see the <a href="../cli_commands/#bridge-when-bridge-support-is-compiled-in">bridge CLI reference</a>.</p>
+<p>For a broader comparison with a Linux-based bridge, see the
+<a href="https://meshcore.nexus/guides/lora-bridging#method-2-meshcore-esp-now-bridge">MeshCore Nexus bridging guide</a>.</p>
 
 
 
