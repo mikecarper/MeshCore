@@ -289,6 +289,45 @@ int main() {
             implementation += extract_braced(mesh, signature) + "\n"
         self.compile_and_run(preamble + implementation + SCENARIOS)
 
+    def test_summary_uses_newest_visible_message_per_thread(self):
+        ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
+        preamble = PREAMBLE.replace("int getMsgCount() const { return 0; }", UI_MEMBERS)
+        implementation = extract_braced(ui, "class MsgPreviewScreen :") + ";\n"
+        scenarios = r'''
+int main() {
+  using namespace mesh::ui;
+  resetArduinoMock();
+  displayPowerPrefs().battery.mode = DisplayMode::On;
+  Display display;
+  display.servicePower(false);
+  UITask task(display);
+  MsgPreviewScreen messages(&task);
+  task.msg_preview = task.curr = &messages;
+  messages.addPreview(1, "Alice", "older pending", 0, "Public", 0);
+  messages.addPreview(1, "Bob", "newer delivered", 0, "Public");
+  auto expect = [&](DisplayInboxMode mode, const char* wanted, const char* hidden) {
+    displayPowerPrefs().inbox = mode;
+    display.clear(); messages.renderSummary(display);
+    if (!display.contains(wanted) || display.contains(hidden)) {
+      fprintf(stderr, "summary mode=%u expected=%s hidden=%s\n", unsigned(mode), wanted, hidden);
+      for (const auto& line : display.lines) fprintf(stderr, "rendered: %s\n", line.text.c_str());
+    }
+    assert(display.contains(wanted) && !display.contains(hidden));
+  };
+  expect(DisplayInboxMode::History, "newer delivered", "older pending");
+  expect(DisplayInboxMode::Pending, "older pending", "newer delivered");
+  // Unread changes the count; read previews remain browseable as documented.
+  displayPowerPrefs().inbox = DisplayInboxMode::History;
+  display.clear(); messages.render(display);
+  expect(DisplayInboxMode::Unread, "newer delivered", "older pending");
+  assert(messages.messageCount() == 1);
+  messages.queueRemoved(0);
+  expect(DisplayInboxMode::Pending, "No messages heard", "older pending");
+  expect(DisplayInboxMode::History, "newer delivered", "older pending");
+}
+'''
+        self.compile_and_run(preamble + implementation + scenarios)
+
 
 if __name__ == "__main__":
     unittest.main()

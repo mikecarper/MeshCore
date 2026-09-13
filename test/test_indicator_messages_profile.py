@@ -96,7 +96,8 @@ int main() {{ return 0; }}
             "companionMessageElapsedMillis(entry->heard_millis)", ui
         )
         self.assertIn("esp_timer_get_time()", ui)
-        self.assertIn("history.hasNewerEntryForThread(age)", ui)
+        # Thread selection must respect the selected inbox view. The compiled
+        # summary regression in test_companion_inbox covers this behavior.
 
 
 if __name__ == "__main__":

@@ -58,6 +58,8 @@ struct MyMesh {
   bool millisHasNowPassed(unsigned long) const { return false; }
   bool getNextQueueWakeDelay(uint32_t&) const { return false; }
   bool getNextRetryWakeDelay(uint32_t&) const { return false; }
+  bool dual_radio = false;
+  bool isDualRadioActive() const { return dual_radio; }
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t secs) const { return secs; }
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }
   bool hasPendingWork() const;
@@ -81,6 +83,12 @@ int main() {
     logger._initialized = false;
     require(node.getPowerSaveSleepSeconds(30) == 30,
             "stopping MQTT did not release its sleep blocker");
+    node.dual_radio = true;
+    require(node.hasPendingWork(), "dual-radio scanning lost its sleep blocker");
+    require(node.getPowerSaveSleepSeconds(30) == 0, "dual-radio scanning can enter device sleep");
+    node.dual_radio = false;
+    require(node.getPowerSaveSleepSeconds(30) == 30,
+            "single-radio mode did not release its sleep blocker");
     require(node.getPowerSaveSleepSeconds(0) == 0, "zero sleep limit changed");
   } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';

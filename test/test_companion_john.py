@@ -10,6 +10,9 @@ import tempfile
 import unittest
 import zlib
 
+from test_message_navigation import PREAMBLE
+from test_replay_reset_integration import extract_braced
+
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "test/fixtures/companion_john"
 spec = importlib.util.spec_from_file_location("pack_john", ROOT / "tools/bible/pack_john.py")
@@ -148,10 +151,92 @@ class CompanionJohnTest(unittest.TestCase):
         self.assertIn("#if COMPANION_FEATURE_JOHN\n#include \"JohnReaderScreen.h\"", ui)
         self.assertLess(ui.index("#define UI_BUTTON_READER_HINT 1"),
                         ui.index('#include "JohnReaderScreen.h"'))
-        self.assertIn("&& !isJohnReaderActive()", ui)
         self.assertIn("else if (isJohnReaderActive())", ui)
         self.assertIn("c = handleLongPress(KEY_ENTER);", ui)
         self.assertIn("handleDoubleClick(KEY_PREV)", ui)
+
+    def test_reader_bookmark_follows_display_power_transitions(self):
+        ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text(encoding="utf-8")
+        stubs = r'''
+struct Board {
+  bool external = false, host = false;
+  bool isExternalPowered() const { return external; }
+  bool isUsbHostConnected() const { return host; }
+};
+struct Interfaces { bool takePairingRequest() { return false; } };
+struct JohnReaderScreen : Screen { int saves = 0; void flush() { ++saves; } };
+'''
+        members = r'''
+  Board* _board;
+  Interfaces* _interfaceManager;
+  uint32_t _pairing_screen_until = 0;
+  bool hasConnection() const { return false; }
+  bool isPairingScreenActive() const { return false; }
+  void showPairingPin() {}
+  void finishPairingScreen(bool) {}
+  void servicePairingState();
+'''
+        source = PREAMBLE.replace("class UITask {", stubs + "class UITask {")
+        source = source.replace("int getMsgCount() const { return 0; }", members)
+        source += extract_braced(ui, "void UITask::servicePairingState(") + "\n"
+        source += extract_braced(ui, "char UITask::checkDisplayOn(") + r'''
+int main() {
+  using namespace mesh::ui;
+  resetArduinoMock();
+  displayPowerPrefs().battery = {DisplayMode::Button, 5};
+  displayPowerPrefs().usb = {DisplayMode::On, 5};
+  Display display;
+  Screen home;
+  JohnReaderScreen reader;
+  Board board;
+  Interfaces interfaces;
+  UITask task(display);
+  task._board = &board; task._interfaceManager = &interfaces;
+  task.curr = task.home = &home; task.john_reader = &reader;
+  task.servicePairingState();
+  assert(!display.isOn() && reader.saves == 0);
+  task.curr = &reader;
+  assert(task.checkDisplayOn(KEY_NEXT) == 0); // Wake consumes navigation.
+  assert(display.isOn());
+  g_mock_millis = 4999; task.servicePairingState();
+  assert(display.isOn() && reader.saves == 0);
+  g_mock_millis = 5000; task.servicePairingState();
+  assert(!display.isOn());
+  const int expected_saves = COMPANION_FEATURE_JOHN ? 1 : 0;
+  assert(reader.saves == expected_saves);
+  task.servicePairingState();
+  assert(reader.saves == expected_saves); // No repeated writes while dark.
+  for (bool* plugged : {&board.external, &board.host}) {
+    *plugged = true; task.servicePairingState();
+    assert(display.isOn());
+    g_mock_millis += 10000; task.servicePairingState();
+    assert(display.isOn()); // USB's always-on policy applies to the reader.
+    int before = reader.saves;
+    *plugged = false; task.servicePairingState();
+    assert(!display.isOn() && reader.saves == before + expected_saves);
+  }
+  task.curr = &home;
+  task.checkDisplayOn(KEY_NEXT);
+  int before = reader.saves;
+  g_mock_millis += 5000; task.servicePairingState();
+  assert(!display.isOn() && reader.saves == before);
+  task._display = nullptr; task.servicePairingState();
+}
+'''
+        compiler = shutil.which("g++")
+        self.assertIsNotNone(compiler, "host G++ required")
+        with tempfile.TemporaryDirectory(prefix="mesh-reader-power-") as directory:
+            directory = Path(directory)
+            (directory / "power.cpp").write_text(source, encoding="utf-8")
+            for enabled in (0, 1):
+                with self.subTest(reader_enabled=enabled):
+                    binary = directory / "power.exe"
+                    self.run_checked([compiler, "-std=c++17", f"-DCOMPANION_FEATURE_JOHN={enabled}",
+                                      "-I" + str(ROOT / "src"), "-I" + str(ROOT / "test/mocks"),
+                                      str(directory / "power.cpp"),
+                                      str(ROOT / "src/helpers/ui/MomentaryButton.cpp"),
+                                      str(ROOT / "src/helpers/ui/DisplayDriver.cpp"), "-o", str(binary)])
+                    self.run_checked([str(binary)])
 
     def run_checked(self, command):
         result = subprocess.run(command, capture_output=True, encoding="utf-8",
