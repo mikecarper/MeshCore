@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/radio_profiles_validation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/full_usb_logging_validation/">
       
       
-        <link rel="prev" href="../radio_profiles/">
+        <link rel="prev" href="../full_companion_usb_switcher/">
       
       
-        <link rel="next" href="../radio_receive_calibration/">
+        <link rel="next" href="../gps_tracking/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Dual-profile receive validation - MeshCore Docs</title>
+        <title>Full USB logging repair — 1.17.1.6 - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#dual-profile-receive-validation" class="md-skip">
+        <a href="#full-usb-logging-repair-11716" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Dual-profile receive validation
+              Full USB logging repair — 1.17.1.6
             
           </span>
         </div>
@@ -823,10 +823,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../full_usb_logging_validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full USB logging repair — 1.17.1.6
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -842,6 +869,48 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#published-image-audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published-image audit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fix-and-regression-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fix and regression coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1579,37 +1648,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Dual-profile receive validation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../radio_profiles_validation/" class="md-nav__link">
         
   
   
@@ -1625,125 +1667,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#method-and-limits" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Method and limits
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#five-symbol-baseline" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Five-symbol baseline
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fractional-symbol-tuning" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fractional-symbol tuning
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shorter-fast-preambles" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shorter fast preambles
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#selected-bench-baseline-48-slow-symbols" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Selected bench baseline: 4.8 slow symbols
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#transmit-policy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Transmit policy
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ota-discovery-while-retaining-the-main-channel" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OTA discovery while retaining the main channel
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#software-coverage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Software coverage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#hardware-restored-after-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hardware restored after validation
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2156,10 +2079,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#method-and-limits" class="md-nav__link">
+  <a href="#published-image-audit" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Method and limits
+        Published-image audit
       
     </span>
   </a>
@@ -2167,87 +2090,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#five-symbol-baseline" class="md-nav__link">
+  <a href="#fix-and-regression-coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Five-symbol baseline
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fractional-symbol-tuning" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fractional-symbol tuning
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shorter-fast-preambles" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shorter fast preambles
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#selected-bench-baseline-48-slow-symbols" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Selected bench baseline: 4.8 slow symbols
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#transmit-policy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Transmit policy
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ota-discovery-while-retaining-the-main-channel" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OTA discovery while retaining the main channel
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#software-coverage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Software coverage
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#hardware-restored-after-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Hardware restored after validation
+        Fix and regression coverage
       
     </span>
   </a>
@@ -2271,7 +2117,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/radio_profiles_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/full_usb_logging_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2279,334 +2125,94 @@
   
 
 
-<h1 id="dual-profile-receive-validation">Dual-profile receive validation</h1>
-<p>These measurements exercise the production two-profile implementation on one
-SX1262 transceiver, using a Heltec V4 repeater as receiver and a XIAO ESP32-S3
-with a Wio LoRa module as transmitter. They follow the dedicated
-<a href="../mixed_scan_validation/">mixed-bandwidth scan experiment</a>.</p>
-<p>Counts, diagnostic replies and firmware/source hashes are in
-<a href="../tools/hil/radio_profiles_results.json">radio_profiles_results.json</a>.</p>
-<p>The primary profile is 909.5 MHz, SF7, 62.5 kHz, CR 4/5, preamble 32.
-The secondary is 910.5 MHz, 500 kHz, CR 4/5, with SF9, SF8 or SF7.
-Scanning uses normal RX, starts with the slower profile, and reserves two slow
-visits per slow preamble. Transmitters must use the corresponding preamble too.</p>
-<h2 id="method-and-limits">Method and limits</h2>
-<p>The transmitter sends MeshCore adverts at varied intervals. The receiver's
-per-profile MeshCore RX counters are compared with the transmitter's completed
-TX counters before and after each run. Initial OTA announcements can add packets
-beyond the manually requested adverts; the table includes those transmissions.
-These are aggregate counters, not sequence-matched payload captures.</p>
-<p>Runs use one transmitting profile at a time and a strong signal. They do not
-measure simultaneous traffic, weak-signal reception, interference or months of
-uptime. A single transceiver remains unavailable to the other profile while
-receiving or transmitting a packet. A clean finite run is evidence for a timing
-choice, not a guarantee that it cannot drop packets.</p>
-<h2 id="five-symbol-baseline">Five-symbol baseline</h2>
-<p>Slow visits were 10.240 ms and fast visits 6.528 ms, plus actual switching time.
-The longest observed profile switch was 4.416 ms; no switch failures were reported.</p>
+<h1 id="full-usb-logging-repair-11716">Full USB logging repair — 1.17.1.6</h1>
+<p>Audit date: 2026-09-13. Release firmware source: <code>306feebe6d648a247f925894f876be9d747fc8d2</code>.</p>
+<p>The original Station G2 Full Repeater and Full Room Server images omitted USB
+packet logging. Both inherited <code>-UMESH_PACKET_LOGGING</code> from their ordinary MQTT
+observer recipes. Full added <code>-DMESH_PACKET_LOGGING=1</code>, but PlatformIO's
+<code>ProcessFlags</code> moves undefines after defines in the compiler command. The
+resulting image compiled successfully with its packet logger removed.</p>
+<p>The previous release gate checked OTA and other features without requiring
+USB logging in Full infrastructure. An old passing manifest could also be
+reused by <code>--resume</code> without the new logging evidence.</p>
+<h2 id="published-image-audit">Published-image audit</h2>
+<p>Each downloaded/cached artifact was matched to GitHub's published SHA-256.
+The check inspected application bytes, including the application inside nRF52
+DFU ZIPs. It required the packet-log formatter and USB logging controls.</p>
 <table>
 <thead>
 <tr>
-<th>Fast profile</th>
-<th style="text-align: right;">Fast preamble</th>
-<th style="text-align: right;">Fast RX / TX</th>
-<th style="text-align: right;">Slow RX / TX</th>
+<th>Release group</th>
+<th style="text-align: right;">Application images</th>
+<th style="text-align: right;">Missing USB packet logging</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>SF9 / 500</td>
-<td style="text-align: right;">48</td>
-<td style="text-align: right;">54 / 54</td>
-<td style="text-align: right;">30 / 30</td>
+<td>ESP32 Full infrastructure/utility</td>
+<td style="text-align: right;">157</td>
+<td style="text-align: right;">2</td>
 </tr>
 <tr>
-<td>SF8 / 500</td>
-<td style="text-align: right;">72</td>
-<td style="text-align: right;">49 / 50</td>
-<td style="text-align: right;">—</td>
-</tr>
-<tr>
-<td>SF8 / 500</td>
-<td style="text-align: right;">80</td>
-<td style="text-align: right;">49 / 50</td>
-<td style="text-align: right;">—</td>
-</tr>
-<tr>
-<td>SF8 / 500</td>
-<td style="text-align: right;">88</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">30 / 30</td>
-</tr>
-<tr>
-<td>SF7 / 500</td>
-<td style="text-align: right;">120</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">30 / 30</td>
-</tr>
-</tbody>
-</table>
-<p>The SF8 automatic preamble retains a measured floor of 88 symbols. Automatically
-selected preambles always round up in steps of eight.</p>
-<h2 id="fractional-symbol-tuning">Fractional-symbol tuning</h2>
-<p>The initial sweep started at 4.2 slow symbols, with an increase of 0.1 planned
-for any slow-channel loss. That first sweep passed all three fast settings.
-Each completed run used 50 requested adverts per profile. The SF8 fast run was
-interrupted to check SF9 preamble 32, then restarted; only its completed run is
-included below.</p>
-<table>
-<thead>
-<tr>
-<th style="text-align: right;">Slow symbols</th>
-<th>Fast profile</th>
-<th style="text-align: right;">Fast preamble</th>
-<th style="text-align: right;">Fast RX / TX</th>
-<th style="text-align: right;">Slow RX / TX</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align: right;">4.2</td>
-<td>SF9 / 500</td>
-<td style="text-align: right;">48</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">50 / 50</td>
-</tr>
-<tr>
-<td style="text-align: right;">4.2</td>
-<td>SF9 / 500</td>
-<td style="text-align: right;">32</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">50 / 50</td>
-</tr>
-<tr>
-<td style="text-align: right;">4.2</td>
-<td>SF8 / 500</td>
-<td style="text-align: right;">88</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">50 / 50</td>
-</tr>
-<tr>
-<td style="text-align: right;">4.2</td>
-<td>SF7 / 500</td>
-<td style="text-align: right;">120</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">50 / 50</td>
-</tr>
-</tbody>
-</table>
-<p>The four completed pairings received 200/200 packets on the slower channel and
-200/200 on the faster channel. No switch failures were reported; the longest
-measured switch during the 4.2-symbol sweep was 4.407 ms.</p>
-<p>The explicit SF9 preamble-32 check uses the same 8.602 ms slow and 8.166 ms fast
-windows as the preamble-48 check. Only the fast transmitter's preamble changes.
-The automatic SF9 calculation still reserves a 48-symbol preamble for the
-configured switching and loop-jitter budgets.</p>
-<h2 id="shorter-fast-preambles">Shorter fast preambles</h2>
-<p>The follow-up starts with preamble 48 on both fast settings. Each miss advances
-the next candidate by eight symbols. The receive-window budgets stay at 4.2
-slow symbols and the same remaining fast-channel time.</p>
-<table>
-<thead>
-<tr>
-<th>Fast profile</th>
-<th style="text-align: right;">Preamble</th>
-<th style="text-align: right;">Fast RX / TX</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>SF8 / 500</td>
-<td style="text-align: right;">48</td>
-<td style="text-align: right;">49 / 50</td>
-</tr>
-<tr>
-<td>SF8 / 500</td>
-<td style="text-align: right;">56</td>
-<td style="text-align: right;">50 / 50</td>
-</tr>
-<tr>
-<td>SF7 / 500</td>
-<td style="text-align: right;">48</td>
-<td style="text-align: right;">42 / 50</td>
-</tr>
-<tr>
-<td>SF7 / 500</td>
-<td style="text-align: right;">56</td>
-<td style="text-align: right;">41 / 50</td>
-</tr>
-<tr>
-<td>SF7 / 500</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">45 / 50</td>
-</tr>
-<tr>
-<td>SF7 / 500</td>
-<td style="text-align: right;">72</td>
-<td style="text-align: right;">50 / 50</td>
-</tr>
-</tbody>
-</table>
-<p>The slower channel passed 50/50 paired with SF8/56, but then received <strong>49/50</strong>
-paired with SF7/72. Across the completed 4.2-symbol slow-channel runs, that is
-299/300. This later miss invalidated the provisional 4.2-symbol choice and
-triggered the next headroom test at 4.3 symbols. Fast-preamble baselines carry
-forward as 32 for SF9, 56 for SF8 and 72 for SF7, advancing by eight on a miss.</p>
-<p>At 4.3 symbols, the SF9/32 pairing received 100/100 slow packets and 50/50 fast
-packets. The next SF8/56 pairing received only 42/50 slow packets, so that
-candidate also failed. A control run with scanning disabled received 50/50 on
-the slow channel. At 4.4, SF8/56 passed 100/100 slow and 50/50 fast, but the
-SF7/72 pairing then received 49/50 slow packets.</p>
-<p>At 4.5, the SF7 pairing passed 100/100 slow packets. Fast preamble 72 received
-47/50, so the next baseline increased to 80 and passed 50/50. The following
-SF8/56 slow run received 49/50, triggering 4.6 symbols. Baselines now carry
-forward as SF9/32, SF8/56 and SF7/80.</p>
-<p>At 4.6, both SF8/56 and SF7/80 passed 100/100 slow packets and 50/50 fast
-packets. The following SF9/32 slow run received 49/50, triggering 4.7 symbols.
-There were no switch failures; the longest observed switch was 4.414 ms.</p>
-<p>At 4.7, the SF9/32 slow run passed its first 50 packets but received 99/100
-over the full run. This triggered 4.8 symbols, with the same fast preamble
-baselines. No fast-channel run was started for the 4.7 candidate.</p>
-<h2 id="selected-bench-baseline-48-slow-symbols">Selected bench baseline: 4.8 slow symbols</h2>
-<p>The 4.8-symbol sweep passed all three slow-channel checks, totaling 300/300.
-Slow visits are 9.831 ms and fast visits 6.937 ms, plus actual switching time.
-The longest measured switch was 4.491 ms, with no switch failures.</p>
-<table>
-<thead>
-<tr>
-<th>Fast profile</th>
-<th style="text-align: right;">Fast preamble</th>
-<th style="text-align: right;">Fast RX / TX</th>
-<th style="text-align: right;">Slow RX / TX</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>SF9 / 500</td>
-<td style="text-align: right;">32</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">100 / 100</td>
-</tr>
-<tr>
-<td>SF8 / 500</td>
-<td style="text-align: right;">56</td>
-<td style="text-align: right;">49 / 50</td>
-<td style="text-align: right;">100 / 100</td>
-</tr>
-<tr>
-<td>SF8 / 500</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">—</td>
-</tr>
-<tr>
-<td>SF7 / 500</td>
-<td style="text-align: right;">80</td>
-<td style="text-align: right;">50 / 50</td>
-<td style="text-align: right;">100 / 100</td>
-</tr>
-</tbody>
-</table>
-<p>The SF8 miss advanced its baseline from 56 to 64, exactly eight symbols. Its
-slow-channel check preceded that increase; changing the fast preamble leaves
-the idle receive-window calculation unchanged. The final fast-channel attempts
-received 150/150, using explicit preambles <strong>32 / 64 / 80</strong> for SF9 / SF8 / SF7.
-These become the starting values for further tests, increasing by eight on a
-fast-channel miss. A slow-channel miss instead advances the listen window by
-0.1 symbol.</p>
-<p>The production automatic preambles remain <strong>48 / 88 / 120</strong>, retaining the
-switching, loop-jitter and acquisition budgets. The shorter explicit values are
-bench results under the conditions above, not a guarantee for other boards or
-traffic patterns.</p>
-<h2 id="transmit-policy">Transmit policy</h2>
-<p>Hardware checks send three zero-hop adverts from the V4 with the XIAO listening
-on profile 2. OTA startup traffic is allowed to settle before taking the counter
-snapshots. The completed cases are:</p>
-<table>
-<thead>
-<tr>
-<th>V4 profiles and policy</th>
-<th style="text-align: right;">TX on primary / secondary</th>
-<th style="text-align: right;">Received by XIAO</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Permanent / permanent, <code>auto</code></td>
-<td style="text-align: right;">3 / 3</td>
-<td style="text-align: right;">3</td>
-</tr>
-<tr>
-<td>Permanent / permanent, <code>off</code></td>
-<td style="text-align: right;">3 / 0</td>
+<td>ESP32 Full Companion</td>
+<td style="text-align: right;">52</td>
 <td style="text-align: right;">0</td>
 </tr>
 <tr>
-<td>Permanent / temporary, <code>auto</code></td>
-<td style="text-align: right;">3 / 0</td>
+<td>nRF52 Full Companion</td>
+<td style="text-align: right;">43</td>
 <td style="text-align: right;">0</td>
 </tr>
 <tr>
-<td>Permanent / temporary, <code>on</code></td>
-<td style="text-align: right;">3 / 3</td>
-<td style="text-align: right;">3</td>
-</tr>
-<tr>
-<td>Secondary RX only, <code>on</code></td>
-<td style="text-align: right;">3 / 0</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr>
-<td>Temporary / temporary, <code>auto</code></td>
-<td style="text-align: right;">3 / 3</td>
-<td style="text-align: right;">3</td>
+<td>Total</td>
+<td style="text-align: right;">252</td>
+<td style="text-align: right;">2</td>
 </tr>
 </tbody>
 </table>
-<p>A separate isolation check issued three explicit OTA announce commands with
-normal <code>radio</code>, RX-only <code>tempradio2</code> and <code>radio2.cross auto</code>. The completed TX
-counters stayed unchanged on both profiles (0 / 0), confirming that locally
-generated OTA traffic does not fall back to the normal channel in that mode.</p>
-<p>Turning <code>radio2</code> off stopped scanning. A one-minute <code>tempradio2</code> session also
-returned to one profile on expiry. Rebooting with a saved SF8 RX profile and an
-active temporary SF9 RX/TX profile cleared the temporary session and restored
-the saved SF8 profile, including its automatic 88-symbol preamble.</p>
-<h2 id="ota-discovery-while-retaining-the-main-channel">OTA discovery while retaining the main channel</h2>
-<p>Both boards ran normal SF7 / 62.5 kHz on the primary and temporary SF8 / 500 kHz
-RX/TX on the secondary, using <code>radio2.cross auto</code> and automatic preambles 32/88.
-The XIAO discovered the V4's firmware catalogue over profile 2, and both boards
-recorded received and transmitted OTA packets there. Ten V4 zero-hop adverts
-then arrived on the XIAO's primary profile (10/10), with both temporary second
-profiles still active. The XIAO reported no switch failures and a longest switch
-of 4.547 ms during this check.</p>
-<p>This hardware check covers discovery, bidirectional OTA traffic and concurrent
-availability of the main channel between packets. It does not perform a complete
-firmware transfer or install. Byte-exact transfer validation is provided by the
-shared OTA software tests described below.</p>
-<h2 id="software-coverage">Software coverage</h2>
-<p>Native tests cover identical-packet fanout, separate retry ownership and coding
-rates, channel-busy backoff, generation changes, temporary-session isolation,
-deferred replies and stale-packet removal. Tests using the production CLI cover
-parsing, persistence failures, schedules, expiry and clock rollover. A physical
-radio mock exercises the production scan transitions, pending RX interrupts,
-RX power-saving restoration and failed profile switches.</p>
-<p>The full native suite passed 1,422 cases after the RX-only OTA isolation fix;
-all eight KISS modem tests also passed. Subsequent timing changes through 4.8
-symbols passed the 63-case retry/profile suite and production CLI and scan
-harnesses. Shared OTA transfer tests passed byte-exact checks with
-AddressSanitizer and UndefinedBehaviorSanitizer for ESP32 and nRF52 variants.</p>
-<p>Build coverage includes the Heltec V4 repeater, room server, sensor and terminal
-chat, the Full XIAO Companion, and the nRF52 T1000-E repeater. The nRF52 result
-is a build check; these receive measurements use the ESP32/SX1262 boards above.</p>
-<h2 id="hardware-restored-after-validation">Hardware restored after validation</h2>
-<p>Both boards were returned to their original B soak images after the checks:
-<code>v1.17.1-soak-v4-B</code> and <code>v1.17.1-soak-xiao-B</code>. The V4 retained 909.5 MHz,
-SF7 / 62.5 kHz, CR 4/5 and TX 0; the XIAO retained 910.525 MHz with the same
-modulation and TX 22. Both reconnected to Wi-Fi and their custom MQTT service.
-The soak logs resumed under <code>B-post-radio2-soak</code>. These restored images are the
-earlier memory-soak firmware; the new dual-profile code is validated by the
-finite tests above, not by a months-long uptime run.
-The Pi's soak service and Indicator telemetry were also healthy after restoration.</p>
+<p>Affected targets:</p>
+<ul>
+<li><code>Station_G2_repeater_observer_mqtt</code></li>
+<li><code>Station_G2_room_server_observer_mqtt</code></li>
+</ul>
+<p>V4/R8 Full builds and Station G2's Full ESP-NOW bridge passed. This audit does
+not count ordinary MQTT profiles that intentionally omit USB logging as
+broken. Artifact inspection proves compiled support, not hardware operation
+on every board.</p>
+<h2 id="fix-and-regression-coverage">Fix and regression coverage</h2>
+<ul>
+<li>Full builds that require logging remove inherited disables of
+  <code>MESH_PACKET_LOGGING</code> before PlatformIO parses flags. Other macros and
+  explicit logging-off profiles retain their policy.</li>
+<li>Full capability checks require the packet logger and USB controls in the
+  packaged application. Combined USB/WiFi profiles additionally require
+  the <code>logging.output</code> setter. ELF symbols or debug text cannot satisfy these
+  checks.</li>
+<li>Resumed builds must have passing application evidence for the current
+  logging contract, along with the existing artifact hashes and RAM checks.</li>
+<li>CI runs the flag, real PlatformIO/compiler, artifact, resume, and build-profile
+  regression suites.</li>
+</ul>
+<p>Focused verification (after installing PlatformIO and its tool-scons package):</p>
+<pre><code class="language-sh">python3 -B test/test_full_build_flag_dedup.py
+python3 -B test/test_full_logging_compile.py
+python3 -B test/test_firmware_capabilities.py
+python3 -B test/test_full_logging_resume.py
+bash test/test_build_profiles.sh
+python3 -B test/test_cascade_release_package.py
+</code></pre>
+<p>Both Station G2 profiles were rebuilt through <code>build.sh --full</code> with the
+original observer recipes, including their inherited logging undefines. They
+passed the new application checks, runtime RAM budgets, and both OTA slot
+size checks. The new checker rejects both original published images.</p>
+<p>On the Bellevue Station G2, the corrected Full repeater implementation also
+passed serial CLI and passive traffic checks: four RX and two TX packet log
+lines were captured. Its active temporary profile retained preamble 120 and
+the original schedule end time; the Pi relay services were restored.</p>
+<p>Corrected application SHA-256:</p>
+<pre><code class="language-text">Repeater:    81a0a2926d4e567c069d0b10f316047881bcedce062afaa42119dddb2baadf23
+Room Server: 7ee81f1cb65fc274bd363397c3c80ce9006d575efae50fe952c8ca246613a18c
+</code></pre>
 
 
 
