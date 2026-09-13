@@ -294,6 +294,31 @@ it while the Repeater/Room Server bridge is running; check `get mqtt.running`.
 The workaround is not added to nRF52 directions. See [logging by role](role_feature_switches.md)
 for the saved settings and the original firmware's USB sleep issue.
 
+## Companion USB terminal on Linux
+
+Full, USB and USB + Bluetooth Companion results include **Companion USB terminal
+(Linux / Bash)** under **Restore your settings after flashing**, with copyable
+connection and recovery commands.
+
+Run this in Bash on the Linux computer connected to your radio:
+
+```bash
+picocom -b 115200 --imap spchex \
+  --initstring $'\r+++MESHCORE-TERM-START\r' \
+  /dev/ttyACM0
+```
+
+Replace `/dev/ttyACM0` with your radio's port, such as `/dev/ttyACM1` or
+`/dev/ttyUSB0`. Use the primary USB data interface (`00` when multiple interfaces
+appear), and close other apps using it. The init string opens the ASCII CLI;
+its leading carriage return clears an unfinished input line. `--imap spchex`
+displays binary control bytes safely during the transition.
+
+If the terminal display is scrambled, exit picocom with **Ctrl+A, then Ctrl+X**,
+run `reset` in your Linux shell, then reconnect with the command above. At the
+radio prompt, run `version` and `board` to identify the node. See the
+[Companion USB mode guide](terminal_chat_cli.md#companion-usb-mode).
+
 ## Installation methods
 
 | File | Use |
