@@ -2696,6 +2696,9 @@ requires_dram_limited_neighbors() {
   # 8 KiB static reserve at 254 neighbors. Use their board-declared 50-entry
   # tables when the OTA manager is included.
   case "${1,,}" in
+    heltec_t096_repeater_lora_ota_no_external_sensors|\
+    heltec_t1_repeater_lora_ota_no_external_sensors)
+      return 0 ;;
     generic_e22_sx1262_repeater_lora_ota_no_external_sensors|\
     generic_e22_sx1268_repeater_lora_ota_no_external_sensors|\
     heltec_v2_repeater_lora_ota_no_external_sensors|\
@@ -3266,7 +3269,8 @@ apply_nrf52_size_profile() {
   if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "NRF52_PLATFORM" ]; then
     return 0
   fi
-  if ! is_nrf52_companion_radio_full_target "$env_name" \
+  if ! is_repeater_role_target "$env_name" \
+      && ! is_nrf52_companion_radio_full_target "$env_name" \
       && { ! is_lora_ota_build "$env_name" \
            || ! is_lora_ota_only_target "$env_name"; }; then
     return 0
@@ -3276,10 +3280,26 @@ apply_nrf52_size_profile() {
   # runtime software Ed25519 fallback is linked alongside CC310, that setting
   # fully expands repeated Curve25519 arithmetic and wastes tens of kilobytes.
   # Keep hardware crypto, RNG mixing, the software fallback, and board features;
-  # select the size optimizer for both constrained self-updating images and
-  # Full Companion source images, especially their diagnostic profile.
+  # select the size optimizer for repeaters, constrained self-updating images
+  # and Full Companion source images, especially their diagnostic profile.
+  # Full-sensor repeaters also need this after adding the second radio profile;
+  # changing optimization preserves their sensors and protocol features.
   append_platformio_build_unflags "-Ofast"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -Os"
+
+  # These color-display repeaters reserve a 64 KiB reset-retained OTA arena
+  # plus a 25 KiB framebuffer. Keep their board-declared 50 neighbours and
+  # the complete flood-rule engine with a smaller table so runtime startup
+  # allocations also fit; do not lower the heap qualification requirement.
+  case "${env_name,,}" in
+    heltec_t096_repeater_lora_ota_no_external_sensors|\
+    heltec_t1_repeater_lora_ota_no_external_sensors)
+      append_platformio_build_unflags "-DFLOOD_PACKET_FILTER_SLOTS=63"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_PACKET_FILTER_SLOTS=16"
+      record_build_reduction \
+        "mesh.flood_rules limited to 16 by measured internal RAM; complete rule engine, color display, GPS, and OTA retained"
+      ;;
+  esac
 }
 
 apply_lora_ota_no_external_sensors_profile() {
@@ -4029,6 +4049,29 @@ restore_platformio_build_flags() {
   fi
 }
 
+run_pio_with_size_detection() {
+  local build_output_log
+  local build_status
+  local -a output_statuses
+  # SCons can delete the environment's build directory when flags change.
+  # A tee log inside that directory is then unlinked while still open, hiding
+  # the size error from the measured-size fallback after PlatformIO exits.
+  build_output_log=$(mktemp "${TMPDIR:-/tmp}/meshcore-build-XXXXXX.log") || return 1
+  pio "$@" 2>&1 | tee "$build_output_log"
+  output_statuses=("${PIPESTATUS[@]}")
+  build_status=${output_statuses[0]}
+  if [ "${output_statuses[1]}" -ne 0 ]; then
+    build_status=1
+  elif [ "$build_status" -ne 0 ] \
+      && grep -Eiq \
+        'will not fit in region|region .+ overflowed by|section .+ will not fit|sketch too big|program size is greater than maximum|exceed(s|ing).*(flash|partition|app)' \
+        "$build_output_log"; then
+    build_status=42
+  fi
+  rm -f -- "$build_output_log"
+  return "$build_status"
+}
+
 build_firmware() {
   local env_name=$1
   local pio_env_name
@@ -4271,17 +4314,8 @@ build_firmware() {
     pio_run_args+=(-t mergebin)
   fi
   if [ "$build_status" -eq 0 ]; then
-    local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
-    local build_output_log="${build_output_dir}/.meshcore-build-output.log"
-    mkdir -p -- "$build_output_dir"
-    pio "${pio_run_args[@]}" 2>&1 | tee "$build_output_log"
-    build_status=${PIPESTATUS[0]}
-    if [ "$build_status" -ne 0 ] \
-        && grep -Eiq \
-          'will not fit in region|region .+ overflowed by|section .+ will not fit|sketch too big|program size is greater than maximum|exceed(s|ing).*(flash|partition|app)' \
-          "$build_output_log"; then
-      build_status=42
-    fi
+    run_pio_with_size_detection "${pio_run_args[@]}"
+    build_status=$?
   fi
   if [ "$build_status" -eq 0 ]; then
     collect_build_artifacts "$env_name" "$env_platform" "$pio_env_name" "$firmware_filename"
