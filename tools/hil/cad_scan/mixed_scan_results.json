@@ -1,0 +1,877 @@
+{
+  "firmware_sets": {
+    "initial": {
+      "source_sha256": "33b636bb2d845b5ccb109b09628479a181fb0749c17a2d1220fc0d07a01cde6c",
+      "xiao_sha256": "2ed5f590da43a23de85c1555dc45bb39284d4b87d72473b46690e70e66a68f9a",
+      "v4_sha256": "b42ddb1e7566393301d1ade3bcef6d73f17f399b562dbbd961b8c67f72caa50f",
+      "note": "Initial mixed firmware, before adding acceptance of preamble 40; source hash uses LF newlines."
+    },
+    "preamble40": {
+      "tools\\hil\\cad_scan\\src\\main.cpp": "d8d2123878baa123ea2f2ab284cc63c32399066a823e5876eefd351273ecb85b",
+      "tools\\hil\\cad_scan\\.pio\\build\\xiao\\firmware.bin": "1041adbbe2f09de1e06590e2bc35c0949bb12ee2dd5f3e13fc59fb56f5d0f8e4",
+      "tools\\hil\\cad_scan\\.pio\\build\\v4\\firmware.bin": "f4b18d032b1bcdc934eb225273ea589810657b9885410ff9a0bb8258facf2e12"
+    }
+  },
+  "trials": [
+    {
+      "label": "mixed-sf9-p32-fixed",
+      "firmware_set": "initial",
+      "sf": 9,
+      "preamble500": 32,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 5,
+          "received": 5
+        },
+        {
+          "channel": 1,
+          "sent": 5,
+          "received": 5
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 10,
+          "min_us": 366,
+          "mean_us": 703.1,
+          "max_us": 1055
+        },
+        "cad": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "visit": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "sweep": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "scans": [
+          0,
+          0
+        ],
+        "hits": [
+          0,
+          0
+        ],
+        "packets": [
+          5,
+          5
+        ],
+        "mixed": true,
+        "second_sf": 9,
+        "second_preamble": 32,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 0.0
+          },
+          {
+            "sf": 9,
+            "bw": 500.0,
+            "window_us": 4096,
+            "visit_mean_us": 0.0
+          }
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "started": 1789270960.705596,
+      "finished": 1789270983.238027
+    },
+    {
+      "label": "mixed-sf9-p32-scan4",
+      "firmware_set": "initial",
+      "sf": 9,
+      "preamble500": 32,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 50,
+          "received": 50
+        },
+        {
+          "channel": 1,
+          "sent": 50,
+          "received": 50
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 24557,
+          "min_us": 914,
+          "mean_us": 928.72,
+          "max_us": 1039
+        },
+        "cad": {
+          "n": 24557,
+          "min_us": 4022,
+          "mean_us": 6396.68,
+          "max_us": 8464
+        },
+        "visit": {
+          "n": 24557,
+          "min_us": 4946,
+          "mean_us": 7328.22,
+          "max_us": 9500
+        },
+        "sweep": {
+          "n": 12228,
+          "min_us": 14329,
+          "mean_us": 14676.33,
+          "max_us": 17465
+        },
+        "scans": [
+          12279,
+          12278
+        ],
+        "hits": [
+          50,
+          50
+        ],
+        "packets": [
+          50,
+          50
+        ],
+        "mixed": true,
+        "second_sf": 9,
+        "second_preamble": 32,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 9376.67
+          },
+          {
+            "sf": 9,
+            "bw": 500.0,
+            "window_us": 4096,
+            "visit_mean_us": 5279.6
+          }
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "started": 1789270983.2402716,
+      "finished": 1789271186.4593866
+    },
+    {
+      "label": "mixed-sf8-p32-fixed",
+      "firmware_set": "initial",
+      "sf": 8,
+      "preamble500": 32,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 5,
+          "received": 5
+        },
+        {
+          "channel": 1,
+          "sent": 5,
+          "received": 5
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 10,
+          "min_us": 370,
+          "mean_us": 831.7,
+          "max_us": 1043
+        },
+        "cad": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "visit": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "sweep": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "scans": [
+          0,
+          0
+        ],
+        "hits": [
+          0,
+          0
+        ],
+        "packets": [
+          5,
+          5
+        ],
+        "mixed": true,
+        "second_sf": 8,
+        "second_preamble": 32,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 0.0
+          },
+          {
+            "sf": 8,
+            "bw": 500.0,
+            "window_us": 2048,
+            "visit_mean_us": 0.0
+          }
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "started": 1789271186.4632525,
+      "finished": 1789271208.8119774
+    },
+    {
+      "label": "mixed-sf8-p32-scan4",
+      "firmware_set": "initial",
+      "sf": 8,
+      "preamble500": 32,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 50,
+          "received": 50
+        },
+        {
+          "channel": 1,
+          "sent": 50,
+          "received": 49
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 28151,
+          "min_us": 896,
+          "mean_us": 927.93,
+          "max_us": 1033
+        },
+        "cad": {
+          "n": 28151,
+          "min_us": 2102,
+          "mean_us": 5374.08,
+          "max_us": 8465
+        },
+        "visit": {
+          "n": 28151,
+          "min_us": 3029,
+          "mean_us": 6304.79,
+          "max_us": 9489
+        },
+        "sweep": {
+          "n": 14025,
+          "min_us": 12407,
+          "mean_us": 12628.23,
+          "max_us": 15412
+        },
+        "scans": [
+          14076,
+          14075
+        ],
+        "hits": [
+          50,
+          50
+        ],
+        "packets": [
+          50,
+          49
+        ],
+        "mixed": true,
+        "second_sf": 8,
+        "second_preamble": 32,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 9373.27
+          },
+          {
+            "sf": 8,
+            "bw": 500.0,
+            "window_us": 2048,
+            "visit_mean_us": 3236.08
+          }
+        ],
+        "errors": 0,
+        "false_hits": 1
+      },
+      "started": 1789271208.813703,
+      "finished": 1789271407.0955238
+    },
+    {
+      "label": "mixed-sf8-p48-fixed",
+      "firmware_set": "initial",
+      "sf": 8,
+      "preamble500": 48,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 5,
+          "received": 5
+        },
+        {
+          "channel": 1,
+          "sent": 5,
+          "received": 5
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 10,
+          "min_us": 369,
+          "mean_us": 700.1,
+          "max_us": 1043
+        },
+        "cad": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "visit": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "sweep": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "scans": [
+          0,
+          0
+        ],
+        "hits": [
+          0,
+          0
+        ],
+        "packets": [
+          5,
+          5
+        ],
+        "mixed": true,
+        "second_sf": 8,
+        "second_preamble": 48,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 0.0
+          },
+          {
+            "sf": 8,
+            "bw": 500.0,
+            "window_us": 2048,
+            "visit_mean_us": 0.0
+          }
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "started": 1789271407.1223483,
+      "finished": 1789271429.209217
+    },
+    {
+      "label": "mixed-sf8-p48-scan4",
+      "firmware_set": "initial",
+      "sf": 8,
+      "preamble500": 48,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 50,
+          "received": 50
+        },
+        {
+          "channel": 1,
+          "sent": 50,
+          "received": 50
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 27871,
+          "min_us": 896,
+          "mean_us": 927.92,
+          "max_us": 1032
+        },
+        "cad": {
+          "n": 27871,
+          "min_us": 2102,
+          "mean_us": 5374.06,
+          "max_us": 8466
+        },
+        "visit": {
+          "n": 27871,
+          "min_us": 3030,
+          "mean_us": 6304.76,
+          "max_us": 9489
+        },
+        "sweep": {
+          "n": 13885,
+          "min_us": 12406,
+          "mean_us": 12628.83,
+          "max_us": 15434
+        },
+        "scans": [
+          13936,
+          13935
+        ],
+        "hits": [
+          50,
+          51
+        ],
+        "packets": [
+          50,
+          50
+        ],
+        "mixed": true,
+        "second_sf": 8,
+        "second_preamble": 48,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 9373.17
+          },
+          {
+            "sf": 8,
+            "bw": 500.0,
+            "window_us": 2048,
+            "visit_mean_us": 3236.12
+          }
+        ],
+        "errors": 0,
+        "false_hits": 1
+      },
+      "started": 1789271429.2108085,
+      "finished": 1789271626.1998806
+    },
+    {
+      "label": "mixed-sf8-p40-fixed",
+      "firmware_set": "preamble40",
+      "sf": 8,
+      "preamble500": 40,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 5,
+          "received": 5
+        },
+        {
+          "channel": 1,
+          "sent": 5,
+          "received": 5
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 10,
+          "min_us": 361,
+          "mean_us": 692.2,
+          "max_us": 1055
+        },
+        "cad": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "visit": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "sweep": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "scans": [
+          0,
+          0
+        ],
+        "hits": [
+          0,
+          0
+        ],
+        "packets": [
+          5,
+          5
+        ],
+        "mixed": true,
+        "second_sf": 8,
+        "second_preamble": 40,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 0.0
+          },
+          {
+            "sf": 8,
+            "bw": 500.0,
+            "window_us": 2048,
+            "visit_mean_us": 0.0
+          }
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "started": 1789271684.4553764,
+      "finished": 1789271706.7985356
+    },
+    {
+      "label": "mixed-sf8-p40-scan4",
+      "firmware_set": "preamble40",
+      "sf": 8,
+      "preamble500": 40,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 50,
+          "received": 50
+        },
+        {
+          "channel": 1,
+          "sent": 50,
+          "received": 49
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 27223,
+          "min_us": 916,
+          "mean_us": 928.96,
+          "max_us": 1035
+        },
+        "cad": {
+          "n": 27223,
+          "min_us": 2102,
+          "mean_us": 5374.11,
+          "max_us": 8464
+        },
+        "visit": {
+          "n": 27223,
+          "min_us": 3024,
+          "mean_us": 6305.83,
+          "max_us": 9497
+        },
+        "sweep": {
+          "n": 13561,
+          "min_us": 12406,
+          "mean_us": 12629.74,
+          "max_us": 15448
+        },
+        "scans": [
+          13612,
+          13611
+        ],
+        "hits": [
+          50,
+          49
+        ],
+        "packets": [
+          50,
+          49
+        ],
+        "mixed": true,
+        "second_sf": 8,
+        "second_preamble": 40,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 9376.77
+          },
+          {
+            "sf": 8,
+            "bw": 500.0,
+            "window_us": 2048,
+            "visit_mean_us": 3234.66
+          }
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "started": 1789271706.8001776,
+      "finished": 1789271899.3010736
+    },
+    {
+      "label": "mixed-sf7-p48-fixed",
+      "firmware_set": "preamble40",
+      "sf": 7,
+      "preamble500": 48,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 5,
+          "received": 5
+        },
+        {
+          "channel": 1,
+          "sent": 5,
+          "received": 5
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 2,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 10,
+          "min_us": 362,
+          "mean_us": 828.4,
+          "max_us": 1068
+        },
+        "cad": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "visit": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "sweep": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "scans": [
+          0,
+          0
+        ],
+        "hits": [
+          0,
+          0
+        ],
+        "packets": [
+          5,
+          5
+        ],
+        "mixed": true,
+        "second_sf": 7,
+        "second_preamble": 48,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 0.0
+          },
+          {
+            "sf": 7,
+            "bw": 500.0,
+            "window_us": 1024,
+            "visit_mean_us": 0.0
+          }
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "started": 1789271899.3047435,
+      "finished": 1789271926.614222
+    },
+    {
+      "label": "mixed-sf7-p48-scan4",
+      "firmware_set": "preamble40",
+      "sf": 7,
+      "preamble500": 48,
+      "length": 64,
+      "summary": [
+        {
+          "channel": 0,
+          "sent": 50,
+          "received": 50
+        },
+        {
+          "channel": 1,
+          "sent": 50,
+          "received": 50
+        }
+      ],
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "channels": 2,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 29959,
+          "min_us": 892,
+          "mean_us": 926.19,
+          "max_us": 1037
+        },
+        "cad": {
+          "n": 29959,
+          "min_us": 905,
+          "mean_us": 4862.6,
+          "max_us": 8467
+        },
+        "visit": {
+          "n": 29959,
+          "min_us": 1822,
+          "mean_us": 5791.43,
+          "max_us": 9493
+        },
+        "sweep": {
+          "n": 14929,
+          "min_us": 11199,
+          "mean_us": 11602.92,
+          "max_us": 14422
+        },
+        "scans": [
+          14980,
+          14979
+        ],
+        "hits": [
+          50,
+          64
+        ],
+        "packets": [
+          50,
+          50
+        ],
+        "mixed": true,
+        "second_sf": 7,
+        "second_preamble": 48,
+        "rx_symbols": 4,
+        "profiles": [
+          {
+            "sf": 7,
+            "bw": 62.5,
+            "window_us": 8192,
+            "visit_mean_us": 9373.73
+          },
+          {
+            "sf": 7,
+            "bw": 500.0,
+            "window_us": 1024,
+            "visit_mean_us": 2208.88
+          }
+        ],
+        "errors": 0,
+        "false_hits": 14
+      },
+      "started": 1789271926.6296344,
+      "finished": 1789272122.5433447
+    }
+  ]
+}

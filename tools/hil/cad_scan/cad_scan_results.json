@@ -1,0 +1,2491 @@
+{
+  "configuration": {
+    "sf": 5,
+    "bandwidth_khz": 125,
+    "coding_rate": "4/5",
+    "preamble_symbols": 32,
+    "cad_det_peak": 18,
+    "cad_det_min": 10,
+    "frequencies_mhz": [
+      909.5,
+      910.5,
+      911.5,
+      912.5,
+      913.5,
+      914.5,
+      915.5,
+      916.5,
+      917.5,
+      918.5,
+      919.5,
+      920.5
+    ],
+    "tx_board": "Heltec V4",
+    "rx_board": "XIAO ESP32-S3 + Wio SX1262"
+  },
+  "trials": [
+    {
+      "name": "baseline-fixed",
+      "mode": "fixed",
+      "channels": 4,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:33:42.568037+00:00",
+      "summary": {
+        "sent": 16,
+        "received": 16,
+        "by_channel": [
+          {
+            "sent": 4,
+            "received": 4
+          },
+          {
+            "sent": 4,
+            "received": 4
+          },
+          {
+            "sent": 4,
+            "received": 4
+          },
+          {
+            "sent": 4,
+            "received": 4
+          }
+        ]
+      },
+      "stats": null,
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "cad-standard",
+      "mode": "scan",
+      "channels": 4,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:34:48.442877+00:00",
+      "summary": {
+        "sent": 32,
+        "received": 7,
+        "by_channel": [
+          {
+            "sent": 8,
+            "received": 1
+          },
+          {
+            "sent": 8,
+            "received": 2
+          },
+          {
+            "sent": 8,
+            "received": 2
+          },
+          {
+            "sent": 8,
+            "received": 2
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "tune": {
+          "n": 9551,
+          "min_us": 200,
+          "mean_us": 1874.73,
+          "max_us": 1968
+        },
+        "cad": {
+          "n": 9551,
+          "min_us": 1473,
+          "mean_us": 1727.83,
+          "max_us": 1760
+        },
+        "visit": {
+          "n": 9551,
+          "min_us": 1681,
+          "mean_us": 3605.78,
+          "max_us": 3731
+        },
+        "sweep": {
+          "n": 2340,
+          "min_us": 12517,
+          "mean_us": 14468.81,
+          "max_us": 15369
+        },
+        "scans": [
+          2388,
+          2388,
+          2388,
+          2387
+        ],
+        "hits": [
+          17,
+          13,
+          18,
+          16
+        ],
+        "packets": [
+          1,
+          2,
+          2,
+          2
+        ],
+        "errors": 0,
+        "false_hits": 56
+      },
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "cad-auto",
+      "mode": "cad-auto",
+      "channels": 4,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:36:32.960629+00:00",
+      "summary": {
+        "sent": 32,
+        "received": 16,
+        "by_channel": [
+          {
+            "sent": 8,
+            "received": 4
+          },
+          {
+            "sent": 8,
+            "received": 4
+          },
+          {
+            "sent": 8,
+            "received": 3
+          },
+          {
+            "sent": 8,
+            "received": 5
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 1024,
+        "tune": {
+          "n": 9716,
+          "min_us": 203,
+          "mean_us": 1873.85,
+          "max_us": 1955
+        },
+        "cad": {
+          "n": 9716,
+          "min_us": 1465,
+          "mean_us": 1727.74,
+          "max_us": 1751
+        },
+        "visit": {
+          "n": 9716,
+          "min_us": 1676,
+          "mean_us": 3604.63,
+          "max_us": 3713
+        },
+        "sweep": {
+          "n": 2380,
+          "min_us": 12540,
+          "mean_us": 14468.04,
+          "max_us": 15386
+        },
+        "scans": [
+          2429,
+          2429,
+          2429,
+          2429
+        ],
+        "hits": [
+          20,
+          17,
+          13,
+          21
+        ],
+        "packets": [
+          4,
+          4,
+          3,
+          5
+        ],
+        "errors": 0,
+        "false_hits": 55
+      },
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "rxfast-4",
+      "mode": "rxfast 4",
+      "channels": 4,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:40:13.506474+00:00",
+      "summary": {
+        "sent": 32,
+        "received": 32,
+        "by_channel": [
+          {
+            "sent": 8,
+            "received": 8
+          },
+          {
+            "sent": 8,
+            "received": 8
+          },
+          {
+            "sent": 8,
+            "received": 8
+          },
+          {
+            "sent": 8,
+            "received": 8
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "tune": {
+          "n": 34539,
+          "min_us": 206,
+          "mean_us": 239.97,
+          "max_us": 303
+        },
+        "cad": {
+          "n": 34539,
+          "min_us": 876,
+          "mean_us": 1279.4,
+          "max_us": 1296
+        },
+        "visit": {
+          "n": 34539,
+          "min_us": 1119,
+          "mean_us": 1522.22,
+          "max_us": 1595
+        },
+        "sweep": {
+          "n": 8610,
+          "min_us": 5934,
+          "mean_us": 6099.58,
+          "max_us": 6972
+        },
+        "scans": [
+          8635,
+          8635,
+          8635,
+          8634
+        ],
+        "hits": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "packets": [
+          8,
+          8,
+          8,
+          8
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "rxfast-4-maxpayload",
+      "mode": "rxfast 4",
+      "channels": 4,
+      "payload_bytes": 255,
+      "started_utc": "2026-09-13T02:41:34.030819+00:00",
+      "summary": {
+        "sent": 35,
+        "received": 35,
+        "by_channel": [
+          {
+            "sent": 9,
+            "received": 9
+          },
+          {
+            "sent": 9,
+            "received": 9
+          },
+          {
+            "sent": 9,
+            "received": 9
+          },
+          {
+            "sent": 8,
+            "received": 8
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 4,
+        "automatic_cad": false,
+        "rx_window_us": 1024,
+        "tune": {
+          "n": 157869,
+          "min_us": 208,
+          "mean_us": 240.13,
+          "max_us": 304
+        },
+        "cad": {
+          "n": 157869,
+          "min_us": 879,
+          "mean_us": 1279.36,
+          "max_us": 1296
+        },
+        "visit": {
+          "n": 157869,
+          "min_us": 1121,
+          "mean_us": 1522.39,
+          "max_us": 1595
+        },
+        "sweep": {
+          "n": 39440,
+          "min_us": 5934,
+          "mean_us": 6098.31,
+          "max_us": 6967
+        },
+        "scans": [
+          39468,
+          39467,
+          39467,
+          39467
+        ],
+        "hits": [
+          9,
+          9,
+          9,
+          8
+        ],
+        "packets": [
+          9,
+          9,
+          9,
+          8
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0,
+      "completion_note": "Stopped after 35 of the planned 64 packets because of a serial acknowledgement timeout. The final acknowledgement and RX were recovered by sequence from serial logs. Scope then expanded to channel-count/window testing."
+    },
+    {
+      "name": "matrix-cad1-1",
+      "mode": "cad 1",
+      "channels": 1,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:53:02.709175+00:00",
+      "summary": {
+        "sent": 8,
+        "received": 7,
+        "by_channel": [
+          {
+            "sent": 8,
+            "received": 7
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 256,
+        "channels": 1,
+        "cad_symbols": 1,
+        "tune": {
+          "n": 373,
+          "min_us": 203,
+          "mean_us": 1684.56,
+          "max_us": 1902
+        },
+        "cad": {
+          "n": 373,
+          "min_us": 603,
+          "mean_us": 953.24,
+          "max_us": 983
+        },
+        "visit": {
+          "n": 373,
+          "min_us": 815,
+          "mean_us": 2640.88,
+          "max_us": 2871
+        },
+        "sweep": {
+          "n": 373,
+          "min_us": 816,
+          "mean_us": 2642.9,
+          "max_us": 2873
+        },
+        "scans": [
+          373
+        ],
+        "hits": [
+          45
+        ],
+        "packets": [
+          7
+        ],
+        "errors": 0,
+        "false_hits": 37
+      },
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "matrix-cad1-10",
+      "mode": "cad 1",
+      "channels": 10,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:11:23.925276+00:00",
+      "summary": {
+        "sent": 20,
+        "received": 2,
+        "by_channel": [
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 1
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 1024,
+        "channels": 10,
+        "cad_symbols": 1,
+        "tune": {
+          "n": 1208,
+          "min_us": 204,
+          "mean_us": 1734.6,
+          "max_us": 1936
+        },
+        "cad": {
+          "n": 1208,
+          "min_us": 581,
+          "mean_us": 944.01,
+          "max_us": 981
+        },
+        "visit": {
+          "n": 1208,
+          "min_us": 787,
+          "mean_us": 2681.78,
+          "max_us": 2921
+        },
+        "sweep": {
+          "n": 51,
+          "min_us": 26533,
+          "mean_us": 28389.24,
+          "max_us": 28586
+        },
+        "scans": [
+          121,
+          121,
+          121,
+          121,
+          121,
+          121,
+          121,
+          121,
+          120,
+          120
+        ],
+        "hits": [
+          13,
+          11,
+          3,
+          12,
+          7,
+          13,
+          9,
+          19,
+          13,
+          9
+        ],
+        "packets": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "errors": 0,
+        "false_hits": 107
+      },
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "matrix-cad1-11",
+      "mode": "cad 1",
+      "channels": 11,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:53:51.625138+00:00",
+      "summary": {
+        "sent": 22,
+        "received": 5,
+        "by_channel": [
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 1
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 256,
+        "channels": 11,
+        "cad_symbols": 1,
+        "tune": {
+          "n": 1124,
+          "min_us": 203,
+          "mean_us": 1699.83,
+          "max_us": 1933
+        },
+        "cad": {
+          "n": 1124,
+          "min_us": 570,
+          "mean_us": 948.42,
+          "max_us": 983
+        },
+        "visit": {
+          "n": 1124,
+          "min_us": 789,
+          "mean_us": 2651.39,
+          "max_us": 2918
+        },
+        "sweep": {
+          "n": 32,
+          "min_us": 29687,
+          "mean_us": 31297.25,
+          "max_us": 34130
+        },
+        "scans": [
+          103,
+          103,
+          102,
+          102,
+          102,
+          102,
+          102,
+          102,
+          102,
+          102,
+          102
+        ],
+        "hits": [
+          11,
+          10,
+          11,
+          10,
+          18,
+          16,
+          9,
+          12,
+          13,
+          4,
+          11
+        ],
+        "packets": [
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        "errors": 0,
+        "false_hits": 119
+      },
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "matrix-cad1-12",
+      "mode": "cad 1",
+      "channels": 12,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:53:14.575938+00:00",
+      "summary": {
+        "sent": 24,
+        "received": 3,
+        "by_channel": [
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 1
+          },
+          {
+            "sent": 2,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 256,
+        "channels": 12,
+        "cad_symbols": 1,
+        "tune": {
+          "n": 1271,
+          "min_us": 203,
+          "mean_us": 1707.23,
+          "max_us": 1934
+        },
+        "cad": {
+          "n": 1271,
+          "min_us": 579,
+          "mean_us": 950.64,
+          "max_us": 983
+        },
+        "visit": {
+          "n": 1271,
+          "min_us": 799,
+          "mean_us": 2661.0,
+          "max_us": 2919
+        },
+        "sweep": {
+          "n": 32,
+          "min_us": 32209,
+          "mean_us": 34145.0,
+          "max_us": 37211
+        },
+        "scans": [
+          106,
+          106,
+          106,
+          106,
+          106,
+          106,
+          106,
+          106,
+          106,
+          106,
+          106,
+          105
+        ],
+        "hits": [
+          15,
+          11,
+          7,
+          14,
+          11,
+          17,
+          15,
+          7,
+          7,
+          6,
+          13,
+          13
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 132
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "matrix-cad2-10",
+      "mode": "cad 2",
+      "channels": 10,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:55:55.572851+00:00",
+      "summary": {
+        "sent": 40,
+        "received": 3,
+        "by_channel": [
+          {
+            "sent": 4,
+            "received": 1
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 1
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 1
+          },
+          {
+            "sent": 4,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 512,
+        "channels": 10,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 4816,
+          "min_us": 204,
+          "mean_us": 1820.26,
+          "max_us": 1942
+        },
+        "cad": {
+          "n": 4816,
+          "min_us": 922,
+          "mean_us": 1212.84,
+          "max_us": 1248
+        },
+        "visit": {
+          "n": 4816,
+          "min_us": 1128,
+          "mean_us": 3036.23,
+          "max_us": 3184
+        },
+        "sweep": {
+          "n": 329,
+          "min_us": 29119,
+          "mean_us": 31039.74,
+          "max_us": 33962
+        },
+        "scans": [
+          482,
+          482,
+          482,
+          482,
+          482,
+          482,
+          481,
+          481,
+          481,
+          481
+        ],
+        "hits": [
+          19,
+          23,
+          11,
+          19,
+          23,
+          19,
+          20,
+          17,
+          21,
+          16
+        ],
+        "packets": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "errors": 1,
+        "false_hits": 184
+      },
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "matrix-fixed-12",
+      "mode": "fixed",
+      "channels": 12,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:50:44.565478+00:00",
+      "summary": {
+        "sent": 24,
+        "received": 24,
+        "by_channel": [
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          },
+          {
+            "sent": 2,
+            "received": 2
+          }
+        ]
+      },
+      "stats": null,
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "matrix-rx1-10",
+      "mode": "rxfast 1",
+      "channels": 10,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:52:32.381657+00:00",
+      "summary": {
+        "sent": 20,
+        "received": 0,
+        "by_channel": [
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 256,
+        "channels": 10,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 39992,
+          "min_us": 218,
+          "mean_us": 239.3,
+          "max_us": 295
+        },
+        "cad": {
+          "n": 39992,
+          "min_us": 505,
+          "mean_us": 510.31,
+          "max_us": 524
+        },
+        "visit": {
+          "n": 39992,
+          "min_us": 734,
+          "mean_us": 752.54,
+          "max_us": 810
+        },
+        "sweep": {
+          "n": 3999,
+          "min_us": 7508,
+          "mean_us": 7555.27,
+          "max_us": 10556
+        },
+        "scans": [
+          4000,
+          4000,
+          3999,
+          3999,
+          3999,
+          3999,
+          3999,
+          3999,
+          3999,
+          3999
+        ],
+        "hits": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": null,
+      "rssi_max_dbm": null
+    },
+    {
+      "name": "matrix-rx1-11",
+      "mode": "rxfast 1",
+      "channels": 11,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:51:58.752520+00:00",
+      "summary": {
+        "sent": 22,
+        "received": 0,
+        "by_channel": [
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 256,
+        "channels": 11,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 44374,
+          "min_us": 219,
+          "mean_us": 239.57,
+          "max_us": 297
+        },
+        "cad": {
+          "n": 44374,
+          "min_us": 505,
+          "mean_us": 510.36,
+          "max_us": 531
+        },
+        "visit": {
+          "n": 44374,
+          "min_us": 735,
+          "mean_us": 752.87,
+          "max_us": 823
+        },
+        "sweep": {
+          "n": 4034,
+          "min_us": 8259,
+          "mean_us": 8315.85,
+          "max_us": 11343
+        },
+        "scans": [
+          4034,
+          4034,
+          4034,
+          4034,
+          4034,
+          4034,
+          4034,
+          4034,
+          4034,
+          4034,
+          4034
+        ],
+        "hits": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": null,
+      "rssi_max_dbm": null
+    },
+    {
+      "name": "matrix-rx1-12",
+      "mode": "rxfast 1",
+      "channels": 12,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:51:21.726766+00:00",
+      "summary": {
+        "sent": 24,
+        "received": 0,
+        "by_channel": [
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          },
+          {
+            "sent": 2,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": false,
+        "rx_window_us": 256,
+        "channels": 12,
+        "cad_symbols": 4,
+        "tune": {
+          "n": 48844,
+          "min_us": 218,
+          "mean_us": 239.5,
+          "max_us": 303
+        },
+        "cad": {
+          "n": 48844,
+          "min_us": 505,
+          "mean_us": 510.43,
+          "max_us": 524
+        },
+        "visit": {
+          "n": 48844,
+          "min_us": 735,
+          "mean_us": 752.87,
+          "max_us": 822
+        },
+        "sweep": {
+          "n": 4070,
+          "min_us": 9008,
+          "mean_us": 9071.79,
+          "max_us": 12116
+        },
+        "scans": [
+          4071,
+          4071,
+          4071,
+          4071,
+          4070,
+          4070,
+          4070,
+          4070,
+          4070,
+          4070,
+          4070,
+          4070
+        ],
+        "hits": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": null,
+      "rssi_max_dbm": null
+    },
+    {
+      "name": "matrix-rx2-10",
+      "mode": "rxfast 2",
+      "channels": 10,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:54:42.430065+00:00",
+      "summary": {
+        "sent": 40,
+        "received": 0,
+        "by_channel": [
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          },
+          {
+            "sent": 4,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 512,
+        "channels": 10,
+        "cad_symbols": 1,
+        "tune": {
+          "n": 60218,
+          "min_us": 226,
+          "mean_us": 239.86,
+          "max_us": 301
+        },
+        "cad": {
+          "n": 60218,
+          "min_us": 761,
+          "mean_us": 766.98,
+          "max_us": 786
+        },
+        "visit": {
+          "n": 60218,
+          "min_us": 999,
+          "mean_us": 1009.68,
+          "max_us": 1080
+        },
+        "sweep": {
+          "n": 6021,
+          "min_us": 10059,
+          "mean_us": 10133.32,
+          "max_us": 13156
+        },
+        "scans": [
+          6022,
+          6022,
+          6022,
+          6022,
+          6022,
+          6022,
+          6022,
+          6022,
+          6021,
+          6021
+        ],
+        "hits": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": null,
+      "rssi_max_dbm": null
+    },
+    {
+      "name": "matrix-rx3-7",
+      "mode": "rxfast 3",
+      "channels": 7,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:00:45.915689+00:00",
+      "summary": {
+        "sent": 35,
+        "received": 2,
+        "by_channel": [
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 1
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 1
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 768,
+        "channels": 7,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 41877,
+          "min_us": 212,
+          "mean_us": 240.2,
+          "max_us": 306
+        },
+        "cad": {
+          "n": 41877,
+          "min_us": 874,
+          "mean_us": 1023.54,
+          "max_us": 1038
+        },
+        "visit": {
+          "n": 41877,
+          "min_us": 1116,
+          "mean_us": 1266.55,
+          "max_us": 1339
+        },
+        "sweep": {
+          "n": 5979,
+          "min_us": 8827,
+          "mean_us": 8892.08,
+          "max_us": 11664
+        },
+        "scans": [
+          5983,
+          5983,
+          5983,
+          5982,
+          5982,
+          5982,
+          5982
+        ],
+        "hits": [
+          0,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        "packets": [
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 1
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "matrix-rx3-8",
+      "mode": "rxfast 3",
+      "channels": 8,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:57:15.012900+00:00",
+      "summary": {
+        "sent": 40,
+        "received": 1,
+        "by_channel": [
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 1
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 768,
+        "channels": 8,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 48039,
+          "min_us": 212,
+          "mean_us": 240.02,
+          "max_us": 298
+        },
+        "cad": {
+          "n": 48039,
+          "min_us": 874,
+          "mean_us": 1023.61,
+          "max_us": 1038
+        },
+        "visit": {
+          "n": 48039,
+          "min_us": 1118,
+          "mean_us": 1266.45,
+          "max_us": 1332
+        },
+        "sweep": {
+          "n": 6003,
+          "min_us": 10120,
+          "mean_us": 10160.17,
+          "max_us": 13070
+        },
+        "scans": [
+          6005,
+          6005,
+          6005,
+          6005,
+          6005,
+          6005,
+          6005,
+          6004
+        ],
+        "hits": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "matrix-rx4-5",
+      "mode": "rxfast 4",
+      "channels": 5,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T02:59:24.604029+00:00",
+      "summary": {
+        "sent": 40,
+        "received": 39,
+        "by_channel": [
+          {
+            "sent": 8,
+            "received": 8
+          },
+          {
+            "sent": 8,
+            "received": 8
+          },
+          {
+            "sent": 8,
+            "received": 8
+          },
+          {
+            "sent": 8,
+            "received": 8
+          },
+          {
+            "sent": 8,
+            "received": 7
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 1024,
+        "channels": 5,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 38677,
+          "min_us": 214,
+          "mean_us": 240.2,
+          "max_us": 281
+        },
+        "cad": {
+          "n": 38677,
+          "min_us": 882,
+          "mean_us": 1279.32,
+          "max_us": 1298
+        },
+        "visit": {
+          "n": 38677,
+          "min_us": 1125,
+          "mean_us": 1522.37,
+          "max_us": 1571
+        },
+        "sweep": {
+          "n": 7703,
+          "min_us": 7217,
+          "mean_us": 7630.08,
+          "max_us": 10091
+        },
+        "scans": [
+          7736,
+          7736,
+          7735,
+          7735,
+          7735
+        ],
+        "hits": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "packets": [
+          8,
+          8,
+          8,
+          8,
+          7
+        ],
+        "errors": 0,
+        "false_hits": 1
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "boundary-rx3-1",
+      "mode": "rxfast 3",
+      "channels": 1,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:02:15.358458+00:00",
+      "summary": {
+        "sent": 24,
+        "received": 4,
+        "by_channel": [
+          {
+            "sent": 24,
+            "received": 4
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 768,
+        "channels": 1,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 32672,
+          "min_us": 217,
+          "mean_us": 240.56,
+          "max_us": 300
+        },
+        "cad": {
+          "n": 32672,
+          "min_us": 875,
+          "mean_us": 1022.99,
+          "max_us": 1044
+        },
+        "visit": {
+          "n": 32672,
+          "min_us": 1115,
+          "mean_us": 1266.47,
+          "max_us": 1330
+        },
+        "sweep": {
+          "n": 32672,
+          "min_us": 1116,
+          "mean_us": 1268.15,
+          "max_us": 1332
+        },
+        "scans": [
+          32672
+        ],
+        "hits": [
+          5
+        ],
+        "packets": [
+          4
+        ],
+        "errors": 0,
+        "false_hits": 1
+      },
+      "rssi_min_dbm": -31.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "boundary-rx3-4",
+      "mode": "rxfast 3",
+      "channels": 4,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:02:57.395749+00:00",
+      "summary": {
+        "sent": 24,
+        "received": 2,
+        "by_channel": [
+          {
+            "sent": 6,
+            "received": 0
+          },
+          {
+            "sent": 6,
+            "received": 0
+          },
+          {
+            "sent": 6,
+            "received": 1
+          },
+          {
+            "sent": 6,
+            "received": 1
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 768,
+        "channels": 4,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 28938,
+          "min_us": 212,
+          "mean_us": 240.2,
+          "max_us": 317
+        },
+        "cad": {
+          "n": 28938,
+          "min_us": 874,
+          "mean_us": 1023.68,
+          "max_us": 1039
+        },
+        "visit": {
+          "n": 28938,
+          "min_us": 1116,
+          "mean_us": 1266.61,
+          "max_us": 1353
+        },
+        "sweep": {
+          "n": 7233,
+          "min_us": 4912,
+          "mean_us": 5079.72,
+          "max_us": 7554
+        },
+        "scans": [
+          7235,
+          7235,
+          7234,
+          7234
+        ],
+        "hits": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "packets": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": -29.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "boundary-rx3-5",
+      "mode": "rxfast 3",
+      "channels": 5,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:03:34.326876+00:00",
+      "summary": {
+        "sent": 25,
+        "received": 0,
+        "by_channel": [
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 768,
+        "channels": 5,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 30244,
+          "min_us": 219,
+          "mean_us": 240.22,
+          "max_us": 303
+        },
+        "cad": {
+          "n": 30244,
+          "min_us": 1017,
+          "mean_us": 1023.76,
+          "max_us": 1043
+        },
+        "visit": {
+          "n": 30244,
+          "min_us": 1248,
+          "mean_us": 1266.76,
+          "max_us": 1338
+        },
+        "sweep": {
+          "n": 6048,
+          "min_us": 6308,
+          "mean_us": 6350.39,
+          "max_us": 8965
+        },
+        "scans": [
+          6049,
+          6049,
+          6049,
+          6049,
+          6048
+        ],
+        "hits": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": null,
+      "rssi_max_dbm": null
+    },
+    {
+      "name": "boundary-rx3-6",
+      "mode": "rxfast 3",
+      "channels": 6,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:04:12.852764+00:00",
+      "summary": {
+        "sent": 30,
+        "received": 2,
+        "by_channel": [
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 1
+          },
+          {
+            "sent": 5,
+            "received": 0
+          },
+          {
+            "sent": 5,
+            "received": 1
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 768,
+        "channels": 6,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 35852,
+          "min_us": 216,
+          "mean_us": 240.19,
+          "max_us": 303
+        },
+        "cad": {
+          "n": 35852,
+          "min_us": 874,
+          "mean_us": 1023.76,
+          "max_us": 1037
+        },
+        "visit": {
+          "n": 35852,
+          "min_us": 1116,
+          "mean_us": 1266.8,
+          "max_us": 1337
+        },
+        "sweep": {
+          "n": 5973,
+          "min_us": 7456,
+          "mean_us": 7621.0,
+          "max_us": 10254
+        },
+        "scans": [
+          5976,
+          5976,
+          5975,
+          5975,
+          5975,
+          5975
+        ],
+        "hits": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "packets": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "errors": 0,
+        "false_hits": 1
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -30.0
+    },
+    {
+      "name": "boundary-rx4-4",
+      "mode": "rxfast 4",
+      "channels": 4,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:04:58.822724+00:00",
+      "summary": {
+        "sent": 80,
+        "received": 80,
+        "by_channel": [
+          {
+            "sent": 20,
+            "received": 20
+          },
+          {
+            "sent": 20,
+            "received": 20
+          },
+          {
+            "sent": 20,
+            "received": 20
+          },
+          {
+            "sent": 20,
+            "received": 20
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 1024,
+        "channels": 4,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 78035,
+          "min_us": 210,
+          "mean_us": 240.16,
+          "max_us": 285
+        },
+        "cad": {
+          "n": 78035,
+          "min_us": 875,
+          "mean_us": 1279.32,
+          "max_us": 1299
+        },
+        "visit": {
+          "n": 78035,
+          "min_us": 1117,
+          "mean_us": 1522.27,
+          "max_us": 1578
+        },
+        "sweep": {
+          "n": 19448,
+          "min_us": 5691,
+          "mean_us": 6103.82,
+          "max_us": 8649
+        },
+        "scans": [
+          19509,
+          19509,
+          19509,
+          19508
+        ],
+        "hits": [
+          20,
+          20,
+          20,
+          20
+        ],
+        "packets": [
+          20,
+          20,
+          20,
+          20
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "boundary-rx4-5",
+      "mode": "rxfast 4",
+      "channels": 5,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:07:01.594459+00:00",
+      "summary": {
+        "sent": 80,
+        "received": 79,
+        "by_channel": [
+          {
+            "sent": 16,
+            "received": 16
+          },
+          {
+            "sent": 16,
+            "received": 15
+          },
+          {
+            "sent": 16,
+            "received": 16
+          },
+          {
+            "sent": 16,
+            "received": 16
+          },
+          {
+            "sent": 16,
+            "received": 16
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 1024,
+        "channels": 5,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 77710,
+          "min_us": 211,
+          "mean_us": 240.22,
+          "max_us": 305
+        },
+        "cad": {
+          "n": 77710,
+          "min_us": 874,
+          "mean_us": 1279.29,
+          "max_us": 1297
+        },
+        "visit": {
+          "n": 77710,
+          "min_us": 1117,
+          "mean_us": 1522.35,
+          "max_us": 1597
+        },
+        "sweep": {
+          "n": 15479,
+          "min_us": 7467,
+          "mean_us": 7629.59,
+          "max_us": 10172
+        },
+        "scans": [
+          15542,
+          15542,
+          15542,
+          15542,
+          15542
+        ],
+        "hits": [
+          16,
+          15,
+          16,
+          16,
+          16
+        ],
+        "packets": [
+          16,
+          15,
+          16,
+          16,
+          16
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0
+    },
+    {
+      "name": "boundary-rx4-6",
+      "mode": "rxfast 4",
+      "channels": 6,
+      "payload_bytes": 64,
+      "started_utc": "2026-09-13T03:09:03.739372+00:00",
+      "summary": {
+        "sent": 60,
+        "received": 52,
+        "by_channel": [
+          {
+            "sent": 10,
+            "received": 8
+          },
+          {
+            "sent": 10,
+            "received": 9
+          },
+          {
+            "sent": 10,
+            "received": 9
+          },
+          {
+            "sent": 10,
+            "received": 9
+          },
+          {
+            "sent": 10,
+            "received": 10
+          },
+          {
+            "sent": 10,
+            "received": 7
+          }
+        ]
+      },
+      "stats": {
+        "stats": true,
+        "warm": true,
+        "mode": 0,
+        "automatic_cad": true,
+        "rx_window_us": 1024,
+        "channels": 6,
+        "cad_symbols": 2,
+        "tune": {
+          "n": 58533,
+          "min_us": 213,
+          "mean_us": 240.11,
+          "max_us": 304
+        },
+        "cad": {
+          "n": 58533,
+          "min_us": 874,
+          "mean_us": 1279.34,
+          "max_us": 1296
+        },
+        "visit": {
+          "n": 58533,
+          "min_us": 1116,
+          "mean_us": 1522.27,
+          "max_us": 1596
+        },
+        "sweep": {
+          "n": 9710,
+          "min_us": 8997,
+          "mean_us": 9158.45,
+          "max_us": 11885
+        },
+        "scans": [
+          9756,
+          9756,
+          9756,
+          9755,
+          9755,
+          9755
+        ],
+        "hits": [
+          8,
+          9,
+          9,
+          9,
+          10,
+          7
+        ],
+        "packets": [
+          8,
+          9,
+          9,
+          9,
+          10,
+          7
+        ],
+        "errors": 0,
+        "false_hits": 0
+      },
+      "rssi_min_dbm": -30.0,
+      "rssi_max_dbm": -29.0
+    }
+  ],
+  "excluded_incomplete_trials": [],
+  "source_sha256": {
+    "src/main.cpp": "25830273de28b32077204522cabc6e59197eb7008001f68b0dcf66cc3a7706c6",
+    "platformio.ini": "8263268121b4b5725a2640172906646fa1af0f83263b8c814449b3634f891ed1"
+  },
+  "source_hash_scope": "Final RX-fast harness; earlier CAD trials used preceding revisions of the same harness.",
+  "final_firmware_sha256": {
+    "xiao": "6c7ac338d8b1d22e09dafcaffa20fc9204f879f923a987150428db42e7eee9fe",
+    "v4": "c91103f25f472883b42200d8fc73f3065f53b0cdd7fb60422feac29a568b9c8d"
+  }
+}
