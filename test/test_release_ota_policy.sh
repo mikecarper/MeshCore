@@ -69,7 +69,9 @@ for pair in Tbeam_SX1262_repeater_observer_mqtt:31 \
             Tbeam_SX1276_repeater_observer_mqtt:31 \
             Generic_E22_sx1262_repeater_bridge_espnow:47 \
             LilyGo_TLora_V2_1_1_6_repeater_bridge_espnow:47 \
-            LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_:default; do
+            LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_:default \
+            heltec_tracker_v1_1_repeater_observer_mqtt:default \
+            heltec_tracker_v2_repeater_observer_mqtt:default; do
   target=${pair%:*}
   rules=${pair##*:}
   PIO_ENV_PLATFORM_BY_NAME[$target]=ESP32_PLATFORM
@@ -85,6 +87,22 @@ for pair in Tbeam_SX1262_repeater_observer_mqtt:31 \
     [[ "$PLATFORMIO_BUILD_FLAGS" == *"-DFLOOD_PACKET_FILTER_SLOTS=$rules"* \
        && "$PLATFORMIO_BUILD_UNFLAGS" != *"FLOOD_PACKET_FILTER_SLOTS=$rules"* ]] \
       || fail "$target lost its Full profile rule capacity"
+  fi
+done
+
+# The Tracker correction is specific to Full MQTT repeaters. Ordinary LoRa
+# repeaters and companions keep their existing capacities and services.
+for target in heltec_tracker_v1_1_repeater heltec_tracker_v2_repeater \
+              heltec_tracker_v2_companion_radio_full_femon; do
+  if requires_dram_limited_neighbors "$target"; then
+    fail "$target inherited an unrelated MQTT neighbor reduction"
+  fi
+done
+ESP32_FULL_BUILD=0
+for target in heltec_tracker_v1_1_repeater_observer_mqtt \
+              heltec_tracker_v2_repeater_observer_mqtt; do
+  if requires_dram_limited_neighbors "$target"; then
+    fail "$target changed its non-Full neighbor policy"
   fi
 done
 

@@ -2696,6 +2696,12 @@ requires_dram_limited_neighbors() {
   # 8 KiB static reserve at 254 neighbors. Use their board-declared 50-entry
   # tables when the OTA manager is included.
   case "${1,,}" in
+    heltec_tracker_v1_1_repeater_observer_mqtt|\
+    heltec_tracker_v2_repeater_observer_mqtt)
+      # The non-PSRAM Tracker's color framebuffer, MQTT/TLS and OTA leave
+      # insufficient runtime heap with the expanded 254-neighbor table.
+      # Keep the board's 50 entries in Full; retain its display and services.
+      if [ "$ESP32_FULL_BUILD" = "1" ]; then return 0; fi ;;
     heltec_t096_repeater_lora_ota_no_external_sensors|\
     heltec_t1_repeater_lora_ota_no_external_sensors)
       return 0 ;;
