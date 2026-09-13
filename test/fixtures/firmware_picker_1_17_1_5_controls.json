@@ -1,0 +1,161 @@
+{
+  "familyTag": "v1.17.1.5-halo-keymind-cascade-dev-26303793",
+  "memoryFollowupSources": {
+    "Heltec_Wireless_Paper_companion_radio_full": "1e4d1e167a984abee34e92288b44d55f3d0e15a6"
+  },
+  "memoryReplacementSource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+  "profiles": {
+    "Heltec_Wireless_Paper_companion_radio_full": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": false,
+      "memoryNote": "Wireless Paper Full: 350 contacts and 40 channels; 256 offline message slots normally, 128 while mOTA borrows shared storage. Idle WiFi mOTA listening keeps all 256 slots. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots and frees scratch buffers. USB, Bluetooth, WiFi and the display are retained.",
+      "memorySource": "1e4d1e167a984abee34e92288b44d55f3d0e15a6",
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": true
+    },
+    "Heltec_v3_companion_radio_full": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "memoryNote": "Memory-corrected Full Companion: 150 contacts; the 256-message queue and all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable and a later save may omit them.",
+      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "mqtt": true,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": true
+    },
+    "RAK_4631_companion_radio_full": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
+      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "mqtt": false,
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth"
+      ],
+      "webconfig": false
+    },
+    "RAK_4631_repeater": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": true,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth"
+      ],
+      "webconfig": false
+    },
+    "SenseCapIndicator-LoRa_companion_radio_full": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": false,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": true
+    },
+    "Station_G3_ESP32_repeater": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": true,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": false,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": false
+    },
+    "heltec_v4_2_v4_3_companion_radio_full_femon": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": true,
+      "femTx": false,
+      "gps": true,
+      "mqtt": true,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": true
+    },
+    "heltec_v4_repeater_observer_mqtt-full-usb-wifi": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": true,
+      "femTx": false,
+      "gps": true,
+      "mqtt": true,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": true,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": true
+    }
+  },
+  "source": "2630379365cf47cb7eec146b7d1b57b354efe251"
+}

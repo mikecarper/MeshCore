@@ -866,7 +866,9 @@ assert.strictEqual(
 console.log("generalized firmware picker tests passed");
 
 // Shared features must produce the same commands for every role.
-const controls = require('../docs/_data/firmware_controls.json');
+// Keep the old release's workarounds and replacement-image checks independent
+// of whichever release the live site currently serves.
+const controls = require('./fixtures/firmware_picker_1_17_1_5_controls.json');
 const liveFamily = controls.familyTag;
 const controlledReleases = [release(liveFamily, '2026-09-01T00:00:00Z', [
   asset('heltec_v4_2_v4_3_companion_radio_full_femon-' + liveFamily + '.bin'),
@@ -979,6 +981,29 @@ const stale = picker.buildCatalog(controlledReleases, {...controls, familyTag: '
 assert(stale.profiles.every(p => !p.controls));
 assert(!picker.runtimeDirections({...mqttCompanion, controls: undefined}, {}).some(s => s.title === 'GPS'));
 console.log('role-specific runtime directions tests passed');
+
+// Exercise every profile from the current generated catalog while the tests
+// above keep the older release's USB and capacity workarounds intact.
+const currentControls = require('../docs/_data/firmware_controls.json');
+const currentAssets = Object.entries(currentControls.profiles).map(([target, info]) => {
+  const source = info.memorySource || currentControls.source;
+  const tag = currentControls.familyTag.replace(/-[0-9a-f]{8}$/, '-' + source.slice(0, 8));
+  return asset(target + '-' + tag + (info.platform === 'NRF52_PLATFORM' ? '.uf2' : '.bin'));
+});
+const currentCatalog = picker.buildCatalog([
+  release(currentControls.familyTag, '2026-09-13T00:00:00Z', currentAssets),
+], currentControls);
+assert.strictEqual(currentCatalog.rows.length, currentAssets.length);
+assert(currentCatalog.profiles.every(profile => profile.controls && profile.chipFamily !== 'unknown'));
+const capacityProfiles = currentCatalog.profiles.filter(profile => profile.controls.memoryNote);
+assert(capacityProfiles.length > 0, 'Regeneration must preserve capacity directions');
+for (const profile of capacityProfiles) {
+  assert(picker.installSteps(profile, profile.installKinds[0]).includes(profile.controls.memoryNote), profile.target);
+}
+const currentObserver = currentCatalog.profiles.find(profile => profile.target === observer.target);
+assert.deepStrictEqual(picker.runtimeDirections(currentObserver, {logging: 'usb'})[0].actions[0].commands,
+  ['set logging.output usb', 'get logging.output']);
+console.log('current release metadata and capacity directions tests passed');
 
 assert.strictEqual(nrf.chipFamily, 'nrf52');
 assert.strictEqual(mqttCompanion.chipFamily, 'esp32');

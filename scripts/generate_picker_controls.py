@@ -12,6 +12,45 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def capacity_note(reductions, defines):
+    notes = []
+    for reduction in reductions:
+        contacts = re.fullmatch(r'companion.capacity limited to (\d+) contacts for runtime RAM; (\d+) queued frames and all Full transports retained', reduction)
+        compact = re.fullmatch(r'companion.capacity limited to (\d+) contacts, (\d+) channels, and (\d+) queued frames by measured internal DRAM', reduction)
+        queue = re.fullmatch(r'nRF52 Full: (\d+) offline frames normally; (\d+) while mOTA borrows queue storage', reduction)
+        paper = re.fullmatch(r'Wireless Paper Full: (\d+) contacts; (\d+) offline frames normally, (\d+) while mOTA borrows queue storage', reduction)
+        neighbors = re.match(r'mesh.neighbors limited to (\d+)\b', reduction)
+        rules = re.match(r'mesh.flood_rules limited to (\d+)\b', reduction)
+        if contacts:
+            count, frames = contacts.groups()
+            notes.append(f'Full Companion capacity: {count} contacts and {frames} queued messages; all Full transports are retained. '
+                         f'Export contacts before updating if you have more than {count}; entries beyond this limit may be unavailable or omitted by a later save.')
+        elif compact:
+            count, channels, frames = compact.groups()
+            notes.append(f'Full Companion capacity: {count} contacts, {channels} channels and {frames} queued messages. '
+                         'Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.')
+        elif queue or paper:
+            if paper:
+                count, normal, borrowed = paper.groups()
+                channels = defines.get('MAX_GROUP_CHANNELS', '')
+                capacity = f'{count} contacts'
+                if re.fullmatch(r'\d+', channels):
+                    capacity += f' and {channels} channels'
+                notes.append(f'Wireless Paper Full capacity: {capacity}.')
+            else:
+                normal, borrowed = queue.groups()
+            notes.append(f'Full Companion queue: {normal} offline messages normally; {borrowed} while mOTA borrows queue storage. '
+                         f'Sync unread messages with a Companion app before starting mOTA if more than {borrowed} are pending. '
+                         f'Stopping or disconnecting the source restores all {normal} slots.')
+        elif neighbors:
+            notes.append(f'Neighbor table: {neighbors[1]} entries.')
+        elif rules:
+            notes.append(f'Flood rules: {rules[1]} entries; the complete rule engine is retained.')
+        elif reduction.startswith(('companion.capacity', 'nRF52 Full:', 'Wireless Paper Full:', 'mesh.neighbors', 'mesh.flood_rules')):
+            raise ValueError('Unrecognized capacity reduction: ' + reduction)
+    return ' '.join(notes)
+
+
 def generate(stage, config):
     plan = json.loads((stage / 'release-plan.json').read_text())
     envs = {name: dict(options) for name, options in config}
@@ -58,6 +97,13 @@ def generate(stage, config):
             }
             if manifest.get('ota_update_requirements'):
                 controls['updateRequirements'] = manifest['ota_update_requirements']
+            note = capacity_note(manifest.get('reductions', []), defines)
+            if note:
+                source = manifest.get('source_commit', plan['source'])
+                if not isinstance(source, str) or not re.fullmatch(r'[0-9a-f]{40}', source):
+                    raise ValueError('Capacity notes require an exact source commit: ' + manifest['target'])
+                controls['memoryNote'] = note
+                controls['memorySource'] = source
             for name in manifest['files']:
                 if not name.endswith(('.bin', '.uf2', '.zip', '.hex')):
                     continue

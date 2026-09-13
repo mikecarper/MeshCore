@@ -17,7 +17,7 @@ The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.
 
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.6" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -368,6 +368,9 @@ Hardware-specific controls are enabled only when `_data/firmware_controls.json`
 matches the selected release family and exact target. If that metadata is
 missing or belongs to another release, the picker retains basic role/logging
 directions and links the complete guide without inventing hardware support.
+Capacity directions come from each qualified profile's recorded reductions and
+are tied to the source hash of the selected download. The older 1.17.1.5 USB
+sleep workaround stays limited to that release.
 
 After qualifying a new release, resolve its PlatformIO configuration with no
 other PlatformIO process running, then generate the controls from that source
@@ -379,6 +382,9 @@ python3 scripts/generate_picker_controls.py \
   --stage /path/to/staged-release \
   --pio-config /tmp/meshcore-picker-pio-config.json
 ```
+
+Refresh the `data-controls-url` version query when publishing the generated
+metadata so browsers fetch the new release's controls.
 
 For the downloadable version, save the release family's public GitHub release
 objects as a JSON array, then package the same picker UI and controls:

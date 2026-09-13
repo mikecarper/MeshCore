@@ -103,6 +103,7 @@ jobs:
       - name: Verify logging sleep guards and instructions
         run: |
           python3 -B test/test_logging_sleep_contract.py
+          python3 -B test/test_picker_controls_generator.py
           node test/test_firmware_picker.js
 
       - name: Verify nRF52 UF2-reset CLI coverage
