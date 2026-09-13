@@ -56,6 +56,7 @@ public:
   }
 
   bool configSideDetectors(const uint8_t* sideDetSFs, uint8_t num, float bw) override {
+    if (_profiles.enabled()) return false;
     const uint8_t primary_sf = getSpreadingFactor();
     float active_bw = _params_valid ? _cur_bw : ((CustomLR2021 *)_radio)->getBandwidthKhz();
     if (active_bw <= 0.0f) active_bw = bw;
@@ -104,6 +105,9 @@ protected:
   }
 
   bool applySideDetectorConfig(uint8_t primary_sf, float bw) {
+    if (_profiles.enabled()) {
+      return ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0) == RADIOLIB_ERR_NONE;
+    }
     if (!mesh::lr2021::validateSideDetectorSFs(_sideDetSFs, _numSideDet, primary_sf, bw)) {
       return false;
     }
@@ -114,7 +118,7 @@ protected:
   }
 
   int16_t performChannelScan() override {
-    if (_numSideDet == 0) return RadioLibWrapper::performChannelScan();
+    if (_numSideDet == 0 || _profiles.enabled()) return RadioLibWrapper::performChannelScan();
 
     CustomLR2021* radio = (CustomLR2021 *)_radio;
     const uint8_t rx_primary_sf = getSpreadingFactor();

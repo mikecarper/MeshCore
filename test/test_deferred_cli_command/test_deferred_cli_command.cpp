@@ -9,12 +9,14 @@ TEST(DeferredCliCommand, CopiesAuthenticatedCommandContext) {
   const char command[] = "del flood.moderation.all";
 
   ASSERT_TRUE(deferred.enqueue(7, 123456U, 2, secret, command,
-                               strlen(command), 654321U));
+                               strlen(command), 654321U, 1, 91));
   EXPECT_TRUE(deferred.pending);
   EXPECT_EQ(7, deferred.client_index);
   EXPECT_EQ(123456U, deferred.sender_timestamp);
   EXPECT_EQ(654321U, deferred.request_id);
   EXPECT_EQ(2, deferred.path_hash_size);
+  EXPECT_EQ(1, deferred.radio_profile);
+  EXPECT_EQ(91U, deferred.radio_generation);
   EXPECT_EQ(0, memcmp(secret, deferred.secret, sizeof(secret)));
   EXPECT_STREQ(command, deferred.command);
   EXPECT_TRUE(deferred.matches(7, 654321U, command, strlen(command)));

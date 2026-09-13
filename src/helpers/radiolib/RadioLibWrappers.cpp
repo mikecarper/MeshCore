@@ -44,6 +44,10 @@ void RadioLibWrapper::begin() {
     const uint8_t initial_cr = 5;
   #endif
     cacheParams(LORA_FREQ, LORA_BW, LORA_SF, initial_cr);
+    _profiles.primary.freq = LORA_FREQ;
+    _profiles.primary.bw = LORA_BW;
+    _profiles.primary.sf = LORA_SF;
+    _profiles.primary.cr = initial_cr;
   }
 #endif
 #ifdef LORA_TX_POWER
@@ -162,18 +166,31 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   const float previous_bw = _cur_bw;
   const uint8_t previous_sf = _cur_sf;
   const uint8_t previous_cr = _cur_cr;
+  const uint16_t previous_preamble = _physical_preamble;
+  mesh::RadioProfileParams requested = _profiles.primary;
+  requested.freq = freq; requested.bw = bw; requested.sf = sf; requested.cr = cr;
+  const auto previous_primary = _profiles.primary;
+  _profiles.primary = requested;
+  _physical_preamble = profilePreamble(0);
 
   bool success = applyParams(freq, bw, sf, cr);
   if (success) {
     cacheParams(freq, bw, sf, cr);
+    _profiles.primary = previous_primary;
+    _profiles.setPrimary(requested, _profiles.primary_temporary);
+    _active_profile = 0;
+    _profile_generation = _profiles.generation[0];
     if (rx_ps_timings != NULL) {
-      _rx_ps_enabled = true;
+      if (_profile_rxps_suspended) _profile_saved_rxps = true;
+      else _rx_ps_enabled = true;
       _rx_ps_rx_us = rx_ps_timings[0];
       _rx_ps_sleep_us = rx_ps_timings[1];
       _rx_ps_continuous_fallback = rxPowerSavingUsesContinuousFallback(
           _rx_ps_rx_us, _rx_ps_sleep_us);
     }
   } else {
+    _profiles.primary = previous_primary;
+    _physical_preamble = previous_preamble;
     bool restored = had_previous_params
       && applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
 
@@ -185,12 +202,156 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   }
 
   endReconfigure(resume_rx);
+  _profile_visit_us = micros();
   return success ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
+}
+
+bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
+  if (!mesh::RadioProfiles::valid(p)) return false;
+#if defined(USE_SX1276)
+  return p.freq >= 137 && p.freq <= 1020 && p.sf >= 7 && p.bw <= 500;
+#elif defined(USE_SX1272)
+  return p.freq >= 860 && p.freq <= 1020 && p.sf >= 7 && p.bw >= 125 && p.bw <= 500;
+#elif defined(USE_LLCC68)
+  return p.freq >= 150 && p.freq <= 960
+      && ((p.bw == 125 && p.sf <= 9) || (p.bw == 250 && p.sf <= 10)
+          || (p.bw == 500 && p.sf <= 11));
+#elif defined(USE_LR2021)
+  return (p.freq <= 1090 || p.freq >= 1900) && p.bw >= 31.25 && p.bw <= 1000;
+#elif defined(USE_LR1110)
+  return p.freq <= 960 && p.bw >= 62.5 && p.bw <= 500;
+#elif defined(USE_SX1268)
+  return p.freq >= 410 && p.freq <= 810 && p.bw <= 500;
+#else
+  return p.freq <= 960 && p.bw <= 500;
+#endif
+}
+
+mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
+  if (profile > 1 || (profile == 1 && !_profiles.enabled())) return mesh::RadioParamApplyResult::FAILED;
+  const auto& p = _profiles.params(profile);
+  const uint16_t preamble = profilePreamble(profile);
+  if (!_profile_refresh_required && _active_profile == profile && _profile_generation == _profiles.generation[profile]
+      && _physical_preamble == preamble) return mesh::RadioParamApplyResult::APPLIED;
+  if (!validateProfile(p)) return mesh::RadioParamApplyResult::FAILED;
+  const uint32_t started = micros();
+  const uint8_t resume = beginReconfigure();
+  if (resume > 1) return mesh::RadioParamApplyResult::BUSY;
+  const uint16_t old_preamble = _physical_preamble;
+  _physical_preamble = preamble;
+  const bool applied = applyParams(p.freq, p.bw, p.sf, p.cr);
+  if (applied) {
+    cacheParams(p.freq, p.bw, p.sf, p.cr);
+    _active_profile = profile;
+    _profile_generation = _profiles.generation[profile];
+    _profile_refresh_required = false;
+    ++_profiles.switches;
+  } else {
+    ++_profiles.switch_failures;
+    _physical_preamble = old_preamble;
+    if (!applyParams(_cur_freq, _cur_bw, _cur_sf, _cur_cr)) restoreAfterDeepInit();
+  }
+  endReconfigure(resume);
+  _profile_visit_us = micros();
+  const uint32_t elapsed = _profile_visit_us - started;
+  if (elapsed > _profiles.longest_switch_us) _profiles.longest_switch_us = elapsed;
+  return applied ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
+}
+
+mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile) {
+  if (!_profiles.canTransmit(profile)) return mesh::RadioParamApplyResult::FAILED;
+  if (_profiles.enabled() && (isChipBusy() || isPacketPendingOrReceiving())) {
+    return mesh::RadioParamApplyResult::BUSY;
+  }
+  return tuneProfile(profile);
+}
+
+void RadioLibWrapper::serviceProfileScan() {
+  if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;
+  _profile_retry_at = 0;
+  if (_profiles.enabled() && !_profile_rxps_suspended) {
+    const uint8_t resume = beginReconfigure();
+    if (resume > 1) return;
+    _profile_saved_rxps = _rx_ps_enabled;
+    _rx_ps_enabled = false;
+    _profile_rxps_suspended = true;
+    _nf_calib_active = false;
+    _noise_floor_valid = false;  // a single-channel floor cannot describe both channels
+    _profile_refresh_required = true; // refresh side detectors even if the tuple is unchanged
+    endReconfigure(resume);
+  }
+  uint8_t target = _active_profile;
+  const bool restart_scan = _profiles.enabled()
+      && (_profile_scan_generation[0] != _profiles.generation[0]
+          || _profile_scan_generation[1] != _profiles.generation[1]);
+  if (!_profiles.enabled()) target = 0;
+  else if (restart_scan) target = _profiles.slowerProfile();
+  else if ((uint32_t)(micros() - _profile_visit_us) >= _profiles.listenUs(
+      _active_profile, profilePreamble(_profiles.slowerProfile()))) {
+    target ^= 1;
+  }
+  const auto result = tuneProfile(target);
+  if (restart_scan && result == mesh::RadioParamApplyResult::APPLIED) {
+    _profile_scan_generation[0] = _profiles.generation[0];
+    _profile_scan_generation[1] = _profiles.generation[1];
+    _profile_visit_us = micros();
+  }
+  if (result == mesh::RadioParamApplyResult::FAILED) {
+    // Retry a rejected or failing profile at a bounded rate; retain primary RX.
+    _profile_retry_at = millis() + 1000;
+    tuneProfile(0);
+  }
+  if (!_profiles.enabled() && _profile_rxps_suspended && _active_profile == 0
+      && result == mesh::RadioParamApplyResult::APPLIED) {
+    const uint8_t resume = beginReconfigure();
+    if (resume > 1) return;
+    _rx_ps_enabled = _profile_saved_rxps;
+    _profile_rxps_suspended = false;
+    _profile_refresh_required = true;
+    recalibrateNoiseFloor();
+    endReconfigure(resume);
+  }
+}
+
+uint32_t RadioLibWrapper::getProfileAirtime(uint8_t profile, int len, uint8_t cr) {
+  if (!_profiles.enabled() && profile == 0 && cr == 0) return getEstAirtimeFor(len);
+  const auto& p = _profiles.params(profile);
+  const double symbol = mesh::RadioProfiles::symbolUs(p);
+  if (symbol <= 0 || len < 0) return 0;
+  if (cr < 5 || cr > 8) cr = p.cr;
+  const int de = symbol >= 16000 ? 1 : 0;
+  const double coded = ceil((8.0 * len - 4 * p.sf + (p.sf <= 6 ? 20 : 28) + 16)
+      / (4 * (p.sf - 2 * de)));
+  const double payload_symbols = 8 + (coded > 0 ? coded * cr : 0);
+  const double suffix = p.sf <= 6 ? 6.25 : 4.25;
+  return (uint32_t)ceil((profilePreamble(profile) + suffix + payload_symbols) * symbol / 1000.0);
 }
 
 bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
                                 const uint32_t* rx_ps_timings) {
   return trySetParams(freq, bw, sf, cr, rx_ps_timings) == mesh::RadioParamApplyResult::APPLIED;
+}
+
+mesh::RadioParamApplyResult RadioLibWrapper::trySetPrimaryParams(const mesh::RadioProfileParams& p,
+    bool temporary, const uint32_t* timings) {
+  auto preview = _profiles;
+  preview.primary = p;
+  if (!validateProfile(p) || !preview.automaticPreambleFits()) return mesh::RadioParamApplyResult::FAILED;
+  const auto previous = _profiles.primary;
+  const bool was_temp = _profiles.primary_temporary;
+  const uint32_t generation = _profiles.generation[0];
+  _profiles.primary.preamble = p.preamble;
+  _profiles.primary_temporary = temporary;
+  const auto result = trySetParams(p.freq, p.bw, p.sf, p.cr, timings);
+  if (result != mesh::RadioParamApplyResult::APPLIED) {
+    _profiles.primary = previous;
+    _profiles.primary_temporary = was_temp;
+    _profiles.generation[0] = generation;
+  } else {
+    _profiles.generation[0] = generation + (previous != p || was_temp != temporary);
+    _profile_generation = _profiles.generation[0];
+  }
+  return result;
 }
 
 bool RadioLibWrapper::setRxBoostedGainMode(bool enabled) {
@@ -471,6 +632,13 @@ void RadioLibWrapper::checkReceiveMode(uint32_t now) {
 }
 
 void RadioLibWrapper::loop() {
+  serviceProfileScan();
+  // Calibration batches need one stable channel. Do not publish a noise floor
+  // assembled from different frequencies, or let a batch pin the scan on one.
+  if (_profiles.enabled()) {
+    checkReceiveMode(static_cast<uint32_t>(millis()));
+    return;
+  }
   if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
     rxPsWatchdogCheck();
   }
@@ -552,6 +720,7 @@ void RadioLibWrapper::startRecv() {
   int err = startReceiveMode();
   if (err == RADIOLIB_ERR_NONE) {
     // A very short frame may complete while startReceiveMode() returns.
+    _profile_visit_us = micros();
     // Retain that RX interrupt instead of overwriting it with software state.
     noInterrupts();
     state = (state & STATE_INT_READY) | STATE_RX;
@@ -611,6 +780,12 @@ bool RadioLibWrapper::isInRecvMode() const {
 
 // RX PowerSaving
 bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
+  if (_profile_rxps_suspended) {
+    _profile_saved_rxps = enabled;
+    _rx_ps_rx_us = rx_us;
+    _rx_ps_sleep_us = sleep_us;
+    return !enabled || supportsRxPowerSaving();
+  }
   if (enabled && !supportsRxPowerSaving()) {
     return false;
   }
@@ -791,7 +966,7 @@ bool RadioLibWrapper::isChannelActive() {
   // int.thresh: RSSI-based interference detection (relative to noise floor).
   // In RX duty-cycle mode only checked while the chip is in a listen window
   // (during the sleep window the frontend is off and the read would stall).
-  if (_threshold != 0 && !(_rx_ps_armed && isChipBusy())
+  if (_threshold != 0 && !_profiles.enabled() && !(_rx_ps_armed && isChipBusy())
       && getCurrentRSSI() > _noise_floor + _threshold) return true;
 
   // cad: hardware channel activity detection
@@ -823,7 +998,10 @@ bool RadioLibWrapper::isReceivingPassive(int interference_margin_db) {
   // busy so the retry is deferred instead of transmitting blind; Dispatcher
   // retains its bounded busy timeout as a last-resort escape.
   if (isChipBusy()) return true;
-  if (isReceivingPacket()) return true;
+  if (isPacketPendingOrReceiving()) return true;
+  // Four-symbol visits are too short for the settled single-channel noise
+  // calibration. Keep retries in RX and use the preamble/header IRQs here.
+  if (_profiles.enabled()) return false;
 
   unsigned long now = millis();
   if ((!_noise_floor_valid && _nf_last_calib == 0)
@@ -866,13 +1044,13 @@ float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   return score < 1.0f ? score : 1.0f;
 }
 
-PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint8_t preambleSymbols) {
+PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols) {
   // based on RadioLib's calculateTimeOnAir()
   uint32_t tsym_us = ((uint32_t)10000 << sf) / (bw * 10);
   uint32_t sfCoeff1_x4 = (sf == 5 || sf == 6) ? 25 : 17; // 6.25 : 4.25, semtech magic numbers to account for sync word + sfd
 
   // preamble + syncword + sfd + header
-  uint32_t preamble_us = (((preambleSymbols + 8) * 4 + sfCoeff1_x4) * tsym_us) / 4;
+  uint64_t preamble_us = (((uint64_t)(preambleSymbols + 8) * 4 + sfCoeff1_x4) * tsym_us) / 4;
 
   // airtime for max packet at current radio settings
   uint32_t total_us   = _radio->getTimeOnAir(MAX_TRANS_UNIT);

@@ -75,6 +75,8 @@ jobs:
 
       - name: Verify temporary-radio timing and exact reply delivery
         run: |
+          python3 -B test/test_radio_profile_cli.py
+          python3 -B test/test_radio_profile_scan.py
           python3 -B test/test_repeater_radio_timing_integration.py
           python3 -B test/test_temp_radio_reply_delivery_contract.py
 
@@ -105,6 +107,12 @@ jobs:
 
       - name: Verify nRF52 UF2-reset CLI coverage
         run: python3 -B test/test_nrf52_uf2reset_cli.py
+
+      - name: Verify CLI setting dispatch and get-set coverage
+        run: |
+          python3 -B test/test_path_hash_cli.py
+          python3 -B test/test_cli_settings_contract.py
+          python3 -B test/test_local_cli_access.py
 
       - name: Verify firmware memory budgets and nRF52 Bluetooth startup
         run: |

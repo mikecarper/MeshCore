@@ -1,3 +1,4 @@
+#include <helpers/RadioProfileCLI.h>
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #if MESH_PACKET_LOGGING
@@ -84,6 +85,7 @@ struct NodePrefs {  // persisted to file
 
 class MyMesh : public BaseChatMesh, ContactVisitor {
   FILESYSTEM* _fs;
+  mesh::RadioProfileCLI _radio_profiles;
   NodePrefs _prefs;
   uint32_t expected_ack_crc;
   ChannelDetails* _public;
@@ -318,6 +320,7 @@ public:
     _fs = &fs;
 
     BaseChatMesh::begin();
+    _radio_profiles.begin(_fs, _radio, getRTCClock());
 
   #if defined(NRF52_PLATFORM)
     IdentityStore store(fs, "");
@@ -421,6 +424,10 @@ public:
   }
 
   void handleCommand(const char* command) {
+    char profile_reply[160];
+    if (_radio_profiles.handle(command, profile_reply, sizeof(profile_reply))) {
+      Serial.println(profile_reply); return;
+    }
     while (*command == ' ') command++;  // skip leading spaces
 
     if (memcmp(command, "send ", 5) == 0) {
@@ -631,6 +638,7 @@ public:
   }
 
   void loop() {
+    _radio_profiles.loop();
     BaseChatMesh::loop();
 
     int len = strlen(command);

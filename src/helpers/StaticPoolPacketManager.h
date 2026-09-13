@@ -30,6 +30,7 @@ public:
   bool getNextTime(uint32_t now, uint32_t& scheduled_for) const;
   mesh::Packet* itemAt(int i) const { return _table[i]; }
   mesh::Packet* removeByIdx(int i);
+  bool reschedule(mesh::Packet* packet, uint32_t scheduled_for);
 };
 
 class StaticPoolPacketManager : public mesh::PacketManager {
@@ -50,6 +51,9 @@ public:
   bool queueOutbound(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for) override;
   mesh::Packet* getNextOutbound(uint32_t now) override;
   mesh::Packet* peekNextOutbound(uint32_t now) override;
+  bool deferOutbound(mesh::Packet* packet, uint32_t scheduled_for) override {
+    return send_queue.reschedule(packet, scheduled_for);
+  }
   int getOutboundCount(uint32_t now) const override;
   int getOutboundTotal() const override;
   bool getNextOutboundTime(uint32_t now, uint32_t& scheduled_for) const override;

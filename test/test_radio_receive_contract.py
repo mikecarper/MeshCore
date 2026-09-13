@@ -21,6 +21,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
+#include <RadioProfiles.h>
 #include <helpers/radiolib/NoiseFloorEstimator.h>
 #define STATE_IDLE 0
 #define STATE_RX 1
@@ -39,6 +40,7 @@ HARNESS = r'''
 static volatile uint8_t state = STATE_RX;
 static uint32_t now_ms = 0;
 uint32_t millis() { return now_ms; }
+uint32_t micros() { return now_ms * 1000UL; }
 void noInterrupts() {}
 void interrupts() {}
 void yield() { ++now_ms; }
@@ -56,6 +58,9 @@ struct Radio {
   }
 };
 struct RadioLibWrapper {
+  mesh::RadioProfiles _profiles;
+  uint32_t _profile_visit_us = 0;
+  void serviceProfileScan() {} // separate profile-scan harness exercises tuning
   Board board; Board* _board = &board;
   Radio radio; Radio* _radio = &radio;
   bool _rx_ps_enabled = false, _rx_ps_armed = false, _rx_ps_continuous_fallback = false;

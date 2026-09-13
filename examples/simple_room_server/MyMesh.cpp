@@ -438,7 +438,7 @@ bool MyMesh::isLooped(const mesh::Packet* packet,
 int MyMesh::calcRxDelayForPacket(const mesh::Packet* packet, float score,
                                  uint32_t air_time) {
   if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
-      && isTempRadioActive()) return 0;
+      && isPacketOnTempRadio(packet)) return 0;
   bool fast_track = false;
   if (!evaluateFloodRuleTiming(packet, fast_track)) {
     return calcRxDelay(score, air_time);
@@ -1458,8 +1458,9 @@ bool MyMesh::applySavedRadioParams() {
   uint32_t timings[2] = {_prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us};
   const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
       && radio_driver.supportsRxPowerSaving() ? timings : NULL;
-  if (!radio_driver.setParams(
-        _prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr, applied_timings)) {
+  if (_cli.radioProfiles().applyPrimary(
+        _prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr, false,
+        _cli.radioProfiles().primaryPreamble(), applied_timings) != mesh::RadioParamApplyResult::APPLIED) {
     return false;
   }
   active_cr = _prefs.cr;
@@ -1517,7 +1518,8 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
   }
 }
 
-void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
+void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {
+  pending_preamble = preamble;
   radio_apply_retry_at = 0;
   radio_apply_failures = 0;
   set_radio_at = futureMillis(2000); // give CLI reply some time to be sent back, before applying temp radio params
@@ -2585,8 +2587,8 @@ void MyMesh::loop() {
     uint32_t timings[2] = {rx_us, sleep_us};
     const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
         && radio_driver.supportsRxPowerSaving() ? timings : NULL;
-    if (timing_ok && radio_driver.setParams(
-          pending_freq, pending_bw, pending_sf, pending_cr, applied_timings)) {
+    if (timing_ok && _cli.radioProfiles().applyPrimary(
+          pending_freq, pending_bw, pending_sf, pending_cr, true, pending_preamble, applied_timings) == mesh::RadioParamApplyResult::APPLIED) {
       set_radio_at = 0;
       active_cr = pending_cr;
       temp_radio_applied = true;
@@ -2783,7 +2785,7 @@ void MyMesh::loop() {
   }
 #endif
 #if defined(ENABLE_OTA) && OTA_DYNAMIC_CONTEXT
-  mesh::ota::ota_service_temp_radio_context(isTempRadioActive());
+  mesh::ota::ota_service_temp_radio_context(isAnyTempRadioActive());
 #endif
 }
 
@@ -2838,6 +2840,7 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+  if (isDualRadioActive()) return true;
   if (hasPendingOtaApply()) return true;
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   if (_local_cli_output.busy()) return true;

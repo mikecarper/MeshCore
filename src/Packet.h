@@ -59,6 +59,12 @@ public:
   int8_t _snr;
   uint8_t tx_cr;  // volatile local-only TX coding-rate override; not serialized
   uint8_t flood_retry_policy;  // volatile receive-policy result; not serialized
+  uint32_t radio_generation = 0;
+  uint32_t radio_origin_generation = 0;
+  uint8_t radio_profile = 0;
+  uint8_t radio_origin = 0;
+  bool radio_bound = false;  // retries retain one profile and never fan out again
+  bool radio_local = true;
 
   /**
    * \brief calculate the hash of payload + type

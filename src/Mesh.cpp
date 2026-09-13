@@ -138,6 +138,7 @@ void Mesh::configureDirectRetryPacket(Packet* retry, const Packet* original, uin
   }
 
   uint8_t default_cr = getDefaultTxCodingRate();
+  if (original && _radio->profiles()) default_cr = _radio->profiles()->params(original->radio_profile).cr;
   if (default_cr < 4 || default_cr > 8) {
     return;
   }
@@ -151,7 +152,8 @@ void Mesh::configureFloodRetryPacket(Packet* retry, const Packet* original, uint
   // Always start from the active radio setting, not the previous retry's
   // override. Only the originating sender has no hops recorded yet; bridge
   // path adjustments must not make a forwarded packet eligible for this.
-  const uint8_t default_cr = getDefaultTxCodingRate();
+  const uint8_t default_cr = original && _radio->profiles()
+      ? _radio->profiles()->params(original->radio_profile).cr : getDefaultTxCodingRate();
   retry->tx_cr = original != NULL && original->isRouteFlood()
       && original->getPathHashCount() == 0
       ? getDirectRetryCodingRateForAttempt(default_cr, retry_attempt)
@@ -189,7 +191,7 @@ static int queuedPacedOtaResponses(PacketManager* manager) {
 // DATA/PROOF admission is credit-limited; false leaves the manager's response descriptor intact.
 bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   Mesh* m = (Mesh*)ctx;
-  if (!m->isTempRadioActive()) return false;
+  if (!m->isAnyTempRadioActive()) return false;
   if (isPacedOtaResponse(msg, len)
       && (queuedPacedOtaResponses(m->_mgr) >= OTA_EGRESS_QUEUE_CREDIT
           || m->_mgr->getFreeCount() <= OTA_EGRESS_MIN_FREE)) {
@@ -213,7 +215,7 @@ void Mesh::begin() {
   _next_recent_advert_echo = 0;
   _next_direct_retry_timeout = 0;
   _next_flood_retry_timeout = 0;
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
     _direct_retries[i].packet = NULL;
     _direct_retries[i].trigger_packet = NULL;
     _direct_retries[i].retry_started_at = 0;
@@ -238,7 +240,7 @@ void Mesh::begin() {
     _direct_retries[i].has_message_replacement_key = false;
     _direct_retries[i].active = false;
   }
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
     _flood_retries[i].packet = NULL;
     _flood_retries[i].trigger_packet = NULL;
     _flood_retries[i].retry_started_at = 0;
@@ -282,6 +284,33 @@ void Mesh::begin() {
 }
 
 void Mesh::loop() {
+  const auto* p = _radio->profiles();
+  if (p && (_retry_radio_generations[0] != p->generation[0]
+      || _retry_radio_generations[1] != p->generation[1] || _retry_cross_mode != p->cross)) {
+    // A changed session is not a failed radio link. Retire its ownership
+    // without recording a failed final echo, and promptly return queued storage.
+    for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; ++i) {
+      if (!_direct_retries[i].active) continue;
+      const auto* packet = _direct_retries[i].queued ? _direct_retries[i].packet : _direct_retries[i].trigger_packet;
+      if (_direct_retries[i].waiting_final_echo || (packet && !isPacketRadioCurrent(packet))) retireDirectRetrySlot(i);
+    }
+    for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; ++i) {
+      if (!_flood_retries[i].active) continue;
+      const auto* packet = _flood_retries[i].queued ? _flood_retries[i].packet : _flood_retries[i].trigger_packet;
+      if ((_flood_retries[i].waiting_final_echo && _flood_retries[i].packet
+            && !isPacketRadioCurrent(_flood_retries[i].packet))
+          || (packet && !isPacketRadioCurrent(packet))) retireFloodRetrySlot(i);
+    }
+    for (int i = _mgr->getOutboundTotal() - 1; i >= 0; --i) {
+      if (isPacketRadioCurrent(_mgr->getOutboundByIdx(i))) continue;
+      auto* stale = _mgr->removeOutboundByIdx(i);
+      onSendFail(stale);
+      releasePacket(stale);
+    }
+    _retry_radio_generations[0] = p->generation[0];
+    _retry_radio_generations[1] = p->generation[1];
+    _retry_cross_mode = p->cross;
+  }
   Dispatcher::loop();
   serviceLoopMaintenance();
 #if defined(ENABLE_OTA) && defined(ESP32_PLATFORM) && \
@@ -305,7 +334,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
   if (auto* limiter = getFloodAdvertLimiter()) limiter->tick(_ms->getMillis());
   if (_waiting_direct_retry_count != 0
       && millisHasNowPassed(_next_direct_retry_timeout)) {
-    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
       if (!_direct_retries[i].active || !_direct_retries[i].waiting_final_echo) {
         continue;
       }
@@ -329,7 +358,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
 
   if (_waiting_flood_retry_count != 0
       && millisHasNowPassed(_next_flood_retry_timeout)) {
-    for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
       if (!_flood_retries[i].active || !_flood_retries[i].waiting_final_echo) {
         continue;
       }
@@ -389,7 +418,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     }
   }
 #endif
-  const bool ota_active = isTempRadioActive();
+  const bool ota_active = isAnyTempRadioActive();
   if (!ota_active) {
     if (_ota_temp_was_active) {
       ota::ota_ctx().manager.clearPendingEgress();
@@ -474,11 +503,11 @@ bool Mesh::allowPacketTransmit(const Packet* packet) const {
   // This is an egress guard, separate from the receive-side TempRadio check below. A relay can queue an OTA
   // packet just before its temporary window closes; never let that delayed packet leak onto the normal channel.
   if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
-      && !isTempRadioActive()) {
+      && !isAnyTempRadioActive()) {
     return false;
   }
   if (packet != NULL && _active_flood_retry_count != 0) {
-    for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
       if (!_flood_retries[i].active || !_flood_retries[i].queued
           || _flood_retries[i].packet != packet) {
         continue;
@@ -494,7 +523,7 @@ bool Mesh::allowPacketForward(const mesh::Packet* packet) {
   return false;  // by default, Transport NOT enabled
 }
 uint32_t Mesh::getRetransmitDelay(const mesh::Packet* packet) { 
-  uint32_t t = (_radio->getEstAirtimeFor(packet->getRawLength()) * 52 / 50) / 2;
+  uint32_t t = (_radio->getProfileAirtime(packet->radio_profile, packet->getRawLength(), packet->tx_cr) * 52 / 50) / 2;
 
   return _rng->nextInt(0, 5)*t;
 }
@@ -577,7 +606,7 @@ uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
     return getRetransmitDelay(packet);
   }
   decayOtaRelayBackoff();
-  uint32_t airtime = _radio->getEstAirtimeFor(packet->getRawLength());
+  uint32_t airtime = _radio->getProfileAirtime(packet->radio_profile, packet->getRawLength(), packet->tx_cr);
   if (airtime == 0) return 0;
   // Quarter-airtime units by pressure level: 0.25-0.5, 0.5-1.0, 0.75-2.0, 1.0-3.0.
   // The maximum uses floor division, so level 3 can never exceed exactly three measured airtimes.
@@ -592,14 +621,14 @@ uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
 
 int Mesh::calcRxDelayForPacket(const Packet* packet, float score, uint32_t air_time) {
   if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
-      && isTempRadioActive()) {
+      && isAnyTempRadioActive()) {
     return 0;
   }
   return Dispatcher::calcRxDelayForPacket(packet, score, air_time);
 }
 
 uint32_t Mesh::getCADFailRetryDelay() const {
-  if (!isTempRadioActive()) return _rng->nextInt(1, 4) * 120;
+  if (!isAnyTempRadioActive()) return _rng->nextInt(1, 4) * 120;
   uint32_t airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
   uint32_t retry = airtime / 4;
   if (retry < 5) retry = 5;
@@ -634,7 +663,7 @@ uint32_t Mesh::getDirectRetryPacketAirtimeDelay(const Packet* packet) const {
     return 0;
   }
 
-  return _radio->getEstAirtimeFor(packet->getRawLength()) * (uint32_t)getDirectRetryPacketAirtimeFactor(packet);
+  return _radio->getProfileAirtime(packet->radio_profile, packet->getRawLength(), packet->tx_cr) * (uint32_t)getDirectRetryPacketAirtimeFactor(packet);
 }
 uint32_t Mesh::getDirectRetryEchoDelay(const Packet* packet) const {
   return 200 + getDirectRetryPacketAirtimeDelay(packet);
@@ -734,8 +763,8 @@ uint32_t Mesh::getFloodRetryAttemptDelay(const Packet* packet, uint8_t attempt_i
     return _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
   }
 
-  uint32_t max_packet_airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
-  uint32_t packet_airtime = _radio->getEstAirtimeFor(packet->getRawLength());
+  uint32_t max_packet_airtime = _radio->getProfileAirtime(packet->radio_profile, MAX_TRANS_UNIT);
+  uint32_t packet_airtime = _radio->getProfileAirtime(packet->radio_profile, packet->getRawLength(), packet->tx_cr);
   uint32_t jitter_percent = _rng->nextInt(0, 201);
   uint32_t jitter = (packet_airtime * jitter_percent) / 100UL;
   uint32_t delay = max_packet_airtime + (20UL * packet_airtime) + jitter;
@@ -752,6 +781,24 @@ void Mesh::onSendComplete(Packet* packet) {
   watchForwardedAdvertEcho(packet);
   armDirectRetryOnSendComplete(packet);
   armFloodRetryOnSendComplete(packet);
+}
+
+void Mesh::onRadioProfileCopyQueued(Packet* packet, const Packet* original, uint8_t priority) {
+  if (packet->isRouteFlood()) {
+    maybeScheduleFloodRetry(packet, priority);
+    replaceQueuedSelfAdvertRetries(packet);
+  } else {
+    bool final_hop = false;
+    if (original) {
+      for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; ++i) {
+        if (_direct_retries[i].active && _direct_retries[i].trigger_packet == original) {
+          final_hop = _direct_retries[i].final_hop_retry;
+          break;
+        }
+      }
+    }
+    maybeScheduleDirectRetry(packet, priority, final_hop);
+  }
 }
 
 void Mesh::onTracePacketQueuedForSend(Packet* packet) {
@@ -1130,7 +1177,10 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
     case PAYLOAD_TYPE_OTA: {
       // OTA is invisible outside an actually-running temporary-radio window. In particular, do not add it
       // to the seen table: a copy heard on the normal channel must not suppress one received after temp radio starts.
-      if (!isTempRadioActive()) break;
+      if (!isAnyTempRadioActive() || (_radio->profiles()
+          && !(_radio->profiles()->primary_temporary && pkt->radio_profile == 0)
+          && !(_radio->profiles()->secondary_temporary && pkt->radio_profile == 1)
+          && _radio->profiles()->cross != RadioCrossMode::On)) break;
       observeOtaRequestPressure(pkt);
       uint8_t n = pkt->getPathHashCount();   // hops travelled to reach us (flood path-hash count)
 #if defined(ENABLE_OTA)
@@ -1323,7 +1373,7 @@ void Mesh::clearDirectRetrySlot(int idx) {
 }
 
 void Mesh::retireDirectRetrySlot(int idx) {
-  if (idx < 0 || idx >= MAX_DIRECT_RETRY_SLOTS || !_direct_retries[idx].active) {
+  if (idx < 0 || idx >= TOTAL_DIRECT_RETRY_SLOTS || !_direct_retries[idx].active) {
     return;
   }
 
@@ -1346,7 +1396,7 @@ void Mesh::rebuildNextDirectRetryTimeout() {
   bool found = false;
   uint32_t shortest_delay = 0;
   const uint32_t now = _ms->getMillis();
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active || !_direct_retries[i].waiting_final_echo) continue;
     int32_t signed_delay = (int32_t)(_direct_retries[i].retry_at - now);
     uint32_t delay = signed_delay > 0 ? (uint32_t)signed_delay : 0;
@@ -1361,7 +1411,7 @@ void Mesh::rebuildNextDirectRetryTimeout() {
 
 bool Mesh::usePassiveChannelCheck(const Packet* packet) const {
   if (_active_direct_retry_count != 0) {
-    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
       if (_direct_retries[i].active && _direct_retries[i].queued
           && _direct_retries[i].packet == packet) {
         return true;
@@ -1375,7 +1425,7 @@ bool Mesh::usePassiveChannelCheck(const Packet* packet) const {
   // has trigger_packet set but queued=false, so ordinary flood forwarding
   // continues to use the normal CAD check.
   if (_active_flood_retry_count != 0) {
-    for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
       if (_flood_retries[i].active && _flood_retries[i].queued
           && _flood_retries[i].packet == packet) {
         return true;
@@ -1437,7 +1487,8 @@ void Mesh::replaceQueuedTraceRetries(const Packet* packet) {
 
   int replacement_slot = -1;
   bool found_prior = false;
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != packet->radio_profile) continue;
     if (!_direct_retries[i].active || _direct_retries[i].payload_type != PAYLOAD_TYPE_TRACE
         || memcmp(replacement_key, _direct_retries[i].trace_replacement_key, MAX_HASH_SIZE) != 0) {
       continue;
@@ -1451,7 +1502,8 @@ void Mesh::replaceQueuedTraceRetries(const Packet* packet) {
 
   if (!found_prior) return;
 
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != packet->radio_profile) continue;
     if (i == replacement_slot || !_direct_retries[i].active
         || _direct_retries[i].payload_type != PAYLOAD_TYPE_TRACE
         || memcmp(replacement_key, _direct_retries[i].trace_replacement_key, MAX_HASH_SIZE) != 0) {
@@ -1475,7 +1527,8 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
   calculateDirectRetryKey(packet, recv_key);
 
   bool cleared = false;
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != packet->radio_profile) continue;
     if (!_direct_retries[i].active || memcmp(recv_key, _direct_retries[i].retry_key, MAX_HASH_SIZE) != 0) {
       continue;
     }
@@ -1535,7 +1588,7 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
 void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
   if (_active_direct_retry_count == 0) return;
 
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active) {
       continue;
     }
@@ -1657,7 +1710,7 @@ void Mesh::armDirectRetryOnSendComplete(const Packet* packet) {
 void Mesh::clearPendingDirectRetryOnSendFail(const Packet* packet) {
   if (_active_direct_retry_count == 0) return;
 
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active) {
       continue;
     }
@@ -1825,7 +1878,8 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
   calculateDirectRetryKey(packet, retry_key);
   uint8_t trace_replacement_key[MAX_HASH_SIZE] = { 0 };
   bool has_trace_replacement_key = calculateTraceReplacementKey(packet, trace_replacement_key);
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != packet->radio_profile) continue;
     if (_direct_retries[i].active
         && memcmp(retry_key, _direct_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
       return;  // the normal direct send still happens, but only one retry sequence owns this logical packet
@@ -1833,7 +1887,8 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
   }
 
   int slot_idx = -1;
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != packet->radio_profile) continue;
     if (!_direct_retries[i].active) {
       slot_idx = i;
       break;
@@ -1841,7 +1896,8 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
   }
   if (slot_idx < 0) {
     if (has_trace_replacement_key) {
-      for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+      for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+        if (i / MAX_DIRECT_RETRY_SLOTS != packet->radio_profile) continue;
         if (_direct_retries[i].active && _direct_retries[i].payload_type == PAYLOAD_TYPE_TRACE
             && memcmp(trace_replacement_key, _direct_retries[i].trace_replacement_key,
                       MAX_HASH_SIZE) == 0) {
@@ -1893,7 +1949,7 @@ void Mesh::clearFloodRetrySlot(int idx) {
     if (_flood_retries[idx].waiting_final_echo && _waiting_flood_retry_count > 0) {
       _waiting_flood_retry_count--;
     }
-    onFloodRetrySlotReleased(_flood_retries[idx].retry_key);
+    onFloodRetrySlotReleased(_flood_retries[idx].retry_key, idx / MAX_FLOOD_RETRY_SLOTS);
   }
   if (_flood_retries[idx].waiting_final_echo && _flood_retries[idx].packet != NULL) {
     releasePacket(_flood_retries[idx].packet);
@@ -1919,7 +1975,7 @@ void Mesh::clearFloodRetrySlot(int idx) {
 }
 
 void Mesh::retireFloodRetrySlot(int idx) {
-  if (idx < 0 || idx >= MAX_FLOOD_RETRY_SLOTS || !_flood_retries[idx].active) {
+  if (idx < 0 || idx >= TOTAL_FLOOD_RETRY_SLOTS || !_flood_retries[idx].active) {
     return;
   }
 
@@ -1945,7 +2001,8 @@ void Mesh::replaceQueuedSelfAdvertRetries(const Packet* packet) {
 
   int replacement_slot = -1;
   bool found_prior = false;
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != packet->radio_profile) continue;
     if (!_flood_retries[i].active
         || !_flood_retries[i].self_advert) {
       continue;
@@ -1959,7 +2016,8 @@ void Mesh::replaceQueuedSelfAdvertRetries(const Packet* packet) {
 
   if (!found_prior) return;
 
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != packet->radio_profile) continue;
     if (i == replacement_slot || !_flood_retries[i].active
         || !_flood_retries[i].self_advert) {
       continue;
@@ -1979,7 +2037,7 @@ void Mesh::rebuildNextFloodRetryTimeout() {
   bool found = false;
   uint32_t shortest_delay = 0;
   const uint32_t now = _ms->getMillis();
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active || !_flood_retries[i].waiting_final_echo) continue;
     int32_t signed_delay = (int32_t)(_flood_retries[i].retry_at - now);
     uint32_t delay = signed_delay > 0 ? (uint32_t)signed_delay : 0;
@@ -1995,7 +2053,7 @@ void Mesh::rebuildNextFloodRetryTimeout() {
 void Mesh::cancelAllDirectRetries() {
   if (_active_direct_retry_count == 0) return;
 
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active) continue;
     retireDirectRetrySlot(i);
   }
@@ -2004,7 +2062,7 @@ void Mesh::cancelAllDirectRetries() {
 void Mesh::cancelAllFloodRetries() {
   if (_active_flood_retry_count == 0) return;
 
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active) continue;
     retireFloodRetrySlot(i);
   }
@@ -2018,7 +2076,7 @@ bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
   uint8_t key[MAX_HASH_SIZE];
   memcpy(key, retry_key, sizeof(key));  // tolerate callers passing storage owned by a retry slot
   bool cancelled = false;
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
     if (!_direct_retries[i].active
         || memcmp(key, _direct_retries[i].retry_key, MAX_HASH_SIZE) != 0) {
       continue;
@@ -2028,7 +2086,7 @@ bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
     cancelled = true;
   }
 
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active
         || memcmp(key, _flood_retries[i].retry_key, MAX_HASH_SIZE) != 0) {
       continue;
@@ -2079,7 +2137,8 @@ void Mesh::replaceActiveMessageRetries(
   int replacement_flood_slot = -1;
   bool found_prior = false;
 
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != replacement_packet->radio_profile) continue;
     if (!_direct_retries[i].active) continue;
     if (_direct_retries[i].trigger_packet == replacement_packet) {
       replacement_direct_slot = i;
@@ -2092,7 +2151,8 @@ void Mesh::replaceActiveMessageRetries(
       found_prior = true;
     }
   }
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != replacement_packet->radio_profile) continue;
     if (!_flood_retries[i].active) continue;
     if (_flood_retries[i].trigger_packet == replacement_packet) {
       replacement_flood_slot = i;
@@ -2107,7 +2167,8 @@ void Mesh::replaceActiveMessageRetries(
   }
 
   if (found_prior) {
-    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != replacement_packet->radio_profile) continue;
       if (i == replacement_direct_slot || !_direct_retries[i].active
           || !_direct_retries[i].has_message_replacement_key
           || _direct_retries[i].message_timestamp == message_timestamp
@@ -2117,7 +2178,8 @@ void Mesh::replaceActiveMessageRetries(
       }
       retireDirectRetrySlot(i);
     }
-    for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != replacement_packet->radio_profile) continue;
       if (i == replacement_flood_slot || !_flood_retries[i].active
           || !_flood_retries[i].has_message_replacement_key
           || _flood_retries[i].message_timestamp == message_timestamp
@@ -2143,7 +2205,8 @@ void Mesh::replaceActiveMessageRetries(
   // new packet. If no slot exists, the role's ordinary retry policy declined
   // this message and there is no retry state to tag.
   if (replacement_direct_slot < 0 && replacement_flood_slot < 0) {
-    for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+    for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (i / MAX_DIRECT_RETRY_SLOTS != replacement_packet->radio_profile) continue;
       if (_direct_retries[i].active
           && _direct_retries[i].trigger_packet == replacement_packet) {
         replacement_direct_slot = i;
@@ -2151,7 +2214,8 @@ void Mesh::replaceActiveMessageRetries(
       }
     }
     if (replacement_direct_slot < 0) {
-      for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+      for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != replacement_packet->radio_profile) continue;
         if (_flood_retries[i].active
             && _flood_retries[i].trigger_packet == replacement_packet) {
           replacement_flood_slot = i;
@@ -2179,13 +2243,13 @@ bool Mesh::hasActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) const {
     return false;
   }
 
-  for (int i = 0; i < MAX_DIRECT_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
     if (_direct_retries[i].active
         && memcmp(retry_key, _direct_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
       return true;
     }
   }
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
     if (_flood_retries[i].active
         && memcmp(retry_key, _flood_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
       return true;
@@ -2228,7 +2292,9 @@ void Mesh::watchForwardedAdvertEcho(const Packet* packet) {
   int slot_idx = -1;
   for (int i = 0; i < MAX_RECENT_ADVERT_ECHOS; i++) {
     RecentAdvertEchoEntry& entry = _recent_advert_echoes[i];
-    if (entry.valid && memcmp(entry.packet_hash, packet_hash, MAX_HASH_SIZE) == 0) {
+    if (entry.valid && entry.radio_profile == packet->radio_profile
+        && entry.radio_generation == packet->radio_generation
+        && memcmp(entry.packet_hash, packet_hash, MAX_HASH_SIZE) == 0) {
       if (entry.confirmed) {
         return;
       }
@@ -2254,6 +2320,8 @@ void Mesh::watchForwardedAdvertEcho(const Packet* packet) {
   entry.advert_timestamp = advert_timestamp;
   entry.watch_started_at = now_millis;
   entry.progress_marker = packet->getPathHashCount();
+  entry.radio_profile = packet->radio_profile;
+  entry.radio_generation = packet->radio_generation;
   entry.confirmed = false;
   entry.valid = true;
 }
@@ -2273,7 +2341,8 @@ void Mesh::observeForwardedAdvertEcho(const Packet* packet) {
   uint32_t now_millis = _ms->getMillis();
   for (int i = 0; i < MAX_RECENT_ADVERT_ECHOS; i++) {
     RecentAdvertEchoEntry& entry = _recent_advert_echoes[i];
-    if (!entry.valid || entry.confirmed
+    if (!entry.valid || entry.confirmed || entry.radio_profile != packet->radio_profile
+        || entry.radio_generation != packet->radio_generation
         || memcmp(entry.packet_hash, packet_hash, MAX_HASH_SIZE) != 0) {
       continue;
     }
@@ -2306,6 +2375,8 @@ bool Mesh::shouldSuppressEchoedAdvertForward(const Packet* packet) const {
   for (int i = 0; i < MAX_RECENT_ADVERT_ECHOS; i++) {
     const RecentAdvertEchoEntry& entry = _recent_advert_echoes[i];
     if (entry.valid && entry.confirmed && entry.advert_timestamp == advert_timestamp
+        && entry.radio_profile == packet->radio_profile
+        && entry.radio_generation == packet->radio_generation
         && memcmp(entry.packet_hash, packet_hash, MAX_HASH_SIZE) == 0) {
       return true;
     }
@@ -2320,7 +2391,8 @@ bool Mesh::cancelFloodRetryOnEcho(const Packet* packet) {
   packet->calculatePacketHash(recv_key);
 
   bool cleared = false;
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != packet->radio_profile) continue;
     if (!_flood_retries[i].active || memcmp(recv_key, _flood_retries[i].retry_key, MAX_HASH_SIZE) != 0) {
       continue;
     }
@@ -2346,7 +2418,7 @@ bool Mesh::cancelFloodRetryOnEcho(const Packet* packet) {
 void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
   if (_active_flood_retry_count == 0) return;
 
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active) {
       continue;
     }
@@ -2449,7 +2521,7 @@ void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
 void Mesh::clearPendingFloodRetryOnSendFail(const Packet* packet) {
   if (_active_flood_retry_count == 0) return;
 
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
     if (!_flood_retries[i].active) {
       continue;
     }
@@ -2484,7 +2556,8 @@ void Mesh::maybeScheduleFloodRetry(const Packet* packet, uint8_t priority) {
 
   uint8_t retry_key[MAX_HASH_SIZE];
   packet->calculatePacketHash(retry_key);
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != packet->radio_profile) continue;
     if (_flood_retries[i].active
         && memcmp(retry_key, _flood_retries[i].retry_key, MAX_HASH_SIZE) == 0) {
       return;  // the normal flood still sends, but only one retry sequence owns this logical packet
@@ -2492,7 +2565,8 @@ void Mesh::maybeScheduleFloodRetry(const Packet* packet, uint8_t priority) {
   }
 
   int slot_idx = -1;
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != packet->radio_profile) continue;
     if (!_flood_retries[i].active) {
       slot_idx = i;
       break;

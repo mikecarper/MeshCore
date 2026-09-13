@@ -142,6 +142,7 @@ static bool isGpioConfig(const char* config) {
 #endif
 
 void CommonCLI::loop() {
+  _radio_profiles.loop();
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   _user_gpio.loop();
   UserGpio::Completion completion;
@@ -732,6 +733,7 @@ static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
 }
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
+  _radio_profiles.begin(fs, _callbacks->getProfileRadio(), _rtc);
   const bool display_settings_loaded = mesh::ui::loadDisplayPowerSettings(fs, false);
   (void)display_settings_loaded;
   bool is_fresh_install = false;
@@ -2462,6 +2464,20 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     mesh::cli::normalizeCommandVerb(command);
+    if (_radio_profiles.handle(command, reply)) return;
+    if (strncmp(command, "set tempradio ", 14) == 0) {
+      handleCommand(sender_timestamp, command + 4, reply);
+      return;
+    }
+    if (!strcmp(command, "get tempradio") || !strcmp(command, "tempradio")) {
+      const auto* radio = _callbacks->getProfileRadio();
+      if (!radio || !radio->profiles() || !radio->profiles()->primary_temporary) strcpy(reply, "> off");
+      else {
+        const auto& p = radio->profiles()->primary;
+        snprintf(reply, 160, "> %.3f,%.3f,%u,%u,%u", p.freq, p.bw, p.sf, p.cr, radio->profilePreamble(0));
+      }
+      return;
+    }
     if (mesh::ui::handleDisplayPowerCommand(command, reply, 160)) return;
 
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
@@ -2601,15 +2617,18 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "Error: unsupported");
       }
     } else if (memcmp(command, "tempradio ", 10) == 0) {
-      strcpy(tmp, &command[10]);
+      uint16_t preamble = 0;
+      if (!mesh::RadioProfileCLI::parseSuffix(command + 10, 5, tmp, sizeof(tmp), preamble)) {
+        strcpy(reply, "Error, use: tempradio f,bw,sf,cr,minutes[,preamble]"); return;
+      }
       const char *parts[5];
       int num = mesh::Utils::parseTextParts(tmp, parts, 5);
       float freq = 0.0f;
       float bw = 0.0f;
-      uint8_t sf  = num > 2 ? atoi(parts[2]) : 0;
-      uint8_t cr  = num > 3 ? atoi(parts[3]) : 0;
+      uint32_t sf = 0, cr = 0;
       uint32_t temp_timeout_mins = 0;
       if (num == 5
+          && parseUint32Strict(parts[2], sf) && parseUint32Strict(parts[3], cr)
           && parseUint32Strict(parts[4], temp_timeout_mins)
           && temp_timeout_mins > 0
           && (uint64_t)getRTCClock()->getCurrentTime() + 2
@@ -2618,8 +2637,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
           && mesh::cli::parseDecimalStrict(parts[1], bw)
           && freq >= 150.0f && freq <= 2500.0f
           && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
-          && isValidLoRaBandwidth(bw)) {
-        _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins);
+          && isValidLoRaBandwidth(bw)
+          && _radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
+        _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins, preamble);
         char duration[64];
         const uint32_t seconds = (uint32_t)temp_timeout_mins * 60UL;
         mesh::RepeaterRadioTiming::formatDuration(duration, sizeof(duration), seconds);
@@ -2659,7 +2679,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       sprintf(reply, "%s", _board->getManufacturerName());
 #if defined(ENABLE_OTA)
     } else if (memcmp(command, "ota", 3) == 0 && (command[3] == 0 || command[3] == ' ')) {
-      if (!_callbacks->isTempRadioActive() && otaCommandNeedsTempRadio(command)) {
+      if (!_callbacks->isTempRadioActive() && !_radio_profiles.secondaryTemporary()
+          && otaCommandNeedsTempRadio(command)) {
         strcpy(reply, "LoRa OTA needs temp radio on every node. Run: tempradio 909.950,250,5,5,120");
       } else {
         mesh::ota::handle_ota_command(command, reply, *_board);
@@ -3118,6 +3139,19 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+  // Infrastructure roles dispatch here rather than through CommonRadioPrefs.
+  if (strncmp(config, "path.hash.mode", 14) == 0
+      && (config[14] == 0 || config[14] == ' ' || config[14] == '\t')) {
+    uint32_t mode = 0;
+    if (mesh::cli::parseUnsignedIntegerStrict(config + 14, mode) && mode <= 2) {
+      _prefs->path_hash_mode = static_cast<uint8_t>(mode);
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be 0,1, or 2");
+    }
+    return;
+  }
 #if ENV_INCLUDE_GPS == 1
   if (strncmp(config, "gps ", 4) == 0) {
     if (strcmp(config + 4, "on") != 0 && strcmp(config + 4, "off") != 0) {
@@ -3603,10 +3637,17 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     float bw = 0.0f;
     uint8_t sf = 0;
     uint8_t cr = 0;
-    if (mesh::cli::parseRadioTupleStrict(&config[6], freq, bw, sf, cr)
+    uint16_t preamble = 0;
+    char legacy[96];
+    if (mesh::RadioProfileCLI::parseSuffix(&config[6], 4, legacy, sizeof(legacy), preamble)
+        && mesh::cli::parseRadioTupleStrict(legacy, freq, bw, sf, cr)
         && freq >= 150.0f && freq <= 2500.0f
         && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
-        && isValidLoRaBandwidth(bw)) {
+        && isValidLoRaBandwidth(bw)
+        && _radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
+      if (!_radio_profiles.savePrimaryPreamble(preamble)) {
+        strcpy(reply, "Error: preamble could not be saved"); return;
+      }
       _prefs->sf = sf;
       _prefs->cr = cr;
       _prefs->freq = freq;
@@ -3634,12 +3675,16 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     float freq, bw;
     uint8_t sf, cr;
     uint32_t start_time, end_time;
-    if (!parseScheduledRadioArgs(&config[8], false, freq, bw, sf, cr, start_time, end_time)) {
+    uint16_t preamble = 0;
+    char legacy[120];
+    if (!mesh::RadioProfileCLI::parseSuffix(&config[8], 5, legacy, sizeof(legacy), preamble)
+        || !parseScheduledRadioArgs(legacy, false, freq, bw, sf, cr, start_time, end_time)) {
       strcpy(reply, "Error, use: set radioat f,bw,sf,cr,start");
-    } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)) {
+    } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)
+        || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
       strcpy(reply, "Error, invalid radio params");
     } else {
-      _callbacks->addScheduledRadioParams(false, freq, bw, sf, cr, start_time, end_time, reply);
+      _callbacks->addScheduledRadioParams(false, freq, bw, sf, cr, start_time, end_time, reply, preamble);
       if (strncmp(reply, "OK", 2) == 0) {
         appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
       }
@@ -3648,12 +3693,16 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     float freq, bw;
     uint8_t sf, cr;
     uint32_t start_time, end_time;
-    if (!parseScheduledRadioArgs(&config[12], true, freq, bw, sf, cr, start_time, end_time)) {
+    uint16_t preamble = 0;
+    char legacy[120];
+    if (!mesh::RadioProfileCLI::parseSuffix(&config[12], 6, legacy, sizeof(legacy), preamble)
+        || !parseScheduledRadioArgs(legacy, true, freq, bw, sf, cr, start_time, end_time)) {
       strcpy(reply, "Error, use: set tempradioat f,bw,sf,cr,start,end");
-    } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)) {
+    } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)
+        || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
       strcpy(reply, "Error, invalid radio params");
     } else {
-      _callbacks->addScheduledRadioParams(true, freq, bw, sf, cr, start_time, end_time, reply);
+      _callbacks->addScheduledRadioParams(true, freq, bw, sf, cr, start_time, end_time, reply, preamble);
       if (strncmp(reply, "OK", 2) == 0) {
         appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
       }
@@ -4288,8 +4337,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       savePrefs();
       sprintf(reply, "OK - reboot.interval set to %d", _prefs->reboot_interval);
     }
-#if defined(USE_LR2021)
   } else if (strcmp(config, "extra.sf") == 0 || memcmp(config, "extra.sf ", 9) == 0) {
+#if defined(USE_LR2021)
     uint8_t sideDetSFs[mesh::lr2021::STORED_SIDE_DETECTOR_BYTES] = {};
     uint8_t num = 0;
     const char* value = config[8] == '\0' ? "" : &config[9];
@@ -4307,6 +4356,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         strcpy(reply, "Invalid extra SF config");
       }
     }
+#else
+    strcpy(reply, "Error: extra.sf requires an LR2021 radio");
 #endif
   } else {
     sprintf(reply, "unknown config: %s", config);
@@ -4538,6 +4589,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     strcpy(freq, StrHelper::ftoa(_prefs->freq));
     strcpy(bw, StrHelper::ftoa3(_prefs->bw));
     sprintf(reply, "> %s,%s,%d,%d", freq, bw, (uint32_t)_prefs->sf, (uint32_t)_prefs->cr);
+    _radio_profiles.appendSavedPreamble(reply, 160, _prefs->sf, _prefs->bw);
   } else if (configKeyEquals(config, "rxdelay")) {
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->rx_delay_base));
   } else if (configKeyEquals(config, "txdelay")) {
@@ -4738,6 +4790,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "> %d", (uint8_t)_prefs->reboot_interval);
     }
   } else if (strcmp(config, "extra.sf") == 0) {
+#if defined(USE_LR2021)
     char* tmp = reply;
     for (int i = 0; i < 3 && _prefs->extra_sf[i] != 0; i++) {
       tmp += sprintf(tmp, "%s%d", (i == 0) ? "" : ",", _prefs->extra_sf[i]);
@@ -4745,6 +4798,9 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (tmp == reply) {
       strcpy(reply, "No extra SF configured");
     }
+#else
+    strcpy(reply, "Error: extra.sf requires an LR2021 radio");
+#endif
   } else {
     mesh::cli::formatUnknownSetting(reply, 160, config);
   }

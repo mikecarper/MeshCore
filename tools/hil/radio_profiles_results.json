@@ -1,0 +1,2024 @@
+{
+  "date": "2026-09-13",
+  "receiver": "Heltec V4 / SX1262 repeater",
+  "transmitter": "XIAO ESP32-S3 / Wio SX1262 Full Companion",
+  "primary": {
+    "frequency_mhz": 909.5,
+    "bandwidth_khz": 62.5,
+    "sf": 7,
+    "cr": 5,
+    "preamble": 32
+  },
+  "secondary": {
+    "frequency_mhz": 910.5,
+    "bandwidth_khz": 500,
+    "cr": 5
+  },
+  "method": "Aggregate MeshCore RX and completed TX counter differences; one transmitting profile at a time; strong signal; varied advert intervals. Not sequence-matched or a long-duration reliability test.",
+  "five_symbol_baseline": [
+    {
+      "sf": 9,
+      "preamble": 48,
+      "channel": 1,
+      "commands": 50,
+      "received": 54,
+      "transmitted": 54,
+      "rx_status": "> rx; RX=0,55 TX=1,0 switches=11861 errors=0 max=4348us preamble=32,48",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=55,0 switches=0 errors=0 max=0us preamble=48,32\r\n>",
+      "slow_symbols": 5
+    },
+    {
+      "sf": 9,
+      "preamble": 48,
+      "channel": 0,
+      "commands": 30,
+      "received": 30,
+      "transmitted": 30,
+      "rx_status": "> rx; RX=30,55 TX=1,0 switches=15090 errors=0 max=4348us preamble=32,48",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=85,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 5
+    },
+    {
+      "sf": 8,
+      "preamble": 72,
+      "channel": 1,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=30,104 TX=1,0 switches=21246 errors=0 max=4348us preamble=32,72",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=135,0 switches=0 errors=0 max=0us preamble=72,32\r\n>",
+      "slow_symbols": 5
+    },
+    {
+      "sf": 8,
+      "preamble": 80,
+      "channel": 1,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=30,153 TX=1,0 switches=27245 errors=0 max=4348us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=185,0 switches=0 errors=0 max=0us preamble=80,32\r\n>",
+      "slow_symbols": 5
+    },
+    {
+      "sf": 8,
+      "preamble": 88,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=30,203 TX=1,0 switches=33368 errors=0 max=4416us preamble=32,88",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=235,0 switches=0 errors=0 max=0us preamble=88,32\r\n>",
+      "slow_symbols": 5
+    },
+    {
+      "sf": 8,
+      "preamble": 88,
+      "channel": 0,
+      "commands": 30,
+      "received": 30,
+      "transmitted": 30,
+      "rx_status": "> rx; RX=60,203 TX=1,0 switches=36449 errors=0 max=4416us preamble=32,88",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=265,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 5
+    },
+    {
+      "sf": 7,
+      "preamble": 120,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=60,253 TX=1,0 switches=42395 errors=0 max=4416us preamble=32,120",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=315,0 switches=0 errors=0 max=0us preamble=120,32\r\n>",
+      "slow_symbols": 5
+    },
+    {
+      "sf": 7,
+      "preamble": 120,
+      "channel": 0,
+      "commands": 30,
+      "received": 30,
+      "transmitted": 30,
+      "rx_status": "> rx; RX=90,253 TX=1,0 switches=45484 errors=0 max=4416us preamble=32,120",
+      "tx_status": "get radio2.status\r\n  > off; RX=0,0 TX=345,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 5
+    }
+  ],
+  "fractional_sweep": [
+    {
+      "sf": 9,
+      "preamble": 48,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=50,0 TX=1,0 switches=5657 errors=0 max=4364us preamble=32,48",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=395,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 9,
+      "preamble": 48,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=50,50 TX=1,0 switches=11109 errors=0 max=4364us preamble=32,48",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=445,0 switches=0 errors=0 max=0us preamble=48,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 8,
+      "preamble": 88,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=100,50 TX=1,0 switches=16434 errors=0 max=4385us preamble=32,88",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=495,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 8,
+      "preamble": 88,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=150,179 TX=1,0 switches=42258 errors=0 max=4407us preamble=32,88",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=674,0 switches=0 errors=0 max=0us preamble=88,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 7,
+      "preamble": 120,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=200,179 TX=1,0 switches=47237 errors=0 max=4407us preamble=32,120",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=724,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 7,
+      "preamble": 120,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=200,229 TX=1,0 switches=53000 errors=0 max=4407us preamble=32,120",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=774,0 switches=0 errors=0 max=0us preamble=120,32\r\n>",
+      "slow_symbols": 4.2
+    }
+  ],
+  "sf9_explicit_preamble_32": [
+    {
+      "sf": 9,
+      "preamble": 32,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=100,129 TX=1,0 switches=28019 errors=0 max=4385us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=574,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=150,129 TX=1,0 switches=32551 errors=0 max=4385us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=1,0 TX=624,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 4.2
+    }
+  ],
+  "firmware_sha256": {
+    "v4-five": "55dbb23803d5b842f203dc08a5d6ad4c47db6336300f79d88790506af17e5c1a",
+    "xiao-five": "68142e4cd085ca0cf3a68dafed9e939fb551bb9ff9e312f91c3b309b92618f31",
+    "v4-headroom42": "f089c0b006d302937e59129e251961fb492e2d666384e56bad72ea1c6106e728",
+    "xiao-headroom42": "951e304adb4887b5fa52218f79500b9821e2b6d4530b2d3fc6e907bbe8b211c4",
+    "v4-headroom43": "2ff3c1e6bbaf13082200eb9ca4462efb28641f93b2b838a54fa68f013116aa7c",
+    "v4-headroom44": "0493ed3f9cb63a9793fd5fea648486104ae5a7eac31bdb80b5e669b07995c04a",
+    "v4-headroom45": "107da85bb5ce48f2f2516610b2cf6f1e89f824f06c92d5754a868f39c0f7623f",
+    "v4-headroom46": "140ee50fc4780bc11d2edac19e748743b5812e1e7ee28c627f0e94b09e018a6c",
+    "v4-headroom47": "df4f0cd4c87efa5501df492e5aa5a3f8ae31c898d10bea5b2dbc8bd71b8e9c9f",
+    "v4-headroom48": "febc2f1784078b5ec1a729134e4f00c5844cb450b77c4ac1c4e84c7c9bd328ff",
+    "xiao-headroom43": "c121d2075e06ebedf3705508b6ba31685855b3919d6cae0f45f006ad2eba86b2",
+    "xiao-headroom44": "bd7b6d7c9469b4bed5f5a11f59a488be1615fd5c2a57869c0d3a6b151e658256",
+    "xiao-headroom47": "0c2cac1d77cacf15c38a4a89c93379a3d504a72637f65fd2e69a1a04982d385a",
+    "xiao-headroom48": "0576583a7928d0400df4af0f6feb268f8aff910a691327ff4985b470a4c9bc6d",
+    "v4-final47": "b628e48ecbaf0963d30fac19982b9157b6bf1ae669cda337a4b68987f3a1b4d2",
+    "v4-final48": "febc2f1784078b5ec1a729134e4f00c5844cb450b77c4ac1c4e84c7c9bd328ff",
+    "xiao-final47": "dbbb74656db3cc78850edc294962756755248fa0b5dc9464764f26de34b9cc5c",
+    "xiao-final48": "0576583a7928d0400df4af0f6feb268f8aff910a691327ff4985b470a4c9bc6d"
+  },
+  "source_sha256": {
+    "src/RadioProfiles.h": "0774b73f0e8ad966595eb6e587d8dee85903ce56f2ae286cfe154a20a058f555",
+    "src/helpers/radiolib/RadioLibWrappers.cpp": "d238378c900a6e2beec25217fa2cf76f7e2eddab1a5afaf6e91449ec139e3a58",
+    "src/Dispatcher.cpp": "296be003f4bedf2b21a4f02e25b914bed6d62a019087b03369822a3c9248c18e"
+  },
+  "source_note": "Source hashes describe the current working source. Older trial images have separate firmware hashes and timing values.",
+  "transmit_policy": [
+    {
+      "case": "permanent/permanent auto",
+      "transmit_delta": [
+        3,
+        3
+      ],
+      "receiver_rx": [
+        3,
+        0
+      ],
+      "before": [
+        200,
+        229,
+        1,
+        0,
+        61219
+      ],
+      "after": [
+        200,
+        230,
+        4,
+        3,
+        62363
+      ],
+      "receiver_before": [
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "receiver_after": [
+        3,
+        0,
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "case": "permanent/permanent off",
+      "transmit_delta": [
+        3,
+        0
+      ],
+      "receiver_rx": [
+        0,
+        0
+      ],
+      "before": [
+        200,
+        231,
+        4,
+        3,
+        63198
+      ],
+      "after": [
+        200,
+        231,
+        7,
+        3,
+        64374
+      ],
+      "receiver_before": [
+        3,
+        0,
+        3,
+        0,
+        0
+      ],
+      "receiver_after": [
+        3,
+        0,
+        4,
+        0,
+        0
+      ]
+    },
+    {
+      "case": "permanent/temporary auto",
+      "transmit_delta": [
+        3,
+        0
+      ],
+      "receiver_rx": [
+        0,
+        0
+      ],
+      "before": [
+        200,
+        233,
+        7,
+        7,
+        70908
+      ],
+      "after": [
+        200,
+        233,
+        10,
+        7,
+        72107
+      ],
+      "receiver_before": [
+        7,
+        0,
+        5,
+        0,
+        0
+      ],
+      "receiver_after": [
+        7,
+        0,
+        5,
+        0,
+        0
+      ]
+    },
+    {
+      "case": "permanent/temporary on",
+      "transmit_delta": [
+        3,
+        3
+      ],
+      "receiver_rx": [
+        3,
+        0
+      ],
+      "before": [
+        200,
+        233,
+        10,
+        7,
+        72947
+      ],
+      "after": [
+        200,
+        233,
+        13,
+        10,
+        74185
+      ],
+      "receiver_before": [
+        7,
+        0,
+        5,
+        0,
+        0
+      ],
+      "receiver_after": [
+        10,
+        0,
+        5,
+        0,
+        0
+      ]
+    },
+    {
+      "case": "receive-only with cross on",
+      "transmit_delta": [
+        3,
+        0
+      ],
+      "receiver_rx": [
+        0,
+        0
+      ],
+      "before": [
+        200,
+        233,
+        13,
+        10,
+        75034
+      ],
+      "after": [
+        200,
+        233,
+        16,
+        10,
+        76226
+      ],
+      "receiver_before": [
+        10,
+        0,
+        5,
+        0,
+        0
+      ],
+      "receiver_after": [
+        10,
+        0,
+        5,
+        0,
+        0
+      ]
+    },
+    {
+      "case": "receive-only temporary OTA stays isolated with auto",
+      "requested_announcements": 3,
+      "transmit_delta": [
+        0,
+        0
+      ],
+      "before": [
+        300,
+        199,
+        1,
+        0,
+        57657
+      ],
+      "after": [
+        300,
+        200,
+        1,
+        0,
+        59618
+      ]
+    },
+    {
+      "case": "temporary/temporary auto",
+      "transmit_delta": [
+        3,
+        3
+      ],
+      "receiver_rx": [
+        3,
+        0
+      ],
+      "before": [
+        300,
+        202,
+        3,
+        2,
+        66617
+      ],
+      "after": [
+        300,
+        202,
+        6,
+        5,
+        67787
+      ],
+      "receiver_before": [
+        2,
+        0,
+        5,
+        0,
+        0
+      ],
+      "receiver_after": [
+        5,
+        0,
+        5,
+        0,
+        0
+      ]
+    },
+    {
+      "case": "temporary expiry restores single profile",
+      "passed": true
+    },
+    {
+      "case": "reboot keeps permanent and clears temporary profile",
+      "saved": "> 910.500,500.000,8,5,rx,88 (auto)",
+      "temporary": "> off"
+    }
+  ],
+  "lower_preamble_sweep": [
+    {
+      "sf": 8,
+      "preamble": 48,
+      "channel": 1,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=200,282 TX=16,10 switches=89027 errors=0 max=4446us preamble=32,48",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=55,0 switches=0 errors=0 max=0us preamble=48,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 7,
+      "preamble": 48,
+      "channel": 1,
+      "commands": 50,
+      "received": 42,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=200,324 TX=16,10 switches=95731 errors=0 max=4446us preamble=32,48",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=105,0 switches=0 errors=0 max=0us preamble=48,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 8,
+      "preamble": 56,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=200,374 TX=16,10 switches=101825 errors=0 max=4446us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=155,0 switches=0 errors=0 max=0us preamble=56,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=250,374 TX=16,10 switches=107184 errors=0 max=4446us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=205,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 7,
+      "preamble": 56,
+      "channel": 1,
+      "commands": 50,
+      "received": 41,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=250,415 TX=16,10 switches=114243 errors=0 max=4446us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=255,0 switches=0 errors=0 max=0us preamble=56,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 7,
+      "preamble": 64,
+      "channel": 1,
+      "commands": 50,
+      "received": 45,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=250,460 TX=16,10 switches=120608 errors=0 max=4446us preamble=32,64",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=305,0 switches=0 errors=0 max=0us preamble=64,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 7,
+      "preamble": 72,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=250,510 TX=16,10 switches=127020 errors=0 max=4446us preamble=32,72",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=355,0 switches=0 errors=0 max=0us preamble=72,32\r\n>",
+      "slow_symbols": 4.2
+    },
+    {
+      "sf": 7,
+      "preamble": 72,
+      "channel": 0,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "rx_status": "> rx; RX=299,510 TX=16,10 switches=132123 errors=0 max=4446us preamble=32,72",
+      "tx_status": "get radio2.status\r\n  > off; RX=10,0 TX=405,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "slow_symbols": 4.2
+    }
+  ],
+  "adaptive-43": [
+    {
+      "slow_symbols": 4.3,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1504
+      ],
+      "after": [
+        50,
+        0,
+        1,
+        0,
+        5403
+      ],
+      "tx_before": [
+        11,
+        0,
+        405,
+        0,
+        0
+      ],
+      "tx_after": [
+        11,
+        0,
+        455,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=50,0 TX=1,0 switches=5403 errors=0 max=4409us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=11,0 TX=455,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.3,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1504
+      ],
+      "after": [
+        100,
+        0,
+        1,
+        0,
+        9217
+      ],
+      "tx_before": [
+        11,
+        0,
+        405,
+        0,
+        0
+      ],
+      "tx_after": [
+        11,
+        0,
+        505,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,0 TX=1,0 switches=9217 errors=0 max=4409us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=11,0 TX=505,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.3,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        100,
+        0,
+        1,
+        0,
+        9928
+      ],
+      "after": [
+        100,
+        50,
+        1,
+        0,
+        14931
+      ],
+      "tx_before": [
+        11,
+        0,
+        505,
+        0,
+        0
+      ],
+      "tx_after": [
+        11,
+        0,
+        555,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,50 TX=1,0 switches=14931 errors=0 max=4409us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=11,0 TX=555,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.3,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 50,
+      "received": 42,
+      "transmitted": 50,
+      "before": [
+        100,
+        50,
+        1,
+        0,
+        16104
+      ],
+      "after": [
+        142,
+        50,
+        1,
+        0,
+        19503
+      ],
+      "tx_before": [
+        11,
+        0,
+        555,
+        0,
+        0
+      ],
+      "tx_after": [
+        11,
+        0,
+        605,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=142,50 TX=1,0 switches=19503 errors=0 max=4506us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=11,0 TX=605,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    }
+  ],
+  "adaptive-44": [
+    {
+      "slow_symbols": 4.4,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        853
+      ],
+      "after": [
+        50,
+        0,
+        1,
+        0,
+        4622
+      ],
+      "tx_before": [
+        12,
+        0,
+        655,
+        0,
+        0
+      ],
+      "tx_after": [
+        12,
+        0,
+        705,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=50,0 TX=1,0 switches=4622 errors=0 max=4276us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=12,0 TX=705,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.4,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        853
+      ],
+      "after": [
+        100,
+        0,
+        1,
+        0,
+        8749
+      ],
+      "tx_before": [
+        12,
+        0,
+        655,
+        0,
+        0
+      ],
+      "tx_after": [
+        12,
+        0,
+        755,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,0 TX=1,0 switches=8749 errors=0 max=4277us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=12,0 TX=755,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.4,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        100,
+        0,
+        1,
+        0,
+        9452
+      ],
+      "after": [
+        100,
+        50,
+        1,
+        0,
+        14515
+      ],
+      "tx_before": [
+        12,
+        0,
+        755,
+        0,
+        0
+      ],
+      "tx_after": [
+        12,
+        0,
+        805,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,50 TX=1,0 switches=14515 errors=0 max=4289us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=12,0 TX=805,0 switches=0 errors=0 max=0us preamble=56,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.4,
+      "sf": 7,
+      "preamble": 72,
+      "channel": 0,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "before": [
+        100,
+        50,
+        1,
+        0,
+        15674
+      ],
+      "after": [
+        149,
+        50,
+        1,
+        0,
+        19881
+      ],
+      "tx_before": [
+        12,
+        0,
+        805,
+        0,
+        0
+      ],
+      "tx_after": [
+        12,
+        0,
+        855,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=149,50 TX=1,0 switches=19881 errors=0 max=4289us preamble=32,72",
+      "tx_status": "get radio2.status\r\n  > off; RX=12,0 TX=855,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    }
+  ],
+  "adaptive-45": [
+    {
+      "slow_symbols": 4.5,
+      "sf": 7,
+      "preamble": 72,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1721
+      ],
+      "after": [
+        50,
+        0,
+        1,
+        0,
+        5351
+      ],
+      "tx_before": [
+        13,
+        0,
+        855,
+        0,
+        0
+      ],
+      "tx_after": [
+        13,
+        0,
+        905,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=50,0 TX=1,0 switches=5351 errors=0 max=4284us preamble=32,72",
+      "tx_status": "get radio2.status\r\n  > off; RX=13,0 TX=905,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.5,
+      "sf": 7,
+      "preamble": 72,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1721
+      ],
+      "after": [
+        100,
+        0,
+        1,
+        0,
+        9117
+      ],
+      "tx_before": [
+        13,
+        0,
+        855,
+        0,
+        0
+      ],
+      "tx_after": [
+        13,
+        0,
+        955,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,0 TX=1,0 switches=9117 errors=0 max=4284us preamble=32,72",
+      "tx_status": "get radio2.status\r\n  > off; RX=13,0 TX=955,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.5,
+      "sf": 7,
+      "preamble": 72,
+      "channel": 1,
+      "commands": 50,
+      "received": 47,
+      "transmitted": 50,
+      "before": [
+        100,
+        0,
+        1,
+        0,
+        9822
+      ],
+      "after": [
+        100,
+        47,
+        1,
+        0,
+        15420
+      ],
+      "tx_before": [
+        13,
+        0,
+        955,
+        0,
+        0
+      ],
+      "tx_after": [
+        13,
+        0,
+        1005,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,47 TX=1,0 switches=15420 errors=0 max=4375us preamble=32,72",
+      "tx_status": "get radio2.status\r\n  > off; RX=13,0 TX=1005,0 switches=0 errors=0 max=0us preamble=72,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.5,
+      "sf": 7,
+      "preamble": 80,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        100,
+        47,
+        1,
+        0,
+        16582
+      ],
+      "after": [
+        100,
+        97,
+        1,
+        0,
+        21713
+      ],
+      "tx_before": [
+        13,
+        0,
+        1005,
+        0,
+        0
+      ],
+      "tx_after": [
+        13,
+        0,
+        1055,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,97 TX=1,0 switches=21713 errors=0 max=4375us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=13,0 TX=1055,0 switches=0 errors=0 max=0us preamble=80,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.5,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "before": [
+        100,
+        97,
+        1,
+        0,
+        22863
+      ],
+      "after": [
+        149,
+        97,
+        1,
+        0,
+        26749
+      ],
+      "tx_before": [
+        13,
+        0,
+        1055,
+        0,
+        0
+      ],
+      "tx_after": [
+        13,
+        0,
+        1105,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=149,97 TX=1,0 switches=26749 errors=0 max=4429us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=13,0 TX=1105,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    }
+  ],
+  "adaptive-46": [
+    {
+      "slow_symbols": 4.6,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1511
+      ],
+      "after": [
+        50,
+        0,
+        1,
+        0,
+        5286
+      ],
+      "tx_before": [
+        14,
+        0,
+        1105,
+        0,
+        0
+      ],
+      "tx_after": [
+        14,
+        0,
+        1155,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=50,0 TX=1,0 switches=5286 errors=0 max=4356us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=14,0 TX=1155,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.6,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1511
+      ],
+      "after": [
+        100,
+        0,
+        1,
+        0,
+        9170
+      ],
+      "tx_before": [
+        14,
+        0,
+        1105,
+        0,
+        0
+      ],
+      "tx_after": [
+        14,
+        0,
+        1205,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,0 TX=1,0 switches=9170 errors=0 max=4391us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=14,0 TX=1205,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.6,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        100,
+        0,
+        1,
+        0,
+        9870
+      ],
+      "after": [
+        100,
+        50,
+        1,
+        0,
+        15021
+      ],
+      "tx_before": [
+        14,
+        0,
+        1205,
+        0,
+        0
+      ],
+      "tx_after": [
+        14,
+        0,
+        1255,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,50 TX=1,0 switches=15021 errors=0 max=4391us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=14,0 TX=1255,0 switches=0 errors=0 max=0us preamble=56,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.6,
+      "sf": 7,
+      "preamble": 80,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        100,
+        50,
+        1,
+        0,
+        16184
+      ],
+      "after": [
+        150,
+        50,
+        1,
+        0,
+        20138
+      ],
+      "tx_before": [
+        14,
+        0,
+        1255,
+        0,
+        0
+      ],
+      "tx_after": [
+        14,
+        0,
+        1305,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=150,50 TX=1,0 switches=20138 errors=0 max=4391us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=14,0 TX=1305,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.6,
+      "sf": 7,
+      "preamble": 80,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        100,
+        50,
+        1,
+        0,
+        16184
+      ],
+      "after": [
+        200,
+        50,
+        1,
+        0,
+        23852
+      ],
+      "tx_before": [
+        14,
+        0,
+        1255,
+        0,
+        0
+      ],
+      "tx_after": [
+        14,
+        0,
+        1355,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=200,50 TX=1,0 switches=23852 errors=0 max=4391us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=14,0 TX=1355,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.6,
+      "sf": 7,
+      "preamble": 80,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        200,
+        50,
+        1,
+        0,
+        24560
+      ],
+      "after": [
+        200,
+        100,
+        1,
+        0,
+        29939
+      ],
+      "tx_before": [
+        14,
+        0,
+        1355,
+        0,
+        0
+      ],
+      "tx_after": [
+        14,
+        0,
+        1405,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=200,100 TX=1,0 switches=29939 errors=0 max=4391us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=14,0 TX=1405,0 switches=0 errors=0 max=0us preamble=80,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.6,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "before": [
+        200,
+        100,
+        1,
+        0,
+        31110
+      ],
+      "after": [
+        249,
+        100,
+        1,
+        0,
+        35067
+      ],
+      "tx_before": [
+        14,
+        0,
+        1405,
+        0,
+        0
+      ],
+      "tx_after": [
+        14,
+        0,
+        1455,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=249,100 TX=1,0 switches=35067 errors=0 max=4414us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=14,0 TX=1455,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    }
+  ],
+  "adaptive-47": [
+    {
+      "slow_symbols": 4.7,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1553
+      ],
+      "after": [
+        50,
+        0,
+        1,
+        0,
+        5284
+      ],
+      "tx_before": [
+        15,
+        0,
+        1455,
+        0,
+        0
+      ],
+      "tx_after": [
+        15,
+        0,
+        1505,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=50,0 TX=1,0 switches=5284 errors=0 max=4357us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=15,0 TX=1505,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.7,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 100,
+      "received": 99,
+      "transmitted": 100,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1553
+      ],
+      "after": [
+        99,
+        0,
+        1,
+        0,
+        9127
+      ],
+      "tx_before": [
+        15,
+        0,
+        1455,
+        0,
+        0
+      ],
+      "tx_after": [
+        15,
+        0,
+        1555,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=99,0 TX=1,0 switches=9127 errors=0 max=4357us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=15,0 TX=1555,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    }
+  ],
+  "adaptive-48": [
+    {
+      "slow_symbols": 4.8,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1531
+      ],
+      "after": [
+        50,
+        0,
+        1,
+        0,
+        5812
+      ],
+      "tx_before": [
+        16,
+        0,
+        1555,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1605,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=50,0 TX=1,0 switches=5812 errors=0 max=4381us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1605,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        0,
+        0,
+        1,
+        0,
+        1531
+      ],
+      "after": [
+        100,
+        0,
+        1,
+        0,
+        9594
+      ],
+      "tx_before": [
+        16,
+        0,
+        1555,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1655,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,0 TX=1,0 switches=9594 errors=0 max=4381us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1655,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 9,
+      "preamble": 32,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        100,
+        0,
+        1,
+        0,
+        10291
+      ],
+      "after": [
+        100,
+        50,
+        1,
+        0,
+        14991
+      ],
+      "tx_before": [
+        16,
+        0,
+        1655,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1705,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=100,50 TX=1,0 switches=14991 errors=0 max=4381us preamble=32,32",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1705,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        100,
+        50,
+        1,
+        0,
+        16296
+      ],
+      "after": [
+        150,
+        50,
+        1,
+        0,
+        19987
+      ],
+      "tx_before": [
+        16,
+        0,
+        1705,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1755,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=150,50 TX=1,0 switches=19987 errors=0 max=4449us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1755,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        100,
+        50,
+        1,
+        0,
+        16296
+      ],
+      "after": [
+        200,
+        50,
+        1,
+        0,
+        23776
+      ],
+      "tx_before": [
+        16,
+        0,
+        1705,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1805,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=200,50 TX=1,0 switches=23776 errors=0 max=4449us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1805,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 8,
+      "preamble": 56,
+      "channel": 1,
+      "commands": 50,
+      "received": 49,
+      "transmitted": 50,
+      "before": [
+        200,
+        50,
+        1,
+        0,
+        24478
+      ],
+      "after": [
+        200,
+        99,
+        1,
+        0,
+        29838
+      ],
+      "tx_before": [
+        16,
+        0,
+        1805,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1855,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=200,99 TX=1,0 switches=29838 errors=0 max=4449us preamble=32,56",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1855,0 switches=0 errors=0 max=0us preamble=56,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 8,
+      "preamble": 64,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        200,
+        99,
+        1,
+        0,
+        31001
+      ],
+      "after": [
+        200,
+        149,
+        1,
+        0,
+        35947
+      ],
+      "tx_before": [
+        16,
+        0,
+        1855,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1905,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=200,149 TX=1,0 switches=35947 errors=0 max=4491us preamble=32,64",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1905,0 switches=0 errors=0 max=0us preamble=64,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 7,
+      "preamble": 80,
+      "channel": 0,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        200,
+        149,
+        1,
+        0,
+        37106
+      ],
+      "after": [
+        250,
+        149,
+        1,
+        0,
+        41207
+      ],
+      "tx_before": [
+        16,
+        0,
+        1905,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        1955,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=250,149 TX=1,0 switches=41207 errors=0 max=4491us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=1955,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": true
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 7,
+      "preamble": 80,
+      "channel": 0,
+      "commands": 100,
+      "received": 100,
+      "transmitted": 100,
+      "before": [
+        200,
+        149,
+        1,
+        0,
+        37106
+      ],
+      "after": [
+        300,
+        149,
+        1,
+        0,
+        44963
+      ],
+      "tx_before": [
+        16,
+        0,
+        1905,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        2005,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=300,149 TX=1,0 switches=44963 errors=0 max=4491us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=2005,0 switches=0 errors=0 max=0us preamble=32,32\r\n>",
+      "checkpoint": false
+    },
+    {
+      "slow_symbols": 4.8,
+      "sf": 7,
+      "preamble": 80,
+      "channel": 1,
+      "commands": 50,
+      "received": 50,
+      "transmitted": 50,
+      "before": [
+        300,
+        149,
+        1,
+        0,
+        45665
+      ],
+      "after": [
+        300,
+        199,
+        1,
+        0,
+        50761
+      ],
+      "tx_before": [
+        16,
+        0,
+        2005,
+        0,
+        0
+      ],
+      "tx_after": [
+        16,
+        0,
+        2055,
+        0,
+        0
+      ],
+      "rx_status": "> rx; RX=300,199 TX=1,0 switches=50761 errors=0 max=4491us preamble=32,80",
+      "tx_status": "get radio2.status\r\n  > off; RX=16,0 TX=2055,0 switches=0 errors=0 max=0us preamble=80,32\r\n>",
+      "checkpoint": false
+    }
+  ],
+  "selected_timing": {
+    "slow_symbols": 4.8,
+    "latest_checks": [
+      {
+        "sf": 9,
+        "preamble": 32,
+        "channel": 0,
+        "received": 100,
+        "transmitted": 100
+      },
+      {
+        "sf": 9,
+        "preamble": 32,
+        "channel": 1,
+        "received": 50,
+        "transmitted": 50
+      },
+      {
+        "sf": 8,
+        "preamble": 56,
+        "channel": 0,
+        "received": 100,
+        "transmitted": 100
+      },
+      {
+        "sf": 8,
+        "preamble": 64,
+        "channel": 1,
+        "received": 50,
+        "transmitted": 50
+      },
+      {
+        "sf": 7,
+        "preamble": 80,
+        "channel": 0,
+        "received": 100,
+        "transmitted": 100
+      },
+      {
+        "sf": 7,
+        "preamble": 80,
+        "channel": 1,
+        "received": 50,
+        "transmitted": 50
+      }
+    ],
+    "preamble_note": "A fast-preamble increase follows a loss on that channel; each check records the actual configured preamble. The slow receive-window timing remains unchanged during a fast-preamble increase.",
+    "qualification": "All three pairings passed this finite run; this is not a zero-loss or uptime guarantee."
+  },
+  "current_preamble_baselines": {
+    "9": 32,
+    "8": 64,
+    "7": 80
+  },
+  "fixed_slow_reference": {
+    "mode": "fixed slow channel, no scan",
+    "sf": 7,
+    "bw": 62.5,
+    "preamble": 32,
+    "received": 50,
+    "transmitted": 50,
+    "before": [
+      142,
+      50,
+      1,
+      0,
+      40646
+    ],
+    "after": [
+      192,
+      50,
+      1,
+      0,
+      40646
+    ],
+    "tx_before": [
+      11,
+      0,
+      605,
+      0,
+      0
+    ],
+    "tx_after": [
+      11,
+      0,
+      655,
+      0,
+      0
+    ],
+    "rx_status": "> off; RX=192,50 TX=1,0 switches=40646 errors=0 max=4506us preamble=32,32",
+    "tx_status": "get radio2.status\r\n  > off; RX=11,0 TX=655,0 switches=0 errors=0 max=0us preamble=32,32\r\n>"
+  },
+  "temporary_secondary_ota": {
+    "xiao_saved_radio": "get radio\r\n  > 869.6179809,62.5,8,5,preamble=32 (auto)\r\n>",
+    "before": {
+      "v4": [
+        0,
+        0,
+        1,
+        0,
+        1242
+      ],
+      "xiao": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "scan": {
+      "v4": "> slow=radio; listen_us=9831,6937; preamble=32,88",
+      "xiao": "get radio2.scan\r\n  > slow=radio; listen_us=9831,6937; preamble=32,88\r\n>"
+    },
+    "ota_status": {
+      "v4": "OTA | this fw 84AA9735 (1556K) hw=heltec_v4 | target:E792A051 | maxblk:2048 | no download | serving:on (1) | keys:0 | env:heltec_v4_repeater",
+      "xiao": "ota status\r\n  OTA seeder | install:disabled | target:00000000 | maxblk:2048 | folder:not connected | serving:0 dg=00000000 (source only)\r\n>"
+    },
+    "catalogue": "ota ls\r\n  Updates 1/1 (1 src; refreshing):\n 1) 5006D6F1 v1.17.1 full [heltec_v4_repeater] 1n 15s\r\n>",
+    "after_discovery": {
+      "v4": [
+        0,
+        2,
+        1,
+        3,
+        3443
+      ],
+      "xiao": [
+        0,
+        3,
+        0,
+        3,
+        2626
+      ]
+    },
+    "main_channel_adverts": {
+      "requested": 10,
+      "received": 10
+    },
+    "temporary_still_active": {
+      "v4": "> 910.500,500.000,8,5,rxtx,88 (auto); 0d0h14m (14 min) left",
+      "xiao": "get tempradio2\r\n  > 910.500,500.000,8,5,rxtx,88 (auto); 0d0h14m (14 min) left\r\n>"
+    },
+    "passed": true
+  },
+  "soak_restoration": {
+    "restored": true,
+    "phase": "B-post-radio2-soak"
+  }
+}

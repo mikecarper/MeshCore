@@ -18,6 +18,8 @@ struct DeferredCliCommand {
   uint32_t sender_timestamp;
   uint32_t request_id;
   uint8_t path_hash_size;
+  uint8_t radio_profile = 0;
+  uint32_t radio_generation = 0;
   uint8_t secret[PUB_KEY_SIZE];
   char command[MAX_PACKET_PAYLOAD + 1];
 
@@ -31,7 +33,8 @@ struct DeferredCliCommand {
   bool enqueue(int new_client_index, uint32_t new_sender_timestamp,
                uint8_t new_path_hash_size, const uint8_t* new_secret,
                const char* new_command, size_t command_len,
-               uint32_t new_request_id = 0) {
+               uint32_t new_request_id = 0, uint8_t new_radio_profile = 0,
+               uint32_t new_radio_generation = 0) {
     if (pending || new_secret == NULL || new_command == NULL
         || command_len >= sizeof(command)) {
       return false;
@@ -42,6 +45,8 @@ struct DeferredCliCommand {
     request_id = new_request_id != 0
         ? new_request_id : new_sender_timestamp;
     path_hash_size = new_path_hash_size;
+    radio_profile = new_radio_profile;
+    radio_generation = new_radio_generation;
     memcpy(secret, new_secret, sizeof(secret));
     memcpy(command, new_command, command_len);
     command[command_len] = 0;
@@ -65,6 +70,8 @@ struct DeferredCliCommand {
     sender_timestamp = 0;
     request_id = 0;
     path_hash_size = 1;
+    radio_profile = 0;
+    radio_generation = 0;
     memset(secret, 0, sizeof(secret));
     memset(command, 0, sizeof(command));
   }

@@ -1692,6 +1692,7 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   initializeContactStorage();
   initializeOfflineQueue();
   BaseChatMesh::begin();
+  _radio_profiles.begin(_store->getPrimaryFS(), _radio, getRTCClock());
 
   const bool identity_loaded = _store->loadMainIdentity(self_id);
   const bool is_new_install = !identity_loaded
@@ -2024,7 +2025,7 @@ void MyMesh::activateRadio() {
   MESH_DEBUG_PRINTLN("Radio recovery completed; mesh transport is active");
 }
 
-mesh::RadioParamApplyResult MyMesh::tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
+mesh::RadioParamApplyResult MyMesh::tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, bool temporary, uint16_t preamble) {
   if (!_radio_available) return mesh::RadioParamApplyResult::FAILED;
 
   uint32_t rx_us = _prefs.rx_ps_rx_us;
@@ -2037,7 +2038,8 @@ mesh::RadioParamApplyResult MyMesh::tryApplyRadioParams(float freq, float bw, ui
   uint32_t timings[2] = {rx_us, sleep_us};
   const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
       && radio_driver.supportsRxPowerSaving() ? timings : NULL;
-  return radio_driver.trySetParams(freq, bw, sf, cr, applied_timings);
+  return _radio_profiles.applyPrimary(freq, bw, sf, cr, temporary,
+      temporary ? preamble : _radio_profiles.primaryPreamble(), applied_timings);
 }
 
 bool MyMesh::applySavedRadioParams() {
@@ -3051,12 +3053,20 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
       snprintf(reply, reply_size, "TempRadio pending: %.3f,%.2f,%u,%u",
                _temp_radio_freq, _temp_radio_bw,
                (unsigned)_temp_radio_sf, (unsigned)_temp_radio_cr);
+      mesh::RadioProfiles preview;
+      if (_radio->profiles()) preview = *_radio->profiles();
+      preview.primary.freq = _temp_radio_freq; preview.primary.bw = _temp_radio_bw;
+      preview.primary.sf = _temp_radio_sf; preview.primary.cr = _temp_radio_cr;
+      preview.primary.preamble = _temp_radio_preamble;
+      const size_t used = strlen(reply);
+      if (used < reply_size) snprintf(reply + used, reply_size - used, ",preamble=%u", preview.preamble(0, rxPowerSavingPreambleForParams(_temp_radio_sf, _temp_radio_bw)));
     } else if (isTempRadioActive()) {
       uint32_t seconds = (_temp_radio_revert_at - _ms->getMillis()) / 1000UL;
       snprintf(reply, reply_size, "TempRadio active: %.3f,%.2f,%u,%u %lus left",
                _temp_radio_freq, _temp_radio_bw,
                (unsigned)_temp_radio_sf, (unsigned)_temp_radio_cr,
                (unsigned long)seconds);
+      _radio_profiles.appendPreamble(reply, reply_size);
     } else {
       snprintf(reply, reply_size, "TempRadio inactive");
     }
@@ -3064,21 +3074,27 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   }
 
   if (strncmp(command, "tempradio ", 10) == 0) {
+    char legacy[120];
+    uint16_t preamble = 0;
+    if (!mesh::RadioProfileCLI::parseSuffix(command + 10, 5, legacy, sizeof(legacy), preamble)) {
+      snprintf(reply, reply_size, "Error: invalid preamble"); return true;
+    }
     float freq = 0.0f, bw = 0.0f;
     uint8_t sf = 0, cr = 0;
     uint32_t timeout_mins = 0;
     if (!mesh::cli::parseTemporaryRadioTupleStrict(
-            command + 10, freq, bw, sf, cr, timeout_mins)
+            legacy, freq, bw, sf, cr, timeout_mins)
         || !isfinite(freq) || !isfinite(bw)
         || freq < 150.0f || freq > 2500.0f
         || !isFullCompanionBandwidth(bw)
         || sf < 5 || sf > 12 || cr < 5 || cr > 8
-        || timeout_mins == 0 || timeout_mins > 10080UL) {
+        || timeout_mins == 0 || timeout_mins > 10080UL
+        || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
       snprintf(reply, reply_size,
                "ERR usage: tempradio freq,bw,sf,cr,minutes (minutes 1-10080)");
       return true;
     }
-    scheduleTempRadio(freq, bw, sf, cr, timeout_mins, reply, reply_size);
+    if (scheduleTempRadio(freq, bw, sf, cr, timeout_mins, reply, reply_size)) _temp_radio_preamble = preamble;
     return true;
   }
 
@@ -3136,7 +3152,7 @@ void MyMesh::serviceTempRadio() {
       || hasOutbound() || !retry_ready) return;
 
   mesh::RadioParamApplyResult result = tryApplyRadioParams(
-      _temp_radio_freq, _temp_radio_bw, _temp_radio_sf, _temp_radio_cr);
+      _temp_radio_freq, _temp_radio_bw, _temp_radio_sf, _temp_radio_cr, true, _temp_radio_preamble);
   if (result == mesh::RadioParamApplyResult::APPLIED) {
     _temp_radio_set_at = 0;
     _temp_radio_retry_at = 0;
@@ -8185,6 +8201,28 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     while (*command == ' ' || *command == '\t') command++;
   }
 
+  if (_radio_profiles.handle(command, reply, reply_capacity)) return true;
+  if (!strncmp(command, "set tempradio ", 14)) command += 4;
+  if (!strcmp(command, "get tempradio")) command += 4;
+  char profile_command[140];
+  const uint16_t previous_primary_preamble = _radio_profiles.primaryPreamble();
+  if (!strncmp(command, "set radio ", 10)) {
+    char legacy[120];
+    uint16_t preamble = 0;
+    float f, bw; uint8_t sf, cr;
+    if (!mesh::RadioProfileCLI::parseSuffix(command + 10, 4, legacy, sizeof(legacy), preamble)
+        || !mesh::cli::parseRadioTupleStrict(legacy, f, bw, sf, cr)) {
+      snprintf(reply, reply_capacity, "Error: invalid radio params"); return true;
+    }
+    if (!_radio_profiles.acceptsPrimary(f, bw, sf, cr, preamble)) {
+      snprintf(reply, reply_capacity, "Error: radio params unsupported"); return true;
+    }
+    if (!_radio_profiles.savePrimaryPreamble(preamble)) {
+      snprintf(reply, reply_capacity, "Error: preamble could not be saved"); return true;
+    }
+    snprintf(profile_command, sizeof(profile_command), "set radio %s", legacy);
+    command = profile_command;
+  }
   if (sender_timestamp == 0 && handleDirectCommand(command, reply, reply_capacity)) return true;
 
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
@@ -8283,9 +8321,15 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         _prefs.rx_ps_rx_us = previous_rx_us;
         _prefs.rx_ps_sleep_us = previous_sleep_us;
         _prefs.clearDirty();
-        strcpy(reply, "Error: setting changed but save failed");
+        if (strncmp(command, "set radio ", 10) == 0
+            && !_radio_profiles.savePrimaryPreamble(previous_primary_preamble)) {
+          strcpy(reply, "Error: radio save failed; preamble rollback failed");
+        } else {
+          strcpy(reply, "Error: setting changed but save failed");
+        }
       }
     }
+    if (!strcmp(command, "get radio")) _radio_profiles.appendSavedPreamble(reply, reply_capacity, _prefs.sf, _prefs.bw);
     return true;
   }
 
@@ -8610,6 +8654,7 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
+  _radio_profiles.loop();
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   if (_mqtt_bridge) _mqtt_bridge->servicePendingClockCorrection();
 #endif
@@ -8628,9 +8673,9 @@ void MyMesh::loop() {
   serviceTempRadio();
 #endif
 #if defined(OTA_SHARED_COMPANION_QUEUE)
-  mesh::ota::ota_release_context_if_idle(isTempRadioActive() || _temp_radio_set_at != 0);
+  mesh::ota::ota_release_context_if_idle(isAnyTempRadioActive() || _temp_radio_set_at != 0);
 #elif defined(ENABLE_OTA) && defined(OTA_HEAP_CONTEXT)
-  mesh::ota::ota_service_temp_radio_context(isTempRadioActive()
+  mesh::ota::ota_service_temp_radio_context(isAnyTempRadioActive()
 #if COMPANION_FEATURE_TEMP_RADIO
       || _temp_radio_set_at != 0
 #endif
@@ -8721,6 +8766,7 @@ bool MyMesh::advert() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+  if (isDualRadioActive()) return true;
   if (_radio_available
       && (radio_driver.isWatchdogObserving()
           || radio_driver.isCalibratingNoiseFloor())) return true;

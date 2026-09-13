@@ -286,6 +286,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #endif
 {
   struct ScheduledRadioSetting {
+    uint16_t preamble = 0;
     bool active;
     bool temporary;
     bool started;
@@ -465,7 +466,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint32_t epoch;
     uint32_t received_millis;
   };
-  mutable FloodRetryBridgeState flood_retry_bridge_states[MAX_FLOOD_RETRY_SLOTS];
+  mutable FloodRetryBridgeState flood_retry_bridge_states[TOTAL_FLOOD_RETRY_SLOTS];
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
   static_assert(sizeof(FloodPacketFilterEntry) <= (MESH_ENABLE_FLOOD_RULE_ENGINE ? 200 : 40),
                 "Update the flood-table runtime RAM budget in check_firmware_ram.py");
@@ -677,7 +678,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
                                     uint8_t progress_marker) const;
   bool floodRetryBridgeEligible(const mesh::Packet* packet) const;
   FloodRetryBridgeState* floodRetryBridgeStateFor(const mesh::Packet* packet, bool create) const;
-  void clearFloodRetryBridgeStateByKey(const uint8_t* retry_key);
+  void clearFloodRetryBridgeStateByKey(const uint8_t* retry_key, uint8_t radio_profile);
   void refreshFloodRetryReachability(const mesh::Packet* packet);
   void formatFloodRetryPath(char* dest, size_t dest_len, const mesh::Packet* packet) const;
   bool handleClientPathCommand(ClientInfo* sender, char* command, char* reply);
@@ -732,7 +733,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 
   File openAppend(const char* fname);
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
-  bool applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
+  bool applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t preamble = 0, bool temporary = false);
   bool applySavedRadioParams();
   void queueSavedRadioApply();
   void refreshScheduledRadioState();
@@ -906,7 +907,7 @@ protected:
   bool allowFloodRetry(const mesh::Packet* packet) const override;
   bool prepareFloodRetry(const mesh::Packet* packet) const override;
   void onFloodRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) override;
-  void onFloodRetrySlotReleased(const uint8_t* retry_key) override;
+  void onFloodRetrySlotReleased(const uint8_t* retry_key, uint8_t radio_profile) override;
   bool hasFloodRetryTargetPrefix(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxAttempts(const mesh::Packet* packet) const override;
@@ -988,7 +989,8 @@ public:
   bool sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size);
 
   // CommonCLICallbacks
-  void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
+  mesh::Radio* getProfileRadio() override { return _radio; }
+  void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) override;
   bool scheduleNormalRadio() override;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   uint32_t getUserGpioRequestSource() const override {
@@ -1010,7 +1012,7 @@ public:
 #endif
   bool resolveAlertScope(TransportKey& dest) override;
   void addScheduledRadioParams(bool temporary, float freq, float bw, uint8_t sf, uint8_t cr,
-                               uint32_t start_time, uint32_t end_time, char* reply) override;
+                               uint32_t start_time, uint32_t end_time, char* reply, uint16_t preamble = 0) override;
   void formatScheduledRadioParams(bool temporary, const char* selector, char* reply) override;
   void deleteScheduledRadioParams(bool temporary, const char* selector, char* reply) override;
   bool formatFileSystem() override;

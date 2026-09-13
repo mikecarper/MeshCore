@@ -122,6 +122,8 @@ void Dispatcher::restoreOutboundTxOverrides() {
 
 bool Dispatcher::startOutboundTransmit() {
   if (outbound == NULL) return false;
+  if (!isPacketRadioCurrent(outbound)
+      || _radio->prepareTransmitProfile(outbound->radio_profile) != RadioParamApplyResult::APPLIED) return false;
 
   int len = 0;
   uint8_t raw[MAX_TRANS_UNIT];
@@ -145,6 +147,7 @@ bool Dispatcher::startOutboundTransmit() {
   uint32_t max_airtime = _radio->getEstAirtimeFor(len) * 3 / 2;
   outbound_restore_cr = 0;
   uint8_t default_cr = getDefaultTxCodingRate();
+  if (_radio->profiles()) default_cr = _radio->profiles()->params(outbound->radio_profile).cr;
   if (outbound->tx_cr >= 4 && outbound->tx_cr <= 8
       && default_cr >= 4 && default_cr <= 8
       && outbound->tx_cr != default_cr) {
@@ -244,6 +247,7 @@ void Dispatcher::logPacketLine(const char* direction, const Packet* packet,
 #endif
 
 bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
+  if (isDualRadioActive()) { delay_millis = 0; return true; }
   const uint32_t now = _ms->getMillis();
   bool found = false;
   uint32_t shortest_delay = 0;
@@ -342,10 +346,20 @@ void Dispatcher::loop() {
 
   if (outbound) {  // waiting for outbound send to complete, or for its one radio retry
     if (outbound_radio_retry_pending) {
+      // The failed send has already returned the chip to RX. Drain a packet
+      // arriving during backoff before asking to retune; otherwise BUSY can
+      // keep the retry waiting forever on an unread RxDone interrupt.
+      if (isDualRadioActive()) checkRecv();
       if (!millisHasNowPassed(outbound_radio_retry_at)) return;
+      const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile);
+      if (prepared == RadioParamApplyResult::BUSY) {
+        outbound_radio_retry_at = futureMillis(10);
+        return;
+      }
 
       outbound_radio_retry_pending = false;
-      if (!allowPacketTransmit(outbound)) {
+      if (prepared == RadioParamApplyResult::FAILED || !isPacketRadioCurrent(outbound)
+          || !allowPacketTransmit(outbound)) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): radio retry packet no longer allowed, type=%u",
                            getLogDateTime(), (uint32_t)outbound->getPayloadType());
         failOutboundTransmit();
@@ -384,6 +398,7 @@ void Dispatcher::loop() {
       restoreOutboundTxOverrides();
       logTx(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
       onSendComplete(outbound);
+      if (auto* p = _radio->profiles()) ++p->tx_packets[outbound->radio_profile];
       if (outbound->isRouteFlood()) {
         n_sent_flood++;
       } else {
@@ -523,6 +538,10 @@ bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {
 
   pkt->tx_cr = 0;
   pkt->flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
+  pkt->radio_profile = pkt->radio_origin = _radio->receiveProfile();
+  pkt->radio_bound = false;
+  pkt->radio_local = false;
+  pkt->radio_generation = pkt->radio_origin_generation = _radio->receiveProfileGeneration();
   pkt->header = raw[i++];
   if (pkt->getPayloadVer() > PAYLOAD_VER_1) {
     MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): unsupported packet version", getLogDateTime());
@@ -597,6 +616,7 @@ void Dispatcher::checkRecv() {
       } else {
         if (tryParsePacket(pkt, raw, len)) {
           last_meshcore_recv_millis = _ms->getMillis();
+          if (auto* p = _radio->profiles()) ++p->rx_packets[pkt->radio_profile];
           pkt->_snr = snr * 4.0f;
           pkt->_rssi = (int16_t)rssi;
           score = _radio->packetScore(snr, len);
@@ -642,7 +662,23 @@ void Dispatcher::checkRecv() {
 }
 
 void Dispatcher::processRecvPacket(Packet* pkt) {
+  const auto* profiles = _radio->profiles();
+  if (profiles && (pkt->radio_profile > 1
+      || (pkt->radio_profile == 1 && !profiles->enabled())
+      || pkt->radio_generation != profiles->generation[pkt->radio_profile])) {
+    releasePacket(pkt);
+    return;
+  }
+  const uint8_t previous_profile = receive_context_profile;
+  const uint32_t previous_generation = receive_context_generation;
+  const bool previous_active = receive_context_active;
+  receive_context_profile = pkt->radio_profile;
+  receive_context_generation = pkt->radio_generation;
+  receive_context_active = true;
   DispatcherAction action = onRecvPacket(pkt);
+  receive_context_profile = previous_profile;
+  receive_context_generation = previous_generation;
+  receive_context_active = previous_active;
   if (action == ACTION_RELEASE) {
     _mgr->free(pkt);
   } else if (action == ACTION_MANUAL_HOLD) {
@@ -671,9 +707,19 @@ void Dispatcher::checkSend() {
     return;
   }
   
+  // Discard work bound to an expired/changed profile before it can be retuned
+  // onto a different channel. This also retires its retry ownership normally.
+  Packet* pending = _mgr->peekNextOutbound(now);
+  if (pending && !isPacketRadioCurrent(pending)) {
+    outbound = _mgr->getNextOutbound(now);
+    failOutboundTransmit();
+    return;
+  }
   updateTxBudget();
   
-  uint32_t est_airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
+  uint32_t est_airtime = pending && _radio->profiles()
+      ? _radio->getProfileAirtime(pending->radio_profile, MAX_TRANS_UNIT)
+      : _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
   if (tx_budget_ms < est_airtime / MIN_TX_BUDGET_AIRTIME_DIV) {
     float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
     unsigned long needed = est_airtime / MIN_TX_BUDGET_AIRTIME_DIV - tx_budget_ms;
@@ -683,15 +729,29 @@ void Dispatcher::checkSend() {
   
   if (!millisHasNowPassed(next_tx_time)) return;
 
-  Packet* pending = _mgr->peekNextOutbound(_ms->getMillis());
+  // Waiting for airtime credit must leave the receive scanner free to run.
+  // Only retune once this queue entry is actually eligible to transmit.
+  if (pending && _radio->profiles()) {
+    const auto prepared = _radio->prepareTransmitProfile(pending->radio_profile);
+    if (prepared == RadioParamApplyResult::BUSY) return;
+    if (prepared == RadioParamApplyResult::FAILED) {
+      outbound = _mgr->getNextOutbound(now);
+      failOutboundTransmit();
+      return;
+    }
+  }
+
   bool channel_busy = pending != NULL && usePassiveChannelCheck(pending)
     ? _radio->isReceivingPassive(getRetryInterferenceMargin())
     : _radio->isReceiving();
   if (channel_busy) {
     const uint32_t cad_now = _ms->getMillis();
     const int ready_count = _mgr->getOutboundCount(cad_now);
+    uint32_t& profile_busy = profile_cad_busy[pending ? pending->radio_profile : 0];
+    cad_busy_start = profile_busy;
     if (cad_busy_start == 0) {
       cad_busy_start = cad_now;   // record when CAD busy state started
+      profile_busy = cad_now;
     }
 
     const uint32_t max_busy_duration = scaleCADDelayForQueue(
@@ -705,11 +765,14 @@ void Dispatcher::checkSend() {
     } else {
       const uint32_t retry_delay = scaleCADDelayForQueue(
           getCADFailRetryDelay(), ready_count, MIN_CAD_FAIL_RETRY_DELAY_MS);
-      next_tx_time = futureMillis(retry_delay);
+      if (!isDualRadioActive() || !pending || !_mgr->deferOutbound(pending, futureMillis(retry_delay))) {
+        next_tx_time = futureMillis(retry_delay);
+      }
       return;
     }
   }
   cad_busy_start = 0;  // reset busy state
+  profile_cad_busy[pending ? pending->radio_profile : 0] = 0;
 
   outbound = _mgr->getNextOutbound(_ms->getMillis());
   if (outbound) {
@@ -750,6 +813,10 @@ Packet* Dispatcher::obtainNewPacket() {
     pkt->_snr = 0;
     pkt->tx_cr = 0;
     pkt->flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
+    pkt->radio_profile = pkt->radio_origin = receive_context_active ? receive_context_profile : 0;
+    pkt->radio_generation = pkt->radio_origin_generation = receive_context_active ? receive_context_generation : 0;
+    pkt->radio_bound = false;
+    pkt->radio_local = !receive_context_active;
   }
   return pkt;
 }
@@ -767,7 +834,62 @@ bool Dispatcher::queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t 
     MESH_DEBUG_PRINTLN("%s Dispatcher::sendPacket(): ERROR: invalid packet... path_len=%d, payload_len=%d", getLogDateTime(), (uint32_t) packet->path_len, (uint32_t) packet->payload_len);
     return false;
   }
-  return _mgr->queueOutbound(packet, priority, futureMillis(delay_millis));
+  auto* profiles = _radio->profiles();
+  if (packet->radio_profile > 1) return false;
+  if (profiles == nullptr || packet->radio_bound) {
+    return _mgr->queueOutbound(packet, priority, futureMillis(delay_millis));
+  }
+  if (!packet->radio_local && packet->radio_generation
+      && packet->radio_generation != profiles->generation[packet->radio_profile]) return false;
+  // Locally generated OTA traffic uses the temporary update profile. Replies
+  // created while processing RX inherit that request's profile instead.
+  // Keep that origin in RX-only mode too: isolation must drop a disallowed
+  // transmission instead of silently sending it on the normal channel.
+  if (packet->radio_local && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+      && profiles->secondary_temporary && !profiles->primary_temporary) {
+    packet->radio_profile = 1;
+  }
+  const uint8_t origin = packet->radio_profile;
+  const uint8_t mask = profiles->transmitMask(origin);
+  if (!mask) return false;
+  packet->radio_origin = origin;
+  packet->radio_origin_generation = profiles->generation[origin];
+  if (!(mask & (1U << origin))) {
+    onSendFail(packet);  // retire any retry reserved on the RX-only profile
+    packet->radio_profile ^= 1;
+  }
+  packet->radio_generation = profiles->generation[packet->radio_profile];
+  packet->radio_bound = true;
+  if (!_mgr->queueOutbound(packet, priority, futureMillis(delay_millis))) return false;
+  if (packet->radio_profile != origin) onRadioProfileCopyQueued(packet, nullptr, priority);
+  const uint8_t other = packet->radio_profile ^ 1;
+  if (mask & (1U << other)) {
+    Packet* copy = obtainNewPacket();
+    if (copy) {
+      *copy = *packet;
+      copy->radio_profile = other;
+      copy->radio_generation = profiles->generation[other];
+      if (_mgr->queueOutbound(copy, priority, futureMillis(delay_millis))) {
+        onRadioProfileCopyQueued(copy, packet, priority);
+        onTracePacketQueuedForSend(copy);
+      } else {
+        onSendFail(copy);
+        releasePacket(copy);
+      }
+    }
+  }
+  return true;
+}
+
+bool Dispatcher::isPacketRadioCurrent(const Packet* packet) const {
+  const auto* p = _radio->profiles();
+  if (!p || !packet->radio_bound) return true;
+  const uint8_t target = packet->radio_profile;
+  const uint8_t origin = packet->radio_origin;
+  return target < 2 && origin < 2 && p->canTransmit(target)
+      && packet->radio_generation == p->generation[target]
+      && packet->radio_origin_generation == p->generation[origin]
+      && (origin == target || p->canCross());
 }
 
 bool Dispatcher::sendPacket(Packet* packet, uint8_t priority, uint32_t delay_millis) {

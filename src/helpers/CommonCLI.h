@@ -13,6 +13,7 @@
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
 #include <helpers/RepeaterRadioTiming.h>
+#include <helpers/RadioProfileCLI.h>
 
 #ifndef DEFAULT_CAD_ENABLED
   #define DEFAULT_CAD_ENABLED 0
@@ -447,6 +448,7 @@ struct LegacyObserverTail {
 
 class CommonCLICallbacks {
 public:
+  virtual mesh::Radio* getProfileRadio() { return nullptr; }
   virtual mesh::FloodAdvertLimiter* getFloodAdvertLimiter() { return nullptr; }
   // Ordinary CommonCLI setters mutate NodePrefs and therefore save only the
   // common image. Observer setters explicitly request Observer; only
@@ -511,7 +513,7 @@ public:
   virtual mesh::LocalIdentity& getSelfId() = 0;
   virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
-  virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) = 0;
+  virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) = 0;
   virtual uint32_t getTempRadioDurationSeconds() const { return 0; }
   virtual void appendTempRadioTimingNote(char* reply, size_t size, uint32_t seconds) const { }
   // Cancel pending/active temporary-radio windows and restore the saved tuple
@@ -521,7 +523,8 @@ public:
   virtual bool isTempRadioActive() const { return false; }
 #endif
   virtual void addScheduledRadioParams(bool temporary, float freq, float bw, uint8_t sf, uint8_t cr,
-                                       uint32_t start_time, uint32_t end_time, char* reply) {
+                                       uint32_t start_time, uint32_t end_time, char* reply, uint16_t preamble = 0) {
+    (void)preamble;
     (void)temporary;
     (void)freq;
     (void)bw;
@@ -744,6 +747,7 @@ class CommonCLI {
   bool _observer_save_succeeded = false;
 #endif
   bool _com_prefs_needs_upgrade = false;  // old-format legacy prefs detected; rewrite once after load
+  mesh::RadioProfileCLI _radio_profiles;
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
   void savePrefs(
@@ -780,6 +784,8 @@ class CommonCLI {
   bool handleObserverCommand(uint32_t sender_timestamp, char* command, char* reply);
 
 public:
+  mesh::RadioProfileCLI& radioProfiles() { return _radio_profiles; }
+  const mesh::RadioProfileCLI& radioProfiles() const { return _radio_profiles; }
   static bool calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,
                                           uint32_t* rx_us, uint32_t* sleep_us);
   static bool recalculateRxPowerSavingFromLevel(NodePrefs* prefs);

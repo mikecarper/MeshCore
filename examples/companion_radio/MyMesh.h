@@ -25,6 +25,7 @@
 #endif
 
 #include "DataStore.h"
+#include <helpers/RadioProfileCLI.h>
 #include "NodePrefs.h"
 
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID) && !defined(WEBCONFIG_DISABLED)
@@ -438,7 +439,7 @@ private:
   bool isValidClientRepeatFreq(uint32_t f) const;
   bool hasLocationTelemetryRecipient();
   void updateGpsTelemetryPolicy();
-  mesh::RadioParamApplyResult tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr);
+  mesh::RadioParamApplyResult tryApplyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, bool temporary = false, uint16_t preamble = 0);
   bool applySavedRadioParams();
   void configureRadioFromPrefs();
   void finishRadioParamApply(float freq, float bw, uint8_t sf, uint8_t cr,
@@ -480,6 +481,8 @@ private:
 #endif
 
   DataStore* _store;
+  mesh::RadioProfileCLI _radio_profiles;
+  uint16_t _temp_radio_preamble = 0;
   CompanionNodePrefs _prefs;
 #ifdef COMPANION_MESH_CLOCK_SYNC
   ArduinoMillis _clock_sync_millis;

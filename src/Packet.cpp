@@ -12,6 +12,9 @@ Packet::Packet() {
   _snr = 0;
   tx_cr = 0;
   flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
+  radio_generation = radio_origin_generation = 0;
+  radio_profile = radio_origin = 0;
+  radio_bound = false; radio_local = true;
 }
 
 bool Packet::isValidPathLen(uint8_t path_len) {
@@ -74,6 +77,9 @@ bool Packet::readFrom(const uint8_t src[], uint8_t len) {
   _snr = 0;
   tx_cr = 0;
   flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
+  radio_generation = radio_origin_generation = 0;
+  radio_profile = radio_origin = 0;
+  radio_bound = false; radio_local = true;
   header = src[i++];
   if (getPayloadVer() > PAYLOAD_VER_1) return false;
 

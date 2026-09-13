@@ -159,6 +159,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
 #endif
 {
   FILESYSTEM* _fs;
+  uint16_t pending_preamble = 0;
   mesh::StaticFloodAdvertLimiter<> flood_advert_limiter;
   mesh::FloodAdvertLimiter* getFloodAdvertLimiter() override { return &flood_advert_limiter; }
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
@@ -443,7 +444,8 @@ public:
                        uint32_t delay_millis, uint8_t path_hash_size);
 
   // CommonCLICallbacks
-  void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
+  mesh::Radio* getProfileRadio() override { return _radio; }
+  void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) override;
   bool scheduleNormalRadio() override;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   uint32_t getUserGpioRequestSource() const override {

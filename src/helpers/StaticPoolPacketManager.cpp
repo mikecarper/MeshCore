@@ -89,6 +89,16 @@ mesh::Packet* PacketQueue::removeByIdx(int i) {
   return item;
 }
 
+bool PacketQueue::reschedule(mesh::Packet* packet, uint32_t scheduled_for) {
+  for (int i = 0; i < _num; ++i) {
+    if (_table[i] != packet) continue;
+    _schedule_table[i] = scheduled_for;
+    rebuildNextTime();
+    return true;
+  }
+  return false;
+}
+
 bool PacketQueue::add(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for) {
   if (_num == _size) {
     return false;
@@ -120,7 +130,9 @@ void PacketQueue::applyBestFloodTransportScope(mesh::Packet* packet,
   uint8_t best_preference = 0;
   for (int i = 0; i < _num; i++) {
     const mesh::Packet* candidate = _table[i];
-    if (candidate == NULL || candidate->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD) continue;
+    if (candidate == NULL || candidate->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD
+        || candidate->radio_profile != packet->radio_profile
+        || candidate->radio_generation != packet->radio_generation) continue;
     uint8_t candidate_hash[MAX_HASH_SIZE];
     candidate->calculatePacketHash(candidate_hash);
     if (memcmp(packet_hash, candidate_hash, sizeof(packet_hash)) != 0) continue;

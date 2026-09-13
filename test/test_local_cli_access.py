@@ -14,6 +14,7 @@ PREAMBLE = r'''
 #include <cstdint>
 #include <initializer_list>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioProfileCommandUtils.h>
 #define ESP32 1
 #define WIFI_SSID "test"
 #define WITH_MQTT_BRIDGE 1
@@ -22,6 +23,16 @@ PREAMBLE = r'''
 #define MAX_LORA_TX_POWER 22
 #define TXT_TYPE_CLI_COMMAND 1
 namespace mesh {
+struct RadioProfileCLI {
+  bool handle(const char*, char*, size_t) { return false; }
+  static bool parseSuffix(const char* input, unsigned fields, char* legacy, size_t size, uint16_t& preamble) {
+    return cli::parseRadioPreambleSuffix(input, fields, legacy, size, preamble);
+  }
+  bool acceptsPrimary(float, float, uint8_t, uint8_t, uint16_t) { return true; }
+  bool savePrimaryPreamble(uint16_t) { return true; }
+  uint16_t primaryPreamble() const { return 0; }
+  void appendSavedPreamble(char*, size_t, uint8_t, float) {}
+};
 struct Packet {};
 void resetLazyPersistenceAfterSuccess(unsigned& when, uint8_t& failures) { when=0; failures=0; }
 struct Utils {
@@ -77,6 +88,7 @@ struct WebConfigServer {
 const char* FIRMWARE_VERSION="test";
 const char* FIRMWARE_BUILD_DATE="test";
 struct MyMesh {
+  mesh::RadioProfileCLI _radio_profiles;
   Identity self_id;
   Store store; Store* _store=&store;
   Prefs _prefs;

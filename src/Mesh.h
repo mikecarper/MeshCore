@@ -42,6 +42,9 @@ namespace mesh {
   #define MAX_FLOOD_RETRY_SLOTS   6
 #endif
 
+#define TOTAL_DIRECT_RETRY_SLOTS (2 * MAX_DIRECT_RETRY_SLOTS)
+#define TOTAL_FLOOD_RETRY_SLOTS (2 * MAX_FLOOD_RETRY_SLOTS)
+
 #ifndef MAX_RECENT_ADVERT_ECHOS
   #define MAX_RECENT_ADVERT_ECHOS  8
 #endif
@@ -126,6 +129,8 @@ class Mesh : public Dispatcher {
     uint8_t progress_marker;
     bool confirmed;
     bool valid;
+    uint8_t radio_profile;
+    uint32_t radio_generation;
   };
 
   static const uint8_t OTA_REQUEST_TRACK_SLOTS = 4;
@@ -139,8 +144,8 @@ class Mesh : public Dispatcher {
   RTCClock* _rtc;
   RNG* _rng;
   MeshTables* _tables;
-  DirectRetryEntry _direct_retries[MAX_DIRECT_RETRY_SLOTS];
-  FloodRetryEntry _flood_retries[MAX_FLOOD_RETRY_SLOTS];
+  DirectRetryEntry _direct_retries[TOTAL_DIRECT_RETRY_SLOTS];
+  FloodRetryEntry _flood_retries[TOTAL_FLOOD_RETRY_SLOTS];
   RecentAdvertEchoEntry _recent_advert_echoes[MAX_RECENT_ADVERT_ECHOS];
   OtaRequestTrackEntry _ota_request_track[OTA_REQUEST_TRACK_SLOTS] = {};
   uint32_t _ota_relay_decay_at = 0;
@@ -152,6 +157,8 @@ class Mesh : public Dispatcher {
   uint8_t _next_recent_advert_echo;
   unsigned long _next_direct_retry_timeout;
   unsigned long _next_flood_retry_timeout;
+  uint32_t _retry_radio_generations[2] = {};
+  RadioCrossMode _retry_cross_mode = RadioCrossMode::Auto;
 
   void removePathPrefix(Packet* packet, uint8_t prefix_count);
   void routeDirectRecvAcks(Packet* packet, uint32_t delay_millis);
@@ -201,6 +208,7 @@ protected:
   DispatcherAction onRecvPacket(Packet* pkt) override;
   void onTracePacketQueuedForSend(Packet* packet) override;
   void onSendComplete(Packet* packet) override;
+  void onRadioProfileCopyQueued(Packet* packet, const Packet* original, uint8_t priority) override;
   void onSendFail(Packet* packet) override;
   bool allowPacketTransmit(const Packet* packet) const override;
   bool usePassiveChannelCheck(const Packet* packet) const override;
@@ -387,7 +395,7 @@ protected:
   /**
    * \brief  Called exactly once whenever an active flood-retry slot is released.
    */
-  virtual void onFloodRetrySlotReleased(const uint8_t* retry_key) { }
+  virtual void onFloodRetrySlotReleased(const uint8_t* retry_key, uint8_t radio_profile) { }
 
   /**
    * \returns  number of extra (Direct) ACK transmissions wanted.
@@ -568,6 +576,14 @@ public:
 
   RNG* getRNG() const { return _rng; }
   RTCClock* getRTCClock() const { return _rtc; }
+  bool isAnyTempRadioActive() const {
+    return isTempRadioActive() || (_radio->profiles() && _radio->profiles()->secondary_temporary);
+  }
+  bool isPacketOnTempRadio(const Packet* packet) const {
+    const auto* p = _radio->profiles();
+    if (!p || !packet) return isTempRadioActive();
+    return packet->radio_profile == 1 ? p->secondary_temporary : p->primary_temporary;
+  }
 
   Packet* createAdvert(const LocalIdentity& id, const uint8_t* app_data=NULL, size_t app_data_len=0);
   Packet* createDatagram(uint8_t type, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t len);

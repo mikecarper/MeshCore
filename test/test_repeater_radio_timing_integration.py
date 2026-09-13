@@ -50,13 +50,18 @@ struct RTC {
   uint32_t getCurrentTime() const { return now; }
 };
 struct Board { int reboots = 0; void reboot() { ++reboots; } };
-struct CLI { Board board; Board* getBoard() { return &board; } };
+struct CLI {
+  Board board; Board* getBoard() { return &board; }
+  CLI& radioProfiles() { return *this; }
+  bool savePrimaryPreamble(uint16_t) { return true; }
+};
 struct Radio { uint32_t last_rx = 0; uint32_t getLastRecvMillis() { return last_rx; } };
 struct Barrier { bool held = false; bool waiting() const { return held; } void clear() { held = false; } };
 struct ScheduledRadioSetting {
   bool active = false, temporary = false, started = false;
   float freq = 0, bw = 0;
   uint8_t sf = 0, cr = 0;
+  uint16_t preamble = 0;
   uint32_t start_time = 0, end_time = 0;
   uint64_t hard_end_uptime_millis = 0;
 };
@@ -100,7 +105,7 @@ public:
   bool millisHasNowPassed(uint32_t deadline) const { return (int32_t)(now_ms - deadline) >= 0; }
   bool hasOutbound() const { return outbound; }
   bool hasStartedScheduledTempRadio() const { return scheduled_temp_radio_started; }
-  bool applyRadioParams(float, float, uint8_t, uint8_t) { ++applies; return apply_success; }
+  bool applyRadioParams(float, float, uint8_t, uint8_t, uint16_t = 0, bool = false) { ++applies; return apply_success; }
   bool applySavedRadioParams() { ++restores; return restore_success; }
   bool isValidScheduledRadioParams(float, float, uint8_t, uint8_t) { return true; }
   void savePrefs() { ++saves; }
@@ -130,13 +135,13 @@ public:
   void queueSavedRadioApply();
   void refreshScheduledRadioState();
   void processScheduledRadioSettings();
-  void applyTempRadioParams(float, float, uint8_t, uint8_t, int);
+  void applyTempRadioParams(float, float, uint8_t, uint8_t, int, uint16_t = 0);
   bool scheduleNormalRadio();
   void clearScheduledRadioSetting(int, bool);
   int findFreeScheduledRadioSlot() const;
   int countScheduledRadioSettings(bool) const;
   bool scheduledRadioConflicts(bool, uint32_t, uint32_t) const;
-  void addScheduledRadioParams(bool, float, float, uint8_t, uint8_t, uint32_t, uint32_t, char*);
+  void addScheduledRadioParams(bool, float, float, uint8_t, uint8_t, uint32_t, uint32_t, char*, uint16_t = 0);
   void servicePostMeshLoop();
 };
 @METHODS@
@@ -290,7 +295,14 @@ CLI_HARNESS = r'''
 #include <initializer_list>
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioProfileCommandUtils.h>
 namespace mesh {
+struct RadioProfileCLI {
+  static bool parseSuffix(const char* input, unsigned fields, char* legacy, size_t size, uint16_t& preamble) {
+    return cli::parseRadioPreambleSuffix(input, fields, legacy, size, preamble);
+  }
+  bool acceptsPrimary(float, float, uint8_t, uint8_t, uint16_t) { return true; }
+};
 class Utils { public: static int parseTextParts(char*, const char*[], int, char separator=','); };
 @PARTS@
 }
@@ -300,7 +312,7 @@ RTC* getRTCClock() { return &rtc; }
 struct Callbacks {
   int calls = 0;
   uint32_t duration = 0;
-  void applyTempRadioParams(float, float, uint8_t, uint8_t, int minutes) {
+  void applyTempRadioParams(float, float, uint8_t, uint8_t, int minutes, uint16_t) {
     ++calls; duration = (uint32_t)minutes * 60;
   }
   void appendTempRadioTimingNote(char* reply, size_t size, uint32_t seconds) {
@@ -309,6 +321,7 @@ struct Callbacks {
 } callbacks;
 void appendRxPowerSavingAdjustmentNote(char*, const void*, uint8_t, float) {}
 void handle(const char* command, char* reply) {
+  mesh::RadioProfileCLI _radio_profiles;
   char tmp[160];
   Callbacks* _callbacks = &callbacks;
   const void* _prefs = nullptr;

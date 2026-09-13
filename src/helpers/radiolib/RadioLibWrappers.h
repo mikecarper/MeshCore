@@ -73,6 +73,18 @@ protected:
   int8_t _cur_dbm;
   bool _cur_rx_boosted_gain;
   bool _params_valid, _dbm_valid, _rx_boosted_gain_valid;
+  mesh::RadioProfiles _profiles;
+  uint8_t _active_profile = 0;
+  uint16_t _physical_preamble = 0;
+  uint32_t _profile_generation = 0;
+  uint32_t _profile_scan_generation[2] = {};
+  uint32_t _profile_visit_us = 0;
+  uint32_t _profile_retry_at = 0;
+  bool _profile_rxps_suspended = false;
+  bool _profile_saved_rxps = false;
+  bool _profile_refresh_required = false;
+  mesh::RadioParamApplyResult tuneProfile(uint8_t profile);
+  void serviceProfileScan();
 
   // On-demand noise-floor calibration while RX duty-cycle powersaving is
   // armed. A duty-cycled receiver can't be sampled reliably, so a requested
@@ -169,6 +181,19 @@ public:
         }
 
   void begin() override;
+  mesh::RadioProfiles* profiles() override { return &_profiles; }
+  const mesh::RadioProfiles* profiles() const override { return &_profiles; }
+  bool validateProfile(const mesh::RadioProfileParams& params) const override;
+  uint8_t receiveProfile() const override { return _active_profile; }
+  uint32_t receiveProfileGeneration() const override { return _profile_generation; }
+  mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile) override;
+  mesh::RadioParamApplyResult trySetPrimaryParams(const mesh::RadioProfileParams& params,
+      bool temporary, const uint32_t* timings = nullptr) override;
+  uint16_t profilePreamble(uint8_t profile) const override {
+    const auto& p = _profiles.params(profile);
+    return _profiles.preamble(profile, rxPowerSavingPreambleForParams(p.sf, p.bw));
+  }
+  uint32_t getProfileAirtime(uint8_t profile, int len_bytes, uint8_t cr = 0) override;
   int recvRaw(uint8_t* bytes, int sz) override;
   uint32_t getEstAirtimeFor(int len_bytes) override;
   bool startSendRaw(const uint8_t* bytes, int len) override;
@@ -202,8 +227,8 @@ public:
 
   virtual float getCurrentRSSI() =0;
   virtual uint8_t getSpreadingFactor() const { return LORA_SF; }
-  static uint16_t preambleLengthForParams(uint8_t sf, float bw) {
-    return rxPowerSavingPreambleForParams(sf, bw);
+  uint16_t preambleLengthForParams(uint8_t sf, float bw) const {
+    return _physical_preamble ? _physical_preamble : rxPowerSavingPreambleForParams(sf, bw);
   }
   uint16_t currentPreambleLength() const {
     return _params_valid
@@ -213,7 +238,7 @@ public:
   bool updatePreamble(uint8_t sf, float bw) {
     return _radio->setPreambleLength(preambleLengthForParams(sf, bw)) == RADIOLIB_ERR_NONE;
   }
-  PacketMillis calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint8_t preambleSymbols);
+  PacketMillis calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols);
   virtual int16_t performChannelScan();
 
   int getNoiseFloor() const override { return _noise_floor; }

@@ -1279,7 +1279,7 @@ bool MyMesh::evaluateScopeRewriteTiming(const mesh::Packet* packet,
 
 bool MyMesh::shouldBypassRxDelay(const mesh::Packet* packet) {
   if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
-      && isTempRadioActive()) return true;
+      && isPacketOnTempRadio(packet)) return true;
   bool fast_track = false;
   return evaluateScopeRewriteTiming(packet, fast_track) && fast_track;
 }
@@ -1287,7 +1287,7 @@ bool MyMesh::shouldBypassRxDelay(const mesh::Packet* packet) {
 int MyMesh::calcRxDelayForPacket(const mesh::Packet* packet, float score,
                                  uint32_t air_time) {
   if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA
-      && isTempRadioActive()) return 0;
+      && isPacketOnTempRadio(packet)) return 0;
   bool fast_track = false;
   if (!evaluateScopeRewriteTiming(packet, fast_track)) {
     return calcRxDelay(score, air_time);
@@ -1917,7 +1917,8 @@ MyMesh::FloodRetryBridgeState* MyMesh::floodRetryBridgeStateFor(const mesh::Pack
   uint8_t key[MAX_HASH_SIZE];
   packet->calculatePacketHash(key);
   FloodRetryBridgeState* free_slot = NULL;
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != packet->radio_profile) continue;
     if (flood_retry_bridge_states[i].active
         && memcmp(flood_retry_bridge_states[i].key, key, MAX_HASH_SIZE) == 0) {
       return &flood_retry_bridge_states[i];
@@ -1980,11 +1981,12 @@ bool MyMesh::prepareFloodRetry(const mesh::Packet* packet) const {
   return floodRetryBridgeStateFor(packet, true) != NULL;
 }
 
-void MyMesh::clearFloodRetryBridgeStateByKey(const uint8_t* retry_key) {
+void MyMesh::clearFloodRetryBridgeStateByKey(const uint8_t* retry_key, uint8_t radio_profile) {
   if (retry_key == NULL) {
     return;
   }
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (i / MAX_FLOOD_RETRY_SLOTS != radio_profile) continue;
     if (flood_retry_bridge_states[i].active
         && memcmp(flood_retry_bridge_states[i].key, retry_key, MAX_HASH_SIZE) == 0) {
       flood_retry_bridge_states[i].active = false;
@@ -2234,8 +2236,8 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
 
 }
 
-void MyMesh::onFloodRetrySlotReleased(const uint8_t* retry_key) {
-  clearFloodRetryBridgeStateByKey(retry_key);
+void MyMesh::onFloodRetrySlotReleased(const uint8_t* retry_key, uint8_t radio_profile) {
+  clearFloodRetryBridgeStateByKey(retry_key, radio_profile);
 }
 
 bool MyMesh::hasFloodRetryTargetPrefix(const mesh::Packet* packet) const {
@@ -2869,7 +2871,8 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         } else if (!deferred_cli_command.enqueue(i, sender_timestamp,
                                                  packet->getPathHashSize(), secret,
                                                  command, command_len,
-                                                 request_id)) {
+                                                 request_id, packet->radio_profile,
+                                                 packet->radio_generation)) {
           const char* error = deferred_cli_command.pending
               ? "Err - another remote command is still running"
               : "Err - remote command is too long";
@@ -3004,6 +3007,9 @@ bool MyMesh::completeHostCliRequest(const char* service_reply) {
       reply, mesh::HostCliBridge::REMOTE_REPLY_MAX + 1U,
       deferred_cli_command.command, service_reply);
 
+  ReceiveProfileScope radio_scope(*this, deferred_cli_command.radio_profile,
+                                  deferred_cli_command.radio_generation);
+
   const uint32_t command_fingerprint =
       mesh::RemoteCliReplyCache::fingerprint(
           deferred_cli_command.command,
@@ -3063,6 +3069,8 @@ bool MyMesh::handleHostCliSerialReply(const char* command, char* reply) {
 
 void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   if (!deferred_cli_command.pending) return;
+  ReceiveProfileScope radio_scope(*this, deferred_cli_command.radio_profile,
+                                  deferred_cli_command.radio_generation);
 
   const int client_index = deferred_cli_command.client_index;
   if (client_index < 0 || client_index >= acl.getNumClients()) {
@@ -4027,7 +4035,7 @@ void MyMesh::setTempRadioTiming(uint32_t duration_seconds) {
   updateFloodAdvertTimer();
 }
 
-bool MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
+bool MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t preamble, bool temporary) {
   uint32_t rx_us = _prefs.rx_ps_rx_us;
   uint32_t sleep_us = _prefs.rx_ps_sleep_us;
   if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level != 0) {
@@ -4039,8 +4047,8 @@ bool MyMesh::applyRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) {
   uint32_t timings[2] = {rx_us, sleep_us};
   const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
       && radio_driver.supportsRxPowerSaving() ? timings : NULL;
-  if (!radio_driver.setParams(freq, bw, sf, cr,
-                              applied_timings)) {
+  if (_cli.radioProfiles().applyPrimary(freq, bw, sf, cr, temporary, preamble,
+                              applied_timings) != mesh::RadioParamApplyResult::APPLIED) {
     MESH_DEBUG_PRINTLN("Radio schedule: radio busy or parameter apply failed");
     return false;
   }
@@ -4068,7 +4076,7 @@ bool MyMesh::applySavedRadioParams() {
   }
 #endif
 
-  if (!applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr)) return false;
+  if (!applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr, _cli.radioProfiles().primaryPreamble())) return false;
 
 #if defined(USE_LR2021)
   return radio_driver.configSideDetectors(_prefs.extra_sf, extra_sf_count, _prefs.bw);
@@ -4292,7 +4300,13 @@ void MyMesh::formatRadioParamTuple(char* dest, size_t dest_len, const ScheduledR
   char bw[16];
   formatFixed3(freq, sizeof(freq), setting.freq);
   StrHelper::strncpy(bw, StrHelper::ftoa3(setting.bw), sizeof(bw));
-  snprintf(dest, dest_len, "%s,%s,%u,%u", freq, bw, (uint32_t)setting.sf, (uint32_t)setting.cr);
+  mesh::RadioProfiles preview;
+  if (_radio->profiles()) preview = *_radio->profiles();
+  preview.primary.freq = setting.freq; preview.primary.bw = setting.bw;
+  preview.primary.sf = setting.sf; preview.primary.cr = setting.cr;
+  preview.primary.preamble = setting.preamble;
+  snprintf(dest, dest_len, "%s,%s,%u,%u,%u", freq, bw, (uint32_t)setting.sf, (uint32_t)setting.cr,
+           preview.preamble(0, rxPowerSavingPreambleForParams(setting.sf, setting.bw)));
 }
 
 void MyMesh::formatScheduledRadioSetting(char* reply, int setting_idx, int display_idx) const {
@@ -4330,7 +4344,7 @@ void MyMesh::formatScheduledRadioSetting(char* reply, int setting_idx, int displ
 }
 
 void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8_t sf, uint8_t cr,
-                                     uint32_t start_time, uint32_t end_time, char* reply) {
+                                     uint32_t start_time, uint32_t end_time, char* reply, uint16_t preamble) {
   uint32_t now = getRTCClock()->getCurrentTime();
   if (!isValidScheduledRadioParams(freq, bw, sf, cr)) {
     strcpy(reply, "Error, invalid radio params");
@@ -4370,6 +4384,7 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
   scheduled_radio_settings[slot].bw = bw;
   scheduled_radio_settings[slot].sf = sf;
   scheduled_radio_settings[slot].cr = cr;
+  scheduled_radio_settings[slot].preamble = preamble;
   scheduled_radio_settings[slot].start_time = start_time;
   scheduled_radio_settings[slot].end_time = temporary ? end_time : 0;
   const uint64_t current_uptime_millis =
@@ -4593,6 +4608,10 @@ void MyMesh::processScheduledRadioSettings() {
     }
 
     ScheduledRadioSetting& setting = scheduled_radio_settings[due_idx];
+    if (!_cli.radioProfiles().savePrimaryPreamble(setting.preamble)) {
+      scheduled_radio_retry_at = futureMillis(60000);
+      break;
+    }
     _prefs.freq = setting.freq;
     _prefs.bw = setting.bw;
     _prefs.sf = setting.sf;
@@ -4633,7 +4652,7 @@ void MyMesh::processScheduledRadioSettings() {
             temp_radio_handoff_pending = false;
             queueSavedRadioApply();
           }
-        } else if (applyRadioParams(setting.freq, setting.bw, setting.sf, setting.cr)) {
+        } else if (applyRadioParams(setting.freq, setting.bw, setting.sf, setting.cr, setting.preamble, true)) {
           setting.started = true;
           temp_radio_applied = true;
           temp_radio_handoff_pending = false;
@@ -4757,7 +4776,7 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   return sleep_secs;
 }
 
-void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) {
+void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {
   // A newer TempRadio command supersedes the reply barrier belonging to the
   // old schedule. processDeferredCliCommand() arms the new exact reply after
   // it has been composed and successfully queued.
@@ -4798,6 +4817,7 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
   scheduled_radio_settings[slot].bw = bw;
   scheduled_radio_settings[slot].sf = sf;
   scheduled_radio_settings[slot].cr = cr;
+  scheduled_radio_settings[slot].preamble = preamble;
   scheduled_radio_settings[slot].start_time = start_time;
   scheduled_radio_settings[slot].end_time = start_time + ((uint32_t)timeout_mins * 60);
   const uint64_t current_uptime_millis =
@@ -12056,7 +12076,7 @@ void MyMesh::loop() {
   processDeferredCliCommand();
   servicePostMeshLoop();
 #if defined(ENABLE_OTA) && OTA_DYNAMIC_CONTEXT
-  mesh::ota::ota_service_temp_radio_context(isTempRadioActive());
+  mesh::ota::ota_service_temp_radio_context(isAnyTempRadioActive());
 #endif
 }
 
@@ -13034,6 +13054,7 @@ bool MyMesh::startNeighborDiscover(char* reply) {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+  if (isDualRadioActive()) return true;
   if (hasPendingOtaApply()) return true;
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   if (_local_cli_output.busy()) return true;

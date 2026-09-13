@@ -1,5 +1,8 @@
 # CLI Commands
 
+See [two LoRa profiles](radio_profiles.md) for `radio2`, `tempradio2`, scheduling,
+RX-only mode, cross-transmission policy, and optional radio preambles.
+
 For copy/paste on/off recipes and the differences from Full Companion, see
 [feature switches by role](role_feature_switches.md). The
 [USB web console](https://flasher.meshcore.io/console) opens the default ASCII
@@ -2026,6 +2029,11 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 ---
 
 #### View or change this node's advert path hash size
+**1.17.1.5 infrastructure bug:** affected Repeater, Room Server, and Sensor
+images accept `get path.hash.mode` but report `unknown config` for the setter.
+The command was not renamed. The source correction restores the setter;
+installed images need an updated build. See the [setting-dispatch audit](cli_settings_audit.md).
+
 **Usage:**
 - `get path.hash.mode`
 - `set path.hash.mode <value>`
