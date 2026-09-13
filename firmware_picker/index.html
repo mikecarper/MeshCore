@@ -2245,7 +2245,7 @@ hardware list first. You can skip it: picking hardware fills it in automatically
 <p>The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.</p>
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.6" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -2625,7 +2625,10 @@ Exact filename search still finds old aliases from earlier releases.</p>
 Hardware-specific controls are enabled only when <code>_data/firmware_controls.json</code>
 matches the selected release family and exact target. If that metadata is
 missing or belongs to another release, the picker retains basic role/logging
-directions and links the complete guide without inventing hardware support.</p>
+directions and links the complete guide without inventing hardware support.
+Capacity directions come from each qualified profile's recorded reductions and
+are tied to the source hash of the selected download. The older 1.17.1.5 USB
+sleep workaround stays limited to that release.</p>
 <p>After qualifying a new release, resolve its PlatformIO configuration with no
 other PlatformIO process running, then generate the controls from that source
 revision and its staged manifests:</p>
@@ -2634,6 +2637,8 @@ python3 scripts/generate_picker_controls.py \
   --stage /path/to/staged-release \
   --pio-config /tmp/meshcore-picker-pio-config.json
 </code></pre>
+<p>Refresh the <code>data-controls-url</code> version query when publishing the generated
+metadata so browsers fetch the new release's controls.</p>
 <p>For the downloadable version, save the release family's public GitHub release
 objects as a JSON array, then package the same picker UI and controls:</p>
 <pre><code class="language-bash">python3 scripts/package_firmware_picker.py \

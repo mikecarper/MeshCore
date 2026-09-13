@@ -1,6 +1,5 @@
 {
-  "familyTag": "v1.17.1.5-halo-keymind-cascade-dev-26303793",
-  "memoryReplacementSource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+  "familyTag": "v1.17.1.6-halo-keymind-cascade-dev-306feebe",
   "profiles": {
     "Ebyte_EoRa-S3_Repeater": {
       "display": true,
@@ -19,25 +18,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Ebyte_EoRa-S3_Repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Ebyte_EoRa-S3_Repeater-full-logging": {
       "display": true,
@@ -136,8 +116,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -300,8 +280,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -392,8 +372,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -403,6 +383,62 @@
       "snmp": false,
       "updateMethods": [
         "bluetooth"
+      ],
+      "webconfig": false
+    },
+    "GEPRC_Linkflow_900_repeater": {
+      "display": false,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": false,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": false,
+      "rxps": false,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": false
+    },
+    "GEPRC_Linkflow_900_repeater-full-logging": {
+      "display": false,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": false,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": false,
+      "rxps": false,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": true
+    },
+    "GEPRC_Linkflow_900_repeater_lora_ota_no_external_sensors": {
+      "display": false,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": false,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": false,
+      "rxps": false,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
       ],
       "webconfig": false
     },
@@ -424,31 +460,14 @@
       ],
       "webconfig": false
     },
-    "Generic_E22_sx1262_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Generic_E22_sx1262_repeater-full-logging": {
       "display": false,
       "espnowBridge": false,
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -468,6 +487,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -487,6 +508,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -518,31 +541,14 @@
       ],
       "webconfig": false
     },
-    "Generic_E22_sx1268_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Generic_E22_sx1268_repeater-full-logging": {
       "display": false,
       "espnowBridge": false,
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -562,6 +568,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -581,6 +589,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -600,8 +610,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Memory-corrected Full Companion: 150 contacts; the 256-message queue and all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable and a later save may omit them.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": true,
@@ -741,25 +751,6 @@
       ],
       "webconfig": false
     },
-    "Heltec_E213_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Heltec_E213_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
@@ -889,25 +880,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Heltec_E290_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Heltec_E290_repeater-full-logging": {
       "display": true,
@@ -1039,25 +1011,6 @@
       ],
       "webconfig": false
     },
-    "Heltec_T190_repeater_-full-logging": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Heltec_T190_repeater_bridge_espnow_-full-logging": {
       "display": true,
       "espnowBridge": true,
@@ -1133,25 +1086,6 @@
       ],
       "webconfig": false
     },
-    "Heltec_T190_room_server_-full-logging": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Heltec_T190_room_server_observer_mqtt-full-usb-wifi": {
       "display": true,
       "espnowBridge": false,
@@ -1206,25 +1140,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Heltec_WSL3_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": true,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Heltec_WSL3_repeater_bridge_espnow-full-logging": {
       "display": false,
@@ -1363,8 +1278,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Wireless Paper Full: 350 contacts and 40 channels; 256 offline message slots normally, 128 while mOTA borrows shared storage. Idle WiFi mOTA listening keeps all 256 slots. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots and frees scratch buffers. USB, Bluetooth, WiFi and the display are retained.",
-      "memorySource": "1e4d1e167a984abee34e92288b44d55f3d0e15a6",
+      "memoryNote": "Wireless Paper Full capacity: 350 contacts and 40 channels. Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -1394,25 +1309,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Heltec_Wireless_Paper_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Heltec_Wireless_Paper_repeater-full-logging": {
       "display": true,
@@ -1514,8 +1410,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Memory-corrected Full Companion: 150 contacts; the 256-message queue and all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable and a later save may omit them.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -1545,25 +1441,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Heltec_Wireless_Tracker_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Heltec_Wireless_Tracker_repeater-full-logging": {
       "display": true,
@@ -1665,8 +1542,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Memory-corrected Full Companion: 150 contacts; the 256-message queue and all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable and a later save may omit them.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -1694,25 +1571,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Heltec_ct62_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Heltec_ct62_repeater-full-logging": {
       "display": false,
@@ -1814,8 +1672,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -1906,8 +1764,8 @@
       "femRx": true,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -1944,8 +1802,8 @@
       "femRx": true,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected LoRa OTA repeater: the diagnostic manual staging buffer is allocated only when requested, recovering about 4 KiB at startup. Normal LoRa OTA and the existing storage/bootloader layout are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Neighbor table: 50 entries. Flood rules: 16 entries; the complete rule engine is retained.",
+      "memorySource": "283acd27f5887961de93cf8e2671e4ac7476f603",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2018,8 +1876,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2104,14 +1962,32 @@
       ],
       "webconfig": false
     },
+    "Heltec_t114_sensor": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth"
+      ],
+      "webconfig": false
+    },
     "Heltec_t114_without_display_companion_radio_full": {
       "display": false,
       "espnowBridge": false,
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2202,8 +2078,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2240,8 +2116,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected LoRa OTA repeater: the diagnostic manual staging buffer is allocated only when requested, recovering about 4 KiB at startup. Normal LoRa OTA and the existing storage/bootloader layout are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Neighbor table: 50 entries. Flood rules: 16 entries; the complete rule engine is retained.",
+      "memorySource": "283acd27f5887961de93cf8e2671e4ac7476f603",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2296,8 +2172,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2425,6 +2301,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Full Companion capacity: 100 contacts, 8 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -2455,31 +2333,14 @@
       ],
       "webconfig": false
     },
-    "Heltec_v2_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": false,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Heltec_v2_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -2499,6 +2360,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -2518,6 +2381,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -2574,8 +2439,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Memory-corrected Full Companion: 150 contacts; the 256-message queue and all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable and a later save may omit them.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": true,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -2605,25 +2470,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Heltec_v3_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": true,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Heltec_v3_repeater_bridge_espnow-full-logging": {
       "display": true,
@@ -2781,8 +2627,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2873,8 +2719,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2893,8 +2739,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -2985,8 +2831,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -3077,8 +2923,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -3217,25 +3063,6 @@
       ],
       "webconfig": false
     },
-    "LilyGo_T3S3_sx1262_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "LilyGo_T3S3_sx1262_repeater_bridge_espnow-full-logging": {
       "display": true,
       "espnowBridge": true,
@@ -3364,25 +3191,6 @@
       ],
       "webconfig": false
     },
-    "LilyGo_T3S3_sx1276_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": false,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "LilyGo_T3S3_sx1276_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
@@ -3510,25 +3318,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "LilyGo_TBeam_1W_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "LilyGo_TBeam_1W_repeater_bridge_espnow-full-logging": {
       "display": true,
@@ -3660,25 +3449,6 @@
       ],
       "webconfig": false
     },
-    "LilyGo_TDeck_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "LilyGo_TDeck_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
@@ -3752,25 +3522,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "LilyGo_TETH_Elite_sx1262_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "LilyGo_TETH_Elite_sx1262_repeater-full-logging": {
       "display": false,
@@ -3853,6 +3604,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Full Companion capacity: 100 contacts, 8 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -3881,25 +3634,6 @@
       ],
       "webconfig": false
     },
-    "LilyGo_TLora_V2_1_1_6_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": true,
-      "rxgain": false,
-      "rxps": false,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "LilyGo_TLora_V2_1_1_6_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
@@ -3925,6 +3659,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -3963,6 +3699,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": true,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -3993,25 +3731,6 @@
       ],
       "webconfig": false
     },
-    "LilyGo_TLora_V2_1_1_6_room_server-full-logging": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": false,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_-full-usb-wifi": {
       "display": true,
       "espnowBridge": false,
@@ -4036,8 +3755,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -4193,24 +3912,6 @@
       "updateMethods": [],
       "webconfig": true
     },
-    "M5Stack_Unit_C6L_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "lora"
-      ],
-      "webconfig": true
-    },
     "M5Stack_Unit_C6L_repeater-full-logging": {
       "display": false,
       "espnowBridge": false,
@@ -4266,14 +3967,218 @@
       ],
       "webconfig": true
     },
+    "MKE_s3_companion_radio_full": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": true
+    },
+    "MKE_s3_repeater": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": false
+    },
+    "MKE_s3_repeater-full-logging": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": true
+    },
+    "MKE_s3_repeater_bridge_espnow-full-logging": {
+      "display": true,
+      "espnowBridge": true,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": true
+    },
+    "MKE_s3_repeater_bridge_rs232": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": true,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": false
+    },
+    "MKE_s3_repeater_bridge_rs232-full-logging": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": true,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": true
+    },
+    "MKE_s3_repeater_lora_ota_no_external_sensors": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": false
+    },
+    "MKE_s3_room_server": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": false
+    },
+    "MKE_s3_room_server-full-logging": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": true
+    },
+    "MKE_s3_sensor": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi"
+      ],
+      "webconfig": false
+    },
+    "MKE_s3_sensor-full-logging": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "ESP32_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "wifi",
+        "lora"
+      ],
+      "webconfig": true
+    },
     "MeshTracker_X1_companion_radio_full": {
       "display": false,
       "espnowBridge": false,
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -4364,8 +4269,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -4456,6 +4361,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Full Companion capacity: 100 contacts, 30 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4484,31 +4391,14 @@
       ],
       "webconfig": false
     },
-    "Meshadventurer_sx1262_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Meshadventurer_sx1262_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4528,6 +4418,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4547,6 +4439,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4603,6 +4497,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Full Companion capacity: 100 contacts, 30 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4631,31 +4527,14 @@
       ],
       "webconfig": false
     },
-    "Meshadventurer_sx1268_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Meshadventurer_sx1268_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4675,6 +4554,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4694,6 +4575,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -4803,8 +4686,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -4823,8 +4706,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -4915,8 +4798,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -5023,8 +4906,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -5133,8 +5016,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -5289,25 +5172,6 @@
       ],
       "webconfig": false
     },
-    "RAK_3112_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": true,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "RAK_3112_repeater_bridge_espnow-full-logging": {
       "display": false,
       "espnowBridge": true,
@@ -5445,8 +5309,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -5608,8 +5472,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -5900,8 +5764,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -6064,8 +5928,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -6206,25 +6070,6 @@
       ],
       "webconfig": false
     },
-    "Station_G2_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Station_G2_repeater_bridge_espnow-full-logging": {
       "display": true,
       "espnowBridge": true,
@@ -6355,25 +6200,6 @@
       ],
       "webconfig": false
     },
-    "Station_G3_ESP32_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": true,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Station_G3_ESP32_repeater_lora_ota_no_external_sensors": {
       "display": true,
       "espnowBridge": false,
@@ -6484,25 +6310,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "T_Beam_S3_Supreme_SX1262_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "T_Beam_S3_Supreme_SX1262_repeater_bridge_espnow-full-logging": {
       "display": true,
@@ -6632,31 +6439,14 @@
       ],
       "webconfig": false
     },
-    "Tbeam_SX1262_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Tbeam_SX1262_repeater_bridge_espnow-full-logging": {
       "display": true,
       "espnowBridge": true,
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -6676,6 +6466,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Flood rules: 31 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": true,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -6760,31 +6552,14 @@
       ],
       "webconfig": false
     },
-    "Tbeam_SX1276_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": false,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Tbeam_SX1276_repeater_bridge_espnow-full-logging": {
       "display": true,
       "espnowBridge": true,
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -6804,6 +6579,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Flood rules: 31 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": true,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -6871,25 +6648,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Tenstar_C3_sx1262_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Tenstar_C3_sx1262_repeater-full-logging": {
       "display": false,
@@ -6966,25 +6724,6 @@
       ],
       "webconfig": false
     },
-    "Tenstar_C3_sx1268_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Tenstar_C3_sx1268_repeater-full-logging": {
       "display": false,
       "espnowBridge": false,
@@ -7048,8 +6787,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -7172,25 +6911,6 @@
       ],
       "webconfig": false
     },
-    "ThinkNode_M2_Repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "ThinkNode_M2_Repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
@@ -7307,8 +7027,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -7410,25 +7130,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "ThinkNode_M5_Repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "ThinkNode_M5_Repeater-full-logging": {
       "display": true,
@@ -7546,8 +7247,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -7688,25 +7389,6 @@
       ],
       "webconfig": false
     },
-    "ThinkNode_M7_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": false,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "ThinkNode_M7_repeater_lora_ota_no_external_sensors": {
       "display": false,
       "espnowBridge": false,
@@ -7788,8 +7470,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -8063,8 +7745,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -8083,8 +7765,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -8195,8 +7877,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Memory-corrected Full Companion: 150 contacts; the 256-message queue and all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable and a later save may omit them.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -8224,25 +7906,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Xiao_C3_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Xiao_C3_repeater-full-logging": {
       "display": false,
@@ -8408,25 +8071,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "Xiao_S3_WIO_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "Xiao_S3_WIO_repeater_bridge_espnow-full-logging": {
       "display": false,
@@ -8595,25 +8239,6 @@
       ],
       "webconfig": false
     },
-    "Xiao_S3_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "Xiao_S3_repeater-full-logging": {
       "display": false,
       "espnowBridge": false,
@@ -8751,8 +8376,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -8800,6 +8425,24 @@
           "storage": "external_qspi"
         }
       },
+      "webconfig": false
+    },
+    "Xiao_nrf52_repeater_bridge_rs232": {
+      "display": false,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": false,
+      "mqtt": false,
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": true,
+      "rxgain": true,
+      "rxps": true,
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth"
+      ],
       "webconfig": false
     },
     "Xiao_nrf52_repeater_lora_ota_no_external_sensors": {
@@ -8888,25 +8531,6 @@
       "snmp": false,
       "updateMethods": [
         "wifi"
-      ],
-      "webconfig": true
-    },
-    "heltec_rc32_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
       ],
       "webconfig": true
     },
@@ -9004,24 +8628,6 @@
       ],
       "webconfig": true
     },
-    "heltec_rc32_sensor": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi"
-      ],
-      "webconfig": false
-    },
     "heltec_rc32_sensor-full-logging": {
       "display": true,
       "espnowBridge": false,
@@ -9056,25 +8662,6 @@
       "snmp": false,
       "updateMethods": [
         "wifi"
-      ],
-      "webconfig": true
-    },
-    "heltec_rc32_without_display_repeater-full": {
-      "display": false,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": false,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
       ],
       "webconfig": true
     },
@@ -9215,6 +8802,8 @@
       "femRx": true,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "1274956f863f625366f211f2058c1db27dfb2fd1",
       "mqtt": true,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -9253,8 +8842,8 @@
       "femRx": true,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Memory-corrected Full Companion: 150 contacts; the 256-message queue and all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable and a later save may omit them.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -9284,25 +8873,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "heltec_tracker_v2_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "heltec_tracker_v2_repeater_bridge_espnow-full-logging": {
       "display": true,
@@ -9348,6 +8918,8 @@
       "femRx": true,
       "femTx": false,
       "gps": true,
+      "memoryNote": "Neighbor table: 50 entries.",
+      "memorySource": "1274956f863f625366f211f2058c1db27dfb2fd1",
       "mqtt": true,
       "platform": "ESP32_PLATFORM",
       "primaryEspnow": false,
@@ -9471,25 +9043,6 @@
       ],
       "webconfig": false
     },
-    "heltec_v4_expansionkit_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "heltec_v4_expansionkit_repeater_lora_ota_no_external_sensors": {
       "display": true,
       "espnowBridge": false,
@@ -9600,25 +9153,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "heltec_v4_r8_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "heltec_v4_r8_repeater_lora_ota_no_external_sensors": {
       "display": true,
@@ -9806,25 +9340,6 @@
       ],
       "webconfig": false
     },
-    "heltec_v4_r8_tft_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "heltec_v4_r8_tft_repeater_lora_ota_no_external_sensors": {
       "display": true,
       "espnowBridge": false,
@@ -9954,25 +9469,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "heltec_v4_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "heltec_v4_repeater_bridge_espnow-full-logging": {
       "display": true,
@@ -10141,25 +9637,6 @@
       ],
       "webconfig": false
     },
-    "heltec_v4_tft_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": true,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": true,
-      "rxps": true,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
-    },
     "heltec_v4_tft_repeater-full-logging": {
       "display": true,
       "espnowBridge": false,
@@ -10297,8 +9774,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -10409,8 +9886,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -10521,8 +9998,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -10633,8 +10110,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -10745,8 +10222,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -10857,8 +10334,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -10969,8 +10446,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -11110,25 +10587,6 @@
         "wifi"
       ],
       "webconfig": false
-    },
-    "meshnology_w12_repeater-full": {
-      "display": true,
-      "espnowBridge": false,
-      "femRx": false,
-      "femTx": false,
-      "gps": true,
-      "mqtt": false,
-      "platform": "ESP32_PLATFORM",
-      "primaryEspnow": false,
-      "rs232": false,
-      "rxgain": false,
-      "rxps": false,
-      "snmp": false,
-      "updateMethods": [
-        "wifi",
-        "lora"
-      ],
-      "webconfig": true
     },
     "meshnology_w12_repeater-full-logging": {
       "display": true,
@@ -11523,8 +10981,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -11598,8 +11056,8 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -11673,8 +11131,8 @@
       "femRx": false,
       "femTx": false,
       "gps": true,
-      "memoryNote": "Corrected nRF52 Full: 256 offline message slots normally; 128 while mOTA borrows shared storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source returns all 256 slots. Contacts, channels and Full transports are retained.",
-      "memorySource": "aa20e9278ebdd574c4769fdb58d46fd9d4face68",
+      "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
+      "memorySource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -11742,6 +11200,24 @@
       "webconfig": false
     },
     "t1000e_room_server": {
+      "display": false,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": false,
+      "gps": true,
+      "mqtt": false,
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": false,
+      "rxps": false,
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth"
+      ],
+      "webconfig": false
+    },
+    "t1000e_sensor": {
       "display": false,
       "espnowBridge": false,
       "femRx": false,
@@ -11898,8 +11374,5 @@
       "webconfig": false
     }
   },
-  "source": "2630379365cf47cb7eec146b7d1b57b354efe251",
-  "memoryFollowupSources": {
-    "Heltec_Wireless_Paper_companion_radio_full": "1e4d1e167a984abee34e92288b44d55f3d0e15a6"
-  }
+  "source": "306feebe6d648a247f925894f876be9d747fc8d2"
 }
