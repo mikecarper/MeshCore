@@ -62,6 +62,27 @@ New settings take effect after a short reply allowance. Temporary periods and
 schedules live in RAM and disappear on reboot. Timer expiry also uses monotonic
 time, so setting the clock backwards cannot extend a temporary session.
 
+## Companion messages on both profiles
+
+To send ordinary Companion messages on both `radio` and an active `tempradio2`,
+configure the temporary profile in `rxtx` mode and enable crossing:
+
+```text
+set radio2.cross on
+get tempradio2
+get radio2.cross
+get radio2.status
+```
+
+`rxtx` permits transmission on the second profile; `radio2.cross on` copies new
+messages between the two profiles. `TX=a,b` reports primary and secondary
+transmit counts. Crossing also applies to OTA traffic.
+
+The crossing setting is saved and remains enabled after the temporary session
+ends or the node reboots. Run `set radio2.cross auto` to restore the default
+isolation between permanent and temporary profiles. The firmware picker's
+Companion tempradio2 instructions include both choices and the status commands.
+
 ## Choose whether traffic crosses between profiles
 
 ```text

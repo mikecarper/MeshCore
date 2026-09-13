@@ -319,6 +319,22 @@ run `reset` in your Linux shell, then reconnect with the command above. At the
 radio prompt, run `version` and `board` to identify the node. See the
 [Companion USB mode guide](terminal_chat_cli.md#companion-usb-mode).
 
+## Companion tempradio2 transmit settings
+
+LoRa Companion results for 1.17.1.6 and newer include **Companion tempradio2:
+transmit on both** under **Restore your settings after flashing**. After
+configuring `tempradio2` in `rxtx` mode, choose **Transmit on both** to copy:
+
+```text
+set radio2.cross on
+```
+
+This copies new messages to both `radio` and `tempradio2`. The setting is saved,
+outlasts the temporary session and reboot, and also allows OTA traffic to cross
+profiles. **Default isolation** copies `set radio2.cross auto`; **Check** shows
+the temporary profile, crossing policy and per-profile transmit counters.
+See the [two-profile setup guide](radio_profiles.md#companion-messages-on-both-profiles).
+
 ## Installation methods
 
 | File | Use |
