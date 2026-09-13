@@ -1988,6 +1988,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#published-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#two-lora-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2074,6 +2085,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#published-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#two-lora-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2155,6 +2177,21 @@ outputs exist, and remain development prereleases.</p>
 <p>The build uses the USA/Canada radio preset and Cascade runtime defaults. Build
 records include the resolved radio settings; the offline USA Cascadia fallback
 is <strong>910.525 MHz, BW62.5, SF7, CR5</strong>. Ordinary updates retain saved node settings.</p>
+<h2 id="published-matrix">Published matrix</h2>
+<p>The <a href="https://github.com/mikecarper/MeshCore/releases/tag/v1.17.1.6-halo-keymind-cascade-dev-306feebe">GitHub release</a>
+contains <strong>553 qualified firmware profiles across five release pages</strong>. The
+initial matrix completed all 565 attempts: 537 passed, 16 failed, and 12
+standard ESP32 profiles exceeded the 1.25 MiB portable slot. All 16 failures
+have passing repair builds; all 12 portable exclusions have qualified expanded
+Full alternatives. Smaller profiles that fit remain available.</p>
+<p>The initial firmware uses <code>306feebe</code>, the 14 nRF52 repairs use <code>283acd27</code>, and
+the two Tracker MQTT repairs use <code>1274956f</code>. Each firmware filename and target
+manifest records its source. Existing firmware assets and release tags were
+preserved when the repairs were added.</p>
+<p>See the <a href="https://github.com/mikecarper/MeshCore/releases/download/v1.17.1.6-halo-keymind-cascade-dev-306feebe/BUILD-FAILURES.md">failure and repair report</a>
+and <a href="https://github.com/mikecarper/MeshCore/releases/download/v1.17.1.6-halo-keymind-cascade-dev-306feebe/PORTABLE-PROFILE-EXCLUSIONS.md">portable-profile exclusions</a>.
+Full alternatives require their matching expanded partition layout; they do
+not fit a deployed 1.25 MiB slot.</p>
 <h2 id="two-lora-profiles">Two LoRa profiles</h2>
 <p><code>radio2</code>, <code>tempradio2</code>, <code>radioat2</code> and <code>tempradioat2</code> add a second profile to
 LoRa-equipped Companion, Repeater, Room Server, Sensor and terminal firmware.
