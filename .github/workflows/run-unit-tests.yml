@@ -106,6 +106,14 @@ jobs:
           python3 -B test/test_picker_controls_generator.py
           node test/test_firmware_picker.js
 
+      - name: Verify Full logging compiler flags and packaged capabilities
+        run: |
+          python3 -B test/test_full_build_flag_dedup.py
+          python3 -B test/test_full_logging_compile.py
+          python3 -B test/test_full_logging_resume.py
+          python3 -B test/test_firmware_capabilities.py
+          bash test/test_build_profiles.sh
+
       - name: Verify nRF52 UF2-reset CLI coverage
         run: python3 -B test/test_nrf52_uf2reset_cli.py
 

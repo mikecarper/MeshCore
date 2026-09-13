@@ -37,12 +37,13 @@ def flatten(values):
     return [token for value in values for token in shlex.split(str(value))]
 
 
-def apply_policy(flags, overlay, *, full=True, companion=True):
+def apply_policy(flags, overlay, *, full=True, companion=True, logging=False):
     environment = FakeEnvironment(flags)
     output = io.StringIO()
     variables = {
         "MESHCORE_ESP32_FULL_BUILD": "1" if full else "0",
         "MESHCORE_COMPANION_RADIO_FULL": "1" if companion else "0",
+        "MESHCORE_REQUIRE_PACKET_LOGGING": "1" if logging else "0",
         "PLATFORMIO_BUILD_FLAGS": overlay,
     }
     with mock.patch.dict(os.environ, variables, clear=False):
@@ -58,6 +59,33 @@ def apply_policy(flags, overlay, *, full=True, companion=True):
 
 
 class FullBuildFlagDedupTest(unittest.TestCase):
+    def test_required_packet_logging_removes_all_conflicting_forms(self):
+        for disable in ["-UMESH_PACKET_LOGGING", "-U MESH_PACKET_LOGGING",
+                        "-DMESH_PACKET_LOGGING=0", "-D MESH_PACKET_LOGGING=0"]:
+            for before in (True, False):
+                with self.subTest(disable=disable, before=before):
+                    enable = "-DMESH_PACKET_LOGGING=1"
+                    flags = [disable, enable] if before else [enable, disable]
+                    env, _, _ = apply_policy(flags, enable, logging=True)
+                    self.assertEqual(flatten(env.values["BUILD_FLAGS"]), [enable])
+
+    def test_required_logging_preserves_other_macros_and_quoted_inputs(self):
+        flags = ["-UMESH_DEBUG -D MESH_PACKET_LOGGING_COMPACT=0 "
+                 "-I 'include path' -include 'forced header.h' "
+                 "-D LABEL='\"USB logging Full\"' -U MESH_PACKET_LOGGING"]
+        env, _, ns = apply_policy(flags, "", logging=True)
+        actual = ns["logical_flags"](env.values["BUILD_FLAGS"])
+        expected = ns["logical_flags"](flags)[:-1] + [("-DMESH_PACKET_LOGGING=1",)]
+        self.assertEqual(actual, expected)
+
+    def test_without_logging_contract_explicit_disables_remain(self):
+        flags = ["-UMESH_PACKET_LOGGING -DMESH_PACKET_LOGGING=0"]
+        env, _, _ = apply_policy(flags, "", logging=False)
+        self.assertEqual(env.values["BUILD_FLAGS"], flags)
+        # A stale external variable cannot turn a standard image into Full.
+        env, _, _ = apply_policy(flags, "", full=False, logging=True)
+        self.assertEqual(env.values["BUILD_FLAGS"], flags)
+
     def test_repeated_extends_overlay_keeps_last_exact_occurrence(self):
         overlay = (
             "-DFEATURE=1 -UFEATURE -DFEATURE=1 "

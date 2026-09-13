@@ -75,6 +75,60 @@ class FirmwareCapabilityCheckerTest(unittest.TestCase):
         self.assertFalse(manifest["verified"])
         self.assertIn("promised", result.stderr)
 
+    def test_application_gate_rejects_elf_only_logging_evidence(self):
+        # Debug/symbol strings in the ELF must not qualify an image whose
+        # uploadable binary has had the implementation compiled or linked out.
+        result, manifest = self.run_checker(
+            b"USB logger", "--expect-application", "logging.usb.packets=USB logger",
+            artifacts={"firmware-bin": b"no logging implementation"})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(manifest["verified"])
+        self.assertIn("packaged application", result.stderr)
+
+    def test_application_gate_accepts_packaged_code_without_elf_marker(self):
+        result, manifest = self.run_checker(
+            b"stripped symbols", "--expect-application", "logging.usb.packets=USB logger",
+            artifacts={"firmware-bin": b"USB logger"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(manifest["verified"])
+        self.assertIn("logging.usb.packets", manifest["capabilities"])
+        self.assertEqual(manifest["verification"][0]["source"], "packaged application")
+
+    def test_full_logging_requires_packet_code_as_well_as_the_setting(self):
+        expectations = ["--expect-application", "logging.usb.control=usb.logging",
+                        "--expect-application", "logging.usb.packets=packet logger"]
+        for body, accepted in [(b"usb.logging debug logger", False),
+                               (b"packet logger", False),
+                               (b"usb.logging packet logger", True)]:
+            with self.subTest(body=body):
+                result, manifest = self.run_checker(b"", *expectations,
+                                                     artifacts={"firmware-bin": body})
+                self.assertEqual(result.returncode, 0 if accepted else 1, result.stderr)
+                self.assertEqual(manifest["verified"], accepted)
+
+    def test_application_checks_require_the_installable_artifact(self):
+        result, manifest = self.run_checker(
+            b"USB logger", "--expect-application", "logging.usb.packets=USB logger")
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(manifest["verified"])
+        self.assertIn("require --firmware-bin or --dfu-package", result.stderr)
+
+    def test_nrf52_logging_is_checked_inside_the_dfu_application(self):
+        for body, accepted in [(b"packet logger", True), (b"no logger", False)]:
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, "w") as package:
+                package.writestr("manifest.json", json.dumps({"manifest": {
+                    "application": {"bin_file": "app.bin"}}}))
+                package.writestr("app.bin", body)
+                # A marker elsewhere in the ZIP is not proof of running code.
+                package.writestr("notes.txt", "packet logger")
+            result, manifest = self.run_checker(
+                b"packet logger", "--platform", "NRF52_PLATFORM",
+                "--expect-application", "logging.usb.packets=packet logger",
+                artifacts={"dfu-package": archive.getvalue()})
+            self.assertEqual(result.returncode, 0 if accepted else 1, result.stderr)
+            self.assertEqual(manifest["verified"], accepted)
+
     def ota_artifacts(self, *, second_slot=True, image_size=48):
         def entry(kind, subtype, address, size):
             return struct.pack("<HBBII16sI", 0x50AA, kind, subtype,

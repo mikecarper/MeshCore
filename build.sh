@@ -2607,6 +2607,23 @@ disable_usb_logging_for_mqtt() {
   fi
 }
 
+requires_full_usb_packet_logging() {
+  local env_name=$1
+
+  # Full Companion and the combined USB+WiFi infrastructure artifact always
+  # carry the logger behind runtime controls. Other Full profiles retain the
+  # ordinary explicit logging-off/disable-debug behavior.
+  is_companion_radio_full_target "$env_name" && return 0
+  [ "$ESP32_FULL_BUILD" = "1" ] || return 1
+  is_companion_build "$env_name" && return 1
+  [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ] && return 0
+  if [ "${PACKET_LOGGING_OVERRIDE,,}" = "off" ] \
+      || [ "${DISABLE_DEBUG:-0}" = "1" ]; then
+    return 1
+  fi
+  uses_merged_standard_usb_logging "$env_name"
+}
+
 is_esp32_usb_wifi_companion_ota_build() {
   local env_name=$1
   local env_name_lc=${env_name,,}
@@ -2927,12 +2944,39 @@ record_build_expectation() {
   BUILD_EXPECTATIONS+=("$1=$2")
 }
 
+record_application_expectation() {
+  BUILD_APPLICATION_EXPECTATIONS+=("$1=$2")
+}
+
+declare_full_logging_application_contract() {
+  local env_name=$1
+  BUILD_APPLICATION_EXPECTATIONS=()
+  if requires_full_usb_packet_logging "$env_name"; then
+    # Inspect the packaged application, not an ELF debug/symbol string. The
+    # settings alone can exist in debug-only builds with packet logging absent.
+    record_application_expectation "logging.usb.packets" \
+      "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)"
+    if is_companion_radio_full_target "$env_name"; then
+      record_application_expectation "logging.usb.control" "get usb.logging"
+    else
+      record_application_expectation "logging.usb.control" \
+        "OK - USB logging %s (saved)"
+      if is_mqtt_bridge_target "$env_name" \
+          || [ "${MQTT_BRIDGE_OVERRIDE,,}" = "on" ]; then
+        record_application_expectation "logging.usb.output" \
+          "OK - logging.output %s (saved)"
+      fi
+    fi
+  fi
+}
+
 declare_build_capability_contract() {
   local env_name=$1
   local env_platform=$2
   local env_name_lc=${env_name,,}
   local pio_env_name
 
+  declare_full_logging_application_contract "$env_name"
   record_build_capability "profile.${BUILD_PROFILE_FOR_TARGET}"
 
   if [ "$env_platform" = "NRF52_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
@@ -3852,6 +3896,9 @@ write_build_capability_manifest() {
   for item in "${BUILD_EXPECTATIONS[@]}"; do
     checker_args+=(--expect "$item")
   done
+  for item in "${BUILD_APPLICATION_EXPECTATIONS[@]}"; do
+    checker_args+=(--expect-application "$item")
+  done
 
   python3 scripts/check_firmware_capabilities.py "${checker_args[@]}"
 }
@@ -3941,6 +3988,18 @@ build_artifacts_exist() {
     "${OUTPUT_DIR}/${firmware_filename}" >/dev/null 2>&1 || return 1
   grep -q '"verified": true' \
     "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" || return 1
+  # Old manifests can be marked verified while lacking a newly required
+  # capability. Never let --resume bypass the current packaged-logging gate.
+  python3 - "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" \
+    "${BUILD_APPLICATION_EXPECTATIONS[@]}" <<'PY' || return 1
+import json, sys
+manifest = json.load(open(sys.argv[1]))
+proven = {(item.get("capability"), item.get("evidence"))
+          for item in manifest.get("verification", [])
+          if item.get("present") is True and item.get("source") == "packaged application"}
+required = {tuple(value.split("=", 1)) for value in sys.argv[2:]}
+sys.exit(0 if required <= proven else 1)
+PY
   if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ]; then
     python3 - "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" <<'PY' || return 1
 import json, sys
@@ -4104,6 +4163,7 @@ build_firmware() {
   local -a BUILD_CAPABILITIES=()
   local -a BUILD_REDUCTIONS=()
   local -a BUILD_EXPECTATIONS=()
+  local -a BUILD_APPLICATION_EXPECTATIONS=()
   local BUILD_PROFILE_FOR_TARGET=$BUILD_PROFILE_EFFECTIVE
 
   # Bash functions use dynamic scoping. These locals let one target be promoted
@@ -4198,6 +4258,7 @@ build_firmware() {
   fi
   local embedded_version_string="${firmware_version}${embedded_build_suffix}${embedded_variant_tag}-${commit_hash}"
 
+  declare_full_logging_application_contract "$env_name"
   if [ "$RESUME_BUILD_OUTPUT" == "1" ] && build_artifacts_exist "$env_platform" "$firmware_filename"; then
     echo "Skipping ${env_name}; existing artifacts found for ${firmware_filename}."
     return 0
@@ -4252,6 +4313,11 @@ build_firmware() {
 
   if [ "$ESP32_FULL_BUILD" = "1" ] || is_esp32_companion_radio_full_target "$env_name"; then
     export MESHCORE_ESP32_FULL_BUILD=1
+    if requires_full_usb_packet_logging "$env_name"; then
+      export MESHCORE_REQUIRE_PACKET_LOGGING=1
+    else
+      unset MESHCORE_REQUIRE_PACKET_LOGGING
+    fi
     if is_esp32_companion_radio_full_target "$env_name"; then
       export MESHCORE_COMPANION_RADIO_FULL=1
     else
@@ -4272,6 +4338,7 @@ build_firmware() {
     fi
   else
     unset MESHCORE_ESP32_FULL_BUILD
+    unset MESHCORE_REQUIRE_PACKET_LOGGING
     unset MESHCORE_COMPANION_RADIO_FULL
   fi
 
@@ -4334,6 +4401,7 @@ build_firmware() {
 
   restore_platformio_build_flags "$had_platformio_build_flags" "$original_platformio_build_flags"
   unset MESHCORE_ESP32_FULL_BUILD
+  unset MESHCORE_REQUIRE_PACKET_LOGGING
   unset MESHCORE_COMPANION_RADIO_FULL
   unset MESHCORE_ESP32_FULL_PARTITION_TABLE
   unset MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE

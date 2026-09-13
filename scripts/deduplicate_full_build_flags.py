@@ -12,6 +12,10 @@ compiler/linker inputs remain untouched. On Windows, existing include
 directories are also rewritten to shorter 8.3 aliases without changing their
 order. This keeps GCC's expanded ``cc1plus`` command below the CreateProcess
 limit.
+
+Full profiles that promise USB packet logging also remove inherited disables
+before PlatformIO parses the flags. PlatformIO emits all ``-U`` options after
+``-D`` options, so appending a define alone cannot enable an inherited disable.
 """
 
 Import("env")  # noqa: F821
@@ -125,6 +129,29 @@ def deduplicate_overlay(build_flags, overlay):
     return serialize_flags(unique), len(flags) - len(unique)
 
 
+def require_packet_logging(build_flags):
+    """Make the selected Full logging contract survive ParseFlags ordering.
+
+    Touch only this macro: other defines, undefines, quoted strings, and
+    option/argument pairs retain their semantics. A later artifact check also
+    proves that packet logging survived other scripts and link-time removal.
+    """
+    retained = []
+    for flag in logical_flags(build_flags):
+        if flag[0] is not COMMAND_FLAG:
+            if flag[0] in {"-D", "-U"} and len(flag) == 2:
+                macro = flag[1]
+            elif flag[0].startswith(("-D", "-U")):
+                macro = flag[0][2:]
+            else:
+                macro = ""
+            if macro.split("=", 1)[0] == "MESH_PACKET_LOGGING":
+                continue
+        retained.append(flag)
+    retained.append(("-DMESH_PACKET_LOGGING=1",))
+    return serialize_flags(retained)
+
+
 def resolved_path(value, project_dir, expander=None):
     """Resolve a SCons path node/string without requiring SCons in tests."""
     if hasattr(value, "get_abspath"):
@@ -217,12 +244,18 @@ if os.environ.get("MESHCORE_ESP32_FULL_BUILD") == "1":
     cleaned, removed = deduplicate_overlay(
         original, os.environ.get("PLATFORMIO_BUILD_FLAGS", "")
     )
-    if removed:
+    logging_required = os.environ.get("MESHCORE_REQUIRE_PACKET_LOGGING") == "1"
+    if logging_required:
+        cleaned = require_packet_logging(cleaned)
+    if removed or logging_required:
         env.Replace(BUILD_FLAGS=cleaned)  # noqa: F821
+    if removed:
         print(
             "ESP32 FULL build: removed %d repeated external build flags"
             % removed
         )
+    if logging_required:
+        print("ESP32 FULL build: USB packet logging required; inherited disables removed")
     if (
         os.name == "nt"
         and os.environ.get("MESHCORE_COMPANION_RADIO_FULL") == "1"

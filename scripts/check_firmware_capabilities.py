@@ -67,11 +67,26 @@ def parse_args() -> argparse.Namespace:
         metavar="CAPABILITY=TEXT",
         help="Require TEXT to be present in the linked image.",
     )
+    parser.add_argument(
+        "--expect-application", action="append", default=[],
+        metavar="CAPABILITY=TEXT",
+        help="Require TEXT in the packaged firmware.bin or DFU application, not ELF metadata.",
+    )
     return parser.parse_args()
 
 
 def stable_unique(values: list[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
+
+
+def read_application(args):
+    if args.firmware_bin is not None:
+        return args.firmware_bin.read_bytes()
+    if args.dfu_package is not None:
+        with zipfile.ZipFile(args.dfu_package) as package:
+            app = json.loads(package.read("manifest.json"))["manifest"]["application"]
+            return package.read(app["bin_file"])
+    raise ValueError("application checks require --firmware-bin or --dfu-package")
 
 
 def verify_ota_artifacts(args, methods):
@@ -138,21 +153,31 @@ def main() -> int:
 
     checks = []
     malformed = False
-    for expectation in args.expect:
+    application = b""
+    if args.expect_application:
+        try:
+            application = read_application(args)
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
+            print(f"capability check: cannot read packaged application: {exc}", file=sys.stderr)
+            malformed = True
+    expectations = [(value, image, "linked image") for value in args.expect]
+    expectations += [(value, application, "packaged application") for value in args.expect_application]
+    for expectation, content, source in expectations:
         if "=" not in expectation:
             print(
-                f"capability check: malformed --expect {expectation!r}",
+                f"capability check: malformed expectation {expectation!r}",
                 file=sys.stderr,
             )
             malformed = True
             continue
         capability, needle = expectation.split("=", 1)
-        present = bool(needle) and needle.encode("utf-8") in image
+        present = bool(needle) and needle.encode("utf-8") in content
         checks.append(
             {
                 "capability": capability,
                 "evidence": needle,
                 "present": present,
+                "source": source,
             }
         )
 
@@ -203,7 +228,7 @@ def main() -> int:
             print(
                 "capability check failed: "
                 f"{check['capability']} promised but {check['evidence']!r} "
-                f"is absent from {args.image}",
+                f"is absent from the {check['source']}",
                 file=sys.stderr,
             )
         return 1

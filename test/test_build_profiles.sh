@@ -595,6 +595,64 @@ while IFS= read -r env_name; do
   fi
 done < <(resolve_companion_firmwares)
 
+# Full logging is a compiled and packaged contract, including when a legacy
+# observer recipe or DISABLE_DEBUG injects an inherited packet-logging -U.
+verify_full_logging_contract() {
+  local env_name=$1
+  local ESP32_FULL_BUILD=$2
+  local PACKET_LOGGING_OVERRIDE=$3
+  local DISABLE_DEBUG=$4
+  local expected=$5
+  local combined=$6
+  local MESHDEBUG_OVERRIDE=off MQTT_BRIDGE_OVERRIDE="" MQTT_DEBUG_OVERRIDE=""
+  local FIRMWARE_FILENAME_INFIX=""
+  local BUILD_PROFILE_FOR_TARGET=full
+  local -a BUILD_CAPABILITIES=() BUILD_EXPECTATIONS=() BUILD_APPLICATION_EXPECTATIONS=()
+  local expectations
+
+  configure_unified_full_infrastructure_output "$env_name"
+  if requires_full_usb_packet_logging "$env_name"; then
+    [ "$expected" = yes ] || fail "$env_name unexpectedly requires USB logging"
+  else
+    [ "$expected" = no ] || fail "$env_name omitted its Full USB logging contract"
+  fi
+  declare_build_capability_contract "$env_name" "${PIO_ENV_PLATFORM_BY_NAME[$env_name]}"
+  expectations=" ${BUILD_APPLICATION_EXPECTATIONS[*]} "
+  if [ "$expected" = yes ]; then
+    [[ "$expectations" == *"logging.usb.packets="* ]] \
+      || fail "$env_name does not check packet logging in the packaged application"
+    [[ "$expectations" == *"logging.usb.control="* ]] \
+      || fail "$env_name does not check working USB logging controls"
+  else
+    [[ "$expectations" != *"logging.usb."* ]] \
+      || fail "$env_name promises logging after it was explicitly omitted"
+  fi
+  if [ "$combined" = yes ]; then
+    [[ "$expectations" == *"logging.usb.output=OK - logging.output %s (saved)"* ]] \
+      || fail "$env_name does not verify its combined output selector"
+  else
+    [[ "$expectations" != *"logging.usb.output="* ]] \
+      || fail "$env_name unexpectedly promises a combined output selector"
+  fi
+}
+
+for logging_target in Station_G2_repeater_observer_mqtt \
+    Station_G2_room_server_observer_mqtt heltec_v4_repeater_observer_mqtt \
+    heltec_v4_r8_room_server_observer_mqtt; do
+  verify_full_logging_contract "$logging_target" 1 "" 0 yes yes
+  verify_full_logging_contract "$logging_target" 1 off 1 yes yes
+  verify_full_logging_contract "$logging_target" 0 "" 0 no no
+done
+for logging_target in Station_G2_repeater_bridge_espnow heltec_v4_sensor; do
+  verify_full_logging_contract "$logging_target" 1 "" 0 yes no
+  verify_full_logging_contract "$logging_target" 1 on 1 yes no
+  verify_full_logging_contract "$logging_target" 1 off 0 no no
+  verify_full_logging_contract "$logging_target" 1 "" 1 no no
+done
+for logging_target in Station_G2_companion_radio_full RAK_4631_companion_radio_full; do
+  verify_full_logging_contract "$logging_target" 0 off 1 yes no
+done
+
 # Synthetic inventory: one ESP32 target qualified for expanded Full and one
 # nRF52 target which must attempt complete LoRa OTA in its current partition.
 SUPPORTED_PIO_ENVS=(
