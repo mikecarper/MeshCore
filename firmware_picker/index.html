@@ -811,6 +811,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-usb-terminal-on-linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion USB terminal on Linux
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation-methods" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2151,6 +2162,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-usb-terminal-on-linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion USB terminal on Linux
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation-methods" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2540,6 +2562,24 @@ A second ESP32 CDC interface is not part of the release profile.</p>
 it while the Repeater/Room Server bridge is running; check <code>get mqtt.running</code>.
 The workaround is not added to nRF52 directions. See <a href="../role_feature_switches/">logging by role</a>
 for the saved settings and the original firmware's USB sleep issue.</p>
+<h2 id="companion-usb-terminal-on-linux">Companion USB terminal on Linux</h2>
+<p>Full, USB and USB + Bluetooth Companion results include <strong>Companion USB terminal
+(Linux / Bash)</strong> under <strong>Restore your settings after flashing</strong>, with copyable
+connection and recovery commands.</p>
+<p>Run this in Bash on the Linux computer connected to your radio:</p>
+<pre><code class="language-bash">picocom -b 115200 --imap spchex \
+  --initstring $'\r+++MESHCORE-TERM-START\r' \
+  /dev/ttyACM0
+</code></pre>
+<p>Replace <code>/dev/ttyACM0</code> with your radio's port, such as <code>/dev/ttyACM1</code> or
+<code>/dev/ttyUSB0</code>. Use the primary USB data interface (<code>00</code> when multiple interfaces
+appear), and close other apps using it. The init string opens the ASCII CLI;
+its leading carriage return clears an unfinished input line. <code>--imap spchex</code>
+displays binary control bytes safely during the transition.</p>
+<p>If the terminal display is scrambled, exit picocom with <strong>Ctrl+A, then Ctrl+X</strong>,
+run <code>reset</code> in your Linux shell, then reconnect with the command above. At the
+radio prompt, run <code>version</code> and <code>board</code> to identify the node. See the
+<a href="../terminal_chat_cli/#companion-usb-mode">Companion USB mode guide</a>.</p>
 <h2 id="installation-methods">Installation methods</h2>
 <table>
 <thead>

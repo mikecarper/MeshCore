@@ -1089,6 +1089,15 @@
       }
       section("Restore the selected logging mode", actions, loggingNote);
     }
+    if (companion && ["full", "usb", "usb-ble"].includes(profile.mode)) {
+      const picocom = "picocom -b 115200 --imap spchex --initstring $'\\r+++MESHCORE-TERM-START\\r' /dev/ttyACM0";
+      section("Companion USB terminal (Linux / Bash)", [
+        { label: "Connect", commands: [picocom],
+          text: "Run this in Bash on the Linux computer connected to the radio. The init string opens the ASCII CLI; the leading carriage return clears an unfinished input line. spchex displays binary control bytes safely during the transition." },
+        { label: "Recover scrambled terminal", commands: ["reset", picocom],
+          text: "First exit picocom with Ctrl+A, then Ctrl+X. Run these commands in your Linux shell: reset repairs the terminal display, then picocom reconnects with safe input mapping." },
+      ], "Replace /dev/ttyACM0 with your radio's port, such as /dev/ttyACM1 or /dev/ttyUSB0. Use the primary USB data interface (00 when multiple interfaces appear), and close other apps using that port. At the radio prompt, run version and board to identify the node. Exit picocom with Ctrl+A, then Ctrl+X.");
+    }
     if (!info) return sections;
     if (full || infrastructure) {
       toggle("Device power saving", "set powersaving", "get powersaving",
@@ -1181,7 +1190,7 @@
     panel.appendChild(links);
     if (isFullCompanion(profile) || ["repeater", "room", "sensor"].includes(profile.role)) {
       panel.appendChild(createElement("p", "Use a data-capable USB cable and 115200 baud. Full Companion and infrastructure start in ASCII mode. " + (profile.role === "companion"
-        ? "If already in binary mode, send +++MESHCORE-TERM-START. Use board and version to identify the node."
+        ? "Open Companion USB terminal below for Linux connection and recovery commands. Use board and version to identify the node."
         : "Use board and ver to identify the node.")));
     }
     if (!profile.controls) panel.appendChild(createElement("p", "Additional hardware controls have not been verified for this exact release image. Use the role guide for those settings."));
