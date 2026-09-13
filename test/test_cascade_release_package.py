@@ -15,6 +15,19 @@ spec.loader.exec_module(package)
 
 
 class ReleaseQualificationTest(unittest.TestCase):
+    def test_portable_exclusions_require_a_complete_summary(self):
+        self.assertEqual(package.portable_profile_exclusions({}), [])
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "matrix.log"
+            status = {"log": str(log)}
+            header = "2 standard ESP32 target(s) exceeded the portable OTA slot and were deferred to the expanded FULL pass:\n"
+            for body in ("DEFERRED: one (standard)\n", header + "  one\n", header + "  one\n  one\n"):
+                log.write_text(body)
+                with self.assertRaisesRegex(ValueError, "exclusion summary"):
+                    package.portable_profile_exclusions(status)
+            log.write_text(header + "  one\n  two\nLogging matrix completed successfully.\n")
+            self.assertEqual([r["target"] for r in package.portable_profile_exclusions(status)], ["one", "two"])
+
     def test_partial_matrix_requires_completion_and_an_explicit_opt_in(self):
         self.assertEqual(package.completed_matrix_failures({"state": "completed", "exit_code": "0"}), [])
         for state, code in (("running", "0"), ("starting", "0"), ("failed", "143")):
@@ -124,7 +137,9 @@ class ReleaseQualificationTest(unittest.TestCase):
             # A finished matrix can publish good files while explicitly
             # retaining the failed attempts and the real nonzero exit code.
             log = directory / "matrix.log"
-            log.write_text("Logging matrix completed with 1 failed build(s):\n"
+            log.write_text("1 standard ESP32 target(s) exceeded the portable OTA slot and were deferred to the expanded FULL pass:\n"
+                           "  large_repeater\n"
+                           "Logging matrix completed with 1 failed build(s):\n"
                            "  missing_repeater (standard) -> /tmp/missing.log\n")
             status.write_text("state=failed\n" + settings.replace("exit_code=0", "exit_code=1")
                               + f"log={log}\n")
@@ -141,9 +156,13 @@ class ReleaseQualificationTest(unittest.TestCase):
             assets = directory / "partial/companion"
             self.assertIn("Partial matrix", (assets / "BUILD-NOTES.txt").read_text())
             self.assertIn("missing_repeater", (assets / "BUILD-FAILURES.md").read_text())
+            self.assertEqual(plan["matrix"]["portable_profile_exclusions"][0]["target"], "large_repeater")
+            self.assertIn("large_repeater", (assets / "PORTABLE-PROFILE-EXCLUSIONS.md").read_text())
+            self.assertIn("Portable image limits", (assets / "BUILD-NOTES.txt").read_text())
             self.assertEqual(len(list(assets.iterdir())), plan["groups"][0]["asset_count"])
             checksums = (assets / "SHA256SUMS.txt").read_text()
             self.assertIn("BUILD-FAILURES.json", checksums)
+            self.assertIn("PORTABLE-PROFILE-EXCLUSIONS.json", checksums)
             for line in checksums.splitlines():
                 digest, name = line.split("  ", 1)
                 self.assertEqual(hashlib.sha256((assets / name).read_bytes()).hexdigest(), digest)

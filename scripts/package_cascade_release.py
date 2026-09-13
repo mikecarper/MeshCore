@@ -128,6 +128,31 @@ def completed_matrix_failures(status, allow_partial=False):
     return failures
 
 
+def portable_profile_exclusions(status):
+    if not status.get("log"):
+        return []  # Older successful status files did not require a log path.
+    text = Path(status["log"]).read_text(errors="replace")
+    summaries = list(re.finditer(
+        r"^(\d+) standard ESP32 target\(s\) exceeded the portable OTA slot and were deferred to the expanded FULL pass:\s*$",
+        text, re.M))
+    if not summaries:
+        if re.search(r"^DEFERRED: ", text, re.M):
+            raise ValueError("portable-profile exclusion summary is missing")
+        return []
+    summary = summaries[-1]
+    count = int(summary[1])
+    names = []
+    for line in text[summary.end():].lstrip("\r\n").splitlines()[:count]:
+        match = re.fullmatch(r"  ([\w.+-]+)", line)
+        if not match:
+            raise ValueError("portable-profile exclusion summary is incomplete")
+        names.append(match[1])
+    if not count or len(names) != count or len(set(names)) != count:
+        raise ValueError("portable-profile exclusion summary is incomplete")
+    return [{"target": name, "profile": "standard", "reason": "portable_slot_overflow"}
+            for name in names]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)
@@ -141,6 +166,7 @@ def main():
     args = parser.parse_args()
     status = dict(line.split("=", 1) for line in args.build_status.read_text().splitlines() if "=" in line)
     failures = completed_matrix_failures(status, args.allow_partial)
+    portable_exclusions = portable_profile_exclusions(status)
     output_directory = Path(status["working_directory"]) / status["output_directory"]
     if output_directory.resolve() != args.input.resolve():
         raise ValueError("build status belongs to another output directory")
@@ -213,6 +239,21 @@ def main():
         if exclusions.is_file():
             shutil.copy2(exclusions, destination / exclusions.name)
         partial_note = ""
+        portable_note = ""
+        if portable_exclusions:
+            report = {"source": args.commit, "version": args.version,
+                      "portable_slot_bytes": 1310720, "exclusions": portable_exclusions}
+            (destination / "PORTABLE-PROFILE-EXCLUSIONS.json").write_text(json.dumps(report, indent=2) + "\n")
+            (destination / "PORTABLE-PROFILE-EXCLUSIONS.md").write_text(
+                "# Portable image limits\n\n"
+                "These standard profiles exceeded the 1.25 MiB (1,310,720-byte) application slot. "
+                "The matrix attempted their expanded Full alternatives instead. Check TARGET-MANIFEST.json "
+                "for qualified Full images and use their matching partition layout. "
+                "Smaller images that passed qualification remain available.\n\n"
+                + "".join(f"- `{item['target']}`\n" for item in portable_exclusions))
+            report_url = f"https://github.com/{args.repo}/releases/download/{group['tag']}/PORTABLE-PROFILE-EXCLUSIONS.md"
+            portable_note = (f"**Portable image limits:** {len(portable_exclusions)} standard profile(s) exceeded "
+                             f"the 1.25 MiB slot and were redirected to the Full pass. [Affected profiles]({report_url}).\n\n")
         if failures:
             report = {"source": args.commit, "version": args.version, "matrix_state": status["state"],
                       "matrix_exit_code": int(status["exit_code"]), "failures": failures}
@@ -235,7 +276,7 @@ def main():
                 f"[Release details]({source_url}/docs/releases/{args.version}.md)\n\n"
                 "Match the exact board, radio, display, and storage variant. ESP32 WiFi updates use the application `.bin`; the merged image installs boot/partition data over USB. nRF52 `.zip` files are native application DFU packages. LoRa MOTA installation requires an exact destination package; nRF52 also requires its matching OTAFIX bootloader. Full Companions do not LoRa-install onto themselves.\n\n"
                 "Firmware and capability checks passed in the build matrix. Hardware update testing across every board was not performed.\n\n"
-                + partial_note + links + "\n")
+                + partial_note + portable_note + links + "\n")
         (args.output / (group["key"] + "-notes.md")).write_text(body)
         (destination / "BUILD-NOTES.txt").write_text(body)
     picker = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
@@ -265,7 +306,8 @@ def main():
         group["asset_count"] = len(files) + 1
         group["target_count"] = len(group.pop("records"))
     (args.output / "release-plan.json").write_text(json.dumps({"source": args.commit, "version": args.version, "radio": radio, "groups": groups,
-        "matrix": {"state": status["state"], "exit_code": int(status["exit_code"]), "failures": failures}}, indent=2) + "\n")
+        "matrix": {"state": status["state"], "exit_code": int(status["exit_code"]), "failures": failures,
+                   "portable_profile_exclusions": portable_exclusions}}, indent=2) + "\n")
     print(json.dumps({"targets": len(records), "groups": groups}, indent=2))
 
 
