@@ -99,6 +99,35 @@ def sha256(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def completed_matrix_failures(status, allow_partial=False):
+    if status.get("state") == "completed" and status.get("exit_code") == "0":
+        return []
+    if not allow_partial:
+        raise ValueError("the Option 3 matrix has not completed successfully")
+    if status.get("state") != "failed" or status.get("exit_code") != "1":
+        raise ValueError("partial publication requires a finished matrix, not a running or interrupted build")
+    log = Path(status.get("log", ""))
+    if not log.is_file():
+        raise ValueError("partial publication requires the matrix failure summary")
+    text = log.read_text(errors="replace")
+    summaries = list(re.finditer(r"^Logging matrix completed with (\d+) failed build\(s\):\s*$", text, re.M))
+    if not summaries:
+        raise ValueError("partial publication requires the matrix failure summary")
+    summary = summaries[-1]
+    count = int(summary[1])
+    lines = text[summary.end():].lstrip("\r\n").splitlines()
+    failures = []
+    for line in lines[:count]:
+        match = re.fullmatch(r"  ([\w.+-]+) \(([^()]+)\) -> (.+)", line)
+        if not match:
+            raise ValueError("matrix failure summary is incomplete")
+        failures.append({"target": match[1], "profile": match[2],
+                         "log_file": Path(match[3]).name})
+    if not count or len(failures) != count:
+        raise ValueError("matrix failure summary is incomplete")
+    return failures
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)
@@ -107,10 +136,11 @@ def main():
     parser.add_argument("--version", default="1.17.1.5")
     parser.add_argument("--commit", required=True)
     parser.add_argument("--repo", default="mikecarper/MeshCore")
+    parser.add_argument("--allow-partial", action="store_true",
+                        help="Publish qualified outputs from a finished matrix with failures, listing every failed attempt")
     args = parser.parse_args()
     status = dict(line.split("=", 1) for line in args.build_status.read_text().splitlines() if "=" in line)
-    if status.get("state") != "completed" or status.get("exit_code") != "0":
-        raise ValueError("the Option 3 matrix has not completed successfully")
+    failures = completed_matrix_failures(status, args.allow_partial)
     output_directory = Path(status["working_directory"]) / status["output_directory"]
     if output_directory.resolve() != args.input.resolve():
         raise ValueError("build status belongs to another output directory")
@@ -182,6 +212,21 @@ def main():
         exclusions = args.input / "ota-excluded-targets.txt"
         if exclusions.is_file():
             shutil.copy2(exclusions, destination / exclusions.name)
+        partial_note = ""
+        if failures:
+            report = {"source": args.commit, "version": args.version, "matrix_state": status["state"],
+                      "matrix_exit_code": int(status["exit_code"]), "failures": failures}
+            (destination / "BUILD-FAILURES.json").write_text(json.dumps(report, indent=2) + "\n")
+            (destination / "BUILD-FAILURES.md").write_text(
+                "# Build attempts awaiting repair\n\n"
+                f"Source: `{args.commit}`. The matrix finished with exit code {status['exit_code']}.\n\n"
+                "Published files passed their individual capability, size and memory checks. "
+                "These failed attempts are omitted pending repair; another profile for the same board may be available.\n\n"
+                "| Target | Profile | Build log |\n| --- | --- | --- |\n"
+                + "".join(f"| `{f['target']}` | `{f['profile']}` | `{f['log_file']}` |\n" for f in failures))
+            report_url = f"https://github.com/{args.repo}/releases/download/{group['tag']}/BUILD-FAILURES.md"
+            partial_note = (f"**Partial matrix:** {len(failures)} build attempt(s) failed and await repair. "
+                            f"Only individually qualified firmware is published. [Missing builds]({report_url}).\n\n")
         body = (f"> **Development prerelease.** Firmware identifier: **{base_tag}**.\n\n"
                 f"# MeshCore {args.version} Dev — USA Cascade\n\n"
                 f"Source: `{args.commit}`. USA/Canada: **{radio['frequency']} MHz, BW{radio['bandwidth']}, SF{radio['sf']}, CR{radio['cr']}**; Cascade defaults.\n\n"
@@ -190,7 +235,7 @@ def main():
                 f"[Release details]({source_url}/docs/releases/{args.version}.md)\n\n"
                 "Match the exact board, radio, display, and storage variant. ESP32 WiFi updates use the application `.bin`; the merged image installs boot/partition data over USB. nRF52 `.zip` files are native application DFU packages. LoRa MOTA installation requires an exact destination package; nRF52 also requires its matching OTAFIX bootloader. Full Companions do not LoRa-install onto themselves.\n\n"
                 "Firmware and capability checks passed in the build matrix. Hardware update testing across every board was not performed.\n\n"
-                + links + "\n")
+                + partial_note + links + "\n")
         (args.output / (group["key"] + "-notes.md")).write_text(body)
         (destination / "BUILD-NOTES.txt").write_text(body)
     picker = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
@@ -219,7 +264,8 @@ def main():
         (destination / "SHA256SUMS.txt").write_text("".join(f"{sha256(path)}  {path.name}\n" for path in files))
         group["asset_count"] = len(files) + 1
         group["target_count"] = len(group.pop("records"))
-    (args.output / "release-plan.json").write_text(json.dumps({"source": args.commit, "version": args.version, "radio": radio, "groups": groups}, indent=2) + "\n")
+    (args.output / "release-plan.json").write_text(json.dumps({"source": args.commit, "version": args.version, "radio": radio, "groups": groups,
+        "matrix": {"state": status["state"], "exit_code": int(status["exit_code"]), "failures": failures}}, indent=2) + "\n")
     print(json.dumps({"targets": len(records), "groups": groups}, indent=2))
 
 

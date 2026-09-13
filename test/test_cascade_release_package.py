@@ -15,6 +15,28 @@ spec.loader.exec_module(package)
 
 
 class ReleaseQualificationTest(unittest.TestCase):
+    def test_partial_matrix_requires_completion_and_an_explicit_opt_in(self):
+        self.assertEqual(package.completed_matrix_failures({"state": "completed", "exit_code": "0"}), [])
+        for state, code in (("running", "0"), ("starting", "0"), ("failed", "143")):
+            with self.subTest(state=state, code=code), self.assertRaisesRegex(ValueError, "finished matrix"):
+                package.completed_matrix_failures({"state": state, "exit_code": code}, True)
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "matrix.log"
+            status = {"state": "failed", "exit_code": "1", "log": str(log)}
+            with self.assertRaisesRegex(ValueError, "not completed successfully"):
+                package.completed_matrix_failures(status)
+            for body in ("", "Building a target\n", "Logging matrix completed with 2 failed build(s):\n  one (standard) -> /tmp/one.log\n"):
+                log.write_text(body)
+                with self.assertRaisesRegex(ValueError, "summary"):
+                    package.completed_matrix_failures(status, True)
+            log.write_text("Logging matrix completed with 2 failed build(s):\n"
+                           "  one (standard) -> /tmp/one.log\n"
+                           "  two (full-usb-wifi-ota) -> /tmp/two.log\n")
+            failures = package.completed_matrix_failures(status, True)
+            self.assertEqual([f["target"] for f in failures], ["one", "two"])
+            self.assertEqual(failures[1]["profile"], "full-usb-wifi-ota")
+            self.assertEqual(failures[1]["log_file"], "two.log")
+
     def manifest(self, target="test_repeater", **changes):
         return {"target": target, "platform": "ESP32_PLATFORM",
                 "schema_version": 2, "verified": True,
@@ -98,6 +120,40 @@ class ReleaseQualificationTest(unittest.TestCase):
             for line in (assets / "SHA256SUMS.txt").read_text().splitlines():
                 digest, name = line.split("  ", 1)
                 self.assertEqual(hashlib.sha256((assets / name).read_bytes()).hexdigest(), digest)
+
+            # A finished matrix can publish good files while explicitly
+            # retaining the failed attempts and the real nonzero exit code.
+            log = directory / "matrix.log"
+            log.write_text("Logging matrix completed with 1 failed build(s):\n"
+                           "  missing_repeater (standard) -> /tmp/missing.log\n")
+            status.write_text("state=failed\n" + settings.replace("exit_code=0", "exit_code=1")
+                              + f"log={log}\n")
+            partial_command = command.copy()
+            partial_command[partial_command.index("--output") + 1] = str(directory / "partial")
+            result = subprocess.run(partial_command, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((directory / "partial").exists())
+            result = subprocess.run(partial_command + ["--allow-partial"], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            plan = json.loads((directory / "partial/release-plan.json").read_text())
+            self.assertEqual(plan["matrix"]["exit_code"], 1)
+            self.assertEqual(plan["matrix"]["failures"][0]["target"], "missing_repeater")
+            assets = directory / "partial/companion"
+            self.assertIn("Partial matrix", (assets / "BUILD-NOTES.txt").read_text())
+            self.assertIn("missing_repeater", (assets / "BUILD-FAILURES.md").read_text())
+            self.assertEqual(len(list(assets.iterdir())), plan["groups"][0]["asset_count"])
+            checksums = (assets / "SHA256SUMS.txt").read_text()
+            self.assertIn("BUILD-FAILURES.json", checksums)
+            for line in checksums.splitlines():
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((assets / name).read_bytes()).hexdigest(), digest)
+
+            # Opting in to holes never authorizes publishing bad firmware.
+            (inputs / (stem + ".bin")).write_bytes(b"corrupted")
+            partial_command[partial_command.index("--output") + 1] = str(directory / "bad")
+            result = subprocess.run(partial_command + ["--allow-partial"], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((directory / "bad").exists())
 
 
 if __name__ == "__main__":
