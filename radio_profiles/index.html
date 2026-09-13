@@ -1610,6 +1610,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-messages-on-both-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion messages on both profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#choose-whether-traffic-crosses-between-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2129,6 +2140,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-messages-on-both-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion messages on both profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#choose-whether-traffic-crosses-between-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2274,6 +2296,21 @@ to firmware built without it.</p>
 <p>New settings take effect after a short reply allowance. Temporary periods and
 schedules live in RAM and disappear on reboot. Timer expiry also uses monotonic
 time, so setting the clock backwards cannot extend a temporary session.</p>
+<h2 id="companion-messages-on-both-profiles">Companion messages on both profiles</h2>
+<p>To send ordinary Companion messages on both <code>radio</code> and an active <code>tempradio2</code>,
+configure the temporary profile in <code>rxtx</code> mode and enable crossing:</p>
+<pre><code class="language-text">set radio2.cross on
+get tempradio2
+get radio2.cross
+get radio2.status
+</code></pre>
+<p><code>rxtx</code> permits transmission on the second profile; <code>radio2.cross on</code> copies new
+messages between the two profiles. <code>TX=a,b</code> reports primary and secondary
+transmit counts. Crossing also applies to OTA traffic.</p>
+<p>The crossing setting is saved and remains enabled after the temporary session
+ends or the node reboots. Run <code>set radio2.cross auto</code> to restore the default
+isolation between permanent and temporary profiles. The firmware picker's
+Companion tempradio2 instructions include both choices and the status commands.</p>
 <h2 id="choose-whether-traffic-crosses-between-profiles">Choose whether traffic crosses between profiles</h2>
 <pre><code class="language-text">get radio2.cross
 set radio2.cross auto

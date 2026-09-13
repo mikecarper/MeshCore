@@ -822,6 +822,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-tempradio2-transmit-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion tempradio2 transmit settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation-methods" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2173,6 +2184,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-tempradio2-transmit-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion tempradio2 transmit settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation-methods" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2580,6 +2602,17 @@ displays binary control bytes safely during the transition.</p>
 run <code>reset</code> in your Linux shell, then reconnect with the command above. At the
 radio prompt, run <code>version</code> and <code>board</code> to identify the node. See the
 <a href="../terminal_chat_cli/#companion-usb-mode">Companion USB mode guide</a>.</p>
+<h2 id="companion-tempradio2-transmit-settings">Companion tempradio2 transmit settings</h2>
+<p>LoRa Companion results for 1.17.1.6 and newer include <strong>Companion tempradio2:
+transmit on both</strong> under <strong>Restore your settings after flashing</strong>. After
+configuring <code>tempradio2</code> in <code>rxtx</code> mode, choose <strong>Transmit on both</strong> to copy:</p>
+<pre><code class="language-text">set radio2.cross on
+</code></pre>
+<p>This copies new messages to both <code>radio</code> and <code>tempradio2</code>. The setting is saved,
+outlasts the temporary session and reboot, and also allows OTA traffic to cross
+profiles. <strong>Default isolation</strong> copies <code>set radio2.cross auto</code>; <strong>Check</strong> shows
+the temporary profile, crossing policy and per-profile transmit counters.
+See the <a href="../radio_profiles/#companion-messages-on-both-profiles">two-profile setup guide</a>.</p>
 <h2 id="installation-methods">Installation methods</h2>
 <table>
 <thead>

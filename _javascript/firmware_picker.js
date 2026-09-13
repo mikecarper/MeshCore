@@ -948,6 +948,17 @@
       profile.releaseFamily === "v1.17.1.5-halo-keymind-cascade-dev-26303793";
   }
 
+  function supportsRadioProfileCommands(profile) {
+    if (!profile.controls || profile.controls.primaryEspnow) return false;
+    const version = String(profile.releaseFamily || "").match(
+      /^v(\d+)\.(\d+)\.(\d+)\.(\d+)-halo-keymind-cascade-dev-/);
+    if (!version) return false;
+    const firstSupported = [1, 17, 1, 6];
+    return version.slice(1).reduce(function (comparison, part, index) {
+      return comparison || Number(part) - firstSupported[index];
+    }, 0) >= 0;
+  }
+
   function installSteps(profile, kind) {
     const common = [
       "Verify that the hardware name and every displayed variant match the physical board.",
@@ -1099,6 +1110,16 @@
       ], "Replace /dev/ttyACM0 with your radio's port, such as /dev/ttyACM1 or /dev/ttyUSB0. Use the primary USB data interface (00 when multiple interfaces appear), and close other apps using that port. At the radio prompt, run version and board to identify the node. Exit picocom with Ctrl+A, then Ctrl+X.");
     }
     if (!info) return sections;
+    if (companion && supportsRadioProfileCommands(profile)) {
+      section("Companion tempradio2: transmit on both", [
+        { label: "Transmit on both", commands: ["set radio2.cross on"],
+          text: "After setting tempradio2 to rxtx, run this to send new messages on both radio and tempradio2. rxtx enables transmission on the second profile; cross on enables copying between the two profiles." },
+        { label: "Default isolation", commands: ["set radio2.cross auto"],
+          text: "Keep ordinary local messages on radio and local LoRa OTA traffic on tempradio2. With auto, a permanent and a temporary profile remain isolated." },
+        { label: "Check", commands: ["get tempradio2", "get radio2.cross", "get radio2.status"],
+          text: "Confirm tempradio2 is active in rxtx mode. TX=a,b reports primary and secondary transmit counts." },
+      ], "radio2.cross is saved and stays set after tempradio2 expires or the node reboots. Turning it on also allows OTA traffic to cross profiles. RX-only mode still prevents transmission on the second profile. Use Default isolation to restore auto when needed.");
+    }
     if (full || infrastructure) {
       toggle("Device power saving", "set powersaving", "get powersaving",
         "Separate from LoRa RXPS and WiFi modem sleep. USB activity and active logging can keep the device awake.");
