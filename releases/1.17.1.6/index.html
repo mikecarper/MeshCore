@@ -2222,6 +2222,20 @@ native application DFU <code>.zip</code>; LoRa OTA also needs the exact destinat
 and a compatible OTAFIX bootloader. Check the per-profile capability manifest
 before choosing an update method.</p>
 <h2 id="reproduce-the-release">Reproduce the release</h2>
+<p>Follow-up builds repair the constrained profiles without relaxing qualification:</p>
+<ul>
+<li>nRF52 repeaters use <code>-Os</code> instead of <code>-Ofast</code>, retaining their sensor drivers
+  and protocol features while reducing flash use.</li>
+<li>T096 and T1 LoRa OTA repeaters retain their board-defined 50 neighbors and
+  use 16 flood-rule slots. The complete rule engine, color display, GPS and OTA
+  remain enabled. The T096's available startup heap rises from 72,492 to 81,468
+  bytes, and the T1's from 72,868 to 81,844 bytes. Required startup allocations
+  fall from 88,410 to 79,010 bytes. These are linked capacity checks, not soak
+  measurements. Full Companion capacities are unchanged.</li>
+<li>Size-failure detection keeps its temporary output log outside PlatformIO's
+  build tree, so SCons cleanup cannot erase the evidence needed by the measured
+  size fallback. CI exercises cleanup, ordinary compiler failures and log errors.</li>
+</ul>
 <p>Use a clean checkout of the release commit and a fresh output directory:</p>
 <pre><code class="language-bash">OUTPUT_DIR=.releases/1.17.1.6-halo-keymind-cascade-dev \
 bash build.sh build-firmwares-logging-matrix \
