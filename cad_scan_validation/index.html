@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/espnow_bridge_setup/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/cad_scan_validation/">
       
       
-        <link rel="prev" href="../esp32_memory_budget/">
+        <link rel="prev" href="../WiFi/">
       
       
-        <link rel="next" href="../faq/">
+        <link rel="next" href="../cli_build_matrix/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>ESP-NOW bridge: simple setup - MeshCore Docs</title>
+        <title>SX1262 channel-scanning hardware results - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#esp-now-bridge-simple-setup" class="md-skip">
+        <a href="#sx1262-channel-scanning-hardware-results" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ESP-NOW bridge: simple setup
+              SX1262 channel-scanning hardware results
             
           </span>
         </div>
@@ -283,10 +283,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../cad_scan_validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SX1262 channel-scanning hardware results
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -302,6 +329,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-and-counting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration and counting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completed-trials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completed trials
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interpretation-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interpretation and limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reproduction-and-evidence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reproduction and evidence
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -607,37 +698,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ESP-NOW bridge: simple setup
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
         
   
   
@@ -653,81 +717,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#1-choose-the-firmware" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. Choose the firmware
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-set-each-boards-lora-network" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Set each board's LoRa network
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-configure-the-esp-now-link-on-both-boards" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Configure the ESP-NOW link on both boards
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-each-bridge-option-does" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What each bridge option does
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-check-the-link" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Check the link
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2057,10 +2046,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-choose-the-firmware" class="md-nav__link">
+  <a href="#configuration-and-counting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Choose the firmware
+        Configuration and counting
       
     </span>
   </a>
@@ -2068,10 +2057,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-set-each-boards-lora-network" class="md-nav__link">
+  <a href="#completed-trials" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Set each board's LoRa network
+        Completed trials
       
     </span>
   </a>
@@ -2079,10 +2068,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-configure-the-esp-now-link-on-both-boards" class="md-nav__link">
+  <a href="#interpretation-and-limits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Configure the ESP-NOW link on both boards
+        Interpretation and limits
       
     </span>
   </a>
@@ -2090,21 +2079,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-each-bridge-option-does" class="md-nav__link">
+  <a href="#reproduction-and-evidence" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What each bridge option does
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-check-the-link" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Check the link
+        Reproduction and evidence
       
     </span>
   </a>
@@ -2128,7 +2106,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/espnow_bridge_setup.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/cad_scan_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2136,164 +2114,238 @@
   
 
 
-<h1 id="esp-now-bridge-simple-setup">ESP-NOW bridge: simple setup</h1>
-<p>Use two ESP32 LoRa boards to join two MeshCore networks with different radio
-settings. Each board repeats on its own LoRa network, and the boards exchange
-packets directly over 2.4 GHz ESP-NOW. No router, internet connection, or manual
-peer pairing is needed.</p>
-<pre><code class="language-text">LoRa network A &lt;--&gt; Repeater A &lt;-- ESP-NOW --&gt; Repeater B &lt;--&gt; LoRa network B
-</code></pre>
-<h2 id="1-choose-the-firmware">1. Choose the firmware</h2>
-<p>Install the exact board's <strong>Full ESP-NOW bridge repeater</strong> image on each board.
-The target name ends in <code>_repeater_bridge_espnow</code>; a standard Heltec V4 uses
-<code>heltec_v4_repeater_bridge_espnow</code>. Full/MQTT and Full Companion images are
-different choices. See the <a href="../firmware_picker/">firmware picker guide</a>.</p>
-<p>Open each board's <a href="https://flasher.meshcore.io/console">USB console</a> at
-115200 baud and run:</p>
-<pre><code class="language-text">get bridge.type
-</code></pre>
-<p>The answer must be <code>espnow</code>. <code>mqtt</code>, <code>rs232</code>, or <code>none</code> means that image does
-not provide the ESP-NOW bridge described here.</p>
-<h2 id="2-set-each-boards-lora-network">2. Set each board's LoRa network</h2>
-<p>Configure one board at a time over USB. Replace the placeholders below with
-the radio settings used by the network on that board's side. Use <code>Bridge-A</code>
-for the first board and <code>Bridge-B</code> for the second, or choose your own names.</p>
-<pre><code class="language-text">set bridge.enabled off
-set name Bridge-A
-set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;
-reboot
-</code></pre>
-<p>Do not type the angle-bracket placeholders literally.</p>
+<h1 id="sx1262-channel-scanning-hardware-results">SX1262 channel-scanning hardware results</h1>
+<p>Hardware test on September 12, 2026 (America/Los_Angeles). Heltec V4 transmitter; XIAO ESP32-S3 with Wio SX1262 receiver. Both used standalone diagnostic firmware.</p>
+<p>The best tested scan setting was <strong>four channels with four-symbol RX-preamble windows</strong>. Three-symbol windows were unreliable even in the single-channel re-arm control. In the longer four-symbol runs, four channels received 80/80 packets, five received 79/80, and six received 52/60. These are measured limits of this implementation and test setup, not universal SX1262 channel-count limits.</p>
+<h2 id="configuration-and-counting">Configuration and counting</h2>
+<p>SF5, 125 kHz, coding rate 4/5, explicit header, payload CRC, and 32 preamble symbols. The programmed preamble is 8.192 ms. Channels start at 909.5 MHz and increase in 1 MHz steps; tests use the first N channels, up to 920.5 MHz. Test packets are transmitted individually with varied timing relative to the scanner. There are no overlapping transmitters in this experiment.</p>
+<p>A success requires a CRC-valid packet with the expected sequence, channel, length, and test payload. Every included transmission has its own successful transmitter acknowledgement; delayed serial acknowledgements are recovered by sequence, without retransmitting. The one exploratory RX scan trial with shifted acknowledgements is excluded.</p>
+<h2 id="completed-trials">Completed trials</h2>
 <table>
 <thead>
 <tr>
-<th>Radio option</th>
-<th>Meaning</th>
+<th>Trial</th>
+<th>Method/window</th>
+<th style="text-align: right;">Channels</th>
+<th style="text-align: right;">Payload bytes</th>
+<th style="text-align: right;">Received / sent</th>
+<th style="text-align: right;">Mean complete scan</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>freq</code></td>
-<td>LoRa frequency in MHz. Match the local network on this side.</td>
+<td>baseline-fixed</td>
+<td>Fixed-channel RX</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">16 / 16</td>
+<td style="text-align: right;">—</td>
 </tr>
 <tr>
-<td><code>bw</code></td>
-<td>LoRa bandwidth in kHz. Match that network's bandwidth.</td>
+<td>cad-standard</td>
+<td>CAD + software RX</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">7 / 32</td>
+<td style="text-align: right;">14.469 ms</td>
 </tr>
 <tr>
-<td><code>sf</code></td>
-<td>Spreading factor, 5-12. Match that network's setting.</td>
+<td>cad-auto</td>
+<td>CAD + automatic RX</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">16 / 32</td>
+<td style="text-align: right;">14.468 ms</td>
 </tr>
 <tr>
-<td><code>cr</code></td>
-<td>Coding-rate value, 5-8. Match that network's setting.</td>
+<td>rxfast-4</td>
+<td>rxfast 4</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">32 / 32</td>
+<td style="text-align: right;">6.100 ms</td>
 </tr>
 <tr>
-<td><code>name</code></td>
-<td>A label to tell the two repeaters apart. It does not pair them.</td>
+<td>rxfast-4-maxpayload</td>
+<td>rxfast 4</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">255</td>
+<td style="text-align: right;">35 / 35</td>
+<td style="text-align: right;">6.098 ms</td>
+</tr>
+<tr>
+<td>matrix-cad1-1</td>
+<td>cad 1</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">7 / 8</td>
+<td style="text-align: right;">2.643 ms</td>
+</tr>
+<tr>
+<td>matrix-cad1-10</td>
+<td>cad 1</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">2 / 20</td>
+<td style="text-align: right;">28.389 ms</td>
+</tr>
+<tr>
+<td>matrix-cad1-11</td>
+<td>cad 1</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">5 / 22</td>
+<td style="text-align: right;">31.297 ms</td>
+</tr>
+<tr>
+<td>matrix-cad1-12</td>
+<td>cad 1</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">3 / 24</td>
+<td style="text-align: right;">34.145 ms</td>
+</tr>
+<tr>
+<td>matrix-cad2-10</td>
+<td>cad 2</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">3 / 40</td>
+<td style="text-align: right;">31.040 ms</td>
+</tr>
+<tr>
+<td>matrix-fixed-12</td>
+<td>Fixed-channel RX</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">24 / 24</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>matrix-rx1-10</td>
+<td>rxfast 1</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">0 / 20</td>
+<td style="text-align: right;">7.555 ms</td>
+</tr>
+<tr>
+<td>matrix-rx1-11</td>
+<td>rxfast 1</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">0 / 22</td>
+<td style="text-align: right;">8.316 ms</td>
+</tr>
+<tr>
+<td>matrix-rx1-12</td>
+<td>rxfast 1</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">0 / 24</td>
+<td style="text-align: right;">9.072 ms</td>
+</tr>
+<tr>
+<td>matrix-rx2-10</td>
+<td>rxfast 2</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">0 / 40</td>
+<td style="text-align: right;">10.133 ms</td>
+</tr>
+<tr>
+<td>matrix-rx3-7</td>
+<td>rxfast 3</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">2 / 35</td>
+<td style="text-align: right;">8.892 ms</td>
+</tr>
+<tr>
+<td>matrix-rx3-8</td>
+<td>rxfast 3</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">1 / 40</td>
+<td style="text-align: right;">10.160 ms</td>
+</tr>
+<tr>
+<td>matrix-rx4-5</td>
+<td>rxfast 4</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">39 / 40</td>
+<td style="text-align: right;">7.630 ms</td>
+</tr>
+<tr>
+<td>boundary-rx3-1</td>
+<td>rxfast 3</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">4 / 24</td>
+<td style="text-align: right;">1.268 ms</td>
+</tr>
+<tr>
+<td>boundary-rx3-4</td>
+<td>rxfast 3</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">2 / 24</td>
+<td style="text-align: right;">5.080 ms</td>
+</tr>
+<tr>
+<td>boundary-rx3-5</td>
+<td>rxfast 3</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">0 / 25</td>
+<td style="text-align: right;">6.350 ms</td>
+</tr>
+<tr>
+<td>boundary-rx3-6</td>
+<td>rxfast 3</td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">2 / 30</td>
+<td style="text-align: right;">7.621 ms</td>
+</tr>
+<tr>
+<td>boundary-rx4-4</td>
+<td>rxfast 4</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">80 / 80</td>
+<td style="text-align: right;">6.104 ms</td>
+</tr>
+<tr>
+<td>boundary-rx4-5</td>
+<td>rxfast 4</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">79 / 80</td>
+<td style="text-align: right;">7.630 ms</td>
+</tr>
+<tr>
+<td>boundary-rx4-6</td>
+<td>rxfast 4</td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">52 / 60</td>
+<td style="text-align: right;">9.158 ms</td>
 </tr>
 </tbody>
 </table>
-<p><strong><code>set radio</code> requires a reboot to apply.</strong> After reconnecting, <code>get radio</code>
-shows the saved settings. Use permanent radio settings for this setup;
-<code>tempradio</code> sessions expire.</p>
-<h2 id="3-configure-the-esp-now-link-on-both-boards">3. Configure the ESP-NOW link on both boards</h2>
-<p>Run this block on <strong>both</strong> boards. Replace <code>YourSharedKey</code> with the same
-case-sensitive secret on each board, using 1-15 characters. Channel <code>6</code> is
-an example; both boards must use the same channel.</p>
-<pre><code class="language-text">set bridge.enabled off
-set bridge.channel 6
-set bridge.format wrapped
-set bridge.secret YourSharedKey
-set bridge.source tx
-set bridge.delay 500
-set repeat on
-set bridge.enabled on
-</code></pre>
-<p>These settings are saved across reboot. Bridge changes apply immediately;
-changing an enabled bridge's channel, format, or secret restarts the bridge.
-Stopping it first lets you finish configuring both sides before connecting them.</p>
-<h2 id="what-each-bridge-option-does">What each bridge option does</h2>
-<table>
-<thead>
-<tr>
-<th>Option</th>
-<th>Choices and purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>bridge.enabled</code></td>
-<td><code>on</code> starts the bridge; <code>off</code> stops it and keeps its saved settings.</td>
-</tr>
-<tr>
-<td><code>bridge.channel</code></td>
-<td>The 2.4 GHz channel, 1-13. Match it on both boards. This is separate from the LoRa frequency in <code>set radio</code>.</td>
-</tr>
-<tr>
-<td><code>bridge.format</code></td>
-<td><code>wrapped</code> is the default for this two-repeater setup and uses the shared secret. <code>raw</code> connects to primary-ESP-NOW nodes such as <code>Generic_ESPNOW</code> or <code>SenseCapIndicator-ESPNow</code>; it ignores the secret. Both peers must use compatible formats.</td>
-</tr>
-<tr>
-<td><code>bridge.secret</code></td>
-<td>A matching, case-sensitive value of 1-15 characters for <code>wrapped</code> mode. It separates bridge groups; it is not strong encryption. MeshCore's own message encryption remains in place.</td>
-</tr>
-<tr>
-<td><code>bridge.source</code></td>
-<td><code>tx</code> crosses packets this repeater transmits on LoRa, after its forwarding decisions; use this for the setup above. <code>rx</code> crosses received packets before those decisions and can pass traffic the local repeater would not forward.</td>
-</tr>
-<tr>
-<td><code>bridge.delay</code></td>
-<td>Wait before processing a packet received from the other bridge, in milliseconds. Range: 0-10000. Start with the default <code>500</code>.</td>
-</tr>
-<tr>
-<td><code>repeat</code></td>
-<td><code>on</code> enables normal LoRa forwarding; <code>off</code> disables forwarding. Keep it <code>on</code> on both bridge repeaters. Normal routing, scope, and packet-filter rules still apply.</td>
-</tr>
-<tr>
-<td><code>bridge.type</code></td>
-<td>Read-only firmware capability. It must report <code>espnow</code> for this guide.</td>
-</tr>
-<tr>
-<td><code>bridge.running</code></td>
-<td>Read-only runtime state. <code>on</code> means the local bridge started; it does not prove the other board is reachable.</td>
-</tr>
-</tbody>
-</table>
-<p>This fork uses <strong><code>set bridge.source tx</code></strong> or <strong><code>rx</code></strong>. Some upstream guides
-use <code>logTx</code> and <code>logRx</code>; those are not the command values used here.</p>
-<p>For a LoRa gateway connected to primary-ESP-NOW Companions instead of another
-LoRa repeater, see <a href="../WiFi/#wifi-companion-setup">raw ESP-NOW compatibility</a>.</p>
-<h2 id="4-check-the-link">4. Check the link</h2>
-<p>Run on both boards:</p>
-<pre><code class="language-text">get bridge.enabled
-get bridge.running
-get bridge.channel
-get bridge.format
-get bridge.secret
-get bridge.source
-get bridge.delay
-get repeat
-get radio
-</code></pre>
-<p>Expected: enabled and running <code>on</code>, matching channel/format/secret, source
-<code>tx</code>, delay <code>500</code>, repeat <code>on</code>, and the intended LoRa settings on each side.</p>
-<p>Send a message from a Companion on network A to one on network B, then reply
-from B to A. Check both directions; configuration readback alone does not test
-delivery.</p>
-<p>If it does not work:</p>
-<ul>
-<li><strong>Commands are unavailable:</strong> check <code>get bridge.type</code> and the firmware choice.</li>
-<li><strong>Enabled is on but running is off:</strong> initialization failed. Reboot and
-  check again; ensure another WiFi service is not occupying the radio.</li>
-<li><strong>Both are running but traffic does not cross:</strong> compare channel, format,
-  and secret; confirm each board's LoRa settings were applied with a reboot,
-  and check the networks' forwarding and scope rules.</li>
-</ul>
-<p>A running bridge keeps the device awake, even with device power saving enabled.
-For every command's full details, see the <a href="../cli_commands/#bridge-when-bridge-support-is-compiled-in">bridge CLI reference</a>.</p>
-<p>For a broader comparison with a Linux-based bridge, see the
-<a href="https://meshcore.nexus/guides/lora-bridging#method-2-meshcore-esp-now-bridge">MeshCore Nexus bridging guide</a>.</p>
+<p><code>rxfast N</code> means a continuous-RX preamble observation window of N symbols, with minimal reconfiguration between frequencies. It is not CAD. <code>cad N</code> uses the SX1262 CAD detector with N symbols and automatic handoff to RX. CAD has no three-symbol mode.</p>
+<p>Scan times describe uninterrupted sweeps. When reception starts, the radio stays on that frequency through the packet and cannot hear packets on the other frequencies. Serial status requests can add occasional timing outliers.</p>
+<p>The maximum-payload trial ended after 35 confirmed transmissions when a serial acknowledgement was delayed. Its last TX acknowledgement and matching RX were subsequently recovered from the serial logs; all 35 were received. It is not a completed 64-packet trial.</p>
+<h2 id="interpretation-and-limits">Interpretation and limits</h2>
+<p>The initial four-channel fast-RX test received 32/32 64-byte packets and 35/35 255-byte packets. That is a successful strong-signal bench result, not a guarantee of zero loss. Ordinary four-symbol CAD took approximately 14.47 ms to cover four frequencies and was unreliable with an 8.192 ms preamble.</p>
+<p>Reducing the observation window also reduces the time available for the modem to recognize a preamble. Dividing preamble duration by scan duration alone overestimates the number of usable channels. One- and two-symbol RX windows produced no preamble detections in the tested high-channel-count cases.</p>
+<p>The three-symbol single-channel control repeatedly re-arms RX, just as a scan would, and received only 4/24 packets. It is distinct from continuous fixed-channel reception, which passed its baseline. This isolates a detection-window limitation even without a long multi-channel sweep.</p>
+<p>CAD detection peak 18 and minimum 10 were held constant. These are the datasheet four-symbol SF5 thresholds; the one- and two-symbol CAD tests do not establish optimized thresholds or weak-signal sensitivity. CAD activity followed by no decoded packet can be a late packet detection, not necessarily a noise false positive.</p>
+<p>Received signals were strong. These tests do not establish weak-signal range, adjacent-channel rejection, simultaneous-packet capacity, production firmware scheduling performance, power consumption, FCC compliance, or months of uptime.</p>
+<h2 id="reproduction-and-evidence">Reproduction and evidence</h2>
+<p>See <a href="../tools/hil/cad_scan/README.md">the test harness</a>. Compact validated results, timing counters, and final firmware/source hashes are in <a href="../tools/hil/cad_scan/cad_scan_results.json">cad_scan_results.json</a>. Detailed sequence-level logs and private lab transport helpers are retained locally under <code>out/cad-scan/</code>.</p>
 
 
 

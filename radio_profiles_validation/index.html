@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/espnow_bridge_setup/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/radio_profiles_validation/">
       
       
-        <link rel="prev" href="../esp32_memory_budget/">
+        <link rel="prev" href="../radio_profiles/">
       
       
-        <link rel="next" href="../faq/">
+        <link rel="next" href="../radio_receive_calibration/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>ESP-NOW bridge: simple setup - MeshCore Docs</title>
+        <title>Dual-profile receive validation - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#esp-now-bridge-simple-setup" class="md-skip">
+        <a href="#dual-profile-receive-validation" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ESP-NOW bridge: simple setup
+              Dual-profile receive validation
             
           </span>
         </div>
@@ -607,37 +607,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ESP-NOW bridge: simple setup
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
         
   
   
@@ -653,81 +626,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#1-choose-the-firmware" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. Choose the firmware
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-set-each-boards-lora-network" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Set each board's LoRa network
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-configure-the-esp-now-link-on-both-boards" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Configure the ESP-NOW link on both boards
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-each-bridge-option-does" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What each bridge option does
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-check-the-link" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Check the link
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1654,10 +1552,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../radio_profiles_validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dual-profile receive validation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1673,6 +1598,125 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#method-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method and limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#five-symbol-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Five-symbol baseline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fractional-symbol-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fractional-symbol tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shorter-fast-preambles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shorter fast preambles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selected-bench-baseline-48-slow-symbols" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selected bench baseline: 4.8 slow symbols
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transmit-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transmit policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ota-discovery-while-retaining-the-main-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTA discovery while retaining the main channel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#software-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Software coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hardware-restored-after-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardware restored after validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2057,10 +2101,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-choose-the-firmware" class="md-nav__link">
+  <a href="#method-and-limits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Choose the firmware
+        Method and limits
       
     </span>
   </a>
@@ -2068,10 +2112,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-set-each-boards-lora-network" class="md-nav__link">
+  <a href="#five-symbol-baseline" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Set each board's LoRa network
+        Five-symbol baseline
       
     </span>
   </a>
@@ -2079,10 +2123,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-configure-the-esp-now-link-on-both-boards" class="md-nav__link">
+  <a href="#fractional-symbol-tuning" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Configure the ESP-NOW link on both boards
+        Fractional-symbol tuning
       
     </span>
   </a>
@@ -2090,10 +2134,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-each-bridge-option-does" class="md-nav__link">
+  <a href="#shorter-fast-preambles" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What each bridge option does
+        Shorter fast preambles
       
     </span>
   </a>
@@ -2101,10 +2145,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-check-the-link" class="md-nav__link">
+  <a href="#selected-bench-baseline-48-slow-symbols" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Check the link
+        Selected bench baseline: 4.8 slow symbols
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transmit-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transmit policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ota-discovery-while-retaining-the-main-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTA discovery while retaining the main channel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#software-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Software coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hardware-restored-after-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardware restored after validation
       
     </span>
   </a>
@@ -2128,7 +2216,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/espnow_bridge_setup.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/radio_profiles_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2136,164 +2224,334 @@
   
 
 
-<h1 id="esp-now-bridge-simple-setup">ESP-NOW bridge: simple setup</h1>
-<p>Use two ESP32 LoRa boards to join two MeshCore networks with different radio
-settings. Each board repeats on its own LoRa network, and the boards exchange
-packets directly over 2.4 GHz ESP-NOW. No router, internet connection, or manual
-peer pairing is needed.</p>
-<pre><code class="language-text">LoRa network A &lt;--&gt; Repeater A &lt;-- ESP-NOW --&gt; Repeater B &lt;--&gt; LoRa network B
-</code></pre>
-<h2 id="1-choose-the-firmware">1. Choose the firmware</h2>
-<p>Install the exact board's <strong>Full ESP-NOW bridge repeater</strong> image on each board.
-The target name ends in <code>_repeater_bridge_espnow</code>; a standard Heltec V4 uses
-<code>heltec_v4_repeater_bridge_espnow</code>. Full/MQTT and Full Companion images are
-different choices. See the <a href="../firmware_picker/">firmware picker guide</a>.</p>
-<p>Open each board's <a href="https://flasher.meshcore.io/console">USB console</a> at
-115200 baud and run:</p>
-<pre><code class="language-text">get bridge.type
-</code></pre>
-<p>The answer must be <code>espnow</code>. <code>mqtt</code>, <code>rs232</code>, or <code>none</code> means that image does
-not provide the ESP-NOW bridge described here.</p>
-<h2 id="2-set-each-boards-lora-network">2. Set each board's LoRa network</h2>
-<p>Configure one board at a time over USB. Replace the placeholders below with
-the radio settings used by the network on that board's side. Use <code>Bridge-A</code>
-for the first board and <code>Bridge-B</code> for the second, or choose your own names.</p>
-<pre><code class="language-text">set bridge.enabled off
-set name Bridge-A
-set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;
-reboot
-</code></pre>
-<p>Do not type the angle-bracket placeholders literally.</p>
+<h1 id="dual-profile-receive-validation">Dual-profile receive validation</h1>
+<p>These measurements exercise the production two-profile implementation on one
+SX1262 transceiver, using a Heltec V4 repeater as receiver and a XIAO ESP32-S3
+with a Wio LoRa module as transmitter. They follow the dedicated
+<a href="../mixed_scan_validation/">mixed-bandwidth scan experiment</a>.</p>
+<p>Counts, diagnostic replies and firmware/source hashes are in
+<a href="../tools/hil/radio_profiles_results.json">radio_profiles_results.json</a>.</p>
+<p>The primary profile is 909.5 MHz, SF7, 62.5 kHz, CR 4/5, preamble 32.
+The secondary is 910.5 MHz, 500 kHz, CR 4/5, with SF9, SF8 or SF7.
+Scanning uses normal RX, starts with the slower profile, and reserves two slow
+visits per slow preamble. Transmitters must use the corresponding preamble too.</p>
+<h2 id="method-and-limits">Method and limits</h2>
+<p>The transmitter sends MeshCore adverts at varied intervals. The receiver's
+per-profile MeshCore RX counters are compared with the transmitter's completed
+TX counters before and after each run. Initial OTA announcements can add packets
+beyond the manually requested adverts; the table includes those transmissions.
+These are aggregate counters, not sequence-matched payload captures.</p>
+<p>Runs use one transmitting profile at a time and a strong signal. They do not
+measure simultaneous traffic, weak-signal reception, interference or months of
+uptime. A single transceiver remains unavailable to the other profile while
+receiving or transmitting a packet. A clean finite run is evidence for a timing
+choice, not a guarantee that it cannot drop packets.</p>
+<h2 id="five-symbol-baseline">Five-symbol baseline</h2>
+<p>Slow visits were 10.240 ms and fast visits 6.528 ms, plus actual switching time.
+The longest observed profile switch was 4.416 ms; no switch failures were reported.</p>
 <table>
 <thead>
 <tr>
-<th>Radio option</th>
-<th>Meaning</th>
+<th>Fast profile</th>
+<th style="text-align: right;">Fast preamble</th>
+<th style="text-align: right;">Fast RX / TX</th>
+<th style="text-align: right;">Slow RX / TX</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>freq</code></td>
-<td>LoRa frequency in MHz. Match the local network on this side.</td>
+<td>SF9 / 500</td>
+<td style="text-align: right;">48</td>
+<td style="text-align: right;">54 / 54</td>
+<td style="text-align: right;">30 / 30</td>
 </tr>
 <tr>
-<td><code>bw</code></td>
-<td>LoRa bandwidth in kHz. Match that network's bandwidth.</td>
+<td>SF8 / 500</td>
+<td style="text-align: right;">72</td>
+<td style="text-align: right;">49 / 50</td>
+<td style="text-align: right;">—</td>
 </tr>
 <tr>
-<td><code>sf</code></td>
-<td>Spreading factor, 5-12. Match that network's setting.</td>
+<td>SF8 / 500</td>
+<td style="text-align: right;">80</td>
+<td style="text-align: right;">49 / 50</td>
+<td style="text-align: right;">—</td>
 </tr>
 <tr>
-<td><code>cr</code></td>
-<td>Coding-rate value, 5-8. Match that network's setting.</td>
+<td>SF8 / 500</td>
+<td style="text-align: right;">88</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">30 / 30</td>
 </tr>
 <tr>
-<td><code>name</code></td>
-<td>A label to tell the two repeaters apart. It does not pair them.</td>
+<td>SF7 / 500</td>
+<td style="text-align: right;">120</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">30 / 30</td>
 </tr>
 </tbody>
 </table>
-<p><strong><code>set radio</code> requires a reboot to apply.</strong> After reconnecting, <code>get radio</code>
-shows the saved settings. Use permanent radio settings for this setup;
-<code>tempradio</code> sessions expire.</p>
-<h2 id="3-configure-the-esp-now-link-on-both-boards">3. Configure the ESP-NOW link on both boards</h2>
-<p>Run this block on <strong>both</strong> boards. Replace <code>YourSharedKey</code> with the same
-case-sensitive secret on each board, using 1-15 characters. Channel <code>6</code> is
-an example; both boards must use the same channel.</p>
-<pre><code class="language-text">set bridge.enabled off
-set bridge.channel 6
-set bridge.format wrapped
-set bridge.secret YourSharedKey
-set bridge.source tx
-set bridge.delay 500
-set repeat on
-set bridge.enabled on
-</code></pre>
-<p>These settings are saved across reboot. Bridge changes apply immediately;
-changing an enabled bridge's channel, format, or secret restarts the bridge.
-Stopping it first lets you finish configuring both sides before connecting them.</p>
-<h2 id="what-each-bridge-option-does">What each bridge option does</h2>
+<p>The SF8 automatic preamble retains a measured floor of 88 symbols. Automatically
+selected preambles always round up in steps of eight.</p>
+<h2 id="fractional-symbol-tuning">Fractional-symbol tuning</h2>
+<p>The initial sweep started at 4.2 slow symbols, with an increase of 0.1 planned
+for any slow-channel loss. That first sweep passed all three fast settings.
+Each completed run used 50 requested adverts per profile. The SF8 fast run was
+interrupted to check SF9 preamble 32, then restarted; only its completed run is
+included below.</p>
 <table>
 <thead>
 <tr>
-<th>Option</th>
-<th>Choices and purpose</th>
+<th style="text-align: right;">Slow symbols</th>
+<th>Fast profile</th>
+<th style="text-align: right;">Fast preamble</th>
+<th style="text-align: right;">Fast RX / TX</th>
+<th style="text-align: right;">Slow RX / TX</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>bridge.enabled</code></td>
-<td><code>on</code> starts the bridge; <code>off</code> stops it and keeps its saved settings.</td>
+<td style="text-align: right;">4.2</td>
+<td>SF9 / 500</td>
+<td style="text-align: right;">48</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">50 / 50</td>
 </tr>
 <tr>
-<td><code>bridge.channel</code></td>
-<td>The 2.4 GHz channel, 1-13. Match it on both boards. This is separate from the LoRa frequency in <code>set radio</code>.</td>
+<td style="text-align: right;">4.2</td>
+<td>SF9 / 500</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">50 / 50</td>
 </tr>
 <tr>
-<td><code>bridge.format</code></td>
-<td><code>wrapped</code> is the default for this two-repeater setup and uses the shared secret. <code>raw</code> connects to primary-ESP-NOW nodes such as <code>Generic_ESPNOW</code> or <code>SenseCapIndicator-ESPNow</code>; it ignores the secret. Both peers must use compatible formats.</td>
+<td style="text-align: right;">4.2</td>
+<td>SF8 / 500</td>
+<td style="text-align: right;">88</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">50 / 50</td>
 </tr>
 <tr>
-<td><code>bridge.secret</code></td>
-<td>A matching, case-sensitive value of 1-15 characters for <code>wrapped</code> mode. It separates bridge groups; it is not strong encryption. MeshCore's own message encryption remains in place.</td>
-</tr>
-<tr>
-<td><code>bridge.source</code></td>
-<td><code>tx</code> crosses packets this repeater transmits on LoRa, after its forwarding decisions; use this for the setup above. <code>rx</code> crosses received packets before those decisions and can pass traffic the local repeater would not forward.</td>
-</tr>
-<tr>
-<td><code>bridge.delay</code></td>
-<td>Wait before processing a packet received from the other bridge, in milliseconds. Range: 0-10000. Start with the default <code>500</code>.</td>
-</tr>
-<tr>
-<td><code>repeat</code></td>
-<td><code>on</code> enables normal LoRa forwarding; <code>off</code> disables forwarding. Keep it <code>on</code> on both bridge repeaters. Normal routing, scope, and packet-filter rules still apply.</td>
-</tr>
-<tr>
-<td><code>bridge.type</code></td>
-<td>Read-only firmware capability. It must report <code>espnow</code> for this guide.</td>
-</tr>
-<tr>
-<td><code>bridge.running</code></td>
-<td>Read-only runtime state. <code>on</code> means the local bridge started; it does not prove the other board is reachable.</td>
+<td style="text-align: right;">4.2</td>
+<td>SF7 / 500</td>
+<td style="text-align: right;">120</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">50 / 50</td>
 </tr>
 </tbody>
 </table>
-<p>This fork uses <strong><code>set bridge.source tx</code></strong> or <strong><code>rx</code></strong>. Some upstream guides
-use <code>logTx</code> and <code>logRx</code>; those are not the command values used here.</p>
-<p>For a LoRa gateway connected to primary-ESP-NOW Companions instead of another
-LoRa repeater, see <a href="../WiFi/#wifi-companion-setup">raw ESP-NOW compatibility</a>.</p>
-<h2 id="4-check-the-link">4. Check the link</h2>
-<p>Run on both boards:</p>
-<pre><code class="language-text">get bridge.enabled
-get bridge.running
-get bridge.channel
-get bridge.format
-get bridge.secret
-get bridge.source
-get bridge.delay
-get repeat
-get radio
-</code></pre>
-<p>Expected: enabled and running <code>on</code>, matching channel/format/secret, source
-<code>tx</code>, delay <code>500</code>, repeat <code>on</code>, and the intended LoRa settings on each side.</p>
-<p>Send a message from a Companion on network A to one on network B, then reply
-from B to A. Check both directions; configuration readback alone does not test
-delivery.</p>
-<p>If it does not work:</p>
-<ul>
-<li><strong>Commands are unavailable:</strong> check <code>get bridge.type</code> and the firmware choice.</li>
-<li><strong>Enabled is on but running is off:</strong> initialization failed. Reboot and
-  check again; ensure another WiFi service is not occupying the radio.</li>
-<li><strong>Both are running but traffic does not cross:</strong> compare channel, format,
-  and secret; confirm each board's LoRa settings were applied with a reboot,
-  and check the networks' forwarding and scope rules.</li>
-</ul>
-<p>A running bridge keeps the device awake, even with device power saving enabled.
-For every command's full details, see the <a href="../cli_commands/#bridge-when-bridge-support-is-compiled-in">bridge CLI reference</a>.</p>
-<p>For a broader comparison with a Linux-based bridge, see the
-<a href="https://meshcore.nexus/guides/lora-bridging#method-2-meshcore-esp-now-bridge">MeshCore Nexus bridging guide</a>.</p>
+<p>The four completed pairings received 200/200 packets on the slower channel and
+200/200 on the faster channel. No switch failures were reported; the longest
+measured switch during the 4.2-symbol sweep was 4.407 ms.</p>
+<p>The explicit SF9 preamble-32 check uses the same 8.602 ms slow and 8.166 ms fast
+windows as the preamble-48 check. Only the fast transmitter's preamble changes.
+The automatic SF9 calculation still reserves a 48-symbol preamble for the
+configured switching and loop-jitter budgets.</p>
+<h2 id="shorter-fast-preambles">Shorter fast preambles</h2>
+<p>The follow-up starts with preamble 48 on both fast settings. Each miss advances
+the next candidate by eight symbols. The receive-window budgets stay at 4.2
+slow symbols and the same remaining fast-channel time.</p>
+<table>
+<thead>
+<tr>
+<th>Fast profile</th>
+<th style="text-align: right;">Preamble</th>
+<th style="text-align: right;">Fast RX / TX</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SF8 / 500</td>
+<td style="text-align: right;">48</td>
+<td style="text-align: right;">49 / 50</td>
+</tr>
+<tr>
+<td>SF8 / 500</td>
+<td style="text-align: right;">56</td>
+<td style="text-align: right;">50 / 50</td>
+</tr>
+<tr>
+<td>SF7 / 500</td>
+<td style="text-align: right;">48</td>
+<td style="text-align: right;">42 / 50</td>
+</tr>
+<tr>
+<td>SF7 / 500</td>
+<td style="text-align: right;">56</td>
+<td style="text-align: right;">41 / 50</td>
+</tr>
+<tr>
+<td>SF7 / 500</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">45 / 50</td>
+</tr>
+<tr>
+<td>SF7 / 500</td>
+<td style="text-align: right;">72</td>
+<td style="text-align: right;">50 / 50</td>
+</tr>
+</tbody>
+</table>
+<p>The slower channel passed 50/50 paired with SF8/56, but then received <strong>49/50</strong>
+paired with SF7/72. Across the completed 4.2-symbol slow-channel runs, that is
+299/300. This later miss invalidated the provisional 4.2-symbol choice and
+triggered the next headroom test at 4.3 symbols. Fast-preamble baselines carry
+forward as 32 for SF9, 56 for SF8 and 72 for SF7, advancing by eight on a miss.</p>
+<p>At 4.3 symbols, the SF9/32 pairing received 100/100 slow packets and 50/50 fast
+packets. The next SF8/56 pairing received only 42/50 slow packets, so that
+candidate also failed. A control run with scanning disabled received 50/50 on
+the slow channel. At 4.4, SF8/56 passed 100/100 slow and 50/50 fast, but the
+SF7/72 pairing then received 49/50 slow packets.</p>
+<p>At 4.5, the SF7 pairing passed 100/100 slow packets. Fast preamble 72 received
+47/50, so the next baseline increased to 80 and passed 50/50. The following
+SF8/56 slow run received 49/50, triggering 4.6 symbols. Baselines now carry
+forward as SF9/32, SF8/56 and SF7/80.</p>
+<p>At 4.6, both SF8/56 and SF7/80 passed 100/100 slow packets and 50/50 fast
+packets. The following SF9/32 slow run received 49/50, triggering 4.7 symbols.
+There were no switch failures; the longest observed switch was 4.414 ms.</p>
+<p>At 4.7, the SF9/32 slow run passed its first 50 packets but received 99/100
+over the full run. This triggered 4.8 symbols, with the same fast preamble
+baselines. No fast-channel run was started for the 4.7 candidate.</p>
+<h2 id="selected-bench-baseline-48-slow-symbols">Selected bench baseline: 4.8 slow symbols</h2>
+<p>The 4.8-symbol sweep passed all three slow-channel checks, totaling 300/300.
+Slow visits are 9.831 ms and fast visits 6.937 ms, plus actual switching time.
+The longest measured switch was 4.491 ms, with no switch failures.</p>
+<table>
+<thead>
+<tr>
+<th>Fast profile</th>
+<th style="text-align: right;">Fast preamble</th>
+<th style="text-align: right;">Fast RX / TX</th>
+<th style="text-align: right;">Slow RX / TX</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SF9 / 500</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">100 / 100</td>
+</tr>
+<tr>
+<td>SF8 / 500</td>
+<td style="text-align: right;">56</td>
+<td style="text-align: right;">49 / 50</td>
+<td style="text-align: right;">100 / 100</td>
+</tr>
+<tr>
+<td>SF8 / 500</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td>SF7 / 500</td>
+<td style="text-align: right;">80</td>
+<td style="text-align: right;">50 / 50</td>
+<td style="text-align: right;">100 / 100</td>
+</tr>
+</tbody>
+</table>
+<p>The SF8 miss advanced its baseline from 56 to 64, exactly eight symbols. Its
+slow-channel check preceded that increase; changing the fast preamble leaves
+the idle receive-window calculation unchanged. The final fast-channel attempts
+received 150/150, using explicit preambles <strong>32 / 64 / 80</strong> for SF9 / SF8 / SF7.
+These become the starting values for further tests, increasing by eight on a
+fast-channel miss. A slow-channel miss instead advances the listen window by
+0.1 symbol.</p>
+<p>The production automatic preambles remain <strong>48 / 88 / 120</strong>, retaining the
+switching, loop-jitter and acquisition budgets. The shorter explicit values are
+bench results under the conditions above, not a guarantee for other boards or
+traffic patterns.</p>
+<h2 id="transmit-policy">Transmit policy</h2>
+<p>Hardware checks send three zero-hop adverts from the V4 with the XIAO listening
+on profile 2. OTA startup traffic is allowed to settle before taking the counter
+snapshots. The completed cases are:</p>
+<table>
+<thead>
+<tr>
+<th>V4 profiles and policy</th>
+<th style="text-align: right;">TX on primary / secondary</th>
+<th style="text-align: right;">Received by XIAO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Permanent / permanent, <code>auto</code></td>
+<td style="text-align: right;">3 / 3</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>Permanent / permanent, <code>off</code></td>
+<td style="text-align: right;">3 / 0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Permanent / temporary, <code>auto</code></td>
+<td style="text-align: right;">3 / 0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Permanent / temporary, <code>on</code></td>
+<td style="text-align: right;">3 / 3</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>Secondary RX only, <code>on</code></td>
+<td style="text-align: right;">3 / 0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Temporary / temporary, <code>auto</code></td>
+<td style="text-align: right;">3 / 3</td>
+<td style="text-align: right;">3</td>
+</tr>
+</tbody>
+</table>
+<p>A separate isolation check issued three explicit OTA announce commands with
+normal <code>radio</code>, RX-only <code>tempradio2</code> and <code>radio2.cross auto</code>. The completed TX
+counters stayed unchanged on both profiles (0 / 0), confirming that locally
+generated OTA traffic does not fall back to the normal channel in that mode.</p>
+<p>Turning <code>radio2</code> off stopped scanning. A one-minute <code>tempradio2</code> session also
+returned to one profile on expiry. Rebooting with a saved SF8 RX profile and an
+active temporary SF9 RX/TX profile cleared the temporary session and restored
+the saved SF8 profile, including its automatic 88-symbol preamble.</p>
+<h2 id="ota-discovery-while-retaining-the-main-channel">OTA discovery while retaining the main channel</h2>
+<p>Both boards ran normal SF7 / 62.5 kHz on the primary and temporary SF8 / 500 kHz
+RX/TX on the secondary, using <code>radio2.cross auto</code> and automatic preambles 32/88.
+The XIAO discovered the V4's firmware catalogue over profile 2, and both boards
+recorded received and transmitted OTA packets there. Ten V4 zero-hop adverts
+then arrived on the XIAO's primary profile (10/10), with both temporary second
+profiles still active. The XIAO reported no switch failures and a longest switch
+of 4.547 ms during this check.</p>
+<p>This hardware check covers discovery, bidirectional OTA traffic and concurrent
+availability of the main channel between packets. It does not perform a complete
+firmware transfer or install. Byte-exact transfer validation is provided by the
+shared OTA software tests described below.</p>
+<h2 id="software-coverage">Software coverage</h2>
+<p>Native tests cover identical-packet fanout, separate retry ownership and coding
+rates, channel-busy backoff, generation changes, temporary-session isolation,
+deferred replies and stale-packet removal. Tests using the production CLI cover
+parsing, persistence failures, schedules, expiry and clock rollover. A physical
+radio mock exercises the production scan transitions, pending RX interrupts,
+RX power-saving restoration and failed profile switches.</p>
+<p>The full native suite passed 1,422 cases after the RX-only OTA isolation fix;
+all eight KISS modem tests also passed. Subsequent timing changes through 4.8
+symbols passed the 63-case retry/profile suite and production CLI and scan
+harnesses. Shared OTA transfer tests passed byte-exact checks with
+AddressSanitizer and UndefinedBehaviorSanitizer for ESP32 and nRF52 variants.</p>
+<p>Build coverage includes the Heltec V4 repeater, room server, sensor and terminal
+chat, the Full XIAO Companion, and the nRF52 T1000-E repeater. The nRF52 result
+is a build check; these receive measurements use the ESP32/SX1262 boards above.</p>
+<h2 id="hardware-restored-after-validation">Hardware restored after validation</h2>
+<p>Both boards were returned to their original B soak images after the checks:
+<code>v1.17.1-soak-v4-B</code> and <code>v1.17.1-soak-xiao-B</code>. The V4 retained 909.5 MHz,
+SF7 / 62.5 kHz, CR 4/5 and TX 0; the XIAO retained 910.525 MHz with the same
+modulation and TX 22. Both reconnected to Wi-Fi and their custom MQTT service.
+The soak logs resumed under <code>B-post-radio2-soak</code>. These restored images are the
+earlier memory-soak firmware; the new dual-profile code is validated by the
+finite tests above, not by a months-long uptime run.
+The Pi's soak service and Indicator telemetry were also healthy after restoration.</p>
 
 
 

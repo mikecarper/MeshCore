@@ -16,7 +16,7 @@
         <link rel="prev" href="../cli_command_availability/">
       
       
-        <link rel="next" href="../companion_contact_cache/">
+        <link rel="next" href="../cli_settings_audit/">
       
       
         
@@ -267,6 +267,33 @@
     
   
     WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cad_scan_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SX1262 channel-scanning hardware results
   
 
     
@@ -2469,6 +2496,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../cli_settings_audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI setting dispatch audit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../companion_contact_cache/" class="md-nav__link">
         
   
@@ -3117,6 +3171,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../mixed_scan_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mixed-bandwidth two-channel reception test
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../nimble_companion_trial/" class="md-nav__link">
         
   
@@ -3549,6 +3630,60 @@
   
   
     <li class="md-nav__item">
+      <a href="../radio_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Two LoRa profiles on one radio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../radio_profiles_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dual-profile receive validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../radio_receive_calibration/" class="md-nav__link">
         
   
@@ -3800,10 +3935,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_55" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_60" >
         
           
-          <label class="md-nav__link" for="__nav_55" id="__nav_55_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_60" id="__nav_60_label" tabindex="0">
             
   
   
@@ -3821,8 +3956,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_55_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_55">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_60_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_60">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -6002,6 +6137,8 @@
 
 
 <h1 id="cli-commands">CLI Commands</h1>
+<p>See <a href="../radio_profiles/">two LoRa profiles</a> for <code>radio2</code>, <code>tempradio2</code>, scheduling,
+RX-only mode, cross-transmission policy, and optional radio preambles.</p>
 <p>For copy/paste on/off recipes and the differences from Full Companion, see
 <a href="../role_feature_switches/">feature switches by role</a>. The
 <a href="https://flasher.meshcore.io/console">USB web console</a> opens the default ASCII
@@ -7905,6 +8042,10 @@ binaries.</p>
 <p><strong>Default:</strong> <code>flood.channel.data on</code>; <code>flood.channel.data.hops h=all</code></p>
 <hr />
 <h4 id="view-or-change-this-nodes-advert-path-hash-size">View or change this node's advert path hash size</h4>
+<p><strong>1.17.1.5 infrastructure bug:</strong> affected Repeater, Room Server, and Sensor
+images accept <code>get path.hash.mode</code> but report <code>unknown config</code> for the setter.
+The command was not renamed. The source correction restores the setter;
+installed images need an updated build. See the <a href="../cli_settings_audit/">setting-dispatch audit</a>.</p>
 <p><strong>Usage:</strong>
 - <code>get path.hash.mode</code>
 - <code>set path.hash.mode &lt;value&gt;</code></p>
