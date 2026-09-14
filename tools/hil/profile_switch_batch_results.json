@@ -1,0 +1,735 @@
+{
+  "schema": 2,
+  "measured_date": "2026-09-13",
+  "base_commit": "c329cf1fc1e7f2e8c8733ab0d000094730458fe3",
+  "local_patch": "SX1262 warm standby plus batched SF/BW/CR modulation",
+  "firmware_sha256": "b4403f6f5eb0a2b0a31c2d79859122225f247296699a578ad2596ef17eaed0fd",
+  "radiolib_commit": "187ef24791c3d844939b2be13a68bd890bd04e4c",
+  "experiment": "batching",
+  "board": "XIAO ESP32-S3 + WIO SX1262",
+  "port": "COM31",
+  "primary": {
+    "freq": 909.5,
+    "bw": 62.5,
+    "sf": 7,
+    "cr": 5
+  },
+  "secondary": {
+    "freq": 910.5,
+    "bw": 500,
+    "cr": 5
+  },
+  "timing": "production tuneProfile entry to return, then BUSY low; RX status verified afterward",
+  "excluded": "first 8 successful hops per trial; no application/UI/network scheduling",
+  "trials": [
+    {
+      "result": true,
+      "warm": true,
+      "batched": false,
+      "sf500": 7,
+      "requested": 1000,
+      "skipped_busy": 7,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1434,
+            "mean_us": 1440.882,
+            "max_us": 1471
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1436,
+            "mean_us": 1442.882,
+            "max_us": 1473
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1437,
+            "mean_us": 1437.0,
+            "max_us": 1437
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1439,
+            "mean_us": 1439.0,
+            "max_us": 1439
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": true,
+      "sf500": 7,
+      "requested": 1000,
+      "skipped_busy": 17,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1163,
+            "mean_us": 1163.212,
+            "max_us": 1190
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.004,
+            "max_us": 3
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1165,
+            "mean_us": 1165.216,
+            "max_us": 1192
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1149,
+            "mean_us": 1149.0,
+            "max_us": 1149
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1151,
+            "mean_us": 1151.0,
+            "max_us": 1151
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": false,
+      "sf500": 8,
+      "requested": 1000,
+      "skipped_busy": 16,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1439,
+            "mean_us": 1443.398,
+            "max_us": 1478
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1441,
+            "mean_us": 1445.398,
+            "max_us": 1480
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1442,
+            "mean_us": 1442.534,
+            "max_us": 1443
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1444,
+            "mean_us": 1444.534,
+            "max_us": 1445
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": true,
+      "sf500": 8,
+      "requested": 1000,
+      "skipped_busy": 8,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1161,
+            "mean_us": 1161.056,
+            "max_us": 1189
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.002,
+            "max_us": 3
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1163,
+            "mean_us": 1163.058,
+            "max_us": 1192
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1156,
+            "mean_us": 1156.0,
+            "max_us": 1156
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1158,
+            "mean_us": 1158.0,
+            "max_us": 1158
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": false,
+      "sf500": 9,
+      "requested": 1000,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1433,
+            "mean_us": 1446.682,
+            "max_us": 1447
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1435,
+            "mean_us": 1448.682,
+            "max_us": 1449
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1435,
+            "mean_us": 1441.756,
+            "max_us": 1442
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1437,
+            "mean_us": 1443.756,
+            "max_us": 1444
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": true,
+      "sf500": 9,
+      "requested": 1000,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1161,
+            "mean_us": 1161.0,
+            "max_us": 1161
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1163,
+            "mean_us": 1163.0,
+            "max_us": 1163
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1149,
+            "mean_us": 1149.0,
+            "max_us": 1149
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1151,
+            "mean_us": 1151.0,
+            "max_us": 1151
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": true,
+      "sf500": 7,
+      "requested": 1000,
+      "skipped_busy": 5,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1161,
+            "mean_us": 1166.686,
+            "max_us": 1196
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1163,
+            "mean_us": 1168.686,
+            "max_us": 1198
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1148,
+            "mean_us": 1148.936,
+            "max_us": 1149
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1150,
+            "mean_us": 1150.936,
+            "max_us": 1151
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 2
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": false,
+      "sf500": 7,
+      "requested": 1000,
+      "skipped_busy": 14,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1441,
+            "mean_us": 1443.058,
+            "max_us": 1471
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1443,
+            "mean_us": 1445.058,
+            "max_us": 1473
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1437,
+            "mean_us": 1438.896,
+            "max_us": 1443
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1439,
+            "mean_us": 1440.896,
+            "max_us": 1445
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 2
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": true,
+      "sf500": 8,
+      "requested": 1000,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1159,
+            "mean_us": 1159.0,
+            "max_us": 1159
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1161,
+            "mean_us": 1161.0,
+            "max_us": 1161
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1148,
+            "mean_us": 1148.0,
+            "max_us": 1148
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1150,
+            "mean_us": 1150.0,
+            "max_us": 1150
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 2
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": false,
+      "sf500": 8,
+      "requested": 1000,
+      "skipped_busy": 8,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1441,
+            "mean_us": 1446.41,
+            "max_us": 1476
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1443,
+            "mean_us": 1448.41,
+            "max_us": 1478
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1437,
+            "mean_us": 1437.0,
+            "max_us": 1437
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1439,
+            "mean_us": 1439.0,
+            "max_us": 1439
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 2
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": true,
+      "sf500": 9,
+      "requested": 1000,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1159,
+            "mean_us": 1159.0,
+            "max_us": 1159
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1161,
+            "mean_us": 1161.0,
+            "max_us": 1161
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1148,
+            "mean_us": 1148.0,
+            "max_us": 1148
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1150,
+            "mean_us": 1150.0,
+            "max_us": 1150
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 2
+    },
+    {
+      "result": true,
+      "warm": true,
+      "batched": false,
+      "sf500": 9,
+      "requested": 1000,
+      "skipped_busy": 9,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "cache_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 500,
+            "min_us": 1440,
+            "mean_us": 1445.698,
+            "max_us": 1476
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1442,
+            "mean_us": 1447.698,
+            "max_us": 1478
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 500,
+            "min_us": 1430,
+            "mean_us": 1441.508,
+            "max_us": 1443
+          },
+          "busy_tail": {
+            "n": 500,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 500,
+            "min_us": 1432,
+            "mean_us": 1443.508,
+            "max_us": 1445
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 2
+    }
+  ],
+  "complete": true
+}

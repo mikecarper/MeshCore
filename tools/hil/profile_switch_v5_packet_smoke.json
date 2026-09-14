@@ -1,0 +1,407 @@
+{
+  "schema": 5,
+  "experiment": "rx_after_profile_switch_packets",
+  "receiver": "COM31",
+  "sender": "COM28",
+  "power_dbm": 0,
+  "complete": true,
+  "trials": [
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 1,
+      "listening": {
+        "listening": 1,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "setup_deferrals": 1
+      },
+      "sent": {
+        "sent": 1,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 1,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 2,
+      "listening": {
+        "listening": 2,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 2,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 2,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -32.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 3,
+      "listening": {
+        "listening": 3,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 3,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 3,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 4,
+      "listening": {
+        "listening": 4,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 4,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 4,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -31.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 5,
+      "listening": {
+        "listening": 5,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 5,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 5,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 6,
+      "listening": {
+        "listening": 6,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 6,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 6,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -32.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "combined_bulk_spi8",
+      "mask": 375,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 7,
+      "listening": {
+        "listening": 7,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 7,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 7,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "combined_bulk_spi8",
+      "mask": 375,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 8,
+      "listening": {
+        "listening": 8,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 8,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 8,
+        "timeout": true,
+        "valid": false,
+        "rx_errors": 0,
+        "irq": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "valid": false
+    },
+    {
+      "case": "combined_bulk_spi8",
+      "mask": 375,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 9,
+      "listening": {
+        "listening": 9,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 9,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 9,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "combined_bulk_spi8",
+      "mask": 375,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 10,
+      "listening": {
+        "listening": 10,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 10,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 10,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -32.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "combined_bulk_spi8",
+      "mask": 375,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 11,
+      "listening": {
+        "listening": 11,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 11,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 11,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "combined_bulk_spi8",
+      "mask": 375,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 12,
+      "listening": {
+        "listening": 12,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 12,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 12,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -33.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "valid": true
+    }
+  ],
+  "scope": "Stationary short-range payload checks, not sensitivity/PER qualification"
+}

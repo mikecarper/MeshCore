@@ -150,6 +150,12 @@ protected:
     return _radio->setOutputPower(dbm);
   }
   virtual bool applyRxBoostedGainMode(bool) { return false; }
+  // Dual-profile scanning already suspends RXPS. Supported radios can also
+  // retain their oscillator across the intervening standby/reconfigure steps.
+  // Called only at the safe scan-mode entry/exit boundary, not during a packet.
+  virtual void setProfileStandbyWarm(bool) {}
+  virtual void beginProfileRetune(bool) {}
+  virtual void endProfileRetune(bool) {}
   // 0 = reconfigure from idle, 1 = resume RX afterwards, 2 = currently busy.
   uint8_t beginReconfigure();
   void endReconfigure(bool resume_rx);

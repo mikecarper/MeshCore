@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "experiment": "stationary_preamble_diagnostic",
+  "sf": 6,
+  "bw_khz": 125,
+  "receiver": "COM31",
+  "sender": "COM28",
+  "rx_khz": 910000,
+  "window_ms": 450,
+  "power_dbm": -9,
+  "preamble": 32,
+  "rounds": 4,
+  "seed": 814910,
+  "complete": false,
+  "trials": [],
+  "stopped": "fixture_error",
+  "error": "Wrong/unready HIL firmware on COM31"
+}

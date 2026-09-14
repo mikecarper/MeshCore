@@ -203,6 +203,53 @@ The scan uses **normal receive**, following the
 channel, followed by the remaining fast-channel visit. It does not use CAD for scanning.
 The separate CAD check before an initial transmission still follows `cad`.
 
+SX1262 dual-profile mode keeps the oscillator running in XOSC standby between
+visits, so each retune does not need to restart the TCXO. It restores the prior
+standby policy when returning to one profile, together with the saved RXPS
+setting. Radio reinitialization temporarily uses RC standby until the TCXO has
+been configured again. Other radio families retain their existing behavior.
+This does not disable the TCXO supply or its initial startup delay, and it is
+not conditional on 500 kHz bandwidth. Keeping the oscillator on uses additional
+power during the short standby intervals.
+
+The 6 ms switch budget is still a default scheduling allowance, not a
+forced delay, and has not been reduced for this change. The earlier standalone
+[keep-warm scan experiment](mixed_scan_validation.md) averaged about 1.19 ms
+of overhead per hop (scan-cycle time minus both receive windows, divided by
+two). That experiment used a leaner receive path; it is not a measurement or
+guarantee of the production implementation. Measure the target board before
+shortening its timing margins or transmit preambles.
+
+The [production-path XIAO timing test](radio_profile_switch_validation.md)
+measured **1.434 ms average / 1.467 ms maximum** with warm standby, compared
+with **3.166 ms average** using RC standby: about **1.732 ms saved per hop**.
+It covered 12,000 retunes across SF7/8/9 at 500 kHz paired with SF7/62.5 kHz.
+These measurements include observing BUSY low, but exclude application/UI
+scheduling and are not a packet-delivery qualification or a guarantee for
+other boards, especially those using I/O expanders.
+
+A same-image follow-up batching SF/BW/CR into one modulation command reduced
+warm switching from **1.444 ms to 1.158 ms average** (batched maximum **1.198 ms**),
+saving another **0.286 ms / 19.8%**. RadioLib's modulation caches and LDRO
+calculation remain synchronized; frequency, preamble, packet guards, and RX
+restart are unchanged. A later [HIL-only screening](radio_profile_switch_validation.md#expanded-screening-redundant-rx-setup-and-spi-v5)
+tested redundant standby/IRQ/buffer/packet setup and SPI transfer changes.
+Its fastest candidate measured 0.535 ms mean on XIAO but 8.203 ms on the
+Indicator, whose radio GPIOs go through an I2C expander. The validated production
+implementation now opts XIAO S3 WIO and Indicator LoRa into buffered 8 MHz SPI
+and a guarded fast-RX state machine. It skips redundant standby, IRQ mapping,
+buffer-base writes and modem queries only during an owned continuous RX-to-RX
+retune. Preamble/packet parameters (including the IQ workaround), stale-IRQ
+clearing, RX commands and BUSY waits remain. TX, CAD, sleep, reset, RXPS and
+failed commands revoke reuse; failed RX startup rolls back the profile.
+Sleep entry uses standby and wake restores the existing TCXO voltage/delay.
+Other variants do not opt in to faster SPI or the fast-RX state machine.
+See [production and USB validation](radio_profile_switch_validation.md#production-integration-and-usb-recovery-v8)
+for current measurements, lifecycle tests and limitations.
+The Indicator result also shows that the
+generic 6 ms allowance is not an upper bound for every board; its scheduling
+and preambles need board-specific qualification, not a smaller common budget.
+
 Single-channel noise-floor calibration and RSSI interference comparison are
 suspended while scanning. Retries use the radio's preamble/header activity
 indicators. LR2021 extra-SF side detectors are suspended and restored as well.

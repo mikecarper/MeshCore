@@ -1,0 +1,363 @@
+{
+  "schema": 1,
+  "board": "XIAO ESP32-S3 + WIO SX1262",
+  "port": "COM31",
+  "primary": {
+    "freq": 909.5,
+    "bw": 62.5,
+    "sf": 7,
+    "cr": 5
+  },
+  "secondary": {
+    "freq": 910.5,
+    "bw": 500,
+    "cr": 5
+  },
+  "timing": "production tuneProfile entry to return, then BUSY low; RX status verified afterward",
+  "excluded": "first 8 successful hops per trial; no application/UI/network scheduling",
+  "trials": [
+    {
+      "result": true,
+      "warm": false,
+      "sf500": 7,
+      "requested": 16,
+      "skipped_busy": 2,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 8,
+            "min_us": 3147,
+            "mean_us": 3160.25,
+            "max_us": 3191
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 8,
+            "min_us": 3149,
+            "mean_us": 3162.25,
+            "max_us": 3193
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 8,
+            "min_us": 3144,
+            "mean_us": 3154.875,
+            "max_us": 3175
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 8,
+            "min_us": 3146,
+            "mean_us": 3156.875,
+            "max_us": 3177
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "sf500": 7,
+      "requested": 16,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 8,
+            "min_us": 1430,
+            "mean_us": 1430.625,
+            "max_us": 1435
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 8,
+            "min_us": 1432,
+            "mean_us": 1432.625,
+            "max_us": 1437
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 8,
+            "min_us": 1429,
+            "mean_us": 1429.0,
+            "max_us": 1429
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 3,
+            "mean_us": 3.0,
+            "max_us": 3
+          },
+          "total": {
+            "n": 8,
+            "min_us": 1432,
+            "mean_us": 1432.0,
+            "max_us": 1432
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": false,
+      "sf500": 8,
+      "requested": 16,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 8,
+            "min_us": 3149,
+            "mean_us": 3155.75,
+            "max_us": 3161
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 8,
+            "min_us": 3151,
+            "mean_us": 3157.75,
+            "max_us": 3163
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 8,
+            "min_us": 3144,
+            "mean_us": 3158.25,
+            "max_us": 3178
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.25,
+            "max_us": 3
+          },
+          "total": {
+            "n": 8,
+            "min_us": 3146,
+            "mean_us": 3160.5,
+            "max_us": 3180
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "sf500": 8,
+      "requested": 16,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 8,
+            "min_us": 1432,
+            "mean_us": 1432.25,
+            "max_us": 1434
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.875,
+            "max_us": 3
+          },
+          "total": {
+            "n": 8,
+            "min_us": 1435,
+            "mean_us": 1435.125,
+            "max_us": 1436
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 8,
+            "min_us": 1429,
+            "mean_us": 1429.0,
+            "max_us": 1429
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 3,
+            "mean_us": 3.0,
+            "max_us": 3
+          },
+          "total": {
+            "n": 8,
+            "min_us": 1432,
+            "mean_us": 1432.0,
+            "max_us": 1432
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": false,
+      "sf500": 9,
+      "requested": 16,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 8,
+            "min_us": 3149,
+            "mean_us": 3157.25,
+            "max_us": 3161
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 8,
+            "min_us": 3151,
+            "mean_us": 3159.25,
+            "max_us": 3163
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 8,
+            "min_us": 3152,
+            "mean_us": 3163.5,
+            "max_us": 3175
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 4.125,
+            "max_us": 9
+          },
+          "total": {
+            "n": 8,
+            "min_us": 3155,
+            "mean_us": 3167.625,
+            "max_us": 3177
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    },
+    {
+      "result": true,
+      "warm": true,
+      "sf500": 9,
+      "requested": 16,
+      "skipped_busy": 0,
+      "failures": 0,
+      "busy_timeouts": 0,
+      "rx_mode_errors": 0,
+      "tcxo_delay_us": 1600,
+      "directions": [
+        {
+          "to_profile": 0,
+          "api": {
+            "n": 8,
+            "min_us": 1432,
+            "mean_us": 1432.375,
+            "max_us": 1435
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.875,
+            "max_us": 3
+          },
+          "total": {
+            "n": 8,
+            "min_us": 1435,
+            "mean_us": 1435.25,
+            "max_us": 1437
+          }
+        },
+        {
+          "to_profile": 1,
+          "api": {
+            "n": 8,
+            "min_us": 1429,
+            "mean_us": 1429.0,
+            "max_us": 1429
+          },
+          "busy_tail": {
+            "n": 8,
+            "min_us": 2,
+            "mean_us": 2.0,
+            "max_us": 2
+          },
+          "total": {
+            "n": 8,
+            "min_us": 1431,
+            "mean_us": 1431.0,
+            "max_us": 1431
+          }
+        }
+      ],
+      "off_restored_rc": true,
+      "round": 1
+    }
+  ],
+  "complete": true
+}

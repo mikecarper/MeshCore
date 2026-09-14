@@ -1,0 +1,283 @@
+{
+  "schema": 8,
+  "port": "COM31",
+  "complete": true,
+  "reconnects": 20,
+  "lost_timing_reply": {
+    "result": 992575848,
+    "warm": true,
+    "batched": true,
+    "mask": 768,
+    "spi_mhz": 8,
+    "sf500": 7,
+    "requested": 16,
+    "skipped_busy": 0,
+    "failures": 0,
+    "busy_timeouts": 0,
+    "rx_mode_errors": 0,
+    "cache_errors": 0,
+    "tcxo_delay_us": 1600,
+    "optimized_rx_resumes": 24,
+    "directions": [
+      {
+        "to_profile": 0,
+        "api": {
+          "n": 8,
+          "min_us": 551,
+          "mean_us": 552.125,
+          "max_us": 553
+        },
+        "busy_tail": {
+          "n": 8,
+          "min_us": 3,
+          "mean_us": 3.0,
+          "max_us": 3
+        },
+        "total": {
+          "n": 8,
+          "min_us": 554,
+          "mean_us": 555.125,
+          "max_us": 556
+        }
+      },
+      {
+        "to_profile": 1,
+        "api": {
+          "n": 8,
+          "min_us": 556,
+          "mean_us": 557.875,
+          "max_us": 561
+        },
+        "busy_tail": {
+          "n": 8,
+          "min_us": 2,
+          "mean_us": 2.25,
+          "max_us": 3
+        },
+        "total": {
+          "n": 8,
+          "min_us": 559,
+          "mean_us": 560.125,
+          "max_us": 563
+        }
+      }
+    ],
+    "off_restored_rc": true,
+    "transport_recovered": true
+  },
+  "lost_reply": {
+    "sent": 900001,
+    "len": 16,
+    "rc": 0,
+    "power_dbm": -9,
+    "spi_mhz": 8,
+    "bulk": true,
+    "transport_recovered": true
+  },
+  "late_reply": {
+    "sent": 900002,
+    "len": 16,
+    "rc": 0,
+    "power_dbm": -9,
+    "spi_mhz": 8,
+    "bulk": true,
+    "stale_replies": [
+      {
+        "sent": 900001,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      }
+    ]
+  },
+  "lifecycle": {
+    "lifecycle": true,
+    "spi_mhz": 8,
+    "bulk": true,
+    "checks": [
+      {
+        "operation": "tx",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "cad",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "reset",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_rc",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 0,
+        "fallback_fast": 0,
+        "resumed_fast": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_retcxo",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "tx",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "cad",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "reset",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_rc",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 0,
+        "fallback_fast": 0,
+        "resumed_fast": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_retcxo",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "tx",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "cad",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "reset",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_rc",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 0,
+        "fallback_fast": 0,
+        "resumed_fast": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_retcxo",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      }
+    ],
+    "reboot_required": true
+  }
+}

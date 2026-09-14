@@ -1,0 +1,5341 @@
+{
+  "schema": 8,
+  "experiment": "rx_after_profile_switch_packets",
+  "receiver": "COM31",
+  "sender": "COM28",
+  "power_dbm": -9,
+  "sender_spi_mhz": 8,
+  "sender_bulk": true,
+  "complete": true,
+  "trials": [
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575019,
+      "listening": {
+        "listening": 365575019,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 1
+      },
+      "sent": {
+        "sent": 365575019,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575019,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575020,
+      "listening": {
+        "listening": 365575020,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575020,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575020,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575021,
+      "listening": {
+        "listening": 365575021,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575021,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575021,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575022,
+      "listening": {
+        "listening": 365575022,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575022,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575022,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575023,
+      "listening": {
+        "listening": 365575023,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575023,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575023,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575024,
+      "listening": {
+        "listening": 365575024,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575024,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575024,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575025,
+      "listening": {
+        "listening": 365575025,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575025,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575025,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575026,
+      "listening": {
+        "listening": 365575026,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575026,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575026,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575027,
+      "listening": {
+        "listening": 365575027,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575027,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575027,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575028,
+      "listening": {
+        "listening": 365575028,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575028,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575028,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575029,
+      "listening": {
+        "listening": 365575029,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575029,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575029,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575030,
+      "listening": {
+        "listening": 365575030,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575030,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575030,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575031,
+      "listening": {
+        "listening": 365575031,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575031,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575031,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575032,
+      "listening": {
+        "listening": 365575032,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575032,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575032,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575033,
+      "listening": {
+        "listening": 365575033,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575033,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575033,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575034,
+      "listening": {
+        "listening": 365575034,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575034,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575034,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 11.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575035,
+      "listening": {
+        "listening": 365575035,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575035,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575035,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 10.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575036,
+      "listening": {
+        "listening": 365575036,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575036,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575036,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 11.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575037,
+      "listening": {
+        "listening": 365575037,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575037,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575037,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575038,
+      "listening": {
+        "listening": 365575038,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575038,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575038,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575039,
+      "listening": {
+        "listening": 365575039,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575039,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575039,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575040,
+      "listening": {
+        "listening": 365575040,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575040,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575040,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575041,
+      "listening": {
+        "listening": 365575041,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575041,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575041,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 14.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575042,
+      "listening": {
+        "listening": 365575042,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575042,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575042,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575043,
+      "listening": {
+        "listening": 365575043,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575043,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575043,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575044,
+      "listening": {
+        "listening": 365575044,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575044,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575044,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575045,
+      "listening": {
+        "listening": 365575045,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575045,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575045,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575046,
+      "listening": {
+        "listening": 365575046,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575046,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575046,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575047,
+      "listening": {
+        "listening": 365575047,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575047,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575047,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575048,
+      "listening": {
+        "listening": 365575048,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575048,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575048,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575049,
+      "listening": {
+        "listening": 365575049,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575049,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575049,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575050,
+      "listening": {
+        "listening": 365575050,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575050,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575050,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575051,
+      "listening": {
+        "listening": 365575051,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575051,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575051,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575052,
+      "listening": {
+        "listening": 365575052,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575052,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575052,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 10.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575053,
+      "listening": {
+        "listening": 365575053,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575053,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575053,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575054,
+      "listening": {
+        "listening": 365575054,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575054,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575054,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575055,
+      "listening": {
+        "listening": 365575055,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575055,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575055,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575056,
+      "listening": {
+        "listening": 365575056,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575056,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575056,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575057,
+      "listening": {
+        "listening": 365575057,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575057,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575057,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575058,
+      "listening": {
+        "listening": 365575058,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575058,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575058,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575059,
+      "listening": {
+        "listening": 365575059,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575059,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575059,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575060,
+      "listening": {
+        "listening": 365575060,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575060,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575060,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575061,
+      "listening": {
+        "listening": 365575061,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575061,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575061,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575062,
+      "listening": {
+        "listening": 365575062,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575062,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575062,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575063,
+      "listening": {
+        "listening": 365575063,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575063,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575063,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575064,
+      "listening": {
+        "listening": 365575064,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575064,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575064,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575065,
+      "listening": {
+        "listening": 365575065,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575065,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575065,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575066,
+      "listening": {
+        "listening": 365575066,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575066,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575066,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575067,
+      "listening": {
+        "listening": 365575067,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575067,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575067,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575068,
+      "listening": {
+        "listening": 365575068,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575068,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575068,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575069,
+      "listening": {
+        "listening": 365575069,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575069,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575069,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575070,
+      "listening": {
+        "listening": 365575070,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575070,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575070,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 10.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575071,
+      "listening": {
+        "listening": 365575071,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575071,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575071,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575072,
+      "listening": {
+        "listening": 365575072,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575072,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575072,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575073,
+      "listening": {
+        "listening": 365575073,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575073,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575073,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575074,
+      "listening": {
+        "listening": 365575074,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575074,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575074,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575075,
+      "listening": {
+        "listening": 365575075,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575075,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575075,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575076,
+      "listening": {
+        "listening": 365575076,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575076,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575076,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575077,
+      "listening": {
+        "listening": 365575077,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575077,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575077,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575078,
+      "listening": {
+        "listening": 365575078,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575078,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575078,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575079,
+      "listening": {
+        "listening": 365575079,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575079,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575079,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575080,
+      "listening": {
+        "listening": 365575080,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575080,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575080,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575081,
+      "listening": {
+        "listening": 365575081,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575081,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575081,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575082,
+      "listening": {
+        "listening": 365575082,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575082,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575082,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575083,
+      "listening": {
+        "listening": 365575083,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575083,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575083,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575084,
+      "listening": {
+        "listening": 365575084,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575084,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575084,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575085,
+      "listening": {
+        "listening": 365575085,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575085,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575085,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575086,
+      "listening": {
+        "listening": 365575086,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575086,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575086,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575087,
+      "listening": {
+        "listening": 365575087,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575087,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575087,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575088,
+      "listening": {
+        "listening": 365575088,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575088,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575088,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575089,
+      "listening": {
+        "listening": 365575089,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575089,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575089,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 10.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 1,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575090,
+      "listening": {
+        "listening": 365575090,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575090,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575090,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 11.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575091,
+      "listening": {
+        "listening": 365575091,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575091,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575091,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575092,
+      "listening": {
+        "listening": 365575092,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575092,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575092,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575093,
+      "listening": {
+        "listening": 365575093,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575093,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575093,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575094,
+      "listening": {
+        "listening": 365575094,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575094,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575094,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575095,
+      "listening": {
+        "listening": 365575095,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575095,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575095,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575096,
+      "listening": {
+        "listening": 365575096,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575096,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575096,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575097,
+      "listening": {
+        "listening": 365575097,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575097,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575097,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575098,
+      "listening": {
+        "listening": 365575098,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575098,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575098,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575099,
+      "listening": {
+        "listening": 365575099,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575099,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575099,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575100,
+      "listening": {
+        "listening": 365575100,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575100,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575100,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575101,
+      "listening": {
+        "listening": 365575101,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575101,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575101,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575102,
+      "listening": {
+        "listening": 365575102,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575102,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575102,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575103,
+      "listening": {
+        "listening": 365575103,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575103,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575103,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575104,
+      "listening": {
+        "listening": 365575104,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575104,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575104,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575105,
+      "listening": {
+        "listening": 365575105,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575105,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575105,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575106,
+      "listening": {
+        "listening": 365575106,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575106,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575106,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 10.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575107,
+      "listening": {
+        "listening": 365575107,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575107,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575107,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 10.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_all",
+      "mask": 768,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575108,
+      "listening": {
+        "listening": 365575108,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575108,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575108,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 10.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575109,
+      "listening": {
+        "listening": 365575109,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575109,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575109,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575110,
+      "listening": {
+        "listening": 365575110,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575110,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575110,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575111,
+      "listening": {
+        "listening": 365575111,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575111,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575111,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575112,
+      "listening": {
+        "listening": 365575112,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575112,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575112,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575113,
+      "listening": {
+        "listening": 365575113,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575113,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575113,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575114,
+      "listening": {
+        "listening": 365575114,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575114,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575114,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575115,
+      "listening": {
+        "listening": 365575115,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575115,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575115,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575116,
+      "listening": {
+        "listening": 365575116,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575116,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575116,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575117,
+      "listening": {
+        "listening": 365575117,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575117,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575117,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575118,
+      "listening": {
+        "listening": 365575118,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575118,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575118,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575119,
+      "listening": {
+        "listening": 365575119,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575119,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575119,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575120,
+      "listening": {
+        "listening": 365575120,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575120,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575120,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575121,
+      "listening": {
+        "listening": 365575121,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575121,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575121,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575122,
+      "listening": {
+        "listening": 365575122,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575122,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575122,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575123,
+      "listening": {
+        "listening": 365575123,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575123,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575123,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575124,
+      "listening": {
+        "listening": 365575124,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575124,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575124,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 10.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575125,
+      "listening": {
+        "listening": 365575125,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575125,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575125,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 11.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_bulk_spi8",
+      "mask": 256,
+      "spi_mhz": 8,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575126,
+      "listening": {
+        "listening": 365575126,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575126,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575126,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575127,
+      "listening": {
+        "listening": 365575127,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575127,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575127,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575128,
+      "listening": {
+        "listening": 365575128,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575128,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575128,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575129,
+      "listening": {
+        "listening": 365575129,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575129,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575129,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 12.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575130,
+      "listening": {
+        "listening": 365575130,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575130,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575130,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575131,
+      "listening": {
+        "listening": 365575131,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575131,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575131,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575132,
+      "listening": {
+        "listening": 365575132,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575132,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575132,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575133,
+      "listening": {
+        "listening": 365575133,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575133,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575133,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575134,
+      "listening": {
+        "listening": 365575134,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575134,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575134,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575135,
+      "listening": {
+        "listening": 365575135,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575135,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575135,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575136,
+      "listening": {
+        "listening": 365575136,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575136,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575136,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575137,
+      "listening": {
+        "listening": 365575137,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575137,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575137,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 13.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575138,
+      "listening": {
+        "listening": 365575138,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575138,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575138,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575139,
+      "listening": {
+        "listening": 365575139,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575139,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575139,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575140,
+      "listening": {
+        "listening": 365575140,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575140,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575140,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575141,
+      "listening": {
+        "listening": 365575141,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 2,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575141,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575141,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575142,
+      "listening": {
+        "listening": 365575142,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575142,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575142,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 11.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575143,
+      "listening": {
+        "listening": 365575143,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575143,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575143,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 10.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_fast_rx",
+      "mask": 512,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575144,
+      "listening": {
+        "listening": 365575144,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 1,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575144,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575144,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575145,
+      "listening": {
+        "listening": 365575145,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575145,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575145,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575146,
+      "listening": {
+        "listening": 365575146,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575146,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575146,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575147,
+      "listening": {
+        "listening": 365575147,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575147,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575147,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575148,
+      "listening": {
+        "listening": 365575148,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575148,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575148,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 14.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575149,
+      "listening": {
+        "listening": 365575149,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575149,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575149,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 13.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 7,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575150,
+      "listening": {
+        "listening": 365575150,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575150,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575150,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 13.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575151,
+      "listening": {
+        "listening": 365575151,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575151,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575151,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575152,
+      "listening": {
+        "listening": 365575152,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575152,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575152,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575153,
+      "listening": {
+        "listening": 365575153,
+        "profile": 0,
+        "sf500": 8,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575153,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575153,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575154,
+      "listening": {
+        "listening": 365575154,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575154,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575154,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575155,
+      "listening": {
+        "listening": 365575155,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575155,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575155,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 12.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 8,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575156,
+      "listening": {
+        "listening": 365575156,
+        "profile": 1,
+        "sf500": 8,
+        "preamble": 88,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575156,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575156,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -39.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 16,
+      "sequence": 365575157,
+      "listening": {
+        "listening": 365575157,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575157,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575157,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 64,
+      "sequence": 365575158,
+      "listening": {
+        "listening": 365575158,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575158,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575158,
+        "len": 64,
+        "valid": true,
+        "profile": 0,
+        "rssi": -42.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 0,
+      "length": 255,
+      "sequence": 365575159,
+      "listening": {
+        "listening": 365575159,
+        "profile": 0,
+        "sf500": 9,
+        "preamble": 32,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575159,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575159,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -41.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 16,
+      "sequence": 365575160,
+      "listening": {
+        "listening": 365575160,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575160,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575160,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -40.0,
+        "snr": 11.0,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 64,
+      "sequence": 365575161,
+      "listening": {
+        "listening": 365575161,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575161,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575161,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 11.2,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 2,
+      "sf500": 9,
+      "target": 1,
+      "length": 255,
+      "sequence": 365575162,
+      "listening": {
+        "listening": 365575162,
+        "profile": 1,
+        "sf500": 9,
+        "preamble": 48,
+        "optimized_rx_resumes": 0,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 365575162,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      },
+      "received": {
+        "received": 365575162,
+        "len": 255,
+        "valid": true,
+        "profile": 1,
+        "rssi": -41.0,
+        "snr": 10.8,
+        "rx_errors": 0
+      },
+      "payload_valid": true,
+      "valid": true
+    }
+  ],
+  "scope": "Stationary short-range payload checks, not sensitivity/PER qualification"
+}

@@ -1,0 +1,176 @@
+{
+  "schema": 5,
+  "experiment": "rx_after_profile_switch_packets",
+  "receiver": "COM31",
+  "sender": "COM28",
+  "power_dbm": 0,
+  "complete": false,
+  "trials": [
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 16,
+      "sequence": 1,
+      "listening": {
+        "listening": 1,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 1,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 1,
+        "len": 16,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 12.0,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 64,
+      "sequence": 2,
+      "listening": {
+        "listening": 2,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 2,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 2,
+        "timeout": true,
+        "valid": false,
+        "rx_errors": 0,
+        "irq": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "valid": false
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 0,
+      "length": 255,
+      "sequence": 3,
+      "listening": {
+        "listening": 3,
+        "profile": 0,
+        "sf500": 7,
+        "preamble": 32,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 3,
+        "len": 255,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 3,
+        "len": 255,
+        "valid": true,
+        "profile": 0,
+        "rssi": -33.0,
+        "snr": 11.8,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 16,
+      "sequence": 4,
+      "listening": {
+        "listening": 4,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 4,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 4,
+        "len": 16,
+        "valid": true,
+        "profile": 1,
+        "rssi": -32.0,
+        "snr": 13.5,
+        "rx_errors": 0
+      },
+      "valid": true
+    },
+    {
+      "case": "production_batch",
+      "mask": 0,
+      "spi_mhz": 2,
+      "round": 1,
+      "sf500": 7,
+      "target": 1,
+      "length": 64,
+      "sequence": 5,
+      "listening": {
+        "listening": 5,
+        "profile": 1,
+        "sf500": 7,
+        "preamble": 120,
+        "setup_deferrals": 0
+      },
+      "sent": {
+        "sent": 5,
+        "len": 64,
+        "rc": 0,
+        "power_dbm": 0
+      },
+      "received": {
+        "received": 5,
+        "len": 64,
+        "valid": true,
+        "profile": 1,
+        "rssi": -32.0,
+        "snr": 13.2,
+        "rx_errors": 0
+      },
+      "valid": true
+    }
+  ],
+  "scope": "Stationary short-range payload checks, not sensitivity/PER qualification"
+}

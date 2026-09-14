@@ -2,7 +2,7 @@
 
 #ifdef SENSECAP_INDICATOR_LORA
 
-IndicatorRadioHal::IndicatorRadioHal(SPIClass& spi) : ArduinoHal(spi) {}
+IndicatorRadioHal::IndicatorRadioHal(SPIClass& spi) : ESP32BufferedRadioHal(spi) {}
 
 bool IndicatorRadioHal::isExpanderPin(uint32_t pin) {
   return pin != RADIOLIB_NC && (pin & EXPANDER_FLAG) != 0;

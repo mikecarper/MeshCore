@@ -3,3 +3,10 @@ tools/lora_ota/rak3401_terminal_ota_backport.patch whitespace=-blank-at-eol,-bla
 
 # Empty final TSV columns are data, not accidental trailing whitespace.
 docs/releases/1.17.1.5-variant-map.tsv whitespace=-blank-at-eol
+
+# Preserve byte-exact radio-lab captures so published SHA-256 values remain
+# valid across Windows and Linux checkouts. CRLF in these captures is data.
+tools/hil/profile_switch*.json -text whitespace=cr-at-eol
+tools/hil/preamble_stationary*.json -text whitespace=cr-at-eol
+tools/hil/sf6_125*.json -text whitespace=cr-at-eol
+tools/hil/sf8_125*.json -text whitespace=cr-at-eol

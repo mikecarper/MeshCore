@@ -4,13 +4,13 @@
 #include <SPI.h>
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
-#include <hal/Arduino/ArduinoHal.h>
+#include <helpers/radiolib/ESP32BufferedRadioHal.h>
 
 // RadioLib HAL for the Indicator's SX1262. Four radio signals are routed
 // through a TCA9535 instead of ordinary ESP32 GPIOs. The expander's shared,
 // active-low interrupt output is polled from normal task context so I2C is
 // never touched by an ISR.
-class IndicatorRadioHal : public ArduinoHal {
+class IndicatorRadioHal : public ESP32BufferedRadioHal {
 public:
   explicit IndicatorRadioHal(SPIClass& spi);
 

@@ -3,6 +3,11 @@
 #include <RadioLib.h>
 #include "MeshCore.h"
 #include "RXPowerSaving.h"
+#include "SX1262ProfileSwitchState.h"
+
+#ifndef MC_SX1262_FAST_PROFILE_SWITCH
+#define MC_SX1262_FAST_PROFILE_SWITCH 0
+#endif
 
 #ifndef SX126X_TX_BUSY_TIMEOUT_MS
 #define SX126X_TX_BUSY_TIMEOUT_MS              1000UL
@@ -15,18 +20,148 @@ class CustomSX1262 : public SX1262 {
   bool _headerSeen = false;
   bool _rx_ps_rf_rx_disabled = false;
   uint32_t _rxDutyCycleTransitionUs = 1000;
+  SX1262ProfileSwitchState _profileSwitch{MC_SX1262_FAST_PROFILE_SWITCH != 0};
+  uint32_t _profileFastResumes = 0;
+  bool _coldStandby = true;
+  bool _tcxoWakePending = false;
 
   public:
     CustomSX1262(Module *mod) : SX1262(mod) { }
+
+    void setProfileSwitchOptimization(bool enabled) {
+      _profileSwitch.enabled = enabled;
+      _profileSwitch.invalidate();
+    }
+    void beginProfileSwitch(bool continuousRx) { _profileSwitch.begin(continuousRx, standbyXOSC); }
+    void endProfileSwitch(bool success) { _profileSwitch.end(success); }
+    bool profileSwitchFailed() const { return _profileSwitch.failed(); }
+    uint32_t getOptimizedProfileSwitches() const { return _profileFastResumes; }
+
+    int16_t restoreTcxoAfterSleep() {
+      if (!_tcxoWakePending) return RADIOLIB_ERR_NONE;
+      // Both RC and warm policies showed a wake-only XOSC error on the WIO
+      // module. Restore the existing DIO3 voltage/delay, never disable TCXO.
+      // RadioLib clears XOSC_START_ERR here; do not hide unrelated faults.
+      if (getDeviceErrors() & ~RADIOLIB_SX126X_XOSC_START_ERR) return RADIOLIB_ERR_SPI_CMD_FAILED;
+      _tcxoWakePending = false; // setTCXO calls our explicit standby override
+      const int16_t rc = SX1262::setTCXO(tcxoVoltage, tcxoDelay);
+      if (rc != RADIOLIB_ERR_NONE) _tcxoWakePending = true;
+      return rc;
+    }
+
+    int16_t standby() override {
+      const bool alreadyAwake = !_coldStandby && _profileSwitch.active && _profileSwitch.rxValid;
+      if (!alreadyAwake) _profileSwitch.invalidate();
+      int16_t rc = alreadyAwake
+          ? SX1262::standby(RADIOLIB_SX126X_STANDBY_XOSC, false)
+          : _coldStandby ? SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) : SX1262::standby();
+      if (rc == RADIOLIB_ERR_NONE) rc = restoreTcxoAfterSleep();
+      if (rc != RADIOLIB_ERR_NONE) _coldStandby = true;
+      _profileSwitch.standbyResult(rc);
+      return rc;
+    }
+    int16_t standby(uint8_t mode) override {
+      _profileSwitch.invalidate();
+      int16_t rc = SX1262::standby(mode);
+      if (rc == RADIOLIB_ERR_NONE) rc = restoreTcxoAfterSleep();
+      if (mode == RADIOLIB_SX126X_STANDBY_RC || rc != RADIOLIB_ERR_NONE) _coldStandby = true;
+      _profileSwitch.standbyResult(rc);
+      return rc;
+    }
+    // SetSleep is only valid from standby (SX1261/2 datasheet 13.1.1).
+    // ResetAGC may call us directly from RX. Use RC for sleep entry/wake,
+    // retaining the requested warm policy for subsequent established RX.
+    int16_t sleep() override { return sleep(true); }
+    int16_t sleep(bool retainConfig) {
+      _profileSwitch.invalidate();
+      _coldStandby = true;
+      const int16_t rc = SX1262::standby(RADIOLIB_SX126X_STANDBY_RC);
+      _tcxoWakePending = tcxoVoltage > 0.0f;
+      return rc == RADIOLIB_ERR_NONE ? SX1262::sleep(retainConfig) : rc;
+    }
+    int16_t reset(bool verify = true) { _profileSwitch.invalidate(); _coldStandby = true; _tcxoWakePending = false; return SX1262::reset(verify); }
+    int16_t stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) override {
+      // All ordinary RX/TX staging rebuilds hardware state. In particular TX
+      // changes IRQ mapping, packet length and buffer contents/base settings.
+      _profileSwitch.invalidate();
+      return SX1262::stageMode(mode, cfg);
+    }
+    int16_t setPreambleLength(size_t symbols) override {
+      if (_profileSwitch.canResumeFast()) {
+        // The owned hop will commit the complete packet tuple once, in RX
+        // resume. A failed hop discards this capability before rollback.
+        preambleLengthLoRa = symbols;
+        return RADIOLIB_ERR_NONE;
+      }
+      return SX1262::setPreambleLength(symbols);
+    }
+
+    // Apply one complete LoRa modulation tuple instead of three separate
+    // SetModulationParams commands. Keep RadioLib's caches and automatic LDRO
+    // calculation consistent with its ordinary SF/BW/CR setters. Caller must
+    // own a safe standby/reconfigure window, just as for those setters.
+    int16_t setLoRaModulationParams(float bw, uint8_t sf, uint8_t cr) {
+      if (sf < 5 || sf > 12) return RADIOLIB_ERR_INVALID_SPREADING_FACTOR;
+      if (cr < 4 || cr > 8) return RADIOLIB_ERR_INVALID_CODING_RATE;
+      if (!isfinite(bw)) return RADIOLIB_ERR_INVALID_BANDWIDTH;
+      static constexpr float bandwidths[] = {7.8f, 10.4f, 15.6f, 20.8f, 31.25f,
+                                             41.7f, 62.5f, 125.0f, 250.0f, 500.0f};
+      static constexpr uint8_t codes[] = {
+        RADIOLIB_SX126X_LORA_BW_7_8, RADIOLIB_SX126X_LORA_BW_10_4,
+        RADIOLIB_SX126X_LORA_BW_15_6, RADIOLIB_SX126X_LORA_BW_20_8,
+        RADIOLIB_SX126X_LORA_BW_31_25, RADIOLIB_SX126X_LORA_BW_41_7,
+        RADIOLIB_SX126X_LORA_BW_62_5, RADIOLIB_SX126X_LORA_BW_125_0,
+        RADIOLIB_SX126X_LORA_BW_250_0, RADIOLIB_SX126X_LORA_BW_500_0};
+      size_t index = 0;
+      while (index < sizeof(bandwidths) / sizeof(bandwidths[0])
+          && fabsf(bw - bandwidths[index]) >= 0.01f) ++index;
+      if (index == sizeof(bandwidths) / sizeof(bandwidths[0])) {
+        return RADIOLIB_ERR_INVALID_BANDWIDTH;
+      }
+      if (getPacketType() != RADIOLIB_SX126X_PACKET_TYPE_LORA) {
+        return RADIOLIB_ERR_WRONG_MODEM;
+      }
+
+      const auto oldSf = spreadingFactor;
+      const auto oldBw = bandwidth;
+      const auto oldBwKhz = bandwidthKhz;
+      const auto oldCr = codingRate;
+      const auto oldLdro = ldrOptimize;
+      spreadingFactor = sf;
+      bandwidth = codes[index];
+      bandwidthKhz = bw;
+      codingRate = cr - 4;  // ordinary LoRa CR, not long-interleaving encoding
+      const int16_t state = setModulationParams(sf, bandwidth, codingRate, ldrOptimize);
+      if (state != RADIOLIB_ERR_NONE) {
+        // The wrapper restores the physical tuple after a failed command.
+        // Do not publish a new software tuple when hardware success is unknown.
+        spreadingFactor = oldSf;
+        bandwidth = oldBw;
+        bandwidthKhz = oldBwKhz;
+        codingRate = oldCr;
+        ldrOptimize = oldLdro;
+      }
+      return state;
+    }
 
     // Apply the measured TCXO delay on every initialization, including recovery.
     int16_t begin(float freq = 434.0, float bw = 125.0, uint8_t sf = 9, uint8_t cr = 7,
                   uint8_t syncWord = RADIOLIB_SX126X_SYNC_WORD_PRIVATE, int8_t power = 10,
                   uint16_t preambleLength = 8, float tcxoVoltage = 1.6,
                   bool useRegulatorLDO = false) {
+      _profileSwitch.invalidate();
+      // A held dual-profile oscillator must not be selected during reset or
+      // setup, before DIO3/TCXO configuration has been restored. Restore the
+      // software standby policy on both success and failure; only subsequent
+      // standby/RX commands can actually turn the oscillator back on.
+      const bool savedStandbyXosc = standbyXOSC;
+      _coldStandby = true;
+      _tcxoWakePending = false;
+      standbyXOSC = false;
       int16_t state = SX1262::begin(freq, bw, sf, cr, syncWord, power, preambleLength,
                                     tcxoVoltage, useRegulatorLDO);
       if (state == RADIOLIB_ERR_NONE) state = applyMeshCoreTcxoDelay();
+      standbyXOSC = savedStandbyXosc;
       return state;
     }
 
@@ -179,6 +314,8 @@ class CustomSX1262 : public SX1262 {
     int16_t startReceiveDutyCycle(uint32_t rxPeriod, uint32_t sleepPeriod,
                                   RadioLibIrqFlags_t irqFlags = RADIOLIB_IRQ_RX_DEFAULT_FLAGS,
                                   RadioLibIrqFlags_t irqMask = RADIOLIB_IRQ_RX_DEFAULT_MASK) {
+      _profileSwitch.invalidate();
+      _coldStandby = true;
       int16_t state = SX1262::startReceiveDutyCycle(rxPeriod, sleepPeriod, irqFlags, irqMask);
       if (state == RADIOLIB_ERR_NONE && !_rx_ps_rf_rx_disabled) {
         // RadioLib stages RX duty-cycle through standby, which leaves a
@@ -271,12 +408,38 @@ class CustomSX1262 : public SX1262 {
     }
 
     int16_t startReceive() override {
+      if (_profileSwitch.canResumeFast()) {
+        // Existing continuous RX already established buffer bases and the
+        // MeshCore IRQ map (including preamble detection). No TX/CAD/sleep/
+        // reset/staging may intervene without revoking that context.
+        _profileSwitch.rxValid = false;  // fail closed on any command error
+        int16_t rc = clearIrqStatus();
+        if (rc == RADIOLIB_ERR_NONE) {
+          rc = setPacketParams(preambleLengthLoRa, crcTypeLoRa, implicitLen,
+                               headerType, invertIQEnabled);
+        }
+        if (rc == RADIOLIB_ERR_NONE) {
+          rxTimeout = RADIOLIB_SX126X_RX_TIMEOUT_INF;
+          getMod()->setRfSwitchState(Module::MODE_RX);
+          rc = setRx(rxTimeout);  // original BUSY waits and status checks
+        }
+        stagedMode = RADIOLIB_RADIO_MODE_NONE;
+        if (rc == RADIOLIB_ERR_NONE) ++_profileFastResumes;
+        _coldStandby = rc != RADIOLIB_ERR_NONE;
+        _profileSwitch.rxResult(rc, true);
+        return rc;
+      }
       // Make preamble detection visible to CAD while retaining RadioLib's
       // normal RX-complete and error events.
-      return SX1262::startReceive(
+      const int16_t rc = SX1262::startReceive(
           RADIOLIB_SX126X_RX_TIMEOUT_INF,
           RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED),
           RADIOLIB_IRQ_RX_DEFAULT_MASK, 0);
+      const bool reusable = rc == RADIOLIB_ERR_NONE && _profileSwitch.enabled
+          && getPacketType() == RADIOLIB_SX126X_PACKET_TYPE_LORA;
+      _coldStandby = rc != RADIOLIB_ERR_NONE;
+      _profileSwitch.rxResult(rc, reusable);
+      return rc;
     }
 
     bool isReceiving() {

@@ -10,8 +10,29 @@
 #endif
 
 class CustomSX1262Wrapper : public RadioLibWrapper {
+  bool _profile_standby_held = false;
+  bool _saved_standby_xosc = false;
+
 protected:
   int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+  void beginProfileRetune(bool continuousRx) override {
+    static_cast<CustomSX1262*>(_radio)->beginProfileSwitch(continuousRx);
+  }
+  void endProfileRetune(bool success) override {
+    static_cast<CustomSX1262*>(_radio)->endProfileSwitch(success);
+  }
+
+  void setProfileStandbyWarm(bool enabled) override {
+    if (enabled == _profile_standby_held) return;
+    auto* radio = static_cast<CustomSX1262*>(_radio);
+    if (enabled) {
+      _saved_standby_xosc = radio->standbyXOSC;
+      radio->standbyXOSC = true;
+    } else {
+      radio->standbyXOSC = _saved_standby_xosc;
+    }
+    _profile_standby_held = enabled;
+  }
 
 public:
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
@@ -30,10 +51,9 @@ protected:
   }
 
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    if (static_cast<CustomSX1262*>(_radio)->profileSwitchFailed()) return false;
     bool success = ((CustomSX1262 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
-        && ((CustomSX1262 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
-        && ((CustomSX1262 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
-        && ((CustomSX1262 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
+        && ((CustomSX1262 *)_radio)->setLoRaModulationParams(bw, sf, cr) == RADIOLIB_ERR_NONE
         && updatePreamble(sf, bw);
     if (!success) return false;
 

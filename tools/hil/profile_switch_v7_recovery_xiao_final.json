@@ -1,0 +1,221 @@
+{
+  "schema": 7,
+  "port": "COM31",
+  "complete": true,
+  "reconnects": 20,
+  "lost_reply": {
+    "sent": 900001,
+    "len": 16,
+    "rc": 0,
+    "power_dbm": -9,
+    "spi_mhz": 8,
+    "bulk": true,
+    "transport_recovered": true
+  },
+  "late_reply": {
+    "sent": 900002,
+    "len": 16,
+    "rc": 0,
+    "power_dbm": -9,
+    "spi_mhz": 8,
+    "bulk": true,
+    "stale_replies": [
+      {
+        "sent": 900001,
+        "len": 16,
+        "rc": 0,
+        "power_dbm": -9,
+        "spi_mhz": 8,
+        "bulk": true
+      }
+    ]
+  },
+  "lifecycle": {
+    "lifecycle": true,
+    "spi_mhz": 8,
+    "bulk": true,
+    "checks": [
+      {
+        "operation": "tx",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "cad",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "reset",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_rc",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 0,
+        "fallback_fast": 0,
+        "resumed_fast": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_retcxo",
+        "round": 1,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "tx",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "cad",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "reset",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_rc",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 0,
+        "fallback_fast": 0,
+        "resumed_fast": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_retcxo",
+        "round": 2,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "tx",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "cad",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "reset",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_rc",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 0,
+        "fallback_fast": 0,
+        "resumed_fast": 0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      {
+        "operation": "sleep_retcxo",
+        "round": 3,
+        "rc": 0,
+        "initial_fast": 1,
+        "fallback_fast": 0,
+        "resumed_fast": 1,
+        "rx_mode": 1,
+        "device_errors": 0
+      }
+    ],
+    "reboot_required": true
+  }
+}

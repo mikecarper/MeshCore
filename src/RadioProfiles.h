@@ -38,10 +38,11 @@ class RadioProfiles {
   static constexpr uint8_t MinFastListenSymbols = 4;
   static constexpr uint8_t AcquisitionSymbols = 8;
   static constexpr uint16_t MaxPreamble = 65528;
-  // The mixed-profile bench tests measured ~1.2 ms/visit with fast RX. Normal
-  // drivers may wake a TCXO; production V4 measured up to 4.4 ms. Budget
-  // 6 ms per change plus 4 ms of loop jitter. Packet receptions can extend
-  // a visit; these budgets describe an otherwise idle scan.
+  // The integrated fast RX/buffered-SPI path measures ~0.549 ms/hop on XIAO
+  // and ~8.263 ms on Indicator (expander GPIO), excluding application scheduling.
+  // Keep existing defaults unchanged during board/application qualification.
+  // Thus 6 ms is not an upper bound: board-specific budgeting needs follow-up.
+  // Packet receptions can extend a visit; these budgets describe an idle scan.
   static constexpr uint32_t SwitchBudgetUs = 6000;
   static constexpr uint32_t LoopBudgetUs = 4000;
 

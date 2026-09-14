@@ -235,23 +235,48 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
       && _physical_preamble == preamble) return mesh::RadioParamApplyResult::APPLIED;
   if (!validateProfile(p)) return mesh::RadioParamApplyResult::FAILED;
   const uint32_t started = micros();
+  beginProfileRetune(isInRecvMode() && !_rx_ps_armed && !_rx_ps_enabled);
   const uint8_t resume = beginReconfigure();
-  if (resume > 1) return mesh::RadioParamApplyResult::BUSY;
+  if (resume > 1) {
+    endProfileRetune(true);  // guard deferred before changing hardware
+    return mesh::RadioParamApplyResult::BUSY;
+  }
+  const float old_freq = _cur_freq, old_bw = _cur_bw;
+  const uint8_t old_sf = _cur_sf, old_cr = _cur_cr, old_profile = _active_profile;
+  const uint32_t old_generation = _profile_generation;
+  const bool old_refresh = _profile_refresh_required;
+  const bool old_params_valid = _params_valid;
   const uint16_t old_preamble = _physical_preamble;
   _physical_preamble = preamble;
-  const bool applied = applyParams(p.freq, p.bw, p.sf, p.cr);
+  bool applied = applyParams(p.freq, p.bw, p.sf, p.cr);
   if (applied) {
     cacheParams(p.freq, p.bw, p.sf, p.cr);
     _active_profile = profile;
     _profile_generation = _profiles.generation[profile];
     _profile_refresh_required = false;
+    endReconfigure(resume);
+    applied = !resume || isInRecvMode();
+  }
+  endProfileRetune(applied);
+  if (applied) {
     ++_profiles.switches;
   } else {
     ++_profiles.switch_failures;
+    // RX restart is part of the transaction, not merely a best-effort tail.
+    // Revoke any fast-RX capability and restore both the physical tuple and
+    // published profile on an apply or receive-resume failure.
+    cacheParams(old_freq, old_bw, old_sf, old_cr);
+    _params_valid = old_params_valid;
+    _active_profile = old_profile;
+    _profile_generation = old_generation;
+    _profile_refresh_required = old_refresh;
     _physical_preamble = old_preamble;
-    if (!applyParams(_cur_freq, _cur_bw, _cur_sf, _cur_cr)) restoreAfterDeepInit();
+    bool restored = old_params_valid && _radio->standby() == RADIOLIB_ERR_NONE
+        && applyParams(old_freq, old_bw, old_sf, old_cr);
+    if (!restored) restored = restoreAfterDeepInit();
+    if (restored) endReconfigure(resume);
+    if (!restored || (resume && !isInRecvMode())) _profile_refresh_required = true;
   }
-  endReconfigure(resume);
   _profile_visit_us = micros();
   const uint32_t elapsed = _profile_visit_us - started;
   if (elapsed > _profiles.longest_switch_us) _profiles.longest_switch_us = elapsed;
@@ -278,6 +303,7 @@ void RadioLibWrapper::serviceProfileScan() {
     _nf_calib_active = false;
     _noise_floor_valid = false;  // a single-channel floor cannot describe both channels
     _profile_refresh_required = true; // refresh side detectors even if the tuple is unchanged
+    setProfileStandbyWarm(true);
     endReconfigure(resume);
   }
   uint8_t target = _active_profile;
@@ -308,6 +334,7 @@ void RadioLibWrapper::serviceProfileScan() {
     _rx_ps_enabled = _profile_saved_rxps;
     _profile_rxps_suspended = false;
     _profile_refresh_required = true;
+    setProfileStandbyWarm(false);
     recalibrateNoiseFloor();
     endReconfigure(resume);
   }
