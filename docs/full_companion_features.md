@@ -23,7 +23,8 @@ for the corrected download; the earlier `aa20e927` Wireless Paper image has
 
 Close the app or serial monitor using the USB port, then open a terminal at
 115200 baud, or use the [USB web console](https://flasher.meshcore.io/console).
-A fresh Full Companion boot starts in ASCII text mode. If it is already in Binary
+A fresh Full Companion boot or observable USB session reset starts in ASCII
+text mode. If it is already in Binary
 Companion mode, send this line once and wait for the terminal banner:
 
 ```text

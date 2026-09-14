@@ -503,9 +503,9 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
         ]
         self.assertIn("mesh::takeUsbTerminalSessionReset()", reset_service)
         self.assertIn("mesh::tryCompleteUsbTerminalSessionReset()", reset_service)
-        self.assertIn("resetUsbTerminalHostSession(false);", reset_service)
+        self.assertIn("resetUsbTerminalHostSession();", reset_service)
         self.assertLess(
-            reset_service.index("resetUsbTerminalHostSession(false);"),
+            reset_service.index("resetUsbTerminalHostSession();"),
             reset_service.index("mesh::tryCompleteUsbTerminalSessionReset()"),
         )
         self.assertIn("leaveUsbMotaMode(false);", reset_helper)
@@ -513,6 +513,7 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
         self.assertIn("usb_serial_interface.setPassthroughMode(false);", reset_helper)
         self.assertIn("clearUsbTerminalLine();", reset_helper)
         self.assertIn("usb_binary_startup_probe.cancel();", reset_helper)
+        self.assertIn("usb_ascii_session_default.request(", reset_helper)
         self.assertIn("usb_terminal_host_reset_completion_pending", reset_service)
         self.assertIn("cancelUsbSerialOperations();", reset_helper)
         usb_cancel = main[

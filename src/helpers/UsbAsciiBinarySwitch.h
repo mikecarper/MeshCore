@@ -215,7 +215,7 @@ public:
   }
 };
 
-// Coordinates the Full Companion USB startup handoff without consuming the
+// Coordinates the Companion USB startup handoff without consuming the
 // '<' byte. ArduinoSerialInterface remains the only binary protocol parser.
 class UsbBinaryStartupProbe {
 public:
@@ -268,6 +268,34 @@ public:
       return Result::RETURN_TO_ASCII;
     }
     return Result::WAITING;
+  }
+};
+
+// A new physical/data session starts in ASCII after the old transport has
+// been cleaned. A network terminal may temporarily own the CLI; a complete
+// USB frame received while it does is an explicit choice of Binary mode.
+class UsbAsciiSessionDefault {
+  bool _pending = false;
+  uint32_t _frame_count_at_reset = 0;
+
+public:
+  void request(uint32_t completed_frame_count) {
+    _pending = true;
+    _frame_count_at_reset = completed_frame_count;
+  }
+
+  void cancel() { _pending = false; }
+
+  bool shouldRestore(bool transport_ready, bool network_terminal_active,
+                     uint32_t completed_frame_count) {
+    if (!_pending) return false;
+    if (completed_frame_count != _frame_count_at_reset) {
+      _pending = false;
+      return false;
+    }
+    if (!transport_ready || network_terminal_active) return false;
+    _pending = false;
+    return true;
   }
 };
 

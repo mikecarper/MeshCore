@@ -83,9 +83,15 @@ password fields masked; explicit local CLI getters return their values.
 
 ## Companion USB mode
 
-An ordinary Companion USB build starts in the normal binary Companion protocol
-at 115200 baud. Use this command to switch the same USB connection into terminal
-mode as soon as `picocom` opens it:
+Updated 1.17.1.6 USB Companion builds, including ordinary and Full builds, start
+in ASCII at 115200 baud. A valid framed app command automatically selects Binary
+Companion. You can open a terminal without a start token:
+
+```sh
+picocom --baud 115200 /dev/ttyACM0
+```
+
+For older firmware or a port already in Binary mode, use:
 
 ```sh
 picocom --baud 115200 \
@@ -119,10 +125,11 @@ Send the following exact sequence to return to the binary protocol:
 +++MESHCORE-TERM-STOP
 ```
 
-Closing the serial connection also returns native-USB devices to binary mode.
-Boards whose USB connector is implemented by a USB-to-UART bridge cannot
-observe the host closing the port; on those boards, use the stop sequence or
-reboot the device.
+An observable USB session reset restores ASCII after clearing the previous
+client's state. Native USB with DTR can detect a terminal closing; ESP32 hardware
+USB Serial/JTAG detects bus resets and physical host loss. USB-to-UART bridges
+usually cannot detect a terminal closing. Use the start token on ports that
+remain in Binary mode; idle time does not select ASCII.
 
 Both modes use the same port at 115200. Selecting 57600 is not a portable mode
 switch: native USB CDC devices ignore the requested baud, while USB-to-UART
@@ -130,10 +137,9 @@ devices really change the UART timing and receive corrupt data. Binary mode is
 the framed Companion API used by apps and `meshcli`; close the terminal before
 opening that port from an app.
 
-Full Companion differs: its primary USB interface starts in ASCII after boot
-and automatically switches when it sees a complete `<`-prefixed Companion
-frame at an empty prompt. The explicit start/stop tokens remain available. See
-[Full Companion USB CLI and binary switcher](./full_companion_usb_switcher.md)
+All USB Companion builds automatically switch when they see a complete
+`<`-prefixed Companion frame at an empty prompt. The explicit start/stop tokens
+remain available. See [Companion USB CLI and binary switcher](./full_companion_usb_switcher.md)
 for the state machine and limitations.
 
 ## Commands

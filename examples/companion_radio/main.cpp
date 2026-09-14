@@ -474,11 +474,10 @@ static void serviceCompanionPowerSaving(bool force = false) {
 static char usb_terminal_line[MAX_TRANS_UNIT * 2 + 32];
 static size_t usb_terminal_line_len = 0;
 static bool usb_terminal_discard_line = false;
-static bool usb_terminal_disconnect_armed = false;
+static bool usb_host_session_connected = false;
 static bool usb_logging_terminal_mode = false;
-#if defined(COMPANION_RADIO_FULL)
 static mesh::UsbBinaryStartupProbe usb_binary_startup_probe;
-#endif
+static mesh::UsbAsciiSessionDefault usb_ascii_session_default;
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
 static bool usb_mota_mode = false;
 static char usb_mota_line[32];
@@ -597,15 +596,13 @@ static void cancelUsbSerialOperations() {
 }
 
 static void enterUsbTerminalMode() {
-#if defined(COMPANION_RADIO_FULL)
   usb_binary_startup_probe.cancel();
-#endif
+  usb_ascii_session_default.cancel();
   cancelUsbSerialOperations();
   mesh::discardUsbTerminalOutput();
   usb_serial_interface.setPassthroughMode(true);
   clearUsbTerminalLine();
   usb_terminal_discard_line = false;
-  usb_terminal_disconnect_armed = isUsbTerminalDataConnected();
   usb_logging_terminal_mode = false;
   the_mesh.enterTerminalMode();
 }
@@ -626,7 +623,6 @@ static void leaveUsbTerminalMode(bool acknowledge) {
   usb_serial_interface.setPassthroughMode(false);
   clearUsbTerminalLine();
   usb_terminal_discard_line = false;
-  usb_terminal_disconnect_armed = false;
   usb_logging_terminal_mode = false;
 }
 
@@ -740,52 +736,29 @@ static void serviceUsbMota() {
 static bool usb_terminal_host_reset_completion_pending = false;
 static uint32_t usb_terminal_host_reset_retry_at = 0;
 
-static void resetUsbTerminalHostSession(bool preserve_ascii_terminal) {
+static void resetUsbTerminalHostSession() {
   // Stop only work routed to the old USB host; a simultaneous BLE/WiFi
   // transaction is independent and must continue. Clear the route after
   // stopping its producer so no response can fall back to another transport.
   cancelUsbSerialOperations();
   the_mesh.resetUsbHostSessionInput();
-  bool protocol_owner_reset = false;
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
   if (usb_mota_mode) {
     leaveUsbMotaMode(false);
-    protocol_owner_reset = true;
   }
 #endif
-  if (!protocol_owner_reset && the_mesh.isTerminalMode()) {
-    if (preserve_ascii_terminal) {
-      // Full Companion's ordinary HWCDC terminal is the default protocol.
-      // Clear the old host's input/output without turning the next physical
-      // session into a silent Binary-only port.
-      the_mesh.resetTerminalSession();
-      mesh::discardUsbTerminalOutput();
-      clearUsbTerminalLine();
-      usb_terminal_discard_line = false;
-      usb_terminal_disconnect_armed = false;
-#if defined(COMPANION_RADIO_FULL)
-      usb_binary_startup_probe.cancel();
-#endif
-    } else {
-      leaveUsbTerminalMode(false);
-    }
-    protocol_owner_reset = true;
-  }
-
-  if (!protocol_owner_reset) {
-    mesh::discardUsbTerminalOutput();
-    usb_serial_interface.setPassthroughMode(false);
-    clearUsbTerminalLine();
-    usb_terminal_discard_line = false;
-    usb_terminal_disconnect_armed = false;
-    usb_logging_terminal_mode = false;
-#if defined(COMPANION_RADIO_FULL)
-    usb_binary_startup_probe.cancel();
-#endif
-  }
+  if (the_mesh.isTerminalMode()) leaveUsbTerminalMode(false);
+  mesh::discardUsbTerminalOutput();
+  usb_serial_interface.setPassthroughMode(false);
+  clearUsbTerminalLine();
+  usb_terminal_discard_line = false;
+  usb_logging_terminal_mode = false;
+  usb_binary_startup_probe.cancel();
   // setPassthroughMode() clears parser/queue state but frame ownership is a
   // separate proof. Revoke all three explicitly at the session boundary.
   usb_serial_interface.resetSessionState();
+  usb_ascii_session_default.request(
+      usb_serial_interface.getCompletedFrameCount());
 #if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
   // Purge HWCDC's queues behind a temporary diagnostics gate. This keeps the
@@ -804,10 +777,16 @@ static void resetUsbTerminalHostSession(bool preserve_ascii_terminal) {
 }
 
 static void serviceUsbTerminalHostSessionReset() {
-#if defined(NRF52_PLATFORM)
-  if (mesh::takeUsbTerminalSessionReset()) {
+#if defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM) \
+    || MESH_ESP32_TINYUSB_NONBLOCKING
+  // Observe disconnects even while Binary or mOTA owns USB. Owner-task reset
+  // events also catch a close/reopen that happens between two main-loop polls.
+  const bool connected = isUsbTerminalDataConnected();
+  const bool disconnected = usb_host_session_connected && !connected;
+  usb_host_session_connected = connected;
+  if (mesh::takeUsbTerminalSessionReset() || disconnected) {
     usb_terminal_host_reset_completion_pending = true;
-    resetUsbTerminalHostSession(false);
+    resetUsbTerminalHostSession();
   }
 
   if (usb_terminal_host_reset_completion_pending
@@ -839,9 +818,34 @@ static void serviceUsbTerminalHostSessionReset() {
   const bool sustained_host_loss =
       usb_hwcdc_host_presence.takeSustainedHostLoss();
   if (hardware_bus_reset || physical_host_loss || sustained_host_loss) {
-    resetUsbTerminalHostSession(true);
+    resetUsbTerminalHostSession();
   }
 #endif
+}
+
+static void serviceUsbAsciiSessionDefault() {
+  if (usb_ascii_session_default.shouldRestore(
+          !usb_terminal_host_reset_completion_pending,
+#if COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG)
+          isNetworkTerminalActive(),
+#else
+          false,
+#endif
+          usb_serial_interface.getCompletedFrameCount())) {
+    enterUsbTerminalMode();
+  }
+}
+
+static void beginUsbDefaultSession() {
+#if MESH_USB_LOGGING_AVAILABLE
+  if (!mesh::hasDedicatedUsbLoggingPort() && mesh::isUsbLoggingEnabled()) {
+    enterUsbLoggingTerminalMode();
+    return;
+  }
+#endif
+  usb_ascii_session_default.request(
+      usb_serial_interface.getCompletedFrameCount());
+  serviceUsbAsciiSessionDefault();
 }
 
 static void serviceUsbTerminal() {
@@ -855,18 +859,13 @@ static void serviceUsbTerminal() {
   // logging repeater: plaintext diagnostics plus an input-capable CLI. Put the
   // Companion interface into passthrough before it can mix framed traffic with
   // logs. An active TCP terminal owns the role CLI, so logging must not reclaim
-  // it. Turning logging off restores the build's normal USB mode: ASCII for
-  // Full Companion and Binary Companion for every other single-TTY build.
+  // it. Turning logging off retains the ordinary ASCII terminal.
 #if MESH_USB_LOGGING_AVAILABLE
   const mesh::UsbLoggingTerminalAction logging_action =
       mesh::selectUsbLoggingTerminalAction(
           mesh::hasDedicatedUsbLoggingPort(), mesh::isUsbLoggingEnabled(),
           the_mesh.isTerminalMode(), usb_logging_terminal_mode,
-#if defined(COMPANION_RADIO_FULL)
           true,
-#else
-          false,
-#endif
 #if COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG)
           isNetworkTerminalActive()
 #else
@@ -901,7 +900,6 @@ static void serviceUsbTerminal() {
   }
 #endif
   if (!the_mesh.isTerminalMode()) {
-#if defined(COMPANION_RADIO_FULL)
     const mesh::UsbBinaryStartupProbe::Result probe_result =
         usb_binary_startup_probe.poll(
             millis(), usb_serial_interface.getCompletedFrameCount(),
@@ -911,7 +909,6 @@ static void serviceUsbTerminal() {
       enterUsbTerminalMode();
       return;
     }
-#endif
     if (usb_serial_interface.takeControlSequence()) {
       enterUsbTerminalMode();
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
@@ -922,23 +919,7 @@ static void serviceUsbTerminal() {
     return;
   }
 
-#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
-    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-  // HWCDC has no DTR/open signal, and its bool operator is only a transient
-  // RX/TX activity heuristic. Do not interpret an idle interval as the host
-  // closing Full Companion's startup terminal. TCP handoff is separately
-  // arbitrated by hasObservableActiveUsbTerminalClient(), using actual input.
-#else
-  if (isUsbTerminalDataConnected()) {
-    usb_terminal_disconnect_armed = true;
-  } else if (usb_terminal_disconnect_armed) {
-    leaveUsbTerminalMode(false);
-    return;
-  }
-#endif
-
-#if defined(COMPANION_RADIO_FULL)
-  // Full Companion boots as a useful ASCII terminal. MeshCLI's first framed
+  // Companion boots as a useful ASCII terminal. MeshCLI's first framed
   // command begins with '<'; hand that byte over untouched at an empty prompt.
   // A malformed or accidental probe times out and restores the terminal.
   if (!usb_logging_terminal_mode
@@ -950,7 +931,6 @@ static void serviceUsbTerminal() {
     usb_binary_startup_probe.start(millis(), frame_count);
     return;
   }
-#endif
 
   Stream& usb_input = mesh::usbCompanionPort();
   while (usb_input.available()) {
@@ -981,7 +961,7 @@ static void serviceUsbTerminal() {
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
       // motatool is deliberately text-first: `serve --serial` opens the port
       // and sends this command before its binary mOTA request/reply traffic.
-      // Full Companion now boots in ASCII, so transfer ownership directly
+      // USB Companion boots in ASCII, so transfer ownership directly
       // instead of letting the ordinary terminal command handler leave the
       // stream in line-oriented mode.
       if (strcmp(usb_terminal_line, USB_MOTA_START_TOKEN) == 0) {
@@ -995,15 +975,10 @@ static void serviceUsbTerminal() {
 #if MESH_USB_LOGGING_AVAILABLE
       if (usb_logging_terminal_mode
           && !mesh::isUsbLoggingEnabled()) {
-#if defined(COMPANION_RADIO_FULL)
-        // The command reply belongs to the Full Companion's normal ASCII
+        // The command reply belongs to the Companion's normal ASCII
         // session. A separate, observable mode switch is required before the
         // port accepts framed Binary Companion traffic again.
         usb_logging_terminal_mode = false;
-#else
-        leaveUsbTerminalMode(true);
-        return;
-#endif
       }
 #endif
       usbTerminalOutput().print("> ");
@@ -1029,7 +1004,6 @@ static void serviceUsbTerminal() {
   }
 }
 
-#if defined(COMPANION_RADIO_FULL)
 static void expireUsbBinaryStartupProbeBeforeDispatch() {
   const uint32_t now = millis();
   if (!usb_binary_startup_probe.hasTimedOut(now)) return;
@@ -1044,7 +1018,6 @@ static void expireUsbBinaryStartupProbeBeforeDispatch() {
   while (pending-- > 0) usb_input.read();
   enterUsbTerminalMode();
 }
-#endif
 #endif
 
 #if defined(ENABLE_USB_INTERFACE) && (COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG))
@@ -1062,9 +1035,7 @@ bool MyMesh::beginStreamTerminal(Stream& output) {
   if (isAnyNetworkTerminalMode()) return false;
   const bool ascii_selected = isTerminalMode();
   const bool input_idle = usb_terminal_line_len == 0 && !usb_terminal_discard_line
-#if defined(COMPANION_RADIO_FULL)
       && !usb_binary_startup_probe.isActive()
-#endif
       ;
   if (!browser_usb_handoff.begin(ascii_selected,
           hasObservableActiveUsbTerminalClient(), input_idle,
@@ -2621,21 +2592,9 @@ void setup() {
   usb_serial_interface.setConnectedCheck([]() { return (bool)Serial; });
 #endif
   interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
-#if MESH_USB_LOGGING_AVAILABLE
-  if (!mesh::hasDedicatedUsbLoggingPort()
-      && mesh::isUsbLoggingEnabled()) {
-    // Apply a saved single-TTY logging preference before the dispatcher can
-    // emit its first framed Companion response on this interface.
-    enterUsbLoggingTerminalMode();
-  }
-#endif
-#if defined(COMPANION_RADIO_FULL)
-  if (!the_mesh.isTerminalMode()) {
-    // Full Companion's primary USB port is an ASCII CLI until a Companion
-    // client presents a valid binary frame. BLE/WiFi/Ethernet stay binary.
-    enterUsbTerminalMode();
-  }
-#endif
+  // Select ASCII before any framed dispatch, including non-Full USB builds.
+  // BLE/WiFi/Ethernet keep their existing Binary Companion transports.
+  beginUsbDefaultSession();
 #endif
 
 // add ethernet interface
@@ -2687,6 +2646,7 @@ void loop() {
 #endif
 #if defined(ENABLE_USB_INTERFACE)
   serviceUsbTerminalHostSessionReset();
+  serviceUsbAsciiSessionDefault();
 #endif
   // Identify nRF52 CDC 1 when a terminal opens it. Doing this on the connection
   // edge avoids losing the marker before the host has opened the port.
@@ -2696,7 +2656,7 @@ void loop() {
   // serial-mOTA frame in this iteration.
   mesh::serviceUsbTerminalPort();
 #endif
-#if defined(ENABLE_USB_INTERFACE) && defined(COMPANION_RADIO_FULL)
+#if defined(ENABLE_USB_INTERFACE)
   expireUsbBinaryStartupProbeBeforeDispatch();
 #endif
   the_mesh.loop();

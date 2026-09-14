@@ -770,6 +770,42 @@ TEST(SerialModeSwitch, UsbBinaryActivityWinsDuringTcpBorrow) {
   EXPECT_FALSE(handoff.shouldRestoreAscii(21));
 }
 
+TEST(SerialModeSwitch, UsbAsciiDefaultWaitsForCleanupAndNetworkOwner) {
+  mesh::UsbAsciiSessionDefault session;
+  session.request(10);
+  EXPECT_FALSE(session.shouldRestore(false, false, 10));
+  EXPECT_FALSE(session.shouldRestore(true, true, 10));
+  EXPECT_TRUE(session.shouldRestore(true, false, 10));
+  EXPECT_FALSE(session.shouldRestore(true, false, 10));
+}
+
+TEST(SerialModeSwitch, FreshUsbSessionRestoresAsciiAfterAnEarlierBinaryClient) {
+  mesh::UsbAsciiSessionDefault session;
+  session.request(10);
+  EXPECT_TRUE(session.shouldRestore(true, false, 10));
+  // Current-session Binary remains selected; a fresh boundary restores ASCII.
+  EXPECT_FALSE(session.shouldRestore(true, false, 15));
+  session.request(15);
+  EXPECT_TRUE(session.shouldRestore(true, false, 15));
+}
+
+TEST(SerialModeSwitch, NewBinaryClientDuringNetworkOwnershipKeepsItsMode) {
+  mesh::UsbAsciiSessionDefault session;
+  session.request(10);
+  EXPECT_FALSE(session.shouldRestore(true, true, 10));
+  EXPECT_FALSE(session.shouldRestore(true, true, 11));
+  EXPECT_FALSE(session.shouldRestore(true, false, 11));
+  session.request(11);
+  EXPECT_TRUE(session.shouldRestore(true, false, 11));
+}
+
+TEST(SerialModeSwitch, ManualAsciiEntryCancelsDeferredDefaultSelection) {
+  mesh::UsbAsciiSessionDefault session;
+  session.request(0);
+  session.cancel();
+  EXPECT_FALSE(session.shouldRestore(true, false, 0));
+}
+
 TEST(SerialModeSwitch, SingleTtyLoggingCannotStealNetworkTerminal) {
   using Action = mesh::UsbLoggingTerminalAction;
   EXPECT_EQ(mesh::selectUsbLoggingTerminalAction(

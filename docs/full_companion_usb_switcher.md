@@ -1,19 +1,20 @@
-# Full Companion USB CLI and binary switcher
+# Companion USB CLI and binary switcher
 
-Full Companion uses one primary USB serial interface for two incompatible wire
+USB Companion uses one primary USB serial interface for two incompatible wire
 formats:
 
 - a human-readable ASCII command line;
 - the framed Binary Companion protocol used by MeshCore apps and `meshcli`.
 
-The primary interface starts in the ASCII terminal after each boot. A Binary
+The primary interface starts in the ASCII terminal after each boot and returns
+to ASCII after a USB session reset that the hardware can observe. A Binary
 Companion client does not need to send a special mode command: its first valid
 frame automatically hands the interface to the binary parser.
 
-This automatic behavior is compiled only into `companion_radio_full` targets.
-Ordinary USB Companion builds continue to use the explicit
-`+++MESHCORE-TERM-START` and `+++MESHCORE-TERM-STOP` controls described in the
-[Terminal Chat CLI guide](./terminal_chat_cli.md).
+This behavior applies to Full and ordinary USB Companion builds in the updated
+1.17.1.6 release. The explicit `+++MESHCORE-TERM-START` and
+`+++MESHCORE-TERM-STOP` controls remain available, including for older firmware.
+See the [Terminal Chat CLI guide](./terminal_chat_cli.md).
 
 ## Wire formats
 
@@ -61,7 +62,7 @@ boot ------> ASCII terminal                  Binary Companion
                  +--------------------------------+
 
 ASCII terminal -- +++MESHCORE-TERM-STOP ------> Binary Companion
-ASCII terminal -- observable USB disconnect ---> Binary Companion
+any mode ------- observable USB session reset ---> ASCII terminal
 ESP32 logging terminal -- usb.logging off -----> ASCII terminal
 any mode ------- reboot ------------------------> ASCII terminal
 ```
@@ -72,7 +73,7 @@ switched; they remain binary.
 
 ## How automatic detection works
 
-1. Full Companion initializes the normal USB Binary Companion interface, then
+1. Companion initializes the normal USB Binary Companion interface, then
    gives its primary stream to the ASCII terminal before normal loop service
    begins.
 2. While the prompt has no buffered input, the terminal peeks at the next byte.
@@ -144,7 +145,7 @@ mOTA traffic on the same stream.
 
 | Situation | Primary USB behavior |
 | --- | --- |
-| Full Companion after boot | ASCII; a complete `<` frame switches to Binary Companion |
+| USB Companion after boot or observable session reset | ASCII; a complete `<` frame switches to Binary Companion |
 | nRF52 logging enabled | Primary interface still follows the switcher; logs use the optional second interface |
 | ESP32 logging enabled at boot | Logging terminal owns the only USB TTY; automatic `<` detection is disabled |
 | nRF52 USB serial mOTA active | mOTA owns primary USB; ASCII and Binary Companion are unavailable there |
@@ -178,17 +179,22 @@ leading/trailing whitespace, or a partial line remain ordinary terminal input.
 This mechanism is deliberately small and deterministic, but it is not a full
 protocol negotiation layer.
 
-### It is startup selection, not per-connection negotiation
+### Session detection depends on the USB hardware
 
 After the first complete binary frame, the device stays in Binary Companion
-mode. Closing `meshcli` does not automatically restore ASCII. Use the terminal
-start token or reboot when an ASCII prompt is needed again.
+mode for that session. Native USB with DTR/session events restores ASCII when
+the host closes or resets the connection. Old input, queued output and mOTA
+ownership are cleared before selecting the default for the next session.
 
-Conversely, closing an ASCII terminal on native USB normally changes the port
-to binary mode because the firmware can observe USB DTR/data disconnect. The
-next client therefore sees binary mode, not a new ASCII session. A USB-to-UART
-bridge often cannot report disconnect, so it can remain in ASCII until the stop
-token or a reboot.
+ESP32 hardware USB Serial/JTAG reports bus reset and physical host loss, but
+cannot reliably report a terminal program closing its handle. A USB-to-UART
+bridge also usually cannot report that close. On those ports, use the terminal
+start token to return from Binary mode without rebooting. Idle time alone never
+changes the selected protocol.
+
+An active network terminal temporarily delays restoring the USB ASCII prompt.
+If a fresh USB app sends a complete binary frame during that delay, its Binary
+mode remains selected when the network terminal closes.
 
 ### Detection works only at an empty prompt
 

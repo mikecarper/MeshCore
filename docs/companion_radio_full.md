@@ -368,7 +368,7 @@ itself.
 
 | Platform | Interface | Purpose |
 | --- | --- | --- |
-| Both | USB, 115200 baud | ASCII after boot; automatically switches on the first complete Binary Companion frame |
+| Both | USB, 115200 baud | ASCII after boot or observable USB session reset; automatically switches on the first complete Binary Companion frame |
 | Both | BLE | Binary Companion; display builds show a random session PIN, while headless builds default to `123456` |
 | ESP32 | TCP 5000 | Binary Companion over WiFi |
 | ESP32 | HTTP 80 | Companion WebConfig and first-boot WiFi setup |
@@ -433,7 +433,8 @@ Expose them only on a trusted LAN or temporary setup network. See
 
 ## USB Binary and text terminal modes
 
-Full Companion USB starts in the ASCII terminal after boot. MeshCore apps and
+Full Companion USB starts in the ASCII terminal after boot or an observable USB
+session reset. MeshCore apps and
 `meshcli` send a `<`-prefixed framed command, which automatically hands the
 untouched frame to the Binary Companion parser:
 
@@ -443,7 +444,8 @@ meshcli -s /dev/ttyACM0 -b 115200 ver
 
 The automatic probe runs only at an empty prompt. A complete frame confirms
 binary mode; an incomplete probe returns to ASCII after one second. Binary mode
-then remains selected until reboot or the explicit terminal start token. See
+then remains selected until an observable USB session reset, reboot, or the
+explicit terminal start token. See
 [Full Companion USB CLI and binary switcher](./full_companion_usb_switcher.md)
 for the byte-level state machine, logging and mOTA ownership, recovery paths,
 and known limitations.
@@ -649,10 +651,11 @@ Return to Binary mode with:
 +++MESHCORE-TERM-STOP
 ```
 
-Closing an armed ASCII USB data connection also changes the port to Binary
-mode when the hardware can report disconnect. A USB-to-UART bridge may not be
-able to report this event. A different baud rate, including 57600, does not
-select ASCII mode.
+An observable USB session reset restores ASCII, including after a Binary client
+disconnects. Native USB with DTR can detect a terminal closing; ESP32 hardware
+USB Serial/JTAG detects bus resets and physical host loss. UART bridges usually
+cannot report a terminal closing, so use the start token if they remain in
+Binary mode. A different baud rate, including 57600, does not select ASCII.
 
 On an ESP32 Full Companion built with `OTA_FOLDER_SERIAL`, `motatool` can keep
 the USB serial port open as an mOTA folder source when WiFi is unavailable:

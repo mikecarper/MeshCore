@@ -6,7 +6,7 @@ controls. Select On, Off, or Check to view and copy the commands; Companion
 MQTT and GPS show their app/WebConfig steps instead. See
 [feature switches by role](role_feature_switches.md) for the full reference.
 The [USB web console](https://flasher.meshcore.io/console) works with the
-default ASCII terminal on Full Companion and infrastructure roles.
+default ASCII terminal on USB Companion and infrastructure roles.
 
 Pick the choices in any order. Every selection narrows all the other controls
 to firmware combinations that were actually built in the current release set.
@@ -300,6 +300,11 @@ Full, USB and USB + Bluetooth Companion results include **Companion USB terminal
 (Linux / Bash)** under **Restore your settings after flashing**, with copyable
 connection and recovery commands.
 
+Updated 1.17.1.6 USB Companions default to ASCII at boot and after an observable
+USB session reset. `picocom -b 115200 /dev/ttyACM0` is sufficient for a fresh
+session. A valid framed app command automatically selects Binary Companion.
+The command below also works with older firmware or a port left in Binary mode.
+
 Run this in Bash on the Linux computer connected to your radio:
 
 ```bash
@@ -310,7 +315,7 @@ picocom -b 115200 --imap spchex \
 
 Replace `/dev/ttyACM0` with your radio's port, such as `/dev/ttyACM1` or
 `/dev/ttyUSB0`. Use the primary USB data interface (`00` when multiple interfaces
-appear), and close other apps using it. The init string opens the ASCII CLI;
+appear), and close other apps using it. The init string requests the ASCII CLI;
 its leading carriage return clears an unfinished input line. `--imap spchex`
 displays binary control bytes safely during the transition.
 
