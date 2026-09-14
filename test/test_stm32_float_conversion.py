@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Compile the real text helpers with STM32's utoa-only Arduino API."""
 from pathlib import Path
-import configparser
 import subprocess
 import tempfile
 import unittest
@@ -10,11 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Stm32FloatConversionTest(unittest.TestCase):
-    def test_stm32_platform_keeps_the_supported_radiolib_gpio_api(self):
-        config = configparser.ConfigParser(interpolation=None, strict=False)
-        config.read(ROOT / "platformio.ini")
-        self.assertEqual(config["stm32_base"]["platform"], "ststm32@19.5.0")
-
     def test_signed_values_and_limits_without_ltoa(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

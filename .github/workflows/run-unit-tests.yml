@@ -10,6 +10,18 @@ on:
   workflow_dispatch:
 
 jobs:
+  stm32-companion-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Compile ordinary STM32 USB Companion with pinned core and RadioLib
+        run: pio run -e RAK_3x72_companion_radio_usb
+
   bootloader-version:
     runs-on: ubuntu-latest
     steps:
