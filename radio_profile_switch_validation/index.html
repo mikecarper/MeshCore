@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/payloads/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/radio_profile_switch_validation/">
       
       
-        <link rel="prev" href="../packet_format/">
+        <link rel="prev" href="../qr_codes/">
       
       
-        <link rel="next" href="../pr7_review_validation/">
+        <link rel="next" href="../radio_profiles/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Payload Format - MeshCore Docs</title>
+        <title>SX1262 profile-switch validation - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#payload-format" class="md-skip">
+        <a href="#sx1262-profile-switch-validation" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Payload Format
+              SX1262 profile-switch validation
             
           </span>
         </div>
@@ -1498,37 +1498,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Payload Format
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
         
   
   
@@ -1544,380 +1517,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#important-concepts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Important concepts:
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#node-advertisement" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Node advertisement
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#acknowledgement" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Acknowledgement
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#returned-path-request-response-and-plain-text-message" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Returned path, request, response, and plain text message
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Returned path, request, response, and plain text message">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#returned-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Returned path
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#request" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Request
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Request">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get-stats" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get stats
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-telemetry-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get telemetry data
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-telemetry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Telemetry
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-minmaxave-sensor-nodes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Min/Max/Ave (Sensor nodes)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-access-list" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Access List
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-neighbors" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Neighbors
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-owner-info" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Owner Info
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#response" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Response
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#plain-text-message" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Plain text message
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#anonymous-request" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Anonymous request
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Anonymous request">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#room-server-login" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Room server login
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#repeatersensor-login" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Repeater/Sensor login
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#repeater-regions-request" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Repeater - Regions request
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#repeater-owner-info-request" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Repeater - Owner info request
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#repeater-clock-and-status-request" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Repeater - Clock and status request
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#group-text-message" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group text message
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#group-datagram" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group datagram
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#control-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Control data
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Control data">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#discover_req-sub_type" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        DISCOVER_REQ (sub_type)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#discover_resp-sub_type" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        DISCOVER_RESP (sub_type)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#trace" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Trace
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#multipart" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Multipart
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ota" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OTA
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#custom-packet" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom packet
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2007,10 +1606,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../radio_profile_switch_validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SX1262 profile-switch validation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -2026,6 +1652,192 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#initial-result-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Initial result (V1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope-and-reproducibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope and reproducibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#follow-up-batched-modulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-up: batched modulation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expanded-screening-redundant-rx-setup-and-spi-v5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expanded screening: redundant RX setup and SPI (V5)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Expanded screening: redundant RX setup and SPI (V5)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#individual-and-combined-rx-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Individual and combined RX changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whole-buffer-spi-follow-up-same-v5-binaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whole-buffer SPI follow-up (same V5 binaries)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test-corrections-and-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test corrections and provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#qualification-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Qualification boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#actual-packet-checks-and-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actual packet checks and limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-integration-and-usb-recovery-v8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Production integration and USB recovery (V8)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Production integration and USB recovery (V8)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sleep-recovery-discovered-during-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sleep recovery discovered during integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usb-fix-and-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        USB fix and scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-steady-state-timing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final steady-state timing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-over-air-packet-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final over-air packet matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2573,10 +2385,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#important-concepts" class="md-nav__link">
+  <a href="#initial-result-v1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Important concepts:
+        Initial result (V1)
       
     </span>
   </a>
@@ -2584,10 +2396,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#node-advertisement" class="md-nav__link">
+  <a href="#scope-and-reproducibility" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Node advertisement
+        Scope and reproducibility
       
     </span>
   </a>
@@ -2595,10 +2407,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#acknowledgement" class="md-nav__link">
+  <a href="#follow-up-batched-modulation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Acknowledgement
+        Follow-up: batched modulation
       
     </span>
   </a>
@@ -2606,22 +2418,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#returned-path-request-response-and-plain-text-message" class="md-nav__link">
+  <a href="#expanded-screening-redundant-rx-setup-and-spi-v5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Returned path, request, response, and plain text message
+        Expanded screening: redundant RX setup and SPI (V5)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Returned path, request, response, and plain text message">
+    <nav class="md-nav" aria-label="Expanded screening: redundant RX setup and SPI (V5)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#returned-path" class="md-nav__link">
+  <a href="#individual-and-combined-rx-changes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Returned path
+        Individual and combined RX changes
       
     </span>
   </a>
@@ -2629,22 +2441,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#request" class="md-nav__link">
+  <a href="#whole-buffer-spi-follow-up-same-v5-binaries" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Request
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Request">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get-stats" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get stats
+        Whole-buffer SPI follow-up (same V5 binaries)
       
     </span>
   </a>
@@ -2652,10 +2452,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get-telemetry-data" class="md-nav__link">
+  <a href="#test-corrections-and-provenance" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Get telemetry data
+        Test corrections and provenance
       
     </span>
   </a>
@@ -2663,10 +2463,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get-telemetry" class="md-nav__link">
+  <a href="#qualification-boundary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Get Telemetry
+        Qualification boundary
       
     </span>
   </a>
@@ -2674,70 +2474,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get-minmaxave-sensor-nodes" class="md-nav__link">
+  <a href="#actual-packet-checks-and-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Get Min/Max/Ave (Sensor nodes)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-access-list" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Access List
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-neighbors" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Neighbors
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get-owner-info" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get Owner Info
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#response" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Response
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#plain-text-message" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Plain text message
+        Actual packet checks and limitations
       
     </span>
   </a>
@@ -2750,22 +2490,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#anonymous-request" class="md-nav__link">
+  <a href="#production-integration-and-usb-recovery-v8" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Anonymous request
+        Production integration and USB recovery (V8)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Anonymous request">
+    <nav class="md-nav" aria-label="Production integration and USB recovery (V8)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#room-server-login" class="md-nav__link">
+  <a href="#sleep-recovery-discovered-during-integration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Room server login
+        Sleep recovery discovered during integration
       
     </span>
   </a>
@@ -2773,10 +2513,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#repeatersensor-login" class="md-nav__link">
+  <a href="#usb-fix-and-scope" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Repeater/Sensor login
+        USB fix and scope
       
     </span>
   </a>
@@ -2784,10 +2524,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#repeater-regions-request" class="md-nav__link">
+  <a href="#final-steady-state-timing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Repeater - Regions request
+        Final steady-state timing
       
     </span>
   </a>
@@ -2795,21 +2535,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#repeater-owner-info-request" class="md-nav__link">
+  <a href="#final-over-air-packet-matrix" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Repeater - Owner info request
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#repeater-clock-and-status-request" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Repeater - Clock and status request
+        Final over-air packet matrix
       
     </span>
   </a>
@@ -2818,111 +2547,6 @@
         
       </ul>
     </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#group-text-message" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group text message
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#group-datagram" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group datagram
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#control-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Control data
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Control data">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#discover_req-sub_type" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        DISCOVER_REQ (sub_type)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#discover_resp-sub_type" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        DISCOVER_RESP (sub_type)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#trace" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Trace
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#multipart" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Multipart
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ota" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OTA
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#custom-packet" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Custom packet
-      
-    </span>
-  </a>
   
 </li>
       
@@ -2943,7 +2567,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/payloads.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/radio_profile_switch_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2951,822 +2575,547 @@
   
 
 
-<h1 id="payload-format">Payload Format</h1>
-<p>Inside each <a href="../packet_format/">MeshCore Packet</a> is a payload, identified by the payload type in the packet header. The types of payloads are:</p>
+<h1 id="sx1262-profile-switch-validation">SX1262 profile-switch validation</h1>
+<p>Measured locally on 2026-09-13 using an XIAO ESP32-S3 with WIO SX1262.
+Later tests also use the SenseCAP Indicator ESP32-S3 LoRa processor. The
+<a href="#production-integration-and-usb-recovery-v8">V8 integration</a> is the current
+implementation; V1-V7 sections/captures document the development history.</p>
+<h2 id="initial-result-v1">Initial result (V1)</h2>
+<p>The production retune path averaged <strong>1.434 ms with XOSC held</strong>, versus
+<strong>3.166 ms with RC standby</strong>. Holding the oscillator saved <strong>1.732 ms per
+retune (54.7%)</strong>. Warm-mode maximum was <strong>1.467 ms</strong> across 6,000 measured
+retunes. The 6 ms switch allowance and 4 ms loop allowance are unchanged.</p>
+<p>Each row combines both directions and two reversed-order trials, with 2,000
+measured retunes per standby policy. Times run from production <code>tuneProfile</code>
+entry until BUSY is observed low. GetStatus confirmed RX after every timed hop.</p>
+<table>
+<thead>
+<tr>
+<th>Secondary profile</th>
+<th>RC mean / maximum</th>
+<th>XOSC mean / maximum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SF7 / 500 kHz</td>
+<td>3.161 / 3.199 ms</td>
+<td>1.434 / 1.467 ms</td>
+</tr>
+<tr>
+<td>SF8 / 500 kHz</td>
+<td>3.166 / 3.209 ms</td>
+<td>1.435 / 1.464 ms</td>
+</tr>
+<tr>
+<td>SF9 / 500 kHz</td>
+<td>3.171 / 3.193 ms</td>
+<td>1.433 / 1.437 ms</td>
+</tr>
+</tbody>
+</table>
 <ul>
-<li>Request, response, and plain text (<code>0x00</code>-<code>0x02</code>).</li>
-<li>Acknowledgment and node advertisement (<code>0x03</code>-<code>0x04</code>).</li>
-<li>Group text and group datagram (<code>0x05</code>-<code>0x06</code>).</li>
-<li>Anonymous request and returned path (<code>0x07</code>-<code>0x08</code>).</li>
-<li>Trace, multipart, control, and OTA (<code>0x09</code>-<code>0x0C</code>).</li>
-<li>Custom raw data (<code>0x0F</code>).</li>
+<li>Primary: 909.5 MHz, SF7 / 62.5 kHz, CR 4/5.</li>
+<li>Secondary: 910.5 MHz, CR 4/5, automatic production preamble calculation.</li>
+<li>TCXO configuration remained 1.8 V and 1,600 us startup delay.</li>
+<li>12,000 measured retunes; zero retune failures, BUSY timeouts, or RX-mode errors.</li>
+<li>109 packet/busy deferrals were excluded from hop timings (57 RC, 52 XOSC).
+  Deferral preserves the existing packet and radio ownership checks.</li>
+<li>The first eight successful hops of every trial were excluded from
+  steady-state statistics, including the initial oscillator transition.</li>
+<li>All 12 trials returned to RC standby after disabling the second profile.</li>
 </ul>
-<p>This document describes the shared payload envelopes implemented by the core.
-Application-specific request, response, control, and custom bodies can add their
-own formats.</p>
-<p>NOTE: all 16 and 32-bit integer fields are Little Endian.</p>
-<h2 id="important-concepts">Important concepts:</h2>
+<h2 id="scope-and-reproducibility">Scope and reproducibility</h2>
+<p>The <a href="../tools/hil/profile_switch_README.md">timing harness</a> compiles the actual
+production wrapper, not the earlier fast/minimal RX benchmark. RC and XOSC
+use the same executable: the baseline changes only the standby policy after
+entering dual-profile mode. No TCXO supply or initial startup delay is disabled.
+The normal guard checks and frequency/SF/BW/CR/preamble setters remain active.</p>
+<p>This isolates radio switching from UI, Wi-Fi, BLE, mesh dispatch, and scan-loop
+scheduling. BUSY polling/timer overhead is included; the RX status query is
+outside the timing. This is not a packet-delivery test, first-startup timing,
+power measurement, wide-frequency image-recalibration test, or proof of analog
+RF settling beyond BUSY/RX status. Indicator I/O-expander latency and nRF52
+timing still need their own measurements before reducing common budgets.</p>
+<p>Raw results: <a href="../tools/hil/profile_switch_results.json">profile_switch_results.json</a>.
+The collector requires all requested samples, zero failure/timeout/mode-error
+counts, and successful RC restoration before accepting a trial.</p>
+<p>Build provenance:</p>
 <ul>
-<li>Node hash: the first byte of the node's public key</li>
+<li>Base commit: <code>c329cf1fc1e7f2e8c8733ab0d000094730458fe3</code>, with the local warm-standby patch.</li>
+<li>Environment: <code>profile_switch_xiao</code>; Espressif32 6.11.0 / Arduino 2.0.17.</li>
+<li>RadioLib: pinned <code>187ef24791c3d844939b2be13a68bd890bd04e4c</code> (7.7.1).</li>
+<li>Test <code>firmware.bin</code> SHA-256:
+  <code>629d39bba80ad97c434fbaab61bc7c3c302b5ac8180cb2cb12806508b2d111e0</code>.</li>
+<li>Existing unrelated Companion/repeater/Wi-Fi soak changes were not included
+  in this minimal timing executable.</li>
 </ul>
-<h2 id="node-advertisement">Node advertisement</h2>
-<p>This kind of payload notifies receivers that a node exists, and gives information about the node</p>
+<p>Host regression checks also passed: profile scan/CLI (3 tests), receive contract
+(2 tests), and SX126x RX-status decoding (1 test). A normal
+<code>heltec_v4_companion_radio_usb</code> build and the XIAO timing build succeeded.</p>
+<p>The XIAO's original 8 MiB flash snapshot was verified against the device while
+held in the bootloader before the timing firmware was uploaded. Raw flash
+backups stay in the current user's private backup directory, outside Git.
+After testing, the entire original snapshot was restored and verified again
+against the device before reboot. The live USB CLI then confirmed <code>Xiao S3 WIO</code>
+running <code>v1.17.1-soak-xiao-B</code> (11-Sep-2026). Its soak logger was left stopped;
+existing logs were preserved. The Indicator and RAK Tag were not flashed.</p>
+<h2 id="follow-up-batched-modulation">Follow-up: batched modulation</h2>
+<p>On the same date, a second 12,000-retune experiment held XOSC warm in both
+cases and compared the old three-setter sequence with one combined LoRa
+modulation update. Both paths ran in the same V2 executable, with the second
+round reversing their order. Each mode completed 6,000 timed hops.</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
+<th>Secondary profile</th>
+<th>Separate setters: mean / maximum</th>
+<th>Batched: mean / maximum</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>public key</td>
-<td>32</td>
-<td>Ed25519 public key of the node</td>
+<td>SF7 / 500 kHz</td>
+<td>1.442 / 1.473 ms</td>
+<td>1.159 / 1.198 ms</td>
 </tr>
 <tr>
-<td>timestamp</td>
-<td>4</td>
-<td>unix timestamp of advertisement</td>
+<td>SF8 / 500 kHz</td>
+<td>1.444 / 1.480 ms</td>
+<td>1.158 / 1.192 ms</td>
 </tr>
 <tr>
-<td>signature</td>
-<td>64</td>
-<td>Ed25519 signature of public key, timestamp, and app data</td>
-</tr>
-<tr>
-<td>appdata</td>
-<td>rest of payload</td>
-<td>optional, see below</td>
+<td>SF9 / 500 kHz</td>
+<td>1.446 / 1.478 ms</td>
+<td>1.156 / 1.163 ms</td>
 </tr>
 </tbody>
 </table>
-<p>Appdata</p>
+<p>Overall: <strong>1.444 ms to 1.158 ms</strong>, saving <strong>0.286 ms (19.8%)</strong> per retune.
+Use this matched V2 baseline for the batching comparison; the earlier V1
+warm-standby numbers came from a different executable layout.</p>
+<p>There were zero retune failures, BUSY timeouts, RX-mode errors, or SF/BW/CR
+cache mismatches. All 12 trials restored RC standby after disabling profile 2.
+84 packet/busy deferrals were excluded (54 separate-setter, 30 batched).
+First eight successful hops per trial were excluded as before.</p>
+<p>The batching removes two repeated modem checks and two modulation writes.
+The helper validates a complete MeshCore bandwidth/SF/CR tuple, updates
+RadioLib's cached SF/BW/CR before its automatic LDRO calculation, and restores
+the old cache if the command fails. The wrapper's existing physical rollback
+and safe-transition paths are retained. <strong>Frequency changes, preamble updates,
+standby, IRQ/buffer setup, packet parameters, and RX restart remain unchanged.</strong>
+This does not qualify eliminating those other repeated operations.</p>
+<p>Raw results: <a href="../tools/hil/profile_switch_batch_results.json">profile_switch_batch_results.json</a>.
+V2 test firmware SHA-256:
+<code>b4403f6f5eb0a2b0a31c2d79859122225f247296699a578ad2596ef17eaed0fd</code>.
+Toolchain and RadioLib pin match the first experiment. The normal
+<code>heltec_v4_companion_radio_usb</code> build also succeeded with batching enabled.</p>
+<p>The two new host tests execute the production method over 1,200 valid
+bandwidth/SF/CR/LDRO combinations, invalid inputs and wrong modem, command
+failures with cache rollback/retry, and the wrapper's failure short-circuit.
+All eight relevant host tests passed. RF packet delivery and application/UI
+scheduling remain outside this timing experiment; shared budgets are unchanged.</p>
+<h2 id="expanded-screening-redundant-rx-setup-and-spi-v5">Expanded screening: redundant RX setup and SPI (V5)</h2>
+<p>Corrected V5 measurements on 2026-09-13 cover <strong>28,800 timed retunes in 300
+trials</strong> across XIAO S3/WIO SX1262 and the Indicator ESP32/SX1262. Each sweep
+uses SF7/8/9 at 500 kHz paired with SF7/62.5 kHz, both directions, reversed
+case order in round two, and eight excluded initial hops per trial.
+All 300 trials completed their sample count and restored RC standby on exit.
+There were <strong>zero timed switch failures, BUSY timeouts, RX-mode errors or
+SF/BW/CR cache mismatches</strong>. The normal packet guards deferred 175 attempted
+hops; these were not counted as timed retunes.</p>
+<p>Twenty-one distinct cases were screened: seven individual redundant-operation
+changes, a full manual RX control, combinations, 2/4/8 MHz SPI and whole-buffer
+ESP32 SPI transfers. Shared controls appear in both groups. All new shortcuts
+are <strong>HIL-only</strong>, not included in normal targets.</p>
+<h3 id="individual-and-combined-rx-changes">Individual and combined RX changes</h3>
+<p>Means in milliseconds, with warm oscillator and batched modulation throughout.
+Each XIAO row has 768 timed hops; each Indicator row has 384.</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
+<th>RX/SPI case</th>
+<th style="text-align: right;">XIAO mean</th>
+<th style="text-align: right;">Indicator mean</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>flags</td>
-<td>1</td>
-<td>specifies which of the fields are present, see below</td>
+<td>Production batching, 2 MHz SPI</td>
+<td style="text-align: right;">1.182</td>
+<td style="text-align: right;">15.190</td>
 </tr>
 <tr>
-<td>latitude</td>
-<td>4 (optional)</td>
-<td>decimal latitude multiplied by 1000000, integer</td>
+<td>Manual RX sequence, no omissions</td>
+<td style="text-align: right;">1.181</td>
+<td style="text-align: right;">15.135</td>
 </tr>
 <tr>
-<td>longitude</td>
-<td>4 (optional)</td>
-<td>decimal longitude multiplied by 1000000, integer</td>
+<td>Skip second standby</td>
+<td style="text-align: right;">1.124</td>
+<td style="text-align: right;">14.195</td>
 </tr>
 <tr>
-<td>feature 1</td>
-<td>2  (optional)</td>
-<td>reserved for future use</td>
+<td>Skip repeated IRQ setup</td>
+<td style="text-align: right;">1.096</td>
+<td style="text-align: right;">14.399</td>
 </tr>
 <tr>
-<td>feature 2</td>
-<td>2  (optional)</td>
-<td>reserved for future use</td>
+<td>Skip repeated buffer-base setup</td>
+<td style="text-align: right;">1.146</td>
+<td style="text-align: right;">14.437</td>
 </tr>
 <tr>
-<td>name</td>
-<td>rest of appdata</td>
-<td>name of the node</td>
+<td>Skip repeated packet-parameter setup</td>
+<td style="text-align: right;">0.991</td>
+<td style="text-align: right;">12.364</td>
+</tr>
+<tr>
+<td>Skip RX modem query</td>
+<td style="text-align: right;">1.145</td>
+<td style="text-align: right;">14.427</td>
+</tr>
+<tr>
+<td>Defer preamble to the one RX packet-parameter write</td>
+<td style="text-align: right;">0.956</td>
+<td style="text-align: right;">11.659</td>
+</tr>
+<tr>
+<td>Skip wake NOP when already awake</td>
+<td style="text-align: right;">1.146</td>
+<td style="text-align: right;">14.576</td>
+</tr>
+<tr>
+<td>Combined omissions, early preamble write</td>
+<td style="text-align: right;">0.771</td>
+<td style="text-align: right;">9.096</td>
+</tr>
+<tr>
+<td>Combined omissions, deferred preamble</td>
+<td style="text-align: right;">0.732</td>
+<td style="text-align: right;">8.384</td>
+</tr>
+<tr>
+<td>4 MHz SPI only</td>
+<td style="text-align: right;">0.985</td>
+<td style="text-align: right;">14.996</td>
+</tr>
+<tr>
+<td>8 MHz SPI only</td>
+<td style="text-align: right;">0.889</td>
+<td style="text-align: right;">14.889</td>
+</tr>
+<tr>
+<td>Combined/deferred, 4 MHz SPI</td>
+<td style="text-align: right;">0.627</td>
+<td style="text-align: right;">8.280</td>
+</tr>
+<tr>
+<td>Combined/deferred, 8 MHz SPI</td>
+<td style="text-align: right;">0.579</td>
+<td style="text-align: right;">8.224</td>
 </tr>
 </tbody>
 </table>
-<p>Appdata Flags</p>
+<p>The largest individual saving is programming preamble/packet parameters once.
+Compare individual omissions with the manual full control when attributing
+their isolated costs: replacing RadioLib's staging dispatch also has overhead.
+Individual savings are not additive; some remove overlapping work.</p>
+<h3 id="whole-buffer-spi-follow-up-same-v5-binaries">Whole-buffer SPI follow-up (same V5 binaries)</h3>
 <table>
 <thead>
 <tr>
-<th>Value</th>
-<th>Name</th>
-<th>Description</th>
+<th>Case</th>
+<th>XIAO mean / maximum</th>
+<th>Indicator mean / maximum</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>0x01</code></td>
-<td>is chat node</td>
-<td>advert is for a chat node</td>
+<td>Production batching, byte loop, 2 MHz</td>
+<td>1.184 / 1.221 ms</td>
+<td>15.185 / 15.785 ms</td>
 </tr>
 <tr>
-<td><code>0x02</code></td>
-<td>is repeater</td>
-<td>advert is for a repeater</td>
+<td>Bulk transfer only, 2 MHz</td>
+<td>1.070 / 1.073 ms</td>
+<td>15.092 / 15.134 ms</td>
 </tr>
 <tr>
-<td><code>0x03</code></td>
-<td>is room server</td>
-<td>advert is for a room server</td>
+<td>Bulk transfer only, 4 MHz</td>
+<td>0.890 / 0.903 ms</td>
+<td>14.924 / 14.983 ms</td>
 </tr>
 <tr>
-<td><code>0x04</code></td>
-<td>is sensor</td>
-<td>advert is for a sensor server</td>
+<td>Bulk transfer only, 8 MHz</td>
+<td>0.797 / 0.806 ms</td>
+<td>14.836 / 14.908 ms</td>
 </tr>
 <tr>
-<td><code>0x10</code></td>
-<td>has location</td>
-<td>appdata contains lat/long information</td>
+<td>Combined/deferred, byte loop, 8 MHz</td>
+<td>0.579 / 0.588 ms</td>
+<td>8.222 / 8.843 ms</td>
 </tr>
 <tr>
-<td><code>0x20</code></td>
-<td>has feature 1</td>
-<td>Reserved for future use.</td>
+<td>Combined/deferred + bulk, 2 MHz</td>
+<td>0.671 / 0.700 ms</td>
+<td>8.369 / 9.027 ms</td>
 </tr>
 <tr>
-<td><code>0x40</code></td>
-<td>has feature 2</td>
-<td>Reserved for future use.</td>
+<td>Combined/deferred + bulk, 4 MHz</td>
+<td>0.582 / 0.595 ms</td>
+<td>8.252 / 8.315 ms</td>
 </tr>
 <tr>
-<td><code>0x80</code></td>
-<td>has name</td>
-<td>appdata contains a node name</td>
+<td>Combined/deferred + bulk, 8 MHz</td>
+<td><strong>0.535 / 0.545 ms</strong></td>
+<td><strong>8.203 / 8.233 ms</strong></td>
 </tr>
 </tbody>
 </table>
-<h2 id="acknowledgement">Acknowledgement</h2>
-<p>An acknowledgement that a message was received. Note that for returned path messages, an acknowledgement can be sent in the "extra" payload (see <a href="#returned-path">Returned Path</a>) instead of as a separate acknowledgement packet. Current <code>CLI_DATA</code> commands do not cause acknowledgement responses, neither discrete nor extra; their text reply is the application-level result. Repeaters still ACK the legacy plain-text form before processing it.</p>
-<p>Repeater remote CLI keeps one volatile copy of the most recently completed
-reply, keyed by the authenticated sender, request timestamp, and command text.
-Repeating that same logical request re-sends the text reply without executing
-the command again. A retry must therefore preserve the original timestamp and
-command text. The cache is cleared by reboot and replaced by the next completed
-remote command; commands that intentionally produce no text reply remain
-silent.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>checksum</td>
-<td>4</td>
-<td>CRC checksum of message timestamp, text, and sender pubkey</td>
-</tr>
-</tbody>
-</table>
-<h2 id="returned-path-request-response-and-plain-text-message">Returned path, request, response, and plain text message</h2>
-<p>Returned path, request, response, and plain text messages are all formatted in the same way. See the subsection for more details about the ciphertext's associated plaintext representation.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>destination hash</td>
-<td>1</td>
-<td>first byte of destination node public key</td>
-</tr>
-<tr>
-<td>source hash</td>
-<td>1</td>
-<td>first byte of source node public key</td>
-</tr>
-<tr>
-<td>cipher MAC</td>
-<td>2</td>
-<td>MAC for encrypted data in next field</td>
-</tr>
-<tr>
-<td>ciphertext</td>
-<td>rest of payload</td>
-<td>encrypted message, see subsections below for details</td>
-</tr>
-</tbody>
-</table>
-<h3 id="returned-path">Returned path</h3>
-<p>Returned path messages provide a description of the route a packet took from the original author. Receivers will send returned path messages to the author of the original message.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>path descriptor</td>
-<td>1</td>
-<td>low 6 bits are the hash count; high 2 bits encode hash size minus one</td>
-</tr>
-<tr>
-<td>path</td>
-<td>count × size</td>
-<td>encoded node-hash prefixes, each 1-3 bytes; the four-byte code is reserved</td>
-</tr>
-<tr>
-<td>extra type</td>
-<td>1</td>
-<td>low nibble is the bundled payload type, such as acknowledgment or response; high nibble is reserved</td>
-</tr>
-<tr>
-<td>extra</td>
-<td>rest of data</td>
-<td>extra, bundled payload content, follows same format as main content defined by this document</td>
-</tr>
-</tbody>
-</table>
-<h3 id="request">Request</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>timestamp</td>
-<td>4</td>
-<td>sender time (unix timestamp)</td>
-</tr>
-<tr>
-<td>request data</td>
-<td>rest of payload</td>
-<td>application-defined request payload body</td>
-</tr>
-</tbody>
-</table>
-<p>For the common chat/server helpers in <code>BaseChatMesh</code>, the current request type values are:</p>
-<table>
-<thead>
-<tr>
-<th>Value</th>
-<th>Name</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>0x01</code></td>
-<td>get stats</td>
-<td>get stats of repeater or room server</td>
-</tr>
-<tr>
-<td><code>0x02</code></td>
-<td>keepalive</td>
-<td>keep-alive request used for maintained connections</td>
-</tr>
-</tbody>
-</table>
-<h4 id="get-stats">Get stats</h4>
-<p>Gets information about the node, possibly including the following:</p>
+<p>The fastest XIAO candidate saves <strong>0.649 ms (54.8%)</strong> versus that sweep's
+already-warm, already-batched production control. At 8 MHz, bulk transfers
+alone add about 0.043 ms of benefit to the combined RX shortcut. The Indicator
+remains dominated by I2C-mediated chip-select/BUSY/DIO access; the final bulk
+step improves its combined mean by only 0.019 ms. Small HAL effects varied
+between executable layouts in preliminary screens; do not generalize them.</p>
+<p><strong>The Indicator exceeds the generic 6 ms switch allowance even in its fastest
+experimental path.</strong> These are board measurements, not a justification for
+reducing the shared 6 ms switch / 4 ms loop constants. Indicator scheduling
+and effective preambles need board-specific treatment before a production
+rollout. Application/display/network scheduling is still excluded here.</p>
+<p>Raw accepted sweeps:</p>
 <ul>
-<li>Battery level (millivolts)</li>
-<li>Current transmit queue length</li>
-<li>Current free queue length</li>
-<li>Last RSSI value</li>
-<li>Number of received packets</li>
-<li>Number of sent packets</li>
-<li>Total airtime (seconds)</li>
-<li>Total uptime (seconds)</li>
-<li>Number of packets sent as flood</li>
-<li>Number of packets sent directly</li>
-<li>Number of packets received as flood</li>
-<li>Number of packets received directly</li>
-<li>Error flags</li>
-<li>Last SNR value</li>
-<li>Number of direct route duplicates</li>
-<li>Number of flood route duplicates</li>
-<li>Number posted (?)</li>
-<li>Number of post pushes (?)</li>
+<li><a href="../tools/hil/profile_switch_v5_rx_xiao_complete.json">XIAO RX cases</a></li>
+<li><a href="../tools/hil/profile_switch_v5_rx_indicator.json">Indicator RX cases</a></li>
+<li><a href="../tools/hil/profile_switch_v5_bulk_xiao.json">XIAO bulk SPI</a></li>
+<li><a href="../tools/hil/profile_switch_v5_bulk_indicator.json">Indicator bulk SPI</a></li>
 </ul>
-<h4 id="get-telemetry-data">Get telemetry data</h4>
-<p>Not defined in <code>BaseChatMesh</code>. Sensor- and application-specific request payloads may be implemented by higher-level firmware.</p>
-<h4 id="get-telemetry">Get Telemetry</h4>
-<p>Not defined in <code>BaseChatMesh</code>.</p>
-<h4 id="get-minmaxave-sensor-nodes">Get Min/Max/Ave  (Sensor nodes)</h4>
-<p>Not defined in <code>BaseChatMesh</code>.</p>
-<h4 id="get-access-list">Get Access List</h4>
-<p>Not defined in <code>BaseChatMesh</code>.</p>
-<h4 id="get-neighbors">Get Neighbors</h4>
-<p>Not defined in <code>BaseChatMesh</code>.</p>
-<h4 id="get-owner-info">Get Owner Info</h4>
-<p>Not defined in <code>BaseChatMesh</code>.</p>
-<h3 id="response">Response</h3>
+<h3 id="test-corrections-and-provenance">Test corrections and provenance</h3>
+<p>V3/V4 broad screening accidentally called <code>SX1262::startReceive()</code> instead of
+<code>CustomSX1262::startReceive()</code> in the fallback, omitting MeshCore's extra
+preamble-detection IRQ flag. Their raw files are marked superseded and are
+not included in the counts or conclusions above. The V4 packet sweep was
+stopped on discovery. V5 preserves that flag in both normal and manual RX
+paths; a host regression test checks the Custom fallback and mapped flags.
+The earlier V1/V2 warm/batching experiments did not use that experimental
+subclass and are unaffected.</p>
+<p>An initial V5 XIAO capture stopped on a partial serial JSON line during guarded
+mode exit. It is retained as incomplete, not counted above. The host now
+accumulates reads until newline, with regression coverage. Initial setup
+rejections are retried only for the explicit pre-measurement packet-guard
+reply, bounded to three seconds and counted; packet losses and timed failures
+are never retried away.</p>
+<p>Final V5 firmware SHA-256:</p>
+<ul>
+<li>XIAO: <code>5506a40ffa8240201aca519e8e24db3647f897e7a1290bba22be6e4986d8f02f</code></li>
+<li>Indicator: <code>dd595b2e7fa8c1ccb14fac9223f1a57277cd6a602864ee9bf090672f494fa2f6</code></li>
+</ul>
+<p>Base commit/toolchain/RadioLib pin match the earlier experiments. Thirteen unique
+host tests passed (eight production regressions, two HIL boundary/buffer tests,
+three serial-reader/setup-guard tests). The HIL tests cover all 255 nonzero omission masks,
+normal-path fallbacks, preserved IRQ clear/SetRx, error short-circuit and
+full-duplex buffer lengths 1..260. They are not full driver lifecycle tests.
+An additional normal <code>t1000e_companion_radio_usb</code> nRF52 build passed with the
+production warm/batching changes: 591,484-byte app, runtime RAM guard passed.
+It was not flashed to the RAK or any nRF52 board.</p>
+<h3 id="qualification-boundary">Qualification boundary</h3>
+<p>No BUSY wait, command status validation, stale-IRQ clear, RX command or wrapper
+packet-ownership guard is removed. The fastest path relies on a known
+RX-to-RX window and established RX setup. Correct invalidation after TX, CAD,
+sleep, reset, failed commands, and recovery must be designed and tested before
+promoting these shortcuts. The per-byte/bulk HAL experiment is ESP32-specific.
+Sensitivity/PER, oscillator power draw, large-frequency image recalibration,
+and application-driven continuous scanning remain unqualified.</p>
+<h3 id="actual-packet-checks-and-limitations">Actual packet checks and limitations</h3>
+<p>Final forward matrix: Indicator transmitter to XIAO receiver, -9 dBm,
+21 cases x SF7/8/9 x both profiles x 16/64/255-byte payloads = <strong>378 probes</strong>.
+<strong>359 sequence/length/payload/profile checks succeeded</strong>, 13 receiver-declared
+wait timeouts occurred, and six receiver USB replies did not arrive before
+the host deadline. Transmitter replies returned success. Successfully read
+packets had RSSI -42 to -39 dBm and SNR 10.2 to 14.2 dB. Timeout diagnostics
+reported RX mode and no device errors; some retained a preamble IRQ. These
+observations do not establish why packets were missed.</p>
+<p>The production-batched baseline delivered 17/18 in that matrix; the fastest
+combined/bulk/8 MHz candidate delivered 18/18. An earlier reversed-order
+smoke test of the fastest candidate had one receiver timeout, so the clean
+18-packet batch is <strong>not</strong> a reliability qualification. Earlier 0 dBm checks
+also had baseline and candidate misses. Reducing power did not eliminate them.</p>
+<p>Reverse direction: XIAO transmitter to Indicator receiver, -9 dBm, baseline,
+combined/8 MHz and combined/bulk/8 MHz, with the same SF/profile/length matrix.
+<strong>All 54 payloads arrived intact</strong>, 18/18 per case. However, one XIAO USB TX
+acknowledgement was delayed past the host deadline, after which 32 later
+records picked up the previous command's acknowledgement. Thus the raw file
+has only 21 fully matched transactions despite 54 correctly received payloads.
+This is sequence-correlated evidence of a host acknowledgement problem, not
+33 RF losses. Subsequent collector code rejects/stores stale sequence replies
+instead of associating them with a new command, and now asserts DTR on Windows
+to match the existing <code>s3_memory_soak.py</code> HWCDC session policy. The captures
+above used DTR deasserted; a causal DTR A/B test was not performed. Sequence
+handling has host regression coverage, but these last host changes were not
+rerun on HIL firmware after the boards were restored.</p>
+<p>USB acknowledgements and actual receiver payload validity are recorded
+separately. Missing acknowledgements never trigger an automatic retransmit.
+The host drains the receiver concurrently with the transmitter's command and
+records timeouts without hiding them. These tests establish some real packet
+functionality, not a controlled packet-error-rate comparison. Fix/qualify the
+test transport, repeat with a stable RF reference, then test TX/CAD/reset/RXPS
+and continuous application scanning before promoting the shortcuts.</p>
+<ul>
+<li><a href="../tools/hil/profile_switch_v5_packets_complete.json">Forward matrix, all 21 cases</a></li>
+<li><a href="../tools/hil/profile_switch_v5_packets_reverse_complete.json">Reverse matrix, three cases</a></li>
+<li><a href="../tools/hil/profile_switch_v5_packet_smoke.json">0 dBm smoke</a></li>
+<li><a href="../tools/hil/profile_switch_v5_packet_minus9_smoke.json">-9 dBm reversed-order smoke</a></li>
+</ul>
+<p>Earlier incomplete packet captures and superseded screens are retained for
+audit, not counted in the 378/54 final matrices. No identity or channel secrets
+were transmitted: probes used synthetic sequence-tagged bytes.</p>
+<h2 id="production-integration-and-usb-recovery-v8">Production integration and USB recovery (V8)</h2>
+<p>Normal XIAO S3 WIO and Indicator LoRa variants now opt in to buffered 8 MHz
+SPI and a guarded fast RX-to-RX path. Other SX1262 variants retain default
+SPI/full RX setup; modulation batching and warm standby remain shared.</p>
+<p>The fast path keeps the TCXO warm, applies one SF/BW/CR tuple and one packet
+tuple, clears stale IRQs and starts RX with the original BUSY handling. It
+reuses an established LoRa IRQ map and buffer bases only within an owned
+continuous-RX retune. Ordinary standby, staging/TX, CAD, sleep, reset/init,
+RX duty cycling and command failures invalidate that reuse. RX startup failure
+now fails the whole profile transaction and restores the old profile/caches
+with full setup; failed recovery keeps the profile marked for refresh.</p>
+<h3 id="sleep-recovery-discovered-during-integration">Sleep recovery discovered during integration</h3>
+<p>Initial lifecycle captures found <code>XOSC_START_ERR</code> (0x20) after retained sleep,
+despite successful RX status. RC-policy controls reproduced the same flag:
+this was not established as a regression caused by the fast path. Simply
+waking in RC and entering standby before sleep did not clear it. Reapplying
+the already configured TCXO voltage and 1,600 us delay resolved it.</p>
+<p>The production sleep override now enters standby first, wakes in RC, and
+restores TCXO configuration on wake. It refuses to clear unrelated device
+faults. The warm policy resumes after full RX setup. This follows the standby
+entry requirement in section 13.1.1 of the
+<a href="https://files.waveshare.com/wiki/SX1262-XXXM-LoRaWAN-GNSS-HAT/DS_SX1261-2_V1.2.pdf">Semtech SX1261/2 datasheet</a>.
+Section 13.3.6 describes TCXO control and the XOSC error flag; it does not by
+itself prove the cause of this retained-sleep observation.</p>
+<p>Diagnostic files <code>profile_switch_v6_recovery_xiao.json</code>,
+<code>profile_switch_v7_recovery_xiao.json</code>,
+<code>profile_switch_v7_recovery_xiao_complete.json</code> (despite its filename, its
+<code>complete</code> field is false), and <code>profile_switch_v7_sleep_diagnostic_xiao.json</code>
+retain these failures. They are not counted as passing lifecycle tests.</p>
+<h3 id="usb-fix-and-scope">USB fix and scope</h3>
+<p>The HIL host distinguishes Espressif native CDC (DTR asserted) from CH340
+bridges (DTR/RTS deasserted). Replies are newline-assembled and sequence-matched.
+Firmware caches completed packet <strong>and timing</strong> reports before emitting and
+flushing them. A timeout or malformed report triggers a sequence-scoped result
+query, never a repeated TX or timing run. Randomized session sequence starts
+avoid a cached result from an earlier host session.</p>
+<p>V7 had successfully fixed/retested packet result replay but a long native-USB
+timing sweep still lost one response. V8 adds whole-report timing buffering and
+replay. The incomplete V7 XIAO timing capture is retained, not silently completed.
+The public MeshCore Companion USB protocol is unchanged; these USB fixes are
+for the radio-lab transport. The previous broad Windows-DTR policy described
+in the V5 history above has been replaced by native-device identification.</p>
+<p>Both boards passed <strong>20 reopen cycles</strong>, deliberate lost timing replies,
+deliberate lost TX replies, stale TX reply isolation, and <strong>18 lifecycle cases</strong>
+each. The cases cover TX, CAD, sleep, reset/init, RC-policy sleep and explicit
+TCXO-restoration controls, repeated three times. Fast counters prove one full
+RX fallback after invalidation and reuse only on the following retune.
+All command results, RX-mode checks and device-error checks passed.</p>
+<ul>
+<li><a href="../tools/hil/profile_switch_v8_recovery_xiao.json">XIAO recovery</a></li>
+<li><a href="../tools/hil/profile_switch_v8_recovery_indicator.json">Indicator recovery</a></li>
+</ul>
+<p>V8 test firmware SHA-256 (same pinned RadioLib/toolchain as above):</p>
+<ul>
+<li>XIAO: <code>e1806bbf4af5a88b31423131806a682713221082235507ff95e5beb9ef3ac067</code></li>
+<li>Indicator: <code>bab4009078a4fff68dfb7aa73a5afc83e84f5c47589354d8aeb8e5b8d8798442</code></li>
+</ul>
+<p>Normal USB Companion builds passed for <code>Xiao_S3_WIO_companion_radio_usb</code>
+(813,901 app bytes / 63,012 static RAM),
+<code>SenseCapIndicator-LoRa_comp_radio_usb</code> (879,809 / 62,960), and
+<code>t1000e_companion_radio_usb</code> (591,980 / 179,868). Runtime RAM budgets passed
+on all three. These normal application images were compiled, not substituted
+for the user's configured soak firmware during the HIL tests.</p>
+<p>Host/native regression coverage includes production modulation caches/LDRO,
+standby failure short-circuit, RX-start rollback failure, ownership guards,
+fast-state invalidation, TCXO wake fault preservation, buffered SPI semantics,
+USB result overflow/replay, partial reads and stale-sequence handling.</p>
+<h3 id="final-steady-state-timing">Final steady-state timing</h3>
+<p>V8 ran 256 timed retunes per trial, four production configurations, SF7/8/9
+at 500 kHz paired with SF7/62.5 kHz, and two reversed-order rounds on each
+board: <strong>12,288 measured retunes / 48 trials</strong>. The first eight hops per trial
+are excluded. There were zero retune failures, BUSY timeouts, RX-mode errors
+or modulation-cache errors. All 48 trials restored RC policy on exit. The
+normal packet guards deferred 21 XIAO and 59 Indicator hops; no setup retries
+or naturally missing/replayed USB reports occurred in these final sweeps.</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
+<th>Production configuration</th>
+<th>XIAO mean / maximum</th>
+<th>Indicator mean / maximum</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>content</td>
-<td>rest of payload</td>
-<td>application-defined response body</td>
+<td>Warm + batching, per-byte SPI 2 MHz</td>
+<td>1.193 / 1.227 ms</td>
+<td>15.174 / 15.836 ms</td>
+</tr>
+<tr>
+<td>Fast RX, per-byte SPI 2 MHz</td>
+<td>0.744 / 0.770 ms</td>
+<td>8.426 / 8.471 ms</td>
+</tr>
+<tr>
+<td>Full RX, buffered SPI 8 MHz</td>
+<td>0.828 / 0.840 ms</td>
+<td>14.816 / 15.386 ms</td>
+</tr>
+<tr>
+<td>Fast RX + buffered SPI 8 MHz</td>
+<td><strong>0.549 / 0.556 ms</strong></td>
+<td><strong>8.263 / 8.879 ms</strong></td>
 </tr>
 </tbody>
 </table>
-<p>Response contents are opaque application data. There is no single generic response envelope beyond the encrypted payload wrapper shown above.</p>
-<h3 id="plain-text-message">Plain text message</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>timestamp</td>
-<td>4</td>
-<td>send time (unix timestamp)</td>
-</tr>
-<tr>
-<td>txt_type + attempt</td>
-<td>1</td>
-<td>upper six bits are txt_type (see below), lower two bits are attempt number (0..3)</td>
-</tr>
-<tr>
-<td>message</td>
-<td>rest of payload</td>
-<td>the message content, see next table</td>
-</tr>
-</tbody>
-</table>
-<p>txt_type</p>
-<table>
-<thead>
-<tr>
-<th>Value</th>
-<th>Description</th>
-<th>Message content</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>0x00</code></td>
-<td>plain text message</td>
-<td>the plain text of the message</td>
-</tr>
-<tr>
-<td><code>0x01</code></td>
-<td>CLI data</td>
-<td>CLI command OR reply text</td>
-</tr>
-<tr>
-<td><code>0x02</code></td>
-<td>signed plain text message</td>
-<td>first four bytes is sender pubkey prefix, followed by plain text message</td>
-</tr>
-<tr>
-<td><code>0x03</code></td>
-<td>CLI command</td>
-<td>(since v1.18+) CLI command text (explicit)</td>
-</tr>
-</tbody>
-</table>
-<p>For a room post, companion firmware uses its own monotonic clock for the
-on-air timestamp and preserves that timestamp across application retries. Room
-servers track post timestamps separately from login, request, and CLI traffic.
-They also remember recent accepted posts by sender, timestamp, and text: an
-exact retry is ACKed again without storing a duplicate, while stale or
-same-timestamp mismatches are rejected.</p>
-<h2 id="anonymous-request">Anonymous request</h2>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>destination hash</td>
-<td>1</td>
-<td>first byte of destination node public key</td>
-</tr>
-<tr>
-<td>public key</td>
-<td>32</td>
-<td>sender's Ed25519 public key</td>
-</tr>
-<tr>
-<td>cipher MAC</td>
-<td>2</td>
-<td>MAC for encrypted data in next field</td>
-</tr>
-<tr>
-<td>ciphertext</td>
-<td>rest of payload</td>
-<td>encrypted message, see below for details</td>
-</tr>
-</tbody>
-</table>
-<h3 id="room-server-login">Room server login</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>timestamp</td>
-<td>4</td>
-<td>sender time (unix timestamp)</td>
-</tr>
-<tr>
-<td>sync timestamp</td>
-<td>4</td>
-<td>sender's "sync messages SINCE x" timestamp</td>
-</tr>
-<tr>
-<td>password</td>
-<td>rest of message</td>
-<td>password for room</td>
-</tr>
-</tbody>
-</table>
-<h3 id="repeatersensor-login">Repeater/Sensor login</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>timestamp</td>
-<td>4</td>
-<td>sender time (unix timestamp)</td>
-</tr>
-<tr>
-<td>password</td>
-<td>rest of message</td>
-<td>password for repeater/sensor</td>
-</tr>
-</tbody>
-</table>
-<h3 id="repeater-regions-request">Repeater - Regions request</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>timestamp</td>
-<td>4</td>
-<td>sender time (unix timestamp)</td>
-</tr>
-<tr>
-<td>req type</td>
-<td>1</td>
-<td>0x01 (request sub type)</td>
-</tr>
-<tr>
-<td>reply path len</td>
-<td>1</td>
-<td>path len for reply</td>
-</tr>
-<tr>
-<td>reply path</td>
-<td>(variable)</td>
-<td>reply path</td>
-</tr>
-</tbody>
-</table>
-<h3 id="repeater-owner-info-request">Repeater - Owner info request</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>timestamp</td>
-<td>4</td>
-<td>sender time (unix timestamp)</td>
-</tr>
-<tr>
-<td>req type</td>
-<td>1</td>
-<td>0x02 (request sub type)</td>
-</tr>
-<tr>
-<td>reply path len</td>
-<td>1</td>
-<td>path len for reply</td>
-</tr>
-<tr>
-<td>reply path</td>
-<td>(variable)</td>
-<td>reply path</td>
-</tr>
-</tbody>
-</table>
-<h3 id="repeater-clock-and-status-request">Repeater - Clock and status request</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>timestamp</td>
-<td>4</td>
-<td>sender time (unix timestamp)</td>
-</tr>
-<tr>
-<td>req type</td>
-<td>1</td>
-<td>0x03 (request sub type)</td>
-</tr>
-<tr>
-<td>reply path len</td>
-<td>1</td>
-<td>path len for reply</td>
-</tr>
-<tr>
-<td>reply path</td>
-<td>(variable)</td>
-<td>reply path</td>
-</tr>
-</tbody>
-</table>
-<h2 id="group-text-message">Group text message</h2>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>channel hash</td>
-<td>1</td>
-<td>first byte of SHA256 of channel's shared key</td>
-</tr>
-<tr>
-<td>cipher MAC</td>
-<td>2</td>
-<td>MAC for encrypted data in next field</td>
-</tr>
-<tr>
-<td>ciphertext</td>
-<td>rest of payload</td>
-<td>encrypted message, see below for details</td>
-</tr>
-</tbody>
-</table>
-<p>The plaintext contained in the ciphertext matches the format described in <a href="#plain-text-message">plain text message</a>. Specifically, it consists of a four byte timestamp, a flags byte, and the message. The flags byte will generally be <code>0x00</code> because it is a "plain text message". The message will be of the form <code>&lt;sender name&gt;: &lt;message body&gt;</code> (eg., <code>user123: I'm on my way</code>).</p>
-<p>The sender name is unverified message text. Group messages contain no sender
-signature, so any channel-key holder can choose any sender name.</p>
-<h2 id="group-datagram">Group datagram</h2>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>channel hash</td>
-<td>1</td>
-<td>first byte of SHA256 of channel's shared key</td>
-</tr>
-<tr>
-<td>cipher MAC</td>
-<td>2</td>
-<td>MAC for encrypted data in next field</td>
-</tr>
-<tr>
-<td>ciphertext</td>
-<td>rest of payload</td>
-<td>encrypted data, see below for details</td>
-</tr>
-</tbody>
-</table>
-<p>The data contained in the ciphertext uses the format below:</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>data type</td>
-<td>2</td>
-<td>Identifier for type of data. (See number_allocations.md)</td>
-</tr>
-<tr>
-<td>data len</td>
-<td>1</td>
-<td>byte length of data</td>
-</tr>
-<tr>
-<td>data</td>
-<td>rest of payload</td>
-<td>(depends on data type)</td>
-</tr>
-</tbody>
-</table>
-<h2 id="control-data">Control data</h2>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>flags</td>
-<td>1</td>
-<td>upper 4 bits is sub_type</td>
-</tr>
-<tr>
-<td>data</td>
-<td>rest of payload</td>
-<td>typically unencrypted data</td>
-</tr>
-</tbody>
-</table>
-<h3 id="discover_req-sub_type">DISCOVER_REQ (sub_type)</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>flags</td>
-<td>1</td>
-<td>0x8 (upper 4 bits), prefix_only (lowest bit)</td>
-</tr>
-<tr>
-<td>type_filter</td>
-<td>1</td>
-<td>bit for each ADV_TYPE_*</td>
-</tr>
-<tr>
-<td>tag</td>
-<td>4</td>
-<td>randomly generate by sender</td>
-</tr>
-<tr>
-<td>since</td>
-<td>4</td>
-<td>(optional) epoch timestamp (0 by default)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="discover_resp-sub_type">DISCOVER_RESP (sub_type)</h3>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>flags</td>
-<td>1</td>
-<td>0x9 (upper 4 bits), node_type (lower 4)</td>
-</tr>
-<tr>
-<td>snr</td>
-<td>1</td>
-<td>signed, SNR*4</td>
-</tr>
-<tr>
-<td>tag</td>
-<td>4</td>
-<td>reflected back from DISCOVER_REQ</td>
-</tr>
-<tr>
-<td>pubkey</td>
-<td>8 or 32</td>
-<td>node's ID (or prefix)</td>
-</tr>
-</tbody>
-</table>
-<h2 id="trace">Trace</h2>
-<p>Trace packets use direct routing. Their normal direct-path header is empty;
-instead, the intended route follows a fixed nine-byte trace header in the
-payload. Each forwarding node appends its received SNR multiplied by four to
-the packet's route-accumulator field.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>tag</td>
-<td>4</td>
-<td>Sender-selected trace identifier.</td>
-</tr>
-<tr>
-<td>auth code</td>
-<td>4</td>
-<td>Application-defined authentication/correlation value.</td>
-</tr>
-<tr>
-<td>flags</td>
-<td>1</td>
-<td>Low two bits encode the route hash size. Current senders use the legacy <code>1 &lt;&lt; value</code> interpretation (1, 2, 4, or 8 bytes); receivers also accept the packed 1-4-byte interpretation where it is unambiguous.</td>
-</tr>
-<tr>
-<td>route</td>
-<td>rest</td>
-<td>Concatenated node-hash prefixes for the requested direct route.</td>
-</tr>
-</tbody>
-</table>
-<p>At the destination, the application receives the tag, auth code, flags,
-accumulated SNR bytes, and original route bytes. Trace therefore differs from a
-normal direct packet whose path is carried entirely in the packet route field.</p>
-<h2 id="multipart">Multipart</h2>
-<p>The first payload byte identifies the inner payload and how many packets remain:</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Size (bytes)</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>remaining + type</td>
-<td>1</td>
-<td>Upper nibble is the remaining-packet count; lower nibble is the inner payload type.</td>
-</tr>
-<tr>
-<td>inner data</td>
-<td>rest</td>
-<td>Data for the inner payload type.</td>
-</tr>
-</tbody>
-</table>
-<p>The core currently creates and consumes multipart acknowledgments. For that
-form, the low nibble is <code>0x03</code> and the next four bytes are the acknowledgment
-CRC. Other multipart inner types are reserved for application or future use.</p>
-<h2 id="ota">OTA</h2>
-<p>An OTA payload contains one OTA protocol message and is normally sent by flood.
-Its message types, integrity fields, and transfer state are defined in the
-<a href="../ota_protocol/">OTA-over-LoRa protocol</a>. Builds without OTA support can still
-relay an opaque OTA packet when their routing policy permits it.</p>
-<h2 id="custom-packet">Custom packet</h2>
-<p>Custom packets have no defined format.</p>
+<p>The combined production path saves <strong>54.0% on XIAO</strong> and <strong>45.5% on Indicator</strong>
+relative to each same-image warm/batched control. Small differences from V5-V7
+reflect different binaries/code layout; only within-image A/Bs are compared.
+Both fast configurations must increment the production success counter; full
+RX controls must not. Mode/cache verification happens after the timed region.</p>
+<ul>
+<li><a href="../tools/hil/profile_switch_v8_production_xiao.json">XIAO V8 timing</a></li>
+<li><a href="../tools/hil/profile_switch_v8_production_indicator.json">Indicator V8 timing</a></li>
+</ul>
+<p>The common 6 ms switch and 4 ms loop allowances are unchanged, not delays
+inserted by the driver. Indicator still exceeds 6 ms. These measurements do
+not qualify continuous application scheduling, scan-overlap reception,
+sensitivity/PER, power use, temperature extremes, or image recalibration on
+frequency changes larger than this 1 MHz pair. Do not shorten common transmit
+preambles or advertise the XIAO number for other boards.</p>
+<h3 id="final-over-air-packet-matrix">Final over-air packet matrix</h3>
+<p><strong>288/288 payloads and command transactions passed</strong>: 144 Indicator-to-XIAO
+and 144 XIAO-to-Indicator. Each direction covers all four production cases,
+SF7/8/9 secondary profiles, both target profiles, 16/64/255-byte synthetic
+payloads and two reversed-order rounds. TX used buffered 8 MHz SPI at -9 dBm.
+Fast receiver readiness reports had to show actual production fast resumes.</p>
+<p>There were <strong>zero RX errors, receiver timeouts, missing replies, stale replies,
+or natural transport-recovery queries</strong> in these matrices. Deliberately lost
+and stale replies were separately exercised by the recovery tests above.
+RSSI ranged -43 to -39 dBm and SNR 10.2 to 14.5 dB. This clean short-range
+matrix addresses the failures seen in the earlier V5 harness; it does not
+identify which single change caused each historical miss or establish a
+field packet-error rate.</p>
+<ul>
+<li><a href="../tools/hil/profile_switch_v8_packets_forward.json">Indicator TX / XIAO RX</a></li>
+<li><a href="../tools/hil/profile_switch_v8_packets_reverse.json">XIAO TX / Indicator RX</a></li>
+</ul>
+<p>All <strong>18 host/native regression tests</strong> passed. The HIL builds do not include
+the unrelated pre-existing Companion/repeater/Wi-Fi soak edits; the normal
+application compile checks include the current working tree and preserve them.</p>
+<p>A subsequent requested <a href="../sf6_channel_scan_validation/">SF6/125 kHz multi-channel test</a>
+used 32-symbol preambles and 4.8-symbol visits. It stopped on the third packet
+at the initial four channels (two received, one timeout); no higher count was
+tried. That continuous scan experiment is separate from the 288/288
+stationary-after-retune matrix above.</p>
 
 
 

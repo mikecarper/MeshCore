@@ -197,7 +197,15 @@
          <lastmod>2026-09-14</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/preamble_detection_investigation/</loc>
+         <lastmod>2026-09-14</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/qr_codes/</loc>
+         <lastmod>2026-09-14</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/radio_profile_switch_validation/</loc>
          <lastmod>2026-09-14</lastmod>
     </url>
     <url>
@@ -218,6 +226,18 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/role_feature_switches/</loc>
+         <lastmod>2026-09-14</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf6_5p1_trace_validation/</loc>
+         <lastmod>2026-09-14</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf6_channel_scan_validation/</loc>
+         <lastmod>2026-09-14</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf8_5p1_trace_validation/</loc>
          <lastmod>2026-09-14</lastmod>
     </url>
     <url>

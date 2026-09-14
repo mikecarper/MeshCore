@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/stats_binary_frames/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/sf6_channel_scan_validation/">
       
       
-        <link rel="prev" href="../spiffs_regular_file_reads/">
+        <link rel="prev" href="../sf6_5p1_trace_validation/">
       
       
-        <link rel="next" href="../telemetry_decoder/">
+        <link rel="next" href="../sf8_5p1_trace_validation/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Stats Binary Frame Structures - MeshCore Docs</title>
+        <title>SF6 / 125 kHz channel-count test - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#stats-binary-frame-structures" class="md-skip">
+        <a href="#sf6-125-khz-channel-count-test" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Stats Binary Frame Structures
+              SF6 / 125 kHz channel-count test
             
           </span>
         </div>
@@ -1795,10 +1795,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../sf6_channel_scan_validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF6 / 125 kHz channel-count test
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1814,6 +1841,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#requested-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requested setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-and-reproduction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation and reproduction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#device-handoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Device handoff
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1876,37 +1967,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Stats Binary Frame Structures
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
         
   
   
@@ -1922,232 +1986,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#command-codes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Command Codes
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Command Codes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#stats-sub-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stats Sub-Types
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#response-codes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Response Codes
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Response Codes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#stats-response-sub-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stats Response Sub-Types
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resp_code_stats-stats_type_core-24-0" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RESP_CODE_STATS + STATS_TYPE_CORE (24, 0)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="RESP_CODE_STATS + STATS_TYPE_CORE (24, 0)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#example-structure-cc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example Structure (C/C++)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resp_code_stats-stats_type_radio-24-1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RESP_CODE_STATS + STATS_TYPE_RADIO (24, 1)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="RESP_CODE_STATS + STATS_TYPE_RADIO (24, 1)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#example-structure-cc_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example Structure (C/C++)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resp_code_stats-stats_type_packets-24-2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RESP_CODE_STATS + STATS_TYPE_PACKETS (24, 2)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="RESP_CODE_STATS + STATS_TYPE_PACKETS (24, 2)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Notes
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example-structure-cc_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example Structure (C/C++)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#command-usage-example-python" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Command Usage Example (Python)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#response-parsing-example-python" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Response Parsing Example (Python)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#command-usage-example-javascripttypescript" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Command Usage Example (JavaScript/TypeScript)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#response-parsing-example-javascripttypescript" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Response Parsing Example (JavaScript/TypeScript)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#field-size-considerations" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Field Size Considerations
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2425,161 +2263,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#command-codes" class="md-nav__link">
+  <a href="#requested-setup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Command Codes
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Command Codes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#stats-sub-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stats Sub-Types
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#response-codes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Response Codes
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Response Codes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#stats-response-sub-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stats Response Sub-Types
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resp_code_stats-stats_type_core-24-0" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RESP_CODE_STATS + STATS_TYPE_CORE (24, 0)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="RESP_CODE_STATS + STATS_TYPE_CORE (24, 0)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#example-structure-cc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example Structure (C/C++)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resp_code_stats-stats_type_radio-24-1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RESP_CODE_STATS + STATS_TYPE_RADIO (24, 1)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="RESP_CODE_STATS + STATS_TYPE_RADIO (24, 1)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#example-structure-cc_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example Structure (C/C++)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resp_code_stats-stats_type_packets-24-2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        RESP_CODE_STATS + STATS_TYPE_PACKETS (24, 2)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="RESP_CODE_STATS + STATS_TYPE_PACKETS (24, 2)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Notes
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example-structure-cc_2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example Structure (C/C++)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#command-usage-example-python" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Command Usage Example (Python)
+        Requested setup
       
     </span>
   </a>
@@ -2587,10 +2274,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#response-parsing-example-python" class="md-nav__link">
+  <a href="#observations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Response Parsing Example (Python)
+        Observations
       
     </span>
   </a>
@@ -2598,10 +2285,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#command-usage-example-javascripttypescript" class="md-nav__link">
+  <a href="#implementation-and-reproduction" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Command Usage Example (JavaScript/TypeScript)
+        Implementation and reproduction
       
     </span>
   </a>
@@ -2609,21 +2296,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#response-parsing-example-javascripttypescript" class="md-nav__link">
+  <a href="#device-handoff" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Response Parsing Example (JavaScript/TypeScript)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#field-size-considerations" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Field Size Considerations
+        Device handoff
       
     </span>
   </a>
@@ -2647,7 +2323,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/stats_binary_frames.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/sf6_channel_scan_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2655,502 +2331,137 @@
   
 
 
-<h1 id="stats-binary-frame-structures">Stats Binary Frame Structures</h1>
-<p>Binary frame structures for companion radio stats commands. All multi-byte integers use little-endian byte order.</p>
-<h2 id="command-codes">Command Codes</h2>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Code</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>CMD_GET_STATS</code></td>
-<td>56</td>
-<td>Get statistics (2-byte command: code + sub-type)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="stats-sub-types">Stats Sub-Types</h3>
-<p>The <code>CMD_GET_STATS</code> command uses a 2-byte frame structure:
-- <strong>Byte 0:</strong> <code>CMD_GET_STATS</code> (56)
-- <strong>Byte 1:</strong> Stats sub-type:
-  - <code>STATS_TYPE_CORE</code> (0) - Get core device statistics
-  - <code>STATS_TYPE_RADIO</code> (1) - Get radio statistics
-  - <code>STATS_TYPE_PACKETS</code> (2) - Get packet statistics</p>
-<h2 id="response-codes">Response Codes</h2>
-<table>
-<thead>
-<tr>
-<th>Response</th>
-<th>Code</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>RESP_CODE_STATS</code></td>
-<td>24</td>
-<td>Statistics response (2-byte response: code + sub-type)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="stats-response-sub-types">Stats Response Sub-Types</h3>
-<p>The <code>RESP_CODE_STATS</code> response uses a 2-byte header structure:
-- <strong>Byte 0:</strong> <code>RESP_CODE_STATS</code> (24)
-- <strong>Byte 1:</strong> Stats sub-type (matches command sub-type):
-  - <code>STATS_TYPE_CORE</code> (0) - Core device statistics response
-  - <code>STATS_TYPE_RADIO</code> (1) - Radio statistics response
-  - <code>STATS_TYPE_PACKETS</code> (2) - Packet statistics response</p>
-<hr />
-<h2 id="resp_code_stats-stats_type_core-24-0">RESP_CODE_STATS + STATS_TYPE_CORE (24, 0)</h2>
-<p><strong>Total Frame Size:</strong> 11 bytes</p>
-<table>
-<thead>
-<tr>
-<th>Offset</th>
-<th>Size</th>
-<th>Type</th>
-<th>Field Name</th>
-<th>Description</th>
-<th>Range/Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>1</td>
-<td>uint8_t</td>
-<td>response_code</td>
-<td>Always <code>0x18</code> (24)</td>
-<td>-</td>
-</tr>
-<tr>
-<td>1</td>
-<td>1</td>
-<td>uint8_t</td>
-<td>stats_type</td>
-<td>Always <code>0x00</code> (STATS_TYPE_CORE)</td>
-<td>-</td>
-</tr>
-<tr>
-<td>2</td>
-<td>2</td>
-<td>uint16_t</td>
-<td>battery_mv</td>
-<td>Battery voltage in millivolts</td>
-<td>0 - 65,535</td>
-</tr>
-<tr>
-<td>4</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>uptime_secs</td>
-<td>Device uptime in seconds</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>8</td>
-<td>2</td>
-<td>uint16_t</td>
-<td>errors</td>
-<td>Error flags bitmask</td>
-<td>-</td>
-</tr>
-<tr>
-<td>10</td>
-<td>1</td>
-<td>uint8_t</td>
-<td>queue_len</td>
-<td>Outbound packet queue length</td>
-<td>0 - 255</td>
-</tr>
-</tbody>
-</table>
-<h3 id="example-structure-cc">Example Structure (C/C++)</h3>
-<pre><code class="language-c">struct StatsCore {
-    uint8_t  response_code;  // 0x18
-    uint8_t  stats_type;     // 0x00 (STATS_TYPE_CORE)
-    uint16_t battery_mv;
-    uint32_t uptime_secs;
-    uint16_t errors;
-    uint8_t  queue_len;
-} __attribute__((packed));
-</code></pre>
-<hr />
-<h2 id="resp_code_stats-stats_type_radio-24-1">RESP_CODE_STATS + STATS_TYPE_RADIO (24, 1)</h2>
-<p><strong>Total Frame Size:</strong> 14 bytes</p>
-<table>
-<thead>
-<tr>
-<th>Offset</th>
-<th>Size</th>
-<th>Type</th>
-<th>Field Name</th>
-<th>Description</th>
-<th>Range/Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>1</td>
-<td>uint8_t</td>
-<td>response_code</td>
-<td>Always <code>0x18</code> (24)</td>
-<td>-</td>
-</tr>
-<tr>
-<td>1</td>
-<td>1</td>
-<td>uint8_t</td>
-<td>stats_type</td>
-<td>Always <code>0x01</code> (STATS_TYPE_RADIO)</td>
-<td>-</td>
-</tr>
-<tr>
-<td>2</td>
-<td>2</td>
-<td>int16_t</td>
-<td>noise_floor</td>
-<td>Radio noise floor in dBm</td>
-<td>-140 to +10</td>
-</tr>
-<tr>
-<td>4</td>
-<td>1</td>
-<td>int8_t</td>
-<td>last_rssi</td>
-<td>Last received signal strength in dBm</td>
-<td>-128 to +127</td>
-</tr>
-<tr>
-<td>5</td>
-<td>1</td>
-<td>int8_t</td>
-<td>last_snr</td>
-<td>SNR scaled by 4</td>
-<td>Divide by 4.0 for dB</td>
-</tr>
-<tr>
-<td>6</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>tx_air_secs</td>
-<td>Cumulative transmit airtime in seconds</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>10</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>rx_air_secs</td>
-<td>Cumulative receive airtime in seconds</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-</tbody>
-</table>
-<h3 id="example-structure-cc_1">Example Structure (C/C++)</h3>
-<pre><code class="language-c">struct StatsRadio {
-    uint8_t  response_code;  // 0x18
-    uint8_t  stats_type;     // 0x01 (STATS_TYPE_RADIO)
-    int16_t  noise_floor;
-    int8_t   last_rssi;
-    int8_t   last_snr;       // Divide by 4.0 to get actual SNR in dB
-    uint32_t tx_air_secs;
-    uint32_t rx_air_secs;
-} __attribute__((packed));
-</code></pre>
-<hr />
-<h2 id="resp_code_stats-stats_type_packets-24-2">RESP_CODE_STATS + STATS_TYPE_PACKETS (24, 2)</h2>
-<p><strong>Total Frame Size:</strong> 26 bytes (legacy) or 30 bytes (includes <code>recv_errors</code>)</p>
-<table>
-<thead>
-<tr>
-<th>Offset</th>
-<th>Size</th>
-<th>Type</th>
-<th>Field Name</th>
-<th>Description</th>
-<th>Range/Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>1</td>
-<td>uint8_t</td>
-<td>response_code</td>
-<td>Always <code>0x18</code> (24)</td>
-<td>-</td>
-</tr>
-<tr>
-<td>1</td>
-<td>1</td>
-<td>uint8_t</td>
-<td>stats_type</td>
-<td>Always <code>0x02</code> (STATS_TYPE_PACKETS)</td>
-<td>-</td>
-</tr>
-<tr>
-<td>2</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>recv</td>
-<td>Total packets received</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>6</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>sent</td>
-<td>Total packets sent</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>10</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>flood_tx</td>
-<td>Packets sent via flood routing</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>14</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>direct_tx</td>
-<td>Packets sent via direct routing</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>18</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>flood_rx</td>
-<td>Packets received via flood routing</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>22</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>direct_rx</td>
-<td>Packets received via direct routing</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-<tr>
-<td>26</td>
-<td>4</td>
-<td>uint32_t</td>
-<td>recv_errors</td>
-<td>Receive/CRC errors (RadioLib); present only in 30-byte frame</td>
-<td>0 - 4,294,967,295</td>
-</tr>
-</tbody>
-</table>
-<h3 id="notes">Notes</h3>
+<h1 id="sf6-125-khz-channel-count-test">SF6 / 125 kHz channel-count test</h1>
+<p>Measured 2026-09-13. The run stopped on the <strong>third packet at the initial four
+channels</strong>: two arrived intact, then the receiver timed out. No five-channel
+test, lower-channel test, retry or retransmission was performed. Consequently
+this run does <strong>not</strong> establish a maximum channel count with 100% reception.</p>
+<p>Follow-up: <a href="../sf6_5p1_trace_validation/">four channels at 5.1 symbols with an IRQ trace</a>
+stopped at packet 8 and observed no preamble acquisition during the miss.</p>
+<h2 id="requested-setup">Requested setup</h2>
 <ul>
-<li>Counters are cumulative from boot and may wrap.</li>
-<li><code>recv = flood_rx + direct_rx</code></li>
-<li><code>sent = flood_tx + direct_tx</code></li>
-<li>Clients should accept frame length &gt;= 26; if length &gt;= 30, parse <code>recv_errors</code> at offset 26.</li>
+<li>Receiver: XIAO ESP32-S3 + WIO SX1262, COM31.</li>
+<li>Reference transmitter: SenseCAP Indicator ESP32-S3 LoRa processor, COM28.</li>
+<li>SF6 / 125 kHz / CR4/5, fixed <strong>32-symbol programmed preamble</strong>.</li>
+<li><strong>4.8-symbol receive visits</strong>: 2,457.6 us, rounded up to 2,458 us.</li>
+<li>Buffered 8 MHz SPI and the production fast retune/packet-ownership guards.</li>
+<li>Start at four channels and add one only after 100/100 packets on every channel.</li>
+<li>Stop at the first missing/corrupt packet; USB/reference/scanner faults are
+  reported separately as inconclusive fixture errors.</li>
+<li>16-byte synthetic payloads at -9 dBm. No identity/channel secrets transmitted.</li>
+<li>Four channel centers: 909.500, 909.750, 910.000 and 910.250 MHz.</li>
+<li>Balanced randomized channel order, seed 606125; varied arrival timing across
+  approximately two idle scan cycles. Arming an expectation does not select
+  the receiver's channel or reset its visit clock.</li>
 </ul>
-<h3 id="example-structure-cc_2">Example Structure (C/C++)</h3>
-<pre><code class="language-c">struct StatsPackets {
-    uint8_t  response_code;  // 0x18
-    uint8_t  stats_type;     // 0x02 (STATS_TYPE_PACKETS)
-    uint32_t recv;
-    uint32_t sent;
-    uint32_t flood_tx;
-    uint32_t direct_tx;
-    uint32_t flood_rx;
-    uint32_t direct_rx;
-    uint32_t recv_errors;    // present when frame size is 30
-} __attribute__((packed));
+<p>The 100-packet-per-channel target was <strong>not reached</strong>: the explicit first-miss
+stop rule ended the run during its first shuffled pass.</p>
+<h2 id="observations">Observations</h2>
+<table>
+<thead>
+<tr>
+<th>Probe</th>
+<th>Channel center</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>910.250 MHz</td>
+<td>Valid 16 bytes, RSSI -40 dBm, SNR 10.8 dB</td>
+</tr>
+<tr>
+<td>2</td>
+<td>910.000 MHz</td>
+<td>Valid 16 bytes, RSSI -40 dBm, SNR 11.0 dB</td>
+</tr>
+<tr>
+<td>3</td>
+<td>909.750 MHz</td>
+<td>Receiver timeout; transmitter returned success</td>
+</tr>
+</tbody>
+</table>
+<p>All three transmit acknowledgements and receiver reports matched their
+sequence IDs, with no missing/replayed/stale USB replies. On the miss, the
+receiver reported RX mode and zero device errors. The scanner recorded zero
+retune failures, RX-mode errors, modulation-cache errors or CRC/read errors.
+No probe was sent on 909.500 MHz before the stop condition.</p>
+<table>
+<thead>
+<tr>
+<th>Timing</th>
+<th>Minimum</th>
+<th>Mean</th>
+<th>Maximum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Production retune to BUSY low, 3,467 hops</td>
+<td>504 us</td>
+<td><strong>514.652 us</strong></td>
+<td>726 us</td>
+</tr>
+<tr>
+<td>Idle receive dwell, 3,463 visits</td>
+<td>2,458 us</td>
+<td><strong>2,462.480 us</strong></td>
+<td>2,468 us</td>
+</tr>
+</tbody>
+</table>
+<p>These samples include scanning during the bounded 10-second wait that
+confirmed the missing packet. There were 2,451 deferred <em>attempts</em> while
+production preamble/header/packet ownership held a visit; this is not a count
+of packets or failed retunes. Held visits are excluded from idle-dwell timing.
+All 3,467 successful retunes used the production fast-RX path.</p>
+<p>The means imply about <strong>11.91 ms per four-channel idle cycle</strong>, excluding
+packet-held visits and small loop bookkeeping. Fast retuning alone did not
+produce 100% reception in this setup. This short stop-on-first-miss experiment
+does not identify the exact acquisition/phase cause, estimate a stable PER,
+prove that three channels would pass, or establish a universal board limit.</p>
+<h2 id="implementation-and-reproduction">Implementation and reproduction</h2>
+<p>This is a lab-only N-channel scheduler over the real <code>tuneProfile()</code> path.
+It reuses the two production profile slots as staging slots for the next
+frequency. Normal MeshCore <code>radio2</code> remains two-profile. The explicit test
+schedule intentionally does not use the normal two-profile automatic-preamble
+fit calculation or generic 6 ms switch / 4 ms loop allowances. It keeps the
+existing packet-protection guards and measures real dwell/retune overhead.</p>
+<pre><code class="language-text">python tools/hil/profile_switch_channels.py --receiver COM31 --sender COM28 --output results.json --samples 100 --preamble 32
 </code></pre>
-<hr />
-<h2 id="command-usage-example-python">Command Usage Example (Python)</h2>
-<pre><code class="language-python"># Send CMD_GET_STATS command
-def send_get_stats_core(serial_interface):
-    &quot;&quot;&quot;Send command to get core stats&quot;&quot;&quot;
-    cmd = bytes([56, 0])  # CMD_GET_STATS (56) + STATS_TYPE_CORE (0)
-    serial_interface.write(cmd)
-
-def send_get_stats_radio(serial_interface):
-    &quot;&quot;&quot;Send command to get radio stats&quot;&quot;&quot;
-    cmd = bytes([56, 1])  # CMD_GET_STATS (56) + STATS_TYPE_RADIO (1)
-    serial_interface.write(cmd)
-
-def send_get_stats_packets(serial_interface):
-    &quot;&quot;&quot;Send command to get packet stats&quot;&quot;&quot;
-    cmd = bytes([56, 2])  # CMD_GET_STATS (56) + STATS_TYPE_PACKETS (2)
-    serial_interface.write(cmd)
-</code></pre>
-<hr />
-<h2 id="response-parsing-example-python">Response Parsing Example (Python)</h2>
-<pre><code class="language-python">import struct
-
-def parse_stats_core(frame):
-    &quot;&quot;&quot;Parse RESP_CODE_STATS + STATS_TYPE_CORE frame (11 bytes)&quot;&quot;&quot;
-    response_code, stats_type, battery_mv, uptime_secs, errors, queue_len = \
-        struct.unpack('&lt;B B H I H B', frame)
-    assert response_code == 24 and stats_type == 0, &quot;Invalid response type&quot;
-    return {
-        'battery_mv': battery_mv,
-        'uptime_secs': uptime_secs,
-        'errors': errors,
-        'queue_len': queue_len
-    }
-
-def parse_stats_radio(frame):
-    &quot;&quot;&quot;Parse RESP_CODE_STATS + STATS_TYPE_RADIO frame (14 bytes)&quot;&quot;&quot;
-    response_code, stats_type, noise_floor, last_rssi, last_snr, tx_air_secs, rx_air_secs = \
-        struct.unpack('&lt;B B h b b I I', frame)
-    assert response_code == 24 and stats_type == 1, &quot;Invalid response type&quot;
-    return {
-        'noise_floor': noise_floor,
-        'last_rssi': last_rssi,
-        'last_snr': last_snr / 4.0,  # Unscale SNR
-        'tx_air_secs': tx_air_secs,
-        'rx_air_secs': rx_air_secs
-    }
-
-def parse_stats_packets(frame):
-    &quot;&quot;&quot;Parse RESP_CODE_STATS + STATS_TYPE_PACKETS frame (26 or 30 bytes)&quot;&quot;&quot;
-    assert len(frame) &gt;= 26, &quot;STATS_TYPE_PACKETS frame too short&quot;
-    response_code, stats_type, recv, sent, flood_tx, direct_tx, flood_rx, direct_rx = \
-        struct.unpack('&lt;B B I I I I I I', frame[:26])
-    assert response_code == 24 and stats_type == 2, &quot;Invalid response type&quot;
-    result = {
-        'recv': recv,
-        'sent': sent,
-        'flood_tx': flood_tx,
-        'direct_tx': direct_tx,
-        'flood_rx': flood_rx,
-        'direct_rx': direct_rx
-    }
-    if len(frame) &gt;= 30:
-        (recv_errors,) = struct.unpack('&lt;I', frame[26:30])
-        result['recv_errors'] = recv_errors
-    return result
-</code></pre>
-<hr />
-<h2 id="command-usage-example-javascripttypescript">Command Usage Example (JavaScript/TypeScript)</h2>
-<pre><code class="language-typescript">// Send CMD_GET_STATS command
-const CMD_GET_STATS = 56;
-const STATS_TYPE_CORE = 0;
-const STATS_TYPE_RADIO = 1;
-const STATS_TYPE_PACKETS = 2;
-
-function sendGetStatsCore(serialInterface: SerialPort): void {
-    const cmd = new Uint8Array([CMD_GET_STATS, STATS_TYPE_CORE]);
-    serialInterface.write(cmd);
-}
-
-function sendGetStatsRadio(serialInterface: SerialPort): void {
-    const cmd = new Uint8Array([CMD_GET_STATS, STATS_TYPE_RADIO]);
-    serialInterface.write(cmd);
-}
-
-function sendGetStatsPackets(serialInterface: SerialPort): void {
-    const cmd = new Uint8Array([CMD_GET_STATS, STATS_TYPE_PACKETS]);
-    serialInterface.write(cmd);
-}
-</code></pre>
-<hr />
-<h2 id="response-parsing-example-javascripttypescript">Response Parsing Example (JavaScript/TypeScript)</h2>
-<pre><code class="language-typescript">interface StatsCore {
-    battery_mv: number;
-    uptime_secs: number;
-    errors: number;
-    queue_len: number;
-}
-
-interface StatsRadio {
-    noise_floor: number;
-    last_rssi: number;
-    last_snr: number;
-    tx_air_secs: number;
-    rx_air_secs: number;
-}
-
-interface StatsPackets {
-    recv: number;
-    sent: number;
-    flood_tx: number;
-    direct_tx: number;
-    flood_rx: number;
-    direct_rx: number;
-    recv_errors?: number;  // present when frame is 30 bytes
-}
-
-function parseStatsCore(buffer: ArrayBuffer): StatsCore {
-    const view = new DataView(buffer);
-    const response_code = view.getUint8(0);
-    const stats_type = view.getUint8(1);
-    if (response_code !== 24 || stats_type !== 0) {
-        throw new Error('Invalid response type');
-    }
-    return {
-        battery_mv: view.getUint16(2, true),
-        uptime_secs: view.getUint32(4, true),
-        errors: view.getUint16(8, true),
-        queue_len: view.getUint8(10)
-    };
-}
-
-function parseStatsRadio(buffer: ArrayBuffer): StatsRadio {
-    const view = new DataView(buffer);
-    const response_code = view.getUint8(0);
-    const stats_type = view.getUint8(1);
-    if (response_code !== 24 || stats_type !== 1) {
-        throw new Error('Invalid response type');
-    }
-    return {
-        noise_floor: view.getInt16(2, true),
-        last_rssi: view.getInt8(4),
-        last_snr: view.getInt8(5) / 4.0,  // Unscale SNR
-        tx_air_secs: view.getUint32(6, true),
-        rx_air_secs: view.getUint32(10, true)
-    };
-}
-
-function parseStatsPackets(buffer: ArrayBuffer): StatsPackets {
-    const view = new DataView(buffer);
-    if (buffer.byteLength &lt; 26) {
-        throw new Error('STATS_TYPE_PACKETS frame too short');
-    }
-    const response_code = view.getUint8(0);
-    const stats_type = view.getUint8(1);
-    if (response_code !== 24 || stats_type !== 2) {
-        throw new Error('Invalid response type');
-    }
-    const result: StatsPackets = {
-        recv: view.getUint32(2, true),
-        sent: view.getUint32(6, true),
-        flood_tx: view.getUint32(10, true),
-        direct_tx: view.getUint32(14, true),
-        flood_rx: view.getUint32(18, true),
-        direct_rx: view.getUint32(22, true)
-    };
-    if (buffer.byteLength &gt;= 30) {
-        result.recv_errors = view.getUint32(26, true);
-    }
-    return result;
-}
-</code></pre>
-<hr />
-<h2 id="field-size-considerations">Field Size Considerations</h2>
+<p>The controller has regression tests for balanced samples, starting at four,
+incrementing only after a perfect level, stopping without another TX, and
+distinguishing fixture failure from an RF miss. A separate RX-only 0.5-second
+setup check verified the scan timing before any capacity-test packets were
+sent. The capacity run itself was not repeated.</p>
 <ul>
-<li>Packet counters (uint32_t): May wrap after extended high-traffic operation.</li>
-<li>Time fields (uint32_t): Max ~136 years.</li>
-<li>SNR (int8_t, scaled by 4): Range -32 to +31.75 dB, 0.25 dB precision.</li>
+<li><a href="../tools/hil/sf6_125_channel_capacity_results.json">Raw result, including the failing probe</a></li>
+<li><a href="../tools/hil/profile_switch_channels.py">Host controller</a></li>
+<li><a href="../tools/hil/profile_switch_channels.h">Firmware scheduler</a></li>
+<li><a href="../tools/hil/profile_switch_README.md#sf6125-khz-channel-count-limit">Harness instructions</a></li>
+<li><a href="../radio_profile_switch_validation/#production-integration-and-usb-recovery-v8">Earlier USB and fast-switch qualification</a></li>
 </ul>
+<p>Build provenance: base commit <code>c329cf1fc1e7f2e8c8733ab0d000094730458fe3</code>
+plus the local fast-switch and HIL changes; Arduino ESP32 2.0.17,
+Espressif32 6.11.0, RadioLib 7.7.1 pinned at
+<code>187ef24791c3d844939b2be13a68bd890bd04e4c</code>. This is the extended V8 harness
+with <code>channel_sweep: 1</code>; its binaries differ from the earlier two-profile
+V8 measurements, so timings should not be treated as a same-image A/B.</p>
+<p>Firmware SHA-256:</p>
+<ul>
+<li>XIAO: <code>b0a6dd216be8a638fe088219801290d4632afcf63048f8597037650d68cd2301</code></li>
+<li>Indicator: <code>f0aa43a46e5e59ebf4768a255bd8c31d7a72c0038e11173314f78908b725786d</code></li>
+</ul>
+<h2 id="device-handoff">Device handoff</h2>
+<p>After the first-miss stop, both original 8 MiB flash snapshots were restored.
+Separate full-flash verification matched each backup's digest, followed by
+hardware reset. The private backups remain in the current-user backup
+directory. The Indicator RP2040 and RAK4631 were not modified. The interrupted
+XIAO soak logger remains stopped, and the temporary PlatformIO HIL overlay was
+removed. Implementation, tests and reports were initially handed off locally
+before publication.</p>
 
 
 
