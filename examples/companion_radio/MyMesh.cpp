@@ -6850,6 +6850,7 @@ void MyMesh::appendRxPowerSavingAdjustmentNote(char* reply, size_t reply_size,
 
 #if COMPANION_FEATURE_TEXT_TERMINAL
 Stream& MyMesh::terminalOutput() {
+  if (isTerminalWaitingForInput()) return mesh::usbTerminalPort(false);
   return _terminal_output != NULL ? *_terminal_output : Serial;
 }
 
@@ -6887,15 +6888,17 @@ void MyMesh::printTerminalBanner(bool show_binary_stop) {
   output.print("\r\n> ");
 }
 
-void MyMesh::enterTerminalMode() {
+void MyMesh::enterTerminalMode(bool show_banner) {
   _terminal_mode = true;
+  _terminal_usb_silent = !show_banner;
   _terminal_output = &mesh::usbTerminalPort();
   resetTerminalSession();
-  printTerminalBanner(true);
+  if (show_banner) printTerminalBanner(true);
 }
 
 void MyMesh::exitTerminalMode() {
   _terminal_mode = false;
+  _terminal_usb_silent = false;
   resetTerminalSession();
   if (_terminal_output == &mesh::usbTerminalPort()) _terminal_output = NULL;
 }

@@ -96,6 +96,12 @@ Stream& usbLoggingPort();
 // Callers retain and retry unwritten suffixes. Other platforms retain Serial
 // or their hardware-CDC session facade.
 Stream& usbCompanionPort();
+// A primary nRF52 client may send commands with DTR low (stock MeshCLI does).
+// Accept actual input in the current USB session as proof of a reader, while
+// retaining the same close/reset generation gate used by the transport.
+#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+bool isUsbCompanionClientConnected();
+#endif
 // Serial mOTA requests are binary records of at most 11 bytes. On TinyUSB this
 // facade admits a request only when the complete record fits in CDC0's current
 // TX capacity, so a retry can never append to a prefix from the prior attempt.
@@ -104,7 +110,8 @@ Stream& usbMotaPort();
 // bounded queue so a normal host receives complete multi-line replies. Service
 // it from the application loop; discard it before changing the CDC protocol or
 // after a host disconnect so stale text cannot prefix a later Binary session.
-Stream& usbTerminalPort();
+// A quiet default terminal discards unsolicited text until the host sends ASCII.
+Stream& usbTerminalPort(bool enabled = true);
 // Repeater/room-server/sensor console: protect both ESP32 native USB transports
 // while preserving the historical raw Serial behavior of other platforms.
 Stream& usbConsolePort();

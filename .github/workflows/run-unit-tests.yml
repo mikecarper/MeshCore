@@ -105,6 +105,7 @@ jobs:
       - name: Verify Companion ASCII defaults and USB session cleanup
         run: |
           python3 -B test/test_companion_usb_default.py
+          python3 -B test/test_nrf52_usb_client.py
           python3 -B test/test_esp32_usb_serial_hygiene.py
           python3 -B test/test_stm32_float_conversion.py
 

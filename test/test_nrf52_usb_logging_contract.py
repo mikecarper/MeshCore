@@ -298,7 +298,8 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
             "static void endPrimaryUsbHostSession("
         ))]
         self.assertIn("primary_usb_line_state_dtr.exchange(", session_end)
-        self.assertIn("if (!previous) return;", session_end)
+        self.assertIn("if (!previous && !received", session_end)
+        self.assertIn("primary_usb_rx_generation.load(", session_end)
         self.assertLess(
             session_end.index("primary_usb_reset_generation.fetch_add("),
             session_end.index("tud_cdc_n_read_flush(0)"),
@@ -314,9 +315,6 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
             'extern "C" void meshTinyUsbCdcLineCodingChanged('
         ):]
         self.assertIn("if (instance == 0)", coding_bridge)
-        self.assertIn(
-            "primary_usb_line_state_dtr.load(", coding_bridge
-        )
         self.assertIn("endPrimaryUsbHostSession(true);", coding_bridge)
         self.assertIn("tud_cdc_n_connected(0)", coding_bridge)
         self.assertIn("if (instance == 1)", coding_bridge)
@@ -518,7 +516,7 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
         self.assertIn("cancelUsbSerialOperations();", reset_helper)
         usb_cancel = main[
             main.index("static void cancelUsbSerialOperations()"):
-            main.index("static void enterUsbTerminalMode()")
+            main.index("static void enterUsbTerminalMode(")
         ]
         route_check = usb_cancel.index(
             "interface_manager.isReplyRouteFor(&usb_serial_interface)"
@@ -613,7 +611,7 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
         ]
         self.assertIn("primary_usb_line_state_dtr.load(", access)
         self.assertIn("primary_usb_allowed_generation.load(", access)
-        self.assertIn("primary_usb_reset_generation.load(", access)
+        self.assertIn("primaryUsbSessionGeneration() == generation", access)
 
         loop = main[main.index("void loop() {"):]
         self.assertLess(

@@ -11,8 +11,14 @@ to ASCII after a USB session reset that the hardware can observe. A Binary
 Companion client does not need to send a special mode command: its first valid
 frame automatically hands the interface to the binary parser.
 
-This behavior applies to Full and ordinary USB Companion builds in the updated
-1.17.1.6 release. The explicit `+++MESHCORE-TERM-START` and
+Current source keeps the default terminal quiet until the host sends ASCII
+input. Press Enter or type a command to see the banner. This prevents the ASCII
+`>` prompt from being mistaken for the beginning of an app's first binary
+response. See [USB client compatibility validation](companion_usb_client_validation.md)
+for the tested firmware and release status.
+
+These mode controls apply to Full and ordinary USB Companion builds. The
+explicit `+++MESHCORE-TERM-START` and
 `+++MESHCORE-TERM-STOP` controls remain available, including for older firmware.
 See the [Terminal Chat CLI guide](./terminal_chat_cli.md).
 
@@ -151,6 +157,11 @@ mOTA traffic on the same stream.
 | nRF52 USB serial mOTA active | mOTA owns primary USB; ASCII and Binary Companion are unavailable there |
 | BLE/WiFi/Ethernet/hardware serial | Always Binary Companion and unaffected by the USB mode |
 
+On RAK4631 and other nRF52 Full Companions, ASCII and Binary Companion both use
+the primary interface (`*-if00` on Linux). The optional `*-if02` interface is
+for logging. `OK - Binary mode` acknowledges a mode change on the same primary
+port; it does not move the connection to the logging port.
+
 On every ESP32 Full Companion, use `set usb.logging off` in its logging terminal
 before trying to use USB with an app. That command stops logging and returns to
 the ordinary ASCII terminal; it does not select Binary Companion. The app's
@@ -161,6 +172,10 @@ available while USB is logging. ESP32 Full builds use the Arduino-ESP32 2.x
 base where supported; RC32 and ESP32-C6 keep their board-required Arduino 3.x
 platform but follow the same one-TTY policy. No ESP32 Full build enumerates a
 second CDC interface.
+
+With logging enabled on a shared port, the stop token is rejected with
+`ERROR: set usb.logging off before Binary mode`. Turn logging off first; a
+successful binary-mode acknowledgement must not immediately revert to logging.
 
 On nRF52, serial `motatool` is also text-first. Its exact initial
 `ota folder on` line is recognized in either startup ASCII or Binary Companion
@@ -185,6 +200,12 @@ After the first complete binary frame, the device stays in Binary Companion
 mode for that session. Native USB with DTR/session events restores ASCII when
 the host closes or resets the connection. Old input, queued output and mOTA
 ownership are cleared before selecting the default for the next session.
+
+Some clients, including `meshcore` 2.3.10 used by stock MeshCLI, deliberately
+deassert DTR. The nRF52 primary interface also accepts actual incoming USB data
+as evidence of a client in the current session. Closing, changing line coding,
+or resetting USB invalidates that evidence. The dedicated logging interface
+continues to require its own connected reader.
 
 ESP32 hardware USB Serial/JTAG reports bus reset and physical host loss, but
 cannot reliably report a terminal program closing its handle. A USB-to-UART
@@ -216,19 +237,14 @@ unknown or malformed at the application layer. This is safe for stream
 separation but means a random complete frame can leave the device in binary
 mode until an observable USB session reset or a manual switch back.
 
-### The terminal banner is best effort
+### The default terminal waits for input
 
-The firmware enters ASCII mode during boot, often before a host opens the CDC
-device. The banner may therefore be absent even though the terminal is ready;
-send a newline or a harmless `get` command rather than treating a missing
-banner as proof of binary mode.
-
-A host that remains connected across a reboot may receive ASCII banner and
-prompt bytes before the first binary response. Binary clients should discard
-leading bytes until a plausible `>` frame marker and length are found, reject
-implausible lengths, and resynchronize. The ordinary open-after-boot path has
-been tested with `meshcli`, but third-party clients that assume byte zero is
-always `>` may fail.
+The firmware enters ASCII mode during boot but suppresses the banner and
+unsolicited terminal events until ASCII input identifies a terminal client.
+Send Enter or a harmless `get` command to display the banner. A binary client
+instead gets a clean first response. Older builds that immediately printed
+`> ` could consume the first binary response's marker as part of a bogus frame
+length; scanning past leading text alone did not reliably recover that reply.
 
 ### Text and binary output cannot be interleaved
 

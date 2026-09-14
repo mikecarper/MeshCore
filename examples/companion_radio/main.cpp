@@ -528,7 +528,9 @@ static void redrawUsbTerminalInput() {
 }
 
 static bool isUsbTerminalDataConnected() {
-#if defined(RP2040_PLATFORM)
+#if defined(NRF52_PLATFORM)
+  return mesh::isUsbCompanionClientConnected();
+#elif defined(RP2040_PLATFORM)
   return (bool)Serial;
 #else
   return board.isUsbDataConnected();
@@ -595,7 +597,7 @@ static void cancelUsbSerialOperations() {
   interface_manager.forgetReplyRouteForDisconnected(&usb_serial_interface);
 }
 
-static void enterUsbTerminalMode() {
+static void enterUsbTerminalMode(bool show_banner = true) {
   usb_binary_startup_probe.cancel();
   usb_ascii_session_default.cancel();
   cancelUsbSerialOperations();
@@ -604,7 +606,7 @@ static void enterUsbTerminalMode() {
   clearUsbTerminalLine();
   usb_terminal_discard_line = false;
   usb_logging_terminal_mode = false;
-  the_mesh.enterTerminalMode();
+  the_mesh.enterTerminalMode(show_banner);
 }
 
 static void enterUsbLoggingTerminalMode() {
@@ -832,7 +834,10 @@ static void serviceUsbAsciiSessionDefault() {
           false,
 #endif
           usb_serial_interface.getCompletedFrameCount())) {
-    enterUsbTerminalMode();
+    // A prompt contains '>', the Binary Companion frame marker. Do not send
+    // text to an unknown host: the first ASCII input reveals the terminal,
+    // while a framed app command switches without poisoning its first reply.
+    enterUsbTerminalMode(false);
   }
 }
 
@@ -933,6 +938,9 @@ static void serviceUsbTerminal() {
   }
 
   Stream& usb_input = mesh::usbCompanionPort();
+  if (the_mesh.isTerminalWaitingForInput() && usb_input.available() > 0) {
+    enterUsbTerminalMode();
+  }
   while (usb_input.available()) {
     int value = usb_input.read();
     if (value < 0) break;
@@ -998,6 +1006,14 @@ static void serviceUsbTerminal() {
         mesh::cli::shouldMaskTerminalInput(usb_terminal_line) ? '*' : c);
 
     if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {
+#if MESH_USB_LOGGING_AVAILABLE
+      if (!mesh::hasDedicatedUsbLoggingPort() && mesh::isUsbLoggingEnabled()) {
+        clearUsbTerminalLine();
+        usbTerminalOutput().print(
+            "\r\nERROR: set usb.logging off before Binary mode\r\n> ");
+        return;
+      }
+#endif
       leaveUsbTerminalMode(true);
       return;
     }
@@ -2584,8 +2600,12 @@ void setup() {
         USB_HOST_LOSS_GRACE_MS,
         the_mesh.hasFiniteDelayedReplyForRoute(&usb_serial_interface));
   });
+#elif defined(NRF52_PLATFORM)
+  usb_serial_interface.setConnectedCheck([]() {
+    return mesh::isUsbCompanionClientConnected();
+  });
 #elif (defined(ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
-    || defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
+    || defined(RP2040_PLATFORM)
   // native USB-CDC (TinyUSB): (bool)Serial reflects DTR, ie. the host really
   // has the port open. A classic ESP32 behind a UART bridge has no such
   // signal and keeps the assume-connected default.

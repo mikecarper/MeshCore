@@ -425,13 +425,16 @@ static void serviceEsp32HwcdcTxKick() {
 
 #if MESH_NRF52_PRIMARY_USB_NONBLOCKING
 #if defined(ENABLE_USB_INTERFACE)
-// Writers/readers may access CDC0 only when DTR is high and the application has
-// completed the current close epoch. Incrementing reset_generation therefore
+// DTR or actual host input proves a CDC0 client. Stock MeshCLI deliberately
+// deasserts DTR, so it cannot be a prerequisite for receiving its first frame.
+// Access still requires the application to complete the current close epoch.
+// Incrementing reset_generation therefore
 // closes the transport atomically; an older completion can publish only its
 // older epoch and can never reopen across a newer close.
 static std::atomic<uint32_t> primary_usb_reset_generation{0};
 static std::atomic<uint32_t> primary_usb_allowed_generation{0};
 static std::atomic<bool> primary_usb_line_state_dtr{false};
+static std::atomic<uint32_t> primary_usb_rx_generation{UINT32_MAX};
 static constexpr uint32_t primary_usb_session_settle_millis = 8;
 static std::atomic<uint32_t> primary_usb_reset_settle_until{0};
 
@@ -440,15 +443,30 @@ static uint32_t primaryUsbSessionGeneration() {
 }
 
 static bool canAccessPrimaryUsbSession(void*) {
-  return primary_usb_line_state_dtr.load(std::memory_order_acquire)
-      && primary_usb_allowed_generation.load(std::memory_order_acquire)
-          == primary_usb_reset_generation.load(std::memory_order_acquire);
+  const uint32_t generation = primaryUsbSessionGeneration();
+  if (!tud_mounted()
+      || primary_usb_allowed_generation.load(std::memory_order_acquire)
+          != generation) return false;
+
+  if (!primary_usb_line_state_dtr.load(std::memory_order_acquire)
+      && primary_usb_rx_generation.load(std::memory_order_acquire)
+          != generation) {
+    if (tud_cdc_n_available(0) == 0) return false;
+    // Tag the proof with the epoch sampled before looking at RX. A callback
+    // racing this store can invalidate it without an old reader reopening the
+    // next host's session after cleanup.
+    primary_usb_rx_generation.store(generation, std::memory_order_release);
+  }
+  return primaryUsbSessionGeneration() == generation && tud_mounted();
 }
 
 static void endPrimaryUsbHostSession(bool clear_cdc_fifos) {
   const bool previous = primary_usb_line_state_dtr.exchange(
       false, std::memory_order_acq_rel);
-  if (!previous) return;
+  const bool received = primary_usb_rx_generation.load(std::memory_order_acquire)
+      == primaryUsbSessionGeneration();
+  if (!previous && !received
+      && !(clear_cdc_fifos && tud_cdc_n_available(0) != 0)) return;
 
   // Publish a short quiescence deadline before closing the generation gate.
   // TinyUSB's TX clear does not cancel an endpoint transfer already in its
@@ -480,11 +498,13 @@ static size_t writeTinyUsbCdcOnce(void* context, const uint8_t* data,
     return 0;
   }
 #if defined(ENABLE_USB_INTERFACE)
-  if (instance == 0 && !canAccessPrimaryUsbSession(nullptr)) {
-    return 0;
-  }
+  if (instance == 0) {
+    if (!canAccessPrimaryUsbSession(nullptr)) return 0;
+  } else
 #endif
-  if (!tud_cdc_n_connected(instance)) return 0;
+  {
+    if (!tud_cdc_n_connected(instance)) return 0;
+  }
 
   const size_t available = tud_cdc_n_write_available(instance);
   const size_t attempt = size < available ? size : available;
@@ -1055,6 +1075,12 @@ Stream& usbCompanionPort() {
 #endif
 }
 
+#if defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
+bool isUsbCompanionClientConnected() {
+  return canAccessPrimaryUsbSession(nullptr);
+}
+#endif
+
 Stream& usbMotaPort() {
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   return nonblocking_esp32_tinyusb_mota_port;
@@ -1067,7 +1093,8 @@ Stream& usbMotaPort() {
 #endif
 }
 
-Stream& usbTerminalPort() {
+Stream& usbTerminalPort(bool enabled) {
+  if (!enabled) return null_usb_logging_stream;
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   return buffered_esp32_tinyusb_terminal_port;
 #elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
@@ -1282,6 +1309,8 @@ extern "C" void meshTinyUsbCdcLineStateChanged(uint8_t instance, bool dtr,
     const bool was_open = mesh::primary_usb_line_state_dtr.load(
         std::memory_order_acquire);
     if (!was_open) {
+      // DTR rising can also reopen a prior DTR-low client's handle.
+      mesh::endPrimaryUsbHostSession(true);
       // Purge any late bytes from the closed owner before publishing the fresh
       // session. New-host input sent after SET_CONTROL_LINE_STATE completes is
       // then retained while the application-side generation gate settles.
@@ -1312,11 +1341,9 @@ extern "C" void meshTinyUsbCdcLineCodingChanged(uint8_t instance) {
     // boundary. Restore the physical DTR sample after closing the epoch so an
     // intentional baud change on a continuously open handle recovers as soon
     // as the application has reset its parsers.
-    if (mesh::primary_usb_line_state_dtr.load(std::memory_order_acquire)) {
-      mesh::endPrimaryUsbHostSession(true);
-      mesh::primary_usb_line_state_dtr.store(
-          tud_cdc_n_connected(0), std::memory_order_release);
-    }
+    mesh::endPrimaryUsbHostSession(true);
+    mesh::primary_usb_line_state_dtr.store(
+        tud_cdc_n_connected(0), std::memory_order_release);
     return;
   }
 #if defined(MESH_DUAL_CDC_LOGGING)

@@ -183,7 +183,7 @@ class Esp32UsbSerialHygieneTest(unittest.TestCase):
         self.assertIn("return guarded_esp32_hwcdc_port;", companion)
         mota_port_start = logging.index("Stream& usbMotaPort()")
         mota_port = logging[mota_port_start : logging.index(
-            "Stream& usbTerminalPort()", mota_port_start
+            "Stream& usbTerminalPort(", mota_port_start
         )]
         self.assertIn(
             "return guarded_esp32_hwcdc_mota_port;", mota_port

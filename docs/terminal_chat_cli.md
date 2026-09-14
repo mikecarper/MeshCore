@@ -91,6 +91,10 @@ Companion. You can open a terminal without a start token:
 picocom --baud 115200 /dev/ttyACM0
 ```
 
+Current source waits for input before printing the USB banner. Press Enter or
+type a command. This preserves the clean first response needed by binary apps;
+see [USB client validation](companion_usb_client_validation.md) for release status.
+
 For older firmware or a port already in Binary mode, use:
 
 ```sh
@@ -124,6 +128,10 @@ Send the following exact sequence to return to the binary protocol:
 ```
 +++MESHCORE-TERM-STOP
 ```
+
+If logging shares the primary USB port (ESP32), first run `set usb.logging off`.
+With logging still on, the stop token reports an error and keeps ASCII logging
+active. nRF52 Full's separate logging port can remain enabled.
 
 An observable USB session reset restores ASCII after clearing the previous
 client's state. Native USB with DTR can detect a terminal closing; ESP32 hardware

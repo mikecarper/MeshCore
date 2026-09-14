@@ -213,12 +213,15 @@ public:
   void enterCLIRescue();
 
 #if COMPANION_FEATURE_TEXT_TERMINAL
-  void enterTerminalMode();
+  void enterTerminalMode(bool show_banner = true);
   void exitTerminalMode();
   // Clear state owned by the current text-terminal host without changing the
   // protocol owner or printing a new banner.
   void resetTerminalSession();
   bool isTerminalMode() const { return _terminal_mode; }
+  bool isTerminalWaitingForInput() const {
+    return _terminal_mode && _terminal_usb_silent;
+  }
   void handleTerminalCommand(char* command);
 #if COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG)
   bool enterNetworkTerminalMode(Stream& output);
@@ -525,6 +528,7 @@ private:
   bool _cli_rescue;
 #if COMPANION_FEATURE_TEXT_TERMINAL
   bool _terminal_mode;
+  bool _terminal_usb_silent = false;
   Stream* _terminal_output;
   mesh::TerminalDisplayFilter _terminal_display;
   bool _terminal_recipient_set;

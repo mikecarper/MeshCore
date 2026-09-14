@@ -32,6 +32,7 @@ static bool data_connected = true, reset_event = false, transport_ready = true;
 static bool network_active = false, logging_enabled = false, dedicated_logging = false;
 static uint32_t clock_ms = 2000;
 static unsigned cancelled_routes = 0, entered_ascii = 0;
+static bool announced_ascii = false;
 static uint32_t millis() { return clock_ms; }
 struct Mesh {
   bool terminal = false, stale_input = true;
@@ -70,9 +71,10 @@ static void clearUsbTerminalLine() { line_length = 0; }
 static void cancelUsbSerialOperations() { ++cancelled_routes; }
 static void leaveUsbMotaMode(bool) { usb_mota_mode = false; }
 static void leaveUsbTerminalMode(bool) { the_mesh.terminal = false; }
-static void enterUsbTerminalMode() {
+static void enterUsbTerminalMode(bool show_banner = true) {
   assert(transport_ready && !network_active);
   ++entered_ascii;
+  announced_ascii = show_banner;
   the_mesh.terminal = true;
   usb_serial_interface.passthrough = true;
   usb_binary_startup_probe.cancel();
@@ -97,6 +99,7 @@ int main() {
   // No Full macro is required: ordinary USB Companions also boot in ASCII.
   beginUsbDefaultSession();
   assert(the_mesh.terminal && usb_serial_interface.passthrough);
+  assert(!announced_ascii);
   service(); // observe the open host before it can close
   for (bool binary : {false, true}) {
     the_mesh.terminal = !binary;
@@ -107,6 +110,7 @@ int main() {
     usb_binary_startup_probe.start(clock_ms, usb_serial_interface.completed);
     boundary();
     assert(the_mesh.terminal && usb_serial_interface.passthrough);
+    assert(!announced_ascii);
     assert(!the_mesh.stale_input && !usb_serial_interface.old_frame);
     assert(line_length == 0 && !usb_binary_startup_probe.isActive());
     data_connected = true;
@@ -155,9 +159,11 @@ int main() {
   logging_enabled = true;
   beginUsbDefaultSession();
   assert(the_mesh.terminal && usb_logging_terminal_mode);
+  assert(announced_ascii);
   dedicated_logging = true;
   beginUsbDefaultSession();
   assert(the_mesh.terminal && !usb_logging_terminal_mode);
+  assert(!announced_ascii);
   assert(cancelled_routes >= 6);
 }
 '''
