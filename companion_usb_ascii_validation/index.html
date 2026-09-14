@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/role_feature_switches/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/companion_usb_ascii_validation/">
       
       
-        <link rel="prev" href="../rak3401_mota_chain/">
+        <link rel="prev" href="../companion_radio_full/">
       
       
-        <link rel="next" href="../spiffs_regular_file_reads/">
+        <link rel="next" href="../docs/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Feature switches by role — 1.17.1.5 USA Cascade - MeshCore Docs</title>
+        <title>USB Companion ASCII default validation - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#feature-switches-by-role-11715-usa-cascade" class="md-skip">
+        <a href="#usb-companion-ascii-default-validation" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Feature switches by role — 1.17.1.5 USA Cascade
+              USB Companion ASCII default validation
             
           </span>
         </div>
@@ -553,10 +553,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../companion_usb_ascii_validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Companion ASCII default validation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -572,6 +599,48 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#behavior-and-cause" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Behavior and cause
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automated-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1687,37 +1756,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Feature switches by role — 1.17.1.5 USA Cascade
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
         
   
   
@@ -1733,137 +1775,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#open-the-usb-web-console" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Open the USB web console
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#which-old-variant-setting-should-i-use" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Which old variant setting should I use?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#full-companion-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Full Companion commands
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Full Companion commands">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mqtt-controls-shared-by-companion-and-infrastructure" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MQTT controls shared by Companion and infrastructure
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#companion-wifi-bluetooth-gps-and-board-exceptions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Companion WiFi, Bluetooth, GPS, and board exceptions
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#repeater-room-server-and-sensor-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Repeater, Room Server, and Sensor commands
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Repeater, Room Server, and Sensor commands">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#shared-mqtt-and-logging-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shared MQTT and logging output
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#infrastructure-power-saving-and-bridges" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Infrastructure power saving and bridges
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#updating-and-sending-mota" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Updating and sending MOTA
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2195,10 +2106,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#open-the-usb-web-console" class="md-nav__link">
+  <a href="#behavior-and-cause" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Open the USB web console
+        Behavior and cause
       
     </span>
   </a>
@@ -2206,99 +2117,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#which-old-variant-setting-should-i-use" class="md-nav__link">
+  <a href="#automated-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Which old variant setting should I use?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#full-companion-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Full Companion commands
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Full Companion commands">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mqtt-controls-shared-by-companion-and-infrastructure" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MQTT controls shared by Companion and infrastructure
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#companion-wifi-bluetooth-gps-and-board-exceptions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Companion WiFi, Bluetooth, GPS, and board exceptions
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#repeater-room-server-and-sensor-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Repeater, Room Server, and Sensor commands
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Repeater, Room Server, and Sensor commands">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#shared-mqtt-and-logging-output" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shared MQTT and logging output
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#infrastructure-power-saving-and-bridges" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Infrastructure power saving and bridges
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#updating-and-sending-mota" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Updating and sending MOTA
+        Automated validation
       
     </span>
   </a>
@@ -2322,7 +2144,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/role_feature_switches.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/companion_usb_ascii_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2330,511 +2152,64 @@
   
 
 
-<h1 id="feature-switches-by-role-11715-usa-cascade">Feature switches by role — 1.17.1.5 USA Cascade</h1>
-<p>Use these settings with the exact board's canonical release image. Former
-logging, power-saving, FEM-gain, and rotated-display variants are now runtime
-choices where the hardware supports them. A setting cannot add missing radio
-hardware, MQTT code, storage, or an OTA partition. Check the download's
-<code>.capabilities.json</code> and the <a href="../firmware_picker/">firmware picker</a>.
-For exact old device/variant names, search the
-<a href="../releases/1.17.1.5-variant-map.tsv">1.17.1.5 variant map</a>: it maps all 1,361
-previous release entries to 1,325 covered choices or 36 excluded entries.
-Many old choices share one current image; the command tables below explain
-how to select their former behavior. Excluded entries have no download.</p>
-<p><strong>Search terms</strong> are alternative wording for finding these instructions, not
-CLI aliases. Use the commands in the role-specific tables and examples.</p>
-<h2 id="open-the-usb-web-console">Open the USB web console</h2>
-<p><strong>Search terms:</strong> USB terminal, serial console, ASCII terminal, browser terminal, web serial.</p>
-<p>Open the <a href="https://flasher.meshcore.io/console">MeshCore USB web console</a> in
-Chrome or Edge, connect a data-capable USB cable, close other applications
-using that port, and select the device. Use <strong>115200 baud</strong> when prompted.
-Full Companion, Repeater, Room Server, and Sensor start with an <strong>ASCII USB
-terminal</strong>. Run <code>board</code>, then <code>ver</code> on any role.</p>
-<p>If a Companion app has already switched USB to its binary protocol, send:</p>
-<pre><code class="language-text">+++MESHCORE-TERM-START
-</code></pre>
-<p>To hand the port back to a Companion app or USB MOTA host, send
-<code>+++MESHCORE-TERM-STOP</code>, close the console, and connect the app/tool. Dedicated
-USB/BLE/WiFi Companion images can start in binary mode; use the start token
-there too. KISS firmware uses its modem protocol and is outside this release.</p>
-<p>The linked console runs in your computer's browser over <strong>USB</strong>. It does not
-need node WiFi or <code>set webui on</code>. <strong>WebConfig</strong> is a separate settings website
-served by supported ESP32 images. Both infrastructure and WiFi Companion
-WebConfig include a browser command terminal (<code>set wifi.cli on</code>), enabled by
-default on the LAN. The Companion browser CLI uses the same terminal commands
-as USB, including contact import, chat, recipient selection, and streaming
-replies. Full ESP32 Companion also exposes this terminal at TCP port <strong>5002</strong>.
-See the <a href="../terminal_chat_cli/#companion-wifi-browser-terminal">terminal command guide</a>.</p>
-<h2 id="which-old-variant-setting-should-i-use">Which old variant setting should I use?</h2>
-<p><strong>Search terms:</strong> old firmware variants, restore features, turn features on or off, enable MQTT, disable MQTT.</p>
-<p>These controls apply to every board with the corresponding compiled feature;
-check the hardware requirements below.</p>
-<table>
-<thead>
-<tr>
-<th>Former choice</th>
-<th>Current image / runtime control</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>USB logging or Station G2/G3 logging variant</td>
-<td>Same role's canonical image; <code>set usb.logging on</code> / <code>off</code></td>
-</tr>
-<tr>
-<td>USB logging, WiFi MQTT, or both</td>
-<td>MQTT-capable image with USB logging; <code>set logging.output usb</code>, <code>wifi</code>, <code>both</code>, or <code>off</code></td>
-</tr>
-<tr>
-<td>Companion WiFi-MQTT variant</td>
-<td><code>set mqtt.enabled on</code> / <code>off</code>; configure broker slots through the CLI or WebConfig</td>
-</tr>
-<tr>
-<td><code>_ps</code> power-saving variant</td>
-<td><code>set powersaving on</code> / <code>off</code>; check <code>get powersaving</code> on every role</td>
-</tr>
-<tr>
-<td><code>_femoff</code> / FEM-gain variant</td>
-<td><code>set radio.fem.rxgain on</code> / <code>off</code>; separate TX switch where controllable</td>
-</tr>
-<tr>
-<td>RX boost variant</td>
-<td><code>set radio.rxgain on</code> / <code>off</code> on a supported radio</td>
-</tr>
-<tr>
-<td>iKOKA rotated-display variant</td>
-<td>Full Companion: <code>set display.rotation 180</code>; <code>0</code> restores the board default</td>
-</tr>
-<tr>
-<td>Separate USB, BLE, WiFi, Ethernet, or Terminal Chat Companion</td>
-<td>Exact board's Full Companion where listed; supported transports are included, with SenseCAP selection below</td>
-</tr>
-<tr>
-<td>RS232 repeater variant consolidated into the ordinary repeater</td>
-<td><code>set bridge.enabled on</code> / <code>off</code> on a build containing the RS232 bridge</td>
-</tr>
-<tr>
-<td>ESP-NOW bridge or primary ESP-NOW radio</td>
-<td>Select the matching hardware/role image first; bridge and primary-radio channel commands differ</td>
-</tr>
-<tr>
-<td>LoRa OTA / external-storage variant</td>
-<td>Still choose the exact receiver/storage image and matching bootloader; this is not a software on/off switch</td>
-</tr>
-</tbody>
-</table>
-<p>Companion, Repeater, Room Server, and Sensor use the same command names for
-shared settings. Use <code>get &lt;setting&gt;</code> to check and <code>set &lt;setting&gt; &lt;value&gt;</code> to
-change them. A command requires its feature to be compiled into the build.
-<code>set usb.logging on|off</code> changes only USB logging. On MQTT-capable builds,
-<code>set mqtt.enabled on|off</code> changes only MQTT and keeps broker settings;
-<code>set logging.output off|usb|wifi|both</code> selects both outputs together.</p>
-<h2 id="full-companion-commands">Full Companion commands</h2>
-<table>
-<thead>
-<tr>
-<th>Setting</th>
-<th>Enable / select</th>
-<th>Disable / restore</th>
-<th>Read back</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Device power saving</td>
-<td><code>set powersaving on</code></td>
-<td><code>set powersaving off</code></td>
-<td><code>get powersaving</code></td>
-</tr>
-<tr>
-<td>LoRa RX power saving</td>
-<td><code>set radio.rxps on</code></td>
-<td><code>set radio.rxps off</code></td>
-<td><code>get radio.rxps</code></td>
-</tr>
-<tr>
-<td>Radio RX boost</td>
-<td><code>set radio.rxgain on</code></td>
-<td><code>set radio.rxgain off</code></td>
-<td><code>get radio.rxgain</code></td>
-</tr>
-<tr>
-<td>External FEM RX gain</td>
-<td><code>set radio.fem.rxgain on</code></td>
-<td><code>set radio.fem.rxgain off</code></td>
-<td><code>get radio.fem.rxgain</code></td>
-</tr>
-<tr>
-<td>External FEM TX gain</td>
-<td><code>set radio.fem.txgain on</code></td>
-<td><code>set radio.fem.txgain off</code></td>
-<td><code>get radio.fem.txgain</code></td>
-</tr>
-<tr>
-<td>ESP32 USB logging</td>
-<td><code>set powersaving off</code>, then <code>set usb.logging on</code></td>
-<td><code>set usb.logging off</code></td>
-<td><code>get powersaving</code>, <code>get usb.logging</code></td>
-</tr>
-<tr>
-<td>nRF52 second USB logging port</td>
-<td><code>set usb.logging on reboot</code></td>
-<td><code>set usb.logging off reboot</code></td>
-<td><code>get usb.logging</code></td>
-</tr>
-<tr>
-<td>MQTT master</td>
-<td><code>set mqtt.enabled on</code></td>
-<td><code>set mqtt.enabled off</code></td>
-<td><code>get mqtt.enabled</code>, <code>get mqtt.running</code>, <code>get mqtt.status</code></td>
-</tr>
-<tr>
-<td>ESP32 persistent WebConfig</td>
-<td><code>set webui on</code></td>
-<td><code>set webui off</code></td>
-<td><code>get webui</code></td>
-</tr>
-<tr>
-<td>ESP32 WebConfig browser console</td>
-<td><code>set wifi.cli on</code></td>
-<td><code>set wifi.cli off</code></td>
-<td><code>get wifi.cli</code></td>
-</tr>
-<tr>
-<td>ESP32 temporary setup AP</td>
-<td><code>start webconfig ap</code></td>
-<td><code>stop webconfig</code></td>
-<td><code>get webui</code></td>
-</tr>
-<tr>
-<td>Display rotation</td>
-<td><code>set display.rotation 90</code>, <code>180</code>, or <code>270</code></td>
-<td><code>set display.rotation 0</code></td>
-<td><code>get display.rotation</code></td>
-</tr>
-<tr>
-<td>Temporary MOTA radio window</td>
-<td><code>tempradio 910.525,250,5,5,120</code></td>
-<td><code>normalradio</code></td>
-<td><code>tempradio</code></td>
-</tr>
-</tbody>
-</table>
-<p>Saved settings apply immediately unless noted. Rotation and gain controls
-report unsupported hardware instead of creating that feature. Fresh Full
-Companion preferences enable device power saving and leave USB logging off;
-existing saved preferences win after an update.</p>
-<p><strong>ESP32:</strong> logging and binary Companion traffic share one USB port. Turn logging
-off before handing USB to an app/MOTA host. <strong>nRF52:</strong> the optional second CDC
-port is for logs; use the primary port for Companion/MOTA. Adding/removing the
-second port requires a reboot; the optional suffix shown above requests it.</p>
-<h3 id="mqtt-controls-shared-by-companion-and-infrastructure">MQTT controls shared by Companion and infrastructure</h3>
-<p><strong>Search terms:</strong> Companion MQTT settings, MQTT on, MQTT off, broker configuration.</p>
-<p>Configure a broker through the MQTT tab or with the same commands on either
-role. For example:</p>
-<pre><code class="language-text">set mqtt.iata SEA
-set mqtt1.preset custom
-set mqtt1.server broker.example.com
-set mqtt1.port 1883
-set mqtt.enabled on
-get mqtt.enabled
-get mqtt.running
-get mqtt.status
-</code></pre>
-<p><code>set mqtt.enabled off</code> disconnects brokers while preserving their settings.
-<code>set mqtt.enabled on</code> allows configured brokers to reconnect. An enabled switch
-is separate from a running connection: check <code>get mqtt.running</code> and
-<code>get mqtt.status</code>. The MQTT tab's <strong>Enable MQTT</strong> checkbox controls this same
-saved switch. Slot credentials and presets are available through <code>get/set
-mqtt1.*</code>, <code>mqtt2.*</code>, and the remaining supported slots; secrets stay masked in
-the browser. WiFi Companion accepts these commands through its USB terminal
-and browser CLI; Full Companion also accepts TCP port 5002.</p>
-<p><code>set mqtt1.preset none</code> disables just that slot. Publication controls such as
-<code>set mqtt.status off</code> do not disconnect brokers. USB logging is independent.
-Images without MQTT code do not show MQTT cards or accept MQTT controls.</p>
-<h3 id="companion-wifi-bluetooth-gps-and-board-exceptions">Companion WiFi, Bluetooth, GPS, and board exceptions</h3>
-<p>Configure ESP32 WiFi with:</p>
-<pre><code class="language-text">set wifi.ssid MyNetwork
-set wifi.pwd my-password
-get wifi.status
-</code></pre>
-<p><code>set wifi.powersave min</code> enables WiFi modem sleep; <code>none</code> disables it. <code>max</code>
-is accepted only where the BLE/WiFi coexistence policy allows it. Read back
-with <code>get wifi.powersave</code>. This is separate from device power saving and RXPS.
-The assigned WiFi button/display switch controls WiFi services on supported
-boards. <code>stop webconfig</code> closes only the portal; it is not a WiFi master switch.
-There is no universal Bluetooth-off or Ethernet-off text command.</p>
-<p><strong>SenseCAP Indicator Full only:</strong> <code>set companion.transport wifi</code> followed by
-<code>reboot</code> selects WiFi; <code>set companion.transport ble</code> followed by <code>reboot</code>
-selects Bluetooth. Check <code>get companion.transport</code>. USB remains available.
-Primary ESP-NOW Indicator images keep their mesh radio in either selection.</p>
-<p><strong>GPS-equipped builds:</strong> use <code>get gps</code>, <code>set gps on</code>, and <code>set gps off</code> on
-Companion and infrastructure. The Companion app's <code>gps=1</code> / <code>gps=0</code> custom
-setting controls the same GPS. See <a href="../gps_tracking/">GPS tracking</a> for
-location-sharing settings.</p>
-<h2 id="repeater-room-server-and-sensor-commands">Repeater, Room Server, and Sensor commands</h2>
-<p>These roles use CommonCLI. Feature-dependent commands require the relevant
-hardware/build; MQTT is present in observer builds, and WebConfig is absent
-from some portable builds. The USB browser console still works without it.</p>
-<table>
-<thead>
-<tr>
-<th>Setting</th>
-<th>Enable</th>
-<th>Disable</th>
-<th>Read back</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Live USB logging</td>
-<td>ESP32 1.17.1.5: <code>set powersaving off</code>, then <code>set usb.logging on</code>; other platforms: <code>set usb.logging on</code></td>
-<td><code>set usb.logging off</code></td>
-<td><code>get powersaving</code>, <code>get usb.logging</code></td>
-</tr>
-<tr>
-<td>Capture RX log to node storage</td>
-<td><code>log start</code></td>
-<td><code>log stop</code></td>
-<td><code>log</code> prints the capture locally</td>
-</tr>
-<tr>
-<td>RS232 / ESP-NOW bridge master</td>
-<td><code>set bridge.enabled on</code></td>
-<td><code>set bridge.enabled off</code></td>
-<td><code>get bridge.enabled</code>, <code>get bridge.running</code>, <code>get bridge.type</code></td>
-</tr>
-<tr>
-<td>MQTT periodic status publication</td>
-<td><code>set mqtt.status on</code></td>
-<td><code>set mqtt.status off</code></td>
-<td><code>get mqtt.status</code> shows connection status</td>
-</tr>
-<tr>
-<td>MQTT packet publication</td>
-<td><code>set mqtt.packets on</code></td>
-<td><code>set mqtt.packets off</code></td>
-<td><code>get mqtt.packets</code></td>
-</tr>
-<tr>
-<td>SNMP on supported MQTT infrastructure</td>
-<td><code>set snmp on</code>, then <code>reboot</code></td>
-<td><code>set snmp off</code>, then <code>reboot</code></td>
-<td><code>get snmp</code></td>
-</tr>
-<tr>
-<td>MQTT raw packet publication</td>
-<td><code>set mqtt.raw on</code></td>
-<td><code>set mqtt.raw off</code></td>
-<td><code>get mqtt.raw</code></td>
-</tr>
-<tr>
-<td>MQTT receive capture</td>
-<td><code>set mqtt.rx on</code></td>
-<td><code>set mqtt.rx off</code></td>
-<td><code>get mqtt.rx</code></td>
-</tr>
-<tr>
-<td>MQTT transmit capture</td>
-<td><code>set mqtt.tx on</code> (or <code>advert</code>)</td>
-<td><code>set mqtt.tx off</code></td>
-<td><code>get mqtt.tx</code></td>
-</tr>
-<tr>
-<td>MQTT master</td>
-<td><code>set mqtt.enabled on</code></td>
-<td><code>set mqtt.enabled off</code></td>
-<td><code>get mqtt.enabled</code>, <code>get mqtt.running</code>, <code>get mqtt.status</code></td>
-</tr>
-<tr>
-<td>ESP32 persistent WebConfig</td>
-<td><code>set webui on</code></td>
-<td><code>set webui off</code></td>
-<td><code>get webui</code></td>
-</tr>
-<tr>
-<td>WebConfig browser command terminal</td>
-<td><code>set wifi.cli on</code></td>
-<td><code>set wifi.cli off</code></td>
-<td><code>get wifi.cli</code></td>
-</tr>
-<tr>
-<td>LoRa RX power saving</td>
-<td><code>set radio.rxps on</code></td>
-<td><code>set radio.rxps off</code></td>
-<td><code>get radio.rxps</code></td>
-</tr>
-<tr>
-<td>Radio RX boost</td>
-<td><code>set radio.rxgain on</code></td>
-<td><code>set radio.rxgain off</code></td>
-<td><code>get radio.rxgain</code></td>
-</tr>
-<tr>
-<td>Controllable FEM RX / TX gain</td>
-<td><code>set radio.fem.rxgain on</code> / <code>set radio.fem.txgain on</code></td>
-<td><code>set radio.fem.rxgain off</code> / <code>set radio.fem.txgain off</code></td>
-<td>Corresponding <code>get radio.fem.rxgain</code> / <code>get radio.fem.txgain</code></td>
-</tr>
-<tr>
-<td>GPS, when compiled</td>
-<td><code>set gps on</code></td>
-<td><code>set gps off</code></td>
-<td><code>get gps</code></td>
-</tr>
-</tbody>
-</table>
-<p>Use <code>set usb.logging on|off</code> on every role. Adding the optional <code>reboot</code> suffix
-requests a reboot only when changing the USB interfaces requires it, as on
-nRF52 Full Companion. <code>log start/stop</code> records to storage independently of live
-USB logging. Use
-<code>log erase</code> to delete that capture.</p>
-<p>For <strong>ESP32 1.17.1.5 USB logging</strong>, run these as separate commands in the
-role's text terminal (or remote admin CLI on infrastructure):</p>
-<pre><code class="language-text">set powersaving off
-set usb.logging on
-get powersaving
-get usb.logging
-</code></pre>
-<p>Check for power saving <code>off</code> and USB logging <code>on</code>. This avoids the released
-ESP32 USB sleep bug, including the G3 report. Both settings are saved; turning
-logging off later does not automatically restore power saving. LoRa RXPS is
-independent. nRF52 logging does not need this ESP32 workaround.</p>
-<p>With the <a href="../releases/1.17.1.5/#g3-usb-disappearance-with-power-saving-enabled">G3 sleep correction</a>,
-enabled live USB logging keeps ESP32 USB serviced and blocks light sleep,
-including when a host closes the port or disconnects. CPU idle/yield remains
-available. <code>set usb.logging off</code> removes that blocker; an attached native USB
-host still prevents sleep. On Full infrastructure, <code>set logging.output usb</code>
-and <code>both</code> enable the same USB blocker; <code>wifi</code> and <code>off</code> remove it. File capture
-with <code>log start</code> is independent. The original 1.17.1.5 binaries require the
-<code>set powersaving off</code> workaround described in the release note.</p>
-<h3 id="shared-mqtt-and-logging-output">Shared MQTT and logging output</h3>
-<p><strong>Search terms:</strong> MQTT settings, MQTT on, MQTT off, logging output, USB and WiFi logging.</p>
-<p>On any Companion or infrastructure build with both MQTT and USB logging compiled:</p>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>USB logs</th>
-<th>MQTT bridge</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>set logging.output off</code></td>
-<td>Off</td>
-<td>Off</td>
-</tr>
-<tr>
-<td><code>set powersaving off</code>, then <code>set logging.output usb</code></td>
-<td>On</td>
-<td>Off</td>
-</tr>
-<tr>
-<td><code>set logging.output wifi</code></td>
-<td>Off</td>
-<td>On</td>
-</tr>
-<tr>
-<td><code>set powersaving off</code>, then <code>set logging.output both</code></td>
-<td>On</td>
-<td>On</td>
-</tr>
-</tbody>
-</table>
-<p><code>get logging.output</code> reports the selection. Fresh unified Full infrastructure
-preferences select <code>both</code>; Full Companion starts with USB logging off. Saved
-settings override these defaults. To toggle only MQTT while keeping
-USB logging unchanged, use <code>set mqtt.enabled off</code> / <code>on</code>. Neither setting
-turns LoRa repeating off. Repeater forwarding uses <code>set repeat off</code> / <code>on</code>
-and <code>get repeat</code> separately.</p>
-<p>The <code>set powersaving off</code> step above is the <strong>1.17.1.5 ESP32 USB workaround</strong>.
-<strong>WiFi/MQTT-only logging does not need it while the Repeater/Room Server MQTT
-bridge is running:</strong> that sleep guard already exists in the released firmware.
-Use <code>get mqtt.running</code> to check that MQTT is running; an enabled
-preference alone is not the running state. <code>set logging.output wifi</code> keeps
-USB logging off and uses that MQTT guard.</p>
-<p>For a custom broker on an MQTT-capable Companion, Repeater, or Room Server:</p>
-<pre><code class="language-text">set wifi.ssid MyNetwork
-set wifi.pwd my-password
-set mqtt.iata SEA
-set mqtt1.preset custom
-set mqtt1.server broker.example.com
-set mqtt1.port 1883
-set mqtt.enabled on
-get mqtt.status
-</code></pre>
-<p>Set <code>mqtt1.username</code> / <code>mqtt1.password</code> if required by that broker. Configure only
-as many slots as the board supports. <code>set mqtt1.preset none</code> disables slot 1;
-other configured slots remain enabled, within the build's supported slot count.
-Disabled and partially configured slots remain saved across reboot. For a custom
-server URL, <code>set mqtt1.port 0</code> clears the port override so the URI supplies it.
-<code>set mqtt.status off</code> disables status
-messages, not MQTT itself. See the <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md">MQTT reference</a>
-for presets, TLS, credentials, and slot limits.</p>
-<h3 id="infrastructure-power-saving-and-bridges">Infrastructure power saving and bridges</h3>
-<p>Use <code>get powersaving</code>, <code>set powersaving on</code>, and <code>set powersaving off</code> on every
-role. The preference is saved. Hardware and active USB/network services decide
-when sleeping is possible; the command names do not change between roles.
-Device power saving is separate from WiFi modem sleep and LoRa RXPS.</p>
-<p>On RS232-capable repeater images, stop the bridge before changing its serial
-port or baud rate, then restart it:</p>
-<pre><code class="language-text">set bridge.enabled off
-set bridge.baud 115200
-set bridge.enabled on
-</code></pre>
-<p><strong>RAK4631:</strong> <code>set bridge.uart 2</code> selects UART2 while the bridge is stopped.
-Canonical GPS-enabled builds reserve UART1 for GPS; UART1 requires a dedicated
-GPS-free image. <strong>ESP-NOW bridge:</strong> use <code>set bridge.channel &lt;1..13&gt;</code> and
-<code>set bridge.format wrapped</code> / <code>raw</code> where supported. <strong>Primary ESP-NOW mesh:</strong>
-use <code>set espnow.channel &lt;1..13&gt;</code> and reboot; this is a different radio setting.</p>
-<p>For infrastructure WebConfig on the LAN, use <code>start webconfig</code> /
-<code>stop webconfig</code>. To force a setup AP on an observer, first run
-<code>set mqtt.enabled off</code>, then <code>start webconfig ap</code>. When finished, run
-<code>stop webconfig</code> and restore <code>set mqtt.enabled on</code> if you did not reboot.</p>
-<h2 id="updating-and-sending-mota">Updating and sending MOTA</h2>
-<p><strong>Search terms:</strong> mOTA, LoRa OTA, update over LoRa, wireless firmware transfer.</p>
-<p>All released Full Companions can serve MOTA to other nodes. Close the console
-and run <code>motatool serve --serial /dev/ttyACM0 --dir ./motas -v</code> on the USB host.
-See <a href="../full_companion_features/">Full Companion instructions</a> for WiFi/BLE
-source commands and the bounded temporary radio setup.</p>
-<table>
-<thead>
-<tr>
-<th>Role / hardware</th>
-<th>Start self-update</th>
-<th>Stop / requirement</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>ESP32 Repeater, Room Server, Sensor with WiFi updater</td>
-<td><code>start ota</code> or <code>start ota ap</code>; open the returned URL (normally port 80, <code>/update</code>)</td>
-<td><code>stop ota</code>; close WebConfig first if it shares port 80</td>
-</tr>
-<tr>
-<td>ESP32 Full Companion with two application slots</td>
-<td><code>start ota</code> or <code>start ota ap</code>; returned URL uses port 8080, <code>/update</code></td>
-<td><code>stop ota</code>; single-slot Full builds use USB</td>
-</tr>
-<tr>
-<td>nRF52 infrastructure with Bluetooth DFU</td>
-<td><code>start ota</code> enters the Bluetooth update flow</td>
-<td>Matching application DFU ZIP and board bootloader required</td>
-</tr>
-<tr>
-<td>Qualified LoRa OTA receiver</td>
-<td>Follow <a href="../ota_easy/">LoRa OTA directions</a></td>
-<td>Exact destination package, storage profile, and overlapping temporary radio windows</td>
-</tr>
-</tbody>
-</table>
-<p>For nRF52 OTAFIX installations use the exact board/storage build from
-<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6</a>.
-Its retained-RAM handoff is required by the new internal-flash hybrid receiver
-images. Full Companions are sources and remain normally USB-updated.</p>
-<p>The <a href="../cli_commands/">complete infrastructure CLI</a>, <a href="../cli_build_matrix/">role/build matrix</a>,
-and <a href="../full_companion_features/">Full Companion feature guide</a> provide details.</p>
+<h1 id="usb-companion-ascii-default-validation">USB Companion ASCII default validation</h1>
+<p>The updated <a href="https://github.com/mikecarper/MeshCore/releases/tag/v1.17.1.6-halo-keymind-cascade-dev-306feebe">1.17.1.6 Companion release</a>
+covers 103 USB-enabled profiles: 52 ESP32 Full, 43 nRF52 Full, four RP2040 USB,
+and four STM32 USB. The BLE-only WM1110 image has no USB interface and is outside
+this change.</p>
+<h2 id="behavior-and-cause">Behavior and cause</h2>
+<p>Ordinary USB Companions previously started in Binary mode. Full Companions
+started in ASCII, but host-session cleanup could select or retain Binary mode
+for the next connection.</p>
+<p>All USB Companions now select ASCII before framed dispatch begins. An
+observable USB session boundary cancels old USB operations and clears partial
+input, queued protocol output, frame ownership, and mOTA attachment before restoring
+ASCII. A network terminal can defer that restoration; a new USB binary client
+that connects during the deferral keeps its chosen mode. BLE and network
+Companion transports keep their existing binary protocol.</p>
+<p>A complete framed app command still selects Binary mode automatically. An
+incomplete initial probe returns to ASCII after one second. Explicit terminal
+start/stop controls remain available.</p>
+<p>Session detection depends on the hardware. Native USB with DTR can detect a
+terminal closing. ESP32 hardware USB Serial/JTAG observes bus resets and host
+loss, but cannot reliably observe a program closing its handle. UART bridges
+usually cannot observe that close either. Idle time never forces an active
+binary app back into ASCII; use the start token on a port that remains Binary.
+See the <a href="../full_companion_usb_switcher/">USB mode guide</a>.</p>
+<h2 id="automated-validation">Automated validation</h2>
+<ul>
+<li>The real firmware startup and reset functions are compiled and executed for
+  nRF52, ESP32 TinyUSB, ESP32 hardware USB, and RP2040, with and without the
+  Full macro. Cases include reconnecting from Binary or ASCII, delayed cleanup,
+  mOTA cancellation, network ownership, and a new binary client during deferral.</li>
+<li>55 native serial-mode/flow-control tests and 11 terminal-session/diagnostic
+  tests passed locally, along with 49 USB Python tests and the picker tests.</li>
+<li>STM32 number formatting is tested against an Arduino API without <code>ltoa</code>.
+  CI also compiles an ordinary RAK 3x72 USB Companion with the real core and
+  RadioLib, so missing packages and GPIO API incompatibilities fail the build.</li>
+</ul>
+<p>The 99 ESP32/nRF52/RP2040 profiles use
+<a href="https://github.com/mikecarper/MeshCore/commit/d4a641ff8af1b413c8fb96a670282b799be1f6e8"><code>d4a641ff</code></a>.
+The four STM32 profiles additionally use the compatible Arduino 2.12 platform
+pin and build test in
+<a href="https://github.com/mikecarper/MeshCore/commit/d2c52e4d047c4b1068a1053364d9acaddefa64a1"><code>d2c52e4d</code></a>.
+Both source revisions passed GitHub checks:
+<a href="https://github.com/mikecarper/MeshCore/actions/runs/34792631229">main repair</a> and
+<a href="https://github.com/mikecarper/MeshCore/actions/runs/34793043594">STM32 repair</a>.</p>
+<p>All 103 builds passed capability and RAM qualification. Packaging checks bind
+each application to its capability and memory manifests, retain the original
+profile capabilities and download formats, and verify ESP32 application/merged
+image consistency. Replacement publication verifies public SHA-256 digests
+before deleting old images and checks that unrelated firmware assets retain
+their original hashes. Release manifests, checksum lists, picker links, and
+capacity-note source references follow the new binaries.</p>
+<p>Publication completed with all 430 uploaded files verified through their public
+download URLs. The 412 superseded firmware/manifest files were removed. The
+remaining 1,837 assets kept their original hashes, and all five release checksum
+lists matched the final GitHub asset digests.</p>
+<p>No USB Companion was attached to the local computer for this repair. These
+results are compilation and automated protocol tests, not physical USB tests
+across the board matrix.</p>
 
 
 

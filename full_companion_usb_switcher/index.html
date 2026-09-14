@@ -556,6 +556,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_usb_ascii_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Companion ASCII default validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../docs/" class="md-nav__link">
         
   
@@ -2067,10 +2094,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_61" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_62" >
         
           
-          <label class="md-nav__link" for="__nav_61" id="__nav_61_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_62" id="__nav_62_label" tabindex="0">
             
   
   
@@ -2088,8 +2115,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_61_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_61">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_62_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_62">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2584,7 +2611,7 @@ a long delay. A timed-out client can retry after the ASCII banner appears.</p>
 <p>Any complete length-prefixed frame selects binary mode, even if its command is
 unknown or malformed at the application layer. This is safe for stream
 separation but means a random complete frame can leave the device in binary
-mode until manually switched back.</p>
+mode until an observable USB session reset or a manual switch back.</p>
 <h3 id="the-terminal-banner-is-best-effort">The terminal banner is best effort</h3>
 <p>The firmware enters ASCII mode during boot, often before a host opens the CDC
 device. The banner may therefore be absent even though the terminal is ready;
