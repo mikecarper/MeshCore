@@ -963,7 +963,7 @@
   <span class="md-ellipsis">
     
   
-    Full Companion USB CLI and binary switcher
+    Companion USB CLI and binary switcher
   
 
     
@@ -2308,7 +2308,7 @@ controls. Select On, Off, or Check to view and copy the commands; Companion
 MQTT and GPS show their app/WebConfig steps instead. See
 <a href="../role_feature_switches/">feature switches by role</a> for the full reference.
 The <a href="https://flasher.meshcore.io/console">USB web console</a> works with the
-default ASCII terminal on Full Companion and infrastructure roles.</p>
+default ASCII terminal on USB Companion and infrastructure roles.</p>
 <p>Pick the choices in any order. Every selection narrows all the other controls
 to firmware combinations that were actually built in the current release set.
 The optional chip-family filter (ESP32, nRF52, RP2040, or STM32) can narrow the
@@ -2615,6 +2615,10 @@ for the saved settings and the original firmware's USB sleep issue.</p>
 <p>Full, USB and USB + Bluetooth Companion results include <strong>Companion USB terminal
 (Linux / Bash)</strong> under <strong>Restore your settings after flashing</strong>, with copyable
 connection and recovery commands.</p>
+<p>Updated 1.17.1.6 USB Companions default to ASCII at boot and after an observable
+USB session reset. <code>picocom -b 115200 /dev/ttyACM0</code> is sufficient for a fresh
+session. A valid framed app command automatically selects Binary Companion.
+The command below also works with older firmware or a port left in Binary mode.</p>
 <p>Run this in Bash on the Linux computer connected to your radio:</p>
 <pre><code class="language-bash">picocom -b 115200 --imap spchex \
   --initstring $'\r+++MESHCORE-TERM-START\r' \
@@ -2622,7 +2626,7 @@ connection and recovery commands.</p>
 </code></pre>
 <p>Replace <code>/dev/ttyACM0</code> with your radio's port, such as <code>/dev/ttyACM1</code> or
 <code>/dev/ttyUSB0</code>. Use the primary USB data interface (<code>00</code> when multiple interfaces
-appear), and close other apps using it. The init string opens the ASCII CLI;
+appear), and close other apps using it. The init string requests the ASCII CLI;
 its leading carriage return clears an unfinished input line. <code>--imap spchex</code>
 displays binary control bytes safely during the transition.</p>
 <p>If the terminal display is scrambled, exit picocom with <strong>Ctrl+A, then Ctrl+X</strong>,

@@ -27,7 +27,7 @@
     
     
       
-        <title>Full Companion USB CLI and binary switcher - MeshCore Docs</title>
+        <title>Companion USB CLI and binary switcher - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#full-companion-usb-cli-and-binary-switcher" class="md-skip">
+        <a href="#companion-usb-cli-and-binary-switcher" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Full Companion USB CLI and binary switcher
+              Companion USB CLI and binary switcher
             
           </span>
         </div>
@@ -815,7 +815,7 @@
   <span class="md-ellipsis">
     
   
-    Full Companion USB CLI and binary switcher
+    Companion USB CLI and binary switcher
   
 
     
@@ -833,7 +833,7 @@
   <span class="md-ellipsis">
     
   
-    Full Companion USB CLI and binary switcher
+    Companion USB CLI and binary switcher
   
 
     
@@ -926,10 +926,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#it-is-startup-selection-not-per-connection-negotiation" class="md-nav__link">
+  <a href="#session-detection-depends-on-the-usb-hardware" class="md-nav__link">
     <span class="md-ellipsis">
       
-        It is startup selection, not per-connection negotiation
+        Session detection depends on the USB hardware
       
     </span>
   </a>
@@ -2284,10 +2284,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#it-is-startup-selection-not-per-connection-negotiation" class="md-nav__link">
+  <a href="#session-detection-depends-on-the-usb-hardware" class="md-nav__link">
     <span class="md-ellipsis">
       
-        It is startup selection, not per-connection negotiation
+        Session detection depends on the USB hardware
       
     </span>
   </a>
@@ -2401,20 +2401,21 @@
   
 
 
-<h1 id="full-companion-usb-cli-and-binary-switcher">Full Companion USB CLI and binary switcher</h1>
-<p>Full Companion uses one primary USB serial interface for two incompatible wire
+<h1 id="companion-usb-cli-and-binary-switcher">Companion USB CLI and binary switcher</h1>
+<p>USB Companion uses one primary USB serial interface for two incompatible wire
 formats:</p>
 <ul>
 <li>a human-readable ASCII command line;</li>
 <li>the framed Binary Companion protocol used by MeshCore apps and <code>meshcli</code>.</li>
 </ul>
-<p>The primary interface starts in the ASCII terminal after each boot. A Binary
+<p>The primary interface starts in the ASCII terminal after each boot and returns
+to ASCII after a USB session reset that the hardware can observe. A Binary
 Companion client does not need to send a special mode command: its first valid
 frame automatically hands the interface to the binary parser.</p>
-<p>This automatic behavior is compiled only into <code>companion_radio_full</code> targets.
-Ordinary USB Companion builds continue to use the explicit
-<code>+++MESHCORE-TERM-START</code> and <code>+++MESHCORE-TERM-STOP</code> controls described in the
-<a href="../terminal_chat_cli/">Terminal Chat CLI guide</a>.</p>
+<p>This behavior applies to Full and ordinary USB Companion builds in the updated
+1.17.1.6 release. The explicit <code>+++MESHCORE-TERM-START</code> and
+<code>+++MESHCORE-TERM-STOP</code> controls remain available, including for older firmware.
+See the <a href="../terminal_chat_cli/">Terminal Chat CLI guide</a>.</p>
 <h2 id="wire-formats">Wire formats</h2>
 <p>Host-to-device Binary Companion frames use this layout:</p>
 <pre><code class="language-text">'&lt;'  length-low  length-high  payload[length]
@@ -2445,7 +2446,7 @@ boot ------&gt; ASCII terminal                  Binary Companion
                  +--------------------------------+
 
 ASCII terminal -- +++MESHCORE-TERM-STOP ------&gt; Binary Companion
-ASCII terminal -- observable USB disconnect ---&gt; Binary Companion
+any mode ------- observable USB session reset ---&gt; ASCII terminal
 ESP32 logging terminal -- usb.logging off -----&gt; ASCII terminal
 any mode ------- reboot ------------------------&gt; ASCII terminal
 </code></pre>
@@ -2454,7 +2455,7 @@ below. BLE, WiFi, Ethernet, and hardware-serial Companion transports are not
 switched; they remain binary.</p>
 <h2 id="how-automatic-detection-works">How automatic detection works</h2>
 <ol>
-<li>Full Companion initializes the normal USB Binary Companion interface, then
+<li>Companion initializes the normal USB Binary Companion interface, then
    gives its primary stream to the ASCII terminal before normal loop service
    begins.</li>
 <li>While the prompt has no buffered input, the terminal peeks at the next byte.
@@ -2513,7 +2514,7 @@ mOTA traffic on the same stream.</p>
 </thead>
 <tbody>
 <tr>
-<td>Full Companion after boot</td>
+<td>USB Companion after boot or observable session reset</td>
 <td>ASCII; a complete <code>&lt;</code> frame switches to Binary Companion</td>
 </tr>
 <tr>
@@ -2557,15 +2558,19 @@ leading/trailing whitespace, or a partial line remain ordinary terminal input.</
 <h2 id="shortcomings-and-edge-cases">Shortcomings and edge cases</h2>
 <p>This mechanism is deliberately small and deterministic, but it is not a full
 protocol negotiation layer.</p>
-<h3 id="it-is-startup-selection-not-per-connection-negotiation">It is startup selection, not per-connection negotiation</h3>
+<h3 id="session-detection-depends-on-the-usb-hardware">Session detection depends on the USB hardware</h3>
 <p>After the first complete binary frame, the device stays in Binary Companion
-mode. Closing <code>meshcli</code> does not automatically restore ASCII. Use the terminal
-start token or reboot when an ASCII prompt is needed again.</p>
-<p>Conversely, closing an ASCII terminal on native USB normally changes the port
-to binary mode because the firmware can observe USB DTR/data disconnect. The
-next client therefore sees binary mode, not a new ASCII session. A USB-to-UART
-bridge often cannot report disconnect, so it can remain in ASCII until the stop
-token or a reboot.</p>
+mode for that session. Native USB with DTR/session events restores ASCII when
+the host closes or resets the connection. Old input, queued output and mOTA
+ownership are cleared before selecting the default for the next session.</p>
+<p>ESP32 hardware USB Serial/JTAG reports bus reset and physical host loss, but
+cannot reliably report a terminal program closing its handle. A USB-to-UART
+bridge also usually cannot report that close. On those ports, use the terminal
+start token to return from Binary mode without rebooting. Idle time alone never
+changes the selected protocol.</p>
+<p>An active network terminal temporarily delays restoring the USB ASCII prompt.
+If a fresh USB app sends a complete binary frame during that delay, its Binary
+mode remains selected when the network terminal closes.</p>
 <h3 id="detection-works-only-at-an-empty-prompt">Detection works only at an empty prompt</h3>
 <p>If part of an ASCII command is already buffered, an incoming <code>&lt;</code> is treated as
 ordinary terminal input. Clear or submit the line before starting a Binary

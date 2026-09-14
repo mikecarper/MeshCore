@@ -1104,7 +1104,7 @@
       const picocom = "picocom -b 115200 --imap spchex --initstring $'\\r+++MESHCORE-TERM-START\\r' /dev/ttyACM0";
       section("Companion USB terminal (Linux / Bash)", [
         { label: "Connect", commands: [picocom],
-          text: "Run this in Bash on the Linux computer connected to the radio. The init string opens the ASCII CLI; the leading carriage return clears an unfinished input line. spchex displays binary control bytes safely during the transition." },
+          text: "Run this in Bash on the Linux computer connected to the radio. Updated 1.17.1.6 USB Companions default to ASCII at boot and after an observable USB session reset; a valid app frame selects Binary Companion. The init string also opens the ASCII CLI on older firmware or a port left in Binary mode; the leading carriage return clears an unfinished input line. spchex displays binary control bytes safely during the transition." },
         { label: "Recover scrambled terminal", commands: ["reset", picocom],
           text: "First exit picocom with Ctrl+A, then Ctrl+X. Run these commands in your Linux shell: reset repairs the terminal display, then picocom reconnects with safe input mapping." },
       ], "Replace /dev/ttyACM0 with your radio's port, such as /dev/ttyACM1 or /dev/ttyUSB0. Use the primary USB data interface (00 when multiple interfaces appear), and close other apps using that port. At the radio prompt, run version and board to identify the node. Exit picocom with Ctrl+A, then Ctrl+X.");
@@ -1209,8 +1209,8 @@
     guide.href = "https://github.com/mikecarper/MeshCore/blob/keymindCascade/docs/role_feature_switches.md";
     links.appendChild(guide);
     panel.appendChild(links);
-    if (isFullCompanion(profile) || ["repeater", "room", "sensor"].includes(profile.role)) {
-      panel.appendChild(createElement("p", "Use a data-capable USB cable and 115200 baud. Full Companion and infrastructure start in ASCII mode. " + (profile.role === "companion"
+    if (isFullCompanion(profile) || (profile.role === "companion" && ["usb", "usb-ble"].includes(profile.mode)) || ["repeater", "room", "sensor"].includes(profile.role)) {
+      panel.appendChild(createElement("p", "Use a data-capable USB cable and 115200 baud. Updated USB Companion and infrastructure builds start in ASCII mode. " + (profile.role === "companion"
         ? "Open Companion USB terminal below for Linux connection and recovery commands. Use board and version to identify the node."
         : "Use board and ver to identify the node.")));
     }

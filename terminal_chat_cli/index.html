@@ -806,7 +806,7 @@
   <span class="md-ellipsis">
     
   
-    Full Companion USB CLI and binary switcher
+    Companion USB CLI and binary switcher
   
 
     
@@ -2265,9 +2265,12 @@ operations.</p>
 uses its admin login; Companion uses the trusted LAN. Configuration forms keep
 password fields masked; explicit local CLI getters return their values.</p>
 <h2 id="companion-usb-mode">Companion USB mode</h2>
-<p>An ordinary Companion USB build starts in the normal binary Companion protocol
-at 115200 baud. Use this command to switch the same USB connection into terminal
-mode as soon as <code>picocom</code> opens it:</p>
+<p>Updated 1.17.1.6 USB Companion builds, including ordinary and Full builds, start
+in ASCII at 115200 baud. A valid framed app command automatically selects Binary
+Companion. You can open a terminal without a start token:</p>
+<pre><code class="language-sh">picocom --baud 115200 /dev/ttyACM0
+</code></pre>
+<p>For older firmware or a port already in Binary mode, use:</p>
 <pre><code class="language-sh">picocom --baud 115200 \
   --imap spchex \
   --initstring $'+++MESHCORE-TERM-START\r' \
@@ -2290,19 +2293,19 @@ enter it again as a terminal command.</p>
 <p>Send the following exact sequence to return to the binary protocol:</p>
 <pre><code>+++MESHCORE-TERM-STOP
 </code></pre>
-<p>Closing the serial connection also returns native-USB devices to binary mode.
-Boards whose USB connector is implemented by a USB-to-UART bridge cannot
-observe the host closing the port; on those boards, use the stop sequence or
-reboot the device.</p>
+<p>An observable USB session reset restores ASCII after clearing the previous
+client's state. Native USB with DTR can detect a terminal closing; ESP32 hardware
+USB Serial/JTAG detects bus resets and physical host loss. USB-to-UART bridges
+usually cannot detect a terminal closing. Use the start token on ports that
+remain in Binary mode; idle time does not select ASCII.</p>
 <p>Both modes use the same port at 115200. Selecting 57600 is not a portable mode
 switch: native USB CDC devices ignore the requested baud, while USB-to-UART
 devices really change the UART timing and receive corrupt data. Binary mode is
 the framed Companion API used by apps and <code>meshcli</code>; close the terminal before
 opening that port from an app.</p>
-<p>Full Companion differs: its primary USB interface starts in ASCII after boot
-and automatically switches when it sees a complete <code>&lt;</code>-prefixed Companion
-frame at an empty prompt. The explicit start/stop tokens remain available. See
-<a href="../full_companion_usb_switcher/">Full Companion USB CLI and binary switcher</a>
+<p>All USB Companion builds automatically switch when they see a complete
+<code>&lt;</code>-prefixed Companion frame at an empty prompt. The explicit start/stop tokens
+remain available. See <a href="../full_companion_usb_switcher/">Companion USB CLI and binary switcher</a>
 for the state machine and limitations.</p>
 <h2 id="commands">Commands</h2>
 <p>ESP32 and nRF52 Full Companions include an offline World English Bible lookup:</p>
