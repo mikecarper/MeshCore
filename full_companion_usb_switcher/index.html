@@ -583,6 +583,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_usb_client_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Companion client compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../docs/" class="md-nav__link">
         
   
@@ -997,10 +1024,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-terminal-banner-is-best-effort" class="md-nav__link">
+  <a href="#the-default-terminal-waits-for-input" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The terminal banner is best effort
+        The default terminal waits for input
       
     </span>
   </a>
@@ -2229,10 +2256,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_67" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_68" >
         
           
-          <label class="md-nav__link" for="__nav_67" id="__nav_67_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_68" id="__nav_68_label" tabindex="0">
             
   
   
@@ -2250,8 +2277,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_67_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_67">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_68_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_68">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2490,10 +2517,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-terminal-banner-is-best-effort" class="md-nav__link">
+  <a href="#the-default-terminal-waits-for-input" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The terminal banner is best effort
+        The default terminal waits for input
       
     </span>
   </a>
@@ -2574,8 +2601,13 @@ formats:</p>
 to ASCII after a USB session reset that the hardware can observe. A Binary
 Companion client does not need to send a special mode command: its first valid
 frame automatically hands the interface to the binary parser.</p>
-<p>This behavior applies to Full and ordinary USB Companion builds in the updated
-1.17.1.6 release. The explicit <code>+++MESHCORE-TERM-START</code> and
+<p>Current source keeps the default terminal quiet until the host sends ASCII
+input. Press Enter or type a command to see the banner. This prevents the ASCII
+<code>&gt;</code> prompt from being mistaken for the beginning of an app's first binary
+response. See <a href="../companion_usb_client_validation/">USB client compatibility validation</a>
+for the tested firmware and release status.</p>
+<p>These mode controls apply to Full and ordinary USB Companion builds. The
+explicit <code>+++MESHCORE-TERM-START</code> and
 <code>+++MESHCORE-TERM-STOP</code> controls remain available, including for older firmware.
 See the <a href="../terminal_chat_cli/">Terminal Chat CLI guide</a>.</p>
 <h2 id="wire-formats">Wire formats</h2>
@@ -2697,6 +2729,10 @@ mOTA traffic on the same stream.</p>
 </tr>
 </tbody>
 </table>
+<p>On RAK4631 and other nRF52 Full Companions, ASCII and Binary Companion both use
+the primary interface (<code>*-if00</code> on Linux). The optional <code>*-if02</code> interface is
+for logging. <code>OK - Binary mode</code> acknowledges a mode change on the same primary
+port; it does not move the connection to the logging port.</p>
 <p>On every ESP32 Full Companion, use <code>set usb.logging off</code> in its logging terminal
 before trying to use USB with an app. That command stops logging and returns to
 the ordinary ASCII terminal; it does not select Binary Companion. The app's
@@ -2707,6 +2743,9 @@ available while USB is logging. ESP32 Full builds use the Arduino-ESP32 2.x
 base where supported; RC32 and ESP32-C6 keep their board-required Arduino 3.x
 platform but follow the same one-TTY policy. No ESP32 Full build enumerates a
 second CDC interface.</p>
+<p>With logging enabled on a shared port, the stop token is rejected with
+<code>ERROR: set usb.logging off before Binary mode</code>. Turn logging off first; a
+successful binary-mode acknowledgement must not immediately revert to logging.</p>
 <p>On nRF52, serial <code>motatool</code> is also text-first. Its exact initial
 <code>ota folder on</code> line is recognized in either startup ASCII or Binary Companion
 mode. From ASCII, the firmware leaves terminal mode and directly enters
@@ -2725,6 +2764,11 @@ protocol negotiation layer.</p>
 mode for that session. Native USB with DTR/session events restores ASCII when
 the host closes or resets the connection. Old input, queued output and mOTA
 ownership are cleared before selecting the default for the next session.</p>
+<p>Some clients, including <code>meshcore</code> 2.3.10 used by stock MeshCLI, deliberately
+deassert DTR. The nRF52 primary interface also accepts actual incoming USB data
+as evidence of a client in the current session. Closing, changing line coding,
+or resetting USB invalidates that evidence. The dedicated logging interface
+continues to require its own connected reader.</p>
 <p>ESP32 hardware USB Serial/JTAG reports bus reset and physical host loss, but
 cannot reliably report a terminal program closing its handle. A USB-to-UART
 bridge also usually cannot report that close. On those ports, use the terminal
@@ -2747,17 +2791,13 @@ a long delay. A timed-out client can retry after the ASCII banner appears.</p>
 unknown or malformed at the application layer. This is safe for stream
 separation but means a random complete frame can leave the device in binary
 mode until an observable USB session reset or a manual switch back.</p>
-<h3 id="the-terminal-banner-is-best-effort">The terminal banner is best effort</h3>
-<p>The firmware enters ASCII mode during boot, often before a host opens the CDC
-device. The banner may therefore be absent even though the terminal is ready;
-send a newline or a harmless <code>get</code> command rather than treating a missing
-banner as proof of binary mode.</p>
-<p>A host that remains connected across a reboot may receive ASCII banner and
-prompt bytes before the first binary response. Binary clients should discard
-leading bytes until a plausible <code>&gt;</code> frame marker and length are found, reject
-implausible lengths, and resynchronize. The ordinary open-after-boot path has
-been tested with <code>meshcli</code>, but third-party clients that assume byte zero is
-always <code>&gt;</code> may fail.</p>
+<h3 id="the-default-terminal-waits-for-input">The default terminal waits for input</h3>
+<p>The firmware enters ASCII mode during boot but suppresses the banner and
+unsolicited terminal events until ASCII input identifies a terminal client.
+Send Enter or a harmless <code>get</code> command to display the banner. A binary client
+instead gets a clean first response. Older builds that immediately printed
+<code>&gt;</code> could consume the first binary response's marker as part of a bogus frame
+length; scanning past leading text alone did not reliably recover that reply.</p>
 <h3 id="text-and-binary-output-cannot-be-interleaved">Text and binary output cannot be interleaved</h3>
 <p>Primary USB suppresses Binary Companion output while the terminal owns the
 stream. Packet/debug logging must use its dedicated CDC interface or the

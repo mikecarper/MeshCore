@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/pr7_review_validation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/companion_usb_client_validation/">
       
       
-        <link rel="prev" href="../payloads/">
+        <link rel="prev" href="../companion_usb_ascii_validation/">
       
       
-        <link rel="next" href="../preamble_detection_investigation/">
+        <link rel="next" href="../docs/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>PR #7 review and validation - MeshCore Docs</title>
+        <title>USB Companion client compatibility - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#pr-7-review-and-validation" class="md-skip">
+        <a href="#usb-companion-client-compatibility" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              PR #7 review and validation
+              USB Companion client compatibility
             
           </span>
         </div>
@@ -580,10 +580,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../companion_usb_client_validation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Companion client compatibility
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -599,6 +626,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#port-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port selection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-reproduced-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two reproduced failures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hardware-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardware validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automated-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1552,37 +1643,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    PR #7 review and validation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../pr7_review_validation/" class="md-nav__link">
         
   
   
@@ -1598,59 +1662,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#review-fixes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Review fixes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#automated-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Automated validation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#indicator-hardware-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Indicator hardware validation
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2279,10 +2290,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#review-fixes" class="md-nav__link">
+  <a href="#port-selection" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Review fixes
+        Port selection
       
     </span>
   </a>
@@ -2290,10 +2301,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#automated-validation" class="md-nav__link">
+  <a href="#two-reproduced-failures" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Automated validation
+        Two reproduced failures
       
     </span>
   </a>
@@ -2301,10 +2312,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#indicator-hardware-validation" class="md-nav__link">
+  <a href="#hardware-validation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Indicator hardware validation
+        Hardware validation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automated-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated checks
       
     </span>
   </a>
@@ -2328,7 +2350,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/pr7_review_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/companion_usb_client_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2336,76 +2358,124 @@
   
 
 
-<h1 id="pr-7-review-and-validation">PR #7 review and validation</h1>
-<p>Validated on 2026-09-10 against integration commit
-<code>fa010196b130dee9a8a6fc6325d794e2f4fb9ede</code>, which combines base <code>01cc7b8a</code>
-with PR head <code>c002966c</code> and the review fixes. This includes the stacked ESP32
-memory changes already present in PR #7.</p>
-<h2 id="review-fixes">Review fixes</h2>
+<h1 id="usb-companion-client-compatibility">USB Companion client compatibility</h1>
+<p>The RAK4631 report was reproduced on the MercerWoodMesh Pi with the published
+<code>RAK_4631_companion_radio_full-v1.17.1.6-halo-keymind-cascade-dev-d4a641ff</code>
+image. The fixes described here are in the source and test firmware;
+the existing GitHub release assets have not yet been replaced with this fix.
+Hardware validation was completed on 2026-09-14 with test builds labeled
+<code>v1.17.1.6-usb-client-test-0e5955f8</code> (base commit plus these USB fixes).</p>
+<h2 id="port-selection">Port selection</h2>
+<table>
+<thead>
+<tr>
+<th>Hardware</th>
+<th>Companion/ASCII port</th>
+<th>USB logging</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAK4631 and other nRF52 Full Companions</td>
+<td>Primary CDC, Linux <code>*-if00</code></td>
+<td>Optional second CDC, <code>*-if02</code></td>
+</tr>
+<tr>
+<td>ESP32 Full Companions</td>
+<td>Primary USB serial port</td>
+<td>Shares that port; must be off for Binary Companion</td>
+</tr>
+</tbody>
+</table>
+<p><code>+++MESHCORE-TERM-STOP</code> changes the primary port to Binary Companion. Its
+<code>OK - Binary mode</code> reply does not move the client to a second port. Close the
+terminal before opening that same port with <code>meshcli -s PORT infos</code>. Do not use
+MeshCLI's repeater-mode <code>-r</code> option for a binary Companion connection.</p>
+<h2 id="two-reproduced-failures">Two reproduced failures</h2>
+<ol>
+<li>Stock <code>meshcore-cli</code> 1.6.3 was tested with <code>meshcore</code> 2.3.10, whose serial client
+   deliberately deasserts DTR. The nRF52 primary USB gate and response route
+   both required DTR. A raw battery query returned a valid 14-byte response
+   with DTR high and no bytes with DTR low.</li>
+<li>The automatic ASCII banner ended in <code>&gt;</code>. MeshCLI recognized that <code>&gt;</code> as a
+   binary frame marker and consumed the real response's leading <code>&gt;</code> as a
+   length byte. Even forcing DTR high in a diagnostic client did not recover
+   the first <code>APP_START</code> response. Stock MeshCLI exited without node information.</li>
+</ol>
+<p>The nRF52 transport now accepts real USB input as evidence of a client, tagged
+with the current session generation. Close, line-coding, and device-reset
+events invalidate that evidence; an old reader racing cleanup cannot grant
+access to a newer session. The write path remains bounded and does not wait
+for an unread host. CDC1 logging retains its own DTR requirement.</p>
+<p>The default ASCII terminal now suppresses its banner and unsolicited terminal
+events until ASCII input arrives. Enter or a command reveals the terminal.
+A binary probe receives a clean first response. Explicit START/STOP remains
+available, and an incomplete binary probe still times out back to ASCII.</p>
+<p>On a shared logging port, STOP now reports
+<code>ERROR: set usb.logging off before Binary mode</code> while logging is enabled.
+It no longer acknowledges Binary mode and immediately reclaims the port for
+ASCII logging.</p>
+<h2 id="hardware-validation">Hardware validation</h2>
+<p>The RAK4631 Full test firmware passed with an unmodified installed MeshCLI and
+its normal DTR-low serial library:</p>
 <ul>
-<li>Use the <a href="https://github.com/ExpressLRS/Targets/blob/504178dcfa469ee32f4290d6ae9ba02e2f2f365e/TX/GEPRC%20900%20Linkflow.json">published ExpressLRS Linkflow calibration</a>,
-  expose 17–30 dBm, and retain the fixed +2 dBm radio drive and correct RF output
-  after radio recovery. Propagate startup and radio-setting failures.</li>
-<li>Keep Linkflow LoRa OTA enabled, as intended by the added repeater target.</li>
-<li>Preserve stored ACLs and flood filters when allocation fails. Release owned
-  buffers and prevent accidental shallow copies of their owners.</li>
-<li>Release heap OTA workspaces after self-serving windows; retain them for active
-  transfers, manual staging, folder operations, and pending application. Service
-  cleanup on Companions and reset staged-resume flags when a context disappears.</li>
-<li>Count dynamically allocated clients, filters, and OTA workspaces in the RAM
-  budget. Respect explicit OTA storage ownership in PlatformIO flags.</li>
+<li>ASCII <code>ver</code> from the default mode, without START;</li>
+<li>explicit STOP acknowledgement followed by 10 binary battery queries;</li>
+<li>10 immediate close/reopen queries each with DTR low and high;</li>
+<li>10 stock-library reconnects and three separate <code>meshcli ... infos</code> runs;</li>
+<li>all of the above while the second CDC streamed logs: 598 bytes received,
+  no logging disconnections.</li>
 </ul>
-<h2 id="automated-validation">Automated validation</h2>
+<p>The Heltec V4 Full Companion also passed using its ESP32-S3 USB Serial/JTAG
+interface, with USB logging disabled:</p>
 <ul>
-<li><code>pio test -e native -e native_kiss_modem</code>: <strong>1,393/1,393 cases passed</strong>.</li>
-<li>Real C++ radio-power, heap-context, ACL persistence/CLI, and shared OTA queue
-  tests passed. The applicable radio-power, heap-context, and shared-queue tests
-  also passed on Linux with AddressSanitizer and UndefinedBehaviorSanitizer.</li>
-<li>Display/inbox, radio receive, static DRAM, and runtime RAM regression tests
-  passed. ACL allocation-failure coverage verifies that stored clients survive.</li>
-<li>Sequential firmware builds and their memory gates passed for:
-  <code>GEPRC_Linkflow_900_repeater</code>, <code>Heltec_v2_companion_radio_ble</code>,
-  <code>Tbeam_SX1262_repeater_observer_mqtt</code>,
-  <code>heltec_v4_r8_repeater_observer_mqtt</code>, <code>RAK_4631_repeater</code>, and
-  <code>SenseCapIndicator-LoRa_companion_radio_full</code>.</li>
+<li>default ASCII <code>ver</code>, then STOP and 10 clean binary battery replies;</li>
+<li>10 stock-library reconnects and three unmodified <code>meshcli ... infos</code> runs;</li>
+<li>a stock-client connection directly after reboot, without either mode token.</li>
 </ul>
-<h2 id="indicator-hardware-validation">Indicator hardware validation</h2>
-<p>The original SenseCAP Indicator LoRa with 8 MiB flash and 8 MiB octal PSRAM
-was reached through the MercerWoodMesh Pi over Wi-Fi. Its MAC, public identity,
-board reply, and existing partition layout were checked before updating.
-USB interfaces were absent, so this run does not qualify USB behavior.</p>
-<p>The Full profile was applied to <code>SenseCapIndicator-LoRa_comp_radio_usb_wifi</code>.
-The exact application is 2,149,208 bytes:</p>
+<p>The shared-port logging policy was exercised on the V4 as well. With logging
+on, STOP returned the explicit error, a binary probe could not claim the port,
+and stock MeshCLI could not connect. After <code>set usb.logging off</code>, STOP worked,
+10 binary replies were clean, and three stock-client reconnects succeeded.</p>
+<p>After testing, the V4's complete original flash snapshot was restored and
+verified by the flasher. Its original <code>v1.17.1-soak-v4-B</code> firmware answered
+again, and the previously active memory-soak collector was restarted. This
+test interrupted that board's uptime; the restored firmware starts a new run.
+Fresh successful V4 telemetry was verified at <code>2026-09-14T19:46:01Z</code>.
+The RAK4631 remains on the patched Full Companion test build with its separate
+logging interface enabled. The Pi's previously active services were restored.</p>
+<p>The nRF52 DTR stress sequence is deliberately not used on ESP32. Changing those
+control lines during immediate close/reopen triggered the V4's hardware
+bootloader and produced an <code>ESP</code> boot message. Preselecting RTS before opening
+did not prevent that transition on this host. ESP32 reconnect results above
+use the unmodified client's normal connection sequence instead.</p>
+<p>The test issues local information queries only. It does not transmit test chat
+messages over LoRa. Firmware installation and logging configuration are
+separate from the reusable test runner:</p>
+<pre><code class="language-sh">python3 tools/hil/companion_usb_client.py \
+  --port /dev/serial/by-id/PRIMARY-if00 \
+  --logging-port /dev/serial/by-id/LOGGING-if02 \
+  --test-dtr --cycles 10 --output usb-client-results.json
+</code></pre>
+<p>Replace the example paths with the device's actual stable paths. Install
+<code>meshcore-cli</code> in the Python environment used for the test. Start after a fresh
+reboot so the default-ASCII check has a new session. On ESP32, omit both
+<code>--logging-port</code> and <code>--test-dtr</code>, and disable USB logging first.</p>
+<h2 id="automated-checks">Automated checks</h2>
 <ul>
-<li>Application SHA-256:
-  <code>7a2b11e731f946af79d1104818c7993d3897e6d8ec1f0121d27284c0f0c8c665</code></li>
-<li>ELF SHA-256, also verified in the application descriptor:
-  <code>24e60c7785a7aefe3fb0536b0b595bf19e1264e4d5f100d201290dc95eb1761a</code></li>
+<li>53 Python USB checks pass, including compiled execution of the real nRF52
+  callbacks and transport gate with DTR-low clients, cleanup races, early
+  input, line-coding changes, physical disconnects, full TX FIFO, CDC1 isolation,
+  and the 1200-baud bootloader entry.</li>
+<li>The real terminal methods are compiled for ordinary and Full modes to verify
+  that unsolicited text is suppressed before the first binary response.</li>
+<li>The actual STOP branch is exercised for logging off, shared-port logging on,
+  and dedicated-port logging on.</li>
+<li>63 native serial-switching, flow-control, and terminal-session tests pass.</li>
+<li>RAK4631 Full and Heltec V4 Full firmware compile and pass their packaged
+  capability checks.</li>
 </ul>
-<p>This direct profile build uses the repository's default <code>v1.17.1</code> version text
-and <code>14 Aug 2026</code> build-date text; the hashes above identify the tested image.</p>
-<p>The Wi-Fi updater returned HTTP 200 and booted the application in <code>app1</code> at
-<code>0x400000</code>. The previous application remains in <code>app0</code> at <code>0x10000</code>; the
-partition table, NVS, and SPIFFS were not rewritten. Public identity, radio
-parameters, and USB logging preference matched their pre-update values.</p>
-<p>The existing Companion stress harness, using a TCP socket adapter, completed
-100 persistent cycles and 100 reconnects in 109.9 seconds: <strong>501 requests and
-501 validated responses</strong>, with no discarded bytes, malformed frames, or device
-error flags. Device info, time, storage, and core statistics were exercised.
-The text terminal exposed all four display-power controls and <code>display.inbox</code>.
-The OTA folder service issued a valid <code>COUNT</code> request, received an empty-folder
-reply, and returned to its disconnected state after the client closed.</p>
-<p>After these checks, four memory snapshots showed 69,548–69,996 bytes of free
-internal heap and a 61,428-byte largest block. PSRAM availability stayed at
-6,408,731 bytes. Final uptime was 262 seconds, with zero error flags and an
-empty outbound queue. This is a short regression check, not a long-term soak.
-Raw baseline, upload, stress, and final-state records are retained on the Pi
-under <code>/home/mikec/hwtest/runs/pr7-review/</code>.</p>
-<p>No Linkflow module or RF power meter was available in this run. Linkflow power
-calibration is supported by the pinned upstream table and executable driver
-tests, not a physical RF output measurement. The Indicator's ESP32-S3 does not
-exercise the classic ESP32 heap-OTA default; host tests and classic ESP32 builds
-cover that path. Physical display readability was not inspected.</p>
+<p>The USB workflow runs the new compiled regression tests on subsequent changes.</p>
 
 
 

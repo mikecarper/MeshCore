@@ -583,6 +583,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_usb_client_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Companion client compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../docs/" class="md-nav__link">
         
   
@@ -2113,10 +2140,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_67" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_68" >
         
           
-          <label class="md-nav__link" for="__nav_67" id="__nav_67_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_68" id="__nav_68_label" tabindex="0">
             
   
   
@@ -2134,8 +2161,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_67_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_67">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_68_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_68">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2432,6 +2459,9 @@ in ASCII at 115200 baud. A valid framed app command automatically selects Binary
 Companion. You can open a terminal without a start token:</p>
 <pre><code class="language-sh">picocom --baud 115200 /dev/ttyACM0
 </code></pre>
+<p>Current source waits for input before printing the USB banner. Press Enter or
+type a command. This preserves the clean first response needed by binary apps;
+see <a href="../companion_usb_client_validation/">USB client validation</a> for release status.</p>
 <p>For older firmware or a port already in Binary mode, use:</p>
 <pre><code class="language-sh">picocom --baud 115200 \
   --imap spchex \
@@ -2455,6 +2485,9 @@ enter it again as a terminal command.</p>
 <p>Send the following exact sequence to return to the binary protocol:</p>
 <pre><code>+++MESHCORE-TERM-STOP
 </code></pre>
+<p>If logging shares the primary USB port (ESP32), first run <code>set usb.logging off</code>.
+With logging still on, the stop token reports an error and keeps ASCII logging
+active. nRF52 Full's separate logging port can remain enabled.</p>
 <p>An observable USB session reset restores ASCII after clearing the previous
 client's state. Native USB with DTR can detect a terminal closing; ESP32 hardware
 USB Serial/JTAG detects bus resets and physical host loss. USB-to-UART bridges
