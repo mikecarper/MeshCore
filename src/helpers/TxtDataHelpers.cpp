@@ -118,7 +118,13 @@ static void _ftoa(float f, char *p, int *status)
     *p++ = '0';
   else 
   {
+#if defined(STM32_PLATFORM)
+    // STM32 Arduino exposes utoa, but recent cores no longer declare ltoa.
+    // The sign was emitted above and this magnitude fits a 32-bit unsigned int.
+    utoa(static_cast<unsigned int>(int_part), p, 10);
+#else
     ltoa(int_part, p, 10);
+#endif
     while (*p)
       p++;
   }
