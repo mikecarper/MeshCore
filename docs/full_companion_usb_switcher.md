@@ -214,7 +214,7 @@ a long delay. A timed-out client can retry after the ASCII banner appears.
 Any complete length-prefixed frame selects binary mode, even if its command is
 unknown or malformed at the application layer. This is safe for stream
 separation but means a random complete frame can leave the device in binary
-mode until manually switched back.
+mode until an observable USB session reset or a manual switch back.
 
 ### The terminal banner is best effort
 

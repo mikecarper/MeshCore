@@ -1102,12 +1102,19 @@
     }
     if (companion && ["full", "usb", "usb-ble"].includes(profile.mode)) {
       const picocom = "picocom -b 115200 --imap spchex --initstring $'\\r+++MESHCORE-TERM-START\\r' /dev/ttyACM0";
-      section("Companion USB terminal (Linux / Bash)", [
-        { label: "Connect", commands: [picocom],
+      const terminalActions = [
+        { label: "Force ASCII / older firmware", commands: [picocom],
           text: "Run this in Bash on the Linux computer connected to the radio. Updated 1.17.1.6 USB Companions default to ASCII at boot and after an observable USB session reset; a valid app frame selects Binary Companion. The init string also opens the ASCII CLI on older firmware or a port left in Binary mode; the leading carriage return clears an unfinished input line. spchex displays binary control bytes safely during the transition." },
         { label: "Recover scrambled terminal", commands: ["reset", picocom],
           text: "First exit picocom with Ctrl+A, then Ctrl+X. Run these commands in your Linux shell: reset repairs the terminal display, then picocom reconnects with safe input mapping." },
-      ], "Replace /dev/ttyACM0 with your radio's port, such as /dev/ttyACM1 or /dev/ttyUSB0. Use the primary USB data interface (00 when multiple interfaces appear), and close other apps using that port. At the radio prompt, run version and board to identify the node. Exit picocom with Ctrl+A, then Ctrl+X.");
+      ];
+      if (/^v1\.17\.1\.6(?:-|$)/.test(profile.releaseFamily || "")) {
+        terminalActions.unshift({ label: "Connect (ASCII default)",
+          commands: ["picocom -b 115200 --imap spchex /dev/ttyACM0"],
+          text: "Updated 1.17.1.6 USB Companions start in ASCII, so a fresh session needs no mode token. Run version or help at the prompt. If this port is still owned by a previous binary client, use Force ASCII / older firmware instead." });
+      }
+      section("Companion USB terminal (Linux / Bash)", terminalActions,
+        "Replace /dev/ttyACM0 with your radio's port, such as /dev/ttyACM1 or /dev/ttyUSB0. Use the primary USB data interface (00 when multiple interfaces appear), and close other apps using that port. At the radio prompt, run version and board to identify the node. Exit picocom with Ctrl+A, then Ctrl+X.");
     }
     if (!info) return sections;
     if (companion && supportsRadioProfileCommands(profile)) {
