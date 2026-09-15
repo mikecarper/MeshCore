@@ -2582,6 +2582,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-contact-and-channel-tx-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion contact and channel TX profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-usb-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2852,6 +2863,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-contact-and-channel-tx-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion contact and channel TX profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-usb-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2996,6 +3018,21 @@ operations.</p>
 <p>The browser CLI requires station/LAN mode and <code>wifi.cli on</code>. Infrastructure
 uses its admin login; Companion uses the trusted LAN. Configuration forms keep
 password fields masked; explicit local CLI getters return their values.</p>
+<h2 id="companion-contact-and-channel-tx-profiles">Companion contact and channel TX profiles</h2>
+<p>Choose where the Companion transmits to a contact or group channel:</p>
+<pre><code class="language-text">set tx.user &quot;Alice Jones&quot; radio2
+get tx.user &quot;Alice Jones&quot;
+set tx.channel 0 both
+set tx.channel #wardriving radio
+get tx.channel 0
+</code></pre>
+<p>Values are <code>auto</code>, <code>radio</code>, <code>radio2</code>, <code>both</code>, and <code>off</code>. <code>auto</code> follows
+<code>radio2.cross</code>; explicit choices override it. Radio2 must still be in <code>rxtx</code>
+mode, and a <code>radio2</code>-only send fails when it cannot transmit. These settings
+persist and also apply to messages sent by the phone app. Use exact names,
+a channel index, or <code>key:&lt;unique public-key prefix&gt;</code> for a contact.
+See the <a href="../radio_profiles/#companion-tx-routing-by-contact-or-channel">routing guide</a>
+for which requests/replies are covered and how to reset a choice.</p>
 <h2 id="companion-usb-mode">Companion USB mode</h2>
 <p>Updated 1.17.1.6 USB Companion builds, including ordinary and Full builds, start
 in ASCII at 115200 baud. A valid framed app command automatically selects Binary

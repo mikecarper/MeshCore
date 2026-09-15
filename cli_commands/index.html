@@ -824,6 +824,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-tx-routing-per-contact-or-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion TX routing per contact or channel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#set-repeater-room-server-and-sensor-reply-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set repeater, room-server, and sensor reply profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-companion-display-rotation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1646,6 +1668,17 @@
     <span class="md-ellipsis">
       
         Forward flood group data packets on repeaters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bridge-and-radio-crossover-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bridge and radio crossover filters
       
     </span>
   </a>
@@ -5206,6 +5239,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-tx-routing-per-contact-or-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion TX routing per contact or channel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#set-repeater-room-server-and-sensor-reply-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set repeater, room-server, and sensor reply profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-companion-display-rotation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6028,6 +6083,17 @@
     <span class="md-ellipsis">
       
         Forward flood group data packets on repeaters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bridge-and-radio-crossover-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bridge and radio crossover filters
       
     </span>
   </a>
@@ -7723,6 +7789,43 @@ When a page has no fixes, its origin is <code>0,0</code>, origin index is <code>
 differentials are <code>0,0</code>. Values outside <code>-8192</code> through <code>8191</code> are clipped and
 set flag bit 0.</p>
 <hr />
+<h2 id="set-companion-tx-routing-per-contact-or-channel">Set Companion TX routing per contact or channel</h2>
+<pre><code class="language-text">set tx.user &quot;Alice Jones&quot; radio2
+get tx.user &quot;Alice Jones&quot;
+set tx.channel 0 both
+get tx.channel 0
+set tx.channel #wardriving radio
+</code></pre>
+<p>Both command families accept <code>auto</code>, <code>radio</code>, <code>radio2</code>, <code>both</code>, or <code>off</code>.
+<code>auto</code> uses the global crossing rules. Explicit choices override
+<code>radio2.cross</code>, but radio2 must still be enabled in <code>rxtx</code> to transmit there.
+<code>radio2</code> never falls back to the primary profile; <code>both</code> uses whichever of its
+selected profiles can transmit. Set a target back to <code>auto</code> to remove its
+override.</p>
+<p>Use an exact contact/channel name, a zero-based channel index, or
+<code>key:&lt;12-64 hex digits&gt;</code> for a unique contact public-key prefix. Duplicate
+names/prefixes are rejected. <code>get tx.user</code> and <code>get tx.channel</code> show override
+counts; queries with a target show its saved choice and current effective
+profile selection. Choices are saved with the contact/channel and work for
+phone-app and terminal messages. A contact's <code>off</code> setting also blocks its
+ACKs and addressed responses.</p>
+<p>See <a href="../radio_profiles/#companion-tx-routing-by-contact-or-channel">Companion routing details and examples</a>
+for temporary profiles, persistence, and the traffic covered by each setting.</p>
+<h2 id="set-repeater-room-server-and-sensor-reply-profiles">Set repeater, room-server, and sensor reply profiles</h2>
+<pre><code class="language-text">get tx.reply
+set tx.reply both
+set tx.reply both force
+set tx.reply radio
+set tx.reply auto
+</code></pre>
+<p>Persistent choices: <code>auto</code>, <code>radio</code>, <code>radio2</code>, <code>both</code> (default), and <code>off</code>.
+Explicit choices override <code>radio2.cross</code> for local replies, including CLI,
+ACKs, telemetry, room subscription posts, and served LoRa OTA responses.
+Append <code>force</code> to <code>both</code> or <code>radio2</code> to permit reply TX on an active RX-only
+second profile. It never enables a disabled profile or ordinary forwarding.
+Omitting <code>force</code> removes that override. <code>off</code> suppresses remote replies too.</p>
+<p>See <a href="../radio_profiles/#repeater-room-server-and-sensor-replies">reply routing and OTA examples</a>
+for temporary profiles, receive-only exceptions, and queued reply handling.</p>
 <h2 id="set-companion-display-rotation">Set Companion display rotation</h2>
 <p>SSD1306 Full Companion builds support a persisted runtime orientation:</p>
 <pre><code class="language-text">get display.rotation
@@ -9182,6 +9285,54 @@ managed row with <code>~data</code>. Flood group text (<code>GRP_TXT</code>) is 
 setting.</p>
 <p><code>get flood.channel.data</code> includes the active hop gate as <code>h=all</code> or <code>h&gt;N</code>.</p>
 <hr />
+<h4 id="bridge-and-radio-crossover-filters">Bridge and radio crossover filters</h4>
+<p><code>mode=</code> selects where a generalized <code>flood.rule</code> / <code>flood.filter</code> row applies:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Where the rule applies</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>radio</code></td>
+<td>Ordinary LoRa flood forwarding. This is the default when <code>mode=</code> is omitted.</td>
+</tr>
+<tr>
+<td><code>bridge</code></td>
+<td>Packets entering or leaving an RS232 or ESP-NOW bridge, and MeshCore RX/TX packet publication through MQTT.</td>
+</tr>
+<tr>
+<td><code>cross</code></td>
+<td>Transmissions copied to the other radio profile, including a copy's retries. The same-profile transmission remains eligible.</td>
+</tr>
+<tr>
+<td><code>bridge,cross</code></td>
+<td>Both transport paths using one rule. <code>cross,bridge</code> is equivalent.</td>
+</tr>
+</tbody>
+</table>
+<p>The third built-in repeater rule blocks authenticated <code>#wardriving</code> text and
+data at all hops on bridge and crossover paths, including temporary-radio
+sessions. It leaves same-profile traffic subject to the separate four-hop
+rule. <code>set radio2.cross on</code> does not override this filter.</p>
+<pre><code class="language-text"># Factory slot: inspect before replacing an existing rule.
+get flood.rule.3
+set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
+# On an existing device, add it without overwriting an occupied slot.
+set flood.rule type=any channel=#wardriving hops=all mode=bridge,cross drop
+</code></pre>
+<p>Saved tables are preserved on upgrade; new defaults are seeded only when the
+table is first initialized. Bridge/cross modes accept drop, rate, priority and
+stop actions; scope rewrites, retry actions and TX timing are rejected.
+These modes cover direct as well as flood packets, in both crossing directions.
+The default authenticates the channel key, avoiding false drops from short
+channel-hash collisions. FULL room servers support explicit transport rules;
+companions and compact FPF6 profiles do not expose this table.</p>
+<p>See <a href="../flood_filtering/#filter-bridge-and-radio-crossover-traffic">filtering documentation</a>
+for persistence, queue/rate semantics, exceptions, and how to remove one or
+both blocks.</p>
 <h4 id="block-selected-flood-channels-with-fpf7">Block selected flood channels with FPF7</h4>
 <p>The separate <code>flood.channel.block</code> command and 15-row table have been retired.
 Generalized repeaters use the 63-row FPF7 forward phase for authenticated channel
@@ -9421,44 +9572,54 @@ get flood.channel.scope.require.1
 <h4 id="change-persistent-flood-rules-in-the-field">Change persistent flood rules in the field</h4>
 <p>For setup guidance, interactions with the existing forwarding controls, and
 worked moderation examples, see <a href="../flood_filtering/">Flood Filtering and Moderation</a>.</p>
-<p><strong>Usage:</strong>
-- <code>get flood.rule</code>
-- <code>get flood.rule.&lt;n&gt;</code>
-- <code>set flood.rule[.&lt;n&gt;] type=&lt;type&gt; [hops=&lt;range&gt;] [channel=&lt;channel&gt;] [prefix=&lt;path-prefix&gt;] [in=&lt;input-scope&gt;] &lt;drop|scope=&lt;name&gt;|region=&lt;name&gt;|rate=&lt;N&gt;/min|retry|stop&gt; [priority=&lt;0-255&gt;] [tx=slow] [suspend=tempradio]</code>
-- <code>del flood.rule.&lt;n&gt;</code>
-- <code>del flood.rule all</code>
-- <code>get flood.filter</code>
-- <code>get flood.filter.&lt;n&gt;</code>
-- <code>get flood.filter.blacklist</code>
-- <code>get flood.filter.blacklist.&lt;n&gt;</code>
-- <code>set flood.filter.blacklist &lt;ID[,ID...]&gt;</code>
-- <code>set flood.filter.blacklist.&lt;n&gt; &lt;ID[,ID...]&gt;</code>
-- <code>del flood.filter.blacklist</code>
-- <code>del flood.filter.blacklist.&lt;n&gt;</code>
-- <code>set flood.filter &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code>
-- <code>set flood.filter.&lt;n&gt; &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code>
-- <code>del flood.filter.&lt;n&gt;</code>
-- <code>del flood.filter all</code></p>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get flood.rule</code></li>
+<li><code>get flood.rule.&lt;n&gt;</code></li>
+<li><code>get fr[.&lt;n&gt;]</code> (numbered form returns a complete short setter for copying)</li>
+<li><code>set fr[.&lt;n&gt;] &lt;type&gt; [h=&lt;range&gt;] [m=r|b|c|bc] [c=&lt;channel&gt;] &lt;d|s=&lt;scope&gt;|r=&lt;region&gt;|q=&lt;N&gt;|r|s&gt; [...]</code></li>
+<li><code>del fr.&lt;n&gt;</code> or <code>del fr all</code></li>
+<li><code>set flood.rule[.&lt;n&gt;] type=&lt;type&gt; [mode=radio|bridge|cross|bridge,cross] [hops=&lt;range&gt;] [channel=&lt;channel&gt;] [prefix=&lt;path-prefix&gt;] [in=&lt;input-scope&gt;] &lt;drop|scope=&lt;name&gt;|region=&lt;name&gt;|rate=&lt;N&gt;/min|retry|stop&gt; [priority=&lt;0-255&gt;] [tx=slow] [suspend=tempradio]</code></li>
+<li><code>del flood.rule.&lt;n&gt;</code></li>
+<li><code>del flood.rule all</code></li>
+<li><code>get flood.filter</code></li>
+<li><code>get flood.filter.&lt;n&gt;</code></li>
+<li><code>get flood.filter.blacklist</code></li>
+<li><code>get flood.filter.blacklist.&lt;n&gt;</code></li>
+<li><code>set flood.filter.blacklist &lt;ID[,ID...]&gt;</code></li>
+<li><code>set flood.filter.blacklist.&lt;n&gt; &lt;ID[,ID...]&gt;</code></li>
+<li><code>del flood.filter.blacklist</code></li>
+<li><code>del flood.filter.blacklist.&lt;n&gt;</code></li>
+<li><code>set flood.filter &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code></li>
+<li><code>set flood.filter.&lt;n&gt; &lt;type&gt; [hops] [path=blacklist] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code></li>
+<li><code>del flood.filter.&lt;n&gt;</code></li>
+<li><code>del flood.filter all</code></li>
+</ul>
 <p>The extended table is available on repeaters with the rule engine enabled and
-on FULL-profile ESP32 room servers. A FULL room server exposes both
-<code>flood.rule</code> and <code>flood.filter</code>, has 31 slots, and requires an administrator
+on FULL-profile ESP32 room servers. A FULL room server exposes
+<code>fr</code>, <code>flood.rule</code>, and <code>flood.filter</code>, has 31 slots, and requires an administrator
 for remote changes. It does not have the repeater's passive path blacklist, so
 <code>flood.filter.blacklist*</code> and <code>path=blacklist</code> are repeater-only; use the
 ordered <code>prefix=</code> match on a room server. Standard room-server profiles do not
 compile this table.</p>
-<p><strong>Parameters:</strong>
-- <code>n</code>: Forward-rule slot in the build's compiled table (<code>1-63</code> on generalized
-  repeaters and <code>1-31</code> on FULL room servers; compact profiles may use fewer).
-- <code>type</code>: Payload type name, full <code>PAYLOAD_TYPE_*</code> name, decimal value <code>0-15</code>,
-  hexadecimal value <code>0x00-0x0F</code>, or <code>any</code>.
-- <code>hops</code>: Optional; omitted means <code>all</code>.
-  - <code>N</code>: Match only at received hop count <code>N</code>.
-  - <code>N+</code>: Match at received hop count <code>N</code> and higher.
-  - <code>N-M</code>: Match the inclusive received-hop range.
-  - <code>all</code>: Match every received hop count (<code>0-63</code>).
-  - <code>0+</code>, <code>all</code>, and an omitted hop expression are equivalent. The CLI displays
-    the saved range as <code>all</code>.
-- <code>channel=*|public|#name|hash:XX|128-bit-key|256-bit-key</code>: Optional channel match.
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>n</code>: Forward-rule slot in the build's compiled table (<code>1-63</code> on generalized
+  repeaters and <code>1-31</code> on FULL room servers; compact profiles may use fewer).</li>
+<li><code>mode</code>: Optional; omitted means <code>radio</code>. <code>bridge</code> filters bridge admission,
+  <code>cross</code> filters copies to the other radio profile, and <code>bridge,cross</code> covers
+  both with one row. <code>cross,bridge</code> is an alias. See the
+  <a href="#bridge-and-radio-crossover-filters">mode matrix</a> for scope and supported actions.</li>
+<li><code>type</code>: Payload type name, full <code>PAYLOAD_TYPE_*</code> name, decimal value <code>0-15</code>,
+  hexadecimal value <code>0x00-0x0F</code>, or <code>any</code>.</li>
+<li><code>hops</code>: Optional; omitted means <code>all</code>.</li>
+<li><code>N</code>: Match only at received hop count <code>N</code>.</li>
+<li><code>N+</code>: Match at received hop count <code>N</code> and higher.</li>
+<li><code>N-M</code>: Match the inclusive received-hop range.</li>
+<li><code>all</code>: Match every received hop count (<code>0-63</code>).</li>
+<li><code>0+</code>, <code>all</code>, and an omitted hop expression are equivalent. The CLI displays
+    the saved range as <code>all</code>.</li>
+<li><code>channel=*|public|#name|hash:XX|128-bit-key|256-bit-key</code>: Optional channel match.
   <code>channel=*</code> means no channel condition at all, so the row matches everything
   selected by <code>type=</code> (including all flood payload types with <code>type=any</code>). It
   does not authenticate a packet. <code>public</code>, <code>#name</code>, and raw keys authenticate
@@ -9472,65 +9633,66 @@ compile this table.</p>
   or deliberately selected <code>0x11</code> value. <code>channel=public</code> performs the deeper
   MAC/decrypt check with the Public channel key. That distinguishes an ordinary
   <code>0x11</code> collision, but it is channel authentication rather than sender
-  authentication: the group MAC is two bytes and the Public key is shared.
-- <code>prefix=&lt;ID[,ID...]&gt;</code>: Optional ordered source-path prefix of one to three
+  authentication: the group MAC is two bytes and the Public key is shared.</li>
+<li><code>prefix=&lt;ID[,ID...]&gt;</code>: Optional ordered source-path prefix of one to three
   pbyte IDs. IDs must all be 2, 4, or 6 hex characters, matching a packet's
-  1-, 2-, or 3-byte pbyte width. <code>path=&lt;prefix&gt;</code> is an alias.
-- <code>in=any|none|scoped|allowed|unknown|scope:&lt;name&gt;|region:&lt;name&gt;</code>: Optional
+  1-, 2-, or 3-byte pbyte width. <code>path=&lt;prefix&gt;</code> is an alias.</li>
+<li><code>in=any|none|scoped|allowed|unknown|scope:&lt;name&gt;|region:&lt;name&gt;</code>: Optional
   condition on the original incoming scope, before any rule rewrites it.
   <code>none</code> is an unscoped flood. <code>scope:name</code> is the exact public
-  hashtag-derived scope. <code>region:name</code> is an exact allowed region match.
-- <code>drop</code>: Explicit drop action. The <code>flood.rule</code> form requires an explicit
+  hashtag-derived scope. <code>region:name</code> is an exact allowed region match.</li>
+<li><code>drop</code>: Explicit drop action. The <code>flood.rule</code> form requires an explicit
   action. For compatibility, a legacy <code>flood.filter</code> row with no rewrite,
-  rate, or stop action is treated as drop.
-- <code>scope=&lt;name&gt;</code>: Direct public-name scope rewrite. It derives a transport key
+  rate, or stop action is treated as drop.</li>
+<li><code>scope=&lt;name&gt;</code>: Direct public-name scope rewrite. It derives a transport key
   from the name and does not require a configured region. For example,
   <code>scope=BlackHole86</code> is a regionless sink scope; <code>region=BlackHole86</code> would
-  instead require a real configured, flood-allowed region with that name.
-- <code>region=&lt;name&gt;</code>: Rewrite using an existing locally allowed region and one of
-  that region's transport keys.
-- <code>rate=N/min</code>: Per-node, per-row fixed one-minute forwarding limit. It can be
+  instead require a real configured, flood-allowed region with that name.</li>
+<li><code>region=&lt;name&gt;</code>: Rewrite using an existing locally allowed region and one of
+  that region's transport keys.</li>
+<li><code>rate=N/min</code>: Per-node, per-row fixed one-minute forwarding limit. It can be
   the only action or accompany <code>scope=</code>/<code>region=</code>. Counters are charged only
-  for packets that pass all forwarding gates.
-- <code>retry</code>, <code>retry=on</code>, <code>retry=allow</code>, or <code>action=retry</code>: Allow a matching
+  for packets that pass all forwarding gates.</li>
+<li><code>retry</code>, <code>retry=on</code>, <code>retry=allow</code>, or <code>action=retry</code>: Allow a matching
   received flood packet to enter the configured flood-retry sequence. With no
   active <code>retry</code> rows, retry eligibility remains backward compatible and is
   controlled by the global retry settings. Once any active <code>retry</code> row exists,
   the matching rows become a retry allow-list: a received flood must match at
   least one surviving <code>retry</code> row. <code>flood.retry.bridge</code> still selects ordinary
   or bridge-bucket completion for the allowed packet. This action can accompany
-  rewrite, rate, or stop, but not <code>drop</code>; compact syntax uses <code>f=r</code>.
-- <code>priority=0-255</code>: Optional primary processing order. Higher values run first.
+  rewrite, rate, or stop, but not <code>drop</code>; compact syntax uses <code>f=r</code>.</li>
+<li><code>priority=0-255</code>: Optional primary processing order. Higher values run first.
   At the same numeric priority, authenticated channel matches run before raw
   <code>hash:XX</code> matches, which run before <code>channel=*</code>; lower slot number breaks the
   remaining tie. The default is <code>0</code>; <code>pri=</code> is an alias. An explicitly higher
-  numeric priority still overrides this automatic specificity ordering.
-- <code>stop</code> or <code>action=stop</code>: Apply this matching row, then stop lower-order FPF7
+  numeric priority still overrides this automatic specificity ordering.</li>
+<li><code>stop</code> or <code>action=stop</code>: Apply this matching row, then stop lower-order FPF7
   rows from processing. It can stand alone or accompany drop, rewrite, or
   rate. A stop-only row acts as an exception to lower-priority FPF7 rules.
   If the same row uses <code>region=</code> and that configured region is missing, denied,
   wildcard, or has no usable transport key, both the rewrite and its <code>stop</code>
   are inert so lower-order safety rows still run. A direct <code>scope=</code> target does
-  not depend on region configuration.
-- <code>suspend=tempradio</code>: Optional. Skip this row only while the temporary radio
-  is actually active.
-- <code>require=region</code>: Legacy alias for <code>in=allowed</code>. Apply the row only if the
+  not depend on region configuration.</li>
+<li><code>suspend=tempradio</code>: Optional. Skip this row while either <code>tempradio</code> or
+  <code>tempradio2</code> is active, including scheduled temporary sessions.</li>
+<li><code>require=region</code>: Legacy alias for <code>in=allowed</code>. Apply the row only if the
   original incoming packet already passes this repeater's
   region gate. An incoming transport scope must resolve to a locally allowed
   region; an unscoped flood must be allowed by the wildcard region. The check
-  occurs before any scope rewrite during this receive pass.
-- <code>tx=slow</code>: Optional and valid with <code>scope=</code> or <code>region=</code>. Use an effective inbound
+  occurs before any scope rewrite during this receive pass.</li>
+<li><code>tx=slow</code>: Optional and valid with <code>scope=</code> or <code>region=</code>. Use an effective inbound
   <code>rxdelay</code> base of <code>max(2, configured rxdelay * 2)</code>, keep normal outbound
   queue priority, and retransmit with the maximum supported <code>txdelay</code> factor
   of <code>2.0</code>. Scope rows default to fast; <code>tx=fast</code> explicitly restores that
-  default when replacing a slow row.
-- <code>path=blacklist</code>: Optional unordered path condition. The persistent blacklist
+  default when replacing a slow row.</li>
+<li><code>path=blacklist</code>: Optional unordered path condition. The persistent blacklist
   is repeater-only. It contains up to 255 unique 3-byte repeater IDs on ESP32
   builds and 18 on other builds, each written as six hexadecimal digits. A
   packet with 3-byte path hashes matches after one exact ID hit. A packet with
   2-byte path hashes matches after two path entries match the first two bytes
   of listed IDs. Packets with 1-byte path hashes never match this condition.
-  Each received path entry is counted at most once.</p>
+  Each received path entry is counted at most once.</li>
+</ul>
 <p>The payload names follow the <a href="https://docs.meshcore.io/packet_format/">MeshCore packet-format allocation</a>:</p>
 <table>
 <thead>
@@ -9623,13 +9785,16 @@ compile this table.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>Route scope:</strong> Rules are evaluated only for the two flood route values:
+<p><strong>Route scope:</strong> <code>mode=radio</code> rules are evaluated only for the two flood route values:
 <code>ROUTE_TYPE_TRANSPORT_FLOOD</code> (<code>0x00</code>, flood plus transport codes) and
 <code>ROUTE_TYPE_FLOOD</code> (<code>0x01</code>, unscoped flood). Direct routes <code>0x02</code> and <code>0x03</code>
-are never affected.</p>
-<p><strong>Behavior:</strong> Match fields within one row are ANDed. Every FPF7 row is matched
+are unaffected by radio rules. Bridge/cross rules also cover direct routes at
+their respective transport boundaries.</p>
+<p><strong>Behavior:</strong> Match fields within one row are ANDed. Radio rows are matched
 against the same immutable receive-time packet, before any rule changes its
-scope. Matching rows are processed in descending <code>priority</code>. At equal numeric
+scope. Bridge/cross rows match the packet at their admission boundary; a TX
+packet can already have an appended hop or rewritten scope. Each mode evaluates
+only its applicable rows, processed in descending <code>priority</code>. At equal numeric
 priority, authenticated channel matches precede raw hashes, which precede an
 unrestricted channel matcher; lower slot wins after that. The first matching
 <code>stop</code> row is included and all lower-order FPF7 matches are discarded. A stop
@@ -9674,10 +9839,11 @@ region names rather than transient numeric region
 IDs. Removing, reordering, or reusing a region ID therefore cannot silently
 retarget a rule. If a saved input or target region name is absent, that input
 match or rewrite is inert; restoring the same region name reactivates it.
-While the temporary radio is active, only rows explicitly marked
-<code>suspend=tempradio</code> are skipped. <code>tempradio</code> is a radio state, not an OTA mode;
-normal payload types can also use the temporary channel. Other rows remain in
-force. A malformed persisted table fails open (no general rules are applied).</p>
+While either <code>tempradio</code> or <code>tempradio2</code> is active, only rows explicitly marked
+<code>suspend=tempradio</code> are skipped. Temporary radio is a radio state, not an OTA
+mode; normal payload types can also use the temporary channel. Other rows
+remain in force, and suspended rows resume after both temporary sessions end.
+A malformed persisted table fails open (no general rules are applied).</p>
 <p>Within one receive evaluation, rows that use the same channel key share one
 authentication result. The cache is discarded after that packet and stores
 neither plaintext nor passwords; different keys are authenticated separately.
@@ -9712,10 +9878,10 @@ can deliberately reverse this order by assigning the hash row a higher numeric
 <p>Deleting or replacing the last active <code>retry</code> row restores the legacy global
 retry eligibility. Firmware that predates the <code>retry</code>/<code>hash:XX</code> FPF7 extension
 cannot preserve tables containing those rows; remove them before downgrading.</p>
-<p><strong>Default row:</strong> Repeater firmware and FULL ESP32 room-server firmware seed a
+<p><strong>Default rows:</strong> Repeater firmware and FULL ESP32 room-server firmware seed a
 new flood-filter table with
 <code>ota all suspend=tempradio</code> in slot 1. This blocks repeated LoRa OTA (<code>0x0C</code>)
-floods at every received hop unless temporary radio is actually active. The OTA
+floods at every received hop unless either temporary radio profile is active. The OTA
 core independently refuses OTA receive, relay, and transmit outside temporary
 radio. The row is editable and deletable; once the table is saved, deletion is
 persistent. Restore the exact seeded row with:</p>
@@ -9723,6 +9889,14 @@ persistent. Restore the exact seeded row with:</p>
 </code></pre>
 <p>Omitting <code>all</code> is equivalent. Omit <code>.1</code> as well to reuse an identical rule or
 the first empty slot instead of replacing slot 1.</p>
+<p>Generalized repeaters also seed slot 2 with the authenticated <code>#wardriving</code>
+radio hop limit and slot 3 with the bridge/crossover block:</p>
+<pre><code class="language-text">set flood.rule.2 type=any channel=#wardriving hops=5+ drop
+set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
+</code></pre>
+<p>These numbered commands replace those slots. Saved tables are preserved on
+upgrade; use the unnumbered third command to add the new rule without replacing
+an occupied slot. See <a href="../flood_filtering/#restore-the-factory-seeded-rows">restoring the three defaults</a>.</p>
 <p><strong>Remote-admin lockout warning:</strong> There are no hidden payload-type or short-hop
 exceptions. FPF7 drop and rate rows may block <code>req</code>, <code>response</code>, <code>txt_msg</code>,
 <code>anon_req</code>, <code>path</code>, ACK, and multipart traffic beginning at hop <code>0</code> when their
@@ -9735,14 +9909,82 @@ or action.
 <code>get flood.filter</code> or <code>get flood.rule</code> gives a compact list. Use the numbered
 form for full details, including channel, prefix, original-scope condition,
 action, timing, rate, and temporary-radio suspension.</p>
-<p>If all of those fields plus long names would exceed one CLI reply, the
-numbered form automatically switches to a non-truncating compact spelling.
-The compact aliases are also accepted by <code>set</code>: <code>c=</code> means <code>channel=</code>, <code>p=</code>
-means <code>prefix=</code>, <code>i=*|n|s|a|u|s:&lt;scope&gt;|r:&lt;region&gt;</code> means the corresponding
-<code>in=</code> condition, <code>q=N</code> means <code>rate=N/min</code>, <code>pri=N</code> means priority, and <code>f=str</code>
-combines slow timing (<code>s</code>), temporary-radio suspension (<code>t</code>), and retry
-allowance (<code>r</code>). Packet type is shown numerically
-in that fallback. Normal-sized rows keep the descriptive spelling above.</p>
+<p><code>fr</code> is a shorter alias for <code>flood.rule</code>, with the same explicit-action
+requirement. Short and long field names can be mixed in either command:</p>
+<pre><code class="language-text">set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
+set fr.3 any c=#wardriving m=bc d
+get fr.3
+</code></pre>
+<p>The two setters above save the same row. <code>get fr.3</code> returns the complete
+short setter; <code>get fr</code> lists the table. Unnumbered <code>set fr ...</code> reuses an
+identical row or adds one to the first empty slot. <code>del fr.N</code> and <code>del fr all</code>
+have the same behavior as their long forms.</p>
+<table>
+<thead>
+<tr>
+<th>Full token</th>
+<th>Short token</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type=...</code></td>
+<td>Positional type or <code>t=...</code>; <code>*</code> means <code>any</code></td>
+</tr>
+<tr>
+<td><code>hops=...</code></td>
+<td>Positional range or <code>h=...</code>; <code>*</code> means <code>all</code></td>
+</tr>
+<tr>
+<td><code>mode=radio/bridge/cross/bridge,cross</code></td>
+<td><code>m=r/b/c/bc</code> (choose one value)</td>
+</tr>
+<tr>
+<td><code>channel=...</code>, <code>prefix=...</code></td>
+<td><code>c=...</code>, <code>p=...</code></td>
+</tr>
+<tr>
+<td><code>path=blacklist</code></td>
+<td><code>p=bl</code> (repeater only)</td>
+</tr>
+<tr>
+<td><code>in=any/none/scoped/allowed/unknown</code></td>
+<td><code>i=*/n/s/a/u</code> (choose one value)</td>
+</tr>
+<tr>
+<td><code>in=scope:name</code>, <code>in=region:name</code></td>
+<td><code>i=s:name</code>, <code>i=r:name</code></td>
+</tr>
+<tr>
+<td><code>drop</code>, <code>stop</code>, <code>retry</code></td>
+<td><code>d</code>, <code>s</code>, <code>r</code></td>
+</tr>
+<tr>
+<td><code>scope=name</code>, <code>region=name</code></td>
+<td><code>s=name</code>, <code>r=name</code></td>
+</tr>
+<tr>
+<td><code>rate=N/min</code>, <code>priority=N</code></td>
+<td><code>q=N</code>, <code>pri=N</code></td>
+</tr>
+<tr>
+<td><code>tx=slow</code>, <code>suspend=tempradio</code>, <code>retry</code></td>
+<td><code>f=s</code>, <code>f=t</code>, <code>f=r</code>; combine as <code>f=str</code></td>
+</tr>
+</tbody>
+</table>
+<p>All existing validation and permissions apply. <code>m=cb</code>, <code>m=b,c</code>, and <code>m=c,b</code>
+also mean bridge and crossover. Short aliases for <code>flood.channel.scope</code>,
+<code>flood.moderation</code>, and blacklist management are not added.</p>
+<p>The numbered long getters use this complete short setter when descriptive
+fields would exceed a reply. Defaults are omitted and specific payload types
+are printed numerically. If it still cannot fit, the reply is
+<code>Err - compact command exceeds reply size</code>, never a partial setter.
+Private channel keys are shown as <code>key:XXXXXXXX</code>; that reference can be
+reused while an active rule on the same device holds the key. Copying it to
+another device requires the original key, unless that device already has a
+matching rule. Unknown or ambiguous references are rejected. See the
+<a href="../flood_filtering/#shorthand-for-copying-rules">shorthand guide</a> for examples.</p>
 <p>On generalized repeaters, filter rows, scope-rewrite rows, the shared
 blacklist, and <code>flood.channel.data</code> compatibility state are committed in one
 atomic FPF7 image. Compact FPF6 profiles retain separate files. Replacing or deleting
@@ -9867,7 +10109,7 @@ del flood.moderation.3
 <p><strong>Filter manager scope:</strong> Permission <code>5</code> can use an explicit allowlist of
 non-secret operational/filter status commands and can change the forwarding
 controls <code>repeat</code>, <code>loop.detect</code>, <code>flood.max*</code>, <code>flood.channel.data*</code>,
-<code>flood.filter*</code>, <code>flood.rule*</code>, and
+<code>flood.filter*</code>, <code>flood.rule*</code>, <code>fr[.N]</code>, and
 <code>flood.moderation*</code>. It cannot read
 guest, WiFi, MQTT, bridge, or other credentials, and it cannot change regions,
 ACL entries, radio settings, or other admin configuration. Permission <code>4</code>

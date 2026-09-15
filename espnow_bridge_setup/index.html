@@ -859,6 +859,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#keep-wardriving-traffic-off-the-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep wardriving traffic off the bridge
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2895,6 +2906,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#keep-wardriving-traffic-off-the-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep wardriving traffic off the bridge
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3078,6 +3100,23 @@ delivery.</p>
 For every command's full details, see the <a href="../cli_commands/#bridge-when-bridge-support-is-compiled-in">bridge CLI reference</a>.</p>
 <p>For a broader comparison with a Linux-based bridge, see the
 <a href="https://meshcore.nexus/guides/lora-bridging#method-2-meshcore-esp-now-bridge">MeshCore Nexus bridging guide</a>.</p>
+<h2 id="keep-wardriving-traffic-off-the-bridge">Keep wardriving traffic off the bridge</h2>
+<p>New generalized repeater filter tables include a third built-in rule that
+blocks authenticated <code>#wardriving</code> text and data in both bridge directions,
+at every hop count. The same row blocks crossover between radio profiles:</p>
+<pre><code class="language-text">get flood.rule.3
+set flood.rule type=any channel=#wardriving hops=all mode=bridge,cross drop
+</code></pre>
+<p>The same rule can be added with the shorter command:</p>
+<pre><code class="language-text">set fr any c=#wardriving m=bc d
+</code></pre>
+<p>Both forms use the same table. <code>m=b</code> means bridge only, <code>m=c</code> means crossover
+only, and <code>get fr.N</code> returns a short command for copying a numbered rule.</p>
+<p>The unnumbered command adds the rule safely on existing devices whose saved
+tables predate this default. It works with either bridge packet source and
+both ESP-NOW formats. Nearby same-profile LoRa forwarding retains the separate
+four-hop default. Use <code>mode=bridge</code> for a bridge-only block, or <code>mode=cross</code> for
+a crossover-only block. See the <a href="../flood_filtering/#filter-bridge-and-radio-crossover-traffic">mode matrix and examples</a>.</p>
 
 
 

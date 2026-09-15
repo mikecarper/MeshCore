@@ -3170,7 +3170,7 @@ set flood.retry.ignore none
 </tr>
 <tr>
 <td><code>flood.filter</code></td>
-<td>Persistent flood-route rules selected by payload type and optional hop range. Generalized repeaters have 63 FPF7 forward slots; FULL ESP32 room servers have 31. Repeaters store their scope-rewrite phase, shared unordered blacklist, and channel-data compatibility state in the same atomic FPF7 image. <code>path=blacklist</code> is intended for forwarding abuse containment, including bulk internet-to-mesh dumping, but truncated path IDs are not authenticated identities. Fixed 240 KB STM32WL repeaters retain compact FPF6 filtering and separate blacklist storage. New generalized repeater tables seed slot 1 with <code>ota all suspend=tempradio</code> and slot 2 with an authenticated <code>#wardriving hops=5+</code> drop. Direct routes and local receive/logging are unchanged.</td>
+<td>Persistent flood-route rules selected by payload type and optional hop range. Generalized repeaters have 63 FPF7 forward slots; FULL ESP32 room servers have 31. Repeaters store their scope-rewrite phase, shared unordered blacklist, and channel-data compatibility state in the same atomic FPF7 image. <code>path=blacklist</code> is intended for forwarding abuse containment, including bulk internet-to-mesh dumping, but truncated path IDs are not authenticated identities. Fixed 240 KB STM32WL repeaters retain compact FPF6 filtering and separate blacklist storage. New generalized repeater tables seed slot 1 with <code>ota all suspend=tempradio</code> slot 2 with an authenticated <code>#wardriving hops=5+</code> radio drop, and slot 3 with <code>#wardriving hops=all mode=bridge,cross drop</code>. <code>mode=radio</code> is the default; <code>bridge</code>, <code>cross</code>, and <code>bridge,cross</code> select separate transport admission paths, including direct packets. Local receive/logging is unchanged. See the <a href="../flood_filtering/#filter-bridge-and-radio-crossover-traffic">mode guide</a>.</td>
 <td><code>get flood.filter[.n]</code>, <code>set flood.filter[.n] &lt;type&gt; [N|N+|N-M|all] [scope=&lt;name&gt;] [require=region] [tx=slow] [suspend=tempradio]</code>, <code>del flood.filter.&lt;n&gt;|all</code>; repeater only: <code>get/set/del flood.filter.blacklist[.n]</code></td>
 <td><code>set flood.filter grp_txt all scope=local tx=slow</code></td>
 </tr>
@@ -3230,6 +3230,13 @@ set flood.retry.ignore none
 </tr>
 </tbody>
 </table>
+<p>The generalized filter table also accepts <code>fr</code> as a short alias for
+<code>flood.rule</code>: <code>set fr.3 any c=#wardriving m=bc d</code> is the full third built-in
+rule. Modes can be <code>m=r</code> (radio), <code>m=b</code> (bridge), <code>m=c</code> (crossover), or <code>m=bc</code>
+(both transport paths). <code>get fr.N</code> returns a short setter ready to copy;
+<code>del fr.N</code> deletes that row. Full names and short tokens can be mixed, with
+the same validation and permissions. See the
+<a href="../flood_filtering/#shorthand-for-copying-rules">shorthand reference</a>.</p>
 <h2 id="other-keymind-commands">Other Keymind Commands</h2>
 <table>
 <thead>

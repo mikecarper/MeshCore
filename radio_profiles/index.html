@@ -2015,10 +2015,32 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#repeater-room-server-and-sensor-replies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeater, room-server, and sensor replies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-messages-on-both-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
         Companion messages on both profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#companion-tx-routing-by-contact-or-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion TX routing by contact or channel
       
     </span>
   </a>
@@ -2913,10 +2935,32 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#repeater-room-server-and-sensor-replies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeater, room-server, and sensor replies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-messages-on-both-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
         Companion messages on both profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#companion-tx-routing-by-contact-or-channel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion TX routing by contact or channel
       
     </span>
   </a>
@@ -3052,7 +3096,7 @@ denominator, mode, optional preamble in symbols</strong>. <code>5</code> means c
 <tr>
 <td><code>rx</code></td>
 <td>Yes</td>
-<td>No</td>
+<td>Only infrastructure replies explicitly configured with <code>tx.reply ... force</code></td>
 </tr>
 <tr>
 <td><code>rxtx</code> (also <code>rx&amp;tx</code>)</td>
@@ -3079,13 +3123,86 @@ drop packets.</p>
 get tempradio2
 </code></pre>
 <p>This enables the second profile for 120 minutes (2 hours). Locally generated
-LoRa OTA packets use the temporary second profile. Ordinary local traffic stays
+LoRa OTA requests use the temporary second profile. Infrastructure OTA responses
+follow <code>tx.reply</code> below (both TX-capable profiles by default). Ordinary local traffic stays
 on the primary profile by default. Use an OTA-capable build and the usual OTA
 setup on every participating node; a temporary profile does not add OTA support
 to firmware built without it.</p>
 <p>New settings take effect after a short reply allowance. Temporary periods and
 schedules live in RAM and disappear on reboot. Timer expiry also uses monotonic
 time, so setting the clock backwards cannot extend a temporary session.</p>
+<h2 id="repeater-room-server-and-sensor-replies">Repeater, room-server, and sensor replies</h2>
+<p>These roles default to <strong><code>tx.reply both</code></strong>: locally generated replies are queued
+on <code>radio</code> and on an active <code>radio2</code> that permits TX. This includes replies to
+remote CLI/login/telemetry requests, ACKs, returned paths, delayed GPIO command
+completion, room subscription posts, and locally served LoRa OTA catalog,
+manifest, data, proof, and leaves responses. Each copy has its own retry state.
+Forwarded packets, periodic adverts, sensor pushes, and OTA requests continue
+to use the normal crossing rules.</p>
+<pre><code class="language-text">get tx.reply
+set tx.reply both
+set tx.reply both force
+set tx.reply radio
+set tx.reply auto
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Choice</th>
+<th>Replies transmit on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>both</code></td>
+<td>Primary plus an active <code>rxtx</code> second profile. Default.</td>
+</tr>
+<tr>
+<td><code>radio</code></td>
+<td>Primary only.</td>
+</tr>
+<tr>
+<td><code>radio2</code></td>
+<td>Second only; no primary fallback.</td>
+</tr>
+<tr>
+<td><code>auto</code></td>
+<td>Normal <code>radio2.cross</code> behavior, including permanent/temporary isolation.</td>
+</tr>
+<tr>
+<td><code>off</code></td>
+<td>Neither profile. This also suppresses remote CLI replies and ACKs.</td>
+</tr>
+</tbody>
+</table>
+<p>Append <strong><code>force</code></strong> to <code>both</code> or <code>radio2</code> to allow these replies on an active
+second profile configured as <code>rx</code>. Without <code>force</code>, <code>rx</code> remains receive-only.
+Sending the command again without <code>force</code> removes the override. It never turns
+on <code>radio2 off</code>, changes the saved <code>rx</code> mode, or enables ordinary forwarding/TX
+there. Existing crossover packet filters still apply to the extra copy.</p>
+<p>The explicit choices override <code>radio2.cross</code>, including <code>off</code> and mixed
+permanent/temporary profiles. <code>radio</code> means the active primary profile,
+including <code>tempradio</code>; <code>radio2</code> also includes an active <code>tempradio2</code>.
+For example, an OTA source can retain its normal channel while allowing OTA
+and management responses on a temporary receive profile:</p>
+<pre><code class="language-text">set tempradio2 910.5,500,8,5,rx,120
+set tx.reply both force
+</code></pre>
+<p>The source must have OTA support and an active temporary-radio session as
+usual. A node fetching an update still needs <code>rxtx</code> for its OTA requests.
+Forcing replies does not change OTA's receive gates, scan timing, or preambles.</p>
+<p>This setting survives reboot; older saved profiles adopt <code>both</code> without force.
+The getter reports when the chosen second profile cannot transmit. Already
+queued replies retain their choice; disabling/changing a profile invalidates
+stale queued packets. A parameterized repeater <code>tempradio</code> command waits for
+both admitted reply copies to drain before changing the primary settings;
+at least one must transmit successfully. Those tracked replies omit alternate
+paths and transport retries so no late success copy can outlive the handoff.
+Queue capacity and the shared transceiver's airtime budget still limit delivery.
+OTA data/proof admission counts both copies against its queue credit and
+reserves receive capacity before allowing the response.</p>
+<p>Companions use the per-contact/channel choices below; <code>tx.reply</code> is an
+infrastructure setting.</p>
 <h2 id="companion-messages-on-both-profiles">Companion messages on both profiles</h2>
 <p>To send ordinary Companion messages on both <code>radio</code> and an active <code>tempradio2</code>,
 configure the temporary profile in <code>rxtx</code> mode and enable crossing:</p>
@@ -3101,6 +3218,90 @@ transmit counts. Crossing also applies to OTA traffic.</p>
 ends or the node reboots. Run <code>set radio2.cross auto</code> to restore the default
 isolation between permanent and temporary profiles. The firmware picker's
 Companion tempradio2 instructions include both choices and the status commands.</p>
+<h2 id="companion-tx-routing-by-contact-or-channel">Companion TX routing by contact or channel</h2>
+<p>Companions can save a transmit choice for each contact and each configured
+channel. The commands apply to messages sent from the phone app, USB/BLE/TCP
+Companion clients, and the text terminal:</p>
+<pre><code class="language-text">set tx.user &quot;Alice Jones&quot; radio2
+get tx.user &quot;Alice Jones&quot;
+set tx.channel 0 both
+get tx.channel 0
+set tx.channel #wardriving radio
+get tx.channel #wardriving
+</code></pre>
+<p>Channel indices match the app and the terminal's <code>channels</code> list; Public is
+normally slot <code>0</code>. Names must match exactly, including capitalization and any
+leading <code>#</code>. Quotes always select a literal name, so <code>"1"</code> is a channel named
+<code>1</code>, while unquoted <code>1</code> selects slot 1. Quote contact names beginning with
+<code>key:</code> to distinguish them from public-key selectors. Duplicate names are
+rejected: use the channel index or a contact's public key instead.</p>
+<table>
+<thead>
+<tr>
+<th>Choice</th>
+<th>Locally addressed traffic transmits on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto</code></td>
+<td>Existing behavior, including <code>radio2.cross</code> and temporary-profile isolation. This is the default.</td>
+</tr>
+<tr>
+<td><code>radio</code></td>
+<td>The primary profile only.</td>
+</tr>
+<tr>
+<td><code>radio2</code></td>
+<td>The second profile only; sending fails if it is off or RX-only.</td>
+</tr>
+<tr>
+<td><code>both</code></td>
+<td>The primary profile and the second profile whenever the second is enabled for TX.</td>
+</tr>
+<tr>
+<td><code>off</code></td>
+<td>Neither profile for this contact/channel. Reception stays enabled.</td>
+</tr>
+</tbody>
+</table>
+<p>Explicit choices override <code>radio2.cross</code>, including <code>off</code> and the isolation
+between a permanent and temporary profile. They do not turn on radio2 or
+change its <code>rx</code>/<code>rxtx</code> mode. For example, leave <code>radio2.cross auto</code> and use
+<code>set tx.channel 0 both</code> to send Public messages on both <code>radio</code> and an active
+<code>tempradio2</code>, while other channels keep their default routing.</p>
+<p><code>radio</code> means the currently active primary profile, whether permanent or
+<code>tempradio</code>; <code>radio2</code> similarly includes <code>tempradio2</code>. There are still at most
+two active profiles. Getters show the saved choice and <code>active=</code> for newly
+initiated messages with the current profile configuration. A temporarily
+unavailable second profile is reported explicitly.</p>
+<p>Contact selection uses the full stored public key after resolving a unique
+name or key prefix. It never routes by the short on-air destination hash.
+For key selection, prefix 12–64 hexadecimal digits (whole bytes) with <code>key:</code>:</p>
+<pre><code class="language-text">set tx.user key:0123456789AB radio2
+get tx.user key:0123456789AB
+</code></pre>
+<p>Replace the example prefix with your contact's key; use more digits if it is
+ambiguous. <code>get tx.user</code> and <code>get tx.channel</code> report override counts and query
+syntax. To return a target to the global behavior:</p>
+<pre><code class="language-text">set tx.user &quot;Alice Jones&quot; auto
+set tx.channel 0 auto
+</code></pre>
+<p>A user's setting covers addressed texts, login/CLI/telemetry requests, replies,
+ACKs, and returned paths to that contact. Thus <code>off</code> also prevents ACKs to
+that contact. Channel settings cover group text and group data, including
+an explicitly routed group datagram. Contact choices do not filter other
+people's messages inside a group channel. Adverts, raw traces, raw packets,
+and OTA packets without a contact/channel destination retain global routing.
+Packets and their retries already queued retain the choice used when created;
+changing or disabling the radio profile still invalidates stale queued work.
+Message timeout estimates use the selected profiles' airtime, independently
+of the scanner's current receive profile.</p>
+<p>Choices survive reboot and normal phone-app updates to the same contact or
+channel key. Replacing a channel's key or deleting/replacing a contact clears
+its choice. They use reserved bytes in existing saved records, so record
+sizes and the phone protocol are unchanged. Older firmware ignores these
+bytes and may reset the choices when it saves the records.</p>
 <h2 id="choose-whether-traffic-crosses-between-profiles">Choose whether traffic crosses between profiles</h2>
 <pre><code class="language-text">get radio2.cross
 set radio2.cross auto
@@ -3148,12 +3349,16 @@ set radio2.cross off
 </tr>
 </tbody>
 </table>
-<p>Crossing always respects <code>rx</code>: nothing transmits on an RX-only second profile.
+<p>These are the global rules used by Companion targets set to <code>auto</code>; an explicit
+contact/channel choice above overrides crossing for its own outbound packets.
+Ordinary crossing respects <code>rx</code>. The infrastructure-only <code>tx.reply ... force</code>
+override above permits locally generated replies on that profile.
 With crossing allowed, a packet received there may still be forwarded on the
 primary profile. Existing routing, forwarding and packet-filter settings apply.
-An RX-only <code>tempradio2</code> also blocks locally generated OTA transmissions under
+An RX-only <code>tempradio2</code> also blocks locally generated OTA requests under
 <code>auto</code> or <code>off</code>; they do not fall back to the normal primary channel. Use <code>rxtx</code>
-for an update session that needs to exchange requests and data.</p>
+for a fetching node that needs to exchange requests and data. Infrastructure
+OTA responses follow <code>tx.reply</code> independently of this crossing table.</p>
 <h2 id="preamble">Preamble</h2>
 <p>Append the preamble to the end of a command:</p>
 <pre><code class="language-text">set radio2 910.5,500,8,5,rxtx,88
