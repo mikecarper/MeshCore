@@ -1152,6 +1152,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#turn-bluetooth-on-or-off-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turn Bluetooth on or off (Companion)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-the-independent-bluetooth-name-companion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5512,6 +5523,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#turn-bluetooth-on-or-off-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turn Bluetooth on or off (Companion)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-the-independent-bluetooth-name-companion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -8324,6 +8346,31 @@ Station G2/G3 targets default to <code>off</code>.</p>
 <p><strong>Default:</strong> Varies by board</p>
 <p><strong>Note:</strong> Advertised names can use up to 23 bytes when location is included and 31 bytes otherwise. Emoji and Unicode characters may take more than one byte. Names that exceed the available advert space are truncated at a valid UTF-8 code point boundary.</p>
 <hr />
+<h4 id="turn-bluetooth-on-or-off-companion">Turn Bluetooth on or off (Companion)</h4>
+<pre><code class="language-text">get bluetooth
+set bluetooth off
+set bluetooth off force
+set bluetooth on
+</code></pre>
+<p><code>get ble</code> and <code>set ble ...</code> are aliases. This controls the running Bluetooth
+service on ESP32 and nRF52 Companions: <code>off</code> stops advertising and disconnects
+Bluetooth clients; <code>on</code> enables it again. The change lasts until reboot.</p>
+<p>Plain <code>off</code> requires another active management connection. A connected USB
+terminal or binary client, TCP client, or browser terminal can provide that
+connection. WiFi association, a listening server, and USB power alone do not.
+On USB hardware without an observable open-host session (HWCDC or a UART
+bridge), issue the command through that USB client so the request itself proves
+it is active.</p>
+<p>Append <code>force</code> to <code>off</code> to permit disconnecting the only active connection.
+Use USB, another management transport, or reboot to regain access afterward.
+<code>force</code> is accepted only as the final argument to <code>off</code>.</p>
+<p>Commands sent through Bluetooth allow its reply to drain before shutdown
+(normally 250 ms, at most two seconds). <code>get bluetooth</code> shows <code>off pending</code>
+during that wait. A normal shutdown is cancelled if the other management
+connection disappears before it applies; <code>force</code> bypasses that check too.</p>
+<p>Bluetooth must be available in the current build and boot transport mode.
+An exclusive-WiFi boot still requires <code>set companion.transport ble</code> and a
+reboot before Bluetooth can be enabled.</p>
 <h4 id="view-or-change-the-independent-bluetooth-name-companion">View or change the independent Bluetooth name (Companion)</h4>
 <p><strong>Usage:</strong></p>
 <ul>
