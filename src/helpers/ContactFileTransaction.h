@@ -10,6 +10,9 @@
 
 namespace mesh {
 class ContactFileTransaction {
+public:
+  using PresenceProbe = bool (*)(FILESYSTEM*, const char*, bool&);
+private:
   FILESYSTEM* _fs;
   const char* _target;
   char _temp[48];
@@ -19,17 +22,30 @@ class ContactFileTransaction {
   uint32_t _crc = 0xffffffff;
   bool _ok = false;
   bool _finished = false;
+  PresenceProbe _presence;
+  static bool probe(FILESYSTEM* fs, const char* path, bool& present,
+                    PresenceProbe presence) {
+    if (presence) return presence(fs, path, present);
+    present = fs->exists(path);
+    return true;
+  }
 public:
-  static bool recover(FILESYSTEM* fs, const char* target) {
+  static bool recover(FILESYSTEM* fs, const char* target,
+                      PresenceProbe presence = nullptr) {
     char backup[48];
     snprintf(backup, sizeof(backup), "%s.bak", target);
-    if (fs->exists(target)) return true;
-    return !fs->exists(backup) || fs->rename(backup, target);
+    bool target_exists = false, backup_exists = false;
+    if (!probe(fs, target, target_exists, presence)
+        || !probe(fs, backup, backup_exists, presence)) return false;
+    if (target_exists) return true;
+    return !backup_exists || fs->rename(backup, target);
   }
-  ContactFileTransaction(FILESYSTEM* fs, const char* target) : _fs(fs), _target(target) {
+  ContactFileTransaction(FILESYSTEM* fs, const char* target,
+                         PresenceProbe presence = nullptr)
+      : _fs(fs), _target(target), _presence(presence) {
     snprintf(_temp, sizeof(_temp), "%s.tmp", target);
     snprintf(_backup, sizeof(_backup), "%s.bak", target);
-    if (!recover(fs, target)) return;
+    if (!recover(fs, target, presence)) return;
     if (fs->exists(_temp) && !fs->remove(_temp)) return;
 #if defined(RP2040_PLATFORM)
     _file = fs->open(_temp, "w");
@@ -67,9 +83,12 @@ public:
     }
     if (verify) verify.close();
     ok = ok && crc == _crc;
-    if (ok && _fs->exists(_backup)) ok = _fs->remove(_backup);
+    bool backup_exists = false, target_exists = false;
+    if (ok) ok = probe(_fs, _backup, backup_exists, _presence)
+        && probe(_fs, _target, target_exists, _presence);
+    if (ok && backup_exists) ok = _fs->remove(_backup);
     bool backed_up = false;
-    if (ok && _fs->exists(_target)) {
+    if (ok && target_exists) {
       ok = _fs->rename(_target, _backup);
       backed_up = ok;
     }

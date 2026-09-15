@@ -1,10 +1,30 @@
 #include "IdentityStore.h"
 
-#if defined(NRF52_PLATFORM)
+#include "FilePresence.h"
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include "AtomicFileWriter.h"
+#else
+#include "ContactFileTransaction.h"
 #endif
 
+bool IdentityStore::recover(const char* name) {
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  char filename[40], backup[48];
+  if (snprintf(filename, sizeof(filename), "%s/%s.id", _dir, name)
+      >= (int)sizeof(filename)) return false;
+  snprintf(backup, sizeof(backup), "%s.bak", filename);
+  bool primary_exists = false, backup_exists = false;
+  if (!mesh::filePresence(_fs, filename, primary_exists)
+      || !mesh::filePresence(_fs, backup, backup_exists)) return false;
+  if (!primary_exists && backup_exists) return _fs->rename(backup, filename);
+#else
+  (void)name;
+#endif
+  return true;
+}
+
 bool IdentityStore::load(const char *name, mesh::LocalIdentity& id) {
+  if (!recover(name)) return false;
   bool loaded = false;
   char filename[40];
   sprintf(filename, "%s/%s.id", _dir, name);
@@ -23,6 +43,7 @@ bool IdentityStore::load(const char *name, mesh::LocalIdentity& id) {
 }
 
 bool IdentityStore::load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz) {
+  if (!recover(name)) return false;
   bool loaded = false;
   char filename[40];
   sprintf(filename, "%s/%s.id", _dir, name);
@@ -50,44 +71,30 @@ bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id) {
   char filename[40];
   sprintf(filename, "%s/%s.id", _dir, name);
 
-#if defined(NRF52_PLATFORM)
+  if (!recover(name)) return false;
   uint8_t key_data[PRV_KEY_SIZE + PUB_KEY_SIZE];
   if (id.writeTo(key_data, sizeof(key_data)) != sizeof(key_data)) return false;
 
   // LocalIdentity's byte-buffer export is private-key then public-key, while
   // the historical file format is public-key then private-key.
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   mesh::AtomicFileWriter writer(_fs, filename);
+#else
+  mesh::ContactFileTransaction writer(_fs, filename, mesh::filePresence<FILESYSTEM>);
+#endif
   const bool wrote = writer
       && writer.write(&key_data[PRV_KEY_SIZE], PUB_KEY_SIZE) == PUB_KEY_SIZE
       && writer.write(key_data, PRV_KEY_SIZE) == PRV_KEY_SIZE;
   const bool success = writer.commit(wrote);
   MESH_DEBUG_PRINTLN("IdentityStore::save() atomic write - %s", success ? "OK" : "Err");
   return success;
-#elif defined(STM32_PLATFORM)
-  _fs->remove(filename);
-  File file = _fs->open(filename, FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  File file = _fs->open(filename, "w");
-#else
-  File file = _fs->open(filename, "w", true);
-#endif
-#if !defined(NRF52_PLATFORM)
-  if (file) {
-    bool success = id.writeTo(file);
-    file.close();
-    MESH_DEBUG_PRINTLN("IdentityStore::save() write - %s", success ? "OK" : "Err");
-    return success;
-  }
-#endif
-  MESH_DEBUG_PRINTLN("IdentityStore::save() failed");
-  return false;
 }
 
 bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id, const char display_name[]) {
   char filename[40];
   sprintf(filename, "%s/%s.id", _dir, name);
 
-#if defined(NRF52_PLATFORM)
+  if (!recover(name)) return false;
   uint8_t key_data[PRV_KEY_SIZE + PUB_KEY_SIZE];
   if (id.writeTo(key_data, sizeof(key_data)) != sizeof(key_data)) return false;
   uint8_t display_data[32];
@@ -96,34 +103,14 @@ bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id, const 
   if (display_len > sizeof(display_data) - 1) display_len = sizeof(display_data) - 1;
   memcpy(display_data, display_name, display_len);
 
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   mesh::AtomicFileWriter writer(_fs, filename);
+#else
+  mesh::ContactFileTransaction writer(_fs, filename, mesh::filePresence<FILESYSTEM>);
+#endif
   const bool wrote = writer
       && writer.write(&key_data[PRV_KEY_SIZE], PUB_KEY_SIZE) == PUB_KEY_SIZE
       && writer.write(key_data, PRV_KEY_SIZE) == PRV_KEY_SIZE
       && writer.write(display_data, sizeof(display_data)) == sizeof(display_data);
   return writer.commit(wrote);
-#elif defined(STM32_PLATFORM)
-  _fs->remove(filename);
-  File file = _fs->open(filename, FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  File file = _fs->open(filename, "w");
-#else
-  File file = _fs->open(filename, "w", true);
-#endif
-#if !defined(NRF52_PLATFORM)
-  if (file) {
-    bool success = id.writeTo(file);
-
-    uint8_t tmp[32];
-    memset(tmp, 0, sizeof(tmp));
-    int n = strlen(display_name);
-    if (n > sizeof(tmp)-1) n = sizeof(tmp)-1;
-    memcpy(tmp, display_name, n);
-    success = success && file.write(tmp, sizeof(tmp)) == sizeof(tmp);
-
-    file.close();
-    return success;
-  }
-#endif
-  return false;
 }

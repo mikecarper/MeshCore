@@ -4,6 +4,8 @@
 #include "ClientLoginPersistence.h"
 #include "ClientPathPersistence.h"
 #include "FileRead.h"
+#include "FilePresence.h"
+#include <initializer_list>
 #if defined(NRF52_PLATFORM)
 #include "AtomicFileWriter.h"
 #endif
@@ -570,7 +572,14 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   _fs = fs;
   num_clients = 0;
   login_replay_store_available = false;
+  acl_load_complete = false;
   if (_fs == NULL) return;
+  bool primary_exists = false, backup_exists = false;
+  if (!mesh::filePresence(_fs, mesh::CLIENT_ACL_PRIMARY_PATH, primary_exists)
+      || !mesh::filePresence(_fs, mesh::CLIENT_ACL_BACKUP_PATH, backup_exists)) {
+    return;
+  }
+  const bool durable_acl_expected = primary_exists || backup_exists;
 #if defined(NRF52_PLATFORM)
   // AtomicFileWriter may leave only a harmless temp image when reset before
   // rename.  The live image remains authoritative.
@@ -595,11 +604,22 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
     return;
   }
 #endif
-  if (_fs->exists("/s_contacts")) {
+  if (!mesh::filePresence(_fs, mesh::CLIENT_ACL_PRIMARY_PATH, primary_exists)
+      || (durable_acl_expected && !primary_exists)) return;
+  if (primary_exists) {
     File file = openRead(_fs, "/s_contacts");
     if (file) {
-      bool full = false;
-      while (!full) {
+      size_t remaining = file.size();
+#if !defined(NRF52_PLATFORM)
+      // Versioned SPIFFS images finish with a verified CRC trailer, not a
+      // partially readable extra contact. The data pass must consume every
+      // byte before it, even if the earlier integrity pass succeeded.
+      if (remaining >= 8 && (remaining - 8) % CONTACT_RECORD_SIZE == 0) {
+        remaining -= 8;
+      }
+#endif
+      bool complete = true;
+      while (remaining != 0) {
         ClientInfo c;
         uint8_t pub_key[32];
         uint8_t unused[2];
@@ -608,6 +628,11 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
         c.alt_path_len = OUT_PATH_UNKNOWN;
         c.observed_path_len = OUT_PATH_UNKNOWN;
 
+        static const size_t base_size = 32 + 1 + 4 + 2 + 1 + 64 + PUB_KEY_SIZE;
+        if (remaining < base_size || num_clients >= capacity) {
+          complete = false;
+          break;
+        }
         bool success = (file.read(pub_key, 32) == 32);
         success = success && (file.read((uint8_t *) &c.permissions, 1) == 1);
         success = success && (file.read((uint8_t *) &c.extra.room.sync_since, 4) == 4);
@@ -615,12 +640,20 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
         success = success && (file.read((uint8_t *)&c.out_path_len, 1) == 1);
         success = success && (file.read(c.out_path, 64) == 64);
         success = success && (file.read(c.shared_secret, PUB_KEY_SIZE) == PUB_KEY_SIZE); // will be recalculated below
-        if (success && unused[0] >= CONTACT_RECORD_VERSION_ALT_PATH) {
+        size_t record_size = base_size;
+        if (success && unused[0] > CONTACT_RECORD_VERSION_ALT_PATH) success = false;
+        if (success && unused[0] == CONTACT_RECORD_VERSION_ALT_PATH) {
+          record_size += 1 + 64;
+          success = remaining >= record_size;
           success = success && (file.read((uint8_t *)&c.alt_path_len, 1) == 1);
           success = success && (file.read(c.alt_path, 64) == 64);
         }
 
-        if (!success) break; // EOF
+        if (!success) {
+          complete = false;
+          break;
+        }
+        remaining -= record_size;
 
         c.id = mesh::Identity(pub_key);
         c.out_path_is_persistable = true;
@@ -640,15 +673,21 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
           c.last_timestamp = UINT32_MAX;
         }
         self_id.calcSharedSecret(c.shared_secret, pub_key);  // recalculate shared secrets in case our private key changed
-        if (num_clients < capacity) {
-          clients[num_clients++] = c;
-        } else {
-          full = true;
-        }
+        clients[num_clients++] = c;
       }
       file.close();
+      if (!complete) {
+        // A prefix is not an authoritative ACL. Keep flash untouched and
+        // refuse admission/mutations until an explicit reload or reboot can
+        // read the complete image; never save the prefix over its source.
+        num_clients = 0;
+        return;
+      }
+    } else {
+      return;
     }
   }
+  acl_load_complete = true;
 }
 
 bool ClientACL::authorizeLoginTimestamp(
@@ -656,7 +695,8 @@ bool ClientACL::authorizeLoginTimestamp(
     uint32_t sender_timestamp,
     uint32_t runtime_last_timestamp,
     uint8_t login_permissions) {
-  if (_fs == NULL || pubkey == NULL || !login_replay_store_available) {
+  if (_fs == NULL || pubkey == NULL || !login_replay_store_available
+      || !acl_load_complete) {
     return false;
   }
 
@@ -692,7 +732,7 @@ bool ClientACL::authorizeLoginTimestamp(
 
 bool ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
   // A failed allocation is not an empty ACL. Preserve the stored managers.
-  if (capacity == 0 || fs == NULL) return false;
+  if (capacity == 0 || fs == NULL || !acl_load_complete) return false;
   _fs = fs;
 #if defined(NRF52_PLATFORM)
   mesh::AtomicFileWriter file(_fs, "/s_contacts");
@@ -797,17 +837,18 @@ bool ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
 
 bool ClientACL::clear() {
   if (!_fs) return false; // no filesystem, nothing to clear
-  if (_fs->exists("/s_contacts")) {
-    _fs->remove("/s_contacts");
+  for (const char* path : {mesh::CLIENT_ACL_PRIMARY_PATH,
+                           mesh::CLIENT_ACL_TEMP_PATH,
+                           mesh::CLIENT_ACL_BACKUP_PATH}) {
+    bool present = false;
+    if (!mesh::filePresence(_fs, path, present)) return false;
+    if (present && !_fs->remove(path)) return false;
+    if (!mesh::filePresence(_fs, path, present) || present) return false;
   }
-  if (_fs->exists("/s_contacts.tmp")) _fs->remove("/s_contacts.tmp");
-  if (_fs->exists("/s_contacts.bak")) _fs->remove("/s_contacts.bak");
-  const bool files_cleared = !_fs->exists("/s_contacts")
-      && !_fs->exists("/s_contacts.tmp")
-      && !_fs->exists("/s_contacts.bak");
   if (clients) memset(clients, 0, sizeof(ClientInfo) * (size_t)capacity);
   num_clients = 0;
-  return files_cleared;
+  acl_load_complete = true;
+  return true;
 }
 
 ClientInfo* ClientACL::getClient(const uint8_t* pubkey, int key_len) {
@@ -819,6 +860,7 @@ ClientInfo* ClientACL::getClient(const uint8_t* pubkey, int key_len) {
 }
 
 ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
+  if (!acl_load_complete) return NULL;
   uint32_t min_time = 0xFFFFFFFF;
   ClientInfo* oldest = NULL;
   for (int i = 0; i < num_clients; i++) {
@@ -847,6 +889,7 @@ ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
 }
 
 bool ClientACL::applyPermissions(const mesh::LocalIdentity& self_id, const uint8_t* pubkey, int key_len, uint8_t perms) {
+  if (!acl_load_complete) return false;
   if (pubkey == NULL || key_len <= 0 || key_len > PUB_KEY_SIZE) return false;
   ClientInfo* c;
   if ((perms & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST) {  // guest role is not persisted in contacts

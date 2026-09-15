@@ -68,6 +68,7 @@ class ClientACL {
   int capacity;      // 0 when the table could not be allocated
   int num_clients;
   bool login_replay_store_available;
+  bool acl_load_complete;
 
 public:
   // MAX_CLIENTS entries run to several kilobytes. Classic ESP32's link-time
@@ -83,6 +84,7 @@ public:
     if (clients) memset(clients, 0, sizeof(ClientInfo) * (size_t)capacity);
     num_clients = 0;
     login_replay_store_available = false;
+    acl_load_complete = false;
   }
   ~ClientACL() { delete[] clients; }
   ClientACL(const ClientACL&) = delete;

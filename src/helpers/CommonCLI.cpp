@@ -48,6 +48,7 @@
 #ifdef WITH_MQTT_BRIDGE
 #include "bridges/MQTTBridge.h"
 #include "CommonPrefsRecovery.h"
+#include "FilePresence.h"
 #include "MQTTDefaults.h"
 #include "MQTTPrefsAtomicStore.h"
 #include "MQTTPrefsCodec.h"
@@ -875,18 +876,24 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 }
 
 #if defined(ENABLE_OTA)
-// Push the persisted OTA policy + signer allowlist into the running OtaContext (called after load).
+// Register the existing preferences as the source of OTA policy. Registration
+// does not need a workspace; a later allocation retry must still restore keys.
 void CommonCLI::syncOtaConfigFromPrefs() {
-  if (!mesh::ota::ota_acquire_context(nullptr, 0)) return;
-  mesh::ota::OtaContext& c = mesh::ota::ota_ctx();
-  c.manager.set_autofetch(_prefs->ota_autofetch);
-  c.manager.set_checkpoint_blocks(_prefs->ota_checkpoint_blocks);
-  c.manager.set_advert_mins(_prefs->ota_advert_interval);
-  c.manager.set_max_hops(_prefs->ota_max_hops);
-  c.autoinstall = _prefs->ota_autoinstall;
-  c.allow.clear();
-  for (uint8_t i = 0; i < _prefs->ota_signer_count && i < MAX_OTA_SIGNERS; i++)
-    c.allow.add(_prefs->ota_signers[i]);
+  // Mesh owns one process-wide OTA context. Its role's NodePrefs outlives that
+  // context and already holds the durable policy, so retain only its pointer.
+  static const NodePrefs* ota_prefs = nullptr;
+  ota_prefs = _prefs;
+  mesh::ota::ota_set_context_config_loader([](mesh::ota::OtaConfigState& state) {
+    state.autofetch = ota_prefs->ota_autofetch;
+    state.checkpoint = ota_prefs->ota_checkpoint_blocks;
+    state.advert = ota_prefs->ota_advert_interval;
+    state.hops = ota_prefs->ota_max_hops;
+    state.autoinstall = ota_prefs->ota_autoinstall;
+    state.allow.clear();
+    for (uint8_t i = 0; i < ota_prefs->ota_signer_count && i < MAX_OTA_SIGNERS; i++)
+      state.allow.add(ota_prefs->ota_signers[i]);
+    return true;
+  });
 }
 #endif
 
@@ -1810,7 +1817,9 @@ static const char* mqttJsonImportResultName(MQTTPrefsJsonImport::Result result) 
 }
 
 static MQTTPrefsRecovery::FileState mqttPrefsFileState(FILESYSTEM* fs, const char* path) {
-  if (!fs->exists(path)) return MQTTPrefsRecovery::FileState::Missing;
+  bool present = false;
+  if (!mesh::filePresence(fs, path, present)) return MQTTPrefsRecovery::FileState::Preserve;
+  if (!present) return MQTTPrefsRecovery::FileState::Missing;
   File file = openMqttPrefsRead(fs, path);
   if (!file) return MQTTPrefsRecovery::FileState::Preserve;
   const size_t file_size = file.size();
@@ -1843,21 +1852,7 @@ static bool recoverMqttPrefsFiles(FILESYSTEM* fs) {
       if (temp != MQTTPrefsRecovery::FileState::Missing) fs->remove("/mqtt_prefs.tmp");
       if (backup != MQTTPrefsRecovery::FileState::Missing) fs->remove("/mqtt_prefs.bak");
     }
-    return false;
-  }
-  if (action == MQTTPrefsRecovery::Action::PromoteTemp) {
-    if (fs->rename("/mqtt_prefs.tmp", "/mqtt_prefs")) {
-      // A usable temp is now the committed primary. Its backup is necessarily
-      // a stale transaction artifact, even if this firmware cannot decode it.
-      if (temp == MQTTPrefsRecovery::FileState::Usable &&
-          backup != MQTTPrefsRecovery::FileState::Missing) {
-        fs->remove("/mqtt_prefs.bak");
-      }
-      MESH_DEBUG_PRINTLN("MQTT: recovered /mqtt_prefs from transaction temp");
-      return false;
-    }
-    MESH_DEBUG_PRINTLN("MQTT: could not recover /mqtt_prefs temp; files preserved");
-    return true;
+    return primary == MQTTPrefsRecovery::FileState::Preserve;
   }
   if (action == MQTTPrefsRecovery::Action::PromoteBackup) {
     if (fs->rename("/mqtt_prefs.bak", "/mqtt_prefs")) {
@@ -1868,10 +1863,15 @@ static bool recoverMqttPrefsFiles(FILESYSTEM* fs) {
         fs->remove("/mqtt_prefs.tmp");
       }
       MESH_DEBUG_PRINTLN("MQTT: recovered /mqtt_prefs from transaction backup");
-      return false;
+      return backup == MQTTPrefsRecovery::FileState::Preserve;
     }
     MESH_DEBUG_PRINTLN("MQTT: could not recover /mqtt_prefs backup; files preserved");
     return true;
+  }
+  if (action == MQTTPrefsRecovery::Action::DiscardTemp) {
+    // No published image exists. A first-save candidate is still uncommitted,
+    // even when fully written, and must not become active after a rejected save.
+    return !fs->remove("/mqtt_prefs.tmp");
   }
   return false;
 }
@@ -1894,10 +1894,9 @@ public:
     _open = false;
     _owns_temp = false;
     _bytes_written = 0;
-    // Recovery owns stale artifacts. Do not delete them here: a failed commit
-    // may have moved the old primary to .bak and left a verified temp that the
-    // next boot must choose between. Refusing the save is safer than erasing an
-    // image this firmware cannot decode.
+    // Retry interrupted cleanup/rollback without requiring a reboot. Recovery
+    // never publishes a rejected candidate or replaces an opaque primary.
+    if (recoverMqttPrefsFiles(_fs)) return false;
     if (_fs->exists("/mqtt_prefs.tmp") || _fs->exists("/mqtt_prefs.bak")) return false;
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
     _file = _fs->open("/mqtt_prefs.tmp", FILE_O_WRITE);
@@ -1939,13 +1938,17 @@ public:
     if (!_finished) return false;
     // SPIFFS refuses rename(tmp, existing_dest). Move the existing image to a
     // recoverable backup first, then publish temp into the now-empty primary.
-    // Never remove either image after a failed boundary; boot recovery selects
-    // the completed temp or restores the backup.
+    // A rejected publication must keep the previous image authoritative.
     if (_fs->exists("/mqtt_prefs.bak")) return false;
     if (_fs->exists("/mqtt_prefs") && !_fs->rename("/mqtt_prefs", "/mqtt_prefs.bak")) {
       return false;
     }
-    if (!_fs->rename("/mqtt_prefs.tmp", "/mqtt_prefs")) return false;
+    if (!_fs->rename("/mqtt_prefs.tmp", "/mqtt_prefs")) {
+      if (_fs->exists("/mqtt_prefs.bak")) {
+        _fs->rename("/mqtt_prefs.bak", "/mqtt_prefs");
+      }
+      return false;
+    }
     // Cleanup failure is non-fatal: the new primary is published and recovery
     // will remove a known-good stale backup on a later boot.
     if (_fs->exists("/mqtt_prefs.bak")) _fs->remove("/mqtt_prefs.bak");
@@ -1955,10 +1958,9 @@ public:
   void abort() {
     if (_open) _file.close();
     _open = false;
-    // Once finish() has verified the temp, commit may already have moved the
-    // primary to .bak. Keep the temp on a commit failure so recovery can
-    // publish it (or fall back to .bak) after reset.
-    if (_owns_temp && !_finished && _fs->exists("/mqtt_prefs.tmp")) {
+    // Explicit rejection is not a successful commit. If cleanup or rollback
+    // also fails, boot recovery still chooses the old backup, never this temp.
+    if (_owns_temp && _fs->exists("/mqtt_prefs.tmp")) {
       _fs->remove("/mqtt_prefs.tmp");
     }
     _finished = false;
@@ -3807,8 +3809,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, must be 0-2");
     }
   } else if (memcmp(config, "flood.max.unscoped ", 19) == 0) {
-    uint8_t m = atoi(&config[19]);
-    if (m <= 64) {
+    uint32_t m;
+    if (mesh::cli::parseUnsignedIntegerStrict(&config[19], m) && m <= 64) {
       _prefs->flood_max_unscoped = m;
       savePrefs();
       strcpy(reply, "OK");
@@ -3816,8 +3818,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, max 64");
     }
   } else if (memcmp(config, "flood.max.advert ", 17) == 0) {
-    uint8_t m = atoi(&config[17]);
-    if (m <= 64) {
+    uint32_t m;
+    if (mesh::cli::parseUnsignedIntegerStrict(&config[17], m) && m <= 64) {
       _prefs->flood_max_advert = m;
       savePrefs();
       strcpy(reply, "OK");
@@ -3825,8 +3827,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error, max 64");
     }
   } else if (memcmp(config, "flood.max ", 10) == 0) {
-    uint8_t m = atoi(&config[10]);
-    if (m <= 64) {
+    uint32_t m;
+    if (mesh::cli::parseUnsignedIntegerStrict(&config[10], m) && m <= 64) {
       _prefs->flood_max = m;
       savePrefs();
       strcpy(reply, "OK");

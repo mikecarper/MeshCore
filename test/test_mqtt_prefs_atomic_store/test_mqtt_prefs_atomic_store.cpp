@@ -74,10 +74,8 @@ public:
     ++abort_calls;
     _open = false;
     _staging.clear();
-    // Mirrors MQTTPrefsFileStore: after finish(), a failed commit may already
-    // have moved the old primary to .bak, so the verified temp is recovery
-    // data rather than disposable staging.
-    if (_owns_temp && !_finished) _files.erase("/mqtt_prefs.tmp");
+    // Explicit rejection discards this candidate, even after finish().
+    if (_owns_temp) _files.erase("/mqtt_prefs.tmp");
     _finished = false;
     _owns_temp = false;
   }
@@ -277,11 +275,15 @@ public:
   }
 
   // Inject ordinary operation failures (as distinct from a power cut). A
-  // failed temp rename leaves both the verified temp and old backup intact.
+  // failed temp rename restores the old image and discards the candidate.
   bool publish(bool fail_backup_rename, bool fail_temp_rename, bool fail_cleanup) {
     writeVerifiedTemp();
     if (fail_backup_rename || !rename("/mqtt_prefs", "/mqtt_prefs.bak")) return false;
-    if (fail_temp_rename || !rename("/mqtt_prefs.tmp", "/mqtt_prefs")) return false;
+    if (fail_temp_rename || !rename("/mqtt_prefs.tmp", "/mqtt_prefs")) {
+      rename("/mqtt_prefs.bak", "/mqtt_prefs");
+      _files.erase("/mqtt_prefs.tmp");
+      return false;
+    }
     if (!fail_cleanup) _files.erase("/mqtt_prefs.bak");
     return true;  // backup cleanup is intentionally non-fatal after publish
   }
@@ -296,13 +298,8 @@ public:
     const Recovery::Action action = Recovery::select(
         stateFor("/mqtt_prefs", primary), stateFor("/mqtt_prefs.tmp", temp),
         stateFor("/mqtt_prefs.bak", backup));
-    if (action == Recovery::Action::PromoteTemp) {
-      rename("/mqtt_prefs.tmp", "/mqtt_prefs");
-      // Match production: once a usable temp becomes primary, every backup is
-      // stale and is cleared so a second save can start this boot.
-      if (temp == Recovery::FileState::Usable && backup != Recovery::FileState::Missing) {
-        _files.erase("/mqtt_prefs.bak");
-      }
+    if (action == Recovery::Action::DiscardTemp) {
+      _files.erase("/mqtt_prefs.tmp");
       return;
     }
     if (action == Recovery::Action::PromoteBackup) {
@@ -376,7 +373,7 @@ TEST(MQTTPrefsAtomicStore, AnyFailureAbortsAndPreservesExistingSource) {
     InMemoryStore store(test_case.point);
     EXPECT_EQ(test_case.expected, run(&store));
     EXPECT_EQ(source, store.source());
-    EXPECT_EQ(test_case.point == FailurePoint::Commit, store.tempExists());
+    EXPECT_FALSE(store.tempExists());
     EXPECT_EQ(1, store.begin_calls);
     EXPECT_EQ(test_case.writes, store.write_calls);
     EXPECT_EQ(test_case.finishes, store.finish_calls);
@@ -539,8 +536,8 @@ TEST(MQTTPrefsAtomicStore, SpiffsPowerCutsAtEveryPublishBoundaryLeaveRecoverable
   } cases[] = {
       // Temp has not become the committed image yet, so the old primary wins.
       {SpiffsMqttTransaction::Boundary::BeforeBackupRename, SpiffsMqttTransaction::oldImage()},
-      // Old primary is .bak and verified new temp wins the recovery race.
-      {SpiffsMqttTransaction::Boundary::AfterBackupRename, SpiffsMqttTransaction::newImage()},
+      // Not published yet: the previous committed backup still wins.
+      {SpiffsMqttTransaction::Boundary::AfterBackupRename, SpiffsMqttTransaction::oldImage()},
       {SpiffsMqttTransaction::Boundary::AfterPrimaryRename, SpiffsMqttTransaction::newImage()},
       {SpiffsMqttTransaction::Boundary::AfterBackupCleanup, SpiffsMqttTransaction::newImage()},
   };
@@ -573,12 +570,12 @@ TEST(MQTTPrefsAtomicStore, RecoveredUsablePrimaryClearsOpaqueTransactionArtifact
   {
     SpiffsMqttTransaction store;
     store.cutAt(SpiffsMqttTransaction::Boundary::AfterBackupRename);
-    // A current-format temp wins; the old backup need not be decodable to be
-    // stale once that usable temp owns the primary name.
+    // An opaque backup was the previous committed image. A known-format temp
+    // must not replace it, and saving remains held for operator recovery.
     store.recover(Recovery::FileState::Usable, Recovery::FileState::Usable,
                   Recovery::FileState::Preserve);
-    EXPECT_EQ(SpiffsMqttTransaction::newImage(), store.primary());
-    EXPECT_TRUE(store.canStartSave());
+    EXPECT_EQ(SpiffsMqttTransaction::oldImage(), store.primary());
+    EXPECT_FALSE(store.canStartSave());
   }
   {
     SpiffsMqttTransaction store;
@@ -604,11 +601,11 @@ TEST(MQTTPrefsAtomicStore, SpiffsRenameAndCleanupFailuresRemainRecoverable) {
   {
     SpiffsMqttTransaction store;
     EXPECT_FALSE(store.publish(false, true, false));
-    EXPECT_FALSE(store.has("/mqtt_prefs"));
-    EXPECT_TRUE(store.has("/mqtt_prefs.tmp"));
-    EXPECT_TRUE(store.has("/mqtt_prefs.bak"));
+    EXPECT_TRUE(store.has("/mqtt_prefs"));
+    EXPECT_FALSE(store.has("/mqtt_prefs.tmp"));
+    EXPECT_FALSE(store.has("/mqtt_prefs.bak"));
     store.recover();
-    EXPECT_EQ(SpiffsMqttTransaction::newImage(), store.primary());
+    EXPECT_EQ(SpiffsMqttTransaction::oldImage(), store.primary());
     EXPECT_FALSE(store.has("/mqtt_prefs.tmp"));
     EXPECT_FALSE(store.has("/mqtt_prefs.bak"));
   }

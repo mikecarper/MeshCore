@@ -25,8 +25,8 @@ class ClientAclSpiffsTest(unittest.TestCase):
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
-            self.assertIn("25 ClientACL SPIFFS checks passed", checked.stdout)
-            self.assertEqual(checked.stdout.count("PASS:"), 25)
+            self.assertIn("26 ClientACL SPIFFS checks passed", checked.stdout)
+            self.assertEqual(checked.stdout.count("PASS:"), 26)
 
 
 if __name__ == "__main__":

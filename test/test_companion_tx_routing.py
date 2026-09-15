@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from test_radio_receive_contract import method
+from test_companion_preferences_transaction import esp_recovery_helpers
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -11,6 +12,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <cerrno>
 #include <vector>
 #include <RadioProfiles.h>
 #include <helpers/CLICommandUtils.h>
@@ -45,6 +47,7 @@ struct DataStore {
  FILESYSTEM fs;
  bool _channel_load_incomplete=false;
  bool _uncached_contact_load_incomplete=false;
+ const char* _channel_recovery_source=nullptr;
  bool hasIncompleteContactLoad() const;
  FILESYSTEM* _getContactsChannelsFS() { return &fs; }
  File openRead(FILESYSTEM* fs, const char* name) { return fs->open(name,"r"); }
@@ -123,8 +126,8 @@ int main() {
  assert(disk.size()==MAX_GROUP_CHANNELS*68);
  assert(disk[0]==mesh::encodeRadioTxPolicy(mesh::RADIO_TX_BOTH));
  assert(disk[68]==mesh::encodeRadioTxPolicy(mesh::RADIO_TX_SECONDARY));
- // Loading is all-or-nothing. An unreadable/partial file must not become a
- // default channel table that a later phone or CLI update can persist over it.
+ // Loading is all-or-nothing. ESP32 retries recovery and then permits an
+ // explicitly requested defaults save; the other backends remain fail-closed.
  for(int fault : {0,1,2,3,4}) {
    MyMesh boot;
    boot.store.fs.files["/channels2"]=disk;
@@ -136,12 +139,22 @@ int main() {
    if(fault==4) boot.store.fs.files["/channels2"].resize((MAX_GROUP_CHANNELS+1)*68);
    auto durable=boot.store.fs.files["/channels2"];
    boot.store.loadChannels(&boot);
+#if defined(ESP32_PLATFORM)
+   assert(!boot.store.hasIncompleteContactLoad());
+#else
    assert(boot.store.hasIncompleteContactLoad());
+#endif
    assert(!strcmp(boot.channels[0].name,"keep existing"));
    assert(!boot.channels[1].name[0]);
    boot.store.fs.fail_read_open=false;boot.store.fs.fail_read_after=-1;
+#if defined(ESP32_PLATFORM)
+   assert(boot.store.fs.files["/channels2"]==durable);
+   assert(boot.canMutateContacts()&&boot.store.saveChannels(&boot));
+   assert(boot.store.fs.files["/channels2"]!=disk);
+#else
    assert(!boot.canMutateContacts()&&!boot.store.saveChannels(&boot));
    assert(boot.store.fs.files["/channels2"]==durable);
+#endif
  }
  MyMesh fresh;fresh.store.loadChannels(&fresh);
  assert(!fresh.store.hasIncompleteContactLoad()); // absent file is a fresh boot
@@ -179,12 +192,22 @@ int main() {
  assert(node.store.fs.files["/channels2.bak"]==disk);
  MyMesh failed_boot;failed_boot.store.fs=node.store.fs;
  failed_boot.store.loadChannels(&failed_boot);
+#if defined(ESP32_PLATFORM)
+ assert(!failed_boot.store.hasIncompleteContactLoad());
+ assert(failed_boot.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH);
+ assert(!failed_boot.store.saveChannels(&failed_boot));
+ assert(failed_boot.store.fs.files["/channels2.bak"]==disk);
+ failed_boot.store.fs.fail_rename_from.clear();
+ assert(failed_boot.store.saveChannels(&failed_boot));
+ assert(failed_boot.store.fs.files["/channels2"]==disk);
+#else
  assert(failed_boot.store.hasIncompleteContactLoad());
  failed_boot.store.fs.fail_rename_from.clear();
  failed_boot.store.loadChannels(&failed_boot);
  assert(failed_boot.store.hasIncompleteContactLoad());
  assert(!failed_boot.store.saveChannels(&failed_boot));
  assert(failed_boot.store.fs.files["/channels2.bak"]==disk);
+#endif
  node.store.fs.fail_rename_from.clear();
  node.store.loadChannels(&node);
  assert(!node.store.hasIncompleteContactLoad());
@@ -217,7 +240,7 @@ class CompanionTxRoutingTest(unittest.TestCase):
     def test_cli_resolution_persistence_and_failures(self):
         companion = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
         store = (ROOT / 'examples/companion_radio/DataStore.cpp').read_text()
-        methods = method(companion, 'bool MyMesh::handleTxRoutingCommand(')
+        methods = esp_recovery_helpers(store) + method(companion, 'bool MyMesh::handleTxRoutingCommand(')
         methods += '\n' + method(store, 'void DataStore::loadChannels(')
         methods += '\n' + method(store, 'bool DataStore::saveChannels(')
         methods += '\n' + method(store, 'bool DataStore::hasIncompleteContactLoad(')

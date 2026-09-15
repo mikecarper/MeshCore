@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <stdlib.h>
+#include <initializer_list>
 #include "DataStore.h"
 #include <helpers/FileRead.h>
 #include <helpers/AdvertDataHelpers.h>
@@ -90,6 +91,24 @@ static bool companionPathPresence(FILESYSTEM* fs, const char* path,
 #endif
   return true;
 }
+#if defined(ESP32_PLATFORM)
+// Only called after the alternate image has been read and validated in full.
+// Irrecoverable settings/channels may be replaced, but the verified recovery
+// source stays intact until its rename has actually succeeded.
+static bool promoteCompanionRecoveryFile(FILESYSTEM* fs, const char* target,
+                                         const char*& source) {
+  if (source == nullptr) return true;
+  bool target_exists = false, source_exists = false;
+  if (!companionPathPresence(fs, target, target_exists)
+      || !companionPathPresence(fs, source, source_exists) || !source_exists) {
+    return false;
+  }
+  if (target_exists && !fs->remove(target)) return false;
+  if (!fs->rename(source, target)) return false;
+  source = nullptr;
+  return true;
+}
+#endif
 #endif
 
 static File openWrite(FILESYSTEM* fs, const char* filename) {
@@ -586,6 +605,8 @@ bool DataStore::formatFileSystem() {
     _identity_creation_blocked = false;
     _prefs_load_incomplete = false;
     _channel_load_incomplete = false;
+    _prefs_recovery_source = nullptr;
+    _channel_recovery_source = nullptr;
 #if MESH_CONTACT_CACHE
     _cache_load_incomplete = false;
 #else
@@ -628,6 +649,12 @@ bool DataStore::repairInternalExtraFS() {
 }
 
 bool DataStore::loadMainIdentity(mesh::LocalIdentity &identity) {
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  if (!identity_store.recover("_main")) {
+    _identity_creation_blocked = true;
+    return false;
+  }
+#endif
 #if defined(NRF52_PLATFORM)
   if (_primary_storage_unavailable) return false;
 
@@ -680,7 +707,30 @@ bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
 
 bool DataStore::loadPrefs(CompanionNodePrefs& prefs, double& node_lat,
                           double& node_lon) {
-#if defined(NRF52_PLATFORM)
+#if defined(ESP32_PLATFORM)
+  // A failed open is not absence on ESP32. Try each complete, committed
+  // source twice; a temporary I/O failure must not erase saved radio/PIN data.
+  // Unpublished .tmp candidates never supersede a previously saved image.
+  _prefs_load_incomplete = false;
+  _prefs_recovery_source = nullptr;
+  for (const char* path : {"/new_prefs", "/new_prefs.bak", "/node_prefs"}) {
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+      bool present = false;
+      if (!companionPathPresence(_fs, path, present)) continue;
+      if (!present) break;
+      if (!loadPrefsInt(path, prefs, node_lat, node_lon)) continue;
+      if (strcmp(path, "/new_prefs") != 0) {
+        _prefs_recovery_source = path;
+        promoteCompanionRecoveryFile(_fs, "/new_prefs", _prefs_recovery_source);
+      }
+      return true;
+    }
+  }
+  // No usable saved settings remain. Continue with the caller's defaults and
+  // permit a later verified save, instead of permanently disabling settings.
+  MESH_DEBUG_PRINTLN("DataStore: no recoverable preferences; defaults may replace the old image");
+  return true;
+#elif defined(NRF52_PLATFORM)
   if (_primary_storage_unavailable
       || (_prefs_load_incomplete && !_secondary_authority_unknown)) {
     _prefs_load_incomplete = true;
@@ -905,12 +955,17 @@ bool DataStore::loadPrefsInt(const char *filename,
 
 bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, double node_lon) {
   if (_prefs_load_incomplete) return false;
+#if defined(ESP32_PLATFORM)
+  if (!promoteCompanionRecoveryFile(_fs, "/new_prefs", _prefs_recovery_source)) return false;
+#endif
 #if defined(NRF52_PLATFORM)
   if (_primary_storage_unavailable) return false;
 #endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   mesh::AtomicFileWriter file(_fs, "/new_prefs");
-#elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+#elif defined(ESP32_PLATFORM)
+  mesh::ContactFileTransaction file(_fs, "/new_prefs", companionPathPresence);
+#elif defined(RP2040_PLATFORM)
   mesh::ContactFileTransaction file(_fs, "/new_prefs");
 #else
   File file = openWrite(_fs, "/new_prefs");
@@ -2057,6 +2112,63 @@ bool DataStore::hasIncompleteContactLoad() const {
 }
 
 void DataStore::loadChannels(DataStoreHost* host) {
+#if defined(ESP32_PLATFORM)
+  _channel_load_incomplete = false;
+  _channel_recovery_source = nullptr;
+  FILESYSTEM* fs = _getContactsChannelsFS();
+  for (const char* path : {"/channels2", "/channels2.bak"}) {
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+      bool present = false;
+      if (!companionPathPresence(fs, path, present)) continue;
+      if (!present) break;
+      File file = openRead(fs, path);
+      if (!file) continue;
+      static const uint32_t RECORD_SIZE = 4 + 32 + 32;
+      const size_t size = file.size();
+      if (size % RECORD_SIZE != 0 || size / RECORD_SIZE > MAX_GROUP_CHANNELS) {
+        file.close();
+        break;
+      }
+      const uint8_t count = size / RECORD_SIZE;
+      ChannelDetails* loaded = count == 0 ? nullptr
+          : static_cast<ChannelDetails*>(malloc(sizeof(ChannelDetails) * count));
+      if (count != 0 && loaded == nullptr) {
+        file.close();
+        // Heap pressure is not evidence that the durable data is damaged.
+        _channel_load_incomplete = true;
+        return;
+      }
+      bool valid = true;
+      for (uint8_t i = 0; valid && i < count; ++i) {
+        uint8_t unused[4];
+        valid = file.read(unused, sizeof(unused)) == sizeof(unused)
+            && file.read(reinterpret_cast<uint8_t*>(loaded[i].name), 32) == 32
+            && file.read(loaded[i].channel.secret, 32) == 32;
+        if (valid) {
+          loaded[i].name[31] = 0;
+          loaded[i].channel.tx_radio = mesh::decodeRadioTxPolicy(unused[0]);
+        }
+      }
+      file.close();
+      if (!valid) { free(loaded); continue; }
+      for (uint8_t i = 0; i < count; ++i) {
+        if (!host->onChannelLoaded(i, loaded[i])) {
+          free(loaded);
+          _channel_load_incomplete = true;
+          return;
+        }
+      }
+      free(loaded);
+      if (strcmp(path, "/channels2") != 0) {
+        _channel_recovery_source = path;
+        promoteCompanionRecoveryFile(fs, "/channels2", _channel_recovery_source);
+      }
+      return;
+    }
+  }
+  MESH_DEBUG_PRINTLN("DataStore: no recoverable channels; defaults may replace the old image");
+  return;
+#else
 #if defined(NRF52_PLATFORM)
   bool& incomplete = _contact_load_incomplete;
 #else
@@ -2151,9 +2263,14 @@ void DataStore::loadChannels(DataStoreHost* host) {
     }
   }
   free(loaded);
+#endif
 }
 
 bool DataStore::saveChannels(DataStoreHost* host) {
+#if defined(ESP32_PLATFORM)
+  if (!promoteCompanionRecoveryFile(_getContactsChannelsFS(), "/channels2",
+                                    _channel_recovery_source)) return false;
+#endif
 #if !defined(NRF52_PLATFORM)
   if (_channel_load_incomplete) return false;
 #endif
@@ -2162,7 +2279,9 @@ bool DataStore::saveChannels(DataStoreHost* host) {
 #endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   mesh::AtomicFileWriter file(_getContactsChannelsFS(), "/channels2");
-#elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+#elif defined(ESP32_PLATFORM)
+  mesh::ContactFileTransaction file(_getContactsChannelsFS(), "/channels2", companionPathPresence);
+#elif defined(RP2040_PLATFORM)
   mesh::ContactFileTransaction file(_getContactsChannelsFS(), "/channels2");
 #else
   File file = openWrite(_getContactsChannelsFS(), "/channels2");

@@ -18,7 +18,7 @@
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/UsbAsciiBinarySwitch.h>
 #include <helpers/UsbLogging.h>
-#if defined(ENABLE_OTA) && defined(OTA_HEAP_CONTEXT)
+#if defined(ENABLE_OTA)
 #include <helpers/ota/OtaContext.h>
 #endif
 #if defined(ENABLE_OTA)
@@ -1745,6 +1745,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
     board.reboot();
     return;
   }
+#if defined(ENABLE_OTA)
+  mesh::ota::ota_refresh_seeder_identity(self_id.pub_key);
+#endif
 
 // if name is provided as a build flag, use that as default node name instead
 #ifdef ADVERT_NAME
@@ -2033,8 +2036,9 @@ void MyMesh::configureRadioFromPrefs() {
   radio_driver.setCADScanTimeoutMillis(_prefs.cad_scan_timeout_ms);
   _radio->setCADEnabled(_prefs.cad_enabled != 0);
   if (!saved_radio_apply_pending) {
-    saved_radio_apply_pending = !radio_driver.setTxPower(_prefs.tx_power_dbm);
-    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+    saved_radio_apply_pending = !radio_driver.setTxPower(_prefs.tx_power_dbm)
+        || (radio_driver.supportsRxBoostedGainMode()
+            && !radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain));
   }
   const bool fem_gain_changed = board.canControlLoRaFemLna()
       && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
@@ -3309,8 +3313,9 @@ void MyMesh::serviceTempRadio() {
     mesh::RadioParamApplyResult result = tryApplyRadioParams(
         _prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
     if (result == mesh::RadioParamApplyResult::APPLIED
-        && radio_driver.setTxPower(_prefs.tx_power_dbm)) {
-      radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
+        && radio_driver.setTxPower(_prefs.tx_power_dbm)
+        && (!radio_driver.supportsRxBoostedGainMode()
+            || radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain))) {
       _temp_radio_set_at = 0;
       _temp_radio_revert_at = 0;
       _temp_radio_retry_at = 0;
@@ -5003,6 +5008,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         identity.readFrom(&cmd_frame[1], 64);
         if (_store->saveMainIdentity(identity)) {
           self_id = identity;
+#if defined(ENABLE_OTA)
+          mesh::ota::ota_refresh_seeder_identity(self_id.pub_key);
+#endif
           writeOKFrame();
           // re-load contacts, to invalidate ecdh shared_secrets
           stopContactsIterator();

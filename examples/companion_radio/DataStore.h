@@ -41,6 +41,10 @@ class DataStore
   IdentityStore identity_store;
   bool _identity_creation_blocked = false;
   bool _prefs_load_incomplete = false;
+#if defined(ESP32_PLATFORM)
+  const char* _prefs_recovery_source = nullptr;
+  const char* _channel_recovery_source = nullptr;
+#endif
 #if !defined(NRF52_PLATFORM)
   bool _channel_load_incomplete = false;
 #if !MESH_CONTACT_CACHE

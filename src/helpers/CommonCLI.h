@@ -775,7 +775,7 @@ class CommonCLI {
   bool saveMQTTPrefs(FILESYSTEM* fs);
 #endif
 #if defined(ENABLE_OTA)
-  void syncOtaConfigFromPrefs();   // persisted OTA policy + signer allowlist -> running OtaContext
+  void syncOtaConfigFromPrefs();   // persisted OTA policy + signer allowlist -> idle/active OtaContext
 #endif
 
   void handleRegionCmd(char* command, char* reply);

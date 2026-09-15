@@ -706,11 +706,15 @@ OtaContext& ota_ctx();   // process-wide context
 // Dynamic builds return null outside an acquired workspace. Static builds
 // always return their process-wide context.
 OtaContext* ota_context_if_active();
-// Optional role-specific policy reload; registration never allocates a context.
+// Optional role-specific policy reload; registration updates idle/active policy
+// without allocating a context. A failed load leaves the prior policy intact.
 void ota_set_context_config_loader(bool (*load)(OtaConfigState&));
 bool ota_acquire_context(char* reply, size_t cap);
 void ota_begin_context(uint32_t target, OtaSend send, void* ctx,
                        const char* hw, const uint8_t* seeder_id);
+// Identity can become available after Mesh::begin or change through key import.
+// Refresh both active and future OTA sessions without resetting transfer state.
+void ota_refresh_seeder_identity(const uint8_t* seeder_id);
 uint8_t ota_hop_limit();
 
 #if defined(OTA_SHARED_COMPANION_QUEUE)

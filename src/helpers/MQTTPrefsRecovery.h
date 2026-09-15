@@ -19,8 +19,8 @@ enum class FileState : uint8_t {
 enum class Action : uint8_t {
   None,
   KeepPrimary,
-  PromoteTemp,
   PromoteBackup,
+  DiscardTemp,
 };
 
 inline Action select(FileState primary, FileState temp, FileState backup) {
@@ -29,20 +29,11 @@ inline Action select(FileState primary, FileState temp, FileState backup) {
   // by this firmware.
   if (primary != FileState::Missing) return Action::KeepPrimary;
 
-  // A completed temp is the new image and wins over the old backup.
-  if (temp == FileState::Usable) return Action::PromoteTemp;
-
-  // If temp is opaque but a known-good backup exists, boot from the backup.
-  // The caller may discard the opaque temp once that usable backup has become
-  // primary. Otherwise, rename the opaque temp into the empty primary name so
-  // the normal loader can hold it.
-  if (temp == FileState::Preserve) {
-    return backup == FileState::Usable ? Action::PromoteBackup : Action::PromoteTemp;
-  }
-
-  // No temp survived. The backup is the only recoverable image, even when it
-  // is a newer layout that this firmware must preserve rather than decode.
+  // Until temp has its final name, it is not committed. A failed publication
+  // may have been reported to the caller, so never activate it during recovery.
+  // The backup remains authoritative, including an opaque newer layout.
   if (backup != FileState::Missing) return Action::PromoteBackup;
+  if (temp != FileState::Missing) return Action::DiscardTemp;
   return Action::None;
 }
 

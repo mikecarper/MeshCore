@@ -330,11 +330,12 @@ int main() {
   disk.autofetch=2; disk.autoinstall=1;
   uint8_t key[32]={71}; disk.allow.add(key);
   ota_set_context_config_loader(load);
-  assert(calls==0 && !ota_context_if_active()); // no eager heap or queue claim
+  assert(calls==1 && !ota_context_if_active()); // policy read, no eager heap/queue claim
+  assert(ota_hop_limit()==7); // idle relay decisions use the saved limit too
   ota_begin_context(123, send, nullptr, "test", nullptr);
   for (int i=0; i<3; ++i) {
     assert(ota_acquire_context(nullptr, 0));
-    assert(calls==i+1 && ota_ctx().manager.max_hops()==7);
+    assert(calls==i+2 && ota_ctx().manager.max_hops()==7);
     assert(ota_ctx().manager.advert_mins()==17 && ota_ctx().manager.checkpoint_blocks()==32);
     assert(ota_ctx().allow.contains(key));
     assert(ota_ctx().manager.autofetch()==0 && ota_ctx().autoinstall==0);

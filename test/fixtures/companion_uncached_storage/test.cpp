@@ -26,6 +26,7 @@ public:
   size_t read(uint8_t* bytes, size_t length);
   size_t write(const uint8_t* bytes, size_t length);
   size_t size() const;
+  int available() const { return static_cast<int>(size() - position); }
   void flush() {}
   void close() { fs = nullptr; }
 };
@@ -37,12 +38,13 @@ public:
   size_t max_write = std::numeric_limits<size_t>::max();
   size_t max_read = std::numeric_limits<size_t>::max();
   std::string fail_open;
+  unsigned fail_open_remaining = std::numeric_limits<unsigned>::max();
   int stat_error = 0;
   unsigned fail_rename = 0, renames = 0, writes = 0;
   std::vector<Files> snapshots;
   bool exists(const char* path) const {
 #if defined(ESP32_PLATFORM)
-    if (fail_open == path) return false; // ESP32 VFS exists opens the file.
+    if (fail_open == path && fail_open_remaining != 0) return false; // ESP32 VFS exists opens the file.
 #endif
     return files.count(path) != 0;
   }
@@ -52,7 +54,10 @@ public:
   void _unlockFS() {}
   FakeFilesystem* _getFS() { return this; }
   File open(const char* path, const char* mode = "r", bool = false) {
-    if (fail_open == path) return File();
+    if (fail_open == path && fail_open_remaining != 0) {
+      --fail_open_remaining;
+      return File();
+    }
     if (*mode != 'r') {
       files[path].clear();
       return File(this, path, true);
@@ -61,9 +66,9 @@ public:
   }
   bool rename(const char* from, const char* to) {
     ++renames;
-    if (renames == fail_rename || !exists(from)) return false;
+    if (renames == fail_rename || files.count(from) == 0) return false;
 #if defined(ESP32_PLATFORM)
-    if (exists(to)) return false;
+    if (files.count(to) != 0) return false;
 #endif
     files[to] = files.at(from);
     files.erase(from);
@@ -153,6 +158,7 @@ class DataStore {
   bool _channel_load_incomplete = false;
   bool _uncached_contact_load_incomplete = false;
   struct IdentityAdapter {
+    bool recover(const char*) { return true; }
     bool load(const char*, mesh::LocalIdentity&) {
       File file = filesystem.open(identity_path);
       uint8_t data[96];

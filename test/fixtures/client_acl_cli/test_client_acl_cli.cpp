@@ -68,7 +68,9 @@ static std::string query(const ClientACL& acl, const char* command, bool local =
 }
 
 static void empty_and_single_entry() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   CHECK(query(acl, "get acl") == "ACL: empty");
   CHECK(query(acl, "get acl 1") == "ACL: empty");
   CHECK(query(acl, "get acl 2") == "Err - ACL page range: 1-1");
@@ -79,7 +81,9 @@ static void empty_and_single_entry() {
 }
 
 static void skips_inactive_and_preserves_full_keys() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   std::vector<std::string> active;
   for (unsigned i = 0; i < 9; ++i) {
     auto* client = add(acl, i, i % 2 == 0 ? uint8_t(i + 1) : 0);
@@ -92,7 +96,9 @@ static void skips_inactive_and_preserves_full_keys() {
 }
 
 static void full_table_pages() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   for (unsigned i = 0; i < MAX_CLIENTS; ++i) add(acl, i, PERM_ACL_ADMIN);
   const unsigned pages = (MAX_CLIENTS + 1) / 2;
   for (unsigned page = 1; page <= pages; ++page) {
@@ -108,7 +114,9 @@ static void full_table_pages() {
 }
 
 static void rejects_bad_pages() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   add(acl, 0, 3);
   for (const char* command : {
       "get acl 0", "get acl -1", "get acl +1", "get acl 1x", "get acl 1 2",
@@ -124,7 +132,9 @@ static void rejects_bad_pages() {
 }
 
 static void matching_and_local_fallback() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   char reply[157] = "unchanged";
   for (const char* command : {"", "get", "get ac", "get aclx", "get acl.other", "set acl"}) {
     CHECK(!mesh::cli::handleACLGet(acl, command, reply, sizeof(reply), false));
@@ -136,7 +146,9 @@ static void matching_and_local_fallback() {
 }
 
 static void bounds_never_truncate_keys() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   add(acl, 0, 3);
   add(acl, 1, 3);
   const auto expected = query(acl, "get acl");
@@ -174,7 +186,9 @@ static void listing_does_not_mutate_acl() {
 }
 
 static void actual_role_dispatch_handles_radio_and_local() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   auto* admin = add(acl, 0, PERM_ACL_ADMIN);
   add(acl, 1, PERM_ACL_READ_WRITE);
   const auto expected = query(acl, "get acl");
@@ -208,7 +222,9 @@ static void actual_role_dispatch_handles_radio_and_local() {
 }
 
 static void repeater_delegation_stays_denied() {
+  FakeFilesystem fs; mesh::LocalIdentity self;
   ClientACL acl;
+  acl.load(&fs, self);
   auto* sender = add(acl, 0, 3);
   for (unsigned permissions = 0; permissions <= 255; ++permissions) {
     sender->permissions = uint8_t(permissions);

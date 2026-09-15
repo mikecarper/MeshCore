@@ -210,7 +210,8 @@ class CLISettingsContractTest(unittest.TestCase):
         source = COMMON.read_text(encoding='utf-8')
         setter, getter = methods(source, 'void CommonCLI::handle')
         keys = ['radio', 'freq', 'af', 'dutycycle', 'int.thresh', 'cad', 'radio.rxgain',
-                'tx', 'rxdelay', 'agc.reset.interval', 'multi.acks', 'txdelay', 'direct.txdelay']
+                'tx', 'rxdelay', 'agc.reset.interval', 'multi.acks', 'txdelay', 'direct.txdelay',
+                'flood.max', 'flood.max.advert', 'flood.max.unscoped']
         # Preserve the actual conditions and bodies. The only excluded branches
         # are unrelated settings needing board-specific dependencies.
         set_blocks = [extract_braced(setter, 'if (strncmp(config, "path.hash.mode", 14)')]

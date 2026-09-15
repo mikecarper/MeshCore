@@ -49,6 +49,7 @@ struct Prefs {
   uint32_t rx_ps_rx_us=1000, rx_ps_sleep_us=1000;
   bool cad_enabled=false, rx_boosted_gain=false;
   uint8_t extra_sf[4]={};
+  uint8_t flood_max=16, flood_max_advert=16, flood_max_unscoped=16;
 };
 struct Callbacks {
   unsigned saves=0, tx_calls=0, gain_calls=0;
@@ -175,5 +176,24 @@ int main() {
     assert(cli.callbacks.saves==saves);
     cli.call(sender,"set unknown.setting 1",reply);
     assert(!strcmp(reply,"unknown config") && cli.callbacks.saves==saves);
+    for (const char* key : {"flood.max", "flood.max.advert", "flood.max.unscoped"}) {
+      for (const char* invalid : {"", "invalid", "65", "256", "-1", "1tail",
+                                 "1.5", "4294967296", "999999999999999999999"}) {
+        saves=cli.callbacks.saves;
+        snprintf(text,sizeof(text),"set %s %s",key,invalid); cli.call(sender,text,reply);
+        assert(!strncmp(reply,"Error",5) && cli.callbacks.saves==saves);
+        assert(cli.prefs.flood_max==16 && cli.prefs.flood_max_advert==16
+            && cli.prefs.flood_max_unscoped==16);
+      }
+    }
+    for (const char* key : {"flood.max", "flood.max.advert", "flood.max.unscoped"}) {
+      for (unsigned value : {0u, 1u, 64u}) {
+        saves=cli.callbacks.saves;
+        snprintf(text,sizeof(text),"set %s %u",key,value); cli.call(sender,text,reply);
+        assert(!strcmp(reply,"OK") && cli.callbacks.saves==saves+1);
+        snprintf(text,sizeof(text),"get %s",key); cli.call(sender,text,reply);
+        unsigned actual=1000; assert(sscanf(reply,"> %u",&actual)==1 && actual==value);
+      }
+    }
   }
 }

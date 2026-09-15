@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from test_companion_preferences_transaction import HARNESS as PREFERENCES_HARNESS
+from test_companion_preferences_transaction import esp_recovery_helpers
 from test_replay_reset_integration import extract_braced
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -189,7 +190,7 @@ class CompanionPrimaryRadioPersistenceTests(unittest.TestCase):
             return nonfinite.group() + '\n' + clamp.group()
 
         support = PREFERENCES_HARNESS[:PREFERENCES_HARNESS.index('int main(')]
-        support = support.replace('@METHODS@', '\n'.join(extract_braced(datastore, sig) for sig in (
+        support = support.replace('@METHODS@', esp_recovery_helpers(datastore) + '\n'.join(extract_braced(datastore, sig) for sig in (
             'bool DataStore::loadPrefs(', 'bool DataStore::loadPrefsInt(', 'bool DataStore::savePrefs(')))
         replacements = {
             '@SAVE_PREFS@': extract_braced(header, 'bool savePrefs()'),

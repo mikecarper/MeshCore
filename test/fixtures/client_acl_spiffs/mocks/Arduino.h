@@ -13,6 +13,7 @@
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 
 class FakeFilesystem;
+inline FakeFilesystem* metadata_filesystem = nullptr;
 struct FakeFileHandle {
   FakeFilesystem* fs;
   std::string path;
@@ -38,6 +39,7 @@ public:
 
 class FakeFilesystem {
 public:
+  FakeFilesystem() { metadata_filesystem = this; }
   std::map<std::string, std::vector<uint8_t>> files;
   std::set<std::string> unreadable;
   std::set<std::string> directories_on_read;
@@ -54,6 +56,10 @@ public:
   size_t bytes_written = 0;
   size_t directory_closes = 0;
   size_t missing_read_opens = 0;
+  bool metadata_error = false;
+  std::string fail_read_path;
+  size_t fail_read_open = 0;
+  size_t fail_read_after = 0;
 
   bool exists(const char* path) const { return files.count(path) != 0; }
   File open(const char* path, const char* mode = "r", bool = false) {
@@ -94,6 +100,9 @@ inline size_t File::size() const {
 }
 inline int File::read(uint8_t* output, size_t length) {
   if (!*this || handle->directory) return 0;
+  if (handle->fs->fail_read_path == handle->path
+      && handle->fs->read_open_count[handle->path] == handle->fs->fail_read_open
+      && handle->position >= handle->fs->fail_read_after) return 0;
   auto found = handle->fs->files.find(handle->path);
   if (found == handle->fs->files.end() || handle->position >= found->second.size()) return 0;
   length = std::min(length, found->second.size() - handle->position);

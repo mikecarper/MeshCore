@@ -475,9 +475,50 @@ static void allocation_failure_preserves_saved_clients() {
   CHECK(recovered.getNumClients() == 1 && recovered.getClient(KEY, PUB_KEY_SIZE));
 }
 
+static void incomplete_acl_load_is_never_authoritative() {
+  for (unsigned fault = 0; fault < 5; ++fault) {
+    FakeFilesystem fs;
+    ClientACL original;
+    original.load(&fs, SELF);
+    CHECK(original.putClient(mesh::Identity(KEY), PERM_ACL_ADMIN));
+    CHECK(original.putClient(mesh::Identity(SECOND_KEY), PERM_ACL_REGION_MGR));
+    CHECK(original.save(&fs));
+    const auto image = fs.files["/s_contacts"];
+    fs.read_open_count.clear();
+    if (fault < 2) {
+      fs.fail_read_path = "/s_contacts";
+      fs.fail_read_open = 2; // integrity pass succeeds, actual load fails
+      fs.fail_read_after = fault == 0 ? 0 : CONTACT_RECORD_SIZE;
+    } else if (fault == 2) {
+      fs.unreadable.insert("/s_contacts");
+    } else if (fault == 3) {
+      fs.metadata_error = true;
+    } else {
+      fs.files["/s_contacts"].resize(CONTACT_RECORD_SIZE + 5);
+    }
+    const auto retained = fs.files["/s_contacts"];
+    ClientACL partial;
+    partial.load(&fs, SELF);
+    CHECK(partial.getNumClients() == 0);
+    CHECK(!partial.putClient(mesh::Identity(ARCHIVED_KEY), PERM_ACL_ADMIN));
+    CHECK(!partial.applyPermissions(SELF, KEY, PUB_KEY_SIZE, PERM_ACL_ADMIN));
+    CHECK(!partial.save(&fs));
+    CHECK(!partial.authorizeLoginTimestamp(KEY, 900, 0, PERM_ACL_ADMIN));
+    CHECK(fs.files["/s_contacts"] == retained);
+    fs.fail_read_path.clear(); fs.unreadable.clear(); fs.metadata_error = false;
+    fs.files["/s_contacts"] = image;
+    partial.load(&fs, SELF); // explicit retry can read the original authority
+    CHECK(partial.getNumClients() == 2);
+    CHECK(partial.getClient(KEY, PUB_KEY_SIZE)->isAdmin());
+    CHECK(partial.getClient(SECOND_KEY, PUB_KEY_SIZE)->isRegionMgr());
+    CHECK(partial.save(&fs));
+  }
+}
+
 int main() {
   const struct { const char* name; void (*run)(); } tests[] = {
     {"allocation failure preserves clients", allocation_failure_preserves_saved_clients},
+    {"incomplete ACL is not authoritative", incomplete_acl_load_is_never_authoritative},
     {"missing read differs from empty file", missing_read_is_not_empty_file},
     {"first admin and monotonic retries", first_admin_and_retries},
     {"reboot preserves ceiling", reboot_preserves_ceiling},
@@ -507,5 +548,5 @@ int main() {
     test.run();
     std::printf("PASS: %s\n", test.name);
   }
-  std::puts("25 ClientACL SPIFFS checks passed");
+  std::puts("26 ClientACL SPIFFS checks passed");
 }

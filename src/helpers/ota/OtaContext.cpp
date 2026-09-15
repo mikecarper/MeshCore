@@ -11,14 +11,6 @@ namespace {
 bool (*context_config_loader)(OtaConfigState&) = nullptr;
 }
 
-void ota_set_context_config_loader(bool (*load)(OtaConfigState&)) {
-  context_config_loader = load;
-  if (auto* context = ota_context_if_active()) {
-    OtaConfigState restored;
-    if (load && load(restored)) restored.apply(*context);
-  }
-}
-
 #if OTA_DYNAMIC_CONTEXT
 namespace {
 OtaContext* active_context = nullptr;
@@ -79,7 +71,13 @@ void ota_begin_context(uint32_t target, OtaSend send, void* ctx,
   saved_send_ctx = ctx;
   strncpy(saved_hw, hw ? hw : "", sizeof(saved_hw) - 1);
   saved_hw[sizeof(saved_hw) - 1] = 0;
-  if (seeder_id) memcpy(saved_seeder_id, seeder_id, sizeof(saved_seeder_id));
+  ota_refresh_seeder_identity(seeder_id);
+}
+
+void ota_refresh_seeder_identity(const uint8_t* seeder_id) {
+  if (!seeder_id) return;
+  memcpy(saved_seeder_id, seeder_id, sizeof(saved_seeder_id));
+  if (active_context) active_context->manager.set_seeder_id(seeder_id);
 }
 
 bool ota_acquire_context(char* reply, size_t cap) {
@@ -159,10 +157,35 @@ bool ota_acquire_context(char*, size_t) { return true; }
 void ota_begin_context(uint32_t target, OtaSend send, void* ctx,
                        const char* hw, const uint8_t* seeder_id) {
   ota_ctx().begin(target, send, ctx, hw);
+  ota_refresh_seeder_identity(seeder_id);
+}
+void ota_refresh_seeder_identity(const uint8_t* seeder_id) {
   ota_ctx().manager.set_seeder_id(seeder_id);
 }
 uint8_t ota_hop_limit() { return ota_ctx().manager.max_hops(); }
 #endif
+
+void ota_set_context_config_loader(bool (*load)(OtaConfigState&)) {
+  context_config_loader = load;
+  OtaConfigState restored;
+  if (!load || !load(restored)) return;
+#if OTA_DYNAMIC_CONTEXT
+  // The mesh also consults the hop limit while no OTA workspace is allocated.
+  // Seed the existing idle policy cache, without claiming heap/queue storage.
+#if defined(OTA_SEEDER_ONLY)
+  saved_autofetch = OtaManager::AUTOFETCH_OFF;
+  saved_autoinstall = OtaContext::AUTOINSTALL_OFF;
+#else
+  saved_autofetch = restored.autofetch;
+  saved_autoinstall = restored.autoinstall;
+#endif
+  saved_checkpoint = restored.checkpoint;
+  saved_advert = restored.advert;
+  saved_hops = restored.hops;
+  saved_allow = restored.allow;
+#endif
+  if (auto* context = ota_context_if_active()) restored.apply(*context);
+}
 
 } // namespace ota
 } // namespace mesh

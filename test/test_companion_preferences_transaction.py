@@ -13,6 +13,7 @@ HARNESS = r'''
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <cerrno>
 #include <helpers/IdentityStore.h>
 #include "ContactFileTransaction.h"
 #if defined(STM32_PLATFORM) || defined(NRF52_PLATFORM)
@@ -26,6 +27,7 @@ struct DataStore {
  FILESYSTEM* _fs=&fs;
  bool _prefs_load_incomplete=false, _primary_storage_unavailable=false;
  bool _secondary_authority_unknown=false;
+ const char* _prefs_recovery_source=nullptr;
  DataStore(){
 #if defined(STM32_PLATFORM) || defined(NRF52_PLATFORM)
    fs.rename_replaces=true;
@@ -84,12 +86,22 @@ int main(int argc,char** argv){
        if(fault==3)boot.fs.fail_read_after=214;
        if(fault==4)boot.fs.files[path].resize(87);
        const auto durable=boot.fs.files[path];
+#if defined(ESP32_PLATFORM)
+       assert(boot.loadPrefs(live,lat,lon)); // unrecoverable settings permit defaults
+#else
        assert(!boot.loadPrefs(live,lat,lon));
+#endif
        assert(live.node_name[0]==0&&lat==1&&lon==2);
+       assert(boot.fs.files[path]==durable); // no destructive read-side reset
        boot.fs.fail_read_after=-1;boot.fs.fail_read_open=false;
+#if defined(ESP32_PLATFORM)
+       assert(boot.savePrefs(live,lat,lon));
+       assert(boot.fs.files["/new_prefs"]!=disk);
+#else
        assert(!boot.loadPrefs(live,lat,lon)); // quarantine lasts this boot
        assert(!boot.savePrefs(live,lat,lon));
        assert(boot.fs.files[path]==durable);
+#endif
      }
    }
    DataStore fresh;CompanionNodePrefs defaults;double lat=0,lon=0;
@@ -103,11 +115,20 @@ int main(int argc,char** argv){
    assert(store.fs.files["/new_prefs.bak"]==disk);
    DataStore failed_boot;failed_boot.fs=store.fs;
    CompanionNodePrefs loaded;double lat=0,lon=0;
+#if defined(ESP32_PLATFORM)
+   assert(failed_boot.loadPrefs(loaded,lat,lon)); // verified backup is usable in RAM
+   assert(loaded.freq==original.freq&&loaded.ble_pin==original.ble_pin);
+   assert(!failed_boot.savePrefs(loaded,lat,lon)); // preserve source while rename fails
+   assert(failed_boot.fs.files["/new_prefs.bak"]==disk);
+   failed_boot.fs.fail_rename_from.clear();
+   assert(failed_boot.savePrefs(loaded,lat,lon));
+#else
    assert(!failed_boot.loadPrefs(loaded,lat,lon));
    failed_boot.fs.fail_rename_from.clear();
    assert(!failed_boot.loadPrefs(loaded,lat,lon));
    assert(!failed_boot.savePrefs(changed,42.3,-121.2));
    assert(failed_boot.fs.files["/new_prefs.bak"]==disk);
+#endif
    DataStore reboot;reboot.fs=failed_boot.fs;
    assert(reboot.loadPrefs(loaded,lat,lon));
    assert(loaded.freq==original.freq&&loaded.ble_pin==original.ble_pin);
@@ -125,11 +146,15 @@ int main(int argc,char** argv){
  } else if(scenario==4){
    DataStore legacy;legacy.fs.files["/node_prefs"]=disk;
    legacy.fs.fail_write_after=17;
+#if defined(ESP32_PLATFORM)
+   legacy.fs.fail_rename_from={"/node_prefs"};
+#endif
    CompanionNodePrefs loaded;double lat=0,lon=0;
    assert(legacy.loadPrefs(loaded,lat,lon));
    assert(loaded.freq==original.freq);
    assert(legacy.fs.files["/node_prefs"]==disk&&!legacy.fs.exists("/new_prefs"));
    legacy.fs.fail_write_after=-1;
+   legacy.fs.fail_rename_from.clear();
    assert(legacy.loadPrefs(loaded,lat,lon));
    assert(!legacy.fs.exists("/node_prefs")&&legacy.fs.files["/new_prefs"]==disk);
  }
@@ -137,10 +162,31 @@ int main(int argc,char** argv){
 '''
 
 
+def esp_recovery_helpers(source):
+    """Compile production recovery, substituting only its OS metadata call.
+
+    SPIFFS namespace presence is independent of open/read failures. Binding
+    the fake syscall to the filesystem argument also supports several device
+    instances in the same host test without a process-global mount mock.
+    """
+    presence = method(source, 'static bool companionPathPresence(')
+    presence = presence.replace('struct stat info;', 'struct FixtureStat info;')
+    presence = presence.replace('::stat(vfs_path, &info)', 'fixtureStat(fs, vfs_path, &info)')
+    return '''
+#if defined(ESP32_PLATFORM)
+struct FixtureStat {};
+static int fixtureStat(FILESYSTEM* fs, const char* path, FixtureStat*) {
+  assert(!strncmp(path, "/spiffs", 7));
+  if (!fs->files.count(path + 7)) { errno=ENOENT; return -1; }
+  return 0;
+}
+''' + presence + '\n' + method(source, 'static bool promoteCompanionRecoveryFile(') + '\n#endif\n'
+
+
 class CompanionPreferencesTransactionTests(unittest.TestCase):
     def test_real_preferences_io_failures(self):
         source = (ROOT / 'examples/companion_radio/DataStore.cpp').read_text()
-        methods = '\n'.join(method(source, signature) for signature in (
+        methods = esp_recovery_helpers(source) + '\n'.join(method(source, signature) for signature in (
             'bool DataStore::loadPrefs(', 'bool DataStore::loadPrefsInt(',
             'bool DataStore::savePrefs('))
         with tempfile.TemporaryDirectory() as directory:

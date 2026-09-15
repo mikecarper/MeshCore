@@ -19,6 +19,9 @@ public:
 
   void begin() {
      if (_dir && _dir[0] == '/') { _fs->mkdir(_dir); } }
+  // Recover an interrupted non-replacing rename before deciding this is a
+  // fresh identity. False means the previous image must remain protected.
+  bool recover(const char* name);
   bool load(const char *name, mesh::LocalIdentity& id);
   bool load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz);
   bool save(const char *name, const mesh::LocalIdentity& id);
