@@ -188,6 +188,9 @@ public:
   // ESP-NOW bridge wire format. Appended at /com_prefs offset 863; zero keeps
   // existing installations on the original wrapped/checksummed/XOR format.
   uint8_t bridge_format = mesh::bridge::ESPNOW_FORMAT_WRAPPED;
+  // Appended after the existing /com_prefs tail. Keep the preamble in the same
+  // transaction as frequency/modulation; old images adopt /radio_profiles.
+  uint16_t primary_radio_preamble = 0;
   uint8_t retry_preset = 0;
   uint8_t direct_retry_attempts = 0;
   uint16_t direct_retry_base_ms = 0;
@@ -756,6 +759,8 @@ class CommonCLI {
   bool _observer_save_succeeded = false;
 #endif
   bool _com_prefs_needs_upgrade = false;  // old-format legacy prefs detected; rewrite once after load
+  bool _common_save_result_known = false;
+  bool _common_save_succeeded = false;
   mesh::RadioProfileCLI _radio_profiles;
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
@@ -793,6 +798,9 @@ class CommonCLI {
   bool handleObserverCommand(uint32_t sender_timestamp, char* command, char* reply);
 
 public:
+  bool saveCommonPrefs();
+  bool savePrimaryRadioParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                              uint16_t preamble);
   mesh::RadioProfileCLI& radioProfiles() { return _radio_profiles; }
   const mesh::RadioProfileCLI& radioProfiles() const { return _radio_profiles; }
   static bool calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,

@@ -719,9 +719,10 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         save_channels = function_body(
             store, "bool DataStore::saveChannels(DataStoreHost* host)"
         )
+        self.assertIn("bool& incomplete = _contact_load_incomplete;", load_channels)
         self.assertLess(
-            load_channels.index("if (_contact_load_incomplete)"),
-            load_channels.index('openRead(_getContactsChannelsFS(), "/channels2")'),
+            load_channels.index("if (incomplete) return;"),
+            load_channels.index('openRead(contacts_fs, "/channels2")'),
         )
         self.assertLess(
             save_channels.index("if (_contact_load_incomplete) return false;"),

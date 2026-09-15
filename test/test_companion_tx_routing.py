@@ -44,6 +44,7 @@ struct Radio { mesh::RadioProfiles config; mesh::RadioProfiles* profiles() { ret
 struct DataStore {
  FILESYSTEM fs;
  bool _channel_load_incomplete=false;
+ bool _uncached_contact_load_incomplete=false;
  bool hasIncompleteContactLoad() const;
  FILESYSTEM* _getContactsChannelsFS() { return &fs; }
  File openRead(FILESYSTEM* fs, const char* name) { return fs->open(name,"r"); }

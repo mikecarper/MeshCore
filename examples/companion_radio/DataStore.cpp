@@ -6,6 +6,10 @@
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include <helpers/ContactFileTransaction.h>
 #endif
+#if defined(ESP32_PLATFORM)
+#include <errno.h>
+#include <sys/stat.h>
+#endif
 #if COMPANION_FEATURE_JOHN
 #include <helpers/bible/JohnBookmarkFiles.h>
 #endif
@@ -54,6 +58,37 @@ DataStore::DataStore(FILESYSTEM& fs, FILESYSTEM& fsExtra, mesh::RTCClock& clock)
     identity_store(fs, "/identity")
 #endif
 {
+}
+#endif
+
+#if !defined(NRF52_PLATFORM)
+// Unlike ESP32 FS::exists(), a metadata probe must not treat failure to open
+// an existing file as evidence that its durable contents are absent.
+static bool companionPathPresence(FILESYSTEM* fs, const char* path,
+                                  bool& present) {
+#if defined(ESP32_PLATFORM)
+  (void)fs; // Companion storage is mounted at the default SPIFFS VFS path.
+  char vfs_path[96];
+  const int length = snprintf(vfs_path, sizeof(vfs_path), "/spiffs%s", path);
+  if (length < 0 || static_cast<size_t>(length) >= sizeof(vfs_path)) return false;
+  struct stat info;
+  const int result = ::stat(vfs_path, &info);
+  if (result != 0 && errno != ENOENT) return false;
+  present = result == 0;
+#elif defined(STM32_PLATFORM)
+  struct lfs_info info;
+  fs->_lockFS();
+  const int result = lfs_stat(fs->_getFS(), path, &info);
+  fs->_unlockFS();
+  if (result != 0 && result != LFS_ERR_NOENT) return false;
+  present = result == 0;
+#else
+  // Arduino-Pico's exists() uses lfs_stat(), not an open operation.
+  // Its public API hides metadata errors; existing-file open/read failures
+  // are distinguishable below, but metadata I/O failure is not.
+  present = fs->exists(path);
+#endif
+  return true;
 }
 #endif
 
@@ -524,13 +559,39 @@ bool DataStore::formatFileSystem() {
     _identity_creation_blocked = false;
     _prefs_load_incomplete = false;
   }
+#else
+  if (success) {
+    _identity_creation_blocked = false;
+    _prefs_load_incomplete = false;
+    _channel_load_incomplete = false;
+#if !MESH_CONTACT_CACHE
+    _uncached_contact_load_incomplete = false;
+#endif
+  }
 #endif
   return success;
 #elif defined(RP2040_PLATFORM)
-  return LittleFS.format();
+  const bool success = LittleFS.format();
+  if (success) {
+    _identity_creation_blocked = false;
+    _prefs_load_incomplete = false;
+    _channel_load_incomplete = false;
+    _uncached_contact_load_incomplete = false;
+  }
+  return success;
 #elif defined(ESP32)
   bool fs_success = ((fs::SPIFFSFS *)_fs)->format();
   esp_err_t nvs_err = nvs_flash_erase(); // no need to reinit, will be done by reboot
+  if (fs_success && nvs_err == ESP_OK) {
+    _identity_creation_blocked = false;
+    _prefs_load_incomplete = false;
+    _channel_load_incomplete = false;
+#if MESH_CONTACT_CACHE
+    _cache_load_incomplete = false;
+#else
+    _uncached_contact_load_incomplete = false;
+#endif
+  }
   return fs_success && (nvs_err == ESP_OK);
 #else
   #error "need to implement format()"
@@ -588,22 +649,32 @@ bool DataStore::loadMainIdentity(mesh::LocalIdentity &identity) {
   _identity_creation_blocked = false;
   return true;
 #else
-  return identity_store.load("_main", identity);
-#endif
-}
-
-bool DataStore::canCreateMainIdentity() const {
-#if defined(NRF52_PLATFORM)
-  return !_identity_creation_blocked;
+  bool identity_exists = false;
+#if defined(STM32_PLATFORM)
+  const char* path = "/_main.id";
 #else
+  const char* path = "/identity/_main.id";
+#endif
+  if (!companionPathPresence(_fs, path, identity_exists)) {
+    _identity_creation_blocked = true;
+    return false;
+  }
+  if (!identity_exists) return false;
+  if (!identity_store.load("_main", identity)) {
+    _identity_creation_blocked = true;
+    return false;
+  }
+  _identity_creation_blocked = false;
   return true;
 #endif
 }
 
+bool DataStore::canCreateMainIdentity() const {
+  return !_identity_creation_blocked;
+}
+
 bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
-#if defined(NRF52_PLATFORM)
   if (_identity_creation_blocked) return false;
-#endif
   return identity_store.save("_main", identity);
 }
 
@@ -1399,6 +1470,9 @@ bool DataStore::writeContactPage(DataStoreHost* host, uint8_t page,
 #endif
 
 void DataStore::loadContacts(DataStoreHost* host) {
+#if !defined(NRF52_PLATFORM) && !MESH_CONTACT_CACHE
+  if (_uncached_contact_load_incomplete) return;
+#endif
 #if MESH_CONTACT_CACHE
   _cache_host = host;
   mesh::contactPathStorage().attach(this);
@@ -1408,12 +1482,33 @@ void DataStore::loadContacts(DataStoreHost* host) {
   if (_cache_load_incomplete) return;
 #if defined(ESP32_PLATFORM)
   _contact_path_reader.close();
-  if (!mesh::ContactFileTransaction::recover(_getContactsChannelsFS(), "/contacts3")) {
+#endif
+#endif
+#if !defined(NRF52_PLATFORM)
+  bool contacts_exist = false;
+  bool contacts_metadata_ready = companionPathPresence(
+      _getContactsChannelsFS(), "/contacts3", contacts_exist);
+#endif
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  bool backup_exists = false;
+  contacts_metadata_ready = contacts_metadata_ready && companionPathPresence(
+      _getContactsChannelsFS(), "/contacts3.bak", backup_exists);
+  const bool contacts_required = contacts_exist || backup_exists;
+  contacts_metadata_ready = contacts_metadata_ready
+      && mesh::ContactFileTransaction::recover(_getContactsChannelsFS(), "/contacts3")
+      && companionPathPresence(_getContactsChannelsFS(), "/contacts3", contacts_exist)
+      && (!contacts_required || contacts_exist);
+#endif
+#if !defined(NRF52_PLATFORM)
+  if (!contacts_metadata_ready) {
     MESH_DEBUG_PRINTLN("DataStore: contact transaction recovery failed");
+#if MESH_CONTACT_CACHE
     _cache_load_incomplete = true;
+#else
+    _uncached_contact_load_incomplete = true;
+#endif
     return;
   }
-#endif
 #endif
 #if defined(NRF52_PLATFORM)
   // loadContacts() is also used after an identity import.  Rebuild runtime
@@ -1524,9 +1619,13 @@ void DataStore::loadContacts(DataStoreHost* host) {
 #endif
 
   File file = openRead(_getContactsChannelsFS(), "/contacts3");
-#if MESH_CONTACT_CACHE && defined(ESP32_PLATFORM)
-  if (!file && _getContactsChannelsFS()->exists("/contacts3")) {
+#if !defined(NRF52_PLATFORM)
+  if (!file && contacts_exist) {
+#if MESH_CONTACT_CACHE
     _cache_load_incomplete = true;
+#else
+    _uncached_contact_load_incomplete = true;
+#endif
     return;
   }
 #endif
@@ -1553,9 +1652,13 @@ void DataStore::loadContacts(DataStoreHost* host) {
   if (file) {
     bool full = false;
     uint16_t record_index = 0;
-#if MESH_CONTACT_CACHE && defined(ESP32_PLATFORM)
+#if !defined(NRF52_PLATFORM)
     if (file.size() % mesh::storage::CONTACT_RECORD_SIZE != 0) {
+#if MESH_CONTACT_CACHE
       _cache_load_incomplete = true;
+#else
+      _uncached_contact_load_incomplete = true;
+#endif
       file.close();
       return;
     }
@@ -1567,7 +1670,7 @@ void DataStore::loadContacts(DataStoreHost* host) {
     bool legacy_host_refused = false;
 #endif
     while (!full
-#if MESH_CONTACT_CACHE && defined(ESP32_PLATFORM)
+#if !defined(NRF52_PLATFORM)
            && record_index < file.size() / mesh::storage::CONTACT_RECORD_SIZE
 #endif
 #if defined(NRF52_PLATFORM)
@@ -1578,6 +1681,8 @@ void DataStore::loadContacts(DataStoreHost* host) {
       if (file.read(record, sizeof(record)) != sizeof(record)) {
 #if MESH_CONTACT_CACHE
         _cache_load_incomplete = true;
+#elif !defined(NRF52_PLATFORM)
+        _uncached_contact_load_incomplete = true;
 #endif
 #if defined(NRF52_PLATFORM)
         legacy_read_failed = true;
@@ -1591,6 +1696,8 @@ void DataStore::loadContacts(DataStoreHost* host) {
         if (path_unavailable) {
 #if MESH_CONTACT_CACHE
           _cache_load_incomplete = true;
+#elif !defined(NRF52_PLATFORM)
+          _uncached_contact_load_incomplete = true;
 #endif
 #if defined(NRF52_PLATFORM)
           legacy_read_failed = true;
@@ -1613,6 +1720,8 @@ void DataStore::loadContacts(DataStoreHost* host) {
         full = true;
 #if MESH_CONTACT_CACHE
         _cache_load_incomplete = true;
+#elif !defined(NRF52_PLATFORM)
+        _uncached_contact_load_incomplete = true;
 #endif
 #if defined(NRF52_PLATFORM)
         _contact_slots.release(slot);
@@ -1717,7 +1826,11 @@ bool DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
   paths.endCommit(success);
   return success;
 #else
-  File file = openWrite(_getContactsChannelsFS(), "/contacts3");
+#if defined(STM32_PLATFORM)
+  mesh::AtomicFileWriter file(_getContactsChannelsFS(), "/contacts3");
+#else
+  mesh::ContactFileTransaction file(_getContactsChannelsFS(), "/contacts3");
+#endif
   bool success = (bool)file;
   if (file) {
     uint32_t idx = 0;
@@ -1748,7 +1861,7 @@ bool DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
 
       idx++;  // advance to next contact
     }
-    file.close();
+    success = file.commit(success);
   }
   return success;
 #endif
@@ -1929,6 +2042,9 @@ bool DataStore::hasPendingContactWrites() const {
 bool DataStore::hasIncompleteContactLoad() const {
 #if !defined(NRF52_PLATFORM)
   if (_channel_load_incomplete) return true;
+#if !MESH_CONTACT_CACHE
+  if (_uncached_contact_load_incomplete) return true;
+#endif
 #endif
 #if MESH_CONTACT_CACHE
   if (_cache_load_incomplete) return true;

@@ -10,8 +10,10 @@
 #include "AdvertDataHelpers.h"
 #include "AlertReporter.h"  // for alertReporterBannedChannelMatch()
 #include "sensors/EnvironmentI2CConfig.h"
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include "AtomicFileWriter.h"
+#elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+#include "ContactFileTransaction.h"
 #endif
 #include <RTClib.h>
 #include <ctype.h>
@@ -25,6 +27,7 @@
 #if defined(ENABLE_OTA)
   #include "ota/OtaCli.h"
   #include "ota/OtaContext.h"   // persist/sync OTA policy + signer allowlist with NodePrefs
+  #include "ota/OtaConfigState.h"
   #include "ota/OtaSpeedConfig.h"
 #endif
 
@@ -735,6 +738,10 @@ static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   _radio_profiles.begin(fs, _callbacks->getProfileRadio(), _rtc, true);
+  _prefs->primary_radio_preamble = _radio_profiles.primaryPreamble();
+#if !defined(WITH_MQTT_BRIDGE) && (defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM))
+  mesh::ContactFileTransaction::recover(fs, "/com_prefs");
+#endif
 #if defined(ENABLE_OTA)
   mesh::ota::beginSpeedConfig(fs);
 #endif
@@ -863,6 +870,8 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #if MESH_USB_LOGGING_AVAILABLE
   mesh::setUsbLoggingEnabled(_prefs->usb_logging_enabled != 0);
 #endif
+  _radio_profiles.adoptPrimaryPreamble(_prefs->primary_radio_preamble);
+  _radio_profiles.stagePrimary(_prefs->primary_radio_preamble, false);
 }
 
 #if defined(ENABLE_OTA)
@@ -1261,6 +1270,14 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
             if (file.available() >= (int)sizeof(_prefs->bridge_format)) {
               file.read((uint8_t *)&_prefs->bridge_format,
                         sizeof(_prefs->bridge_format));
+              if (file.available() >= (int)sizeof(_prefs->primary_radio_preamble)) {
+                uint16_t preamble = 0;
+                if (file.read((uint8_t *)&preamble, sizeof(preamble)) == sizeof(preamble)
+                    && (preamble == 0 || (preamble >= 8
+                        && preamble <= mesh::RadioProfiles::MaxPreamble))) {
+                  _prefs->primary_radio_preamble = preamble;
+                }
+              }
             }
           }
         }
@@ -1580,6 +1597,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->usb_logging_enabled);             // 861
   WRITE_COMMON_PREFS(&prefs->bridge_uart);                     // 862
   WRITE_COMMON_PREFS(&prefs->bridge_format);                   // 863
+  WRITE_COMMON_PREFS(&prefs->primary_radio_preamble);          // appended primary tuple field
 
 #undef WRITE_COMMON_PREFS_BYTES
 #undef WRITE_COMMON_PREFS
@@ -1589,10 +1607,14 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
 
 void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
   const PrefsSaveRouting::Plan plan = PrefsSaveRouting::planFor(scope);
+  if (plan.common) {
+    _common_save_result_known = true;
+    _common_save_succeeded = false;
+  }
 #ifdef WITH_MQTT_BRIDGE
   // Observer builds use a verified temp/backup transaction for common prefs.
   // Radio and bridge changes must never leave a truncated boot-time image.
-  if (plan.common) saveCommonPrefsImageAtomically(fs);
+  if (plan.common) _common_save_succeeded = saveCommonPrefsImageAtomically(fs);
   if (plan.observer) {
     _observer_save_result_known = true;
     _observer_save_succeeded = saveMQTTPrefs(fs);
@@ -1601,15 +1623,10 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
 #else
   // Observer-only saves are a no-op on roles with no observer preference image.
   if (!plan.common) return;
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   mesh::AtomicFileWriter file(fs, "/com_prefs");
-#elif defined(STM32_PLATFORM)
-  fs->remove("/com_prefs");
-  File file = fs->open("/com_prefs", FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  File file = fs->open("/com_prefs", "w");
 #else
-  File file = fs->open("/com_prefs", "w", true);
+  mesh::ContactFileTransaction file(fs, "/com_prefs");
 #endif
   if (file) {
     uint8_t pad[8];
@@ -1737,15 +1754,12 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
     file.write((uint8_t *)&_prefs->usb_logging_enabled, sizeof(_prefs->usb_logging_enabled));       // 861
     file.write((uint8_t *)&_prefs->bridge_uart, sizeof(_prefs->bridge_uart));                       // 862
     file.write((uint8_t *)&_prefs->bridge_format, sizeof(_prefs->bridge_format));                   // 863
-    // next: 864
+    file.write((uint8_t *)&_prefs->primary_radio_preamble, sizeof(_prefs->primary_radio_preamble)); // appended
 
-#if defined(NRF52_PLATFORM)
-    if (!file.commit()) {
+    _common_save_succeeded = file.commit();
+    if (!_common_save_succeeded) {
       MESH_DEBUG_PRINTLN("ERROR: savePrefs atomic commit failed");
     }
-#else
-    file.close();
-#endif
   }
 #endif
 }
@@ -2028,7 +2042,14 @@ public:
         && !_fs->rename("/com_prefs", "/com_prefs.bak")) {
       return false;
     }
-    if (!_fs->rename("/com_prefs.tmp", "/com_prefs")) return false;
+    if (!_fs->rename("/com_prefs.tmp", "/com_prefs")) {
+      // An explicit failure must retain the previous durable configuration.
+      // If restoration also fails, recovery keeps the backup authoritative.
+      if (_fs->exists("/com_prefs.bak")) {
+        _fs->rename("/com_prefs.bak", "/com_prefs");
+      }
+      return false;
+    }
     if (_fs->exists("/com_prefs.bak")) _fs->remove("/com_prefs.bak");
     return true;
   }
@@ -2036,7 +2057,9 @@ public:
   void abort() {
     if (_open) _file.close();
     _open = false;
-    if (_owns_temp && !_finished && _fs->exists("/com_prefs.tmp")) {
+    // abort() is an explicit rejected write, unlike a power loss. Never leave
+    // its candidate eligible to become the committed primary on a later boot.
+    if (_owns_temp && _fs->exists("/com_prefs.tmp")) {
       _fs->remove("/com_prefs.tmp");
     }
     _finished = false;
@@ -2076,21 +2099,12 @@ bool CommonCLI::recoverCommonPrefsFiles(FILESYSTEM* fs) {
       if (fs->exists("/com_prefs.bak")) fs->remove("/com_prefs.bak");
       return !fs->exists("/com_prefs.tmp") && !fs->exists("/com_prefs.bak");
 
-    case Action::PromoteTemp:
-      if (fs->rename("/com_prefs.tmp", "/com_prefs")) {
-        if (fs->exists("/com_prefs.bak")) fs->remove("/com_prefs.bak");
-        return fs->exists("/com_prefs");
-      }
-      // The verified new image could not be published. Restore the previous
-      // image so boot can continue with the last committed radio settings.
-      if (fs->rename("/com_prefs.bak", "/com_prefs")) {
-        if (fs->exists("/com_prefs.tmp")) fs->remove("/com_prefs.tmp");
-        return true;
-      }
-      return false;
-
     case Action::PromoteBackup:
-      return fs->rename("/com_prefs.bak", "/com_prefs");
+      // A complete temp was not necessarily accepted by the caller. Roll back
+      // an interrupted or rejected commit to the last published image.
+      if (!fs->rename("/com_prefs.bak", "/com_prefs")) return false;
+      if (fs->exists("/com_prefs.tmp")) fs->remove("/com_prefs.tmp");
+      return !fs->exists("/com_prefs.tmp");
 
     case Action::DiscardTemp:
       // With no backup, a reset may have interrupted the very first write
@@ -2455,6 +2469,39 @@ bool CommonCLI::saveObserverPrefs() {
 #endif
 }
 
+bool CommonCLI::saveCommonPrefs() {
+  _common_save_result_known = false;
+  _common_save_succeeded = false;
+  _callbacks->savePrefs(PrefsSaveRouting::Scope::Common);
+  return _common_save_result_known && _common_save_succeeded;
+}
+
+bool CommonCLI::savePrimaryRadioParams(float freq, float bw, uint8_t sf,
+                                       uint8_t cr, uint16_t preamble) {
+  if (!isfinite(freq) || !isfinite(bw) || freq < 150.0f || freq > 2500.0f
+      || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)
+      || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) return false;
+  const float old_freq = _prefs->freq, old_bw = _prefs->bw;
+  const uint8_t old_sf = _prefs->sf, old_cr = _prefs->cr;
+  const int8_t old_power = _prefs->tx_power_dbm;
+  const uint32_t old_rx = _prefs->rx_ps_rx_us, old_sleep = _prefs->rx_ps_sleep_us;
+  const uint16_t old_preamble = _prefs->primary_radio_preamble;
+  _prefs->freq = freq; _prefs->bw = bw; _prefs->sf = sf; _prefs->cr = cr;
+  _prefs->primary_radio_preamble = preamble;
+  _prefs->tx_power_dbm = mesh::clampLoRaTxPower(old_power, freq);
+  recalculateRxPowerSavingFromLevel(_prefs);
+  if (!saveCommonPrefs()) {
+    _prefs->freq = old_freq; _prefs->bw = old_bw;
+    _prefs->sf = old_sf; _prefs->cr = old_cr;
+    _prefs->tx_power_dbm = old_power;
+    _prefs->rx_ps_rx_us = old_rx; _prefs->rx_ps_sleep_us = old_sleep;
+    _prefs->primary_radio_preamble = old_preamble;
+    return false;
+  }
+  _radio_profiles.adoptPrimaryPreamble(preamble);
+  return true;
+}
+
 uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
   if (_prefs->advert_loc_policy == ADVERT_LOC_NONE) {
     AdvertDataBuilder builder(node_type, _prefs->node_name);
@@ -2695,20 +2742,31 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
           && otaCommandNeedsTempRadio(command)) {
         strcpy(reply, "LoRa OTA needs temp radio on every node. Run: tempradio 909.950,250,5,5,120");
       } else {
+        if (!mesh::ota::ota_acquire_context(reply, 160)) return;
+        const auto previous = mesh::ota::OtaConfigState::capture(mesh::ota::ota_ctx());
         mesh::ota::handle_ota_command(command, reply, *_board);
         if (mesh::ota::ota_context_if_active()
             && mesh::ota::ota_ctx().config_dirty) {    // a policy/key changed via the CLI -> persist it
           mesh::ota::OtaContext& c = mesh::ota::ota_ctx();
-          _prefs->ota_autofetch = c.manager.autofetch();
-          _prefs->ota_checkpoint_blocks = c.manager.checkpoint_blocks();
-          _prefs->ota_advert_interval = c.manager.advert_mins();
-          _prefs->ota_max_hops = c.manager.max_hops();
-          _prefs->ota_autoinstall = c.autoinstall;
-          _prefs->ota_signer_count = c.allow.count();
-          for (uint8_t i = 0; i < c.allow.count() && i < MAX_OTA_SIGNERS; i++)
-            memcpy(_prefs->ota_signers[i], c.allow.get(i), 32);
-          _callbacks->savePrefs();
-          c.config_dirty = false;
+          const auto copy_policy = [this, &c]() {
+            _prefs->ota_autofetch = c.manager.autofetch();
+            _prefs->ota_checkpoint_blocks = c.manager.checkpoint_blocks();
+            _prefs->ota_advert_interval = c.manager.advert_mins();
+            _prefs->ota_max_hops = c.manager.max_hops();
+            _prefs->ota_autoinstall = c.autoinstall;
+            _prefs->ota_signer_count = c.allow.count();
+            memset(_prefs->ota_signers, 0, sizeof(_prefs->ota_signers));
+            for (uint8_t i = 0; i < c.allow.count() && i < MAX_OTA_SIGNERS; i++)
+              memcpy(_prefs->ota_signers[i], c.allow.get(i), 32);
+          };
+          copy_policy();
+          if (saveCommonPrefs()) {
+            c.config_dirty = false;
+          } else {
+            previous.apply(c);
+            copy_policy();
+            strcpy(reply, "ERR OTA configuration could not be saved");
+          }
         }
       }
 #else
@@ -3657,22 +3715,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8
         && isValidLoRaBandwidth(bw)
         && _radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
-      if (!_radio_profiles.savePrimaryPreamble(preamble)) {
-        strcpy(reply, "Error: preamble could not be saved"); return;
-      }
-      _prefs->sf = sf;
-      _prefs->cr = cr;
-      _prefs->freq = freq;
-      _prefs->bw = bw;
       const int8_t previous_power = _prefs->tx_power_dbm;
-      _prefs->tx_power_dbm = mesh::clampLoRaTxPower(
-          _prefs->tx_power_dbm, _prefs->freq);
-      // Retune level-based RX powersaving to the new SF/BW. Persist only; the
-      // radio itself is "reboot to apply", and begin() re-arms the timings then.
-      recalcRxPowerSavingFromLevel(
-          _prefs->rx_ps_level, _prefs->sf, _prefs->bw, _prefs->rx_ps_preamble, &_prefs->rx_ps_rx_us,
-          &_prefs->rx_ps_sleep_us); // retune level-based timings to the loaded SF/BW
-      _callbacks->savePrefs();
+      if (!savePrimaryRadioParams(freq, bw, sf, cr, preamble)) {
+        strcpy(reply, "Error: radio settings could not be saved"); return;
+      }
       if (_prefs->tx_power_dbm != previous_power) {
         sprintf(reply, "OK - reboot to apply; TX power limited to %d dBm",
                 (int)_prefs->tx_power_dbm);

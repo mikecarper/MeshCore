@@ -7,6 +7,18 @@
 namespace mesh {
 namespace ota {
 
+namespace {
+bool (*context_config_loader)(OtaConfigState&) = nullptr;
+}
+
+void ota_set_context_config_loader(bool (*load)(OtaConfigState&)) {
+  context_config_loader = load;
+  if (auto* context = ota_context_if_active()) {
+    OtaConfigState restored;
+    if (load && load(restored)) restored.apply(*context);
+  }
+}
+
 #if OTA_DYNAMIC_CONTEXT
 namespace {
 OtaContext* active_context = nullptr;
@@ -101,6 +113,8 @@ bool ota_acquire_context(char* reply, size_t cap) {
   c.manager.set_max_hops(saved_hops);
   c.autoinstall = saved_autoinstall;
   c.allow = saved_allow;
+  OtaConfigState restored;
+  if (context_config_loader && context_config_loader(restored)) restored.apply(c);
   return true;
 }
 

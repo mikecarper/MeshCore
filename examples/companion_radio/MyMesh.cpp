@@ -62,6 +62,8 @@
 
 #if COMPANION_FEATURE_OTA_CLI
 #include <helpers/ota/OtaCli.h>
+#include <helpers/ota/OtaContext.h>
+#include <helpers/ota/CompanionOtaConfig.h>
 #endif
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
@@ -1714,6 +1716,10 @@ void MyMesh::begin(bool has_display, bool radio_available) {
 #if defined(ENABLE_OTA)
   mesh::ota::beginSpeedConfig(_store->getPrimaryFS());
 #endif
+#if COMPANION_FEATURE_OTA_CLI
+  mesh::ota::beginCompanionOtaConfig(_store->getPrimaryFS());
+  mesh::ota::ota_set_context_config_loader(mesh::ota::loadCompanionOtaConfig);
+#endif
 
   const bool identity_loaded = _store->loadMainIdentity(self_id);
   const bool is_new_install = !identity_loaded
@@ -3267,7 +3273,20 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   if (strncmp(command, "ota", 3) == 0
       && (command[3] == 0 || command[3] == ' ')) {
     char ota_reply[160] = {0};
+    if (!mesh::ota::ota_acquire_context(ota_reply, sizeof(ota_reply))) {
+      snprintf(reply, reply_size, "%s", ota_reply);
+      return true;
+    }
+    auto& context = mesh::ota::ota_ctx();
+    const auto previous = mesh::ota::OtaConfigState::capture(context);
     if (!mesh::ota::handle_ota_command(command, ota_reply, board)) return false;
+    if (context.config_dirty) {
+      if (!mesh::ota::saveCompanionOtaConfig(mesh::ota::OtaConfigState::capture(context))) {
+        previous.apply(context);
+        snprintf(ota_reply, sizeof(ota_reply), "ERR OTA settings save failed; settings unchanged");
+      }
+      context.config_dirty = false;
+    }
     snprintf(reply, reply_size, "%s", ota_reply);
     return true;
   }

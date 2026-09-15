@@ -640,10 +640,10 @@ TEST(MQTTPrefsAtomicStore, RecoveryNeverOverwritesOpaqueNewerLayout) {
                              Recovery::FileState::Preserve));
 }
 
-TEST(MQTTPrefsAtomicStore, CommonPrefsRecoveryUsesOnlyVerifiedTempWithBackup) {
+TEST(MQTTPrefsAtomicStore, CommonPrefsRecoveryPreservesLastPublishedImage) {
   EXPECT_EQ(CommonRecovery::Action::KeepPrimary,
             CommonRecovery::select(true, true, true));
-  EXPECT_EQ(CommonRecovery::Action::PromoteTemp,
+  EXPECT_EQ(CommonRecovery::Action::PromoteBackup,
             CommonRecovery::select(false, true, true));
   EXPECT_EQ(CommonRecovery::Action::PromoteBackup,
             CommonRecovery::select(false, false, true));

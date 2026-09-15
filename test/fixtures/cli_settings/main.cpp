@@ -75,6 +75,11 @@ public:
   Callbacks* _callbacks=&callbacks;
   Board* _board=&board;
   void savePrefs() { callbacks.savePrefs(); }
+  bool savePrimaryRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t) {
+    prefs.freq=freq; prefs.bw=bw; prefs.sf=sf; prefs.cr=cr;
+    prefs.tx_power_dbm=mesh::clampLoRaTxPower(prefs.tx_power_dbm,freq);
+    callbacks.savePrefs(); return true;
+  }
   void handleSetCmd(uint32_t, char* command, char* reply) {
     const char* config=command+4;
     @SET@

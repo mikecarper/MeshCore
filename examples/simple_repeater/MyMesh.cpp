@@ -3800,10 +3800,6 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
 
   saved_radio_apply_pending = !applySavedRadioParams();
-  if (!saved_radio_apply_pending) {
-    radio_driver.setTxPower(_prefs.tx_power_dbm);
-    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
-  }
   MESH_DEBUG_PRINTLN("RX Boosted Gain Mode: %s",
                      radio_driver.getRxBoostedGainMode() ? "Enabled" : "Disabled");
   const bool fem_gain_changed = board.canControlLoRaFemLna()
@@ -4176,13 +4172,16 @@ bool MyMesh::applySavedRadioParams() {
   }
 #endif
 
+  // Each setter may independently defer while a packet is being received.
+  // Only complete recovery when the whole saved configuration was accepted.
+  if (radio_driver.supportsRxBoostedGainMode()
+      && !radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain)) return false;
   if (!applyRadioParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr, _cli.radioProfiles().primaryPreamble())) return false;
 
 #if defined(USE_LR2021)
-  return radio_driver.configSideDetectors(_prefs.extra_sf, extra_sf_count, _prefs.bw);
-#else
-  return true;
+  if (!radio_driver.configSideDetectors(_prefs.extra_sf, extra_sf_count, _prefs.bw)) return false;
 #endif
+  return radio_driver.setTxPower(_prefs.tx_power_dbm);
 }
 
 void MyMesh::queueSavedRadioApply() {
@@ -4724,28 +4723,21 @@ void MyMesh::processScheduledRadioSettings() {
     }
 
     ScheduledRadioSetting& setting = scheduled_radio_settings[due_idx];
-    if (!_cli.radioProfiles().savePrimaryPreamble(setting.preamble)) {
+    if (!_cli.savePrimaryRadioParams(setting.freq, setting.bw, setting.sf,
+                                     setting.cr, setting.preamble)) {
       scheduled_radio_save_retry_at = futureMillis(60000);
       if (!scheduled_radio_save_retry_at) scheduled_radio_save_retry_at = 1;
       break;
     }
     scheduled_radio_save_retry_at = 0;
-    _prefs.freq = setting.freq;
-    _prefs.bw = setting.bw;
-    _prefs.sf = setting.sf;
-    _prefs.cr = setting.cr;
     setting.active = false;
     setting.started = false;
     saved_params_changed = true;
   }
 
   if (saved_params_changed) {
-    // Keep level-derived RX duty-cycle windows synchronized with the newly
-    // persisted SF/BW. Manual RX/sleep timings intentionally remain fixed.
-    CommonCLI::recalculateRxPowerSavingFromLevel(&_prefs);
-    _prefs.tx_power_dbm = mesh::clampLoRaTxPower(
-        _prefs.tx_power_dbm, _prefs.freq);
-    savePrefs();
+    // Only move the live radio after the complete tuple has committed. Failed
+    // entries remain queued and retain their previous durable configuration.
     queueSavedRadioApply();
   }
 
@@ -4790,12 +4782,7 @@ void MyMesh::processScheduledRadioSettings() {
   refreshScheduledRadioState();
   if (saved_radio_apply_pending && !temp_radio_handoff_pending
       && !scheduled_temp_radio_started && !apply_failed) {
-    // If begin() deferred the saved params to preserve a wake packet, its gain
-    // update was deferred for the same reason. Retry both at the first safe
-    // handoff; unsupported boosted-gain modes remain harmless here.
-    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
     if (applySavedRadioParams()) {
-      radio_driver.setTxPower(_prefs.tx_power_dbm);
       saved_radio_apply_pending = false;
       temp_radio_applied = false;
       if (radio_timing.isTemporary()) setTempRadioTiming(0);

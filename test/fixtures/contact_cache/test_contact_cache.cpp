@@ -146,6 +146,11 @@ bool contactPathPresence(FakeFilesystem* fs, const char* path, bool& present) {
   present = fs->exists(path);
   return true;
 }
+#else
+bool companionPathPresence(FakeFilesystem* fs, const char* path, bool& present) {
+  present = fs->exists(path);
+  return true;
+}
 #endif
 
 // The narrow hardware adapter below supplies the same filesystem/host seams.

@@ -39,9 +39,13 @@ class DataStore
   FILESYSTEM* _configuredFsExtra;
   mesh::RTCClock* _clock;
   IdentityStore identity_store;
+  bool _identity_creation_blocked = false;
   bool _prefs_load_incomplete = false;
 #if !defined(NRF52_PLATFORM)
   bool _channel_load_incomplete = false;
+#if !MESH_CONTACT_CACHE
+  bool _uncached_contact_load_incomplete = false;
+#endif
 #endif
 #if MESH_CONTACT_CACHE
   DataStoreHost* _cache_host = nullptr;
@@ -66,7 +70,6 @@ class DataStore
   mesh::storage::DirtyPageSet _dirty_contact_pages;
   mesh::storage::DirtyPageSet _unread_contact_pages;
   bool _contact_load_incomplete = false;
-  bool _identity_creation_blocked = false;
   bool _primary_storage_unavailable = false;
   bool _secondary_authority_unknown = false;
   uint32_t _contact_page_generations[mesh::storage::CONTACT_PAGE_COUNT];

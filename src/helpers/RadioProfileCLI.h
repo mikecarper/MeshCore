@@ -69,6 +69,9 @@ class RadioProfileCLI {
   uint32_t replyMutationGeneration() const { return remote_generation_; }
   bool finishReplyMutation(bool delivered);
   uint16_t primaryPreamble() const { return primary_preamble_; }
+  // Infrastructure owns a newer, atomic primary tuple in /com_prefs. Adopting
+  // its committed value changes saved intent only, never the running radio.
+  void adoptPrimaryPreamble(uint16_t symbols) { primary_preamble_ = symbols; }
   bool savePrimaryPreamble(uint16_t symbols);
   bool acceptsPrimary(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t preamble) const;
   RadioParamApplyResult applyPrimary(float freq, float bw, uint8_t sf, uint8_t cr,

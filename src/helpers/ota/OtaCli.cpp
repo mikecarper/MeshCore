@@ -950,9 +950,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     strcpy(reply, "ERR this target has no SD-backed OTA archive");
 #endif
 
-  // ---- policy config (persisted via NodePrefs). conservative defaults: autofetch/autoinstall off ----
+  // ---- policy config (persisted by the caller). conservative defaults: autofetch/autoinstall off ----
   } else if (is_cmd(a, "config|cfg|set", &rest)) {
     const char* p = rest;
+    const char* value = nullptr;
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     if (strncmp(p, "cache ", 6) == 0 || strncmp(p, "sdseed ", 7) == 0) {
       const char* v = p + (p[0] == 'c' ? 6 : 7);
@@ -967,38 +968,38 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     } else
 #endif
 #if defined(OTA_SEEDER_ONLY)
-    if (strncmp(p, "autofetch ", 10) == 0 || strncmp(p, "autoinstall ", 12) == 0) {
+    if (is_cmd(p, "autofetch|autoinstall", &value)) {
       strcpy(reply, "ERR seeder-only build keeps autofetch and autoinstall off");
     } else
 #endif
-    if (strncmp(p, "autofetch ", 10) == 0) {
-      const char* v = p + 10;
-      uint8_t pol = strncmp(v, "any", 3) == 0    ? OtaManager::AUTOFETCH_ANY
-                  : strncmp(v, "signed", 6) == 0 ? OtaManager::AUTOFETCH_SIGNED
-                  : strncmp(v, "off", 3) == 0    ? OtaManager::AUTOFETCH_OFF : 0xFF;
+    if (is_cmd(p, "autofetch", &value)) {
+      uint8_t pol = strcmp(value, "any") == 0    ? OtaManager::AUTOFETCH_ANY
+                  : strcmp(value, "signed") == 0 ? OtaManager::AUTOFETCH_SIGNED
+                  : strcmp(value, "off") == 0    ? OtaManager::AUTOFETCH_OFF : 0xFF;
       if (pol == 0xFF) { strcpy(reply, "ERR usage: ota config autofetch <off|any|signed>"); return true; }
       c.manager.set_autofetch(pol); c.config_dirty = true; strcpy(reply, "OK autofetch updated (saved)");
-    } else if (strncmp(p, "autoinstall ", 12) == 0) {
-      const char* v = p + 12;
-      uint8_t pol = strncmp(v, "trusted", 7) == 0 ? OtaContext::AUTOINSTALL_TRUSTED
-                  : strncmp(v, "off", 3) == 0     ? OtaContext::AUTOINSTALL_OFF : 0xFF;
+    } else if (is_cmd(p, "autoinstall", &value)) {
+      uint8_t pol = strcmp(value, "trusted") == 0 ? OtaContext::AUTOINSTALL_TRUSTED
+                  : strcmp(value, "off") == 0     ? OtaContext::AUTOINSTALL_OFF : 0xFF;
       if (pol == 0xFF) { strcpy(reply, "ERR usage: ota config autoinstall <off|trusted>"); return true; }
       c.autoinstall = pol; c.config_dirty = true; strcpy(reply, "OK autoinstall updated (saved)");
-    } else if (strncmp(p, "checkpoint ", 11) == 0) {    // resume checkpoint cadence (blocks; 0=never)
-      long n = atol(p + 11);
-      if (n < 0 || n > 4096) { strcpy(reply, "ERR usage: ota config checkpoint <0..4096>  (blocks; 0=never)"); return true; }
+    } else if (is_cmd(p, "checkpoint", &value)) {    // resume checkpoint cadence (blocks; 0=never)
+      uint32_t n;
+      if (!mesh::cli::parseUnsignedIntegerStrict(value, n) || n > 4096) { strcpy(reply, "ERR usage: ota config checkpoint <0..4096>  (blocks; 0=never)"); return true; }
       c.manager.set_checkpoint_blocks((uint16_t)n); c.config_dirty = true;
-      sprintf(reply, "OK checkpoint every %ld blocks (saved)%s", n, n == 0 ? " - periodic resume disabled" : "");
-    } else if (strncmp(p, "advert ", 7) == 0) {         // beacon re-advertise cadence (minutes; 0=disable)
-      long m = atol(p + 7);
-      if (m < 0 || m > 10080) { strcpy(reply, "ERR usage: ota config advert <0..10080>  (minutes; 0=disable)"); return true; }
+      sprintf(reply, "OK checkpoint every %lu blocks (saved)%s", (unsigned long)n, n == 0 ? " - periodic resume disabled" : "");
+    } else if (is_cmd(p, "advert", &value)) {         // beacon re-advertise cadence (minutes; 0=disable)
+      uint32_t m;
+      if (!mesh::cli::parseUnsignedIntegerStrict(value, m) || m > 10080) { strcpy(reply, "ERR usage: ota config advert <0..10080>  (minutes; 0=disable)"); return true; }
       c.manager.set_advert_mins((uint16_t)m); c.config_dirty = true;
-      sprintf(reply, "OK re-advertise every %ld min (saved)%s", m, m == 0 ? " - periodic advert disabled" : "");
-    } else if (strncmp(p, "hops ", 5) == 0) {           // OTA flood reach in hops (0 = direct only)
-      long h = atol(p + 5);
-      if (h < 0 || h > 8) { strcpy(reply, "ERR usage: ota config hops <0..8>  (hops; 0 = direct only)"); return true; }
+      sprintf(reply, "OK re-advertise every %lu min (saved)%s", (unsigned long)m, m == 0 ? " - periodic advert disabled" : "");
+    } else if (is_cmd(p, "hops", &value)) {           // OTA flood reach in hops (0 = direct only)
+      uint32_t h;
+      if (!mesh::cli::parseUnsignedIntegerStrict(value, h) || h > 8) { strcpy(reply, "ERR usage: ota config hops <0..8>  (hops; 0 = direct only)"); return true; }
       c.manager.set_max_hops((uint8_t)h); c.config_dirty = true;
-      sprintf(reply, "OK OTA reach = %ld hop%s (saved)%s", h, h == 1 ? "" : "s", h == 0 ? " - direct only" : "");
+      sprintf(reply, "OK OTA reach = %lu hop%s (saved)%s", (unsigned long)h, h == 1 ? "" : "s", h == 0 ? " - direct only" : "");
+    } else if (*p) {
+      strcpy(reply, "ERR unknown OTA config setting");
     } else {                                            // show current policy
       uint8_t af = c.manager.autofetch();
       char speed[16]; formatSpeed(speed, sizeof(speed));

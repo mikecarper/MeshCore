@@ -37,26 +37,67 @@ uint32_t millis() { return now_ms; }
 namespace mesh {
 struct Packet {};
 int clampLoRaTxPower(int power, float) { return power; }
+namespace lr2021 {
+bool storedSideDetectorCount(const uint8_t*, uint8_t& count) { count = 0; return true; }
+bool validateSideDetectorSFs(const uint8_t*, uint8_t, uint8_t, float) { return true; }
+}
 }
 struct CommonCLI {
   template <typename T> static void recalculateRxPowerSavingFromLevel(T*) {}
 };
 uint32_t nextRadioApplyRetryDelay(uint8_t& failures) { ++failures; return 100; }
 struct RadioDriver {
-  void setRxBoostedGainMode(bool) {}
-  void setTxPower(int) {}
+  bool gain_supported = true, gain_success = true, power_success = true;
+  bool side_detector_success = true;
+  unsigned gain_calls = 0, power_calls = 0;
+  bool active_gain = false;
+  int active_power = 0;
+  bool supportsRxBoostedGainMode() const { return gain_supported; }
+  bool setRxBoostedGainMode(bool gain) {
+    ++gain_calls;
+    if (!gain_success) return false;
+    active_gain = gain;
+    return true;
+  }
+  bool setTxPower(int power) {
+    ++power_calls;
+    if (!power_success) return false;
+    active_power = power;
+    return true;
+  }
+  bool configSideDetectors(const uint8_t*, uint8_t, float) { return side_detector_success; }
 } radio_driver;
 struct RTC {
   uint32_t now = 100000;
   uint32_t getCurrentTime() const { return now; }
 };
+struct RadioPrefs {
+  bool rx_watchdog_enabled = true, rx_boosted_gain = true;
+  uint8_t advert_interval = 60, flood_advert_interval = 24, path_hash_mode = 0;
+  float freq = 909.5f, bw = 62.5f;
+  uint8_t sf = 7, cr = 5;
+  uint8_t extra_sf[4] = {};
+  int tx_power_dbm = 20;
+};
 struct Board { int reboots = 0; void reboot() { ++reboots; } };
 struct CLI {
   Board board; Board* getBoard() { return &board; }
   CLI& radioProfiles() { return *this; }
-  bool preamble_save_success = true;
-  unsigned preamble_saves = 0;
-  bool savePrimaryPreamble(uint16_t) { ++preamble_saves; return preamble_save_success; }
+  RadioPrefs* prefs = nullptr;
+  int* saves = nullptr;
+  bool save_success = true;
+  unsigned save_attempts = 0;
+  unsigned fail_on_save = 0;
+  uint16_t saved_preamble = 0;
+  bool savePrimaryRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t preamble) {
+    ++save_attempts;
+    if (!save_success || save_attempts == fail_on_save) return false;
+    ++*saves;
+    prefs->freq = freq; prefs->bw = bw; prefs->sf = sf; prefs->cr = cr;
+    saved_preamble = preamble;
+    return true;
+  }
+  uint16_t primaryPreamble() const { return saved_preamble; }
   bool hasReplyMutation() const { return false; }
   bool finishReplyMutation(bool) { return true; }
 };
@@ -72,13 +113,7 @@ struct ScheduledRadioSetting {
 };
 class MyMesh {
 public:
-  struct Prefs {
-    bool rx_watchdog_enabled = true, rx_boosted_gain = true;
-    uint8_t advert_interval = 60, flood_advert_interval = 24, path_hash_mode = 0;
-    float freq = 909.5f, bw = 62.5f;
-    uint8_t sf = 7, cr = 5;
-    int tx_power_dbm = 20;
-  } _prefs;
+  RadioPrefs _prefs;
   CLI _cli;
   Radio radio; Radio* _radio = &radio;
   uint32_t last_meshcore_rx = 0;
@@ -108,14 +143,20 @@ public:
   int saves = 0, applies = 0, restores = 0, local_adverts = 0, flood_adverts = 0;
   int default_scope = 0;
   mesh::Packet packet;
-  MyMesh() { now_ms = 1; updateAdvertTimer(); updateFloodAdvertTimer(); }
+  MyMesh() {
+    _cli.prefs = &_prefs; _cli.saves = &saves;
+    radio_driver = {}; now_ms = 1; updateAdvertTimer(); updateFloodAdvertTimer();
+  }
   RTC* getRTCClock() const { return const_cast<RTC*>(&rtc); }
   uint32_t futureMillis(uint32_t delay) const { return now_ms + delay; }
   bool millisHasNowPassed(uint32_t deadline) const { return (int32_t)(now_ms - deadline) >= 0; }
   bool hasOutbound() const { return outbound; }
   bool hasStartedScheduledTempRadio() const { return scheduled_temp_radio_started; }
-  bool applyRadioParams(float, float, uint8_t, uint8_t, uint16_t = 0, bool = false) { ++applies; return apply_success; }
-  bool applySavedRadioParams() { ++restores; return restore_success; }
+  bool applyRadioParams(float, float, uint8_t, uint8_t, uint16_t = 0, bool temporary = false) {
+    if (temporary) { ++applies; return apply_success; }
+    ++restores; return restore_success;
+  }
+  bool applySavedRadioParams();
   bool isValidScheduledRadioParams(float, float, uint8_t, uint8_t) { return true; }
   void savePrefs() { ++saves; }
   int getScheduledRadioSettingIndex(bool, int slot) const { return slot + 1; }
@@ -162,6 +203,72 @@ static void startTemp(MyMesh& m, int minutes) {
   assert(m.temp_radio_applied);
 }
 int main() {
+  for (unsigned failure = 0; failure <
+#ifdef USE_LR2021
+      4
+#else
+      3
+#endif
+      ; ++failure) {
+    // A failure at any independent hardware step retains the saved recovery
+    // work and its backoff until the complete configuration succeeds.
+    MyMesh m;
+    if (failure == 0) radio_driver.gain_success = false;
+    if (failure == 1) m.restore_success = false;
+    if (failure == 2) radio_driver.power_success = false;
+    if (failure == 3) radio_driver.side_detector_success = false;
+    m.queueSavedRadioApply();
+    m.processScheduledRadioSettings();
+    assert(m.saved_radio_apply_pending && m.scheduled_radio_retry_at);
+    const unsigned gain_calls = radio_driver.gain_calls;
+    const unsigned power_calls = radio_driver.power_calls;
+    const unsigned restores = m.restores;
+    for (unsigned i = 0; i < 10; ++i) m.processScheduledRadioSettings();
+    assert(radio_driver.gain_calls == gain_calls);
+    assert(radio_driver.power_calls == power_calls && m.restores == (int)restores);
+    radio_driver.gain_success = radio_driver.power_success = true;
+    radio_driver.side_detector_success = true;
+    m.restore_success = true;
+    m.advance(1); m.processScheduledRadioSettings();
+    assert(!m.saved_radio_apply_pending && !m.scheduled_radio_retry_at);
+    assert(radio_driver.active_gain == m._prefs.rx_boosted_gain);
+    assert(radio_driver.active_power == m._prefs.tx_power_dbm);
+  }
+  { // A later failed due entry must not undo an earlier durable change.
+    MyMesh m;
+    char reply[160];
+    m.addScheduledRadioParams(false, 911, 250, 5, 5, m.rtc.now + 2, 0, reply, 48);
+    m.addScheduledRadioParams(false, 912, 125, 6, 6, m.rtc.now + 3, 0, reply, 80);
+    m._cli.fail_on_save = 2;
+    m.advance(3); m.servicePostMeshLoop();
+    assert(m._cli.save_attempts == 2 && m.saves == 1);
+    assert(m.countScheduledRadioSettings(false) == 1);
+    assert(m._prefs.freq == 911 && m._cli.saved_preamble == 48);
+    assert(!m.saved_radio_apply_pending);
+    m.advance(60); m.servicePostMeshLoop();
+    assert(m._cli.save_attempts == 3 && m.saves == 2);
+    assert(m.countScheduledRadioSettings(false) == 0);
+    assert(m._prefs.freq == 912 && m._cli.saved_preamble == 80);
+    assert(!m.saved_radio_apply_pending);
+  }
+  { // Radios without boosted gain must not become stuck in recovery.
+    MyMesh m;
+    radio_driver.gain_supported = false;
+    radio_driver.gain_success = false;
+    m.queueSavedRadioApply();
+    m.processScheduledRadioSettings();
+    assert(!m.saved_radio_apply_pending && radio_driver.gain_calls == 0);
+    assert(radio_driver.active_power == m._prefs.tx_power_dbm);
+  }
+  { // Boot uses the same complete apply result to arm recovery.
+    MyMesh m;
+    radio_driver.power_success = false;
+    m.saved_radio_apply_pending = !m.applySavedRadioParams();
+    assert(m.saved_radio_apply_pending);
+    radio_driver.power_success = true;
+    m.processScheduledRadioSettings();
+    assert(!m.saved_radio_apply_pending);
+  }
   { // Expiring one scheduled lease must retain a later temporary entry.
     MyMesh m;
     char reply[160];
@@ -182,31 +289,33 @@ int main() {
     char reply[160];
     m.addScheduledRadioParams(false, 912.5, 250, 5, 5, m.rtc.now + 2, 0, reply, 48);
     assert(!strncmp(reply, "OK", 2));
-    m._cli.preamble_save_success = false;
+    m._cli.save_success = false;
     m.advance(2); m.servicePostMeshLoop();
-    assert(m._cli.preamble_saves == 1 && m.saves == 0);
+    assert(m._cli.save_attempts == 1 && m.saves == 0);
     assert(m.next_scheduled_radio_check_at == m.scheduled_radio_save_retry_at);
-    assert(m._prefs.freq == 909.5f);
+    assert(m._prefs.freq == 909.5f && m._cli.saved_preamble == 0);
+    assert(m.countScheduledRadioSettings(false) == 1);
     for (unsigned i = 0; i < 10; ++i) m.servicePostMeshLoop();
-    assert(m._cli.preamble_saves == 1); // storage backoff survives the scheduler's cleanup
-    m._cli.preamble_save_success = true;
+    assert(m._cli.save_attempts == 1); // storage backoff survives the scheduler's cleanup
+    m._cli.save_success = true;
     m.advance(59); m.servicePostMeshLoop();
-    assert(m._cli.preamble_saves == 1);
+    assert(m._cli.save_attempts == 1);
     m.advance(1); m.servicePostMeshLoop();
-    assert(m._cli.preamble_saves == 2 && m.saves == 1);
+    assert(m._cli.save_attempts == 2 && m.saves == 1);
     assert(m._prefs.freq == 912.5f && !m.saved_radio_apply_pending);
+    assert(m._cli.saved_preamble == 48 && m.countScheduledRadioSettings(false) == 0);
   }
   { // Backing off a failed permanent save must not delay temporary start/end.
     MyMesh m;
     char reply[160];
     m.addScheduledRadioParams(false, 912.5, 250, 5, 5, m.rtc.now + 2, 0, reply, 48);
     m.addScheduledRadioParams(true, 911.5, 250, 5, 5, m.rtc.now + 30, m.rtc.now + 90, reply, 80);
-    m._cli.preamble_save_success = false;
+    m._cli.save_success = false;
     m.advance(2); m.servicePostMeshLoop();
-    assert(m._cli.preamble_saves == 1);
+    assert(m._cli.save_attempts == 1);
     m.advance(28); m.servicePostMeshLoop();
     assert(m.temp_radio_applied && m.radio_timing.isTemporary());
-    assert(m._cli.preamble_saves == 1);
+    assert(m._cli.save_attempts == 1);
     m.advance(60); m.servicePostMeshLoop();
     assert(!m.temp_radio_applied && !m.radio_timing.isTemporary());
     assert(m._prefs.freq == 909.5f);
@@ -427,6 +536,7 @@ class RepeaterRadioTimingIntegrationTest(unittest.TestCase):
             "void MyMesh::updateAdvertTimer()",
             "void MyMesh::updateFloodAdvertTimer()",
             "void MyMesh::queueSavedRadioApply()",
+            "bool MyMesh::applySavedRadioParams()",
             "void MyMesh::refreshScheduledRadioState()",
             "void MyMesh::processScheduledRadioSettings()",
             "void MyMesh::applyTempRadioParams(",
@@ -442,7 +552,10 @@ class RepeaterRadioTimingIntegrationTest(unittest.TestCase):
         # The remaining service tail handles unrelated MQTT/OTA/peripheral work.
         post = post[:post.index("#if defined(WITH_MQTT_BRIDGE) && defined(OTA_MANIFEST_BASE)")] + "}\n"
         methods += "\n" + post
-        self.compile_and_run(HARNESS.replace("@METHODS@", methods))
+        for lr2021 in (False, True):
+            with self.subTest(lr2021=lr2021):
+                defines = "#define USE_LR2021 1\n" if lr2021 else ""
+                self.compile_and_run(defines + HARNESS.replace("@METHODS@", methods))
 
     def test_production_cli_replies_and_duration_validation(self):
         source = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="utf-8")

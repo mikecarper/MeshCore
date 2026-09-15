@@ -7,6 +7,7 @@
 #include "OtaDeflate.h"
 #include "OtaStore.h"
 #include "SignerAllowlist.h"
+#include "OtaConfigState.h"
 #include "OtaApply.h"
 #include "OtaFormat.h"
 #include "OtaByteIO.h"
@@ -705,6 +706,8 @@ OtaContext& ota_ctx();   // process-wide context
 // Dynamic builds return null outside an acquired workspace. Static builds
 // always return their process-wide context.
 OtaContext* ota_context_if_active();
+// Optional role-specific policy reload; registration never allocates a context.
+void ota_set_context_config_loader(bool (*load)(OtaConfigState&));
 bool ota_acquire_context(char* reply, size_t cap);
 void ota_begin_context(uint32_t target, OtaSend send, void* ctx,
                        const char* hw, const uint8_t* seeder_id);
