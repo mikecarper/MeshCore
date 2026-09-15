@@ -113,6 +113,8 @@ public:
   bool bypass_rx_delay = false;
   bool configured_cad_enabled = false;
   int configured_agc_interval = 0;
+  float ota_speed = 1.0f;
+  float getOtaSpeedFactor() const override { return ota_speed; }
 
   int getAGCResetInterval() const override {
     return configured_agc_interval;
@@ -1168,6 +1170,59 @@ TEST(RxReservePacketManager, DispatcherNotifiesBeforeReleasingStaleOutbound) {
   EXPECT_EQ(7, dispatcher.free_count_during_failure);
   EXPECT_EQ(8, manager.getFreeCount());
   EXPECT_EQ(0, radio.send_starts);
+}
+
+TEST(RxReservePacketManager, PacingPausesExpiryWithoutErasingPriorCongestion) {
+  for (uint32_t start : {0u, UINT32_MAX - 20000}) {
+    RxReservePacketManager manager(8, 4);
+    auto* paced = manager.allocNew();
+    auto* stale = manager.allocNew();
+    ASSERT_TRUE(manager.queueOutbound(paced, 0, start));
+    ASSERT_TRUE(manager.queueOutbound(stale, 1, start));
+    // Already spent 29 seconds waiting. One minute of deliberate pacing must
+    // not expire this packet, or grant another full 30 seconds afterwards.
+    for (uint32_t elapsed = 29000; elapsed < 89000; elapsed += 100) {
+      ASSERT_EQ(manager.peekNextOutbound(start + elapsed), paced);
+      ASSERT_TRUE(manager.deferOutboundForPacing(paced, start + elapsed, start + elapsed + 100));
+    }
+    EXPECT_EQ(manager.getNextDroppedOutbound(), stale);
+    manager.free(stale);
+    EXPECT_EQ(manager.peekNextOutbound(start + 90000), paced);
+    EXPECT_EQ(manager.peekNextOutbound(start + 90001), nullptr);
+    EXPECT_EQ(manager.getNextDroppedOutbound(), paced);
+    manager.free(paced);
+    EXPECT_EQ(manager.getFreeCount(), 8);
+  }
+}
+
+TEST(RxReservePacketManager, DispatcherKeepsOtaQueuedAcrossSlowQuietWindow) {
+  RxReservePacketManager manager(8, 4);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+  dispatcher.ota_speed = 0.05f;
+  for (unsigned i = 0; i < 2; ++i) {
+    auto* packet = dispatcher.obtainNewPacket();
+    ASSERT_NE(packet, nullptr);
+    packet->header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_OTA << PH_TYPE_SHIFT);
+    packet->payload_len = 1; packet->payload[0] = i;
+    ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
+  }
+  clock.now = 1; dispatcher.loop();
+  ASSERT_EQ(radio.send_starts, 1);
+  clock.now = 1801; radio.send_complete = true; dispatcher.loop();
+  radio.send_complete = false;
+  for (clock.now = 1901; clock.now < 36001; clock.now += 100) {
+    dispatcher.loop();
+    ASSERT_EQ(radio.send_starts, 1);
+    ASSERT_EQ(dispatcher.failed_packet, nullptr);
+  }
+  clock.now = 36001; dispatcher.loop(); // 34.2 seconds of intentional quiet
+  EXPECT_EQ(radio.send_starts, 2);
+  EXPECT_EQ(dispatcher.failed_packet, nullptr);
+  clock.now++; radio.send_complete = true; dispatcher.loop();
+  EXPECT_EQ(manager.getFreeCount(), 8);
 }
 
 int main(int argc, char** argv) {

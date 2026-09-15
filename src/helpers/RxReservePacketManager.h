@@ -104,6 +104,15 @@ public:
     return StaticPoolPacketManager::peekNextOutbound(now);
   }
 
+  bool deferOutboundForPacing(mesh::Packet* packet, uint32_t now, uint32_t scheduled_for) override {
+    if (!StaticPoolPacketManager::deferOutbound(packet, scheduled_for)) return false;
+    uint32_t previous;
+    if ((int32_t)(scheduled_for - now) > 0 && lookupAge(packet, &previous)) {
+      recordAge(packet, previous + (scheduled_for - now));
+    }
+    return true;
+  }
+
   mesh::Packet* getNextDroppedOutbound() override {
     return _dropped.removeByIdx(0);
   }

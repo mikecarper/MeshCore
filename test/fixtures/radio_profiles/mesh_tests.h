@@ -62,8 +62,12 @@ class DualProfileTestMesh : public RetryCodingRateMesh {
   using RetryCodingRateMesh::isPacketRadioCurrent;
   using RetryCodingRateMesh::getTransmitAirtime;
   using RetryCodingRateMesh::getTransmitProfileMask;
+  using RetryCodingRateMesh::getRetransmitDelay;
+  using RetryCodingRateMesh::getOtaPacketAirtime;
   using RetryCodingRateMesh::tryParsePacket;
   bool cross_filter_allows = true;
+  float ota_speed = 1.0f;
+  float getOtaSpeedFactor() const override { return ota_speed; }
   unsigned cross_filter_calls = 0;
   bool allowRadioProfileCross(const mesh::Packet*) override {
     ++cross_filter_calls;
@@ -99,6 +103,73 @@ class DualProfileTest : public testing::Test {
   }
   void tick(uint32_t ms = 1) { clock.now += ms; node.loop(); }
 };
+
+TEST_F(DualProfileTest, OtaSpeedPacesBothCopiesAndYieldsToOrdinaryTraffic) {
+  node.flood_attempts = 0;
+  node.tempRadioActive = true;
+  node.ota_speed = 0.05f;
+  radio.config.cross = mesh::RadioCrossMode::On;
+  auto* first = queue(PAYLOAD_TYPE_OTA);
+  ASSERT_NE(nullptr, first);
+  tick(); ASSERT_TRUE(radio.sending);
+  radio.complete = true;
+  tick(100); // actual OTA TX airtime: 100 ms; quiet allowance: 1900 ms
+  EXPECT_EQ(radio.transmissions.size(), 1u);
+  auto* normal = queue(PAYLOAD_TYPE_GRP_TXT);
+  ASSERT_NE(nullptr, normal);
+  tick();
+  ASSERT_TRUE(radio.sending); // the OTA copy yields to normal messages
+  EXPECT_EQ(radio.transmissions.size(), 2u);
+  radio.complete = true; tick(100);
+  tick(); // the normal dispatcher's next-TX deadline opens on the following loop
+  ASSERT_TRUE(radio.sending);
+  radio.complete = true; tick(100);
+  EXPECT_EQ(radio.transmissions.size(), 3u); // both normal-message profiles sent
+  tick(1000);
+  EXPECT_EQ(radio.transmissions.size(), 3u);
+  node.ota_speed = 1.0f;
+  tick(101); // discard the old slow wait without losing the secondary copy
+  EXPECT_EQ(radio.transmissions.size(), 4u);
+  EXPECT_EQ(radio.transmissions.back(), 1u);
+  radio.complete = true; tick(100);
+  EXPECT_EQ(manager.getFreeCount(), 40);
+}
+
+TEST_F(DualProfileTest, OtaSpeedScalesRelayWindowButLeavesOrdinaryRelaysAlone) {
+  rng.value = 2;
+  auto ota_packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  ota_packet.payload[0] = mesh::ota::OTA_DATA;
+  auto ordinary_packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  const auto ordinary_delay = node.getRetransmitDelay(&ordinary_packet);
+  const auto normal = node.otaRelayDelay(&ota_packet);
+  ASSERT_GT(normal, 0u);
+  node.ota_speed = 0.5f;
+  EXPECT_EQ(node.otaRelayDelay(&ota_packet), normal * 2);
+  EXPECT_EQ(node.getRetransmitDelay(&ordinary_packet), ordinary_delay);
+  node.ota_speed = 3.0f;
+  EXPECT_EQ(node.otaRelayDelay(&ota_packet), (normal + 2) / 3);
+  EXPECT_EQ(node.getRetransmitDelay(&ordinary_packet), ordinary_delay);
+}
+
+TEST_F(DualProfileTest, OtaAirtimeFollowsParticipatingProfilesInsteadOfScannerVisit) {
+  radio.distinguish_airtime = true; // primary 900 ms, secondary 70 ms
+  radio.config.secondary_temporary = true;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  EXPECT_EQ(node.getOtaPacketAirtime(), 70u);
+  radio.selected = 1;
+  radio.estimated_airtime = 12345;
+  EXPECT_EQ(node.getOtaPacketAirtime(), 70u);
+  radio.config.reply_tx = mesh::RADIO_TX_BOTH;
+  EXPECT_EQ(node.getOtaPacketAirtime(), 970u);
+  radio.config.secondary_temporary = false;
+  radio.config.primary_temporary = true;
+  radio.config.secondary.mode = mesh::RadioProfileMode::Rx;
+  EXPECT_EQ(node.getOtaPacketAirtime(), 900u);
+  radio.config.reply_force = true;
+  EXPECT_EQ(node.getOtaPacketAirtime(), 970u);
+  radio.config.secondary.mode = mesh::RadioProfileMode::Off;
+  EXPECT_EQ(node.getOtaPacketAirtime(), 900u);
+}
 
 TEST_F(DualProfileTest, CrossFilterKeepsPrimaryTransmissionAndAvoidsCopyAllocation) {
   node.cross_filter_allows = false;

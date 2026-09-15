@@ -177,6 +177,29 @@ See [LoRa CLI host service](host_cli_service.md) for the complete
 
 ---
 
+### LoRa OTA speed
+
+```text
+get ota.speed
+set ota.speed <0.05..3>
+```
+
+`1` preserves the current OTA timing. Values below `1` slow OTA traffic;
+values above `1` shorten adjustable delays. For example, `0.5` doubles those
+delays and `3` divides them by three. Decimal values such as `.05` work.
+`ota config speed <factor>` is an equivalent setter, and `ota config` shows
+the value. The setting is saved and can be changed during a transfer.
+
+Apply it on the source, destination, and relays. It controls all LoRa OTA
+packet types on both profiles, relay timing, discovery, and OTA adverts.
+Slower settings extend recovery waits and space queued OTA packets while
+allowing ordinary traffic through. Faster settings retain the physical retry
+allowance and the configured airtime budget, so throughput is not guaranteed
+to rise in direct proportion. Proof turnaround keeps its physical allowance.
+Ordinary messages, node adverts, and local staged-image verification keep their
+timing. Available in OTA-enabled builds for all roles, including Companions.
+See the [OTA guide](ota_user_guide.md#adjust-lora-ota-speed).
+
 ### Start or stop an Over-The-Air (OTA) firmware update
 
 **Search terms:** WiFi OTA, wireless firmware update, OTA uploader, update firmware.

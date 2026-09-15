@@ -3,6 +3,7 @@
 //#include <Arduino.h>
 #if defined(ENABLE_OTA)
 #include "helpers/ota/OtaContext.h"   // OTA mesh-integration is centralized here so every role gets it
+#include "helpers/ota/OtaSpeedConfig.h"
 #include "helpers/ota/OtaProtocol.h"  // decode_adv -> the `ota neighbors` discovery table
 #if !defined(OTA_SEEDER_ONLY)
 #include "helpers/ota/OtaSelf.h"      // ota_self_firmware -> auto-advertise our own image
@@ -442,18 +443,25 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
   }
   if (!_ota_temp_was_active) {
     _ota_temp_was_active = true;
-    _next_ota_tick = 0;
-    _next_ota_announce = 0;
+    _next_ota_tick = _ms->getMillis();
+    _ota_announce_timer.arm(_ms->getMillis(), 0, 1.0f);
     _ota_announce_count = 0;
   }
-  ota::ota_ctx().manager.set_clock(_ms->getMillis());
-  float ota_spacing = 1.0f + getAirtimeBudgetFactor();
-  if (ota_spacing < 1.0f) ota_spacing = 1.0f;
-  if (ota_spacing > 10.0f) ota_spacing = 10.0f;
-  ota::ota_ctx().manager.set_link_timing(
-      _radio->getEstAirtimeFor(MAX_TRANS_UNIT),
-      (uint16_t)(ota_spacing * 1000.0f + 0.5f));
+  const float ota_speed = getOtaSpeedFactor();
+  if (_ota_timer_speed != ota_speed) {
+    _ota_announce_timer.rescale(_ms->getMillis(), _ota_timer_speed, ota_speed);
+    _ota_timer_speed = ota_speed;
+    // Re-arm from now; changing speed must not immediately issue a retry
+    // for a response that is still queued at the previous pace.
+    _next_ota_tick = futureMillis(ota::scaleDelay(OTA_RETRY_TICK_MS, ota_speed < 1.0f ? ota_speed : 1.0f));
+  }
+  syncOtaTiming(ota::ota_ctx().manager);
   ota::ota_ctx().manager.serviceEgress();
+  const uint32_t ota_loop_interval = ota::ota_ctx().manager.loopIntervalMs(OTA_RETRY_TICK_MS);
+  if ((int32_t)(_next_ota_tick - _ms->getMillis()) > (int32_t)ota_loop_interval) {
+    // Entering local verification must not inherit a long radio retry wait.
+    _next_ota_tick = futureMillis(ota_loop_interval);
+  }
   if (millisHasNowPassed(_next_ota_tick)) {
     // one-shot on first tick: resume an interrupted fetch left staged in flash before a reboot. Only adopt
     // a PARTIAL container (continue fetching the holes); a COMPLETE one is left for manual/auto-install,
@@ -472,9 +480,9 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     ota::ota_ctx().serviceSdCache(_ms->getMillis());  // archive unseen mOTAs only while the receive slot is idle
 #endif
-    _next_ota_tick = futureMillis(OTA_RETRY_TICK_MS);
+    _next_ota_tick = futureMillis(ota::ota_ctx().manager.loopIntervalMs(OTA_RETRY_TICK_MS));
   }
-  if (millisHasNowPassed(_next_ota_announce)) {   // auto-advertise so peers discover us (tiny beacon)
+  if (_ota_announce_timer.ready(_ms->getMillis())) {   // auto-advertise so peers discover us (tiny beacon)
     ota::OtaContext& oc = ota::ota_ctx();
     bool in_burst = _ota_announce_count < OTA_ANNOUNCE_BURST;
     uint32_t mins = oc.manager.advert_mins();     // periodic cadence in minutes; 0 = disabled (boot burst only)
@@ -492,7 +500,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     uint32_t gap = in_burst       ? OTA_ANNOUNCE_BURST_MS
                  : (mins != 0)    ? mins * 60000UL
                                   : OTA_ANNOUNCE_DISABLED_POLL_MS;
-    _next_ota_announce = futureMillis(gap);
+    _ota_announce_timer.arm(_ms->getMillis(), gap, ota_speed);
   }
 #if !defined(OTA_SEEDER_ONLY)
   {   // auto-install (once per COMPLETE fetch): only signed images, and apply_fetched enforces trust
@@ -610,13 +618,50 @@ void Mesh::decayOtaRelayBackoff() {
   if (_ota_relay_backoff_level == 0) _ota_relay_decay_at = 0;
 }
 
+float Mesh::getOtaSpeedFactor() const {
+#if defined(ENABLE_OTA)
+  return ota::speedFactor();
+#else
+  return ota::OTA_SPEED_DEFAULT;
+#endif
+}
+
+uint32_t Mesh::getOtaPacketAirtime() const {
+  const auto* profiles = _radio->profiles();
+  if (!profiles || !profiles->enabled()) return _radio->getProfileAirtime(0, MAX_TRANS_UNIT);
+  // Use the participating profiles, never the scanner's instantaneous visit.
+  // Replies may occupy both profiles even with crossing off or radio2 RX-only.
+  uint8_t mask = (profiles->primary_temporary ? 1 : 0) | (profiles->secondary_temporary ? 2 : 0);
+  if (!mask) mask = 1;
+  if (profiles->canCross() && profiles->canTransmit(1)) mask |= 3;
+  if (profiles->reply_tx != RADIO_TX_AUTO) {
+    mask |= explicitRadioTxMask(profiles->reply_tx, profiles->canTransmit(1, profiles->reply_force));
+  }
+  uint32_t airtime = 0;
+  for (uint8_t profile = 0; profile < 2; ++profile) {
+    if (mask & (1U << profile)) airtime += _radio->getProfileAirtime(profile, MAX_TRANS_UNIT);
+  }
+  return airtime;
+}
+
+#if defined(ENABLE_OTA)
+void Mesh::syncOtaTiming(ota::OtaManager& manager) {
+  manager.set_clock(_ms->getMillis());
+  float spacing = 1.0f + getAirtimeBudgetFactor();
+  if (spacing < 1.0f) spacing = 1.0f;
+  if (spacing > 10.0f) spacing = 10.0f;
+  manager.set_link_timing(getOtaPacketAirtime(), (uint16_t)(spacing * 1000.0f + 0.5f));
+  manager.set_speed(getOtaSpeedFactor());
+}
+#endif
+
 uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
   if (packet == NULL) return 0;
   // Active transfer packets use the role's configured flood collision window.
   // Deployment tooling can temporarily select txdelay 0.3 on managed relays;
   // the value is airtime-scaled by the role and therefore follows SF/BW.
   if (isPrimaryOtaTraffic(packet->payload, packet->payload_len)) {
-    return getRetransmitDelay(packet);
+    return ota::relayDelay(getRetransmitDelay(packet), getOtaSpeedFactor());
   }
   decayOtaRelayBackoff();
   uint32_t airtime = _radio->getProfileAirtime(packet->radio_profile, packet->getRawLength(), packet->tx_cr);
@@ -629,7 +674,7 @@ uint32_t Mesh::getOtaRetransmitDelay(const mesh::Packet* packet) {
   uint32_t min_delay = (airtime * min_quarters[level] + 3) / 4;
   uint32_t max_delay = (airtime * max_quarters[level]) / 4;
   if (max_delay < min_delay) max_delay = min_delay;
-  return _rng->nextInt(min_delay, max_delay + 1);
+  return ota::relayDelay(_rng->nextInt(min_delay, max_delay + 1), getOtaSpeedFactor());
 }
 
 int Mesh::calcRxDelayForPacket(const Packet* packet, float score, uint32_t air_time) {
@@ -1212,7 +1257,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       bool terminal_ota = false;
 #if defined(ENABLE_OTA)
       if (ota::OtaContext* context = ota::ota_context_if_active()) {
-        context->manager.set_clock(_ms->getMillis());
+        syncOtaTiming(context->manager);
         context->manager.note_rx_path_hops(n);
         terminal_ota = context->manager.on_message(pkt->payload, pkt->payload_len);
         context->track_session(context->manager.fetchState(), _ms->getMillis());

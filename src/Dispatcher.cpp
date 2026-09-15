@@ -1,4 +1,5 @@
 #include "Dispatcher.h"
+#include "helpers/ota/OtaTiming.h"
 
 #if MESH_PACKET_LOGGING
   #include <Arduino.h>
@@ -66,6 +67,7 @@ void Dispatcher::begin() {
   outbound_radio_retry_at = 0;
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
+  ota_tx_airtime = 0;
   radio_nonrx_start = _ms->getMillis();
 
   duty_cycle_window_ms = getDutyCycleWindowMs();
@@ -376,6 +378,10 @@ void Dispatcher::loop() {
     } else if (_radio->isSendComplete()) {
       long t = _ms->getMillis() - outbound_start;
       total_air_time += t;
+      if (outbound->getPayloadType() == PAYLOAD_TYPE_OTA) {
+        ota_tx_finished_at = _ms->getMillis();
+        ota_tx_airtime = t > 0 ? (uint32_t)t : 0;
+      }
       //Serial.print("  airtime="); Serial.println(t);
 
       updateTxBudget();
@@ -707,6 +713,9 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
 void Dispatcher::checkSend() {
   if (_radio->isCarrierWaveActive()) return;
   const uint32_t now = _ms->getMillis();
+  if (ota_tx_airtime && now - ota_tx_finished_at >= ota::packetQuietTime(ota_tx_airtime, getOtaSpeedFactor())) {
+    ota_tx_airtime = 0;
+  }
   uint32_t next_outbound;
   if (_mgr->getNextOutboundTime(now, next_outbound)) {
     if ((int32_t)(next_outbound - now) > 0) return;
@@ -723,6 +732,29 @@ void Dispatcher::checkSend() {
     outbound = _mgr->getNextOutbound(now);
     failOutboundTransmit();
     return;
+  }
+  if (ota_tx_airtime) {
+    const uint32_t gap = ota::packetQuietTime(ota_tx_airtime, getOtaSpeedFactor());
+    const uint32_t elapsed = now - ota_tx_finished_at;
+    if (elapsed >= gap) ota_tx_airtime = 0;
+    else if (pending && pending->getPayloadType() == PAYLOAD_TYPE_OTA) {
+      // Preserve this packet's priority and retry ownership. A short deferral
+      // lets ordinary traffic run and makes live speed changes take effect
+      // within 100 ms, even when the previous speed was much slower.
+      const uint32_t remaining = gap - elapsed;
+      int candidates = _mgr->getOutboundTotal();
+      do {
+        if (candidates-- <= 0 || !_mgr->deferOutboundForPacing(pending, now,
+            now + (remaining > 100 ? 100 : remaining))) return;
+        pending = _mgr->peekNextOutbound(now);
+      } while (pending && pending->getPayloadType() == PAYLOAD_TYPE_OTA);
+      if (!pending) return;
+      if (!isPacketRadioCurrent(pending)) {
+        outbound = _mgr->getNextOutbound(now);
+        failOutboundTransmit();
+        return;
+      }
+    }
   }
   updateTxBudget();
   

@@ -4676,6 +4676,296 @@ TEST(OtaWarmStart, LeafDiffAuthenticatesAndFindsDifferingBlocks) {
   EXPECT_FALSE(miss[0]); EXPECT_FALSE(miss[2]); EXPECT_FALSE(miss[4]);
 }
 
+TEST(OtaSpeed, BoundsScalingAndLongIntervals) {
+  EXPECT_TRUE(validSpeed(0.05f));
+  EXPECT_TRUE(validSpeed(3.0f));
+  EXPECT_FALSE(validSpeed(0.049f));
+  EXPECT_FALSE(validSpeed(3.001f));
+  EXPECT_FALSE(validSpeed(NAN));
+  EXPECT_FALSE(validSpeed(INFINITY));
+  for (uint32_t delay : {0u, 1u, 100u, 1000u, 86400000u}) {
+    EXPECT_EQ(scaleDelay(delay, 1.0f), delay);
+  }
+  EXPECT_EQ(scaleDelay(1000, 0.05f), 20000u);
+  EXPECT_EQ(scaleDelay(1000, 0.5f), 2000u);
+  EXPECT_EQ(scaleDelay(1000, 3.0f), 334u);
+  EXPECT_EQ(scaleDelay(UINT32_MAX, 0.05f), (uint32_t)INT32_MAX);
+  EXPECT_EQ(relayDelay(2000000, 0.05f), 0x00ffffffU);
+  EXPECT_EQ(relayDelay(100, 1.0f), 100u);
+  EXPECT_EQ(packetQuietTime(1000, 0.05f), 19000u);
+  EXPECT_EQ(packetQuietTime(1000, 1.0f), 0u);
+  EXPECT_EQ(packetQuietTime(1000, 3.0f), 0u);
+
+  LongTimer timer;
+  uint32_t now = UINT32_MAX - 100;
+  timer.arm(now, 7u * 86400000u, 0.05f);
+  for (unsigned day = 1; day < 140; ++day) {
+    now += 86400000u;
+    EXPECT_FALSE(timer.ready(now)) << day;
+  }
+  now += 86400000u;
+  EXPECT_TRUE(timer.ready(now));
+  timer.arm(now, 1000, 0.5f);
+  timer.rescale(now + 1000, 0.5f, 1.0f);
+  EXPECT_FALSE(timer.ready(now + 1499));
+  EXPECT_TRUE(timer.ready(now + 1500));
+}
+
+TEST(OtaSpeed, ManifestPacingAndRetryAllowancesFollowFactor) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+  for (float speed : {0.05f, 0.5f, 1.0f, 3.0f}) {
+    OtaManager server;
+    CapturedMessages sent;
+    server.begin(0, capture_send, &sent);
+    ASSERT_TRUE(server.set_speed(speed));
+    EXPECT_FALSE(server.set_speed(NAN));
+    EXPECT_FLOAT_EQ(server.speed(), speed);
+    server.set_link_timing(80, 2000);
+    ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
+    GetManifestMsg request{};
+    memcpy(request.manifest_id, manifest.merkle_root, 4);
+    request.want_mask = 0xffff;
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    const uint16_t len = encode_get_manifest(wire, sizeof wire, request);
+    server.set_clock(UINT32_MAX - 40); // egress crosses millis rollover
+    ASSERT_TRUE(server.on_message(wire, len));
+    const uint32_t gap = speed == 0.05f ? 3200 : speed == 0.5f ? 320 : speed == 1.0f ? 160 : 54;
+    server.set_clock(UINT32_MAX - 40 + gap - 1);
+    server.serviceEgress();
+    EXPECT_TRUE(sent.items.empty());
+    server.set_clock(UINT32_MAX - 40 + gap);
+    server.serviceEgress();
+    ASSERT_EQ(sent.items.size(), 1u);
+    server.set_clock(UINT32_MAX - 40 + 2 * gap);
+    server.serviceEgress();
+    ASSERT_EQ(sent.items.size(), 2u);
+    EXPECT_EQ(server.pendingManifestJobs(), 0u);
+    const uint32_t timeout = server.fetchRetryTimeoutMs();
+    ASSERT_TRUE(server.set_speed(1.0f));
+    const uint32_t normal = server.fetchRetryTimeoutMs();
+    EXPECT_GE(timeout, normal);
+    if (speed < 1.0f) EXPECT_GT(timeout, normal);
+  }
+}
+
+TEST(OtaSpeed, LiveChangeRescalesQueuedMetadataWithoutDroppingIt) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+  OtaManager server;
+  CapturedMessages sent;
+  server.begin(0, capture_send, &sent);
+  server.set_link_timing(80, 2000);
+  ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
+  GetManifestMsg request{};
+  memcpy(request.manifest_id, manifest.merkle_root, 4);
+  request.want_mask = 0xffff;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  server.set_clock(UINT32_MAX - 159); // deadline is exactly zero
+  ASSERT_TRUE(server.on_message(wire, encode_get_manifest(wire, sizeof wire, request)));
+  server.set_clock(UINT32_MAX - 79); // 80 ms remain at 1x
+  ASSERT_TRUE(server.set_speed(0.5f));
+  server.set_clock(79); // 159 ms later
+  server.serviceEgress();
+  EXPECT_TRUE(sent.items.empty());
+  server.set_clock(80);
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 1u);
+  server.set_clock(160);
+  ASSERT_TRUE(server.set_speed(3.0f)); // 240 ms of 0.5x waiting become 40 ms
+  server.set_clock(199);
+  server.serviceEgress();
+  EXPECT_EQ(sent.items.size(), 1u);
+  server.set_clock(200);
+  server.serviceEgress();
+  EXPECT_EQ(sent.items.size(), 2u);
+}
+
+TEST(OtaSpeed, WholeTransferRecoversLostDataAtEverySpeed) {
+  struct Link {
+    OtaManager* destination;
+    std::vector<std::vector<uint8_t>> queue;
+    uint32_t next = 0;
+    bool drop_data = false;
+    static bool send(void* context, const uint8_t* bytes, uint16_t len, bool) {
+      auto& link = *static_cast<Link*>(context);
+      if (link.queue.size() >= 2) return false;
+      link.queue.emplace_back(bytes, bytes + len);
+      return true;
+    }
+    void deliver(uint32_t now, float speed) {
+      if (queue.empty() || (int32_t)(now - next) < 0) return;
+      auto bytes = std::move(queue.front()); queue.erase(queue.begin());
+      next = now + 100 + packetQuietTime(100, speed);
+      if (drop_data && ota_msg_type(bytes.data(), bytes.size()) == OTA_DATA) drop_data = false;
+      else destination->on_message(bytes.data(), bytes.size());
+    }
+  };
+  for (float speed : {0.05f, 0.5f, 1.0f, 3.0f}) {
+    SCOPED_TRACE(speed);
+    OtaManager server, client;
+    OtaStoreRam<4096> store;
+    Link to_client{&client, {}, 0, true}, to_server{&server};
+    server.begin(0, Link::send, &to_client);
+    client.begin(SIM_TARGET_ID, Link::send, &to_server);
+    client.set_fetch_store(&store);
+    client.set_autofetch(OtaManager::AUTOFETCH_ANY);
+    for (auto* manager : {&server, &client}) {
+      ASSERT_TRUE(manager->set_speed(speed));
+      manager->set_link_timing(100, 2000);
+      manager->set_max_hops(0);
+    }
+    ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+    server.announce();
+    uint32_t next_loop = client.retryDelay(1000);
+    for (uint32_t now = 0; now < 600000 && client.fetchState() != OtaManager::COMPLETE; now += 10) {
+      server.set_clock(now); client.set_clock(now);
+      server.serviceEgress(); client.serviceEgress();
+      to_client.deliver(now, speed); to_server.deliver(now, speed);
+      if (now >= next_loop) {
+        server.loop(); client.loop();
+        next_loop = now + client.retryDelay(1000);
+      }
+    }
+    EXPECT_FALSE(to_client.drop_data);
+    ASSERT_EQ(client.fetchState(), OtaManager::COMPLETE);
+    ASSERT_EQ(store.staged_size(), SIM_MOTA_1K_LEN);
+    EXPECT_EQ(memcmp(store.data(), SIM_MOTA_1K, SIM_MOTA_1K_LEN), 0);
+  }
+}
+
+TEST(OtaSpeed, DiscoveryAndCatalogRecoveryRespectSlowerTiming) {
+  OtaManager client;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_archive_interest(true);
+  ASSERT_TRUE(client.set_speed(0.05f));
+  AdvMsg adv{};
+  adv.seeder_id[0] = 1; // deterministic jitter of 1 ms before scaling
+  adv.n_motas = 1;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  client.set_clock(100);
+  client.on_message(wire, encode_adv(wire, sizeof wire, adv));
+  client.set_clock(6119);
+  client.loop();
+  EXPECT_TRUE(sent.items.empty());
+  client.set_clock(6120);
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 1u);
+  client.set_clock(6120 + 299999);
+  client.loop();
+  EXPECT_EQ(sent.items.size(), 1u);
+  client.set_clock(6120 + 300000);
+  client.loop();
+  EXPECT_EQ(sent.items.size(), 2u);
+}
+
+TEST(OtaSpeed, CatalogRetryStaysArmedAtMillisRollover) {
+  for (float speed : {0.05f, 1.0f, 3.0f}) {
+    OtaManager client;
+    CapturedMessages sent;
+    client.begin(SIM_TARGET_ID, capture_send, &sent);
+    ASSERT_TRUE(client.set_speed(speed));
+    AdvMsg adv{};
+    adv.seeder_id[0] = 1; adv.n_motas = 1;
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    client.on_message(wire, encode_adv(wire, sizeof wire, adv));
+    client.set_clock(0u - client.retryDelay(OTA_CATALOG_RETRY_MS));
+    client.queryAll(); // retry deadline would be zero, the old disarmed sentinel
+    ASSERT_EQ(sent.items.size(), 1u);
+    client.set_clock(0); client.loop();
+    EXPECT_EQ(sent.items.size(), 1u);
+    client.set_clock(1); client.loop();
+    EXPECT_EQ(sent.items.size(), 2u);
+  }
+}
+
+TEST(OtaSpeed, SlowRadioSettingDoesNotDelayLocalResumeVerification) {
+  OtaStoreRam<4096> store;
+  ASSERT_TRUE(store.begin(SIM_MOTA_LEN));
+  ASSERT_TRUE(store.write(0, SIM_MOTA, SIM_MOTA_LEN));
+  OtaManager manager;
+  manager.begin(SIM_TARGET_ID, nullptr, nullptr);
+  manager.set_fetch_store(&store);
+  manager.set_autofetch(OtaManager::AUTOFETCH_ANY);
+  ASSERT_TRUE(manager.set_speed(0.05f));
+  EXPECT_EQ(manager.loopIntervalMs(1000), 20000u);
+  ASSERT_TRUE(manager.resumeStaged(nullptr));
+  ASSERT_EQ(manager.fetchState(), OtaManager::VERIFYING_STAGED);
+  EXPECT_EQ(manager.loopIntervalMs(1000), 1000u);
+  manager.loop();
+  EXPECT_EQ(manager.fetchState(), OtaManager::COMPLETE);
+}
+
+TEST(OtaSpeed, ProactiveProofPreservesDrainTimeAndSurvivesRollover) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  const unsigned fragments = (manifest.block_size() + OTA_FRAG_DATA - 1) / OTA_FRAG_DATA;
+  for (uint32_t start : {0u, UINT32_MAX - 599}) {
+    OtaManager server;
+    CapturedMessages sent;
+    server.begin(0, capture_send, &sent);
+    server.set_link_timing(100, 2000); // three packet-service intervals = 600 ms
+    ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+    ReqMsg request{};
+    memcpy(request.manifest_id, manifest.merkle_root, 4);
+    request.want_mask = 0xffff;
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    server.set_clock(start);
+    ASSERT_TRUE(server.on_message(wire, encode_req(wire, sizeof wire, request)));
+    for (unsigned i = 0; i < fragments; ++i) server.serviceEgress();
+    ASSERT_EQ(sent.items.size(), fragments);
+    server.set_clock(start + 300);
+    ASSERT_TRUE(server.set_speed(3)); // cannot shorten a physical drain already pending
+    server.set_clock(start + 599); server.serviceEgress();
+    EXPECT_EQ(sent.items.size(), fragments);
+    server.set_clock(start + 601); server.serviceEgress();
+    ASSERT_EQ(sent.items.size(), fragments + 1);
+    EXPECT_EQ(ota_msg_type(sent.items.back().data(), sent.items.back().size()), OTA_PROOF);
+    // Also preserve the drain when the response job starts at 3x.
+    sent.items.clear();
+    server.set_clock(1000);
+    ASSERT_TRUE(server.on_message(wire, encode_req(wire, sizeof wire, request)));
+    for (unsigned i = 0; i < fragments; ++i) server.serviceEgress();
+    server.set_clock(1599); server.serviceEgress();
+    EXPECT_EQ(sent.items.size(), fragments);
+    server.set_clock(1600); server.serviceEgress();
+    EXPECT_EQ(sent.items.size(), fragments + 1);
+  }
+}
+
+TEST(OtaSpeed, MissingProofFallbackStaysArmedAtMillisRollover) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  CapturedMessages sent;
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  ASSERT_TRUE(client.set_speed(0.05f));
+  client.pull(manifest.merkle_root, manifest.target_id);
+  deliver_manifest_fragment(client, manifest.merkle_root, 0, manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1, manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(client.fetchState(), OtaManager::FETCHING);
+  sent.items.clear();
+  client.set_clock(0u - client.retryDelay(OTA_PROOF_GRACE_MS));
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  for (uint32_t offset = 0; offset < manifest.block_size(); offset += OTA_FRAG_DATA) {
+    DataMsg data{};
+    memcpy(data.manifest_id, manifest.merkle_root, 4);
+    data.frag_off = offset;
+    data.data = manifest.payload + offset;
+    data.data_len = std::min<uint32_t>(OTA_FRAG_DATA, manifest.block_size() - offset);
+    ASSERT_TRUE(client.on_message(wire, encode_data(wire, sizeof wire, data)));
+  }
+  client.set_clock(0); client.serviceEgress();
+  EXPECT_TRUE(sent.items.empty());
+  client.set_clock(1); client.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 1u);
+  EXPECT_EQ(ota_msg_type(sent.items.back().data(), sent.items.back().size()), OTA_REQ_PROOF);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

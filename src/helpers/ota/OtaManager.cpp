@@ -21,6 +21,37 @@ OtaManager::~OtaManager() {
 #endif
 }
 
+bool OtaManager::set_speed(float speed) {
+  if (!validSpeed(speed)) return false;
+  if (_speed == speed) return true;
+  const float ratio = speed / _speed;
+  // Retry and proof-turnaround deadlines retain their physical allowance.
+  const float retry_ratio = (speed < 1.0f ? speed : 1.0f) / (_speed < 1.0f ? _speed : 1.0f);
+  auto rescale = [&](uint32_t& deadline, float change, bool optional = false) {
+    if ((int32_t)(deadline - _now_ms) > 0) {
+      const double remaining = ceil((double)(deadline - _now_ms) / change);
+      const uint32_t delay = remaining >= INT32_MAX ? INT32_MAX : (uint32_t)remaining;
+      deadline = optional ? armedDeadline(_now_ms, delay) : _now_ms + delay;
+    }
+  };
+  for (uint8_t i = 0; i < _n_manifest_jobs; ++i) rescale(_manifest_jobs[i].ready_at, ratio);
+  for (uint8_t i = 0; i < _n_serve_jobs; ++i) {
+    if (_serve_jobs[i].proof_ready_at) rescale(_serve_jobs[i].proof_ready_at, retry_ratio, true);
+  }
+  for (uint8_t i = 0; i < _n_src; ++i) {
+    if (_sources[i].query_pending) rescale(_sources[i].query_at, ratio);
+    if (_sources[i].query_retry_at) rescale(_sources[i].query_retry_at, retry_ratio, true);
+  }
+  _speed = speed;
+  // A live change must not treat a response train paced at the old speed as
+  // lost, or immediately exhaust manifest/leaf retries on the next tick.
+  noteFetchActivity();
+  for (auto& slot : _reasm) {
+    if (slot.awaiting_proof) slot.proof_request_at = armedDeadline(_now_ms, proofGraceMs());
+  }
+  return true;
+}
+
 bool OtaManager::expandCatalog() {
   if (_catalog_heap || OTA_INLINE_CATALOG >= OTA_MAX_CATALOG) return false;
   CatRow* expanded = static_cast<CatRow*>(malloc(sizeof(CatRow) * OTA_MAX_CATALOG));
@@ -336,7 +367,7 @@ void OtaManager::handleQuery(const uint8_t* m, uint16_t n) {
     }
     if (q.want_fragments == 0 || (missing != 0 && (q.want_fragments & missing) == missing)) {
       s.query_pending = false;
-      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+      s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
     }
   }
   if (_n_serve == 0 || memcmp(q.seeder_id, _seeder_id, 4) != 0) return;   // (2) only WE answer queries to us
@@ -480,16 +511,16 @@ bool OtaManager::queueManifestJob(const uint8_t* mid, uint16_t want_mask) {
 }
 
 uint32_t OtaManager::manifestEgressGapMs() const {
-  if (_radio_packet_airtime_ms == 0) return OTA_MANIFEST_EGRESS_MIN_GAP_MS;
+  if (_radio_packet_airtime_ms == 0) return pacedDelay(OTA_MANIFEST_EGRESS_MIN_GAP_MS);
   uint64_t gap = (uint64_t)_radio_packet_airtime_ms * _tx_spacing_permille;
   gap = (gap + 999u) / 1000u;
   if (gap < OTA_MANIFEST_EGRESS_MIN_GAP_MS) gap = OTA_MANIFEST_EGRESS_MIN_GAP_MS;
   if (gap > OTA_MANIFEST_EGRESS_MAX_GAP_MS) gap = OTA_MANIFEST_EGRESS_MAX_GAP_MS;
-  return (uint32_t)gap;
+  return pacedDelay((uint32_t)gap);
 }
 
 uint32_t OtaManager::proofEgressGapMs() const {
-  if (_radio_packet_airtime_ms == 0) return OTA_PROOF_EGRESS_MIN_GAP_MS;
+  if (_radio_packet_airtime_ms == 0) return retryDelay(OTA_PROOF_EGRESS_MIN_GAP_MS);
   // The adapter may have one response transmitting and two more admitted. Start this timer when the final
   // DATA is accepted, so cover all three packet-service intervals before opening the legacy-request turn.
   uint64_t gap = (uint64_t)_radio_packet_airtime_ms * _tx_spacing_permille
@@ -497,7 +528,9 @@ uint32_t OtaManager::proofEgressGapMs() const {
   gap = (gap + 999u) / 1000u;
   if (gap < OTA_PROOF_EGRESS_MIN_GAP_MS) gap = OTA_PROOF_EGRESS_MIN_GAP_MS;
   if (gap > OTA_PROOF_EGRESS_MAX_GAP_MS) gap = OTA_PROOF_EGRESS_MAX_GAP_MS;
-  return (uint32_t)gap;
+  // This is a physical queue-drain/legacy-response allowance, not an optional
+  // transmit delay. Faster settings cannot make those packets finish earlier.
+  return retryDelay((uint32_t)gap);
 }
 
 void OtaManager::clearPendingEgress() {
@@ -709,7 +742,7 @@ void OtaManager::serviceEgress() {
         (_serve_wire_len + fragment_data - 1u) / fragment_data);
     job.pending_mask &= valid_mask;
     if (job.pending_mask == 0) {
-      job.proof_ready_at = _now_ms + proofEgressGapMs();
+      job.proof_ready_at = armedDeadline(_now_ms, proofEgressGapMs());
       return;
     }
     uint8_t fragment = 0;
@@ -752,7 +785,7 @@ void OtaManager::serviceEgress() {
         // proactive proof into the radio queue at the same instant: the two half-duplex transmissions would
         // collide and force the receiver onto its multi-second retry tick. Include every response that the
         // adapter can already have admitted ahead of this proof, then retain a bounded fast-link floor.
-        job.proof_ready_at = _now_ms + proofEgressGapMs();
+        job.proof_ready_at = armedDeadline(_now_ms, proofEgressGapMs());
       }
     }
     return;
@@ -884,7 +917,7 @@ void OtaManager::scheduleQuery(const uint8_t* seeder, const uint8_t* digest) {
     if (s.query_pending || s.have_catalog ||
         (s.query_owned && s.query_retry_at && (int32_t)(_now_ms - s.query_retry_at) < 0)) return;
     uint32_t j = (rd_u32le(seeder) ^ rd_u32le(digest) ^ rd_u32le(_seeder_id)) % OTA_QUERY_SPREAD_MS;
-    s.query_at = _now_ms + OTA_QUERY_MIN_MS + j;
+    s.query_at = _now_ms + pacedDelay(OTA_QUERY_MIN_MS + j);
     s.query_pending = true;
     s.query_owned = true;
     return;
@@ -909,7 +942,7 @@ void OtaManager::queryAll() {
     s.query_pending = false;
     s.query_owned = true;
     s.query_retries = 0;
-    s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+    s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
     uint32_t want = 0;
     if (s.have_total) {
       uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
@@ -953,7 +986,7 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
       s.query_retries = 0;
       s.query_retry_at = 0;
     } else {
-      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+      s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
     }
   }
   for (uint8_t r = 0; r < hv.n_rows && hv.rows; r++) {
@@ -1123,7 +1156,7 @@ static uint8_t count_mask_bits(uint16_t mask) {
 }
 
 uint32_t OtaManager::fetchRetryTimeoutMs() const {
-  if (_radio_packet_airtime_ms == 0) return OTA_FETCH_RETRY_FALLBACK_MS;
+  if (_radio_packet_airtime_ms == 0) return retryDelay(OTA_FETCH_RETRY_FALLBACK_MS);
 
   // Estimate every packet still owed in the current flight, plus the recovery request itself. DATA uses
   // the measured maximum packet airtime; smaller REQ/PROOF packets are deliberately overestimated. Each
@@ -1150,11 +1183,11 @@ uint32_t OtaManager::fetchRetryTimeoutMs() const {
   service += OTA_FETCH_RETRY_GUARD_MS;
   if (service < OTA_FETCH_RETRY_MIN_MS) service = OTA_FETCH_RETRY_MIN_MS;
   if (service > OTA_FETCH_RETRY_MAX_MS) service = OTA_FETCH_RETRY_MAX_MS;
-  return (uint32_t)service;
+  return retryDelay((uint32_t)service);
 }
 
 uint32_t OtaManager::proofGraceMs() const {
-  if (_radio_packet_airtime_ms == 0) return OTA_PROOF_GRACE_MS;
+  if (_radio_packet_airtime_ms == 0) return retryDelay(OTA_PROOF_GRACE_MS);
   uint32_t path_transmissions = _observed_path_transmissions;
   if (path_transmissions == 0) path_transmissions = (uint32_t)_max_hops + 1u;
   uint64_t grace = (uint64_t)_radio_packet_airtime_ms * path_transmissions;
@@ -1162,7 +1195,7 @@ uint32_t OtaManager::proofGraceMs() const {
   grace += 100u;
   if (grace < OTA_PROOF_GRACE_MS) grace = OTA_PROOF_GRACE_MS;
   if (grace > OTA_FETCH_RETRY_MAX_MS) grace = OTA_FETCH_RETRY_MAX_MS;
-  return (uint32_t)grace;
+  return retryDelay((uint32_t)grace);
 }
 
 void OtaManager::finishFlight() {
@@ -1756,7 +1789,7 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
   // can arrive without another request/response turn. An older server, or a lost proof, falls back through
   // serviceEgress() to the existing REQ_PROOF wire message.
   slot.awaiting_proof = true;
-  slot.proof_request_at = _now_ms + proofGraceMs();
+  slot.proof_request_at = armedDeadline(_now_ms, proofGraceMs());
   return true;
 }
 
@@ -1969,7 +2002,7 @@ void OtaManager::loop() {
         want = full & ~s.have_mask;
       }
       sendQuery(s.seeder, s.digest, 0, want);
-      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+      s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
     } else if (s.query_owned && !s.have_catalog && !s.query_pending && s.query_retry_at &&
                (int32_t)(_now_ms - s.query_retry_at) >= 0 && s.query_retries < OTA_CATALOG_MAX_RETRY) {
       uint32_t want = 0;
@@ -1979,7 +2012,7 @@ void OtaManager::loop() {
       }
       s.query_retries++;
       sendQuery(s.seeder, s.digest, 0, want);
-      s.query_retry_at = _now_ms + OTA_CATALOG_RETRY_MS;
+      s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
     }
   }
   if (_fstate == VERIFYING_STAGED) {

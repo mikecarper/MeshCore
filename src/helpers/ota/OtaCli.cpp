@@ -1,5 +1,6 @@
 #include "OtaCli.h"
 #include "OtaContext.h"
+#include "OtaSpeedConfig.h"
 #include "FolderMotaStore.h"   // `ota pull <id> folder` destination (set_mid on the connected folder store)
 #include "OtaVerify.h"
 #include "OtaSelf.h"
@@ -152,11 +153,14 @@ static bool is_cmd(const char* a, const char* names, const char** rest) {
 static bool handle_dev(const char* d, char* reply, OtaContext& c);
 
 bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board) {
+  if (handleSpeedCommand(command, reply, 160)) return true;
   const char* a = command + 3;
   if (*a != 0 && *a != ' ') return false;
   while (*a == ' ') a++;
   if (!ota_acquire_context(reply, 160)) return true;
   OtaContext& c = ota_ctx();
+  c.manager.set_clock(millis());
+  c.manager.set_speed(speedFactor());
   const char* rest = a;
 
   // ---- raw / internal primitives, tucked under `ota dev ...` ----
@@ -1003,9 +1007,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       sprintf(reply, "OK OTA reach = %ld hop%s (saved)%s", h, h == 1 ? "" : "s", h == 0 ? " - direct only" : "");
     } else {                                            // show current policy
       uint8_t af = c.manager.autofetch();
+      char speed[16]; formatSpeed(speed, sizeof(speed));
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
       bool cache_ready = c.ensureSdCache();
-      sprintf(reply, "ota config: cache=%s/%u autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u",
+      snprintf(reply, 160, "ota config: speed=%sx cache=%s/%u autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u", speed,
               cache_ready ? (c.sd_cache.autoCaptureEnabled() ? "on" : "off") : "unavailable",
               cache_ready ? (unsigned)c.sd_cache.capturedCount() : 0,
               af == OtaManager::AUTOFETCH_ANY ? "any" : af == OtaManager::AUTOFETCH_SIGNED ? "signed" : "off",
@@ -1014,11 +1019,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
               (unsigned)c.manager.max_hops(), (unsigned)c.allow.count());
 #else
 #if defined(OTA_SEEDER_ONLY)
-      sprintf(reply, "ota config: mode=seeder-only autofetch=off autoinstall=off checkpoint=%u advert=%umin hops=%u",
+      snprintf(reply, 160, "ota config: speed=%sx mode=seeder-only autofetch=off autoinstall=off checkpoint=%u advert=%umin hops=%u", speed,
               (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),
               (unsigned)c.manager.max_hops());
 #else
-      sprintf(reply, "ota config: autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u  (persisted)",
+      snprintf(reply, 160, "ota config: speed=%sx autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u (persisted)", speed,
               af == OtaManager::AUTOFETCH_ANY ? "any" : af == OtaManager::AUTOFETCH_SIGNED ? "signed" : "off",
               c.autoinstall == OtaContext::AUTOINSTALL_TRUSTED ? "trusted" : "off",
               (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),

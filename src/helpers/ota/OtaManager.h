@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include "OtaFormat.h"
 #include "OtaMemoryPolicy.h"
+#include "OtaTiming.h"
 #include "OtaProtocol.h"
 #include "OtaByteIO.h"
 #include "OtaStore.h"
@@ -386,6 +387,17 @@ public:
   void queryAll();
   // Coarse clock for source/catalog ages + LRU (the Mesh adapter feeds millis; 0 in host tests is fine).
   void set_clock(uint32_t ms) { _now_ms = ms; }
+  bool set_speed(float speed);
+  float speed() const { return _speed; }
+  uint32_t pacedDelay(uint32_t ms) const { return scaleDelay(ms, _speed); }
+  // Faster pacing cannot shorten a loss-recovery deadline below the existing
+  // physical packet-flight allowance. Slower pacing expands that allowance.
+  uint32_t retryDelay(uint32_t ms) const { return scaleDelay(ms, _speed < 1.0f ? _speed : 1.0f); }
+  uint32_t loopIntervalMs(uint32_t normal_ms) const {
+    // Resume verification and local leaf comparisons do no radio waiting.
+    return _fstate == VERIFYING_STAGED || (_fstate == WANT_LEAVES && _diffing)
+        ? normal_ms : retryDelay(normal_ms);
+  }
   // Feed the actual TempRadio packet airtime and dispatcher transmit-spacing factor. The fetch retry
   // deadline then follows SF/BW, configured airtime budget, flight width, and observed/configured path.
   void set_link_timing(uint32_t max_packet_airtime_ms, uint16_t tx_spacing_permille) {
@@ -728,6 +740,7 @@ private:
   bool       _flight_dirty = false;             // a timeout/bad proof required recovery in this flight
   uint32_t   _fetch_wait_since_ms = 0;           // last new fragment/proof/request; retry deadline anchor
   uint32_t   _radio_packet_airtime_ms = 0;       // measured for MAX_TRANS_UNIT at active SF/BW
+  float      _speed = OTA_SPEED_DEFAULT;
   uint16_t   _tx_spacing_permille = 2000;        // 1/duty-cycle; default airtime factor 1 => 50% TX
   uint8_t    _observed_path_transmissions = 0;   // source + relays; 0 falls back to configured max_hops+1
   uint32_t   _packets_sent = 0;                  // OTA packets accepted by the radio adapter (wrap-safe)

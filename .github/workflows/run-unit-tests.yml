@@ -106,6 +106,7 @@ jobs:
           python3 -B test/test_repeater_radio_timing_integration.py
           python3 -B test/test_temp_radio_reply_delivery_contract.py
           python3 -B test/test_reply_tx_integration.py
+          python3 -B test/test_ota_speed.py -v
 
       - name: Verify dual-profile switching and chirp timing
         working-directory: test

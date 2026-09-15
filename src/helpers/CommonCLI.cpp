@@ -25,6 +25,7 @@
 #if defined(ENABLE_OTA)
   #include "ota/OtaCli.h"
   #include "ota/OtaContext.h"   // persist/sync OTA policy + signer allowlist with NodePrefs
+  #include "ota/OtaSpeedConfig.h"
 #endif
 
 #ifndef BRIDGE_MAX_BAUD
@@ -734,6 +735,9 @@ static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   _radio_profiles.begin(fs, _callbacks->getProfileRadio(), _rtc, true);
+#if defined(ENABLE_OTA)
+  mesh::ota::beginSpeedConfig(fs);
+#endif
   const bool display_settings_loaded = mesh::ui::loadDisplayPowerSettings(fs, false);
   (void)display_settings_loaded;
   bool is_fresh_install = false;
@@ -2467,6 +2471,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     if (mesh::wireless::control().handle(command, reply, 160, millis(),
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
     if (_radio_profiles.handle(command, reply)) return;
+#if defined(ENABLE_OTA)
+    if (mesh::ota::handleSpeedCommand(command, reply, 160)) return;
+#endif
     if (strncmp(command, "set tempradio ", 14) == 0) {
       handleCommand(sender_timestamp, command + 4, reply);
       return;

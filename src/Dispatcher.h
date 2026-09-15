@@ -228,6 +228,12 @@ public:
   // lifecycle hook before returning each packet to the pool.
   virtual Packet* getNextDroppedOutbound() { return NULL; }
   virtual bool deferOutbound(Packet*, uint32_t) { return false; }
+  // Deliberate local pacing is not congestion. Managers with stale-packet
+  // expiry can pause that age for this interval, preserving any prior backlog.
+  virtual bool deferOutboundForPacing(Packet* packet, uint32_t now, uint32_t scheduled_for) {
+    (void)now;
+    return deferOutbound(packet, scheduled_for);
+  }
   virtual int getOutboundCount(uint32_t now) const = 0;
   virtual int getOutboundTotal() const = 0;
   // Returns the earliest runnable time in the queue. A queue with any overdue
@@ -281,6 +287,8 @@ class Dispatcher {
 #endif
   uint8_t outbound_restore_cr;
   unsigned long next_tx_time;
+  uint32_t ota_tx_finished_at = 0;
+  uint32_t ota_tx_airtime = 0;
   unsigned long cad_busy_start;
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time, next_agc_reset_time;
@@ -389,6 +397,7 @@ protected:
   virtual const char* getLogDateTime() { return ""; }
 
   virtual float getAirtimeBudgetFactor() const;
+  virtual float getOtaSpeedFactor() const { return 1.0f; }
   virtual int calcRxDelay(float score, uint32_t air_time) const;
   virtual bool shouldBypassRxDelay(const Packet* packet) {
     (void)packet;

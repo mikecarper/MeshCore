@@ -21,6 +21,9 @@
 #if defined(ENABLE_OTA) && defined(OTA_HEAP_CONTEXT)
 #include <helpers/ota/OtaContext.h>
 #endif
+#if defined(ENABLE_OTA)
+#include <helpers/ota/OtaSpeedConfig.h>
+#endif
 #include "helpers/radiolib/RXPowerSaving.h"
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 #include "helpers/radiolib/CadTiming.h"
@@ -1699,6 +1702,9 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   initializeOfflineQueue();
   BaseChatMesh::begin();
   _radio_profiles.begin(_store->getPrimaryFS(), _radio, getRTCClock());
+#if defined(ENABLE_OTA)
+  mesh::ota::beginSpeedConfig(_store->getPrimaryFS());
+#endif
 
   const bool identity_loaded = _store->loadMainIdentity(self_id);
   const bool is_new_install = !identity_loaded
@@ -2399,6 +2405,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   while (*command == ' ') command++;
 
   if (handleTxRoutingCommand(command, reply, reply_size)) return true;
+#if COMPANION_FEATURE_OTA_CLI
+  if (mesh::ota::handleSpeedCommand(command, reply, reply_size)) return true;
+#endif
   if (handleCompanionBluetoothCommand(command, reply, reply_size)) return true;
   if (handleCompanionWirelessCommand(command, reply, reply_size)) return true;
 

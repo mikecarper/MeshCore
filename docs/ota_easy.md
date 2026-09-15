@@ -457,6 +457,13 @@ Monitor the transfer:
 ota status
 ```
 
+To adjust LoRa OTA pacing, use `get ota.speed` and `set ota.speed <0.05..3>` on
+the source, destination, and OTA relays. `1` preserves the existing timing;
+lower values slow OTA down, and higher values shorten adjustable delays.
+This saved setting covers both profiles and OTA adverts as well as the transfer.
+It does not change radio modulation or the configured airtime budget. See
+[LoRa OTA speed](ota_user_guide.md#adjust-lora-ota-speed) for details.
+
 For a powered bench update where restart-resume is not needed, `ota config checkpoint 0` on the destination
 removes periodic progress writes. It is a smaller optimization than selecting the correct hop count and it
 trades away persisted mid-download resume; restore the previous checkpoint cadence afterward.

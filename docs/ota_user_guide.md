@@ -380,6 +380,52 @@ complete target inventory, storage layouts, and safety contract.
 
 ---
 
+## Adjust LoRa OTA speed
+
+Use one saved speed factor for this node's LoRa OTA traffic:
+
+```text
+get ota.speed
+set ota.speed 0.5
+set ota.speed .05
+set ota.speed 3
+set ota.speed 1
+```
+
+The range is **0.05 through 3**, including decimals. **1 is the existing timing**.
+At `0.5`, adjustable OTA delays are twice as long; at `0.05`, they are twenty
+times as long. At `3`, adjustable delays are divided by three. Actual transfer
+speed also depends on packet airtime, the configured airtime budget, relays,
+and packet loss; `3` does not guarantee three times the throughput.
+
+The factor covers OTA requests and responses (catalog, manifest, leaves, DATA,
+and proofs), OTA relay delays, discovery jitter, and automatic OTA adverts.
+Below `1`, the transmit queue also spaces out **every OTA packet**, including
+both profile copies, while letting ordinary messages run. Recovery waits grow
+for slower transfers; faster settings retain the existing retry allowance so
+they do not retry before a physical response train can finish. The radio's
+frequency, bandwidth, SF, coding rate, preamble, and airtime budget stay as set.
+The proof turnaround allowance also keeps its existing physical minimum.
+Dual-profile timing accounts for the participating profiles and reply copies;
+it does not vary with the scanner's current visit. Deliberate slow pacing is
+excluded from observer builds' stale-packet age, while congestion still ages
+queued packets normally.
+
+Set the same factor on the **source, destination, and OTA relays**. It is a
+local setting, not a value negotiated with peers. A slow source paired with a
+receiver at `1` can cause unnecessary retries. The setting takes effect during
+an active session, survives reboot and temporary-radio expiry, and applies to
+OTA on either radio profile. `set ota.speed 1` restores the previous pace.
+Ordinary chat, node adverts, and USB/WiFi source transfers keep their timing.
+Local verification of a staged image and leaf comparisons keep their normal
+maintenance rate even when LoRa pacing is slow.
+
+`ota config speed 0.5` is an equivalent setter. `ota config speed` and
+`ota speed` read the current factor; the `ota config` summary also includes it.
+The setting is available on OTA-enabled repeaters, rooms, sensors, Companions,
+and seeder-only builds. Its separate `/ota_speed` settings file preserves the
+existing preference layouts and does not need an active OTA workspace.
+
 ## Optional: let it update automatically
 
 By default your node only *discovers* updates - it won't download or install on its own. If you want more

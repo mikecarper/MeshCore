@@ -170,6 +170,13 @@ does not reflect the GoogleTest count -- run the built binary directly
   suite may need shims **before** the include -- e.g. `test_mqtt_presets` does
   `#define WITH_MQTT_BRIDGE 1` (the preset table is behind that flag) and
   `#define PROGMEM` (the embedded CA-cert strings are PROGMEM-qualified).
+- OTA speed: `python3 -B test/test_ota_speed.py -v` exercises the shared CLI,
+  saved settings, failed writes, and failed backup recovery. Native `test_ota`
+  covers complete transfers with loss, live changes, physical proof allowances,
+  local verification, discovery, and deadlines landing exactly on clock rollover.
+  `test_trace_retry` checks both profile copies, stable dual-profile airtime, and
+  ordinary traffic during OTA pacing; `test_packet_manager` checks that intentional
+  pacing survives stale expiry without erasing prior congestion age.
 - To add a suite: create `test/test_<name>/test_<name>.cpp` with a `main()`, and
   add any host-only source it links to the `native` env's `build_src_filter` in
   `platformio.ini` (header-only code needs no source entry). No other wiring.

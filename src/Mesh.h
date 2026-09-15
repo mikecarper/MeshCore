@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Dispatcher.h>
+#include <helpers/ota/OtaTiming.h>
 #include <helpers/FloodAdvertLimiter.h>
 
 // OTA-over-LoRa transport is understood by every Mesh role even when the OTA manager/installer is not
@@ -33,6 +34,8 @@
 #endif
 
 namespace mesh {
+
+namespace ota { class OtaManager; }
 
 #ifndef MAX_DIRECT_RETRY_SLOTS
   #define MAX_DIRECT_RETRY_SLOTS  6
@@ -529,13 +532,17 @@ protected:
   // OTA mesh-integration is centralized in Mesh::begin()/loop()/dispatch, so every role (repeater,
   // companion, room, sensor, ...) gets fetch/serve/apply without per-example wiring.
   static bool otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool flood);
+  void syncOtaTiming(ota::OtaManager& manager);
   unsigned long _next_ota_tick = 0;
-  unsigned long _next_ota_announce = 0;   // advertisements are scheduled only while temp radio is active
+  ota::LongTimer _ota_announce_timer;     // supports long scaled intervals across millis rollovers
+  float _ota_timer_speed = ota::OTA_SPEED_DEFAULT;
   uint8_t       _ota_announce_count = 0;  // adverts sent so far (boot burst before settling to daily)
   bool          _ota_resumed = false;     // one-shot: resumed an interrupted fetch staged in flash on boot
   bool          _ota_autoinstall_tried = false;  // attempted auto-install for the current COMPLETE fetch
   bool          _ota_temp_was_active = false;    // detects entry into a temporary-radio window
 #endif
+  float getOtaSpeedFactor() const override;
+  uint32_t getOtaPacketAirtime() const;
 
   /**
    * \brief  Perform search of local DB of matching GroupChannels.
