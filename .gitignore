@@ -36,6 +36,26 @@ src/helpers/esp32/WebConfigHtml.h
 src/idf_component.yml
 ssl_certs/cacert.pem
 platformio.local.ini
+# Local machine login details and private hardware-test configuration.
+.target
+.target.*
+*.target
+!.target.example
+!.target.template
+/tools/hil/S3SoakWiFiKey.h
+/tools/hil/*.local.json
+# Disposable hardware-test transport exports and process state. Keep reviewed
+# result captures, manifests, validation summaries and cleanup evidence visible.
+/tools/hil/profile_*_export.json
+/tools/hil/profile_*_run-control.json
+/tools/hil/profile_*_run-exit.json
+/tools/hil/**/run-control.json
+/tools/hil/**/run-exit.json
+/tools/hil/**/*.log
+/tools/hil/**/*.jsonl
+/tools/hil/**/*.pid
+/tools/hil/**/*.sock
+/tools/hil/**/*.tmp
 .cursor/*
 .claude/*
 .cursorrules

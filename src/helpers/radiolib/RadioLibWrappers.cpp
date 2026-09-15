@@ -1200,6 +1200,9 @@ PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t 
 
   // preamble + syncword + sfd + header
   uint64_t preamble_us = (((uint64_t)(preambleSymbols + 8) * 4 + sfCoeff1_x4) * tsym_us) / 4;
+  // Allow four extra preamble symbols before giving up on header detection.
+  // This is an RX guard only; keep it out of the payload airtime subtraction.
+  const uint64_t preamble_guard_us = preamble_us + 4ULL * tsym_us;
 
   // airtime for max packet at current radio settings
   uint32_t total_us   = _radio->getTimeOnAir(MAX_TRANS_UNIT);
@@ -1212,5 +1215,6 @@ PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t 
   // rescale payload_us for max possible CR
   if (cr >= 5 && cr < 8) { payload_us = (payload_us * 8) / cr; }
 
-  return PacketMillis {(preamble_us + 999) / 1000, (payload_us + 999) / 1000};
+  return PacketMillis {static_cast<uint32_t>((preamble_guard_us + 999) / 1000),
+                       (payload_us + 999) / 1000};
 }

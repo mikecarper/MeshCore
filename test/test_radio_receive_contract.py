@@ -280,6 +280,157 @@ int main() {
 '''
 
 class RadioReceiveContractTest(unittest.TestCase):
+    def test_preamble_margin_and_receive_deadlines(self):
+        radio_source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
+        timing = method(radio_source, 'PacketMillis RadioLibWrapper::calcMaxPacketMillis(')
+        sx1262 = method((ROOT / 'src/helpers/radiolib/CustomSX1262.h').read_text(),
+                        'bool isReceiving()')
+        lr1110 = method((ROOT / 'src/helpers/radiolib/CustomLR1110.h').read_text(),
+                        'bool isReceiving()')
+        source = r'''
+#include <cassert>
+#include <cstdint>
+#include <initializer_list>
+#define MAX_TRANS_UNIT 255
+#define MESH_DEBUG_PRINTLN(...) ((void)0)
+#define RADIOLIB_SX126X_IRQ_PREAMBLE_DETECTED 4U
+#define RADIOLIB_SX126X_IRQ_SYNC_WORD_VALID 8U
+#define RADIOLIB_SX126X_IRQ_HEADER_VALID 16U
+#define RADIOLIB_SX126X_IRQ_HEADER_ERR 32U
+#define RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED 16U
+#define RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID 32U
+#define RADIOLIB_LR11X0_IRQ_HEADER_ERR 64U
+static uint32_t now_ms;
+uint32_t millis() { return now_ms; }
+struct PacketMillis { uint32_t preambleMillis, payloadMillis; };
+struct Chip { uint32_t getTimeOnAir(int) { return 1000000; } };
+struct RadioLibWrapper {
+  Chip chip;
+  Chip* _radio = &chip;
+  PacketMillis calcMaxPacketMillis(uint8_t, float, uint8_t, uint16_t);
+};
+@TIMING@
+struct ReceiverState {
+  uint32_t _preambleMillis, _maxPayloadMillis;
+  uint32_t _activityAt = 0, irq = 0;
+  bool _headerSeen = false;
+  explicit ReceiverState(PacketMillis p)
+      : _preambleMillis(p.preambleMillis), _maxPayloadMillis(p.payloadMillis) {}
+  bool isChipBusy() { return false; }
+  uint32_t getIrqFlags() { return irq; }
+  uint32_t getIrqStatus() { return irq; }
+  void clearIrqFlags(uint32_t flags) { irq &= ~flags; }
+  void clearIrqState(uint32_t flags) { irq &= ~flags; }
+};
+struct SX1262Receiver : ReceiverState {
+  using ReceiverState::ReceiverState;
+  @SX1262@
+};
+struct LR1110Receiver : ReceiverState {
+  using ReceiverState::ReceiverState;
+  @LR1110@
+};
+
+template <typename Receiver>
+void checkReceive(PacketMillis limits, uint32_t preamble, uint32_t header,
+                  uint32_t error, bool preserve_header_error) {
+  // A latched preamble with no header expires despite repeated polling.
+  // Check both normal uptime and a millis() rollover during the hold.
+  for (uint32_t start : {100U, 0xFFFFFFF0U}) {
+    Receiver rx(limits);
+    now_ms = start;
+    assert(!rx.isReceiving());
+    rx.irq = preamble;
+    assert(rx.isReceiving());
+    for (uint32_t elapsed : {1U, limits.preambleMillis - 1, limits.preambleMillis}) {
+      now_ms = start + elapsed;
+      assert(rx.isReceiving());
+    }
+    now_ms = start + limits.preambleMillis + 1;
+    assert(!rx.isReceiving() && !(rx.irq & preamble));
+
+    // A subsequent packet gets a fresh hold, not the abandoned packet's timer.
+    ++now_ms;
+    rx.irq = preamble;
+    assert(rx.isReceiving());
+    now_ms += limits.preambleMillis;
+    rx.irq |= header;
+    assert(rx.isReceiving());
+    now_ms += limits.payloadMillis;
+    assert(rx.isReceiving());
+    ++now_ms;
+    assert(!rx.isReceiving() && !(rx.irq & (preamble | header)));
+  }
+  {
+    // A completed packet releases the scan immediately when its IRQs are consumed.
+    Receiver rx(limits);
+    now_ms = 100;
+    rx.irq = preamble;
+    assert(rx.isReceiving());
+    ++now_ms;
+    rx.irq |= header;
+    assert(rx.isReceiving());
+    ++now_ms;
+    rx.irq = 0;
+    assert(!rx.isReceiving());
+    rx.irq = preamble;
+    assert(rx.isReceiving());
+  }
+  {
+    // Header failure releases the hold; LR1110's recovery path owns its error IRQ.
+    Receiver rx(limits);
+    now_ms = 100;
+    rx.irq = preamble;
+    assert(rx.isReceiving());
+    ++now_ms;
+    rx.irq |= error;
+    assert(!rx.isReceiving());
+    assert(bool(rx.irq & error) == preserve_header_error);
+  }
+}
+int main() {
+  RadioLibWrapper radio;
+  struct Case {
+    uint8_t sf;
+    float bw;
+    uint8_t cr;
+    uint16_t preamble;
+    uint32_t hold_ms, payload_ms;
+  };
+  // Independent timing examples: configured preamble + four symbols + the
+  // existing sync/header allowance. Payload limits retain their old values.
+  const Case cases[] = {
+    {7, 62.5f, 5, 32, 99, 1456},
+    {7, 125,   5, 32, 50, 1528},
+    {7, 500,   5, 64, 21, 1569},
+    {8, 500,   5, 88, 54, 1518},
+    {9, 500,   5, 32, 50, 1528},
+    {5, 500,   5, 128, 10, 1586},
+    {6, 125,   8, 16, 18, 985},
+    {7, 62.5f, 8, 120, 280, 730},
+    {7, 125,   8, 65535, 67125, 4000},
+  };
+  for (const Case& c : cases) {
+    const auto limits = radio.calcMaxPacketMillis(c.sf, c.bw, c.cr, c.preamble);
+    assert(limits.preambleMillis == c.hold_ms);
+    assert(limits.payloadMillis == c.payload_ms);
+    checkReceive<SX1262Receiver>(limits, RADIOLIB_SX126X_IRQ_PREAMBLE_DETECTED,
+        RADIOLIB_SX126X_IRQ_HEADER_VALID, RADIOLIB_SX126X_IRQ_HEADER_ERR, false);
+    checkReceive<LR1110Receiver>(limits, RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED,
+        RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID, RADIOLIB_LR11X0_IRQ_HEADER_ERR, true);
+  }
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='meshcore-preamble-hold-') as tmp:
+            cpp, binary = Path(tmp) / 'test.cpp', Path(tmp) / 'test'
+            cpp.write_text(source.replace('@TIMING@', timing)
+                           .replace('@SX1262@', sx1262).replace('@LR1110@', lr1110))
+            result = subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1',
+                '-Wall', '-Wextra', str(cpp), '-o', str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_real_rxps_setter_preserves_intent_and_rejects_bad_values(self):
         common = (ROOT / 'src/helpers/CommonCLI.cpp').read_text()
         setter = method(common, 'if (memcmp(config, "radio.rxps ", 11) == 0)')

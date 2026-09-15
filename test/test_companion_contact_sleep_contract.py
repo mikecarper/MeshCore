@@ -2,7 +2,10 @@
 """Integration guards for Companion contact writes across event-only sleep."""
 
 from pathlib import Path
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 
 
@@ -179,9 +182,57 @@ class CompanionContactSleepContractTest(unittest.TestCase):
         self.assertIn("bool hasPendingOtaApply() const;", mesh_base_header)
 
         pending = function_body(mesh_base, "bool Mesh::hasPendingOtaApply() const")
-        self.assertIn("defined(ENABLE_OTA)", pending)
-        self.assertIn("!defined(OTA_SEEDER_ONLY)", pending)
-        self.assertIn("ota::ota_ctx().apply_pending", pending)
+        source = r'''
+#include <cassert>
+#if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
+namespace ota {
+struct OtaContext { bool apply_pending = false; };
+static OtaContext dormant;
+static OtaContext* active = nullptr;
+const OtaContext* ota_context_if_active() { return active; }
+// Catch an idle-work query accidentally acquiring the released OTA context.
+OtaContext& ota_ctx() {
+  if (!active) active = &dormant;
+  return *active;
+}
+}
+#endif
+struct Mesh {
+  bool hasPendingOtaApply() const { @PENDING@ }
+};
+int main() {
+  const Mesh mesh;
+  assert(!mesh.hasPendingOtaApply());
+#if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
+  assert(ota::active == nullptr);
+  ota::OtaContext context;
+  ota::active = &context;
+  assert(!mesh.hasPendingOtaApply());
+  context.apply_pending = true;
+  assert(mesh.hasPendingOtaApply());
+  context.apply_pending = false;
+  assert(!mesh.hasPendingOtaApply());
+  ota::active = nullptr;
+  assert(!mesh.hasPendingOtaApply());
+  assert(ota::active == nullptr);
+#endif
+}
+'''
+        with tempfile.TemporaryDirectory(prefix="meshcore-ota-sleep-") as tmp:
+            cpp = Path(tmp) / "test.cpp"
+            cpp.write_text(source.replace("@PENDING@", pending))
+            for index, defines in enumerate(([], ["ENABLE_OTA"],
+                                            ["ENABLE_OTA", "OTA_SEEDER_ONLY"])):
+                with self.subTest(defines=defines):
+                    binary = Path(tmp) / f"test-{index}"
+                    built = subprocess.run(
+                        [os.environ.get("CXX", "c++"), "-std=c++17", "-Wall", "-Wextra",
+                         *(f"-D{define}" for define in defines), str(cpp), "-o", str(binary)],
+                        capture_output=True, text=True,
+                    )
+                    self.assertEqual(built.returncode, 0, built.stderr)
+                    ran = subprocess.run([str(binary)], capture_output=True, text=True)
+                    self.assertEqual(ran.returncode, 0, ran.stderr)
 
         role_sources = (
             ROOT / "examples/companion_radio/MyMesh.cpp",

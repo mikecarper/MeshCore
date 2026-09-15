@@ -93,6 +93,13 @@ jobs:
           python3 -B test/test_repeater_radio_timing_integration.py
           python3 -B test/test_temp_radio_reply_delivery_contract.py
 
+      - name: Verify dual-profile switching and chirp timing
+        working-directory: test
+        run: >-
+          python3 -B -m unittest -v
+          test_sx1262_profile_switch test_sx1262_batched_modulation
+          test_radio_chirp_math
+
       - name: Verify ESP32 static DRAM budget
         run: |
           python3 -B test/test_esp32_dram.py
@@ -109,6 +116,9 @@ jobs:
           python3 -B test/test_nrf52_usb_client.py
           python3 -B test/test_esp32_usb_serial_hygiene.py
           python3 -B test/test_stm32_float_conversion.py
+
+      - name: Verify Companion contact persistence and OTA sleep guards
+        run: python3 -B test/test_companion_contact_sleep_contract.py -v
 
       - name: Verify message reader buttons, touch targets, and footer layouts
         working-directory: test
