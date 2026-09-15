@@ -356,8 +356,13 @@ struct TransientLeafReadStore : OtaStoreRam<32768> {
   bool fail_after_commit = false;
   mutable bool fail_next_leaf = false;
   uint32_t failed_leaf = 0;
+  uint32_t fail_write_at = UINT32_MAX;
   bool canReconnect() const override { return reconnectable; }
   bool write(uint32_t off, const uint8_t* data, uint32_t len) override {
+    if (off == fail_write_at) {
+      fail_write_at = UINT32_MAX;
+      return false;
+    }
     const bool ok = OtaStoreRam<32768>::write(off, data, len);
     if (ok && fail_after_commit && off == 8 + MOTA_MFL && len == 4) {
       fail_after_commit = false;
@@ -521,6 +526,43 @@ static void stale_flash_header_does_not_mask_selected_checkpoint(int selection) 
   }
 }
 
+static void storage_write_failure_is_retryable(bool leaf_write, bool reconnectable) {
+  auto bytes = large_container(true);
+  MotaManifest manifest;
+  assert(mota_parse(bytes.data(), bytes.size(), manifest));
+  TransientLeafReadStore store;
+  store.reconnectable = reconnectable;
+  assert(store.begin(bytes.size()));
+  assert(store.write(0, bytes.data(), bytes.size()));
+  std::vector<uint8_t> missing((manifest.block_count - 1) * 4, 0xFF);
+  assert(store.write(8 + MOTA_MFL + 4, missing.data(), missing.size()));
+  RequestedFlight flight;
+  OtaManager receiver;
+  receiver.begin(manifest.target_id, RequestedFlight::send, &flight);
+  receiver.set_fetch_store(&store);
+  receiver.set_wire_v2_enabled(false);
+  assert(receiver.resumeStagedExplicit(manifest.merkle_root, manifest.target_id));
+  while (receiver.fetchState() == OtaManager::VERIFYING_STAGED) receiver.loop();
+  assert(receiver.blocksHave() == 1);
+  store.fail_write_at = leaf_write ? 8 + MOTA_MFL + 4
+      : uint32_t(manifest.payload - bytes.data()) + 1024;
+  deliver_block(receiver, manifest, 1);
+  assert(store.fail_write_at == UINT32_MAX);
+  assert(receiver.fetchState() == (reconnectable ? OtaManager::PAUSED : OtaManager::FAILED));
+  assert(receiver.fetchError() == OtaManager::FETCH_ERROR_STORAGE);
+  assert(receiver.blocksHave() == 1);
+  if (reconnectable) assert(receiver.resumeFetchAfterReconnect());
+  else assert(receiver.resumeStagedExplicit(manifest.merkle_root, manifest.target_id));
+  while (receiver.fetchState() == OtaManager::VERIFYING_STAGED) receiver.loop();
+  for (uint32_t guard = 0; guard < manifest.block_count && receiver.fetchState() == OtaManager::FETCHING; ++guard) {
+    const auto requested = flight.blocks;
+    assert(!requested.empty());
+    for (uint32_t block : requested) deliver_block(receiver, manifest, block);
+  }
+  assert(receiver.fetchState() == OtaManager::COMPLETE);
+  assert(memcmp(store.data(), bytes.data(), bytes.size()) == 0);
+}
+
 int main(int argc, char** argv) {
   const int scenario = argc > 1 ? atoi(argv[1]) : 0;
   if (scenario < 5) resume_checks_file_envelope(scenario);
@@ -535,5 +577,6 @@ int main(int argc, char** argv) {
   else if (scenario < 28) continued_writes_after_finalize_are_persisted(scenario == 27);
   else if (scenario < 38) transient_leaf_read_is_storage_failure((scenario - 28) % 5, scenario >= 33);
   else if (scenario < 46) stale_flash_header_does_not_mask_selected_checkpoint(scenario - 38);
+  else if (scenario < 50) storage_write_failure_is_retryable((scenario & 1) != 0, scenario >= 48);
   else assert(false);
 }

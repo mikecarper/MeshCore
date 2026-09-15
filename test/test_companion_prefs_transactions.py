@@ -66,10 +66,11 @@ struct Sensors {
 } sensors;
 struct Driver {
   bool supported=true,rxps=false;
+  bool gain_supported=true,boosted_gain=false;
   uint32_t rx=3000,sleep=4000;
-  unsigned calls=0;
-  std::deque<bool> results;
-  bool supportsRxBoostedGainMode() const { return true; }
+  unsigned calls=0,gain_calls=0;
+  std::deque<bool> results,gain_results;
+  bool supportsRxBoostedGainMode() const { return gain_supported; }
   bool supportsRxPowerSaving() const { return supported; }
   bool setRxPowerSaving(bool enable,uint32_t r,uint32_t s) {
     ++calls;bool ok=true;
@@ -77,7 +78,12 @@ struct Driver {
     if(ok){rxps=enable;rx=r;sleep=s;}
     return ok;
   }
-  void setRxBoostedGainMode(uint8_t) {}
+  bool setRxBoostedGainMode(bool enabled) {
+    ++gain_calls;bool ok=true;
+    if(!gain_results.empty()){ok=gain_results.front();gain_results.pop_front();}
+    if(ok)boosted_gain=enabled;
+    return ok;
+  }
   bool setTxPower(int8_t) { return true; }
 } radio_driver;
 @PARSERS@
@@ -100,7 +106,7 @@ struct MyMesh {
   bool saveAdvertLocation(double,double);
   bool applyAndSaveRxPowerSaving(const char*,char*);
   bool applyAndSavePowerSaving(const char*,char*);
-  bool applyAndSaveRxBoostedGain(bool) { return true; }
+  bool applyAndSaveRxBoostedGain(bool);
   bool savePrefs() {
     ++saves;if(!storage_accepts)return false;
     memcpy(&durable,&_prefs,sizeof(Prefs));durable_lat=sensors.node_lat;durable_lon=sensors.node_lon;return true;
@@ -191,7 +197,7 @@ int main() {
     }
   }
   const char* web[][2]={{"name","new"},{"lat","30"},{"lon","40"},{"radio","920,250,9,6"},
-      {"af","3"},{"rxdelay","4"},{"repeat","on"}};
+      {"af","3"},{"rxdelay","4"},{"repeat","on"},{"radio.rxgain","on"}};
   for(const auto& command:web)for(bool save_ok:{false,true}) {
     MyMesh m;char reply[160]={};m.storage_accepts=save_ok;
     m.web(command[0],command[1],reply);++checks;
@@ -246,6 +252,59 @@ int main() {
     assert(!m.applyAndSaveRxPowerSaving("10000 20000",reply));++checks;
     assert(m.saves==0);m.expectOriginal();
   }
+  // Boosted gain uses the actual setter and the shared saved-radio recovery.
+  // Cover both directions, rejected saves, busy restoration, and unsupported radios.
+  for(bool initial:{false,true})for(bool save_ok:{false,true}) {
+    MyMesh m;m.storage_accepts=save_ok;
+    m._prefs.rx_boosted_gain=m.durable.rx_boosted_gain=initial;
+    radio_driver.boosted_gain=initial;
+    assert(m.applyAndSaveRxBoostedGain(!initial)==save_ok);++checks;
+    const bool expected=save_ok?!initial:initial;
+    assert(m._prefs.rx_boosted_gain==expected && m.durable.rx_boosted_gain==expected);
+    assert(radio_driver.boosted_gain==expected && !m.saved_radio_apply_pending);
+    assert(m.saves==1 && radio_driver.gain_calls==(save_ok?1U:2U));
+    m.storage_accepts=true;assert(m.saveAdvertName("later"));
+    assert(m.durable.rx_boosted_gain==expected);
+  }
+  for(bool initial:{false,true}) {
+    MyMesh m;m.storage_accepts=false;
+    m._prefs.rx_boosted_gain=m.durable.rx_boosted_gain=initial;
+    radio_driver.boosted_gain=initial;
+    radio_driver.gain_results={true,false,false,true};
+    m.radio_apply_retry_at=500;m.radio_apply_failures=3;
+    assert(!m.applyAndSaveRxBoostedGain(!initial));++checks;
+    m.expectOriginal();
+    assert(m.saved_radio_apply_pending && radio_driver.boosted_gain!=initial);
+    assert(m.radio_apply_retry_at==0 && m.radio_apply_failures==0);
+    m.recover();
+    assert(m.saved_radio_apply_pending && radio_driver.boosted_gain!=initial);
+    assert(m.radio_apply_retry_at!=0 && m.radio_apply_failures!=0);
+    m.recover();
+    assert(!m.saved_radio_apply_pending && radio_driver.boosted_gain==initial);
+    assert(m.radio_apply_retry_at==0 && m.radio_apply_failures==0);
+    assert(m.saves==1 && radio_driver.gain_calls==4);
+    m.storage_accepts=true;assert(m.saveAdvertName("later"));
+    assert(m.durable.rx_boosted_gain==initial);
+  }
+  {
+    MyMesh m;radio_driver.gain_results={false};
+    assert(!m.applyAndSaveRxBoostedGain(true));++checks;
+    assert(m.saves==0 && !radio_driver.boosted_gain && !m.saved_radio_apply_pending);
+    m.expectOriginal();
+  }
+  {
+    MyMesh m;radio_driver.gain_supported=false;radio_driver.gain_results={false};
+    assert(!m.applyAndSaveRxBoostedGain(true));++checks;
+    assert(m.saves==0 && radio_driver.gain_calls==0);m.expectOriginal();
+    m.saved_radio_apply_pending=true;m.recover();
+    assert(!m.saved_radio_apply_pending && radio_driver.gain_calls==0);
+  }
+  for(bool save_ok:{false,true}) {
+    MyMesh m;m._radio_available=false;m.storage_accepts=save_ok;
+    assert(m.applyAndSaveRxBoostedGain(true)==save_ok);++checks;
+    assert(m.saves==1 && radio_driver.gain_calls==0 && !m.saved_radio_apply_pending);
+    assert(m._prefs.rx_boosted_gain==save_ok && m.durable.rx_boosted_gain==save_ok);
+  }
   for(bool initial:{false,true})for(bool save_ok:{false,true}) {
     MyMesh m;char reply[160]={};m.storage_accepts=save_ok;
     m._prefs.powersaving_enabled=m.durable.powersaving_enabled=initial;
@@ -296,6 +355,7 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@METHODS@': '\n'.join(extract_braced(text,sig) for sig in (
                 'bool MyMesh::saveAdvertName(', 'bool MyMesh::saveAdvertLocation(',
                 'bool MyMesh::applyAndSaveRxPowerSaving(',
+                'bool MyMesh::applyAndSaveRxBoostedGain(',
                 'bool MyMesh::applyAndSavePowerSaving(',
             )),
             '@FRAMES@': ' else '.join(extract_braced(text, f'if (cmd_frame[0] == {cmd})') for cmd in frames),

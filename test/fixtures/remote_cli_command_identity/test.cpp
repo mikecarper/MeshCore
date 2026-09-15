@@ -54,6 +54,8 @@ struct Region { bool isWildcard() const { return true; } };
 struct ClientInfo {
   struct { uint8_t pub_key[PUB_KEY_SIZE] = {}; } id;
   uint32_t last_timestamp = 0, last_activity = 0;
+  uint8_t out_path_len = 1, alt_path_len = 0xff;
+  uint8_t out_path[MAX_PATH_SIZE] = {}, alt_path[MAX_PATH_SIZE] = {};
   bool admin = true;
   bool region_mgr = false;
   bool isAdmin() const { return admin; }
@@ -130,6 +132,7 @@ public:
   std::vector<std::string> replies;
   std::vector<std::array<uint8_t, PUB_KEY_SIZE>> recipients;
   std::vector<std::array<uint8_t, PUB_KEY_SIZE>> secrets;
+  std::vector<ClientInfo> reply_destinations;
 
   MyMesh() { now_millis = 100;mesh::console.records.clear();
              acl.clients[0].id.pub_key[0] = 0x12; acl.clients[1].id.pub_key[0] = 0x77;
@@ -152,6 +155,7 @@ public:
     memcpy(key.data(), client->id.pub_key, key.size());
     memcpy(shared.data(), secret, shared.size());
     recipients.push_back(key);secrets.push_back(shared);
+    reply_destinations.push_back(*client);
     replies.emplace_back(reply); return true;
   }
   void scheduleNormalRadio() {}
@@ -165,9 +169,21 @@ public:
   void clearDeferredCliCommand();
   bool completeHostCliRequest(const char*);
   bool handleHostCliSerialReply(const char*, char*);
-  void handleCommand(uint32_t, ClientInfo*, char* command, char* reply, int, uint8_t) {
+  void handleCommand(uint32_t, ClientInfo* sender, char* command, char* reply, int, uint8_t) {
     ++executions;
     #include "normalization.inc"
+    if (!fail_command) {
+      // Accepted route changes mirror handleClientPathCommand's live ACL edits.
+      if (strcmp(command, "set outpath flood") == 0) sender->out_path_len = 0xfe;
+      else if (strcmp(command, "set outpath direct") == 0) sender->out_path_len = 0;
+      else if (strcmp(command, "set outpath ab") == 0) {
+        sender->out_path_len = 1;
+        sender->out_path[0] = 0xab;
+      } else if (strcmp(command, "set altpath cd") == 0) {
+        sender->alt_path_len = 1;
+        sender->alt_path[0] = 0xcd;
+      }
+    }
     if (delete_during_command >= 0) acl.remove(delete_during_command);
     if (!fail_command) {
       if (accepted_mutation == Mutation::Primary) ++primary_radio_mutation_generation;
@@ -283,16 +299,50 @@ int main() {
   for (const int deleted : {0, 1}) {
     MyMesh value;
     value.delete_during_command = deleted;
+    value.acl.clients[1].out_path[0] = 0x31;
+    value.acl.clients[1].alt_path_len = 1;
+    value.acl.clients[1].alt_path[0] = 0x32;
+    // A reused slot with the same prefix must not supply the final reply route.
+    value.acl.clients[2].id.pub_key[0] = 0x77;
+    value.acl.clients[2].id.pub_key[PUB_KEY_SIZE - 1] = 1;
+    value.acl.clients[2].out_path[0] = 0x99;
     const char* command = "setperm 12 0";
     value.receive(command, 101, 99, 1);
     assert(value.executions == 1 && value.replies.size() == 1);
     assert(value.recipients[0][0] == 0x77 && value.secrets[0][0] == 0x77);
+    assert(value.recipients[0][PUB_KEY_SIZE - 1] == 0);
+    assert(value.reply_destinations[0].out_path[0] == 0x31);
+    assert(value.reply_destinations[0].alt_path_len == 1);
+    assert(value.reply_destinations[0].alt_path[0] == 0x32);
     const auto fp = mesh::RemoteCliReplyCache::fingerprint(command, strlen(command));
     assert(value.remote_cli_reply_cache.matches(value.recipients[0].data(), 99, fp));
     assert(!value.remote_cli_reply_cache.matches(value.acl.clients[1].id.pub_key, 99, fp));
     if (deleted == 0) {
       value.receive(command, 102, 99, 0);
       assert(value.executions == 1 && value.recipients.back()[0] == 0x77);
+    }
+  }
+  // Successful path updates affect the first acknowledgement as well as any
+  // cached retry, including when the original sender moves to another slot.
+  for (const char* command : {"set outpath flood", "set outpath direct",
+                              "set outpath ab", "set altpath cd"}) {
+    for (const int deleted : {-1, 0}) {
+      MyMesh value;
+      value.delete_during_command = deleted;
+      value.acl.clients[1].out_path[0] = 0x31;
+      value.receive(command, 101, 99, 1);
+      const int index = deleted == 0 ? 0 : 1;
+      assert(value.executions == 1 && value.reply_destinations.size() == 1);
+      value.receive(command, 102, 99, index);
+      assert(value.executions == 1 && value.reply_destinations.size() == 2);
+      const ClientInfo& live = value.acl.clients[index];
+      for (const ClientInfo& sent : value.reply_destinations) {
+        assert(memcmp(sent.id.pub_key, live.id.pub_key, PUB_KEY_SIZE) == 0);
+        assert(sent.out_path_len == live.out_path_len);
+        assert(memcmp(sent.out_path, live.out_path, MAX_PATH_SIZE) == 0);
+        assert(sent.alt_path_len == live.alt_path_len);
+        assert(memcmp(sent.alt_path, live.alt_path, MAX_PATH_SIZE) == 0);
+      }
     }
   }
   for (const bool host_completion : {false, true}) {

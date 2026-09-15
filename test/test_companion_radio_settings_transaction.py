@@ -60,7 +60,8 @@ struct Driver {
     if (ok) power=requested;
     return ok;
   }
-  void setRxBoostedGainMode(bool) {}
+  bool supportsRxBoostedGainMode() const { return false; }
+  bool setRxBoostedGainMode(bool) { return true; }
   bool supportsRxPowerSaving() const { return false; }
   bool setRxPowerSaving(bool,uint32_t,uint32_t) { return true; }
 } radio_driver;

@@ -1914,14 +1914,13 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
     if (activePipelineSlots() == 0) { finishFlight(); requestMissing(); }
     return true;
   }
-  // verified -> commit the payload block, then its leaf (the present marker). A write failure here means a
-  // FOLDER destination's seeder link dropped mid-transfer: PAUSE (hold progress on the host, stop
-  // requesting, do NOT fall back to RAM/flash). The block is left uncommitted (its leaf stays 0xFF), so on
-  // reconnect resumeStaged() re-requests exactly it. Flash failures also pause instead of being ignored.
+  // Commit payload before its present marker. Preserve the selected store and
+  // checkpoint on failure: reconnectable stores pause, while local storage
+  // reports a retryable failure instead of waiting for a nonexistent link.
   uint8_t leaf[4]; merkle_leaf(leaf, slot.buf, blen);
   if (!_fetch->write(_fpoff + block * _fbs, slot.buf, blen) ||
       !_fetch->write(_floff + block * 4, leaf, 4)) {
-    pauseFetchForDisconnect();
+    failFetch(FETCH_ERROR_STORAGE);
     return true;
   }
   _have++;

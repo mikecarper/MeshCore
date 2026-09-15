@@ -3162,7 +3162,7 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   const uint32_t primary_mutation_before = primary_radio_mutation_generation;
   const uint32_t secondary_mutation_before = _cli.radioProfiles().replyMutationGeneration();
   // setperm may compact the ACL, including removal of this sender. Keep the
-  // authenticated pre-command destination/path for its final acknowledgement.
+  // authenticated pre-command destination/path as a fallback if it is removed.
   // Command permission checks still use the live ACL entry below.
   ClientInfo reply_client = *client;
 
@@ -3238,9 +3238,15 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   remote_cli_reply_cache.remember(deferred_cli_command.client_pub_key,
                                   deferred_cli_command.request_id,
                                   command_fingerprint, reply, arms_temp_radio);
+  // Route changes made by this command must apply to its acknowledgement too.
+  // Resolve the full authenticated key again: compaction may have moved it or
+  // reused its old slot. Only a removed sender needs the pre-command fallback.
+  const int reply_client_index = deferred_cli_command.findClientIndex(acl);
+  ClientInfo* reply_destination = reply_client_index >= 0
+      ? acl.getClientByIdx(reply_client_index) : &reply_client;
   mesh::Packet* queued_reply = NULL;
   const bool reply_queued = sendRemoteCliReply(
-      &reply_client, deferred_cli_command.secret,
+      reply_destination, deferred_cli_command.secret,
       deferred_cli_command.path_hash_size,
       deferred_cli_command.sender_timestamp, reply,
       deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL,

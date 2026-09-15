@@ -32,7 +32,7 @@ class OtaStoreResumeTest(unittest.TestCase):
                 str(ROOT / "src/Utils.cpp"), str(tinf), "-o", str(binary),
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            for scenario in range(46):
+            for scenario in range(50):
                 with self.subTest(scenario=scenario):
                     subprocess.run([str(binary), str(scenario)], check=True, timeout=10)
 

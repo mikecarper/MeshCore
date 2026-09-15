@@ -85,6 +85,7 @@ jobs:
           python3 -B test/test_companion_radio_settings_transaction.py -v
           python3 -B test/test_companion_prefs_transactions.py -v
           python3 -B test/test_companion_primary_radio_persistence.py -v
+          python3 -B test/test_companion_response_bounds.py -v
           python3 -B test/test_contact_cache.py -v
 
       - name: Verify receive recovery and pinned radio status transport

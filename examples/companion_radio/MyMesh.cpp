@@ -1364,11 +1364,12 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
 #endif
     clearPendingReqs();
   } else if (mesh::companionStatusTagMatches(pending_status, tag)) {
-    // Do not expose a truncated or unrelated response as repeater statistics.
+    // Require a complete response that also fits its host-protocol envelope.
     // The app parses at least 48 bytes and otherwise throws a RangeError.
-    if (!mesh::companionStatusResponseIsLongEnough(len)) {
+    if (!mesh::companionStatusResponseIsLongEnough(len)
+        || len > MAX_FRAME_SIZE - 4) {
       MESH_DEBUG_PRINTLN(
-          "onContactResponse(), short status response: len=%u, expected>=%u",
+          "onContactResponse(), invalid status response size: len=%u, expected>=%u",
           (unsigned)len,
           (unsigned)mesh::COMPANION_MIN_STATUS_RESPONSE_SIZE);
       clearPendingReqs();
@@ -1384,7 +1385,11 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
     i += (len - 4);
     writePendingSerialFrame(out_frame, i);
     clearPendingReqs();
-  } else if (len > 4 && tag == pending_telemetry) {  // check for matching response tag
+  } else if (pending_telemetry && len > 4 && tag == pending_telemetry) {  // check for matching response tag
+    if (len > MAX_FRAME_SIZE - 4) {
+      clearPendingReqs();
+      return;
+    }
     int i = 0;
     out_frame[i++] = PUSH_CODE_TELEMETRY_RESPONSE;
     out_frame[i++] = 0; // reserved
@@ -1394,7 +1399,11 @@ void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, 
     i += (len - 4);
     writePendingSerialFrame(out_frame, i);
     clearPendingReqs();
-  } else if (len > 4 && tag == pending_req) {  // check for matching response tag
+  } else if (pending_req && len > 4 && tag == pending_req) {  // check for matching response tag
+    if (len > MAX_FRAME_SIZE - 2) {
+      clearPendingReqs();
+      return;
+    }
     int i = 0;
     out_frame[i++] = PUSH_CODE_BINARY_RESPONSE;
     out_frame[i++] = 0; // reserved
@@ -1438,7 +1447,7 @@ bool MyMesh::onContactPathRecv(ContactInfo& contact, uint8_t* in_path, uint8_t i
 }
 
 void MyMesh::onControlDataRecv(mesh::Packet *packet) {
-  if (packet->payload_len + 4 > sizeof(out_frame)) {
+  if (packet->payload_len + 4 > MAX_FRAME_SIZE) {
     MESH_DEBUG_PRINTLN("onControlDataRecv(), payload_len too long: %d", packet->payload_len);
     return;
   }
@@ -1458,7 +1467,7 @@ void MyMesh::onControlDataRecv(mesh::Packet *packet) {
 }
 
 void MyMesh::onRawDataRecv(mesh::Packet *packet) {
-  if (packet->payload_len + 4 > sizeof(out_frame)) {
+  if (packet->payload_len + 4 > MAX_FRAME_SIZE) {
     MESH_DEBUG_PRINTLN("onRawDataRecv(), payload_len too long: %d", packet->payload_len);
     return;
   }
@@ -1482,7 +1491,7 @@ void MyMesh::onTraceRecv(mesh::Packet *packet, uint32_t tag, uint32_t auth_code,
   const bool binary_trace_match = binary_trace_pending
       && tag == binary_trace_tag && auth_code == binary_trace_auth;
   uint8_t path_sz = flags & 0x03;  // NEW v1.11+
-  if (12 + path_len + (path_len >> path_sz) + 1 > sizeof(out_frame)) {
+  if (12 + path_len + (path_len >> path_sz) + 1 > MAX_FRAME_SIZE) {
     MESH_DEBUG_PRINTLN("onTraceRecv(), path_len is too long: %d", (uint32_t)path_len);
     if (binary_trace_match) clearBinaryTraceReply();
     return;
@@ -6465,8 +6474,12 @@ bool MyMesh::applyAndSaveRxBoostedGain(bool enabled) {
   _prefs.rx_boosted_gain = enabled ? 1 : 0;
   if (!savePrefs()) {
     _prefs.rx_boosted_gain = previous_pref;
-    if (_radio_available) {
-      radio_driver.setRxBoostedGainMode(previous_pref != 0);
+    if (_radio_available && !radio_driver.setRxBoostedGainMode(previous_pref != 0)) {
+      // A receive can make the rollback busy after hardware accepted the
+      // candidate. Retry the durable gain along with the saved radio settings.
+      saved_radio_apply_pending = true;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
     }
     return false;
   }
@@ -8983,8 +8996,9 @@ void MyMesh::loop() {
     // A power-saving wake can enter begin() with a complete packet already
     // waiting. Preserve that packet, then apply the persisted radio settings
     // once the receive/response path is idle.
-    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
-    if (applySavedRadioParams()
+    if ((!radio_driver.supportsRxBoostedGainMode()
+            || radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain))
+        && applySavedRadioParams()
         && radio_driver.setTxPower(_prefs.tx_power_dbm)
         && (!radio_driver.supportsRxPowerSaving()
             || radio_driver.setRxPowerSaving(_prefs.rx_powersaving_enabled != 0,
