@@ -182,6 +182,73 @@ TEST_F(DualProfileTest, OtaAirtimeFollowsParticipatingProfilesInsteadOfScannerVi
   EXPECT_EQ(node.getOtaPacketAirtime(), 900u);
 }
 
+TEST_F(DualProfileTest, OtaAirtimeIncludesPrimaryWhenCrossingFromReceiveOnlySecondary) {
+  radio.distinguish_airtime = true;
+  radio.config.secondary_temporary = true;
+  radio.config.secondary.mode = mesh::RadioProfileMode::Rx;
+  radio.config.cross = mesh::RadioCrossMode::On;
+  auto packet = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  EXPECT_EQ(node.getTransmitProfileMask(&packet), 1u);
+  // The secondary receives the update, but outgoing requests cross onto the
+  // much slower primary. Both contribute to the response/retry allowance.
+  EXPECT_EQ(node.getOtaPacketAirtime(), 970u);
+}
+
+TEST_F(DualProfileTest, RadioFaultRetryWaitsForChannelClearInSingleAndDualMode) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  for (bool dual : {false, true}) {
+    radio.config.secondary.mode = dual ? mesh::RadioProfileMode::RxTx : mesh::RadioProfileMode::Off;
+    radio.fail_next_send = true;
+    ASSERT_NE(nullptr, queue());
+    tick(); ASSERT_FALSE(radio.sending);
+    const auto before = radio.transmissions.size();
+    radio.busy_profile = 0;
+    tick(500);
+    EXPECT_FALSE(radio.sending);
+    EXPECT_EQ(radio.transmissions.size(), before);
+    radio.busy_profile = -1;
+    tick(500);
+    EXPECT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    EXPECT_EQ(manager.getFreeCount(), 40);
+  }
+}
+
+TEST_F(DualProfileTest, SingleProfileRadioRetryDrainsReceivedPacketBeforeTransmitting) {
+  node.flood_attempts = 0;
+  radio.config.secondary.mode = mesh::RadioProfileMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(nullptr, queue());
+  tick(); ASSERT_FALSE(radio.sending);
+  radio.incoming = {uint8_t(ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT)), 0, 0x42};
+  tick(500);
+  EXPECT_TRUE(radio.incoming.empty());
+  EXPECT_EQ(radio.config.rx_packets[0], 1u);
+  EXPECT_EQ((std::vector<uint8_t>{0}), radio.transmissions);
+  radio.complete = true; tick();
+  EXPECT_EQ(manager.getFreeCount(), 40);
+}
+
+TEST_F(DualProfileTest, RadioFaultRetryRetainsBoundedBusyEscapeAndSingleRetryLimit) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(nullptr, queue());
+  tick(); ASSERT_FALSE(radio.sending);
+  radio.busy_profile = 0;
+  tick(500); EXPECT_FALSE(radio.sending);
+  // The same bounded CAD policy used for first sends still permits recovery
+  // from a permanently busy detector. It does not grant another radio retry.
+  radio.fail_next_send = true;
+  tick(10000);
+  EXPECT_FALSE(radio.fail_next_send);
+  EXPECT_FALSE(radio.sending);
+  EXPECT_EQ(manager.getFreeCount(), 40);
+  tick(10000);
+  EXPECT_TRUE(radio.transmissions.empty());
+}
+
 TEST_F(DualProfileTest, PacketBecomingReadyDuringCadCannotSkipItsOwnChannelCheck) {
   node.flood_attempts = 0;
   node.tempRadioActive = true;

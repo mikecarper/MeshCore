@@ -640,7 +640,11 @@ uint32_t Mesh::getOtaPacketAirtime() const {
   // Replies may occupy both profiles even with crossing off or radio2 RX-only.
   uint8_t mask = (profiles->primary_temporary ? 1 : 0) | (profiles->secondary_temporary ? 2 : 0);
   if (!mask) mask = 1;
-  if (profiles->canCross() && profiles->canTransmit(1)) mask |= 3;
+  // Each temporary origin can cross independently. In particular, an RX-only
+  // secondary can still send requests over the primary when crossing is on.
+  for (uint8_t origin = 0; origin < 2; ++origin) {
+    if (mask & (1U << origin)) mask |= profiles->transmitMask(origin);
+  }
   if (profiles->reply_tx != RADIO_TX_AUTO) {
     mask |= explicitRadioTxMask(profiles->reply_tx, profiles->canTransmit(1, profiles->reply_force));
   }

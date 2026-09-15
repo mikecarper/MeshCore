@@ -2963,6 +2963,75 @@ TEST(OtaTransfer, NewClientRequestsV2ThenRetriesLegacyWhenNoV2DataArrives) {
   EXPECT_EQ(fallback.want_mask, 0x007Fu);
 }
 
+TEST(OtaTransfer, RejectedFirstFlightDoesNotDisableV2BeforeAnyRequestWasSent) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  GatedCapture sent;
+  client.begin(SIM_TARGET_ID, gated_capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.set_clock(100);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  deliver_manifest_fragment(client, manifest.merkle_root, 0, manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1, manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(client.fetchState(), OtaManager::FETCHING);
+  for (uint32_t i = 1; i <= 10; ++i) {
+    client.set_clock(100 + i * client.fetchRetryTimeoutMs());
+    client.loop();
+  }
+  EXPECT_TRUE(sent.items.empty());
+  sent.accept = true;
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg first{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(), (uint16_t)sent.items[0].size(), first));
+  EXPECT_TRUE(ota_req_is_v2(first.want_mask));
+}
+
+TEST(OtaTransfer, RejectedSparseRetryKeepsReceivedV2Fragments) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  OtaManager client;
+  OtaStoreRam<4096> store;
+  GatedCapture sent;
+  sent.accept = true;
+  client.begin(SIM_TARGET_ID, gated_capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.set_clock(100);
+  client.pull(manifest.merkle_root, manifest.target_id);
+  deliver_manifest_fragment(client, manifest.merkle_root, 0, manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1, manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  uint8_t body[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+  mh4(body, manifest.payload, manifest.block_size());
+  memcpy(body + OTA_DATA_V2_STREAM_ID_BYTES, manifest.payload, OTA_FRAG_DATA_V2);
+  DataMsg partial{};
+  memcpy(partial.manifest_id, manifest.merkle_root, 4);
+  ASSERT_TRUE(ota_data_v2_pack(0, (uint16_t)manifest.block_size(), false, partial.frag_off));
+  partial.data = body;
+  partial.data_len = sizeof body;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  ASSERT_TRUE(client.on_message(wire, encode_data(wire, sizeof wire, partial)));
+  sent.items.clear();
+  sent.accept = false;
+  uint32_t now = 100;
+  for (unsigned i = 0; i < 10; ++i) {
+    now += client.fetchRetryTimeoutMs();
+    client.set_clock(now);
+    client.loop();
+  }
+  EXPECT_TRUE(sent.items.empty());
+  sent.accept = true;
+  client.loop();
+  ASSERT_EQ(sent.items.size(), 1u);
+  ReqMsg retry{};
+  ASSERT_TRUE(decode_req(sent.items[0].data(), (uint16_t)sent.items[0].size(), retry));
+  EXPECT_TRUE(ota_req_is_v2(retry.want_mask));
+  EXPECT_EQ(ota_req_v2_fragments(retry.want_mask) & 1u, 0u); // keep fragment zero
+}
+
 TEST(OtaTransfer, TwoKilobyteClientAcceptsCanonicalLegacyFallbackThroughBitTwelve) {
   MotaManifest manifest;
   ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));

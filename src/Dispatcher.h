@@ -317,6 +317,7 @@ class Dispatcher {
   void releaseDroppedOutbound();
   bool startOutboundTransmit();
   bool scheduleOutboundRadioRetry();
+  bool isTransmitChannelReady(const Packet* packet, uint32_t& retry_delay);
   void failOutboundTransmit();
   void restoreOutboundTxOverrides();
   void updateTxBudget();

@@ -1092,6 +1092,7 @@ void OtaManager::clearReassembly() {
   _req_count = 0;
   _pipeline_width = OTA_FETCH_PIPELINE_INITIAL;
   _flight_dirty = false;
+  _flight_request_pending = false;
   noteFetchActivity();
 }
 
@@ -1904,7 +1905,7 @@ bool OtaManager::requestFlight() {
     item.block_idx = (uint16_t)slot.block;
     item.want_mask = wireRequestMask(slot.block, slot.need, slot.mask, slot.encoded_len);
   }
-  if (request.n_items == 0) return false;
+  if (request.n_items == 0) { _flight_request_pending = false; return false; }
   _req_start = request.items[0].block_idx;
   _req_count = request.n_items;
   uint8_t b[5 + OTA_REQ_MAX_ITEMS * 4];
@@ -1912,6 +1913,7 @@ bool OtaManager::requestFlight() {
           (unsigned)_req_start, (unsigned)_req_count,
           (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
   bool sent = emit(b, encode_req_window(b, sizeof(b), request), false);
+  _flight_request_pending = !sent;
   if (sent) noteFetchActivity();
   return sent;
 }
@@ -1942,6 +1944,9 @@ bool OtaManager::fillPipeline() {
 void OtaManager::requestMissing() {
   if (_fstate != FETCHING) return;
   if (activePipelineSlots() == 0) { fillPipeline(); return; }
+  // Admission backpressure is not evidence that the source ignored v2.
+  // Keep the original flight and retry it before evaluating network loss.
+  if (_flight_request_pending) { requestFlight(); return; }
 
   // No v2 DATA at all means the request may have reached only deployed sources which ignored its profile
   // bits (or the first response burst was lost). Retry once in the universal legacy profile instead of
@@ -1961,8 +1966,8 @@ void OtaManager::requestMissing() {
   // Once v2 has been confirmed, the source can still disappear cleanly between blocks (or after a bad
   // representation is discarded), leaving every active slot empty. Give the v2 flight one sparse retry,
   // then clear the whole flight and ask again in the universal legacy profile so an old seeder can take over.
-  if (_wire_v2_session && _wire_v2_confirmed && !anyWireDataReceived() &&
-      ++_wire_empty_stalls >= 2) {
+  const bool empty_v2 = _wire_v2_session && _wire_v2_confirmed && !anyWireDataReceived();
+  if (empty_v2 && _wire_empty_stalls >= 1) {
     downgradeWireToLegacy();
     requestFlight();
     return;
@@ -1972,14 +1977,21 @@ void OtaManager::requestMissing() {
     uint8_t slot = (uint8_t)((_retry_slot + offset) % OTA_FETCH_PIPELINE);
     if (_reasm[slot].block == NO_BLOCK) continue;
     ReassemblySlot& reassembly = _reasm[slot];
-    if (_wire_v2_session && reassembly.wire_v2 && reassembly.mask != 0 &&
-        !reassembly.awaiting_proof && ++reassembly.wire_stalls >= 2) {
+    const bool partial_v2 = _wire_v2_session && reassembly.wire_v2 && reassembly.mask != 0 &&
+        !reassembly.awaiting_proof;
+    if (partial_v2 && reassembly.wire_stalls >= 1) {
       // A v2 seeder may disappear after establishing a representation while only deployed legacy seeders
       // remain. Keep one sparse retry, then fall back the whole flight to the universal profile. Clearing
       // every slot prevents geometry/representation mixing and guarantees that old sources can take over.
       downgradeWireToLegacy();
     }
-    if (requestSlot(slot)) _retry_slot = (uint8_t)((slot + 1) % OTA_FETCH_PIPELINE);
+    if (requestSlot(slot)) {
+      // Advance fallback evidence only when the sparse retry enters the
+      // transmit queue. Repeated rejection must not erase received fragments.
+      if (empty_v2 && _wire_v2_session) ++_wire_empty_stalls;
+      if (partial_v2 && _wire_v2_session) ++reassembly.wire_stalls;
+      _retry_slot = (uint8_t)((slot + 1) % OTA_FETCH_PIPELINE);
+    }
     return;
   }
 }
@@ -2060,6 +2072,7 @@ void OtaManager::loop() {
     return;
   }
   if (_fstate != FETCHING) return;
+  if (_flight_request_pending) { requestFlight(); return; }
   if (activePipelineSlots() == 0) {
     requestMissing();
     return;

@@ -178,8 +178,11 @@ does not reflect the GoogleTest count -- run the built binary directly
   ordinary traffic during OTA pacing; `test_packet_manager` checks that intentional
   pacing survives stale expiry without erasing prior congestion age.
 - OTA delivery: `test_ota` keeps rejected queue admissions out of metadata retry
-  limits; `test_trace_retry` advances the clock during CAD to catch selection and
-  pacing bypasses and cancels retries while the chip stays BUSY.
+  limits and preserves v2 negotiation/received fragments during blocked block
+  requests; `test_trace_retry` advances the clock during CAD to catch selection
+  and pacing bypasses, cancels retries while the chip stays BUSY, and checks
+  channel clearance, RX draining, and bounded recovery for radio fault retries.
+  It also accounts for the primary's airtime when an RX-only radio2 crosses TX.
   `python3 -B test/test_ota_apply_delivery.py -v` executes the
   production apply/TX guards with a reply on air, a busy queue, failed persistence,
   and clock rollover. It checks application and bootloader reboot paths.

@@ -355,7 +355,7 @@ void Dispatcher::loop() {
       // The failed send has already returned the chip to RX. Drain a packet
       // arriving during backoff before asking to retune; otherwise BUSY can
       // keep the retry waiting forever on an unread RxDone interrupt.
-      if (isDualRadioActive()) checkRecv();
+      checkRecv();
       // A cancelled or expired packet must retire even if the chip never
       // becomes available for another retune (including an armed OTA reboot).
       if (!isPacketRadioCurrent(outbound) || !allowPacketTransmit(outbound)) {
@@ -370,16 +370,20 @@ void Dispatcher::loop() {
         return;
       }
 
-      outbound_radio_retry_pending = false;
       if (prepared == RadioParamApplyResult::FAILED || !isPacketRadioCurrent(outbound)
           || !allowPacketTransmit(outbound)) {
         MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): radio retry packet no longer allowed, type=%u",
                            getLogDateTime(), (uint32_t)outbound->getPayloadType());
         failOutboundTransmit();
-      } else if (!startOutboundTransmit()) {
-        failOutboundTransmit();
       } else {
-        return;
+        uint32_t retry_delay;
+        if (!isTransmitChannelReady(outbound, retry_delay)) {
+          outbound_radio_retry_at = futureMillis(retry_delay);
+          return;
+        }
+        outbound_radio_retry_pending = false;
+        if (!allowPacketTransmit(outbound) || !startOutboundTransmit()) failOutboundTransmit();
+        else return;
       }
     } else if (_radio->isSendComplete()) {
       long t = _ms->getMillis() - outbound_start;
@@ -716,6 +720,37 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
   }
 }
 
+bool Dispatcher::isTransmitChannelReady(const Packet* packet, uint32_t& retry_delay) {
+  const bool busy = packet != NULL && usePassiveChannelCheck(packet)
+    ? _radio->isReceivingPassive(getRetryInterferenceMargin())
+    : _radio->isReceiving();
+  const uint8_t profile = packet ? packet->radio_profile : 0;
+  uint32_t& profile_busy = profile_cad_busy[profile];
+  if (busy) {
+    const uint32_t now = _ms->getMillis();
+    // A driver retry owns its packet outside the queue, but remains one of
+    // the packets waiting for the channel's bounded busy allowance.
+    const int ready_count = _mgr->getOutboundCount(now) + (packet && outbound == packet ? 1 : 0);
+    cad_busy_start = profile_busy;
+    if (cad_busy_start == 0) {
+      cad_busy_start = now;
+      profile_busy = now;
+    }
+    const uint32_t maximum = scaleCADDelayForQueue(
+        getCADFailMaxDuration(), ready_count, MIN_CAD_FAIL_MAX_DURATION_MS);
+    if (now - cad_busy_start <= maximum) {
+      retry_delay = scaleCADDelayForQueue(
+          getCADFailRetryDelay(), ready_count, MIN_CAD_FAIL_RETRY_DELAY_MS);
+      return false;
+    }
+    _err_flags |= ERR_EVENT_CAD_TIMEOUT;
+    MESH_DEBUG_PRINTLN("%s Dispatcher: CAD busy max duration reached!", getLogDateTime());
+  }
+  cad_busy_start = 0;
+  profile_busy = 0;
+  return true;
+}
+
 void Dispatcher::checkSend() {
   if (_radio->isCarrierWaveActive()) return;
   const uint32_t now = _ms->getMillis();
@@ -789,38 +824,13 @@ void Dispatcher::checkSend() {
     }
   }
 
-  bool channel_busy = pending != NULL && usePassiveChannelCheck(pending)
-    ? _radio->isReceivingPassive(getRetryInterferenceMargin())
-    : _radio->isReceiving();
-  if (channel_busy) {
-    const uint32_t cad_now = _ms->getMillis();
-    const int ready_count = _mgr->getOutboundCount(cad_now);
-    uint32_t& profile_busy = profile_cad_busy[pending ? pending->radio_profile : 0];
-    cad_busy_start = profile_busy;
-    if (cad_busy_start == 0) {
-      cad_busy_start = cad_now;   // record when CAD busy state started
-      profile_busy = cad_now;
+  uint32_t retry_delay;
+  if (!isTransmitChannelReady(pending, retry_delay)) {
+    if (!isDualRadioActive() || !pending || !_mgr->deferOutbound(pending, futureMillis(retry_delay))) {
+      next_tx_time = futureMillis(retry_delay);
     }
-
-    const uint32_t max_busy_duration = scaleCADDelayForQueue(
-        getCADFailMaxDuration(), ready_count, MIN_CAD_FAIL_MAX_DURATION_MS);
-    if (cad_now - cad_busy_start > max_busy_duration) {
-      _err_flags |= ERR_EVENT_CAD_TIMEOUT;
-
-      MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): CAD busy max duration reached!", getLogDateTime());
-      // channel activity has gone on too long... (Radio might be in a bad state)
-      // force the pending transmit below...
-    } else {
-      const uint32_t retry_delay = scaleCADDelayForQueue(
-          getCADFailRetryDelay(), ready_count, MIN_CAD_FAIL_RETRY_DELAY_MS);
-      if (!isDualRadioActive() || !pending || !_mgr->deferOutbound(pending, futureMillis(retry_delay))) {
-        next_tx_time = futureMillis(retry_delay);
-      }
-      return;
-    }
+    return;
   }
-  cad_busy_start = 0;  // reset busy state
-  profile_cad_busy[pending ? pending->radio_profile : 0] = 0;
 
   // Retuning and CAD can advance the clock. Keep the selection timestamp so
   // a newly due higher-priority packet cannot skip its own profile, airtime,

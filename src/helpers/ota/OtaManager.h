@@ -738,6 +738,7 @@ private:
   uint8_t    _retry_slot = 0;                   // round-robin stalled-slot retry cursor
   uint8_t    _pipeline_width = OTA_FETCH_PIPELINE_INITIAL; // live request window, adaptive up to array capacity
   bool       _flight_dirty = false;             // a timeout/bad proof required recovery in this flight
+  bool       _flight_request_pending = false;   // local queue has not accepted this flight yet
   uint32_t   _fetch_wait_since_ms = 0;           // last new fragment/proof/request; retry deadline anchor
   uint32_t   _radio_packet_airtime_ms = 0;       // measured for MAX_TRANS_UNIT at active SF/BW
   float      _speed = OTA_SPEED_DEFAULT;

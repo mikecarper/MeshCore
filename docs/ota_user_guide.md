@@ -422,6 +422,10 @@ maintenance rate even when LoRa pacing is slow.
 If the local transmit queue cannot accept a catalog, manifest, or leaf request,
 OTA keeps it pending without consuming a network retry. Successfully queued
 requests that receive no answer still have bounded retries.
+Blocked block requests also preserve the v2 transfer format and fragments
+already received; queue congestion alone does not trigger legacy fallback.
+Retry timing includes the primary channel when an RX-only temporary radio2
+uses crossover to send requests there.
 
 `ota config speed 0.5` is an equivalent setter. `ota config speed` and
 `ota speed` read the current factor; the `ota config` summary also includes it.
