@@ -23,6 +23,10 @@ public:
 };
 class Radio : public mesh::Radio {
 public:
+  bool dual = false;
+  mesh::RadioProfiles config;
+  mesh::RadioProfiles* profiles() override { return dual ? &config : nullptr; }
+  const mesh::RadioProfiles* profiles() const override { return dual ? &config : nullptr; }
   int recvRaw(uint8_t*, int) override { return 0; }
   uint32_t getEstAirtimeFor(int) override { return 10; }
   float packetScore(float, int) override { return 0; }
@@ -40,6 +44,15 @@ public:
 };
 class Chat : public BaseChatMesh {
 public:
+  uint8_t getFloodRetryMaxAttempts(const mesh::Packet*) const override { return 0; }
+  uint8_t getDirectRetryMaxAttempts(const mesh::Packet*) const override { return 0; }
+  void receivedTextFromFirstContact(mesh::Packet& packet) {
+    uint8_t hash[PATH_HASH_SIZE]; getContactPtrByIdx(MAX_ANON_CONTACTS)->id.copyHashTo(hash);
+    ASSERT_GT(searchPeersByHash(hash), 0);
+    uint8_t secret[32] = {}, data[32] = {};
+    data[0] = 10; memcpy(data + 5, "hello", 5);
+    onPeerDataRecv(&packet, PAYLOAD_TYPE_TXT_MSG, 0, secret, data, 10);
+  }
   bool auto_add = false;
   bool writable = true;
   uint8_t max_hops = 1;
@@ -214,6 +227,84 @@ TEST_F(ContactImport, MalformedAndNonAdvertPacketsDoNotLeakAllocations) {
   packet.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT);
   EXPECT_FALSE(queue(packet));
   EXPECT_EQ(pool.getFreeCount(), 8);
+}
+
+TEST_F(ContactImport, ContactMessagesUseFullIdentityAndPreservePolicyAcrossAdvertRefresh) {
+  radio.dual = true; radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  ContactInfo first, second;
+  memset(first.id.pub_key, 0, PUB_KEY_SIZE); first.id.pub_key[0] = 17;
+  first.type = ADV_TYPE_CHAT; first.tx_radio = mesh::RADIO_TX_SECONDARY;
+  second = first; second.id.pub_key[31] = 9; second.tx_radio = mesh::RADIO_TX_PRIMARY;
+  ASSERT_TRUE(chat.addContact(first)); ASSERT_TRUE(chat.addContact(second));
+  uint32_t ack=0, timeout=0;
+  EXPECT_EQ(MSG_SEND_SENT_DIRECT, chat.sendMessage(first, 1, 0, "one", ack, timeout));
+  EXPECT_EQ(MSG_SEND_SENT_DIRECT, chat.sendMessage(second, 2, 0, "two", ack, timeout));
+  ASSERT_EQ(2, pool.getOutboundTotal());
+  EXPECT_EQ(1, pool.getOutboundByIdx(0)->radio_profile);
+  EXPECT_EQ(0, pool.getOutboundByIdx(1)->radio_profile);
+  auto refresh = card(17, 0, 20); chat.receive(refresh);
+  EXPECT_EQ(mesh::RADIO_TX_SECONDARY, chat.getContactPtrByIdx(MAX_ANON_CONTACTS)->tx_radio);
+}
+
+TEST_F(ContactImport, OffContactAndChannelReportFailureWithoutLeakingPackets) {
+  ContactInfo contact;
+  memset(contact.id.pub_key, 1, PUB_KEY_SIZE); contact.type = ADV_TYPE_CHAT;
+  contact.tx_radio = mesh::RADIO_TX_OFF;
+  ASSERT_TRUE(chat.addContact(contact));
+  uint32_t ack=0, timeout=0, tag=0;
+  const uint8_t data[] = {1};
+  for (uint8_t path : {uint8_t(0), uint8_t(OUT_PATH_UNKNOWN)}) {
+    contact.out_path_len = path;
+    EXPECT_EQ(MSG_SEND_FAILED, chat.sendMessage(contact, 1, 0, "test", ack, timeout));
+    EXPECT_EQ(MSG_SEND_FAILED, chat.sendCommandData(contact, 1, 0, TXT_TYPE_CLI_COMMAND, "test", timeout));
+    EXPECT_EQ(MSG_SEND_FAILED, chat.sendLogin(contact, "", timeout));
+    EXPECT_EQ(MSG_SEND_FAILED, chat.sendAnonReq(contact, data, sizeof(data), tag, timeout));
+    EXPECT_EQ(MSG_SEND_FAILED, chat.sendRequest(contact, data, sizeof(data), tag, timeout));
+    EXPECT_EQ(MSG_SEND_FAILED, chat.sendRequest(contact, uint8_t(1), tag, timeout));
+    mesh::GroupChannel channel; memset(channel.secret, 0, sizeof(channel.secret));
+    channel.hash[0] = 17; channel.tx_radio = mesh::RADIO_TX_OFF;
+    EXPECT_FALSE(chat.sendGroupMessage(1, channel, "me", "test", 4));
+    EXPECT_FALSE(chat.sendGroupData(channel, nullptr, path, 1, data, sizeof(data)));
+    EXPECT_EQ(0, pool.getOutboundTotal()); EXPECT_EQ(8, pool.getFreeCount());
+  }
+}
+
+TEST_F(ContactImport, SameHashChannelsKeepIndependentTransmitChoices) {
+  radio.dual = true; radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  mesh::GroupChannel a, b;
+  memset(a.secret, 1, sizeof(a.secret)); memset(b.secret, 2, sizeof(b.secret));
+  a.hash[0] = b.hash[0] = 17;
+  a.tx_radio = mesh::RADIO_TX_PRIMARY; b.tx_radio = mesh::RADIO_TX_SECONDARY;
+  ASSERT_TRUE(chat.sendGroupMessage(1, a, "me", "one", 3));
+  ASSERT_TRUE(chat.sendGroupMessage(2, b, "me", "two", 3));
+  const uint8_t data[] = {1};
+  ASSERT_TRUE(chat.sendGroupData(b, nullptr, 0, 1, data, sizeof(data)));
+  ASSERT_EQ(3, pool.getOutboundTotal());
+  EXPECT_EQ(0, pool.getOutboundByIdx(0)->radio_profile);
+  EXPECT_EQ(1, pool.getOutboundByIdx(1)->radio_profile);
+  EXPECT_EQ(1, pool.getOutboundByIdx(2)->radio_profile);
+}
+
+TEST_F(ContactImport, ContactRoutingAlsoControlsAcknowledgementsAndReturnedPaths) {
+  radio.dual = true; radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  ContactInfo contact; memset(contact.id.pub_key, 1, PUB_KEY_SIZE);
+  contact.type = ADV_TYPE_CHAT; contact.tx_radio = mesh::RADIO_TX_SECONDARY;
+  ASSERT_TRUE(chat.addContact(contact));
+  // A same-key anonymous slot must not bypass the saved contact's choice.
+  *chat.getContactPtrByIdx(0) = contact;
+  chat.getContactPtrByIdx(0)->type = ADV_TYPE_NONE;
+  chat.getContactPtrByIdx(0)->tx_radio = mesh::RADIO_TX_AUTO;
+  mesh::Packet incoming;
+  incoming.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT);
+  chat.receivedTextFromFirstContact(incoming);
+  incoming.header = ROUTE_TYPE_FLOOD | (PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT);
+  chat.receivedTextFromFirstContact(incoming);
+  ASSERT_EQ(2, pool.getOutboundTotal());
+  EXPECT_EQ(1, pool.getOutboundByIdx(0)->radio_profile);
+  EXPECT_EQ(1, pool.getOutboundByIdx(1)->radio_profile);
 }
 } // namespace
 

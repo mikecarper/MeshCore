@@ -237,6 +237,7 @@ public:
   // setup/status commands here; Full builds add TempRadio and OTA commands.
   bool handleLocalControlCommand(const char* command, char* reply,
                                  size_t reply_size);
+  bool handleTxRoutingCommand(const char* command, char* reply, size_t reply_size);
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 

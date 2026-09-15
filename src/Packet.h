@@ -1,6 +1,7 @@
 #pragma once
 
 #include <MeshCore.h>
+#include <RadioTxPolicy.h>
 
 namespace mesh {
 
@@ -65,6 +66,9 @@ public:
   uint8_t radio_origin = 0;
   bool radio_bound = false;  // retries retain one profile and never fan out again
   bool radio_local = true;
+  uint8_t tx_radio = RADIO_TX_AUTO;  // local policy, never sent over the air
+  bool radio_reply = false;  // locally generated response, never a forwarded packet
+  bool radio_reply_force = false;  // captured reply-only RX-mode override
 
   /**
    * \brief calculate the hash of payload + type

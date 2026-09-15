@@ -34,8 +34,8 @@ TEST(TempRadioReplyBarrier, UntrackedAlternateCannotResolveAuthoritativeReply) {
 
   barrier.arm(&primary_reply);
 
-  // TempRadio mutation acknowledgements deliberately queue only the primary
-  // copy, without an alternate-path copy or a transport retry. If an
+  // TempRadio mutation acknowledgements omit alternate-path copies and
+  // transport retries. If an
   // obsolete/foreign packet callback arrives anyway, it must not release or
   // fail the authoritative handoff.
   EXPECT_FALSE(barrier.complete(&alternate_reply));
@@ -58,6 +58,41 @@ TEST(TempRadioReplyBarrier, ClearCancelsAnObsoleteHandoff) {
   barrier.arm(&new_reply);
   EXPECT_FALSE(barrier.complete(&old_reply));
   EXPECT_TRUE(barrier.complete(&new_reply));
+}
+
+TEST(TempRadioReplyBarrier, BothProfilesDrainAndEitherSuccessPermitsHandoff) {
+  for (int successes=0;successes<4;++successes) {
+    for (bool reversed : {false,true}) {
+      mesh::TempRadioReplyBarrier barrier;
+      int a=1,b=2,unrelated=3;
+      barrier.prepare(&a);
+      EXPECT_FALSE(barrier.fail(&a)); // admission can retire an old retry
+      barrier.trackCopy(&unrelated,&unrelated);
+      barrier.trackCopy(&a,&b);
+      barrier.arm(&a);
+      const void* first = reversed ? &b : &a;
+      const void* second = reversed ? &a : &b;
+      if (successes & 1) EXPECT_TRUE(barrier.complete(first));
+      else EXPECT_FALSE(barrier.fail(first));
+      EXPECT_TRUE(barrier.waiting());
+      EXPECT_FALSE(barrier.complete(&unrelated));
+      if (successes & 2) EXPECT_TRUE(barrier.complete(second));
+      else EXPECT_EQ(successes==0,barrier.fail(second));
+      EXPECT_FALSE(barrier.waiting());
+      EXPECT_FALSE(barrier.fail(first));
+    }
+  }
+}
+
+TEST(TempRadioReplyBarrier, CancelDiscardsBothProfilesAndPointerReuse) {
+  mesh::TempRadioReplyBarrier barrier;
+  int a=1,b=2;
+  barrier.prepare(&a); barrier.trackCopy(&a,&b); barrier.arm(&a);
+  barrier.clear();
+  EXPECT_FALSE(barrier.complete(&a)); EXPECT_FALSE(barrier.fail(&b));
+  barrier.arm(&b);
+  EXPECT_FALSE(barrier.complete(&a));
+  EXPECT_TRUE(barrier.fail(&b));
 }
 
 int main(int argc, char** argv) {

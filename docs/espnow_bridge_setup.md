@@ -131,3 +131,29 @@ For every command's full details, see the [bridge CLI reference](cli_commands.md
 
 For a broader comparison with a Linux-based bridge, see the
 [MeshCore Nexus bridging guide](https://meshcore.nexus/guides/lora-bridging#method-2-meshcore-esp-now-bridge).
+
+## Keep wardriving traffic off the bridge
+
+New generalized repeater filter tables include a third built-in rule that
+blocks authenticated `#wardriving` text and data in both bridge directions,
+at every hop count. The same row blocks crossover between radio profiles:
+
+```text
+get flood.rule.3
+set flood.rule type=any channel=#wardriving hops=all mode=bridge,cross drop
+```
+
+The same rule can be added with the shorter command:
+
+```text
+set fr any c=#wardriving m=bc d
+```
+
+Both forms use the same table. `m=b` means bridge only, `m=c` means crossover
+only, and `get fr.N` returns a short command for copying a numbered rule.
+
+The unnumbered command adds the rule safely on existing devices whose saved
+tables predate this default. It works with either bridge packet source and
+both ESP-NOW formats. Nearby same-profile LoRa forwarding retains the separate
+four-hop default. Use `mode=bridge` for a bridge-only block, or `mode=cross` for
+a crossover-only block. See the [mode matrix and examples](flood_filtering.md#filter-bridge-and-radio-crossover-traffic).

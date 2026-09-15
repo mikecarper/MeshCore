@@ -743,6 +743,54 @@ set flag bit 0.
 
 ---
 
+## Set Companion TX routing per contact or channel
+
+```text
+set tx.user "Alice Jones" radio2
+get tx.user "Alice Jones"
+set tx.channel 0 both
+get tx.channel 0
+set tx.channel #wardriving radio
+```
+
+Both command families accept `auto`, `radio`, `radio2`, `both`, or `off`.
+`auto` uses the global crossing rules. Explicit choices override
+`radio2.cross`, but radio2 must still be enabled in `rxtx` to transmit there.
+`radio2` never falls back to the primary profile; `both` uses whichever of its
+selected profiles can transmit. Set a target back to `auto` to remove its
+override.
+
+Use an exact contact/channel name, a zero-based channel index, or
+`key:<12-64 hex digits>` for a unique contact public-key prefix. Duplicate
+names/prefixes are rejected. `get tx.user` and `get tx.channel` show override
+counts; queries with a target show its saved choice and current effective
+profile selection. Choices are saved with the contact/channel and work for
+phone-app and terminal messages. A contact's `off` setting also blocks its
+ACKs and addressed responses.
+
+See [Companion routing details and examples](radio_profiles.md#companion-tx-routing-by-contact-or-channel)
+for temporary profiles, persistence, and the traffic covered by each setting.
+
+## Set repeater, room-server, and sensor reply profiles
+
+```text
+get tx.reply
+set tx.reply both
+set tx.reply both force
+set tx.reply radio
+set tx.reply auto
+```
+
+Persistent choices: `auto`, `radio`, `radio2`, `both` (default), and `off`.
+Explicit choices override `radio2.cross` for local replies, including CLI,
+ACKs, telemetry, room subscription posts, and served LoRa OTA responses.
+Append `force` to `both` or `radio2` to permit reply TX on an active RX-only
+second profile. It never enables a disabled profile or ordinary forwarding.
+Omitting `force` removes that override. `off` suppresses remote replies too.
+
+See [reply routing and OTA examples](radio_profiles.md#repeater-room-server-and-sensor-replies)
+for temporary profiles, receive-only exceptions, and queued reply handling.
+
 ## Set Companion display rotation
 
 SSD1306 Full Companion builds support a persisted runtime orientation:
@@ -2428,6 +2476,42 @@ setting.
 
 ---
 
+#### Bridge and radio crossover filters
+
+`mode=` selects where a generalized `flood.rule` / `flood.filter` row applies:
+
+| Mode | Where the rule applies |
+| --- | --- |
+| `radio` | Ordinary LoRa flood forwarding. This is the default when `mode=` is omitted. |
+| `bridge` | Packets entering or leaving an RS232 or ESP-NOW bridge, and MeshCore RX/TX packet publication through MQTT. |
+| `cross` | Transmissions copied to the other radio profile, including a copy's retries. The same-profile transmission remains eligible. |
+| `bridge,cross` | Both transport paths using one rule. `cross,bridge` is equivalent. |
+
+The third built-in repeater rule blocks authenticated `#wardriving` text and
+data at all hops on bridge and crossover paths, including temporary-radio
+sessions. It leaves same-profile traffic subject to the separate four-hop
+rule. `set radio2.cross on` does not override this filter.
+
+```text
+# Factory slot: inspect before replacing an existing rule.
+get flood.rule.3
+set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
+# On an existing device, add it without overwriting an occupied slot.
+set flood.rule type=any channel=#wardriving hops=all mode=bridge,cross drop
+```
+
+Saved tables are preserved on upgrade; new defaults are seeded only when the
+table is first initialized. Bridge/cross modes accept drop, rate, priority and
+stop actions; scope rewrites, retry actions and TX timing are rejected.
+These modes cover direct as well as flood packets, in both crossing directions.
+The default authenticates the channel key, avoiding false drops from short
+channel-hash collisions. FULL room servers support explicit transport rules;
+companions and compact FPF6 profiles do not expose this table.
+
+See [filtering documentation](flood_filtering.md#filter-bridge-and-radio-crossover-traffic)
+for persistence, queue/rate semantics, exceptions, and how to remove one or
+both blocks.
+
 #### Block selected flood channels with FPF7
 
 The separate `flood.channel.block` command and 15-row table have been retired.
@@ -2714,9 +2798,13 @@ For setup guidance, interactions with the existing forwarding controls, and
 worked moderation examples, see [Flood Filtering and Moderation](flood_filtering.md).
 
 **Usage:**
+
 - `get flood.rule`
 - `get flood.rule.<n>`
-- `set flood.rule[.<n>] type=<type> [hops=<range>] [channel=<channel>] [prefix=<path-prefix>] [in=<input-scope>] <drop|scope=<name>|region=<name>|rate=<N>/min|retry|stop> [priority=<0-255>] [tx=slow] [suspend=tempradio]`
+- `get fr[.<n>]` (numbered form returns a complete short setter for copying)
+- `set fr[.<n>] <type> [h=<range>] [m=r|b|c|bc] [c=<channel>] <d|s=<scope>|r=<region>|q=<N>|r|s> [...]`
+- `del fr.<n>` or `del fr all`
+- `set flood.rule[.<n>] type=<type> [mode=radio|bridge|cross|bridge,cross] [hops=<range>] [channel=<channel>] [prefix=<path-prefix>] [in=<input-scope>] <drop|scope=<name>|region=<name>|rate=<N>/min|retry|stop> [priority=<0-255>] [tx=slow] [suspend=tempradio]`
 - `del flood.rule.<n>`
 - `del flood.rule all`
 - `get flood.filter`
@@ -2733,16 +2821,21 @@ worked moderation examples, see [Flood Filtering and Moderation](flood_filtering
 - `del flood.filter all`
 
 The extended table is available on repeaters with the rule engine enabled and
-on FULL-profile ESP32 room servers. A FULL room server exposes both
-`flood.rule` and `flood.filter`, has 31 slots, and requires an administrator
+on FULL-profile ESP32 room servers. A FULL room server exposes
+`fr`, `flood.rule`, and `flood.filter`, has 31 slots, and requires an administrator
 for remote changes. It does not have the repeater's passive path blacklist, so
 `flood.filter.blacklist*` and `path=blacklist` are repeater-only; use the
 ordered `prefix=` match on a room server. Standard room-server profiles do not
 compile this table.
 
 **Parameters:**
+
 - `n`: Forward-rule slot in the build's compiled table (`1-63` on generalized
   repeaters and `1-31` on FULL room servers; compact profiles may use fewer).
+- `mode`: Optional; omitted means `radio`. `bridge` filters bridge admission,
+  `cross` filters copies to the other radio profile, and `bridge,cross` covers
+  both with one row. `cross,bridge` is an alias. See the
+  [mode matrix](#bridge-and-radio-crossover-filters) for scope and supported actions.
 - `type`: Payload type name, full `PAYLOAD_TYPE_*` name, decimal value `0-15`,
   hexadecimal value `0x00-0x0F`, or `any`.
 - `hops`: Optional; omitted means `all`.
@@ -2806,8 +2899,8 @@ compile this table.
   wildcard, or has no usable transport key, both the rewrite and its `stop`
   are inert so lower-order safety rows still run. A direct `scope=` target does
   not depend on region configuration.
-- `suspend=tempradio`: Optional. Skip this row only while the temporary radio
-  is actually active.
+- `suspend=tempradio`: Optional. Skip this row while either `tempradio` or
+  `tempradio2` is active, including scheduled temporary sessions.
 - `require=region`: Legacy alias for `in=allowed`. Apply the row only if the
   original incoming packet already passes this repeater's
   region gate. An incoming transport scope must resolve to a locally allowed
@@ -2847,14 +2940,17 @@ The payload names follow the [MeshCore packet-format allocation](https://docs.me
 | `0x0E` | `14` | reserved |
 | `0x0F` | `raw_custom` | `PAYLOAD_TYPE_RAW_CUSTOM` |
 
-**Route scope:** Rules are evaluated only for the two flood route values:
+**Route scope:** `mode=radio` rules are evaluated only for the two flood route values:
 `ROUTE_TYPE_TRANSPORT_FLOOD` (`0x00`, flood plus transport codes) and
 `ROUTE_TYPE_FLOOD` (`0x01`, unscoped flood). Direct routes `0x02` and `0x03`
-are never affected.
+are unaffected by radio rules. Bridge/cross rules also cover direct routes at
+their respective transport boundaries.
 
-**Behavior:** Match fields within one row are ANDed. Every FPF7 row is matched
+**Behavior:** Match fields within one row are ANDed. Radio rows are matched
 against the same immutable receive-time packet, before any rule changes its
-scope. Matching rows are processed in descending `priority`. At equal numeric
+scope. Bridge/cross rows match the packet at their admission boundary; a TX
+packet can already have an appended hop or rewritten scope. Each mode evaluates
+only its applicable rows, processed in descending `priority`. At equal numeric
 priority, authenticated channel matches precede raw hashes, which precede an
 unrestricted channel matcher; lower slot wins after that. The first matching
 `stop` row is included and all lower-order FPF7 matches are discarded. A stop
@@ -2903,10 +2999,11 @@ region names rather than transient numeric region
 IDs. Removing, reordering, or reusing a region ID therefore cannot silently
 retarget a rule. If a saved input or target region name is absent, that input
 match or rewrite is inert; restoring the same region name reactivates it.
-While the temporary radio is active, only rows explicitly marked
-`suspend=tempradio` are skipped. `tempradio` is a radio state, not an OTA mode;
-normal payload types can also use the temporary channel. Other rows remain in
-force. A malformed persisted table fails open (no general rules are applied).
+While either `tempradio` or `tempradio2` is active, only rows explicitly marked
+`suspend=tempradio` are skipped. Temporary radio is a radio state, not an OTA
+mode; normal payload types can also use the temporary channel. Other rows
+remain in force, and suspended rows resume after both temporary sessions end.
+A malformed persisted table fails open (no general rules are applied).
 
 Within one receive evaluation, rows that use the same channel key share one
 authentication result. The cache is discarded after that packet and stores
@@ -2951,10 +3048,10 @@ Deleting or replacing the last active `retry` row restores the legacy global
 retry eligibility. Firmware that predates the `retry`/`hash:XX` FPF7 extension
 cannot preserve tables containing those rows; remove them before downgrading.
 
-**Default row:** Repeater firmware and FULL ESP32 room-server firmware seed a
+**Default rows:** Repeater firmware and FULL ESP32 room-server firmware seed a
 new flood-filter table with
 `ota all suspend=tempradio` in slot 1. This blocks repeated LoRa OTA (`0x0C`)
-floods at every received hop unless temporary radio is actually active. The OTA
+floods at every received hop unless either temporary radio profile is active. The OTA
 core independently refuses OTA receive, relay, and transmit outside temporary
 radio. The row is editable and deletable; once the table is saved, deletion is
 persistent. Restore the exact seeded row with:
@@ -2965,6 +3062,18 @@ set flood.filter.1 0x0C all suspend=tempradio
 
 Omitting `all` is equivalent. Omit `.1` as well to reuse an identical rule or
 the first empty slot instead of replacing slot 1.
+
+Generalized repeaters also seed slot 2 with the authenticated `#wardriving`
+radio hop limit and slot 3 with the bridge/crossover block:
+
+```text
+set flood.rule.2 type=any channel=#wardriving hops=5+ drop
+set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
+```
+
+These numbered commands replace those slots. Saved tables are preserved on
+upgrade; use the unnumbered third command to add the new rule without replacing
+an occupied slot. See [restoring the three defaults](flood_filtering.md#restore-the-factory-seeded-rows).
 
 **Remote-admin lockout warning:** There are no hidden payload-type or short-hop
 exceptions. FPF7 drop and rate rows may block `req`, `response`, `txt_msg`,
@@ -2980,14 +3089,47 @@ or action.
 form for full details, including channel, prefix, original-scope condition,
 action, timing, rate, and temporary-radio suspension.
 
-If all of those fields plus long names would exceed one CLI reply, the
-numbered form automatically switches to a non-truncating compact spelling.
-The compact aliases are also accepted by `set`: `c=` means `channel=`, `p=`
-means `prefix=`, `i=*|n|s|a|u|s:<scope>|r:<region>` means the corresponding
-`in=` condition, `q=N` means `rate=N/min`, `pri=N` means priority, and `f=str`
-combines slow timing (`s`), temporary-radio suspension (`t`), and retry
-allowance (`r`). Packet type is shown numerically
-in that fallback. Normal-sized rows keep the descriptive spelling above.
+`fr` is a shorter alias for `flood.rule`, with the same explicit-action
+requirement. Short and long field names can be mixed in either command:
+
+```text
+set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
+set fr.3 any c=#wardriving m=bc d
+get fr.3
+```
+
+The two setters above save the same row. `get fr.3` returns the complete
+short setter; `get fr` lists the table. Unnumbered `set fr ...` reuses an
+identical row or adds one to the first empty slot. `del fr.N` and `del fr all`
+have the same behavior as their long forms.
+
+| Full token | Short token |
+| --- | --- |
+| `type=...` | Positional type or `t=...`; `*` means `any` |
+| `hops=...` | Positional range or `h=...`; `*` means `all` |
+| `mode=radio/bridge/cross/bridge,cross` | `m=r/b/c/bc` (choose one value) |
+| `channel=...`, `prefix=...` | `c=...`, `p=...` |
+| `path=blacklist` | `p=bl` (repeater only) |
+| `in=any/none/scoped/allowed/unknown` | `i=*/n/s/a/u` (choose one value) |
+| `in=scope:name`, `in=region:name` | `i=s:name`, `i=r:name` |
+| `drop`, `stop`, `retry` | `d`, `s`, `r` |
+| `scope=name`, `region=name` | `s=name`, `r=name` |
+| `rate=N/min`, `priority=N` | `q=N`, `pri=N` |
+| `tx=slow`, `suspend=tempradio`, `retry` | `f=s`, `f=t`, `f=r`; combine as `f=str` |
+
+All existing validation and permissions apply. `m=cb`, `m=b,c`, and `m=c,b`
+also mean bridge and crossover. Short aliases for `flood.channel.scope`,
+`flood.moderation`, and blacklist management are not added.
+
+The numbered long getters use this complete short setter when descriptive
+fields would exceed a reply. Defaults are omitted and specific payload types
+are printed numerically. If it still cannot fit, the reply is
+`Err - compact command exceeds reply size`, never a partial setter.
+Private channel keys are shown as `key:XXXXXXXX`; that reference can be
+reused while an active rule on the same device holds the key. Copying it to
+another device requires the original key, unless that device already has a
+matching rule. Unknown or ambiguous references are rejected. See the
+[shorthand guide](flood_filtering.md#shorthand-for-copying-rules) for examples.
 
 On generalized repeaters, filter rows, scope-rewrite rows, the shared
 blacklist, and `flood.channel.data` compatibility state are committed in one
@@ -3135,7 +3277,7 @@ del flood.moderation.3
 **Filter manager scope:** Permission `5` can use an explicit allowlist of
 non-secret operational/filter status commands and can change the forwarding
 controls `repeat`, `loop.detect`, `flood.max*`, `flood.channel.data*`,
-`flood.filter*`, `flood.rule*`, and
+`flood.filter*`, `flood.rule*`, `fr[.N]`, and
 `flood.moderation*`. It cannot read
 guest, WiFi, MQTT, bridge, or other credentials, and it cannot change regions,
 ACL entries, radio settings, or other admin configuration. Permission `4`

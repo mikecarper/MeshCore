@@ -1,5 +1,6 @@
 #include <helpers/ui/DisplayPowerSettings.h>
 #include "MyMesh.h"
+#include <helpers/CompanionTxRoutingCLI.h>
 #include "CompanionBluetooth.h"
 #include "CompanionWireless.h"
 #if defined(MESH_SOAK_DIAGNOSTICS)
@@ -2298,11 +2299,106 @@ bool MyMesh::handleCadCommand(const char* command, char* reply,
   return true;
 }
 
+bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t reply_size) {
+  const auto parsed = mesh::companion::parseTxRouteCommand(command);
+  if (!parsed.matched) return false;
+  const char* kind = parsed.channel ? "channel" : "user";
+  if (!parsed.valid) {
+    snprintf(reply, reply_size, "Error: use get/set tx.%s <name|%s> [auto|radio|radio2|both|off]",
+        kind, parsed.channel ? "index" : "key:hex");
+    return true;
+  }
+  if (parsed.set && !canMutateContacts()) {
+    snprintf(reply, reply_size, "Error: contact/channel storage unavailable");
+    return true;
+  }
+
+  ContactInfo* contact = nullptr;
+  ChannelDetails channel;
+  int channel_index = -1;
+  unsigned matches = 0, overrides = 0;
+  if (parsed.channel) {
+    uint32_t index = 0;
+    const bool by_index = !parsed.quoted && mesh::cli::parseUnsignedIntegerStrict(parsed.target, index);
+    for (int i = 0; i < MAX_GROUP_CHANNELS; ++i) {
+      ChannelDetails candidate;
+      if (!getChannel(i, candidate) || !candidate.name[0]) continue;
+      if (candidate.channel.tx_radio != mesh::RADIO_TX_AUTO) ++overrides;
+      if (by_index ? index == (uint32_t)i : !strcmp(candidate.name, parsed.target)) {
+        channel = candidate; channel_index = i; ++matches;
+      }
+    }
+  } else {
+    uint8_t key[32]; size_t key_bytes = 0;
+    const bool by_key = !parsed.quoted && !strncmp(parsed.target, "key:", 4);
+    if (by_key && !mesh::companion::parseTxRouteKey(parsed.target + 4, key, key_bytes)) {
+      snprintf(reply, reply_size, "Error: key: needs 12-64 hexadecimal digits (whole bytes)");
+      return true;
+    }
+    for (int i = MAX_ANON_CONTACTS; i < getTotalContactSlots(); ++i) {
+      ContactInfo* candidate = getContactPtrByIdx(i);
+      if (!candidate || candidate->type == ADV_TYPE_NONE) continue;
+      if (candidate->tx_radio != mesh::RADIO_TX_AUTO) ++overrides;
+      if (by_key ? !memcmp(candidate->id.pub_key, key, key_bytes) : !strcmp(candidate->name, parsed.target)) {
+        contact = candidate; ++matches;
+      }
+    }
+  }
+  if (!parsed.target[0]) {
+    snprintf(reply, reply_size, "> tx.%s: %u overrides; use get tx.%s <name|%s>",
+        kind, overrides, kind, parsed.channel ? "index" : "key:hex");
+    return true;
+  }
+  if (matches != 1) {
+    snprintf(reply, reply_size, "Error: %s %s%s", kind, matches ? "is ambiguous" : "not found",
+        matches ? (parsed.channel ? "; use an index" : "; use a longer key: prefix") : "");
+    return true;
+  }
+  uint8_t policy = parsed.channel ? channel.channel.tx_radio : contact->tx_radio;
+  if (parsed.set && policy != parsed.policy) {
+    bool saved;
+    if (parsed.channel) {
+      const ChannelDetails previous = channel;
+      channel.channel.tx_radio = parsed.policy;
+      saved = setChannel(channel_index, channel) && saveChannels();
+      if (!saved) setChannel(channel_index, previous);
+    } else {
+      contact->tx_radio = parsed.policy;
+      saved = scheduleContactWrite(*contact) && flushContactsBeforeReboot();
+      if (!saved) {
+        contact->tx_radio = policy;
+        scheduleContactWrite(*contact);
+      }
+    }
+    if (!saved) {
+      snprintf(reply, reply_size, "Error: TX routing was not saved");
+      return true;
+    }
+    policy = parsed.policy;
+  }
+  const auto* profiles = _radio->profiles();
+  const uint8_t mask = policy == mesh::RADIO_TX_AUTO ? (profiles ? profiles->transmitMask(0) : 1)
+      : mesh::explicitRadioTxMask(policy, profiles && profiles->canTransmit(1));
+  const char* active = mask ? mesh::radioTxPolicyName(mask) : "off";
+  char label[80];
+  if (parsed.channel) snprintf(label, sizeof(label), "%d \"%s\"", channel_index, channel.name);
+  else {
+    char key_prefix[13]; mesh::Utils::toHex(key_prefix, contact->id.pub_key, 6);
+    snprintf(label, sizeof(label), "\"%s\" key:%s", contact->name, key_prefix);
+  }
+  snprintf(reply, reply_size, "%s tx.%s %s %s; active=%s%s",
+      parsed.set ? "OK -" : ">", kind, label, mesh::radioTxPolicyName(policy), active,
+      (policy == mesh::RADIO_TX_SECONDARY || policy == mesh::RADIO_TX_BOTH) && !(mask & 2)
+          ? " (radio2 unavailable for TX)" : "");
+  return true;
+}
+
 bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
 
+  if (handleTxRoutingCommand(command, reply, reply_size)) return true;
   if (handleCompanionBluetoothCommand(command, reply, reply_size)) return true;
   if (handleCompanionWirelessCommand(command, reply, reply_size)) return true;
 
@@ -5060,7 +5156,12 @@ void MyMesh::handleCmdFrame(size_t len) {
     StrHelper::strncpy(channel.name, (char *)&cmd_frame[2], 32);
     memset(channel.channel.secret, 0, sizeof(channel.channel.secret));
     memcpy(channel.channel.secret, &cmd_frame[2 + 32], 16); // NOTE: only 128-bit supported
-    if (!getChannel(channel_idx, previous)
+    const bool have_previous = getChannel(channel_idx, previous);
+    if (have_previous && channel.name[0] != 0 && previous.name[0] != 0
+        && !memcmp(channel.channel.secret, previous.channel.secret, sizeof(channel.channel.secret))) {
+      channel.channel.tx_radio = previous.channel.tx_radio;
+    }
+    if (!have_previous
         || !setChannel(channel_idx, channel)) {
       writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
     } else if (saveChannels()) {

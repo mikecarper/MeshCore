@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static integration contract for TempRadio's single-copy reply barrier."""
+"""Integration contract for tracked TempRadio replies on both profiles."""
 
 from pathlib import Path
 import unittest
@@ -33,6 +33,11 @@ class TempRadioReplyDeliveryContractTest(unittest.TestCase):
             "const bool allow_redundant_copies = queued_packet == NULL;", reply
         )
         self.assertIn("fallback_scope,\n      allow_redundant_copies", reply)
+        self.assertLess(reply.index('temp_radio_reply_barrier.prepare(packet)'),
+                        reply.index('const bool queued = sendClientReplyWithFallbackScope'))
+        self.assertIn('if (!queued && !allow_redundant_copies) temp_radio_reply_barrier.clear();', reply)
+        self.assertIn('temp_radio_reply_barrier.trackCopy(original, packet);', source)
+        self.assertIn('mesh::Mesh::onRadioProfileCopyQueued(packet, original, priority);', source)
         self.assertIn(
             "if (allow_redundant_copies\n"
             "      && mesh::Packet::isValidPathLen(client->alt_path_len)",

@@ -540,10 +540,28 @@ public:
     return mesh::wireless::WiFi;
   }
   void loop();
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
+  bool allowTransportPacket(const mesh::Packet* packet, uint8_t context);
+  bool allowRadioProfileCross(const mesh::Packet* packet) override {
+    return allowTransportPacket(packet, 4);  // RULE_MODE_CROSS
+  }
+#endif
+
 
 #if defined(WITH_BRIDGE)
   bool isBridgeRunning() const override {
     return bridge != nullptr && bridge->isRunning();
+  }
+
+
+  void configureBridgeFilter(AbstractBridge* active_bridge) {
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
+    active_bridge->setPacketFilter([](void* context, const mesh::Packet* packet) {
+      return static_cast<MyMesh*>(context)->allowTransportPacket(packet, 2);  // RULE_MODE_BRIDGE
+    }, this);
+#else
+    (void)active_bridge;
+#endif
   }
 
   bool setBridgeState(bool enable) override {
@@ -585,6 +603,7 @@ public:
       }
 #endif
 #endif
+      configureBridgeFilter(bridge);
       bridge->begin();
 #ifdef WITH_MQTT_BRIDGE
       _alerter.setBridge(bridge);
@@ -619,6 +638,7 @@ public:
 #ifdef WITH_MQTT_BRIDGE
     bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #endif
+    configureBridgeFilter(bridge);
     bridge->begin();
     return bridge->isRunning();
   }

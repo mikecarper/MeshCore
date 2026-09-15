@@ -100,6 +100,12 @@ enum OtaMsgType : uint8_t {
   OTA_LEAVES       = 0x0B,   // a fragment of the leaves[] array (for host-side seed leaf-diff)
 };
 
+// Locally served replies may be emitted long after RX, outside its call stack.
+inline bool ota_is_response_message(uint8_t type) {
+  return type == OTA_HAVE || type == OTA_MANIFEST || type == OTA_DATA
+      || type == OTA_PROOF || type == OTA_LEAVES;
+}
+
 // Discovery is periodic background traffic; every packet that advances an active fetch is primary
 // traffic. Keep this classification in the wire-format layer so origins and opaque relay-only builds make
 // the same queueing decision without needing an OtaManager.

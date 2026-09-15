@@ -12,8 +12,9 @@ TEST(FloodFilterPersistence, DefaultRowsTrimTheInactiveTail) {
   FloodPersistenceRow rows[63] = {};
   rows[0].active = true;
   rows[1].active = true;
+  rows[2].active = true;
 
-  EXPECT_EQ(2, FloodFilterPolicy::forwardPersistenceCount(
+  EXPECT_EQ(3, FloodFilterPolicy::forwardPersistenceCount(
                    rows, 63, false));
 }
 

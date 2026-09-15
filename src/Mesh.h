@@ -60,6 +60,7 @@ class GroupChannel {
 public:
   uint8_t hash[PATH_HASH_SIZE];
   uint8_t secret[PUB_KEY_SIZE];
+  uint8_t tx_radio = RADIO_TX_AUTO;  // local setting, not part of the channel key
 };
 
 /**
@@ -396,6 +397,9 @@ protected:
    * \brief  Called exactly once whenever an active flood-retry slot is released.
    */
   virtual void onFloodRetrySlotReleased(const uint8_t* retry_key, uint8_t radio_profile) { }
+  // Resolve local TX routing while the complete peer identity is available.
+  // Packet destination hashes are too short to identify a contact safely.
+  virtual uint8_t getContactTxRadio(const Identity& peer) const { return RADIO_TX_AUTO; }
 
   /**
    * \returns  number of extra (Direct) ACK transmissions wanted.

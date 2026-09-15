@@ -367,4 +367,27 @@ test("flags remote-login reach, future-type, spoofing, and policy-stop risks", (
   assert.ok(tool.ruleWarnings(sender).some((warning) => /spoofable/.test(warning)));
 });
 
+test("factory has three rules with independent radio and transport decisions", () => {
+  const rules = tool.EXAMPLES.factory;
+  assert.strictEqual(rules.length, 3);
+  for (const via of ["radio", "bridge", "cross"]) {
+    for (const hops of [0, 4, 5, 63]) {
+      const facts = packet({ channel: "#wardriving", via, hops });
+      assert.strictEqual(tool.simulatePolicy(rules, facts).decision.drop,
+        via !== "radio" || hops >= 5);
+      assert.strictEqual(tool.simulatePolicy(rules,
+        { ...facts, channel: "#other", tempRadio: true }).decision.drop, false);
+    }
+  }
+});
+
+test("combined transport selector survives readable and bundle round trips", () => {
+  const rule = tool.EXAMPLES.factory[2];
+  const definition = tool.buildDefinition(rule);
+  assert.ok(definition.includes("via=bridge,cross"));
+  assert.strictEqual(tool.parseDefinition(definition).via, "bridge,cross");
+  assert.strictEqual(tool.decodeBundle(tool.encodeBundle([rule]))[0].via, "bridge,cross");
+  assert.strictEqual(tool.normalizeRule({ ...rule, via: "cross,bridge" }).via, "bridge,cross");
+});
+
 process.stdout.write(`# ${passed} filter-policy playground tests passed\n`);

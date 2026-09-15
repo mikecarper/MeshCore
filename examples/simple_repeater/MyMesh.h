@@ -422,6 +422,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint8_t priority;
     bool stop_on_match;
     bool retry_on_match;
+    uint8_t transport_modes;
     uint32_t rate_window_started;
     uint16_t rate_window_count;
     bool rate_window_active;
@@ -763,7 +764,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
                                     bool incoming_is_scoped,
                                     uint16_t incoming_transport_code,
                                     bool incoming_region_allowed,
-                                    const RegionEntry* incoming_region) const;
+                                    const RegionEntry* incoming_region, uint8_t context = 0) const;
   bool authenticateFloodPacketFilterChannel(
       const FloodPacketFilterEntry& entry,
       const mesh::Packet* packet) const;
@@ -777,14 +778,16 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint64_t applyFloodPacketFilterStop(uint64_t match_mask);
   uint64_t evaluateFloodPacketFilterMatches(
       const mesh::Packet* packet, bool incoming_region_allowed,
-      const RegionEntry* incoming_region);
+      const RegionEntry* incoming_region, uint8_t context = 0);
   bool applyFloodPacketFilterScope(mesh::Packet* packet, uint64_t match_mask,
                                    bool& scope_set, bool& fast_track,
                                    bool log_change = true);
-  bool shouldBlockFloodPacketForward(const mesh::Packet* packet) const;
-  void commitFloodPacketFilterRates(const mesh::Packet* packet);
-  void formatFloodPacketFilters(const char* args, char* reply) const;
-  void formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len) const;
+  bool shouldBlockFloodPacketForward(const mesh::Packet* packet,
+                                      uint64_t match_mask) const;
+  void commitFloodPacketFilterRates(const mesh::Packet* packet,
+                                    uint64_t match_mask);
+  void formatFloodPacketFilters(const char* args, char* reply, bool compact = false) const;
+  void formatFloodPacketFilterDetail(int index, char* reply, size_t reply_len, bool compact = false) const;
   void setFloodPacketFilter(const char* args, char* reply,
                             bool require_explicit_action = false);
   void deleteFloodPacketFilter(const char* args, char* reply);
@@ -940,6 +943,8 @@ protected:
 
   mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override;
   void onSendComplete(mesh::Packet* packet) override;
+  void onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* original,
+                                uint8_t priority) override;
   void onSendFail(mesh::Packet* packet) override;
 
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
@@ -1100,9 +1105,27 @@ public:
   bool handleHostCliSerialReply(const char* command, char* reply);
 #endif
   void loop();
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+  bool allowTransportPacket(const mesh::Packet* packet, uint8_t context);
+  bool allowRadioProfileCross(const mesh::Packet* packet) override {
+    return allowTransportPacket(packet, 4);  // RULE_MODE_CROSS
+  }
+#endif
+
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
 
 #if defined(WITH_BRIDGE)
+
+  void configureBridgeFilter(AbstractBridge* active_bridge) {
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+    active_bridge->setPacketFilter([](void* context, const mesh::Packet* packet) {
+      return static_cast<MyMesh*>(context)->allowTransportPacket(packet, 2);  // RULE_MODE_BRIDGE
+    }, this);
+#else
+    (void)active_bridge;
+#endif
+  }
+
 #ifdef WITH_RS232_BRIDGE
   RS232Bridge* createRS232Bridge() {
 #ifdef WITH_RS232_BRIDGE_ALT
@@ -1137,6 +1160,7 @@ public:
       active_rs232_bridge_uart = selected_uart;
     }
 #endif
+    configureBridgeFilter(bridge);
     bridge->begin();
     if (!bridge->isRunning()) {
 #if ENV_INCLUDE_GPS == 1
@@ -1239,6 +1263,7 @@ public:
 #ifdef WITH_RS232_BRIDGE
       const bool started = beginRS232Bridge();
 #else
+      configureBridgeFilter(active_bridge);
       active_bridge->begin();
       const bool started = active_bridge->isRunning();
 #endif
@@ -1297,6 +1322,7 @@ public:
     mqtt_bridge->setBuildDate(getBuildDate());
     mqtt_bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #endif
+    configureBridgeFilter(active_bridge);
     active_bridge->begin();
     return active_bridge->isRunning();
 #endif

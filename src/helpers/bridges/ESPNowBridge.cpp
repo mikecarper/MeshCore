@@ -545,6 +545,8 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
     return;
   }
 
+  if (!allowsPacket(packet)) return;
+
   if (!_seen_packets.wasSeen(packet)) {
     // Check the serialized size before writing into the ESP-NOW-sized buffer.
     const int expectedMeshPacketLen = packet->getRawLength();

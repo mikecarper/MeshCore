@@ -25,6 +25,8 @@ class RadioProfileCLI {
   RadioProfileConfig pending_temporary_;
   uint16_t primary_preamble_ = 0;
   RadioCrossMode cross_ = RadioCrossMode::Auto;
+  uint8_t reply_setting_ = 0;  // reserved image byte: 0 = role default
+  bool infrastructure_replies_ = false;
   Schedule schedules_[8];
   uint32_t temp_remaining_ms_ = 0;
   uint32_t temp_start_ms_ = 0;
@@ -41,7 +43,7 @@ class RadioProfileCLI {
   void formatConfig(char* reply, size_t capacity, const RadioProfileConfig& config,
                     bool temporary, uint32_t remaining_ms) const;
  public:
-  void begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc);
+  void begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool infrastructure_replies = false);
   void loop();
   bool handle(const char* command, char* reply, size_t capacity = 160);
   uint16_t primaryPreamble() const { return primary_preamble_; }

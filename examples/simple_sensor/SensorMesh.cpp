@@ -577,6 +577,7 @@ void SensorMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
                                         client->shared_secret, data,
                                         5 + (size_t)text_len);
   if (!packet) return;
+  packet->radio_reply = true;  // delayed GPIO command completion
   if (client->out_path_len == OUT_PATH_UNKNOWN) {
     sendFlood(packet, CLI_REPLY_DELAY_MILLIS, path_hash_size);
   } else {

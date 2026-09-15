@@ -942,12 +942,11 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
 static bool serializeContactRecord(const ContactInfo& c,
                                    uint8_t out[mesh::storage::CONTACT_RECORD_SIZE]) {
   size_t offset = 0;
-  const uint8_t unused = 0;
   memcpy(&out[offset], c.id.pub_key, 32); offset += 32;
   memcpy(&out[offset], c.name, 32); offset += 32;
   out[offset++] = c.type;
   out[offset++] = c.flags;
-  out[offset++] = unused;
+  out[offset++] = mesh::encodeRadioTxPolicy(c.tx_radio);
   memcpy(&out[offset], &c.sync_since, 4); offset += 4;
   out[offset++] = c.out_path_len;
   memcpy(&out[offset], &c.last_advert_timestamp, 4); offset += 4;
@@ -970,7 +969,7 @@ static bool deserializeContactRecord(
   c.name[sizeof(c.name) - 1] = 0;
   c.type = in[offset++];
   c.flags = in[offset++];
-  offset++; // reserved
+  c.tx_radio = mesh::decodeRadioTxPolicy(in[offset++]);
   memcpy(&c.sync_since, &in[offset], 4); offset += 4;
   c.out_path_len = in[offset++];
   memcpy(&c.last_advert_timestamp, &in[offset], 4); offset += 4;
@@ -1712,7 +1711,7 @@ bool DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
   if (file) {
     uint32_t idx = 0;
     ContactInfo c;
-    uint8_t unused = 0;
+    uint8_t tx_radio = 0;
 
     while (host->getContactForSave(idx, c)) {
       if (filter && !filter(c)) {
@@ -1723,7 +1722,8 @@ bool DataStore::saveContacts(DataStoreHost* host, bool (*filter)(const ContactIn
       success = success && (file.write((uint8_t *)&c.name, 32) == 32);
       success = success && (file.write(&c.type, 1) == 1);
       success = success && (file.write(&c.flags, 1) == 1);
-      success = success && (file.write(&unused, 1) == 1);
+      tx_radio = mesh::encodeRadioTxPolicy(c.tx_radio);
+      success = success && (file.write(&tx_radio, 1) == 1);
       success = success && (file.write((uint8_t *)&c.sync_since, 4) == 4);
       success = success && (file.write((uint8_t *)&c.out_path_len, 1) == 1);
       success = success && (file.write((uint8_t *)&c.last_advert_timestamp, 4) == 4);
@@ -1986,6 +1986,7 @@ void DataStore::loadChannels(DataStoreHost* host) {
                      sizeof(loaded[channel_idx].channel.secret))
             == sizeof(loaded[channel_idx].channel.secret);
     if (!success) break;
+    loaded[channel_idx].channel.tx_radio = mesh::decodeRadioTxPolicy(unused[0]);
   }
   file.close();
   if (!success) {
@@ -2019,6 +2020,7 @@ void DataStore::loadChannels(DataStoreHost* host) {
 
       if (!success) break; // EOF
 
+      ch.channel.tx_radio = mesh::decodeRadioTxPolicy(unused[0]);
       if (host->onChannelLoaded(channel_idx, ch)) {
         channel_idx++;
       } else {
@@ -2047,6 +2049,7 @@ bool DataStore::saveChannels(DataStoreHost* host) {
     memset(unused, 0, 4);
 
     while (success && host->getChannelForSave(channel_idx, ch)) {
+      unused[0] = mesh::encodeRadioTxPolicy(ch.channel.tx_radio);
       success = (file.write(unused, 4) == 4);
       success = success && (file.write((uint8_t *)ch.name, 32) == 32);
       success = success && (file.write((uint8_t *)ch.channel.secret, 32) == 32);

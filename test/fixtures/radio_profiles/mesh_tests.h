@@ -12,6 +12,11 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
   void loop() override { ++carrier_services; }
   bool recoverRadio(bool) override { ++recoveries; return true; }
   uint32_t estimated_airtime = 10;
+  bool distinguish_airtime = false;
+  uint32_t getProfileAirtime(uint8_t profile, int bytes, uint8_t cr = 0) override {
+    return distinguish_airtime ? (profile ? 70 : 900)
+        : mesh::Radio::getProfileAirtime(profile, bytes, cr);
+  }
   std::vector<uint8_t> incoming;
   std::vector<uint8_t> transmissions;
   DualProfileTestRadio() {
@@ -27,8 +32,11 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
   uint32_t getEstAirtimeFor(int) override { return estimated_airtime; }
   uint8_t receiveProfile() const override { return selected; }
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p) override {
+    return prepareTransmitProfile(p, false);
+  }
+  mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p, bool reply_rx_override) override {
     if (!incoming.empty()) return mesh::RadioParamApplyResult::BUSY;
-    if (!config.canTransmit(p)) return mesh::RadioParamApplyResult::FAILED;
+    if (!config.canTransmit(p, reply_rx_override)) return mesh::RadioParamApplyResult::FAILED;
     selected = p; cr = config.params(p).cr;
     return mesh::RadioParamApplyResult::APPLIED;
   }
@@ -51,6 +59,16 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
 class DualProfileTestMesh : public RetryCodingRateMesh {
  public:
   using RetryCodingRateMesh::RetryCodingRateMesh;
+  using RetryCodingRateMesh::isPacketRadioCurrent;
+  using RetryCodingRateMesh::getTransmitAirtime;
+  using RetryCodingRateMesh::getTransmitProfileMask;
+  using RetryCodingRateMesh::tryParsePacket;
+  bool cross_filter_allows = true;
+  unsigned cross_filter_calls = 0;
+  bool allowRadioProfileCross(const mesh::Packet*) override {
+    ++cross_filter_calls;
+    return cross_filter_allows;
+  }
   mesh::Packet* replyOn(uint8_t profile, uint32_t generation) {
     ReceiveProfileScope context(*this, profile, generation);
     auto* packet = obtainNewPacket();
@@ -81,6 +99,54 @@ class DualProfileTest : public testing::Test {
   }
   void tick(uint32_t ms = 1) { clock.now += ms; node.loop(); }
 };
+
+TEST_F(DualProfileTest, CrossFilterKeepsPrimaryTransmissionAndAvoidsCopyAllocation) {
+  node.cross_filter_allows = false;
+  ASSERT_NE(nullptr, queue());
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  EXPECT_EQ(0, manager.getOutboundByIdx(0)->radio_profile);
+  EXPECT_EQ(1U, node.cross_filter_calls);
+}
+
+TEST_F(DualProfileTest, CrossFilterKeepsSecondaryReplyOnItsOrigin) {
+  radio.config.cross = mesh::RadioCrossMode::On;
+  node.cross_filter_allows = false;
+  auto* reply = node.replyOn(1, radio.config.generation[1]);
+  ASSERT_TRUE(node.sendPacket(reply, 0));
+  ASSERT_EQ(1, manager.getOutboundTotal());
+  EXPECT_EQ(1, manager.getOutboundByIdx(0)->radio_profile);
+}
+
+TEST_F(DualProfileTest, CrossFilterCannotRerouteAnRxOnlyOrigin) {
+  radio.config.cross = mesh::RadioCrossMode::On;
+  radio.config.secondary.mode = mesh::RadioProfileMode::Rx;
+  node.cross_filter_allows = false;
+  auto* reply = node.replyOn(1, radio.config.generation[1]);
+  ASSERT_FALSE(node.sendPacket(reply, 0));
+  EXPECT_EQ(0, manager.getOutboundTotal());
+  EXPECT_EQ(40, manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, BoundCrossRetryCannotBypassChangedFilter) {
+  node.cross_filter_allows = false;
+  auto* retry = node.obtainNewPacket();
+  ASSERT_NE(nullptr, retry);
+  *retry = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  retry->radio_bound = true;
+  retry->radio_origin = 0;
+  retry->radio_profile = 1;
+  ASSERT_FALSE(node.sendPacket(retry, 0));
+  EXPECT_EQ(0, manager.getOutboundTotal());
+  EXPECT_EQ(40, manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, SingleRadioDoesNotConsultCrossFilter) {
+  radio.config.secondary.mode = mesh::RadioProfileMode::Off;
+  node.cross_filter_allows = false;
+  ASSERT_NE(nullptr, queue());
+  EXPECT_EQ(1, manager.getOutboundTotal());
+  EXPECT_EQ(0U, node.cross_filter_calls);
+}
 
 TEST(RadioProfiles, CrossPolicyAndReceiveOnlyMatrix) {
   mesh::RadioProfiles p;
@@ -155,6 +221,244 @@ TEST_F(DualProfileTest, TransmitsIdenticalMessageOnBothProfilesOnce) {
   EXPECT_EQ(40, manager.getFreeCount());
 }
 
+TEST_F(DualProfileTest, ExplicitTransmitChoicesOverrideCrossWithoutEnablingRxOnly) {
+  node.flood_attempts = 0;
+  for (auto cross : {mesh::RadioCrossMode::Auto, mesh::RadioCrossMode::On, mesh::RadioCrossMode::Off}) {
+    radio.config.cross = cross;
+    for (auto secondary : {mesh::RadioProfileMode::Off, mesh::RadioProfileMode::Rx, mesh::RadioProfileMode::RxTx}) {
+      radio.config.secondary.mode = secondary;
+      for (bool temporary : {false, true}) {
+        radio.config.secondary_temporary = temporary;
+        for (uint8_t policy = mesh::RADIO_TX_PRIMARY; policy <= mesh::RADIO_TX_OFF; ++policy) {
+          auto* packet = node.obtainNewPacket(); ASSERT_NE(nullptr, packet);
+          *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+          packet->tx_radio = policy;
+          const uint8_t expected = mesh::explicitRadioTxMask(policy, secondary == mesh::RadioProfileMode::RxTx);
+          ASSERT_EQ(expected != 0, node.sendFlood(packet));
+          uint8_t actual = 0;
+          while (manager.getOutboundTotal()) {
+            auto* queued = manager.getOutboundByIdx(0);
+            actual |= 1U << queued->radio_profile;
+            EXPECT_EQ(policy, queued->tx_radio);
+            EXPECT_TRUE(node.isPacketRadioCurrent(queued));
+            manager.removeOutboundByIdx(0); node.releasePacket(queued);
+          }
+          EXPECT_EQ(expected, actual);
+          EXPECT_EQ(40, manager.getFreeCount());
+        }
+      }
+    }
+  }
+}
+
+TEST_F(DualProfileTest, ExplicitSecondaryRetriesStayOnSecondaryWithCrossOff) {
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.config.secondary_temporary = true;
+  auto* packet = node.obtainNewPacket(); ASSERT_NE(nullptr, packet);
+  *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  packet->tx_radio = mesh::RADIO_TX_SECONDARY;
+  ASSERT_TRUE(node.sendFlood(packet));
+  for (int i = 0; i < 50; ++i) { radio.complete = true; tick(1000); }
+  ASSERT_GE(radio.transmissions.size(), 2U);
+  for (auto profile : radio.transmissions) EXPECT_EQ(1, profile);
+  EXPECT_EQ(40, manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, InfrastructureReplyChoiceMatrix) {
+  for (auto cross : {mesh::RadioCrossMode::Auto, mesh::RadioCrossMode::On, mesh::RadioCrossMode::Off}) {
+    radio.config.cross = cross;
+    for (auto secondary : {mesh::RadioProfileMode::Off, mesh::RadioProfileMode::Rx, mesh::RadioProfileMode::RxTx}) {
+      radio.config.secondary.mode = secondary;
+      for (bool temporary : {false,true}) {
+        radio.config.secondary_temporary = temporary;
+        for (uint8_t policy=0;policy<=mesh::RADIO_TX_OFF;++policy) {
+          for (bool force : {false,true}) {
+            if (force && policy!=mesh::RADIO_TX_SECONDARY && policy!=mesh::RADIO_TX_BOTH) continue;
+            radio.config.reply_tx=policy; radio.config.reply_force=force;
+            for (uint8_t origin : {0,1}) {
+              auto* packet=node.replyOn(origin,radio.config.generation[origin]);
+              ASSERT_NE(nullptr,packet); ASSERT_TRUE(packet->radio_reply);
+              const bool can_second=secondary==mesh::RadioProfileMode::RxTx
+                  || (force && secondary==mesh::RadioProfileMode::Rx);
+              const uint8_t expected=policy==mesh::RADIO_TX_AUTO ? radio.config.transmitMask(origin)
+                  : (policy==mesh::RADIO_TX_OFF ? 0 : policy & (can_second ? 3 : 1));
+              ASSERT_EQ(expected!=0,node.sendPacket(packet,0));
+              uint8_t actual=0;
+              while (manager.getOutboundTotal()) {
+                auto* queued=manager.removeOutboundByIdx(0);
+                actual |= 1U << queued->radio_profile;
+                EXPECT_EQ(policy,queued->tx_radio);
+                EXPECT_EQ(force,queued->radio_reply_force);
+                EXPECT_EQ(origin,queued->radio_origin);
+                EXPECT_TRUE(node.isPacketRadioCurrent(queued));
+                node.releasePacket(queued);
+              }
+              EXPECT_EQ(expected,actual); EXPECT_EQ(40,manager.getFreeCount());
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(DualProfileTest, ReplyForceDoesNotEnableForwardedOrUnsolicitedTraffic) {
+  node.flood_attempts=0;
+  radio.config.cross=mesh::RadioCrossMode::Off;
+  radio.config.secondary.mode=mesh::RadioProfileMode::Rx;
+  radio.config.reply_tx=mesh::RADIO_TX_BOTH; radio.config.reply_force=true;
+  auto raw_packet=makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  uint8_t raw[MAX_TRANS_UNIT]; const uint8_t length=raw_packet.writeTo(raw);
+  auto* received=node.replyOn(0,radio.config.generation[0]); ASSERT_NE(nullptr,received);
+  received->radio_reply_force=true; received->tx_radio=mesh::RADIO_TX_BOTH;
+  ASSERT_TRUE(node.tryParsePacket(received,raw,length));
+  ASSERT_FALSE(received->radio_reply); ASSERT_FALSE(received->radio_reply_force);
+  ASSERT_EQ(mesh::RADIO_TX_AUTO,received->tx_radio);
+  ASSERT_TRUE(node.sendPacket(received,0));
+  ASSERT_NE(nullptr,queue(PAYLOAD_TYPE_ADVERT));
+  ASSERT_EQ(2,manager.getOutboundTotal());
+  for (int i=0;i<2;++i) {
+    const auto* queued=manager.getOutboundByIdx(i);
+    EXPECT_EQ(0,queued->radio_profile); EXPECT_FALSE(queued->radio_reply);
+  }
+  for (int i=0;i<6;++i) { radio.complete=true; tick(); }
+  EXPECT_EQ((std::vector<uint8_t>{0,0}),radio.transmissions);
+  EXPECT_EQ(40,manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, ForcedReplySurvivesDriverRetryOnRxOnlySecondary) {
+  node.flood_attempts=0;
+  radio.config.cross=mesh::RadioCrossMode::Off;
+  radio.config.secondary.mode=mesh::RadioProfileMode::Rx;
+  radio.config.reply_tx=mesh::RADIO_TX_SECONDARY; radio.config.reply_force=true;
+  auto* packet=node.replyOn(0,radio.config.generation[0]); ASSERT_NE(nullptr,packet);
+  ASSERT_TRUE(node.sendPacket(packet,0));
+  radio.fail_next_send=true;
+  for (int i=0;i<12;++i) { radio.complete=true; tick(1000); }
+  EXPECT_EQ((std::vector<uint8_t>{1}),radio.transmissions);
+  EXPECT_EQ(mesh::RadioProfileMode::Rx,radio.config.secondary.mode);
+  EXPECT_EQ(40,manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, BothForcedReplyCopiesKeepSeparateFloodRetries) {
+  radio.config.cross=mesh::RadioCrossMode::Off;
+  radio.config.secondary.mode=mesh::RadioProfileMode::Rx;
+  radio.config.secondary_temporary=true;
+  radio.config.reply_tx=mesh::RADIO_TX_BOTH; radio.config.reply_force=true;
+  auto* packet=node.replyOn(1,radio.config.generation[1]); ASSERT_NE(nullptr,packet);
+  packet->header=PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT;
+  ASSERT_TRUE(node.sendFlood(packet));
+  for (int i=0;i<50;++i) { radio.complete=true; tick(1000); }
+  unsigned counts[2]={};
+  for (auto profile:radio.transmissions) ++counts[profile];
+  EXPECT_GE(counts[0],2U); EXPECT_GE(counts[1],2U);
+  EXPECT_EQ(40,manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, ForcedReplyRespectsCrossFiltersAndProfileExpiry) {
+  radio.config.reply_tx=mesh::RADIO_TX_BOTH; radio.config.reply_force=true;
+  radio.config.secondary.mode=mesh::RadioProfileMode::Rx;
+  node.cross_filter_allows=false;
+  auto* reply=node.replyOn(0,radio.config.generation[0]); ASSERT_NE(nullptr,reply);
+  ASSERT_TRUE(node.sendPacket(reply,0)); ASSERT_EQ(1,manager.getOutboundTotal());
+  EXPECT_EQ(0,manager.getOutboundByIdx(0)->radio_profile);
+  node.releasePacket(manager.removeOutboundByIdx(0));
+  node.cross_filter_allows=true;
+  reply=node.replyOn(1,radio.config.generation[1]); ASSERT_NE(nullptr,reply);
+  ASSERT_TRUE(node.sendPacket(reply,0)); ASSERT_EQ(2,manager.getOutboundTotal());
+  radio.config.setSecondary({},false);
+  for (int i=0;i<6;++i) { radio.complete=true; tick(); }
+  EXPECT_TRUE(radio.transmissions.empty()); // both originated in an expired session
+  EXPECT_EQ(40,manager.getFreeCount());
+  auto* stale=node.replyOn(1,radio.config.generation[1]-1); ASSERT_NE(nullptr,stale);
+  EXPECT_FALSE(node.sendPacket(stale,0));
+  EXPECT_EQ(40,manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, ReplyFlagsAreLocalAndResetOnReadAndPoolReuse) {
+  auto packet=makeFloodPacket(PAYLOAD_TYPE_RESPONSE);
+  uint8_t before[MAX_TRANS_UNIT],after[MAX_TRANS_UNIT];
+  const auto size=packet.writeTo(before);
+  packet.radio_reply=packet.radio_reply_force=true;
+  packet.tx_radio=mesh::RADIO_TX_BOTH;
+  EXPECT_EQ(size,packet.writeTo(after)); EXPECT_EQ(0,memcmp(before,after,size));
+  EXPECT_TRUE(packet.readFrom(before,size));
+  EXPECT_FALSE(packet.radio_reply); EXPECT_FALSE(packet.radio_reply_force);
+  EXPECT_EQ(mesh::RADIO_TX_AUTO,packet.tx_radio);
+  for (int i=0;i<80;++i) {
+    auto* p=node.obtainNewPacket(); ASSERT_NE(nullptr,p);
+    EXPECT_FALSE(p->radio_reply); EXPECT_FALSE(p->radio_reply_force);
+    p->radio_reply=p->radio_reply_force=true; node.releasePacket(p);
+  }
+}
+
+TEST_F(DualProfileTest, ReplyAirtimeIncludesForcedRxProfileBeforeAdmission) {
+  radio.distinguish_airtime=true;
+  radio.config.secondary.mode=mesh::RadioProfileMode::Rx;
+  radio.config.reply_tx=mesh::RADIO_TX_BOTH;
+  auto* reply=node.replyOn(0,radio.config.generation[0]); ASSERT_NE(nullptr,reply);
+  EXPECT_EQ(900U,node.getTransmitAirtime(reply));
+  radio.config.reply_force=true;
+  EXPECT_EQ(970U,node.getTransmitAirtime(reply));
+  radio.config.reply_tx=mesh::RADIO_TX_SECONDARY;
+  EXPECT_EQ(70U,node.getTransmitAirtime(reply));
+  radio.config.reply_tx=mesh::RADIO_TX_OFF;
+  EXPECT_EQ(0U,node.getTransmitAirtime(reply));
+  node.releasePacket(reply);
+}
+
+TEST_F(DualProfileTest, ExplicitBothSurvivesCrossOffButDisablingSecondaryRetiresItsCopy) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  auto* packet = node.obtainNewPacket(); ASSERT_NE(nullptr, packet);
+  *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT); packet->tx_radio = mesh::RADIO_TX_BOTH;
+  ASSERT_TRUE(node.sendFlood(packet));
+  ASSERT_EQ(2, manager.getOutboundTotal());
+  auto* copy = manager.getOutboundByIdx(1);
+  EXPECT_TRUE(node.isPacketRadioCurrent(copy));
+  radio.config.secondary.mode = mesh::RadioProfileMode::Rx;
+  EXPECT_FALSE(node.isPacketRadioCurrent(copy));
+  for (int i = 0; i < 5; ++i) { radio.complete = true; tick(); }
+  EXPECT_EQ((std::vector<uint8_t>{0}), radio.transmissions);
+  EXPECT_EQ(40, manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, TransmitPolicyIsLocalAndPoolReuseResetsIt) {
+  auto* packet = node.obtainNewPacket(); ASSERT_NE(nullptr, packet);
+  *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  uint8_t before[MAX_TRANS_UNIT], after[MAX_TRANS_UNIT];
+  const auto length = packet->writeTo(before);
+  packet->tx_radio = mesh::RADIO_TX_OFF;
+  EXPECT_EQ(length, packet->writeTo(after));
+  EXPECT_EQ(0, memcmp(before, after, length));
+  node.releasePacket(packet);
+  for (int i = 0; i < 40; ++i) {
+    auto* reused = node.obtainNewPacket(); ASSERT_NE(nullptr, reused);
+    EXPECT_EQ(mesh::RADIO_TX_AUTO, reused->tx_radio);
+    reused->tx_radio = mesh::RADIO_TX_SECONDARY;
+    node.releasePacket(reused);
+  }
+}
+
+TEST_F(DualProfileTest, MessageTimeoutAirtimeUsesSelectedProfilesInsteadOfScanPosition) {
+  radio.distinguish_airtime = true;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  auto* packet = node.obtainNewPacket(); ASSERT_NE(nullptr, packet);
+  *packet = makeFloodPacket(PAYLOAD_TYPE_TXT_MSG);
+  for (uint8_t scan : {0, 1}) {
+    radio.selected = scan;
+    packet->tx_radio = mesh::RADIO_TX_SECONDARY;
+    EXPECT_EQ(70U, node.getTransmitAirtime(packet));
+    packet->tx_radio = mesh::RADIO_TX_PRIMARY;
+    EXPECT_EQ(900U, node.getTransmitAirtime(packet));
+    packet->tx_radio = mesh::RADIO_TX_BOTH;
+    EXPECT_EQ(970U, node.getTransmitAirtime(packet));
+    packet->tx_radio = mesh::RADIO_TX_AUTO;
+    EXPECT_EQ(900U, node.getTransmitAirtime(packet));
+  }
+  node.releasePacket(packet);
+}
+
 TEST_F(DualProfileTest, DefaultSeparatesNormalTrafficFromTemporaryOta) {
   radio.config.secondary_temporary = true;
   ASSERT_NE(nullptr, queue());
@@ -165,11 +469,54 @@ TEST_F(DualProfileTest, DefaultSeparatesNormalTrafficFromTemporaryOta) {
   EXPECT_EQ(1, manager.getOutboundByIdx(1)->radio_profile);
 }
 
+TEST_F(DualProfileTest, TemporaryActivityIncludesEitherProfileAndEndsAfterBothExpire) {
+  for (bool primary : {false,true}) {
+    for (bool secondary : {false,true}) {
+      node.tempRadioActive=primary;
+      radio.config.secondary_temporary=secondary;
+      EXPECT_EQ(primary || secondary,node.isAnyTempRadioActive());
+    }
+  }
+  node.tempRadioActive=false;
+  radio.config.setSecondary({},false);
+  EXPECT_FALSE(node.isAnyTempRadioActive());
+}
+
 TEST_F(DualProfileTest, ReceiveOnlyNeverTransmitsSecondary) {
   radio.config.secondary.mode = mesh::RadioProfileMode::Rx;
   ASSERT_NE(nullptr, queue());
   EXPECT_EQ(1, manager.getOutboundTotal());
   tick(); EXPECT_EQ((std::vector<uint8_t>{0}), radio.transmissions);
+}
+
+TEST_F(DualProfileTest, AsyncOtaResponseAdmissionMaskMatchesTheActualQueuedCopies) {
+  radio.config.cross=mesh::RadioCrossMode::Off;
+  radio.config.secondary_temporary=true;
+  radio.config.reply_tx=mesh::RADIO_TX_BOTH;
+  for (auto mode : {mesh::RadioProfileMode::Rx,mesh::RadioProfileMode::RxTx}) {
+    radio.config.secondary.mode=mode;
+    for (bool force : {false,true}) {
+      radio.config.reply_force=force;
+      for (uint8_t type : {mesh::ota::OTA_REQ,mesh::ota::OTA_DATA,mesh::ota::OTA_PROOF,
+                           mesh::ota::OTA_HAVE,mesh::ota::OTA_QUERY}) {
+        auto* p=node.obtainNewPacket(); ASSERT_NE(nullptr,p);
+        *p=makeFloodPacket(PAYLOAD_TYPE_OTA); p->payload[0]=type;
+        p->radio_reply=mesh::ota::ota_is_response_message(type);
+        ASSERT_TRUE(p->radio_local); // no RX call stack
+        const uint8_t mask=node.getTransmitProfileMask(p);
+        EXPECT_EQ(p->radio_reply ? ((force || mode==mesh::RadioProfileMode::RxTx) ? 3 : 1)
+            : (mode==mesh::RadioProfileMode::RxTx ? 2 : 0),mask);
+        ASSERT_EQ(mask!=0,node.sendPacket(p,0));
+        uint8_t actual=0;
+        while (manager.getOutboundTotal()) {
+          auto* queued=manager.removeOutboundByIdx(0);
+          actual |= 1U << queued->radio_profile;
+          node.releasePacket(queued);
+        }
+        EXPECT_EQ(mask,actual); EXPECT_EQ(40,manager.getFreeCount());
+      }
+    }
+  }
 }
 
 TEST_F(DualProfileTest, ReceiveOnlyTemporaryOtaDoesNotLeakOntoNormalChannel) {

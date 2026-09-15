@@ -18,7 +18,9 @@ struct ContactInfo {
   uint8_t type = 0;   // one of ADV_TYPE_*
   uint8_t flags = 0;
   uint8_t out_path_len = 0;
-  mutable bool shared_secret_valid = false;
+  // Both fit in the original cache-valid byte; no extra RAM per contact.
+  mutable uint8_t shared_secret_valid : 1;
+  uint8_t tx_radio : 3;
 #if MESH_CONTACT_CACHE
   mesh::ContactPathRef path_ref;
 #else
@@ -35,6 +37,8 @@ struct ContactInfo {
 #if defined(NRF52_PLATFORM)
   mutable uint16_t storage_slot = mesh::storage::CONTACT_SLOT_NONE;
 #endif
+
+  ContactInfo() : shared_secret_valid(false), tx_radio(mesh::RADIO_TX_AUTO) {}
 
   // The pointer is a short-lived borrow. Copy bytes for a queued operation;
   // another contact-cache access may replace the resident entry.

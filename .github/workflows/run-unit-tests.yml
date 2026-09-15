@@ -70,6 +70,19 @@ jobs:
       - name: Run Unit Tests
         run: pio test -e native -e native_kiss_modem -vv
 
+      - name: Verify filter playground modes and built-in defaults
+        run: node scripts/test_filter_tool.js
+
+      - name: Verify bridge filter wiring and shorthand permissions
+        run: python3 -B test/test_transport_filter_wiring.py -v
+
+      - name: Verify Companion contact and channel TX routing
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          python3 -B test/test_companion_tx_routing.py -v
+          python3 -B test/test_contact_cache.py -v
+
       - name: Verify receive recovery and pinned radio status transport
         run: |
           python3 -B test/test_radio_receive_contract.py
@@ -92,6 +105,7 @@ jobs:
           python3 -B test/test_radio_profile_scan.py
           python3 -B test/test_repeater_radio_timing_integration.py
           python3 -B test/test_temp_radio_reply_delivery_contract.py
+          python3 -B test/test_reply_tx_integration.py
 
       - name: Verify dual-profile switching and chirp timing
         working-directory: test

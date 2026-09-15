@@ -123,7 +123,8 @@ void Dispatcher::restoreOutboundTxOverrides() {
 bool Dispatcher::startOutboundTransmit() {
   if (outbound == NULL) return false;
   if (!isPacketRadioCurrent(outbound)
-      || _radio->prepareTransmitProfile(outbound->radio_profile) != RadioParamApplyResult::APPLIED) return false;
+      || _radio->prepareTransmitProfile(outbound->radio_profile,
+          outbound->radio_reply && outbound->radio_reply_force) != RadioParamApplyResult::APPLIED) return false;
 
   int len = 0;
   uint8_t raw[MAX_TRANS_UNIT];
@@ -354,7 +355,8 @@ void Dispatcher::loop() {
       // keep the retry waiting forever on an unread RxDone interrupt.
       if (isDualRadioActive()) checkRecv();
       if (!millisHasNowPassed(outbound_radio_retry_at)) return;
-      const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile);
+      const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile,
+          outbound->radio_reply && outbound->radio_reply_force);
       if (prepared == RadioParamApplyResult::BUSY) {
         outbound_radio_retry_at = futureMillis(10);
         return;
@@ -544,6 +546,8 @@ bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {
   pkt->radio_profile = pkt->radio_origin = _radio->receiveProfile();
   pkt->radio_bound = false;
   pkt->radio_local = false;
+  pkt->tx_radio = RADIO_TX_AUTO;
+  pkt->radio_reply = pkt->radio_reply_force = false;
   pkt->radio_generation = pkt->radio_origin_generation = _radio->receiveProfileGeneration();
   pkt->header = raw[i++];
   if (pkt->getPayloadVer() > PAYLOAD_VER_1) {
@@ -737,7 +741,8 @@ void Dispatcher::checkSend() {
   // Waiting for airtime credit must leave the receive scanner free to run.
   // Only retune once this queue entry is actually eligible to transmit.
   if (pending && _radio->profiles()) {
-    const auto prepared = _radio->prepareTransmitProfile(pending->radio_profile);
+    const auto prepared = _radio->prepareTransmitProfile(pending->radio_profile,
+        pending->radio_reply && pending->radio_reply_force);
     if (prepared == RadioParamApplyResult::BUSY) return;
     if (prepared == RadioParamApplyResult::FAILED) {
       outbound = _mgr->getNextOutbound(now);
@@ -822,6 +827,9 @@ Packet* Dispatcher::obtainNewPacket() {
     pkt->radio_generation = pkt->radio_origin_generation = receive_context_active ? receive_context_generation : 0;
     pkt->radio_bound = false;
     pkt->radio_local = !receive_context_active;
+    pkt->tx_radio = RADIO_TX_AUTO;
+    pkt->radio_reply = receive_context_active;
+    pkt->radio_reply_force = false;
   }
   return pkt;
 }
@@ -841,21 +849,37 @@ bool Dispatcher::queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t 
   }
   auto* profiles = _radio->profiles();
   if (packet->radio_profile > 1) return false;
-  if (profiles == nullptr || packet->radio_bound) {
+  if (profiles == nullptr) {
+    if (packet->tx_radio != RADIO_TX_AUTO
+        && !(explicitRadioTxMask(packet->tx_radio, false) & 1)) return false;
+    return _mgr->queueOutbound(packet, priority, futureMillis(delay_millis));
+  }
+  if (packet->radio_bound) {
+    if (!isPacketRadioCurrent(packet)) return false;
+    if (profiles && packet->radio_profile != packet->radio_origin
+        && !allowRadioProfileCross(packet)) return false;
     return _mgr->queueOutbound(packet, priority, futureMillis(delay_millis));
   }
   if (!packet->radio_local && packet->radio_generation
       && packet->radio_generation != profiles->generation[packet->radio_profile]) return false;
+  if (packet->radio_reply && packet->tx_radio == RADIO_TX_AUTO) {
+    packet->tx_radio = profiles->reply_tx;
+    packet->radio_reply_force = profiles->reply_force;
+  }
   // Locally generated OTA traffic uses the temporary update profile. Replies
   // created while processing RX inherit that request's profile instead.
   // Keep that origin in RX-only mode too: isolation must drop a disallowed
   // transmission instead of silently sending it on the normal channel.
-  if (packet->radio_local && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+  if (packet->tx_radio == RADIO_TX_AUTO && packet->radio_local && packet->getPayloadType() == PAYLOAD_TYPE_OTA
       && profiles->secondary_temporary && !profiles->primary_temporary) {
     packet->radio_profile = 1;
   }
   const uint8_t origin = packet->radio_profile;
-  const uint8_t mask = profiles->transmitMask(origin);
+  uint8_t mask = getTransmitProfileMask(packet);
+  const uint8_t cross_mask = (uint8_t)(1U << (origin ^ 1));
+  if ((mask & cross_mask) && !allowRadioProfileCross(packet)) {
+    mask &= (uint8_t)~cross_mask;
+  }
   if (!mask) return false;
   packet->radio_origin = origin;
   packet->radio_origin_generation = profiles->generation[origin];
@@ -886,15 +910,41 @@ bool Dispatcher::queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t 
   return true;
 }
 
+uint8_t Dispatcher::getTransmitProfileMask(const Packet* packet) const {
+  const auto* profiles = _radio->profiles();
+  if (!profiles) return packet->tx_radio == RADIO_TX_AUTO ? 1 : explicitRadioTxMask(packet->tx_radio, false);
+  if (packet->radio_profile > 1) return 0;
+  const bool reply = packet->radio_reply && !packet->radio_bound && packet->tx_radio == RADIO_TX_AUTO;
+  const uint8_t policy = reply ? profiles->reply_tx : packet->tx_radio;
+  const bool force = packet->radio_reply && (reply ? profiles->reply_force : packet->radio_reply_force);
+  uint8_t origin = packet->radio_profile;
+  if (policy == RADIO_TX_AUTO && packet->radio_local && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+      && profiles->secondary_temporary && !profiles->primary_temporary) origin = 1;
+  return policy == RADIO_TX_AUTO ? profiles->transmitMask(origin)
+      : explicitRadioTxMask(policy, profiles->canTransmit(1, force));
+}
+
+uint32_t Dispatcher::getTransmitAirtime(const Packet* packet) const {
+  const uint8_t mask = getTransmitProfileMask(packet);
+  uint32_t total = 0;
+  for (uint8_t profile = 0; profile < 2; ++profile) {
+    if (mask & (1U << profile))
+      total += _radio->getProfileAirtime(profile, packet->getRawLength(), packet->tx_cr);
+  }
+  return total;
+}
+
 bool Dispatcher::isPacketRadioCurrent(const Packet* packet) const {
   const auto* p = _radio->profiles();
   if (!p || !packet->radio_bound) return true;
   const uint8_t target = packet->radio_profile;
   const uint8_t origin = packet->radio_origin;
-  return target < 2 && origin < 2 && p->canTransmit(target)
+  const bool force = packet->radio_reply && packet->radio_reply_force;
+  return target < 2 && origin < 2 && p->canTransmit(target, force)
       && packet->radio_generation == p->generation[target]
       && packet->radio_origin_generation == p->generation[origin]
-      && (origin == target || p->canCross());
+      && (packet->tx_radio == RADIO_TX_AUTO ? (origin == target || p->canCross())
+          : (explicitRadioTxMask(packet->tx_radio, p->canTransmit(1, force)) & (1U << target)) != 0);
 }
 
 bool Dispatcher::sendPacket(Packet* packet, uint8_t priority, uint32_t delay_millis) {

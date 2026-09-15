@@ -214,6 +214,7 @@
       pathPrefix: "",
       sender: "",
       tempRadio: "any",
+      via: "radio",
       verdict: "continue",
       scopeGate: "unchanged",
       targetKind: "scope",
@@ -257,6 +258,8 @@
       pathKind: enumValue(input.pathKind, PATH_KINDS, "Path matcher", "none"),
       pathPrefix: "",
       sender: clean(input.sender),
+      via: enumValue(input.via === "cross,bridge" ? "bridge,cross" : input.via,
+        ["radio", "bridge", "cross", "bridge,cross"], "Traffic path", "radio"),
       tempRadio: enumValue(input.tempRadio, ["any", "active", "inactive"], "Temporary-radio matcher", "any"),
       verdict: enumValue(input.verdict, ["continue", "drop"], "Forwarding verdict", "continue"),
       scopeGate: enumValue(input.scopeGate, ["unchanged", "require_allowed", "bypass_global"], "Scope-gate action", "unchanged"),
@@ -356,6 +359,7 @@
     if (rule.pathKind === "prefix") matches.push(`path=prefix:${rule.pathPrefix}`);
     else if (rule.pathKind !== "none") matches.push(`path=${rule.pathKind}`);
     if (rule.sender) matches.push(`sender=${quoteDsl(rule.sender)}`);
+    if (rule.via !== "radio") matches.push(`via=${rule.via}`);
     if (rule.tempRadio !== "any") matches.push(`tempradio=${rule.tempRadio}`);
     const actions = [];
     if (rule.verdict === "drop") actions.push("drop");
@@ -464,6 +468,7 @@
           rule.pathPrefix = value.slice(7);
         } else rule.pathKind = value;
       } else if (name === "sender") rule.sender = value;
+      else if (name === "via") rule.via = value;
       else if (name === "tempradio") rule.tempRadio = value;
       else throw new FilterToolError(`Unsupported receive-time matcher: ${token}`);
     });
@@ -564,6 +569,7 @@
     else if (rule.pathKind.startsWith("bucket:")) conditions.push(`a path matching ${rule.pathKind}`);
     else if (rule.pathKind.startsWith("loop:")) conditions.push(`the ${rule.pathKind.slice(5)} own-ID loop threshold`);
     if (rule.sender) conditions.push(`decrypted sender "${rule.sender}"`);
+    conditions.push(`traffic path ${rule.via}`);
     if (rule.tempRadio !== "any") conditions.push(`temporary radio ${rule.tempRadio}`);
     const mode = rule.mode === "shadow"
       ? "In shadow mode, report that it would "
@@ -970,6 +976,7 @@
       regionName: clean(input.regionName),
       sender,
       tempRadio: Boolean(input.tempRadio),
+      via: enumValue(input.via, ["radio", "bridge", "cross"], "Packet traffic path", "radio"),
       blacklist: Boolean(input.blacklist),
       buckets: Array.from(new Set(buckets)),
       loopLevel: requiredInteger(input.loopLevel == null ? 0 : input.loopLevel, 0, 3, "Loop result"),
@@ -1002,6 +1009,7 @@
     const rule = normalizeRule(inputRule);
     const packet = normalizePacket(inputPacket);
     const misses = [];
+    if (!rule.via.split(",").includes(packet.via)) misses.push(`traffic path is ${packet.via}`);
     if (rule.route === "flood" && !["unscoped_flood", "scoped_flood"].includes(packet.route)) misses.push("route is not flood");
     else if (rule.route !== "flood" && rule.route !== packet.route) misses.push(`route is ${packet.route}`);
     if (!typeMatches(rule.type, packet.type)) misses.push(`payload type ${packet.type} is outside ${rule.type}`);
@@ -1228,6 +1236,12 @@
         owner: "system",
         channel: "#wardriving",
       },
+      {
+        ...documentedDropRule("wardriving-bridge-cross", "any", "all", 220),
+        owner: "system",
+        channel: "#wardriving",
+        via: "bridge,cross",
+      },
     ]),
   });
 
@@ -1302,6 +1316,7 @@
         pathPrefix: field("path-prefix").value,
         sender: field("sender").value,
         tempRadio: field("temp-radio").value,
+        via: field("via").value,
         verdict: field("verdict").value,
         scopeGate: field("scope-gate").value,
         targetKind: field("target-kind").value,
@@ -1335,6 +1350,7 @@
         "path-prefix": rule.pathPrefix,
         sender: rule.sender,
         "temp-radio": rule.tempRadio,
+        via: rule.via,
         verdict: rule.verdict,
         "scope-gate": rule.scopeGate,
         "target-kind": rule.targetKind,
@@ -1564,6 +1580,7 @@
         regionName: packetField("region-name").value,
         sender: packetField("sender").value,
         tempRadio: packetField("temp-radio").checked,
+        via: packetField("via").value,
         blacklist: packetField("blacklist").value === "yes",
         buckets: packetField("buckets").value,
         loopLevel: packetField("loop-level").value,

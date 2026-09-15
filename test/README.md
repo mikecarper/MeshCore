@@ -48,6 +48,7 @@ python3 test/test_esp32_tinyusb_nonblocking.py # Native CDC stalled-host/64-byte
 python3 test/test_esp32_tinyusb_role_hygiene.py # Repeater/room nonblocking console and paced large replies
 python3 test/test_esp32_tinyusb_cooperative_output.py # Real role pumps: large logs/listings, EOF, backpressure
 python3 test/test_temp_radio_reply_delivery_contract.py  # TempRadio ACK path/barrier integration
+python3 test/test_reply_tx_integration.py  # Delayed OTA replies, backpressure, and all infrastructure roles
 python3 test/test_repeater_radio_timing_integration.py  # Real scheduler, watchdog, hourly/flood adverts and restoration
 python3 test/test_tls_download_clock_gates.py   # Fresh-NTP/TLS download integration contract
 ```
@@ -124,7 +125,7 @@ does not reflect the GoogleTest count -- run the built binary directly
 | `test_atomic_file_writer` | `src/helpers/AtomicFileWriter.h` | verified temporary-file commit; short-write, readback, validation, and rename failures; preservation of the live file and stale-temp cleanup |
 | `test_client_login_persistence` | `src/helpers/ClientLoginPersistence.h`, `LazyPersistence.h` | pre-allocation durable replay reservations; reboot, ACL-eviction, and revoked-admin tombstones; bounded-store policy (low-trust no-insert, privileged fail-closed); atomic replay-file recovery, including post-commit cleanup failure; preauthorized transient refresh; admin/guest promotion and downgrade; force-flood preservation; role masking and fixed-size secret copy |
 | `test_client_path_persistence` | `src/helpers/ClientPathPersistence.h`, `LazyPersistence.h` | encoded path identity and byte lengths; unknown, zero-hop, force-flood, and nonpersistent clients; replay-unqualified RAM-only routes preserve an earlier operator route across unrelated save/reload |
-| `test_temp_radio_reply_barrier` | `src/helpers/TempRadioReplyBarrier.h`, `TempRadioLeaseDeadline.h` | exact single-copy queued reply completion/failure handoff; suppression of untracked alternate/retry copies; rejection of foreign callbacks; cancellation; monotonic hard expiry that a backward wall-clock correction cannot extend; bounded remaining-time reporting |
+| `test_temp_radio_reply_barrier` | `src/helpers/TempRadioReplyBarrier.h`, `TempRadioLeaseDeadline.h` | both profile copies drain before handoff; either successful TX permits switching; suppression of untracked alternate/retry copies; rejection of foreign callbacks; cancellation; monotonic hard expiry that a backward wall-clock correction cannot extend; bounded remaining-time reporting |
 | `test_lazy_persistence` | `src/helpers/LazyPersistence.h` | first-write scheduling without postponement, zero-sentinel rollover preservation, capped exponential save-failure backoff that mutations cannot defeat, and reset only after success |
 | `test_client_acl_file_transaction` | `src/helpers/ClientACLFileTransaction.h` | verified temp publication, preservation of the prior ACL on verification/rename failure, post-commit cleanup-failure handling, and recovery at every temp/backup/primary boundary |
 | `test_cad_timing` | `src/helpers/radiolib/CadTiming.h`, `LR2021SideDetectorConfig.h`, `RadioAirtime.h` | Cascade and slow-profile CAD deadlines; invalid airtime handling; bounded LR2021 side-detector parsing and LDRO recomputation |

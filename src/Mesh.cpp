@@ -192,13 +192,26 @@ static int queuedPacedOtaResponses(PacketManager* manager) {
 bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   Mesh* m = (Mesh*)ctx;
   if (!m->isAnyTempRadioActive()) return false;
-  if (isPacedOtaResponse(msg, len)
-      && (queuedPacedOtaResponses(m->_mgr) >= OTA_EGRESS_QUEUE_CREDIT
-          || m->_mgr->getFreeCount() <= OTA_EGRESS_MIN_FREE)) {
+  const bool paced = isPacedOtaResponse(msg, len);
+  const int queued = paced ? queuedPacedOtaResponses(m->_mgr) : 0;
+  // Routine OTA backpressure must not attempt an allocation, which would
+  // otherwise report a packet-pool error when the receive reserve is in use.
+  if (paced && (queued >= OTA_EGRESS_QUEUE_CREDIT
+      || m->_mgr->getFreeCount() <= OTA_EGRESS_MIN_FREE)) return false;
+  Packet* p = m->createOtaPacket(msg, len);
+  if (!p) return false;
+  p->radio_reply = len && ota::ota_is_response_message(msg[0]);
+  const uint8_t mask = m->getTransmitProfileMask(p);
+  const int copies = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0);
+  // p already occupies one slot. Reserve the other copy as well, keeping the
+  // receive reserve and OTA credit intact when replies use both profiles.
+  if (!copies || (paced
+      && (queued + copies > OTA_EGRESS_QUEUE_CREDIT
+          || m->_mgr->getFreeCount() < OTA_EGRESS_MIN_FREE + copies - 1))) {
+    m->releasePacket(p);
     return false;
   }
-  Packet* p = m->createOtaPacket(msg, len);
-  return p && m->sendOtaFlood(p);
+  return m->sendOtaFlood(p);
 }
 
 // Runtime OTA flood reach (`ota config hops`, persisted in NodePrefs): accept packets up to N hops away and
@@ -1315,6 +1328,7 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
       delay_millis += getDirectRetransmitDelay(packet) + 300;
       auto a1 = createMultiAck(packet->payload, packet->payload_len, extra);
       if (a1) {
+        a1->radio_reply = false;  // relayed ACK, not a local response
         a1->path_len = Packet::copyPath(a1->path, packet->path, packet->path_len);
         a1->header &= ~PH_ROUTE_MASK;
         a1->header |= ROUTE_TYPE_DIRECT;
@@ -1326,6 +1340,7 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
 
     auto a2 = createAck(packet->payload, packet->payload_len);
     if (a2) {
+      a2->radio_reply = false;  // relayed ACK, not a local response
       a2->path_len = Packet::copyPath(a2->path, packet->path, packet->path_len);
       a2->header &= ~PH_ROUTE_MASK;
       a2->header |= ROUTE_TYPE_DIRECT;
@@ -2640,7 +2655,9 @@ Packet* Mesh::createAdvert(const LocalIdentity& id, const uint8_t* app_data, siz
 Packet* Mesh::createPathReturn(const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len) {
   uint8_t dest_hash[PATH_HASH_SIZE];
   dest.copyHashTo(dest_hash);
-  return createPathReturn(dest_hash, secret, path, path_len, extra_type, extra, extra_len);
+  Packet* packet = createPathReturn(dest_hash, secret, path, path_len, extra_type, extra, extra_len);
+  if (packet) packet->tx_radio = getContactTxRadio(dest);
+  return packet;
 }
 
 Packet* Mesh::createPathReturn(const uint8_t* dest_hash, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len) {
@@ -2696,6 +2713,7 @@ Packet* Mesh::createDatagram(uint8_t type, const Identity& dest, const uint8_t* 
     return NULL;
   }
   packet->header = (type << PH_TYPE_SHIFT);  // ROUTE_TYPE_* set later
+  packet->tx_radio = getContactTxRadio(dest);
 
   int len = 0;
   len += dest.copyHashTo(&packet->payload[len]);  // dest hash
@@ -2720,6 +2738,7 @@ Packet* Mesh::createAnonDatagram(uint8_t type, const LocalIdentity& sender, cons
     return NULL;
   }
   packet->header = (type << PH_TYPE_SHIFT);  // ROUTE_TYPE_* set later
+  packet->tx_radio = getContactTxRadio(dest);
 
   int len = 0;
   if (type == PAYLOAD_TYPE_ANON_REQ) {
@@ -2745,6 +2764,7 @@ Packet* Mesh::createGroupDatagram(uint8_t type, const GroupChannel& channel, con
     return NULL;
   }
   packet->header = (type << PH_TYPE_SHIFT);  // ROUTE_TYPE_* set later
+  packet->tx_radio = channel.tx_radio;
 
   int len = 0;
   memcpy(&packet->payload[len], channel.hash, PATH_HASH_SIZE); len += PATH_HASH_SIZE;

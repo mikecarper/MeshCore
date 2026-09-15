@@ -303,7 +303,11 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
 }
 
 mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile) {
-  if (!_profiles.canTransmit(profile)) return mesh::RadioParamApplyResult::FAILED;
+  return prepareTransmitProfile(profile, false);
+}
+
+mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile, bool reply_rx_override) {
+  if (!_profiles.canTransmit(profile, reply_rx_override)) return mesh::RadioParamApplyResult::FAILED;
   if (_profiles.enabled() && (isChipBusy() || isPacketPendingOrReceiving())) {
     return mesh::RadioParamApplyResult::BUSY;
   }

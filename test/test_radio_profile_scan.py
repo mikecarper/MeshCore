@@ -72,6 +72,7 @@ struct RadioLibWrapper {
   void serviceProfileScan();
   mesh::RadioParamApplyResult tuneProfile(uint8_t);
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t);
+  mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t, bool);
   mesh::RadioParamApplyResult trySetParams(float,float,uint8_t,uint8_t,const uint32_t* = nullptr);
   mesh::RadioParamApplyResult trySetPrimaryParams(const mesh::RadioProfileParams&,bool,const uint32_t* = nullptr);
   void enable() {
@@ -84,6 +85,25 @@ struct RadioLibWrapper {
 @METHODS@
 int main() {
   using Result=mesh::RadioParamApplyResult;
+  {
+    // Force only admits a reply on an active RX-only profile. It cannot
+    // enable a disabled profile or erase an in-progress reception.
+    RadioLibWrapper w; w.enable();
+    w._profiles.secondary.mode=mesh::RadioProfileMode::Rx;
+    assert(w.prepareTransmitProfile(1)==Result::FAILED);
+    assert(w.prepareTransmitProfile(1,false)==Result::FAILED);
+    w.packet=true;
+    assert(w.prepareTransmitProfile(1,true)==Result::BUSY);
+    w.packet=false; w.busy=true;
+    assert(w.prepareTransmitProfile(1,true)==Result::BUSY);
+    w.busy=false;
+    assert(w.prepareTransmitProfile(1,true)==Result::APPLIED);
+    assert(w._active_profile==1 && w._profiles.secondary.mode==mesh::RadioProfileMode::Rx);
+    assert(w.prepareTransmitProfile(1)==Result::FAILED);
+    w._profiles.setSecondary({},false);
+    assert(w.prepareTransmitProfile(1,true)==Result::FAILED);
+    assert(w.prepareTransmitProfile(2,true)==Result::FAILED);
+  }
   {
     // Applying the tuple is not success if RX resume failed. Roll back the
     // profile and caches, and request recovery if rollback RX also fails.
@@ -194,6 +214,8 @@ class ProfileScanTest(unittest.TestCase):
             ('void','serviceProfileScan')]+[('mesh::RadioParamApplyResult',name) for name in
             ['tuneProfile','prepareTransmitProfile','trySetParams','trySetPrimaryParams']]
         methods='\n'.join(method(source,f'{kind} RadioLibWrapper::{name}(') for kind,name in names)
+        methods+='\n'+method(source,
+            'mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile, bool')
         wrapper=(ROOT/'src/helpers/radiolib/CustomSX1262Wrapper.h').read_text()
         methods+='\n'+method(wrapper,'void setProfileStandbyWarm(').replace(
             'void setProfileStandbyWarm(bool enabled) override',

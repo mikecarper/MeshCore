@@ -85,6 +85,26 @@ The browser CLI requires station/LAN mode and `wifi.cli on`. Infrastructure
 uses its admin login; Companion uses the trusted LAN. Configuration forms keep
 password fields masked; explicit local CLI getters return their values.
 
+## Companion contact and channel TX profiles
+
+Choose where the Companion transmits to a contact or group channel:
+
+```text
+set tx.user "Alice Jones" radio2
+get tx.user "Alice Jones"
+set tx.channel 0 both
+set tx.channel #wardriving radio
+get tx.channel 0
+```
+
+Values are `auto`, `radio`, `radio2`, `both`, and `off`. `auto` follows
+`radio2.cross`; explicit choices override it. Radio2 must still be in `rxtx`
+mode, and a `radio2`-only send fails when it cannot transmit. These settings
+persist and also apply to messages sent by the phone app. Use exact names,
+a channel index, or `key:<unique public-key prefix>` for a contact.
+See the [routing guide](radio_profiles.md#companion-tx-routing-by-contact-or-channel)
+for which requests/replies are covered and how to reset a choice.
+
 ## Companion USB mode
 
 Updated 1.17.1.6 USB Companion builds, including ordinary and Full builds, start

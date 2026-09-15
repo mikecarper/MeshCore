@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include <helpers/FloodFilterPolicy.h>
+#include <helpers/FloodRuleCLI.h>
 #include <helpers/FileRead.h>
 #include <helpers/RegionNameUtils.h>
 
@@ -127,7 +128,7 @@ static bool parsePayloadType(const char* text, uint8_t& type) {
     return true;
   }
   if (asciiStartsWith(text, "payload_type_")) text += strlen("payload_type_");
-  if (asciiEqual(text, "any")) type = FloodRuleEngine::ANY_TYPE;
+  if (asciiEqual(text, "any") || asciiEqual(text, "*")) type = FloodRuleEngine::ANY_TYPE;
   else if (asciiEqual(text, "req")) type = PAYLOAD_TYPE_REQ;
   else if (asciiEqual(text, "response") || asciiEqual(text, "resp")) type = PAYLOAD_TYPE_RESPONSE;
   else if (asciiEqual(text, "txt_msg") || asciiEqual(text, "txt")) type = PAYLOAD_TYPE_TXT_MSG;
@@ -149,7 +150,7 @@ static bool parsePayloadType(const char* text, uint8_t& type) {
 static bool parseHopSpec(const char* text, uint8_t& min_hops,
                          uint8_t& max_hops) {
   if (text == NULL || *text == 0) return false;
-  if (asciiEqual(text, "all")) {
+  if (asciiEqual(text, "all") || asciiEqual(text, "*")) {
     min_hops = 0;
     max_hops = FloodRuleEngine::MAX_HOPS;
     return true;
@@ -503,19 +504,29 @@ void FloodRuleEngine::load() {
       loaded[i].retry_on_match = false;
     }
 
-    loaded[i].active = active != 0;
+    if (version_7) {
+      success = success && FloodFilterPolicy::decodeStoredRuleActive(
+          active, loaded[i].active, loaded[i].transport_modes);
+    } else {
+      loaded[i].active = active != 0;
+      success = success && active <= 1;
+    }
     loaded[i].suspend_on_temp_radio = suspend_on_temp_radio != 0;
     loaded[i].match_blacklisted_path = match_blacklisted_path != 0;
     loaded[i].scope_uses_slow_timing = scope_uses_slow_timing != 0;
     loaded[i].drop_on_match = drop_on_match != 0;
     loaded[i].rate_limit_enabled = rate_limit_enabled != 0;
     loaded[i].stop_on_match = stop_on_match != 0;
-    if (success && (active > 1 || suspend_on_temp_radio > 1
+    if (success && (suspend_on_temp_radio > 1
         || match_blacklisted_path > 1 || scope_requires_region_match > 1
         || scope_uses_slow_timing > 1 || drop_on_match > 1
         || rate_limit_enabled > 1 || stop_on_match > 1)) {
       success = false;
     }
+    success = success && FloodFilterPolicy::transportActionsSupported(
+        loaded[i].transport_modes, loaded[i].scope_name[0] != 0
+            || loaded[i].target_region_name[0] != 0,
+        loaded[i].retry_on_match, loaded[i].scope_uses_slow_timing);
     if (!success) break;
     if (!loaded[i].active) {
       memset(&loaded[i], 0, sizeof(loaded[i]));
@@ -717,7 +728,8 @@ bool FloodRuleEngine::save() {
       && writeExact(&count, sizeof(count));
   for (int i = 0; success && i < RULE_SLOTS; i++) {
     const Entry& entry = _entries[i];
-    uint8_t active = entry.active ? 1 : 0;
+    uint8_t active = FloodFilterPolicy::encodeStoredRuleActive(
+        entry.active, entry.transport_modes);
     uint8_t suspend_on_temp_radio = entry.suspend_on_temp_radio ? 1 : 0;
     uint8_t match_blacklisted_path = entry.match_blacklisted_path ? 1 : 0;
     uint8_t scope_requires_region_match =
@@ -797,8 +809,9 @@ bool FloodRuleEngine::fieldsMatch(
     const Entry& entry, const mesh::Packet* packet,
     bool temp_radio_active, bool incoming_is_scoped,
     uint16_t incoming_transport_code, bool incoming_region_allowed,
-    const RegionEntry* incoming_region) const {
-  if (!entry.active || packet == NULL || !packet->isRouteFlood()) return false;
+    const RegionEntry* incoming_region, uint8_t context) const {
+  if (!entry.active || !FloodFilterPolicy::ruleModeMatches(
+          entry.transport_modes, context, packet)) return false;
   if (!FloodFilterPolicy::channelKeyLengthSupported(
           entry.channel_key_len)) return false;
   if (entry.suspend_on_temp_radio && temp_radio_active) return false;
@@ -920,12 +933,13 @@ uint32_t FloodRuleEngine::applyStop(uint32_t match_mask) {
 uint32_t FloodRuleEngine::evaluate(
     const mesh::Packet* packet, bool temp_radio_active,
     bool incoming_region_allowed,
-    const RegionEntry* incoming_region) {
+    const RegionEntry* incoming_region, uint8_t context) {
   static_assert(RULE_SLOTS <= 32,
                 "flood rule match mask supports at most 32 slots");
-  if (packet == NULL || !packet->isRouteFlood()) return 0;
+  if (packet == NULL || (context == FloodFilterPolicy::RULE_MODE_RADIO && !packet->isRouteFlood())) return 0;
   bool incoming_is_scoped =
-      packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD;
+      packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD
+      || packet->getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT;
   uint16_t incoming_transport_code = incoming_is_scoped
       ? packet->transport_codes[0] : 0;
   bool channel_auth_checked[RULE_SLOTS] = { false };
@@ -935,7 +949,7 @@ uint32_t FloodRuleEngine::evaluate(
     const Entry& entry = _entries[i];
     if (!fieldsMatch(entry, packet, temp_radio_active, incoming_is_scoped,
                      incoming_transport_code, incoming_region_allowed,
-                     incoming_region)) {
+                     incoming_region, context)) {
       continue;
     }
     bool authenticated = true;
@@ -1025,7 +1039,7 @@ bool FloodRuleEngine::applyScope(mesh::Packet* packet, uint32_t match_mask,
 bool FloodRuleEngine::shouldBlock(const mesh::Packet* packet,
                                   uint32_t match_mask,
                                   uint32_t now_millis) const {
-  if (packet == NULL || !packet->isRouteFlood()) return false;
+  if (packet == NULL) return false;
   uint8_t type = packet->getPayloadType();
   uint8_t hops = packet->getPathHashCount();
 
@@ -1056,7 +1070,7 @@ bool FloodRuleEngine::shouldBlock(const mesh::Packet* packet,
 void FloodRuleEngine::commitRates(const mesh::Packet* packet,
                                   uint32_t match_mask,
                                   uint32_t now_millis) {
-  if (packet == NULL || !packet->isRouteFlood()) return;
+  if (packet == NULL) return;
   for (int i = 0; i < RULE_SLOTS; i++) {
     Entry& entry = _entries[i];
     if ((match_mask & ((uint32_t)1U << i)) == 0
@@ -1074,12 +1088,16 @@ void FloodRuleEngine::commitRates(const mesh::Packet* packet,
 }
 
 void FloodRuleEngine::formatDetail(int index, char* reply,
-                                   size_t reply_len) const {
+                                   size_t reply_len, bool compact) const {
   if (index < 0 || index >= RULE_SLOTS || !_entries[index].active) {
     snprintf(reply, reply_len, "Err - empty filter slot");
     return;
   }
   const Entry& entry = _entries[index];
+  if (compact) {
+    FloodRuleCLI::formatCompact(reply, reply_len, index + 1, entry);
+    return;
+  }
   char hops[12];
   char prefix[32];
   char incoming[48];
@@ -1145,8 +1163,9 @@ void FloodRuleEngine::formatDetail(int index, char* reply,
 
   int written = snprintf(
       reply, reply_len,
-      "> %d type=%s hops=%s channel=%s prefix=%s in=%s %s%s%s priority=%u%s%s%s",
-      index + 1, payloadTypeName(entry.payload_type), hops,
+      "> %d type=%s mode=%s hops=%s channel=%s prefix=%s in=%s %s%s%s priority=%u%s%s%s",
+      index + 1, payloadTypeName(entry.payload_type),
+      FloodFilterPolicy::ruleModeName(entry.transport_modes), hops,
       entry.channel_key_len == 0 ? "*" : entry.channel_name,
       prefix, incoming, action, rate, retry,
       (unsigned int)entry.priority,
@@ -1155,74 +1174,10 @@ void FloodRuleEngine::formatDetail(int index, char* reply,
       entry.suspend_on_temp_radio ? " suspend=tempradio" : "");
   if (written >= 0 && (size_t)written < reply_len) return;
 
-  char compact_type[4];
-  if (entry.payload_type == ANY_TYPE) copyString(compact_type, "any", sizeof(compact_type));
-  else snprintf(compact_type, sizeof(compact_type), "%u",
-                (unsigned int)entry.payload_type);
-  char compact_incoming[44];
-  switch (entry.incoming_scope_kind) {
-    case FloodFilterPolicy::RULE_IN_NONE:
-      copyString(compact_incoming, "n", sizeof(compact_incoming));
-      break;
-    case FloodFilterPolicy::RULE_IN_SCOPED:
-      copyString(compact_incoming, "s", sizeof(compact_incoming));
-      break;
-    case FloodFilterPolicy::RULE_IN_ALLOWED:
-      copyString(compact_incoming, "a", sizeof(compact_incoming));
-      break;
-    case FloodFilterPolicy::RULE_IN_UNKNOWN:
-      copyString(compact_incoming, "u", sizeof(compact_incoming));
-      break;
-    case FloodFilterPolicy::RULE_IN_SCOPE:
-      snprintf(compact_incoming, sizeof(compact_incoming), "s:%s",
-               entry.incoming_scope_name);
-      break;
-    case FloodFilterPolicy::RULE_IN_REGION:
-      snprintf(compact_incoming, sizeof(compact_incoming), "r:%s",
-               entry.incoming_scope_name);
-      break;
-    default:
-      copyString(compact_incoming, "*", sizeof(compact_incoming));
-      break;
-  }
-  char compact_action[44];
-  if (entry.drop_on_match) {
-    copyString(compact_action, " drop", sizeof(compact_action));
-  } else if (entry.scope_name[0] != 0) {
-    snprintf(compact_action, sizeof(compact_action), " scope=%s",
-             entry.scope_name);
-  } else if (entry.target_region_name[0] != 0) {
-    snprintf(compact_action, sizeof(compact_action), " region=%s",
-             entry.target_region_name);
-  } else {
-    compact_action[0] = 0;
-  }
-  char compact_rate[12];
-  compact_rate[0] = 0;
-  if (entry.rate_limit_enabled) {
-    snprintf(compact_rate, sizeof(compact_rate), " q=%u",
-             (unsigned int)entry.rate_per_minute);
-  }
-  char compact_flags[8];
-  compact_flags[0] = 0;
-  if (entry.scope_uses_slow_timing || entry.suspend_on_temp_radio
-      || entry.retry_on_match) {
-    snprintf(compact_flags, sizeof(compact_flags), " f=%s%s%s",
-             entry.scope_uses_slow_timing ? "s" : "",
-             entry.suspend_on_temp_radio ? "t" : "",
-             entry.retry_on_match ? "r" : "");
-  }
-  snprintf(reply, reply_len,
-           ">%d %s %s c=%s p=%s i=%s%s%s pri=%u%s%s",
-           index + 1, compact_type, hops,
-           entry.channel_key_len == 0 ? "*" : entry.channel_name,
-           prefix, compact_incoming, compact_action, compact_rate,
-           (unsigned int)entry.priority,
-           entry.stop_on_match ? " stop" : "",
-           compact_flags);
+  FloodRuleCLI::formatCompact(reply, reply_len, index + 1, entry);
 }
 
-void FloodRuleEngine::format(const char* args, char* reply) const {
+void FloodRuleEngine::format(const char* args, char* reply, bool compact) const {
   const char* selector = skipSpaces(args);
   if (*selector == '.') selector = skipSpaces(selector + 1);
   if (*selector != 0) {
@@ -1232,7 +1187,7 @@ void FloodRuleEngine::format(const char* args, char* reply) const {
                (unsigned int)RULE_SLOTS);
       return;
     }
-    formatDetail((int)slot - 1, reply, 160);
+    formatDetail((int)slot - 1, reply, 160, compact);
     return;
   }
 
@@ -1263,8 +1218,9 @@ void FloodRuleEngine::format(const char* args, char* reply) const {
       snprintf(priority, sizeof(priority), "^%u",
                (unsigned int)entry.priority);
     }
-    snprintf(item, sizeof(item), " %d=%s@%s%s%s%s%s%s%s%s%s",
-             i + 1, payloadTypeName(entry.payload_type), hops,
+    snprintf(item, sizeof(item), " %d=%s~%s@%s%s%s%s%s%s%s%s%s",
+             i + 1, payloadTypeName(entry.payload_type),
+             FloodFilterPolicy::ruleModeName(entry.transport_modes), hops,
              entry.match_blacklisted_path ? "?blacklist" : "", target,
              priority, entry.stop_on_match ? "~stop" : "",
              entry.rate_limit_enabled ? "~rate" : "",
@@ -1342,7 +1298,8 @@ void FloodRuleEngine::set(const char* args, char* reply,
 
   uint8_t payload_type = 0;
   const char* type_text = asciiStartsWith(tokens[0], "type=")
-      ? tokens[0] + strlen("type=") : tokens[0];
+      ? tokens[0] + strlen("type=")
+      : asciiStartsWith(tokens[0], "t=") ? tokens[0] + 2 : tokens[0];
   if (!parsePayloadType(type_text, payload_type)) {
     copyString(reply,
                "Err - packet type must be name, any, 0-15, or 0x00-0x0F",
@@ -1385,9 +1342,23 @@ void FloodRuleEngine::set(const char* args, char* reply,
   bool priority_set = false;
   bool stop_on_match = false;
   bool retry_on_match = false;
+  uint8_t transport_modes = FloodFilterPolicy::RULE_MODE_RADIO;
+  bool mode_set = false;
 
   for (int i = 1; i < token_count; i++) {
-    if (asciiEqual(tokens[i], "suspend=tempradio")) {
+    if (asciiStartsWith(tokens[i], "mode=")
+        || asciiStartsWith(tokens[i], "m=")) {
+      if (mode_set) {
+        strcpy(reply, DUPLICATE_OPTION);
+        return;
+      }
+      const char* value = strchr(tokens[i], '=') + 1;
+      if (!FloodFilterPolicy::parseRuleModes(value, transport_modes)) {
+        strcpy(reply, "Err - mode is radio, bridge, cross, or bridge,cross");
+        return;
+      }
+      mode_set = true;
+    } else if (asciiEqual(tokens[i], "suspend=tempradio")) {
       if (suspend_on_temp_radio) {
         copyString(reply, DUPLICATE_OPTION, 160);
         return;
@@ -1425,7 +1396,9 @@ void FloodRuleEngine::set(const char* args, char* reply,
         }
         flags++;
       }
-    } else if (asciiEqual(tokens[i], "path=blacklist")) {
+    } else if (asciiEqual(tokens[i], "path=blacklist")
+        || asciiEqual(tokens[i], "p=blacklist")
+        || asciiEqual(tokens[i], "p=bl")) {
       copyString(reply,
                  "Err - path=blacklist is repeater-only; use prefix= on rooms",
                  160);
@@ -1504,6 +1477,7 @@ void FloodRuleEngine::set(const char* args, char* reply,
       priority = (uint8_t)parsed;
       priority_set = true;
     } else if (asciiEqual(tokens[i], "stop")
+        || asciiEqual(tokens[i], "s")
         || asciiEqual(tokens[i], "action=stop")) {
       if (stop_on_match) {
         copyString(reply, DUPLICATE_OPTION, 160);
@@ -1511,6 +1485,7 @@ void FloodRuleEngine::set(const char* args, char* reply,
       }
       stop_on_match = true;
     } else if (asciiEqual(tokens[i], "retry")
+        || asciiEqual(tokens[i], "r")
         || asciiEqual(tokens[i], "retry=on")
         || asciiEqual(tokens[i], "retry=allow")
         || asciiEqual(tokens[i], "action=retry")) {
@@ -1531,12 +1506,13 @@ void FloodRuleEngine::set(const char* args, char* reply,
         return;
       }
       scope_timing_set = true;
-    } else if (asciiStartsWith(tokens[i], "scope=")) {
+    } else if (asciiStartsWith(tokens[i], "scope=")
+        || asciiStartsWith(tokens[i], "s=")) {
       if (target_set || drop_set) {
         copyString(reply, DUPLICATE_OPTION, 160);
         return;
       }
-      if (!normalizeScopeName(tokens[i] + strlen("scope="), scope_name,
+      if (!normalizeScopeName(strchr(tokens[i], '=') + 1, scope_name,
                               sizeof(scope_name))) {
         copyString(reply,
                    "Err - scope must be a public name of at most 30 characters",
@@ -1544,13 +1520,14 @@ void FloodRuleEngine::set(const char* args, char* reply,
         return;
       }
       target_set = true;
-    } else if (asciiStartsWith(tokens[i], "region=")) {
+    } else if (asciiStartsWith(tokens[i], "region=")
+        || asciiStartsWith(tokens[i], "r=")) {
       if (target_set || drop_set) {
         copyString(reply, DUPLICATE_OPTION, 160);
         return;
       }
       RegionEntry* region = _regions == NULL ? NULL
-          : _regions->findByNamePrefix(tokens[i] + strlen("region="));
+          : _regions->findByNamePrefix(strchr(tokens[i], '=') + 1);
       TransportKey target_scope;
       if (region == NULL || region->isWildcard()
           || (region->flags & REGION_DENY_FLOOD) != 0
@@ -1563,6 +1540,7 @@ void FloodRuleEngine::set(const char* args, char* reply,
                  sizeof(target_region_name));
       target_set = true;
     } else if (asciiEqual(tokens[i], "drop")
+        || asciiEqual(tokens[i], "d")
         || asciiEqual(tokens[i], "action=drop")) {
       if (drop_set || target_set) {
         copyString(reply, DUPLICATE_OPTION, 160);
@@ -1605,7 +1583,14 @@ void FloodRuleEngine::set(const char* args, char* reply,
       channel_set = true;
       const char* value = tokens[i] + (asciiStartsWith(tokens[i], "c=")
           ? 2 : strlen("channel="));
-      if (!asciiEqual(value, "*")) {
+      if (FloodRuleCLI::isChannelReference(value)) {
+        if (!FloodRuleCLI::copyChannelReference(value, _entries, RULE_SLOTS,
+                channel_key_len, channel_hash, channel_secret, channel_name,
+                sizeof(channel_name))) {
+          copyString(reply, "Err - unknown or ambiguous channel key reference; use the original key", 160);
+          return;
+        }
+      } else if (!asciiEqual(value, "*")) {
         if (!parseChannel(value, channel_secret, channel_key_len,
                           channel_hash, channel_name,
                           sizeof(channel_name))) {
@@ -1630,8 +1615,9 @@ void FloodRuleEngine::set(const char* args, char* reply,
         return;
       }
       path_set = true;
-    } else if (asciiStartsWith(tokens[i], "hops=")) {
-      if (hops_set || !parseHopSpec(tokens[i] + strlen("hops="),
+    } else if (asciiStartsWith(tokens[i], "hops=")
+        || asciiStartsWith(tokens[i], "h=")) {
+      if (hops_set || !parseHopSpec(strchr(tokens[i], '=') + 1,
                                     min_hops, max_hops)) {
         copyString(reply,
                    "Err - hops must be all, N, N+, or N-M (0-63)", 160);
@@ -1665,6 +1651,11 @@ void FloodRuleEngine::set(const char* args, char* reply,
     copyString(reply,
                "Err - channel matcher requires type=any|grp_txt|grp_data",
                160);
+    return;
+  }
+  if (!FloodFilterPolicy::transportActionsSupported(
+          transport_modes, target_set, retry_on_match, scope_uses_slow_timing)) {
+    strcpy(reply, "Err - bridge/cross supports drop, rate=, priority=, stop only");
     return;
   }
   bool action_set = drop_set || target_set || rate_limit_enabled
@@ -1706,6 +1697,7 @@ void FloodRuleEngine::set(const char* args, char* reply,
   candidate.priority = priority;
   candidate.stop_on_match = stop_on_match;
   candidate.retry_on_match = retry_on_match;
+  candidate.transport_modes = transport_modes;
 
   int slot = requested_slot;
   if (slot < 0) {
@@ -1740,6 +1732,10 @@ void FloodRuleEngine::set(const char* args, char* reply,
   }
   char detail[160];
   formatDetail(slot, detail, sizeof(detail));
+  if (strncmp(detail, "Err - compact", 13) == 0) {
+    snprintf(reply, 160, "OK - rule %d saved (details exceed reply size)", slot + 1);
+    return;
+  }
   const char* text = detail[0] == '>' ? skipSpaces(detail + 1) : detail;
   snprintf(reply, 160, "OK - %s", text);
 }
@@ -1789,6 +1785,18 @@ bool FloodRuleEngine::handleCommand(const char* command, char* reply) {
     copyString(reply,
                "Err - flood.filter.blacklist is repeater-only; use prefix=",
                160);
+    return true;
+  }
+  if (commandMatches(command, "get fr")) {
+    format(command + strlen("get fr"), reply, true);
+    return true;
+  }
+  if (commandMatches(command, "set fr")) {
+    set(command + strlen("set fr"), reply, true);
+    return true;
+  }
+  if (commandMatches(command, "del fr")) {
+    remove(command + strlen("del fr"), reply);
     return true;
   }
   if (commandMatches(command, "get flood.rule")) {

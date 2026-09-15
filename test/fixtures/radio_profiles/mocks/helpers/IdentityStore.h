@@ -14,6 +14,8 @@ class File {
   File(MemoryFS* fs, const char* path) : fs_(fs), path_(path) {}
   operator bool() const { return fs_ != nullptr; }
   size_t size() const;
+  size_t available() const { return size() - cursor_; }
+  bool isDirectory() const { return false; }
   int read(uint8_t* data, size_t size);
   size_t write(const uint8_t* data, size_t size);
   void flush() {}
@@ -24,6 +26,7 @@ class MemoryFS {
   std::map<std::string, std::vector<uint8_t>> files;
   bool fail_write = false;
   int fail_rename = 0;
+  bool mkdir(const char*) { return true; }
   bool exists(const char* path) const { return files.count(path); }
   bool remove(const char* path) { return files.erase(path); }
   bool rename(const char* from, const char* to) {
@@ -31,7 +34,7 @@ class MemoryFS {
     if (!exists(from) || exists(to)) return false;
     files[to] = files[from]; files.erase(from); return true;
   }
-  File open(const char* path, const char* mode) {
+  File open(const char* path, const char* mode = "r", bool = false) {
     if (*mode == 'w') files[path].clear();
     if (!exists(path)) return {};
     return File(this, path);

@@ -44,6 +44,9 @@ unsigned split(char* s, char* parts[], unsigned maximum) {
 bool parsePreamble(const char* s, uint16_t& result) {
   return cli::parseRadioPreamble(s, result);
 }
+bool validReplySetting(uint8_t value) {
+  return (value >= 0xb0 && value <= 0xb4) || value == 0xba || value == 0xbb;
+}
 }
 
 bool RadioProfileCLI::readImage(const char* path, uint8_t* bytes, size_t size) {
@@ -92,6 +95,7 @@ bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, 
   memcpy(image + 14, &config.params.preamble, 2);
   memcpy(image + 16, &preamble, 2);
   image[18] = (uint8_t)cross;
+  image[19] = reply_setting_;
   const uint32_t crc = checksum(image, ImageSize - 4);
   memcpy(image + ImageSize - 4, &crc, 4);
   if (!writeImage(TempPath, image, sizeof(image))) return false;
@@ -107,8 +111,13 @@ bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, 
   return true;
 }
 
-void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc) {
+void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool infrastructure_replies) {
   fs_ = fs; radio_ = radio; rtc_ = rtc; last_ms_ = millis();
+  infrastructure_replies_ = infrastructure_replies;
+  if (radio_ && radio_->profiles()) {
+    radio_->profiles()->reply_tx = infrastructure_replies ? RADIO_TX_BOTH : RADIO_TX_AUTO;
+    radio_->profiles()->reply_force = false;
+  }
   if (!fs_ || !radio_ || !radio_->profiles()) return;
   uint8_t bytes[ImageSize];
   bool loaded = readImage(ImagePath, bytes, sizeof(bytes));
@@ -127,10 +136,12 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc) {
   memcpy(&saved_.params.preamble, bytes + 14, 2);
   memcpy(&primary_preamble_, bytes + 16, 2);
   cross_ = (RadioCrossMode)bytes[18];
+  reply_setting_ = validReplySetting(bytes[19]) ? bytes[19] : 0;
   if ((uint8_t)saved_.mode > 2 || (uint8_t)cross_ > 2
       || (saved_.mode != RadioProfileMode::Off && !radio_->validateProfile(saved_.params))
       || (primary_preamble_ && (primary_preamble_ < 8 || primary_preamble_ > RadioProfiles::MaxPreamble))) {
     hold_ = true; saved_ = {}; primary_preamble_ = 0; cross_ = RadioCrossMode::Auto;
+    reply_setting_ = 0;  // reject the entire image, including its reply override
     return;
   }
   stagePrimary(primary_preamble_, false);
@@ -157,6 +168,10 @@ bool RadioProfileCLI::acceptsPrimary(float freq, float bw, uint8_t sf, uint8_t c
 void RadioProfileCLI::publish() {
   if (!radio_ || !radio_->profiles()) return;
   radio_->profiles()->cross = cross_;
+  radio_->profiles()->reply_tx = infrastructure_replies_
+      ? (validReplySetting(reply_setting_) ? reply_setting_ & 7 : RADIO_TX_BOTH) : RADIO_TX_AUTO;
+  radio_->profiles()->reply_force = infrastructure_replies_
+      && validReplySetting(reply_setting_) && (reply_setting_ & 8);
   if (publish_pending_ && (int32_t)(millis() - publish_after_ms_) < 0) return;
   publish_pending_ = false;
   radio_->profiles()->setSecondary(temp_active_ ? temporary_ : saved_, temp_active_);
@@ -292,12 +307,46 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
   const bool scheduled = !strcmp(key, "radioat2") || !strcmp(key, "tempradioat2");
   const bool scheduled_temp = !strcmp(key, "tempradioat2");
   const bool crossing = !strcmp(key, "radio2.cross");
+  const bool replies = infrastructure_replies_ && !strcmp(key, "tx.reply");
   const bool status = !strcmp(key, "radio2.status");
   const bool scan = !strcmp(key, "radio2.scan");
   const bool timing = !strcmp(key, "radio2.timing") || !strcmp(key, "radio.timing");
-  if (!base && !temporary && !scheduled && !crossing && !status && !scan && !timing) return false;
+  if (!base && !temporary && !scheduled && !crossing && !replies && !status && !scan && !timing) return false;
   if (!radio_ || !radio_->profiles()) { snprintf(reply, capacity, "Error: radio profiles unsupported"); return true; }
   if (command == text && *args && verb == Get && (temporary || base)) verb = Set;
+  if (replies) {
+    const auto* p = radio_->profiles();
+    if (verb == Get && !*args) {
+      snprintf(reply, capacity, "> %s%s%s", radioTxPolicyName(p->reply_tx),
+          p->reply_force ? " force" : "",
+          (p->reply_tx == RADIO_TX_BOTH || p->reply_tx == RADIO_TX_SECONDARY)
+              && !p->canTransmit(1, p->reply_force) ? "; radio2 TX unavailable" : "");
+      return true;
+    }
+    char mode[16];
+    const size_t length = strcspn(args, " \t");
+    uint8_t policy = RADIO_TX_AUTO;
+    const char* suffix = args + length;
+    while (*suffix == ' ' || *suffix == '\t') ++suffix;
+    const bool force = !strcmp(suffix, "force");
+    if (length < sizeof(mode)) { memcpy(mode, args, length); mode[length] = 0; }
+    if (verb != Set || length >= sizeof(mode) || !parseRadioTxPolicy(mode, policy)
+        || (*suffix && !force)
+        || (force && policy != RADIO_TX_BOTH && policy != RADIO_TX_SECONDARY)) {
+      snprintf(reply, capacity, "Error: use get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]");
+      return true;
+    }
+    const uint8_t previous = reply_setting_;
+    reply_setting_ = 0xb0 | policy | (force ? 8 : 0);
+    if (!save(saved_, primary_preamble_, cross_)) {
+      reply_setting_ = previous;
+      snprintf(reply, capacity, "Error: settings could not be saved");
+    } else {
+      publish();
+      snprintf(reply, capacity, "OK - tx.reply=%s%s", radioTxPolicyName(policy), force ? " force" : "");
+    }
+    return true;
+  }
   if (timing) {
     if (verb != Get || *args) { snprintf(reply, capacity, "Error: radio timing is read-only"); return true; }
     const auto& p = *radio_->profiles();

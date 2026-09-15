@@ -39,6 +39,11 @@ void BridgeBase::handleReceivedPacket(mesh::Packet *packet) {
     return;
   }
 
+  if (!allowsPacket(packet)) {
+    _mgr->free(packet);
+    return;
+  }
+
   if (!_seen_packets.wasSeen(packet)) {
     _seen_packets.markSeen(packet);
     // bridge_delay provides a buffer to prevent immediate processing conflicts in the mesh network.

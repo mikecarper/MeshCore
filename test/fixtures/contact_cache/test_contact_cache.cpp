@@ -240,6 +240,9 @@ public:
 #define MSG_SEND_SENT_DIRECT 2
 #define ADV_TYPE_ROOM 3
 class BaseChatMesh : public mesh::Mesh {
+  uint32_t getTransmitAirtime(const mesh::Packet* packet) const {
+    return _radio->getEstAirtimeFor(packet->getRawLength());
+  }
   struct Radio { uint32_t getEstAirtimeFor(int) { return 20; } } radio;
   struct Clock { uint32_t getCurrentTimeUnique() { return 100; } } clock;
   struct Rng { void random(uint8_t* data, size_t size) { memset(data, 42, size); } } rng;
@@ -638,7 +641,25 @@ static void nrf52_migration_snapshots_and_failed_page_replacement() {
 }
 #endif
 
+static void contact_tx_policy_round_trips_without_growing_records() {
+  Fixture f(1);
+  auto& contact = f.host.contacts[0];
+  assert(contact.tx_radio == mesh::RADIO_TX_AUTO);
+  for (uint8_t policy = mesh::RADIO_TX_AUTO; policy <= mesh::RADIO_TX_OFF; ++policy) {
+    contact.tx_radio = policy;
+    contact.shared_secret_valid = true;
+    uint8_t record[mesh::storage::CONTACT_RECORD_SIZE];
+    assert(serializeContactRecord(contact, record));
+    assert(sizeof(record) == 152 && record[66] == mesh::encodeRadioTxPolicy(policy));
+    ContactInfo restored;
+    assert(deserializeContactRecord(record, restored, 0));
+    assert(restored.tx_radio == policy && !restored.shared_secret_valid);
+    assert(contact.shared_secret_valid && contact.tx_radio == policy);
+  }
+}
+
 int main() {
+  contact_tx_policy_round_trips_without_growing_records();
 #if defined(ESP32_PLATFORM)
   routes_survive_eviction_and_full_sync();
   snapshot_rollback_and_dirty_eviction();

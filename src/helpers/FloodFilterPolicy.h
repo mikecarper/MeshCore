@@ -87,6 +87,79 @@ inline bool decodeStoredRuleChannel(uint8_t stored, uint8_t& key_len,
   return channelKeyLengthSupported(key_len);
 }
 
+// FPF7's active byte keeps bit 0 as the active flag. Bits 1/2 select bridge
+// and radio crossover admission. A zero mode retains legacy radio forwarding.
+// Row length and all channel-key encodings remain unchanged.
+enum RuleMode : uint8_t {
+  RULE_MODE_RADIO = 0,
+  RULE_MODE_BRIDGE = 2,
+  RULE_MODE_CROSS = 4,
+};
+
+inline uint8_t encodeStoredRuleActive(bool active, uint8_t modes) {
+  return active ? (uint8_t)(1 | modes) : 0;
+}
+
+inline bool decodeStoredRuleActive(uint8_t stored, bool& active, uint8_t& modes) {
+  if ((stored & ~7U) != 0 || (stored != 0 && (stored & 1U) == 0)) return false;
+  active = (stored & 1U) != 0;
+  modes = stored & 6U;
+  return true;
+}
+
+inline const char* ruleModeName(uint8_t modes) {
+  switch (modes) {
+    case RULE_MODE_RADIO: return "radio";
+    case RULE_MODE_BRIDGE: return "bridge";
+    case RULE_MODE_CROSS: return "cross";
+    default: return "bridge,cross";
+  }
+}
+
+inline const char* compactRuleModeName(uint8_t modes) {
+  switch (modes) {
+    case RULE_MODE_RADIO: return "r";
+    case RULE_MODE_BRIDGE: return "b";
+    case RULE_MODE_CROSS: return "c";
+    default: return "bc";
+  }
+}
+
+inline bool parseRuleModes(const char* text, uint8_t& modes) {
+  if (!text) return false;
+  // Fold only the bounded selector, leaving public channel names untouched.
+  char value[16];
+  size_t len = strlen(text);
+  if (len >= sizeof(value)) return false;
+  for (size_t i = 0; i <= len; i++) {
+    char c = text[i];
+    value[i] = c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+  }
+  if (strcmp(value, "radio") == 0 || strcmp(value, "r") == 0) modes = RULE_MODE_RADIO;
+  else if (strcmp(value, "bridge") == 0 || strcmp(value, "b") == 0) modes = RULE_MODE_BRIDGE;
+  else if (strcmp(value, "cross") == 0 || strcmp(value, "c") == 0) modes = RULE_MODE_CROSS;
+  else if (strcmp(value, "bridge,cross") == 0 || strcmp(value, "cross,bridge") == 0
+      || strcmp(value, "bc") == 0 || strcmp(value, "cb") == 0
+      || strcmp(value, "b,c") == 0 || strcmp(value, "c,b") == 0)
+    modes = RULE_MODE_BRIDGE | RULE_MODE_CROSS;
+  else return false;
+  return true;
+}
+
+// These are separate admission phases. A transport rule cannot suppress
+// ordinary LoRa forwarding, nor can a radio stop rule bypass a transport deny.
+inline bool ruleModeMatches(uint8_t modes, uint8_t context,
+                            const mesh::Packet* packet) {
+  return packet && (modes == RULE_MODE_RADIO ? context == RULE_MODE_RADIO
+      : (modes & context) != 0)
+      && (context != RULE_MODE_RADIO || packet->isRouteFlood());
+}
+
+inline bool transportActionsSupported(uint8_t modes, bool scope_action,
+                                      bool retry_action, bool slow_timing) {
+  return modes == RULE_MODE_RADIO || (!scope_action && !retry_action && !slow_timing);
+}
+
 inline int channelHashNibble(char c) {
   if (c >= '0' && c <= '9') return c - '0';
   if (c >= 'a' && c <= 'f') return c - 'a' + 10;

@@ -142,6 +142,7 @@ void MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
   auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, client->shared_secret, reply_data, len);
   bool sent = false;
   if (reply) {
+    reply->radio_reply = true;  // asynchronous response to the room subscription
     if (client->out_path_len == OUT_PATH_UNKNOWN) {
       unsigned long delay_millis = 0;
       sent = sendFloodScoped(default_scope, reply, delay_millis,
@@ -278,6 +279,29 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
   return 0; // unknown command
 }
 
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
+bool MyMesh::allowTransportPacket(const mesh::Packet* packet, uint8_t context) {
+  if (!packet) return false;
+  RegionEntry* incoming_region = NULL;
+  bool scoped = packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD
+      || packet->getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT;
+  bool incoming_allowed;
+  if (scoped) {
+    incoming_region = region_map.findMatch(packet, REGION_DENY_FLOOD);
+    incoming_allowed = incoming_region != NULL;
+  } else {
+    incoming_allowed = (region_map.getWildcard().flags & REGION_DENY_FLOOD) == 0;
+  }
+  // Use a local mask: bridge RX/TX callbacks can run inside mesh dispatch,
+  // where recv_pkt_* still belongs to the ordinary radio forwarding phase.
+  uint32_t matches = flood_rules.evaluate(packet, isAnyTempRadioActive(),
+      incoming_allowed, incoming_region, context);
+  if (flood_rules.shouldBlock(packet, matches, _ms->getMillis())) return false;
+  flood_rules.commitRates(packet, matches, _ms->getMillis());
+  return true;
+}
+#endif
+
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 #if MESH_PACKET_LOGGING
   if (mesh::isUsbLoggingEnabled()) {
@@ -411,7 +435,7 @@ bool MyMesh::evaluateFloodRuleTiming(const mesh::Packet* packet,
 
   mesh::Packet candidate = *packet;
   uint32_t match_mask = flood_rules.evaluate(
-      packet, isTempRadioActive(), incoming_region_allowed, incoming_region);
+      packet, isAnyTempRadioActive(), incoming_region_allowed, incoming_region);
   bool scope_set = false;
   return flood_rules.applyScope(&candidate, match_mask, scope_set,
                                 fast_track, false);
@@ -607,7 +631,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
           (region_map.getWildcard().flags & REGION_DENY_FLOOD) == 0;
     }
     recv_pkt_rule_match_mask = flood_rules.evaluate(
-        pkt, isTempRadioActive(), incoming_region_allowed, incoming_region);
+        pkt, isAnyTempRadioActive(), incoming_region_allowed, incoming_region);
     if (flood_rules.hasRetryRules()) {
       pkt->flood_retry_policy = flood_rules.allowsRetry(
           recv_pkt_rule_match_mask)
@@ -1410,6 +1434,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
       // Set stats sources for automatic stats collection
       bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 
+      configureBridgeFilter(bridge);
       bridge->begin();
     }
   }
@@ -2161,6 +2186,7 @@ void MyMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
                                         client->shared_secret, data,
                                         5 + (size_t)text_len);
   if (!packet) return;
+  packet->radio_reply = true;  // delayed GPIO command completion
   if (client->out_path_len == OUT_PATH_UNKNOWN) {
     sendFlood(packet, SERVER_RESPONSE_DELAY, path_hash_size);
   } else {

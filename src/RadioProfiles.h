@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
+#include "RadioTxPolicy.h"
 
 namespace mesh {
 
@@ -62,6 +63,10 @@ class RadioProfiles {
   bool primary_temporary = false;
   bool secondary_temporary = false;
   RadioCrossMode cross = RadioCrossMode::Auto;
+  // Infrastructure opts into BOTH at startup; Companions keep their own
+  // contact/channel policy. Force applies only to locally generated replies.
+  uint8_t reply_tx = RADIO_TX_AUTO;
+  bool reply_force = false;
   uint32_t generation[2] = {1, 1};
   uint32_t switches = 0;
   uint32_t rx_packets[2] = {};
@@ -70,8 +75,9 @@ class RadioProfiles {
   uint32_t longest_switch_us = 0;
 
   bool enabled() const { return secondary.mode != RadioProfileMode::Off; }
-  bool canTransmit(uint8_t profile) const {
-    return profile == 0 || (profile == 1 && secondary.mode == RadioProfileMode::RxTx);
+  bool canTransmit(uint8_t profile, bool reply_rx_override = false) const {
+    return profile == 0 || (profile == 1 && (secondary.mode == RadioProfileMode::RxTx
+        || (reply_rx_override && secondary.mode == RadioProfileMode::Rx)));
   }
   bool canCross() const {
     return cross == RadioCrossMode::On || (cross == RadioCrossMode::Auto

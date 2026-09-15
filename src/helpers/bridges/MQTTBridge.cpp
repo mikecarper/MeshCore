@@ -3214,6 +3214,11 @@ void MQTTBridge::onPacketReceived(mesh::Packet *packet) {
     return;
   }
 
+  if (!allowsPacket(packet)) {
+    _filtered_packets++;
+    return;
+  }
+
   // Queue packet for transmission
   queuePacket(packet, false);
 }
@@ -3234,6 +3239,11 @@ void MQTTBridge::sendPacket(mesh::Packet *packet) {
   bool filtered = false;
   if (!shouldQueuePacketType(packet->getPayloadType(), filtered)) {
     if (filtered) _filtered_packets++;
+    return;
+  }
+
+  if (!allowsPacket(packet)) {
+    _filtered_packets++;
     return;
   }
 

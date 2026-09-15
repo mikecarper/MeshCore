@@ -13,7 +13,7 @@ drafts are not uploaded anywhere.
     The phases and core conditions model current FPF7 behavior, including its
     forward rows, scope rewrites, and shared blacklist. The readable policy
     language, JSON, and Base64 bundle are still a prototype: current firmware
-    is configured with <code>set flood.*</code> commands and cannot install a
+    is configured with <code>set flood.*</code> or <code>set fr</code> commands and cannot install a
     bundle from this page.
   </p>
 </div>
@@ -111,8 +111,8 @@ in the simulator below. The examples draw from
         <code>when type=any hops=all path=blacklist do drop</code>
       </button>
       <button type="button" data-example="factory">
-        <span>Drop OTA outside temporary-radio mode and distant #wardriving</span>
-        <code>when type=ota hops=all tempradio=inactive do drop<br>when type=any channel=#wardriving hops=5+ do drop</code>
+        <span>Three defaults: OTA, distant #wardriving, and bridge/crossover #wardriving</span>
+        <code>when type=ota hops=all tempradio=inactive do drop<br>when type=any channel=#wardriving hops=5+ do drop<br>when type=any channel=#wardriving hops=all via=bridge,cross do drop</code>
       </button>
       <button type="button" data-example="wildcards">
         <span>Set #BlackHole86 scope on login and bucket-matched other traffic</span>
@@ -131,6 +131,12 @@ in the simulator below. The examples draw from
         <button type="button" data-role="reset-form">Reset form</button>
       </div>
 
+      <p class="filter-field-help">The factory example contains all three repeater defaults.
+        The playground's <code>via=</code> traffic-path matcher corresponds to firmware
+        <code>mode=radio|bridge|cross|bridge,cross</code>; the advanced Active/Shadow/Disabled
+        mode is a separate playground setting. See the
+        <a href="../flood_filtering/#filter-bridge-and-radio-crossover-traffic">firmware mode guide</a>.
+        This simulator models flood packets; firmware bridge/cross rules also cover direct routes.</p>
       <h3>Common match settings</h3>
       <div class="filter-form-grid">
         <label>
@@ -203,6 +209,15 @@ in the simulator below. The examples draw from
         <label>
           Decrypted sender (optional)
           <input data-field="sender" maxlength="31" placeholder="Noisy User">
+        </label>
+        <label>
+          Traffic path (firmware mode)
+          <select data-field="via">
+            <option value="radio">Normal radio forwarding</option>
+            <option value="bridge">Bridge entry/exit</option>
+            <option value="cross">Radio profile crossover</option>
+            <option value="bridge,cross">Bridge and crossover</option>
+          </select>
         </label>
         <label>
           Temporary-radio state
@@ -439,6 +454,14 @@ in the simulator below. The examples draw from
     </div>
     <div class="filter-form-grid filter-simulator-facts">
       <label>
+          Packet traffic path
+          <select data-packet="via">
+            <option value="radio">Normal radio forwarding</option>
+            <option value="bridge">Bridge entry/exit</option>
+            <option value="cross">Radio profile crossover</option>
+          </select>
+        </label>
+        <label>
         Received route
         <select data-packet="route">
           <option value="unscoped_flood">Unscoped flood</option>
@@ -609,7 +632,7 @@ The class column shows which broader selector also matches it.
 
 | Firmware command | FPF7 role |
 | --- | --- |
-| `flood.rule` / `flood.filter` | Forward-phase match and action rows |
+| `fr` / `flood.rule` / `flood.filter` | Forward-phase match and action rows |
 | `flood.channel.data` | Compatibility view over one visible `type=grp_data` forward drop row |
 | `flood.channel.scope` | Scope-rewrite phase rows |
 | `flood.filter.blacklist` | One shared unordered path-ID set referenced by `path=blacklist` rows |
@@ -619,6 +642,17 @@ together. The blacklist is useful
 for refusing to retransmit floods associated with internet gateways dumping
 bulk traffic, but a path ID is truncated and unauthenticated; it identifies a
 routing pattern, not a person.
+
+The firmware accepts both full and short CLI forms for the same forward row:
+
+```text
+set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
+set fr.3 any c=#wardriving m=bc d
+```
+
+Use `get fr.3` on the device to obtain a short setter ready to copy. This CLI
+syntax is separate from the playground's proposed policy/bundle format.
+See the [shorthand reference](flood_filtering.md#shorthand-for-copying-rules).
 
 ## Proposed evaluation contract
 

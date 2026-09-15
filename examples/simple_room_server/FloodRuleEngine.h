@@ -26,7 +26,7 @@ public:
 
   uint32_t evaluate(const mesh::Packet* packet, bool temp_radio_active,
                     bool incoming_region_allowed,
-                    const RegionEntry* incoming_region);
+                    const RegionEntry* incoming_region, uint8_t context = 0);
   bool applyScope(mesh::Packet* packet, uint32_t match_mask,
                   bool& scope_set, bool& fast_track,
                   bool log_change = true);
@@ -65,6 +65,7 @@ private:
     uint8_t priority;
     bool stop_on_match;
     bool retry_on_match;
+    uint8_t transport_modes;
     uint32_t rate_window_started;
     uint16_t rate_window_count;
     bool rate_window_active;
@@ -81,15 +82,15 @@ private:
                    bool temp_radio_active, bool incoming_is_scoped,
                    uint16_t incoming_transport_code,
                    bool incoming_region_allowed,
-                   const RegionEntry* incoming_region) const;
+                   const RegionEntry* incoming_region, uint8_t context) const;
   bool authenticateChannel(const Entry& entry,
                            const mesh::Packet* packet) const;
   int nextMatch(uint32_t match_mask, uint32_t visited_mask) const;
   bool resolveTargetRegion(const char* name, TransportKey& scope,
                            const char*& canonical_name);
   uint32_t applyStop(uint32_t match_mask);
-  void format(const char* args, char* reply) const;
-  void formatDetail(int index, char* reply, size_t reply_len) const;
+  void format(const char* args, char* reply, bool compact = false) const;
+  void formatDetail(int index, char* reply, size_t reply_len, bool compact = false) const;
   void set(const char* args, char* reply,
            bool require_explicit_action = false);
   void remove(const char* args, char* reply);

@@ -15,6 +15,8 @@ Packet::Packet() {
   radio_generation = radio_origin_generation = 0;
   radio_profile = radio_origin = 0;
   radio_bound = false; radio_local = true;
+  tx_radio = RADIO_TX_AUTO;
+  radio_reply = radio_reply_force = false;
 }
 
 bool Packet::isValidPathLen(uint8_t path_len) {
@@ -81,6 +83,8 @@ bool Packet::readFrom(const uint8_t src[], uint8_t len) {
   radio_profile = radio_origin = 0;
   radio_bound = false; radio_local = true;
   header = src[i++];
+  tx_radio = RADIO_TX_AUTO;
+  radio_reply = radio_reply_force = false;
   if (getPayloadVer() > PAYLOAD_VER_1) return false;
 
   if (hasTransportCodes()) {

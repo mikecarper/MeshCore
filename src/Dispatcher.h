@@ -52,6 +52,10 @@ public:
   virtual RadioParamApplyResult prepareTransmitProfile(uint8_t profile) {
     return profile == 0 ? RadioParamApplyResult::APPLIED : RadioParamApplyResult::FAILED;
   }
+  virtual RadioParamApplyResult prepareTransmitProfile(uint8_t profile, bool reply_rx_override) {
+    (void)reply_rx_override;
+    return prepareTransmitProfile(profile);
+  }
   virtual uint16_t profilePreamble(uint8_t) const { return 0; }
   virtual uint32_t getProfileAirtime(uint8_t, int len_bytes, uint8_t = 0) {
     return getEstAirtimeFor(len_bytes);
@@ -379,6 +383,9 @@ protected:
   virtual void onSendComplete(Packet* packet) { }
   virtual void onSendFail(Packet* packet) { }
   virtual void onRadioProfileCopyQueued(Packet* packet, const Packet* original, uint8_t priority) { }
+  // Policy gate for the other profile only; same-profile TX remains eligible.
+  // Called before admitting copies (including bound retry packets) to a queue.
+  virtual bool allowRadioProfileCross(const Packet* packet) { return true; }
   virtual const char* getLogDateTime() { return ""; }
 
   virtual float getAirtimeBudgetFactor() const;
@@ -421,6 +428,9 @@ protected:
   void setRadioAvailable(bool available);
   bool isRadioAvailable() const { return radio_available; }
   bool isPacketRadioCurrent(const Packet* packet) const;
+  // Planned fan-out before transport filters; also bounds OTA queue admission.
+  uint8_t getTransmitProfileMask(const Packet* packet) const;
+  uint32_t getTransmitAirtime(const Packet* packet) const;
 
 public:
   void begin();

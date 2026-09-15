@@ -30,7 +30,7 @@ struct Fixture {
   Radio radio;
   mesh::RadioProfileCLI cli;
   char reply[160];
-  Fixture() { g_mock_millis=0; cli.begin(&fs,&radio,&clock); }
+  Fixture(bool infrastructure = false) { g_mock_millis=0; cli.begin(&fs,&radio,&clock,infrastructure); }
   const char* cmd(const char* text, bool ok=true) {
     memset(reply,0x55,sizeof(reply));
     assert(cli.handle(text,reply,sizeof(reply)));
@@ -43,6 +43,83 @@ struct Fixture {
   void advance(uint32_t ms, bool epoch=true) { g_mock_millis+=ms; if(epoch)clock.epoch+=ms/1000; cli.loop(); }
 };
 int main() {
+  {
+    Fixture f(true);
+    f.cmd("set tx.reply off");
+    // Simulate an image whose CRC is valid but whose saved mode is invalid.
+    auto& image=f.fs.files["/radio_profiles"];
+    image[3]=9;
+    uint32_t crc=0xffffffffU;
+    for (size_t i=0;i<20;++i) {
+      crc ^= image[i];
+      for (unsigned bit=0;bit<8;++bit) crc=(crc>>1)^((crc&1)?0xedb88320U:0);
+    }
+    memcpy(image.data()+20,&crc,4);
+    const auto damaged=image;
+    Radio radio; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs,&radio,&f.clock,true);
+    restored.loop();
+    assert(radio.p.reply_tx==mesh::RADIO_TX_BOTH && !radio.p.reply_force);
+    assert(!radio.p.enabled());
+    assert(restored.handle("set tx.reply radio",f.reply));
+    assert(strstr(f.reply,"Error"));
+    assert(f.fs.files["/radio_profiles"]==damaged);
+  }
+  {
+    Fixture companion;
+    assert(companion.radio.p.reply_tx==mesh::RADIO_TX_AUTO);
+    assert(!companion.cli.handle("set tx.reply both force",companion.reply));
+    Fixture f(true);
+    assert(strstr(f.cmd("get tx.reply"),"> both; radio2 TX unavailable"));
+    f.cmd("set radio2 910.5,500,7,5,rx"); f.advance(2000);
+    f.cmd("set tx.reply both force");
+    assert(!strcmp(f.cmd("get tx.reply"),"> both force"));
+    assert(f.radio.p.reply_tx==mesh::RADIO_TX_BOTH && f.radio.p.reply_force);
+    assert(f.radio.p.secondary.mode==mesh::RadioProfileMode::Rx);
+    assert(f.fs.files["/radio_profiles"].size()==24);
+    // Every legal choice survives reboot, including explicit AUTO (distinct
+    // from the zero reserved byte in firmware predating reply routing).
+    const char* modes[]={"auto","radio","radio2","both","off","radio2 force","both force"};
+    const uint8_t policies[]={0,1,2,3,4,2,3};
+    for (unsigned i=0;i<7;++i) {
+      char command[64]; snprintf(command,sizeof(command),"set tx.reply %s",modes[i]);
+      f.cmd(command);
+      Radio reboot; mesh::RadioProfileCLI restored;
+      restored.begin(&f.fs,&reboot,&f.clock,true);
+      assert(reboot.p.reply_tx==policies[i] && reboot.p.reply_force==(i>=5));
+    }
+    f.fs.fail_write=true;
+    f.cmd("set tx.reply off",false);
+    assert(f.radio.p.reply_tx==mesh::RADIO_TX_BOTH && f.radio.p.reply_force);
+    f.fs.fail_write=false; f.fs.fail_rename=2;
+    f.cmd("set tx.reply off",false);
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs,&reboot,&f.clock,true);
+    assert(reboot.p.reply_tx==mesh::RADIO_TX_BOTH && reboot.p.reply_force);
+    const char* invalid[]={"", "both junk", "auto force", "radio force", "off force",
+      "both force extra", "force", "bothforce", "radio2345678901234567"};
+    for (const char* args:invalid) {
+      char command[80]; snprintf(command,sizeof(command),"set tx.reply %s",args);
+      f.cmd(command,false);
+      assert(f.radio.p.reply_tx==mesh::RADIO_TX_BOTH && f.radio.p.reply_force);
+    }
+    assert(strstr(f.cmd("get tx.reply extra"),"Error"));
+    // A Companion neither activates nor erases infrastructure reply choices
+    // when it saves another profile setting.
+    Radio other; mesh::RadioProfileCLI other_cli;
+    other_cli.begin(&f.fs,&other,&f.clock);
+    assert(other.p.reply_tx==mesh::RADIO_TX_AUTO && !other.p.reply_force);
+    assert(other_cli.handle("set radio2.cross on",f.reply));
+    Radio back; mesh::RadioProfileCLI back_cli;
+    back_cli.begin(&f.fs,&back,&f.clock,true);
+    assert(back.p.reply_tx==mesh::RADIO_TX_BOTH && back.p.reply_force);
+    // Old images have a zero reserved byte and adopt BOTH on infrastructure.
+    Fixture legacy; legacy.cmd("set radio2 910.5,500,7,5,rxtx");
+    assert(legacy.fs.files["/radio_profiles"][19]==0);
+    Radio upgrade; mesh::RadioProfileCLI upgraded;
+    upgraded.begin(&legacy.fs,&upgrade,&legacy.clock,true);
+    assert(upgrade.p.reply_tx==mesh::RADIO_TX_BOTH && !upgrade.p.reply_force);
+  }
   {
     Fixture f;
     assert(!strcmp(f.cmd("get radio2"),"> off"));
