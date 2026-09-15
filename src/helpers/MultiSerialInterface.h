@@ -2,6 +2,7 @@
 
 #include "BaseSerialInterface.h"
 #include "CompanionFrameQueue.h"
+#include "WirelessControl.h"
 
 #ifndef MAX_INTERFACES
   // ble, usb, wifi, ethernet
@@ -93,6 +94,7 @@ public:
   }
 
   void enableBluetooth() {
+    if (mesh::wireless::control().blocked(mesh::wireless::Bluetooth)) return;
     for(auto iface : _interfaces){
       if(iface.instance && iface.type == InterfaceType::Bluetooth){
         iface.instance->enable();

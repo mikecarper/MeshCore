@@ -61,6 +61,7 @@ SimpleMeshTables tables;
 #endif
 
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
+#include "../InfrastructureWireless.h"
 
 void halt() {
   while (1) ;
@@ -87,6 +88,7 @@ static unsigned long userBtnDownAt = 0;
 #endif
 
 void setup() {
+  mesh::wireless::control().begin(infrastructure_wireless);
   mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
 #if MESH_ESP32_USB_CONSOLE_COOPERATIVE
@@ -351,6 +353,7 @@ static void __attribute__((noinline)) serviceCommandInterfaces() {
 }
 
 void loop() {
+  mesh::wireless::control().service(millis());
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
 #endif
@@ -389,7 +392,8 @@ void loop() {
   external_watchdog.loop();
 #endif
   bool can_power_save = the_mesh.getNodePrefs()->powersaving_enabled
-      && !board.isUsbDataConnected();
+      && !board.isUsbDataConnected()
+      && !mesh::wireless::control().pending();
 #if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
     && defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)

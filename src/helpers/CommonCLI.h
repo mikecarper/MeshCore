@@ -14,6 +14,7 @@
 #include <helpers/DynamicConfigSerializer.h>
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/RadioProfileCLI.h>
+#include <helpers/WirelessControl.h>
 
 #ifndef DEFAULT_CAD_ENABLED
   #define DEFAULT_CAD_ENABLED 0
@@ -607,6 +608,14 @@ public:
     (void)reply;
     return false;
   };
+  virtual uint8_t wirelessCommandSource(uint32_t sender_timestamp) const {
+    if (!sender_timestamp) return 0;
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    return mesh::wireless::EspNow;
+#else
+    return mesh::wireless::Independent; // Authenticated remote CLI over LoRa.
+#endif
+  }
   virtual bool getWiFiPassword(char* reply) const {
     (void)reply;
     return false;

@@ -29,6 +29,7 @@
 StdRNG fast_rng;
 SimpleMeshTables tables;
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
+#include "../InfrastructureWireless.h"
 
 void halt() {
   while (1) ;
@@ -43,6 +44,7 @@ static char ethernet_command[MAX_POST_TEXT_LEN+1];
 unsigned long POWERSAVING_FIRSTSLEEP_SECS = 120; // The first sleep (if enabled) from boot
 
 void setup() {
+  mesh::wireless::control().begin(infrastructure_wireless);
   mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
 #if MESH_ESP32_USB_CONSOLE_COOPERATIVE
@@ -151,6 +153,7 @@ void setup() {
 }
 
 void loop() {
+  mesh::wireless::control().service(millis());
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
 #endif
@@ -186,10 +189,10 @@ void loop() {
     reply[0] = 0;
 #ifdef ETHERNET_ENABLED
     if (!ethernet_handle_command(command, reply)) {
-      the_mesh.handleCommand(0, command, reply);
+      the_mesh.handleUsbCommand(command, reply);
     }
 #else
-    the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
+    the_mesh.handleUsbCommand(command, reply);
 #endif
     if (reply[0]) {
       console.printf("  -> %s\r\n", reply);
@@ -231,7 +234,8 @@ void loop() {
   external_watchdog.loop();
 #endif
   bool can_power_save = the_mesh.getNodePrefs()->powersaving_enabled
-      && !board.isUsbDataConnected();
+      && !board.isUsbDataConnected()
+      && !mesh::wireless::control().pending();
 #if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
     && defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)

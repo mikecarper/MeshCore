@@ -1,8 +1,17 @@
 #include "ESPNowBridge.h"
+#include <helpers/WirelessControl.h>
 
 #include <esp_wifi.h>
+#include <helpers/esp32/WiFiRadioPolicy.h>
 
 #ifdef WITH_ESPNOW_BRIDGE
+
+static void stopBridgeWiFiIfUnused() {
+  if (!(mesh::wireless::control().enabled() & mesh::wireless::WiFi)) {
+    esp_wifi_stop();
+    esp_wifi_deinit();
+  }
+}
 
 // Static member to handle callbacks
 ESPNowBridge *ESPNowBridge::_instance = nullptr;
@@ -46,6 +55,7 @@ ESPNowBridge::ESPNowBridge(NodePrefs *prefs, mesh::PacketManager *mgr, mesh::RTC
 }
 
 void ESPNowBridge::begin() {
+  if (mesh::wireless::control().blocked(mesh::wireless::EspNow)) return;
   BRIDGE_DEBUG_PRINTLN("Initializing...\n");
 
   if (_initialized) return;
@@ -80,13 +90,21 @@ void ESPNowBridge::begin() {
   // ESP-NOW only needs the ESP-IDF station interface. Avoid Arduino's WiFi
   // facade here: it pulls DHCP, DNS, scanning, AP, and event plumbing that an
   // ESP-NOW-only bridge never uses.
+  const bool shared_wifi = (mesh::wireless::control().enabled() & mesh::wireless::WiFi) != 0;
+  if (shared_wifi) {
+    uint8_t channel = 0;
+    wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+    if (esp_wifi_get_channel(&channel, &secondary) != ESP_OK || channel != _prefs->bridge_channel) {
+      BRIDGE_DEBUG_PRINTLN("ESP-NOW bridge channel must match the active WiFi channel\n");
+      return;
+    }
+  }
   wifi_init_config_t wifi_config = WIFI_INIT_CONFIG_DEFAULT();
-  if (esp_wifi_init(&wifi_config) != ESP_OK ||
+  if (!shared_wifi && (esp_wifi_init(&wifi_config) != ESP_OK ||
       esp_wifi_set_storage(WIFI_STORAGE_RAM) != ESP_OK ||
       esp_wifi_set_mode(WIFI_MODE_STA) != ESP_OK ||
-      esp_wifi_start() != ESP_OK) {
-    esp_wifi_stop();
-    esp_wifi_deinit();
+      esp_wifi_start() != ESP_OK)) {
+    stopBridgeWiFiIfUnused();
     return;
   }
 
@@ -99,25 +117,22 @@ void ESPNowBridge::begin() {
         | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR;
     if (esp_wifi_set_protocol(WIFI_IF_STA, protocols) != ESP_OK) {
       BRIDGE_DEBUG_PRINTLN("Error enabling ESP-NOW LR protocol\n");
-      esp_wifi_stop();
-      esp_wifi_deinit();
+      stopBridgeWiFiIfUnused();
       return;
     }
   }
   
   // Set Wi-Fi channel
-  if (esp_wifi_set_channel(_prefs->bridge_channel, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
+  if (!shared_wifi && esp_wifi_set_channel(_prefs->bridge_channel, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
     BRIDGE_DEBUG_PRINTLN("Error setting WIFI channel to %d\n", _prefs->bridge_channel);
-    esp_wifi_stop();
-    esp_wifi_deinit();
+    stopBridgeWiFiIfUnused();
     return;
   }
 
   // Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     BRIDGE_DEBUG_PRINTLN("Error initializing ESP-NOW\n");
-    esp_wifi_stop();
-    esp_wifi_deinit();
+    stopBridgeWiFiIfUnused();
     return;
   }
 
@@ -127,8 +142,7 @@ void ESPNowBridge::begin() {
     esp_now_register_recv_cb(nullptr);
     esp_now_register_send_cb(nullptr);
     esp_now_deinit();
-    esp_wifi_stop();
-    esp_wifi_deinit();
+    stopBridgeWiFiIfUnused();
     return;
   }
 
@@ -145,8 +159,7 @@ void ESPNowBridge::begin() {
     esp_now_register_recv_cb(nullptr);
     esp_now_register_send_cb(nullptr);
     esp_now_deinit();
-    esp_wifi_stop();
-    esp_wifi_deinit();
+    stopBridgeWiFiIfUnused();
     return;
   }
 
@@ -169,17 +182,18 @@ void ESPNowBridge::begin() {
       esp_now_register_recv_cb(nullptr);
       esp_now_register_send_cb(nullptr);
       esp_now_deinit();
-      esp_wifi_stop();
-      esp_wifi_deinit();
+      stopBridgeWiFiIfUnused();
       return;
     }
   }
 
   // Update bridge state
   _initialized = true;
+  mesh::wifi::bridgeEspNowChannel().store(_prefs->bridge_channel);
 }
 
 void ESPNowBridge::end() {
+  if (!_initialized) return;
   BRIDGE_DEBUG_PRINTLN("Stopping...\n");
 
   // Remove broadcast peer
@@ -197,9 +211,9 @@ void ESPNowBridge::end() {
     BRIDGE_DEBUG_PRINTLN("Error deinitializing ESP-NOW\n");
   }
 
-  // Turn off the ESP-IDF WiFi interface.
-  esp_wifi_stop();
-  esp_wifi_deinit();
+  // Infrastructure WiFi may still own this shared radio.
+  mesh::wifi::bridgeEspNowChannel().store(0);
+  stopBridgeWiFiIfUnused();
 
   portENTER_CRITICAL(&_rx_mux);
   _rx_head = 0;

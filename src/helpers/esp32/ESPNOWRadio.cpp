@@ -5,6 +5,7 @@
 #include <esp_wifi.h>
 #include <helpers/ESPNowRawFragmentation.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+#include <helpers/WirelessControl.h>
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
   #include <esp_mac.h>
 #endif
@@ -32,6 +33,7 @@ static volatile uint32_t rx_dropped = 0;
 static uint32_t rx_dropped_reported = 0;
 static portMUX_TYPE rx_mux = portMUX_INITIALIZER_UNLOCKED;
 static mesh::espnow::ESPNowRawReassembler rx_reassembler;
+static std::atomic<bool> accepting_packets{false};
 
 // callback when data is sent
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
@@ -42,6 +44,7 @@ static void OnDataSent(const esp_now_send_info_t *info,
 static void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   (void)mac_addr;
 #endif
+  if (!accepting_packets.load()) return;
   last_send_status = status;
   is_send_complete = true;
   ESPNOW_DEBUG_PRINTLN("Send Status: %d", (int)status);
@@ -54,6 +57,7 @@ static void OnDataRecv(const esp_now_recv_info_t *info, const uint8_t *data,
 #else
 static void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
 #endif
+  if (!accepting_packets.load()) return;
   ESPNOW_DEBUG_PRINTLN("Recv: len = %d", len);
   portENTER_CRITICAL(&rx_mux);
   if (data != nullptr && len > 0 && len <= RX_FRAME_MAX
@@ -76,6 +80,7 @@ static void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
 }
 
 void ESPNOWRadio::init() {
+  if (initialized_ || mesh::wireless::control().blocked(mesh::wireless::EspNow)) return;
   portENTER_CRITICAL(&rx_mux);
   rx_head = 0;
   rx_tail = 0;
@@ -93,13 +98,15 @@ void ESPNOWRadio::init() {
   // driver writes in RAM prevents a later conventional WiFi image from
   // inheriting the proprietary protocol bit through NVS.
   WiFi.persistent(false);
+  const wifi_mode_t existing_mode = WiFi.getMode();
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
   // Arduino defaults station auto-reconnect to enabled. Disable it before the
   // driver starts so credentials left by another image cannot pull the radio
   // away from the configured mesh channel behind this policy's back.
-  WiFi.setAutoReconnect(false);
+  if (existing_mode == WIFI_OFF) WiFi.setAutoReconnect(false);
 #endif
-  WiFi.mode(WIFI_STA);
+  // Restarting ESP-NOW must retain a live infrastructure setup AP.
+  if (!WiFi.mode((existing_mode & WIFI_AP) ? WIFI_AP_STA : WIFI_STA)) return;
 #if defined(MESH_ESPNOW_RADIO) && MESH_ESPNOW_RADIO
   // Full Companion also exposes ordinary WiFi. Preserve B/G/N for normal
   // access points while retaining LR for ESP-NOW, and pin both transports to
@@ -128,6 +135,7 @@ void ESPNOWRadio::init() {
     ESPNOW_DEBUG_PRINTLN("Error initializing ESP-NOW");
     return;
   }
+  initialized_ = true;
 
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
   // Modem sleep is still required when BLE and infrastructure WiFi coexist,
@@ -137,15 +145,22 @@ void ESPNOWRadio::init() {
   // WiFi/Bluetooth coexistence policy globally.
   if (esp_wifi_force_wakeup_acquire() != ESP_OK) {
     ESPNOW_DEBUG_PRINTLN("Error keeping primary ESP-NOW receive awake");
-    esp_now_deinit();
+    end();
     return;
   }
+  wake_held_ = true;
 #endif
 
-  esp_wifi_set_max_tx_power(80);  // should be 20dBm
+  if (!setTxPower(tx_power_dbm_)) {
+    end();
+    return;
+  }
 
-  esp_now_register_send_cb(OnDataSent);
-  esp_now_register_recv_cb(OnDataRecv);
+  if (esp_now_register_send_cb(OnDataSent) != ESP_OK
+      || esp_now_register_recv_cb(OnDataRecv) != ESP_OK) {
+    end();
+    return;
+  }
 
   // Register peer
   memset(&peerInfo, 0, sizeof(peerInfo));
@@ -175,18 +190,48 @@ void ESPNOWRadio::init() {
     rate_config.dcm = false;
     if (esp_now_set_peer_rate_config(broadcastAddress, &rate_config) != ESP_OK) {
       ESPNOW_DEBUG_PRINTLN("Error configuring ESP-NOW LR peer rate");
+      end();
+      return;
     }
   #else
     if (esp_wifi_config_espnow_rate(WIFI_IF_STA, WIFI_PHY_RATE_LORA_250K)
         != ESP_OK) {
       ESPNOW_DEBUG_PRINTLN("Error configuring ESP-NOW LR interface rate");
+      end();
+      return;
     }
   #endif
 #endif
+    accepting_packets.store(true);
     ESPNOW_DEBUG_PRINTLN("init success");
   } else {
-   // ESPNOW_DEBUG_PRINTLN("Failed to add peer");
+    end();
   }
+}
+
+void ESPNOWRadio::end() {
+  if (send_active_) send_cancelled_ = true;
+  accepting_packets.store(false);
+  if (initialized_) {
+    esp_now_unregister_send_cb();
+    esp_now_unregister_recv_cb();
+    esp_now_deinit();
+    initialized_ = false;
+  }
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (wake_held_) {
+    esp_wifi_force_wakeup_release();
+    wake_held_ = false;
+  }
+#endif
+  portENTER_CRITICAL(&rx_mux);
+  rx_head = rx_tail = rx_count = 0;
+  portEXIT_CRITICAL(&rx_mux);
+  rx_reassembler.reset();
+  tx_second_pending = false;
+  tx_second_length = 0;
+  // A cancelled transmission must time out, never become a false TX success.
+  is_send_complete = false;
 }
 
 uint32_t ESPNOWRadio::getRngSeed() {
@@ -194,7 +239,9 @@ uint32_t ESPNOWRadio::getRngSeed() {
 }
 
 bool ESPNOWRadio::setTxPower(int8_t dbm) {
-  return esp_wifi_set_max_tx_power(dbm * 4) == ESP_OK;
+  if (esp_wifi_set_max_tx_power(dbm * 4) != ESP_OK) return false;
+  tx_power_dbm_ = dbm;
+  return true;
 }
 
 uint32_t ESPNOWRadio::intID() {
@@ -209,6 +256,7 @@ uint32_t ESPNOWRadio::intID() {
 }
 
 bool ESPNOWRadio::startSendRaw(const uint8_t* bytes, int len) {
+  if (!initialized_ || send_cancelled_) return false;
   mesh::espnow::ESPNowRawFrames frames;
   if (len < 0
       || !mesh::espnow::encodeEspNowRawFrames(
@@ -232,6 +280,7 @@ bool ESPNOWRadio::startSendRaw(const uint8_t* bytes, int len) {
   esp_err_t result = esp_now_send(
       broadcastAddress, frames.data[0], frames.lengths[0]);
   if (result == ESP_OK) {
+    send_active_ = true;
     n_sent++;
     ESPNOW_DEBUG_PRINTLN("Send started: frames=%u raw_len=%d",
                          (unsigned)frames.count, len);
@@ -246,6 +295,7 @@ bool ESPNOWRadio::startSendRaw(const uint8_t* bytes, int len) {
 }
 
 bool ESPNOWRadio::isSendComplete() {
+  if (!initialized_ || send_cancelled_) return false;
   if (!is_send_complete) return false;
   if (last_send_status != ESP_NOW_SEND_SUCCESS) {
     // A failed callback means the logical packet was not transmitted. Do not
@@ -279,6 +329,8 @@ bool ESPNOWRadio::isSendComplete() {
   return is_send_complete;
 }
 void ESPNOWRadio::onSendFinished() {
+  send_active_ = false;
+  send_cancelled_ = false;
   tx_second_pending = false;
   tx_second_length = 0;
   last_send_status = ESP_NOW_SEND_SUCCESS;
@@ -286,14 +338,14 @@ void ESPNOWRadio::onSendFinished() {
 }
 
 bool ESPNOWRadio::isInRecvMode() const {
-  return is_send_complete && !tx_second_pending;
+  return initialized_ && !send_cancelled_ && is_send_complete && !tx_second_pending;
 }
 
 float ESPNOWRadio::getLastRSSI() const { return 0; }
 float ESPNOWRadio::getLastSNR() const { return 0; }
 
 int ESPNOWRadio::recvRaw(uint8_t* bytes, int sz) {
-  if (bytes == nullptr || sz <= 0) return 0;
+  if (!initialized_ || bytes == nullptr || sz <= 0) return 0;
 
   uint32_t dropped = 0;
   portENTER_CRITICAL(&rx_mux);

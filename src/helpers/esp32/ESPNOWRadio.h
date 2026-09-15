@@ -5,6 +5,11 @@
 class ESPNOWRadio : public mesh::Radio {
 protected:
   uint32_t n_recv, n_sent, n_recv_errors;
+  bool initialized_ = false;
+  bool wake_held_ = false;
+  int8_t tx_power_dbm_ = 20;
+  bool send_active_ = false;
+  bool send_cancelled_ = false;
 
 public:
   ESPNOWRadio() { n_recv = n_sent = n_recv_errors = 0; }
@@ -24,9 +29,11 @@ public:
                  const uint32_t* rx_ps_timings = nullptr) {
     return trySetParams(freq, bw, sf, cr, rx_ps_timings) == mesh::RadioParamApplyResult::APPLIED;
   }
-  void powerOff() { /* no-op */ }
+  void powerOff() { end(); }
 
   void init();
+  void end();
+  bool isEnabled() const { return initialized_; }
   int recvRaw(uint8_t* bytes, int sz) override;
   uint32_t getEstAirtimeFor(int len_bytes) override;
   bool startSendRaw(const uint8_t* bytes, int len) override;

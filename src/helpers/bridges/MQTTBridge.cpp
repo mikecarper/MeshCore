@@ -9,6 +9,7 @@
 #include "../TxtDataHelpers.h"
 #include "../UsbLogging.h"
 #include "../WiFiPowerSave.h"
+#include "../WirelessControl.h"
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <Timezone.h>
@@ -874,6 +875,9 @@ void MQTTBridge::releaseRuntimeBuffers() {
 // begin()
 // ---------------------------------------------------------------------------
 void MQTTBridge::begin() {
+#if defined(ESP32)
+  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
+#endif
   MQTT_DEBUG_PRINTLN("Initializing MQTT Bridge...");
 
   // Idempotent start: a second begin() would re-run allocation and re-create

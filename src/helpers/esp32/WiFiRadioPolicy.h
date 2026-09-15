@@ -4,6 +4,7 @@
 #include <esp_err.h>
 #include <esp_wifi.h>
 #include <helpers/WiFiChannelPolicy.h>
+#include <atomic>
 
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
   #include <Preferences.h>
@@ -28,7 +29,7 @@ static constexpr bool kKeepEspNowRadioRunning = false;
 static constexpr uint8_t kDefaultEspNowChannel = 1;
 #endif
 
-#if defined(MESH_ESPNOW_RADIO) && MESH_ESPNOW_RADIO
+#if (defined(MESH_ESPNOW_RADIO) && MESH_ESPNOW_RADIO) || defined(WITH_ESPNOW_BRIDGE)
 static constexpr uint8_t kProtocolMask = WIFI_PROTOCOL_11B
     | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR;
 #elif defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
@@ -44,6 +45,16 @@ static constexpr uint8_t kProtocolMask = WIFI_PROTOCOL_11B
 // an ordinary b/g/n protocol bitmap so phones and laptops can discover it.
 static constexpr uint8_t kAccessPointProtocolMask = WIFI_PROTOCOL_11B
     | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
+
+// A bridge can start/stop independently of infrastructure WiFi. Its channel
+// constraint exists only while it runs; primary ESP-NOW keeps its boot policy.
+inline std::atomic<uint8_t>& bridgeEspNowChannel() {
+  static std::atomic<uint8_t> channel{0};
+  return channel;
+}
+inline bool espNowChannelConstrained() {
+  return kPrimaryEspNowRadio || bridgeEspNowChannel().load() != 0;
+}
 
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
 struct EspNowBootChannelState {
@@ -96,7 +107,8 @@ inline uint8_t loadConfiguredEspNowChannel() {
   return kDefaultEspNowChannel;
 }
 inline uint8_t activeEspNowChannel() {
-  return kDefaultEspNowChannel;
+  const uint8_t bridge_channel = bridgeEspNowChannel().load();
+  return bridge_channel ? bridge_channel : kDefaultEspNowChannel;
 }
 inline bool saveConfiguredEspNowChannel(uint8_t) {
   return false;
@@ -116,21 +128,21 @@ inline esp_err_t applyAccessPointProtocolMask() {
 // association on the mesh channel. Passing zero on ordinary targets preserves
 // Arduino's normal all-channel scan behavior.
 inline int32_t stationChannelHint() {
-  return kPrimaryEspNowRadio
+  return espNowChannelConstrained()
       ? static_cast<int32_t>(activeEspNowChannel()) : 0;
 }
 
 inline int accessPointChannel() {
-  return kPrimaryEspNowRadio
+  return espNowChannelConstrained()
       ? static_cast<int>(activeEspNowChannel()) : 1;
 }
 
 inline uint8_t stationScanChannel() {
-  return kPrimaryEspNowRadio ? activeEspNowChannel() : 0;
+  return espNowChannelConstrained() ? activeEspNowChannel() : 0;
 }
 
 inline esp_err_t restoreEspNowChannel() {
-  if (!kKeepEspNowRadioRunning) return ESP_OK;
+  if (!espNowChannelConstrained()) return ESP_OK;
   const uint8_t target = activeEspNowChannel();
   uint8_t current = 0;
   wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;

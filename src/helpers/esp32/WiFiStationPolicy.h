@@ -4,6 +4,7 @@
 #include <string.h>
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+#include <helpers/WirelessControl.h>
 #if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
 #include "../../../tools/hil/S3SoakWiFiKey.h"
 #endif
@@ -17,18 +18,19 @@ namespace wifi {
 // drag ESP-NOW (and a setup AP) with it. Existing application retry timers call
 // beginStation() and therefore retain the fixed-channel/BSSID constraint.
 inline void setStationAutoReconnect(bool enabled) {
-  WiFi.setAutoReconnect(enabled && !kPrimaryEspNowRadio);
+  WiFi.setAutoReconnect(enabled && !espNowChannelConstrained());
 }
 
 inline wl_status_t beginStation(const char* ssid, const char* password) {
+  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return WL_CONNECT_FAILED;
 #if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
   password = mesh::hil::soakStationPassword(password);
 #endif
-  if (!kPrimaryEspNowRadio) {
+  if (!espNowChannelConstrained()) {
     return WiFi.begin(ssid, password);
   }
 
-#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+#if (defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW) || defined(WITH_ESPNOW_BRIDGE)
   if (!ssid || !ssid[0]) return WL_CONNECT_FAILED;
   setStationAutoReconnect(false);
   if (applyProtocolMask(WIFI_IF_STA) != ESP_OK
@@ -81,7 +83,7 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
 // channel (for example after an AP channel-switch announcement). Callers then
 // follow their existing disconnected/retry path.
 inline bool enforceStationChannel() {
-  if (!kPrimaryEspNowRadio) return true;
+  if (!espNowChannelConstrained()) return true;
   // beginStation(), disconnect handling, and setup-AP startup already restore
   // the selected channel. Avoid polling the driver and attempting a channel
   // write from every WebConfig and Companion loop while it is disconnected.

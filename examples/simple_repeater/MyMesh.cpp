@@ -4019,6 +4019,12 @@ void MyMesh::checkBatteryAlert() {
 }
 
 void MyMesh::checkRxInactivityWatchdog() {
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (mesh::wireless::control().blocked(mesh::wireless::EspNow)) {
+    rx_inactivity_watchdog.reset();
+    return;
+  }
+#endif
   const uint32_t interval = radio_timing.watchdogMillis(_prefs.rx_watchdog_enabled);
   if (rx_inactivity_watchdog.expired(millis(), getLastMeshCoreRecvMillis(), interval)) {
     MESH_DEBUG_PRINTLN("RX watchdog: no MeshCore packet received in %lu hours, rebooting",
@@ -11172,6 +11178,7 @@ bool MyMesh::handleReplayResetCommand(ClientInfo* sender, const char* command,
 void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *command,
                            char *reply, int gpio_client_index,
                            uint8_t gpio_path_hash_size, bool usb_origin) {
+  _wireless_usb_command = usb_origin;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   _gpio_reply_tracker.beginCommand(gpio_client_index, gpio_path_hash_size,
                                    sender == NULL ? NULL : sender->id.pub_key);

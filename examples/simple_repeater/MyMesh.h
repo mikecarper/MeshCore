@@ -1077,6 +1077,15 @@ public:
   void handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char* command,
                      char* reply, int gpio_client_index = -1,
                      uint8_t gpio_path_hash_size = 1, bool usb_origin = false);
+  bool _wireless_usb_command = false;
+  uint8_t wirelessCommandSource(uint32_t sender_timestamp) const override {
+    if (sender_timestamp) return CommonCLICallbacks::wirelessCommandSource(sender_timestamp);
+    if (_wireless_usb_command) return mesh::wireless::Independent;
+#if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
+    if (_command_output && _command_output != _web_terminal) return mesh::wireless::Independent;
+#endif
+    return mesh::wireless::WiFi;
+  }
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     handleCommand(sender_timestamp, NULL, command, reply);
   }
@@ -1398,6 +1407,8 @@ public:
 
 #ifdef WITH_WEBCONFIG
   bool startWebConfig(bool force_ap, char* reply) override;
+  bool isWebConfigStopping() const { return _webconfig && _webconfig->isStopping(); }
+  bool hasWirelessNetworkClient() const { return _web_terminal != nullptr; }
   bool stopWebConfig(char* reply) override;
   bool setWebUIEnabled(bool enabled, char* reply) override;
   bool getWebUIStatus(char* reply) const override;

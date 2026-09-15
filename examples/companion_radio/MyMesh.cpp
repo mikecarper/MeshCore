@@ -1,6 +1,7 @@
 #include <helpers/ui/DisplayPowerSettings.h>
 #include "MyMesh.h"
 #include "CompanionBluetooth.h"
+#include "CompanionWireless.h"
 #if defined(MESH_SOAK_DIAGNOSTICS)
 #include "../../tools/hil/S3SoakDiagnostics.h"
 #endif
@@ -2303,6 +2304,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   while (*command == ' ') command++;
 
   if (handleCompanionBluetoothCommand(command, reply, reply_size)) return true;
+  if (handleCompanionWirelessCommand(command, reply, reply_size)) return true;
 
   if (strcmp(command, "get powersaving") == 0 || strcmp(command, "powersaving") == 0) {
     snprintf(reply, reply_size, "> %s", _prefs.powersaving_enabled ? "on" : "off");
@@ -5334,7 +5336,8 @@ void MyMesh::handleCmdFrame(size_t len) {
       char command[MAX_FRAME_SIZE] = {0};
       memcpy(command, &cmd_frame[1], command_len);
       char reply[MAX_FRAME_SIZE] = {0};
-      if (!handleCompanionBluetoothCommand(command, reply, sizeof(reply),
+      if (!handleCompanionWirelessCommand(command, reply, sizeof(reply), CompanionWirelessSource::Framed)
+          && !handleCompanionBluetoothCommand(command, reply, sizeof(reply),
                                            CompanionBluetoothCommandSource::Framed)
           && !handleLocalControlCommand(command, reply, sizeof(reply))) {
         writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
@@ -7497,7 +7500,9 @@ void MyMesh::handleTerminalCommand(char* command) {
 #endif
 
   char local_reply[160];
-  if (handleCompanionBluetoothCommand(command, local_reply, sizeof(local_reply),
+  if (handleCompanionWirelessCommand(command, local_reply, sizeof(local_reply),
+                                     _terminal_mode ? CompanionWirelessSource::Usb : CompanionWirelessSource::Network)
+      || handleCompanionBluetoothCommand(command, local_reply, sizeof(local_reply),
                                       CompanionBluetoothCommandSource::Terminal)) {
     terminalOutput().printf("  %s\r\n", local_reply);
     return;
@@ -7990,6 +7995,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  get display.touch\r\n");
     terminalOutput().print("  set display.touch <on|off> (this boot only)\r\n");
     terminalOutput().print("  set {name|lat|lon|freq|tx|af} {value}\r\n");
+    terminalOutput().print("  get wifi|espnow|2.4ghz\r\n");
+    terminalOutput().print("  set wifi|espnow on|off [force] (force only with off)\r\n");
+    terminalOutput().print("  set 2.4ghz on [all|force]|off [force] (this boot)\r\n");
     terminalOutput().print("  get bluetooth.name\r\n");
     terminalOutput().print("  set bluetooth.name <name|default>\r\n");
 #if defined(BLE_PIN_CODE)

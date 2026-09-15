@@ -3,6 +3,7 @@
 #include <helpers/BluetoothMac.h>
 #include "MyMesh.h"
 #include "CompanionBluetooth.h"
+#include "CompanionWireless.h"
 #include "CompanionWiFi.h"
 #if MESH_PACKET_LOGGING
   #include <helpers/SerialPacketLog.h>
@@ -1490,6 +1491,7 @@ void halt() {
 #endif
 
   void requestCompanionWiFiSetup() {
+    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
     companion_wifi_setup_stop_requested = false;
     companion_wifi_setup_requested = true;
   }
@@ -1500,6 +1502,7 @@ void halt() {
   }
 
   bool toggleCompanionWiFi() {
+    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
     const CompanionTransportMode current = getCompanionTransportMode();
     const CompanionTransportMode selected =
@@ -1798,7 +1801,8 @@ void halt() {
         ota_console_client.print("> ");
 #else
         char reply[160]; reply[0] = 0;
-        if (!handleCompanionBluetoothCommand(ota_console_line, reply, sizeof(reply),
+        if (!handleCompanionWirelessCommand(ota_console_line, reply, sizeof(reply), CompanionWirelessSource::Network)
+            && !handleCompanionBluetoothCommand(ota_console_line, reply, sizeof(reply),
                                              CompanionBluetoothCommandSource::Terminal)
             && !the_mesh.handleLocalCommand(ota_console_line, reply)
             && !mesh::ota::handle_ota_command(ota_console_line, reply, board))
@@ -1853,6 +1857,7 @@ void halt() {
   }
 
   static void startCompanionWiFi() {
+    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
     if (companion_wifi_active) return;
 
     board.setInhibitSleep(true);
@@ -2326,6 +2331,10 @@ bool handleCompanionBluetoothCommand(const char* command, char* reply,
     return true;
   }
   if (action == CompanionBluetoothCommand::On) {
+    if (!mesh::wireless::control().allowService(mesh::wireless::Bluetooth)) {
+      snprintf(reply, reply_size, "Error: 2.4ghz is off or changing; use set 2.4ghz on first");
+      return true;
+    }
     companion_bluetooth_off_at = 0;
     interface_manager.enableBluetooth();
     snprintf(reply, reply_size, "%s", interface_manager.isBluetoothEnabled()
@@ -2375,7 +2384,137 @@ bool handleCompanionBluetoothCommand(const char* command, char* reply,
   }
 #endif
 
+class CompanionWirelessBackend : public mesh::wireless::Backend {
+public:
+  uint8_t available() const override {
+    uint8_t mask = 0;
+#if defined(ESP32) && defined(WIFI_SSID)
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    if (companionTransportWiFiActiveAtBoot())
+#endif
+      mask |= mesh::wireless::WiFi;
+#endif
+#if defined(BLE_PIN_CODE)
+    if (companion_bluetooth_initialized) mask |= mesh::wireless::Bluetooth;
+#endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    mask |= mesh::wireless::EspNow;
+#endif
+    return mask;
+  }
+  uint8_t enabled() const override {
+    uint8_t mask = 0;
+#if defined(ESP32) && defined(WIFI_SSID)
+    if (companion_wifi_requested || companion_wifi_active) mask |= mesh::wireless::WiFi;
+#ifdef WITH_WEBCONFIG
+    if (the_mesh.isWebConfigActiveOrStopping()) mask |= mesh::wireless::WiFi;
+#endif
+#endif
+#if defined(BLE_PIN_CODE)
+    if (interface_manager.isBluetoothEnabled()) mask |= mesh::wireless::Bluetooth;
+#endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    if (radio_driver.isEnabled()) mask |= mesh::wireless::EspNow;
+#endif
+    return mask;
+  }
+  uint8_t clients() const override {
+    using namespace mesh::wireless;
+    if (!interface_manager.isEnabled()) return 0;
+    uint8_t mask = 0;
+    if (interface_manager.isInterfaceConnected(InterfaceType::Bluetooth)) mask |= Bluetooth;
+    if (interface_manager.isInterfaceConnected(InterfaceType::WiFi)) mask |= mesh::wireless::WiFi;
+    if (interface_manager.isInterfaceConnected(InterfaceType::Ethernet)) mask |= Independent;
+#if COMPANION_FEATURE_TEXT_TERMINAL && (COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG))
+    if (the_mesh.isAnyNetworkTerminalMode()) mask |= mesh::wireless::WiFi;
+#endif
+#if defined(ENABLE_USB_INTERFACE) \
+    && (defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM) \
+        || (defined(ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
+            && (!defined(ARDUINO_USB_MODE) || ARDUINO_USB_MODE == 0)))
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
+    if (!usb_mota_mode)
+#endif
+      if (usb_serial_interface.isEnabled() && isUsbTerminalDataConnected()) mask |= Independent;
+#endif
+    return mask;
+  }
+  bool replyBusy() const override {
+    return interface_manager.hasPendingIO();
+  }
+  mesh::wireless::Result set(uint8_t service, bool on) override {
+    using namespace mesh::wireless;
+#if defined(BLE_PIN_CODE)
+    if (service == Bluetooth) {
+      companion_bluetooth_off_at = 0;
+      if (on) interface_manager.enableBluetooth();
+      else disableCompanionBluetoothForCli();
+      return interface_manager.isBluetoothEnabled() == on ? Result::Done : Result::Failed;
+    }
+#endif
+#if defined(ESP32) && defined(WIFI_SSID)
+    if (service == mesh::wireless::WiFi) {
+      companion_wifi_requested = on;
+      if (!on) {
+        companion_wifi_setup_requested = false;
+        if (!finishStoppingCompanionWiFi()) return Result::Pending;
+        companion_wifi_disable_in_progress = false;
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+        if (!radio_driver.isEnabled()) ::WiFi.mode(WIFI_OFF);
+#endif
+      } else {
+        // Finish a previously requested teardown before opening new sockets.
+        if (companion_wifi_disable_in_progress) {
+          if (!finishStoppingCompanionWiFi()) return Result::Pending;
+          companion_wifi_disable_in_progress = false;
+        }
+        startCompanionWiFi();
+      }
+      return companion_wifi_active == on ? Result::Done : Result::Failed;
+    }
+#endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+    if (service == EspNow) {
+      if (on) radio_driver.init();
+      else {
+        radio_driver.end();
+        if (!(enabled() & mesh::wireless::WiFi)) {
+          ::WiFi.setAutoReconnect(false);
+          ::WiFi.mode(WIFI_OFF);
+        }
+      }
+      return radio_driver.isEnabled() == on ? Result::Done : Result::Failed;
+    }
+#endif
+    return Result::Failed;
+  }
+};
+static CompanionWirelessBackend companion_wireless;
+
+bool handleCompanionWirelessCommand(const char* command, char* reply, size_t size,
+                                   CompanionWirelessSource source) {
+  uint8_t requester = 0;
+  if (source == CompanionWirelessSource::Usb) requester = mesh::wireless::Independent;
+  else if (source == CompanionWirelessSource::Network) requester = mesh::wireless::WiFi;
+  else if (source == CompanionWirelessSource::Framed) {
+    BaseSerialInterface* route = interface_manager.captureReplyRoute();
+    if (interface_manager.isReplyRouteAvailable(route)) {
+#if defined(BLE_PIN_CODE)
+      if (route == &bluetooth_interface) requester = mesh::wireless::Bluetooth;
+      else
+#endif
+#if defined(ESP32) && defined(WIFI_SSID)
+      if (route == &wifi_interface) requester = mesh::wireless::WiFi;
+      else
+#endif
+        requester = mesh::wireless::Independent;
+    }
+  }
+  return mesh::wireless::control().handle(command, reply, size, millis(), requester);
+}
+
 void setup() {
+  mesh::wireless::control().begin(companion_wireless);
   mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
 #if MESH_PACKET_LOGGING
@@ -2776,6 +2915,7 @@ void setup() {
 }
 
 void loop() {
+  mesh::wireless::control().service(millis());
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog();
 #endif
@@ -2851,7 +2991,8 @@ void loop() {
   // USB power alone (for example, a wall charger) does not inhibit sleep.
   // Host sessions, live logging, and button activity still need service.
   bool can_sleep = the_mesh.getNodePrefs()->powersaving_enabled
-      && !the_mesh.hasPendingWork();
+      && !the_mesh.hasPendingWork()
+      && !mesh::wireless::control().pending();
 #if defined(ESP32_PLATFORM) && MESH_USB_LOGGING_AVAILABLE
   // The native-USB-only light-sleep path below bypasses ESP32Board::sleep.
   can_sleep = can_sleep && !mesh::isUsbLoggingEnabled();

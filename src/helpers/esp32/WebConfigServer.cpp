@@ -1,4 +1,5 @@
 #include "WebConfigServer.h"
+#include <helpers/WirelessControl.h>
 
 #ifdef WITH_WEBCONFIG
 
@@ -187,18 +188,17 @@ static uint8_t effectiveWiFiPowerSave(uint8_t configured) {
 }
 
 static void stopOwnedWiFiRadio() {
-#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
-  // ESP-NOW is this target's mesh radio. Stop only infrastructure-WiFi
-  // ownership; powering the driver down would also remove the mesh transport.
-  WiFi.setAutoReconnect(false);
-  WiFi.disconnect(false, false);
-  WiFi.mode(WIFI_STA);
-  mesh::wifi::applyProtocolMask(WIFI_IF_STA);
-  mesh::wifi::restoreEspNowChannel();
-#else
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-#endif
+  if (mesh::wifi::espNowChannelConstrained()) {
+    // Keep a primary ESP-NOW radio or running bridge on its mesh channel.
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false, false);
+    WiFi.mode(WIFI_STA);
+    mesh::wifi::applyProtocolMask(WIFI_IF_STA);
+    mesh::wifi::restoreEspNowChannel();
+  } else {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
 }
 
 // Placeholder sent instead of stored secrets; POSTs carrying it are dropped
@@ -780,6 +780,10 @@ bool WebConfigServer::getSetupInfo(char* ssid, size_t ssid_len, char* ip, size_t
 // ---------------------------------------------------------------------------
 
 bool WebConfigServer::startSetupMode(char reply[]) {
+  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+    strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
+    return false;
+  }
   const bool promote_lan = _mode == MODE_LAN && !_owns_wifi && !_stopping;
   if ((_mode != MODE_OFF && !promote_lan) || _stopping) {
     strcpy(reply, "Err: webconfig busy");
@@ -892,6 +896,10 @@ bool WebConfigServer::startLanMode(char reply[]) {
 }
 
 bool WebConfigServer::startAutoMode(char reply[]) {
+  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+    strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
+    return false;
+  }
   if (_wifi_ssid[0] == 0) return startSetupMode(reply);
   if (WiFi.status() == WL_CONNECTED) return startLanMode(reply);
   if (_mode != MODE_OFF || _stopping) {

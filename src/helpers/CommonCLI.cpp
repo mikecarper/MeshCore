@@ -2464,6 +2464,8 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     mesh::cli::normalizeCommandVerb(command);
+    if (mesh::wireless::control().handle(command, reply, 160, millis(),
+                                       _callbacks->wirelessCommandSource(sender_timestamp))) return;
     if (_radio_profiles.handle(command, reply)) return;
     if (strncmp(command, "set tempradio ", 14) == 0) {
       handleCommand(sender_timestamp, command + 4, reply);

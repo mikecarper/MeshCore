@@ -1410,6 +1410,60 @@ Station G2/G3 targets default to `off`.
 
 ---
 
+#### Turn WiFi, ESP-NOW, or all 2.4 GHz services on or off
+
+```text
+get wifi
+set wifi off
+set wifi on
+get espnow
+set espnow off
+set espnow on
+get 2.4ghz
+set 2.4ghz off
+set 2.4ghz on
+set 2.4ghz on all
+```
+
+| Control | Effect |
+| --- | --- |
+| `wifi` | Infrastructure WiFi, setup AP, TCP/WebUI, and WiFi MQTT services. ESP-NOW remains available. |
+| `espnow` | The ESP-NOW bridge or primary ESP-NOW mesh transport in this build. Infrastructure WiFi remains available. |
+| `2.4ghz off` | Stop WiFi, Bluetooth, and ESP-NOW; remember which were enabled. LoRa and wired transports remain available. |
+| `2.4ghz on` | Restore the states saved by the first `off`. Repeated `off` preserves that snapshot. With no previous `off`, keep the current states. |
+| `2.4ghz on all` | Enable every service available in this build and boot. `2.4ghz on force` is an alias. |
+
+These commands work in Companion, repeater, and room-server firmware where the
+services are available. Changes last until reboot; saved WiFi credentials,
+Bluetooth preferences, and bridge settings stay intact. `get 2.4ghz` lists each
+service as `on`, `off`, or `unavailable`. An nRF52 Companion controls its Bluetooth
+and reports WiFi/ESP-NOW as unavailable. Exclusive WiFi/Bluetooth builds retain
+their boot transport restriction; `on all` cannot reclaim a released Bluetooth stack.
+
+An `off` command requires a management connection that will survive it. Bluetooth
+can provide the fallback for `wifi off`; USB, Ethernet, or a CLI request over LoRa
+can provide it for `2.4ghz off`. WiFi association, a listening socket, and USB power
+alone do not count. On USB hardware without an observable open-client session,
+send the command through USB itself. To bypass the guard:
+
+```text
+set wifi off force
+set espnow off force
+set 2.4ghz off force
+```
+
+Shutdown starts after the reply has had time to drain (normally 250 ms, up to two
+seconds for pending transport I/O). Network services stop before the shared WiFi
+driver. A normal shutdown is cancelled if its fallback connection disappears
+before it starts. The `get` commands report pending changes and startup/teardown
+failures. After `2.4ghz off`, use `2.4ghz on` or `on all` before enabling an
+individual service. The `all`/`force` suffix on **on** applies only to `2.4ghz`.
+
+WiFi and ESP-NOW share one hardware channel. A running ESP-NOW bridge pins setup
+and station connections to `bridge.channel`; starting the bridge alongside an
+existing WiFi connection requires that same channel. A mismatch reports a failed
+start and preserves the WiFi connection.
+
 #### Turn Bluetooth on or off (Companion)
 
 ```text
