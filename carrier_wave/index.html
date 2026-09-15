@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/usb_serial_backpressure/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/carrier_wave/">
       
       
-        <link rel="prev" href="../terminal_chat_cli/">
+        <link rel="prev" href="../cad_scan_validation/">
       
       
-        <link rel="next" href="../v4_pixel5_font_trial/">
+        <link rel="next" href="../carrier_wave_validation/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Native USB backpressure and radio liveness - MeshCore Docs</title>
+        <title>Carrier-wave RF checks - MeshCore Docs</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#native-usb-backpressure-and-radio-liveness" class="md-skip">
+        <a href="#carrier-wave-rf-checks" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Native USB backpressure and radio liveness
+              Carrier-wave RF checks
             
           </span>
         </div>
@@ -310,10 +310,19 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../carrier_wave/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -329,6 +338,7 @@
   
 
       </a>
+      
     </li>
   
 
@@ -2065,37 +2075,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Native USB backpressure and radio liveness
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../usb_serial_backpressure/" class="md-nav__link">
         
   
   
@@ -2111,48 +2094,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#firmware-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Firmware behavior
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#regression-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Regression checks
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2342,36 +2283,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#firmware-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Firmware behavior
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#regression-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Regression checks
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -2387,7 +2298,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/usb_serial_backpressure.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/carrier_wave.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2395,69 +2306,69 @@
   
 
 
-<h1 id="native-usb-backpressure-and-radio-liveness">Native USB backpressure and radio liveness</h1>
-<p>ESP32-S2/S3 builds using native TinyUSB CDC (<code>ARDUINO_USB_MODE=0</code> and
-CDC-on-boot) must not wait for a computer to read USB output. In the bundled
-Arduino-ESP32 2.0.17 core, <code>USBCDC::write()</code> can wait indefinitely for transmit
-space; its configured timeout bounds a mutex, not that wait. This can stop the
-same loop that services LoRa, even while the USB connection still appears open.</p>
-<h2 id="firmware-behavior">Firmware behavior</h2>
-<ul>
-<li>Native CDC output uses a single FIFO attempt, not Arduino's wait-for-space
-  write or flush. TinyUSB's internal short mutex operations still apply; this
-  is a no-host-progress-wait guarantee, not a lock-free driver replacement.</li>
-<li>Functional text and diagnostics share one ordered 4 KiB queue. Diagnostics
-  leave 3 KiB reserved for commands. A diagnostic backlog alone does not prevent
-  command input. A stalled host may lose diagnostic records; radio work continues.</li>
-<li>A connected terminal that exceeds its bounded output capacity gets an explicit
-  dropped-byte notice when transmission resumes. Large local file dumps and
-  recent-repeater listings advance between radio service passes instead.</li>
-<li>File dumps stop at their initial file size and emit <code>-&gt; EOF</code> only after the
-  final accepted record. Corrupt stored lines exceeding 640 bytes are omitted
-  with a visible notice. Recent-repeater output is a live, bounded-cursor view;
-  incoming packets can change its ordering while it is being printed.</li>
-<li>Disconnects discard pending old-session text and reset the role's partial
-  command/listing state. Binary/mOTA transitions suppress pending text notices.
-  Bytes already transmitted cannot be recalled.</li>
-<li>Companion frames retain and retry short writes. An mOTA request is admitted
-  only when its complete, at-most-11-byte record fits.</li>
-<li>nRF52, UART, and USB-Serial-JTAG behavior is not changed by this native-CDC path.</li>
-</ul>
-<p>Host software must also keep reading independently of command writes. A serial
-relay should start its reader before the first command, use finite write and
-response deadlines, avoid discarding received packet logs, and cancel I/O during
-shutdown. A response timeout must not allow a late reply to satisfy another
-command: the CLI has no transaction identifiers. Updating firmware alone does
-not correct an indefinite host-side serial write.</p>
-<h2 id="regression-checks">Regression checks</h2>
-<p>Run only one PlatformIO process in the checkout at a time.</p>
-<pre><code class="language-sh">python test/test_esp32_tinyusb_nonblocking.py
-python test/test_esp32_tinyusb_role_hygiene.py
-python test/test_esp32_tinyusb_cooperative_output.py
-python test/test_esp32_usb_serial_hygiene.py
-python test/test_nrf52_usb_logging_contract.py
-pio test -e native -f test_nrf52_debug_output -f test_serial_packet_log -f test_serial_mode_switch -f test_mesh_tables
-</code></pre>
-<p>The first test compiles the real USB facade against a simulated 64-byte FIFO,
-including stopped readers, reconnects, protocol transitions, and other-platform
-fallbacks. Host simulations cannot establish that every real USB driver or
-endpoint failure has recovered.</p>
-<p>A Full Station G2 validation build with USA Cascadia radio settings and the Cascade
-profile can be made using the normal build entry point. The portable <code>standard</code>
-recipe preserves the deployed partition layout but omits LoRa OTA; it still has
-the browser firmware uploader. The <code>auto</code>/<code>full</code> recipe instead enables the
-expanded feature set and partition layout: its merged image is <strong>not</strong> an
-app-only update for a device with the legacy layout.</p>
-<pre><code class="language-sh">MESHDEBUG_OVERRIDE=on PACKET_LOGGING_OVERRIDE=on \
-  bash build.sh build-firmware Station_G2_repeater --build-profile full \
-  --radio-preset usa-cascadia --profile cascade
-</code></pre>
-<p>Before installing on hardware, preserve the device identity, preferences, and
-existing partition layout. Then verify USB command responses and repeated LoRa
-logins with the relay running, paused, and stopped, including a host that leaves
-USB open without reading. Check LoRa recovery separately from USB OUT recovery;
-fixing transmit backpressure does not prove an unrelated OUT endpoint fault is
-resolved. Do not erase or repartition the radio as part of this test.</p>
+<h1 id="carrier-wave-rf-checks">Carrier-wave RF checks</h1>
+<p><code>cw</code> and <code>cw2</code> transmit a continuous, unmodulated carrier at the selected
+profile's frequency and the configured TX power. They are available in the
+shared ASCII CLI on SX1262-family and LR1110 builds, including repeaters,
+Companions, room servers, and sensors that use that CLI.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cw on</code></td>
+<td>Use the active primary frequency for 10 seconds.</td>
+</tr>
+<tr>
+<td><code>cw on 2.5</code></td>
+<td>Use the active primary frequency for 2.5 seconds.</td>
+</tr>
+<tr>
+<td><code>cw2 on 0.75</code></td>
+<td>Use the active second profile for 0.75 seconds.</td>
+</tr>
+<tr>
+<td><code>cw off</code> or <code>cw2 off</code></td>
+<td>Stop the carrier immediately. Either name stops it.</td>
+</tr>
+<tr>
+<td><code>get cw</code> or <code>get cw2</code></td>
+<td>Show which carrier is active and its remaining seconds.</td>
+</tr>
+</tbody>
+</table>
+<p><code>set cw ...</code> and <code>set cw2 ...</code> are also accepted. Durations range from
+0.001 to 60 seconds, rounded to milliseconds. The deadline runs in the main
+loop, so it is not a precision pulse generator or a hardware cutoff.</p>
+<p><code>cw2</code> requires an active <code>radio2</code> or <code>tempradio2</code> profile in <code>rxtx</code> mode.
+An <code>rx</code> or disabled second profile cannot transmit a carrier. <code>cw</code> uses
+<code>tempradio</code> when that is the current primary profile. There is one physical
+transmitter: a carrier uses one profile at a time and ignores the cross-TX
+setting. Stop it before selecting the other carrier. Repeating <code>on</code> on the
+same profile restarts the duration.</p>
+<p>Packet transmission, reception, profile scanning, CAD, and receive recovery
+checks pause during the carrier. The firmware keeps the MCU awake to service
+the deadline, controls the board's external amplifier, and resumes normal
+reception and profile scanning afterward. It rejects entry during a packet
+or a busy radio. Profile retuning waits until the carrier stops; replacement
+or expiry of the active second profile stops its carrier. Nothing about CW
+is saved across reboot.</p>
+<p>Use the local USB or BLE console for immediate replies and manual stopping.
+An on-air CLI reply must wait until the carrier ends because LoRa packets
+cannot transmit during the test.</p>
+<p>A second radio on the same frequency can detect the carrier using
+instantaneous RSSI. Compare readings before, during, and after transmission;
+CAD and packet counters are not carrier detectors. This confirms RF activity,
+not calibrated output power, frequency accuracy, antenna match, or SWR.
+Afterward, exchange ordinary LoRa packets to verify both RX and TX recovery.</p>
+<p>The reproducible bench witness is <code>tools/hil/cw_observer.cpp</code>, built with
+<code>tools/hil/cw_observer.ini</code> on a separate RAK4631. It never transmits on its own.
+See the <a href="../carrier_wave_validation/">hardware validation</a> for measured results,
+reproduction steps, and the tested preamble settings.</p>
 
 
 
