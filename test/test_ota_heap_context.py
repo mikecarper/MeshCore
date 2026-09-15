@@ -119,6 +119,202 @@ int main() {
 ''')
             self.compile_and_run(path, source)
 
+    def test_disconnected_folder_capture_retains_selected_session(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            source = path / "test.cpp"
+            (path / "vectors.h").write_text('#include "' +
+                (ROOT / "test/test_ota/mota_vectors.h").as_posix() + '"\n')
+            (path / "tcp_detach.h").write_text(method(
+                (ROOT / "src/helpers/esp32/WiFiOtaSeeder.cpp").read_text(),
+                "void detachTcpFolder("))
+            source.write_text(r'''
+#include <helpers/ota/OtaContext.h>
+#include <cassert>
+#include <vector>
+#include <helpers/ota/FolderMotaStore.h>
+#include "vectors.h"
+using namespace mesh::ota;
+namespace mesh { namespace ota {
+bool ota_self_firmware(SelfFwInfo& info) { info = SelfFwInfo(); return false; }
+} }
+struct Message { OtaManager* dest; std::vector<uint8_t> bytes; };
+static std::vector<Message> queue;
+static bool send(void* ctx, const uint8_t* bytes, uint16_t len, bool) {
+  queue.push_back({*static_cast<OtaManager**>(ctx), {bytes, bytes + len}});
+  return true;
+}
+struct EmptySource : MotaSource {
+  uint8_t count() override { return 0; }
+  bool describe(uint8_t, MotaDesc&) override { return false; }
+  bool read(uint8_t, uint32_t, uint8_t*, uint32_t) override { return false; }
+};
+static Stream stream;
+struct MemoryFolder : FolderMotaStore {
+  OtaStoreRam<4096> memory;
+  bool fail_begin = false, fail_finalize = false;
+  bool fail_root_read = false;
+  bool corrupt_root_read = false;
+  OtaManager* receiver = nullptr;
+  uint32_t fail_write_at = UINT32_MAX;
+  uint32_t fail_read_at = UINT32_MAX;
+  MemoryFolder() : FolderMotaStore(stream, MotaStreamWritePolicy::NoFlush, 20) {}
+  bool begin(uint32_t n) override { return !fail_begin && memory.begin(n); }
+  bool write(uint32_t off, const uint8_t* bytes, uint32_t n) override {
+    return off != fail_write_at && memory.write(off, bytes, n);
+  }
+  bool read(uint32_t off, uint8_t* bytes, uint32_t n) const override {
+    if (off == fail_read_at || (fail_root_read && receiver && receiver->blocksTotal()
+        && receiver->blocksHave() == receiver->blocksTotal())) return false;
+    if (!memory.read(off, bytes, n)) return false;
+    if (corrupt_root_read && receiver && receiver->blocksTotal()
+        && receiver->blocksHave() == receiver->blocksTotal() && n) bytes[0] ^= 1;
+    return true;
+  }
+  uint32_t staged_size() const override { return memory.staged_size(); }
+  bool reopen() override { return memory.reopen(); }
+  bool finalize() override { return !fail_finalize; }
+};
+static bool tcp_folder_attached = true;
+#include "tcp_detach.h"
+int main(int argc, char** argv) {
+  const int scenario = argc > 1 ? atoi(argv[1]) : 0;
+  MemoryFolder store;
+  EmptySource source;
+  OtaManager server;
+  OtaManager* server_ptr = &server;
+  ota_begin_context(SIM_TARGET_ID, send, &server_ptr, "test", nullptr);
+  assert(ota_acquire_context(nullptr, 0));
+  OtaContext* context = ota_context_if_active();
+  OtaManager* client_ptr = &context->manager;
+  store.receiver = client_ptr;
+  server.begin(0, send, &client_ptr);
+  assert(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+  MotaManifest manifest;
+  assert(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  uint8_t mid[4]; memcpy(mid, manifest.merkle_root, sizeof(mid));
+  char reply[160] = {};
+  assert(context->attach_folder_source(&source, OtaContext::FOLDER_LINK_TCP,
+                                       "tcp", reply, sizeof(reply)));
+  context->manager.set_fetch_store(&store);
+  context->fetch_to_folder = true;
+  context->set_folder_dest(&store, "tcp");
+  store.fail_begin = scenario == 2;
+  store.fail_finalize = scenario == 5;
+  store.fail_root_read = scenario == 10;
+  store.corrupt_root_read = scenario == 14;
+  if (scenario == 3) store.fail_write_at = 8;
+  if (scenario == 4) store.fail_write_at = manifest.payload - SIM_MOTA_1K;
+  if (scenario == 13) store.fail_read_at = manifest.payload - SIM_MOTA_1K;
+  assert(context->manager.pull_archive(mid, SIM_TARGET_ID, scenario == 9 || scenario == 12 || scenario == 13)
+         == OtaManager::PULL_STARTED);
+  uint32_t now = 0;
+  auto tick = [&]() {
+    if (!queue.empty()) {
+      Message msg = queue.front(); queue.erase(queue.begin());
+      msg.dest->on_message(msg.bytes.data(), msg.bytes.size());
+    } else {
+      now += 1000;
+      context->manager.set_clock(now); server.set_clock(now);
+      context->manager.loop(); server.loop();
+    }
+    context->manager.serviceEgress(); server.serviceEgress();
+  };
+  if ((scenario >= 1 && scenario <= 6) || scenario >= 9) {
+    unsigned guard = 100000;
+    while (guard--) {
+      tick();
+      if (scenario == 14) {
+        if (context->manager.fetchState() == OtaManager::FAILED) break;
+      } else if ((scenario >= 2 && scenario <= 5) || scenario == 10 || scenario == 13) {
+        if (context->manager.fetchState() == OtaManager::PAUSED) break;
+        assert(context->manager.fetchState() != OtaManager::FAILED);
+      } else if (scenario == 9 || scenario == 12) {
+        if (context->manager.fetchState() == OtaManager::WANT_LEAVES) break;
+      } else if (context->manager.blocksHave() >= 1) break;
+    }
+    assert(guard != UINT32_MAX);
+  }
+  if (scenario == 14) {
+    assert(context->manager.fetchError() == OtaManager::FETCH_ERROR_INTEGRITY);
+    detachTcpFolder(true);
+    ota_release_context_if_idle(false);
+    assert(!ota_context_if_active());
+    return 0;
+  }
+  // Execute the real TCP loss cleanup, then the normal role lifetime service.
+  detachTcpFolder(true);
+  assert(context->manager.fetchState() == OtaManager::PAUSED);
+  ota_release_context_if_idle(false);
+  assert(ota_context_if_active() == context);
+  ota_release_context_if_idle(true);
+  assert(ota_context_if_active() == context);
+  assert(memcmp(context->manager.fetchManifestId(), mid, sizeof(mid)) == 0);
+  queue.clear();
+  const auto sent = context->manager.packetsSent();
+  for (unsigned i = 0; i < 100; ++i) context->manager.loop();
+  assert(context->manager.packetsSent() == sent);
+  assert(!context->attach_folder_source(&source, OtaContext::FOLDER_LINK_BLE,
+                                        "ble", reply, sizeof(reply)));
+  if (scenario == 7 || scenario == 8) {
+    if (scenario == 7) context->manager.reset_session();
+    else {
+      context->detach_folder();
+      // Static-context builds also need an idle slot after explicit detach.
+      assert(context->manager.fetchState() == OtaManager::IDLE);
+      assert(!context->fetch_to_folder && !context->folder_dest);
+    }
+    ota_release_context_if_idle(false);
+    assert(!ota_context_if_active());
+    return 0;
+  }
+  store.fail_begin = store.fail_finalize = false;
+  store.fail_root_read = false;
+  store.fail_write_at = UINT32_MAX;
+  store.fail_read_at = UINT32_MAX;
+  assert(context->attach_folder_source(&source, OtaContext::FOLDER_LINK_TCP,
+                                       "tcp", reply, sizeof(reply)));
+  if (scenario == 6) {
+    // A different file at the host cannot change the interrupted selection.
+    uint8_t wrong_mid[4] = {9, 8, 7, 6};
+    assert(store.memory.write(8 + 20, wrong_mid, sizeof(wrong_mid)));
+    context->set_folder_dest(&store, "tcp");
+    assert(context->manager.fetchState() == OtaManager::PAUSED);
+    assert(memcmp(context->manager.fetchManifestId(), mid, sizeof(mid)) == 0);
+    assert(store.memory.write(8 + 20, mid, sizeof(mid)));
+  }
+  if (scenario == 12) {
+    uint8_t wrong_mid[4] = {9, 8, 7, 6};
+    assert(store.memory.write(8 + 20, wrong_mid, sizeof(wrong_mid)));
+  }
+  context->set_folder_dest(&store, "tcp");
+  if (scenario == 11) {
+    store.fail_read_at = manifest.payload - SIM_MOTA_1K;
+    context->manager.loop();
+    assert(context->manager.fetchState() == OtaManager::PAUSED);
+    context->disconnect_folder();
+    ota_release_context_if_idle(false);
+    assert(ota_context_if_active() == context);
+    store.fail_read_at = UINT32_MAX;
+    assert(context->attach_folder_source(&source, OtaContext::FOLDER_LINK_TCP,
+                                         "tcp", reply, sizeof(reply)));
+    context->set_folder_dest(&store, "tcp");
+  }
+  unsigned guard = 100000;
+  while (context->manager.fetchState() != OtaManager::COMPLETE && guard--) {
+    tick();
+    assert(context->manager.fetchState() != OtaManager::FAILED);
+  }
+  assert(context->manager.fetchState() == OtaManager::COMPLETE);
+  assert(store.staged_size() == SIM_MOTA_1K_LEN);
+  assert(memcmp(store.memory.data(), SIM_MOTA_1K, SIM_MOTA_1K_LEN) == 0);
+  context->detach_folder(); context->clear_folder_dest();
+  ota_release_context_if_idle(false);
+  assert(!ota_context_if_active());
+}
+''')
+            self.compile_and_run(path, source, [(str(i),) for i in range(15)])
+
     def test_self_refresh_revokes_view_before_freeing_buffers(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)
@@ -221,7 +417,7 @@ int main(int argc, char** argv) {
         tinf = path / "tinf.o"
         subprocess.run([shutil.which("cc") or "gcc", "-DENABLE_OTA=1", *flags, "-c",
                         str(ROOT / "src/helpers/ota/OtaTinf.c"), "-o", str(tinf)], check=True)
-        sources = ["OtaContext.cpp", "OtaManager.cpp", "OtaProtocol.cpp",
+        sources = ["OtaContext.cpp", "OtaManager.cpp", "OtaProtocol.cpp", "FolderMotaStore.cpp",
                    "MotaContainer.cpp", "MerkleTree.cpp", "OtaDeflate.cpp"]
         binary = path / "heap.exe"
         result = subprocess.run([

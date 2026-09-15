@@ -3,7 +3,7 @@
 // SPIFFS cannot replace an existing name in one rename. Preserve the previous
 // file as .bak until the verified replacement has its final name. Recovery of
 // the rename gap happens before loading contacts on the next boot.
-#if defined(ESP32_PLATFORM)
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include "IdentityStore.h"
 #include "PersistentStoreFormat.h"
 #include <stdio.h>
@@ -31,7 +31,11 @@ public:
     snprintf(_backup, sizeof(_backup), "%s.bak", target);
     if (!recover(fs, target)) return;
     if (fs->exists(_temp) && !fs->remove(_temp)) return;
+#if defined(RP2040_PLATFORM)
+    _file = fs->open(_temp, "w");
+#else
     _file = fs->open(_temp, "w", true);
+#endif
     _ok = static_cast<bool>(_file);
   }
   ~ContactFileTransaction() {

@@ -61,6 +61,10 @@ public:
   // OtaManager then reads + parses the stored manifest to recompute geometry and resume the fetch.
   virtual bool reopen() { return false; }
 
+  // External host stores can disappear temporarily while retaining their file.
+  // Preserve the selected fetch on an I/O failure until that link reconnects.
+  virtual bool canReconnect() const { return false; }
+
   // Optional: declare the container's logical layout once the manifest is parsed, BEFORE begin(), so a
   // store backed by a single spare A/B partition (ESP32) can choose placement and reject an unfittable
   // fetch up front. A FULL image's payload IS the final firmware (no decode), so it can stream straight

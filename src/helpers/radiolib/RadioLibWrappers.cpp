@@ -185,6 +185,13 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   const uint8_t previous_sf = _cur_sf;
   const uint8_t previous_cr = _cur_cr;
   const uint16_t previous_preamble = _physical_preamble;
+  const uint8_t previous_profile = _active_profile;
+  const uint32_t previous_generation = _profile_generation;
+  const bool previous_refresh = _profile_refresh_required;
+  const bool previous_rxps = _rx_ps_enabled;
+  const bool previous_saved_rxps = _profile_saved_rxps;
+  const bool previous_fallback = _rx_ps_continuous_fallback;
+  const uint32_t previous_rx_us = _rx_ps_rx_us, previous_sleep_us = _rx_ps_sleep_us;
   mesh::RadioProfileParams requested = _profiles.primary;
   requested.freq = freq; requested.bw = bw; requested.sf = sf; requested.cr = cr;
   const auto previous_primary = _profiles.primary;
@@ -194,10 +201,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   bool success = applyParams(freq, bw, sf, cr);
   if (success) {
     cacheParams(freq, bw, sf, cr);
-    _profiles.primary = previous_primary;
-    _profiles.setPrimary(requested, _profiles.primary_temporary);
     _active_profile = 0;
-    _profile_generation = _profiles.generation[0];
     if (rx_ps_timings != NULL) {
       if (_profile_rxps_suspended) _profile_saved_rxps = true;
       else _rx_ps_enabled = true;
@@ -206,20 +210,43 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
       _rx_ps_continuous_fallback = rxPowerSavingUsesContinuousFallback(
           _rx_ps_rx_us, _rx_ps_sleep_us);
     }
-  } else {
+    endReconfigure(resume_rx);
+    success = !resume_rx || isInRecvMode();
+  }
+  if (success) {
     _profiles.primary = previous_primary;
+    _profiles.setPrimary(requested, _profiles.primary_temporary);
+    _profile_generation = _profiles.generation[0];
+    _profile_refresh_required = false;
+  } else {
+    // RX resume is part of a primary command just as it is for scan hops.
+    // Restore the active physical profile and power policy before recovery;
+    // neither a saved command nor a temporary lease may commit a deaf radio.
+    _profiles.primary = previous_primary;
+    cacheParams(previous_freq, previous_bw, previous_sf, previous_cr);
+    _params_valid = had_previous_params;
+    _active_profile = previous_profile;
+    _profile_generation = previous_generation;
+    _profile_refresh_required = previous_refresh;
     _physical_preamble = previous_preamble;
+    _rx_ps_enabled = previous_rxps;
+    _profile_saved_rxps = previous_saved_rxps;
+    _rx_ps_continuous_fallback = previous_fallback;
+    _rx_ps_rx_us = previous_rx_us;
+    _rx_ps_sleep_us = previous_sleep_us;
     bool restored = had_previous_params
+      && _radio->standby() == RADIOLIB_ERR_NONE
       && applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
 
     if (!restored) restored = restoreAfterDeepInit();
+    if (restored) endReconfigure(resume_rx);
+    if (!restored || (resume_rx && !isInRecvMode())) _profile_refresh_required = true;
 
     if (!restored) {
       MESH_DEBUG_PRINTLN("RadioLibWrapper: failed to restore radio parameters after apply failure");
     }
   }
 
-  endReconfigure(resume_rx);
   _profile_visit_us = micros();
   return success ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
 }

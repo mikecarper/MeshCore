@@ -39,6 +39,9 @@ class DataStore
   FILESYSTEM* _configuredFsExtra;
   mesh::RTCClock* _clock;
   IdentityStore identity_store;
+#if !defined(NRF52_PLATFORM)
+  bool _channel_load_incomplete = false;
+#endif
 #if MESH_CONTACT_CACHE
   DataStoreHost* _cache_host = nullptr;
   bool _cache_load_incomplete = false;

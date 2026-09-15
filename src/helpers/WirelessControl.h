@@ -57,7 +57,7 @@ class Control {
   Backend* backend_ = nullptr;
   std::atomic<uint8_t> blocked_{0};
   uint8_t scope_ = 0, target_ = 0, saved_ = 0;
-  bool pending_ = false, started_ = false, force_ = false, retained_requester_ = false;
+  bool pending_ = false, started_ = false, force_ = false, independent_requester_ = false;
   bool saved_valid_ = false, master_off_ = false;
   uint32_t due_ = 0;
   const char* error_ = nullptr;
@@ -104,10 +104,16 @@ public:
       return true;
     }
     const uint8_t scope = command.scope & available;
-    const bool retained = (requester & ~scope) != 0;
+    const uint8_t target = !on ? 0 : command.scope == All && command.action != Action::OnAll
+        ? (saved_valid_ ? saved_ : current) & available : scope;
+    // Restoring a saved subset may also switch off services enabled since a
+    // failed restore. Protect the actual removals, not just commands named off.
+    const uint8_t disabling = scope & ~target;
+    const bool retained = (requester & ~disabling) != 0;
     const bool force = command.action == Action::ForceOff;
-    if (!on && (current & scope) && !force && !retained && !(backend_->clients() & ~scope)) {
-      snprintf(reply, size, "Error: no remaining management connection; use off force or USB/Ethernet");
+    if ((current & disabling) && !force && !retained && !(backend_->clients() & ~disabling)) {
+      snprintf(reply, size, "Error: no remaining management connection; use %s or USB/Ethernet",
+               on ? "on all" : "off force");
       return true;
     }
     if (command.scope == All && !on && !saved_valid_) {
@@ -115,10 +121,12 @@ public:
       saved_valid_ = true;
     }
     scope_ = scope;
-    target_ = !on ? 0 : command.scope == All && command.action != Action::OnAll
-        ? (saved_valid_ ? saved_ : current) & available : scope;
+    target_ = target;
     force_ = force;
-    retained_requester_ = retained;
+    // An actual USB/UART command proves a host session even on adapters with
+    // no DTR reporting. Wireless requesters can disconnect during reply drain;
+    // only their live management sessions may authorize the delayed shutdown.
+    independent_requester_ = (requester & Independent) != 0;
     pending_ = true;
     started_ = false;
     error_ = nullptr;
@@ -133,7 +141,8 @@ public:
   void service(uint32_t now) {
     if (!pending_ || !backend_ || int32_t(now - due_) < 0) return;
     if (!started_) {
-      if (!target_ && (enabled() & scope_) && !force_ && !retained_requester_ && !(backend_->clients() & ~scope_)) {
+      const uint8_t disabling = scope_ & ~target_;
+      if ((enabled() & disabling) && !force_ && !independent_requester_ && !(backend_->clients() & ~disabling)) {
         pending_ = false;
         if (master_off_) { master_off_ = false; saved_valid_ = false; }
         error_ = " (cancelled: connection lost)";

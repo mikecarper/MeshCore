@@ -2347,6 +2347,10 @@ bool handleCompanionBluetoothCommand(const char* command, char* reply,
     return true;
   }
   const bool force = action == CompanionBluetoothCommand::ForceOff;
+  if (!force && mesh::wireless::control().pending()) {
+    snprintf(reply, reply_size, "Error: wireless change pending; get 2.4ghz for status");
+    return true;
+  }
   BaseSerialInterface* route = interface_manager.captureReplyRoute();
   const bool non_bluetooth_requester = source == CompanionBluetoothCommandSource::Terminal
       || (source == CompanionBluetoothCommandSource::Framed
@@ -2493,6 +2497,16 @@ static CompanionWirelessBackend companion_wireless;
 
 bool handleCompanionWirelessCommand(const char* command, char* reply, size_t size,
                                    CompanionWirelessSource source) {
+#if defined(BLE_PIN_CODE)
+  const auto wireless_command = mesh::wireless::parse(command);
+  if (reply && size && companion_bluetooth_off_at != 0
+      && (wireless_command.action == mesh::wireless::Action::Off
+          || (wireless_command.scope == mesh::wireless::All
+              && wireless_command.action == mesh::wireless::Action::On))) {
+    snprintf(reply, size, "Error: Bluetooth change pending; get bluetooth for status");
+    return true;
+  }
+#endif
   uint8_t requester = 0;
   if (source == CompanionWirelessSource::Usb) requester = mesh::wireless::Independent;
   else if (source == CompanionWirelessSource::Network) requester = mesh::wireless::WiFi;

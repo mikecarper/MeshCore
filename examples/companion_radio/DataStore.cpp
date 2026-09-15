@@ -3,16 +3,16 @@
 #include "DataStore.h"
 #include <helpers/FileRead.h>
 #include <helpers/AdvertDataHelpers.h>
-#if MESH_CONTACT_CACHE && defined(ESP32_PLATFORM)
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include <helpers/ContactFileTransaction.h>
 #endif
 #if COMPANION_FEATURE_JOHN
 #include <helpers/bible/JohnBookmarkFiles.h>
 #endif
 
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include <helpers/AtomicFileWriter.h>
-#if defined(EXTRAFS) && !defined(QSPIFLASH)
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
 #include <helpers/nrf52/InternalSecondaryFsRepair.h>
 #endif
 #endif
@@ -1916,6 +1916,9 @@ bool DataStore::hasPendingContactWrites() const {
 }
 
 bool DataStore::hasIncompleteContactLoad() const {
+#if !defined(NRF52_PLATFORM)
+  if (_channel_load_incomplete) return true;
+#endif
 #if MESH_CONTACT_CACHE
   if (_cache_load_incomplete) return true;
 #endif
@@ -1928,41 +1931,55 @@ bool DataStore::hasIncompleteContactLoad() const {
 
 void DataStore::loadChannels(DataStoreHost* host) {
 #if defined(NRF52_PLATFORM)
-  if (_contact_load_incomplete) {
-    MESH_DEBUG_PRINTLN(
-        "DataStore: channel load quarantined after storage I/O failure");
-    return;
-  }
-
+  bool& incomplete = _contact_load_incomplete;
+#else
+  bool& incomplete = _channel_load_incomplete;
+#endif
+  if (incomplete) return;
   FILESYSTEM* contacts_fs = _getContactsChannelsFS();
-  bool channels_exist = false;
-  uint32_t channels_size = 0;
-  if (!contactPathPresence(contacts_fs, "/channels2", channels_exist,
-                           &channels_size)) {
-    _contact_load_incomplete = true;
-    return;
-  }
-  if (!channels_exist) return;
-
-  static const uint32_t CHANNEL_RECORD_SIZE = 4 + 32 + 32;
-  if ((channels_size % CHANNEL_RECORD_SIZE) != 0
-      || channels_size / CHANNEL_RECORD_SIZE > MAX_GROUP_CHANNELS) {
-    MESH_DEBUG_PRINTLN(
-        "DataStore: invalid channels file size; storage quarantined");
-    _contact_load_incomplete = true;
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  if (!mesh::ContactFileTransaction::recover(contacts_fs, "/channels2")) {
+    MESH_DEBUG_PRINTLN("DataStore: channel transaction recovery failed; storage quarantined");
+    incomplete = true;
     return;
   }
 #endif
-  File file = openRead(_getContactsChannelsFS(), "/channels2");
+  uint32_t channels_size = 0;
 #if defined(NRF52_PLATFORM)
-  if (!file || file.size() != channels_size) {
-    if (file) file.close();
-    MESH_DEBUG_PRINTLN(
-        "DataStore: channels file could not be opened consistently; storage quarantined");
-    _contact_load_incomplete = true;
+  bool channels_exist = false;
+  if (!contactPathPresence(contacts_fs, "/channels2", channels_exist,
+                           &channels_size)) {
+    incomplete = true;
     return;
   }
-
+  if (!channels_exist) return;
+#else
+  if (!contacts_fs->exists("/channels2")) return;
+#endif
+  File file = openRead(contacts_fs, "/channels2");
+  if (!file) {
+    MESH_DEBUG_PRINTLN("DataStore: channels file open failed; storage quarantined");
+    incomplete = true;
+    return;
+  }
+#if defined(NRF52_PLATFORM)
+  if (file.size() != channels_size) {
+    file.close();
+    MESH_DEBUG_PRINTLN("DataStore: channels file changed while opening; storage quarantined");
+    incomplete = true;
+    return;
+  }
+#else
+  channels_size = file.size();
+#endif
+  static const uint32_t CHANNEL_RECORD_SIZE = 4 + 32 + 32;
+  if ((channels_size % CHANNEL_RECORD_SIZE) != 0
+      || channels_size / CHANNEL_RECORD_SIZE > MAX_GROUP_CHANNELS) {
+    file.close();
+    MESH_DEBUG_PRINTLN("DataStore: invalid channels file size; storage quarantined");
+    incomplete = true;
+    return;
+  }
   const uint8_t channel_count =
       static_cast<uint8_t>(channels_size / CHANNEL_RECORD_SIZE);
   ChannelDetails* loaded = channel_count == 0 ? nullptr
@@ -1972,7 +1989,7 @@ void DataStore::loadChannels(DataStoreHost* host) {
     file.close();
     MESH_DEBUG_PRINTLN(
         "DataStore: no memory for channels snapshot; storage quarantined");
-    _contact_load_incomplete = true;
+    incomplete = true;
     return;
   }
   bool success = true;
@@ -1986,6 +2003,7 @@ void DataStore::loadChannels(DataStoreHost* host) {
                      sizeof(loaded[channel_idx].channel.secret))
             == sizeof(loaded[channel_idx].channel.secret);
     if (!success) break;
+    loaded[channel_idx].name[sizeof(loaded[channel_idx].name) - 1] = 0;
     loaded[channel_idx].channel.tx_radio = mesh::decodeRadioTxPolicy(unused[0]);
   }
   file.close();
@@ -1993,7 +2011,7 @@ void DataStore::loadChannels(DataStoreHost* host) {
     free(loaded);
     MESH_DEBUG_PRINTLN(
         "DataStore: channels file read failed; storage quarantined");
-    _contact_load_incomplete = true;
+    incomplete = true;
     return;
   }
   for (uint8_t channel_idx = 0; channel_idx < channel_count; channel_idx++) {
@@ -2001,43 +2019,24 @@ void DataStore::loadChannels(DataStoreHost* host) {
       free(loaded);
       MESH_DEBUG_PRINTLN(
           "DataStore: channel host refused durable record; storage quarantined");
-      _contact_load_incomplete = true;
+      incomplete = true;
       return;
     }
   }
   free(loaded);
-#else
-  if (file) {
-    bool full = false;
-    uint8_t channel_idx = 0;
-    while (!full) {
-      ChannelDetails ch;
-      uint8_t unused[4];
-
-      bool success = (file.read(unused, 4) == 4);
-      success = success && (file.read((uint8_t *)ch.name, 32) == 32);
-      success = success && (file.read((uint8_t *)ch.channel.secret, 32) == 32);
-
-      if (!success) break; // EOF
-
-      ch.channel.tx_radio = mesh::decodeRadioTxPolicy(unused[0]);
-      if (host->onChannelLoaded(channel_idx, ch)) {
-        channel_idx++;
-      } else {
-        full = true;
-      }
-    }
-    file.close();
-  }
-#endif
 }
 
 bool DataStore::saveChannels(DataStoreHost* host) {
+#if !defined(NRF52_PLATFORM)
+  if (_channel_load_incomplete) return false;
+#endif
 #if defined(NRF52_PLATFORM)
   if (_contact_load_incomplete) return false;
 #endif
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   mesh::AtomicFileWriter file(_getContactsChannelsFS(), "/channels2");
+#elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  mesh::ContactFileTransaction file(_getContactsChannelsFS(), "/channels2");
 #else
   File file = openWrite(_getContactsChannelsFS(), "/channels2");
 #endif
@@ -2057,7 +2056,7 @@ bool DataStore::saveChannels(DataStoreHost* host) {
       if (!success) break; // write failed
       channel_idx++;
     }
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
     success = file.commit(success);
     if (!success) MESH_DEBUG_PRINTLN("DataStore: atomic channels write failed");
 #else

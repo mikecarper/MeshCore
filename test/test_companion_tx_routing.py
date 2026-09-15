@@ -16,6 +16,12 @@ HARNESS = r'''
 #include <helpers/CLICommandUtils.h>
 #include <helpers/CompanionTxRoutingCLI.h>
 #include <helpers/IdentityStore.h>
+#include "ContactFileTransaction.h"
+#if defined(STM32_PLATFORM)
+#define ATOMIC_FILE_WRITER_IMPLEMENTATION
+#include <helpers/AtomicFileWriter.h>
+#endif
+#define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define MAX_GROUP_CHANNELS 4
 #define MAX_ANON_CONTACTS 1
 #define ADV_TYPE_NONE 0
@@ -37,6 +43,8 @@ struct DataStoreHost {
 struct Radio { mesh::RadioProfiles config; mesh::RadioProfiles* profiles() { return &config; } };
 struct DataStore {
  FILESYSTEM fs;
+ bool _channel_load_incomplete=false;
+ bool hasIncompleteContactLoad() const;
  FILESYSTEM* _getContactsChannelsFS() { return &fs; }
  File openRead(FILESYSTEM* fs, const char* name) { return fs->open(name,"r"); }
  void loadChannels(DataStoreHost*);
@@ -50,7 +58,7 @@ public:
  Radio radio; Radio* _radio=&radio;
  DataStore store;
  bool writable=true, writes_ok=true; unsigned writes=0;
- bool canMutateContacts() const { return writable; }
+ bool canMutateContacts() const { return writable && !store.hasIncompleteContactLoad(); }
  int getTotalContactSlots() const { return contacts.size(); }
  ContactInfo* getContactPtrByIdx(int i) { return &contacts.at(i); }
  bool getChannel(int i, ChannelDetails& c) { if (i<0 || i>=MAX_GROUP_CHANNELS) return false; c=channels[i]; return true; }
@@ -66,6 +74,9 @@ public:
 
 int main() {
  MyMesh node;
+#if defined(STM32_PLATFORM)
+ node.store.fs.rename_replaces=true;
+#endif
  strcpy(node.contacts[1].name,"Alice Jones"); strcpy(node.contacts[2].name,"Bob");
  strcpy(node.contacts[3].name,"Bob");
  for (int i=1;i<4;++i) { memset(node.contacts[i].id.pub_key,0x11,32); node.contacts[i].id.pub_key[31]=i; }
@@ -111,6 +122,28 @@ int main() {
  assert(disk.size()==MAX_GROUP_CHANNELS*68);
  assert(disk[0]==mesh::encodeRadioTxPolicy(mesh::RADIO_TX_BOTH));
  assert(disk[68]==mesh::encodeRadioTxPolicy(mesh::RADIO_TX_SECONDARY));
+ // Loading is all-or-nothing. An unreadable/partial file must not become a
+ // default channel table that a later phone or CLI update can persist over it.
+ for(int fault : {0,1,2,3,4}) {
+   MyMesh boot;
+   boot.store.fs.files["/channels2"]=disk;
+   strcpy(boot.channels[0].name,"keep existing");
+   if(fault==0) boot.store.fs.fail_read_open=true;
+   if(fault==1) boot.store.fs.fail_read_after=0;
+   if(fault==2) boot.store.fs.fail_read_after=68; // one complete record read
+   if(fault==3) boot.store.fs.files["/channels2"].pop_back();
+   if(fault==4) boot.store.fs.files["/channels2"].resize((MAX_GROUP_CHANNELS+1)*68);
+   auto durable=boot.store.fs.files["/channels2"];
+   boot.store.loadChannels(&boot);
+   assert(boot.store.hasIncompleteContactLoad());
+   assert(!strcmp(boot.channels[0].name,"keep existing"));
+   assert(!boot.channels[1].name[0]);
+   boot.store.fs.fail_read_open=false;boot.store.fs.fail_read_after=-1;
+   assert(!boot.canMutateContacts()&&!boot.store.saveChannels(&boot));
+   assert(boot.store.fs.files["/channels2"]==durable);
+ }
+ MyMesh fresh;fresh.store.loadChannels(&fresh);
+ assert(!fresh.store.hasIncompleteContactLoad()); // absent file is a fresh boot
  node.channels[0].channel.tx_radio=node.channels[1].channel.tx_radio=0;
  node.store.loadChannels(&node);
  assert(node.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH);
@@ -118,6 +151,46 @@ int main() {
  node.radio.config.secondary.mode=mesh::RadioProfileMode::Rx;
  cmd("get tx.channel 1"); assert(strstr(reply,"active=off") && strstr(reply,"unavailable"));
  cmd("get tx.channel 0"); assert(strstr(reply,"active=radio "));
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
+ // A failed real filesystem write must preserve every durable channel,
+ // including its secret, rather than just rolling back the live TX policy.
+ node.store.fs.fail_write=true;
+ cmd("set tx.channel 0 off"); assert(strstr(reply,"not saved"));
+ assert(node.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH);
+ assert(node.store.fs.files["/channels2"]==disk);
+ node.store.fs.fail_write=false;
+#if defined(STM32_PLATFORM)
+ for(int failed_rename : {1}) {
+#else
+ for(int failed_rename : {1,2}) {
+#endif
+   node.store.fs.fail_rename=failed_rename;
+   cmd("set tx.channel 0 off"); assert(strstr(reply,"not saved"));
+   assert(node.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH);
+   assert(node.store.fs.files["/channels2"]==disk);
+ }
+#if !defined(STM32_PLATFORM)
+ // If both publish and rollback fail, the verified backup remains available
+ // on reboot. A failed boot recovery quarantines writes for that whole boot.
+ node.store.fs.fail_rename_from={"/channels2.tmp","/channels2.bak"};
+ cmd("set tx.channel 0 off"); assert(strstr(reply,"not saved"));
+ assert(!node.store.fs.exists("/channels2"));
+ assert(node.store.fs.files["/channels2.bak"]==disk);
+ MyMesh failed_boot;failed_boot.store.fs=node.store.fs;
+ failed_boot.store.loadChannels(&failed_boot);
+ assert(failed_boot.store.hasIncompleteContactLoad());
+ failed_boot.store.fs.fail_rename_from.clear();
+ failed_boot.store.loadChannels(&failed_boot);
+ assert(failed_boot.store.hasIncompleteContactLoad());
+ assert(!failed_boot.store.saveChannels(&failed_boot));
+ assert(failed_boot.store.fs.files["/channels2.bak"]==disk);
+ node.store.fs.fail_rename_from.clear();
+ node.store.loadChannels(&node);
+ assert(!node.store.hasIncompleteContactLoad());
+ assert(node.store.fs.files["/channels2"]==disk);
+ assert(node.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH);
+#endif
+#endif
  node.writes_ok=false;
  cmd("set tx.channel 0 off"); assert(strstr(reply,"not saved"));
  assert(node.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH && node.store.fs.files["/channels2"]==disk);
@@ -146,17 +219,26 @@ class CompanionTxRoutingTest(unittest.TestCase):
         methods = method(companion, 'bool MyMesh::handleTxRoutingCommand(')
         methods += '\n' + method(store, 'void DataStore::loadChannels(')
         methods += '\n' + method(store, 'bool DataStore::saveChannels(')
+        methods += '\n' + method(store, 'bool DataStore::hasIncompleteContactLoad(')
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
+            # Keep the real transaction implementation, substituting only its
+            # filesystem include with the fault-injectable test backend.
+            transaction = (ROOT / 'src/helpers/ContactFileTransaction.h').read_text()
+            (work / 'ContactFileTransaction.h').write_text(transaction.replace(
+                '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>'))
             (work / 'test.cpp').write_text(HARNESS.replace('@METHODS@', methods))
-            build = subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra',
-                '-fsanitize=address,undefined', '-fno-pie', '-no-pie',
-                '-I', str(ROOT / 'test/fixtures/radio_profiles/mocks'),
-                '-I', str(ROOT / 'test/mocks'), '-I', str(ROOT / 'src'),
-                str(work / 'test.cpp'), '-o', str(work / 'test')], capture_output=True, text=True)
-            self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
-            run = subprocess.run([str(work / 'test')], capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            for platform in ('ESP32_PLATFORM', 'RP2040_PLATFORM', 'STM32_PLATFORM'):
+                with self.subTest(platform=platform):
+                    build = subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-D'+platform+'=1',
+                        '-fsanitize=address,undefined', '-fno-pie', '-no-pie',
+                        '-I', str(ROOT / 'test/fixtures/radio_profiles/mocks'),
+                        '-I', str(ROOT / 'test/mocks'), '-I', str(ROOT / 'src'),
+                        '-I', str(ROOT / 'src/helpers'),
+                        str(work / 'test.cpp'), '-o', str(work / 'test')], capture_output=True, text=True)
+                    self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
+                    run = subprocess.run([str(work / 'test')], capture_output=True, text=True)
+                    self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
     def test_phone_protocol_updates_preserve_same_channel_policy(self):
         source = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()

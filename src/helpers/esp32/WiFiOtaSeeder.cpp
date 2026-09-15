@@ -37,19 +37,22 @@ bool networkReady() {
   return static_cast<uint32_t>(WiFi.softAPIP()) != 0;
 }
 
-void detachTcpFolder() {
+void detachTcpFolder(bool disconnected) {
   if (!tcp_folder_attached) return;
   OtaContext* context = ota_context_if_active();
   if (context && context->folderLink() == OtaContext::FOLDER_LINK_TCP) {
-    context->detach_folder();
-    context->clear_folder_dest();
+    if (disconnected) context->disconnect_folder();
+    else {
+      context->detach_folder();
+      context->clear_folder_dest();
+    }
     context->manager.announce();
   }
   tcp_folder_attached = false;
 }
 
-void stopClient() {
-  detachTcpFolder();
+void stopClient(bool disconnected = false) {
+  detachTcpFolder(disconnected);
   if (seeder_client) seeder_client.stop();
 }
 
@@ -66,7 +69,9 @@ void WiFiOtaSeeder::loop() {
           static_cast<unsigned>(OTA_SEEDER_TCP_PORT));
       break;
     case ListenerAction::Stop:
-      stop();
+      stopClient(true);
+      seeder_server.end();
+      listener_active = false;
       return;
     case ListenerAction::Keep:
       break;
@@ -87,7 +92,7 @@ void WiFiOtaSeeder::loop() {
   }
   if (seeder_client && seeder_client.connected()) return;
 
-  stopClient();
+  stopClient(true);
   WiFiClient incoming = seeder_server.available();
   if (!incoming) return;
 
@@ -123,11 +128,6 @@ void WiFiOtaSeeder::loop() {
   snprintf(link_info, sizeof(link_info), "tcp %s",
            seeder_client.remoteIP().toString().c_str());
   context.set_folder_dest(&folder_store, link_info);
-  if (context.manager.fetchState() == OtaManager::PAUSED) {
-    // This continues the active host-selected MID; it is not a boot-time
-    // automatic adoption governed by application autofetch policy.
-    context.manager.resumeStaged(context.manager.fetchManifestId());
-  }
   context.manager.announce();
   mesh::usbLoggingPort().printf(
       "OTA seeder client connected (%s)\n", link_info);

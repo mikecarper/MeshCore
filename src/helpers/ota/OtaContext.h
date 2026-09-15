@@ -177,10 +177,18 @@ struct OtaContext {
   FolderMotaStore* folder_dest = nullptr;   // non-null == a folder destination is currently connected
   char     folder_dest_info[24] = {0};      // human id of the link (e.g. "tcp 192.168.4.5", "serial")
   bool     fetch_to_folder = false;          // COMPLETE belongs to a capture destination, never install it
+  FolderMotaStore* disconnected_folder_dest = nullptr;
+  uint8_t disconnected_folder_link = 0;
+  bool folderCaptureWaiting() const {
+    return disconnected_folder_dest && fetch_to_folder
+        && manager.fetchState() == OtaManager::PAUSED;
+  }
   void set_folder_dest(FolderMotaStore* fs, const char* info) {
     folder_dest = fs;
     strncpy(folder_dest_info, info ? info : "?", sizeof(folder_dest_info) - 1);
     folder_dest_info[sizeof(folder_dest_info) - 1] = 0;
+    if (folderCaptureWaiting() && fs == disconnected_folder_dest
+        && manager.resumeFetchAfterReconnect()) disconnected_folder_dest = nullptr;
   }
   void clear_folder_dest() { folder_dest = nullptr; folder_dest_info[0] = 0; }
 
@@ -412,6 +420,11 @@ struct OtaContext {
       msg[cap - 1] = 0;
       return false;
     }
+    if (folderCaptureWaiting() && link != disconnected_folder_link) {
+      snprintf(msg, cap, "ERR paused capture belongs to %s; cancel it first",
+               folderLinkName(static_cast<FolderLink>(disconnected_folder_link)));
+      return false;
+    }
     if (folder_active && _folder_link != link) {
       snprintf(msg, cap, "ERR folder already attached via %s",
                folderLinkName(_folder_link));
@@ -463,7 +476,14 @@ struct OtaContext {
     return attach_folder_source(&src, FOLDER_LINK_SERIAL, "serial", msg, cap);
   }
 #endif
-  void detach_folder() {
+  void detach_folder(bool preserve_capture = false) {
+    disconnected_folder_dest = nullptr;
+    if (!preserve_capture && fetch_to_folder) {
+      manager.reset_session();
+      manager.set_fetch_store(&fetch_store);
+      fetch_to_folder = false;
+    }
+    clear_folder_dest();
     if (_folder_source) manager.remove_source(_folder_source);
     folder_active = false;
     _folder_link = FOLDER_LINK_NONE;
@@ -471,6 +491,19 @@ struct OtaContext {
 #if OTA_DYNAMIC_CONTEXT
     release_when_idle = true;
 #endif
+  }
+  // Network loss differs from an operator detach: keep the chosen capture and
+  // its store until reconnect or an explicit reset/cancel, even outside TempRadio.
+  void disconnect_folder() {
+    FolderMotaStore* destination = folder_dest;
+    const uint8_t link = _folder_link;
+    const bool paused = destination && fetch_to_folder && manager.pauseFetchForDisconnect();
+    detach_folder(true);
+    clear_folder_dest();
+    if (paused) {
+      disconnected_folder_dest = destination;
+      disconnected_folder_link = link;
+    }
   }
 
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)

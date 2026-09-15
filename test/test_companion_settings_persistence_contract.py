@@ -182,12 +182,12 @@ class CompanionSettingsPersistenceContractTests(unittest.TestCase):
         presence_at = load.index(
             'contactPathPresence(contacts_fs, "/channels2",'
         )
-        open_at = load.index('openRead(_getContactsChannelsFS(), "/channels2")')
+        open_at = load.index('openRead(contacts_fs, "/channels2")')
         self.assertLess(presence_at, open_at)
 
         # Stat and open errors are distinct from a cleanly absent file, and
         # both must enter the same write-veto state used by saveChannels().
-        self.assertGreaterEqual(load.count("_contact_load_incomplete = true;"), 2)
+        self.assertGreaterEqual(load.count("incomplete = true;"), 2)
         self.assertIn("if (!channels_exist) return;", load)
 
     def test_channel_file_requires_complete_fixed_size_records(self):
@@ -206,7 +206,7 @@ class CompanionSettingsPersistenceContractTests(unittest.TestCase):
         self.assertRegex(load, r"file\.read\([^;]+\)\s*==")
         self.assertIn("if (!success)", load)
         self.assertRegex(load, r"if\s*\(!host->onChannelLoaded\(")
-        self.assertGreaterEqual(load.count("_contact_load_incomplete = true;"), 4)
+        self.assertGreaterEqual(load.count("incomplete = true;"), 4)
 
         save = function_body(self.store, "bool DataStore::saveChannels(")
         self.assertIn("if (_contact_load_incomplete) return false;", save)

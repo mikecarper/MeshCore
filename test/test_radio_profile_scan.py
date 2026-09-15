@@ -120,6 +120,52 @@ int main() {
     }
   }
   {
+    // A primary command must not publish a new profile if restarting RX
+    // fails. Restore the active tuple (which may be radio2) and RXPS policy.
+    for (unsigned initial=0; initial<4; ++initial) {
+      const bool secondary=(initial & 1), powersaving=(initial & 2);
+      for (bool primary_api: {false,true}) {
+        for (unsigned failures: {1u,2u}) {
+          RadioLibWrapper w;
+          w._rx_ps_enabled=w._rx_ps_armed=powersaving;
+          if (secondary) { w.enable(); assert(w.tuneProfile(1)==Result::APPLIED); }
+          const auto primary=w._profiles.primary;
+          const auto generation=w._profiles.generation[0];
+          const auto active=w._active_profile;
+          const auto physical_generation=w._profile_generation;
+          const auto freq=w._cur_freq, bw=w._cur_bw;
+          const auto preamble=w._physical_preamble;
+          const auto rxps=w._rx_ps_enabled, saved_rxps=w._profile_saved_rxps;
+          const auto rx_us=w._rx_ps_rx_us, sleep_us=w._rx_ps_sleep_us;
+          const auto fallback=w._rx_ps_continuous_fallback;
+          auto requested=primary; requested.freq=910.25; requested.preamble=64;
+          const uint32_t timings[]={100000,200000};
+          w.failRxStarts=failures;
+          const auto result=primary_api ? w.trySetPrimaryParams(requested,true,timings)
+              : w.trySetParams(requested.freq,requested.bw,requested.sf,requested.cr,timings);
+          assert(result==Result::FAILED);
+          assert(w._profiles.primary==primary && !w._profiles.primary_temporary);
+          assert(w._profiles.generation[0]==generation && w._profile_generation==physical_generation);
+          assert(w._active_profile==active && w._cur_freq==freq && w._cur_bw==bw);
+          assert(w._physical_preamble==preamble);
+          assert(w._rx_ps_enabled==rxps && w._profile_saved_rxps==saved_rxps);
+          assert(w._rx_ps_rx_us==rx_us && w._rx_ps_sleep_us==sleep_us);
+          assert(w._rx_ps_continuous_fallback==fallback);
+          assert(w.isInRecvMode()==(failures==1));
+          assert(w._profile_refresh_required==(failures==2));
+          if (!w.isInRecvMode()) w.startRecv(); // normal receive recovery
+          assert(w.trySetPrimaryParams(requested,true,timings)==Result::APPLIED);
+          assert(w._profiles.primary==requested && w._profiles.primary_temporary);
+          assert(w._profiles.generation[0]==generation+1);
+          assert(w._profile_generation==generation+1 && w._active_profile==0);
+          assert(w.isInRecvMode() && !w._profile_refresh_required);
+          assert(w._rx_ps_rx_us==timings[0] && w._rx_ps_sleep_us==timings[1]);
+          assert(secondary ? w._profile_saved_rxps : w._rx_ps_enabled);
+        }
+      }
+    }
+  }
+  {
     RadioLibWrapper w; w.enable();
     assert(w._profile_rxps_suspended && !w._rx_ps_enabled && !w._rx_ps_armed);
     assert(w.chip.standbyXOSC && w._profile_standby_held && !w._saved_standby_xosc);

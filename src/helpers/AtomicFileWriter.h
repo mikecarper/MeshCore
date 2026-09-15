@@ -1,6 +1,6 @@
 #pragma once
 
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 
 #include <stddef.h>
 #include <stdint.h>
@@ -9,7 +9,7 @@
 namespace mesh {
 
 /**
- * Power-loss-safe file replacement for the nRF52 LittleFS backend.
+ * Power-loss-safe file replacement for the Adafruit LittleFS backends.
  *
  * Data is written to a sibling .tmp file. commit() flushes and closes that
  * file, reads it back while checking its size and CRC32, and only then uses
@@ -178,4 +178,4 @@ bool AtomicFileWriter::commit(bool content_valid) {
 
 #endif // ATOMIC_FILE_WRITER_IMPLEMENTATION
 
-#endif // NRF52_PLATFORM
+#endif // NRF52_PLATFORM || STM32_PLATFORM

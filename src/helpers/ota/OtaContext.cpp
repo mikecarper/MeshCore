@@ -111,7 +111,7 @@ uint8_t ota_hop_limit() {
 void ota_release_context_if_idle(bool temporary_radio_active) {
   if (!active_context) return;
   OtaContext& c = *active_context;
-  if (c.folder_active || c.folder_dest || c.apply_pending) return;
+  if (c.folder_active || c.folder_dest || c.apply_pending || c.folderCaptureWaiting()) return;
 #if defined(OTA_HEAP_CONTEXT)
   // Self-serving ends with the temporary radio window. It must not keep the
   // heap workspace forever after the first announcement. Manual staging is

@@ -254,7 +254,10 @@ Check progress with `ota status`.
 
 If a `folder` pull loses its link mid-transfer, `ota status` shows **paused** - the host keeps the
 partial and the pull resumes (filling only what's missing) the moment you reconnect motatool; it never
-falls back to flash. To **stop** a download you no longer want:
+falls back to flash. A TCP disconnect preserves the selected image even if it happens before its manifest
+arrives or during the final save. Reconnect through the same transport; an interrupted manifest or seed
+comparison restarts initialization, while a partial transfer rechecks its stored blocks. The paused capture
+keeps its OTA workspace until reconnection or cancellation. To **stop** a download you no longer want:
 
 ```
 ota cancel

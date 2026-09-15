@@ -104,6 +104,24 @@ int main(int argc,char** argv) {
    assert(!f.c.pending()&&f.b.active==All&&f.b.calls.size()==1);
    f.run("get 2.4ghz");assert(strstr(f.reply,"failed"));
    f.b.wait=0;f.run("set 2.4ghz off");f.tick();assert(f.b.active==0);
+ } else if(test==8){
+   Fixture f;f.b.active=WiFi|Bluetooth;f.b.sessions=WiFi|Bluetooth;
+   f.run("set wifi off",Bluetooth);assert(f.c.pending());
+   f.b.active=WiFi;f.b.sessions=WiFi; // the retained requester disconnects
+   f.tick();assert(f.b.active==WiFi&&!f.c.pending());
+   f.run("get wifi");assert(strstr(f.reply,"cancelled"));
+   // Explicit force still permits shutting down the only live connection.
+   f.run("set wifi off force",WiFi);f.tick();assert(f.b.active==0);
+ } else if(test==9){
+   Fixture f;f.b.active=WiFi;
+   f.run("set 2.4ghz off");f.tick();
+   f.b.fail=WiFi;f.run("set 2.4ghz on");f.tick();assert(!f.c.pending());
+   f.b.fail=0;f.b.active=Bluetooth;f.b.sessions=Bluetooth;
+   // The failed restore retains a WiFi-only saved mask. Enabling BLE to
+   // recover access must not make the next ordinary restore cut that access.
+   f.run("set 2.4ghz on",Bluetooth);
+   assert(strstr(f.reply,"no remaining")&&!f.c.pending()&&f.b.active==Bluetooth);
+   f.run("set 2.4ghz on all",Bluetooth);f.tick();assert(f.b.active==All);
  }
 }
 '''
@@ -116,7 +134,7 @@ class WirelessControlTests(unittest.TestCase):
             binary = Path(tmp)/'wireless'
             subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-Wall', '-Wextra', '-Werror',
                             '-I', str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
-            for scenario in range(8):
+            for scenario in range(10):
                 with self.subTest(scenario=scenario):
                     subprocess.run([str(binary), str(scenario)], check=True)
 
@@ -129,6 +147,9 @@ class WirelessControlTests(unittest.TestCase):
         adapter = method(main, 'class CompanionWirelessBackend')+';\n'
         adapter += method(main, 'static void disableCompanionBluetoothForCli(')+'\n'
         adapter += method(main, 'bool handleCompanionWirelessCommand(')
+        adapter += '\n'+method(main, 'static bool hasCompanionNonBluetoothClient(')
+        adapter += '\n'+method(main, 'static void serviceCompanionBluetoothControl(')
+        adapter += '\n'+method(main, 'bool handleCompanionBluetoothCommand(')
         source_text = prefix+r'''
 #include "examples/companion_radio/CompanionWireless.h"
 bool companion_wifi_requested=true,companion_wifi_active=true;
@@ -187,6 +208,55 @@ int main(){
  handleCompanionWirelessCommand("set espnow off",reply,sizeof(reply),CompanionWirelessSource::Framed);
  now_ms+=250;mesh::wireless::control().service(now_ms);
  assert(!radio_driver.active&&companion_wifi_active&&bluetooth_interface.enabled);
+ // Each shutdown must not use the other pending shutdown's connection as
+ // its safety net. Bluetooth's force override remains available explicitly.
+ usb_serial_interface.connected=false;
+ bluetooth_interface.connected=true;bluetooth_interface.frame=true;
+ interface_manager.checkRecvFrame(frame);
+ handleCompanionWirelessCommand("set wifi off",reply,sizeof(reply),CompanionWirelessSource::Framed);
+ assert(mesh::wireless::control().pending());
+ handleCompanionBluetoothCommand("set bluetooth off",reply,sizeof(reply),CompanionBluetoothCommandSource::Terminal);
+ assert(strstr(reply,"pending")&&bluetooth_interface.enabled);
+ handleCompanionBluetoothCommand("set bluetooth off force",reply,sizeof(reply),CompanionBluetoothCommandSource::Terminal);
+ assert(!bluetooth_interface.enabled);
+ now_ms+=250;mesh::wireless::control().service(now_ms);
+ assert(companion_wifi_active&&!mesh::wireless::control().pending());
+ handleCompanionWirelessCommand("get wifi",reply,sizeof(reply),CompanionWirelessSource::Network);
+ assert(strstr(reply,"cancelled"));
+ // The opposite command order is protected too, including asynchronous
+ // WiFi teardown where its socket can stay visible during the first stop.
+ handleCompanionBluetoothCommand("set bluetooth on",reply,sizeof(reply),CompanionBluetoothCommandSource::Terminal);
+ bluetooth_interface.connected=true;bluetooth_interface.frame=true;
+ interface_manager.checkRecvFrame(frame);
+ handleCompanionBluetoothCommand("set bluetooth off",reply,sizeof(reply),CompanionBluetoothCommandSource::Framed);
+ assert(companion_bluetooth_off_at!=0);
+ handleCompanionWirelessCommand("set wifi off",reply,sizeof(reply),CompanionWirelessSource::Network);
+ assert(strstr(reply,"Bluetooth change pending")&&!mesh::wireless::control().pending());
+ now_ms+=250;serviceCompanionBluetoothControl();
+ assert(!bluetooth_interface.enabled&&companion_wifi_active);
+ // A restore can remove WiFi too. Keep a BLE-only saved snapshot after a
+ // failed restore, then simulate both management services recovering.
+ companion_wifi_requested=companion_wifi_active=false;wifi_interface.disable();
+ interface_manager.enableBluetooth();
+ handleCompanionWirelessCommand("set 2.4ghz off",reply,sizeof(reply),CompanionWirelessSource::Usb);
+ now_ms+=250;mesh::wireless::control().service(now_ms);
+ bluetooth_interface.enable_fails=true;
+ handleCompanionWirelessCommand("set 2.4ghz on",reply,sizeof(reply),CompanionWirelessSource::Usb);
+ now_ms+=250;mesh::wireless::control().service(now_ms);
+ assert(!mesh::wireless::control().pending()&&!bluetooth_interface.enabled);
+ bluetooth_interface.enable_fails=false;interface_manager.enableBluetooth();
+ companion_wifi_requested=companion_wifi_active=true;wifi_interface.enable();
+ wifi_interface.connected=true;bluetooth_interface.connected=true;
+ bluetooth_interface.frame=true;interface_manager.checkRecvFrame(frame);
+ handleCompanionBluetoothCommand("set bluetooth off",reply,sizeof(reply),CompanionBluetoothCommandSource::Framed);
+ assert(companion_bluetooth_off_at!=0);
+ handleCompanionWirelessCommand("set 2.4ghz on",reply,sizeof(reply),CompanionWirelessSource::Network);
+ assert(strstr(reply,"Bluetooth change pending")&&!mesh::wireless::control().pending());
+ // Explicit all cannot remove a service and may replace the pending stop.
+ handleCompanionWirelessCommand("set 2.4ghz on all",reply,sizeof(reply),CompanionWirelessSource::Network);
+ assert(mesh::wireless::control().pending());
+ now_ms+=250;mesh::wireless::control().service(now_ms);
+ assert(!companion_bluetooth_off_at&&bluetooth_interface.enabled&&companion_wifi_active);
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

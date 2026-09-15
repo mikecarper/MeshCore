@@ -38,6 +38,7 @@ public:
   void clear() override { _total = 0; }
   bool finalize() override;
   bool reopen() override;                                       // OP_STAT: adopt an existing file for resume
+  bool canReconnect() const override { return true; }
 
   // A host-backed store is fully random-access, so it needs no pinned-meta RAM page and no layout planning.
   bool set_meta_size(uint32_t) override { return true; }

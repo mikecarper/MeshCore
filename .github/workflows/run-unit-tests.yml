@@ -108,6 +108,8 @@ jobs:
           python3 -B test/test_reply_tx_integration.py
           python3 -B test/test_ota_speed.py -v
           python3 -B test/test_ota_apply_delivery.py -v
+          python3 -B test/test_ota_dev_staging.py -v
+          python3 -B test/test_ota_dev_reboot_guard.py -v
 
       - name: Verify dual-profile switching and chirp timing
         working-directory: test

@@ -296,7 +296,11 @@ for section, options in data:
             full_wifi_ota = any("AsyncElegantOTA" in str(item) for item in values)
             continue
         if key == "build_src_filter":
-            ota_enabled = any("helpers/ota/" in str(item) for item in values)
+            # OtaTinf.c is shared by all Arduino builds. Only a recipe that
+            # includes the protocol implementation can receive the OTA overlay.
+            ota_enabled = any(re.search(
+                r"\+<helpers/ota/(?:\*\.cpp|OtaManager\.cpp)>", str(item)
+            ) for item in values)
             continue
         if key != "build_flags":
             continue

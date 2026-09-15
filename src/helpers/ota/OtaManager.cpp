@@ -82,6 +82,7 @@ uint8_t* OtaManager::ensureScratch() {
 void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _target = my_target_id; _send = send; _ctx = ctx;
   _fstate = IDLE; _have = 0; _fbc = 0;
+  _paused_from = IDLE;
   _fetch_error = FETCH_ERROR_NONE;
   _archive_fetch = false; _validate = false;
   clearFetchIntent();
@@ -1257,8 +1258,11 @@ void OtaManager::clearFetchIntent() {
 }
 
 void OtaManager::failFetch(FetchError error) {
+  if (error == FETCH_ERROR_STORAGE && _fetch && _fetch->canReconnect()
+      && pauseFetchForDisconnect()) return;
   _fetch_error = error;
   _fstate = FAILED;
+  _paused_from = IDLE;
   clearReassembly();
   freeLeaves();
   _validate = false;
@@ -1269,6 +1273,7 @@ void OtaManager::failFetch(FetchError error) {
 void OtaManager::completeFetch() {
   _fetch_error = FETCH_ERROR_NONE;
   _fstate = COMPLETE;
+  _paused_from = IDLE;
   _validate = false;
   _archive_fetch = false;
   clearFetchIntent();
@@ -1348,6 +1353,40 @@ bool OtaManager::resumeStagedExplicit(const uint8_t* want_mid, uint32_t expected
   const bool adopted = resumeStaged(want_mid);
   if (!adopted) clearFetchIntent();
   return adopted;
+}
+
+bool OtaManager::pauseFetchForDisconnect() {
+  if (!fetchActive()) return false;
+  if (_fstate != PAUSED) _paused_from = _fstate;
+  _fetch_error = FETCH_ERROR_STORAGE;
+  _fstate = PAUSED;
+  clearReassembly();
+  return true;
+}
+
+bool OtaManager::resumeFetchAfterReconnect() {
+  if (_fstate != PAUSED || !_fetch) return false;
+  if (_paused_from == WANT_MANIFEST || _paused_from == WANT_LEAVES) {
+    // begin/header/manifest/trailer may only have partly reached the host.
+    // Re-request the manifest and run the full initialization transaction.
+    // Leaf-diff also restarts initialization: the reconnected host may have
+    // replaced its seed file, so old metadata/leaf markers cannot be trusted.
+    freeLeaves();
+    _mf_total = 0; _mf_mask = 0; _mf_len = 0;
+    _mf_retries = 0; _loop_last_mfmask = 0;
+    _fstate = WANT_MANIFEST;
+    GetManifestMsg gm; memcpy(gm.manifest_id, _fid, 4); gm.want_mask = 0xFFFF;
+    uint8_t wire[16];
+    emit(wire, encode_get_manifest(wire, sizeof(wire), gm), false);
+  } else {
+    // Reopening is bound to the original MID/target and verifies payload bytes;
+    // a replacement host file must not silently become the selected capture.
+    if (!resumeStaged(_fid)) return false;
+  }
+  _paused_from = IDLE;
+  _fetch_error = FETCH_ERROR_NONE;
+  noteFetchActivity();
+  return true;
 }
 
 void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
@@ -1517,17 +1556,23 @@ void OtaManager::diffStep() {
   uint8_t blk[OTA_MAX_BLOCK];
   for (uint32_t k = 0; k < OTA_DIFF_BATCH && _diff_idx < _fbc; k++, _diff_idx++) {
     uint32_t blen = blockLen(_diff_idx);
-    if (!_fetch->read(_fpoff + _diff_idx * _fbs, blk, blen)) continue;      // read fail -> leave missing
+    if (!_fetch->read(_fpoff + _diff_idx * _fbs, blk, blen)) {
+      if (_fetch->canReconnect()) { pauseFetchForDisconnect(); return; }
+      continue;                                                        // unreadable local seed -> leave missing
+    }
     uint8_t leaf[4]; merkle_leaf(leaf, blk, blen);
-    if (memcmp(leaf, _leaves_buf + (size_t)_diff_idx * 4, 4) == 0 &&        // seed block == target block
-        _fetch->write(_floff + _diff_idx * 4, _leaves_buf + (size_t)_diff_idx * 4, 4))
-      _have++;                                                             // mark present (payload already seeded)
+    if (memcmp(leaf, _leaves_buf + (size_t)_diff_idx * 4, 4) == 0) {       // seed block == target block
+      if (_fetch->write(_floff + _diff_idx * 4, _leaves_buf + (size_t)_diff_idx * 4, 4))
+        _have++;                                                        // mark present (payload already seeded)
+      else if (_fetch->canReconnect()) { pauseFetchForDisconnect(); return; }
+    }
   }
   if (_diff_idx < _fbc) return;                                            // more to diff on the next tick
   OTA_DBG("OTA: leaf-diff %u/%u already valid; fetching the rest\n", (unsigned)_have, (unsigned)_fbc);
   freeLeaves();                                                            // clears _diffing + frees the buffer
   if (_have >= _fbc) {                                                      // seed covered the whole image
-    if (!storedLeavesRootMatches()) failFetch(FETCH_ERROR_INTEGRITY);
+    FetchError error;
+    if (!storedLeavesRootMatches(error)) failFetch(error);
     else if (!_fetch->finalize()) failFetch(FETCH_ERROR_STORAGE);
     else completeFetch();
     return;
@@ -1606,13 +1651,17 @@ bool OtaManager::blockPresent(uint32_t i) const {
   return !(leaf[0]==0xFF && leaf[1]==0xFF && leaf[2]==0xFF && leaf[3]==0xFF);
 }
 
-bool OtaManager::storedLeavesRootMatches() const {
+bool OtaManager::storedLeavesRootMatches(FetchError& error) const {
+  error = FETCH_ERROR_INTEGRITY;
   if (!_fetch || _fbc == 0) return false;
   MerkleAccumulator accumulator;
   for (uint32_t i = 0; i < _fbc; ++i) {
     uint8_t leaf[4];
-    if (!_fetch->read(_floff + i * 4, leaf, sizeof(leaf))
-        || (leaf[0] == 0xFF && leaf[1] == 0xFF
+    if (!_fetch->read(_floff + i * 4, leaf, sizeof(leaf))) {
+      error = FETCH_ERROR_STORAGE;
+      return false;
+    }
+    if ((leaf[0] == 0xFF && leaf[1] == 0xFF
             && leaf[2] == 0xFF && leaf[3] == 0xFF)
         || !accumulator.add(leaf)) {
       return false;
@@ -1834,8 +1883,8 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   uint8_t leaf[4]; merkle_leaf(leaf, slot.buf, blen);
   if (!_fetch->write(_fpoff + block * _fbs, slot.buf, blen) ||
       !_fetch->write(_floff + block * 4, leaf, 4)) {
-    _fetch_error = FETCH_ERROR_STORAGE;
-    _fstate = PAUSED; clearReassembly(); return true;
+    pauseFetchForDisconnect();
+    return true;
   }
   _have++;
   OTA_DBG("OTA: block %u OK  have=%u/%u\n", (unsigned)block, (unsigned)_have, (unsigned)_fbc);
@@ -1850,9 +1899,10 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
     return true;
   }
   // Every leaf must be readable and collectively match the manifest root.
-  // A scratch allocation/read failure is an integrity failure, never success.
+  // Missing/corrupt leaves are integrity failures; a lost host read is resumable.
   clearReassembly();
-  if (!storedLeavesRootMatches()) failFetch(FETCH_ERROR_INTEGRITY);
+  FetchError error;
+  if (!storedLeavesRootMatches(error)) failFetch(error);
   else if (!_fetch->finalize()) failFetch(FETCH_ERROR_STORAGE);
   else completeFetch();
   OTA_DBG("OTA: transfer %s\n", _fstate == COMPLETE ? "COMPLETE" : "FAILED(integrity/storage)");

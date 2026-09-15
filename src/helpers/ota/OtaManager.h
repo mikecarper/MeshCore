@@ -358,6 +358,11 @@ public:
   // this never applies boot-time autofetch/version policy.
   bool resumeStagedExplicit(const uint8_t* want_mid, uint32_t expected_target = 0);
 
+  // Hold the current selection across loss of an external destination. Metadata
+  // initialization restarts safely; committed transfers reverify their store.
+  bool pauseFetchForDisconnect();
+  bool resumeFetchAfterReconnect();
+
   // Manual cross-target override (decision: deliberate role switch, e.g. companion -> repeater on the
   // same hardware). Normally a node only auto-fetches its OWN target_id; `want(T)` makes it accept an
   // ADV for target T instead (T=0 restores auto). The user takes responsibility for HW compatibility;
@@ -484,6 +489,7 @@ public:
   // Drop the current fetch session back to IDLE so a fresh `ota pull` / advert starts a new one.
   void reset_session() {
     _fstate = IDLE; _have = 0; _fbc = 0; _ftotal = 0; _fflags = 0;
+    _paused_from = IDLE;
     _req_count = 0; _mf_retries = 0;
     _fetch_error = FETCH_ERROR_NONE;
     clearFetchIntent();
@@ -607,7 +613,7 @@ private:
   }
   void setDigest(uint8_t out[4]) const;                   // sha2-256:4 over our served mids
   bool blockPresent(uint32_t i) const;
-  bool storedLeavesRootMatches() const;
+  bool storedLeavesRootMatches(FetchError& error) const;
   void beginStagedVerification();
   void verifyStagedStep();
   bool requestSlot(uint8_t slot);                         // request DATA holes or the proof for one slot
@@ -685,6 +691,7 @@ private:
   // fetch
   OtaStore*  _fetch = nullptr;
   FetchState _fstate = IDLE;
+  FetchState _paused_from = IDLE;
   FetchError _fetch_error = FETCH_ERROR_NONE;
   uint8_t    _fid[4] = {0};
   uint8_t    _froot[4] = {0};

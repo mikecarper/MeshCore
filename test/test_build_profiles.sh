@@ -319,6 +319,35 @@ require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
 # replace each with that exact board's Full target.
 init_project_context >/dev/null
 
+# The portable inflater is shared by every Arduino platform, but it does not
+# supply the OTA manager or a supported bootloader/apply path. In particular,
+# auto overlays for PicoW and RAK_3x72 must remain buildable without OTA.
+for unsupported_ota_env in "${SUPPORTED_PIO_ENVS[@]}"; do
+  case "${PIO_ENV_PLATFORM_BY_NAME[$unsupported_ota_env]}" in
+    RP2040_PLATFORM|STM32_PLATFORM) ;;
+    *) continue ;;
+  esac
+  [ "${PIO_ENV_OTA_BY_NAME[$unsupported_ota_env]:-0}" = 0 ] \
+    || fail "$unsupported_ota_env incorrectly classified its shared inflater as LoRa OTA"
+  for unsupported_ota_profile in auto standard; do
+    (
+      BUILD_PROFILE_FOR_TARGET=$unsupported_ota_profile
+      if is_lora_ota_build "$unsupported_ota_env"; then
+        fail "$unsupported_ota_env $unsupported_ota_profile enables unsupported LoRa OTA"
+      fi
+      PLATFORMIO_BUILD_FLAGS=""
+      PLATFORMIO_BUILD_UNFLAGS=""
+      apply_lora_ota_override "$unsupported_ota_env"
+      [[ "$PLATFORMIO_BUILD_FLAGS" == *"-UENABLE_OTA"* ]] \
+        || fail "$unsupported_ota_env $unsupported_ota_profile failed to disable unsupported LoRa OTA"
+      [[ "$PLATFORMIO_BUILD_FLAGS" != *"-DENABLE_OTA=1"* ]] \
+        || fail "$unsupported_ota_env $unsupported_ota_profile emitted missing OTA implementation references"
+      [[ "$PLATFORMIO_BUILD_FLAGS" != *"-DCOMPANION_FEATURE_OTA_CLI=1"* ]] \
+        || fail "$unsupported_ota_env $unsupported_ota_profile enabled unavailable OTA controls"
+    )
+  done
+done
+
 # Auto means that an explicitly selected target keeps the capabilities in its
 # resolved PlatformIO recipe.  T1000-E BLE/USB both inherit nRF52 LoRa OTA; the
 # release builder must not silently replace ENABLE_OTA with -UENABLE_OTA merely

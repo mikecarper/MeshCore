@@ -9,6 +9,7 @@
   #include "OtaBlInfo.h"  // installed bootloader application/update capability views
 #endif
 #include "Utils.h"
+#include "helpers/CLICommandUtils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -16,13 +17,6 @@
 
 namespace mesh {
 namespace ota {
-
-static uint32_t parse_u32(const char* s) {
-  uint32_t n = 0;
-  while (*s == ' ') s++;
-  while (*s >= '0' && *s <= '9') n = n * 10 + (uint32_t)(*s++ - '0');
-  return n;
-}
 
 static bool parse_page(const char* s, uint16_t& page) {
   while (*s == ' ') s++;
@@ -1066,23 +1060,36 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
   strcpy(reply, "ERR ota dev staging/apply is disabled on this seeder-only build");
 #else
   if (strncmp(d, "stage ", 6) == 0) {
-    uint32_t sz = parse_u32(d + 6);
-    if (sz == 0 || sz > OTA_SERVE_BUF_SIZE) { sprintf(reply, "ERR size 1..%u", OTA_SERVE_BUF_SIZE); }
+    uint32_t sz;
+    if (!mesh::cli::parseUnsignedIntegerStrict(d + 6, sz) || sz == 0 || sz > OTA_SERVE_BUF_SIZE) {
+      sprintf(reply, "ERR size 1..%u", OTA_SERVE_BUF_SIZE);
+    }
     else if (!c.ensureServeBuffer()) { strcpy(reply, "ERR stage OOM"); }
     else { c.manager.clear_primary(); c.serving = false;
            memset(c.serve_buf, 0xFF, sz); c.serve_expected = sz;
            sprintf(reply, "OK stage %u bytes", (unsigned)sz); }
 
   } else if (strncmp(d, "recv ", 5) == 0) {
-    const char* p = d + 5; uint32_t off = parse_u32(p);
-    const char* hex = strchr(p, ' ');
-    if (!hex) { strcpy(reply, "ERR usage: ota dev recv <off> <hex>"); return true; }
-    hex++;
-    int blen = (int)strlen(hex) / 2;
     uint8_t tmp[80];
+    char arguments[sizeof(tmp) * 2 + 16];
+    const char* fields[2];
+    size_t count;
+    uint32_t off;
+    if (!mesh::cli::splitWhitespaceFieldsStrict(d + 5, arguments, sizeof(arguments), fields, 2, count)
+        || count != 2 || !mesh::cli::parseUnsignedIntegerStrict(fields[0], off)) {
+      strcpy(reply, "ERR usage: ota dev recv <off> <hex>"); return true;
+    }
+    const char* hex = fields[1];
+    int blen = (int)strlen(hex) / 2;
     if (blen <= 0 || blen > (int)sizeof(tmp) || !mesh::Utils::fromHex(tmp, blen, hex)) strcpy(reply, "ERR hex");
-    else if (!c.serve_buf || off + blen > c.serve_expected) strcpy(reply, "ERR off>size (stage first)");
-    else { memcpy(c.serve_buf + off, tmp, blen); sprintf(reply, "OK %d@%u", blen, (unsigned)off); }
+    else if (!c.serve_buf || off > c.serve_expected || (uint32_t)blen > c.serve_expected - off) {
+      strcpy(reply, "ERR off>size (stage first)");
+    } else {
+      // A published view points into this buffer. Revoke it before changing
+      // bytes, including queued replies that captured its old manifest ID.
+      if (c.serving) { c.manager.clear_primary(); c.serving = false; }
+      memcpy(c.serve_buf + off, tmp, blen); sprintf(reply, "OK %d@%u", blen, (unsigned)off);
+    }
 
   } else if (strncmp(d, "serve self", 10) == 0) {     // host our own running firmware, served from flash
     if (ota_serve_self(c, 0)) {

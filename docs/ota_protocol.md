@@ -753,6 +753,11 @@ fetches a `.mota` off the mesh and streams it onto the host as `<mid>.mota` via 
 against firmware you don't have. Resume is bookkeeping-free: `BEGIN` 0xFF-fills the file and, on reconnect
 after a link drop (the fetch PAUSES, holding progress on the host - no RAM/flash fallback), `STAT`+`SREAD`
 let the fetcher recompute and refill only the missing blocks.
+TCP disconnect preserves the selected MID, target, and destination across dynamic-context idle cleanup.
+Metadata initialization or seed leaf-diff restarts from the manifest on reconnect; an initialized transfer
+reopens and rehashes the same MID before requesting missing blocks. Host I/O failure during final verification
+or publication pauses too; a genuine Merkle mismatch remains a failed transfer. Explicit cancel/detach still
+releases the session, and a different host transport cannot take over a paused capture without cancellation.
 The phone-oriented BLE link is deliberately source-only and does not register
 a folder destination.
 
