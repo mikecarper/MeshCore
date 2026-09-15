@@ -1,5 +1,6 @@
 #include <helpers/ui/DisplayPowerSettings.h>
 #include "MyMesh.h"
+#include "CompanionBluetooth.h"
 #if defined(MESH_SOAK_DIAGNOSTICS)
 #include "../../tools/hil/S3SoakDiagnostics.h"
 #endif
@@ -2300,6 +2301,8 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+
+  if (handleCompanionBluetoothCommand(command, reply, reply_size)) return true;
 
   if (strcmp(command, "get powersaving") == 0 || strcmp(command, "powersaving") == 0) {
     snprintf(reply, reply_size, "> %s", _prefs.powersaving_enabled ? "on" : "off");
@@ -5331,7 +5334,9 @@ void MyMesh::handleCmdFrame(size_t len) {
       char command[MAX_FRAME_SIZE] = {0};
       memcpy(command, &cmd_frame[1], command_len);
       char reply[MAX_FRAME_SIZE] = {0};
-      if (!handleLocalControlCommand(command, reply, sizeof(reply))) {
+      if (!handleCompanionBluetoothCommand(command, reply, sizeof(reply),
+                                           CompanionBluetoothCommandSource::Framed)
+          && !handleLocalControlCommand(command, reply, sizeof(reply))) {
         writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
       } else {
         out_frame[0] = RESP_CODE_OK;
@@ -7492,6 +7497,11 @@ void MyMesh::handleTerminalCommand(char* command) {
 #endif
 
   char local_reply[160];
+  if (handleCompanionBluetoothCommand(command, local_reply, sizeof(local_reply),
+                                      CompanionBluetoothCommandSource::Terminal)) {
+    terminalOutput().printf("  %s\r\n", local_reply);
+    return;
+  }
   if (handleDirectCommand(command, local_reply, sizeof(local_reply))) {
     terminalOutput().printf("  %s\r\n", local_reply);
     return;
@@ -7983,6 +7993,8 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  get bluetooth.name\r\n");
     terminalOutput().print("  set bluetooth.name <name|default>\r\n");
 #if defined(BLE_PIN_CODE)
+    terminalOutput().print("  get bluetooth (alias: get ble)\r\n");
+    terminalOutput().print("  set bluetooth <on|off> [force] (this boot; force only with off)\r\n");
     terminalOutput().print("  get bluetooth.mac\r\n");
     terminalOutput().print(
         "  set bluetooth.mac <address|random|random-every-boot|random-after-connect|default>\r\n");

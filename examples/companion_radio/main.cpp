@@ -2,6 +2,7 @@
 #include <Mesh.h>
 #include <helpers/BluetoothMac.h>
 #include "MyMesh.h"
+#include "CompanionBluetooth.h"
 #include "CompanionWiFi.h"
 #if MESH_PACKET_LOGGING
   #include <helpers/SerialPacketLog.h>
@@ -1797,7 +1798,9 @@ void halt() {
         ota_console_client.print("> ");
 #else
         char reply[160]; reply[0] = 0;
-        if (!the_mesh.handleLocalCommand(ota_console_line, reply)
+        if (!handleCompanionBluetoothCommand(ota_console_line, reply, sizeof(reply),
+                                             CompanionBluetoothCommandSource::Terminal)
+            && !the_mesh.handleLocalCommand(ota_console_line, reply)
             && !mesh::ota::handle_ota_command(ota_console_line, reply, board))
           strcpy(reply, "Unknown local or OTA command");
         ota_console_client.print("  -> "); ota_console_client.print(reply); ota_console_client.print("\r\n> ");
@@ -2248,6 +2251,118 @@ void halt() {
     }
   }
 #endif
+
+#if defined(BLE_PIN_CODE)
+static uint32_t companion_bluetooth_off_at = 0;
+static bool companion_bluetooth_force_off = false;
+
+static bool hasCompanionNonBluetoothClient() {
+  if (!interface_manager.isEnabled()) return false;
+  if (interface_manager.isInterfaceConnected(InterfaceType::WiFi)
+      || interface_manager.isInterfaceConnected(InterfaceType::Ethernet)) return true;
+#if COMPANION_FEATURE_TEXT_TERMINAL \
+    && (COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG))
+  if (the_mesh.isAnyNetworkTerminalMode()) return true;
+#endif
+#if defined(ENABLE_USB_INTERFACE) \
+    && (defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM) \
+        || (defined(ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
+            && (!defined(ARDUINO_USB_MODE) || ARDUINO_USB_MODE == 0)))
+  // Native CDC reports an open host session (including nRF52's DTR-low
+  // MeshCLI session). HWCDC SOFs and UART bridges cannot prove an open app;
+  // those clients count only when they issue this command themselves.
+#if COMPANION_FEATURE_USB_MOTA_SOURCE
+  if (usb_mota_mode) return false;
+#endif
+  if (usb_serial_interface.isEnabled() && isUsbTerminalDataConnected()) return true;
+#endif
+  return false;
+}
+
+static void disableCompanionBluetoothForCli() {
+  companion_bluetooth_off_at = 0;
+  the_mesh.cancelSerialOperationsForRoute(&bluetooth_interface);
+  interface_manager.disableBluetooth();
+  interface_manager.forgetReplyRouteForDisconnected(&bluetooth_interface);
+}
+
+static void serviceCompanionBluetoothControl() {
+  if (companion_bluetooth_off_at == 0) return;
+  const int32_t elapsed = (int32_t)(millis() - companion_bluetooth_off_at);
+  if (elapsed < 0) return;
+  // The other host may have disconnected while the BLE reply was draining.
+  if (!companion_bluetooth_force_off && !hasCompanionNonBluetoothClient()) {
+    companion_bluetooth_off_at = 0;
+    mesh::usbLoggingPort().println(
+        "Bluetooth off cancelled: no other active management connection");
+    return;
+  }
+  // Give the requesting BLE client its reply, with a bounded wait even when
+  // its notification queue is stuck. The command itself reports a request.
+  if (bluetooth_interface.hasPendingIO() && elapsed < 1750) return;
+  disableCompanionBluetoothForCli();
+}
+#endif
+
+bool handleCompanionBluetoothCommand(const char* command, char* reply,
+                                     size_t reply_size,
+                                     CompanionBluetoothCommandSource source) {
+  if (!reply || reply_size == 0) return false;
+  const auto action = parseCompanionBluetoothCommand(command);
+  if (action == CompanionBluetoothCommand::None) return false;
+  if (action == CompanionBluetoothCommand::Invalid) {
+    snprintf(reply, reply_size, "Error: use set bluetooth on|off [force]; force only with off");
+    return true;
+  }
+#if defined(BLE_PIN_CODE)
+  if (!companion_bluetooth_initialized) {
+    snprintf(reply, reply_size, "Error: Bluetooth unavailable in this boot; check transport mode/startup");
+    return true;
+  }
+  if (action == CompanionBluetoothCommand::Get) {
+    snprintf(reply, reply_size, "bluetooth %s%s",
+             interface_manager.isBluetoothEnabled() ? "on" : "off",
+             companion_bluetooth_off_at ? " (off pending)" : "");
+    return true;
+  }
+  if (action == CompanionBluetoothCommand::On) {
+    companion_bluetooth_off_at = 0;
+    interface_manager.enableBluetooth();
+    snprintf(reply, reply_size, "%s", interface_manager.isBluetoothEnabled()
+        ? "OK - Bluetooth on (this boot)" : "Error: Bluetooth enable failed");
+    return true;
+  }
+  if (!interface_manager.isBluetoothEnabled()) {
+    companion_bluetooth_off_at = 0;
+    snprintf(reply, reply_size, "OK - Bluetooth already off (this boot)");
+    return true;
+  }
+  const bool force = action == CompanionBluetoothCommand::ForceOff;
+  BaseSerialInterface* route = interface_manager.captureReplyRoute();
+  const bool non_bluetooth_requester = source == CompanionBluetoothCommandSource::Terminal
+      || (source == CompanionBluetoothCommandSource::Framed
+          && route != &bluetooth_interface
+          && interface_manager.isReplyRouteAvailable(route));
+  if (!force && !non_bluetooth_requester && !hasCompanionNonBluetoothClient()) {
+    snprintf(reply, reply_size,
+             "Error: no other active management connection; use USB/TCP or set bluetooth off force");
+    return true;
+  }
+  if (non_bluetooth_requester) {
+    disableCompanionBluetoothForCli();
+    snprintf(reply, reply_size, "OK - Bluetooth off (this boot)");
+  } else {
+    companion_bluetooth_force_off = force;
+    companion_bluetooth_off_at = millis() + 250;
+    if (companion_bluetooth_off_at == 0) companion_bluetooth_off_at = 1;
+    snprintf(reply, reply_size, "OK - Bluetooth off requested (this boot)");
+  }
+#else
+  (void)source;
+  snprintf(reply, reply_size, "Error: Bluetooth is not supported in this build");
+#endif
+  return true;
+}
 
 #if defined(ESP32_PLATFORM) && COMPANION_FEATURE_MEMORY_DIAGNOSTICS
   static void logFullCompanionMemory(const char* stage) {
@@ -2920,5 +3035,6 @@ void loop() {
   serviceDeferredCompanionBluetooth();
 #endif
   serviceCompanionBluetoothIdentity();
+  serviceCompanionBluetoothControl();
 #endif
 }

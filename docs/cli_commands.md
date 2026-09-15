@@ -1410,6 +1410,39 @@ Station G2/G3 targets default to `off`.
 
 ---
 
+#### Turn Bluetooth on or off (Companion)
+
+```text
+get bluetooth
+set bluetooth off
+set bluetooth off force
+set bluetooth on
+```
+
+`get ble` and `set ble ...` are aliases. This controls the running Bluetooth
+service on ESP32 and nRF52 Companions: `off` stops advertising and disconnects
+Bluetooth clients; `on` enables it again. The change lasts until reboot.
+
+Plain `off` requires another active management connection. A connected USB
+terminal or binary client, TCP client, or browser terminal can provide that
+connection. WiFi association, a listening server, and USB power alone do not.
+On USB hardware without an observable open-host session (HWCDC or a UART
+bridge), issue the command through that USB client so the request itself proves
+it is active.
+
+Append `force` to `off` to permit disconnecting the only active connection.
+Use USB, another management transport, or reboot to regain access afterward.
+`force` is accepted only as the final argument to `off`.
+
+Commands sent through Bluetooth allow its reply to drain before shutdown
+(normally 250 ms, at most two seconds). `get bluetooth` shows `off pending`
+during that wait. A normal shutdown is cancelled if the other management
+connection disappears before it applies; `force` bypasses that check too.
+
+Bluetooth must be available in the current build and boot transport mode.
+An exclusive-WiFi boot still requires `set companion.transport ble` and a
+reboot before Bluetooth can be enabled.
+
 #### View or change the independent Bluetooth name (Companion)
 
 **Usage:**

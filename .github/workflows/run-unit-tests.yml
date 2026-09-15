@@ -125,6 +125,9 @@ jobs:
       - name: Verify Companion contact persistence and OTA sleep guards
         run: python3 -B test/test_companion_contact_sleep_contract.py -v
 
+      - name: Verify Companion Bluetooth CLI connection protection
+        run: python3 -B test/test_companion_bluetooth_control.py -v
+
       - name: Verify message reader buttons, touch targets, and footer layouts
         working-directory: test
         run: >-
