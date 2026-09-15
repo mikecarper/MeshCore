@@ -3440,7 +3440,10 @@ response. Mesh repeaters carry the packets only while their temporary-radio wind
 Check progress with <code>ota status</code>.</p>
 <p>If a <code>folder</code> pull loses its link mid-transfer, <code>ota status</code> shows <strong>paused</strong> - the host keeps the
 partial and the pull resumes (filling only what's missing) the moment you reconnect motatool; it never
-falls back to flash. To <strong>stop</strong> a download you no longer want:</p>
+falls back to flash. A TCP disconnect preserves the selected image even if it happens before its manifest
+arrives or during the final save. Reconnect through the same transport; an interrupted manifest or seed
+comparison restarts initialization, while a partial transfer rechecks its stored blocks. The paused capture
+keeps its OTA workspace until reconnection or cancellation. To <strong>stop</strong> a download you no longer want:</p>
 <pre><code>ota cancel
 </code></pre>
 <p>For a download staged on the node, success means current firmware also
