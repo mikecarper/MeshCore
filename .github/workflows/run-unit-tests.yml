@@ -155,6 +155,8 @@ jobs:
       - name: Verify WiFi, ESP-NOW and combined wireless controls
         run: |
           python3 -B test/test_wireless_control.py -v
+          python3 -B test/test_serial_wifi_sessions.py -v
+          python3 -B test/test_companion_wifi_session.py -v
           python3 -B test/test_espnow_radio_lifecycle.py -v
 
       - name: Verify message reader buttons, touch targets, and footer layouts

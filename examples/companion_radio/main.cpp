@@ -1896,6 +1896,14 @@ void halt() {
     WIFI_DEBUG_PRINTLN("WiFi enabled by BOOT/GPIO 0 control");
   }
 
+  static void cancelCompanionWiFiSession(void*) {
+    if (interface_manager.isReplyRouteFor(&wifi_interface)) {
+      the_mesh.cancelSerialResponseStream();
+    }
+    the_mesh.cancelSerialOperationsForRoute(&wifi_interface);
+    interface_manager.forgetReplyRouteForDisconnected(&wifi_interface);
+  }
+
   static void stopCompanionWiFiServices() {
     if (companion_wifi_services_stopped) return;
     wifi_interface.end();
@@ -2778,6 +2786,7 @@ void setup() {
 
 // add wifi interface
 #ifdef WIFI_SSID
+  wifi_interface.setSessionChangedCallback(cancelCompanionWiFiSession, nullptr);
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   if (companionTransportWiFiActiveAtBoot()) {
 #endif

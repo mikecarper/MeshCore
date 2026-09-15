@@ -386,6 +386,23 @@ their views. Companion session state is device-wide, so use one active
 Companion application at a time. On nRF52, BLE remains available while USB is
 in terminal or mOTA mode.
 
+On WiFi TCP port 5000, reconnecting from the same IP retains queued outgoing
+frames. A different IP takes over immediately, but never receives the previous
+IP's replies: up to four queued frames are parked separately for 30 seconds
+from takeover. The old IP can reconnect within that window to retrieve them.
+Only one displaced IP's backlog is retained; if another client also needs that
+slot, the older backlog is discarded so the new connection is not delayed.
+This reuses an existing fixed buffer instead of allocating additional frame
+storage. Pending commands, signing sessions, and contact streams belonging to
+the displaced WiFi session are canceled immediately; already accepted radio
+message transmissions are not canceled. Queued frames are retained, not a
+resumable command session, and IP matching is not authentication. Turning WiFi
+off clears both queues. Stored message history is unaffected.
+
+Partial TCP writes retain the unsent bytes without interleaving later frames.
+After a reconnect, an incomplete frame restarts from its header; the new TCP
+connection must not receive only the old connection's trailing bytes.
+
 USB Binary output is queued as complete length-prefixed frames. Temporary CDC
 or UART backpressure pauses the contact stream; a frame may drain through a
 smaller hardware FIFO in ordered chunks, but its remainder is retained and no

@@ -344,8 +344,12 @@ public:
     // Other interfaces retain their input until the producer unlocks the route.
     if (_lockedReplyInterface != nullptr) {
       if (!isAvailableReplyTarget(_lockedReplyInterface)) return 0;
-      size_t frameSize = _lockedReplyInterface->checkRecvFrame(dest);
-      if (frameSize > 0) _lastRxInterface = _lockedReplyInterface;
+      // A backend may cancel the previous host's stream inside this call
+      // (e.g. WiFi IP takeover), clearing the lock before returning a new
+      // host's first command. Preserve the actual source of that command.
+      BaseSerialInterface* target = _lockedReplyInterface;
+      size_t frameSize = target->checkRecvFrame(dest);
+      if (frameSize > 0) _lastRxInterface = target;
       return frameSize;
     }
 

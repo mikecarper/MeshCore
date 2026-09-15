@@ -448,6 +448,54 @@ TEST(MultiSerialInterface, ForgetsOnlyTheDisconnectedHostReplyRoute) {
   EXPECT_TRUE(manager.isReplyRouteFor(&bluetooth));
 }
 
+TEST(MultiSerialInterface, SessionChangeDuringLockedReadKeepsNewFrameOnItsTransport) {
+  MultiSerialInterface manager;
+  class ReconnectingInterface : public FakeSerialInterface {
+    MultiSerialInterface& manager;
+  public:
+    bool change_session = false;
+    explicit ReconnectingInterface(MultiSerialInterface& owner) : manager(owner) {}
+    size_t checkRecvFrame(uint8_t dest[]) override {
+      if (change_session) {
+        change_session = false;
+        // WiFi's new-IP callback cancels the old contact iterator and then
+        // forgets its route while the manager is still inside this read.
+        manager.unlockReplyRoute();
+        manager.forgetReplyRouteForDisconnected(this);
+      }
+      return FakeSerialInterface::checkRecvFrame(dest);
+    }
+  } wifi(manager);
+  FakeSerialInterface usb, bluetooth;
+  wifi.connected = usb.connected = bluetooth.connected = true;
+  ASSERT_TRUE(manager.addInterface(InterfaceType::WiFi, &wifi));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::USB, &usb));
+  ASSERT_TRUE(manager.addInterface(InterfaceType::Bluetooth, &bluetooth));
+  manager.enable();
+
+  wifi.received_frames.push_back({0x04});
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  manager.lockReplyRoute();
+
+  wifi.change_session = true;
+  wifi.received_frames.push_back({0x16});
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  ASSERT_EQ(command[0], 0x16);
+  ASSERT_TRUE(manager.isReplyRouteFor(&wifi));
+  const uint8_t device_info[] = {0x0D, 0x43};
+  ASSERT_EQ(manager.writeFrame(device_info, sizeof(device_info)), sizeof(device_info));
+  ASSERT_EQ(wifi.sent_frames.size(), 1u);
+  EXPECT_TRUE(usb.sent_frames.empty());
+  EXPECT_TRUE(bluetooth.sent_frames.empty());
+
+  // Cancelling the prior WiFi iterator also releases its lock, so another
+  // transport may dispatch its own command on the next pass.
+  usb.received_frames.push_back({0x16});
+  ASSERT_EQ(manager.checkRecvFrame(command), 1u);
+  EXPECT_TRUE(manager.isReplyRouteFor(&usb));
+}
+
 TEST(MultiSerialInterface, CapturedAsyncReplySurvivesLaterRouteChanges) {
   MultiSerialInterface manager;
   FakeSerialInterface usb;
