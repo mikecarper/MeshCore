@@ -235,6 +235,57 @@ static void hybrid_state_is_one_shot_and_not_reopened_after_restart() {
   CHECK(after_restart.staged_size() == 0u);
 }
 
+static void checkpointed_flash_resume_restores_deferred_trailer() {
+  using namespace mesh::ota;
+  reset_target_memory();
+  const uint32_t total = 3072u;
+  auto bytes = patterned_container(total);
+  std::memcpy(bytes.data() + total - 5u, MOTA_TRAILER, 5u);
+  {
+    OtaStoreFlashNrf52 store;
+    CHECK(store.plan_layout(false, 0x80000u, 205u, total - 210u, false));
+    CHECK(store.begin(total));
+    CHECK(!store.is_hybrid());
+    CHECK(store.write(0, bytes.data(), total));
+    store.checkpoint();
+  }
+  OtaStoreFlashNrf52 resumed;
+  CHECK(resumed.reopen());
+  CHECK(resumed.finalize());
+  std::vector<uint8_t> output(total);
+  CHECK(resumed.read(0, output.data(), total));
+  CHECK(output == bytes);
+  CHECK(std::memcmp(resumed.data(), bytes.data(), total) == 0);
+}
+
+static void dirty_flash_partial_checkpoint_finishes(bool reboot) {
+  using namespace mesh::ota;
+  reset_target_memory();
+  std::memset(reinterpret_cast<void*>(FLASH_MAP_START), 0xA5, FLASH_MAP_SIZE);
+  install_bootloader_capabilities();
+  const uint32_t total = 3u * MOTA_NRF52_FLASH_PAGE;
+  auto bytes = patterned_container(total);
+  std::memcpy(bytes.data() + total - 5u, MOTA_TRAILER, 5u);
+  OtaStoreFlashNrf52 original, reopened;
+  // Exercise the ordinary pure-flash backend rather than this build's optional
+  // preplanned volatile hybrid placement.
+  CHECK(original.begin(total));
+  CHECK(original.write(0, bytes.data(), 1024u));
+  CHECK(original.write(total - 5u, MOTA_TRAILER, 5u));
+  original.checkpoint();
+  OtaStoreFlashNrf52& active = reboot ? reopened : original;
+  if (reboot) CHECK(active.reopen());
+  uint8_t first[1024];
+  CHECK(active.read(0, first, sizeof(first)));
+  CHECK(std::memcmp(first, bytes.data(), sizeof(first)) == 0);
+  CHECK(active.write(1024u, bytes.data() + 1024u, total - 1024u - 5u));
+  CHECK(active.finalize());
+  std::vector<uint8_t> output(total);
+  CHECK(active.read(0, output.data(), total));
+  CHECK(output == bytes);
+  CHECK(std::memcmp(active.data(), bytes.data(), total) == 0);
+}
+
 int main() {
   map_target_region(FLASH_MAP_START, FLASH_MAP_SIZE);
   map_target_region(RAM_MAP_START, RAM_MAP_SIZE);
@@ -246,6 +297,12 @@ int main() {
   std::puts("PASS: persistence failure stays closed");
   hybrid_state_is_one_shot_and_not_reopened_after_restart();
   std::puts("PASS: restart cannot reopen volatile suffix");
-  std::puts("4 OtaStoreFlashNrf52 hybrid lifecycle checks passed");
+  checkpointed_flash_resume_restores_deferred_trailer();
+  std::puts("PASS: checkpointed flash resume restores deferred trailer");
+  dirty_flash_partial_checkpoint_finishes(true);
+  std::puts("PASS: dirty flash partial checkpoint resumes and finishes");
+  dirty_flash_partial_checkpoint_finishes(false);
+  std::puts("PASS: dirty flash partial checkpoint continues without reboot");
+  std::puts("7 OtaStoreFlashNrf52 hybrid lifecycle checks passed");
   return 0;
 }

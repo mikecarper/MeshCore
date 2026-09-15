@@ -30,6 +30,17 @@ namespace ota {
 // replies. False applies backpressure: the manager retains paced DATA/PROOF egress and tries it again.
 typedef bool (*OtaSend)(void* ctx, const uint8_t* msg, uint16_t len, bool flood);
 
+// Deferred replies retain the request's radio session, without changing the
+// portable send callback or putting radio-routing metadata on the OTA wire.
+struct OtaReplyRoute {
+  uint32_t generation = 0;
+  uint8_t profile = 0xFF;  // no radio affinity (portable callers)
+  bool operator==(const OtaReplyRoute& other) const {
+    return profile == other.profile && generation == other.generation;
+  }
+};
+typedef bool (*OtaReplyRouteValid)(void* ctx, const OtaReplyRoute& route);
+
 // Read `len` payload bytes at offset `off` from the serve source (flash-backed self-serve); false on
 // error. nullptr means the payload is a contiguous RAM buffer (the staged `.mota`).
 typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len);
@@ -477,11 +488,15 @@ public:
   // Feed one received OTA message. True means this node terminally consumed a
   // bulk request/response, so Mesh must not echo it as if this node were an
   // intermediate relay.
-  bool on_message(const uint8_t* msg, uint16_t len);
+  bool on_message(const uint8_t* msg, uint16_t len, OtaReplyRoute route = {});
   void loop();                                         // drive fetch (re-request missing blocks)
   // Fast, non-blocking service called from the main radio loop. It admits at most one retained server
   // response or proof fallback per call; the send callback provides packet-pool/queue backpressure.
-  void serviceEgress();
+  // An optional validator discards expired request sessions before reading or sending a response.
+  void serviceEgress(OtaReplyRouteValid route_valid = nullptr, void* route_ctx = nullptr);
+  // Available only inside the send callback; returns a value, never a retained
+  // pointer into a queue that may be compacted after the callback returns.
+  OtaReplyRoute replyRoute() const { return _reply_route ? *_reply_route : OtaReplyRoute{}; }
   void clearPendingEgress();
   uint8_t pendingServeJobs() const { return _n_serve_jobs; }
   uint8_t pendingManifestJobs() const { return _n_manifest_jobs; }
@@ -542,8 +557,11 @@ private:
   uint16_t catalogCapacity() const { return _catalog_heap ? OTA_MAX_CATALOG : OTA_INLINE_CATALOG; }
   bool expandCatalog();
 
-  bool emit(const uint8_t* b, uint16_t n, bool flood) {
+  bool emit(const uint8_t* b, uint16_t n, bool flood, const OtaReplyRoute* route = nullptr) {
+    const OtaReplyRoute* previous = _reply_route;
+    _reply_route = route;
     const bool sent = _send && n && _send(_ctx, b, n, flood);
+    _reply_route = previous;
     if (sent) _packets_sent++;
     return sent;
   }
@@ -593,7 +611,8 @@ private:
   bool queueManifestJob(const uint8_t* mid, uint16_t want_mask);
   uint32_t manifestEgressGapMs() const;
   uint32_t proofEgressGapMs() const;
-  bool serviceManifestEgress();
+  bool serviceManifestEgress(OtaReplyRouteValid route_valid, void* route_ctx);
+  bool dispatchMessage(const uint8_t* msg, uint16_t len);
   void popManifestJob();
   bool loadActiveServeBlock();
   void popServeJob();
@@ -655,6 +674,7 @@ private:
   // Server-side response descriptors are tiny. The active logical block has its own buffer so proof generation
   // or a simultaneous fetch cannot overwrite DATA retained behind radio-queue backpressure.
   struct ServeJob {
+    OtaReplyRoute route;
     uint8_t mid[4] = {0};
     uint16_t block = 0;
     uint16_t pending_mask = 0;
@@ -668,6 +688,7 @@ private:
   ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
   uint8_t    _n_serve_jobs = 0;
   struct ManifestServeJob {
+    OtaReplyRoute route;
     uint8_t mid[4];
     uint16_t pending_mask;
     uint16_t emitted_mask;
@@ -675,6 +696,8 @@ private:
   };
   ManifestServeJob _manifest_jobs[OTA_MANIFEST_SERVE_QUEUE];
   uint8_t    _n_manifest_jobs = 0;
+  OtaReplyRoute _request_route;
+  const OtaReplyRoute* _reply_route = nullptr;
   uint8_t    _serve_block[OTA_MAX_BLOCK];
   uint16_t   _serve_block_len = 0;
   bool       _serve_block_loaded = false;

@@ -39,6 +39,7 @@ class DataStore
   FILESYSTEM* _configuredFsExtra;
   mesh::RTCClock* _clock;
   IdentityStore identity_store;
+  bool _prefs_load_incomplete = false;
 #if !defined(NRF52_PLATFORM)
   bool _channel_load_incomplete = false;
 #endif
@@ -68,7 +69,6 @@ class DataStore
   bool _identity_creation_blocked = false;
   bool _primary_storage_unavailable = false;
   bool _secondary_authority_unknown = false;
-  bool _prefs_load_incomplete = false;
   uint32_t _contact_page_generations[mesh::storage::CONTACT_PAGE_COUNT];
   bool _legacy_contacts_pending_cleanup;
   bool _legacy_migration_ready;

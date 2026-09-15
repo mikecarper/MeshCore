@@ -15,8 +15,8 @@
 #endif
 
 class ConfigSerializer {
-  bool _first;
-  int8_t _depth;
+  bool _first = false;
+  int8_t _depth = 0;
   bool _dirty = false;
 
 protected:

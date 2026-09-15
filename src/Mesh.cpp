@@ -202,6 +202,18 @@ bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*fl
   Packet* p = m->createOtaPacket(msg, len);
   if (!p) return false;
   p->radio_reply = len && ota::ota_is_response_message(msg[0]);
+  if (p->radio_reply) {
+    if (const auto* context = ota::ota_context_if_active()) {
+      const auto route = context->manager.replyRoute();
+      if (route.profile < 2) {
+        // DATA, PROOF and MANIFEST are emitted after the RX call stack ends.
+        // Restore origin only; normal reply policy still decides one/both TX.
+        p->radio_profile = p->radio_origin = route.profile;
+        p->radio_generation = p->radio_origin_generation = route.generation;
+        p->radio_local = false;
+      }
+    }
+  }
   const uint8_t mask = m->getTransmitProfileMask(p);
   const int copies = (mask & 1 ? 1 : 0) + (mask & 2 ? 1 : 0);
   // p already occupies one slot. Reserve the other copy as well, keeping the
@@ -461,7 +473,15 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     _next_ota_tick = futureMillis(ota::scaleDelay(OTA_RETRY_TICK_MS, ota_speed < 1.0f ? ota_speed : 1.0f));
   }
   syncOtaTiming(ota::ota_ctx().manager);
-  ota::ota_ctx().manager.serviceEgress();
+  ota::ota_ctx().manager.serviceEgress([](void* ctx, const ota::OtaReplyRoute& route) {
+    if (route.profile == 0xFF) return true;
+    const auto* profiles = static_cast<Mesh*>(ctx)->_radio->profiles();
+    // A completed/reconfigured temp session must not leak its retained replies
+    // onto the replacement channel, or pin a stale descriptor behind backpressure.
+    return route.profile < 2 && (!profiles ? route.profile == 0
+        : (route.profile == 0 || profiles->enabled())
+            && route.generation == profiles->generation[route.profile]);
+  }, this);
   const uint32_t ota_loop_interval = ota::ota_ctx().manager.loopIntervalMs(OTA_RETRY_TICK_MS);
   if ((int32_t)(_next_ota_tick - _ms->getMillis()) > (int32_t)ota_loop_interval) {
     // Entering local verification must not inherit a long radio retry wait.
@@ -1275,7 +1295,10 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       if (ota::OtaContext* context = ota::ota_context_if_active()) {
         syncOtaTiming(context->manager);
         context->manager.note_rx_path_hops(n);
-        terminal_ota = context->manager.on_message(pkt->payload, pkt->payload_len);
+        ota::OtaReplyRoute route;
+        route.profile = pkt->radio_profile;
+        route.generation = pkt->radio_generation;
+        terminal_ota = context->manager.on_message(pkt->payload, pkt->payload_len, route);
         context->track_session(context->manager.fetchState(), _ms->getMillis());
         onOtaRecv(pkt);
       }

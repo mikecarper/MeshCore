@@ -641,16 +641,23 @@ bool DataStore::loadPrefs(CompanionNodePrefs& prefs, double& node_lat,
     return true;
   }
 #else
+  if (_prefs_load_incomplete) return false;
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  if (!mesh::ContactFileTransaction::recover(_fs, "/new_prefs")) {
+    _prefs_load_incomplete = true;
+    return false;
+  }
+#endif
   if (_fs->exists("/new_prefs")) {
-    return loadPrefsInt("/new_prefs", prefs, node_lat, node_lon);
+    const bool loaded = loadPrefsInt("/new_prefs", prefs, node_lat, node_lon);
+    _prefs_load_incomplete = !loaded;
+    return loaded;
   }
   if (!_fs->exists("/node_prefs")) return true;
 #endif
 
   if (!loadPrefsInt("/node_prefs", prefs, node_lat, node_lon)) {
-#if defined(NRF52_PLATFORM)
     _prefs_load_incomplete = true;
-#endif
     return false;
   }
 #if defined(NRF52_PLATFORM)
@@ -826,10 +833,14 @@ bool DataStore::loadPrefsInt(const char *filename,
 }
 
 bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, double node_lon) {
-#if defined(NRF52_PLATFORM)
   if (_prefs_load_incomplete) return false;
+#if defined(NRF52_PLATFORM)
   if (_primary_storage_unavailable) return false;
+#endif
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   mesh::AtomicFileWriter file(_fs, "/new_prefs");
+#elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  mesh::ContactFileTransaction file(_fs, "/new_prefs");
 #else
   File file = openWrite(_fs, "/new_prefs");
 #endif
@@ -928,7 +939,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
                sizeof(_prefs.bluetooth_stealth_mode))
                == sizeof(_prefs.bluetooth_stealth_mode);
 
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
     success = file.commit(success);
     if (!success) MESH_DEBUG_PRINTLN("DataStore: atomic preferences write failed");
 #else

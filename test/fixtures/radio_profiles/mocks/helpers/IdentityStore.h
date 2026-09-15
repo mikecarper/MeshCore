@@ -29,6 +29,7 @@ class MemoryFS {
  public:
   std::map<std::string, std::vector<uint8_t>> files;
   bool fail_write = false;
+  int fail_write_after = -1;
   bool fail_read_open = false;
   int fail_read_after = -1;
   bool fail_remove = false;
@@ -71,6 +72,10 @@ inline int File::read(uint8_t* data, size_t size) {
 inline size_t File::write(const uint8_t* data, size_t size) {
   if (!fs_ || fs_->fail_write) return 0;
   auto& bytes = fs_->files[path_];
+  if (fs_->fail_write_after >= 0) {
+    if (bytes.size() >= static_cast<size_t>(fs_->fail_write_after)) return 0;
+    size = std::min(size, static_cast<size_t>(fs_->fail_write_after) - bytes.size());
+  }
   bytes.insert(bytes.end(), data, data + size); return size;
 }
 #define FILESYSTEM MemoryFS

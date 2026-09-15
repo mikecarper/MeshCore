@@ -483,7 +483,7 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
                                bool wire_v2, bool allow_deflate, bool extended_length) {
   for (uint8_t i = 0; i < _n_serve_jobs; i++) {
     ServeJob& job = _serve_jobs[i];
-    if (job.block != block || memcmp(job.mid, mid, 4) != 0) continue;
+    if (job.block != block || memcmp(job.mid, mid, 4) != 0 || !(job.route == _request_route)) continue;
     // A proof-only request can complete whichever representation is already queued. DATA requests with
     // different geometries remain distinct because their bitmap positions do not describe the same bytes.
     if (want_mask != 0 && (job.wire_v2 != wire_v2 ||
@@ -495,6 +495,7 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
   }
   if (_n_serve_jobs >= OTA_SERVE_QUEUE) return false;
   ServeJob& job = _serve_jobs[_n_serve_jobs++];
+  job.route = _request_route;
   memcpy(job.mid, mid, 4);
   job.block = block;
   job.pending_mask = want_mask;
@@ -510,12 +511,13 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
 bool OtaManager::queueManifestJob(const uint8_t* mid, uint16_t want_mask) {
   for (uint8_t i = 0; i < _n_manifest_jobs; i++) {
     ManifestServeJob& job = _manifest_jobs[i];
-    if (memcmp(job.mid, mid, 4) != 0) continue;
+    if (memcmp(job.mid, mid, 4) != 0 || !(job.route == _request_route)) continue;
     job.pending_mask |= (uint16_t)(want_mask & ~job.emitted_mask);
     return true;
   }
   if (_n_manifest_jobs >= OTA_MANIFEST_SERVE_QUEUE) return false;
   ManifestServeJob& job = _manifest_jobs[_n_manifest_jobs++];
+  job.route = _request_route;
   memcpy(job.mid, mid, 4);
   job.pending_mask = want_mask;
   job.emitted_mask = 0;
@@ -563,9 +565,13 @@ void OtaManager::popManifestJob() {
   _n_manifest_jobs--;
 }
 
-bool OtaManager::serviceManifestEgress() {
+bool OtaManager::serviceManifestEgress(OtaReplyRouteValid route_valid, void* route_ctx) {
   if (_n_manifest_jobs == 0) return false;
   ManifestServeJob& job = _manifest_jobs[0];
+  if (route_valid && !route_valid(route_ctx, job.route)) {
+    popManifestJob();
+    return true;
+  }
   if ((int32_t)(_now_ms - job.ready_at) < 0) {
     return true;
   }
@@ -603,7 +609,7 @@ bool OtaManager::serviceManifestEgress() {
   message.len = (uint16_t)len;
   uint8_t wire[MAX_PACKET_PAYLOAD];
   const uint16_t wire_len = encode_manifest(wire, sizeof(wire), message);
-  if (emit(wire, wire_len, false)) {
+  if (emit(wire, wire_len, false, &job.route)) {
     OTA_DBG("OTA: MANIFEST tx frag=%u/%u len=%u\n",
             (unsigned)fragment, (unsigned)ftotal, (unsigned)len);
     const uint16_t bit = (uint16_t)(1u << fragment);
@@ -716,10 +722,10 @@ bool OtaManager::handleReqProof(const uint8_t* m, uint16_t n) {
   return queueServeJob(v->m.merkle_root, rp.block_idx, 0); // proof-only, or merge with queued DATA
 }
 
-void OtaManager::serviceEgress() {
+void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) {
   // Metadata comes first so an older receiver gets every manifest fragment before its retry horizon. The
   // send callback supplies radio-queue backpressure, and a rejected fragment remains in this descriptor.
-  if (serviceManifestEgress()) return;
+  if (serviceManifestEgress(route_valid, route_ctx)) return;
 
   // A proactive proof normally follows the final DATA fragment. If it was lost, or the source is older and
   // never sent one, issue the legacy proof request after a short grace. Stay RX-silent while another slot
@@ -738,6 +744,10 @@ void OtaManager::serviceEgress() {
 
   if (_n_serve_jobs == 0) return;
   ServeJob& job = _serve_jobs[0];
+  if (route_valid && !route_valid(route_ctx, job.route)) {
+    popServeJob();
+    return;
+  }
   ServeView* v = resolve(job.mid);
   if (!v || job.block >= v->m.block_count
       || (uint64_t)v->m.block_count * 4 > v->scratch_sz) {
@@ -789,7 +799,7 @@ void OtaManager::serviceEgress() {
       dm.data_len = (uint16_t)frag_len;
     }
     uint8_t b[MAX_PACKET_PAYLOAD];
-    if (emit(b, encode_data(b, sizeof(b), dm), false)) {
+    if (emit(b, encode_data(b, sizeof(b), dm), false, &job.route)) {
       const uint16_t bit = (uint16_t)(1u << fragment);
       job.pending_mask &= (uint16_t)~bit;
       job.emitted_mask |= bit;
@@ -818,7 +828,7 @@ void OtaManager::serviceEgress() {
   pm.n_proof = np;
   pm.proof = proof;
   uint8_t b[MAX_PACKET_PAYLOAD];
-  if (emit(b, encode_proof(b, sizeof(b), pm), false)) popServeJob();
+  if (emit(b, encode_proof(b, sizeof(b), pm), false, &job.route)) popServeJob();
 }
 
 // ---------------- fetch ----------------
@@ -1585,19 +1595,15 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
       || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED) {
     return false;
   }
-  _wire_v2_session = _wire_v2_enabled;
-  _wire_v2_confirmed = false;
-  _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
-  _wire_empty_stalls = 0;
   if (!_fetch->reopen()) return false;                  // nothing persisted in the store
   uint32_t total = _fetch->staged_size();
   uint8_t hdr[8];
-  if (total < 13 || !_fetch->read(0, hdr, 8) || memcmp(hdr, MOTA_MAGIC, 4) != 0) return false;
+  if (total < 8u + MOTA_MFL + 5u || !_fetch->read(0, hdr, sizeof(hdr))
+      || memcmp(hdr, MOTA_MAGIC, 4) != 0 || rd_u32le(hdr + 4) != total) return false;
   // read + parse the stored manifest (everything before leaves[]) to recompute the geometry
-  uint8_t mbuf[256];
-  uint32_t mread = total - 8; if (mread > sizeof(mbuf)) mread = sizeof(mbuf);
+  uint8_t mbuf[MOTA_MFL];
   MotaManifest m;
-  if (!_fetch->read(8, mbuf, mread) || !mota_parse_manifest(mbuf, mread, m)) return false;
+  if (!_fetch->read(8, mbuf, sizeof(mbuf)) || !mota_parse_manifest(mbuf, sizeof(mbuf), m)) return false;
   if (want_mid && memcmp(m.merkle_root, want_mid, 4) != 0) return false;   // a different fw is staged
   const bool automatic_resume = want_mid == nullptr;
   // A boot-time resume is an automatic fetch decision and therefore belongs
@@ -1625,7 +1631,14 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   uint32_t leaves_off = 8 + mfl;
   uint32_t payload_off = leaves_off + bc * 4;
   if ((uint64_t)payload_off + m.payload_size + 5 != total) return false;   // geometry must match the header
+  uint8_t trailer[5];
+  if (!_fetch->read(total - sizeof(trailer), trailer, sizeof(trailer))
+      || memcmp(trailer, MOTA_TRAILER, sizeof(trailer)) != 0) return false;
 
+  _wire_v2_session = _wire_v2_enabled;
+  _wire_v2_confirmed = false;
+  _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
+  _wire_empty_stalls = 0;
   memcpy(_fid, m.merkle_root, 4);
   memcpy(_froot, m.merkle_root, 4);
   _fflags = m.flags;
@@ -2147,7 +2160,15 @@ void OtaManager::loop() {
 
 // ---------------- dispatch ----------------
 
-bool OtaManager::on_message(const uint8_t* msg, uint16_t len) {
+bool OtaManager::on_message(const uint8_t* msg, uint16_t len, OtaReplyRoute route) {
+  const OtaReplyRoute previous = _request_route;
+  _request_route = route;
+  const bool consumed = dispatchMessage(msg, len);
+  _request_route = previous;
+  return consumed;
+}
+
+bool OtaManager::dispatchMessage(const uint8_t* msg, uint16_t len) {
   switch (ota_msg_type(msg, len)) {
     case OTA_ADV:          handleAdv(msg, len); return false;
     case OTA_QUERY:        handleQuery(msg, len); return false;

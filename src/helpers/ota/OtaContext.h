@@ -9,6 +9,7 @@
 #include "SignerAllowlist.h"
 #include "OtaApply.h"
 #include "OtaFormat.h"
+#include "OtaByteIO.h"
 #include "OtaSelf.h"          // ota_self_firmware() - prefer self-describing EndF identity at begin()
 #include "OtaBlInfo.h"        // bootloader OTA-apply capability marker (nRF52); cached after first read
 
@@ -262,12 +263,18 @@ struct OtaContext {
     // hardware-compatibility gate (brick-safety) - refuse a .mota whose hw_id is for different hardware,
     // independent of signature; covers a manual cross-target `ota dev want` onto an incompatible board.
     {
-      uint8_t hdr[8], mb[256];
+      uint8_t hdr[8], mb[MOTA_MFL];
       uint32_t total = fetch_store.staged_size();
-      if (total >= 13 && fetch_store.read(0, hdr, 8) && memcmp(hdr, MOTA_MAGIC, 4) == 0) {
-        uint32_t mr = total - 8; if (mr > sizeof(mb)) mr = sizeof(mb);
+      // A failed first read must not bypass these policy gates and reach an
+      // applier whose later read happens to succeed.
+      if (total < 8 + MOTA_MFL + 5 || !fetch_store.read(0, hdr, sizeof(hdr))
+          || memcmp(hdr, MOTA_MAGIC, sizeof(MOTA_MAGIC)) != 0
+          || rd_u32le(hdr + 4) != total) {
+        strncpy(msg, "refused: invalid or unreadable staged header", 96); msg[95] = 0; return false;
+      }
+      {
         MotaManifest mm;
-        if (!fetch_store.read(8, mb, mr) || !mota_parse_manifest(mb, mr, mm)) {
+        if (!fetch_store.read(8, mb, sizeof(mb)) || !mota_parse_manifest(mb, sizeof(mb), mm)) {
           strncpy(msg, "refused: invalid staged manifest", 96); msg[95] = 0; return false;
         }
         if (mm.is_bootloader()) {
@@ -283,7 +290,7 @@ struct OtaContext {
           if (!ota_self_firmware(self) || !self.valid ||
               !ota_trusted_auto_version_allows(self.fw_version, mm.fw_version)) {
             snprintf(msg, 96,
-                     "refused: trusted auto-install is forward-only (running=%08lX candidate=%08lX); use ota install to override",
+                     "refused: auto-install needs newer firmware (%08lX -> %08lX); use ota install",
                      (unsigned long)(self.valid ? self.fw_version : 0),
                      (unsigned long)mm.fw_version);
             return false;
@@ -291,7 +298,7 @@ struct OtaContext {
         }
         if (!hwMatches(mm.hw_id)) {
           char want[33] = {0}; memcpy(want, mm.hw_id, 32);
-          snprintf(msg, 96, "refused: .mota hw_id '%.32s' != this device '%s' (incompatible hardware)", want, hw_id);
+          snprintf(msg, 96, "refused: incompatible hardware (%.24s / %.24s)", want, hw_id);
           return false;
         }
       }

@@ -210,7 +210,11 @@ const uint8_t* OtaStoreFlashEsp32::meta_slot_c(uint32_t L) const {
 // Bytes from `pos` that stay in one region, and (for payload) one flash sector.
 uint32_t OtaStoreFlashEsp32::run(uint32_t pos, uint32_t remain) const {
   if (pos >= _total - 5) return remain;                          // trailer (<=5, one buffer)
-  if (pos < _meta_span) { uint32_t c = _meta_span - pos; return remain < c ? remain : c; }
+  if (pos < _meta_span) {
+    uint32_t end = _meta_span < _total - 5u ? _meta_span : _total - 5u;
+    uint32_t c = end - pos;
+    return remain < c ? remain : c;                  // never consume the separate trailer through metadata
+  }
   uint32_t poff = pay_part(pos);
   uint32_t to_sec = SEC - (poff % SEC);
   uint32_t to_end = (_total - 5) - pos;                          // don't cross into the trailer
@@ -286,6 +290,16 @@ bool OtaStoreFlashEsp32::finalize() {
     // trailer sits right after the payload; this also covers the rare case it spills into a fresh sector).
     uint32_t tpoff = _write_start + (_total - 5);
     for (uint32_t off = 0; off < 5; ) {
+      const uint32_t logical = _total - 5u + off;
+      if (logical < _meta_span) {
+        // A small delta's tail can share the pinned metadata sector. Put those
+        // bytes in the buffer that will be flushed last, including a split tail.
+        uint32_t n = _meta_span - logical;
+        if (n > 5u - off) n = 5u - off;
+        memcpy(_meta + logical, _trailer + off, n);
+        off += n;
+        continue;
+      }
       uint32_t sec = (tpoff + off) / SEC;
       if (!_pay_open || sec != _pay_sec) open_pay(sec);
       uint32_t in = SEC - ((tpoff + off) % SEC); if (in > 5 - off) in = 5 - off;
@@ -332,7 +346,12 @@ bool OtaStoreFlashEsp32::reopen() {
       if (esp_partition_read(_part, _meta_part, _meta, _meta_flush) != ESP_OK) {
         free(_meta); _meta = nullptr; _total = 0; return false;
       }
-      memset(_trailer, 0xFF, sizeof(_trailer));        // delta trailer (re-written at finalize); full reads it from _meta
+      // Raw staging defers the fixed trailer; an unvisited sector may still
+      // contain old firmware bytes after an early checkpoint. Restore framing
+      // from the validated layout, not that stale tail. The manager separately
+      // revalidates the selected image and every present payload block.
+      memcpy(_trailer, MOTA_TRAILER, sizeof(_trailer));
+      if (_full) memcpy(_meta + _meta_bytes, MOTA_TRAILER, sizeof(_trailer));
       _pay_open = false; _pay_sec = 0; _flushed = false; _io_ok = true;
       _pay_max_sec = (_pay_part0 + _pay_size + SEC) / SEC;   // treat all payload sectors as seen -> RMW preserves committed blocks
       OTA_DBG("OTA esp32: reopen %s total=%u meta_part=%u\n", _full ? "FULL" : "DELTA", (unsigned)_total, (unsigned)o);

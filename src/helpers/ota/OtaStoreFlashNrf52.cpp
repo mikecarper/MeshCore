@@ -599,7 +599,10 @@ bool OtaStoreFlashNrf52::reopen() {
     _total = total;
     _hybrid = false;
     memcpy(_meta_page, p, PG);                  // load page 0 (header+manifest+leaves) into RAM to continue
-    memcpy(_trailer, p + (total - 5), 5);        // recover the trailer tail (flushed at last finalize, if any)
+    // The tail is deferred until finalize and can still hold old flash bytes.
+    // Reconstruct only fixed framing; the manager must verify the manifest and
+    // rehash every present payload block before the container becomes complete.
+    memcpy(_trailer, MOTA_TRAILER, sizeof(_trailer));
     _pay_idx = 0;
     _flushed = false;
     _io_ok = true;
