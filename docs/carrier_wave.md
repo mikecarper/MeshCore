@@ -2,7 +2,7 @@
 
 `cw` and `cw2` transmit a continuous, unmodulated carrier at the selected
 profile's frequency and the configured TX power. They are available in the
-shared ASCII CLI on SX1262-family and LR1110 builds, including repeaters,
+shared ASCII CLI on SX1276-family, SX1262-family, and LR1110 builds, including repeaters,
 Companions, room servers, and sensors that use that CLI.
 
 | Command | Action |
@@ -31,6 +31,12 @@ reception and profile scanning afterward. It rejects entry during a packet
 or a busy radio. Profile retuning waits until the carrier stops; replacement
 or expiry of the active second profile stops its carrier. Nothing about CW
 is saved across reboot.
+
+The normal `set tx <dBm>` command also works during CW for meter sweeps. It
+keeps the board's power limits and PA calibration, resumes the carrier after
+changing power, and does not extend the CW timeout. TX power retains its usual
+saved behavior. SX1276 temporarily uses FSK with zero frequency deviation,
+then rebuilds the LoRa configuration before resuming reception.
 
 Use the local USB or BLE console for immediate replies and manual stopping.
 An on-air CLI reply must wait until the carrier ends because LoRa packets

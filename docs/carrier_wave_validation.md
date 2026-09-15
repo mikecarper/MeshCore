@@ -46,6 +46,30 @@ no outbound packet pending. The observer has no autonomous transmission.
   `src/Mesh.cpp` and test-file contents; the actual implementation uses
   `ota_context_if_active()`. This is separate from the CW changes.
 
+## SX1276 follow-up
+
+The SX1276 carrier feature from [PR #11](https://github.com/mikecarper/MeshCore/pull/11)
+is included alongside SX1262 and LR1110 support. It switches to FSK with zero
+deviation, applies the board's calibrated TX power, and rebuilds the runtime
+LoRa configuration when stopped. External-PA settings pass through the same
+DAC/drive-power mapping used for packets, including RFO selection.
+
+The normal TX power command can adjust a running carrier for meter sweeps.
+RadioLib's SX1276 power setter enters standby, so the carrier is restarted
+afterward without extending the deadline. Failed power changes stop the
+carrier and restore the previous cached power.
+
+Follow-up checks use base `9dd9881d520b4b791600a00fff1f8e1436921054` plus the
+SX1276 changes. Production-method regression tests cover both profiles,
+zero deviation, external-PA calibration, RFO, power sweeps, timeout, failed
+FSK entry, failed restoration, retry guards, and return to LoRa. The native
+CW paths and existing radio/profile/sleep/PA checks pass as well.
+Both `GEPRC_Linkflow_900_repeater` (external PA) and
+`Heltec_v2_companion_radio_usb` firmware builds pass, including size checks.
+
+SX1276 RF output has not been measured in this follow-up. The physical RF
+results above apply to SX1262 and LR1110.
+
 ## Bench qualifications
 
 The first CW2 request arrived before radio2's existing delayed activation.

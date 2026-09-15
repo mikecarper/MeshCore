@@ -18,6 +18,9 @@ HARNESS = r'''
 #define STATE_TX_WAIT 3
 #define STATE_INT_READY 16
 #define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_ERR_INVALID_OUTPUT_POWER -1
+#define SX127X_CURRENT_LIMIT 120
+#define LORA_TX_POWER 17
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 static uint8_t state;
 static void setFlag() { state |= STATE_INT_READY; }
@@ -28,17 +31,30 @@ struct Board {
   void onAfterTransmit() { ++after; }
 };
 struct Chip {
-  int start_result=0, stop_result=0;
-  unsigned starts=0, stops=0, standby_calls=0;
-  bool carrier=false;
+  int start_result=0, stop_result=0, fsk_result=0, power_result=0, limit_result=0;
+  int power=17, initial_fsk_power=0, current_limit=60;
+  unsigned starts=0, stops=0, standby_calls=0, fsk_starts=0;
+  float frequency=0, deviation=5;
+  bool carrier=false, fsk=false, ook=true, rfo=false;
   void (*callback)()=setFlag;
-  int standby() { ++standby_calls; return 0; }
+  int standby() { ++standby_calls; carrier=false; return 0; }
+  int beginFSK(float freq, float, float dev, float, int8_t dbm, uint16_t, bool enable_ook) {
+    ++fsk_starts; fsk=true; carrier=false; frequency=freq; deviation=dev;
+    initial_fsk_power=power=dbm; ook=enable_ook; current_limit=60;
+    return fsk_result;
+  }
+  int setCurrentLimit(int value) { current_limit=value; return limit_result; }
+  int setOutputPower(int8_t value, bool force_rfo=false) {
+    standby(); if (power_result) return power_result;
+    power=value; rfo=force_rfo; return 0;
+  }
   int clearIrqFlags(uint32_t) { return 0; }
   void clearPacketReceivedAction() { callback=nullptr; }
   void setPacketReceivedAction(void (*fn)()) { callback=fn; }
   int transmitDirect() { carrier=true; ++starts; return start_result; }
   int finishTransmit() { ++stops; if (!stop_result) carrier=false; return stop_result; }
 };
+using CustomSX1276=Chip;
 struct RadioLibWrapper : mesh::Radio {
   Chip chip; Chip* _radio=&chip;
   Board board; Board* _board=&board;
@@ -49,11 +65,14 @@ struct RadioLibWrapper : mesh::Radio {
   bool _params_valid=true, _rx_ps_armed=true, _rx_hold_continuous=false;
   bool _nf_calib_active=true, _profile_refresh_required=false;
   unsigned long _wd_observe_until=0;
-  bool packet=false, busy=false, reset_ok=false, supported=true;
+  bool packet=false, busy=false, reset_ok=false, supported=true, deep_supported=true;
   unsigned rtc_stops=0, tunes=0, rx_starts=0, calibrations=0, resets=0;
   unsigned fail_rx_starts=0;
   bool fail_tune=false;
   float frequency=909.5;
+  float _cur_freq=909.5;
+  int8_t _cur_dbm=17;
+  bool _dbm_valid=true;
   RadioLibWrapper() {
     g_mock_millis=100; state=STATE_RX;
     _profiles.primary.freq=909.5;
@@ -68,7 +87,11 @@ struct RadioLibWrapper : mesh::Radio {
   mesh::RadioParamApplyResult setCarrierWave(uint8_t,uint32_t) override;
   bool stopCarrierWave();
   bool serviceCarrierWave();
+  bool setTxPower(int8_t dbm);
+  @NATIVE_HOOKS@
+  virtual bool supportsRadioDeepInit() const { return deep_supported; }
   uint8_t beginReconfigure();
+  void endReconfigure(bool resume) { if (resume) startRecv(); }
   bool isChipBusy() { return busy; }
   bool isReceivingPacket() { return packet; }
   bool isInRecvMode() const override { return (state & ~STATE_INT_READY)==STATE_RX; }
@@ -76,7 +99,7 @@ struct RadioLibWrapper : mesh::Radio {
   mesh::RadioParamApplyResult tuneProfile(uint8_t target) {
     ++tunes;
     if (fail_tune) return mesh::RadioParamApplyResult::FAILED;
-    _active_profile=target; frequency=_profiles.params(target).freq;
+    _active_profile=target; frequency=_cur_freq=_profiles.params(target).freq;
     return mesh::RadioParamApplyResult::APPLIED;
   }
   void startRecv() override {
@@ -86,7 +109,10 @@ struct RadioLibWrapper : mesh::Radio {
   }
   bool restoreAfterDeepInit() {
     ++resets;
-    if (reset_ok) { chip.carrier=false; chip.stop_result=0; }
+    if (reset_ok) {
+      chip.carrier=false; chip.fsk=false; chip.stop_result=0;
+      return applyCachedTxPower(_cur_dbm)==0;
+    }
     return reset_ok;
   }
   void recalibrateNoiseFloor() override { ++calibrations; }
@@ -98,6 +124,21 @@ struct RadioLibWrapper : mesh::Radio {
   void onSendFinished() override {}
 };
 @METHODS@
+struct CustomSX1276Wrapper : RadioLibWrapper {
+  CustomSX1276Wrapper() { reset_ok=true; }
+  @SX1276_METHODS@
+};
+struct DacPaLevel { int8_t dbm; uint8_t dac; };
+struct DacCarrier : CustomSX1276Wrapper {
+  int8_t _min_dbm=17, _max_dbm=30, _drive_dbm=2;
+  DacPaLevel _levels[3]={{17,0},{24,50},{30,130}};
+  uint8_t _num_levels=3;
+  const int8_t* _radio_dbm=nullptr;
+  bool _force_rfo=false;
+  int gain=-1;
+  void writeGainControl(uint8_t value) { gain=value; }
+  @DAC_METHODS@
+};
 static void advance(uint32_t ms) { g_mock_millis+=ms; }
 int main() {
   using Result=mesh::RadioParamApplyResult;
@@ -113,6 +154,12 @@ int main() {
     assert(!w._cw_active && w.isInRecvMode() && w._rx_ps_armed);
     assert(w.frequency==909.5f && w.board.after==1 && !w.board.awake && w.chip.callback);
     assert(!w.serviceCarrierWave());
+  }
+  {
+    RadioLibWrapper w; w.setCarrierWave(0,1250); advance(250);
+    assert(w.setTxPower(10) && w.chip.carrier && w.chip.power==10);
+    assert(w.carrierWaveRemainingMillis()==1000);
+    assert(w.setCarrierWave(0,0)==Result::APPLIED);
   }
   // No mutation of packets already transmitting, completed RX, busy or receiving hardware.
   for (int reason : {0,1,2,3}) {
@@ -198,7 +245,78 @@ int main() {
     char small[8]; mesh::handleCarrierWaveCommand(&w,"cw on",small,sizeof(small));
     assert(small[7]==0);
   }
-  puts("CW: transitions, timer rollover, profiles, RF hooks, failure recovery and CLI passed");
+  // Execute SX1276's production FSK entry/LoRa restoration, including the
+  // production external-PA power mapping. Native CW paths above stay covered.
+  for (uint8_t profile : {0,1}) {
+    CustomSX1276Wrapper w;
+    w._cur_dbm=14;
+    assert(w.supportsCarrierWave() && w.setCarrierWave(profile,1250)==Result::APPLIED);
+    assert(w.chip.fsk && w.chip.deviation==0 && !w.chip.ook && w.chip.carrier);
+    assert(w.chip.frequency==(profile ? 911.5f : 909.5f));
+    assert(w.chip.initial_fsk_power==2 && w.chip.power==14 && w.chip.current_limit==120);
+    advance(250);
+    assert(w.setTxPower(10) && w.chip.carrier && w.chip.power==10);
+    assert(w.chip.fsk_starts==1 && w.carrierWaveRemainingMillis()==1000);
+    advance(1000); w.serviceCarrierWave();
+    assert(!w._cw_active && !w.chip.fsk && w.isInRecvMode() && w.frequency==909.5f);
+    assert(w.resets==1 && w.chip.power==10 && !w.board.awake && w.board.after==1);
+  }
+  {
+    DacCarrier w; w._cur_dbm=30;
+    assert(w.setCarrierWave(1,1000)==Result::APPLIED);
+    assert(w.chip.initial_fsk_power==2 && w.chip.power==2 && w.gain==130 && w.chip.carrier);
+    advance(200);
+    assert(w.setTxPower(24) && w.chip.power==2 && w.gain==50 && w.chip.carrier);
+    assert(w.carrierWaveRemainingMillis()==800 && w.chip.fsk_starts==1);
+    assert(w.setCarrierWave(0,0)==Result::APPLIED);
+    assert(w.chip.power==2 && w.gain==50 && !w.chip.fsk && w.resets==1);
+  }
+  {
+    DacCarrier w; w._force_rfo=true; w._drive_dbm=-4;
+    assert(w.setCarrierWave(0,100)==Result::APPLIED);
+    assert(w.chip.rfo && w.chip.power==-4);
+    assert(w.setCarrierWave(0,0)==Result::APPLIED && w.chip.rfo && w.chip.power==-4);
+  }
+  {
+    CustomSX1276Wrapper w; w.deep_supported=false;
+    assert(!w.supportsCarrierWave() && w.setCarrierWave(0,100)==Result::FAILED);
+    assert(!w.chip.fsk_starts);
+  }
+  // Partial FSK entry and current-limit failures restore LoRa without keying.
+  for (int reason : {0,1,2}) {
+    CustomSX1276Wrapper w;
+    if (reason==0) w.chip.fsk_result=-707;
+    if (reason==1) w.chip.limit_result=-705;
+    if (reason==2) w.chip.power_result=-705;
+    assert(w.setCarrierWave(0,100)==Result::FAILED && !w.chip.starts && !w.chip.carrier);
+    w.chip.power_result=0;
+    if (w._cw_active) { advance(100); w.serviceCarrierWave(); }
+    assert(!w._cw_active && !w.chip.fsk && w.isInRecvMode() && !w.board.awake);
+  }
+  {
+    CustomSX1276Wrapper w; w.setCarrierWave(1,1000); w.reset_ok=false;
+    assert(w.setCarrierWave(0,0)==Result::FAILED);
+    assert(w._cw_active && w._cw_stopping && !w.chip.carrier && w.chip.fsk);
+    assert(!w.setTxPower(10)); // recovery cannot accidentally re-key the PA
+    w.reset_ok=true; advance(100); w.serviceCarrierWave();
+    assert(!w._cw_active && !w.chip.fsk && w.isInRecvMode() && w.board.after==1);
+  }
+  for (int reason : {0,1}) {
+    CustomSX1276Wrapper w; w.setCarrierWave(0,1000);
+    if (reason==0) w.chip.power_result=-705;
+    if (reason==1) w.chip.start_result=-705;
+    assert(!w.setTxPower(10) && !w.chip.carrier);
+    w.chip.power_result=0; advance(100); w.serviceCarrierWave();
+    assert(!w._cw_active && !w.chip.fsk && w.isInRecvMode());
+    assert(w._cur_dbm==17 && w.chip.power==17); // failed sweep retains old power
+  }
+  {
+    RadioLibWrapper w; w.setCarrierWave(0,1000);
+    w.chip.start_result=-705;
+    assert(!w.setTxPower(10) && !w.chip.carrier && w.isInRecvMode());
+    assert(w._cur_dbm==17 && w.chip.power==17);
+  }
+  puts("CW: native/SX1276 transitions, fractional CLI, PA sweeps, restoration and fault recovery passed");
 }
 '''
 
@@ -207,11 +325,23 @@ class CarrierWaveTest(unittest.TestCase):
     def test_production_transitions_and_commands(self):
         source = (ROOT/'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         signatures = ('uint8_t RadioLibWrapper::beginReconfigure(',
+                      'bool RadioLibWrapper::setTxPower(',
                       'mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(',
                       'uint32_t RadioLibWrapper::carrierWaveRemainingMillis(',
                       'bool RadioLibWrapper::stopCarrierWave(',
                       'bool RadioLibWrapper::serviceCarrierWave(')
         code = HARNESS.replace('@METHODS@', '\n'.join(method(source, s) for s in signatures))
+        header = (ROOT/'src/helpers/radiolib/RadioLibWrappers.h').read_text()
+        code = code.replace('@NATIVE_HOOKS@', '\n'.join(method(header, s) for s in (
+            'virtual int16_t enterCarrierWave(', 'virtual bool restoreCarrierWaveModem(',
+            'virtual int16_t applyCachedTxPower(')))
+        sx1276 = (ROOT/'src/helpers/radiolib/CustomSX1276Wrapper.h').read_text()
+        code = code.replace('@SX1276_METHODS@', '\n'.join(method(sx1276, s) for s in (
+            'bool supportsCarrierWave(', 'int16_t enterCarrierWave(',
+            'bool restoreCarrierWaveModem(')))
+        dac = (ROOT/'src/helpers/radiolib/DacPaSX1276Wrapper.h').read_text()
+        code = code.replace('@DAC_METHODS@', '\n'.join(method(dac, s) for s in (
+            'int16_t applyCachedTxPower(', 'uint8_t indexForDbm(')))
         with tempfile.TemporaryDirectory() as folder:
             cpp = Path(folder)/'cw.cpp'; exe = Path(folder)/'cw.exe'
             cpp.write_text(code)

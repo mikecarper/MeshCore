@@ -157,6 +157,12 @@ protected:
     return _radio->setOutputPower(dbm);
   }
   virtual bool applyRxBoostedGainMode(bool) { return false; }
+  virtual int16_t enterCarrierWave() { return _radio->transmitDirect(); }
+  // Native-CW radios keep their modem. Reapply cached power in case a meter
+  // sweep failed halfway through; SX127x also rebuilds its LoRa configuration.
+  virtual bool restoreCarrierWaveModem() {
+    return !_dbm_valid || applyCachedTxPower(_cur_dbm) == RADIOLIB_ERR_NONE;
+  }
   // Dual-profile scanning already suspends RXPS. Supported radios can also
   // retain their oscillator across the intervening standby/reconfigure steps.
   // Called only at the safe scan-mode entry/exit boundary, not during a packet.

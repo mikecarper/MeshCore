@@ -89,6 +89,23 @@ uint32_t RadioLibWrapper::getRngSeed() {
 }
 
 bool RadioLibWrapper::setTxPower(int8_t dbm) {
+  if (_cw_active) {
+    if (_cw_stopping) return false;
+    // Permit meter sweeps through the board's normal power/PA calibration.
+    // SX127x's power setter enters standby, so re-key without resetting the
+    // modem or extending the original CW deadline.
+    if (applyCachedTxPower(dbm) != RADIOLIB_ERR_NONE) {
+      stopCarrierWave();
+      return false;
+    }
+    if (_radio->transmitDirect() != RADIOLIB_ERR_NONE) {
+      stopCarrierWave();
+      return false;
+    }
+    _cur_dbm = dbm;
+    _dbm_valid = true;
+    return true;
+  }
   const uint8_t resume_rx = beginReconfigure();
   if (resume_rx > 1) return false;
 
@@ -707,7 +724,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uin
   _board->setRadioTestActive(true);  // service the deadline even without USB
   _board->onBeforeTransmit();
   _cw_board_tx = true;
-  if (_radio->transmitDirect() != RADIOLIB_ERR_NONE) {
+  if (enterCarrierWave() != RADIOLIB_ERR_NONE) {
     stopCarrierWave();  // a failed SPI result does not prove TX stayed off
     return Result::FAILED;
   }
@@ -717,11 +734,13 @@ mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uin
 
 bool RadioLibWrapper::stopCarrierWave() {
   _cw_stopping = true;
-  // finishTransmit clears radio IRQs and enters standby on both supported
-  // families. Deassert external TX even if SPI fails, then try a radio reset.
+  // Deassert external TX even if SPI fails. SX127x must also rebuild its LoRa
+  // modem after FSK direct mode before normal packet work can resume.
   const int16_t status = _radio->finishTransmit();
   if (_cw_board_tx) { _board->onAfterTransmit(); _cw_board_tx = false; }
-  if (status != RADIOLIB_ERR_NONE && !restoreAfterDeepInit()) {
+  const bool restored = status == RADIOLIB_ERR_NONE
+      ? restoreCarrierWaveModem() : restoreAfterDeepInit();
+  if (!restored) {
     _cw_retry_at = static_cast<uint32_t>(millis()) + 100;
     return false;  // hold normal work until stopping the carrier is confirmed
   }
