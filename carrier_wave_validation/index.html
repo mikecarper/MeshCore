@@ -411,6 +411,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sx1276-follow-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SX1276 follow-up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bench-qualifications" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2371,6 +2382,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sx1276-follow-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SX1276 follow-up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bench-qualifications" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2496,6 +2518,25 @@ no outbound packet pending. The observer has no autonomous transmission.</p>
   <code>src/Mesh.cpp</code> and test-file contents; the actual implementation uses
   <code>ota_context_if_active()</code>. This is separate from the CW changes.</li>
 </ul>
+<h2 id="sx1276-follow-up">SX1276 follow-up</h2>
+<p>The SX1276 carrier feature from <a href="https://github.com/mikecarper/MeshCore/pull/11">PR #11</a>
+is included alongside SX1262 and LR1110 support. It switches to FSK with zero
+deviation, applies the board's calibrated TX power, and rebuilds the runtime
+LoRa configuration when stopped. External-PA settings pass through the same
+DAC/drive-power mapping used for packets, including RFO selection.</p>
+<p>The normal TX power command can adjust a running carrier for meter sweeps.
+RadioLib's SX1276 power setter enters standby, so the carrier is restarted
+afterward without extending the deadline. Failed power changes stop the
+carrier and restore the previous cached power.</p>
+<p>Follow-up checks use base <code>9dd9881d520b4b791600a00fff1f8e1436921054</code> plus the
+SX1276 changes. Production-method regression tests cover both profiles,
+zero deviation, external-PA calibration, RFO, power sweeps, timeout, failed
+FSK entry, failed restoration, retry guards, and return to LoRa. The native
+CW paths and existing radio/profile/sleep/PA checks pass as well.
+Both <code>GEPRC_Linkflow_900_repeater</code> (external PA) and
+<code>Heltec_v2_companion_radio_usb</code> firmware builds pass, including size checks.</p>
+<p>SX1276 RF output has not been measured in this follow-up. The physical RF
+results above apply to SX1262 and LR1110.</p>
 <h2 id="bench-qualifications">Bench qualifications</h2>
 <p>The first CW2 request arrived before radio2's existing delayed activation.
 The harness now polls <code>get radio2.status</code> for the active mode before testing.</p>

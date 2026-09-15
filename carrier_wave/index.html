@@ -2309,7 +2309,7 @@
 <h1 id="carrier-wave-rf-checks">Carrier-wave RF checks</h1>
 <p><code>cw</code> and <code>cw2</code> transmit a continuous, unmodulated carrier at the selected
 profile's frequency and the configured TX power. They are available in the
-shared ASCII CLI on SX1262-family and LR1110 builds, including repeaters,
+shared ASCII CLI on SX1276-family, SX1262-family, and LR1110 builds, including repeaters,
 Companions, room servers, and sensors that use that CLI.</p>
 <table>
 <thead>
@@ -2357,6 +2357,11 @@ reception and profile scanning afterward. It rejects entry during a packet
 or a busy radio. Profile retuning waits until the carrier stops; replacement
 or expiry of the active second profile stops its carrier. Nothing about CW
 is saved across reboot.</p>
+<p>The normal <code>set tx &lt;dBm&gt;</code> command also works during CW for meter sweeps. It
+keeps the board's power limits and PA calibration, resumes the carrier after
+changing power, and does not extend the CW timeout. TX power retains its usual
+saved behavior. SX1276 temporarily uses FSK with zero frequency deviation,
+then rebuilds the LoRa configuration before resuming reception.</p>
 <p>Use the local USB or BLE console for immediate replies and manual stopping.
 An on-air CLI reply must wait until the carrier ends because LoRa packets
 cannot transmit during the test.</p>
