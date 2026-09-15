@@ -591,7 +591,7 @@ private:
   void popManifestJob();
   bool loadActiveServeBlock();
   void popServeJob();
-  void sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
+  bool sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
                  uint32_t want_fragments);                  // ask a source for all/selected catalog fragments
   void scheduleQuery(const uint8_t* seeder, const uint8_t* digest);   // jittered + suppressible
   void reDiscover() {

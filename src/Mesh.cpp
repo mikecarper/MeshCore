@@ -413,16 +413,16 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     ota::OtaContext& oc = ota::ota_ctx();
     if (oc.apply_pending) {
       if (oc.apply_at == 0) {
-        oc.apply_at = futureMillis(1500);
-        oc.apply_hard = futureMillis(15000);
-      } else if (millisHasNowPassed(oc.apply_at) &&
+        oc.apply_at = ota::armedDeadline(_ms->getMillis(), 1500);
+        oc.apply_hard = ota::armedDeadline(_ms->getMillis(), 15000);
+      } else if (!hasOutbound() && millisHasNowPassed(oc.apply_at) &&
                  (_mgr->getOutboundTotal() == 0 || millisHasNowPassed(oc.apply_hard))) {
         if (!prepareForOtaReboot()) {
           // A role-specific persistence flush failed or is in bounded
           // backoff. Keep the verified apply armed without hammering storage
           // on every pass through the event loop.
-          oc.apply_at = futureMillis(1000);
-          oc.apply_hard = futureMillis(15000);
+          oc.apply_at = ota::armedDeadline(_ms->getMillis(), 1000);
+          oc.apply_hard = ota::armedDeadline(_ms->getMillis(), 15000);
         } else if (oc.bootloader_apply_pending) {
           ota::ota_reboot_to_bootloader_update();
         } else {
@@ -521,6 +521,13 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
 }
 
 bool Mesh::allowPacketTransmit(const Packet* packet) const {
+#if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
+  // Once the apply drain limit expires, let the active TX finish but decline
+  // new work. Otherwise a continuous queue can either prevent reboot forever
+  // or make the hard deadline cut off a packet that is still on air.
+  const ota::OtaContext* oc = ota::ota_context_if_active();
+  if (oc && oc->apply_pending && oc->apply_at != 0 && millisHasNowPassed(oc->apply_hard)) return false;
+#endif
   // This is an egress guard, separate from the receive-side TempRadio check below. A relay can queue an OTA
   // packet just before its temporary window closes; never let that delayed packet leak onto the normal channel.
   if (packet != NULL && packet->getPayloadType() == PAYLOAD_TYPE_OTA

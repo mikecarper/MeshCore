@@ -924,13 +924,13 @@ void OtaManager::scheduleQuery(const uint8_t* seeder, const uint8_t* digest) {
   }
 }
 
-void OtaManager::sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
+bool OtaManager::sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_t filter_target,
                            uint32_t want_fragments) {
   QueryMsg q;
   memcpy(q.seeder_id, seeder, 4); memcpy(q.set_digest, digest, 4);
   q.filter_target = filter_target; q.want_fragments = want_fragments;
   uint8_t b[24];
-  emit(b, encode_query(b, sizeof(b), q), true);     // FLOODED so neighbours overhear it and suppress
+  return emit(b, encode_query(b, sizeof(b), q), true); // FLOODED so neighbours overhear it and suppress
 }
 
 // User-initiated browse (`ota neighbors`): immediately ask every incomplete/changed source. A complete
@@ -939,16 +939,20 @@ void OtaManager::queryAll() {
   for (uint8_t i = 0; i < _n_src; i++) {
     Source& s = _sources[i];
     if (s.have_catalog) continue;
-    s.query_pending = false;
+    s.query_pending = true;
+    s.query_at = _now_ms;
     s.query_owned = true;
     s.query_retries = 0;
-    s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
+    s.query_retry_at = 0;
     uint32_t want = 0;
     if (s.have_total) {
       uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
       want = full & ~s.have_mask;
     }
-    sendQuery(s.seeder, s.digest, 0, want);
+    if (sendQuery(s.seeder, s.digest, 0, want)) {
+      s.query_pending = false;
+      s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
+    }
   }
 }
 
@@ -1995,14 +1999,15 @@ void OtaManager::loop() {
   for (uint8_t i = 0; i < _n_src; i++) {
     Source& s = _sources[i];
     if (s.query_pending && (int32_t)(_now_ms - s.query_at) >= 0) {
-      s.query_pending = false;
       uint32_t want = 0;
       if (s.have_total) {
         uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
         want = full & ~s.have_mask;
       }
-      sendQuery(s.seeder, s.digest, 0, want);
-      s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
+      if (sendQuery(s.seeder, s.digest, 0, want)) {
+        s.query_pending = false;
+        s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
+      }
     } else if (s.query_owned && !s.have_catalog && !s.query_pending && s.query_retry_at &&
                (int32_t)(_now_ms - s.query_retry_at) >= 0 && s.query_retries < OTA_CATALOG_MAX_RETRY) {
       uint32_t want = 0;
@@ -2010,9 +2015,10 @@ void OtaManager::loop() {
         uint32_t full = s.have_total >= 32 ? UINT32_MAX : ((1UL << s.have_total) - 1);
         want = full & ~s.have_mask;
       }
-      s.query_retries++;
-      sendQuery(s.seeder, s.digest, 0, want);
-      s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
+      if (sendQuery(s.seeder, s.digest, 0, want)) {
+        s.query_retries++;
+        s.query_retry_at = armedDeadline(_now_ms, retryDelay(OTA_CATALOG_RETRY_MS));
+      }
     }
   }
   if (_fstate == VERIFYING_STAGED) {
@@ -2024,13 +2030,13 @@ void OtaManager::loop() {
     // the link and burn the retry cap while fragments are still arriving (mirrors FETCHING + WANT_LEAVES).
     // Give up after a cap of stalled retries so an unreachable mid doesn't pin the single fetch slot forever.
     if (_mf_mask == _loop_last_mfmask) {
-      if (++_mf_retries > OTA_MANIFEST_MAX_RETRY) { failFetch(FETCH_ERROR_MANIFEST_TIMEOUT); return; }
+      if (_mf_retries >= OTA_MANIFEST_MAX_RETRY) { failFetch(FETCH_ERROR_MANIFEST_TIMEOUT); return; }
       GetManifestMsg gm; memcpy(gm.manifest_id, _fid, 4);
       // request only the manifest fragments still missing; 0xFFFF ("send all") until we know frag_total
       gm.want_mask = (_mf_total > 0) ? (uint16_t)(frag_full_mask(_mf_total) & ~_mf_mask) : 0xFFFF;
       if (gm.want_mask == 0) gm.want_mask = 0xFFFF;    // safety: never send an empty request
       uint8_t b[16];
-      emit(b, encode_get_manifest(b, sizeof(b), gm), false);
+      if (emit(b, encode_get_manifest(b, sizeof(b), gm), false)) ++_mf_retries;
     }
     _loop_last_mfmask = _mf_mask;
     return;
@@ -2041,14 +2047,14 @@ void OtaManager::loop() {
     // tick congests the link (and burns the retry cap) while fragments are still streaming in. On a stall,
     // ask for just the missing bitmap (anti-burst); give up (FAILED) after a cap of stalled retries.
     if (_lv_mask == _loop_last_lvmask) {
-      if (++_lv_retries > OTA_LEAVES_MAX_RETRY) { failFetch(FETCH_ERROR_LEAVES_TIMEOUT); return; }
+      if (_lv_retries >= OTA_LEAVES_MAX_RETRY) { failFetch(FETCH_ERROR_LEAVES_TIMEOUT); return; }
       GetLeavesMsg gl; memcpy(gl.manifest_id, _fid, 4);
       gl.want_mask = (_lv_total > 0) ? (uint16_t)(frag_full_mask(_lv_total) & ~_lv_mask) : 0xFFFF;
       if (gl.want_mask == 0) gl.want_mask = 0xFFFF;    // safety: never send an empty request
       OTA_DBG("OTA: GET_LEAVES retry=%u want=%04x (mask=%04x/%u)\n",
               (unsigned)_lv_retries, (unsigned)gl.want_mask, (unsigned)_lv_mask, (unsigned)_lv_total);
       uint8_t b[16];
-      emit(b, encode_get_leaves(b, sizeof(b), gl), false);
+      if (emit(b, encode_get_leaves(b, sizeof(b), gl), false)) ++_lv_retries;
     }
     _loop_last_lvmask = _lv_mask;
     return;

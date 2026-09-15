@@ -419,6 +419,9 @@ OTA on either radio profile. `set ota.speed 1` restores the previous pace.
 Ordinary chat, node adverts, and USB/WiFi source transfers keep their timing.
 Local verification of a staged image and leaf comparisons keep their normal
 maintenance rate even when LoRa pacing is slow.
+If the local transmit queue cannot accept a catalog, manifest, or leaf request,
+OTA keeps it pending without consuming a network retry. Successfully queued
+requests that receive no answer still have bounded retries.
 
 `ota config speed 0.5` is an equivalent setter. `ota config speed` and
 `ota speed` read the current factor; the `ota config` summary also includes it.

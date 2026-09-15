@@ -4533,6 +4533,61 @@ TEST(OtaTransfer, ManifestGiveUpAfterRetries) {
   EXPECT_EQ(client.wanted(), 0u);
 }
 
+TEST(OtaTransfer, MetadataRetryLimitsDoNotCountRejectedQueueAdmission) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, manifest));
+  for (bool leaves : {false, true}) {
+    OtaManager client;
+    OtaStoreRam<4096> store;
+    GatedCapture sent;
+    client.begin(SIM_TARGET_ID, gated_capture_send, &sent);
+    client.set_fetch_store(&store);
+    ASSERT_EQ(client.pull(manifest.merkle_root, manifest.target_id, leaves), OtaManager::PULL_STARTED);
+    if (leaves) {
+      deliver_manifest_fragment(client, manifest.merkle_root, 0, manifest.manifest_start, OTA_MF_FRAG);
+      deliver_manifest_fragment(client, manifest.merkle_root, 1, manifest.manifest_start + OTA_MF_FRAG,
+                                (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+    }
+    const auto waiting = leaves ? OtaManager::WANT_LEAVES : OtaManager::WANT_MANIFEST;
+    ASSERT_EQ(client.fetchState(), waiting);
+    for (unsigned i = 0; i < 100; ++i) { client.set_clock(i * 1000); client.loop(); }
+    ASSERT_EQ(client.fetchState(), waiting);
+    EXPECT_TRUE(sent.items.empty());
+    sent.accept = true;
+    client.loop();
+    ASSERT_EQ(sent.items.size(), 1u);
+    EXPECT_EQ(ota_msg_type(sent.items[0].data(), sent.items[0].size()), leaves ? OTA_GET_LEAVES : OTA_GET_MANIFEST);
+    for (unsigned i = 0; i < 21; ++i) client.loop(); // actual unanswered sends remain bounded
+    EXPECT_EQ(client.fetchState(), OtaManager::FAILED);
+  }
+}
+
+TEST(OtaTransfer, CatalogRetriesRemainAvailableAfterQueueBackpressure) {
+  for (bool manual : {false, true}) {
+    OtaManager client;
+    GatedCapture sent;
+    client.begin(SIM_TARGET_ID, gated_capture_send, &sent);
+    client.set_archive_interest(true);
+    AdvMsg adv{};
+    adv.seeder_id[0] = 1; adv.n_motas = 1;
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    client.on_message(wire, encode_adv(wire, sizeof wire, adv));
+    if (manual) client.queryAll();
+    for (unsigned i = 1; i <= 10; ++i) { client.set_clock(i * OTA_CATALOG_RETRY_MS); client.loop(); }
+    EXPECT_TRUE(sent.items.empty());
+    sent.accept = true;
+    client.loop();
+    ASSERT_EQ(sent.items.size(), 1u);
+    sent.accept = false;
+    for (unsigned i = 11; i <= 20; ++i) { client.set_clock(i * OTA_CATALOG_RETRY_MS); client.loop(); }
+    EXPECT_EQ(sent.items.size(), 1u);
+    sent.accept = true;
+    client.loop();
+    ASSERT_EQ(sent.items.size(), 2u);
+    EXPECT_EQ(ota_msg_type(sent.items.back().data(), sent.items.back().size()), OTA_QUERY);
+  }
+}
+
 // A receiver never becomes a source, either while fetching or after completion.
 TEST(OtaTransfer, ReceiverDoesNotReSeed) {
   g_q.clear();

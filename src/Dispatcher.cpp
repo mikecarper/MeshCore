@@ -356,6 +356,12 @@ void Dispatcher::loop() {
       // arriving during backoff before asking to retune; otherwise BUSY can
       // keep the retry waiting forever on an unread RxDone interrupt.
       if (isDualRadioActive()) checkRecv();
+      // A cancelled or expired packet must retire even if the chip never
+      // becomes available for another retune (including an armed OTA reboot).
+      if (!isPacketRadioCurrent(outbound) || !allowPacketTransmit(outbound)) {
+        failOutboundTransmit();
+        return;
+      }
       if (!millisHasNowPassed(outbound_radio_retry_at)) return;
       const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile,
           outbound->radio_reply && outbound->radio_reply_force);
@@ -816,7 +822,11 @@ void Dispatcher::checkSend() {
   cad_busy_start = 0;  // reset busy state
   profile_cad_busy[pending ? pending->radio_profile : 0] = 0;
 
-  outbound = _mgr->getNextOutbound(_ms->getMillis());
+  // Retuning and CAD can advance the clock. Keep the selection timestamp so
+  // a newly due higher-priority packet cannot skip its own profile, airtime,
+  // and OTA pacing checks. A manager may also expire/reorder work on peek.
+  if (pending && _mgr->peekNextOutbound(now) != pending) return;
+  outbound = _mgr->getNextOutbound(now);
   if (outbound) {
     outbound_radio_retry_pending = false;
     outbound_radio_retry_used = false;

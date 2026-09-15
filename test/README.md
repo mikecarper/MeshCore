@@ -177,6 +177,12 @@ does not reflect the GoogleTest count -- run the built binary directly
   `test_trace_retry` checks both profile copies, stable dual-profile airtime, and
   ordinary traffic during OTA pacing; `test_packet_manager` checks that intentional
   pacing survives stale expiry without erasing prior congestion age.
+- OTA delivery: `test_ota` keeps rejected queue admissions out of metadata retry
+  limits; `test_trace_retry` advances the clock during CAD to catch selection and
+  pacing bypasses and cancels retries while the chip stays BUSY.
+  `python3 -B test/test_ota_apply_delivery.py -v` executes the
+  production apply/TX guards with a reply on air, a busy queue, failed persistence,
+  and clock rollover. It checks application and bootloader reboot paths.
 - To add a suite: create `test/test_<name>/test_<name>.cpp` with a `main()`, and
   add any host-only source it links to the `native` env's `build_src_filter` in
   `platformio.ini` (header-only code needs no source entry). No other wiring.

@@ -168,7 +168,7 @@ class CompanionContactSleepContractTest(unittest.TestCase):
         guard_at = maintenance.index("prepareForOtaReboot()")
         apply_at = maintenance.index("ota::ota_reboot_to_apply()")
         self.assertLess(guard_at, apply_at)
-        self.assertIn("oc.apply_at = futureMillis(1000)", maintenance)
+        self.assertIn("oc.apply_at = ota::armedDeadline(_ms->getMillis(), 1000)", maintenance)
 
         self.assertIn("bool prepareForOtaReboot() override;", header)
         guard = function_body(mesh, "bool MyMesh::prepareForOtaReboot()")

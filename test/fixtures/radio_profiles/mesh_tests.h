@@ -5,6 +5,7 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
   uint8_t selected = 0;
   int busy_profile = -1;
   bool fail_next_send = false;
+  bool hold_prepare_busy = false;
   bool carrier = false, carrier_on_receive = false;
   unsigned carrier_services = 0, recoveries = 0;
   bool isCarrierWaveActive() const override { return carrier; }
@@ -12,6 +13,8 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
   void loop() override { ++carrier_services; }
   bool recoverRadio(bool) override { ++recoveries; return true; }
   uint32_t estimated_airtime = 10;
+  TraceTestClock* sensing_clock = nullptr;
+  uint32_t sensing_delay = 0;
   bool distinguish_airtime = false;
   uint32_t getProfileAirtime(uint8_t profile, int bytes, uint8_t cr = 0) override {
     return distinguish_airtime ? (profile ? 70 : 900)
@@ -35,12 +38,16 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
     return prepareTransmitProfile(p, false);
   }
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p, bool reply_rx_override) override {
+    if (hold_prepare_busy) return mesh::RadioParamApplyResult::BUSY;
     if (!incoming.empty()) return mesh::RadioParamApplyResult::BUSY;
     if (!config.canTransmit(p, reply_rx_override)) return mesh::RadioParamApplyResult::FAILED;
     selected = p; cr = config.params(p).cr;
     return mesh::RadioParamApplyResult::APPLIED;
   }
-  bool isReceiving() override { return selected == busy_profile; }
+  bool isReceiving() override {
+    if (sensing_clock) sensing_clock->now += sensing_delay;
+    return selected == busy_profile;
+  }
   bool isReceivingPassive(int) override { return isReceiving(); }
   bool startSendRaw(const uint8_t* bytes, int size) override {
     if (fail_next_send) { fail_next_send = false; return false; }
@@ -67,6 +74,10 @@ class DualProfileTestMesh : public RetryCodingRateMesh {
   using RetryCodingRateMesh::tryParsePacket;
   bool cross_filter_allows = true;
   float ota_speed = 1.0f;
+  bool suppress_tx = false;
+  bool allowPacketTransmit(const mesh::Packet* packet) const override {
+    return !suppress_tx && RetryCodingRateMesh::allowPacketTransmit(packet);
+  }
   float getOtaSpeedFactor() const override { return ota_speed; }
   unsigned cross_filter_calls = 0;
   bool allowRadioProfileCross(const mesh::Packet*) override {
@@ -169,6 +180,73 @@ TEST_F(DualProfileTest, OtaAirtimeFollowsParticipatingProfilesInsteadOfScannerVi
   EXPECT_EQ(node.getOtaPacketAirtime(), 970u);
   radio.config.secondary.mode = mesh::RadioProfileMode::Off;
   EXPECT_EQ(node.getOtaPacketAirtime(), 900u);
+}
+
+TEST_F(DualProfileTest, PacketBecomingReadyDuringCadCannotSkipItsOwnChannelCheck) {
+  node.flood_attempts = 0;
+  node.tempRadioActive = true;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  auto* normal = node.obtainNewPacket();
+  *normal = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  normal->tx_radio = mesh::RADIO_TX_PRIMARY;
+  ASSERT_TRUE(node.sendPacket(normal, 1));
+  auto* ota = node.obtainNewPacket();
+  *ota = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  ota->tx_radio = mesh::RADIO_TX_SECONDARY;
+  ASSERT_TRUE(node.sendPacket(ota, 0, 20));
+  radio.busy_profile = 1;
+  radio.sensing_clock = &clock;
+  radio.sensing_delay = 50; // secondary becomes ready during primary's clear check
+  tick();
+  ASSERT_EQ(radio.transmissions.size(), 1u);
+  EXPECT_EQ(radio.transmissions.back(), 0u);
+  radio.complete = true;
+  tick(); tick();
+  EXPECT_EQ(radio.transmissions.size(), 1u); // busy secondary still must wait
+  radio.busy_profile = -1;
+  tick(1000);
+  ASSERT_EQ(radio.transmissions.size(), 2u);
+  EXPECT_EQ(radio.transmissions.back(), 1u);
+}
+
+TEST_F(DualProfileTest, CadCannotPullPacedOtaAheadOfItsQuietDeadline) {
+  node.flood_attempts = 0;
+  node.tempRadioActive = true;
+  node.ota_speed = 0.05f;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  ASSERT_NE(queue(PAYLOAD_TYPE_OTA), nullptr);
+  tick(); radio.complete = true; tick(100); // 1900 ms quiet, ending at 2001
+  auto* ota = node.obtainNewPacket();
+  *ota = makeFloodPacket(PAYLOAD_TYPE_OTA);
+  ota->tx_radio = mesh::RADIO_TX_SECONDARY;
+  ASSERT_TRUE(node.sendPacket(ota, 0));
+  auto* normal = node.obtainNewPacket();
+  *normal = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  normal->tx_radio = mesh::RADIO_TX_PRIMARY;
+  ASSERT_TRUE(node.sendPacket(normal, 1));
+  radio.sensing_clock = &clock;
+  radio.sensing_delay = 150; // longer than OTA's short queue deferral
+  tick();
+  ASSERT_EQ(radio.transmissions.size(), 2u);
+  EXPECT_EQ(radio.transmissions.back(), 0u); // ordinary packet, not early OTA
+  radio.complete = true; tick();
+  radio.sensing_delay = 0;
+  tick(100);
+  EXPECT_EQ(radio.transmissions.size(), 2u);
+}
+
+TEST_F(DualProfileTest, CancelledRadioRetryDoesNotWaitForBusyHardware) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(queue(), nullptr);
+  tick(); // failed start retains the packet for one radio retry
+  ASSERT_EQ(manager.getFreeCount(), 39);
+  node.suppress_tx = true; // OTA apply or a permission change cancels pending work
+  radio.hold_prepare_busy = true;
+  tick(1000);
+  EXPECT_EQ(manager.getFreeCount(), 40);
+  EXPECT_TRUE(radio.transmissions.empty());
 }
 
 TEST_F(DualProfileTest, CrossFilterKeepsPrimaryTransmissionAndAvoidsCopyAllocation) {
