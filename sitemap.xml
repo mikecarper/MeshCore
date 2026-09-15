@@ -69,6 +69,10 @@
          <lastmod>2026-09-15</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/double_frequency_v4_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/esp32_memory_budget/</loc>
          <lastmod>2026-09-15</lastmod>
     </url>
@@ -94,6 +98,14 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/flood_filtering/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/four_fixed_tx_dwell_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/four_fixed_tx_single_pass_validation/</loc>
          <lastmod>2026-09-15</lastmod>
     </url>
     <url>
@@ -149,6 +161,10 @@
          <lastmod>2026-09-15</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/mixed_sf_bw_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/nimble_companion_trial/</loc>
          <lastmod>2026-09-15</lastmod>
     </url>
@@ -201,6 +217,14 @@
          <lastmod>2026-09-15</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/pair_4p6_300us_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/pair_preamble32_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/payloads/</loc>
          <lastmod>2026-09-15</lastmod>
     </url>
@@ -214,6 +238,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/qr_codes/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/radio_chirp_math_validation/</loc>
          <lastmod>2026-09-15</lastmod>
     </url>
     <url>
@@ -242,6 +270,46 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/role_feature_switches/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/s3_memory_soak_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/separated_radio_modulation_cache_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf10_10_vs_100hz_full_sample_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf10_10hz_cr_detour_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf10_full_retune_twice_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf10_nrf52_double_write_settling_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf10_rollback_failure_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf125_settling_limits_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf5_250_dwell_validation/</loc>
+         <lastmod>2026-09-15</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/sf6_125_settling_validation/</loc>
          <lastmod>2026-09-15</lastmod>
     </url>
     <url>
