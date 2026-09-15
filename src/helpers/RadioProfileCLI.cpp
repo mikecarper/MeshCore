@@ -47,6 +47,10 @@ bool parsePreamble(const char* s, uint16_t& result) {
 bool validReplySetting(uint8_t value) {
   return (value >= 0xb0 && value <= 0xb4) || value == 0xba || value == 0xbb;
 }
+uint32_t remainingMillis(uint32_t end, uint32_t now) {
+  const int32_t remaining = (int32_t)(end - now);
+  return remaining > 0 ? (uint32_t)remaining : 0;
+}
 }
 
 bool RadioProfileCLI::readImage(const char* path, uint8_t* bytes, size_t size) {
@@ -194,29 +198,36 @@ void RadioProfileCLI::loop() {
     else temp_remaining_ms_ -= elapsed;
   }
   const uint32_t epoch = rtc_ ? rtc_->getCurrentTime() : 0;
+  // Expire every old lease before starting its successor. Slot insertion order
+  // must not let an expired entry clear a session started earlier in this loop.
   for (auto& s : schedules_) {
-    if (!s.active) continue;
-    if (s.temporary) {
-      if (elapsed >= s.remaining_ms || epoch >= s.end) {
-        if (s.started) { temp_active_ = false; temp_remaining_ms_ = 0; }
-        s = {}; continue;
-      }
-      s.remaining_ms -= elapsed;
+    if (s.active && s.temporary && (!remainingMillis(s.end_ms, now) || epoch >= s.end)) {
+      if (s.started) { temp_active_ = false; temp_remaining_ms_ = 0; }
+      s = {};
     }
-    if (s.started || epoch < s.start) continue;
-    if (s.temporary) {
-      if (temp_active_ || temp_pending_) continue;
-      temporary_ = s.config;
-      temp_remaining_ms_ = s.remaining_ms;
-      const uint32_t epoch_left = (s.end - epoch) * 1000UL;
-      if (temp_remaining_ms_ > epoch_left) temp_remaining_ms_ = epoch_left;
-      temp_active_ = true; s.started = true;
-    } else if (save(s.config, primary_preamble_, cross_)) {
-      saved_ = s.config; s = {};
-    } else {
-      // Avoid a flash write on every main-loop iteration after a storage fault.
-      s.start = epoch <= UINT32_MAX - 60 ? epoch + 60 : UINT32_MAX;
+  }
+  schedule_retry_ms_ = elapsed >= schedule_retry_ms_ ? 0 : schedule_retry_ms_ - elapsed;
+  while (!schedule_retry_ms_) {
+    Schedule* next = nullptr;
+    for (auto& s : schedules_) {
+      if (s.active && !s.temporary && epoch >= s.start && (!next || s.start < next->start)) next = &s;
     }
+    if (!next) break;
+    if (!save(next->config, primary_preamble_, cross_)) {
+      // Keep the requested time and order intact. A failed earlier entry must
+      // not be retried after a later one and overwrite the newer settings.
+      schedule_retry_ms_ = 60000;
+      break;
+    }
+    saved_ = next->config; *next = {};
+  }
+  for (auto& s : schedules_) {
+    if (!s.active || !s.temporary || s.started || epoch < s.start || temp_active_ || temp_pending_) continue;
+    temporary_ = s.config;
+    temp_remaining_ms_ = remainingMillis(s.end_ms, now);
+    const uint32_t epoch_left = (s.end - epoch) * 1000UL;
+    if (temp_remaining_ms_ > epoch_left) temp_remaining_ms_ = epoch_left;
+    temp_active_ = true; s.started = true;
   }
   publish();
 }
@@ -408,7 +419,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     if (base && !save({}, primary_preamble_, cross_)) {
       snprintf(reply, capacity, "Error: settings could not be saved"); return true;
     }
-    if (base) saved_ = {};
+    if (base) { saved_ = {}; schedule_retry_ms_ = 0; }
     temp_pending_ = temp_active_ = false; temp_remaining_ms_ = 0;
     for (auto& s : schedules_) if (base || s.temporary) s = {};
     publish_pending_ = true; publish_after_ms_ = millis() + 2000;
@@ -422,6 +433,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     }
     const unsigned first = scheduled_temp ? 4 : 0;
     if (verb == Delete) {
+      if (!scheduled_temp) schedule_retry_ms_ = 0;
       for (unsigned i = 0; i < 4; ++i) if (!index || index == i + 1) {
         if (schedules_[first+i].started) {
           temp_active_ = false; temp_remaining_ms_ = 0;
@@ -442,7 +454,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     const auto& s = schedules_[first+index-1];
     if (!s.active) snprintf(reply, capacity, "> off");
     else {
-      formatConfig(reply, capacity, s.config, s.temporary, s.remaining_ms);
+      formatConfig(reply, capacity, s.config, s.temporary, remainingMillis(s.end_ms, millis()));
       const size_t used = strlen(reply);
       if (used < capacity) snprintf(reply+used, capacity-used, "; @%lu-%lu", (unsigned long)s.start, (unsigned long)s.end);
     }
@@ -495,7 +507,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     for (unsigned i = 0; i < 4; ++i) if (!schedules_[first+i].active) {
       auto& s = schedules_[first+i]; s = {};
       s.config = config; s.start = start; s.end = end; s.temporary = scheduled_temp;
-      s.remaining_ms = scheduled_temp ? (end-epoch)*1000UL : 0; s.active = true;
+      s.end_ms = scheduled_temp ? millis() + (end-epoch)*1000UL : 0; s.active = true;
       snprintf(reply, capacity, "OK - %s %u queued, preamble=%u", key, i+1, preview.preamble(1, 32));
       appendChirpWarning(reply, capacity, preview); return true;
     }

@@ -23,6 +23,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/TempRadioLeaseDeadline.h>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
@@ -53,7 +54,9 @@ struct Board { int reboots = 0; void reboot() { ++reboots; } };
 struct CLI {
   Board board; Board* getBoard() { return &board; }
   CLI& radioProfiles() { return *this; }
-  bool savePrimaryPreamble(uint16_t) { return true; }
+  bool preamble_save_success = true;
+  unsigned preamble_saves = 0;
+  bool savePrimaryPreamble(uint16_t) { ++preamble_saves; return preamble_save_success; }
 };
 struct Radio { uint32_t last_rx = 0; uint32_t getLastRecvMillis() { return last_rx; } };
 struct Barrier { bool held = false; bool waiting() const { return held; } void clear() { held = false; } };
@@ -92,6 +95,7 @@ public:
   uint32_t scheduled_temp_radio_end_time = 0, scheduled_temp_radio_end_check_at = 0;
   bool scheduled_temp_radio_end_check_final = false;
   uint32_t scheduled_radio_retry_at = 0;
+  uint32_t scheduled_radio_save_retry_at = 0;
   uint8_t scheduled_radio_retry_failures = 0;
   bool pending_self_advert = false, pending_self_advert_flood = false;
   uint32_t pending_self_advert_delay = 0;
@@ -153,6 +157,41 @@ static void startTemp(MyMesh& m, int minutes) {
   assert(m.temp_radio_applied);
 }
 int main() {
+  for (bool rollover : {false, true}) {
+    MyMesh m;
+    if (rollover) { now_ms = UINT32_MAX - 30000; m.last_millis = now_ms; }
+    char reply[160];
+    m.addScheduledRadioParams(false, 912.5, 250, 5, 5, m.rtc.now + 2, 0, reply, 48);
+    assert(!strncmp(reply, "OK", 2));
+    m._cli.preamble_save_success = false;
+    m.advance(2); m.servicePostMeshLoop();
+    assert(m._cli.preamble_saves == 1 && m.saves == 0);
+    assert(m.next_scheduled_radio_check_at == m.scheduled_radio_save_retry_at);
+    assert(m._prefs.freq == 909.5f);
+    for (unsigned i = 0; i < 10; ++i) m.servicePostMeshLoop();
+    assert(m._cli.preamble_saves == 1); // storage backoff survives the scheduler's cleanup
+    m._cli.preamble_save_success = true;
+    m.advance(59); m.servicePostMeshLoop();
+    assert(m._cli.preamble_saves == 1);
+    m.advance(1); m.servicePostMeshLoop();
+    assert(m._cli.preamble_saves == 2 && m.saves == 1);
+    assert(m._prefs.freq == 912.5f && !m.saved_radio_apply_pending);
+  }
+  { // Backing off a failed permanent save must not delay temporary start/end.
+    MyMesh m;
+    char reply[160];
+    m.addScheduledRadioParams(false, 912.5, 250, 5, 5, m.rtc.now + 2, 0, reply, 48);
+    m.addScheduledRadioParams(true, 911.5, 250, 5, 5, m.rtc.now + 30, m.rtc.now + 90, reply, 80);
+    m._cli.preamble_save_success = false;
+    m.advance(2); m.servicePostMeshLoop();
+    assert(m._cli.preamble_saves == 1);
+    m.advance(28); m.servicePostMeshLoop();
+    assert(m.temp_radio_applied && m.radio_timing.isTemporary());
+    assert(m._cli.preamble_saves == 1);
+    m.advance(60); m.servicePostMeshLoop();
+    assert(!m.temp_radio_applied && !m.radio_timing.isTemporary());
+    assert(m._prefs.freq == 909.5f);
+  }
   { // Pending schedules do not change current timings, even on an apply failure.
     MyMesh m;
     const uint32_t normal_local = m.next_local_advert;
@@ -283,7 +322,7 @@ int main() {
     m.advance(23 * HOUR); m.servicePostMeshLoop();
     assert(m._cli.board.reboots == 1);
   }
-  puts("13 production scheduler/watchdog/advert scenarios passed");
+  puts("Production scheduler, storage-backoff, watchdog and advert scenarios passed");
 }
 '''
 

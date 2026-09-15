@@ -554,6 +554,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   unsigned long scheduled_temp_radio_end_check_at;
   bool scheduled_temp_radio_end_check_final;
   unsigned long scheduled_radio_retry_at;
+  unsigned long scheduled_radio_save_retry_at;
   uint8_t scheduled_radio_retry_failures;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
   int  matching_peer_indexes[MAX_CLIENTS];

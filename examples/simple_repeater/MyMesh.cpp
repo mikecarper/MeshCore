@@ -3411,6 +3411,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   scheduled_temp_radio_end_check_at = 0;
   scheduled_temp_radio_end_check_final = false;
   scheduled_radio_retry_at = 0;
+  scheduled_radio_save_retry_at = 0;
   scheduled_radio_retry_failures = 0;
   memset(scheduled_radio_settings, 0, sizeof(scheduled_radio_settings));
   _logging = false;
@@ -4133,9 +4134,11 @@ void MyMesh::refreshScheduledRadioState() {
   next_scheduled_radio_time = 0;
   scheduled_temp_radio_started = false;
   scheduled_temp_radio_end_time = 0;
+  bool has_permanent_schedule = false;
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
     if (!setting.active) continue;
+    if (!setting.temporary) has_permanent_schedule = true;
 
     uint32_t deadline = setting.start_time;
     if (setting.temporary && setting.started) {
@@ -4152,17 +4155,23 @@ void MyMesh::refreshScheduledRadioState() {
   const uint32_t now = (next_scheduled_radio_time != 0 || scheduled_temp_radio_end_time != 0)
       ? getRTCClock()->getCurrentTime()
       : 0;
+  if (!has_permanent_schedule) scheduled_radio_save_retry_at = 0;
   if (next_scheduled_radio_time != 0) {
-    uint32_t delay_ms = 0;
-    if (next_scheduled_radio_time > now) {
-      uint32_t delay_secs = next_scheduled_radio_time - now;
-      // millis timers are only unambiguous for half of their rollover range.
-      // A minute checkpoint handles RTC corrections without per-loop RTC reads
-      // or table scans, while bounding a forward clock-sync delay to one minute.
-      if (delay_secs > SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS) {
-        delay_secs = SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS;
-      }
-      delay_ms = delay_secs * 1000UL;
+    // Storage retries delay only permanent saves. Cache the first actionable
+    // deadline so a failed save neither spins the main loop nor blocks a
+    // temporary window. Keep the minute checkpoints for RTC corrections.
+    uint32_t delay_ms = SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS * 1000UL;
+    const int32_t save_remaining_ms = (int32_t)(scheduled_radio_save_retry_at - millis());
+    const uint32_t save_wait_ms = scheduled_radio_save_retry_at && save_remaining_ms > 0
+        ? (uint32_t)save_remaining_ms : 0;
+    for (const auto& setting : scheduled_radio_settings) {
+      if (!setting.active) continue;
+      const uint32_t deadline = setting.temporary && setting.started ? setting.end_time : setting.start_time;
+      uint32_t seconds = deadline > now ? deadline - now : 0;
+      if (seconds > SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS) seconds = SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS;
+      uint32_t candidate_ms = seconds * 1000UL;
+      if (!setting.temporary && save_wait_ms > candidate_ms) candidate_ms = save_wait_ms;
+      if (candidate_ms < delay_ms) delay_ms = candidate_ms;
     }
     next_scheduled_radio_check_at = futureMillis(delay_ms);
   } else {
@@ -4293,6 +4302,7 @@ void MyMesh::clearScheduledRadioSetting(int idx, bool restore_if_started) {
       && scheduled_radio_settings[idx].active
       && scheduled_radio_settings[idx].temporary
       && scheduled_radio_settings[idx].started;
+  if (!scheduled_radio_settings[idx].temporary) scheduled_radio_save_retry_at = 0;
   scheduled_radio_settings[idx].active = false;
   scheduled_radio_settings[idx].started = false;
   scheduled_radio_settings[idx].hard_end_uptime_millis = 0;
@@ -4629,7 +4639,7 @@ void MyMesh::processScheduledRadioSettings() {
     }
   }
 
-  while (schedule_due) {
+  while (schedule_due && (!scheduled_radio_save_retry_at || millisHasNowPassed(scheduled_radio_save_retry_at))) {
     int due_idx = -1;
     for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
       const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
@@ -4647,9 +4657,11 @@ void MyMesh::processScheduledRadioSettings() {
 
     ScheduledRadioSetting& setting = scheduled_radio_settings[due_idx];
     if (!_cli.radioProfiles().savePrimaryPreamble(setting.preamble)) {
-      scheduled_radio_retry_at = futureMillis(60000);
+      scheduled_radio_save_retry_at = futureMillis(60000);
+      if (!scheduled_radio_save_retry_at) scheduled_radio_save_retry_at = 1;
       break;
     }
+    scheduled_radio_save_retry_at = 0;
     _prefs.freq = setting.freq;
     _prefs.bw = setting.bw;
     _prefs.sf = setting.sf;

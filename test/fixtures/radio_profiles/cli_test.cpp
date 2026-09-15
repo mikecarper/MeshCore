@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 
 struct Clock : mesh::RTCClock {
   uint32_t epoch = 1700000000;
@@ -42,7 +43,154 @@ struct Fixture {
   }
   void advance(uint32_t ms, bool epoch=true) { g_mock_millis+=ms; if(epoch)clock.epoch+=ms/1000; cli.loop(); }
 };
-int main() {
+static void permanentScheduleOrder() {
+  for (bool fail_first_save : {false, true}) {
+    Fixture f;
+    char command[160];
+    snprintf(command, sizeof(command), "set radioat2 912.5,500,8,5,rx,%lu,80",
+        (unsigned long)(f.clock.epoch + 120));
+    f.cmd(command);
+    snprintf(command, sizeof(command), "set radioat2 910.5,500,8,5,rx,%lu,80",
+        (unsigned long)(f.clock.epoch + 60));
+    f.cmd(command);
+    f.fs.fail_write = fail_first_save;
+    f.advance(120000); // both are due after sleep or a forward clock correction
+    if (fail_first_save) {
+      f.fs.fail_write = false;
+      f.advance(60000);
+    }
+    assert(f.radio.p.secondary.params.freq == 912.5f);
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &reboot, &f.clock);
+    assert(reboot.p.secondary.params.freq == 912.5f);
+    assert(!strcmp(f.cmd("get radioat2 all"), "> slots: "));
+  }
+}
+
+static void adjacentTemporarySchedules() {
+  for (bool later_first : {false, true}) {
+    Fixture f;
+    const uint32_t epoch = f.clock.epoch;
+    for (unsigned i = 0; i < 2; ++i) {
+      const bool later = later_first ? i == 0 : i == 1;
+      char command[160];
+      snprintf(command, sizeof(command), "set tempradioat2 %.1f,500,8,5,rxtx,%lu,%lu,80",
+          later ? 912.5 : 910.5, (unsigned long)(epoch + (later ? 60 : 1)),
+          (unsigned long)(epoch + (later ? 120 : 60)));
+      f.cmd(command);
+    }
+    f.advance(1000);
+    assert(f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq == 910.5f);
+    f.advance(59000);
+    assert(f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq == 912.5f);
+    f.advance(59000);
+    assert(f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq == 912.5f);
+    f.advance(1000);
+    assert(!f.radio.p.enabled());
+  }
+}
+
+static void scheduledLeaseStartsAtCommandTime() {
+  for (bool rollover : {false, true}) {
+    Fixture f;
+    if (rollover) { g_mock_millis = UINT32_MAX - 30000; f.cli.loop(); }
+    g_mock_millis += 10000; f.clock.epoch += 10; // command arrives between loop calls
+    char command[160];
+    snprintf(command, sizeof(command), "set tempradioat2 910.5,500,8,5,rx,%lu,%lu,80",
+        (unsigned long)(f.clock.epoch + 1), (unsigned long)(f.clock.epoch + 60));
+    f.cmd(command);
+    f.advance(1000);
+    assert(f.radio.p.secondary_temporary);
+    f.advance(49000);
+    assert(f.radio.p.secondary_temporary); // idle time before the command is not charged to it
+    f.advance(9000);
+    assert(f.radio.p.secondary_temporary);
+    f.advance(1000);
+    assert(!f.radio.p.enabled());
+  }
+}
+
+static void schedulePermutations() {
+  int order[] = {0, 1, 2, 3};
+  do {
+    for (bool temporary : {false, true}) for (bool late : {false, true}) {
+      Fixture f;
+      const uint32_t epoch = f.clock.epoch;
+      for (int entry : order) {
+        char command[160];
+        if (temporary) {
+          snprintf(command, sizeof(command), "set tempradioat2 %.1f,500,8,5,rx,%lu,%lu,80",
+              910.5 + entry, (unsigned long)(epoch + 1 + entry * 60),
+              (unsigned long)(epoch + 61 + entry * 60));
+        } else {
+          snprintf(command, sizeof(command), "set radioat2 %.1f,500,8,5,rx,%lu,80",
+              910.5 + entry, (unsigned long)(epoch + (entry + 1) * 60));
+        }
+        f.cmd(command);
+      }
+      if (late) {
+        f.advance(temporary ? 181000 : 240000);
+        assert(f.radio.p.secondary.params.freq == 913.5f);
+      } else {
+        for (int entry = 0; entry < 4; ++entry) {
+          f.advance(temporary && entry == 0 ? 1000 : 60000);
+          assert(f.radio.p.secondary.params.freq == 910.5f + entry);
+        }
+      }
+      assert(f.radio.p.secondary_temporary == temporary);
+      if (temporary) { f.advance(60000); assert(!f.radio.p.enabled()); }
+    }
+  } while (std::next_permutation(order, order + 4));
+}
+
+static void storageBackoffDoesNotDelayTemporaryWindows() {
+  Fixture f;
+  f.cmd("set radio2 910.5,500,8,5,rx,80"); f.advance(2000);
+  char command[160];
+  snprintf(command, sizeof(command), "set radioat2 912.5,500,8,5,rx,%lu,80", (unsigned long)(f.clock.epoch + 2));
+  f.cmd(command);
+  snprintf(command, sizeof(command), "set tempradioat2 911.5,500,8,5,rx,%lu,%lu,80",
+      (unsigned long)(f.clock.epoch + 30), (unsigned long)(f.clock.epoch + 90));
+  f.cmd(command);
+  f.fs.fail_write = true;
+  f.advance(2000);
+  f.advance(28000);
+  assert(f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq == 911.5f);
+  f.advance(60000);
+  assert(!f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq == 910.5f);
+  f.fs.fail_write = false;
+  f.advance(60000);
+  assert(f.radio.p.secondary.params.freq == 912.5f);
+}
+
+static void scheduledSaveFailureKeepsOriginalTimes() {
+  Fixture f;
+  char command[160];
+  const uint32_t start = f.clock.epoch + 60;
+  snprintf(command, sizeof(command), "set radioat2 910.5,500,8,5,rx,%lu,80", (unsigned long)start);
+  f.cmd(command);
+  f.fs.fail_write = true;
+  f.advance(60000);
+  char timestamp[32]; snprintf(timestamp, sizeof(timestamp), "@%lu", (unsigned long)start);
+  assert(strstr(f.cmd("get radioat2 all"), timestamp));
+  f.fs.fail_write = false;
+  f.advance(59000);
+  assert(!f.radio.p.enabled());
+  f.advance(1000);
+  assert(f.radio.p.secondary.params.freq == 910.5f);
+}
+
+int main(int argc, char** argv) {
+  if (argc == 2) {
+    if (!strcmp(argv[1], "permanent_order")) permanentScheduleOrder();
+    else if (!strcmp(argv[1], "temporary_boundary")) adjacentTemporarySchedules();
+    else if (!strcmp(argv[1], "lease_creation")) scheduledLeaseStartsAtCommandTime();
+    else if (!strcmp(argv[1], "save_failure")) scheduledSaveFailureKeepsOriginalTimes();
+    else if (!strcmp(argv[1], "schedule_permutations")) schedulePermutations();
+    else if (!strcmp(argv[1], "storage_isolation")) storageBackoffDoesNotDelayTemporaryWindows();
+    else return 2;
+    return 0;
+  }
   for (bool damaged_primary : {false, true}) {
     Fixture f(true);
     f.cmd("set radio2 910.5,500,8,5,rxtx,80");

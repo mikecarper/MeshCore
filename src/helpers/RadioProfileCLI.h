@@ -13,7 +13,7 @@ class RadioProfileCLI {
   struct Schedule {
     RadioProfileConfig config;
     uint32_t start = 0, end = 0;
-    uint32_t remaining_ms = 0;  // monotonic upper bound, including start delay
+    uint32_t end_ms = 0;  // monotonic deadline anchored when the command is accepted
     bool active = false, temporary = false, started = false;
   };
  private:
@@ -33,6 +33,7 @@ class RadioProfileCLI {
   uint32_t pending_duration_ms_ = 0;
   uint32_t publish_after_ms_ = 0;
   uint32_t last_ms_ = 0;
+  uint32_t schedule_retry_ms_ = 0;
   bool temp_pending_ = false, temp_active_ = false;
   bool hold_ = false;
   bool publish_pending_ = false;
