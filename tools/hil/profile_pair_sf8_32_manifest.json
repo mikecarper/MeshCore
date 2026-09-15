@@ -1,0 +1,114 @@
+{
+  "git_head": "2b5a6f209835f0f67ed73fee78d36447a4566ce6",
+  "scope": "Dirty-worktree HIL only; application updates for RAK4631/T1000-E/V4",
+  "files": {
+    "profile_fixed_rak_tx.zip": {
+      "bytes": 93795,
+      "sha256": "717ae6f82cc839277570df39bedccadc590acbc93c38f4703c68e8c634448ad2",
+      "app_base": 155648,
+      "image_end": 248624
+    },
+    "profile_fixed_t1000_tx.zip": {
+      "bytes": 88540,
+      "sha256": "41b601e3fe9ccd8896d5b7dadf4391c8799a2b722710765d84a7c3371c6ec4d4",
+      "app_base": 159744,
+      "image_end": 247464
+    },
+    "rx-firmware.bin": {
+      "bytes": 368672,
+      "sha256": "fa3052c410e3e639b3516f23c9aece45e18380cf64937e4c3c75ea3cccb64d26"
+    },
+    "rx-partitions.bin": {
+      "bytes": 3072,
+      "sha256": "bd0f7954aca2ef7d925ee21aaa1f3dc8822d1d6ce5cbbd26a135e5886bfff6ce"
+    },
+    "profile_pair.py": {
+      "bytes": 10949,
+      "sha256": "63008be8683ec4dcdcab771d5afd21022aa636372299b6f9b64d3e3a0b29756b"
+    },
+    "profile_pair_deploy.py": {
+      "bytes": 4580,
+      "sha256": "dba4b8d5464678d4235973c02d78ac00aa41ffdb011a17de762fd50e15fad2cf"
+    },
+    "profile_pair_run.py": {
+      "bytes": 1351,
+      "sha256": "75f30ca1d9a7719e0318a088f31679efd7c083bc524a6e819018aac28f6e58a2"
+    },
+    "profile_switch.py": {
+      "bytes": 6249,
+      "sha256": "097e61cc128f96aa36964578eecfa3fae2de49f75867fe09fc0ac039fd639aae"
+    },
+    "profile_four_tx_fixture.py": {
+      "bytes": 1852,
+      "sha256": "8c2e12e2450648c6a7a25d4d2567666e2df21eebc7abaa712b1909cd33200c6e"
+    },
+    "ProfilePairPlan.h": {
+      "bytes": 796,
+      "sha256": "faa28b70ee9a60e8fdc5f5f850835927a2fbee4132c8de930809911b24217128"
+    },
+    "ProfileSwitchUsb.h": {
+      "bytes": 1598,
+      "sha256": "6ecbfc4087bf798de9e102b3dd7c7473b73161e04d332d1e90808341eac8d26b"
+    },
+    "profile_fixed_tx.cpp": {
+      "bytes": 7554,
+      "sha256": "9884a920a20ab609973a5bf038c51a8bd6567953343791f84237e1efd2c65ded"
+    },
+    "profile_fixed_tx.ini": {
+      "bytes": 2371,
+      "sha256": "4d5a5f16a2b16dd9d4a8e7a0b2f9d0b46dca023105e30cc0eb5ea4fd81b81211"
+    },
+    "profile_switch.cpp": {
+      "bytes": 27368,
+      "sha256": "9240dbf6b3e63d258566c9268ac389fa1f482d4e412d58f4e77f22d5525974a9"
+    },
+    "profile_switch.ini": {
+      "bytes": 4268,
+      "sha256": "535f98a2480005013e87b31a7b40f58a1e9e6b8ccd11c2085e184d7753d2c428"
+    },
+    "profile_switch_channels.h": {
+      "bytes": 20904,
+      "sha256": "99bb089843592a5945fd979695bb95bca444a79d7699e9c036170983a8f03c21"
+    },
+    "profile_switch_experiments.h": {
+      "bytes": 3973,
+      "sha256": "64e575a6ffc76dfecebf5820c257eda90d05897af2de959253ed602377de5fba"
+    },
+    "profile_stationary_baseline.h": {
+      "bytes": 5743,
+      "sha256": "be8d4b1a14a235fcf22f9c56cf865a880f9c854fc532b346e5eb00a3b6f93e2e"
+    },
+    "ProfileChannelVisitClock.h": {
+      "bytes": 898,
+      "sha256": "7045e1d17fac036b26953f397cded392326ffc80df6223799c83dffae9ec2863"
+    },
+    "ProfileChannelTrace.h": {
+      "bytes": 2227,
+      "sha256": "5b417732b0c9b412802ede3fcada95e3b4f5d038c65a06816677bacdcd657c86"
+    },
+    "ProfileFrequencyOffset.h": {
+      "bytes": 1114,
+      "sha256": "cd54f7af39330bdbf1c0c20db73095815b9c07ac3d57aa3a3af6ee8dbf9df90d"
+    },
+    "source_RadioProfiles.h": {
+      "bytes": 10263,
+      "sha256": "0a2ed8461fb7888e1a794f6728b1e1cdce99264bc1f16caa4b0ef8188476f879"
+    },
+    "source_helpers_radiolib_CustomSX1262.h": {
+      "bytes": 23615,
+      "sha256": "810df10e08922d077e76c081543ae60886e0e8f8e8ef6b4f6e42ffe2303f2751"
+    },
+    "source_helpers_radiolib_RadioLibWrappers.cpp": {
+      "bytes": 42074,
+      "sha256": "116c4212cea92cee35875c98676cf37ffe671eb0c9bbe4a70190bb9ae2f23e83"
+    },
+    "source_helpers_radiolib_RadioLibWrappers.h": {
+      "bytes": 14581,
+      "sha256": "cc13cdd507bfd85211ae7e83f0dc18446b0287e27c0a7362608fd41ac2738741"
+    },
+    "source_helpers_radiolib_SX1262ProfileSwitchState.h": {
+      "bytes": 2224,
+      "sha256": "7b4398a1eaf80529b56bb2ff0a667074bcc3d937df43ebfc75181f2dfb9c44e7"
+    }
+  }
+}

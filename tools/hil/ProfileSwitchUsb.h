@@ -3,7 +3,7 @@
 
 struct BenchResult {
   uint32_t sequence = 0;
-  char text[2048] = {};
+  char text[4096] = {}; // Pair diagnostics add per-profile dwell and hop timings.
 };
 BenchResult lastListenResult, lastTxResult, lastRxResult, lastRunResult;
 

@@ -89,13 +89,17 @@ void prime(Radio& r) {
   const bool wake=r._tcxoWakePending;
   r.trace.clear();assert(r.startReceive()==0);assert(r.trace==(wake ? "GUEVFQ":cold ? "GUFQ":"GSFQ"));
   assert(!r._coldStandby);
+  assert(!r._profileSwitch.modulationValid); // full RX setup does not prime a tuple
   assert(r._profileSwitch.rxValid);r.trace.clear();
 }
 void fast(Radio& r) {
   r.beginProfileSwitch(true);assert(r.standby()==0);assert(r.trace=="s");r.trace.clear();
+  r._profileSwitch.modulationResult(0,8,4,1,0);
+  assert(r._profileSwitch.matchesModulation(8,4,1,0));
   assert(r.setPreambleLength(120)==0 && r.trace.empty());
   assert(r.startReceive()==0 && r.trace=="CPWR");
   assert(r.stagedMode==0 && r._profileSwitch.rxValid);
+  assert(r._profileSwitch.modulationValid); // successful fast resume preserves it
   r.endProfileSwitch(true);assert(!r._profileSwitch.open);r.trace.clear();
 }
 int main() {
@@ -108,6 +112,7 @@ int main() {
   // Ordinary standby, mode staging (TX/CAD), sleep, reset and RXPS revoke RX.
   for(int event=0;event<7;++event) {
     Radio x;prime(x);
+    x._profileSwitch.modulationResult(0,8,4,1,0);
     switch(event) {
       case 0:x.standby();break;
       case 1:x.standby(uint8_t(0));break;
@@ -117,7 +122,8 @@ int main() {
       case 5:x.reset();break;
       case 6:x.startReceiveDutyCycle(1000,1000);break;
     }
-    assert(!x._profileSwitch.rxValid);x.trace.clear();x.beginProfileSwitch(true);
+    assert(!x._profileSwitch.rxValid && !x._profileSwitch.modulationValid);
+    x.trace.clear();x.beginProfileSwitch(true);
     const bool cold=x._coldStandby;
     const bool wake=x._tcxoWakePending;
     assert(x.standby()==0 && x.trace==(wake ? "UEV":cold ? "U":"S"));x.endProfileSwitch(true);prime(x);fast(x);

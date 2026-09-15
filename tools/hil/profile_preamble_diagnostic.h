@@ -10,13 +10,13 @@ struct PreambleDiagnostic {
   float preambleRssi=0;
 } preambleDiagnostic;
 
-int prepareDiagnosticRadio(unsigned sf,unsigned frequencyKhz) {
+int prepareDiagnosticRadio(unsigned sf,unsigned frequencyKhz,float bwKhz=125) {
   chip.productionPath=true;chip.experiment=0;chip.setProfileSwitchOptimization(false);
   radioHal.bulkTransfer=true;radioHal.spiSettings=SPISettings(8000000,MSBFIRST,SPI_MODE0);
   chip.standbyXOSC=false;
   int rc=chip.std_init(&radioSpi)?0:RADIOLIB_ERR_CHIP_NOT_FOUND;
   if(!rc) rc=chip.setFrequency(float(frequencyKhz)/1000);
-  if(!rc) rc=chip.setLoRaModulationParams(125,sf,5);
+  if(!rc) rc=chip.setLoRaModulationParams(bwKhz,sf,5);
   if(!rc) rc=chip.setPreambleLength(32);
   return rc;
 }
@@ -43,7 +43,7 @@ void diagnosticTransmit(unsigned seq) {
   for(unsigned i=8;i<sizeof(bytes);++i) bytes[i]=uint8_t(i^seq);
   channelTrace.txCommandUs=0;
   const uint32_t started=micros();
-  const int rc=chip.transmit(bytes,sizeof(bytes));
+  const int rc=benchTransmit(bytes,sizeof(bytes));
   const uint32_t ended=micros();
   preambleDiagnostic.txReady=false; // a command is one-shot, even if reply is lost
   recordBenchResult(lastTxResult,seq,
@@ -68,8 +68,8 @@ void diagnosticListen(unsigned sf,unsigned frequencyKhz,unsigned seq,unsigned wi
   channelTrace.enabled=true;channelTrace.arm(seq,0,0,0);
   preambleDiagnostic.deadline=millis()+windowMs;preambleDiagnostic.active=true;
   recordBenchResult(lastListenResult,seq,
-      "{\"listening\":%u,\"stationary\":true,\"full_init\":true,\"sf\":%u,\"freq_khz\":%u,\"rf_word\":%u,\"window_ms\":%u,\"preamble\":32,\"irq_poll_us\":64}\n",
-      seq,sf,frequencyKhz,preambleDiagnostic.rxWord,windowMs);
+      "{\"listening\":%u,\"stationary\":true,\"full_init\":true,\"sf\":%u,\"freq_khz\":%u,\"rf_word\":%u,\"window_ms\":%u,\"preamble\":32,\"irq_poll_us\":64,\"rx_gain_reg\":%d}\n",
+      seq,sf,frequencyKhz,preambleDiagnostic.rxWord,windowMs,readBenchRxGain());
 }
 
 void stopPreambleDiagnostic() {

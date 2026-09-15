@@ -1,0 +1,26 @@
+{
+  "experiment": "descending_sf_125_settling_limits",
+  "receiver": "COM31",
+  "sender": "COM28",
+  "sf_order": [
+    10,
+    9,
+    8,
+    7,
+    6,
+    5
+  ],
+  "bw_khz": 125,
+  "channels": 4,
+  "dwell_symbols": 5.1,
+  "preamble_symbols": 32,
+  "samples_per_channel": 100,
+  "power_dbm": -9,
+  "expected_rx_gain_reg": 148,
+  "modulation_cache": true,
+  "trace_enabled": false,
+  "step_us": 100,
+  "scope": "Sampled pass/fail brackets, not proof of monotonic behavior or zero PER",
+  "complete": false,
+  "captures": []
+}

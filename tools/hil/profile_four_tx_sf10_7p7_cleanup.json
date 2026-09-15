@@ -1,0 +1,209 @@
+{
+  "radios": [
+    {
+      "board": "RAK4631",
+      "serial": "9AB3B64C641BA927",
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "fixed_tx": 1,
+        "board": "RAK4631",
+        "prepared": false,
+        "failed": false,
+        "channel": 99,
+        "packet_count": 0,
+        "sd_fwid": 182,
+        "app_base": 155648,
+        "autonomous_tx": false
+      }
+    },
+    {
+      "board": "Heltec T096",
+      "serial": "651F8E496197F882",
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "fixed_tx": 1,
+        "board": "Heltec T096",
+        "prepared": false,
+        "failed": false,
+        "channel": 99,
+        "packet_count": 0,
+        "sd_fwid": 182,
+        "app_base": 155648,
+        "autonomous_tx": false
+      }
+    },
+    {
+      "board": "Heltec MeshTower V2",
+      "serial": "9352162A72082314",
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "fixed_tx": 1,
+        "board": "Heltec MeshTower V2",
+        "prepared": false,
+        "failed": false,
+        "channel": 99,
+        "packet_count": 0,
+        "sd_fwid": 182,
+        "app_base": 155648,
+        "autonomous_tx": false
+      }
+    },
+    {
+      "board": "Seeed T1000-E LR1110",
+      "serial": "34A9141999729D5D",
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "fixed_tx": 1,
+        "board": "Seeed T1000-E LR1110",
+        "prepared": false,
+        "failed": false,
+        "channel": 99,
+        "packet_count": 0,
+        "sd_fwid": 291,
+        "app_base": 159744,
+        "autonomous_tx": false
+      }
+    },
+    {
+      "board": "Heltec V4",
+      "serial": "44:1B:F6:69:CF:98",
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "channel_sweep": 1,
+        "channel_trace": 2,
+        "channel_sf_select": 1,
+        "channel_bw_select": 1,
+        "channel_step_select": 1,
+        "payload_delivery_ab": 1,
+        "preamble_diagnostic": 1,
+        "modulation_cache_ab": 1,
+        "frequency_repeat_ab": 1,
+        "stationary_baseline": 1,
+        "stationary_offset": 1,
+        "rollback_ab": 1,
+        "rx_gain_reg": 148,
+        "board": "Heltec V4",
+        "fem": "KCT8103L",
+        "tx_fem_mode": "amplified"
+      },
+      "status": {
+        "result": 1,
+        "channels": 0,
+        "active": false,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 0,
+        "modulation_cache": true,
+        "rf_commands": 1,
+        "modulation_commands": 3,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "with_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "settle_us": 0,
+        "continue_on_miss": false,
+        "frequency_repeat": false,
+        "tcxo_us": 1600,
+        "channel_step_khz": 250,
+        "mixed_profiles": false,
+        "retune_passes": 1,
+        "second_pass_blocked": 0,
+        "first_pass_detour": false,
+        "detour": {
+          "n": 0,
+          "bad": 0,
+          "first_rf": 0,
+          "final_rf": 0,
+          "first_mod": 0,
+          "final_mod": 0
+        },
+        "first_pass": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "second_pass": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "accept_offchannel": false,
+        "strict_received": 0,
+        "offchannel_received": 0,
+        "rollback": 0,
+        "warm_standby": false,
+        "batched_modulation": true,
+        "bulk_spi": false,
+        "settling": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "switch_and_settle": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "idle_cycle": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "idle_dwell": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "held_dwell": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        }
+      }
+    }
+  ],
+  "services": {
+    "ModemManager.service": "active",
+    "meshcore-memory-soak.service": "inactive",
+    "mctomqtt.service": "active",
+    "meshcore-host-cli.service": "active"
+  },
+  "errors": [
+    "Heltec T096: Exact primary USB interface missing/ambiguous: Heltec T096",
+    "Heltec MeshTower V2: [Errno 13] could not open port /dev/ttyACM1: [Errno 13] Permission denied: '/dev/ttyACM1'",
+    "Seeed T1000-E LR1110: [Errno 13] could not open port /dev/ttyACM4: [Errno 13] Permission denied: '/dev/ttyACM4'"
+  ],
+  "verified_idle": false
+}

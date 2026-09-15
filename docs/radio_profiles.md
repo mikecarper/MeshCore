@@ -325,6 +325,17 @@ clearing, RX commands and BUSY waits remain. TX, CAD, sleep, reset, RXPS and
 failed commands revoke reuse; failed RX startup rolls back the profile.
 Sleep entry uses standby and wake restores the existing TCXO voltage/delay.
 Other variants do not opt in to faster SPI or the fast-RX state machine.
+Within a valid owned fast-RX retune, identical acknowledged SF/BW/CR/LDRO
+settings now reuse the previous modulation command: frequency-only hops omit
+`SetModulationParams` (0x8B). A changed effective LDRO value also forces a write,
+including when automatic LDRO policy changes. Ordinary setters and lost RX
+context invalidate that acknowledgement; initial setup, reset, sleep, failed
+commands and full RX setup conservatively reapply the tuple. Frequency,
+preamble/packet setup, IRQ clearing and BUSY checks are unchanged. This follow-up
+has [same-image hardware measurements](separated_radio_modulation_cache_validation.md):
+frequency-only hops averaged 0.452 ms on XIAO and 7.601 ms on Indicator.
+The mixed-bandwidth timing figures above predate it. Four-channel SF6 scans
+still missed packets; faster switching is not proof of loss-free acquisition.
 See [production and USB validation](radio_profile_switch_validation.md#production-integration-and-usb-recovery-v8)
 for current measurements, lifecycle tests and limitations.
 The Indicator result also shows that the

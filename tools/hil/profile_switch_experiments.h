@@ -12,6 +12,7 @@ class ExperimentalSX1262 : public CustomSX1262 {
   };
   uint32_t experiment = 0;
   bool productionPath = true;
+  bool repeatFrequency = false; // explicit same-image HIL toggle; reset on boot
   bool inHop = false, resumeRx = false, haveStandby = false;
   bool packetWritten = false, preamblePending = false, rxPrimed = false;
   using CustomSX1262::CustomSX1262;
@@ -20,6 +21,17 @@ class ExperimentalSX1262 : public CustomSX1262 {
     inHop = true; resumeRx = rx; haveStandby = packetWritten = preamblePending = false;
   }
   void endHop() { inHop = resumeRx = haveStandby = false; }
+
+  using CustomSX1262::setFrequency;
+  int16_t setFrequency(float freq) override {
+    int16_t rc = SX1262::setFrequency(freq);
+    if (rc == RADIOLIB_ERR_NONE && repeatFrequency && inHop && resumeRx) {
+      // Repeat the identical 0x86 immediately, before modulation/packet/RX.
+      // Only the first call may calibrate; keep normal BUSY/status checks.
+      rc = SX1262::setFrequency(freq, true);
+    }
+    return rc; // a failed first/second write aborts the normal profile apply
+  }
 
   int16_t standby() override {
     if (productionPath) return CustomSX1262::standby();

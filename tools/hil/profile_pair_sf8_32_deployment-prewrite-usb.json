@@ -1,0 +1,6 @@
+{
+  "complete": false,
+  "writes": [],
+  "modemmanager_before": true,
+  "error": "OSError(71, 'Protocol error')"
+}

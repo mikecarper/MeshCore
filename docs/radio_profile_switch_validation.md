@@ -422,3 +422,39 @@ used 32-symbol preambles and 4.8-symbol visits. It stopped on the third packet
 at the initial four channels (two received, one timeout); no higher count was
 tried. That continuous scan experiment is separate from the 288/288
 stationary-after-retune matrix above.
+
+## Unchanged modulation tuple follow-up
+
+The initial software-only checks below were followed by
+[same-image hardware timing and separated-radio tests](separated_radio_modulation_cache_validation.md).
+Frequency-only means improved from 548.880 to 451.897 us on XIAO and from
+8,263.438 to 7,601.193 us on Indicator. Four-channel SF6 reception was not
+loss-free. The following paragraph records the initial implementation stage,
+not the current hardware-test status.
+
+Implemented 2026-09-14 after commit `0e5955f8`, without restarting hardware
+tests. On opted-in fast RX-to-RX hops, `setLoRaModulationParams()` now compares
+the requested SF, encoded bandwidth, encoded CR and effective LDRO against
+the last successfully acknowledged modulation write. An exact match within
+a valid owned standby window omits only `SetModulationParams` (0x8B).
+Frequency programming, the modem query, preamble/packet parameters, IRQ clears,
+RF-switch control and BUSY waits remain unchanged.
+
+The acknowledgement is separate from RadioLib's mutable software fields.
+Auto/manual LDRO compares the resulting command byte, with the pinned
+RadioLib >=16 ms symbol rule. A failed write revokes the whole fast context
+before rollback. Ordinary SF/BW/CR/forced-LDRO setters invalidate the saved
+tuple even on failure. Existing full-RX staging, ordinary standby, TX/CAD
+staging, reset/init, sleep, duty cycling and failed RX/standby operations also
+invalidate it. The first hop after lost context therefore writes again;
+frequency-only hops that retain the context can skip subsequent writes.
+
+All **30 selected host/native tests passed**, including repeat-write counts
+for all supported bandwidth/SF/CR combinations and auto/forced LDRO modes,
+each independently changed field, LDRO policy transitions, failed-write retry,
+modem-query failure, ownership gates, ordinary setters and lifecycle invalidation.
+Both `profile_switch_xiao` and `profile_switch_indicator` compiled successfully
+against the pinned RadioLib. No firmware was uploaded, no radio command was
+issued, and no new RF result was collected. The temporary build overlay was
+removed. The earlier ~0.549 ms XIAO and ~8.263 ms Indicator timings do **not**
+measure this added optimization; its time saving and RF behavior await testing.

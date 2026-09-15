@@ -7,7 +7,7 @@ struct ChannelTraceEvent {
   uint8_t channel, kind;
 };
 struct ChannelTrace {
-  enum : uint8_t { Arm=1, Irq=2, Clear=3, Hop=4, Hold=5, Packet=6, Timeout=7 };
+  enum : uint8_t { Arm=1, Irq=2, Clear=3, Hop=4, Hold=5, Packet=6, Timeout=7, Frequency=8 };
   static constexpr unsigned Capacity=4096;
   ChannelTraceEvent events[Capacity];
   bool active=false, enabled=false;
@@ -15,6 +15,8 @@ struct ChannelTrace {
   uint32_t origin=0, sequence=0, pollAt=0, pollCount=0, pollTotalUs=0, pollMaxUs=0;
   uint16_t irq=0;
   uint32_t rfWord=0, txWord=0, txCommandUs=0;
+  uint32_t rfWrites=0, modulationWrites=0;
+  uint32_t modulationWord=0;
   uint8_t channel=0;
   void add(uint8_t kind,uint32_t a=0,uint32_t b=0) {
     if(!active) return;
@@ -29,8 +31,15 @@ struct ChannelTrace {
   void observe(const uint8_t* out,size_t len,const uint8_t* in) {
     if(!out || !in) return;
     // Track actual command bytes even outside a capture, not just SW labels.
-    if(len==5 && out[0]==0x86)
+    if(len==5 && out[0]==0x86) {
+      ++rfWrites;
       rfWord=uint32_t(out[1])<<24 | uint32_t(out[2])<<16 | uint32_t(out[3])<<8 | out[4];
+      add(Frequency,rfWord);
+    }
+    if(len==5 && out[0]==0x8b) {
+      ++modulationWrites;
+      modulationWord=uint32_t(out[1])<<24 | uint32_t(out[2])<<16 | uint32_t(out[3])<<8 | out[4];
+    }
     if(len==4 && out[0]==0x83) { txCommandUs=micros();txWord=rfWord; }
     if(!active) return;
     // Pinned SX126x Module: opcode, status dummy, two big-endian IRQ bytes.

@@ -1,0 +1,71 @@
+{
+  "complete": true,
+  "writes": [
+    {
+      "board": "RAK4631",
+      "serial": "9AB3B64C641BA927",
+      "application_write_started": true,
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "fixed_tx": 1,
+        "board": "RAK4631",
+        "prepared": false,
+        "failed": false,
+        "channel": 99,
+        "packet_count": 0,
+        "sd_fwid": 182,
+        "app_base": 155648,
+        "autonomous_tx": false
+      },
+      "complete": true
+    },
+    {
+      "board": "Seeed T1000-E LR1110",
+      "serial": "34A9141999729D5D",
+      "application_write_started": true,
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "fixed_tx": 1,
+        "board": "Seeed T1000-E LR1110",
+        "prepared": false,
+        "failed": false,
+        "channel": 99,
+        "packet_count": 0,
+        "sd_fwid": 291,
+        "app_base": 159744,
+        "autonomous_tx": false
+      },
+      "complete": true
+    },
+    {
+      "board": "Heltec V4",
+      "serial": "44:1B:F6:69:CF:98",
+      "application_write_started": true,
+      "offset": "0x10000",
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "channel_sweep": 1,
+        "channel_trace": 2,
+        "channel_sf_select": 1,
+        "channel_bw_select": 1,
+        "channel_step_select": 1,
+        "payload_delivery_ab": 1,
+        "preamble_diagnostic": 1,
+        "modulation_cache_ab": 1,
+        "frequency_repeat_ab": 1,
+        "stationary_baseline": 1,
+        "stationary_offset": 1,
+        "rollback_ab": 1,
+        "rx_gain_reg": 148,
+        "board": "Heltec V4",
+        "fem": "KCT8103L",
+        "tx_fem_mode": "amplified"
+      },
+      "complete": true
+    }
+  ],
+  "modemmanager_before": true
+}

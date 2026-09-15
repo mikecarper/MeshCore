@@ -1,0 +1,2915 @@
+{
+  "schema": 1,
+  "experiment": "stationary_preamble_diagnostic",
+  "sf": 6,
+  "bw_khz": 125,
+  "receiver": "COM31",
+  "sender": "COM28",
+  "rx_khz": 910000,
+  "window_ms": 450,
+  "power_dbm": -9,
+  "preamble": 32,
+  "rounds": 4,
+  "seed": 814910,
+  "complete": true,
+  "trials": [
+    {
+      "sequence": 323741276,
+      "repeat": 1,
+      "offset_khz": -500,
+      "setup": {
+        "listening": 323741275,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741276,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741276,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10251,
+        "post_set_tx_us": 43203
+      },
+      "received": {
+        "received": 323741276,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741276,
+        "trace": 323741276,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 32374427,
+        "poll_count": 6623,
+        "poll_total_us": 163051,
+        "poll_max_us": 52,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386623615181500,
+        "arm_end": 386623707128500,
+        "tx_start": 386623707763100,
+        "tx_end": 386623780906300
+      }
+    },
+    {
+      "sequence": 323741278,
+      "repeat": 1,
+      "offset_khz": null,
+      "setup": {
+        "listening": 323741277,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741278,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": null,
+      "received": {
+        "received": 323741278,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741278,
+        "trace": 323741278,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 33088440,
+        "poll_count": 6624,
+        "poll_total_us": 163069,
+        "poll_max_us": 48,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386624322142600,
+        "arm_end": 386624421559300,
+        "tx_start": null,
+        "tx_end": null
+      }
+    },
+    {
+      "sequence": 323741280,
+      "repeat": 1,
+      "offset_khz": 1000,
+      "setup": {
+        "listening": 323741279,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741280,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741280,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10251,
+        "post_set_tx_us": 43012
+      },
+      "received": {
+        "received": 323741280,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741280,
+        "trace": 323741280,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 33802443,
+        "poll_count": 6624,
+        "poll_total_us": 163078,
+        "poll_max_us": 49,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386625036125900,
+        "arm_end": 386625134974300,
+        "tx_start": 386625135286300,
+        "tx_end": 386625207813900
+      }
+    },
+    {
+      "sequence": 323741282,
+      "repeat": 1,
+      "offset_khz": -250,
+      "setup": {
+        "listening": 323741281,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741282,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741282,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43199
+      },
+      "received": {
+        "received": 323741282,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741282,
+        "trace": 323741282,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 34514431,
+        "poll_count": 6623,
+        "poll_total_us": 163036,
+        "poll_max_us": 49,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386625748120700,
+        "arm_end": 386625846935400,
+        "tx_start": 386625847119800,
+        "tx_end": 386625920083700
+      }
+    },
+    {
+      "sequence": 323741284,
+      "repeat": 1,
+      "offset_khz": 250,
+      "setup": {
+        "listening": 323741283,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741284,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741284,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43011
+      },
+      "received": {
+        "received": 323741284,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741284,
+        "trace": 323741284,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 35227440,
+        "poll_count": 6624,
+        "poll_total_us": 163077,
+        "poll_max_us": 49,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386626460994100,
+        "arm_end": 386626560029400,
+        "tx_start": 386626560240400,
+        "tx_end": 386626632746000
+      }
+    },
+    {
+      "sequence": 323741286,
+      "repeat": 1,
+      "offset_khz": 500,
+      "setup": {
+        "listening": 323741285,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741286,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741286,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10255,
+        "post_set_tx_us": 43199
+      },
+      "received": {
+        "received": 323741286,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741286,
+        "trace": 323741286,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 35945433,
+        "poll_count": 6624,
+        "poll_total_us": 163070,
+        "poll_max_us": 49,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386627179090500,
+        "arm_end": 386627277993800,
+        "tx_start": 386627278184600,
+        "tx_end": 386627350815700
+      }
+    },
+    {
+      "sequence": 323741288,
+      "repeat": 1,
+      "offset_khz": -1000,
+      "setup": {
+        "listening": 323741287,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741288,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741288,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10253,
+        "post_set_tx_us": 43217
+      },
+      "received": {
+        "received": 323741288,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741288,
+        "trace": 323741288,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 36658443,
+        "poll_count": 6624,
+        "poll_total_us": 163080,
+        "poll_max_us": 51,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386627892123100,
+        "arm_end": 386627990937700,
+        "tx_start": 386627991244200,
+        "tx_end": 386628063959900
+      }
+    },
+    {
+      "sequence": 323741290,
+      "repeat": 1,
+      "offset_khz": 0,
+      "setup": {
+        "listening": 323741289,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741290,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741290,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10246,
+        "post_set_tx_us": 42999
+      },
+      "received": {
+        "received": 323741290,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 22,
+        "preambles": 1,
+        "headers": 1,
+        "packets": 1,
+        "valid": 1,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 18197,
+        "preamble_rssi": -41.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741290,
+        "trace": 323741290,
+        "trace_format": 2,
+        "total": 8,
+        "overflow": 0,
+        "origin_us": 37371443,
+        "poll_count": 6590,
+        "poll_total_us": 162254,
+        "poll_max_us": 48,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            18186,
+            2,
+            0,
+            4,
+            0,
+            0
+          ],
+          [
+            40879,
+            2,
+            0,
+            20,
+            0,
+            0
+          ],
+          [
+            56147,
+            2,
+            0,
+            22,
+            0,
+            0
+          ],
+          [
+            56361,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            56381,
+            6,
+            0,
+            22,
+            1,
+            16
+          ],
+          [
+            56541,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            58465,
+            2,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386628605080200,
+        "arm_end": 386628704044000,
+        "tx_start": 386628704330600,
+        "tx_end": 386628776845600
+      }
+    },
+    {
+      "sequence": 323741292,
+      "repeat": 2,
+      "offset_khz": -1000,
+      "setup": {
+        "listening": 323741291,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741292,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741292,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43011
+      },
+      "received": {
+        "received": 323741292,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741292,
+        "trace": 323741292,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 38086426,
+        "poll_count": 6624,
+        "poll_total_us": 163075,
+        "poll_max_us": 47,
+        "events": [
+          [
+            7,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386629320338600,
+        "arm_end": 386629418917800,
+        "tx_start": 386629419112800,
+        "tx_end": 386629491680300
+      }
+    },
+    {
+      "sequence": 323741294,
+      "repeat": 2,
+      "offset_khz": 0,
+      "setup": {
+        "listening": 323741293,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741294,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741294,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10253,
+        "post_set_tx_us": 43011
+      },
+      "received": {
+        "received": 323741294,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 22,
+        "preambles": 1,
+        "headers": 1,
+        "packets": 1,
+        "valid": 1,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 18220,
+        "preamble_rssi": -41.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741294,
+        "trace": 323741294,
+        "trace_format": 2,
+        "total": 8,
+        "overflow": 0,
+        "origin_us": 38798420,
+        "poll_count": 6589,
+        "poll_total_us": 162207,
+        "poll_max_us": 44,
+        "events": [
+          [
+            4,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            18209,
+            2,
+            0,
+            4,
+            0,
+            0
+          ],
+          [
+            40909,
+            2,
+            0,
+            20,
+            0,
+            0
+          ],
+          [
+            56188,
+            2,
+            0,
+            22,
+            0,
+            0
+          ],
+          [
+            56407,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            56424,
+            6,
+            0,
+            22,
+            1,
+            16
+          ],
+          [
+            56580,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            58517,
+            2,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386630031963300,
+        "arm_end": 386630130896400,
+        "tx_start": 386630131087900,
+        "tx_end": 386630204166200
+      }
+    },
+    {
+      "sequence": 323741296,
+      "repeat": 2,
+      "offset_khz": null,
+      "setup": {
+        "listening": 323741295,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741296,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": null,
+      "received": {
+        "received": 323741296,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741296,
+        "trace": 323741296,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 39512431,
+        "poll_count": 6638,
+        "poll_total_us": 163196,
+        "poll_max_us": 43,
+        "events": [
+          [
+            7,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386630746006300,
+        "arm_end": 386630844872300,
+        "tx_start": null,
+        "tx_end": null
+      }
+    },
+    {
+      "sequence": 323741298,
+      "repeat": 2,
+      "offset_khz": -250,
+      "setup": {
+        "listening": 323741297,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741298,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741298,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43012
+      },
+      "received": {
+        "received": 323741298,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741298,
+        "trace": 323741298,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 40225431,
+        "poll_count": 6624,
+        "poll_total_us": 163075,
+        "poll_max_us": 43,
+        "events": [
+          [
+            4,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386631459057400,
+        "arm_end": 386631557962100,
+        "tx_start": 386631558203300,
+        "tx_end": 386631630787000
+      }
+    },
+    {
+      "sequence": 323741300,
+      "repeat": 2,
+      "offset_khz": 500,
+      "setup": {
+        "listening": 323741299,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741300,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741300,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10244,
+        "post_set_tx_us": 43005
+      },
+      "received": {
+        "received": 323741300,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741300,
+        "trace": 323741300,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 40938437,
+        "poll_count": 6624,
+        "poll_total_us": 163072,
+        "poll_max_us": 41,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386632171985200,
+        "arm_end": 386632271074000,
+        "tx_start": 386632271397000,
+        "tx_end": 386632343697400
+      }
+    },
+    {
+      "sequence": 323741302,
+      "repeat": 2,
+      "offset_khz": 250,
+      "setup": {
+        "listening": 323741301,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741302,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741302,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43197
+      },
+      "received": {
+        "received": 323741302,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741302,
+        "trace": 323741302,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 41651419,
+        "poll_count": 6624,
+        "poll_total_us": 163067,
+        "poll_max_us": 42,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386632885131000,
+        "arm_end": 386632983840700,
+        "tx_start": 386632984041800,
+        "tx_end": 386633056884000
+      }
+    },
+    {
+      "sequence": 323741304,
+      "repeat": 2,
+      "offset_khz": -500,
+      "setup": {
+        "listening": 323741303,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741304,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741304,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 42995
+      },
+      "received": {
+        "received": 323741304,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741304,
+        "trace": 323741304,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 42364437,
+        "poll_count": 6624,
+        "poll_total_us": 163076,
+        "poll_max_us": 41,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386633598069800,
+        "arm_end": 386633696902300,
+        "tx_start": 386633697161800,
+        "tx_end": 386633769695800
+      }
+    },
+    {
+      "sequence": 323741306,
+      "repeat": 2,
+      "offset_khz": 1000,
+      "setup": {
+        "listening": 323741305,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741306,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741306,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10253,
+        "post_set_tx_us": 43012
+      },
+      "received": {
+        "received": 323741306,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741306,
+        "trace": 323741306,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 43077421,
+        "poll_count": 6624,
+        "poll_total_us": 163068,
+        "poll_max_us": 41,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386634311050800,
+        "arm_end": 386634409831400,
+        "tx_start": 386634410130300,
+        "tx_end": 386634482771500
+      }
+    },
+    {
+      "sequence": 323741308,
+      "repeat": 3,
+      "offset_khz": 1000,
+      "setup": {
+        "listening": 323741307,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741308,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741308,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10251,
+        "post_set_tx_us": 43218
+      },
+      "received": {
+        "received": 323741308,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741308,
+        "trace": 323741308,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 43790428,
+        "poll_count": 6624,
+        "poll_total_us": 163080,
+        "poll_max_us": 44,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386635024163400,
+        "arm_end": 386635122816700,
+        "tx_start": 386635123012200,
+        "tx_end": 386635195816300
+      }
+    },
+    {
+      "sequence": 323741310,
+      "repeat": 3,
+      "offset_khz": null,
+      "setup": {
+        "listening": 323741309,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741310,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": null,
+      "received": {
+        "received": 323741310,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741310,
+        "trace": 323741310,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 44502437,
+        "poll_count": 6624,
+        "poll_total_us": 163073,
+        "poll_max_us": 40,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386635736159600,
+        "arm_end": 386635834802800,
+        "tx_start": null,
+        "tx_end": null
+      }
+    },
+    {
+      "sequence": 323741312,
+      "repeat": 3,
+      "offset_khz": 0,
+      "setup": {
+        "listening": 323741311,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741312,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741312,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43218
+      },
+      "received": {
+        "received": 323741312,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 22,
+        "preambles": 1,
+        "headers": 1,
+        "packets": 1,
+        "valid": 1,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 18732,
+        "preamble_rssi": -40.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741312,
+        "trace": 323741312,
+        "trace_format": 2,
+        "total": 8,
+        "overflow": 0,
+        "origin_us": 45214431,
+        "poll_count": 6602,
+        "poll_total_us": 162390,
+        "poll_max_us": 50,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            18721,
+            2,
+            0,
+            4,
+            0,
+            0
+          ],
+          [
+            40930,
+            2,
+            0,
+            20,
+            0,
+            0
+          ],
+          [
+            56253,
+            2,
+            0,
+            22,
+            0,
+            0
+          ],
+          [
+            56469,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            56487,
+            6,
+            0,
+            22,
+            1,
+            16
+          ],
+          [
+            56645,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            58578,
+            2,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386636448035200,
+        "arm_end": 386636546812300,
+        "tx_start": 386636546998800,
+        "tx_end": 386636619846800
+      }
+    },
+    {
+      "sequence": 323741314,
+      "repeat": 3,
+      "offset_khz": 250,
+      "setup": {
+        "listening": 323741313,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741314,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741314,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10257,
+        "post_set_tx_us": 43198
+      },
+      "received": {
+        "received": 323741314,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741314,
+        "trace": 323741314,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 45929440,
+        "poll_count": 6624,
+        "poll_total_us": 163073,
+        "poll_max_us": 42,
+        "events": [
+          [
+            7,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386637162946200,
+        "arm_end": 386637261798800,
+        "tx_start": 386637261978700,
+        "tx_end": 386637334907400
+      }
+    },
+    {
+      "sequence": 323741316,
+      "repeat": 3,
+      "offset_khz": 500,
+      "setup": {
+        "listening": 323741315,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741316,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741316,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10253,
+        "post_set_tx_us": 43218
+      },
+      "received": {
+        "received": 323741316,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741316,
+        "trace": 323741316,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 46641432,
+        "poll_count": 6624,
+        "poll_total_us": 163071,
+        "poll_max_us": 46,
+        "events": [
+          [
+            4,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386637875112900,
+        "arm_end": 386637973845400,
+        "tx_start": 386637974032700,
+        "tx_end": 386638046773600
+      }
+    },
+    {
+      "sequence": 323741318,
+      "repeat": 3,
+      "offset_khz": -1000,
+      "setup": {
+        "listening": 323741317,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741318,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741318,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10246,
+        "post_set_tx_us": 43001
+      },
+      "received": {
+        "received": 323741318,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741318,
+        "trace": 323741318,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 47353441,
+        "poll_count": 6624,
+        "poll_total_us": 163075,
+        "poll_max_us": 40,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386638587090600,
+        "arm_end": 386638685818100,
+        "tx_start": 386638686155800,
+        "tx_end": 386638758642200
+      }
+    },
+    {
+      "sequence": 323741320,
+      "repeat": 3,
+      "offset_khz": -500,
+      "setup": {
+        "listening": 323741319,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741320,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741320,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10253,
+        "post_set_tx_us": 43217
+      },
+      "received": {
+        "received": 323741320,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741320,
+        "trace": 323741320,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 48067426,
+        "poll_count": 6624,
+        "poll_total_us": 163076,
+        "poll_max_us": 43,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386639301036000,
+        "arm_end": 386639399757800,
+        "tx_start": 386639399938000,
+        "tx_end": 386639472895700
+      }
+    },
+    {
+      "sequence": 323741322,
+      "repeat": 3,
+      "offset_khz": -250,
+      "setup": {
+        "listening": 323741321,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741322,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741322,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10246,
+        "post_set_tx_us": 43001
+      },
+      "received": {
+        "received": 323741322,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741322,
+        "trace": 323741322,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 48779426,
+        "poll_count": 6624,
+        "poll_total_us": 163064,
+        "poll_max_us": 40,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386640013061300,
+        "arm_end": 386640111803400,
+        "tx_start": 386640112005900,
+        "tx_end": 386640184734800
+      }
+    },
+    {
+      "sequence": 323741324,
+      "repeat": 4,
+      "offset_khz": null,
+      "setup": {
+        "listening": 323741323,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741324,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": null,
+      "received": {
+        "received": 323741324,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741324,
+        "trace": 323741324,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 49492450,
+        "poll_count": 6624,
+        "poll_total_us": 163061,
+        "poll_max_us": 41,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386640725948300,
+        "arm_end": 386640824790700,
+        "tx_start": null,
+        "tx_end": null
+      }
+    },
+    {
+      "sequence": 323741326,
+      "repeat": 4,
+      "offset_khz": 500,
+      "setup": {
+        "listening": 323741325,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741326,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741326,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910500,
+        "rf_word": 954728448,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10249,
+        "post_set_tx_us": 43002
+      },
+      "received": {
+        "received": 323741326,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741326,
+        "trace": 323741326,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 50205429,
+        "poll_count": 6624,
+        "poll_total_us": 163068,
+        "poll_max_us": 41,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386641438994400,
+        "arm_end": 386641538120800,
+        "tx_start": 386641538316500,
+        "tx_end": 386641610700300
+      }
+    },
+    {
+      "sequence": 323741328,
+      "repeat": 4,
+      "offset_khz": 250,
+      "setup": {
+        "listening": 323741327,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741328,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741328,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910250,
+        "rf_word": 954466304,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10244,
+        "post_set_tx_us": 43006
+      },
+      "received": {
+        "received": 323741328,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741328,
+        "trace": 323741328,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 50919429,
+        "poll_count": 6624,
+        "poll_total_us": 163067,
+        "poll_max_us": 41,
+        "events": [
+          [
+            5,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386642152970000,
+        "arm_end": 386642251779900,
+        "tx_start": 386642251975600,
+        "tx_end": 386642324552100
+      }
+    },
+    {
+      "sequence": 323741330,
+      "repeat": 4,
+      "offset_khz": -1000,
+      "setup": {
+        "listening": 323741329,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741330,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741330,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909000,
+        "rf_word": 953155584,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10252,
+        "post_set_tx_us": 43012
+      },
+      "received": {
+        "received": 323741330,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741330,
+        "trace": 323741330,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 51632438,
+        "poll_count": 6624,
+        "poll_total_us": 163075,
+        "poll_max_us": 41,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386642865856100,
+        "arm_end": 386642964753900,
+        "tx_start": 386642964953600,
+        "tx_end": 386643037679300
+      }
+    },
+    {
+      "sequence": 323741332,
+      "repeat": 4,
+      "offset_khz": 1000,
+      "setup": {
+        "listening": 323741331,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741332,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741332,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 911000,
+        "rf_word": 955252736,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43013
+      },
+      "received": {
+        "received": 323741332,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741332,
+        "trace": 323741332,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 52345444,
+        "poll_count": 6624,
+        "poll_total_us": 163066,
+        "poll_max_us": 42,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386643579033300,
+        "arm_end": 386643677732500,
+        "tx_start": 386643677948000,
+        "tx_end": 386643750628200
+      }
+    },
+    {
+      "sequence": 323741334,
+      "repeat": 4,
+      "offset_khz": -250,
+      "setup": {
+        "listening": 323741333,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741334,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741334,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909750,
+        "rf_word": 953942016,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10257,
+        "post_set_tx_us": 42994
+      },
+      "received": {
+        "received": 323741334,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741334,
+        "trace": 323741334,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 53057432,
+        "poll_count": 6638,
+        "poll_total_us": 163191,
+        "poll_max_us": 39,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386644290924800,
+        "arm_end": 386644389741400,
+        "tx_start": 386644389904100,
+        "tx_end": 386644462667600
+      }
+    },
+    {
+      "sequence": 323741336,
+      "repeat": 4,
+      "offset_khz": 0,
+      "setup": {
+        "listening": 323741335,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741336,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741336,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10247,
+        "post_set_tx_us": 43003
+      },
+      "received": {
+        "received": 323741336,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 22,
+        "preambles": 1,
+        "headers": 1,
+        "packets": 1,
+        "valid": 1,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 18173,
+        "preamble_rssi": -41.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741336,
+        "trace": 323741336,
+        "trace_format": 2,
+        "total": 8,
+        "overflow": 0,
+        "origin_us": 53769456,
+        "poll_count": 6590,
+        "poll_total_us": 162258,
+        "poll_max_us": 42,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            18161,
+            2,
+            0,
+            4,
+            0,
+            0
+          ],
+          [
+            40905,
+            2,
+            0,
+            20,
+            0,
+            0
+          ],
+          [
+            56230,
+            2,
+            0,
+            22,
+            0,
+            0
+          ],
+          [
+            56446,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            56463,
+            6,
+            0,
+            22,
+            1,
+            16
+          ],
+          [
+            56628,
+            3,
+            0,
+            22,
+            17407,
+            0
+          ],
+          [
+            58565,
+            2,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386645003001200,
+        "arm_end": 386645101704600,
+        "tx_start": 386645101884400,
+        "tx_end": 386645174711600
+      }
+    },
+    {
+      "sequence": 323741338,
+      "repeat": 4,
+      "offset_khz": -500,
+      "setup": {
+        "listening": 323741337,
+        "tx_ready": true,
+        "rc": 0,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "preamble": 32,
+        "power_dbm": -9
+      },
+      "armed": {
+        "listening": 323741338,
+        "stationary": true,
+        "full_init": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "window_ms": 450,
+        "preamble": 32,
+        "irq_poll_us": 64,
+        "rx_gain_reg": 148
+      },
+      "sent": {
+        "sent": 323741338,
+        "rc": 0,
+        "len": 16,
+        "sf": 6,
+        "freq_khz": 909500,
+        "rf_word": 953679872,
+        "power_dbm": -9,
+        "preamble": 32,
+        "set_tx_seen": true,
+        "pre_set_tx_us": 10254,
+        "post_set_tx_us": 43012
+      },
+      "received": {
+        "received": 323741338,
+        "window_complete": true,
+        "sf": 6,
+        "freq_khz": 910000,
+        "rf_word": 954204160,
+        "seen_irq": 0,
+        "preambles": 0,
+        "headers": 0,
+        "packets": 0,
+        "valid": 0,
+        "foreign": 0,
+        "read_errors": 0,
+        "first_preamble_us": 0,
+        "preamble_rssi": 0.0,
+        "rx_mode": 1,
+        "device_errors": 0
+      },
+      "trace": {
+        "result": 323741338,
+        "trace": 323741338,
+        "trace_format": 2,
+        "total": 1,
+        "overflow": 0,
+        "origin_us": 54483431,
+        "poll_count": 6624,
+        "poll_total_us": 163067,
+        "poll_max_us": 42,
+        "events": [
+          [
+            6,
+            1,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      },
+      "host_times_ns": {
+        "arm_start": 386645717071300,
+        "arm_end": 386645815795600,
+        "tx_start": 386645816019700,
+        "tx_end": 386645888671900
+      }
+    }
+  ],
+  "expected_rx_gain_reg": 148,
+  "stopped": "bounded_controls_complete"
+}

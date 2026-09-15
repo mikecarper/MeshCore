@@ -1,0 +1,229 @@
+{
+  "validated": true,
+  "raw_sha256": "1c2e0eae3f304fcaeb6addfeef4f2f09a3c2bec8d78c60d3f151c952d0f6d5f5",
+  "started_utc": "2026-09-15T00:21:27Z",
+  "finished_utc": "2026-09-15T00:23:52Z",
+  "unique_packets": 400,
+  "baseline": [
+    {
+      "channel": 0,
+      "rates": [
+        {
+          "channel": 0,
+          "attempted": 100,
+          "received": 100,
+          "signals": {
+            "rssi": {
+              "n": 100,
+              "mean": -22.07,
+              "min": -30.0,
+              "max": -21.0
+            },
+            "snr": {
+              "n": 100,
+              "mean": 11.826,
+              "min": 11.2,
+              "max": 12.5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "channel": 1,
+      "rates": [
+        {
+          "channel": 1,
+          "attempted": 100,
+          "received": 100,
+          "signals": {
+            "rssi": {
+              "n": 100,
+              "mean": -19.01,
+              "min": -20.0,
+              "max": -19.0
+            },
+            "snr": {
+              "n": 100,
+              "mean": 13.621,
+              "min": 11.8,
+              "max": 14.8
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "scans": [
+    {
+      "loop_us": 300,
+      "slow_extra_us": 1024,
+      "dwell_us": [
+        9421,
+        21847
+      ],
+      "rates": [
+        {
+          "channel": 0,
+          "attempted": 100,
+          "received": 97,
+          "signals": {
+            "rssi": {
+              "n": 97,
+              "mean": -20.8659793814433,
+              "min": -22.0,
+              "max": -20.0
+            },
+            "snr": {
+              "n": 97,
+              "mean": 12.270103092783506,
+              "min": 11.2,
+              "max": 13.0
+            }
+          }
+        },
+        {
+          "channel": 1,
+          "attempted": 100,
+          "received": 100,
+          "signals": {
+            "rssi": {
+              "n": 100,
+              "mean": -18.99,
+              "min": -20.0,
+              "max": -18.0
+            },
+            "snr": {
+              "n": 100,
+              "mean": 13.466,
+              "min": 10.8,
+              "max": 14.5
+            }
+          }
+        }
+      ],
+      "timing_before": {
+        "switch": {
+          "n": 315,
+          "min_us": 553,
+          "mean_us": 559.117,
+          "max_us": 779
+        },
+        "pair_switch_to_0": {
+          "n": 157,
+          "min_us": 554,
+          "mean_us": 558.293,
+          "max_us": 584
+        },
+        "pair_switch_to_1": {
+          "n": 158,
+          "min_us": 553,
+          "mean_us": 559.937,
+          "max_us": 779
+        },
+        "pair_idle_0": {
+          "n": 157,
+          "min_us": 9421,
+          "mean_us": 9426.051,
+          "max_us": 9430
+        },
+        "pair_idle_1": {
+          "n": 157,
+          "min_us": 21848,
+          "mean_us": 21851.096,
+          "max_us": 21855
+        },
+        "idle_cycle": {
+          "n": 156,
+          "min_us": 32394,
+          "mean_us": 32400.378,
+          "max_us": 32412
+        }
+      },
+      "timing_all": {
+        "switch": {
+          "n": 3957,
+          "min_us": 517,
+          "mean_us": 582.001,
+          "max_us": 827
+        },
+        "pair_switch_to_0": {
+          "n": 1978,
+          "min_us": 538,
+          "mean_us": 586.433,
+          "max_us": 827
+        },
+        "pair_switch_to_1": {
+          "n": 1979,
+          "min_us": 517,
+          "mean_us": 577.572,
+          "max_us": 827
+        },
+        "pair_idle_0": {
+          "n": 1878,
+          "min_us": 9421,
+          "mean_us": 9426.22,
+          "max_us": 10480
+        },
+        "pair_idle_1": {
+          "n": 1861,
+          "min_us": 21847,
+          "mean_us": 21855.354,
+          "max_us": 23474
+        },
+        "idle_cycle": {
+          "n": 1760,
+          "min_us": 32364,
+          "mean_us": 32427.977,
+          "max_us": 34242
+        }
+      },
+      "missing": [
+        {
+          "sequence": 504394210,
+          "channel": 0,
+          "received": {
+            "received": 504394210,
+            "channel": 0,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        },
+        {
+          "sequence": 504394245,
+          "channel": 0,
+          "received": {
+            "received": 504394245,
+            "channel": 0,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        },
+        {
+          "sequence": 504394251,
+          "channel": 0,
+          "received": {
+            "received": 504394251,
+            "channel": 0,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        }
+      ]
+    }
+  ],
+  "services_after": {
+    "ModemManager.service": "active",
+    "mctomqtt.service": "active",
+    "meshcore-host-cli.service": "active",
+    "meshcore-memory-soak.service": "inactive"
+  },
+  "all_radios_idle": true,
+  "transport_replays": 0
+}

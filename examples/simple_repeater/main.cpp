@@ -6,6 +6,9 @@
 #endif
 
 #include "MyMesh.h"
+#if defined(MESH_SOAK_DIAGNOSTICS)
+#include "../../tools/hil/S3SoakDiagnostics.h"
+#endif
 #if defined(ESP32_PLATFORM)
   #include <helpers/ESP32TrueRandom.h>
 #endif
@@ -295,6 +298,14 @@ static void __attribute__((noinline)) serviceCommandInterfaces() {
     console.print('\n');
     char reply[160];
     reply[0] = 0;
+#if defined(MESH_SOAK_DIAGNOSTICS)
+    if (mesh::hil::handleSoakCommand(command, reply, sizeof(reply))) {
+      console.print("  -> ");
+      console.println(reply);
+      command[0] = 0;
+      return;
+    }
+#endif
 #ifdef ETHERNET_ENABLED
     if (!ethernet_handle_command(command, reply)) {
 #if MESH_ENABLE_HOST_CLI

@@ -1,0 +1,5 @@
+{
+  "script": "profile_pair_deploy_v2.py",
+  "sha256": "ed5b6714632cf4d45798f27d7aa2a25e5f7040b4661176eaec336aae130e6345",
+  "reason": "Verified CDC-only bootloader identity after reset disconnect"
+}

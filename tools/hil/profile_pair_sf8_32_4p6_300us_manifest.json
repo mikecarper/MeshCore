@@ -1,0 +1,99 @@
+{
+  "scope": "V4 application-only 4.6 chirps / 300 us reserve; TX images unchanged",
+  "git_head": "2b5a6f209835f0f67ed73fee78d36447a4566ce6",
+  "files": {
+    "rx-firmware.bin": {
+      "bytes": 368688,
+      "sha256": "929997ab1eed736448d8d4bb8b7b8c5c8a77921f61a7168c592bece1e900bab0"
+    },
+    "rx-partitions.bin": {
+      "bytes": 3072,
+      "sha256": "bd0f7954aca2ef7d925ee21aaa1f3dc8822d1d6ce5cbbd26a135e5886bfff6ce"
+    },
+    "profile_pair.py": {
+      "bytes": 11102,
+      "sha256": "220dcfa8301885abac6985c3361d35195c8598cc6c4074205db97ac087d30524"
+    },
+    "profile_pair_4p6_collect.py": {
+      "bytes": 163,
+      "sha256": "01276f822ddfdee8dd3f0115f41fa60b0f9b41db9a02910c324f6ba8eeac1bc2"
+    },
+    "profile_pair_run.py": {
+      "bytes": 1538,
+      "sha256": "a290baedb779254a2d62fb70515f8c8762761fdc166d32ea3a8d69a8e3a81a5f"
+    },
+    "profile_pair_4p6_deploy.py": {
+      "bytes": 3387,
+      "sha256": "c714a02be301f12e5525a15fc4569ec619c92d841fd4e1f7f68a9c563d3c1368"
+    },
+    "profile_switch.py": {
+      "bytes": 6249,
+      "sha256": "097e61cc128f96aa36964578eecfa3fae2de49f75867fe09fc0ac039fd639aae"
+    },
+    "profile_four_tx_fixture.py": {
+      "bytes": 1852,
+      "sha256": "8c2e12e2450648c6a7a25d4d2567666e2df21eebc7abaa712b1909cd33200c6e"
+    },
+    "ProfilePairPlan.h": {
+      "bytes": 1041,
+      "sha256": "d136b6ac8efef3e2a0213b18c602221fccc15b5ddf0d3061cc56f6504e263165"
+    },
+    "ProfileSwitchUsb.h": {
+      "bytes": 1598,
+      "sha256": "6ecbfc4087bf798de9e102b3dd7c7473b73161e04d332d1e90808341eac8d26b"
+    },
+    "profile_switch.cpp": {
+      "bytes": 27330,
+      "sha256": "d8cd6171b5b8eefeb64ba332c02f9ef41ea060d474c18ac7e0076e511b62531b"
+    },
+    "profile_switch.ini": {
+      "bytes": 4268,
+      "sha256": "535f98a2480005013e87b31a7b40f58a1e9e6b8ccd11c2085e184d7753d2c428"
+    },
+    "profile_switch_channels.h": {
+      "bytes": 20904,
+      "sha256": "99bb089843592a5945fd979695bb95bca444a79d7699e9c036170983a8f03c21"
+    },
+    "profile_switch_experiments.h": {
+      "bytes": 3973,
+      "sha256": "64e575a6ffc76dfecebf5820c257eda90d05897af2de959253ed602377de5fba"
+    },
+    "profile_stationary_baseline.h": {
+      "bytes": 5743,
+      "sha256": "be8d4b1a14a235fcf22f9c56cf865a880f9c854fc532b346e5eb00a3b6f93e2e"
+    },
+    "ProfileChannelVisitClock.h": {
+      "bytes": 898,
+      "sha256": "7045e1d17fac036b26953f397cded392326ffc80df6223799c83dffae9ec2863"
+    },
+    "ProfileChannelTrace.h": {
+      "bytes": 2227,
+      "sha256": "5b417732b0c9b412802ede3fcada95e3b4f5d038c65a06816677bacdcd657c86"
+    },
+    "ProfileFrequencyOffset.h": {
+      "bytes": 1114,
+      "sha256": "cd54f7af39330bdbf1c0c20db73095815b9c07ac3d57aa3a3af6ee8dbf9df90d"
+    },
+    "source_RadioProfiles.h": {
+      "bytes": 10263,
+      "sha256": "0a2ed8461fb7888e1a794f6728b1e1cdce99264bc1f16caa4b0ef8188476f879"
+    },
+    "source_helpers_radiolib_CustomSX1262.h": {
+      "bytes": 23615,
+      "sha256": "810df10e08922d077e76c081543ae60886e0e8f8e8ef6b4f6e42ffe2303f2751"
+    },
+    "source_helpers_radiolib_RadioLibWrappers.cpp": {
+      "bytes": 42074,
+      "sha256": "116c4212cea92cee35875c98676cf37ffe671eb0c9bbe4a70190bb9ae2f23e83"
+    },
+    "source_helpers_radiolib_RadioLibWrappers.h": {
+      "bytes": 14581,
+      "sha256": "cc13cdd507bfd85211ae7e83f0dc18446b0287e27c0a7362608fd41ac2738741"
+    },
+    "source_helpers_radiolib_SX1262ProfileSwitchState.h": {
+      "bytes": 2224,
+      "sha256": "7b4398a1eaf80529b56bb2ff0a667074bcc3d937df43ebfc75181f2dfb9c44e7"
+    }
+  },
+  "prior_tx_manifest_sha256": "ae4228b4c70183057c9fe694f4829a5690be5662a11e012638fbdc8f8efd2e00"
+}

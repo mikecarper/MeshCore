@@ -1,0 +1,396 @@
+{
+  "experiment": "sf10_125_10_vs_100hz_full_sample",
+  "complete": true,
+  "started_utc": "2026-09-14T21:09:11.225303+00:00",
+  "receiver": "COM31",
+  "sender": "COM15",
+  "channels": 4,
+  "samples_per_channel": 100,
+  "preamble": 32,
+  "dwell_symbols": 5.1,
+  "channel_step_khz": 1000,
+  "settle_us": 0,
+  "rx_gain": 148,
+  "power_dbm": -9,
+  "order_hz": [
+    10,
+    100
+  ],
+  "expectation_timeout_ms": 10000,
+  "runs": [
+    {
+      "requested_offset_hz": 10,
+      "complete": true,
+      "path": "profile_switch_sf10_10_vs_100hz_full_results_10hz.json",
+      "started_utc": "2026-09-14T21:09:13.241258+00:00",
+      "exit_code": 0,
+      "finished_utc": "2026-09-14T21:24:35.324029+00:00",
+      "sha256": "889a7afeb980ec8459fccb8da5a7c496feebd433da8715f84181f02c1da613aa",
+      "error_rates": {
+        "overall": {
+          "attempted": 400,
+          "strict_received": 230,
+          "payload_received": 336,
+          "offchannel_received": 106,
+          "timeouts": 64,
+          "invalid_payloads": 0,
+          "strict_errors": 170,
+          "delivery_errors": 64,
+          "strict_error_percent": 42.5,
+          "delivery_error_percent": 16.0
+        },
+        "per_channel": [
+          {
+            "channel": 0,
+            "attempted": 100,
+            "strict_received": 74,
+            "payload_received": 90,
+            "offchannel_received": 16,
+            "timeouts": 10,
+            "invalid_payloads": 0,
+            "strict_errors": 26,
+            "delivery_errors": 10,
+            "strict_error_percent": 26.0,
+            "delivery_error_percent": 10.0
+          },
+          {
+            "channel": 1,
+            "attempted": 100,
+            "strict_received": 49,
+            "payload_received": 77,
+            "offchannel_received": 28,
+            "timeouts": 23,
+            "invalid_payloads": 0,
+            "strict_errors": 51,
+            "delivery_errors": 23,
+            "strict_error_percent": 51.0,
+            "delivery_error_percent": 23.0
+          },
+          {
+            "channel": 2,
+            "attempted": 100,
+            "strict_received": 52,
+            "payload_received": 81,
+            "offchannel_received": 29,
+            "timeouts": 19,
+            "invalid_payloads": 0,
+            "strict_errors": 48,
+            "delivery_errors": 19,
+            "strict_error_percent": 48.0,
+            "delivery_error_percent": 19.0
+          },
+          {
+            "channel": 3,
+            "attempted": 100,
+            "strict_received": 55,
+            "payload_received": 88,
+            "offchannel_received": 33,
+            "timeouts": 12,
+            "invalid_payloads": 0,
+            "strict_errors": 45,
+            "delivery_errors": 12,
+            "strict_error_percent": 45.0,
+            "delivery_error_percent": 12.0
+          }
+        ]
+      },
+      "status": {
+        "result": 139272994,
+        "channels": 4,
+        "active": true,
+        "received": 230,
+        "missed": 170,
+        "deferred": 3904939,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 6,
+        "optimized_rx_resumes": 33984,
+        "modulation_cache": false,
+        "rf_commands": 67968,
+        "modulation_commands": 33984,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 16992,
+          "min_us": 1196,
+          "mean_us": 1263.765,
+          "max_us": 1533
+        },
+        "with_modulation": {
+          "n": 16992,
+          "min_us": 1196,
+          "mean_us": 1263.765,
+          "max_us": 1533
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "settle_us": 0,
+        "continue_on_miss": true,
+        "frequency_repeat": true,
+        "tcxo_us": 1600,
+        "channel_step_khz": 1000,
+        "mixed_profiles": false,
+        "retune_passes": 2,
+        "second_pass_blocked": 0,
+        "first_pass_detour": true,
+        "detour": {
+          "n": 16992,
+          "bad": 0,
+          "first_rf": 953679872,
+          "final_rf": 953679872,
+          "first_mod": 168034560,
+          "final_mod": 168034560
+        },
+        "first_pass": {
+          "n": 16992,
+          "min_us": 603,
+          "mean_us": 660.712,
+          "max_us": 904
+        },
+        "second_pass": {
+          "n": 16992,
+          "min_us": 577,
+          "mean_us": 592.344,
+          "max_us": 646
+        },
+        "accept_offchannel": false,
+        "strict_received": 230,
+        "offchannel_received": 106,
+        "rollback": 0,
+        "warm_standby": true,
+        "batched_modulation": true,
+        "bulk_spi": true,
+        "settling": {
+          "n": 16992,
+          "min_us": 1,
+          "mean_us": 1.784,
+          "max_us": 10
+        },
+        "switch_and_settle": {
+          "n": 16992,
+          "min_us": 1198,
+          "mean_us": 1265.549,
+          "max_us": 1536
+        },
+        "idle_cycle": {
+          "n": 3857,
+          "min_us": 172111,
+          "mean_us": 172176.999,
+          "max_us": 174139
+        },
+        "idle_dwell": {
+          "n": 16592,
+          "min_us": 41780,
+          "mean_us": 41785.776,
+          "max_us": 43360
+        },
+        "held_dwell": {
+          "n": 400,
+          "min_us": 41782,
+          "mean_us": 516616.903,
+          "max_us": 590757
+        }
+      },
+      "detour_configuration": {
+        "first_pass_detour": 1,
+        "requested_offset_khz": 0.01,
+        "rf_offset_steps": 10,
+        "offset_hz": 9.5367431640625,
+        "first_cr": 6,
+        "final_cr": 5
+      }
+    },
+    {
+      "requested_offset_hz": 100,
+      "complete": true,
+      "path": "profile_switch_sf10_10_vs_100hz_full_results_100hz.json",
+      "started_utc": "2026-09-14T21:24:37.338648+00:00",
+      "exit_code": 0,
+      "finished_utc": "2026-09-14T21:42:36.542774+00:00",
+      "sha256": "0b54a057c07f9da0b03f585aeffee960ffcfa2ecb5383914554697ca250aa071",
+      "error_rates": {
+        "overall": {
+          "attempted": 400,
+          "strict_received": 231,
+          "payload_received": 319,
+          "offchannel_received": 88,
+          "timeouts": 81,
+          "invalid_payloads": 0,
+          "strict_errors": 169,
+          "delivery_errors": 81,
+          "strict_error_percent": 42.25,
+          "delivery_error_percent": 20.25
+        },
+        "per_channel": [
+          {
+            "channel": 0,
+            "attempted": 100,
+            "strict_received": 75,
+            "payload_received": 89,
+            "offchannel_received": 14,
+            "timeouts": 11,
+            "invalid_payloads": 0,
+            "strict_errors": 25,
+            "delivery_errors": 11,
+            "strict_error_percent": 25.0,
+            "delivery_error_percent": 11.0
+          },
+          {
+            "channel": 1,
+            "attempted": 100,
+            "strict_received": 55,
+            "payload_received": 77,
+            "offchannel_received": 22,
+            "timeouts": 23,
+            "invalid_payloads": 0,
+            "strict_errors": 45,
+            "delivery_errors": 23,
+            "strict_error_percent": 45.0,
+            "delivery_error_percent": 23.0
+          },
+          {
+            "channel": 2,
+            "attempted": 100,
+            "strict_received": 45,
+            "payload_received": 74,
+            "offchannel_received": 29,
+            "timeouts": 26,
+            "invalid_payloads": 0,
+            "strict_errors": 55,
+            "delivery_errors": 26,
+            "strict_error_percent": 55.0,
+            "delivery_error_percent": 26.0
+          },
+          {
+            "channel": 3,
+            "attempted": 100,
+            "strict_received": 56,
+            "payload_received": 79,
+            "offchannel_received": 23,
+            "timeouts": 21,
+            "invalid_payloads": 0,
+            "strict_errors": 44,
+            "delivery_errors": 21,
+            "strict_error_percent": 44.0,
+            "delivery_error_percent": 21.0
+          }
+        ]
+      },
+      "status": {
+        "result": 13789058,
+        "channels": 4,
+        "active": true,
+        "received": 231,
+        "missed": 169,
+        "deferred": 3880054,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 11,
+        "optimized_rx_resumes": 41352,
+        "modulation_cache": false,
+        "rf_commands": 82704,
+        "modulation_commands": 41352,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 20676,
+          "min_us": 1189,
+          "mean_us": 1262.551,
+          "max_us": 1532
+        },
+        "with_modulation": {
+          "n": 20676,
+          "min_us": 1189,
+          "mean_us": 1262.551,
+          "max_us": 1532
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "settle_us": 0,
+        "continue_on_miss": true,
+        "frequency_repeat": true,
+        "tcxo_us": 1600,
+        "channel_step_khz": 1000,
+        "mixed_profiles": false,
+        "retune_passes": 2,
+        "second_pass_blocked": 0,
+        "first_pass_detour": true,
+        "detour": {
+          "n": 20676,
+          "bad": 0,
+          "first_rf": 953679872,
+          "final_rf": 953679872,
+          "first_mod": 168034560,
+          "final_mod": 168034560
+        },
+        "first_pass": {
+          "n": 20676,
+          "min_us": 596,
+          "mean_us": 659.458,
+          "max_us": 906
+        },
+        "second_pass": {
+          "n": 20676,
+          "min_us": 577,
+          "mean_us": 592.406,
+          "max_us": 631
+        },
+        "accept_offchannel": false,
+        "strict_received": 231,
+        "offchannel_received": 88,
+        "rollback": 0,
+        "warm_standby": true,
+        "batched_modulation": true,
+        "bulk_spi": true,
+        "settling": {
+          "n": 20676,
+          "min_us": 1,
+          "mean_us": 1.779,
+          "max_us": 10
+        },
+        "switch_and_settle": {
+          "n": 20676,
+          "min_us": 1191,
+          "mean_us": 1264.33,
+          "max_us": 1535
+        },
+        "idle_cycle": {
+          "n": 4778,
+          "min_us": 172119,
+          "mean_us": 172175.832,
+          "max_us": 173722
+        },
+        "idle_dwell": {
+          "n": 20276,
+          "min_us": 41780,
+          "mean_us": 41785.693,
+          "max_us": 43105
+        },
+        "held_dwell": {
+          "n": 400,
+          "min_us": 41782,
+          "mean_us": 512911.997,
+          "max_us": 640492
+        }
+      },
+      "detour_configuration": {
+        "first_pass_detour": 1,
+        "requested_offset_khz": 0.1,
+        "rf_offset_steps": 105,
+        "offset_hz": 100.13580322265625,
+        "first_cr": 6,
+        "final_cr": 5
+      }
+    }
+  ],
+  "stopped": "both_400_packet_samples_complete",
+  "finished_utc": "2026-09-14T21:42:38.557776+00:00"
+}

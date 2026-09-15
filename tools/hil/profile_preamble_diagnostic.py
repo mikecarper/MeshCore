@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--sf", type=int, choices=(6, 8), default=8)
     parser.add_argument("--rounds", type=int, default=8)
     parser.add_argument("--seed", type=int, default=814910)
+    parser.add_argument("--expect-rx-gain", choices=("normal", "boosted"), default="normal")
     args = parser.parse_args()
     if args.receiver == args.sender or args.output.exists() or not 1 <= args.rounds <= 16:
         parser.error("different ports, fresh output, 1..16 rounds required")
@@ -49,6 +50,7 @@ def main():
                   bw_khz=125, receiver=args.receiver, sender=args.sender, rx_khz=910000,
                   window_ms=450, power_dbm=-9, preamble=32, rounds=args.rounds,
                   seed=args.seed, complete=False, trials=[])
+    result["expected_rx_gain_reg"] = 0x94 if args.expect_rx_gain == "normal" else 0x96
     rx = tx = None
     sequence = secrets.randbelow(0x3fffffff) + 1
 
@@ -80,6 +82,8 @@ def main():
             if not armed.get("stationary") or not armed.get("full_init") or armed.get("sf") != args.sf or armed.get("window_ms") != 450:
                 raise RuntimeError("Receiver configuration mismatch")
             check_word(armed, 910000)
+            if armed.get("rx_gain_reg") != result["expected_rx_gain_reg"]:
+                raise RuntimeError("Receiver gain does not match requested control")
             sent = None
             tx_start = tx_end = None
             with ThreadPoolExecutor(max_workers=1) as pool:

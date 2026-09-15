@@ -1,0 +1,11 @@
+{
+  "pid": 12473,
+  "path": "/home/mikec/hwtest/runs/pair-sf8-32-4p6-300us-20260914",
+  "collector": "profile_pair_4p6_collect.py",
+  "phases": [
+    [
+      300,
+      1024
+    ]
+  ]
+}

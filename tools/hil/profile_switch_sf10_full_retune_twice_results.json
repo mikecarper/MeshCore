@@ -1,0 +1,545 @@
+{
+  "experiment": "sf10_125_full_retune_twice",
+  "complete": true,
+  "receiver": "COM31",
+  "sender": "COM15",
+  "channels": 4,
+  "channel_step_khz": 1000,
+  "sf": 10,
+  "bw_khz": 125,
+  "preamble": 32,
+  "dwell_symbols": 5.1,
+  "settle_us": 0,
+  "power_dbm": -9,
+  "rx_gain": 148,
+  "frequency_writes_per_pass": 2,
+  "modulation_writes_per_pass": 1,
+  "retune_passes": 2,
+  "timing": [
+    {
+      "retune_passes": 1,
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "channel_sweep": 1,
+        "channel_trace": 2,
+        "channel_sf_select": 1,
+        "channel_bw_select": 1,
+        "channel_step_select": 1,
+        "payload_delivery_ab": 1,
+        "preamble_diagnostic": 1,
+        "modulation_cache_ab": 1,
+        "frequency_repeat_ab": 1,
+        "stationary_baseline": 1,
+        "stationary_offset": 1,
+        "rollback_ab": 1,
+        "rx_gain_reg": 148
+      },
+      "config": {
+        "listening": 1039318346,
+        "channels": 4,
+        "sf": 10,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 41780,
+        "settle_us": 0,
+        "base_mhz": 909.5,
+        "step_mhz": 1.0,
+        "spi_mhz": 8,
+        "bulk": true,
+        "rollback": 0,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 1039318347,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 141,
+        "modulation_cache": false,
+        "rf_commands": 282,
+        "modulation_commands": 141,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 141,
+          "min_us": 634,
+          "mean_us": 647.284,
+          "max_us": 847
+        },
+        "with_modulation": {
+          "n": 141,
+          "min_us": 634,
+          "mean_us": 647.284,
+          "max_us": 847
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "settle_us": 0,
+        "frequency_repeat": true,
+        "tcxo_us": 1600,
+        "channel_step_khz": 1000,
+        "mixed_profiles": false,
+        "retune_passes": 1,
+        "second_pass_blocked": 0,
+        "first_pass": {
+          "n": 141,
+          "min_us": 631,
+          "mean_us": 644.22,
+          "max_us": 838
+        },
+        "second_pass": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "accept_offchannel": false,
+        "strict_received": 0,
+        "offchannel_received": 0,
+        "rollback": 0,
+        "warm_standby": true,
+        "batched_modulation": true,
+        "bulk_spi": true,
+        "settling": {
+          "n": 141,
+          "min_us": 1,
+          "mean_us": 2.078,
+          "max_us": 3
+        },
+        "switch_and_settle": {
+          "n": 141,
+          "min_us": 636,
+          "mean_us": 649.362,
+          "max_us": 849
+        },
+        "idle_cycle": {
+          "n": 34,
+          "min_us": 169706,
+          "mean_us": 169722.059,
+          "max_us": 169754
+        },
+        "idle_dwell": {
+          "n": 140,
+          "min_us": 41780,
+          "mean_us": 41784.55,
+          "max_us": 41789
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 41789,
+          "mean_us": 41789.0,
+          "max_us": 41789
+        }
+      },
+      "seconds": 6
+    },
+    {
+      "retune_passes": 2,
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "channel_sweep": 1,
+        "channel_trace": 2,
+        "channel_sf_select": 1,
+        "channel_bw_select": 1,
+        "channel_step_select": 1,
+        "payload_delivery_ab": 1,
+        "preamble_diagnostic": 1,
+        "modulation_cache_ab": 1,
+        "frequency_repeat_ab": 1,
+        "stationary_baseline": 1,
+        "stationary_offset": 1,
+        "rollback_ab": 1,
+        "rx_gain_reg": 148
+      },
+      "config": {
+        "listening": 609269565,
+        "channels": 4,
+        "sf": 10,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 41780,
+        "settle_us": 0,
+        "base_mhz": 909.5,
+        "step_mhz": 1.0,
+        "spi_mhz": 8,
+        "bulk": true,
+        "rollback": 0,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 609269566,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 278,
+        "modulation_cache": false,
+        "rf_commands": 556,
+        "modulation_commands": 278,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 139,
+          "min_us": 1259,
+          "mean_us": 1275.41,
+          "max_us": 1491
+        },
+        "with_modulation": {
+          "n": 139,
+          "min_us": 1259,
+          "mean_us": 1275.41,
+          "max_us": 1491
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "settle_us": 0,
+        "frequency_repeat": true,
+        "tcxo_us": 1600,
+        "channel_step_khz": 1000,
+        "mixed_profiles": false,
+        "retune_passes": 2,
+        "second_pass_blocked": 0,
+        "first_pass": {
+          "n": 139,
+          "min_us": 638,
+          "mean_us": 648.899,
+          "max_us": 846
+        },
+        "second_pass": {
+          "n": 139,
+          "min_us": 614,
+          "mean_us": 622.835,
+          "max_us": 637
+        },
+        "accept_offchannel": false,
+        "strict_received": 0,
+        "offchannel_received": 0,
+        "rollback": 0,
+        "warm_standby": true,
+        "batched_modulation": true,
+        "bulk_spi": true,
+        "settling": {
+          "n": 139,
+          "min_us": 2,
+          "mean_us": 2.439,
+          "max_us": 3
+        },
+        "switch_and_settle": {
+          "n": 139,
+          "min_us": 1261,
+          "mean_us": 1277.849,
+          "max_us": 1494
+        },
+        "idle_cycle": {
+          "n": 33,
+          "min_us": 172213,
+          "mean_us": 172234.848,
+          "max_us": 172253
+        },
+        "idle_dwell": {
+          "n": 138,
+          "min_us": 41780,
+          "mean_us": 41784.406,
+          "max_us": 41789
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 41782,
+          "mean_us": 41782.0,
+          "max_us": 41782
+        }
+      },
+      "seconds": 6
+    },
+    {
+      "retune_passes": 2,
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "channel_sweep": 1,
+        "channel_trace": 2,
+        "channel_sf_select": 1,
+        "channel_bw_select": 1,
+        "channel_step_select": 1,
+        "payload_delivery_ab": 1,
+        "preamble_diagnostic": 1,
+        "modulation_cache_ab": 1,
+        "frequency_repeat_ab": 1,
+        "stationary_baseline": 1,
+        "stationary_offset": 1,
+        "rollback_ab": 1,
+        "rx_gain_reg": 148
+      },
+      "config": {
+        "listening": 997680956,
+        "channels": 4,
+        "sf": 10,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 41780,
+        "settle_us": 0,
+        "base_mhz": 909.5,
+        "step_mhz": 1.0,
+        "spi_mhz": 8,
+        "bulk": true,
+        "rollback": 0,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 997680957,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 278,
+        "modulation_cache": false,
+        "rf_commands": 556,
+        "modulation_commands": 278,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 139,
+          "min_us": 1262,
+          "mean_us": 1276.086,
+          "max_us": 1488
+        },
+        "with_modulation": {
+          "n": 139,
+          "min_us": 1262,
+          "mean_us": 1276.086,
+          "max_us": 1488
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "settle_us": 0,
+        "frequency_repeat": true,
+        "tcxo_us": 1600,
+        "channel_step_khz": 1000,
+        "mixed_profiles": false,
+        "retune_passes": 2,
+        "second_pass_blocked": 0,
+        "first_pass": {
+          "n": 139,
+          "min_us": 638,
+          "mean_us": 649.0,
+          "max_us": 848
+        },
+        "second_pass": {
+          "n": 139,
+          "min_us": 614,
+          "mean_us": 623.288,
+          "max_us": 634
+        },
+        "accept_offchannel": false,
+        "strict_received": 0,
+        "offchannel_received": 0,
+        "rollback": 0,
+        "warm_standby": true,
+        "batched_modulation": true,
+        "bulk_spi": true,
+        "settling": {
+          "n": 139,
+          "min_us": 2,
+          "mean_us": 2.432,
+          "max_us": 3
+        },
+        "switch_and_settle": {
+          "n": 139,
+          "min_us": 1264,
+          "mean_us": 1278.518,
+          "max_us": 1490
+        },
+        "idle_cycle": {
+          "n": 33,
+          "min_us": 172217,
+          "mean_us": 172235.485,
+          "max_us": 172260
+        },
+        "idle_dwell": {
+          "n": 138,
+          "min_us": 41780,
+          "mean_us": 41784.145,
+          "max_us": 41791
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 41787,
+          "mean_us": 41787.0,
+          "max_us": 41787
+        }
+      },
+      "seconds": 6
+    },
+    {
+      "retune_passes": 1,
+      "info": {
+        "ready": true,
+        "bench": "production-profile-switch-v8",
+        "channel_sweep": 1,
+        "channel_trace": 2,
+        "channel_sf_select": 1,
+        "channel_bw_select": 1,
+        "channel_step_select": 1,
+        "payload_delivery_ab": 1,
+        "preamble_diagnostic": 1,
+        "modulation_cache_ab": 1,
+        "frequency_repeat_ab": 1,
+        "stationary_baseline": 1,
+        "stationary_offset": 1,
+        "rollback_ab": 1,
+        "rx_gain_reg": 148
+      },
+      "config": {
+        "listening": 203659037,
+        "channels": 4,
+        "sf": 10,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 41780,
+        "settle_us": 0,
+        "base_mhz": 909.5,
+        "step_mhz": 1.0,
+        "spi_mhz": 8,
+        "bulk": true,
+        "rollback": 0,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 203659038,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 141,
+        "modulation_cache": false,
+        "rf_commands": 282,
+        "modulation_commands": 141,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 141,
+          "min_us": 633,
+          "mean_us": 647.858,
+          "max_us": 836
+        },
+        "with_modulation": {
+          "n": 141,
+          "min_us": 633,
+          "mean_us": 647.858,
+          "max_us": 836
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "settle_us": 0,
+        "frequency_repeat": true,
+        "tcxo_us": 1600,
+        "channel_step_khz": 1000,
+        "mixed_profiles": false,
+        "retune_passes": 1,
+        "second_pass_blocked": 0,
+        "first_pass": {
+          "n": 141,
+          "min_us": 630,
+          "mean_us": 644.872,
+          "max_us": 828
+        },
+        "second_pass": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "accept_offchannel": false,
+        "strict_received": 0,
+        "offchannel_received": 0,
+        "rollback": 0,
+        "warm_standby": true,
+        "batched_modulation": true,
+        "bulk_spi": true,
+        "settling": {
+          "n": 141,
+          "min_us": 1,
+          "mean_us": 2.071,
+          "max_us": 3
+        },
+        "switch_and_settle": {
+          "n": 141,
+          "min_us": 635,
+          "mean_us": 649.929,
+          "max_us": 839
+        },
+        "idle_cycle": {
+          "n": 34,
+          "min_us": 169704,
+          "mean_us": 169725.471,
+          "max_us": 169750
+        },
+        "idle_dwell": {
+          "n": 140,
+          "min_us": 41780,
+          "mean_us": 41784.636,
+          "max_us": 41796
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 41786,
+          "mean_us": 41786.0,
+          "max_us": 41786
+        }
+      },
+      "seconds": 6
+    }
+  ],
+  "captures": [
+    {
+      "kind": "strict",
+      "path": "profile_switch_sf10_full_retune_twice_results_strict.json",
+      "exit_code": 0
+    }
+  ],
+  "strict_stopped": "first_rf_miss",
+  "stopped": "bounded_tests_complete"
+}

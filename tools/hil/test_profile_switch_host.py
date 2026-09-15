@@ -29,7 +29,7 @@ class ResultReaderTests(unittest.TestCase):
         self.assertTrue(result["transport_recovered"])
 
     def test_native_usb_and_bridge_have_distinct_control_lines(self):
-        for vid, expected in ((0x303A, True), (0x1A86, False), (None, False)):
+        for vid, expected in ((0x303A, True), (0x2886, True), (0x239A, True), (0x1A86, False), (None, False)):
             port = Port([])
             with patch("profile_switch.list_ports.comports", return_value=[
                     SimpleNamespace(device="TEST", vid=vid),

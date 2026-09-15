@@ -41,6 +41,8 @@ struct SX1262 {
   virtual int16_t standby() { return standby(1,true); }
   int16_t standby(int mode,bool wake) { assert(mode==0 || mode==1);return call(wake?'S':'s'); }
   virtual int16_t startReceive() { return call('X'); }
+  virtual int16_t setFrequency(float) { return call('F'); }
+  int16_t setFrequency(float,bool) { return call('F'); }
   virtual int16_t setPreambleLength(size_t p) { preambleLengthLoRa=p;return call('P'); }
   int getIrqMapped(int x) { return x; }
   int setDioIrqParams(int flags,int mask) { assert(flags==9 && mask==2);return call('I'); }
@@ -104,10 +106,12 @@ int main() {
     def test_bulk_hal_preserves_full_duplex_buffer(self):
         source = (ROOT / "tools/hil/profile_switch.cpp").read_text()
         operation = method(source, "void spiTransfer(").replace(" override", "")
+        offset = (ROOT / "tools/hil/ProfileFrequencyOffset.h").read_text().replace("#pragma once", "")
         harness = r'''
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
+@OFFSET@
 struct Spi {
   unsigned bulk=0;
   void transferBytes(uint8_t* out,uint8_t* in,size_t n) {
@@ -144,9 +148,17 @@ int main() {
     assert(h.fallback==unsigned(!bulk) && h.device.bulk==unsigned(bulk));
   }
   assert(channelTrace.calls==520);
+  for(int bulk=0;bulk<2;++bulk) {
+    Hal h;h.bulkTransfer=bulk;
+    uint8_t out[5]={0x86,0x38,0xd8,0,0},in[5]={};
+    { HilFrequencyOffsetScope offset(10);h.spiTransfer(out,5,in); }
+    assert(out[4]==0 && in[4]==(10^0xa5)); // actual transmitted and observed byte
+    h.spiTransfer(out,5,in);
+    assert(in[4]==0xa5); // second/corrected pass has the original RF word
+  }
 }
 '''
-        self.compile_run(harness.replace("@OP@", operation))
+        self.compile_run(harness.replace("@OP@", operation).replace("@OFFSET@", offset))
 
 
 if __name__ == "__main__":

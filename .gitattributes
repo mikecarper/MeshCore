@@ -7,6 +7,10 @@ docs/releases/1.17.1.5-variant-map.tsv whitespace=-blank-at-eol
 # Preserve byte-exact radio-lab captures so published SHA-256 values remain
 # valid across Windows and Linux checkouts. CRLF in these captures is data.
 tools/hil/profile_switch*.json -text whitespace=cr-at-eol
+tools/hil/profile_four_tx*.json -text whitespace=cr-at-eol
+tools/hil/profile_pair*.json -text whitespace=cr-at-eol
+tools/hil/profile_stationary*.json -text whitespace=cr-at-eol
 tools/hil/preamble_stationary*.json -text whitespace=cr-at-eol
 tools/hil/sf6_125*.json -text whitespace=cr-at-eol
 tools/hil/sf8_125*.json -text whitespace=cr-at-eol
+tools/hil/sf5_250*.json -text whitespace=cr-at-eol

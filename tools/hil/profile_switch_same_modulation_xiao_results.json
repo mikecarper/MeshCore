@@ -1,0 +1,282 @@
+{
+  "experiment": "same_modulation_rx_only_ab",
+  "port": "COM31",
+  "sf": 6,
+  "bw_khz": 125,
+  "cr": 5,
+  "channels": 4,
+  "dwell_us": 2612,
+  "preamble": 32,
+  "window_seconds": 3,
+  "autonomous_tx": false,
+  "expected_rx_gain_reg": 148,
+  "order": [
+    false,
+    true,
+    true,
+    false
+  ],
+  "complete": true,
+  "trials": [
+    {
+      "enabled": false,
+      "config": {
+        "listening": 756514674,
+        "channels": 4,
+        "sf": 6,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 2612,
+        "base_mhz": 909.5,
+        "step_mhz": 0.25,
+        "spi_mhz": 8,
+        "bulk": true,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 756514675,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 949,
+        "modulation_cache": false,
+        "rf_commands": 949,
+        "modulation_commands": 949,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 949,
+          "min_us": 536,
+          "mean_us": 548.822,
+          "max_us": 663
+        },
+        "with_modulation": {
+          "n": 949,
+          "min_us": 536,
+          "mean_us": 548.822,
+          "max_us": 663
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "idle_dwell": {
+          "n": 948,
+          "min_us": 2612,
+          "mean_us": 2616.729,
+          "max_us": 2622
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 2620,
+          "mean_us": 2620.0,
+          "max_us": 2620
+        }
+      }
+    },
+    {
+      "enabled": true,
+      "config": {
+        "listening": 756514676,
+        "channels": 4,
+        "sf": 6,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 2612,
+        "base_mhz": 909.5,
+        "step_mhz": 0.25,
+        "spi_mhz": 8,
+        "bulk": true,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 756514677,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 978,
+        "modulation_cache": true,
+        "rf_commands": 978,
+        "modulation_commands": 0,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 978,
+          "min_us": 441,
+          "mean_us": 452.15,
+          "max_us": 580
+        },
+        "with_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "without_modulation": {
+          "n": 978,
+          "min_us": 441,
+          "mean_us": 452.15,
+          "max_us": 580
+        },
+        "idle_dwell": {
+          "n": 977,
+          "min_us": 2612,
+          "mean_us": 2617.496,
+          "max_us": 2621
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 2614,
+          "mean_us": 2614.0,
+          "max_us": 2614
+        }
+      }
+    },
+    {
+      "enabled": true,
+      "config": {
+        "listening": 756514678,
+        "channels": 4,
+        "sf": 6,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 2612,
+        "base_mhz": 909.5,
+        "step_mhz": 0.25,
+        "spi_mhz": 8,
+        "bulk": true,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 756514679,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 979,
+        "modulation_cache": true,
+        "rf_commands": 979,
+        "modulation_commands": 0,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 979,
+          "min_us": 442,
+          "mean_us": 451.644,
+          "max_us": 578
+        },
+        "with_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "without_modulation": {
+          "n": 979,
+          "min_us": 442,
+          "mean_us": 451.644,
+          "max_us": 578
+        },
+        "idle_dwell": {
+          "n": 978,
+          "min_us": 2612,
+          "mean_us": 2616.567,
+          "max_us": 2621
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 2619,
+          "mean_us": 2619.0,
+          "max_us": 2619
+        }
+      }
+    },
+    {
+      "enabled": false,
+      "config": {
+        "listening": 756514680,
+        "channels": 4,
+        "sf": 6,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 2612,
+        "base_mhz": 909.5,
+        "step_mhz": 0.25,
+        "spi_mhz": 8,
+        "bulk": true,
+        "trace": false,
+        "irq_poll_us": 0
+      },
+      "status": {
+        "result": 756514681,
+        "channels": 4,
+        "active": true,
+        "received": 0,
+        "missed": 0,
+        "deferred": 0,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 949,
+        "modulation_cache": false,
+        "rf_commands": 949,
+        "modulation_commands": 949,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 949,
+          "min_us": 535,
+          "mean_us": 548.938,
+          "max_us": 660
+        },
+        "with_modulation": {
+          "n": 949,
+          "min_us": 535,
+          "mean_us": 548.938,
+          "max_us": 660
+        },
+        "without_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "idle_dwell": {
+          "n": 948,
+          "min_us": 2612,
+          "mean_us": 2616.299,
+          "max_us": 2627
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 2615,
+          "mean_us": 2615.0,
+          "max_us": 2615
+        }
+      }
+    }
+  ]
+}

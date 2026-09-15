@@ -32,7 +32,8 @@ int main() {
   assert(Serial.output.find("unavailable")!=std::string::npos);
   Serial.output.clear();replayBenchResult("listening",42);
   assert(Serial.output.find("unavailable")!=std::string::npos);
-  Serial.output.clear();recordBenchResult(lastTxResult,43,"%03000d",1);
+  Serial.output.clear();
+  recordBenchResult(lastTxResult,43,"%0*d",int(sizeof(lastTxResult.text)),1);
   assert(lastTxResult.sequence==0 && Serial.output.find("overflow")!=std::string::npos);
   Serial.output.clear();replayBenchResult("sent",42);
   assert(Serial.output.find("unavailable")!=std::string::npos);

@@ -67,7 +67,7 @@ void sendPacket(unsigned sf, unsigned target, unsigned seq, unsigned len, unsign
   uint8_t data[255];
   memcpy(data,"PSW3",4);memcpy(data+4,&seq,4);data[8]=target;data[9]=sf;
   for(unsigned i=10;i<len;++i) data[i]=uint8_t(i ^ seq);
-  if (rc==0) rc=chip.transmit(data,len);
+  if (rc==0) rc=benchTransmit(data,len);
   recordBenchResult(lastTxResult,seq,"{\"sent\":%u,\"len\":%u,\"rc\":%d,\"power_dbm\":%d,\"spi_mhz\":%u,\"bulk\":%s}\n",
                     seq,len,rc,power,spiMHz,bulk ? "true":"false");
 }

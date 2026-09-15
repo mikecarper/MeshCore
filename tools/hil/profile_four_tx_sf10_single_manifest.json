@@ -1,0 +1,154 @@
+{
+  "git_head": "2b5a6f209835f0f67ed73fee78d36447a4566ce6",
+  "scope": "Dirty-worktree HIL artifacts; four physical fixed-channel TXs and one fast single-pass RX",
+  "targets": [
+    {
+      "channel": 0,
+      "serial": "9AB3B64C641BA927",
+      "topology": "1-1.3.1",
+      "board": "RAK4631",
+      "env": "profile_fixed_rak_tx",
+      "fwid": 182,
+      "app_base": 155648,
+      "boot_vid": 9114,
+      "boot_pid": 41
+    },
+    {
+      "channel": 1,
+      "serial": "651F8E496197F882",
+      "topology": "1-1.2.3",
+      "board": "Heltec T096",
+      "env": "profile_fixed_t096_tx",
+      "fwid": 182,
+      "app_base": 155648,
+      "boot_vid": 9114,
+      "boot_pid": 113
+    },
+    {
+      "channel": 2,
+      "serial": "9352162A72082314",
+      "topology": "1-1.2.2",
+      "board": "Heltec MeshTower V2",
+      "env": "profile_fixed_tower_tx",
+      "fwid": 182,
+      "app_base": 155648,
+      "boot_vid": 9114,
+      "boot_pid": 113
+    },
+    {
+      "channel": 3,
+      "serial": "34A9141999729D5D",
+      "topology": "1-1.2.1",
+      "board": "Seeed T1000-E LR1110",
+      "env": "profile_fixed_t1000_tx",
+      "fwid": 291,
+      "app_base": 159744,
+      "boot_vid": 10374,
+      "boot_pid": 87
+    }
+  ],
+  "receiver": {
+    "serial": "44:1B:F6:69:CF:98",
+    "topology": "1-1.3.3",
+    "board": "Heltec V4",
+    "env": "profile_four_tx_v4_rx"
+  },
+  "files": {
+    "profile_fixed_rak_tx.zip": {
+      "bytes": 93308,
+      "sha256": "0a67e811f2b7e33208866ba27d4e6c396a1c077b022bf84f6c986689bf71ca87",
+      "app_base": 155648,
+      "image_end": 248136,
+      "fwid": 182
+    },
+    "profile_fixed_t096_tx.zip": {
+      "bytes": 93291,
+      "sha256": "d6d2a4e22bb4f654ad44e29f9ae684b671e13f91583cd56c2c27bb670045e9c0",
+      "app_base": 155648,
+      "image_end": 248120,
+      "fwid": 182
+    },
+    "profile_fixed_tower_tx.zip": {
+      "bytes": 93356,
+      "sha256": "28fdb7373a2628aaed9ca8c0d305ac220c29035604364e621f48a8d4c5a255c8",
+      "app_base": 155648,
+      "image_end": 248184,
+      "fwid": 182
+    },
+    "profile_fixed_t1000_tx.zip": {
+      "bytes": 88020,
+      "sha256": "153c8f129f1d31d9fa40f1931cb39a639179902f0c0e9ffd9b05e0bef854c140",
+      "app_base": 159744,
+      "image_end": 246944,
+      "fwid": 291
+    },
+    "rx-firmware.bin": {
+      "bytes": 366800,
+      "sha256": "e112b566ec72b84692e65a774d1ccce1d8789d7eed19c9e453a7837a594ae29d"
+    },
+    "rx-partitions.bin": {
+      "bytes": 3072,
+      "sha256": "bd0f7954aca2ef7d925ee21aaa1f3dc8822d1d6ce5cbbd26a135e5886bfff6ce"
+    },
+    "rx-bootloader.bin": {
+      "bytes": 15104,
+      "sha256": "2a71d69b471e20c2bac7fb469f3c6a807b3ebee780e348e5889db0da849ca363"
+    },
+    "rx-boot_app0.bin": {
+      "bytes": 8192,
+      "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
+    },
+    "profile_four_tx_fixture.py": {
+      "bytes": 1852,
+      "sha256": "8c2e12e2450648c6a7a25d4d2567666e2df21eebc7abaa712b1909cd33200c6e"
+    },
+    "profile_four_tx_deploy.py": {
+      "bytes": 5044,
+      "sha256": "b8f804d511dcd4195caf63d0335e31d8818bafa66b21a4a381382773d3c6c3c6"
+    },
+    "profile_four_tx.py": {
+      "bytes": 11040,
+      "sha256": "3bcc13b7c121bb1148bc69f1083a433114975ca19780aaaf88a29f675afc0d87"
+    },
+    "profile_switch.py": {
+      "bytes": 6249,
+      "sha256": "097e61cc128f96aa36964578eecfa3fae2de49f75867fe09fc0ac039fd639aae"
+    },
+    "profile_switch_channels.py": {
+      "bytes": 23912,
+      "sha256": "9766bafe61e5b8d2ffbe06e8f2ccf8a7be28bcf2edb922e9790347ea9d92e000"
+    },
+    "profile_switch_packets.py": {
+      "bytes": 6679,
+      "sha256": "6f572549af4f4cf01c947160704d5f6d2b647e84457f064c3857e0153b8ca29c"
+    },
+    "profile_switch_sweep.py": {
+      "bytes": 4260,
+      "sha256": "710509970501bf2c5fdaec29ed68dff735a526488acac1bd209d30b3bb601fa5"
+    },
+    "profile_fixed_tx.cpp": {
+      "bytes": 6984,
+      "sha256": "26d0e01148e0433099e4d325215618c3c18ea44bee05a5d1bc1643d2020ea108"
+    },
+    "profile_fixed_tx.ini": {
+      "bytes": 2371,
+      "sha256": "4d5a5f16a2b16dd9d4a8e7a0b2f9d0b46dca023105e30cc0eb5ea4fd81b81211"
+    },
+    "profile_switch.cpp": {
+      "bytes": 26548,
+      "sha256": "0b9852726dd22c5077b741ce3f93bd76b6e03be7f47196e38faf0c5186bafca6"
+    },
+    "profile_switch_channels.h": {
+      "bytes": 19414,
+      "sha256": "32b29b5ef41c04b92b63427df294ebdbb49410d145f85cd213e99fc1794f9d3f"
+    },
+    "ProfileChannelTrace.h": {
+      "bytes": 2227,
+      "sha256": "5b417732b0c9b412802ede3fcada95e3b4f5d038c65a06816677bacdcd657c86"
+    },
+    "ProfileFrequencyOffset.h": {
+      "bytes": 1114,
+      "sha256": "cd54f7af39330bdbf1c0c20db73095815b9c07ac3d57aa3a3af6ee8dbf9df90d"
+    }
+  }
+}

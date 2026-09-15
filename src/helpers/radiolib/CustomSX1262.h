@@ -36,6 +36,10 @@ class CustomSX1262 : public SX1262 {
     void endProfileSwitch(bool success) { _profileSwitch.end(success); }
     bool profileSwitchFailed() const { return _profileSwitch.failed(); }
     uint32_t getOptimizedProfileSwitches() const { return _profileFastResumes; }
+#ifdef MC_SX1262_HIL
+    // Same-image lab baseline: force only 0x8B, preserving fast RX ownership.
+    void hilInvalidateModulation() { _profileSwitch.invalidateModulation(); }
+#endif
 
     int16_t restoreTcxoAfterSleep() {
       if (!_tcxoWakePending) return RADIOLIB_ERR_NONE;
@@ -96,6 +100,25 @@ class CustomSX1262 : public SX1262 {
       return SX1262::setPreambleLength(symbols);
     }
 
+    // Ordinary setters can change hardware or leave RadioLib's fields updated
+    // after a failed write. They cannot preserve our acknowledged hop tuple.
+    int16_t setBandwidth(float bw) override {
+      _profileSwitch.invalidateModulation();
+      return SX1262::setBandwidth(bw);
+    }
+    int16_t setSpreadingFactor(uint8_t sf) override {
+      _profileSwitch.invalidateModulation();
+      return SX1262::setSpreadingFactor(sf);
+    }
+    int16_t setCodingRate(uint8_t cr, bool longInterleave = false) {
+      _profileSwitch.invalidateModulation();
+      return SX1262::setCodingRate(cr, longInterleave);
+    }
+    int16_t forceLDRO(bool enabled) {
+      _profileSwitch.invalidateModulation();
+      return SX1262::forceLDRO(enabled);
+    }
+
     // Apply one complete LoRa modulation tuple instead of three separate
     // SetModulationParams commands. Keep RadioLib's caches and automatic LDRO
     // calculation consistent with its ordinary SF/BW/CR setters. Caller must
@@ -119,9 +142,18 @@ class CustomSX1262 : public SX1262 {
         return RADIOLIB_ERR_INVALID_BANDWIDTH;
       }
       if (getPacketType() != RADIOLIB_SX126X_PACKET_TYPE_LORA) {
+        _profileSwitch.invalidateModulation();
         return RADIOLIB_ERR_WRONG_MODEM;
       }
 
+      // Match the effective on-wire LDRO value, not merely the auto/manual
+      // policy. autoLDRO() changes policy without writing the chip; SF/BW can
+      // change its computed value. Keep the pinned RadioLib >=16 ms rule.
+      const uint8_t effectiveLdro = ldroAuto
+          ? ((float(uint32_t(1) << sf) / bw) >= 16.0f ? 1 : 0)
+          : ldrOptimize;
+      const bool unchanged = _profileSwitch.matchesModulation(
+          sf, codes[index], cr - 4, effectiveLdro);
       const auto oldSf = spreadingFactor;
       const auto oldBw = bandwidth;
       const auto oldBwKhz = bandwidthKhz;
@@ -131,7 +163,12 @@ class CustomSX1262 : public SX1262 {
       bandwidth = codes[index];
       bandwidthKhz = bw;
       codingRate = cr - 4;  // ordinary LoRa CR, not long-interleaving encoding
+      if (unchanged) {
+        ldrOptimize = effectiveLdro;
+        return RADIOLIB_ERR_NONE;  // no SetModulationParams (0x8B) needed
+      }
       const int16_t state = setModulationParams(sf, bandwidth, codingRate, ldrOptimize);
+      _profileSwitch.modulationResult(state, sf, bandwidth, codingRate, ldrOptimize);
       if (state != RADIOLIB_ERR_NONE) {
         // The wrapper restores the physical tuple after a failed command.
         // Do not publish a new software tuple when hardware success is unknown.

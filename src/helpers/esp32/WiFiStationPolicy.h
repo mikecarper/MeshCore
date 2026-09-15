@@ -4,6 +4,9 @@
 #include <string.h>
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+#if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
+#include "../../../tools/hil/S3SoakWiFiKey.h"
+#endif
 
 namespace mesh {
 namespace wifi {
@@ -18,6 +21,9 @@ inline void setStationAutoReconnect(bool enabled) {
 }
 
 inline wl_status_t beginStation(const char* ssid, const char* password) {
+#if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
+  password = mesh::hil::soakStationPassword(password);
+#endif
   if (!kPrimaryEspNowRadio) {
     return WiFi.begin(ssid, password);
   }

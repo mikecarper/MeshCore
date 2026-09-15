@@ -100,6 +100,11 @@ jobs:
           test_sx1262_profile_switch test_sx1262_batched_modulation
           test_radio_chirp_math
 
+      - name: Verify radio lab collectors and compiled experiment contracts
+        run: |
+          python3 -B -m unittest discover -s test -p 'test_profile_*.py' -v
+          python3 -B -m unittest discover -s tools/hil -p 'test_*.py' -v
+
       - name: Verify ESP32 static DRAM budget
         run: |
           python3 -B test/test_esp32_dram.py

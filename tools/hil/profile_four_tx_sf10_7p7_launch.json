@@ -1,0 +1,8 @@
+{
+  "previous_run": "/home/mikec/hwtest/runs/four-tx-sf10-20260914",
+  "run": "/home/mikec/hwtest/runs/four-tx-sf10-7p7-20260914",
+  "firmware_reused": true,
+  "dwell_symbols": 7.7,
+  "collector_sha256": "cceb8a570f4aedeaf45d28b4b4590b23df3c1efd490c8e8e9cd74a23ba00024f",
+  "started_utc": "2026-09-14T22:58:14Z"
+}

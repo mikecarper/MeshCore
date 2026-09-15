@@ -1,0 +1,202 @@
+{
+  "schema": 5,
+  "experiment": "sf10_125_channel_capacity",
+  "complete": true,
+  "receiver": "COM31",
+  "sender": "COM15",
+  "sf": 10,
+  "bw_khz": 125,
+  "cr": 5,
+  "preamble_symbols": 32,
+  "dwell_symbols": 5.1,
+  "dwell_us": 41780,
+  "modulation_cache": true,
+  "frequency_repeat": true,
+  "settle_us": 11000,
+  "expected_rx_gain_reg": 148,
+  "trace_enabled": false,
+  "irq_poll_us": 0,
+  "samples_per_channel": 100,
+  "packet_bytes": 16,
+  "power_dbm": -9,
+  "base_mhz": 909.5,
+  "channel_step_mhz": 0.25,
+  "seed": 606125,
+  "scope": "Lab N-channel scheduler over production retunes; finite short-range sample, not guaranteed PER",
+  "receiver_info": {
+    "ready": true,
+    "bench": "production-profile-switch-v8",
+    "channel_sweep": 1,
+    "channel_trace": 2,
+    "channel_sf_select": 1,
+    "channel_bw_select": 1,
+    "preamble_diagnostic": 1,
+    "modulation_cache_ab": 1,
+    "frequency_repeat_ab": 1,
+    "rx_gain_reg": 148
+  },
+  "sender_info": {
+    "ready": true,
+    "bench": "production-profile-switch-v8",
+    "board": "XIAO nRF52840 Wio SX1262 TX",
+    "channel_tx": 1,
+    "channel_sweep": 0,
+    "channel_sf_select": 1,
+    "channel_bw_select": 1,
+    "autonomous_tx": false
+  },
+  "levels": [
+    {
+      "channels": 4,
+      "config": {
+        "listening": 760798796,
+        "channels": 4,
+        "sf": 10,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 41780,
+        "settle_us": 11000,
+        "base_mhz": 909.5,
+        "step_mhz": 0.25,
+        "spi_mhz": 8,
+        "bulk": true,
+        "trace": false,
+        "irq_poll_us": 0,
+        "setup_deferrals": 0
+      },
+      "attempted": 1,
+      "received": 0,
+      "per_channel": [
+        {
+          "attempted": 0,
+          "received": 0
+        },
+        {
+          "attempted": 0,
+          "received": 0
+        },
+        {
+          "attempted": 0,
+          "received": 0
+        },
+        {
+          "attempted": 1,
+          "received": 0
+        }
+      ],
+      "trials": [
+        {
+          "sequence": 760798797,
+          "valid": false,
+          "armed": {
+            "listening": 760798797,
+            "channel": 3,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 760798797,
+            "channel": 3,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 86914,
+            "transmit_call_us": 529297
+          },
+          "received": {
+            "received": 760798797,
+            "channel": 2,
+            "len": 16,
+            "valid": false,
+            "rssi": -90.0,
+            "snr": -12.5
+          },
+          "host_times_ns": {
+            "arm_start": 394474386342400,
+            "arm_end": 394474387214300,
+            "tx_start": 394474553344500,
+            "tx_end": 394475171797900
+          },
+          "channel": 3,
+          "sample_round": 1,
+          "pause_ms": 164.540793937756
+        }
+      ],
+      "complete": false,
+      "status": {
+        "result": 760798798,
+        "channels": 4,
+        "active": false,
+        "received": 0,
+        "missed": 1,
+        "deferred": 10316,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 6,
+        "modulation_cache": true,
+        "rf_commands": 12,
+        "modulation_commands": 0,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 6,
+          "min_us": 531,
+          "mean_us": 574.5,
+          "max_us": 746
+        },
+        "with_modulation": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "without_modulation": {
+          "n": 6,
+          "min_us": 531,
+          "mean_us": 574.5,
+          "max_us": 746
+        },
+        "settle_us": 11000,
+        "frequency_repeat": true,
+        "settling": {
+          "n": 6,
+          "min_us": 11000,
+          "mean_us": 11000.833,
+          "max_us": 11001
+        },
+        "switch_and_settle": {
+          "n": 6,
+          "min_us": 11532,
+          "mean_us": 11575.333,
+          "max_us": 11746
+        },
+        "idle_cycle": {
+          "n": 0,
+          "min_us": 0,
+          "mean_us": 0.0,
+          "max_us": 0
+        },
+        "idle_dwell": {
+          "n": 5,
+          "min_us": 41783,
+          "mean_us": 41785.8,
+          "max_us": 41788
+        },
+        "held_dwell": {
+          "n": 1,
+          "min_us": 52857,
+          "mean_us": 52857.0,
+          "max_us": 52857
+        }
+      }
+    }
+  ],
+  "last_perfect_channels": null,
+  "stopped": "first_rf_miss",
+  "first_failed_channels": 4,
+  "failed_sequence": 760798797
+}

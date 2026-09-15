@@ -1,0 +1,1088 @@
+{
+  "experiment": "sf6_125_post_busy_settling",
+  "receiver": "COM31",
+  "sender": "COM28",
+  "plan": {
+    "preamble_us": 16384,
+    "dwell_us": 2612,
+    "channels": 4,
+    "nominal_switch_us": 453,
+    "maximum_added_us": 1031,
+    "step_us": 100,
+    "delays_us": [
+      0,
+      100,
+      200,
+      300,
+      400,
+      500,
+      600,
+      700,
+      800,
+      900,
+      1000
+    ]
+  },
+  "sf": 6,
+  "bw_khz": 125,
+  "dwell_symbols": 5.1,
+  "preamble_symbols": 32,
+  "samples_per_channel": 100,
+  "expected_rx_gain_reg": 148,
+  "modulation_cache": true,
+  "power_dbm": -9,
+  "trace_enabled": false,
+  "rx_active_during_settling": true,
+  "complete": true,
+  "captures": [
+    {
+      "settle_us": 0,
+      "path": "sf6_125_settling_normal_results_0us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 100,
+      "path": "sf6_125_settling_normal_results_100us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 200,
+      "path": "sf6_125_settling_normal_results_200us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 300,
+      "path": "sf6_125_settling_normal_results_300us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 400,
+      "path": "sf6_125_settling_normal_results_400us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 500,
+      "path": "sf6_125_settling_normal_results_500us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 600,
+      "path": "sf6_125_settling_normal_results_600us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 700,
+      "path": "sf6_125_settling_normal_results_700us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 800,
+      "path": "sf6_125_settling_normal_results_800us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 900,
+      "path": "sf6_125_settling_normal_results_900us.json",
+      "exit_code": 0
+    },
+    {
+      "settle_us": 1000,
+      "path": "sf6_125_settling_normal_results_1000us.json",
+      "exit_code": 0
+    }
+  ],
+  "first_perfect_settle_us": null,
+  "levels": [
+    {
+      "settle_us": 0,
+      "attempted": 45,
+      "received": 44,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 12,
+          "received": 11
+        },
+        {
+          "attempted": 11,
+          "received": 11
+        },
+        {
+          "attempted": 11,
+          "received": 11
+        },
+        {
+          "attempted": 11,
+          "received": 11
+        }
+      ],
+      "status": {
+        "result": 1004634198,
+        "channels": 4,
+        "active": false,
+        "received": 44,
+        "missed": 1,
+        "deferred": 33446,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 6062,
+        "modulation_cache": true,
+        "rf_commands": 6062,
+        "modulation_commands": 44,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 6062,
+          "min_us": 431,
+          "mean_us": 450.821,
+          "max_us": 785
+        },
+        "with_modulation": {
+          "n": 44,
+          "min_us": 735,
+          "mean_us": 766.045,
+          "max_us": 785
+        },
+        "without_modulation": {
+          "n": 6018,
+          "min_us": 431,
+          "mean_us": 448.516,
+          "max_us": 646
+        },
+        "settle_us": 0,
+        "settling": {
+          "n": 6062,
+          "min_us": 1,
+          "mean_us": 1.56,
+          "max_us": 11
+        },
+        "switch_and_settle": {
+          "n": 6062,
+          "min_us": 433,
+          "mean_us": 452.381,
+          "max_us": 787
+        },
+        "idle_cycle": {
+          "n": 1469,
+          "min_us": 12219,
+          "mean_us": 12256.886,
+          "max_us": 13642
+        },
+        "idle_dwell": {
+          "n": 6016,
+          "min_us": 2612,
+          "mean_us": 2617.317,
+          "max_us": 3782
+        },
+        "held_dwell": {
+          "n": 46,
+          "min_us": 4160,
+          "mean_us": 36194.152,
+          "max_us": 43435
+        }
+      }
+    },
+    {
+      "settle_us": 100,
+      "attempted": 5,
+      "received": 4,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 1,
+          "received": 1
+        },
+        {
+          "attempted": 1,
+          "received": 1
+        },
+        {
+          "attempted": 2,
+          "received": 1
+        },
+        {
+          "attempted": 1,
+          "received": 1
+        }
+      ],
+      "status": {
+        "result": 516283917,
+        "channels": 4,
+        "active": false,
+        "received": 4,
+        "missed": 1,
+        "deferred": 3332,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 3393,
+        "modulation_cache": true,
+        "rf_commands": 3393,
+        "modulation_commands": 4,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 3393,
+          "min_us": 411,
+          "mean_us": 447.447,
+          "max_us": 770
+        },
+        "with_modulation": {
+          "n": 4,
+          "min_us": 752,
+          "mean_us": 759.0,
+          "max_us": 770
+        },
+        "without_modulation": {
+          "n": 3389,
+          "min_us": 411,
+          "mean_us": 447.079,
+          "max_us": 638
+        },
+        "settle_us": 100,
+        "settling": {
+          "n": 3393,
+          "min_us": 100,
+          "mean_us": 100.94,
+          "max_us": 109
+        },
+        "switch_and_settle": {
+          "n": 3393,
+          "min_us": 512,
+          "mean_us": 548.387,
+          "max_us": 871
+        },
+        "idle_cycle": {
+          "n": 842,
+          "min_us": 12644,
+          "mean_us": 12669.976,
+          "max_us": 13767
+        },
+        "idle_dwell": {
+          "n": 3387,
+          "min_us": 2612,
+          "mean_us": 2617.682,
+          "max_us": 3512
+        },
+        "held_dwell": {
+          "n": 6,
+          "min_us": 3154,
+          "mean_us": 28199.0,
+          "max_us": 38452
+        }
+      }
+    },
+    {
+      "settle_us": 200,
+      "attempted": 35,
+      "received": 34,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 9,
+          "received": 9
+        },
+        {
+          "attempted": 8,
+          "received": 8
+        },
+        {
+          "attempted": 9,
+          "received": 9
+        },
+        {
+          "attempted": 9,
+          "received": 8
+        }
+      ],
+      "status": {
+        "result": 659553852,
+        "channels": 4,
+        "active": false,
+        "received": 34,
+        "missed": 1,
+        "deferred": 25990,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 5083,
+        "modulation_cache": true,
+        "rf_commands": 5083,
+        "modulation_commands": 34,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 5083,
+          "min_us": 412,
+          "mean_us": 449.663,
+          "max_us": 785
+        },
+        "with_modulation": {
+          "n": 34,
+          "min_us": 732,
+          "mean_us": 765.971,
+          "max_us": 785
+        },
+        "without_modulation": {
+          "n": 5049,
+          "min_us": 412,
+          "mean_us": 447.533,
+          "max_us": 638
+        },
+        "settle_us": 200,
+        "settling": {
+          "n": 5083,
+          "min_us": 200,
+          "mean_us": 200.761,
+          "max_us": 209
+        },
+        "switch_and_settle": {
+          "n": 5083,
+          "min_us": 613,
+          "mean_us": 650.424,
+          "max_us": 986
+        },
+        "idle_cycle": {
+          "n": 1234,
+          "min_us": 13029,
+          "mean_us": 13074.105,
+          "max_us": 14645
+        },
+        "idle_dwell": {
+          "n": 5047,
+          "min_us": 2612,
+          "mean_us": 2618.366,
+          "max_us": 4007
+        },
+        "held_dwell": {
+          "n": 36,
+          "min_us": 3176,
+          "mean_us": 36116.833,
+          "max_us": 44504
+        }
+      }
+    },
+    {
+      "settle_us": 300,
+      "attempted": 54,
+      "received": 53,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 13,
+          "received": 13
+        },
+        {
+          "attempted": 14,
+          "received": 14
+        },
+        {
+          "attempted": 13,
+          "received": 13
+        },
+        {
+          "attempted": 14,
+          "received": 13
+        }
+      ],
+      "status": {
+        "result": 391537018,
+        "channels": 4,
+        "active": false,
+        "received": 53,
+        "missed": 1,
+        "deferred": 40287,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 6026,
+        "modulation_cache": true,
+        "rf_commands": 6026,
+        "modulation_commands": 53,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 6026,
+          "min_us": 427,
+          "mean_us": 452.672,
+          "max_us": 789
+        },
+        "with_modulation": {
+          "n": 53,
+          "min_us": 749,
+          "mean_us": 769.453,
+          "max_us": 789
+        },
+        "without_modulation": {
+          "n": 5973,
+          "min_us": 427,
+          "mean_us": 449.861,
+          "max_us": 638
+        },
+        "settle_us": 300,
+        "settling": {
+          "n": 6026,
+          "min_us": 300,
+          "mean_us": 300.739,
+          "max_us": 309
+        },
+        "switch_and_settle": {
+          "n": 6026,
+          "min_us": 728,
+          "mean_us": 753.41,
+          "max_us": 1090
+        },
+        "idle_cycle": {
+          "n": 1451,
+          "min_us": 13435,
+          "mean_us": 13485.859,
+          "max_us": 14562
+        },
+        "idle_dwell": {
+          "n": 5971,
+          "min_us": 2612,
+          "mean_us": 2618.886,
+          "max_us": 3502
+        },
+        "held_dwell": {
+          "n": 55,
+          "min_us": 4167,
+          "mean_us": 36725.4,
+          "max_us": 43511
+        }
+      }
+    },
+    {
+      "settle_us": 400,
+      "attempted": 48,
+      "received": 47,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 12,
+          "received": 12
+        },
+        {
+          "attempted": 12,
+          "received": 11
+        },
+        {
+          "attempted": 12,
+          "received": 12
+        },
+        {
+          "attempted": 12,
+          "received": 12
+        }
+      ],
+      "status": {
+        "result": 119834951,
+        "channels": 4,
+        "active": false,
+        "received": 47,
+        "missed": 1,
+        "deferred": 35017,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 5533,
+        "modulation_cache": true,
+        "rf_commands": 5533,
+        "modulation_commands": 47,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 5533,
+          "min_us": 429,
+          "mean_us": 450.081,
+          "max_us": 790
+        },
+        "with_modulation": {
+          "n": 47,
+          "min_us": 736,
+          "mean_us": 765.596,
+          "max_us": 790
+        },
+        "without_modulation": {
+          "n": 5486,
+          "min_us": 429,
+          "mean_us": 447.378,
+          "max_us": 648
+        },
+        "settle_us": 400,
+        "settling": {
+          "n": 5533,
+          "min_us": 400,
+          "mean_us": 400.749,
+          "max_us": 409
+        },
+        "switch_and_settle": {
+          "n": 5533,
+          "min_us": 830,
+          "mean_us": 850.83,
+          "max_us": 1191
+        },
+        "idle_cycle": {
+          "n": 1334,
+          "min_us": 13831,
+          "mean_us": 13868.454,
+          "max_us": 14595
+        },
+        "idle_dwell": {
+          "n": 5484,
+          "min_us": 2612,
+          "mean_us": 2617.097,
+          "max_us": 3147
+        },
+        "held_dwell": {
+          "n": 49,
+          "min_us": 4163,
+          "mean_us": 36070.796,
+          "max_us": 43818
+        }
+      }
+    },
+    {
+      "settle_us": 500,
+      "attempted": 67,
+      "received": 66,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 17,
+          "received": 17
+        },
+        {
+          "attempted": 17,
+          "received": 17
+        },
+        {
+          "attempted": 16,
+          "received": 16
+        },
+        {
+          "attempted": 17,
+          "received": 16
+        }
+      ],
+      "status": {
+        "result": 743019437,
+        "channels": 4,
+        "active": false,
+        "received": 66,
+        "missed": 1,
+        "deferred": 49728,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 6409,
+        "modulation_cache": true,
+        "rf_commands": 6409,
+        "modulation_commands": 66,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 6409,
+          "min_us": 431,
+          "mean_us": 451.34,
+          "max_us": 787
+        },
+        "with_modulation": {
+          "n": 66,
+          "min_us": 747,
+          "mean_us": 769.015,
+          "max_us": 787
+        },
+        "without_modulation": {
+          "n": 6343,
+          "min_us": 431,
+          "mean_us": 448.034,
+          "max_us": 647
+        },
+        "settle_us": 500,
+        "settling": {
+          "n": 6409,
+          "min_us": 500,
+          "mean_us": 500.949,
+          "max_us": 509
+        },
+        "switch_and_settle": {
+          "n": 6409,
+          "min_us": 931,
+          "mean_us": 952.289,
+          "max_us": 1288
+        },
+        "idle_cycle": {
+          "n": 1534,
+          "min_us": 14234,
+          "mean_us": 14273.736,
+          "max_us": 14945
+        },
+        "idle_dwell": {
+          "n": 6341,
+          "min_us": 2612,
+          "mean_us": 2617.619,
+          "max_us": 3067
+        },
+        "held_dwell": {
+          "n": 68,
+          "min_us": 4180,
+          "mean_us": 36899.0,
+          "max_us": 44040
+        }
+      }
+    },
+    {
+      "settle_us": 600,
+      "attempted": 15,
+      "received": 14,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 4,
+          "received": 3
+        },
+        {
+          "attempted": 4,
+          "received": 4
+        },
+        {
+          "attempted": 3,
+          "received": 3
+        },
+        {
+          "attempted": 4,
+          "received": 4
+        }
+      ],
+      "status": {
+        "result": 197617703,
+        "channels": 4,
+        "active": false,
+        "received": 14,
+        "missed": 1,
+        "deferred": 11211,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 3457,
+        "modulation_cache": true,
+        "rf_commands": 3457,
+        "modulation_commands": 14,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 3457,
+          "min_us": 435,
+          "mean_us": 449.452,
+          "max_us": 779
+        },
+        "with_modulation": {
+          "n": 14,
+          "min_us": 729,
+          "mean_us": 762.429,
+          "max_us": 779
+        },
+        "without_modulation": {
+          "n": 3443,
+          "min_us": 435,
+          "mean_us": 448.179,
+          "max_us": 639
+        },
+        "settle_us": 600,
+        "settling": {
+          "n": 3457,
+          "min_us": 600,
+          "mean_us": 600.881,
+          "max_us": 611
+        },
+        "switch_and_settle": {
+          "n": 3457,
+          "min_us": 1035,
+          "mean_us": 1050.333,
+          "max_us": 1380
+        },
+        "idle_cycle": {
+          "n": 848,
+          "min_us": 14651,
+          "mean_us": 14671.156,
+          "max_us": 14883
+        },
+        "idle_dwell": {
+          "n": 3441,
+          "min_us": 2612,
+          "mean_us": 2616.786,
+          "max_us": 2629
+        },
+        "held_dwell": {
+          "n": 16,
+          "min_us": 4156,
+          "mean_us": 35449.562,
+          "max_us": 44226
+        }
+      }
+    },
+    {
+      "settle_us": 700,
+      "attempted": 22,
+      "received": 21,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 5,
+          "received": 5
+        },
+        {
+          "attempted": 5,
+          "received": 5
+        },
+        {
+          "attempted": 6,
+          "received": 6
+        },
+        {
+          "attempted": 6,
+          "received": 5
+        }
+      ],
+      "status": {
+        "result": 729824275,
+        "channels": 4,
+        "active": false,
+        "received": 21,
+        "missed": 1,
+        "deferred": 15202,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 3745,
+        "modulation_cache": true,
+        "rf_commands": 3745,
+        "modulation_commands": 21,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 3745,
+          "min_us": 431,
+          "mean_us": 450.494,
+          "max_us": 779
+        },
+        "with_modulation": {
+          "n": 21,
+          "min_us": 734,
+          "mean_us": 761.905,
+          "max_us": 779
+        },
+        "without_modulation": {
+          "n": 3724,
+          "min_us": 431,
+          "mean_us": 448.738,
+          "max_us": 638
+        },
+        "settle_us": 700,
+        "settling": {
+          "n": 3745,
+          "min_us": 700,
+          "mean_us": 700.857,
+          "max_us": 730
+        },
+        "switch_and_settle": {
+          "n": 3745,
+          "min_us": 1132,
+          "mean_us": 1151.351,
+          "max_us": 1480
+        },
+        "idle_cycle": {
+          "n": 913,
+          "min_us": 15038,
+          "mean_us": 15076.094,
+          "max_us": 15299
+        },
+        "idle_dwell": {
+          "n": 3722,
+          "min_us": 2612,
+          "mean_us": 2617.641,
+          "max_us": 2628
+        },
+        "held_dwell": {
+          "n": 23,
+          "min_us": 4159,
+          "mean_us": 34006.652,
+          "max_us": 43621
+        }
+      }
+    },
+    {
+      "settle_us": 800,
+      "attempted": 64,
+      "received": 63,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 16,
+          "received": 16
+        },
+        {
+          "attempted": 16,
+          "received": 16
+        },
+        {
+          "attempted": 16,
+          "received": 16
+        },
+        {
+          "attempted": 16,
+          "received": 15
+        }
+      ],
+      "status": {
+        "result": 834685087,
+        "channels": 4,
+        "active": false,
+        "received": 63,
+        "missed": 1,
+        "deferred": 45768,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 5780,
+        "modulation_cache": true,
+        "rf_commands": 5780,
+        "modulation_commands": 63,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 5780,
+          "min_us": 418,
+          "mean_us": 454.27,
+          "max_us": 786
+        },
+        "with_modulation": {
+          "n": 63,
+          "min_us": 746,
+          "mean_us": 766.0,
+          "max_us": 786
+        },
+        "without_modulation": {
+          "n": 5717,
+          "min_us": 418,
+          "mean_us": 450.835,
+          "max_us": 649
+        },
+        "settle_us": 800,
+        "settling": {
+          "n": 5780,
+          "min_us": 800,
+          "mean_us": 800.843,
+          "max_us": 808
+        },
+        "switch_and_settle": {
+          "n": 5780,
+          "min_us": 1219,
+          "mean_us": 1255.113,
+          "max_us": 1587
+        },
+        "idle_cycle": {
+          "n": 1380,
+          "min_us": 15443,
+          "mean_us": 15482.272,
+          "max_us": 15709
+        },
+        "idle_dwell": {
+          "n": 5715,
+          "min_us": 2612,
+          "mean_us": 2616.996,
+          "max_us": 2630
+        },
+        "held_dwell": {
+          "n": 65,
+          "min_us": 4165,
+          "mean_us": 36072.277,
+          "max_us": 44444
+        }
+      }
+    },
+    {
+      "settle_us": 900,
+      "attempted": 20,
+      "received": 19,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 5,
+          "received": 5
+        },
+        {
+          "attempted": 5,
+          "received": 4
+        },
+        {
+          "attempted": 5,
+          "received": 5
+        },
+        {
+          "attempted": 5,
+          "received": 5
+        }
+      ],
+      "status": {
+        "result": 417188859,
+        "channels": 4,
+        "active": false,
+        "received": 19,
+        "missed": 1,
+        "deferred": 14406,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 3456,
+        "modulation_cache": true,
+        "rf_commands": 3456,
+        "modulation_commands": 19,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 3456,
+          "min_us": 427,
+          "mean_us": 451.854,
+          "max_us": 784
+        },
+        "with_modulation": {
+          "n": 19,
+          "min_us": 753,
+          "mean_us": 768.947,
+          "max_us": 784
+        },
+        "without_modulation": {
+          "n": 3437,
+          "min_us": 427,
+          "mean_us": 450.101,
+          "max_us": 638
+        },
+        "settle_us": 900,
+        "settling": {
+          "n": 3456,
+          "min_us": 900,
+          "mean_us": 900.989,
+          "max_us": 909
+        },
+        "switch_and_settle": {
+          "n": 3456,
+          "min_us": 1328,
+          "mean_us": 1352.843,
+          "max_us": 1685
+        },
+        "idle_cycle": {
+          "n": 843,
+          "min_us": 15840,
+          "mean_us": 15880.361,
+          "max_us": 16153
+        },
+        "idle_dwell": {
+          "n": 3435,
+          "min_us": 2612,
+          "mean_us": 2617.172,
+          "max_us": 2622
+        },
+        "held_dwell": {
+          "n": 21,
+          "min_us": 4156,
+          "mean_us": 35221.667,
+          "max_us": 43437
+        }
+      }
+    },
+    {
+      "settle_us": 1000,
+      "attempted": 26,
+      "received": 25,
+      "perfect": false,
+      "per_channel": [
+        {
+          "attempted": 6,
+          "received": 6
+        },
+        {
+          "attempted": 7,
+          "received": 7
+        },
+        {
+          "attempted": 7,
+          "received": 6
+        },
+        {
+          "attempted": 6,
+          "received": 6
+        }
+      ],
+      "status": {
+        "result": 537455488,
+        "channels": 4,
+        "active": false,
+        "received": 25,
+        "missed": 1,
+        "deferred": 18363,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 3665,
+        "modulation_cache": true,
+        "rf_commands": 3665,
+        "modulation_commands": 25,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 3665,
+          "min_us": 425,
+          "mean_us": 451.951,
+          "max_us": 782
+        },
+        "with_modulation": {
+          "n": 25,
+          "min_us": 741,
+          "mean_us": 768.04,
+          "max_us": 782
+        },
+        "without_modulation": {
+          "n": 3640,
+          "min_us": 425,
+          "mean_us": 449.78,
+          "max_us": 640
+        },
+        "settle_us": 1000,
+        "settling": {
+          "n": 3665,
+          "min_us": 1000,
+          "mean_us": 1000.799,
+          "max_us": 1009
+        },
+        "switch_and_settle": {
+          "n": 3665,
+          "min_us": 1425,
+          "mean_us": 1452.75,
+          "max_us": 1782
+        },
+        "idle_cycle": {
+          "n": 889,
+          "min_us": 16234,
+          "mean_us": 16283.488,
+          "max_us": 17475
+        },
+        "idle_dwell": {
+          "n": 3638,
+          "min_us": 2612,
+          "mean_us": 2619.179,
+          "max_us": 3598
+        },
+        "held_dwell": {
+          "n": 27,
+          "min_us": 4165,
+          "mean_us": 35118.852,
+          "max_us": 43957
+        }
+      }
+    }
+  ],
+  "stopped": "nominal_timing_limit_with_misses"
+}

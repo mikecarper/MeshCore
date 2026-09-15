@@ -1,5 +1,8 @@
 #include <helpers/ui/DisplayPowerSettings.h>
 #include "MyMesh.h"
+#if defined(MESH_SOAK_DIAGNOSTICS)
+#include "../../tools/hil/S3SoakDiagnostics.h"
+#endif
 
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
@@ -8110,6 +8113,9 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
 // Called only for directly attached USB/BLE/TCP/browser clients. Commands
 // received over LoRa use handleCommand() with a nonzero sender timestamp.
 bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_size) {
+#if defined(MESH_SOAK_DIAGNOSTICS)
+  if (mesh::hil::handleSoakCommand(command, reply, reply_size)) return true;
+#endif
   if (strcmp(command, "get password") == 0) {
     snprintf(reply, reply_size, "> (no admin password on Companion)");
     return true;

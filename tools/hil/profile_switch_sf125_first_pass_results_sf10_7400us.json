@@ -1,0 +1,900 @@
+{
+  "schema": 5,
+  "experiment": "sf10_125_channel_capacity",
+  "complete": true,
+  "receiver": "COM31",
+  "sender": "COM28",
+  "sf": 10,
+  "bw_khz": 125,
+  "cr": 5,
+  "preamble_symbols": 32,
+  "dwell_symbols": 5.1,
+  "dwell_us": 41780,
+  "modulation_cache": true,
+  "settle_us": 7400,
+  "expected_rx_gain_reg": 148,
+  "trace_enabled": false,
+  "irq_poll_us": 0,
+  "samples_per_channel": 100,
+  "packet_bytes": 16,
+  "power_dbm": -9,
+  "base_mhz": 909.5,
+  "channel_step_mhz": 0.25,
+  "seed": 606125,
+  "scope": "Lab N-channel scheduler over production retunes; finite short-range sample, not guaranteed PER",
+  "levels": [
+    {
+      "channels": 4,
+      "config": {
+        "listening": 1061497722,
+        "channels": 4,
+        "sf": 10,
+        "bw_khz": 125,
+        "cr": 5,
+        "preamble": 32,
+        "dwell_us": 41780,
+        "settle_us": 7400,
+        "base_mhz": 909.5,
+        "step_mhz": 0.25,
+        "spi_mhz": 8,
+        "bulk": true,
+        "trace": false,
+        "irq_poll_us": 0,
+        "setup_deferrals": 0
+      },
+      "attempted": 20,
+      "received": 19,
+      "per_channel": [
+        {
+          "attempted": 5,
+          "received": 5
+        },
+        {
+          "attempted": 5,
+          "received": 4
+        },
+        {
+          "attempted": 5,
+          "received": 5
+        },
+        {
+          "attempted": 5,
+          "received": 5
+        }
+      ],
+      "trials": [
+        {
+          "sequence": 1061497723,
+          "valid": true,
+          "armed": {
+            "listening": 1061497723,
+            "channel": 3,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497723,
+            "channel": 3,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 137609,
+            "transmit_call_us": 540335
+          },
+          "received": {
+            "received": 1061497723,
+            "channel": 3,
+            "len": 16,
+            "valid": true,
+            "rssi": -40.0,
+            "snr": 8.2
+          },
+          "host_times_ns": {
+            "arm_start": 391423861133700,
+            "arm_end": 391423862157100,
+            "tx_start": 391424016522100,
+            "tx_end": 391424713154600
+          },
+          "channel": 3,
+          "sample_round": 1,
+          "pause_ms": 153.46474946924587
+        },
+        {
+          "sequence": 1061497724,
+          "valid": true,
+          "armed": {
+            "listening": 1061497724,
+            "channel": 2,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497724,
+            "channel": 2,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144578,
+            "transmit_call_us": 540327
+          },
+          "received": {
+            "received": 1061497724,
+            "channel": 2,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.0
+          },
+          "host_times_ns": {
+            "arm_start": 391424713649700,
+            "arm_end": 391424714566700,
+            "tx_start": 391424795386800,
+            "tx_end": 391425498246900
+          },
+          "channel": 2,
+          "sample_round": 1,
+          "pause_ms": 80.48038809953724
+        },
+        {
+          "sequence": 1061497725,
+          "valid": true,
+          "armed": {
+            "listening": 1061497725,
+            "channel": 1,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497725,
+            "channel": 1,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144600,
+            "transmit_call_us": 540338
+          },
+          "received": {
+            "received": 1061497725,
+            "channel": 1,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.0
+          },
+          "host_times_ns": {
+            "arm_start": 391425498688200,
+            "arm_end": 391425499468700,
+            "tx_start": 391425734819100,
+            "tx_end": 391426438353800
+          },
+          "channel": 1,
+          "sample_round": 1,
+          "pause_ms": 234.75306869206779
+        },
+        {
+          "sequence": 1061497726,
+          "valid": true,
+          "armed": {
+            "listening": 1061497726,
+            "channel": 0,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497726,
+            "channel": 0,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144611,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497726,
+            "channel": 0,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.2
+          },
+          "host_times_ns": {
+            "arm_start": 391426438831800,
+            "arm_end": 391426439627500,
+            "tx_start": 391426518978800,
+            "tx_end": 391427222403600
+          },
+          "channel": 0,
+          "sample_round": 1,
+          "pause_ms": 61.28578902503937
+        },
+        {
+          "sequence": 1061497727,
+          "valid": true,
+          "armed": {
+            "listening": 1061497727,
+            "channel": 2,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497727,
+            "channel": 2,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144611,
+            "transmit_call_us": 540327
+          },
+          "received": {
+            "received": 1061497727,
+            "channel": 2,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.8
+          },
+          "host_times_ns": {
+            "arm_start": 391427222926300,
+            "arm_end": 391427223696900,
+            "tx_start": 391427436124300,
+            "tx_end": 391428139189800
+          },
+          "channel": 2,
+          "sample_round": 2,
+          "pause_ms": 211.8475768705937
+        },
+        {
+          "sequence": 1061497728,
+          "valid": true,
+          "armed": {
+            "listening": 1061497728,
+            "channel": 3,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497728,
+            "channel": 3,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144604,
+            "transmit_call_us": 540331
+          },
+          "received": {
+            "received": 1061497728,
+            "channel": 3,
+            "len": 16,
+            "valid": true,
+            "rssi": -40.0,
+            "snr": 8.0
+          },
+          "host_times_ns": {
+            "arm_start": 391428139642200,
+            "arm_end": 391428140427000,
+            "tx_start": 391428212844700,
+            "tx_end": 391428916181300
+          },
+          "channel": 3,
+          "sample_round": 2,
+          "pause_ms": 71.73298403191235
+        },
+        {
+          "sequence": 1061497729,
+          "valid": true,
+          "armed": {
+            "listening": 1061497729,
+            "channel": 1,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497729,
+            "channel": 1,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144609,
+            "transmit_call_us": 540328
+          },
+          "received": {
+            "received": 1061497729,
+            "channel": 1,
+            "len": 16,
+            "valid": true,
+            "rssi": -40.0,
+            "snr": 8.0
+          },
+          "host_times_ns": {
+            "arm_start": 391428916712800,
+            "arm_end": 391428917585000,
+            "tx_start": 391429267010900,
+            "tx_end": 391429970189500
+          },
+          "channel": 1,
+          "sample_round": 2,
+          "pause_ms": 349.0892739578519
+        },
+        {
+          "sequence": 1061497730,
+          "valid": true,
+          "armed": {
+            "listening": 1061497730,
+            "channel": 0,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497730,
+            "channel": 0,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144611,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497730,
+            "channel": 0,
+            "len": 16,
+            "valid": true,
+            "rssi": -40.0,
+            "snr": 8.2
+          },
+          "host_times_ns": {
+            "arm_start": 391429970699600,
+            "arm_end": 391429971442100,
+            "tx_start": 391430091855300,
+            "tx_end": 391430795233000
+          },
+          "channel": 0,
+          "sample_round": 2,
+          "pause_ms": 120.15958300594615
+        },
+        {
+          "sequence": 1061497731,
+          "valid": true,
+          "armed": {
+            "listening": 1061497731,
+            "channel": 3,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497731,
+            "channel": 3,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144600,
+            "transmit_call_us": 540338
+          },
+          "received": {
+            "received": 1061497731,
+            "channel": 3,
+            "len": 16,
+            "valid": true,
+            "rssi": -40.0,
+            "snr": 8.5
+          },
+          "host_times_ns": {
+            "arm_start": 391430795710000,
+            "arm_end": 391430796452800,
+            "tx_start": 391431014986600,
+            "tx_end": 391431718202000
+          },
+          "channel": 3,
+          "sample_round": 3,
+          "pause_ms": 217.7060664630986
+        },
+        {
+          "sequence": 1061497732,
+          "valid": true,
+          "armed": {
+            "listening": 1061497732,
+            "channel": 0,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497732,
+            "channel": 0,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 143611,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497732,
+            "channel": 0,
+            "len": 16,
+            "valid": true,
+            "rssi": -40.0,
+            "snr": 8.2
+          },
+          "host_times_ns": {
+            "arm_start": 391431718966500,
+            "arm_end": 391431719798100,
+            "tx_start": 391431961751500,
+            "tx_end": 391432664227600
+          },
+          "channel": 0,
+          "sample_round": 3,
+          "pause_ms": 241.35659110607733
+        },
+        {
+          "sequence": 1061497733,
+          "valid": true,
+          "armed": {
+            "listening": 1061497733,
+            "channel": 1,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497733,
+            "channel": 1,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144611,
+            "transmit_call_us": 540327
+          },
+          "received": {
+            "received": 1061497733,
+            "channel": 1,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.8
+          },
+          "host_times_ns": {
+            "arm_start": 391432664720200,
+            "arm_end": 391432665630800,
+            "tx_start": 391432895660000,
+            "tx_end": 391433599178300
+          },
+          "channel": 1,
+          "sample_round": 3,
+          "pause_ms": 229.29662188166685
+        },
+        {
+          "sequence": 1061497734,
+          "valid": true,
+          "armed": {
+            "listening": 1061497734,
+            "channel": 2,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497734,
+            "channel": 2,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 143610,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497734,
+            "channel": 2,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.2
+          },
+          "host_times_ns": {
+            "arm_start": 391433599674500,
+            "arm_end": 391433600450000,
+            "tx_start": 391433773548500,
+            "tx_end": 391434476127700
+          },
+          "channel": 2,
+          "sample_round": 3,
+          "pause_ms": 172.7012220471028
+        },
+        {
+          "sequence": 1061497735,
+          "valid": true,
+          "armed": {
+            "listening": 1061497735,
+            "channel": 3,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497735,
+            "channel": 3,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 143610,
+            "transmit_call_us": 540328
+          },
+          "received": {
+            "received": 1061497735,
+            "channel": 3,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.5
+          },
+          "host_times_ns": {
+            "arm_start": 391434476651600,
+            "arm_end": 391434477558300,
+            "tx_start": 391434723132500,
+            "tx_end": 391435425194100
+          },
+          "channel": 3,
+          "sample_round": 4,
+          "pause_ms": 245.20686708819082
+        },
+        {
+          "sequence": 1061497736,
+          "valid": true,
+          "armed": {
+            "listening": 1061497736,
+            "channel": 1,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497736,
+            "channel": 1,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 143611,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497736,
+            "channel": 1,
+            "len": 16,
+            "valid": true,
+            "rssi": -42.0,
+            "snr": 8.2
+          },
+          "host_times_ns": {
+            "arm_start": 391435425711600,
+            "arm_end": 391435426690200,
+            "tx_start": 391435552129200,
+            "tx_end": 391436254151600
+          },
+          "channel": 1,
+          "sample_round": 4,
+          "pause_ms": 124.87752900337244
+        },
+        {
+          "sequence": 1061497737,
+          "valid": true,
+          "armed": {
+            "listening": 1061497737,
+            "channel": 0,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497737,
+            "channel": 0,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 143600,
+            "transmit_call_us": 540338
+          },
+          "received": {
+            "received": 1061497737,
+            "channel": 0,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.5
+          },
+          "host_times_ns": {
+            "arm_start": 391436254678200,
+            "arm_end": 391436255608400,
+            "tx_start": 391436455530900,
+            "tx_end": 391437158140400
+          },
+          "channel": 0,
+          "sample_round": 4,
+          "pause_ms": 199.40846673044385
+        },
+        {
+          "sequence": 1061497738,
+          "valid": true,
+          "armed": {
+            "listening": 1061497738,
+            "channel": 2,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497738,
+            "channel": 2,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144611,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497738,
+            "channel": 2,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.5
+          },
+          "host_times_ns": {
+            "arm_start": 391437158720600,
+            "arm_end": 391437159554900,
+            "tx_start": 391437422965100,
+            "tx_end": 391438126188900
+          },
+          "channel": 2,
+          "sample_round": 4,
+          "pause_ms": 262.95607744525466
+        },
+        {
+          "sequence": 1061497739,
+          "valid": true,
+          "armed": {
+            "listening": 1061497739,
+            "channel": 3,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497739,
+            "channel": 3,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144610,
+            "transmit_call_us": 540327
+          },
+          "received": {
+            "received": 1061497739,
+            "channel": 3,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.5
+          },
+          "host_times_ns": {
+            "arm_start": 391438126703600,
+            "arm_end": 391438127447200,
+            "tx_start": 391438523819200,
+            "tx_end": 391439227113300
+          },
+          "channel": 3,
+          "sample_round": 5,
+          "pause_ms": 395.640088489517
+        },
+        {
+          "sequence": 1061497740,
+          "valid": true,
+          "armed": {
+            "listening": 1061497740,
+            "channel": 2,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497740,
+            "channel": 2,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 143611,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497740,
+            "channel": 2,
+            "len": 16,
+            "valid": true,
+            "rssi": -41.0,
+            "snr": 8.8
+          },
+          "host_times_ns": {
+            "arm_start": 391439227662800,
+            "arm_end": 391439228404100,
+            "tx_start": 391439351856300,
+            "tx_end": 391440054194600
+          },
+          "channel": 2,
+          "sample_round": 5,
+          "pause_ms": 122.96413767301532
+        },
+        {
+          "sequence": 1061497741,
+          "valid": true,
+          "armed": {
+            "listening": 1061497741,
+            "channel": 0,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497741,
+            "channel": 0,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 143609,
+            "transmit_call_us": 540328
+          },
+          "received": {
+            "received": 1061497741,
+            "channel": 0,
+            "len": 16,
+            "valid": true,
+            "rssi": -42.0,
+            "snr": 8.5
+          },
+          "host_times_ns": {
+            "arm_start": 391440054781100,
+            "arm_end": 391440056166200,
+            "tx_start": 391440268986600,
+            "tx_end": 391440971166900
+          },
+          "channel": 0,
+          "sample_round": 5,
+          "pause_ms": 212.0890149929628
+        },
+        {
+          "sequence": 1061497742,
+          "valid": false,
+          "armed": {
+            "listening": 1061497742,
+            "channel": 1,
+            "scanning": true
+          },
+          "sent": {
+            "sent": 1061497742,
+            "channel": 1,
+            "len": 16,
+            "preamble": 32,
+            "rc": 0,
+            "power_dbm": -9,
+            "sf": 10,
+            "bw_khz": 125,
+            "setup_us": 144611,
+            "transmit_call_us": 540324
+          },
+          "received": {
+            "received": 1061497742,
+            "channel": 1,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          },
+          "host_times_ns": {
+            "arm_start": 391440971717100,
+            "arm_end": 391440972621400,
+            "tx_start": 391441129551300,
+            "tx_end": 391441833142400
+          },
+          "channel": 1,
+          "sample_round": 5,
+          "pause_ms": 156.26492744318205
+        }
+      ],
+      "complete": false,
+      "status": {
+        "result": 1061497743,
+        "channels": 4,
+        "active": false,
+        "received": 19,
+        "missed": 1,
+        "deferred": 195089,
+        "failures": 0,
+        "rx_mode_errors": 0,
+        "cache_errors": 0,
+        "rx_errors": 0,
+        "optimized_rx_resumes": 366,
+        "modulation_cache": true,
+        "rf_commands": 366,
+        "modulation_commands": 19,
+        "rx_gain_reg": 148,
+        "switch": {
+          "n": 366,
+          "min_us": 440,
+          "mean_us": 468.333,
+          "max_us": 813
+        },
+        "with_modulation": {
+          "n": 19,
+          "min_us": 787,
+          "mean_us": 805.895,
+          "max_us": 813
+        },
+        "without_modulation": {
+          "n": 347,
+          "min_us": 440,
+          "mean_us": 449.85,
+          "max_us": 658
+        },
+        "settle_us": 7400,
+        "settling": {
+          "n": 366,
+          "min_us": 7400,
+          "mean_us": 7401.003,
+          "max_us": 7408
+        },
+        "switch_and_settle": {
+          "n": 366,
+          "min_us": 7840,
+          "mean_us": 7869.336,
+          "max_us": 8213
+        },
+        "idle_cycle": {
+          "n": 70,
+          "min_us": 198530,
+          "mean_us": 198546.057,
+          "max_us": 198571
+        },
+        "idle_dwell": {
+          "n": 345,
+          "min_us": 41780,
+          "mean_us": 41784.133,
+          "max_us": 41794
+        },
+        "held_dwell": {
+          "n": 21,
+          "min_us": 49247,
+          "mean_us": 474081.762,
+          "max_us": 580007
+        }
+      }
+    }
+  ],
+  "last_perfect_channels": null,
+  "stopped": "first_rf_miss",
+  "first_failed_channels": 4,
+  "failed_sequence": 1061497742
+}

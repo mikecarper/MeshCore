@@ -1,0 +1,541 @@
+{
+  "validated": true,
+  "raw_sha256": "3472883ade89494b64657486efd1645a04b0a3bebfd0a2e31bbf914341ad792f",
+  "started_utc": "2026-09-15T00:04:54Z",
+  "finished_utc": "2026-09-15T00:11:19Z",
+  "unique_packets": 800,
+  "baseline": [
+    {
+      "channel": 0,
+      "rates": [
+        {
+          "channel": 0,
+          "attempted": 100,
+          "received": 100,
+          "signals": {
+            "rssi": {
+              "n": 100,
+              "mean": -21.45,
+              "min": -30.0,
+              "max": -21.0
+            },
+            "snr": {
+              "n": 100,
+              "mean": 11.837,
+              "min": 11.2,
+              "max": 12.5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "channel": 1,
+      "rates": [
+        {
+          "channel": 1,
+          "attempted": 100,
+          "received": 100,
+          "signals": {
+            "rssi": {
+              "n": 100,
+              "mean": -18.52,
+              "min": -28.0,
+              "max": -18.0
+            },
+            "snr": {
+              "n": 100,
+              "mean": 12.881,
+              "min": 11.0,
+              "max": 15.0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "scans": [
+    {
+      "loop_us": 0,
+      "slow_extra_us": 0,
+      "dwell_us": [
+        8397,
+        23171
+      ],
+      "rates": [
+        {
+          "channel": 0,
+          "attempted": 100,
+          "received": 99,
+          "signals": {
+            "rssi": {
+              "n": 99,
+              "mean": -20.67676767676768,
+              "min": -21.0,
+              "max": -20.0
+            },
+            "snr": {
+              "n": 99,
+              "mean": 12.102020202020201,
+              "min": 11.5,
+              "max": 13.0
+            }
+          }
+        },
+        {
+          "channel": 1,
+          "attempted": 100,
+          "received": 100,
+          "signals": {
+            "rssi": {
+              "n": 100,
+              "mean": -18.48,
+              "min": -19.0,
+              "max": -18.0
+            },
+            "snr": {
+              "n": 100,
+              "mean": 12.789,
+              "min": 10.5,
+              "max": 15.0
+            }
+          }
+        }
+      ],
+      "timing_before": {
+        "switch": {
+          "n": 311,
+          "min_us": 543,
+          "mean_us": 554.042,
+          "max_us": 793
+        },
+        "pair_switch_to_0": {
+          "n": 155,
+          "min_us": 543,
+          "mean_us": 551.69,
+          "max_us": 568
+        },
+        "pair_switch_to_1": {
+          "n": 156,
+          "min_us": 543,
+          "mean_us": 556.378,
+          "max_us": 793
+        },
+        "pair_idle_0": {
+          "n": 155,
+          "min_us": 8397,
+          "mean_us": 8400.574,
+          "max_us": 8405
+        },
+        "pair_idle_1": {
+          "n": 154,
+          "min_us": 23171,
+          "mean_us": 23175.052,
+          "max_us": 23179
+        },
+        "idle_cycle": {
+          "n": 153,
+          "min_us": 32664,
+          "mean_us": 32681.752,
+          "max_us": 32695
+        }
+      },
+      "timing_all": {
+        "switch": {
+          "n": 3839,
+          "min_us": 529,
+          "mean_us": 580.559,
+          "max_us": 829
+        },
+        "pair_switch_to_0": {
+          "n": 1919,
+          "min_us": 531,
+          "mean_us": 586.142,
+          "max_us": 829
+        },
+        "pair_switch_to_1": {
+          "n": 1920,
+          "min_us": 529,
+          "mean_us": 574.978,
+          "max_us": 829
+        },
+        "pair_idle_0": {
+          "n": 1819,
+          "min_us": 8397,
+          "mean_us": 8404.664,
+          "max_us": 10204
+        },
+        "pair_idle_1": {
+          "n": 1809,
+          "min_us": 23171,
+          "mean_us": 23176.804,
+          "max_us": 24151
+        },
+        "idle_cycle": {
+          "n": 1709,
+          "min_us": 32650,
+          "mean_us": 32717.211,
+          "max_us": 34733
+        }
+      },
+      "missing": [
+        {
+          "sequence": 492562439,
+          "channel": 0,
+          "received": {
+            "received": 492562439,
+            "channel": 0,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        }
+      ]
+    },
+    {
+      "loop_us": 0,
+      "slow_extra_us": 2048,
+      "dwell_us": [
+        10445,
+        21123
+      ],
+      "rates": [
+        {
+          "channel": 0,
+          "attempted": 100,
+          "received": 100,
+          "signals": {
+            "rssi": {
+              "n": 100,
+              "mean": -20.45,
+              "min": -22.0,
+              "max": -20.0
+            },
+            "snr": {
+              "n": 100,
+              "mean": 12.0,
+              "min": 11.2,
+              "max": 12.8
+            }
+          }
+        },
+        {
+          "channel": 1,
+          "attempted": 100,
+          "received": 97,
+          "signals": {
+            "rssi": {
+              "n": 97,
+              "mean": -18.88659793814433,
+              "min": -19.0,
+              "max": -18.0
+            },
+            "snr": {
+              "n": 97,
+              "mean": 12.834020618556702,
+              "min": 9.2,
+              "max": 14.8
+            }
+          }
+        }
+      ],
+      "timing_before": {
+        "switch": {
+          "n": 318,
+          "min_us": 543,
+          "mean_us": 553.462,
+          "max_us": 796
+        },
+        "pair_switch_to_0": {
+          "n": 159,
+          "min_us": 543,
+          "mean_us": 549.34,
+          "max_us": 569
+        },
+        "pair_switch_to_1": {
+          "n": 159,
+          "min_us": 550,
+          "mean_us": 557.585,
+          "max_us": 796
+        },
+        "pair_idle_0": {
+          "n": 158,
+          "min_us": 10445,
+          "mean_us": 10448.987,
+          "max_us": 10458
+        },
+        "pair_idle_1": {
+          "n": 159,
+          "min_us": 21123,
+          "mean_us": 21127.164,
+          "max_us": 21131
+        },
+        "idle_cycle": {
+          "n": 158,
+          "min_us": 32671,
+          "mean_us": 32681.722,
+          "max_us": 32693
+        }
+      },
+      "timing_all": {
+        "switch": {
+          "n": 5349,
+          "min_us": 512,
+          "mean_us": 572.267,
+          "max_us": 834
+        },
+        "pair_switch_to_0": {
+          "n": 2674,
+          "min_us": 512,
+          "mean_us": 574.318,
+          "max_us": 834
+        },
+        "pair_switch_to_1": {
+          "n": 2675,
+          "min_us": 532,
+          "mean_us": 570.216,
+          "max_us": 832
+        },
+        "pair_idle_0": {
+          "n": 2574,
+          "min_us": 10445,
+          "mean_us": 10450.885,
+          "max_us": 12494
+        },
+        "pair_idle_1": {
+          "n": 2565,
+          "min_us": 21123,
+          "mean_us": 21128.69,
+          "max_us": 22236
+        },
+        "idle_cycle": {
+          "n": 2465,
+          "min_us": 32650,
+          "mean_us": 32705.638,
+          "max_us": 34978
+        }
+      },
+      "missing": [
+        {
+          "sequence": 492562519,
+          "channel": 1,
+          "received": {
+            "received": 492562519,
+            "channel": 1,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        },
+        {
+          "sequence": 492562523,
+          "channel": 1,
+          "received": {
+            "received": 492562523,
+            "channel": 1,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        },
+        {
+          "sequence": 492562594,
+          "channel": 1,
+          "received": {
+            "received": 492562594,
+            "channel": 1,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        }
+      ]
+    },
+    {
+      "loop_us": 4000,
+      "slow_extra_us": 0,
+      "dwell_us": [
+        8397,
+        19171
+      ],
+      "rates": [
+        {
+          "channel": 0,
+          "attempted": 100,
+          "received": 97,
+          "signals": {
+            "rssi": {
+              "n": 97,
+              "mean": -20.47422680412371,
+              "min": -21.0,
+              "max": -19.0
+            },
+            "snr": {
+              "n": 97,
+              "mean": 12.112371134020618,
+              "min": 11.5,
+              "max": 12.8
+            }
+          }
+        },
+        {
+          "channel": 1,
+          "attempted": 100,
+          "received": 99,
+          "signals": {
+            "rssi": {
+              "n": 99,
+              "mean": -18.747474747474747,
+              "min": -19.0,
+              "max": -18.0
+            },
+            "snr": {
+              "n": 99,
+              "mean": 12.758585858585858,
+              "min": 9.5,
+              "max": 15.5
+            }
+          }
+        }
+      ],
+      "timing_before": {
+        "switch": {
+          "n": 369,
+          "min_us": 542,
+          "mean_us": 553.599,
+          "max_us": 787
+        },
+        "pair_switch_to_0": {
+          "n": 184,
+          "min_us": 543,
+          "mean_us": 552.408,
+          "max_us": 569
+        },
+        "pair_switch_to_1": {
+          "n": 185,
+          "min_us": 542,
+          "mean_us": 554.784,
+          "max_us": 787
+        },
+        "pair_idle_0": {
+          "n": 184,
+          "min_us": 8397,
+          "mean_us": 8400.641,
+          "max_us": 8405
+        },
+        "pair_idle_1": {
+          "n": 183,
+          "min_us": 19171,
+          "mean_us": 19175.098,
+          "max_us": 19179
+        },
+        "idle_cycle": {
+          "n": 182,
+          "min_us": 28669,
+          "mean_us": 28681.44,
+          "max_us": 28696
+        }
+      },
+      "timing_all": {
+        "switch": {
+          "n": 7693,
+          "min_us": 515,
+          "mean_us": 566.84,
+          "max_us": 836
+        },
+        "pair_switch_to_0": {
+          "n": 3846,
+          "min_us": 529,
+          "mean_us": 569.469,
+          "max_us": 836
+        },
+        "pair_switch_to_1": {
+          "n": 3847,
+          "min_us": 515,
+          "mean_us": 564.212,
+          "max_us": 832
+        },
+        "pair_idle_0": {
+          "n": 3746,
+          "min_us": 8397,
+          "mean_us": 8402.386,
+          "max_us": 10033
+        },
+        "pair_idle_1": {
+          "n": 3737,
+          "min_us": 19171,
+          "mean_us": 19177.708,
+          "max_us": 21443
+        },
+        "idle_cycle": {
+          "n": 3636,
+          "min_us": 28648,
+          "mean_us": 28700.827,
+          "max_us": 31195
+        }
+      },
+      "missing": [
+        {
+          "sequence": 492562743,
+          "channel": 0,
+          "received": {
+            "received": 492562743,
+            "channel": 0,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        },
+        {
+          "sequence": 492562847,
+          "channel": 0,
+          "received": {
+            "received": 492562847,
+            "channel": 0,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        },
+        {
+          "sequence": 492562848,
+          "channel": 1,
+          "received": {
+            "received": 492562848,
+            "channel": 1,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        },
+        {
+          "sequence": 492562879,
+          "channel": 0,
+          "received": {
+            "received": 492562879,
+            "channel": 0,
+            "valid": false,
+            "timeout": true,
+            "device_errors": 0,
+            "rx_mode": 1
+          }
+        }
+      ]
+    }
+  ],
+  "services_after": {
+    "ModemManager.service": "active",
+    "mctomqtt.service": "active",
+    "meshcore-host-cli.service": "active",
+    "meshcore-memory-soak.service": "inactive"
+  },
+  "all_radios_idle": true,
+  "transport_replays": 0
+}

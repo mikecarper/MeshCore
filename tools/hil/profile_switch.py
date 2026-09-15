@@ -14,10 +14,10 @@ _run_sequences = itertools.count(secrets.randbelow(0x3fffffff) + 1)
 
 
 def configure_session(port):
-    # Espressif native USB and a CH340 bridge do not share DTR semantics.
+    # Native Espressif/Seeed/Adafruit USB and a CH340 bridge differ in DTR semantics.
     # DTR keeps the native session active; on a bridge it can drive BOOT/GPIO0.
     port.rts = False
-    port.dtr = any(info.vid == 0x303A and info.device.casefold() == str(port.port).casefold()
+    port.dtr = any(info.vid in (0x303A, 0x2886, 0x239A) and info.device.casefold() == str(port.port).casefold()
                    for info in list_ports.comports())
 
 
