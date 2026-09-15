@@ -17,6 +17,15 @@ struct RadioProfileCLI {
   bool savePrimaryPreamble(uint16_t) { return true; }
   void appendPreamble(char*, size_t) {}
   void appendSavedPreamble(char*, size_t, uint8_t, float) {}
+  mutable unsigned warning_calls = 0;
+  mutable uint8_t warning_sf = 0;
+  mutable float warning_bw = 0;
+  mutable uint16_t warning_preamble = 0;
+  void appendPrimaryChirpWarning(char* reply, size_t capacity, uint8_t sf, float bw, uint16_t preamble) const {
+    ++warning_calls; warning_sf = sf; warning_bw = bw; warning_preamble = preamble;
+    const size_t used = strlen(reply);
+    if (used < capacity) snprintf(reply + used, capacity - used, "; WARN recommended preamble: radio=32");
+  }
   bool acceptsPrimary(float, float, uint8_t, uint8_t, uint16_t) const { return true; }
 };
 }
@@ -119,10 +128,19 @@ int main() {
     unsigned saves=cli.callbacks.saves;
     cli.call(sender,"set radio 916,125,8,6",reply);
     assert(!strncmp(reply,"OK",2) && cli.callbacks.saves==saves+1);
+    assert(strstr(reply,"WARN recommended preamble: radio=32"));
+    assert(cli._radio_profiles.warning_calls==1 && cli._radio_profiles.warning_sf==8);
+    assert(cli._radio_profiles.warning_bw==125 && cli._radio_profiles.warning_preamble==0);
     cli.call(sender,"get radio",reply);
     float freq=0,bw=0; int sf=0,cr=0;
     assert(sscanf(reply,"> %f,%f,%d,%d",&freq,&bw,&sf,&cr)==4);
     assert(freq==916 && bw==125 && sf==8 && cr==6);
+    cli.call(sender,"set radio 916,125,8,6,16",reply);
+    assert(strstr(reply,"WARN recommended preamble: radio=32"));
+    assert(cli._radio_profiles.warning_calls==2 && cli._radio_profiles.warning_preamble==16);
+    cli.call(sender,"set radio 916,125,13,6",reply);
+    assert(!strncmp(reply,"Error",5) && !strstr(reply,"WARN"));
+    assert(cli._radio_profiles.warning_calls==2);
     saves=cli.callbacks.saves;
     cli.call(sender,"set extra.sf 9,10",reply);
 #if defined(USE_LR2021)

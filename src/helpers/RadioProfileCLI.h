@@ -64,6 +64,9 @@ class RadioProfileCLI {
   uint32_t secondaryRemainingSeconds() const { return (temp_remaining_ms_ + 999) / 1000; }
   void appendPreamble(char* reply, size_t capacity, uint8_t profile = 0) const;
   void appendSavedPreamble(char* reply, size_t capacity, uint8_t sf, float bw) const;
+  static void appendChirpWarning(char* reply, size_t capacity, const RadioProfiles& preview);
+  void appendPrimaryChirpWarning(char* reply, size_t capacity, uint8_t sf, float bw,
+                                uint16_t preamble) const;
   // Strip exactly one optional trailing preamble before a legacy primary
   // parser runs. Missing means auto. Reject extra fields and malformed input.
   static bool parseSuffix(const char* input, unsigned fields, char* legacy,

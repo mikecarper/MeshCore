@@ -2644,6 +2644,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         const uint32_t seconds = (uint32_t)temp_timeout_mins * 60UL;
         mesh::RepeaterRadioTiming::formatDuration(duration, sizeof(duration), seconds);
         snprintf(reply, 160, "OK - temp params for %s", duration);
+        _radio_profiles.appendPrimaryChirpWarning(reply, 160, sf, bw, preamble);
         _callbacks->appendTempRadioTimingNote(reply, 160, seconds);
         appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
       } else {
@@ -3668,6 +3669,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         strcpy(reply, "OK - reboot to apply");
       }
       appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
+      _radio_profiles.appendPrimaryChirpWarning(reply, 160, sf, bw, preamble);
     } else {
       strcpy(reply, "Error, invalid radio params");
     }
@@ -3686,6 +3688,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       _callbacks->addScheduledRadioParams(false, freq, bw, sf, cr, start_time, end_time, reply, preamble);
       if (strncmp(reply, "OK", 2) == 0) {
+        _radio_profiles.appendPrimaryChirpWarning(reply, 160, sf, bw, preamble);
         appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
       }
     }
@@ -3704,6 +3707,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       _callbacks->addScheduledRadioParams(true, freq, bw, sf, cr, start_time, end_time, reply, preamble);
       if (strncmp(reply, "OK", 2) == 0) {
+        _radio_profiles.appendPrimaryChirpWarning(reply, 160, sf, bw, preamble);
         appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
       }
     }

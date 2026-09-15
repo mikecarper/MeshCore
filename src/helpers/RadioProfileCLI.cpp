@@ -208,20 +208,50 @@ bool RadioProfileCLI::parseSuffix(const char* input, unsigned fields, char* lega
 }
 
 void RadioProfileCLI::appendPreamble(char* reply, size_t capacity, uint8_t profile) const {
-  if (!radio_ || !radio_->profiles()) return;
+  if (!capacity || !radio_ || !radio_->profiles()) return;
   const size_t used = strlen(reply);
   if (used < capacity) snprintf(reply + used, capacity - used, ",preamble=%u",
                                (unsigned)radio_->profilePreamble(profile));
+  appendChirpWarning(reply, capacity, *radio_->profiles());
 }
 
 void RadioProfileCLI::appendSavedPreamble(char* reply, size_t capacity, uint8_t sf, float bw) const {
-  if (!radio_ || !radio_->profiles()) return;
+  if (!capacity || !radio_ || !radio_->profiles()) return;
   auto preview = *radio_->profiles();
   preview.primary.sf = sf; preview.primary.bw = bw;
   preview.primary.preamble = primary_preamble_;
   const size_t used = strlen(reply);
   if (used < capacity) snprintf(reply + used, capacity - used, ",preamble=%u%s",
       preview.preamble(0, rxPowerSavingPreambleForParams(sf, bw)), primary_preamble_ ? "" : " (auto)");
+  appendChirpWarning(reply, capacity, preview);
+}
+
+void RadioProfileCLI::appendPrimaryChirpWarning(char* reply, size_t capacity, uint8_t sf, float bw,
+                                               uint16_t preamble) const {
+  if (!radio_ || !radio_->profiles()) return;
+  auto preview = *radio_->profiles();
+  preview.primary.sf = sf; preview.primary.bw = bw; preview.primary.preamble = preamble;
+  appendChirpWarning(reply, capacity, preview);
+}
+
+void RadioProfileCLI::appendChirpWarning(char* reply, size_t capacity, const RadioProfiles& preview) {
+  if (!capacity || !preview.enabled()) return;
+  const auto timing = preview.chirpTiming();
+  if (!timing.valid) return;
+  size_t used = strlen(reply);
+  const bool short_a = preview.primary.preamble && preview.primary.preamble < timing.preamble[0];
+  const bool short_b = preview.secondary.params.preamble && preview.secondary.params.preamble < timing.preamble[1];
+  const bool a = timing.preamble[0] > 32 || short_a, b = timing.preamble[1] > 32 || short_b;
+  if (used < capacity) {
+    if (a && b) snprintf(reply + used, capacity - used, "; WARN recommended preamble: radio=%.0f,radio2=%.0f",
+                         timing.preamble[0], timing.preamble[1]);
+    else if (a || b) snprintf(reply + used, capacity - used, "; WARN recommended preamble: %s=%.0f",
+                              a ? "radio" : "radio2", timing.preamble[a ? 0 : 1]);
+  }
+  used = strlen(reply);
+  if (used < capacity && (short_a || short_b))
+    snprintf(reply + used, capacity - used, "; short override: %s",
+             short_a && short_b ? "radio,radio2" : short_a ? "radio" : "radio2");
 }
 
 void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProfileConfig& config,
@@ -240,6 +270,7 @@ void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProf
         (unsigned long)(minutes / 1440), (unsigned long)(minutes / 60 % 24),
         (unsigned long)(minutes % 60), (unsigned long)minutes);
   }
+  appendChirpWarning(reply, capacity, preview);
 }
 
 bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) {
@@ -261,9 +292,24 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
   const bool crossing = !strcmp(key, "radio2.cross");
   const bool status = !strcmp(key, "radio2.status");
   const bool scan = !strcmp(key, "radio2.scan");
-  if (!base && !temporary && !scheduled && !crossing && !status && !scan) return false;
+  const bool timing = !strcmp(key, "radio2.timing") || !strcmp(key, "radio.timing");
+  if (!base && !temporary && !scheduled && !crossing && !status && !scan && !timing) return false;
   if (!radio_ || !radio_->profiles()) { snprintf(reply, capacity, "Error: radio profiles unsupported"); return true; }
   if (command == text && *args && verb == Get && (temporary || base)) verb = Set;
+  if (timing) {
+    if (verb != Get || *args) { snprintf(reply, capacity, "Error: radio timing is read-only"); return true; }
+    const auto& p = *radio_->profiles();
+    const auto t = p.chirpTiming();
+    if (!p.enabled()) snprintf(reply, capacity, "> off");
+    else if (!t.valid) snprintf(reply, capacity, "Error: timing unavailable");
+    else {
+      snprintf(reply, capacity, "> chirps=%.2f,%.2f; need=%.0f,%.0f; switch=%luus; loop=%luus (estimate)",
+          t.listen_us[0] / t.symbol_us[0], t.listen_us[1] / t.symbol_us[1],
+          t.preamble[0], t.preamble[1], (unsigned long)t.switch_us, (unsigned long)t.loop_us);
+      appendChirpWarning(reply, capacity, p);
+    }
+    return true;
+  }
   if (crossing) {
     if (verb == Get && !*args) {
       snprintf(reply, capacity, "> %s", cross_ == RadioCrossMode::Auto ? "auto" : cross_ == RadioCrossMode::On ? "on" : "off");
@@ -284,6 +330,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
       snprintf(reply, capacity, "> slow=%s; listen_us=%lu,%lu; preamble=%u,%u",
           slow ? "radio2" : "radio", (unsigned long)p.listenUs(0, preamble),
           (unsigned long)p.listenUs(1, preamble), radio_->profilePreamble(0), radio_->profilePreamble(1));
+      appendChirpWarning(reply, capacity, p);
     }
     return true;
   }
@@ -395,7 +442,8 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
       auto& s = schedules_[first+i]; s = {};
       s.config = config; s.start = start; s.end = end; s.temporary = scheduled_temp;
       s.remaining_ms = scheduled_temp ? (end-epoch)*1000UL : 0; s.active = true;
-      snprintf(reply, capacity, "OK - %s %u queued, preamble=%u", key, i+1, preview.preamble(1, 32)); return true;
+      snprintf(reply, capacity, "OK - %s %u queued, preamble=%u", key, i+1, preview.preamble(1, 32));
+      appendChirpWarning(reply, capacity, preview); return true;
     }
     snprintf(reply, capacity, "Error: all four schedule slots occupied"); return true;
   }
@@ -415,6 +463,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     publish();
     snprintf(reply, capacity, "OK - radio2 %s; preamble=%u", modeName(config.mode), preview.preamble(1, 32));
   } else snprintf(reply, capacity, "Error: settings could not be saved");
+  if (!strncmp(reply, "OK", 2)) appendChirpWarning(reply, capacity, preview);
   return true;
 }
 

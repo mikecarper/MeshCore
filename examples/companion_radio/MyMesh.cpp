@@ -3060,6 +3060,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
       preview.primary.preamble = _temp_radio_preamble;
       const size_t used = strlen(reply);
       if (used < reply_size) snprintf(reply + used, reply_size - used, ",preamble=%u", preview.preamble(0, rxPowerSavingPreambleForParams(_temp_radio_sf, _temp_radio_bw)));
+      mesh::RadioProfileCLI::appendChirpWarning(reply, reply_size, preview);
     } else if (isTempRadioActive()) {
       uint32_t seconds = (_temp_radio_revert_at - _ms->getMillis()) / 1000UL;
       snprintf(reply, reply_size, "TempRadio active: %.3f,%.2f,%u,%u %lus left",
@@ -3094,7 +3095,10 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                "ERR usage: tempradio freq,bw,sf,cr,minutes (minutes 1-10080)");
       return true;
     }
-    if (scheduleTempRadio(freq, bw, sf, cr, timeout_mins, reply, reply_size)) _temp_radio_preamble = preamble;
+    if (scheduleTempRadio(freq, bw, sf, cr, timeout_mins, reply, reply_size)) {
+      _temp_radio_preamble = preamble;
+      _radio_profiles.appendPrimaryChirpWarning(reply, reply_size, sf, bw, preamble);
+    }
     return true;
   }
 
@@ -8333,6 +8337,9 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       }
     }
     if (!strcmp(command, "get radio")) _radio_profiles.appendSavedPreamble(reply, reply_capacity, _prefs.sf, _prefs.bw);
+    if (!strncmp(command, "set radio ", 10) && !strncmp(reply, "OK", 2))
+      _radio_profiles.appendPrimaryChirpWarning(reply, reply_capacity, _prefs.sf, _prefs.bw,
+                                               _radio_profiles.primaryPreamble());
     return true;
   }
 

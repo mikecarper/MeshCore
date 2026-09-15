@@ -1,11 +1,14 @@
 """Compile real Companion command dispatch with local and LoRa callers."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 import unittest
 from test_replay_reset_integration import extract_braced
 
 ROOT = Path(__file__).resolve().parents[1]
+# MinGW does not ship these runtimes; keep sanitizer coverage on Linux.
+SANITIZER_FLAGS = [] if os.name == "nt" else ["-fsanitize=address,undefined", "-fno-pie", "-no-pie"]
 
 PREAMBLE = r'''
 #include <cassert>
@@ -32,6 +35,7 @@ struct RadioProfileCLI {
   bool savePrimaryPreamble(uint16_t) { return true; }
   uint16_t primaryPreamble() const { return 0; }
   void appendSavedPreamble(char*, size_t, uint8_t, float) {}
+  void appendPrimaryChirpWarning(char*, size_t, uint8_t, float, uint16_t) const {}
 };
 struct Packet {};
 void resetLazyPersistenceAfterSuccess(unsigned& when, uint8_t& failures) { when=0; failures=0; }
@@ -246,7 +250,7 @@ int main() {
             binary = Path(temp) / "test"
             result = subprocess.run([
                 "c++", "-std=c++17", "-x", "c++", "-", "-I"+str(ROOT / "src"),
-                "-fsanitize=address,undefined", "-fno-pie", "-no-pie", "-o", str(binary),
+                *SANITIZER_FLAGS, "-o", str(binary),
             ], input=code, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
@@ -289,7 +293,7 @@ int main() {
             binary = Path(temp) / "test"
             result = subprocess.run([
                 "c++", "-std=c++17", "-include", "initializer_list", "-x", "c++", "-",
-                "-fsanitize=address,undefined", "-fno-pie", "-no-pie", "-o", str(binary),
+                *SANITIZER_FLAGS, "-o", str(binary),
             ], input=code, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
@@ -308,7 +312,7 @@ int main() {
                     "c++", "-std=c++17", "-x", "c++", "-", "-I"+str(ROOT / "src"),
                     "-DENABLE_PRIVATE_KEY_EXPORT="+str(export),
                     *(["-DWITH_WEBCONFIG=1"] if webconfig else []),
-                    "-fsanitize=address,undefined", "-fno-pie", "-no-pie", "-o", str(binary),
+                    *SANITIZER_FLAGS, "-o", str(binary),
                 ], input=PREAMBLE+implementation+SCENARIOS, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 result = subprocess.run([str(binary)], capture_output=True, text=True)

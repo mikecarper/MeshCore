@@ -302,6 +302,7 @@ struct RadioProfileCLI {
     return cli::parseRadioPreambleSuffix(input, fields, legacy, size, preamble);
   }
   bool acceptsPrimary(float, float, uint8_t, uint8_t, uint16_t) { return true; }
+  void appendPrimaryChirpWarning(char*, size_t, uint8_t, float, uint16_t) const {}
 };
 class Utils { public: static int parseTextParts(char*, const char*[], int, char separator=','); };
 @PARTS@

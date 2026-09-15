@@ -34,17 +34,28 @@ struct RadioProfileConfig {
 class RadioProfiles {
  public:
   // Normal RX uses a microsecond window, so fractional symbols are supported.
-  static constexpr double SlowListenSymbols = 4.8;
-  static constexpr uint8_t MinFastListenSymbols = 4;
+  static constexpr double MinListenSymbols = 4.6;
+  static constexpr double SlowListenSymbols = MinListenSymbols;
+  static constexpr double MinFastListenSymbols = MinListenSymbols;
   static constexpr uint8_t AcquisitionSymbols = 8;
   static constexpr uint16_t MaxPreamble = 65528;
-  // The integrated fast RX/buffered-SPI path measures ~0.549 ms/hop on XIAO
-  // and ~8.263 ms on Indicator (expander GPIO), excluding application scheduling.
-  // Keep existing defaults unchanged during board/application qualification.
-  // Thus 6 ms is not an upper bound: board-specific budgeting needs follow-up.
+  // Recent V4 single-pass hops measured up to 836 us, including post-packet
+  // cache refresh; Indicator measured up to 8428 us (expander GPIO).
+  // Use the requested 0.6 ms nominal allowance for fast switching. This is
+  // not a worst-case bound; measured overruns raise diagnostic recommendations.
   // Packet receptions can extend a visit; these budgets describe an idle scan.
-  static constexpr uint32_t SwitchBudgetUs = 6000;
-  static constexpr uint32_t LoopBudgetUs = 4000;
+  static constexpr uint32_t SwitchBudgetUs = 600;
+  static constexpr uint32_t LoopBudgetUs = 300;
+
+  struct ChirpTiming {
+    bool valid = false;
+    uint8_t slow = 0;
+    double symbol_us[2] = {};
+    uint32_t listen_us[2] = {};
+    double preamble[2] = {}; // Rounded recommendations, not silently capped.
+    double cycle_us = 0;
+    uint32_t switch_us = 0, loop_us = 0;
+  };
 
   RadioProfileParams primary;
   RadioProfileConfig secondary;
@@ -104,37 +115,75 @@ class RadioProfiles {
   static double roundPreamble(double symbols) {
     return ceil((symbols < 32 ? 32 : symbols) / 8.0) * 8.0;
   }
-  double automaticPreamble(uint8_t profile) const {
-    const double symbol = symbolUs(params(profile));
+  static uint32_t minimumListenUs(const RadioProfileParams& p, bool slow = false) {
+    const double symbol = symbolUs(p);
+    const double symbols = slow ? SlowListenSymbols : MinFastListenSymbols;
+    return isfinite(symbol) && symbol > 0 && symbol <= UINT32_MAX / symbols
+        ? (uint32_t)ceil(symbols * symbol) : 0;
+  }
+  static double preambleForVisits(const RadioProfileParams& p, const RadioProfileParams& other,
+      bool slow, double own_us, double other_us, double overhead_us) {
+    const double symbol = symbolUs(p);
     if (symbol <= 0) return 32;
-    // Allow two slow-channel visits per slow preamble: one short detection
-    // opportunity was insufficient in the production V4 test. The fast
-    // preamble covers the blind interval during the slow visit and two sets
-    // of acquisition symbols (the extra eight come from the hardware test).
-    const double overhead = 2.0 * SwitchBudgetUs + LoopBudgetUs;
-    if (profile == slowerProfile()) {
-      const double fast_visit = MinFastListenSymbols * symbolUs(params(profile ^ 1));
-      return roundPreamble(2.0 * (SlowListenSymbols * symbol + fast_visit + overhead) / symbol);
-    }
-    const double slow_visit = SlowListenSymbols * symbolUs(params(profile ^ 1));
-    double symbols = roundPreamble((slow_visit + overhead) / symbol + 2 * AcquisitionSymbols);
-    // Production V4 + XIAO testing lost SF8/500 packets at 72 and 80;
-    // 88 passed with the paired SF7/62.5 profile. Keep that measured floor
-    // even when the theoretical blind interval permits a shorter preamble.
-    const auto& other = params(profile ^ 1);
-    if (params(profile).sf == 8 && params(profile).bw == 500
-        && other.sf == 7 && other.bw == 62.5f && symbols < 88) symbols = 88;
-    return symbols;
+    double result = slow ? roundPreamble(2.0 * (own_us + other_us + overhead_us) / symbol)
+        : roundPreamble((other_us + overhead_us) / symbol + 2 * AcquisitionSymbols);
+    // Production V4/XIAO empirical floor; retain prior measured margin.
+    if (!slow && p.sf == 8 && p.bw == 500 && other.sf == 7 && other.bw == 62.5f && result < 88)
+      result = 88;
+    return result;
+  }
+  // A two-profile idle-scan timing policy, NOT a fitted zero-loss model.
+  // Use a 4.6-symbol minimum on both profiles. Reserve
+  // two return opportunities on the slow profile, and blind time + 16
+  // acquisition symbols on the fast one. The 4.6/300-us pair bench received
+  // 197/200: a sweep fitting inside 32 is not a guarantee of acquisition.
+  // Explicit visit times let diagnostics account for the actual scheduler,
+  // including a longer fast visit selected by an explicit slow preamble.
+  static ChirpTiming calculateChirpTiming(const RadioProfileParams& a, const RadioProfileParams& b,
+      uint32_t visit_a_us = 0, uint32_t visit_b_us = 0,
+      uint32_t switch_us = SwitchBudgetUs, uint32_t loop_us = LoopBudgetUs) {
+    ChirpTiming t;
+    if (!valid(a) || !valid(b)) return t;
+    t.symbol_us[0] = symbolUs(a); t.symbol_us[1] = symbolUs(b);
+    t.slow = t.symbol_us[0] >= t.symbol_us[1] ? 0 : 1;
+    const uint32_t minimum_a = minimumListenUs(a, t.slow == 0);
+    const uint32_t minimum_b = minimumListenUs(b, t.slow == 1);
+    t.listen_us[0] = visit_a_us > minimum_a ? visit_a_us : minimum_a;
+    t.listen_us[1] = visit_b_us > minimum_b ? visit_b_us : minimum_b;
+    t.switch_us = switch_us; t.loop_us = loop_us;
+    const double overhead = 2.0 * switch_us + loop_us;
+    t.cycle_us = double(t.listen_us[0]) + t.listen_us[1] + overhead;
+    t.preamble[0] = preambleForVisits(a, b, t.slow == 0, t.listen_us[0], t.listen_us[1], overhead);
+    t.preamble[1] = preambleForVisits(b, a, t.slow == 1, t.listen_us[1], t.listen_us[0], overhead);
+    t.valid = true;
+    return t;
+  }
+  double automaticPreamble(uint8_t profile) const {
+    if (profile > 1) return 32;
+    // Keep the hot retune path to one profile's calculation; the full
+    // validated diagnostic structure is only needed by CLI/reporting.
+    const uint8_t slow = slowerProfile();
+    return preambleForVisits(params(profile), params(profile ^ 1), profile == slow,
+        minimumListenUs(params(profile), profile == slow), minimumListenUs(params(profile ^ 1), (profile ^ 1) == slow),
+        2.0 * SwitchBudgetUs + LoopBudgetUs);
   }
   uint32_t listenUs(uint8_t profile, uint16_t slow_preamble = 0) const {
     const uint8_t slow = slowerProfile();
-    const double minimum = symbolUs(params(profile))
-        * (profile == slow ? SlowListenSymbols : MinFastListenSymbols);
+    const double minimum = minimumListenUs(params(profile), enabled() && profile == slow);
     if (!enabled() || profile == slow) return (uint32_t)ceil(minimum);
     if (!slow_preamble) slow_preamble = preamble(slow, 32);
-    const double available = (double(slow_preamble) / 2.0 - SlowListenSymbols)
-        * symbolUs(params(slow)) - 2.0 * SwitchBudgetUs - LoopBudgetUs;
-    return available > minimum ? (uint32_t)floor(available) : (uint32_t)ceil(minimum);
+    const double available = double(slow_preamble) / 2.0 * symbolUs(params(slow))
+        - minimumListenUs(params(slow), true) - 2.0 * SwitchBudgetUs - LoopBudgetUs;
+    // Rejected previews must not cause an out-of-range floating-to-int cast.
+    return available > UINT32_MAX ? UINT32_MAX
+        : available > minimum ? (uint32_t)floor(available) : (uint32_t)minimum;
+  }
+  ChirpTiming chirpTiming() const {
+    if (!enabled()) return {};
+    // Measured overruns raise advisory requirements only. Do not silently
+    // change wire preambles or persisted settings based on one slow hop.
+    const uint32_t budget = longest_switch_us > SwitchBudgetUs ? longest_switch_us : SwitchBudgetUs;
+    return calculateChirpTiming(primary, secondary.params, listenUs(0), listenUs(1), budget);
   }
   uint16_t preamble(uint8_t profile, uint16_t single_profile_default) const {
     const auto& p = params(profile);
@@ -153,9 +202,9 @@ class RadioProfiles {
     }
     if (enabled()) {
       const uint8_t slow = slowerProfile();
-      const double available = (double(preamble(slow, 32)) / 2.0 - SlowListenSymbols)
-          * symbolUs(params(slow)) - 2.0 * SwitchBudgetUs - LoopBudgetUs;
-      if (available < MinFastListenSymbols * symbolUs(params(slow ^ 1))) return false;
+      const double available = double(preamble(slow, 32)) / 2.0 * symbolUs(params(slow))
+          - minimumListenUs(params(slow), true) - 2.0 * SwitchBudgetUs - LoopBudgetUs;
+      if (available < minimumListenUs(params(slow ^ 1))) return false;
     }
     return true;
   }
