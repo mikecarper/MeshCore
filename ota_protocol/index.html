@@ -4087,8 +4087,10 @@ an original 13-byte QUERY is still accepted and means "send every fragment." The
 fetched per-mid only on commit (Section 8.3).</p>
 <p>Fragment numbers are canonical pages of the complete catalog sorted by <code>manifest_id</code>. <code>filter_target</code> may
 remove rows from a requested page (and can therefore produce an empty fragment), but it never renumbers pages
-or changes <code>frag_total</code>. This keeps missing-fragment recovery unambiguous when filtered and unfiltered queries
-for the same <code>{seeder, set_digest}</code> are overheard together.</p>
+or changes <code>frag_total</code>. Receivers derive the unfiltered page count and each page's row count from the
+source's advertised <code>n_motas</code>. A page counts as received only if both counts match that complete geometry;
+filtered rows are still cached, but omitted rows leave the page eligible for an unfiltered recovery query.
+This also prevents legacy filtered replies which renumber pages from completing an unfiltered catalog.</p>
 <h3 id="82-anti-storm-mandatory-at-mesh-scale">8.2 Anti-storm (mandatory at mesh scale)</h3>
 <p>If 50 neighbours all queried a new beacon at once, the mesh would collapse. Mitigations (gossip/mDNS
 pattern), all in <code>OtaManager</code>:</p>
