@@ -2461,6 +2461,10 @@ public:
       companion_wifi_requested = on;
       if (!on) {
         companion_wifi_setup_requested = false;
+        // Sockets stop before the asynchronous web teardown finishes. Keep
+        // this latched so a replacement on request completes that teardown
+        // before startCompanionWiFi's active-state shortcut can skip restart.
+        companion_wifi_disable_in_progress = true;
         if (!finishStoppingCompanionWiFi()) return Result::Pending;
         companion_wifi_disable_in_progress = false;
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW

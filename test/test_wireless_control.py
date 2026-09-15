@@ -158,10 +158,16 @@ bool stop_pending=false;
 struct {int mode_value=0;void mode(int value){mode_value=value;}void setAutoReconnect(bool){}} WiFi;
 #define WIFI_OFF 0
 bool finishStoppingCompanionWiFi(){
+ // Production tears down sockets before waiting for the web server, while
+ // companion_wifi_active remains true until the whole teardown completes.
+ wifi_interface.disable();
  if(stop_pending)return false;
- companion_wifi_active=false;wifi_interface.disable();return true;
+ companion_wifi_active=false;return true;
 }
-void startCompanionWiFi(){companion_wifi_active=true;wifi_interface.enable();}
+void startCompanionWiFi(){
+ if(companion_wifi_active)return;
+ companion_wifi_active=true;wifi_interface.enable();
+}
 struct {
  bool active=true;
  bool isEnabled(){return active;}
@@ -197,6 +203,21 @@ int main(){
  now_ms+=250;mesh::wireless::control().service(now_ms);
  assert(radio_driver.active&&bluetooth_interface.enabled&&companion_wifi_active);
  assert(companion_wifi_requested);
+ // Reversing an asynchronous shutdown must finish teardown and restart the
+ // sockets, rather than treating the still-active flag as a healthy WiFi stack.
+ for(const char* family : {"wifi", "2.4ghz"}) {
+   char command[40];snprintf(command,sizeof(command),"set %s off",family);
+   handleCompanionWirelessCommand(command,reply,sizeof(reply),CompanionWirelessSource::Usb);
+   stop_pending=true;now_ms+=250;mesh::wireless::control().service(now_ms);
+   assert(mesh::wireless::control().pending()&&companion_wifi_active&&!wifi_interface.enabled);
+   snprintf(command,sizeof(command),"set %s on",family);
+   handleCompanionWirelessCommand(command,reply,sizeof(reply),CompanionWirelessSource::Usb);
+   now_ms+=250;mesh::wireless::control().service(now_ms);
+   assert(mesh::wireless::control().pending()&&!wifi_interface.enabled);
+   stop_pending=false;mesh::wireless::control().service(++now_ms);
+   assert(!mesh::wireless::control().pending()&&companion_wifi_active&&wifi_interface.enabled);
+   assert(companion_wifi_requested&&!companion_wifi_disable_in_progress);
+ }
  // WiFi's framed client must not be mistaken for independent USB.
  wifi_interface.frame=true;wifi_interface.connected=true;bluetooth_interface.connected=false;
  interface_manager.checkRecvFrame(frame);
