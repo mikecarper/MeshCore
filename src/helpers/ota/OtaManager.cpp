@@ -102,10 +102,15 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
 // we advertise / answer OTA_QUERY with) is the lightweight _serve[] registry.
 
 bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
+  MotaManifest parsed;
+  if (!mota || !mota_parse(mota, len, parsed)) return false;
+  if (parsed.block_size() == 0 || parsed.block_size() > OTA_MAX_BLOCK ||
+      (uint64_t)parsed.block_count * 4 > OTA_PROOFGEN_SCRATCH) return false;
   uint8_t* scratch = ensureScratch();
   if (!scratch) return false;
-  if (!mota_parse(mota, len, _view0.m)) return false;
-  if (_view0.m.block_size() == 0 || _view0.m.block_size() > OTA_MAX_BLOCK) return false;
+  // Parsing can fail after writing fields and pointers. Publish the replacement
+  // only after all checks pass, preserving the old image and its queued replies.
+  _view0.m = parsed;
   _view0.mfl = (uint16_t)(_view0.m.leaves - _view0.m.manifest_start);  // contiguous container
   _view0.read = nullptr; _view0.read_ctx = nullptr;                    // payload is contiguous _view0.m.payload
   _view0.read_deflated = nullptr; _view0.deflate_ctx = nullptr;
@@ -119,9 +124,13 @@ bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
 bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t* leaves,
                             uint32_t block_count, uint8_t* proof_scratch, uint32_t proof_scratch_sz,
                             ServeReadFn read, void* ctx) {
+  if (!manifest || mfl != MOTA_MFL || !leaves || !proof_scratch || !read) return false;
   if (proof_scratch_sz < (uint64_t)block_count * 4) return false;   // proof-gen needs count*4 working bytes
-  if (!mota_parse_manifest(manifest, mfl, _view0.m)) return false;  // fixed fields: root, image_hash, sizes
-  if (_view0.m.block_size() == 0 || _view0.m.block_size() > OTA_MAX_BLOCK) return false;
+  MotaManifest parsed;
+  if (!mota_parse_manifest(manifest, mfl, parsed)) return false;  // fixed fields: root, image_hash, sizes
+  if (parsed.block_size() == 0 || parsed.block_size() > OTA_MAX_BLOCK ||
+      parsed.block_count != block_count) return false;
+  _view0.m = parsed;
   _view0.m.manifest_start = manifest;
   _view0.m.leaves   = leaves;        // pre-computed, caller-owned (heap)
   _view0.m.payload  = nullptr;       // read on demand via `read`
@@ -287,6 +296,9 @@ bool OtaManager::loadSource(const ServeEntry& e) {
   uint8_t* src_leaves = ensureSourceLeaves();
   uint8_t* scratch = ensureScratch();
   if (!src_leaves || !scratch) return false;
+  // Both images share these buffers. Even a failed read can overwrite part of
+  // the old manifest/leaves, so its cached MID must stop resolving immediately.
+  _srcv.valid = false;
   bool ok = e.src->read(e.src_idx, 8, _src_manifest, mfl);
   if (!ok || !mota_parse_manifest(_src_manifest, mfl, _srcv.m)) return false;
   if (_srcv.m.block_size() == 0 || _srcv.m.block_size() > OTA_MAX_BLOCK) return false;

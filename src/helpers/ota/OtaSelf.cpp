@@ -151,6 +151,12 @@ bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
   const uint32_t bc = image_size / BS + (image_size % BS != 0 ? 1u : 0u);
   if ((uint64_t)bc * 4 > OTA_SELF_LEAVES_MAX) return false;
 
+  // A repeated `serve self` replaces caller-owned buffers. Revoke the old
+  // view and queued replies before freeing them; OOM/read failure must leave
+  // serving disabled rather than advertise dangling pointers. Avoid holding
+  // two images' metadata at once on boards with little free heap.
+  c.manager.clear_primary();
+  c.serving = false;
   free(c.serve_self_leaves); free(c.serve_self_proof);
   c.serve_self_leaves = (uint8_t*)malloc((size_t)bc * 4);
   c.serve_self_proof  = (uint8_t*)malloc((size_t)bc * 4);   // proof-gen working buffer (sized to OUR image)
@@ -193,8 +199,9 @@ bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
   m[56] = CODEC_FULL;
   memcpy(m + 57, out_hw, strlen(out_hw) < 32 ? strlen(out_hw) : 32);   // hw_id[32] (NUL-padded by memset)
   memcpy(m + MOTA_OFF_APPROVAL, APPROVAL_NOT, 4);   // approval (fetching device's apply-gate handles it)
-  return c.manager.serve_self(m, MOTA_MFL, c.serve_self_leaves, bc,
-                              c.serve_self_proof, (size_t)bc * 4, self_read_cb, nullptr);
+  c.serving = c.manager.serve_self(m, MOTA_MFL, c.serve_self_leaves, bc,
+                                 c.serve_self_proof, (size_t)bc * 4, self_read_cb, nullptr);
+  return c.serving;
 }
 #endif
 

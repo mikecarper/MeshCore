@@ -2200,6 +2200,173 @@ private:
   uint8_t _count;
   uint8_t _block_log2;
 };
+
+class FaultingMotaSource : public RamMotaSource {
+public:
+  uint32_t fail_offset = UINT32_MAX;
+  bool partial_read = false;
+  bool read(uint8_t idx, uint32_t off, uint8_t* out, uint32_t len) override {
+    if (idx == 1 && off == fail_offset) {
+      if (partial_read && len > 1) RamMotaSource::read(idx, off, out, len / 2);
+      return false;
+    }
+    return RamMotaSource::read(idx, off, out, len);
+  }
+};
+
+static bool request_manifest(OtaManager& manager, const uint8_t* mid) {
+  GetManifestMsg request{};
+  memcpy(request.manifest_id, mid, 4);
+  request.want_mask = 0xFFFF;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  const uint16_t length = encode_get_manifest(wire, sizeof(wire), request);
+  return length && manager.on_message(wire, length);
+}
+
+static void expect_queued_manifest(OtaManager& manager, CapturedMessages& sent,
+                                   const MotaManifest& expected) {
+  for (uint32_t tick = 1; tick <= 16 && manager.pendingManifestJobs(); ++tick) {
+    manager.set_clock(tick * 10000u);
+    manager.serviceEgress();
+  }
+  ASSERT_EQ(manager.pendingManifestJobs(), 0u);
+  std::vector<uint8_t> bytes;
+  for (const auto& wire : sent.items) {
+    ManifestMsg fragment{};
+    ASSERT_TRUE(decode_manifest(wire.data(), (uint16_t)wire.size(), fragment));
+    EXPECT_EQ(memcmp(fragment.manifest_id, expected.merkle_root, 4), 0);
+    EXPECT_EQ(fragment.frag_idx * OTA_MF_FRAG, bytes.size());
+    bytes.insert(bytes.end(), fragment.bytes, fragment.bytes + fragment.len);
+  }
+  ASSERT_EQ(bytes.size(), MOTA_MFL);
+  EXPECT_EQ(memcmp(bytes.data(), expected.manifest_start, MOTA_MFL), 0);
+}
+
+static void expect_served_block(OtaManager& manager, CapturedMessages& sent,
+                                const MotaManifest& expected) {
+  sent.items.clear();
+  ReqMsg request{};
+  memcpy(request.manifest_id, expected.merkle_root, 4);
+  request.want_mask = 0xFFFF;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  const uint16_t length = encode_req(wire, sizeof(wire), request);
+  ASSERT_TRUE(manager.on_message(wire, length));
+  for (uint32_t tick = 1; tick <= 32 && manager.pendingServeJobs(); ++tick) {
+    manager.set_clock(200000u + tick * 10000u);
+    manager.serviceEgress();
+  }
+  ASSERT_EQ(manager.pendingServeJobs(), 0u);
+  std::vector<uint8_t> bytes;
+  bool verified = false;
+  for (const auto& packet : sent.items) {
+    DataMsg data{};
+    ProofMsg proof{};
+    if (decode_data(packet.data(), (uint16_t)packet.size(), data)) {
+      EXPECT_EQ(memcmp(data.manifest_id, expected.merkle_root, 4), 0);
+      ASSERT_EQ(data.frag_off, bytes.size());
+      bytes.insert(bytes.end(), data.data, data.data + data.data_len);
+    } else {
+      ASSERT_TRUE(decode_proof(packet.data(), (uint16_t)packet.size(), proof));
+      EXPECT_EQ(memcmp(proof.manifest_id, expected.merkle_root, 4), 0);
+      verified = merkle_verify(bytes.data(), (uint32_t)bytes.size(), 0,
+          proof.proof, proof.n_proof, expected.merkle_root, expected.block_count);
+    }
+  }
+  ASSERT_EQ(bytes.size(), std::min(expected.block_size(), expected.payload_size));
+  EXPECT_EQ(memcmp(bytes.data(), expected.payload, bytes.size()), 0);
+  EXPECT_TRUE(verified);
+}
+}
+
+TEST(OtaServe, RejectedPrimaryReplacementPreservesQueuedManifest) {
+  MotaManifest original;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, original));
+  for (bool streaming : {false, true}) {
+    SCOPED_TRACE(streaming ? "serve_self" : "serve");
+    OtaManager manager;
+    CapturedMessages sent;
+    manager.begin(0, capture_send, &sent);
+    ASSERT_TRUE(manager.serve(SIM_MOTA, SIM_MOTA_LEN));
+    ASSERT_TRUE(request_manifest(manager, original.merkle_root));
+    // Parsing gets far enough to overwrite pointers/geometry before rejecting
+    // this replacement. It must never mutate the live, advertised image.
+    std::vector<uint8_t> bad(SIM_MOTA_1K, SIM_MOTA_1K + SIM_MOTA_1K_LEN);
+    bad[8 + 19] = 25;
+    uint8_t scratch[OTA_PROOFGEN_SCRATCH];
+    if (streaming) {
+      EXPECT_FALSE(manager.serve_self(bad.data() + 8, MOTA_MFL,
+          original.leaves, original.block_count, scratch, sizeof(scratch),
+          [](void*, uint32_t, uint8_t*, uint32_t) { return false; }, nullptr));
+    } else {
+      EXPECT_FALSE(manager.serve(bad.data(), (uint32_t)bad.size()));
+    }
+    expect_queued_manifest(manager, sent, original);
+    expect_served_block(manager, sent, original);
+  }
+}
+
+TEST(OtaServe, InvalidPrimaryBackingDoesNotReplaceLiveImage) {
+  MotaManifest original;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, original));
+  uint8_t scratch[OTA_PROOFGEN_SCRATCH];
+  const auto read = [](void*, uint32_t, uint8_t*, uint32_t) { return false; };
+  for (unsigned failure = 0; failure < 9; ++failure) {
+    SCOPED_TRACE(failure);
+    OtaManager manager;
+    CapturedMessages sent;
+    manager.begin(0, capture_send, &sent);
+    ASSERT_TRUE(manager.serve(SIM_MOTA, SIM_MOTA_LEN));
+    if (failure < 2) {
+      EXPECT_FALSE(manager.serve(failure == 0 ? nullptr : SIM_MOTA,
+                                  failure == 0 ? SIM_MOTA_LEN : 0));
+    } else {
+      EXPECT_FALSE(manager.serve_self(
+          failure == 2 ? nullptr : original.manifest_start,
+          failure == 3 ? MOTA_MFL - 1 : MOTA_MFL,
+          failure == 4 ? nullptr : original.leaves,
+          failure == 5 ? original.block_count + 1 : original.block_count,
+          failure == 6 ? nullptr : scratch,
+          failure == 7 ? 0 : sizeof(scratch),
+          failure == 8 ? nullptr : +read, nullptr));
+    }
+    ASSERT_TRUE(request_manifest(manager, original.merkle_root));
+    expect_queued_manifest(manager, sent, original);
+    expect_served_block(manager, sent, original);
+  }
+}
+
+TEST(OtaServe, FailedSourceSwitchReloadsPreviousImageBeforeQueuedReply) {
+  MotaManifest original;
+  ASSERT_TRUE(mota_parse(SIM_MOTA, SIM_MOTA_LEN, original));
+  MotaManifest other;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, other));
+  for (uint32_t failure : {8u, 8u + MOTA_MFL}) {
+    for (bool partial : {false, true}) {
+      SCOPED_TRACE(failure);
+      SCOPED_TRACE(partial);
+      OtaManager manager;
+      CapturedMessages sent;
+      FaultingMotaSource folder;
+      folder.add(SIM_MOTA, SIM_MOTA_LEN);
+      folder.add(SIM_MOTA_1K, SIM_MOTA_1K_LEN);
+      manager.begin(0, capture_send, &sent);
+      ASSERT_TRUE(manager.add_source(&folder));
+      ASSERT_TRUE(request_manifest(manager, original.merkle_root));
+      folder.fail_offset = failure;
+      folder.partial_read = partial;
+      EXPECT_FALSE(request_manifest(manager, other.merkle_root));
+      expect_queued_manifest(manager, sent, original);
+      expect_served_block(manager, sent, original);
+      // A transient source failure must also recover when the new image is
+      // requested again, with the original source still registered.
+      sent.items.clear();
+      manager.set_clock(0);
+      folder.fail_offset = UINT32_MAX;
+      ASSERT_TRUE(request_manifest(manager, other.merkle_root));
+      expect_queued_manifest(manager, sent, other);
+      expect_served_block(manager, sent, other);
+    }
+  }
 }
 
 TEST(OtaServe, ClearPrimaryInvalidatesCallerOwnedView) {

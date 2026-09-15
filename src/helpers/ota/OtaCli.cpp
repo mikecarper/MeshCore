@@ -1097,8 +1097,10 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       strcpy(reply, "ERR nothing staged");
       return true;
     }
-    c.serving = c.manager.serve(c.serve_buf, c.serve_expected);
-    if (!c.serving) { strcpy(reply, "ERR serve (bad .mota)"); return true; }
+    if (!c.manager.serve(c.serve_buf, c.serve_expected)) {
+      strcpy(reply, "ERR serve (bad .mota)"); return true;
+    }
+    c.serving = true;
     VerifyResult r = ota_verify(c.serve_buf, c.serve_expected, c.allow);
     sprintf(reply, "OK serving | root=%d payload=%d img=%d sig=%d trust=%d",
             r.root_ok, r.payload_ok, r.image_ok, r.sig_ok, r.trusted);
