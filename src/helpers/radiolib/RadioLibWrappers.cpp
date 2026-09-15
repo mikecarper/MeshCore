@@ -105,6 +105,7 @@ bool RadioLibWrapper::setTxPower(int8_t dbm) {
 }
 
 uint8_t RadioLibWrapper::beginReconfigure() {
+  if (_cw_active) return 2;
   const uint8_t base_state = state & ~STATE_INT_READY;
   // On SX126x/LR11xx duty-cycle RX, BUSY may remain asserted during the sleep
   // side of the cycle. Do not issue an IRQ/preamble query over SPI then; due
@@ -228,6 +229,7 @@ bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
 }
 
 mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
+  if (_cw_active) return mesh::RadioParamApplyResult::BUSY;
   if (profile > 1 || (profile == 1 && !_profiles.enabled())) return mesh::RadioParamApplyResult::FAILED;
   const auto& p = _profiles.params(profile);
   const uint16_t preamble = profilePreamble(profile);
@@ -292,6 +294,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t prof
 }
 
 void RadioLibWrapper::serviceProfileScan() {
+  if (_cw_active) return;
   if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;
   _profile_retry_at = 0;
   if (_profiles.enabled() && !_profile_rxps_suspended) {
@@ -398,6 +401,7 @@ bool RadioLibWrapper::setRxBoostedGainMode(bool enabled) {
 }
 
 void RadioLibWrapper::idle() {
+  if (_cw_active) return;
   _radio->standby();
   _rx_hold_continuous = false;
   state = STATE_IDLE;   // need another startReceive()
@@ -444,6 +448,7 @@ void RadioLibWrapper::doResetAGC() {
 }
 
 void RadioLibWrapper::resetAGC() {
+  if (_cw_active) return;
   // make sure we're not mid-receiving and mid-sending of packet!
   if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) return;
 
@@ -460,6 +465,7 @@ void RadioLibWrapper::resetAGC() {
 }
 
 bool RadioLibWrapper::recoverRadio(bool hard) {
+  if (_cw_active) return false;
   const uint8_t base_state = state & ~STATE_INT_READY;
   if ((state & STATE_INT_READY) != 0 || base_state == STATE_TX_WAIT) return false;
 
@@ -658,7 +664,98 @@ void RadioLibWrapper::checkReceiveMode(uint32_t now) {
   recoverRadio(_rx_mode_failures >= 3);
 }
 
+uint32_t RadioLibWrapper::carrierWaveRemainingMillis() const {
+  if (!_cw_active || _cw_stopping) return 0;
+  const int32_t remaining = static_cast<int32_t>(_cw_until - millis());
+  return remaining > 0 ? static_cast<uint32_t>(remaining) : 0;
+}
+
+mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uint32_t duration_ms) {
+  using Result = mesh::RadioParamApplyResult;
+  if (!supportsCarrierWave()) return Result::FAILED;
+  if (!duration_ms) return !_cw_active || stopCarrierWave() ? Result::APPLIED : Result::FAILED;
+  if (profile > 1 || duration_ms > CarrierWaveMaxMillis || !_params_valid
+      || !_profiles.canTransmit(profile)) return Result::FAILED;
+  if (_cw_active) {
+    if (_cw_stopping || profile != _cw_profile
+        || _cw_generation != _profiles.generation[profile]) return Result::BUSY;
+    _cw_until = static_cast<uint32_t>(millis()) + duration_ms;
+    return Result::APPLIED;
+  }
+
+  // Own an idle radio before changing profiles or keying the external FEM.
+  // This also performs the SX1262 duty-cycle RTC cleanup used by packet TX.
+  const uint8_t resume = beginReconfigure();
+  if (resume > 1) return Result::BUSY;
+  _cw_restore_profile = _active_profile;
+  if (_radio->standby() != RADIOLIB_ERR_NONE
+      || _radio->clearIrqFlags(UINT32_MAX) != RADIOLIB_ERR_NONE
+      || tuneProfile(profile) != Result::APPLIED) {
+    startRecv();
+    return Result::FAILED;
+  }
+  _radio->clearPacketReceivedAction();
+  state = STATE_IDLE;
+  _rx_ps_armed = false;
+  _rx_hold_continuous = false;
+  _nf_calib_active = false;
+  _wd_observe_until = 0;
+  _cw_profile = profile;
+  _cw_generation = _profiles.generation[profile];
+  _cw_active = true;
+  _cw_stopping = false;
+  _board->setRadioTestActive(true);  // service the deadline even without USB
+  _board->onBeforeTransmit();
+  _cw_board_tx = true;
+  if (_radio->transmitDirect() != RADIOLIB_ERR_NONE) {
+    stopCarrierWave();  // a failed SPI result does not prove TX stayed off
+    return Result::FAILED;
+  }
+  _cw_until = static_cast<uint32_t>(millis()) + duration_ms;
+  return Result::APPLIED;
+}
+
+bool RadioLibWrapper::stopCarrierWave() {
+  _cw_stopping = true;
+  // finishTransmit clears radio IRQs and enters standby on both supported
+  // families. Deassert external TX even if SPI fails, then try a radio reset.
+  const int16_t status = _radio->finishTransmit();
+  if (_cw_board_tx) { _board->onAfterTransmit(); _cw_board_tx = false; }
+  if (status != RADIOLIB_ERR_NONE && !restoreAfterDeepInit()) {
+    _cw_retry_at = static_cast<uint32_t>(millis()) + 100;
+    return false;  // hold normal work until stopping the carrier is confirmed
+  }
+  _cw_active = false;
+  _cw_stopping = false;
+  _rx_ps_armed = false;
+  state = STATE_IDLE;
+  _radio->setPacketReceivedAction(setFlag);
+  _profile_refresh_required = true;
+  const uint8_t restore = _profiles.enabled() ? _cw_restore_profile : 0;
+  const bool tuned = tuneProfile(restore) == mesh::RadioParamApplyResult::APPLIED;
+  recalibrateNoiseFloor();
+  startRecv();
+  if (!isInRecvMode() && restoreAfterDeepInit()) startRecv();
+  _board->setRadioTestActive(false);
+  return tuned && isInRecvMode();
+}
+
+bool RadioLibWrapper::serviceCarrierWave() {
+  if (_cw_active) {
+    const uint32_t now = millis();
+    if ((_cw_stopping && static_cast<int32_t>(now - _cw_retry_at) >= 0)
+        || (!_cw_stopping && (static_cast<int32_t>(now - _cw_until) >= 0
+            || !_profiles.canTransmit(_cw_profile)
+            || _cw_generation != _profiles.generation[_cw_profile]))) {
+      if (!stopCarrierWave()) MESH_DEBUG_PRINTLN("CW: stop/RX recovery failed");
+    }
+    return true;
+  }
+  return false;
+}
+
 void RadioLibWrapper::loop() {
+  if (serviceCarrierWave()) return;
   serviceProfileScan();
   // Calibration batches need one stable channel. Do not publish a noise floor
   // assembled from different frequencies, or let a batch pin the scan on one.
@@ -744,6 +841,7 @@ void RadioLibWrapper::loop() {
 }
 
 void RadioLibWrapper::startRecv() {
+  if (_cw_active) return;
   int err = startReceiveMode();
   if (err == RADIOLIB_ERR_NONE) {
     // A very short frame may complete while startReceiveMode() returns.
@@ -807,6 +905,7 @@ bool RadioLibWrapper::isInRecvMode() const {
 
 // RX PowerSaving
 bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
+  if (_cw_active) return false;
   if (_profile_rxps_suspended) {
     _profile_saved_rxps = enabled;
     _rx_ps_rx_us = rx_us;
@@ -830,6 +929,7 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
 }
 
 int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
+  if (_cw_active) return 0;
   int len = 0;
   if (state & STATE_INT_READY) {
     last_radio_interrupt_millis = millis();   // ISR fired -> radio hardware is alive
@@ -921,6 +1021,7 @@ uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
 }
 
 bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
+  if (_cw_active) return false;
   _rx_hold_continuous = false;
   if (_rx_ps_armed) {
     // stop the duty-cycle sequencer before SetTx, otherwise its next RTC
@@ -989,6 +1090,7 @@ int16_t RadioLibWrapper::performChannelScanWithTimeout(unsigned long timeout_ms)
 }
 
 bool RadioLibWrapper::isChannelActive() {
+  if (_cw_active) return true;
   if (isPacketPendingOrReceiving() || (state & ~STATE_INT_READY) == STATE_TX_WAIT) return true;
   // int.thresh: RSSI-based interference detection (relative to noise floor).
   // In RX duty-cycle mode only checked while the chip is in a listen window
@@ -1020,6 +1122,7 @@ bool RadioLibWrapper::isChannelActive() {
 }
 
 bool RadioLibWrapper::isReceivingPassive(int interference_margin_db) {
+  if (_cw_active) return true;
   // RX duty-cycle radios hold BUSY high while asleep. Do not attempt an SPI
   // IRQ/RSSI read until the next listen window. Treat the unknown channel as
   // busy so the retry is deferred instead of transmitting blind; Dispatcher

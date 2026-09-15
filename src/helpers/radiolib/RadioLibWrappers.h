@@ -83,6 +83,13 @@ protected:
   bool _profile_rxps_suspended = false;
   bool _profile_saved_rxps = false;
   bool _profile_refresh_required = false;
+  bool _cw_active = false;
+  bool _cw_stopping = false;
+  bool _cw_board_tx = false;
+  uint8_t _cw_profile = 0, _cw_restore_profile = 0;
+  uint32_t _cw_until = 0, _cw_retry_at = 0, _cw_generation = 0;
+  bool stopCarrierWave();
+  bool serviceCarrierWave();
   mesh::RadioParamApplyResult tuneProfile(uint8_t profile);
   void serviceProfileScan();
 
@@ -187,6 +194,10 @@ public:
         }
 
   void begin() override;
+  mesh::RadioParamApplyResult setCarrierWave(uint8_t profile, uint32_t duration_ms) override;
+  bool isCarrierWaveActive() const override { return _cw_active; }
+  uint8_t carrierWaveProfile() const override { return _cw_profile; }
+  uint32_t carrierWaveRemainingMillis() const override;
   mesh::RadioProfiles* profiles() override { return &_profiles; }
   const mesh::RadioProfiles* profiles() const override { return &_profiles; }
   bool validateProfile(const mesh::RadioProfileParams& params) const override;

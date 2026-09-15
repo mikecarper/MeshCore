@@ -58,6 +58,8 @@ struct Radio {
   }
 };
 struct RadioLibWrapper {
+  bool _cw_active = false;
+  bool serviceCarrierWave() { return false; } // dedicated CW harness owns this path
   mesh::RadioProfiles _profiles;
   uint32_t _profile_visit_us = 0;
   void serviceProfileScan() {} // separate profile-scan harness exercises tuning

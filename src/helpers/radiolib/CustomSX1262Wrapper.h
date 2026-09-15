@@ -36,6 +36,7 @@ protected:
 
 public:
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  bool supportsCarrierWave() const override { return true; }
 
 protected:
   int16_t applyCachedTxPower(int8_t dbm) override {
@@ -65,6 +66,7 @@ protected:
 
 public:
   bool setCodingRate(uint8_t cr) override {
+    if (isCarrierWaveActive()) return false;
     return ((CustomSX1262 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
 
@@ -84,6 +86,7 @@ public:
   }
   uint8_t getSpreadingFactor() const override { return ((CustomSX1262 *)_radio)->spreadingFactor; }
   void powerOff() {
+    if (isCarrierWaveActive()) setCarrierWave(0, 0);
     ((CustomSX1262 *)_radio)->standby();
     ((CustomSX1262 *)_radio)->sleep(false);
   }
@@ -100,6 +103,7 @@ public:
   }
 
   bool setRxPowerSavingRfRxDisabled(bool disabled) override {
+    if (isCarrierWaveActive()) return false;
     if (!supportsRxPowerSavingRfRxDisable()) return false;
 
     if (_rx_ps_armed) stopReceiveDutyCycle();

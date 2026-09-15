@@ -1,4 +1,5 @@
 #include "RadioProfileCLI.h"
+#include "CarrierWaveCLI.h"
 #include "RadioProfileCommandUtils.h"
 #include "radiolib/RXPowerSaving.h"
 #include <Arduino.h>
@@ -274,6 +275,7 @@ void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProf
 }
 
 bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) {
+  if (handleCarrierWaveCommand(radio_, command, reply, capacity)) return true;
   const char* text = command;
   enum { Get, Set, Delete } verb = Get;
   if (!strncmp(text, "get ", 4)) text += 4;

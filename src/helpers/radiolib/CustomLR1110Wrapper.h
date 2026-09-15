@@ -15,10 +15,14 @@ class CustomLR1110Wrapper : public RadioLibWrapper {
 public:
   CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board)
       : RadioLibWrapper(radio, board), _deep_init(NULL) { }
+  bool supportsCarrierWave() const override { return true; }
 
   void setDeepInitCallback(DeepInitCallback callback) { _deep_init = callback; }
 
-  void powerOff() { _radio->standby(); _radio->sleep(); }
+  void powerOff() {
+    if (isCarrierWaveActive()) setCarrierWave(0, 0);
+    _radio->standby(); _radio->sleep();
+  }
 
 protected:
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
@@ -37,6 +41,7 @@ protected:
 
 public:
   bool setCodingRate(uint8_t cr) override {
+    if (isCarrierWaveActive()) return false;
     return ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
 

@@ -89,6 +89,8 @@ static void gpio_set_intr_type(gpio_num_t pin, int type) {
 #define portEXIT_CRITICAL(mux) (--critical_depth)
 
 struct MainBoard {
+  bool radio_test_active = false;
+  bool isRadioTestActive() const { return radio_test_active; }
   virtual void sleep(uint32_t) = 0;
   virtual bool isUsbDataConnected() = 0;
   virtual bool isUsbHostConnected() = 0;
@@ -153,6 +155,10 @@ int main() {
     board.sleep(30);
     require(sleep_calls == 1, "OTA sleep inhibition regressed");
     board.inhibit_sleep = false;
+    board.radio_test_active = true;
+    board.sleep(30);
+    require(sleep_calls == 1, "CW deadline would be missed while USB is disconnected");
+    board.radio_test_active = false;
     radio_irq_high = true;
     board.sleep(30);
     require(sleep_calls == 1 && critical_depth == 0,

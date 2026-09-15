@@ -2,6 +2,10 @@
 
 Below are the commands you can enter into the Terminal Chat clients:
 
+For a timed RF carrier test on SX1262 or LR1110, use `cw on 2.5` or
+`cw2 on 2.5`, then `cw off` to stop early. See [carrier-wave RF checks](carrier_wave.md)
+for profile selection, limits, and status commands.
+
 ## Companion WiFi browser terminal
 
 On ESP32 WiFi Companions with WebConfig, open the node's LAN IP address and

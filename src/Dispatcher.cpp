@@ -309,6 +309,9 @@ void Dispatcher::loop() {
     next_floor_calib_time = futureMillis(NOISE_FLOOR_CALIB_INTERVAL);
   }
   _radio->loop();
+  // A maintenance carrier has no TxDone packet. Keep its deadline serviced,
+  // but leave queued packets and RX/AGC watchdogs alone until normal RX returns.
+  if (_radio->isCarrierWaveActive()) return;
 
   const unsigned long now = _ms->getMillis();
   // check for radio 'stuck' in mode other than Rx
@@ -590,6 +593,7 @@ bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {
 }
 
 void Dispatcher::checkRecv() {
+  if (_radio->isCarrierWaveActive()) return;
   Packet* pkt;
   float score;
   float snr;
@@ -697,6 +701,7 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
 }
 
 void Dispatcher::checkSend() {
+  if (_radio->isCarrierWaveActive()) return;
   const uint32_t now = _ms->getMillis();
   uint32_t next_outbound;
   if (_mgr->getNextOutboundTime(now, next_outbound)) {

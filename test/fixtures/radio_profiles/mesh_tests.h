@@ -5,6 +5,12 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
   uint8_t selected = 0;
   int busy_profile = -1;
   bool fail_next_send = false;
+  bool carrier = false, carrier_on_receive = false;
+  unsigned carrier_services = 0, recoveries = 0;
+  bool isCarrierWaveActive() const override { return carrier; }
+  bool isInRecvMode() const override { return !carrier && !sending; }
+  void loop() override { ++carrier_services; }
+  bool recoverRadio(bool) override { ++recoveries; return true; }
   uint32_t estimated_airtime = 10;
   std::vector<uint8_t> incoming;
   std::vector<uint8_t> transmissions;
@@ -34,6 +40,7 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
     return RetryCodingRateRadio::startSendRaw(bytes, size);
   }
   int recvRaw(uint8_t* bytes, int size) override {
+    if (carrier_on_receive) { carrier = true; carrier_on_receive = false; return 0; }
     if (incoming.empty() || (int)incoming.size() > size) return 0;
     const int length = incoming.size();
     memcpy(bytes, incoming.data(), length); incoming.clear();
@@ -298,4 +305,37 @@ TEST_F(DualProfileTest, ChangedPolicyRemovesCrossCopiesBeforeTransmission) {
   radio.complete = true; tick();
   EXPECT_EQ((std::vector<uint8_t>{0}), radio.transmissions);
   EXPECT_EQ(40, manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, CarrierKeepsQueuesAndRecoveryPausedButServicesDeadline) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  ASSERT_NE(nullptr, queue());
+  const int queued = manager.getOutboundTotal();
+  radio.carrier = true;
+  tick(10000); tick(10000);
+  EXPECT_GE(radio.carrier_services, 2u);
+  EXPECT_EQ(0u, radio.recoveries);
+  EXPECT_EQ(queued, manager.getOutboundTotal());
+  EXPECT_TRUE(radio.transmissions.empty());
+  radio.carrier = false;
+  tick();
+  EXPECT_EQ((std::vector<uint8_t>{0}), radio.transmissions);
+  radio.complete = true; tick();
+  EXPECT_EQ(40, manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, CarrierStartedInReceiveCallbackDoesNotDequeuePacket) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  ASSERT_NE(nullptr, queue());
+  const int queued = manager.getOutboundTotal();
+  radio.carrier_on_receive = true;
+  tick();
+  EXPECT_TRUE(radio.carrier);
+  EXPECT_EQ(queued, manager.getOutboundTotal());
+  EXPECT_TRUE(radio.transmissions.empty());
+  radio.carrier = false;
+  tick();
+  EXPECT_EQ((std::vector<uint8_t>{0}), radio.transmissions);
 }

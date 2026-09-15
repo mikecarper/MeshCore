@@ -103,7 +103,7 @@ public:
     // Native USB loses its connection in light sleep. An enumerated host
     // still needs USB serviced when no terminal asserts CDC DTR (for example,
     // after a Pi closes its serial port). Guard every caller here.
-    bool keep_awake = inhibit_sleep || isUsbHostConnected();
+    bool keep_awake = inhibit_sleep || isUsbHostConnected() || isRadioTestActive();
 #if MESH_USB_LOGGING_AVAILABLE
     // A live logging stream must also remain available before a host opens
     // it and across host disconnects. Compiled-out logging is not a blocker.

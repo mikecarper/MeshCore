@@ -462,6 +462,7 @@ bool NRF52Board::isUsbHostConnected() {
 }
 
 void NRF52Board::sleep(uint32_t secs) {
+  if (isRadioTestActive()) { delay(1); return; }
   // Clear FPU interrupt flags to avoid insomnia
   // see errata 87 for details https://docs.nordicsemi.com/bundle/errata_nRF52840_Rev3/page/ERR/nRF52840/Rev3/latest/anomaly_840_87.html
   #if (__FPU_USED == 1)

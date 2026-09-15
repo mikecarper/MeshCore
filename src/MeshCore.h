@@ -128,7 +128,10 @@ namespace mesh {
 #define  BD_STARTUP_RX_PACKET  1
 
 class MainBoard {
+  bool _radio_test_active = false;
 public:
+  void setRadioTestActive(bool active) { _radio_test_active = active; }
+  bool isRadioTestActive() const { return _radio_test_active; }
   virtual uint16_t getBattMilliVolts() = 0;
   virtual float getMCUTemperature() { return NAN; }
   virtual bool setAdcMultiplier(float multiplier) { return false; };
@@ -152,6 +155,7 @@ public:
   virtual void onBootComplete() { /* no op */ }
   virtual uint32_t getIRQGpio() { return -1; } // not supported. Returns DIO1 (SX1262) and DIO0 (SX127x)
   virtual void sleep(uint32_t secs)  {
+    if (isRadioTestActive()) return;
     (void)secs;
 #if defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
     // These platforms have no shared deep-sleep board implementation. WFI is

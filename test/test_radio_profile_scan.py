@@ -26,6 +26,7 @@ uint32_t millis() { return (uint32_t)(elapsed_us / 1000); }
 struct Chip { bool standbyXOSC=false; int standby() { return 0; } };
 using CustomSX1262 = Chip;
 struct RadioLibWrapper {
+  bool _cw_active=false;
   Chip chip; Chip* _radio = &chip;
   mesh::RadioProfiles _profiles;
   bool _params_valid=true, packet=false, busy=false, fail=false;

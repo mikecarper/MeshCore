@@ -3,6 +3,9 @@
 See [two LoRa profiles](radio_profiles.md) for `radio2`, `tempradio2`, scheduling,
 RX-only mode, cross-transmission policy, and optional radio preambles.
 
+See [carrier-wave RF checks](carrier_wave.md) for `cw on [seconds]`,
+`cw2 on [seconds]`, and stopping a carrier with `off`.
+
 For copy/paste on/off recipes and the differences from Full Companion, see
 [feature switches by role](role_feature_switches.md). The
 [USB web console](https://flasher.meshcore.io/console) opens the default ASCII

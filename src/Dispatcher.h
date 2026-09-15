@@ -31,6 +31,16 @@ public:
 */
 class Radio {
 public:
+  static constexpr uint32_t CarrierWaveDefaultMillis = 10000;
+  static constexpr uint32_t CarrierWaveMaxMillis = 60000;
+  virtual bool supportsCarrierWave() const { return false; }
+  // duration_ms == 0 stops either carrier; there is one physical transmitter.
+  virtual RadioParamApplyResult setCarrierWave(uint8_t profile, uint32_t duration_ms) {
+    return RadioParamApplyResult::FAILED;
+  }
+  virtual bool isCarrierWaveActive() const { return false; }
+  virtual uint8_t carrierWaveProfile() const { return 0; }
+  virtual uint32_t carrierWaveRemainingMillis() const { return 0; }
   virtual void begin() { }
   virtual RadioProfiles* profiles() { return nullptr; }
   virtual const RadioProfiles* profiles() const { return nullptr; }
