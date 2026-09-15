@@ -1801,6 +1801,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adjust-lora-ota-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adjust LoRa OTA speed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#optional-let-it-update-automatically" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3090,6 +3101,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adjust-lora-ota-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adjust LoRa OTA speed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#optional-let-it-update-automatically" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3521,6 +3543,44 @@ complete target inventory, storage layouts, and safety contract.</p>
   - <strong>ESP32:</strong> it keeps the previous firmware in the other slot and rolls back.
 - When in doubt, you can always re-flash over USB the normal way.</p>
 <hr />
+<h2 id="adjust-lora-ota-speed">Adjust LoRa OTA speed</h2>
+<p>Use one saved speed factor for this node's LoRa OTA traffic:</p>
+<pre><code class="language-text">get ota.speed
+set ota.speed 0.5
+set ota.speed .05
+set ota.speed 3
+set ota.speed 1
+</code></pre>
+<p>The range is <strong>0.05 through 3</strong>, including decimals. <strong>1 is the existing timing</strong>.
+At <code>0.5</code>, adjustable OTA delays are twice as long; at <code>0.05</code>, they are twenty
+times as long. At <code>3</code>, adjustable delays are divided by three. Actual transfer
+speed also depends on packet airtime, the configured airtime budget, relays,
+and packet loss; <code>3</code> does not guarantee three times the throughput.</p>
+<p>The factor covers OTA requests and responses (catalog, manifest, leaves, DATA,
+and proofs), OTA relay delays, discovery jitter, and automatic OTA adverts.
+Below <code>1</code>, the transmit queue also spaces out <strong>every OTA packet</strong>, including
+both profile copies, while letting ordinary messages run. Recovery waits grow
+for slower transfers; faster settings retain the existing retry allowance so
+they do not retry before a physical response train can finish. The radio's
+frequency, bandwidth, SF, coding rate, preamble, and airtime budget stay as set.
+The proof turnaround allowance also keeps its existing physical minimum.
+Dual-profile timing accounts for the participating profiles and reply copies;
+it does not vary with the scanner's current visit. Deliberate slow pacing is
+excluded from observer builds' stale-packet age, while congestion still ages
+queued packets normally.</p>
+<p>Set the same factor on the <strong>source, destination, and OTA relays</strong>. It is a
+local setting, not a value negotiated with peers. A slow source paired with a
+receiver at <code>1</code> can cause unnecessary retries. The setting takes effect during
+an active session, survives reboot and temporary-radio expiry, and applies to
+OTA on either radio profile. <code>set ota.speed 1</code> restores the previous pace.
+Ordinary chat, node adverts, and USB/WiFi source transfers keep their timing.
+Local verification of a staged image and leaf comparisons keep their normal
+maintenance rate even when LoRa pacing is slow.</p>
+<p><code>ota config speed 0.5</code> is an equivalent setter. <code>ota config speed</code> and
+<code>ota speed</code> read the current factor; the <code>ota config</code> summary also includes it.
+The setting is available on OTA-enabled repeaters, rooms, sensors, Companions,
+and seeder-only builds. Its separate <code>/ota_speed</code> settings file preserves the
+existing preference layouts and does not need an active OTA workspace.</p>
 <h2 id="optional-let-it-update-automatically">Optional: let it update automatically</h2>
 <p>By default your node only <em>discovers</em> updates - it won't download or install on its own. If you want more
 automation (e.g. for a remote node you can't easily reach), you can opt in. These settings are saved.</p>

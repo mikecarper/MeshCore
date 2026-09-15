@@ -3604,6 +3604,12 @@ or SWD instead of relying on the older 608 KiB rescue estimate.</p>
 <p>Monitor the transfer:</p>
 <pre><code class="language-text">ota status
 </code></pre>
+<p>To adjust LoRa OTA pacing, use <code>get ota.speed</code> and <code>set ota.speed &lt;0.05..3&gt;</code> on
+the source, destination, and OTA relays. <code>1</code> preserves the existing timing;
+lower values slow OTA down, and higher values shorten adjustable delays.
+This saved setting covers both profiles and OTA adverts as well as the transfer.
+It does not change radio modulation or the configured airtime budget. See
+<a href="../ota_user_guide/#adjust-lora-ota-speed">LoRa OTA speed</a> for details.</p>
 <p>For a powered bench update where restart-resume is not needed, <code>ota config checkpoint 0</code> on the destination
 removes periodic progress writes. It is a smaller optimization than selecting the correct hop count and it
 trades away persisted mid-download resume; restore the previous checkpoint cadence afterward.</p>

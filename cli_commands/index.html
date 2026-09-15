@@ -614,6 +614,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lora-ota-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa OTA speed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#start-or-stop-an-over-the-air-ota-firmware-update" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5029,6 +5040,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lora-ota-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa OTA speed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#start-or-stop-an-over-the-air-ota-firmware-update" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7167,6 +7189,24 @@ installing clock control does not grant those actions. The endpoint never uses
 See <a href="../host_cli_service/">LoRa CLI host service</a> for the complete
 <code>meshcoretomqtt</code> setup and security model.</p>
 <hr />
+<h3 id="lora-ota-speed">LoRa OTA speed</h3>
+<pre><code class="language-text">get ota.speed
+set ota.speed &lt;0.05..3&gt;
+</code></pre>
+<p><code>1</code> preserves the current OTA timing. Values below <code>1</code> slow OTA traffic;
+values above <code>1</code> shorten adjustable delays. For example, <code>0.5</code> doubles those
+delays and <code>3</code> divides them by three. Decimal values such as <code>.05</code> work.
+<code>ota config speed &lt;factor&gt;</code> is an equivalent setter, and <code>ota config</code> shows
+the value. The setting is saved and can be changed during a transfer.</p>
+<p>Apply it on the source, destination, and relays. It controls all LoRa OTA
+packet types on both profiles, relay timing, discovery, and OTA adverts.
+Slower settings extend recovery waits and space queued OTA packets while
+allowing ordinary traffic through. Faster settings retain the physical retry
+allowance and the configured airtime budget, so throughput is not guaranteed
+to rise in direct proportion. Proof turnaround keeps its physical allowance.
+Ordinary messages, node adverts, and local staged-image verification keep their
+timing. Available in OTA-enabled builds for all roles, including Companions.
+See the <a href="../ota_user_guide/#adjust-lora-ota-speed">OTA guide</a>.</p>
 <h3 id="start-or-stop-an-over-the-air-ota-firmware-update">Start or stop an Over-The-Air (OTA) firmware update</h3>
 <p><strong>Search terms:</strong> WiFi OTA, wireless firmware update, OTA uploader, update firmware.</p>
 <p><strong>Usage:</strong>
