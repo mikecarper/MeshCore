@@ -286,6 +286,90 @@ static void dirty_flash_partial_checkpoint_finishes(bool reboot) {
   CHECK(std::memcmp(active.data(), bytes.data(), total) == 0);
 }
 
+static void resumed_partial_payload_pages_preserve_committed_prefixes() {
+  using namespace mesh::ota;
+  const uint32_t total = 4u * MOTA_NRF52_FLASH_PAGE;
+  for (uint32_t prefix : {MOTA_NRF52_FLASH_PAGE + 1u,
+                         MOTA_NRF52_FLASH_PAGE + 1024u,
+                         2u * MOTA_NRF52_FLASH_PAGE,
+                         2u * MOTA_NRF52_FLASH_PAGE + 227u}) {
+    reset_target_memory();
+    auto bytes = patterned_container(total);
+    std::memcpy(bytes.data() + total - 5u, MOTA_TRAILER, 5u);
+    {
+      OtaStoreFlashNrf52 original;
+      CHECK(original.begin(total));
+      CHECK(original.write(0, bytes.data(), prefix));
+      CHECK(original.write(total - 5u, MOTA_TRAILER, 5u));
+      original.checkpoint();
+    }
+    OtaStoreFlashNrf52 resumed;
+    CHECK(resumed.reopen());
+    CHECK(resumed.write(prefix, bytes.data() + prefix, total - prefix - 5u));
+    CHECK(resumed.finalize());
+    std::vector<uint8_t> output(total);
+    CHECK(resumed.read(0, output.data(), total));
+    CHECK(output == bytes);
+    CHECK(std::memcmp(resumed.data(), bytes.data(), total) == 0);
+  }
+}
+
+static void resumed_out_of_order_writes_survive_another_checkpoint() {
+  using namespace mesh::ota;
+  reset_target_memory();
+  const uint32_t total = 4u * MOTA_NRF52_FLASH_PAGE;
+  auto bytes = patterned_container(total);
+  std::memcpy(bytes.data() + total - 5u, MOTA_TRAILER, 5u);
+  {
+    OtaStoreFlashNrf52 original;
+    CHECK(original.begin(total));
+    CHECK(original.write(0, bytes.data(), total));
+    original.checkpoint();
+  }
+  const uint32_t offsets[] = {MOTA_NRF52_FLASH_PAGE + 11u,
+                              3u * MOTA_NRF52_FLASH_PAGE + 17u,
+                              2u * MOTA_NRF52_FLASH_PAGE + 25u,
+                              MOTA_NRF52_FLASH_PAGE + 53u};
+  {
+    OtaStoreFlashNrf52 resumed;
+    CHECK(resumed.reopen());
+    for (uint32_t offset : offsets) {
+      for (unsigned i = 0; i < 13; ++i) bytes[offset + i] ^= 0x5A;
+      CHECK(resumed.write(offset, bytes.data() + offset, 13));
+    }
+    resumed.checkpoint();
+  }
+  OtaStoreFlashNrf52 resumed_again;
+  CHECK(resumed_again.reopen());
+  // Cross a page boundary after the second restart, preserving bytes on both sides.
+  const uint32_t offset = 2u * MOTA_NRF52_FLASH_PAGE - 7u;
+  for (unsigned i = 0; i < 19; ++i) bytes[offset + i] ^= 0xA5;
+  CHECK(resumed_again.write(offset, bytes.data() + offset, 19));
+  CHECK(resumed_again.finalize());
+  std::vector<uint8_t> output(total);
+  CHECK(resumed_again.read(0, output.data(), total));
+  CHECK(output == bytes);
+  CHECK(std::memcmp(resumed_again.data(), bytes.data(), total) == 0);
+}
+
+static void fresh_begin_after_reopen_does_not_retain_old_payload_bytes() {
+  using namespace mesh::ota;
+  reset_target_memory();
+  const uint32_t total = 3u * MOTA_NRF52_FLASH_PAGE;
+  const auto bytes = patterned_container(total);
+  OtaStoreFlashNrf52 store;
+  CHECK(store.begin(total));
+  CHECK(store.write(0, bytes.data(), total));
+  store.checkpoint();
+  CHECK(store.reopen());
+  CHECK(store.begin(total));
+  const uint32_t offset = MOTA_NRF52_FLASH_PAGE + 128u;
+  CHECK(store.write(offset, bytes.data() + offset, 16));
+  uint8_t preceding[128];
+  CHECK(store.read(MOTA_NRF52_FLASH_PAGE, preceding, sizeof(preceding)));
+  for (uint8_t byte : preceding) CHECK(byte == 0xFF);
+}
+
 int main() {
   map_target_region(FLASH_MAP_START, FLASH_MAP_SIZE);
   map_target_region(RAM_MAP_START, RAM_MAP_SIZE);
@@ -303,6 +387,12 @@ int main() {
   std::puts("PASS: dirty flash partial checkpoint resumes and finishes");
   dirty_flash_partial_checkpoint_finishes(false);
   std::puts("PASS: dirty flash partial checkpoint continues without reboot");
-  std::puts("7 OtaStoreFlashNrf52 hybrid lifecycle checks passed");
+  resumed_partial_payload_pages_preserve_committed_prefixes();
+  std::puts("PASS: resumed payload pages preserve checkpointed prefixes");
+  resumed_out_of_order_writes_survive_another_checkpoint();
+  std::puts("PASS: resumed out-of-order writes survive repeated checkpoints");
+  fresh_begin_after_reopen_does_not_retain_old_payload_bytes();
+  std::puts("PASS: fresh captures after reopen discard stale payload bytes");
+  std::puts("10 OtaStoreFlashNrf52 hybrid lifecycle checks passed");
   return 0;
 }

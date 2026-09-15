@@ -56,6 +56,12 @@ physical distance.
 - A full public key that exceeds the normal level in one window receives a
   first strike. If it exceeds that level again in the immediately following
   window, it enters the bad list. A quiet intervening window breaks this chain.
+- Escalation is deliberately conservative: once a key enters the bad list,
+  a later shorter route does **not** undo that decision, even if the increased
+  quota makes the current window fall below the normal level. This applies to
+  shorter duplicate and new adverts, including a matching-prefix key's route.
+  The existing restriction remains until seven-day recovery, manual clear, or
+  reboot; a shorter route alone never erases a recorded violation.
 - The bad list matches **all 32 public-key bytes**, not the prefix. Different
   full keys sharing a prefix share the ordinary forwarding quota, but their
   received counts are not combined to accuse an innocent key of ongoing abuse.

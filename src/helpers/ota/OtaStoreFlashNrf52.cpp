@@ -69,6 +69,7 @@ void OtaStoreFlashNrf52::reset_session() {
   _ram_len = 0;
   _total = 0;
   _hybrid = false;
+  _preserve_payload_pages = false;
   _pay_idx = 0;
   _flushed = false;
   _io_ok = true;
@@ -309,7 +310,14 @@ uint8_t* OtaStoreFlashNrf52::write_slot(uint32_t pos) {
   if (page == 0)             return _meta_page + pos;
   if (page > _pay_idx) {
     if (!flush_pay()) return nullptr;
-    _pay_idx = page; memset(_pay_page, 0xFF, PG);             // advance, fresh page
+    _pay_idx = page;
+    // A resumed page can contain verified blocks on either side of this hole.
+    // Those blocks retain their leaf markers, so erasing their cached bytes here
+    // would silently corrupt them when this page is checkpointed or finalized.
+    if (_preserve_payload_pages)
+      memcpy(_pay_page, (const uint8_t*)(uintptr_t)(_write_start + page * PG), PG);
+    else
+      memset(_pay_page, 0xFF, PG);                         // fresh capture, no committed bytes yet
   }
   if (page == _pay_idx)      return _pay_page + (pos - page * PG);
   return nullptr;                                                      // page < _pay_idx: already flushed
@@ -598,6 +606,7 @@ bool OtaStoreFlashNrf52::reopen() {
     _ram_len = 0;
     _total = total;
     _hybrid = false;
+    _preserve_payload_pages = true;
     memcpy(_meta_page, p, PG);                  // load page 0 (header+manifest+leaves) into RAM to continue
     // The tail is deferred until finalize and can still hold old flash bytes.
     // Reconstruct only fixed framing; the manager must verify the manifest and

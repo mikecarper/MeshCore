@@ -6,19 +6,29 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
   int busy_profile = -1;
   bool fail_next_send = false;
   bool hold_prepare_busy = false;
+  bool receive_mode = true, recovery_succeeds = true, clear_prepare_on_recovery = false;
   bool carrier = false, carrier_on_receive = false;
   unsigned carrier_services = 0, recoveries = 0;
   bool isCarrierWaveActive() const override { return carrier; }
-  bool isInRecvMode() const override { return !carrier && !sending; }
+  bool isInRecvMode() const override { return receive_mode && !carrier && !sending; }
   void loop() override { ++carrier_services; }
-  bool recoverRadio(bool) override { ++recoveries; return true; }
+  bool recoverRadio(bool) override {
+    ++recoveries;
+    if (recovery_succeeds && clear_prepare_on_recovery) {
+      hold_prepare_busy = false;
+      receive_mode = true;
+    }
+    return recovery_succeeds;
+  }
   uint32_t estimated_airtime = 10;
+  uint32_t secondary_airtime = 0;
   float receive_score = 0;
   float packetScore(float, int) override { return receive_score; }
   TraceTestClock* sensing_clock = nullptr;
   uint32_t sensing_delay = 0;
   bool distinguish_airtime = false;
   uint32_t getProfileAirtime(uint8_t profile, int bytes, uint8_t cr = 0) override {
+    if (profile == 1 && secondary_airtime) return secondary_airtime;
     return distinguish_airtime ? (profile ? 70 : 900)
         : mesh::Radio::getProfileAirtime(profile, bytes, cr);
   }
@@ -79,6 +89,7 @@ class DualProfileTestMesh : public RetryCodingRateMesh {
   bool cross_filter_allows = true;
   float ota_speed = 1.0f;
   bool suppress_tx = false;
+  bool enqueue_on_send_fail = false;
   unsigned send_failures = 0;
   unsigned send_completions = 0;
   void onSendComplete(mesh::Packet* packet) override {
@@ -88,11 +99,24 @@ class DualProfileTestMesh : public RetryCodingRateMesh {
   unsigned tx_failure_logs = 0;
   void logTxFail(mesh::Packet*, int) override { ++tx_failure_logs; }
   unsigned direct_successes = 0, direct_failures = 0;
+  unsigned flood_successes = 0, flood_failures = 0;
   void onDirectRetrySucceeded(const uint8_t*, uint8_t, int8_t) override { ++direct_successes; }
   void onDirectRetryFailed(const uint8_t*, uint8_t) override { ++direct_failures; }
+  void onFloodRetryEvent(const char* event, const mesh::Packet*, uint32_t, uint8_t) override {
+    if (strcmp(event, "good") == 0) ++flood_successes;
+    if (strcmp(event, "failure") == 0) ++flood_failures;
+  }
   void onSendFail(mesh::Packet* packet) override {
     ++send_failures;
     RetryCodingRateMesh::onSendFail(packet);
+    if (enqueue_on_send_fail) {
+      enqueue_on_send_fail = false;
+      auto* replacement = obtainNewPacket();
+      if (replacement) {
+        *replacement = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+        sendPacket(replacement, 0);
+      }
+    }
   }
   bool allowPacketTransmit(const mesh::Packet* packet) const override {
     return !suppress_tx && RetryCodingRateMesh::allowPacketTransmit(packet);
@@ -266,6 +290,157 @@ TEST_F(DualProfileTest, RadioFaultRetryRetainsBoundedBusyEscapeAndSingleRetryLim
   EXPECT_EQ(manager.getFreeCount(), 40);
   tick(10000);
   EXPECT_TRUE(radio.transmissions.empty());
+}
+
+TEST_F(DualProfileTest, StuckRadioRetryPreparationReleasesPacketAndRecoversQueue) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(nullptr, queue());
+  tick(); ASSERT_TRUE(node.hasOutbound());
+  ASSERT_NE(nullptr, queue()); // later work must not inherit the stuck packet
+  radio.hold_prepare_busy = true;
+  radio.receive_mode = false;
+  radio.clear_prepare_on_recovery = true;
+  tick(500); // arm only after the first BUSY preparation
+  tick(8000);
+  EXPECT_TRUE(node.hasOutbound());
+  EXPECT_EQ(radio.recoveries, 0u);
+  tick(20);
+  EXPECT_FALSE(node.hasOutbound());
+  EXPECT_EQ(node.send_failures, 1u);
+  EXPECT_EQ(node.tx_failure_logs, 1u);
+  EXPECT_EQ(radio.recoveries, 1u);
+  EXPECT_EQ(manager.getOutboundTotal(), 1);
+  EXPECT_EQ(manager.getFreeCount(), 39);
+  tick(); ASSERT_TRUE(radio.sending);
+  radio.complete = true; tick();
+  EXPECT_EQ(manager.getFreeCount(), 40);
+}
+
+TEST_F(DualProfileTest, FailedBusyRecoveryDoesNotKeepRetryOwnershipOrDisableWatchdogs) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(nullptr, queue());
+  tick(); ASSERT_TRUE(node.hasOutbound());
+  radio.hold_prepare_busy = true;
+  radio.receive_mode = false;
+  radio.recovery_succeeds = false;
+  tick(500);
+  tick(9000);
+  EXPECT_FALSE(node.hasOutbound());
+  EXPECT_EQ(node.send_failures, 1u);
+  EXPECT_EQ(manager.getFreeCount(), 40);
+  EXPECT_EQ(radio.recoveries, 1u);
+  tick(9000); // the ordinary non-RX watchdog is no longer suppressed
+  EXPECT_EQ(radio.recoveries, 2u);
+  ASSERT_NE(nullptr, queue());
+  radio.recovery_succeeds = radio.clear_prepare_on_recovery = true;
+  tick(9000);
+  EXPECT_EQ(radio.recoveries, 3u);
+  ASSERT_TRUE(radio.sending);
+  radio.complete = true; tick();
+  EXPECT_EQ(manager.getFreeCount(), 40);
+}
+
+TEST_F(DualProfileTest, BusyTimeoutPreservesPacketsEnqueuedByFailureCallback) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(nullptr, queue());
+  tick(); ASSERT_TRUE(node.hasOutbound());
+  node.enqueue_on_send_fail = true;
+  radio.hold_prepare_busy = true;
+  radio.clear_prepare_on_recovery = true;
+  tick(500);
+  tick(9000);
+  EXPECT_FALSE(node.hasOutbound());
+  EXPECT_EQ(node.send_failures, 1u);
+  EXPECT_EQ(manager.getOutboundTotal(), 1);
+  EXPECT_EQ(manager.getFreeCount(), 39);
+  tick(); ASSERT_TRUE(radio.sending);
+  radio.complete = true; tick();
+  EXPECT_EQ(node.send_completions, 1u);
+  EXPECT_EQ(manager.getFreeCount(), 40);
+}
+
+TEST_F(DualProfileTest, InvalidPrepareAirtimeDoesNotCreateUnboundedDeadline) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(nullptr, queue());
+  tick(); ASSERT_TRUE(node.hasOutbound());
+  radio.estimated_airtime = UINT32_MAX;
+  radio.secondary_airtime = 20000;
+  radio.hold_prepare_busy = true;
+  tick(500);
+  tick(30000); // invalid primary must not erase the secondary's valid RX grace
+  EXPECT_TRUE(node.hasOutbound());
+  EXPECT_EQ(node.send_failures, 0u);
+  tick(8001);
+  EXPECT_FALSE(node.hasOutbound());
+  EXPECT_EQ(node.send_failures, 1u);
+  EXPECT_EQ(radio.recoveries, 1u);
+  EXPECT_EQ(manager.getFreeCount(), 40);
+}
+
+TEST_F(DualProfileTest, FinitePrepareBusyAndCadBackoffHaveSeparateAllowances) {
+  node.flood_attempts = 0;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.fail_next_send = true;
+  ASSERT_NE(nullptr, queue());
+  tick();
+  radio.hold_prepare_busy = true;
+  tick(500);
+  tick(5000);
+  radio.hold_prepare_busy = false;
+  radio.busy_profile = 0;
+  tick(1000); // successful preparation clears the first BUSY allowance
+  radio.hold_prepare_busy = true;
+  tick(500);
+  tick(7000); // exceeds the original deadline, but not the new allowance
+  EXPECT_TRUE(node.hasOutbound());
+  EXPECT_EQ(node.send_failures, 0u);
+  EXPECT_EQ(radio.recoveries, 0u);
+  radio.hold_prepare_busy = false;
+  radio.busy_profile = -1;
+  tick(500); ASSERT_TRUE(radio.sending);
+  radio.complete = true; tick();
+  EXPECT_EQ(manager.getFreeCount(), 40);
+}
+
+TEST_F(DualProfileTest, PrepareBusyAllowanceCoversLongFramesAndMillisWrap) {
+  TraceTestClock wrap_clock;
+  wrap_clock.now = UINT32_MAX - 1000UL;
+  DualProfileTestRadio wrap_radio;
+  StaticPoolPacketManager wrap_manager(40);
+  DualProfileTestMesh wrap_node(wrap_radio, wrap_clock, rng, rtc, wrap_manager, tables);
+  wrap_node.begin();
+  wrap_node.flood_attempts = 0;
+  wrap_radio.config.cross = mesh::RadioCrossMode::Off;
+  wrap_radio.estimated_airtime = 20000;
+  wrap_radio.fail_next_send = true;
+  auto* packet = wrap_node.obtainNewPacket();
+  ASSERT_NE(packet, nullptr);
+  *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+  ASSERT_TRUE(wrap_node.sendFlood(packet));
+  auto advance = [&](uint32_t ms) {
+    wrap_clock.now = uint32_t(wrap_clock.now + ms);
+    wrap_node.loop();
+  };
+  advance(1); ASSERT_TRUE(wrap_node.hasOutbound());
+  wrap_radio.hold_prepare_busy = true;
+  advance(500);
+  advance(30000); // a slow full frame must not hit an eight-second fixed timeout
+  EXPECT_TRUE(wrap_node.hasOutbound());
+  EXPECT_EQ(wrap_radio.recoveries, 0u);
+  EXPECT_EQ(wrap_node.send_failures, 0u);
+  advance(8001); // 1.5 * 20 seconds + eight seconds, crossing millis wrap
+  EXPECT_FALSE(wrap_node.hasOutbound());
+  EXPECT_EQ(wrap_radio.recoveries, 1u);
+  EXPECT_EQ(wrap_node.send_failures, 1u);
+  EXPECT_EQ(wrap_manager.getFreeCount(), 40);
 }
 
 TEST_F(DualProfileTest, EchoDuringRadioFaultBackoffCancelsDirectAndFloodRetry) {
@@ -997,6 +1172,86 @@ TEST_F(DualProfileTest, ExpiredSecondaryPacketsAreDiscarded) {
   EXPECT_TRUE(radio.transmissions.empty());
   EXPECT_EQ(0, manager.getOutboundTotal());
   EXPECT_EQ(40, manager.getFreeCount());
+}
+
+TEST_F(DualProfileTest, FinalFloodEchoWaitOnlyExpiresWhenItsOwnProfileChanges) {
+  node.flood_attempts = 1;
+  for (uint8_t origin : {0, 1}) for (unsigned change = 0; change < 3; ++change) {
+    SCOPED_TRACE(testing::Message() << "origin=" << unsigned(origin) << " change=" << change);
+    radio.config.cross = mesh::RadioCrossMode::Off;
+    tick();
+    auto* packet = node.obtainNewPacket(); ASSERT_NE(nullptr, packet);
+    *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+    packet->radio_profile = origin;
+    packet->tx_radio = origin ? mesh::RADIO_TX_SECONDARY : mesh::RADIO_TX_PRIMARY;
+    ASSERT_TRUE(node.sendFlood(packet));
+    tick(); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    ASSERT_EQ(manager.getOutboundTotal(), 1);
+    mesh::Packet echo = *manager.getOutboundByIdx(0);
+    echo.radio_bound = false; echo.radio_local = false;
+    echo.setPathHashCount(echo.getPathHashCount() + 1);
+    tick(10000); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    ASSERT_EQ(manager.getOutboundTotal(), 0);
+    ASSERT_EQ(manager.getFreeCount(), 40); // final echo waits own metadata only
+
+    const auto successes = node.flood_successes;
+    if (change == 1) {
+      radio.config.cross = mesh::RadioCrossMode::On;
+    } else if ((change == 2 ? origin : origin ^ 1) == 0) {
+      auto primary = radio.config.primary; primary.freq += 1;
+      radio.config.setPrimary(primary, false);
+    } else {
+      auto secondary = radio.config.secondary; secondary.params.freq += 1;
+      radio.config.setSecondary(secondary, false);
+    }
+    tick();
+    node.receivePacket(&echo);
+    EXPECT_EQ(node.flood_successes, successes + (change == 2 ? 0 : 1));
+    EXPECT_EQ(node.flood_failures, 0u); // profile changes are not link failures
+    EXPECT_EQ(manager.getFreeCount(), 40);
+  }
+}
+
+TEST_F(DualProfileTest, ExpiredFinalFloodEchoCannotReserveKeyOnReplacementChannel) {
+  node.flood_attempts = 1;
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  for (uint8_t origin : {0, 1}) {
+    SCOPED_TRACE(testing::Message() << "origin=" << unsigned(origin));
+    auto send = [&] {
+      auto* packet = node.obtainNewPacket();
+      EXPECT_NE(nullptr, packet);
+      if (!packet) return;
+      *packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+      packet->radio_profile = origin;
+      packet->tx_radio = origin ? mesh::RADIO_TX_SECONDARY : mesh::RADIO_TX_PRIMARY;
+      EXPECT_TRUE(node.sendFlood(packet));
+    };
+    send();
+    tick(); radio.complete = true; tick();
+    tick(10000); radio.complete = true; tick();
+    ASSERT_EQ(manager.getOutboundTotal(), 0);
+    ASSERT_EQ(manager.getFreeCount(), 40);
+    if (origin) {
+      const auto previous = radio.config.secondary;
+      radio.config.setSecondary({}, false);
+      tick();
+      radio.config.setSecondary(previous, false);
+    } else {
+      auto primary = radio.config.primary; primary.freq += 1;
+      radio.config.setPrimary(primary, false);
+    }
+    tick();
+    send(); // exact same logical packet, sent in a new radio session
+    tick(); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    EXPECT_EQ(manager.getOutboundTotal(), 1); // fresh channel owns its own retry
+    node.cancelAllFloodRetries();
+    tick(10000);
+    EXPECT_EQ(node.flood_failures, 0u);
+    EXPECT_EQ(manager.getFreeCount(), 40);
+  }
 }
 
 TEST_F(DualProfileTest, EchoOnOneProfileDoesNotCancelOtherProfileRetry) {

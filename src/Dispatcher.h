@@ -281,6 +281,7 @@ class Dispatcher {
   Packet* outbound;  // current outbound packet
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long outbound_radio_retry_at;
+  uint32_t outbound_radio_prepare_deadline = 0;
 #ifdef RADIO_LIVENESS_SOFT_ONLY
   unsigned long rx_watchdog_window_start;
 #else

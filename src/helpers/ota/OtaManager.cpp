@@ -861,7 +861,8 @@ void OtaManager::invalidateCatalogSeeder(const uint8_t* seeder) {
     row.last_ms = 0;
     for (uint8_t k = 0; k < row.n_seeders; k++) {
       if (row.seeder_have[k] > row.have_max) row.have_max = row.seeder_have[k];
-      if (row.seeder_last_ms[k] > row.last_ms) row.last_ms = row.seeder_last_ms[k];
+      if (k == 0 || (uint32_t)(_now_ms - row.seeder_last_ms[k])
+          < (uint32_t)(_now_ms - row.last_ms)) row.last_ms = row.seeder_last_ms[k];
     }
     i++;
   }
@@ -888,7 +889,9 @@ void OtaManager::handleAdv(const uint8_t* m, uint16_t n) {
   int slot = -1, lru = 0;                                            // find/insert the source (LRU evict)
   for (int i = 0; i < _n_src; i++) {
     if (memcmp(_sources[i].seeder, a.seeder_id, 4) == 0) { slot = i; break; }
-    if (_sources[i].last_ms < _sources[lru].last_ms) lru = i;
+    // Compare elapsed ages: raw millis ordering reverses when uptime wraps.
+    if ((uint32_t)(_now_ms - _sources[i].last_ms)
+        > (uint32_t)(_now_ms - _sources[lru].last_ms)) lru = i;
   }
   bool fresh = (slot < 0);
   if (fresh) {
@@ -994,18 +997,25 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
     if (memcmp(_sources[i].digest, hv.set_digest, 4) != 0) return;
     break;
   }
-  // PASSIVE: every node caches rows it overhears. A source is catalogued only after EVERY advertised
-  // fragment arrived; otherwise a timed recovery QUERY asks for just the missing bitmap.
+  // PASSIVE: every node caches rows it overhears. Only complete canonical pages
+  // count toward discovery: filtered replies have the same fragment positions,
+  // but omit rows and cannot suppress a later unfiltered query for those pages.
+  const uint8_t per = (uint8_t)((MAX_PACKET_PAYLOAD - 12) / OTA_HAVE_ROW_BYTES);
   for (uint8_t i = 0; i < _n_src; i++) {
     Source& s = _sources[i];
     if (memcmp(s.seeder, hv.seeder_id, 4) != 0 || memcmp(s.digest, hv.set_digest, 4) != 0) continue;
-    if (s.have_total != hv.frag_total) {
-      s.have_total = hv.frag_total;
+    const uint8_t total = (uint8_t)((s.n_motas + per - 1) / per);
+    if (s.have_total != total) {
+      s.have_total = total;
       s.have_mask = 0;
       s.have_catalog = false;
     }
-    s.have_mask |= 1UL << hv.frag_idx;
-    uint32_t full = hv.frag_total >= 32 ? UINT32_MAX : ((1UL << hv.frag_total) - 1);
+    if (hv.frag_total == total && hv.frag_idx < total) {
+      const uint16_t remaining = s.n_motas - (uint16_t)hv.frag_idx * per;
+      const uint8_t expected_rows = remaining < per ? (uint8_t)remaining : per;
+      if (hv.n_rows == expected_rows) s.have_mask |= 1UL << hv.frag_idx;
+    }
+    uint32_t full = total >= 32 ? UINT32_MAX : ((1UL << total) - 1);
     s.have_catalog = s.have_mask == full;
     if (s.have_catalog) {
       s.query_pending = false;
@@ -1026,7 +1036,8 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
     int slot = -1, lru = 0;                                           // upsert into the catalog (dedup by mid)
     for (int i = 0; i < _n_cat; i++) {
       if (memcmp(catalog[i].mid, mid, 4) == 0) { slot = i; break; }
-      if (catalog[i].last_ms < catalog[lru].last_ms) lru = i;
+      if ((uint32_t)(_now_ms - catalog[i].last_ms)
+          > (uint32_t)(_now_ms - catalog[lru].last_ms)) lru = i;
     }
     if (slot < 0) {
       if (_n_cat >= catalogCapacity() && expandCatalog()) catalog = catalogData();
@@ -1056,7 +1067,8 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
     c.have_max = 0; c.last_ms = 0;
     for (uint8_t k = 0; k < c.n_seeders; k++) {
       if (c.seeder_have[k] > c.have_max) c.have_max = c.seeder_have[k];
-      if (c.seeder_last_ms[k] > c.last_ms) c.last_ms = c.seeder_last_ms[k];
+      if (k == 0 || (uint32_t)(_now_ms - c.seeder_last_ms[k])
+          < (uint32_t)(_now_ms - c.last_ms)) c.last_ms = c.seeder_last_ms[k];
     }
     if (wantRow(mid, target, fwver, codec, flags)) startFetch(mid, target);
   }

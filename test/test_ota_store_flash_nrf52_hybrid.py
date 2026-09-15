@@ -51,10 +51,10 @@ class OtaStoreFlashNrf52HybridTest(unittest.TestCase):
             )
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertIn(
-                "7 OtaStoreFlashNrf52 hybrid lifecycle checks passed",
+                "10 OtaStoreFlashNrf52 hybrid lifecycle checks passed",
                 checked.stdout,
             )
-            self.assertEqual(checked.stdout.count("PASS:"), 7)
+            self.assertEqual(checked.stdout.count("PASS:"), 10)
 
 
 if __name__ == "__main__":

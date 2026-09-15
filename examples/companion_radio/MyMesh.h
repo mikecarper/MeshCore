@@ -384,6 +384,8 @@ private:
   bool applyAndSaveFemRxGain(bool enabled);
   bool applyAndSaveFemTxGain(bool enabled);
   bool applyAndSaveRxBoostedGain(bool enabled);
+  enum class RadioSettingResult { Saved, RadioRejected, SaveFailed };
+  RadioSettingResult applyAndSaveTxPower(int8_t power);
   bool handleCadCommand(const char* command, char* reply, size_t reply_size);
   bool saveBluetoothNameOverride(const char* name);
   bool applyAndSaveBluetoothName(const char* value, char* reply,

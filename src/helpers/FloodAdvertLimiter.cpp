@@ -130,6 +130,9 @@ void FloodAdvertLimiter::observe(const uint8_t* key, const uint8_t* hash, uint8_
   // The normal level belongs to the prefix, including its shortest RX path.
   // Keep that minimum on every colliding full key for consistent window-close
   // abuse accounting, but never combine their received counts into a strike.
+  // Be conservative once BAD is set: a later shorter path can raise the normal
+  // quota, but cannot retract an already-triggered penalty or recorded violation.
+  // Only seven-day recovery, an explicit clear, or reboot removes that penalty.
   if (hops < entry->min_hops) entry->min_hops = hops;
   for (size_t i = 0; i < _capacity; ++i) {
     if ((_entries[i].flags & ACTIVE) && memcmp(_entries[i].key, key, PREFIX_BYTES) == 0

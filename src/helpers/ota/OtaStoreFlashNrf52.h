@@ -22,6 +22,8 @@
 //     (set_meta_size enforces it; true for <= ~979 blocks, i.e. any realistic MeshCore image).
 //   - `_pay_page` is a single sliding buffer for one payload page (index >= 1). It advances
 //     monotonically with the (mostly in-order) block stream and flushes the page it leaves behind.
+//     After reopen, newly opened pages load their existing flash bytes to preserve committed blocks
+//     which share a page with missing blocks; only fresh captures initialize pages to erased bytes.
 //     Rare out-of-order writes to an already-flushed page go straight to flash as a safe read-modify-
 //     write (flash_nrf5x erases before programming, so re-touching a page never violates the
 //     writes-per-word limit - it just costs one extra erase).
@@ -42,6 +44,7 @@ class OtaStoreFlashNrf52 : public OtaStore {
   uint32_t _ram_len = 0;            // logical suffix backed by the fixed SRAM arena
   uint32_t _total = 0;              // staged container size (0 = none)
   bool     _hybrid = false;          // flash prefix + reset-retained SRAM suffix
+  bool     _preserve_payload_pages = false; // reopened pages can contain committed blocks around later holes
   bool     _flushed = false;        // finalize() committed everything to flash
   bool     _io_ok = true;           // cleared on a failed/out-of-bounds flash write or readback mismatch
   bool     _planned_bootloader = false; // manifest-kind decision made before begin()/any erase

@@ -328,8 +328,11 @@ void Mesh::loop() {
     for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; ++i) {
       if (!_flood_retries[i].active) continue;
       const auto* packet = _flood_retries[i].queued ? _flood_retries[i].packet : _flood_retries[i].trigger_packet;
-      if ((_flood_retries[i].waiting_final_echo && _flood_retries[i].packet
-            && !isPacketRadioCurrent(_flood_retries[i].packet))
+      // Final flood echoes also retain metadata only. Release the old
+      // session's retry key even though there is no packet left to inspect.
+      const uint8_t profile = i / MAX_FLOOD_RETRY_SLOTS;
+      if ((_flood_retries[i].waiting_final_echo
+              && _retry_radio_generations[profile] != p->generation[profile])
           || (packet && !isPacketRadioCurrent(packet))) retireFloodRetrySlot(i);
     }
     for (int i = _mgr->getOutboundTotal() - 1; i >= 0; --i) {

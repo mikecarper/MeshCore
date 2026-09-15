@@ -102,7 +102,12 @@ struct MyMesh {
   int value=0; int* _ms=&value; int* _radio=&value; int* _mgr=&value;
   uint16_t _err_flags=0;
   bool _radio_available=false, save_ok=true;
+  bool saved_radio_apply_pending=false;
+  unsigned radio_apply_retry_at=0;
+  uint8_t radio_apply_failures=0;
   int resets=0, saves=0;
+  enum class RadioSettingResult { Saved, RadioRejected, SaveFailed };
+  RadioSettingResult applyAndSaveTxPower(int8_t);
   bool handleCommand(const char*,uint32_t,char*);
   bool handleDirectCommand(const char*,char*,size_t);
   void onCLICommandRecv(const ContactInfo&,mesh::Packet*,uint32_t,const char*,char*);
@@ -303,6 +308,7 @@ int main() {
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         implementation = "\n".join(extract_braced(source, signature) for signature in (
             "static bool isCompanionRadioPrefsCommand(",
+            "MyMesh::RadioSettingResult MyMesh::applyAndSaveTxPower(",
             "bool MyMesh::handleDirectCommand(", "bool MyMesh::handleCommand(",
             "void MyMesh::onCLICommandRecv("))
         for export, webconfig in ((0, False), (1, False), (0, True), (1, True)):

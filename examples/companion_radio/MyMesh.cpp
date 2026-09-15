@@ -2015,7 +2015,7 @@ void MyMesh::configureRadioFromPrefs() {
   radio_driver.setCADScanTimeoutMillis(_prefs.cad_scan_timeout_ms);
   _radio->setCADEnabled(_prefs.cad_enabled != 0);
   if (!saved_radio_apply_pending) {
-    radio_driver.setTxPower(_prefs.tx_power_dbm);
+    saved_radio_apply_pending = !radio_driver.setTxPower(_prefs.tx_power_dbm);
     radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
   }
   const bool fem_gain_changed = board.canControlLoRaFemLna()
@@ -2062,6 +2062,14 @@ bool MyMesh::applySavedRadioParams() {
 void MyMesh::finishRadioParamApply(float freq, float bw, uint8_t sf,
                                    uint8_t cr, uint8_t repeat,
                                    BaseSerialInterface* route) {
+  const float previous_freq = _prefs.freq;
+  const float previous_bw = _prefs.bw;
+  const uint8_t previous_sf = _prefs.sf;
+  const uint8_t previous_cr = _prefs.cr;
+  const uint8_t previous_repeat = _prefs.client_repeat;
+  const uint32_t previous_rx_us = _prefs.rx_ps_rx_us;
+  const uint32_t previous_sleep_us = _prefs.rx_ps_sleep_us;
+  const bool previous_recovery_pending = saved_radio_apply_pending;
   _prefs.sf = sf;
   _prefs.cr = cr;
   _prefs.freq = freq;
@@ -2070,9 +2078,28 @@ void MyMesh::finishRadioParamApply(float freq, float bw, uint8_t sf,
   recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                &_prefs.rx_ps_sleep_us);
-  savePrefs();
+  if (!savePrefs()) {
+    _prefs.freq = previous_freq;
+    _prefs.bw = previous_bw;
+    _prefs.sf = previous_sf;
+    _prefs.cr = previous_cr;
+    _prefs.client_repeat = previous_repeat;
+    _prefs.rx_ps_rx_us = previous_rx_us;
+    _prefs.rx_ps_sleep_us = previous_sleep_us;
+    // Hardware accepted the candidate before this save. Restore the durable
+    // tuple now, or let the existing backed-off recovery finish once RX is
+    // idle. A failed save must never acknowledge a persistent radio change.
+    const bool restored = applySavedRadioParams();
+    saved_radio_apply_pending = !restored || previous_recovery_pending;
+    radio_apply_retry_at = 0;
+    radio_apply_failures = 0;
+    writeErrFrame(ERR_CODE_FILE_IO_ERROR, route);
+    return;
+  }
 
-  saved_radio_apply_pending = false;
+  // Preserve an outstanding power rollback; the full saved-radio recovery
+  // checks both the tuple and TX power before clearing this latch.
+  saved_radio_apply_pending = previous_recovery_pending;
   radio_apply_retry_at = 0;
   radio_apply_failures = 0;
 
@@ -3247,8 +3274,8 @@ void MyMesh::serviceTempRadio() {
     if (hasOutbound() || !retry_ready) return;
     mesh::RadioParamApplyResult result = tryApplyRadioParams(
         _prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-    if (result == mesh::RadioParamApplyResult::APPLIED) {
-      radio_driver.setTxPower(_prefs.tx_power_dbm);
+    if (result == mesh::RadioParamApplyResult::APPLIED
+        && radio_driver.setTxPower(_prefs.tx_power_dbm)) {
       radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
       _temp_radio_set_at = 0;
       _temp_radio_revert_at = 0;
@@ -3766,10 +3793,11 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     if (!wcParseLong(value, -9, MAX_LORA_TX_POWER, parsed)) {
       snprintf(reply, 160, "Error: TX power must be -9 to %d", MAX_LORA_TX_POWER);
     } else {
-      _prefs.tx_power_dbm = static_cast<int8_t>(parsed);
-      if (_radio_available) radio_driver.setTxPower(_prefs.tx_power_dbm);
-      savePrefs();
-      strcpy(reply, "OK");
+      const auto result = applyAndSaveTxPower(static_cast<int8_t>(parsed));
+      strcpy(reply, result == RadioSettingResult::Saved ? "OK"
+          : result == RadioSettingResult::RadioRejected
+              ? "Error: radio busy or TX power rejected"
+              : "Error: TX power could not be saved");
     }
     return;
   }
@@ -4811,10 +4839,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (power < -9 || power > MAX_LORA_TX_POWER) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
-      _prefs.tx_power_dbm = power;
-      savePrefs();
-      if (_radio_available) radio_driver.setTxPower(_prefs.tx_power_dbm);
-      writeOKFrame();
+      const auto result = applyAndSaveTxPower(power);
+      if (result == RadioSettingResult::Saved) writeOKFrame();
+      else writeErrFrame(result == RadioSettingResult::RadioRejected
+          ? ERR_CODE_BAD_STATE : ERR_CODE_FILE_IO_ERROR);
     }
   } else if (cmd_frame[0] == CMD_SET_TUNING_PARAMS) {
     if (len < 9) {
@@ -6287,6 +6315,27 @@ bool MyMesh::handleExtraFsHilCommand(const char* command, char* reply,
 }
 #endif
 #endif
+
+MyMesh::RadioSettingResult MyMesh::applyAndSaveTxPower(int8_t power) {
+  const int8_t previous = _prefs.tx_power_dbm;
+  if (_radio_available && !radio_driver.setTxPower(power)) {
+    return RadioSettingResult::RadioRejected;
+  }
+  _prefs.tx_power_dbm = power;
+  if (savePrefs()) return RadioSettingResult::Saved;
+
+  _prefs.tx_power_dbm = previous;
+  if (_radio_available && !radio_driver.setTxPower(previous)) {
+    // An RX packet can arrive between the apply and its failed flash commit.
+    // Keep retrying the durable power rather than leaving the rejected value
+    // active until reboot. Recovery also restores the saved tuple, so an
+    // active TempRadio lease deliberately delays it until the lease ends.
+    saved_radio_apply_pending = true;
+    radio_apply_retry_at = 0;
+    radio_apply_failures = 0;
+  }
+  return RadioSettingResult::SaveFailed;
+}
 
 bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
   if (!board.canControlLoRaFemLna()) return false;
@@ -8025,9 +8074,8 @@ void MyMesh::handleTerminalCommand(char* command) {
         terminalOutput().print("  OK\r\n");
       }
     } else if (strncmp(config, "tx ", 3) == 0) {
-      _prefs.tx_power_dbm = constrain(atoi(config + 3), -9, MAX_LORA_TX_POWER);
-      savePrefs();
-      terminalOutput().print("  OK - reboot to apply\r\n");
+      handleCommand(command, 0, local_reply);
+      terminalOutput().printf("  %s\r\n", local_reply);
     } else if (strncmp(config, "freq ", 5) == 0) {
       handleCommand(command, 0, local_reply);
       terminalOutput().printf("  %s\r\n", local_reply);
@@ -8411,19 +8459,14 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       snprintf(reply, reply_capacity, "Error: TX power must be -9 to %d",
                MAX_LORA_TX_POWER);
     } else {
-      const int8_t previous = _prefs.tx_power_dbm;
       const int8_t requested = static_cast<int8_t>(parsed);
-      if (_radio_available && !radio_driver.setTxPower(requested)) {
+      const auto result = applyAndSaveTxPower(requested);
+      if (result == RadioSettingResult::RadioRejected) {
         strcpy(reply, "Error: radio busy or TX power rejected");
+      } else if (result == RadioSettingResult::SaveFailed) {
+        strcpy(reply, "Error: TX power could not be saved");
       } else {
-        _prefs.tx_power_dbm = requested;
-        if (!savePrefs()) {
-          _prefs.tx_power_dbm = previous;
-          if (_radio_available) radio_driver.setTxPower(previous);
-          strcpy(reply, "Error: TX power changed but save failed");
-        } else {
-          strcpy(reply, "OK");
-        }
+        strcpy(reply, "OK");
       }
     }
     return true;
@@ -8849,8 +8892,8 @@ void MyMesh::loop() {
     // waiting. Preserve that packet, then apply the persisted radio settings
     // once the receive/response path is idle.
     radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
-    if (applySavedRadioParams()) {
-      radio_driver.setTxPower(_prefs.tx_power_dbm);
+    if (applySavedRadioParams()
+        && radio_driver.setTxPower(_prefs.tx_power_dbm)) {
       saved_radio_apply_pending = false;
       radio_apply_retry_at = 0;
       radio_apply_failures = 0;
@@ -8938,6 +8981,12 @@ bool MyMesh::hasPendingWork() const {
       || sign_data != NULL
       || hasQueuedWorkDue() || hasRetryWorkDue()
       || (saved_radio_apply_pending
+#if COMPANION_FEATURE_TEMP_RADIO
+          // Match loop()'s restore gate: a lease-blocked rollback is not
+          // runnable work. The lease's own timers below wake it when due.
+          && !_temp_radio_applied && _temp_radio_set_at == 0
+          && _temp_radio_revert_at == 0
+#endif
           && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))
       || contact_write_needs_polling
       || (emergency_client_repeat_packet != NULL

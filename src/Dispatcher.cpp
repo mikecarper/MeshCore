@@ -27,6 +27,13 @@ namespace mesh {
 
 #define MIN_CAD_FAIL_RETRY_DELAY_MS       50UL
 #define MIN_CAD_FAIL_MAX_DURATION_MS     500UL
+#define RADIO_PREPARE_BUSY_GRACE_MS      8000UL
+
+static uint32_t validPrepareBusyAirtime(uint32_t airtime) {
+  // RadioLib estimates originate as 32-bit microseconds. An impossible or
+  // error-sentinel estimate must not retain a failed packet for days.
+  return airtime <= UINT32_MAX / 1000 ? airtime : 0;
+}
 
 static uint32_t scaleCADDelayForQueue(uint32_t normal_delay, int ready_count,
                                      uint32_t minimum_delay) {
@@ -65,6 +72,7 @@ void Dispatcher::begin() {
   last_meshcore_recv_millis = 0;
   _err_flags = 0;
   outbound_radio_retry_at = 0;
+  outbound_radio_prepare_deadline = 0;
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
   outbound_cancellation = OutboundCancellation::None;
@@ -192,6 +200,7 @@ bool Dispatcher::scheduleOutboundRadioRetry() {
 
   outbound_radio_retry_used = true;
   outbound_radio_retry_pending = true;
+  outbound_radio_prepare_deadline = 0;
   outbound_radio_retry_at = futureMillis(getCADFailRetryDelay());
   MESH_DEBUG_PRINTLN("%s Dispatcher: retrying packet once after radio fault",
                      getLogDateTime());
@@ -216,6 +225,7 @@ void Dispatcher::failOutboundTransmit() {
   outbound = NULL;
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
+  outbound_radio_prepare_deadline = 0;
   outbound_cancellation = OutboundCancellation::None;
 }
 
@@ -377,9 +387,33 @@ void Dispatcher::loop() {
       const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile,
           outbound->radio_reply && outbound->radio_reply_force);
       if (prepared == RadioParamApplyResult::BUSY) {
+        if (outbound_radio_prepare_deadline == 0) {
+          // A frame already being received may legitimately own either scan
+          // profile. Allow its longest full-packet airtime plus recovery grace.
+          // This timer covers only prepare BUSY, not ordinary CAD backoff.
+          uint32_t airtime = validPrepareBusyAirtime(_radio->getProfileAirtime(0, MAX_TRANS_UNIT));
+          if (isDualRadioActive()) {
+            const uint32_t other = validPrepareBusyAirtime(_radio->getProfileAirtime(1, MAX_TRANS_UNIT));
+            if (other > airtime) airtime = other;
+          }
+          const uint32_t timeout = airtime * 3 / 2 + RADIO_PREPARE_BUSY_GRACE_MS;
+          outbound_radio_prepare_deadline = _ms->getMillis() + timeout;
+          if (outbound_radio_prepare_deadline == 0) outbound_radio_prepare_deadline = 1;
+        } else if (millisHasNowPassed(outbound_radio_prepare_deadline)) {
+          // Retaining outbound disables the non-RX watchdog, and this backoff
+          // bypasses the liveness watchdog. Release ownership before recovery
+          // so even a failed reset cannot pin all later queue entries forever.
+          _err_flags |= ERR_EVENT_RADIO_WATCHDOG;
+          MESH_DEBUG_PRINTLN("%s Dispatcher: radio retry profile remained busy", getLogDateTime());
+          failOutboundTransmit();
+          _radio->recoverRadio(true);
+          radio_nonrx_start = _ms->getMillis();
+          return;
+        }
         outbound_radio_retry_at = futureMillis(10);
         return;
       }
+      outbound_radio_prepare_deadline = 0;
 
       if (prepared == RadioParamApplyResult::FAILED || !isPacketRadioCurrent(outbound)
           || !allowPacketTransmit(outbound)) {
@@ -1027,7 +1061,8 @@ bool Dispatcher::sendPacket(Packet* packet, uint8_t priority, uint32_t delay_mil
 // Utility function -- handles the case where millis() wraps around back to zero
 //   2's complement arithmetic will handle any unsigned subtraction up to HALF the word size (32-bits in this case)
 bool Dispatcher::millisHasNowPassed(unsigned long timestamp) const {
-  return (long)(_ms->getMillis() - timestamp) > 0;
+  // millis is a 32-bit counter even on native hosts where long is 64 bits.
+  return (int32_t)((uint32_t)_ms->getMillis() - (uint32_t)timestamp) > 0;
 }
 
 unsigned long Dispatcher::futureMillis(int millis_from_now) const {

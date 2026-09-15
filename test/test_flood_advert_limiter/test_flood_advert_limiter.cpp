@@ -120,6 +120,46 @@ TEST_F(FloodAdvertLimit, AggregatePrefixExcessDoesNotBlameAnInnocentFullKey) {
   }
 }
 
+TEST_F(FloodAdvertLimit, LateShorterDuplicateKeepsPenaltyUntilSevenDayRecovery) {
+  for (uint32_t start : {0U, UINT32_MAX - W / 2}) {
+    limiter.reset();
+    bad(start); // consecutive over-limit windows at eight hops
+    uint8_t hash[MAX_HASH_SIZE] = {1};
+    limiter.observe(key.data(), hash, 1, start + W + 1, true);
+    Limiter::LimitedEntry row;
+    ASSERT_EQ(1U, limiter.listLimited(start + W + 1, 0, &row, 1));
+    EXPECT_EQ(1, row.hops);
+    EXPECT_EQ(10, row.quota);
+    EXPECT_TRUE(row.reasons & Limiter::BadListRule);
+    EXPECT_EQ(D7 - 1, row.recovery_ms);
+    // Raising the allowance does not forgive the escalation, including when
+    // the now-compliant window ends. New adverts still obey the 12-hour rule.
+    EXPECT_EQ(Decision::BadList, receive(4, 1, start + W + 2));
+    EXPECT_TRUE(limiter.isBad(key.data(), start + 2 * W));
+    EXPECT_TRUE(limiter.isBad(key.data(), start + W + D7 - 1));
+    EXPECT_FALSE(limiter.isBad(key.data(), start + W + D7));
+  }
+}
+
+TEST_F(FloodAdvertLimit, ShorterNewAndMatchingPrefixAdvertsCannotLiftPenalty) {
+  bad();
+  auto collision = key;
+  collision[31] = 1;
+  EXPECT_EQ(Decision::Allow, receive(1, 1, W + 1, collision.data()));
+  EXPECT_FALSE(limiter.isBad(collision.data(), W + 1));
+  EXPECT_TRUE(limiter.isBad(key.data(), W + 1));
+  EXPECT_EQ(Decision::BadList, receive(4, 0, W + 2));
+  Limiter::LimitedEntry row;
+  ASSERT_EQ(1U, limiter.listLimited(W + 2, 0, &row, 1));
+  EXPECT_EQ(0, row.hops);
+  EXPECT_EQ(10, row.quota);
+  EXPECT_TRUE(row.reasons & Limiter::BadListRule);
+  EXPECT_EQ(0, memcmp(row.key, key.data(), PUB_KEY_SIZE));
+  EXPECT_EQ(Decision::BadList, receive(5, 0, W + H12 - 1));
+  EXPECT_EQ(Decision::Allow, receive(6, 0, W + H12));
+  EXPECT_TRUE(limiter.isBad(key.data(), W + H12));
+}
+
 TEST_F(FloodAdvertLimit, ShortestPrefixPathAlsoDefinesTheNormalRecoveryLevel) {
   auto collision = key;
   collision[31] = 1;

@@ -94,14 +94,19 @@ assert re.search(
 
 # Terminal-specific handlers keep precedence, then both the generic `set`
 # fallthrough and the final unknown-command fallthrough delegate to the shared
-# framed/rescue command surface. The explicit frequency branch also delegates
-# to the strict shared frequency parser; it is not a third fallthrough.
+# framed/rescue command surface. Frequency and power also delegate explicitly
+# to the strict, failure-aware shared handlers; they are not extra fallthroughs.
 freq_branch = re.search(
     r'else if \(strncmp\(config, "freq ", 5\) == 0\) \{([^{}]*)\}', terminal
 )
 assert freq_branch is not None
 assert "handleCommand(command, 0, local_reply)" in freq_branch.group(1)
-assert terminal.replace(freq_branch.group(0), "").count(
+tx_branch = re.search(
+    r'else if \(strncmp\(config, "tx ", 3\) == 0\) \{([^{}]*)\}', terminal
+)
+assert tx_branch is not None
+assert "handleCommand(command, 0, local_reply)" in tx_branch.group(1)
+assert terminal.replace(freq_branch.group(0), "").replace(tx_branch.group(0), "").count(
     "handleCommand(command, 0, local_reply)"
 ) == 2
 assert terminal.index('strncmp(config, "tx ", 3)') < terminal.index(

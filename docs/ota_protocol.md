@@ -509,8 +509,10 @@ fetched per-mid only on commit (Section 8.3).
 
 Fragment numbers are canonical pages of the complete catalog sorted by `manifest_id`. `filter_target` may
 remove rows from a requested page (and can therefore produce an empty fragment), but it never renumbers pages
-or changes `frag_total`. This keeps missing-fragment recovery unambiguous when filtered and unfiltered queries
-for the same `{seeder, set_digest}` are overheard together.
+or changes `frag_total`. Receivers derive the unfiltered page count and each page's row count from the
+source's advertised `n_motas`. A page counts as received only if both counts match that complete geometry;
+filtered rows are still cached, but omitted rows leave the page eligible for an unfiltered recovery query.
+This also prevents legacy filtered replies which renumber pages from completing an unfiltered catalog.
 
 ### 8.2 Anti-storm (mandatory at mesh scale)
 

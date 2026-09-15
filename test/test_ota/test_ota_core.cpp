@@ -4043,7 +4043,7 @@ TEST(OtaCatalog, IncompleteCatalogRetriesOnlyMissingFragment) {
   client.set_archive_interest(true);
   uint8_t sid[4] = {0x44, 0x33, 0x22, 0x11};
   uint8_t digest[4] = {0xDE, 0xAD, 0xBE, 0xEF};
-  AdvMsg adv{}; memcpy(adv.seeder_id, sid, 4); memcpy(adv.set_digest, digest, 4); adv.n_motas = 3;
+  AdvMsg adv{}; memcpy(adv.seeder_id, sid, 4); memcpy(adv.set_digest, digest, 4); adv.n_motas = 23;
   uint8_t wire[MAX_PACKET_PAYLOAD];
   uint16_t n = encode_adv(wire, sizeof(wire), adv);
   client.set_clock(100);
@@ -4057,13 +4057,17 @@ TEST(OtaCatalog, IncompleteCatalogRetriesOnlyMissingFragment) {
   sent.items.clear();
 
   auto deliver_have = [&](uint8_t frag) {
-    uint8_t row[OTA_HAVE_ROW_BYTES] = {0};
-    row[0] = (uint8_t)(frag + 1); row[1] = 0x77;
-    wr_u32le(row + 4, SIM_TARGET_ID); wr_u32le(row + 8, 0x01000000u + frag);
-    row[12] = CODEC_FULL; row[13] = MFLAG_FULL; row[14] = 1;
+    const uint8_t count = frag == 2 ? 3 : 10;
+    uint8_t rows[10 * OTA_HAVE_ROW_BYTES] = {0};
+    for (uint8_t index = 0; index < count; ++index) {
+      uint8_t* row = rows + index * OTA_HAVE_ROW_BYTES;
+      row[0] = (uint8_t)(frag * 10 + index + 1); row[1] = 0x77;
+      wr_u32le(row + 4, SIM_TARGET_ID); wr_u32le(row + 8, 0x01000000u + frag);
+      row[12] = CODEC_FULL; row[13] = MFLAG_FULL; row[14] = 1;
+    }
     HaveMsg have{};
     memcpy(have.seeder_id, sid, 4); memcpy(have.set_digest, digest, 4);
-    have.frag_idx = frag; have.frag_total = 3; have.n_rows = 1; have.rows = row;
+    have.frag_idx = frag; have.frag_total = 3; have.n_rows = count; have.rows = rows;
     uint16_t have_len = encode_have(wire, sizeof(wire), have);
     ASSERT_GT(have_len, 0);
     client.on_message(wire, have_len);
@@ -4080,7 +4084,7 @@ TEST(OtaCatalog, IncompleteCatalogRetriesOnlyMissingFragment) {
   sent.items.clear();
 
   deliver_have(1);
-  EXPECT_EQ(client.catalogCount(), 3);
+  EXPECT_EQ(client.catalogCount(), 23);
   client.set_clock(5000 + OTA_CATALOG_RETRY_MS * 2 + 2);
   client.loop();
   EXPECT_TRUE(sent.items.empty());                    // complete means no further catalog retries
