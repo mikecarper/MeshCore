@@ -277,6 +277,7 @@ typedef uint32_t  DispatcherAction;
  *      and scheduling of outbound Packets.
 */
 class Dispatcher {
+  enum class OutboundCancellation : uint8_t { None, Cancelled, Delivered };
   Packet* outbound;  // current outbound packet
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long outbound_radio_retry_at;
@@ -299,6 +300,7 @@ class Dispatcher {
   bool  dispatcher_started;
   bool  outbound_radio_retry_pending;
   bool  outbound_radio_retry_used;
+  OutboundCancellation outbound_cancellation = OutboundCancellation::None;
 #ifndef RADIO_LIVENESS_SOFT_ONLY
   bool  nonrx_soft_recovery_attempted;
 #endif
@@ -425,6 +427,14 @@ protected:
   virtual uint32_t getRadioWatchdogMillis() const;  // observer-only radio recovery
 #endif
   const Packet* getOutboundInFlight() const { return outbound; }
+  // A retry may be retained outside the manager during radio recovery. Mark
+  // it here and let loop() release it after RX callbacks finish. An on-air
+  // transmission completes normally, but cannot retry after a later timeout.
+  void cancelOutboundRadioRetry(const Packet* packet, bool delivered = false) {
+    if (packet != NULL && packet == outbound) {
+      outbound_cancellation = delivered ? OutboundCancellation::Delivered : OutboundCancellation::Cancelled;
+    }
+  }
   // Milliseconds until Dispatcher can next make progress on a queued packet.
   // This includes queue schedules, delayed inbound processing, airtime-budget
   // waits, and short channel-busy deferrals.

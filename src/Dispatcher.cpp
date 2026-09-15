@@ -67,6 +67,7 @@ void Dispatcher::begin() {
   outbound_radio_retry_at = 0;
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
+  outbound_cancellation = OutboundCancellation::None;
   ota_tx_airtime = 0;
   radio_nonrx_start = _ms->getMillis();
 
@@ -187,7 +188,7 @@ bool Dispatcher::startOutboundTransmit() {
 }
 
 bool Dispatcher::scheduleOutboundRadioRetry() {
-  if (outbound == NULL || outbound_radio_retry_used) return false;
+  if (outbound == NULL || outbound_radio_retry_used || outbound_cancellation != OutboundCancellation::None) return false;
 
   outbound_radio_retry_used = true;
   outbound_radio_retry_pending = true;
@@ -201,12 +202,21 @@ void Dispatcher::failOutboundTransmit() {
   if (outbound == NULL) return;
 
   restoreOutboundTxOverrides();
-  logTxFail(outbound, outbound->getRawLength());
-  onSendFail(outbound);
+  if (outbound_cancellation == OutboundCancellation::Delivered) {
+    // A downstream echo confirms delivery even if the driver's completion
+    // failed. Pending command replies must complete their application barrier.
+    onSendComplete(outbound);
+  } else {
+    if (outbound_cancellation == OutboundCancellation::None) logTxFail(outbound, outbound->getRawLength());
+    // Explicit cancellation still releases application references, including
+    // pending replies and battery alerts, through the ordinary failure hook.
+    onSendFail(outbound);
+  }
   releasePacket(outbound);
   outbound = NULL;
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
+  outbound_cancellation = OutboundCancellation::None;
 }
 
 int Dispatcher::calcRxDelay(float score, uint32_t air_time) const {
@@ -358,7 +368,8 @@ void Dispatcher::loop() {
       checkRecv();
       // A cancelled or expired packet must retire even if the chip never
       // becomes available for another retune (including an armed OTA reboot).
-      if (!isPacketRadioCurrent(outbound) || !allowPacketTransmit(outbound)) {
+      if (outbound_cancellation != OutboundCancellation::None
+          || !isPacketRadioCurrent(outbound) || !allowPacketTransmit(outbound)) {
         failOutboundTransmit();
         return;
       }
@@ -429,6 +440,7 @@ void Dispatcher::loop() {
       outbound = NULL;
       outbound_radio_retry_pending = false;
       outbound_radio_retry_used = false;
+      outbound_cancellation = OutboundCancellation::None;
     } else if (millisHasNowPassed(outbound_expiry)) {
       MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): WARNING: outbound packed send timed out!", getLogDateTime());
 
@@ -840,6 +852,7 @@ void Dispatcher::checkSend() {
   if (outbound) {
     outbound_radio_retry_pending = false;
     outbound_radio_retry_used = false;
+    outbound_cancellation = OutboundCancellation::None;
 
     if (!allowPacketTransmit(outbound)) {
       MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): packet no longer allowed, type=%u", getLogDateTime(),

@@ -13,6 +13,8 @@ class DualProfileTestRadio : public RetryCodingRateRadio {
   void loop() override { ++carrier_services; }
   bool recoverRadio(bool) override { ++recoveries; return true; }
   uint32_t estimated_airtime = 10;
+  float receive_score = 0;
+  float packetScore(float, int) override { return receive_score; }
   TraceTestClock* sensing_clock = nullptr;
   uint32_t sensing_delay = 0;
   bool distinguish_airtime = false;
@@ -72,9 +74,26 @@ class DualProfileTestMesh : public RetryCodingRateMesh {
   using RetryCodingRateMesh::getRetransmitDelay;
   using RetryCodingRateMesh::getOtaPacketAirtime;
   using RetryCodingRateMesh::tryParsePacket;
+  using RetryCodingRateMesh::cancelAllDirectRetries;
+  using RetryCodingRateMesh::cancelAllFloodRetries;
   bool cross_filter_allows = true;
   float ota_speed = 1.0f;
   bool suppress_tx = false;
+  unsigned send_failures = 0;
+  unsigned send_completions = 0;
+  void onSendComplete(mesh::Packet* packet) override {
+    ++send_completions;
+    RetryCodingRateMesh::onSendComplete(packet);
+  }
+  unsigned tx_failure_logs = 0;
+  void logTxFail(mesh::Packet*, int) override { ++tx_failure_logs; }
+  unsigned direct_successes = 0, direct_failures = 0;
+  void onDirectRetrySucceeded(const uint8_t*, uint8_t, int8_t) override { ++direct_successes; }
+  void onDirectRetryFailed(const uint8_t*, uint8_t) override { ++direct_failures; }
+  void onSendFail(mesh::Packet* packet) override {
+    ++send_failures;
+    RetryCodingRateMesh::onSendFail(packet);
+  }
   bool allowPacketTransmit(const mesh::Packet* packet) const override {
     return !suppress_tx && RetryCodingRateMesh::allowPacketTransmit(packet);
   }
@@ -247,6 +266,121 @@ TEST_F(DualProfileTest, RadioFaultRetryRetainsBoundedBusyEscapeAndSingleRetryLim
   EXPECT_EQ(manager.getFreeCount(), 40);
   tick(10000);
   EXPECT_TRUE(radio.transmissions.empty());
+}
+
+TEST_F(DualProfileTest, EchoDuringRadioFaultBackoffCancelsDirectAndFloodRetry) {
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.receive_score = 1; // strong echo is processed without a score delay
+  for (bool direct : {false, true}) {
+    const uint8_t route[] = {0x11, 0x22};
+    ASSERT_NE(nullptr, direct ? makeDirectText(node, 0x55, route, sizeof(route)) : queue());
+    tick(); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    ASSERT_EQ(manager.getOutboundTotal(), 1);
+    auto* retry = manager.getOutboundByIdx(0);
+    mesh::Packet echo = *retry;
+    echo.setPathHashCount(retry->getPathHashCount() + (direct ? -1 : 1));
+    radio.fail_next_send = true;
+    tick(10000); ASSERT_TRUE(node.hasOutbound());
+    ASSERT_FALSE(radio.sending);
+    const auto sent = radio.transmissions.size();
+    // Deliver the real downstream echo through Dispatcher::checkRecv while
+    // the acknowledged retry is retained outside the outbound queue.
+    radio.incoming = {echo.header, echo.path_len};
+    radio.incoming.insert(radio.incoming.end(), echo.path, echo.path + echo.getPathByteLen());
+    radio.incoming.insert(radio.incoming.end(), echo.payload, echo.payload + echo.payload_len);
+    tick(500);
+    EXPECT_TRUE(radio.incoming.empty());
+    EXPECT_EQ(radio.transmissions.size(), sent);
+    EXPECT_FALSE(node.hasOutbound());
+    EXPECT_EQ(manager.getFreeCount(), 40);
+    EXPECT_EQ(node.tx_failure_logs, 0u); // cancellation is not a TX failure
+    // Keep failures independent so both packet types run in the regression.
+    radio.complete = true; tick();
+    node.cancelAllDirectRetries(); node.cancelAllFloodRetries();
+  }
+}
+
+TEST_F(DualProfileTest, ExplicitRetryCancellationRetiresRetainedPacketEvenWhenRadioBusy) {
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  for (bool direct : {false, true}) {
+    const uint8_t route[] = {0x11, 0x22};
+    ASSERT_NE(nullptr, direct ? makeDirectText(node, 0x55, route, sizeof(route)) : queue());
+    tick(); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    ASSERT_EQ(manager.getOutboundTotal(), 1);
+    radio.fail_next_send = true;
+    tick(10000); ASSERT_TRUE(node.hasOutbound());
+    const auto sent = radio.transmissions.size();
+    if (direct) node.cancelAllDirectRetries();
+    else node.cancelAllFloodRetries();
+    radio.hold_prepare_busy = true;
+    tick(500);
+    EXPECT_FALSE(node.hasOutbound());
+    EXPECT_EQ(manager.getFreeCount(), 40);
+    radio.hold_prepare_busy = false;
+    tick(500);
+    EXPECT_EQ(radio.transmissions.size(), sent);
+    radio.complete = true; tick();
+  }
+}
+
+TEST_F(DualProfileTest, EchoCancelsRadioRecoveryOfInitialTransmission) {
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  radio.receive_score = 1;
+  for (bool direct : {false, true}) {
+    const uint8_t route[] = {0x11, 0x22};
+    auto* original = direct ? makeDirectText(node, 0x55, route, sizeof(route)) : queue();
+    ASSERT_NE(nullptr, original);
+    mesh::Packet echo = *original;
+    echo.setPathHashCount(original->getPathHashCount() + (direct ? -1 : 1));
+    radio.fail_next_send = true;
+    tick(); ASSERT_TRUE(node.hasOutbound());
+    const auto completions = node.send_completions;
+    radio.incoming = {echo.header, echo.path_len};
+    radio.incoming.insert(radio.incoming.end(), echo.path, echo.path + echo.getPathByteLen());
+    radio.incoming.insert(radio.incoming.end(), echo.payload, echo.payload + echo.payload_len);
+    tick(500);
+    EXPECT_TRUE(radio.transmissions.empty());
+    EXPECT_FALSE(node.hasOutbound());
+    EXPECT_EQ(manager.getFreeCount(), 40);
+    EXPECT_EQ(node.tx_failure_logs, 0u);
+    EXPECT_EQ(node.send_failures, 0u);
+    // A downstream echo proves the command reply arrived. Complete its
+    // application barrier rather than cancelling the pending radio handoff.
+    EXPECT_EQ(node.send_completions, completions + 1);
+  }
+}
+
+TEST_F(DualProfileTest, RetryCancellationLetsActiveTransmitFinishButPreventsTimeoutRetry) {
+  radio.config.cross = mesh::RadioCrossMode::Off;
+  for (bool direct : {false, true}) for (bool timeout : {false, true}) {
+    SCOPED_TRACE(testing::Message() << "direct=" << direct << " timeout=" << timeout);
+    const uint8_t route[] = {0x11, 0x22};
+    ASSERT_NE(nullptr, direct ? makeDirectText(node, 0x55, route, sizeof(route)) : queue());
+    tick(); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    tick(10000); ASSERT_TRUE(radio.sending); // retry is already on air
+    if (direct) node.cancelAllDirectRetries();
+    else node.cancelAllFloodRetries();
+    const auto sent = radio.transmissions.size();
+    const auto failed = node.send_failures;
+    tick(); EXPECT_TRUE(radio.sending); // do not cut an active TX short
+    radio.complete = !timeout;
+    tick(timeout ? 10000 : 1);
+    EXPECT_FALSE(node.hasOutbound());
+    EXPECT_EQ(manager.getFreeCount(), 40);
+    tick(500);
+    EXPECT_EQ(radio.transmissions.size(), sent);
+    EXPECT_EQ(node.send_failures, failed + (timeout ? 1 : 0));
+    // Cancellation must not suppress failure cleanup for the next stale
+    // packet, which is rejected before the ordinary TX initialization path.
+    auto* stale = queue(); ASSERT_NE(nullptr, stale);
+    ++stale->radio_generation;
+    tick();
+    EXPECT_EQ(node.send_failures, failed + (timeout ? 1 : 0) + 1);
+    EXPECT_EQ(manager.getFreeCount(), 40);
+  }
 }
 
 TEST_F(DualProfileTest, PacketBecomingReadyDuringCadCannotSkipItsOwnChannelCheck) {
@@ -810,6 +944,48 @@ TEST_F(DualProfileTest, DirectRetriesKeepSeparateCodingRatesAndEchoOwnership) {
   node.receivePacket(&echo);
   ASSERT_EQ(1, manager.getOutboundTotal());
   EXPECT_EQ(b, manager.getOutboundByIdx(0));
+}
+
+TEST_F(DualProfileTest, FinalDirectEchoWaitOnlyExpiresWhenItsOwnProfileChanges) {
+  node.direct_attempts = 1;
+  for (uint8_t origin : {0, 1}) for (unsigned change = 0; change < 3; ++change) {
+    SCOPED_TRACE(testing::Message() << "origin=" << unsigned(origin) << " change=" << change);
+    radio.config.cross = mesh::RadioCrossMode::Off;
+    tick();
+    auto* packet = node.obtainNewPacket(); ASSERT_NE(nullptr, packet);
+    packet->header = PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT;
+    packet->payload_len = 3;
+    packet->payload[0] = 0xa1; packet->payload[1] = 0xb2; packet->payload[2] = 0x55;
+    packet->tx_radio = origin ? mesh::RADIO_TX_SECONDARY : mesh::RADIO_TX_PRIMARY;
+    const uint8_t route[] = {0x11, 0x22};
+    ASSERT_TRUE(node.sendDirect(packet, route, sizeof(route)));
+    tick(); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    ASSERT_EQ(manager.getOutboundTotal(), 1);
+    mesh::Packet echo = *manager.getOutboundByIdx(0);
+    echo.radio_bound = false; echo.radio_local = false;
+    echo.setPathHashCount(echo.getPathHashCount() - 1);
+    tick(10000); ASSERT_TRUE(radio.sending);
+    radio.complete = true; tick();
+    ASSERT_EQ(manager.getOutboundTotal(), 0);
+    ASSERT_EQ(manager.getFreeCount(), 40); // final echo waits own metadata only
+
+    const auto successes = node.direct_successes;
+    if (change == 1) {
+      radio.config.cross = mesh::RadioCrossMode::On;
+    } else if ((change == 2 ? origin : origin ^ 1) == 0) {
+      auto primary = radio.config.primary; primary.freq += 1;
+      radio.config.setPrimary(primary, false);
+    } else {
+      auto secondary = radio.config.secondary; secondary.params.freq += 1;
+      radio.config.setSecondary(secondary, false);
+    }
+    tick();
+    node.receivePacket(&echo);
+    EXPECT_EQ(node.direct_successes, successes + (change == 2 ? 0 : 1));
+    EXPECT_EQ(node.direct_failures, 0u); // profile changes are not link failures
+    EXPECT_EQ(manager.getFreeCount(), 40);
+  }
 }
 
 TEST_F(DualProfileTest, ExpiredSecondaryPacketsAreDiscarded) {

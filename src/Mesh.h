@@ -169,7 +169,7 @@ class Mesh : public Dispatcher {
   void rebuildNextDirectRetryTimeout();
   void rebuildNextFloodRetryTimeout();
   void clearDirectRetrySlot(int idx);
-  void retireDirectRetrySlot(int idx);
+  void retireDirectRetrySlot(int idx, bool delivered = false);
   void calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) const;
   bool calculateTraceReplacementKey(const Packet* packet, uint8_t* dest_key) const;
   void replaceQueuedTraceRetries(const Packet* packet);
@@ -181,7 +181,7 @@ class Mesh : public Dispatcher {
   bool canDecodeDirectPayloadForSelf(const Packet* packet);
   void maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool final_hop_retry = false);
   void clearFloodRetrySlot(int idx);
-  void retireFloodRetrySlot(int idx);
+  void retireFloodRetrySlot(int idx, bool delivered = false);
   void replaceQueuedSelfAdvertRetries(const Packet* packet);
   bool cancelFloodRetryOnEcho(const Packet* packet);
   bool getRecentAdvertTimestamp(const Packet* packet, uint32_t& timestamp) const;

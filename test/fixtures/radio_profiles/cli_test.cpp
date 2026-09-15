@@ -43,6 +43,51 @@ struct Fixture {
   void advance(uint32_t ms, bool epoch=true) { g_mock_millis+=ms; if(epoch)clock.epoch+=ms/1000; cli.loop(); }
 };
 int main() {
+  for (bool damaged_primary : {false, true}) {
+    Fixture f(true);
+    f.cmd("set radio2 910.5,500,8,5,rxtx,80");
+    f.cmd("set radio2.cross off");
+    f.cmd("set tx.reply radio2 force");
+    assert(f.cli.savePrimaryPreamble(120));
+    assert(f.fs.rename("/radio_profiles", "/radio_profiles.bak"));
+    const auto backup = f.fs.files["/radio_profiles.bak"];
+    if (damaged_primary) {
+      f.fs.files["/radio_profiles"] = {0};
+      f.fs.fail_remove = true;
+    } else {
+      f.fs.fail_rename = 1;
+    }
+    Radio radio; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &radio, &f.clock, true);
+    // The verified backup stays usable even when storage cannot repair it.
+    assert(radio.p.enabled());
+    assert(radio.p.secondary.params.freq == 910.5f);
+    assert(radio.p.secondary.params.preamble == 80);
+    assert(restored.primaryPreamble() == 120);
+    assert(radio.p.cross == mesh::RadioCrossMode::Off);
+    assert(radio.p.reply_tx == mesh::RADIO_TX_SECONDARY && radio.p.reply_force);
+    f.fs.fail_remove = false;
+    assert(restored.handle("set radio2 off", f.reply));
+    assert(strstr(f.reply, "Error"));
+    assert(f.fs.files["/radio_profiles.bak"] == backup);
+  }
+  {
+    Fixture f;
+    f.cmd("set radio2 910.5,500,8,5,rxtx,80"); f.advance(2000);
+    const auto committed = f.fs.files["/radio_profiles"];
+    f.fs.fail_rename_from = {"/radio_profiles.tmp", "/radio_profiles.bak"};
+    f.cmd("set radio2 off", false); // both publication and rollback fail
+    assert(f.radio.p.enabled());
+    assert(f.fs.files["/radio_profiles.bak"] == committed);
+    f.fs.fail_rename_from.clear();
+    f.cmd("set radio2.cross on", false); // protect the sole committed copy
+    assert(f.fs.files["/radio_profiles.bak"] == committed);
+    Radio radio; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &radio, &f.clock);
+    assert(radio.p.enabled() && radio.p.secondary.params.preamble == 80);
+    assert(restored.handle("set radio2 off", f.reply));
+    assert(!strncmp(f.reply, "OK", 2)); // reboot repairs storage and releases the hold
+  }
   {
     Fixture f(true);
     f.cmd("set tx.reply off");

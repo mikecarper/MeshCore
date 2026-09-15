@@ -27,12 +27,15 @@ class MemoryFS {
  public:
   std::map<std::string, std::vector<uint8_t>> files;
   bool fail_write = false;
+  bool fail_remove = false;
   int fail_rename = 0;
+  std::vector<std::string> fail_rename_from;
   bool mkdir(const char*) { return true; }
   bool exists(const char* path) const { return files.count(path); }
-  bool remove(const char* path) { return files.erase(path); }
+  bool remove(const char* path) { return !fail_remove && files.erase(path); }
   bool rename(const char* from, const char* to) {
     if (fail_rename > 0 && --fail_rename == 0) return false;
+    if (std::find(fail_rename_from.begin(), fail_rename_from.end(), from) != fail_rename_from.end()) return false;
     if (!exists(from) || exists(to)) return false;
     files[to] = files[from]; files.erase(from); return true;
   }

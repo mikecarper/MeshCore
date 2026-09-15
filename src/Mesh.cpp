@@ -306,7 +306,12 @@ void Mesh::loop() {
     for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; ++i) {
       if (!_direct_retries[i].active) continue;
       const auto* packet = _direct_retries[i].queued ? _direct_retries[i].packet : _direct_retries[i].trigger_packet;
-      if (_direct_retries[i].waiting_final_echo || (packet && !isPacketRadioCurrent(packet))) retireDirectRetrySlot(i);
+      // Final direct echoes retain metadata only. Their slot still identifies
+      // the profile, so changing the other channel must not cancel the wait.
+      const uint8_t profile = i / MAX_DIRECT_RETRY_SLOTS;
+      if ((_direct_retries[i].waiting_final_echo
+              && _retry_radio_generations[profile] != p->generation[profile])
+          || (packet && !isPacketRadioCurrent(packet))) retireDirectRetrySlot(i);
     }
     for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; ++i) {
       if (!_flood_retries[i].active) continue;
@@ -1443,12 +1448,13 @@ void Mesh::clearDirectRetrySlot(int idx) {
   if (rebuild_timeout) rebuildNextDirectRetryTimeout();
 }
 
-void Mesh::retireDirectRetrySlot(int idx) {
+void Mesh::retireDirectRetrySlot(int idx, bool delivered) {
   if (idx < 0 || idx >= TOTAL_DIRECT_RETRY_SLOTS || !_direct_retries[idx].active) {
     return;
   }
 
   Packet* retry = _direct_retries[idx].queued ? _direct_retries[idx].packet : NULL;
+  cancelOutboundRadioRetry(retry ? retry : _direct_retries[idx].trigger_packet, delivered);
   if (retry != NULL && retry != getOutboundInFlight()) {
     for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
       if (_mgr->getOutboundByIdx(j) != retry) continue;
@@ -1627,18 +1633,6 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
       onDirectRetryEvent("good", _direct_retries[i].packet, echo_millis, retry_attempt,
                          _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len,
                          _direct_retries[i].payload_type);
-      if (_direct_retries[i].queued) {
-        for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
-          if (_mgr->getOutboundByIdx(j) == _direct_retries[i].packet) {
-            Packet* pending = _mgr->removeOutboundByIdx(j);
-            if (pending) {
-              releasePacket(pending);
-            }
-            break;
-          }
-        }
-      }
-      clearDirectRetrySlot(i);
     } else {
       if (_direct_retries[i].trigger_packet != NULL) {
         _direct_retries[i].trigger_packet->_snr = echo_snr_x4;
@@ -1648,8 +1642,8 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
         : (uint32_t)(_ms->getMillis() - _direct_retries[i].echo_wait_started_at);
       onDirectRetryEvent("good", _direct_retries[i].trigger_packet, echo_millis, _direct_retries[i].retry_attempts_sent + 1,
                          _direct_retries[i].next_hop_hash, _direct_retries[i].next_hop_hash_len);
-      clearDirectRetrySlot(i);
     }
+    retireDirectRetrySlot(i, true);
     cleared = true;
   }
 
@@ -2045,12 +2039,13 @@ void Mesh::clearFloodRetrySlot(int idx) {
   if (rebuild_timeout) rebuildNextFloodRetryTimeout();
 }
 
-void Mesh::retireFloodRetrySlot(int idx) {
+void Mesh::retireFloodRetrySlot(int idx, bool delivered) {
   if (idx < 0 || idx >= TOTAL_FLOOD_RETRY_SLOTS || !_flood_retries[idx].active) {
     return;
   }
 
   Packet* retry = _flood_retries[idx].queued ? _flood_retries[idx].packet : NULL;
+  cancelOutboundRadioRetry(retry ? retry : _flood_retries[idx].trigger_packet, delivered);
   if (retry != NULL && retry != getOutboundInFlight()) {
     for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
       if (_mgr->getOutboundByIdx(j) != retry) continue;
@@ -2479,7 +2474,7 @@ bool Mesh::cancelFloodRetryOnEcho(const Packet* packet) {
       : _flood_retries[i].retry_attempts_sent + 1;
     onFloodRetryEvent("good", packet, echo_millis, retry_attempt);
 
-    retireFloodRetrySlot(i);
+    retireFloodRetrySlot(i, true);
     cleared = true;
   }
 

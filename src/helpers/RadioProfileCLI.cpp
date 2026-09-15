@@ -69,7 +69,7 @@ bool RadioProfileCLI::readImage(const char* path, uint8_t* bytes, size_t size) {
 }
 
 bool RadioProfileCLI::writeImage(const char* path, const uint8_t* bytes, size_t size) {
-  if (fs_->exists(path)) fs_->remove(path);
+  if (fs_->exists(path) && !fs_->remove(path)) return false;
 #if defined(NRF52_PLATFORM)
   File file(*fs_);
   if (!file.open(path, FILE_O_WRITE)) return false;
@@ -100,11 +100,11 @@ bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, 
   memcpy(image + ImageSize - 4, &crc, 4);
   if (!writeImage(TempPath, image, sizeof(image))) return false;
   if (fs_->exists(ImagePath)) {
-    if (fs_->exists(BackupPath)) fs_->remove(BackupPath);
+    if (fs_->exists(BackupPath) && !fs_->remove(BackupPath)) return false;
     if (!fs_->rename(ImagePath, BackupPath)) return false;
   }
   if (!fs_->rename(TempPath, ImagePath)) {
-    if (fs_->exists(BackupPath)) fs_->rename(BackupPath, ImagePath);
+    if (fs_->exists(BackupPath) && !fs_->rename(BackupPath, ImagePath)) hold_ = true;
     return false;
   }
   if (fs_->exists(BackupPath)) fs_->remove(BackupPath);
@@ -122,8 +122,11 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
   uint8_t bytes[ImageSize];
   bool loaded = readImage(ImagePath, bytes, sizeof(bytes));
   if (!loaded && readImage(BackupPath, bytes, sizeof(bytes))) {
-    if (fs_->exists(ImagePath)) fs_->remove(ImagePath);
-    loaded = fs_->rename(BackupPath, ImagePath);
+    // Use the verified backup even when repairing the interrupted save is
+    // impossible. Keep writes held so the sole committed image stays intact.
+    loaded = true;
+    hold_ = (fs_->exists(ImagePath) && !fs_->remove(ImagePath))
+        || !fs_->rename(BackupPath, ImagePath);
   }
   if (!loaded) {
     hold_ = fs_->exists(ImagePath) || fs_->exists(BackupPath);
