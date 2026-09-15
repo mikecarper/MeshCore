@@ -42,6 +42,7 @@ struct Fixture {
     transport.setSessionChangedCallback([](void* context) {
       Fixture& fixture = *static_cast<Fixture*>(context);
       ++fixture.callbacks;
+      assert(!fixture.transport.isConnected());
       fixture.pending_operation = false;
       // Cancellation must happen before a new socket sees an old response or
       // has any of its own command bytes consumed.
@@ -56,14 +57,14 @@ struct Fixture {
 
   size_t tick() { return transport.checkRecvFrame(input); }
 
-  Socket connect(IPAddress address, const Bytes& command = {}) {
+  Socket connect(IPAddress address, const Bytes& command = {}, bool valid = true) {
     Socket socket = std::make_shared<MockSocket>(address);
     socket->received.insert(socket->received.end(), command.begin(), command.end());
     next_client = socket;
     WiFiServer::incoming.push_back(WiFiClient(socket));
     tick();
     next_client.reset();
-    assert(transport.isConnected());
+    assert(transport.isConnected() == valid);
     return socket;
   }
 
@@ -95,13 +96,15 @@ int main(int argc, char** argv) {
   } else if (scenario == 1) {
     auto old = f.connect(A);
     f.enqueue(reply_a);
+    f.pending_operation = true;
     old->connected = false;
     f.tick();
     assert(!f.transport.isConnected());
+    assert(f.callbacks == 1 && !f.pending_operation);
     mock_millis += 60000; // Same-IP retention is not the different-IP grace timer.
     auto replacement = f.connect(A);
     f.drain(replacement);
-    assert(replacement->sent == framed({reply_a}) && f.callbacks == 0);
+    assert(replacement->sent == framed({reply_a}) && f.callbacks == 1);
   } else if (scenario == 2) {
     f.connect(A);
     f.enqueue(reply_a);
@@ -337,6 +340,72 @@ int main(int argc, char** argv) {
     auto other_returned = f.connect(B);
     f.drain(other_returned);
     assert(other_returned->sent == framed({other_maximum}));
+  } else if (scenario >= 25 && scenario <= 27) {
+    auto socket = f.connect(A);
+    f.pending_operation = true;
+    const Bytes invalid = scenario == 25 ? Bytes{'<', 0xff, 0xff}
+        : scenario == 26 ? Bytes{'?', 1, 0} : Bytes{'<', 0, 0};
+    socket->received.insert(socket->received.end(), invalid.begin(), invalid.end());
+    socket->received.insert(socket->received.end(), {'<', 1, 0, 0x71});
+    assert(f.tick() == 0);
+    assert(!socket->connected && !f.transport.hasReceivedFrameHeader());
+    assert(f.callbacks == 1 && !f.pending_operation);
+    assert(socket->read_count == 3); // Do not wait for or scan the illegal body.
+    for (int i = 0; i < 10; ++i) assert(f.tick() == 0);
+    f.connect(A, Bytes{'<', 1, 0, 0x72});
+    assert(f.input[0] == 0x72);
+  } else if (scenario == 28 || scenario == 29 || scenario == 34) {
+    if (scenario == 34) mock_millis = UINT32_MAX - 2000;
+    auto socket = f.connect(A, scenario == 29 ? Bytes{'<', 2} : Bytes{'<', 2, 0, 0x71});
+    f.pending_operation = true;
+    mock_millis += 4999;
+    assert(f.tick() == 0 && f.transport.isConnected());
+    mock_millis += 1;
+    f.transport.loop();
+    assert(!socket->connected && !f.transport.hasReceivedFrameHeader());
+    assert(f.callbacks == 1 && !f.pending_operation);
+    assert(f.tick() == 0);
+    f.connect(A, Bytes{'<', 1, 0, 0x72});
+    assert(f.input[0] == 0x72);
+  } else if (scenario == 30 || scenario == 31) {
+    auto socket = f.connect(A, scenario == 30 ? Bytes{'<', 2, 0} : Bytes{});
+    if (scenario == 30) socket->received = {0x71, 0x72};
+    else socket->received = {'<', 2, 0, 0x71, 0x72};
+    socket->read_limit = 1;
+    assert(f.tick() == 0);
+    assert(!socket->connected && !f.transport.hasReceivedFrameHeader());
+    assert(f.callbacks == 1);
+    f.connect(A, Bytes{'<', 1, 0, 0x73});
+    assert(f.input[0] == 0x73);
+  } else if (scenario == 32) {
+    auto socket = f.connect(A, Bytes{'<'});
+    socket->received.push_back(2);
+    assert(f.tick() == 0);
+    socket->received.insert(socket->received.end(), {0, 0x71});
+    assert(f.tick() == 0);
+    mock_millis += 4999;
+    socket->received.push_back(0x72);
+    assert(f.tick() == 2);
+    assert(f.input[0] == 0x71 && f.input[1] == 0x72);
+    assert(f.callbacks == 0 && socket->connected);
+  } else if (scenario == 33) {
+    auto socket = f.connect(A);
+    socket->received = {'<', MAX_FRAME_SIZE, 0};
+    for (int i = 0; i < MAX_FRAME_SIZE; ++i) socket->received.push_back(uint8_t(i));
+    socket->received.insert(socket->received.end(), {'<', 1, 0, 0x72});
+    assert(f.tick() == MAX_FRAME_SIZE);
+    for (int i = 0; i < MAX_FRAME_SIZE; ++i) assert(f.input[i] == uint8_t(i));
+    assert(f.tick() == 1 && f.input[0] == 0x72);
+    assert(f.callbacks == 0 && socket->connected);
+  } else if (scenario == 35) {
+    auto socket = f.connect(A, Bytes{'<', 2, 0, 0x71});
+    f.pending_operation = true;
+    f.enqueue(reply_a);
+    socket->connected = false;
+    f.transport.loop();
+    assert(f.callbacks == 1 && !f.pending_operation);
+    f.transport.disable();
+    assert(f.callbacks == 1); // No second cancellation for an ended session.
   } else {
     assert(false && "unknown scenario");
   }

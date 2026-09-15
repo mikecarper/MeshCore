@@ -27,7 +27,8 @@ PREAMBLE = r'''
 #define TXT_TYPE_CLI_COMMAND 1
 namespace mesh {
 struct RadioProfileCLI {
-  bool handle(const char*, char*, size_t) { return false; }
+  bool remote_origin=false;
+  bool handle(const char*, char*, size_t, bool remote=false) { remote_origin=remote;return false; }
   static bool parseSuffix(const char* input, unsigned fields, char* legacy, size_t size, uint16_t& preamble) {
     return cli::parseRadioPreambleSuffix(input, fields, legacy, size, preamble);
   }
@@ -108,6 +109,7 @@ struct MyMesh {
   int resets=0, saves=0;
   enum class RadioSettingResult { Saved, RadioRejected, SaveFailed };
   RadioSettingResult applyAndSaveTxPower(int8_t);
+  bool saveAdvertName(const char*);
   bool handleCommand(const char*,uint32_t,char*);
   bool handleDirectCommand(const char*,char*,size_t);
   void onCLICommandRecv(const ContactInfo&,mesh::Packet*,uint32_t,const char*,char*);
@@ -163,12 +165,15 @@ int main() {
     assert(!strstr(reply,"secret") && !strstr(reply,"token") && !strstr(reply,"A5A5"));
   }
   assert(node.handleCommand("set freq 915.25",0,reply));
+  assert(!node._radio_profiles.remote_origin);
   assert(node._prefs.freq==915.25f && strstr(reply,"reboot to apply"));
   assert(node.handleCommand("set freq 920",100,reply));
+  assert(node._radio_profiles.remote_origin);
   assert(node._prefs.freq==920.0f && strstr(reply,"reboot to apply"));
   for(uint32_t stamp:{0u,100u}) {
     reply[0]=0;
     node.onCLICommandRecv(ContactInfo{},nullptr,stamp,"A7|set freq 921.125",reply);
+    assert(node._radio_profiles.remote_origin); // even a zero-timestamp LoRa command
     assert(node._prefs.freq==921.125f && !strcmp(reply,"A7|OK - reboot to apply"));
     assert(node._prefs.bw==125.0f && node._prefs.sf==7 && node._prefs.cr==5);
     for(const char* bad:{"set freq 149.9","set freq 2500.1","set freq 920oops",
@@ -309,6 +314,7 @@ int main() {
         implementation = "\n".join(extract_braced(source, signature) for signature in (
             "static bool isCompanionRadioPrefsCommand(",
             "MyMesh::RadioSettingResult MyMesh::applyAndSaveTxPower(",
+            "bool MyMesh::saveAdvertName(",
             "bool MyMesh::handleDirectCommand(", "bool MyMesh::handleCommand(",
             "void MyMesh::onCLICommandRecv("))
         for export, webconfig in ((0, False), (1, False), (0, True), (1, True)):

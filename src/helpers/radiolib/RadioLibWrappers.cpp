@@ -341,6 +341,15 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t prof
   return tuneProfile(profile);
 }
 
+mesh::RadioParamApplyResult RadioLibWrapper::tryRestoreCodingRate(uint8_t cr) {
+  const uint8_t resume_rx = beginReconfigure();
+  if (resume_rx > 1) return mesh::RadioParamApplyResult::BUSY;
+  const bool applied = setCodingRate(cr);
+  if (!applied) _profile_refresh_required = true;
+  endReconfigure(resume_rx);
+  return applied ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
+}
+
 void RadioLibWrapper::serviceProfileScan() {
   if (_cw_active) return;
   if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;

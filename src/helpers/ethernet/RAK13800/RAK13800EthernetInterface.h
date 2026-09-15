@@ -10,6 +10,9 @@ class RAK13800EthernetInterface : public SerialEthernetInterface {
   EthernetServer server;
   EthernetClient client;
 
+  protected:
+    void disconnectClient() override;
+
   public:
     RAK13800EthernetInterface() : server(EthernetServer(ETHERNET_TCP_PORT)) {
       _isConnected = false;

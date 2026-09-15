@@ -41,6 +41,9 @@ struct RadioLibWrapper {
   uint16_t _physical_preamble=32;
   float _cur_freq=909.5, _cur_bw=62.5;
   unsigned applies=0, failRxStarts=0;
+  unsigned coding_writes=0;
+  bool coding_success=true;
+  bool setCodingRate(uint8_t) { ++coding_writes; return coding_success; }
   RadioLibWrapper() {
     state=STATE_RX; elapsed_us=100000;
     auto& p=_profiles.primary;
@@ -73,6 +76,7 @@ struct RadioLibWrapper {
   mesh::RadioParamApplyResult tuneProfile(uint8_t);
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t);
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t, bool);
+  mesh::RadioParamApplyResult tryRestoreCodingRate(uint8_t);
   mesh::RadioParamApplyResult trySetParams(float,float,uint8_t,uint8_t,const uint32_t* = nullptr);
   mesh::RadioParamApplyResult trySetPrimaryParams(const mesh::RadioProfileParams&,bool,const uint32_t* = nullptr);
   void enable() {
@@ -85,6 +89,19 @@ struct RadioLibWrapper {
 @METHODS@
 int main() {
   using Result=mesh::RadioParamApplyResult;
+  for (unsigned blocked=0; blocked<5; ++blocked) {
+    RadioLibWrapper w;
+    w._cw_active = blocked==0; w.busy = blocked==1; w.packet = blocked==2;
+    if (blocked==3) state |= STATE_INT_READY;
+    if (blocked==4) state = STATE_TX_WAIT;
+    assert(w.tryRestoreCodingRate(5)==Result::BUSY && w.coding_writes==0);
+  }
+  for (bool success : {false,true}) {
+    RadioLibWrapper w; w.coding_success=success;
+    assert(w.tryRestoreCodingRate(5)==(success?Result::APPLIED:Result::FAILED));
+    assert(w.coding_writes==1 && state==STATE_RX);
+    assert(w._profile_refresh_required==!success);
+  }
   {
     // Force only admits a reply on an active RX-only profile. It cannot
     // enable a disabled profile or erase an in-progress reception.
@@ -258,7 +275,7 @@ class ProfileScanTest(unittest.TestCase):
         source=(ROOT/'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         names=[('uint8_t','beginReconfigure'),('void','endReconfigure'),
             ('void','serviceProfileScan')]+[('mesh::RadioParamApplyResult',name) for name in
-            ['tuneProfile','prepareTransmitProfile','trySetParams','trySetPrimaryParams']]
+            ['tuneProfile','prepareTransmitProfile','tryRestoreCodingRate','trySetParams','trySetPrimaryParams']]
         methods='\n'.join(method(source,f'{kind} RadioLibWrapper::{name}(') for kind,name in names)
         methods+='\n'+method(source,
             'mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile, bool')

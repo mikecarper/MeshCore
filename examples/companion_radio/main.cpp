@@ -472,6 +472,16 @@ static void serviceCompanionPowerSaving(bool force = false) {
 }
 #endif
 
+#if defined(ETHERNET_ENABLED)
+static void cancelCompanionEthernetSession(void*) {
+  if (interface_manager.isReplyRouteFor(&ethernet_interface)) {
+    the_mesh.cancelSerialResponseStream();
+  }
+  the_mesh.cancelSerialOperationsForRoute(&ethernet_interface);
+  interface_manager.forgetReplyRouteForDisconnected(&ethernet_interface);
+}
+#endif
+
 #if defined(ENABLE_USB_INTERFACE)
 static char usb_terminal_line[MAX_TRANS_UNIT * 2 + 32];
 static size_t usb_terminal_line_len = 0;
@@ -2900,6 +2910,7 @@ void setup() {
 
 // add ethernet interface
 #if defined(ETHERNET_ENABLED)
+  ethernet_interface.setSessionChangedCallback(cancelCompanionEthernetSession, nullptr);
   ethernet_interface.begin();
   interface_manager.addInterface(InterfaceType::Ethernet, &ethernet_interface);
 #endif

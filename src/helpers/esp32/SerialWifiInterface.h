@@ -36,12 +36,15 @@ class SerialWifiInterface : public BaseSerialInterface {
   bool queue_has_ip = false;
   uint32_t held_since = 0;
   size_t send_offset = 0;
+  uint32_t receive_started = 0;
+  bool receive_pending = false;
   void (*session_changed)(void*) = nullptr;
   void* session_context = nullptr;
 
   void clearBuffers();
   void expireHeldQueue(uint32_t now);
   void selectClient(const IPAddress& ip, uint32_t now);
+  void disconnectClient(bool cancel_session);
 
 protected:
 
@@ -57,8 +60,9 @@ public:
 
   void begin(int port);
   void end();
-  // Called synchronously while disconnected, before a different IP can send
-  // commands or receive replies. The owner can cancel route-bound operations.
+  // Called synchronously while disconnected, on teardown or before a different
+  // IP can send commands/receive replies. Same-IP live replacement preserves
+  // the existing owner; actual disconnects cancel its pending operations.
   void setSessionChangedCallback(void (*callback)(void*), void* context) {
     session_changed = callback;
     session_context = context;

@@ -16,6 +16,13 @@ class SerialEthernetInterface : public BaseSerialInterface {
   uint16_t _frame_len;
   uint16_t _rx_len;
   uint8_t _rx_buf[MAX_FRAME_SIZE];
+  uint32_t _rx_started = 0;
+  size_t send_offset = 0;
+  bool session_active = false;
+  bool queue_has_ip = false;
+  uint32_t queue_ip = 0;
+  void (*session_changed)(void*) = nullptr;
+  void* session_context = nullptr;
 
   struct Frame {
     uint8_t len;
@@ -28,12 +35,21 @@ class SerialEthernetInterface : public BaseSerialInterface {
 
   void clearBuffers() {
     send_queue_len = 0;
+    queue_has_ip = false;
+    resetInput();
+    send_offset = 0;
+  }
+
+  void resetInput() {
     _state = 0;
     _frame_len = 0;
     _rx_len = 0;
+    _rx_started = 0;
   }
+  void rejectInput();
 
   protected:
+    virtual void disconnectClient() = 0;
 
   public:
     SerialEthernetInterface() {
@@ -46,8 +62,14 @@ class SerialEthernetInterface : public BaseSerialInterface {
     }
     bool begin();
 
-    void onClientConnected();
+    // Drivers call this while isConnected() is false and BEFORE exposing the
+    // new socket. Same-IP live replacement retains the existing logical owner.
+    void onClientConnected(uint32_t remote_ip);
     void onClientDisconnected();
+    void setSessionChangedCallback(void (*callback)(void*), void* context) {
+      session_changed = callback;
+      session_context = context;
+    }
 
     // BaseSerialInterface methods
     void enable() override;

@@ -2,6 +2,8 @@
 #include "../CompanionFrameQueue.h"
 #include <WiFi.h>
 
+static constexpr uint32_t WIFI_FRAME_TIMEOUT_MS = 5000;
+
 void SerialWifiInterface::clearBuffers() {
   held_queue_len = send_queue_len = 0;
   send_offset = 0;
@@ -19,7 +21,23 @@ void SerialWifiInterface::expireHeldQueue(uint32_t now) {
 }
 
 void SerialWifiInterface::loop() {
-  expireHeldQueue((uint32_t)millis());
+  const uint32_t now = (uint32_t)millis();
+  expireHeldQueue(now);
+  if (deviceConnected && (!client.connected()
+      || (receive_pending && (uint32_t)(now - receive_started) >= WIFI_FRAME_TIMEOUT_MS))) {
+    disconnectClient(true);
+  }
+}
+
+void SerialWifiInterface::disconnectClient(bool cancel_session) {
+  const bool was_connected = deviceConnected;
+  deviceConnected = false;
+  if (client) client.stop();
+  resetReceivedFrameHeader();
+  send_offset = 0; // A reconnect must replay the whole frame, never its suffix.
+  if (cancel_session && was_connected && session_changed != nullptr) {
+    session_changed(session_context);
+  }
 }
 
 void SerialWifiInterface::selectClient(const IPAddress& ip, uint32_t now) {
@@ -28,8 +46,6 @@ void SerialWifiInterface::selectClient(const IPAddress& ip, uint32_t now) {
   // IP. An incomplete outgoing frame is retained whole, not just its suffix.
   send_offset = 0;
   if (queue_has_ip && queue_ip != ip) {
-    if (session_changed != nullptr) session_changed(session_context);
-
     if (held_queue_len > 0 && held_ip == ip) {
       // The previous owner returned: restore its queue and park the displaced
       // active queue in the same fixed storage. Only one old IP is retained.
@@ -83,10 +99,7 @@ void SerialWifiInterface::enable() {
 
 void SerialWifiInterface::disable() {
   _isEnabled = false;
-  deviceConnected = false;
-  if (client) client.stop();
-  if (queue_has_ip && session_changed != nullptr) session_changed(session_context);
-  resetReceivedFrameHeader();
+  disconnectClient(true);
   clearBuffers();
 }
 
@@ -127,10 +140,12 @@ bool SerialWifiInterface::hasReceivedFrameHeader() {
 void SerialWifiInterface::resetReceivedFrameHeader() {
   received_frame_header.type = 0;
   received_frame_header.length = 0;
+  receive_pending = false;
+  receive_started = 0;
 }
 
 size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
-  expireHeldQueue((uint32_t)millis());
+  loop();
   if (!_isEnabled) return 0;
   // check if new client connected
   auto newClient = server.available();
@@ -138,8 +153,7 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
     const IPAddress new_ip = newClient.remoteIP();
 
     // disconnect existing client
-    deviceConnected = false;
-    client.stop();
+    disconnectClient(!queue_has_ip || queue_ip != new_ip);
 
     // Partition queues and cancel the displaced session before exposing the
     // new connection to response producers or consuming its first command.
@@ -160,7 +174,7 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
     }
   } else {
     if (deviceConnected) {
-      deviceConnected = false;
+      disconnectClient(true);
       WIFI_DEBUG_PRINTLN("Disconnected");
     }
   }
@@ -189,67 +203,35 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
       memset(&send_queue[send_queue_len], 0, sizeof(send_queue[send_queue_len]));
     } else {
 
-      // check if we are waiting for a frame header
-      if(!hasReceivedFrameHeader()){
-
-        // make sure we have received enough bytes for a frame header
-        // 3 bytes frame header = (1 byte frame type) + (2 bytes frame length as unsigned 16-bit little endian)
-        int frame_header_length = 3;
-        if(client.available() >= frame_header_length){
-
-          // read frame header
-          client.readBytes(&received_frame_header.type, 1);
-          client.readBytes((uint8_t*)&received_frame_header.length, 2);
-
-        }
-
+      if (!receive_pending && client.available() > 0) {
+        receive_pending = true;
+        receive_started = (uint32_t)millis();
       }
-
-      // check if we have received a frame header
-      if(hasReceivedFrameHeader()){
-
-        // make sure we have received enough bytes for the required frame length
-        int available = client.available();
-        int frame_type = received_frame_header.type;
-        int frame_length = received_frame_header.length;
-        if(frame_length > available){
-          WIFI_DEBUG_PRINTLN("Waiting for %d more bytes", frame_length - available);
+      if (!hasReceivedFrameHeader()) {
+        if (client.available() < 3) return 0;
+        uint8_t header[3];
+        if (client.readBytes(header, sizeof(header)) != sizeof(header)) {
+          disconnectClient(true);
           return 0;
         }
-
-        // skip frames that are larger than MAX_FRAME_SIZE
-        if(frame_length > MAX_FRAME_SIZE){
-          WIFI_DEBUG_PRINTLN("Skipping frame: length=%d is larger than MAX_FRAME_SIZE=%d", frame_length, MAX_FRAME_SIZE);
-          while(frame_length > 0){
-            uint8_t skip[1];
-            int skipped = client.read(skip, 1);
-            frame_length -= skipped;
-          }
-          resetReceivedFrameHeader();
+        received_frame_header.type = header[0];
+        received_frame_header.length = uint16_t(header[1]) | (uint16_t(header[2]) << 8);
+        // Validate before waiting for any payload. Closing an invalid stream
+        // avoids unbounded discard loops and interpreting its tail as commands.
+        if (received_frame_header.type != '<' || received_frame_header.length == 0
+            || received_frame_header.length > MAX_FRAME_SIZE) {
+          disconnectClient(true);
           return 0;
         }
-
-        // skip frames that are not expected type
-        // '<' is 0x3c which indicates a frame sent from app to radio
-        if(frame_type != '<'){
-          WIFI_DEBUG_PRINTLN("Skipping frame: type=0x%x is unexpected", frame_type);
-          while(frame_length > 0){
-            uint8_t skip[1];
-            int skipped = client.read(skip, 1);
-            frame_length -= skipped;
-          }
-          resetReceivedFrameHeader();
-          return 0;
-        }
-
-        // read frame data to provided buffer
-        client.readBytes(dest, frame_length);
-
-        // ready for next frame
-        resetReceivedFrameHeader();
-        return frame_length;
-
       }
+      const size_t frame_length = received_frame_header.length;
+      if (client.available() < (int)frame_length) return 0;
+      if (dest == nullptr || client.readBytes(dest, frame_length) != frame_length) {
+        disconnectClient(true);
+        return 0; // Never dispatch a truncated command, even after a short read.
+      }
+      resetReceivedFrameHeader();
+      return frame_length;
       
     }
   }

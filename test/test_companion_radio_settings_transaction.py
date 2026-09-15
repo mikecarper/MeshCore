@@ -43,7 +43,7 @@ struct Prefs {
   uint8_t sf=7, cr=5, client_repeat=0, rx_ps_level=1, rx_ps_preamble=16;
   uint32_t rx_ps_rx_us=700, rx_ps_sleep_us=25000;
   int8_t tx_power_dbm=3;
-  bool rx_boosted_gain=false;
+  bool rx_boosted_gain=false, rx_powersaving_enabled=false;
 };
 void recalcRxPowerSavingFromLevel(uint8_t,uint8_t sf,float bw,uint8_t,
                                  uint32_t* rx,uint32_t* sleep) {
@@ -61,6 +61,8 @@ struct Driver {
     return ok;
   }
   void setRxBoostedGainMode(bool) {}
+  bool supportsRxPowerSaving() const { return false; }
+  bool setRxPowerSaving(bool,uint32_t,uint32_t) { return true; }
 } radio_driver;
 @RETRY_DELAY@
 struct MyMesh {

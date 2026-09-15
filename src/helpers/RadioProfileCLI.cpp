@@ -12,6 +12,9 @@ constexpr size_t ImageSize = 24;
 const char* const ImagePath = "/radio_profiles";
 const char* const BackupPath = "/radio_profiles.bak";
 const char* const TempPath = "/radio_profiles.tmp";
+// Never considered a boot-time committed image. Losing power before the
+// acknowledgement leaves the previous saved radio untouched.
+const char* const ReplyPath = "/radio_profiles.reply";
 uint32_t checksum(const uint8_t* p, size_t n) {
   uint32_t crc = 0xffffffffU;
   while (n--) {
@@ -91,6 +94,11 @@ bool RadioProfileCLI::writeImage(const char* path, const uint8_t* bytes, size_t 
 }
 
 bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, RadioCrossMode cross) {
+  return prepareSavedImage(TempPath, config, preamble, cross) && commitSavedImage(TempPath);
+}
+
+bool RadioProfileCLI::prepareSavedImage(const char* path, const RadioProfileConfig& config,
+                                      uint16_t preamble, RadioCrossMode cross) {
   if (!fs_ || hold_) return false;
   uint8_t image[ImageSize] = {'R', '2', 1, (uint8_t)config.mode};
   memcpy(image + 4, &config.params.freq, 4);
@@ -102,12 +110,16 @@ bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, 
   image[19] = reply_setting_;
   const uint32_t crc = checksum(image, ImageSize - 4);
   memcpy(image + ImageSize - 4, &crc, 4);
-  if (!writeImage(TempPath, image, sizeof(image))) return false;
+  return writeImage(path, image, sizeof(image));
+}
+
+bool RadioProfileCLI::commitSavedImage(const char* path) {
+  if (!fs_ || hold_) return false;
   if (fs_->exists(ImagePath)) {
     if (fs_->exists(BackupPath) && !fs_->remove(BackupPath)) return false;
     if (!fs_->rename(ImagePath, BackupPath)) return false;
   }
-  if (!fs_->rename(TempPath, ImagePath)) {
+  if (!fs_->rename(path, ImagePath)) {
     if (fs_->exists(BackupPath) && !fs_->rename(BackupPath, ImagePath)) hold_ = true;
     return false;
   }
@@ -159,6 +171,7 @@ bool RadioProfileCLI::savePrimaryPreamble(uint16_t symbols) {
   if (symbols && (symbols < 8 || symbols > RadioProfiles::MaxPreamble)) return false;
   if (!radio_ || !radio_->profiles()) return symbols == 0;
   if (symbols == primary_preamble_) return true;
+  if (hasReplyMutation()) return false;
   if (!save(saved_, symbols, cross_)) return false;
   primary_preamble_ = symbols;
   return true;
@@ -184,11 +197,73 @@ void RadioProfileCLI::publish() {
   radio_->profiles()->setSecondary(temp_active_ ? temporary_ : saved_, temp_active_);
 }
 
+bool RadioProfileCLI::stageRemoteMutation(RemoteMutation kind, const RadioProfileConfig& config,
+                                         uint32_t duration_ms, uint8_t delete_mask) {
+  if (hasReplyMutation()) return false;
+  remote_mutation_ = kind;
+  ++remote_generation_;
+  remote_config_ = config;
+  remote_duration_ms_ = duration_ms;
+  remote_start_ms_ = millis() + 2000;
+  remote_delete_mask_ = delete_mask;
+  remote_delivered_ = false;
+  remote_commit_retry_ms_ = 0;
+  return true;
+}
+
+bool RadioProfileCLI::finishReplyMutation(bool delivered) {
+  if (delivered) { remote_delivered_ = hasReplyMutation(); return true; }
+  const auto kind = remote_mutation_;
+  remote_mutation_ = RemoteMutation::None;
+  remote_delivered_ = false;
+  // This file was never committed, so cancellation needs no risky rollback of
+  // the only saved image. Failure to remove scratch cannot activate it at boot.
+  return (kind != RemoteMutation::Saved && kind != RemoteMutation::Off)
+      || !fs_ || !fs_->exists(ReplyPath) || fs_->remove(ReplyPath);
+}
+
+bool RadioProfileCLI::applyReplyMutation() {
+  const auto kind = remote_mutation_;
+  if ((kind == RemoteMutation::Saved || kind == RemoteMutation::Off)
+      && !commitSavedImage(ReplyPath)) return false;
+  remote_mutation_ = RemoteMutation::None;
+  remote_delivered_ = false;
+  if (kind == RemoteMutation::None) return true;
+  if (kind == RemoteMutation::Temporary) {
+    pending_temporary_ = remote_config_;
+    pending_duration_ms_ = remote_duration_ms_;
+    temp_start_ms_ = remote_start_ms_;  // waiting never extends the hard lease
+    temp_pending_ = true;
+  } else if (kind == RemoteMutation::Saved) {
+    saved_ = remote_config_;
+    publish_pending_ = true; publish_after_ms_ = millis();
+  } else if (kind == RemoteMutation::DeleteTemp) {
+    for (unsigned i = 0; i < 4; ++i) if (remote_delete_mask_ & (1U << i)) {
+      if (schedules_[4+i].started) { temp_active_ = false; temp_remaining_ms_ = 0; }
+      schedules_[4+i] = {};
+    }
+  } else {
+    if (kind == RemoteMutation::Off) { saved_ = {}; schedule_retry_ms_ = 0; }
+    temp_pending_ = temp_active_ = false; temp_remaining_ms_ = 0;
+    for (auto& s : schedules_) if (kind == RemoteMutation::Off || s.temporary) s = {};
+  }
+  // loop() owns publishing, after all completion/failure callbacks have
+  // returned and Dispatcher no longer owns either response packet.
+  return true;
+}
+
 void RadioProfileCLI::loop() {
   if (!radio_ || !radio_->profiles()) return;
   const uint32_t now = millis(), elapsed = now - last_ms_;
   last_ms_ = now;
-  if (temp_pending_ && (int32_t)(now - temp_start_ms_) >= 0) {
+  remote_commit_retry_ms_ = elapsed >= remote_commit_retry_ms_ ? 0 : remote_commit_retry_ms_ - elapsed;
+  if (remote_delivered_ && !remote_commit_retry_ms_ && !applyReplyMutation()) {
+    // Keep the accepted operation pending and the old channel live if the
+    // post-ACK atomic rename fails. Never report/apparently apply an unsaved
+    // tuple, and avoid a hot storage retry loop.
+    remote_commit_retry_ms_ = 1000;
+  }
+  if (!hasReplyMutation() && temp_pending_ && (int32_t)(now - temp_start_ms_) >= 0) {
     temporary_ = pending_temporary_;
     const uint32_t late = now - temp_start_ms_;
     temp_remaining_ms_ = late < pending_duration_ms_ ? pending_duration_ms_ - late : 0;
@@ -207,7 +282,7 @@ void RadioProfileCLI::loop() {
     }
   }
   schedule_retry_ms_ = elapsed >= schedule_retry_ms_ ? 0 : schedule_retry_ms_ - elapsed;
-  while (!schedule_retry_ms_) {
+  while (!schedule_retry_ms_ && !hasReplyMutation()) {
     Schedule* next = nullptr;
     for (auto& s : schedules_) {
       if (s.active && !s.temporary && epoch >= s.start && (!next || s.start < next->start)) next = &s;
@@ -222,7 +297,7 @@ void RadioProfileCLI::loop() {
     saved_ = next->config; *next = {};
   }
   for (auto& s : schedules_) {
-    if (!s.active || !s.temporary || s.started || epoch < s.start || temp_active_ || temp_pending_) continue;
+    if (!s.active || !s.temporary || s.started || epoch < s.start || temp_active_ || temp_pending_ || hasReplyMutation()) continue;
     temporary_ = s.config;
     temp_remaining_ms_ = remainingMillis(s.end_ms, now);
     const uint32_t epoch_left = (s.end - epoch) * 1000UL;
@@ -303,7 +378,7 @@ void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProf
   appendChirpWarning(reply, capacity, preview);
 }
 
-bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) {
+bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, bool remote_origin) {
   if (handleCarrierWaveCommand(radio_, command, reply, capacity)) return true;
   const char* text = command;
   enum { Get, Set, Delete } verb = Get;
@@ -328,6 +403,13 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
   if (!base && !temporary && !scheduled && !crossing && !replies && !status && !scan && !timing) return false;
   if (!radio_ || !radio_->profiles()) { snprintf(reply, capacity, "Error: radio profiles unsupported"); return true; }
   if (command == text && *args && verb == Get && (temporary || base)) verb = Set;
+  if (remote_origin && !remote_command_
+      && (((base || temporary) && verb == Set) || (scheduled_temp && verb == Delete))) {
+    snprintf(reply, capacity, "Error: this role requires local USB for radio2 changes"); return true;
+  }
+  if (hasReplyMutation() && verb != Get) {
+    snprintf(reply, capacity, "Error: radio acknowledgement pending"); return true;
+  }
   if (replies) {
     const auto* p = radio_->profiles();
     if (verb == Get && !*args) {
@@ -401,6 +483,11 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
   }
   if (status) {
     if (verb != Get || *args) { snprintf(reply, capacity, "Error: radio2.status is read-only"); return true; }
+    if (hasReplyMutation()) {
+      snprintf(reply, capacity, "> radio2 change pending %s; previous channel retained",
+          remote_delivered_ ? "storage commit (retrying)" : "reply transmission");
+      return true;
+    }
     const auto& p = *radio_->profiles();
     snprintf(reply, capacity, "> %s; RX=%lu,%lu TX=%lu,%lu switches=%lu errors=%lu max=%luus preamble=%u,%u",
         modeName(p.secondary.mode), (unsigned long)p.rx_packets[0], (unsigned long)p.rx_packets[1],
@@ -416,8 +503,15 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     return true;
   }
   if ((base || temporary) && verb == Set && !strcmp(args, "off")) {
-    if (base && !save({}, primary_preamble_, cross_)) {
+    if (base && !(remote_command_ ? prepareSavedImage(ReplyPath, {}, primary_preamble_, cross_)
+                                 : save({}, primary_preamble_, cross_))) {
       snprintf(reply, capacity, "Error: settings could not be saved"); return true;
+    }
+    if (remote_command_) {
+      stageRemoteMutation(base ? RemoteMutation::Off : RemoteMutation::TempOff);
+      snprintf(reply, capacity, "OK - %s after reply", !base && saved_.mode != RadioProfileMode::Off
+          ? "saved radio2 restored" : "single radio");
+      return true;
     }
     if (base) { saved_ = {}; schedule_retry_ms_ = 0; }
     temp_pending_ = temp_active_ = false; temp_remaining_ms_ = 0;
@@ -433,6 +527,10 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     }
     const unsigned first = scheduled_temp ? 4 : 0;
     if (verb == Delete) {
+      if (remote_command_ && scheduled_temp) {
+        stageRemoteMutation(RemoteMutation::DeleteTemp, {}, 0, index ? 1U << (index - 1) : 15);
+        snprintf(reply, capacity, "OK - schedule cleared after reply"); return true;
+      }
       if (!scheduled_temp) schedule_retry_ms_ = 0;
       for (unsigned i = 0; i < 4; ++i) if (!index || index == i + 1) {
         if (schedules_[first+i].started) {
@@ -517,17 +615,25 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity) 
     for (const auto& s : schedules_) if (s.active && s.temporary) {
       snprintf(reply, capacity, "Error: clear tempradioat2 schedules first"); return true;
     }
-    pending_temporary_ = config; pending_duration_ms_ = minutes * 60000UL;
-    temp_start_ms_ = millis() + 2000; temp_pending_ = true;
+    if (remote_command_) stageRemoteMutation(RemoteMutation::Temporary, config, minutes * 60000UL);
+    else {
+      pending_temporary_ = config; pending_duration_ms_ = minutes * 60000UL;
+      temp_start_ms_ = millis() + 2000; temp_pending_ = true;
+    }
     // An existing session remains active until the new request can take over.
     snprintf(reply, capacity, "OK - tempradio2 %lud%luh%lum (%lu min); preamble=%u",
         (unsigned long)(minutes/1440), (unsigned long)(minutes/60%24),
         (unsigned long)(minutes%60), (unsigned long)minutes, preview.preamble(1, 32));
-  } else if (save(config, primary_preamble_, cross_)) {
-    saved_ = config;
-    publish_pending_ = true; publish_after_ms_ = millis() + 2000;
-    publish();
-    snprintf(reply, capacity, "OK - radio2 %s; preamble=%u", modeName(config.mode), preview.preamble(1, 32));
+  } else if (remote_command_ ? prepareSavedImage(ReplyPath, config, primary_preamble_, cross_)
+                            : save(config, primary_preamble_, cross_)) {
+    if (remote_command_) stageRemoteMutation(RemoteMutation::Saved, config);
+    else {
+      saved_ = config;
+      publish_pending_ = true; publish_after_ms_ = millis() + 2000;
+      publish();
+    }
+    snprintf(reply, capacity, "OK - radio2 %s%s; preamble=%u", modeName(config.mode),
+        remote_command_ ? " pending after reply" : "", preview.preamble(1, 32));
   } else snprintf(reply, capacity, "Error: settings could not be saved");
   if (!strncmp(reply, "OK", 2)) appendChirpWarning(reply, capacity, preview);
   return true;

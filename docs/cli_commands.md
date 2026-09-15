@@ -24,6 +24,15 @@ The first word of a command is case-insensitive, so `set`, `Set`, and `SET`
 are equivalent, as are `get`, `Get`, and the other command verbs. The case of
 arguments such as node names, passwords, and keys is left unchanged.
 
+Repeater retries carrying the same logical request ID and original command
+bytes reuse the cached result, even when command parsing trims whitespace or
+splits arguments in place. Changing the timestamp alone does not execute the
+operation again. Normal authentication and stale-request checks still apply.
+Deferred commands and host-service replies remain bound to the full authenticated
+public key, even if permission changes move ACL entries. Removing or revoking
+the requester cancels pending execution; a running `setperm` can still acknowledge
+its own completed change to the original sender.
+
 Use the site search or your browser's Find command with everyday wording such
 as **tx retries**, **retry attempts**, **serial logging**, or **tx power**.
 **Search terms** below are alternative wording to help find a command, not
@@ -1216,6 +1225,10 @@ settings use a safe effective power without replacing the saved preference.
 
 **Notes:**
 - `tempradio` is not saved to preferences and clears on reboot.
+- On repeaters, remote `tempradio` and `normalradio` wait for their exact reply
+  copies to finish, with at least one transmitted. This also covers the `set`
+  alias, case-insensitive verbs, and client correlation prefixes. Failed replies
+  cancel an unconfirmed temporary handoff; hard lease expiry still takes priority.
 - `normalradio` cancels pending and active temporary-radio windows, then
   restores the saved radio tuple after its CLI reply has drained on the
   current channel. Permanent `radioat` entries are not removed.

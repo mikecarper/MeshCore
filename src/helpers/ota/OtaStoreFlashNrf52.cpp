@@ -562,10 +562,13 @@ void OtaStoreFlashNrf52::checkpoint() {
 
 // Re-attach to a container already staged in flash (after a reboot), without erasing. The container is
 // bottom-aligned (begin: start = (ceiling - total) & ~(PG-1)) and flash is memory-mapped, so scan page
-// starts from just below that ceiling down to the app end for MOTA_MAGIC with a self-consistent total; adopt
-// the first match (highest address = most recent for the common single-container case). The manager then
-// parses the loaded manifest and validates geometry/root, so a stale leftover is rejected there.
+// starts from just below that ceiling down to the app end for MOTA_MAGIC with a self-consistent total.
+// Address ordering does not establish age: an old small container can mask a newer larger checkpoint.
 bool OtaStoreFlashNrf52::reopen() {
+  return reopenFor(nullptr, 0);
+}
+
+bool OtaStoreFlashNrf52::reopenFor(const uint8_t* want_mid, uint32_t expected_target) {
   // A retained-SRAM suffix cannot survive a power cycle or app restart as a
   // resumable store. Reset all in-memory split state and adopt only a complete
   // flash span whose advertised total fits before the selected ceiling.
@@ -574,6 +577,10 @@ bool OtaStoreFlashNrf52::reopen() {
   const uint32_t stage_ceiling = ota_nrf52_effective_stage_ceiling();
   uint32_t app_end;
   if (!protected_app_end(app_base, stage_ceiling, app_end)) return false;
+  uint32_t selected_start = 0;
+  uint32_t selected_total = 0;
+  uint32_t selected_target = 0;
+  bool selected_bootloader = false;
   for (uint32_t start = align_down(stage_ceiling - PG, PG); start >= app_end; start -= PG) {
     const uint8_t* p = (const uint8_t*)(uintptr_t)start;
     if (memcmp(p, MOTA_MAGIC, 4) != 0) continue;
@@ -583,8 +590,10 @@ bool OtaStoreFlashNrf52::reopen() {
       continue;
     uint32_t want;   // must be valid + placed exactly where begin() would have staged it (same bounds fn)
     MotaManifest manifest;
-    const bool manifest_ok = mota_parse_manifest(p + 8u, MOTA_MFL, manifest);
-    const bool bootloader = manifest_ok && manifest.is_bootloader();
+    if (!mota_parse_manifest(p + 8u, MOTA_MFL, manifest)) continue;
+    const uint64_t payload_off = 8u + (uint64_t)MOTA_MFL + (uint64_t)manifest.block_count * 4u;
+    if (payload_off > PG || payload_off + manifest.payload_size + 5u != total) continue;
+    const bool bootloader = manifest.is_bootloader();
     if (bootloader) {
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
       SelfFwInfo fi;
@@ -600,29 +609,39 @@ bool OtaStoreFlashNrf52::reopen() {
                    total, app_base, app_end, stage_ceiling, want) || want != start) {
       continue;
     }
-    _write_start = start;
-    _stage_ceiling = stage_ceiling;
-    _flash_len = stage_ceiling - start;
-    _ram_len = 0;
-    _total = total;
-    _hybrid = false;
-    _preserve_payload_pages = true;
-    memcpy(_meta_page, p, PG);                  // load page 0 (header+manifest+leaves) into RAM to continue
-    // The tail is deferred until finalize and can still hold old flash bytes.
-    // Reconstruct only fixed framing; the manager must verify the manifest and
-    // rehash every present payload block before the container becomes complete.
-    memcpy(_trailer, MOTA_TRAILER, sizeof(_trailer));
-    _pay_idx = 0;
-    _flushed = false;
-    _io_ok = true;
-    _planned_bootloader = bootloader;
-    _planned_total = bootloader ? total : 0u;
-    _planned_start = bootloader ? start : 0u;
-    OTA_DBG("OTA flash: reopen total=%u start=%08x ceiling=%08x\n",
-            (unsigned)total, (unsigned)start, (unsigned)stage_ceiling);
-    return true;
+    if (want_mid && (memcmp(manifest.merkle_root, want_mid, 4) != 0 ||
+        (expected_target != 0 && manifest.target_id != expected_target))) continue;
+    // Without an explicit MID, every valid candidate participates in ambiguity
+    // detection; neither target nor firmware version proves which was newest.
+    if (selected_start != 0) return false;
+    selected_start = start;
+    selected_total = total;
+    selected_target = manifest.target_id;
+    selected_bootloader = bootloader;
   }
-  return false;
+  if (selected_start == 0 ||
+      (expected_target != 0 && selected_target != expected_target)) return false;
+  _write_start = selected_start;
+  _stage_ceiling = stage_ceiling;
+  _flash_len = stage_ceiling - selected_start;
+  _ram_len = 0;
+  _total = selected_total;
+  _hybrid = false;
+  _preserve_payload_pages = true;
+  memcpy(_meta_page, (const uint8_t*)(uintptr_t)selected_start, PG);
+  // The tail is deferred until finalize and can still hold old flash bytes.
+  // Reconstruct only fixed framing; the manager must verify the manifest and
+  // rehash every present payload block before the container becomes complete.
+  memcpy(_trailer, MOTA_TRAILER, sizeof(_trailer));
+  _pay_idx = 0;
+  _flushed = false;
+  _io_ok = true;
+  _planned_bootloader = selected_bootloader;
+  _planned_total = selected_bootloader ? selected_total : 0u;
+  _planned_start = selected_bootloader ? selected_start : 0u;
+  OTA_DBG("OTA flash: reopen total=%u start=%08x ceiling=%08x\n",
+          (unsigned)_total, (unsigned)_write_start, (unsigned)stage_ceiling);
+  return true;
 }
 
 } // namespace ota

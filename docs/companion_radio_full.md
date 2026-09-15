@@ -17,6 +17,11 @@ The full Companion is deliberately not a LoRa OTA destination: it has no
 firmware staging store, refuses `ota install`, and never advertises its own
 firmware as an mOTA image.
 
+Preference changes through the Companion protocol, WebConfig, or USB terminal
+report a storage error if saving fails, and restore their previous values.
+Settings that also change GPS or radio power-saving state restore that state;
+a busy radio rollback remains pending for recovery instead of reporting success.
+
 | Capability | ESP32 full | nRF52 full |
 | --- | --- | --- |
 | USB Binary Companion | Yes | Yes |
@@ -399,9 +404,24 @@ message transmissions are not canceled. Queued frames are retained, not a
 resumable command session, and IP matching is not authentication. Turning WiFi
 off clears both queues. Stored message history is unaffected.
 
+Ethernet also retains complete queued frames for the same IP. Unlike WiFi, it
+has no spare backlog buffer: a different IP cancels the old owner's pending
+operations and discards its queued frames before the new socket is exposed.
+This keeps Ethernet's existing four-frame memory limit. On both transports, a
+live same-IP replacement preserves pending operations; an observed disconnect,
+disabled transport, or rejected input cancels them. Already queued frames can
+still be replayed on a same-IP reconnect, but canceled operations are not resumed.
+
 Partial TCP writes retain the unsent bytes without interleaving later frames.
 After a reconnect, an incomplete frame restarts from its header; the new TCP
 connection must not receive only the old connection's trailing bytes.
+
+Binary WiFi/Ethernet frames must declare 1–176 payload bytes. Illegal lengths
+close the connection immediately, without waiting for the announced body or
+executing a truncated command. An incomplete binary header or payload has a
+five-second deadline once reception starts; reconnect to send a fresh frame.
+Ethernet raw-line terminal input has no typing deadline, but an overlong line
+also closes the connection instead of executing its prefix.
 
 USB Binary output is queued as complete length-prefixed frames. Temporary CDC
 or UART backpressure pauses the contact stream; a frame may drain through a

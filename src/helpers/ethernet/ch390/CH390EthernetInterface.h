@@ -13,6 +13,9 @@ class CH390EthernetInterface : public SerialEthernetInterface {
   WiFiServer server;
   WiFiClient client;
 
+  protected:
+    void disconnectClient() override;
+
   public:
     CH390EthernetInterface(){
       _isConnected = false;

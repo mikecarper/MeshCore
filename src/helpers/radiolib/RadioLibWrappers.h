@@ -211,6 +211,7 @@ public:
   uint32_t receiveProfileGeneration() const override { return _profile_generation; }
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile) override;
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile, bool reply_rx_override) override;
+  mesh::RadioParamApplyResult tryRestoreCodingRate(uint8_t cr) override;
   mesh::RadioParamApplyResult trySetPrimaryParams(const mesh::RadioProfileParams& params,
       bool temporary, const uint32_t* timings = nullptr) override;
   uint16_t profilePreamble(uint8_t profile) const override {

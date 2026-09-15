@@ -61,6 +61,15 @@ public:
   // OtaManager then reads + parses the stored manifest to recompute geometry and resume the fetch.
   virtual bool reopen() { return false; }
 
+  // Resume a selected image. Single-container stores can use reopen() and let
+  // the manager validate MID/target. Raw stores that may retain several headers
+  // must select before adoption: a physical address is not a creation timestamp.
+  // A null MID means automatic resume; refuse ambiguous candidates instead of
+  // guessing which capture is newest. A zero target is an explicit wildcard.
+  virtual bool reopenFor(const uint8_t* want_mid, uint32_t expected_target) {
+    (void)want_mid; (void)expected_target; return reopen();
+  }
+
   // External host stores can disappear temporarily while retaining their file.
   // Preserve the selected fetch on an I/O failure until that link reconnects.
   virtual bool canReconnect() const { return false; }

@@ -124,15 +124,40 @@ void Dispatcher::updateTxBudget() {
   }
 }
 
-void Dispatcher::restoreOutboundTxOverrides() {
-  if (outbound_restore_cr != 0) {
-    _radio->setCodingRate(outbound_restore_cr);
+bool Dispatcher::restoreOutboundTxOverrides() {
+  if (!outbound_restore_cr) return true;
+  const uint32_t now = _ms->getMillis();
+  if (outbound_restore_retry_at && (int32_t)(now - outbound_restore_retry_at) < 0) return false;
+  // A scanner or an intervening settings change may have selected another
+  // profile since the failed restore. Restore its configured CR, not a stale
+  // default from the preceding packet.
+  const uint8_t cr = _radio->profiles()
+      ? _radio->profiles()->params(_radio->receiveProfile()).cr : getDefaultTxCodingRate();
+  const auto result = _radio->tryRestoreCodingRate(cr >= 4 && cr <= 8 ? cr : outbound_restore_cr);
+  if (result == RadioParamApplyResult::APPLIED) {
     outbound_restore_cr = 0;
+    outbound_restore_retry_at = outbound_restore_recovery_at = 0;
+    return true;
   }
+  outbound_restore_retry_at = now + 250;
+  if (result == RadioParamApplyResult::BUSY) {
+    // A legitimate RX/preamble/duty-cycle sleep is not a failed modulation
+    // write. Let receive service drain it without forcing a radio reset.
+    outbound_restore_recovery_at = 0;
+    return false;
+  }
+  if (!outbound_restore_recovery_at) outbound_restore_recovery_at = now + RADIO_PREPARE_BUSY_GRACE_MS;
+  else if ((int32_t)(now - outbound_restore_recovery_at) >= 0) {
+    _err_flags |= ERR_EVENT_RADIO_WATCHDOG;
+    _radio->recoverRadio(true);
+    outbound_restore_recovery_at = now + RADIO_PREPARE_BUSY_GRACE_MS;
+  }
+  return false;
 }
 
 bool Dispatcher::startOutboundTransmit() {
   if (outbound == NULL) return false;
+  if (!restoreOutboundTxOverrides()) return false;
   if (!isPacketRadioCurrent(outbound)
       || _radio->prepareTransmitProfile(outbound->radio_profile,
           outbound->radio_reply && outbound->radio_reply_force) != RadioParamApplyResult::APPLIED) return false;
@@ -286,6 +311,12 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
     return true;
   }
 
+  if (outbound_restore_cr) {
+    const int32_t restore_delay = (int32_t)(outbound_restore_retry_at - now);
+    shortest_delay = restore_delay > 0 ? (uint32_t)restore_delay : 0;
+    found = true;
+  }
+
   uint32_t scheduled_for;
   if (_mgr->getNextOutboundTime(now, scheduled_for)) {
     int32_t signed_queue_delay = (int32_t)(scheduled_for - now);
@@ -294,7 +325,7 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
     if (signed_tx_delay > 0 && (uint32_t)signed_tx_delay > outbound_delay) {
       outbound_delay = (uint32_t)signed_tx_delay;
     }
-    shortest_delay = outbound_delay;
+    if (!found || outbound_delay < shortest_delay) shortest_delay = outbound_delay;
     found = true;
   }
 
@@ -384,6 +415,12 @@ void Dispatcher::loop() {
         return;
       }
       if (!millisHasNowPassed(outbound_radio_retry_at)) return;
+      if (!restoreOutboundTxOverrides()) {
+        // Release a failed retained retry; restoration itself remains pending
+        // while normal RX/watchdog service and future queued work continue.
+        failOutboundTransmit();
+        return;
+      }
       const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile,
           outbound->radio_reply && outbound->radio_reply_force);
       if (prepared == RadioParamApplyResult::BUSY) {
@@ -799,6 +836,9 @@ bool Dispatcher::isTransmitChannelReady(const Packet* packet, uint32_t& retry_de
 
 void Dispatcher::checkSend() {
   if (_radio->isCarrierWaveActive()) return;
+  // Keep queued packets intact while recovering a failed per-packet CR
+  // override. RX processing and ordinary watchdogs continue in loop().
+  if (!restoreOutboundTxOverrides()) return;
   const uint32_t now = _ms->getMillis();
   if (ota_tx_airtime && now - ota_tx_finished_at >= ota::packetQuietTime(ota_tx_airtime, getOtaSpeedFactor())) {
     ota_tx_airtime = 0;

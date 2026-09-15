@@ -89,6 +89,9 @@ assert re.search(
 )
 assert re.search(
     r"#ifdef WIFI_SSID\s+"
+    # Registering a callback does not start the WiFi stack. It must remain
+    # available for session cleanup, while startup stays behind the boot gate.
+    r"wifi_interface\.setSessionChangedCallback\(cancelCompanionWiFiSession, nullptr\);\s+"
     r"#if defined\(COMPANION_EXCLUSIVE_WIFI_BLE\)\s+"
     r"if \(companionTransportWiFiActiveAtBoot\(\)\) \{.*?"
     r"WiFi\.onEvent\(.*?startCompanionWiFi\(\);.*?"

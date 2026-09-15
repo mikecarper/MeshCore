@@ -25,7 +25,7 @@
 //
 // RX-safety: an ESP32 flash erase+write disables the XIP instruction cache and stalls code running from
 // flash (the dispatcher loop), exactly like the nRF52 page erase that starved the LoRa RX. So writes are
-// COALESCED to the 4 KB sector and each sector is programmed once. The meta region (header+manifest+
+// COALESCED to the 4 KB sector (revisited sectors are read-modify-written). The meta region (header+manifest+
 // leaves -- written all transfer long as blocks/leaves arrive, often out of order) is PINNED in RAM and
 // flushed at finalize() with the radio idle; the bulk payload streams through ONE sliding sector buffer,
 // flushing the sector it leaves behind (~1 flush per 4 KB, off the per-packet path). A brief stall still
@@ -49,6 +49,8 @@ class OtaStoreFlashEsp32 : public OtaStore {
     uint32_t image_size = 0;
     uint32_t meta_bytes = 0;
     uint32_t pay_size = 0;
+    uint8_t mid[4] = {};
+    uint32_t target = 0;
   };
 
   const esp_partition_t* _part = nullptr;    // inactive OTA slot (acquired in plan_layout/begin)
@@ -73,10 +75,10 @@ class OtaStoreFlashEsp32 : public OtaStore {
   // RX-safe staging buffers
   uint8_t* _meta = nullptr;                  // heap, sized per fetch: header+manifest+leaves(+full trailer)
   alignas(4) uint8_t _pay[SEC];              // one sliding payload sector (slot-sector aligned)
-  uint32_t _pay_sec = 0;                     // slot sector index currently in _pay (0 = none open)
+  uint32_t _pay_sec = 0;                     // slot sector index currently in _pay (valid if _pay_open)
   uint8_t  _trailer[5];
   uint32_t _meta_flush = 0;                  // whole-sector byte count to program for the meta buffer
-  uint32_t _pay_max_sec = 0;                 // highest payload slot-sector opened (out-of-order detection)
+  uint32_t _pay_seen_end = 0;                // exclusive highest opened sector; 0 = none seen this fetch
   bool     _pay_open = false;                // a sliding sector is currently buffered in _pay
   bool     _flushed = false;
   bool     _io_ok = true;                    // cleared if any flash erase/write/read fails
@@ -113,6 +115,7 @@ public:
   bool finalize() override;
   void checkpoint() override;   // persist meta(leaves) + open payload sector so a reboot can resume
   bool reopen() override;       // re-attach to a container already staged in the slot (scan + rebuild geometry)
+  bool reopenFor(const uint8_t* want_mid, uint32_t expected_target) override;
 
   // No contiguous RAM/mmap view: the staged container lives in the slot (split for FULL). The ESP32
   // apply path reads what it needs via read()/esp_partition_read instead of a data() pointer, so this

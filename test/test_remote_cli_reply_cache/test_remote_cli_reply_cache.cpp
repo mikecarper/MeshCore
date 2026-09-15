@@ -133,6 +133,27 @@ TEST(RemoteCliRequest, LogicalIdExtensionIsBackwardCompatible) {
       legacy, sizeof(legacy), 5, logical_id));
 }
 
+TEST(RemoteCliReplyCache, AuthoritativeReplyFlagIsTypedAndResetOnReuse) {
+  mesh::RemoteCliReplyCache cache;
+  uint8_t key[PUB_KEY_SIZE] = {};
+  bool authoritative = false;
+  ASSERT_TRUE(cache.remember(key, 1, 2, "ab|OK", true));
+  ASSERT_TRUE(cache.lookup(key, 1, 2, nullptr, &authoritative));
+  EXPECT_TRUE(authoritative);
+  ASSERT_TRUE(cache.remember(key, 1, 2, "ordinary reply"));
+  ASSERT_TRUE(cache.lookup(key, 1, 2, nullptr, &authoritative));
+  EXPECT_FALSE(authoritative);
+  ASSERT_TRUE(cache.remember(key, 1, 2, "pending", true));
+  for (unsigned i=2; i<=mesh::RemoteCliReplyCache::ENTRY_COUNT+1; ++i) {
+    ASSERT_TRUE(cache.remember(key, i, 2, "replacement"));
+  }
+  ASSERT_TRUE(cache.lookup(key, mesh::RemoteCliReplyCache::ENTRY_COUNT+1, 2, nullptr, &authoritative));
+  EXPECT_FALSE(authoritative);
+  authoritative = true;
+  EXPECT_FALSE(cache.lookup(key, 1234, 2, nullptr, &authoritative));
+  EXPECT_FALSE(authoritative);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

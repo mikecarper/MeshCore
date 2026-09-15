@@ -36,7 +36,8 @@ public:
   }
 
   bool remember(const uint8_t* sender_pub_key, uint32_t request_timestamp,
-                uint32_t command_fingerprint, const char* response) {
+                uint32_t command_fingerprint, const char* response,
+                bool authoritative_reply = false) {
     if (sender_pub_key == NULL || response == NULL) return false;
 
     Entry* target = NULL;
@@ -66,18 +67,21 @@ public:
     memcpy(target->response, response, response_len);
     target->response[response_len] = 0;
     target->valid = true;
+    target->authoritative_reply = authoritative_reply;
     return true;
   }
 
   bool lookup(const uint8_t* sender_pub_key, uint32_t request_timestamp,
               uint32_t command_fingerprint,
-              const char** response = NULL) const {
+              const char** response = NULL, bool* authoritative_reply = NULL) const {
+    if (authoritative_reply) *authoritative_reply = false;
     for (size_t i = 0; i < ENTRY_COUNT; ++i) {
       if (!entryMatches(entries_[i], sender_pub_key, request_timestamp,
                         command_fingerprint)) {
         continue;
       }
       if (response != NULL) *response = entries_[i].response;
+      if (authoritative_reply) *authoritative_reply = entries_[i].authoritative_reply;
       return true;
     }
     return false;
@@ -106,6 +110,7 @@ public:
 private:
   struct Entry {
     bool valid;
+    bool authoritative_reply;
     uint8_t sender_pub_key[PUB_KEY_SIZE];
     uint32_t request_timestamp;
     uint32_t command_fingerprint;

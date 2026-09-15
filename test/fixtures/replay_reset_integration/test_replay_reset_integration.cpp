@@ -93,7 +93,8 @@ struct FakeRNG {
 struct CountingReplyCache {
   bool hit;
   int& calls;
-  bool lookup(const uint8_t*, uint32_t, uint32_t, const char**) {
+  bool lookup(const uint8_t*, uint32_t, uint32_t, const char**, bool* authoritative) {
+    *authoritative = false;
     ++calls;
     return hit;
   }
@@ -108,8 +109,15 @@ public:
   int clock_sync_mesh_suppressed_by = CLOCK_SYNC_MESH_SUPPRESS_NONE;
   int clock_sync_last_result = 0;
   mesh::ReplayResetNonce replay_reset_nonce;
-  struct { bool pending = false; int client_index = -1; } deferred_cli_command;
+  struct { bool pending = false; uint8_t client_pub_key[32] = {}; } deferred_cli_command;
   int mailbox_clears = 0;
+
+  void queueFor(int index) {
+    deferred_cli_command.pending = true;
+    std::memset(deferred_cli_command.client_pub_key, 0, 32);
+    if (index >= 0) std::memcpy(deferred_cli_command.client_pub_key,
+                                acl.clients[index].id.pub_key, 32);
+  }
 
   FakeClock* getRTCClock() { return &clock; }
   FakeRNG* getRNG() { return &rng; }
@@ -254,7 +262,7 @@ static void failure_is_not_live_and_token_is_consumed() {
   auto* admin = &value.acl.clients[0];
   const auto confirm = challenge(value, admin, value.acl.clients[1]);
   value.acl.fail_persist = true;
-  value.deferred_cli_command = {true, 1};
+  value.queueFor(1);
   CHECK(contains(run(value, admin, confirm), "no live timestamps changed"));
   CHECK(value.acl.calls == 1 && value.acl.clients[1].last_timestamp > NOW);
   CHECK(value.acl.clients[1].observed_path_pending && value.deferred_cli_command.pending);
@@ -295,13 +303,13 @@ static void every_replay_family_preserves_receive_floor() {
 
 static void pending_usb_affected_and_unrelated_mailboxes() {
   auto value = populated();
-  value.deferred_cli_command = {true, 2};
+  value.queueFor(2);
   run(value, nullptr, request(value.acl.clients[1]), true);
   CHECK(value.deferred_cli_command.pending && value.mailbox_clears == 0);
-  value.deferred_cli_command = {true, 1};
+  value.queueFor(1);
   run(value, nullptr, request(value.acl.clients[1]), true);
   CHECK(!value.deferred_cli_command.pending && value.mailbox_clears == 1);
-  value.deferred_cli_command = {true, -1};
+  value.queueFor(-1);
   run(value, nullptr, "replay reset all CONFIRM", true);
   CHECK(!value.deferred_cli_command.pending && value.mailbox_clears == 2);
 }
@@ -310,7 +318,7 @@ static void remote_keeps_its_executing_mailbox() {
   auto value = populated();
   auto* admin = &value.acl.clients[0];
   const auto confirm = challenge(value, admin, *admin);
-  value.deferred_cli_command = {true, 0};
+  value.queueFor(0);
   CHECK(contains(run(value, admin, confirm), "OK"));
   CHECK(value.deferred_cli_command.pending && value.mailbox_clears == 0);
 }

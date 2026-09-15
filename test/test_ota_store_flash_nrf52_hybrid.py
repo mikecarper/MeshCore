@@ -30,6 +30,8 @@ class OtaStoreFlashNrf52HybridTest(unittest.TestCase):
                     "-Wall",
                     "-Wextra",
                     "-Werror",
+                    "-Wno-unused-parameter",  # shared board interfaces and host mocks
+                    "-Wno-sign-compare",      # existing Stream mock
                     "-DNRF52_PLATFORM=1",
                     "-DOTA_FLASH_STORE=1",
                     "-DOTA_HYBRID_RAM_STORE=1",
@@ -37,7 +39,11 @@ class OtaStoreFlashNrf52HybridTest(unittest.TestCase):
                     "-DMOTA_NRF52_TEST_LAYOUT_STAGE_CEILING=0x000ED000u",
                     f"-I{FIXTURE / 'mocks'}",
                     f"-I{ROOT / 'src'}",
+                    f"-I{ROOT / 'test/mocks'}",
                     str(FIXTURE / "test_ota_store_flash_nrf52_hybrid.cpp"),
+                    str(ROOT / "src/helpers/ota/MotaContainer.cpp"),
+                    str(ROOT / "src/helpers/ota/MerkleTree.cpp"),
+                    str(ROOT / "src/Utils.cpp"),
                     "-o",
                     str(binary),
                 ],
@@ -51,10 +57,10 @@ class OtaStoreFlashNrf52HybridTest(unittest.TestCase):
             )
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertIn(
-                "10 OtaStoreFlashNrf52 hybrid lifecycle checks passed",
+                "11 OtaStoreFlashNrf52 hybrid lifecycle checks passed",
                 checked.stdout,
             )
-            self.assertEqual(checked.stdout.count("PASS:"), 10)
+            self.assertEqual(checked.stdout.count("PASS:"), 11)
 
 
 if __name__ == "__main__":

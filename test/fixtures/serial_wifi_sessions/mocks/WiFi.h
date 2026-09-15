@@ -24,6 +24,7 @@ struct MockSocket {
   IPAddress address;
   bool connected = true;
   size_t write_limit = 0;
+  size_t read_limit = std::numeric_limits<size_t>::max();
   size_t read_count = 0;
   std::vector<uint8_t> sent;
   std::deque<uint8_t> received;
@@ -41,6 +42,7 @@ public:
   IPAddress remoteIP() const { return _socket ? _socket->address : IPAddress(); }
   int available() const { return connected() ? int(_socket->received.size()) : 0; }
   size_t read(uint8_t* dest, size_t size) {
+    if (_socket) size = std::min(size, _socket->read_limit);
     size_t read = 0;
     while (connected() && read < size && !_socket->received.empty()) {
       dest[read++] = _socket->received.front();

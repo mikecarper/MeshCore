@@ -97,6 +97,9 @@ public:
    * \returns true if the radio accepted the coding rate.
   */
   virtual bool setCodingRate(uint8_t cr) { return false; }
+  virtual RadioParamApplyResult tryRestoreCodingRate(uint8_t cr) {
+    return setCodingRate(cr) ? RadioParamApplyResult::APPLIED : RadioParamApplyResult::FAILED;
+  }
 
   /**
    * \returns true if the previous 'startSendRaw()' completed successfully.
@@ -322,7 +325,9 @@ class Dispatcher {
   bool scheduleOutboundRadioRetry();
   bool isTransmitChannelReady(const Packet* packet, uint32_t& retry_delay);
   void failOutboundTransmit();
-  void restoreOutboundTxOverrides();
+  bool restoreOutboundTxOverrides();
+  uint32_t outbound_restore_retry_at = 0;
+  uint32_t outbound_restore_recovery_at = 0;
   void updateTxBudget();
 
 protected:

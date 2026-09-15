@@ -36,6 +36,10 @@ public:
   void clear() { _packet = _copy = nullptr; _armed = _succeeded = false; }
 
   bool waiting() const { return _armed && (_packet || _copy); }
+  bool succeeded() const { return _armed && _succeeded; }
+  bool contains(const void* packet) const {
+    return _armed && packet && (packet == _packet || packet == _copy);
+  }
 
   bool complete(const void* packet) {
     if (!remove(packet)) return false;

@@ -87,6 +87,7 @@ public:
   bool finalize() override;
   void checkpoint() override;   // persist page 0 (leaves) + the open payload page so a reboot can resume
   bool reopen() override;       // re-attach to a container already staged in flash (scan for it)
+  bool reopenFor(const uint8_t* want_mid, uint32_t expected_target) override;
 
   // Mark a verified application package approved. For a hybrid package this
   // also prepares (but does not yet publish) the reset-retained authorization;

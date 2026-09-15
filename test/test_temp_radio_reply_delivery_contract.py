@@ -52,7 +52,7 @@ class TempRadioReplyDeliveryContractTest(unittest.TestCase):
             delivery,
         )
 
-    def test_only_successful_parameterized_temp_radio_requests_track_reply(self):
+    def test_accepted_mutations_use_typed_identity_not_raw_command_spelling(self):
         source = SOURCE.read_text(encoding="utf-8")
         receive = function_body(
             source,
@@ -65,17 +65,16 @@ class TempRadioReplyDeliveryContractTest(unittest.TestCase):
             "bool MyMesh::onPeerPathRecv(",
         )
 
-        self.assertIn(
-            'strncmp(deferred_cli_command.command, "tempradio ", 10)', command
-        )
-        self.assertIn('strncmp(reply, "OK - temp params for ", 21)', command)
+        self.assertIn('primary_radio_mutation_generation != primary_mutation_before', command)
+        self.assertIn('replyMutationGeneration() != secondary_mutation_before', command)
+        self.assertNotIn('strncmp(deferred_cli_command.command, "tempradio ', command)
         self.assertIn("arms_temp_radio ? &queued_reply : NULL", command)
 
         # A packet-level retry can arrive after the success text was cached but
         # before the authoritative reply drains. It must not create a second,
         # untracked success packet either.
-        self.assertIn("const bool cached_temp_radio_success", receive)
-        suppress_start = receive.index("if (cached_temp_radio_success)")
+        self.assertIn("bool cached_authoritative_reply", receive)
+        suppress_start = receive.index("if (cached_authoritative_reply)")
         replay_start = receive.index("} else {", suppress_start)
         replay_end = receive.index(
             "} else if (deferred_cli_command.matches", replay_start

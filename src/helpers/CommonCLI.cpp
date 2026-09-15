@@ -1300,7 +1300,9 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
     _prefs->tx_delay_factor = constrain(_prefs->tx_delay_factor, 0, 2.0f);
     _prefs->direct_tx_delay_factor = constrain(_prefs->direct_tx_delay_factor, 0, 2.0f);
-    _prefs->airtime_factor = constrain(_prefs->airtime_factor, 0, 9.0f);
+    // Duty cycles down to 1% are accepted and persist factor 99, even though
+    // the legacy `set af` command retains its narrower input range.
+    _prefs->airtime_factor = constrain(_prefs->airtime_factor, 0, 99.0f);
     _prefs->freq = constrain(_prefs->freq, 150.0f, 2500.0f);
     _prefs->bw = isValidLoRaBandwidth(_prefs->bw) ? _prefs->bw : defaultLoRaBandwidth();
     _prefs->sf = constrain(_prefs->sf, 5, 12);
@@ -2470,7 +2472,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     mesh::cli::normalizeCommandVerb(command);
     if (mesh::wireless::control().handle(command, reply, 160, millis(),
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
-    if (_radio_profiles.handle(command, reply)) return;
+    if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
 #if defined(ENABLE_OTA)
     if (mesh::ota::handleSpeedCommand(command, reply, 160)) return;
 #endif

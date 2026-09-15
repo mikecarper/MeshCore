@@ -361,6 +361,8 @@ public:
   // resume and must match exactly. Re-parses the stored manifest, recomputes geometry, then incrementally
   // rehashes every staged payload block before continuing FETCHING the holes. A fully staged image also has
   // to reproduce the manifest Merkle root before it can become COMPLETE. Returns true if it adopted one.
+  // Raw-flash stores require a unique candidate: boot resume cannot guess age
+  // from header address, and explicit resume selects by MID/expected target.
   bool resumeStaged(const uint8_t* want_mid);
 
   // Explicit operator/debug re-adoption of one known MID without starting a network fetch. This installs
@@ -631,7 +633,7 @@ private:
     }
   }
   void setDigest(uint8_t out[4]) const;                   // sha2-256:4 over our served mids
-  bool blockPresent(uint32_t i) const;
+  bool readBlockPresent(uint32_t i, bool& present) const;
   bool storedLeavesRootMatches(FetchError& error) const;
   void beginStagedVerification();
   void verifyStagedStep();

@@ -44,10 +44,6 @@ bool ota_self_firmware(SelfFwInfo& out) {
   return true;
 }
 
-bool mota_parse_manifest(const uint8_t*, uint32_t, MotaManifest&) {
-  return false;
-}
-
 }  // namespace ota
 }  // namespace mesh
 
@@ -107,6 +103,20 @@ static std::vector<uint8_t> patterned_container(uint32_t total) {
   bytes[5] = static_cast<uint8_t>(total >> 8);
   bytes[6] = static_cast<uint8_t>(total >> 16);
   bytes[7] = static_cast<uint8_t>(total >> 24);
+  // Use real, parseable metadata so raw-flash candidate selection exercises
+  // the production parser instead of treating arbitrary page bytes as a header.
+  std::memset(bytes.data() + 8, 0, MOTA_MFL);
+  bytes[8] = MOTA_APP_FORMAT_VER;
+  bytes[8 + 2] = HASH_ALGO_SHA256;
+  wr_u32le(bytes.data() + 8 + 3, 0x12345678u);
+  wr_u32le(bytes.data() + 8 + 11, 0x80000u);
+  const uint32_t blocks = (total - 210u + 1027u) / 1028u;
+  const uint32_t payload_size = total - 210u - blocks * 4u;
+  CHECK((payload_size + 1023u) / 1024u == blocks);
+  wr_u32le(bytes.data() + 8 + 15, payload_size);
+  bytes[8 + 19] = 10;
+  wr_u32le(bytes.data() + 8 + 20, total); // distinct synthetic MID for each test capture
+  bytes[8 + 56] = CODEC_DETOOLS_SEQUENTIAL;
   return bytes;
 }
 
@@ -370,6 +380,59 @@ static void fresh_begin_after_reopen_does_not_retain_old_payload_bytes() {
   for (uint8_t byte : preceding) CHECK(byte == 0xFF);
 }
 
+static void stale_header_selection_is_explicit_and_unambiguous() {
+  using namespace mesh::ota;
+  for (int selection = 0; selection < 7; ++selection) {
+    reset_target_memory();
+    auto older = patterned_container(5547);
+    auto newer = patterned_container(20000);
+    if (selection == 3 || selection == 4)
+      std::memcpy(older.data() + 8 + 20, newer.data() + 8 + 20, 4);
+    if (selection == 3) wr_u32le(older.data() + 8 + 3, 0x12345679u);
+    uint32_t old_start, new_start;
+    {
+      OtaStoreFlashNrf52 store;
+      CHECK(store.begin(older.size()));
+      CHECK(store.write(0, older.data(), older.size()));
+      CHECK(store.finalize());
+      old_start = store.write_start();
+    }
+    {
+      OtaStoreFlashNrf52 store;
+      CHECK(store.begin(newer.size()));
+      CHECK(store.write(0, newer.data(), 1024));
+      store.checkpoint();
+      new_start = store.write_start();
+    }
+    CHECK(new_start < old_start);
+    if (selection == 5) *reinterpret_cast<uint8_t*>(old_start + 8) = 0;
+    if (selection == 6) wr_u32le(reinterpret_cast<uint8_t*>(old_start + 8 + 15), 1);
+    const auto* mapped_flash = reinterpret_cast<const uint8_t*>(FLASH_MAP_START);
+    const std::vector<uint8_t> snapshot(mapped_flash, mapped_flash + FLASH_MAP_SIZE);
+    OtaStoreFlashNrf52 resumed;
+    uint8_t unknown_mid[4] = {0};
+    const bool automatic = selection == 1 || selection == 5 || selection == 6;
+    const bool adopted = automatic ? resumed.reopen() :
+        resumed.reopenFor(selection == 2 ? unknown_mid : newer.data() + 8 + 20,
+                          0x12345678u);
+    CHECK(adopted == (selection == 0 || selection == 3 || selection >= 5));
+    CHECK(std::memcmp(snapshot.data(), mapped_flash, snapshot.size()) == 0);
+    if (adopted) {
+      CHECK(resumed.write_start() == new_start);
+      uint8_t prefix[1024];
+      CHECK(resumed.read(0, prefix, sizeof(prefix)));
+      CHECK(std::memcmp(prefix, newer.data(), sizeof(prefix)) == 0);
+    } else {
+      CHECK(resumed.staged_size() == 0);
+    }
+    if (selection == 3) {
+      OtaStoreFlashNrf52 wildcard;
+      CHECK(!wildcard.reopenFor(newer.data() + 8 + 20, 0));
+      CHECK(!wildcard.reopenFor(nullptr, 0x12345678u));
+    }
+  }
+}
+
 int main() {
   map_target_region(FLASH_MAP_START, FLASH_MAP_SIZE);
   map_target_region(RAM_MAP_START, RAM_MAP_SIZE);
@@ -393,6 +456,8 @@ int main() {
   std::puts("PASS: resumed out-of-order writes survive repeated checkpoints");
   fresh_begin_after_reopen_does_not_retain_old_payload_bytes();
   std::puts("PASS: fresh captures after reopen discard stale payload bytes");
-  std::puts("10 OtaStoreFlashNrf52 hybrid lifecycle checks passed");
+  stale_header_selection_is_explicit_and_unambiguous();
+  std::puts("PASS: stale headers require unique explicit MID and target selection");
+  std::puts("11 OtaStoreFlashNrf52 hybrid lifecycle checks passed");
   return 0;
 }

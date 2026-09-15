@@ -399,7 +399,7 @@ There is no separate availability structure. **Block `i` is present <=> `leaves[
 reopenable store. A hybrid nRF52 transfer is the deliberate exception: its SRAM-backed payload suffix is
 volatile, so the application refuses to adopt that staged header instead of rebuilding partial progress.
 
-**Resume (`OtaManager::resumeStaged` + `OtaStore::checkpoint`/`reopen`):** an interrupted fetch resumes from
+**Resume (`OtaManager::resumeStaged` + `OtaStore::checkpoint`/`reopenFor`):** an interrupted fetch resumes from
 the staged container after a reboot - re-parse the stored manifest, recompute geometry, count present
 blocks, continue fetching the holes (or jump straight to COMPLETE). The checkpoint cadence (persist progress
 every N committed blocks) is runtime-tunable (`ota config checkpoint <N>`, 0 = only finalized containers
@@ -410,6 +410,10 @@ package and keeps target `0` as a MID-only wildcard. Stores keep `leaves[]` in R
 auto-GC, preserving resumable progress. The debug/operator equivalent is `ota dev resume <MID8>`; after a
 reboot the MID is mandatory, while a no-argument form may only reuse a still-active session MID. It never
 uses the `nullptr` automatic-adoption path, so a malformed MID or no active MID fails closed.
+Raw ESP32/nRF52 staging scans every valid header before adoption: address order is not creation order.
+Explicit resume selects a unique matching MID/target; automatic resume refuses multiple valid headers
+without erasing them. A leaf-marker read error is never treated as a missing block: reconnectable storage
+pauses and re-verifies after reconnection, while other storage reports failure and permits an explicit retry.
 Hybrid nRF52 staging cannot enter this resume path after an application restart, even if its flash prefix
 still contains metadata; the complete logical container must be fetched again.
 

@@ -83,6 +83,8 @@ jobs:
           python3 -B test/test_companion_tx_routing.py -v
           python3 -B test/test_companion_preferences_transaction.py -v
           python3 -B test/test_companion_radio_settings_transaction.py -v
+          python3 -B test/test_companion_prefs_transactions.py -v
+          python3 -B test/test_companion_primary_radio_persistence.py -v
           python3 -B test/test_contact_cache.py -v
 
       - name: Verify receive recovery and pinned radio status transport
@@ -104,6 +106,7 @@ jobs:
         run: |
           python3 -B test/test_carrier_wave.py
           python3 -B test/test_radio_profile_cli.py
+          python3 -B test/test_radio_reply_mutation.py
           python3 -B test/test_radio_profile_scan.py
           python3 -B test/test_repeater_radio_timing_integration.py
           python3 -B test/test_temp_radio_reply_delivery_contract.py
@@ -156,6 +159,7 @@ jobs:
         run: |
           python3 -B test/test_wireless_control.py -v
           python3 -B test/test_serial_wifi_sessions.py -v
+          python3 -B test/test_serial_ethernet_sessions.py -v
           python3 -B test/test_companion_wifi_session.py -v
           python3 -B test/test_espnow_radio_lifecycle.py -v
 
@@ -191,6 +195,8 @@ jobs:
           python3 -B test/test_path_hash_cli.py
           python3 -B test/test_cli_settings_contract.py
           python3 -B test/test_local_cli_access.py
+          python3 -B test/test_remote_cli_command_identity.py -v
+          python3 -B test/test_replay_reset_integration.py -v
 
       - name: Verify firmware memory budgets and nRF52 Bluetooth startup
         run: |

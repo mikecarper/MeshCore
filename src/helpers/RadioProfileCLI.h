@@ -37,7 +37,21 @@ class RadioProfileCLI {
   bool temp_pending_ = false, temp_active_ = false;
   bool hold_ = false;
   bool publish_pending_ = false;
+  enum class RemoteMutation : uint8_t { None, Saved, Temporary, Off, TempOff, DeleteTemp };
+  RemoteMutation remote_mutation_ = RemoteMutation::None;
+  RadioProfileConfig remote_config_;
+  uint32_t remote_duration_ms_ = 0, remote_start_ms_ = 0;
+  uint32_t remote_commit_retry_ms_ = 0;
+  uint32_t remote_generation_ = 0;
+  uint8_t remote_delete_mask_ = 0;
+  bool remote_command_ = false, remote_delivered_ = false;
+  bool stageRemoteMutation(RemoteMutation kind, const RadioProfileConfig& config = {},
+                           uint32_t duration_ms = 0, uint8_t delete_mask = 0);
   bool save(const RadioProfileConfig& config, uint16_t preamble, RadioCrossMode cross);
+  bool prepareSavedImage(const char* path, const RadioProfileConfig& config,
+                         uint16_t preamble, RadioCrossMode cross);
+  bool commitSavedImage(const char* path);
+  bool applyReplyMutation();
   bool readImage(const char* path, uint8_t* bytes, size_t size);
   bool writeImage(const char* path, const uint8_t* bytes, size_t size);
   void publish();
@@ -46,7 +60,14 @@ class RadioProfileCLI {
  public:
   void begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool infrastructure_replies = false);
   void loop();
-  bool handle(const char* command, char* reply, size_t capacity = 160);
+  bool handle(const char* command, char* reply, size_t capacity = 160, bool remote_origin = false);
+  // Remote infrastructure commands must keep both RX-origin generations alive
+  // until their exact response packets finish, not merely wait a fixed delay.
+  void beginReplyCommand() { remote_command_ = true; }
+  void endReplyCommand() { remote_command_ = false; }
+  bool hasReplyMutation() const { return remote_mutation_ != RemoteMutation::None; }
+  uint32_t replyMutationGeneration() const { return remote_generation_; }
+  bool finishReplyMutation(bool delivered);
   uint16_t primaryPreamble() const { return primary_preamble_; }
   bool savePrimaryPreamble(uint16_t symbols);
   bool acceptsPrimary(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t preamble) const;

@@ -3325,6 +3325,7 @@ apply_nrf52_size_profile() {
   fi
   if ! is_repeater_role_target "$env_name" \
       && ! is_nrf52_companion_radio_full_target "$env_name" \
+      && [ "$env_name" != "RAK_4631_companion_radio_ethernet" ] \
       && { ! is_lora_ota_build "$env_name" \
            || ! is_lora_ota_only_target "$env_name"; }; then
     return 0
@@ -3338,6 +3339,8 @@ apply_nrf52_size_profile() {
   # and Full Companion source images, especially their diagnostic profile.
   # Full-sensor repeaters also need this after adding the second radio profile;
   # changing optimization preserves their sensors and protocol features.
+  # The legacy RAK4631 Ethernet Companion also needs -Os to fit its declared
+  # application limit; keep its sensors, transports, OTA and layout unchanged.
   append_platformio_build_unflags "-Ofast"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -Os"
 

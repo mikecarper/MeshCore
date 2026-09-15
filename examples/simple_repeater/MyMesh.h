@@ -337,6 +337,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   mesh::ReplayResetNonce replay_reset_nonce;
   bool replay_clock_set = false;
   mesh::TempRadioReplyBarrier temp_radio_reply_barrier;
+  uint32_t primary_radio_mutation_generation = 0;
+  bool primary_radio_mutation_starts_temp = false;
+  uint32_t radio_reply_deadline = 0;
+  bool radio_reply_secondary = false;
+  void finishRadioReply(bool delivered);
+  void serviceRadioReplyDeadline();
   TransportKey deferred_cli_reply_scope;
   bool deferred_cli_reply_scoped;
 #if MESH_ENABLE_HOST_CLI

@@ -70,14 +70,14 @@ bool OtaStoreFlashEsp32::begin(uint32_t total_size) {
   if (!_meta) { _total = 0; return false; }
   memset(_meta, 0xFF, _meta_flush);
   memset(_trailer, 0xFF, sizeof(_trailer));
-  _pay_open = false; _pay_sec = 0; _pay_max_sec = 0; _flushed = false;
+  _pay_open = false; _pay_sec = 0; _pay_seen_end = 0; _flushed = false;
   _io_ok = true;
   return true;
 }
 
 void OtaStoreFlashEsp32::clear() {
   free(_meta); _meta = nullptr;
-  _total = 0; _pay_open = false; _flushed = false;   // _part kept (re-acquire is fine)
+  _total = 0; _pay_open = false; _pay_seen_end = 0; _flushed = false;   // _part kept (re-acquire is fine)
 }
 
 OtaStoreFlashEsp32::CandidateProbe OtaStoreFlashEsp32::probe_candidate(
@@ -137,6 +137,8 @@ OtaStoreFlashEsp32::CandidateProbe OtaStoreFlashEsp32::probe_candidate(
   candidate.image_size = manifest.image_size;
   candidate.meta_bytes = (uint32_t)payload_off64;
   candidate.pay_size = manifest.payload_size;
+  memcpy(candidate.mid, manifest.merkle_root, sizeof(candidate.mid));
+  candidate.target = manifest.target_id;
   return CandidateProbe::VALID;
 }
 
@@ -237,19 +239,24 @@ void OtaStoreFlashEsp32::flush_pay() {
 
 void OtaStoreFlashEsp32::open_pay(uint32_t sec) {
   if (_pay_open) flush_pay();
-  if (sec < _pay_max_sec) {
-    // revisiting an already-flushed sector (out-of-order block) -> read it back so the gaps we don't
-    // touch are preserved (they were programmed as 0xFF or earlier block data); we erase+reprogram on flush.
+  if (sec < _pay_seen_end) {
+    // Any sector up to and INCLUDING the highest opened sector may contain
+    // acknowledged blocks. Preserve it even after visiting a lower sector
+    // (e.g. full-image blocks 4,3,5 visit sectors 1,0,1). An exclusive bound
+    // also distinguishes a genuinely fresh sector 0 from a revisit to it.
+    // Some gaps below the bound may be unvisited, but their leaves are absent;
+    // conservatively keeping those bytes cannot erase a committed block.
     if (esp_partition_read(_part, (size_t)sec * SEC, _pay, SEC) != ESP_OK) _io_ok = false;
   } else {
     memset(_pay, 0xFF, SEC);                          // fresh sector
-    _pay_max_sec = sec;
+    _pay_seen_end = sec + 1u;
   }
   _pay_sec = sec; _pay_open = true;
 }
 
 bool OtaStoreFlashEsp32::write(uint32_t offset, const uint8_t* d, uint32_t len) {
   if ((uint64_t)offset + len > _total || !_io_ok) return false;
+  if (len != 0) _flushed = false;   // a later finalize/checkpoint must persist continued writes
   for (uint32_t pos = offset, end = offset + len; pos < end; ) {
     uint32_t n = run(pos, end - pos);
     if (uint8_t* dst = meta_slot(pos)) {              // meta / leaves / trailer -> pinned RAM
@@ -327,39 +334,59 @@ void OtaStoreFlashEsp32::checkpoint() {
 // (MOTA_MAGIC + total) sits at a sector boundary (meta_part for full, write_start for delta - both
 // sector-aligned), so scan sector starts from the bottom up. A candidate is accepted only if: magic +
 // plausible total, the manifest parses, the container geometry is self-consistent with the total, AND the
-// recomputed placement lands the meta exactly where we found the magic. Any miss -> false (fetch fresh),
-// so a stray/stale match can only cost a restart, never a corrupt adopt.
+// recomputed placement lands the meta exactly where we found the magic. Scan all candidates before
+// adoption: a smaller, older container can have a higher address than a newer checkpoint.
 bool OtaStoreFlashEsp32::reopen() {
+  return reopenFor(nullptr, 0);
+}
+
+bool OtaStoreFlashEsp32::reopenFor(const uint8_t* want_mid, uint32_t expected_target) {
   if (!acquire() || _psize < SEC) return false;
+  bool found = false;
+  StagedCandidate selected;
   // The meta/container is staged at the bottom of the slot. Large delta containers can begin well above
   // the final 512 KB, so scan the complete partition rather than silently losing resumability after reboot.
   for (uint32_t o = mota_esp32_align_down(_psize - SEC, SEC); ; o -= SEC) {
     StagedCandidate candidate;
-    if (probe_candidate(o, candidate) == CandidateProbe::VALID) {
-      _full = candidate.full;
-      _image_size = candidate.image_size;
-      _meta_bytes = candidate.meta_bytes;
-      _pay_size = candidate.pay_size;
-      set_layout(candidate.layout);
-      free(_meta); _meta = (uint8_t*)malloc(_meta_flush);
-      if (!_meta) { _total = 0; return false; }
-      if (esp_partition_read(_part, _meta_part, _meta, _meta_flush) != ESP_OK) {
-        free(_meta); _meta = nullptr; _total = 0; return false;
+    const CandidateProbe probe = probe_candidate(o, candidate);
+    if (probe == CandidateProbe::IO_ERROR) return false;
+    if (probe == CandidateProbe::VALID) {
+      // No generation marker exists. Unqualified boot resume must not infer
+      // recency from scan order, target, version, or apparent block progress.
+      const bool matches = !want_mid ||
+          (memcmp(candidate.mid, want_mid, sizeof(candidate.mid)) == 0 &&
+           (expected_target == 0 || candidate.target == expected_target));
+      if (matches) {
+        if (found) return false;
+        selected = candidate;
+        found = true;
       }
-      // Raw staging defers the fixed trailer; an unvisited sector may still
-      // contain old firmware bytes after an early checkpoint. Restore framing
-      // from the validated layout, not that stale tail. The manager separately
-      // revalidates the selected image and every present payload block.
-      memcpy(_trailer, MOTA_TRAILER, sizeof(_trailer));
-      if (_full) memcpy(_meta + _meta_bytes, MOTA_TRAILER, sizeof(_trailer));
-      _pay_open = false; _pay_sec = 0; _flushed = false; _io_ok = true;
-      _pay_max_sec = (_pay_part0 + _pay_size + SEC) / SEC;   // treat all payload sectors as seen -> RMW preserves committed blocks
-      OTA_DBG("OTA esp32: reopen %s total=%u meta_part=%u\n", _full ? "FULL" : "DELTA", (unsigned)_total, (unsigned)o);
-      return true;
     }
     if (o == 0) break;
   }
-  return false;
+  if (!found || (expected_target != 0 && selected.target != expected_target)) return false;
+  _full = selected.full;
+  _image_size = selected.image_size;
+  _meta_bytes = selected.meta_bytes;
+  _pay_size = selected.pay_size;
+  set_layout(selected.layout);
+  free(_meta); _meta = (uint8_t*)malloc(_meta_flush);
+  if (!_meta) { _total = 0; return false; }
+  if (esp_partition_read(_part, _meta_part, _meta, _meta_flush) != ESP_OK) {
+    free(_meta); _meta = nullptr; _total = 0; return false;
+  }
+  // Raw staging defers the fixed trailer; an unvisited sector may still
+  // contain old firmware bytes after an early checkpoint. Restore framing
+  // from the validated layout, not that stale tail. The manager separately
+  // revalidates the selected image and every present payload block.
+  memcpy(_trailer, MOTA_TRAILER, sizeof(_trailer));
+  if (_full) memcpy(_meta + _meta_bytes, MOTA_TRAILER, sizeof(_trailer));
+  _pay_open = false; _pay_sec = 0; _flushed = false; _io_ok = true;
+  // No volatile visit history survives reboot. Treat the entire partition
+  // as potentially written so every resumed sector preserves committed data.
+  _pay_seen_end = _psize / SEC;
+  OTA_DBG("OTA esp32: reopen %s total=%u meta_part=%u\n", _full ? "FULL" : "DELTA", (unsigned)_total, (unsigned)_meta_part);
+  return true;
 }
 
 } // namespace ota

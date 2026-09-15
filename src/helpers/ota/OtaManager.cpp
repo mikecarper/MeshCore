@@ -1607,7 +1607,9 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
       || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED) {
     return false;
   }
-  if (!_fetch->reopen()) return false;                  // nothing persisted in the store
+  const bool automatic_resume = want_mid == nullptr;
+  const uint32_t expected_target = automatic_resume ? _target : _fexpected_target;
+  if (!_fetch->reopenFor(want_mid, expected_target)) return false;
   uint32_t total = _fetch->staged_size();
   uint8_t hdr[8];
   if (total < 8u + MOTA_MFL + 5u || !_fetch->read(0, hdr, sizeof(hdr))
@@ -1617,11 +1619,9 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   MotaManifest m;
   if (!_fetch->read(8, mbuf, sizeof(mbuf)) || !mota_parse_manifest(mbuf, sizeof(mbuf), m)) return false;
   if (want_mid && memcmp(m.merkle_root, want_mid, 4) != 0) return false;   // a different fw is staged
-  const bool automatic_resume = want_mid == nullptr;
   // A boot-time resume is an automatic fetch decision and therefore belongs
   // only to this node. An explicit pull retains target=0 as an intentional
   // MID-only wildcard instead of silently narrowing it to the local target.
-  const uint32_t expected_target = automatic_resume ? _target : _fexpected_target;
   if (expected_target != 0 && m.target_id != expected_target) return false;
   if (automatic_resume) {
     if (_autofetch == AUTOFETCH_OFF) return false;
@@ -1670,10 +1670,11 @@ uint32_t OtaManager::blockLen(uint32_t i) const {
   return (off + _fbs <= _fpsize) ? _fbs : (_fpsize - off);
 }
 
-bool OtaManager::blockPresent(uint32_t i) const {
+bool OtaManager::readBlockPresent(uint32_t i, bool& present) const {
   uint8_t leaf[4];
   if (!_fetch->read(_floff + i * 4, leaf, 4)) return false;
-  return !(leaf[0]==0xFF && leaf[1]==0xFF && leaf[2]==0xFF && leaf[3]==0xFF);
+  present = !(leaf[0]==0xFF && leaf[1]==0xFF && leaf[2]==0xFF && leaf[3]==0xFF);
+  return true;
 }
 
 bool OtaManager::storedLeavesRootMatches(FetchError& error) const {
@@ -1772,7 +1773,12 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
   if (!decode_data(m, n, dm) || !_fetch) return false;
   if (_fstate != FETCHING || memcmp(dm.manifest_id, _fid, 4) != 0) return false;
   if (dm.block_idx >= _fbc) return false;
-  if (blockPresent(dm.block_idx)) return true;              // late duplicate for this terminal
+  bool present;
+  if (!readBlockPresent(dm.block_idx, present)) {
+    failFetch(FETCH_ERROR_STORAGE);
+    return true;
+  }
+  if (present) return true;                                // late duplicate for this terminal
   int slot_index = findReassemblySlot(dm.block_idx);
   if (slot_index < 0) return false;                         // not one of this node's requested blocks
   ReassemblySlot& slot = _reasm[slot_index];
@@ -1890,7 +1896,14 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   if (_fstate != FETCHING || memcmp(pm.manifest_id, _fid, 4) != 0) return false;
   if (pm.block_idx >= _fbc) return false;
   int slot_index = findReassemblySlot(pm.block_idx);
-  if (slot_index < 0 || !_reasm[slot_index].awaiting_proof) return blockPresent(pm.block_idx);
+  if (slot_index < 0 || !_reasm[slot_index].awaiting_proof) {
+    bool present;
+    if (!readBlockPresent(pm.block_idx, present)) {
+      failFetch(FETCH_ERROR_STORAGE);
+      return true;
+    }
+    return present;
+  }
   ReassemblySlot& slot = _reasm[slot_index];
   uint32_t block = slot.block;
   uint32_t blen = blockLen(block);
@@ -2012,6 +2025,7 @@ bool OtaManager::fillPipeline() {
     int slot_index = findEmptyReassemblySlot();
     if (slot_index < 0) break;
     uint32_t block = pickMissingBlock();
+    if (_fstate != FETCHING) return false;                 // a leaf read failed; slots were cleared
     if (block >= _fbc) break;
     ReassemblySlot& slot = _reasm[slot_index];
     slot.block = block;
@@ -2087,7 +2101,15 @@ void OtaManager::requestMissing() {
 uint32_t OtaManager::pickMissingBlock() {
   if (_fbc == 0) return _fbc;
   for (uint32_t i = 0; i < _fbc; i++) {
-    if (!blockInPipeline(i) && !blockPresent(i)) return i;
+    if (blockInPipeline(i)) continue;
+    bool present;
+    if (!readBlockPresent(i, present)) {
+      // Unknown is not missing: requesting a committed block would retain an
+      // occupied slot after its duplicate DATA is discarded on recovery.
+      failFetch(FETCH_ERROR_STORAGE);
+      return _fbc;
+    }
+    if (!present) return i;
   }
   return _fbc;
 }

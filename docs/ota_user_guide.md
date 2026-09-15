@@ -465,6 +465,10 @@ target to match this node and its version to be newer than the running valid End
 For bring-up/debugging, `ota dev resume <MID8>` performs the same explicit MID-bound re-adoption without
 starting a new network fetch. After reboot it requires the MID; bare `ota dev resume` is accepted only while
 an active/requested session MID still exists, and malformed or missing identifiers are rejected.
+If raw flash contains multiple valid staged headers, automatic resume leaves them untouched rather than
+guessing which is newest. Specify the intended MID to select its unique checkpoint; ambiguous matches are
+rejected. Temporary storage read failures no longer consume a download slot indefinitely: host storage
+pauses for reconnection, while non-reconnectable storage reports a storage error and can be retried.
 
 Recommended for most people: leave both **off** and update by hand. Use `autoinstall trusted` only once
 you've added the signer's key (next section) and you trust them to push updates unattended. Automatic

@@ -2830,12 +2830,13 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
       uint32_t command_fingerprint =
           mesh::RemoteCliReplyCache::fingerprint(command, command_len);
       const char* cached_response = NULL;
+      bool cached_authoritative_reply = false;
       // A cached challenge response can outlive its disclosure window or name
       // a token from an earlier attempt. Re-evaluate preparation against the
       // live nonce policy instead; confirmation results remain cacheable.
       const bool cached_retry = !replay_prepare && remote_cli_reply_cache.lookup(
           client->id.pub_key, request_id, command_fingerprint,
-          &cached_response);
+          &cached_response, &cached_authoritative_reply);
 
       // An old exact match may only replay its stored response. Any stale
       // mismatch remains blocked by the normal timestamp replay guard.
@@ -2868,10 +2869,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
             && region_map.getTransportKeysFor(*recv_pkt_region, &reply_scope, 1) > 0;
 
         if (cached_retry) {
-          const bool cached_temp_radio_success =
-              strncmp(command, "tempradio ", 10) == 0
-              && strncmp(cached_response, "OK - temp params for ", 21) == 0;
-          if (cached_temp_radio_success) {
+          if (cached_authoritative_reply) {
             // The original acknowledgement is the only packet allowed to
             // release its radio-mutation barrier. Replaying this success would
             // create another untracked copy, including after a TX failure
@@ -2884,7 +2882,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
                                sender_timestamp, cached_response,
                                reply_scoped ? &reply_scope : NULL);
           }
-        } else if (deferred_cli_command.matches(i, request_id, command,
+        } else if (deferred_cli_command.matches(client->id.pub_key, request_id, command,
                                                 command_len)) {
           // The original request is already queued. Let it produce the one
           // authoritative result instead of turning an in-flight retry into a
@@ -2892,7 +2890,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
           MESH_DEBUG_PRINTLN("onPeerDataRecv: remote CLI request is already pending");
         } else if (repeated_timestamp) {
           MESH_DEBUG_PRINTLN("onPeerDataRecv: duplicate remote CLI request has no cached reply");
-        } else if (!deferred_cli_command.enqueue(i, sender_timestamp,
+        } else if (!deferred_cli_command.enqueue(client->id.pub_key, sender_timestamp,
                                                  packet->getPathHashSize(), secret,
                                                  command, command_len,
                                                  request_id, packet->radio_profile,
@@ -3019,10 +3017,9 @@ bool MyMesh::completeHostCliRequest(const char* service_reply) {
     return false;
   }
 
-  const int client_index = deferred_cli_command.client_index;
-  if (client_index < 0 || client_index >= acl.getNumClients()) {
-    MESH_DEBUG_PRINTLN("completeHostCliRequest: invalid client idx: %d",
-                       client_index);
+  const int client_index = deferred_cli_command.findClientIndex(acl);
+  if (client_index < 0 || !acl.getClientByIdx(client_index)->isAdmin()) {
+    MESH_DEBUG_PRINTLN("completeHostCliRequest: requester removed or no longer admin");
     clearDeferredCliCommand();
     return false;
   }
@@ -3037,9 +3034,7 @@ bool MyMesh::completeHostCliRequest(const char* service_reply) {
                                   deferred_cli_command.radio_generation);
 
   const uint32_t command_fingerprint =
-      mesh::RemoteCliReplyCache::fingerprint(
-          deferred_cli_command.command,
-          strlen(deferred_cli_command.command));
+      deferred_cli_command.command_fingerprint;
   remote_cli_reply_cache.remember(client->id.pub_key,
                                   deferred_cli_command.request_id,
                                   command_fingerprint, reply);
@@ -3098,15 +3093,24 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   ReceiveProfileScope radio_scope(*this, deferred_cli_command.radio_profile,
                                   deferred_cli_command.radio_generation);
 
-  const int client_index = deferred_cli_command.client_index;
-  if (client_index < 0 || client_index >= acl.getNumClients()) {
-    MESH_DEBUG_PRINTLN("processDeferredCliCommand: invalid client idx: %d", client_index);
+  const int client_index = deferred_cli_command.findClientIndex(acl);
+  if (client_index < 0) {
+    MESH_DEBUG_PRINTLN("processDeferredCliCommand: requester no longer exists");
+    clearDeferredCliCommand();
+    return;
+  }
+  ClientInfo* client = acl.getClientByIdx(client_index);
+  if (!(client->isAdmin() || client->isRegionMgr() || client->isFilterMgr())) {
     clearDeferredCliCommand();
     return;
   }
 
 #if MESH_ENABLE_HOST_CLI
   if (host_cli_waiting) {
+    if (!client->isAdmin()) {
+      clearDeferredCliCommand();
+      return;
+    }
     if (millisHasNowPassed(host_cli_deadline)) {
       completeHostCliRequest("Err - host service timeout");
       return;
@@ -3140,9 +3144,27 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   }
 #endif
 
-  ClientInfo* client = acl.getClientByIdx(client_index);
   char* reply = (char*)&reply_data[5];
   reply[0] = 0;
+
+  if (temp_radio_reply_barrier.waiting() || _cli.radioProfiles().hasReplyMutation()) {
+    // A second command must not replace the callback ownership of an
+    // unconfirmed mutation. Local/USB recovery remains available.
+    strcpy(reply, "Err - radio acknowledgement/storage commit pending; retry later");
+    remote_cli_reply_cache.remember(client->id.pub_key, deferred_cli_command.request_id,
+        deferred_cli_command.command_fingerprint, reply);
+    sendRemoteCliReply(client, deferred_cli_command.secret, deferred_cli_command.path_hash_size,
+        deferred_cli_command.sender_timestamp, reply,
+        deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL);
+    clearDeferredCliCommand();
+    return;
+  }
+  const uint32_t primary_mutation_before = primary_radio_mutation_generation;
+  const uint32_t secondary_mutation_before = _cli.radioProfiles().replyMutationGeneration();
+  // setperm may compact the ACL, including removal of this sender. Keep the
+  // authenticated pre-command destination/path for its final acknowledgement.
+  // Command permission checks still use the live ACL entry below.
+  ClientInfo reply_client = *client;
 
 #if MESH_ENABLE_HOST_CLI
   mesh::HostCliBridge::RequestView host_request;
@@ -3197,39 +3219,43 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
     }
   } else {
 #endif
+    _cli.radioProfiles().beginReplyCommand();
     handleCommand(deferred_cli_command.sender_timestamp, client,
                   deferred_cli_command.command, reply, client_index,
                   deferred_cli_command.path_hash_size);
+    _cli.radioProfiles().endReplyCommand();
 #if MESH_ENABLE_HOST_CLI
   }
 #endif
 
   const uint32_t command_fingerprint =
-      mesh::RemoteCliReplyCache::fingerprint(
-          deferred_cli_command.command,
-          strlen(deferred_cli_command.command));
-  const bool arms_temp_radio =
-      strncmp(deferred_cli_command.command, "tempradio ", 10) == 0
-      && strncmp(reply, "OK - temp params for ", 21) == 0;
-  remote_cli_reply_cache.remember(client->id.pub_key,
+      deferred_cli_command.command_fingerprint;
+  // Detect the operation actually accepted by the parsed command, rather than
+  // spelling/capitalization, optional `set`, whitespace, or request prefixes.
+  const bool arms_primary_radio = primary_radio_mutation_generation != primary_mutation_before;
+  const bool arms_secondary_radio = _cli.radioProfiles().replyMutationGeneration() != secondary_mutation_before;
+  const bool arms_temp_radio = arms_primary_radio || arms_secondary_radio;
+  remote_cli_reply_cache.remember(deferred_cli_command.client_pub_key,
                                   deferred_cli_command.request_id,
-                                  command_fingerprint, reply);
+                                  command_fingerprint, reply, arms_temp_radio);
   mesh::Packet* queued_reply = NULL;
   const bool reply_queued = sendRemoteCliReply(
-      client, deferred_cli_command.secret,
+      &reply_client, deferred_cli_command.secret,
       deferred_cli_command.path_hash_size,
       deferred_cli_command.sender_timestamp, reply,
       deferred_cli_reply_scoped ? &deferred_cli_reply_scope : NULL,
       arms_temp_radio ? &queued_reply : NULL);
   if (arms_temp_radio) {
+    radio_reply_secondary = arms_secondary_radio;
     if (reply_queued && queued_reply != NULL) {
       // A fixed delay can expire while either copy is parked behind queue
       // work. Wait for both to drain and at least one to physically transmit.
       temp_radio_reply_barrier.arm(queued_reply);
+      radio_reply_deadline = millis() + 300000UL;
     } else {
       // A command which cannot queue its acknowledgement must never strand
       // the administrator on an unconfirmed tuple.
-      scheduleNormalRadio();
+      finishRadioReply(false);
     }
   }
   clearDeferredCliCommand();
@@ -3958,7 +3984,7 @@ bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope,
 
 void MyMesh::onSendComplete(mesh::Packet* packet) {
   mesh::Mesh::onSendComplete(packet);
-  temp_radio_reply_barrier.complete(packet);
+  if (temp_radio_reply_barrier.complete(packet) && !temp_radio_reply_barrier.waiting()) finishRadioReply(true);
   if (packet == pending_battery_alert_packet) {
     pending_battery_alert_packet = NULL;
     battery_alert_sent = true;
@@ -3978,10 +4004,39 @@ void MyMesh::onSendFail(mesh::Packet* packet) {
     // Failure of every acknowledgement copy cancels the unconfirmed
     // handoff. A later cached-command retry may replay the reply, but it does
     // not re-run the mutation.
-    scheduleNormalRadio();
+    finishRadioReply(false);
+  } else if (!temp_radio_reply_barrier.waiting() && temp_radio_reply_barrier.succeeded()) {
+    finishRadioReply(true);
   }
   if (packet == pending_battery_alert_packet) {
     pending_battery_alert_packet = NULL;
+  }
+}
+
+void MyMesh::finishRadioReply(bool delivered) {
+  temp_radio_reply_barrier.clear();
+  radio_reply_deadline = 0;
+  if (radio_reply_secondary) {
+    _cli.radioProfiles().finishReplyMutation(delivered);
+  } else if (!delivered && primary_radio_mutation_starts_temp) {
+    scheduleNormalRadio();
+  }
+  radio_reply_secondary = false;
+}
+
+void MyMesh::serviceRadioReplyDeadline() {
+  if (!temp_radio_reply_barrier.waiting()
+      || (int32_t)((uint32_t)millis() - radio_reply_deadline) < 0) return;
+  // Retire parked copies through their ordinary failure hooks. An on-air
+  // copy completes (or hits Dispatcher's airtime watchdog); it cannot retry.
+  if (temp_radio_reply_barrier.contains(getOutboundInFlight())) {
+    cancelOutboundRadioRetry(getOutboundInFlight());
+  }
+  for (int i = _mgr->getOutboundTotal() - 1; i >= 0; --i) {
+    if (!temp_radio_reply_barrier.contains(_mgr->getOutboundByIdx(i))) continue;
+    auto* packet = _mgr->removeOutboundByIdx(i);
+    onSendFail(packet);
+    releasePacket(packet);
   }
 }
 
@@ -4125,6 +4180,8 @@ bool MyMesh::applySavedRadioParams() {
 }
 
 void MyMesh::queueSavedRadioApply() {
+  ++primary_radio_mutation_generation;
+  primary_radio_mutation_starts_temp = false;
   saved_radio_apply_pending = true;
   scheduled_radio_retry_at = 0;
   scheduled_radio_retry_failures = 0;
@@ -4584,7 +4641,12 @@ void MyMesh::processScheduledRadioSettings() {
     // already active: a permanently queued acknowledgement must not preserve
     // that old tuple beyond the newly accepted hard lease.  The late reply can
     // still leave on the restored channel, but it can no longer cause a switch.
-    temp_radio_reply_barrier.clear();
+    if (!radio_reply_secondary) {
+      // Expiring a scheduled lease must not cancel other future temporary
+      // entries. The scheduler below retires only the expired entry itself.
+      temp_radio_reply_barrier.clear();
+      radio_reply_deadline = 0;
+    }
   }
   // A radio-apply backoff must not turn into a lease extension.  Bypass it
   // only for an expired temporary window; ordinary starts and permanent
@@ -4827,6 +4889,12 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {
+  ++primary_radio_mutation_generation;
+  primary_radio_mutation_starts_temp = true;
+  if (_cli.radioProfiles().hasReplyMutation()) {
+    _cli.radioProfiles().finishReplyMutation(false);
+    radio_reply_secondary = false;
+  }
   // A newer TempRadio command supersedes the reply barrier belonging to the
   // old schedule. processDeferredCliCommand() arms the new exact reply after
   // it has been composed and successfully queued.
@@ -4880,6 +4948,11 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
 }
 
 bool MyMesh::scheduleNormalRadio() {
+  ++primary_radio_mutation_generation;
+  if (_cli.radioProfiles().hasReplyMutation()) {
+    _cli.radioProfiles().finishReplyMutation(false);
+    radio_reply_secondary = false;
+  }
   // Cancel every pending/active temporary entry, but leave permanent radioat
   // changes intact. The saved apply waits for the CLI reply to leave the
   // outbound queue before changing modulation parameters.
@@ -11205,9 +11278,7 @@ bool MyMesh::handleReplayResetCommand(ClientInfo* sender, const char* command,
   // for the affected identity. Do not execute that stale mailbox afterwards.
   // The executing LoRa reset owns the mailbox until its reply is sent.
   if (usb_origin && deferred_cli_command.pending) {
-    const int index = deferred_cli_command.client_index;
-    if (all || (index >= 0 && index < acl.getNumClients()
-        && memcmp(acl.getClientByIdx(index)->id.pub_key, target, PUB_KEY_SIZE) == 0)) {
+    if (all || memcmp(deferred_cli_command.client_pub_key, target, PUB_KEY_SIZE) == 0) {
       clearDeferredCliCommand();
     }
   }
@@ -12141,6 +12212,7 @@ void MyMesh::loop() {
   servicePendingSerialOutput();
 #endif
   _cli.loop();
+  serviceRadioReplyDeadline();
   processDeferredCliCommand();
   servicePostMeshLoop();
 #if defined(ENABLE_OTA) && OTA_DYNAMIC_CONTEXT

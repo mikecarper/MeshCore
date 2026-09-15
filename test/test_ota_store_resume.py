@@ -25,14 +25,14 @@ class OtaStoreResumeTest(unittest.TestCase):
             binary = path / "resume.exe"
             result = subprocess.run([
                 "c++", "-std=c++17", *flags, "-DENABLE_OTA=1", "-DESP32_PLATFORM=1",
-                "-DOTA_FLASH_STORE=1", "-I", str(FIXTURE / "mocks"),
+                "-DOTA_FLASH_STORE=1", "-DOTA_FETCH_PIPELINE=4", "-I", str(FIXTURE / "mocks"),
                 "-I", str(ROOT / "src"), "-I", str(ROOT / "test/mocks"),
                 str(FIXTURE / "test.cpp"),
                 *[str(ROOT / "src/helpers/ota" / name) for name in sources],
                 str(ROOT / "src/Utils.cpp"), str(tinf), "-o", str(binary),
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            for scenario in range(15):
+            for scenario in range(46):
                 with self.subTest(scenario=scenario):
                     subprocess.run([str(binary), str(scenario)], check=True, timeout=10)
 

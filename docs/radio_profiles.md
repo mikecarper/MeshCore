@@ -59,8 +59,21 @@ on the primary profile by default. Use an OTA-capable build and the usual OTA
 setup on every participating node; a temporary profile does not add OTA support
 to firmware built without it.
 
-New settings take effect after a short reply allowance. Temporary periods and
-schedules live in RAM and disappear on reboot. Timer expiry also uses monotonic
+Local settings take effect after a short reply allowance. On repeaters, immediate
+remote `radio2`/`tempradio2` changes (including `off`) wait until their exact reply
+copies finish, with at least one successfully transmitted. A reply that cannot
+be queued or whose copies all fail cancels the change. Queued replies have a
+five-minute deadline; an already-transmitting copy may finish under the normal
+radio watchdog. This confirms transmission, not reception by the remote client.
+
+Permanent remote changes are prepared in an uncommitted file before replying;
+the saved configuration is replaced only after reply transmission. If that
+replacement fails, the old channel remains active and the commit retries.
+Local `get radio2.status` reports this pending state. Roles without the tracked remote
+reply path require local USB for these immediate secondary-profile changes.
+
+Temporary periods and schedules live in RAM and disappear on reboot. Waiting
+for a reply does not extend a temporary lease. Timer expiry also uses monotonic
 time, so setting the clock backwards cannot extend a temporary session.
 
 ## Repeater, room-server, and sensor replies

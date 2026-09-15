@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -56,6 +57,7 @@ static bool apply_actual_receive_cache_gate(const char* command, bool cache_hit,
   ClientInfo* client = &sender;
   uint32_t request_id = 1, command_fingerprint = 2;
   const char* cached_response = nullptr;
+  bool cached_authoritative_reply = false;
   CountingReplyCache remote_cli_reply_cache{cache_hit, lookup_calls};
 """ + prepare + "\n" + cache_gate + "\nreturn cached_retry;\n}\n"
         with tempfile.TemporaryDirectory(prefix=".tmp-replay-integration-", dir=ROOT) as directory:
@@ -64,6 +66,8 @@ static bool apply_actual_receive_cache_gate(const char* command, bool cache_hit,
             binary = work / "replay-reset-integration.exe"
             compiled = subprocess.run([
                 compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                *(["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                   "-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else []),
                 f"-I{work}", f"-I{ROOT / 'src'}",
                 str(FIXTURE / "test_replay_reset_integration.cpp"), "-o", str(binary),
             ], capture_output=True, text=True, timeout=60)

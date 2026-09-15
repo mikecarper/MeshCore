@@ -1,6 +1,7 @@
 """Exercise WiFi session cancellation against production route ownership code."""
 from pathlib import Path
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -130,11 +131,60 @@ class CompanionWiFiSessionTest(unittest.TestCase):
         self.assertLess(add, start)
 
     def test_session_reset_cancels_only_wifi_owned_work(self):
+        self.check_session_reset("WiFi")
+
+    def test_session_reset_cancels_only_ethernet_owned_work(self):
+        self.check_session_reset("Ethernet")
+
+    def test_callback_is_registered_before_ethernet_interface_can_start(self):
+        source = MAIN.read_text(encoding="utf-8")
+        self.assertLess(
+            source.index("ethernet_interface.setSessionChangedCallback(cancelCompanionEthernetSession, nullptr)"),
+            source.index("ethernet_interface.begin();"),
+        )
+
+    def test_ethernet_callback_guards_cover_profiles_without_usb_or_wifi(self):
+        # Preserve the real main.cpp conditional nesting, not just an extracted
+        # callback body: Ethernet-only builds must see its definition as well
+        # as its setup registration. Headers and unrelated code are unnecessary
+        # for this preprocessor test and would require the firmware toolchain.
+        markers = []
+        continuation = False
+        for line in MAIN.read_text(encoding="utf-8").splitlines(keepends=True):
+            conditional = re.match(r"^\s*#\s*(?:if|ifdef|ifndef|elif|else|endif)\b", line)
+            if continuation or conditional:
+                markers.append(line)
+                continuation = line.rstrip().endswith("\\")
+            elif "static void cancelCompanionEthernetSession(" in line:
+                markers.append("ETHERNET_SESSION_CALLBACK_DECLARED\n")
+            elif "ethernet_interface.setSessionChangedCallback(" in line:
+                markers.append("ETHERNET_SESSION_CALLBACK_REGISTERED\n")
+        source = "".join(markers)
+        for platform in (("ESP32_PLATFORM", "ESP32"), ("NRF52_PLATFORM",)):
+            for ethernet in (False, True):
+                for usb in (False, True):
+                    with self.subTest(platform=platform, ethernet=ethernet, usb=usb):
+                        flags = [f"-D{name}=1" for name in platform]
+                        if ethernet:
+                            flags.append("-DETHERNET_ENABLED=1")
+                        if usb:
+                            flags.append("-DENABLE_USB_INTERFACE=1")
+                        result = subprocess.run(
+                            [os.environ.get("CXX", "g++"), "-E", "-P", "-x", "c++",
+                             *flags, "-"], input=source, text=True, capture_output=True,
+                        )
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        expected = ("ETHERNET_SESSION_CALLBACK_DECLARED\n"
+                                    "ETHERNET_SESSION_CALLBACK_REGISTERED") if ethernet else ""
+                        self.assertEqual(result.stdout.strip(), expected)
+
+    def check_session_reset(self, transport):
         main = MAIN.read_text(encoding="utf-8")
         mesh = MESH.read_text(encoding="utf-8")
-        callback = extract_braced(main, "static void cancelCompanionWiFiSession(")
+        callback = extract_braced(main, f"static void cancelCompanion{transport}Session(")
         operations = extract_braced(mesh, "void MyMesh::cancelSerialOperationsForRoute(")
-        source = HARNESS.replace("@CANCEL_OPERATIONS@", operations).replace(
+        harness = HARNESS.replace("WiFi", transport).replace("wifi", transport.lower())
+        source = harness.replace("@CANCEL_OPERATIONS@", operations).replace(
             "@CANCEL_SESSION@", callback
         )
         with tempfile.TemporaryDirectory() as directory:

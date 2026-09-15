@@ -360,6 +360,17 @@ public:
   bool hasPendingWork() const;
 
 private:
+  // Only snapshot the changed value: CompanionNodePrefs owns self-referencing
+  // runtime adapters and must not be copied as a transaction snapshot.
+  template <typename T> bool savePreference(T& preference, T value) {
+    const T previous = preference;
+    preference = value;
+    if (savePrefs()) return true;
+    preference = previous;
+    return false;
+  }
+  bool saveAdvertName(const char* name);
+  bool saveAdvertLocation(double latitude, double longitude);
   void writeOKFrame(BaseSerialInterface* route = nullptr);
   void writeErrFrame(uint8_t err_code,
                      BaseSerialInterface* route = nullptr);

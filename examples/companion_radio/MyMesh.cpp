@@ -1847,7 +1847,10 @@ void MyMesh::begin(bool has_display, bool radio_available) {
 
   // sanitise bad pref values
   _prefs.rx_delay_base = constrain(_prefs.rx_delay_base, 0, 20.0f);
-  _prefs.airtime_factor = constrain(_prefs.airtime_factor, 0, 9.0f);
+  if (!isfinite(_prefs.airtime_factor)) _prefs.airtime_factor = 1.0f;
+  // `set dutycycle 1` stores factor 99; the legacy `set af` input limit is
+  // narrower, but must not truncate an accepted duty cycle on restart.
+  _prefs.airtime_factor = constrain(_prefs.airtime_factor, 0, 99.0f);
   _prefs.freq = constrain(_prefs.freq, 150.0f, 2500.0f);
   _prefs.bw = constrain(_prefs.bw, 7.8f, 500.0f);
   _prefs.sf = constrain(_prefs.sf, 5, 12);
@@ -2470,9 +2473,12 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     if (!sensors.setSettingValue("gps", enabled ? "1" : "0")) {
       snprintf(reply, reply_size, "Error: GPS unavailable");
     } else {
-      _prefs.gps_enabled = enabled ? 1 : 0;
-      snprintf(reply, reply_size, savePrefs() ? "OK - GPS %s (saved)" : "Error: GPS %s but save failed",
-               enabled ? "on" : "off");
+      if (savePreference(_prefs.gps_enabled, static_cast<uint8_t>(enabled))) {
+        snprintf(reply, reply_size, "OK - GPS %s (saved)", enabled ? "on" : "off");
+      } else {
+        applyGpsPrefs();
+        snprintf(reply, reply_size, "Error: GPS could not be saved");
+      }
     }
     return true;
   }
@@ -3725,11 +3731,11 @@ void MyMesh::execCommand(char* cmd, char* reply) {
   const char* value = split + 1;
 
   if (strcmp(key, "name") == 0) {
-    if (!value[0] || !wcCopyValue(_prefs.node_name, sizeof(_prefs.node_name), value)) {
+    char name[sizeof(_prefs.node_name)];
+    if (!value[0] || !wcCopyValue(name, sizeof(name), value)) {
       strcpy(reply, "Error: name must be 1-31 characters");
     } else {
-      savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, saveAdvertName(name) ? "OK" : "Error: name could not be saved");
     }
     return;
   }
@@ -3762,9 +3768,9 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       strcpy(reply, latitude ? "Error: latitude must be -90 to 90"
                              : "Error: longitude must be -180 to 180");
     } else {
-      if (latitude) sensors.node_lat = parsed; else sensors.node_lon = parsed;
-      savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, saveAdvertLocation(latitude ? parsed : sensors.node_lat,
+                                      latitude ? sensors.node_lon : parsed)
+          ? "OK" : "Error: location could not be saved");
     }
     return;
   }
@@ -3776,6 +3782,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
         || bw < 7.0f || bw > 500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8) {
       strcpy(reply, "Error: radio must be freq,bw,sf,cr");
     } else {
+      const float previous_freq = _prefs.freq, previous_bw = _prefs.bw;
+      const uint8_t previous_sf = _prefs.sf, previous_cr = _prefs.cr;
+      const uint32_t previous_rx_us = _prefs.rx_ps_rx_us;
+      const uint32_t previous_sleep_us = _prefs.rx_ps_sleep_us;
       _prefs.freq = freq;
       _prefs.bw = bw;
       _prefs.sf = sf;
@@ -3783,8 +3793,17 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, _prefs.sf, _prefs.bw,
                                    _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
                                    &_prefs.rx_ps_sleep_us);
-      savePrefs();
-      strcpy(reply, "OK - reboot required");
+      if (savePrefs()) {
+        strcpy(reply, "OK - reboot required");
+      } else {
+        _prefs.freq = previous_freq;
+        _prefs.bw = previous_bw;
+        _prefs.sf = previous_sf;
+        _prefs.cr = previous_cr;
+        _prefs.rx_ps_rx_us = previous_rx_us;
+        _prefs.rx_ps_sleep_us = previous_sleep_us;
+        strcpy(reply, "Error: radio could not be saved");
+      }
     }
     return;
   }
@@ -3808,9 +3827,9 @@ void MyMesh::execCommand(char* cmd, char* reply) {
       strcpy(reply, is_af ? "Error: airtime factor must be 0-9"
                           : "Error: RX delay must be 0-20");
     } else {
-      if (is_af) _prefs.airtime_factor = parsed; else _prefs.rx_delay_base = parsed;
-      savePrefs();
-      strcpy(reply, "OK");
+      strcpy(reply, savePreference(is_af ? _prefs.airtime_factor : _prefs.rx_delay_base,
+                                   static_cast<float>(parsed))
+          ? "OK" : "Error: setting could not be saved");
     }
     return;
   }
@@ -3829,8 +3848,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
           return;
         }
       } else {
-        _prefs.client_repeat = enabled;
-        savePrefs();
+        if (!savePreference(_prefs.client_repeat, static_cast<uint8_t>(enabled))) {
+          strcpy(reply, "Error: repeat could not be saved");
+          return;
+        }
       }
       strcpy(reply, "OK");
     }
@@ -4508,12 +4529,13 @@ void MyMesh::handleCmdFrame(size_t len) {
       }
     }
   } else if (cmd_frame[0] == CMD_SET_ADVERT_NAME && len >= 2) {
+    char name[sizeof(_prefs.node_name)];
     int nlen = len - 1;
-    if (nlen > sizeof(_prefs.node_name) - 1) nlen = sizeof(_prefs.node_name) - 1; // max len
-    memcpy(_prefs.node_name, &cmd_frame[1], nlen);
-    _prefs.node_name[nlen] = 0; // null terminator
-    savePrefs();
-    writeOKFrame();
+    if (nlen > sizeof(name) - 1) nlen = sizeof(name) - 1; // max len
+    memcpy(name, &cmd_frame[1], nlen);
+    name[nlen] = 0;
+    if (saveAdvertName(name)) writeOKFrame();
+    else writeErrFrame(ERR_CODE_FILE_IO_ERROR);
   } else if (cmd_frame[0] == CMD_SET_ADVERT_LATLON && len >= 9) {
     int32_t lat, lon, alt = 0;
     memcpy(&lat, &cmd_frame[1], 4);
@@ -4522,10 +4544,9 @@ void MyMesh::handleCmdFrame(size_t len) {
       memcpy(&alt, &cmd_frame[9], 4); // for FUTURE support
     }
     if (lat <= 90 * 1E6 && lat >= -90 * 1E6 && lon <= 180 * 1E6 && lon >= -180 * 1E6) {
-      sensors.node_lat = ((double)lat) / 1000000.0;
-      sensors.node_lon = ((double)lon) / 1000000.0;
-      savePrefs();
-      writeOKFrame();
+      if (saveAdvertLocation(((double)lat) / 1000000.0,
+                             ((double)lon) / 1000000.0)) writeOKFrame();
+      else writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG); // invalid geo coordinate
     }
@@ -4855,10 +4876,16 @@ void MyMesh::handleCmdFrame(size_t len) {
     i += 4;
     memcpy(&af, &cmd_frame[i], 4);
     i += 4;
+    const float previous_rx = _prefs.rx_delay_base, previous_af = _prefs.airtime_factor;
     _prefs.rx_delay_base = ((float)rx) / 1000.0f;
     _prefs.airtime_factor = ((float)af) / 1000.0f;
-    savePrefs();
-    writeOKFrame();
+    if (savePrefs()) {
+      writeOKFrame();
+    } else {
+      _prefs.rx_delay_base = previous_rx;
+      _prefs.airtime_factor = previous_af;
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+    }
   } else if (cmd_frame[0] == CMD_GET_TUNING_PARAMS) {
     uint32_t rx = _prefs.rx_delay_base * 1000, af = _prefs.airtime_factor * 1000;
     int i = 0;
@@ -4871,6 +4898,12 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
       return;
     }
+    const uint8_t previous_manual = _prefs.manual_add_contacts;
+    const uint8_t previous_base = _prefs.telemetry_mode_base;
+    const uint8_t previous_loc = _prefs.telemetry_mode_loc;
+    const uint8_t previous_env = _prefs.telemetry_mode_env;
+    const uint8_t previous_policy = _prefs.advert_loc_policy;
+    const uint8_t previous_acks = _prefs.multi_acks;
     _prefs.manual_add_contacts = cmd_frame[1];
     if (len >= 3) {
       _prefs.telemetry_mode_base = cmd_frame[2] & 0x03; // v5+
@@ -4884,16 +4917,24 @@ void MyMesh::handleCmdFrame(size_t len) {
         }
       }
     }
-    updateGpsTelemetryPolicy();
-    savePrefs();
-    writeOKFrame();
+    if (savePrefs()) {
+      updateGpsTelemetryPolicy();
+      writeOKFrame();
+    } else {
+      _prefs.manual_add_contacts = previous_manual;
+      _prefs.telemetry_mode_base = previous_base;
+      _prefs.telemetry_mode_loc = previous_loc;
+      _prefs.telemetry_mode_env = previous_env;
+      _prefs.advert_loc_policy = previous_policy;
+      _prefs.multi_acks = previous_acks;
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+    }
   } else if (cmd_frame[0] == CMD_SET_PATH_HASH_MODE && len >= 3 && cmd_frame[1] == 0) {
     if (cmd_frame[2] >= 3) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
-      _prefs.path_hash_mode = cmd_frame[2];
-      savePrefs();
-      writeOKFrame();
+      if (savePreference(_prefs.path_hash_mode, cmd_frame[2])) writeOKFrame();
+      else writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     }
   } else if (cmd_frame[0] == CMD_REBOOT && len >= 7 && memcmp(&cmd_frame[1], "reboot", 6) == 0) {
     if (!flushContactsBeforeReboot()) {
@@ -5308,9 +5349,8 @@ void MyMesh::handleCmdFrame(size_t len) {
 
     // ensure pin is zero, or a valid 6 digit pin
     if (pin == 0 || (pin >= 100000 && pin <= 999999)) {
-      _prefs.ble_pin = pin;
-      savePrefs();
-      writeOKFrame();
+      if (savePreference(_prefs.ble_pin, pin)) writeOKFrame();
+      else writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
@@ -5339,12 +5379,19 @@ void MyMesh::handleCmdFrame(size_t len) {
         #if ENV_INCLUDE_GPS == 1
         // Update node preferences for GPS settings
         if (strcmp(sp, "gps") == 0) {
-          _prefs.gps_enabled = (np[0] == '1') ? 1 : 0;
-          savePrefs();
+          if (!savePreference(_prefs.gps_enabled, static_cast<uint8_t>(np[0] == '1'))) {
+            applyGpsPrefs();
+            writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+            return;
+          }
         } else if (strcmp(sp, "gps_interval") == 0) {
           uint32_t interval_seconds = atoi(np);
-          _prefs.gps_interval = constrain(interval_seconds, 0, 86400);
-          savePrefs();
+          if (!savePreference(_prefs.gps_interval,
+                  static_cast<uint32_t>(constrain(interval_seconds, 0, 86400)))) {
+            applyGpsPrefs();
+            writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+            return;
+          }
         }
         #endif
         writeOKFrame();
@@ -5642,6 +5689,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     send_unscoped = true;
     writeOKFrame();
   } else if (cmd_frame[0] == CMD_SET_DEFAULT_FLOOD_SCOPE && len >= 1) {
+    char previous_name[sizeof(_prefs.default_scope_name)];
+    uint8_t previous_key[sizeof(_prefs.default_scope_key)];
+    memcpy(previous_name, _prefs.default_scope_name, sizeof(previous_name));
+    memcpy(previous_key, _prefs.default_scope_key, sizeof(previous_key));
     if (len >= 1+31+16) {
       const void* terminator = memchr(&cmd_frame[1], 0, 31);
       size_t n = terminator == NULL ? 31 : (const uint8_t*)terminator - &cmd_frame[1];
@@ -5649,16 +5700,20 @@ void MyMesh::handleCmdFrame(size_t len) {
         memcpy(_prefs.default_scope_name, &cmd_frame[1], n);
         _prefs.default_scope_name[n] = 0;
         memcpy(_prefs.default_scope_key, &cmd_frame[1+31], 16);
-        savePrefs();
-        writeOKFrame();
       } else {
         writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+        return;
       }
     } else {
       memset(_prefs.default_scope_name, 0, sizeof(_prefs.default_scope_name));  // set default scope to null
       memset(_prefs.default_scope_key, 0, sizeof(_prefs.default_scope_key));
-      savePrefs();
+    }
+    if (savePrefs()) {
       writeOKFrame();
+    } else {
+      memcpy(_prefs.default_scope_name, previous_name, sizeof(previous_name));
+      memcpy(_prefs.default_scope_key, previous_key, sizeof(previous_key));
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     }
   } else if (cmd_frame[0] == CMD_GET_DEFAULT_FLOOD_SCOPE) {
     out_frame[0] = RESP_CODE_DEFAULT_FLOOD_SCOPE;
@@ -5682,12 +5737,19 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
       return;
     }
+    const uint8_t previous_config = _prefs.autoadd_config;
+    const uint8_t previous_max_hops = _prefs.autoadd_max_hops;
     _prefs.autoadd_config = cmd_frame[1];
     if (len >= 3) {
       _prefs.autoadd_max_hops = min(cmd_frame[2], (uint8_t)64);
     }
-    savePrefs();
-    writeOKFrame();
+    if (savePrefs()) {
+      writeOKFrame();
+    } else {
+      _prefs.autoadd_config = previous_config;
+      _prefs.autoadd_max_hops = previous_max_hops;
+      writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+    }
   } else if (cmd_frame[0] == CMD_GET_AUTOADD_CONFIG) {
     int i = 0;
     out_frame[i++] = RESP_CODE_AUTOADD_CONFIG;
@@ -6316,6 +6378,25 @@ bool MyMesh::handleExtraFsHilCommand(const char* command, char* reply,
 #endif
 #endif
 
+bool MyMesh::saveAdvertName(const char* name) {
+  char previous[sizeof(_prefs.node_name)];
+  memcpy(previous, _prefs.node_name, sizeof(previous));
+  StrHelper::strncpy(_prefs.node_name, name, sizeof(_prefs.node_name));
+  if (savePrefs()) return true;
+  memcpy(_prefs.node_name, previous, sizeof(previous));
+  return false;
+}
+
+bool MyMesh::saveAdvertLocation(double latitude, double longitude) {
+  const double previous_lat = sensors.node_lat, previous_lon = sensors.node_lon;
+  sensors.node_lat = latitude;
+  sensors.node_lon = longitude;
+  if (savePrefs()) return true;
+  sensors.node_lat = previous_lat;
+  sensors.node_lon = previous_lon;
+  return false;
+}
+
 MyMesh::RadioSettingResult MyMesh::applyAndSaveTxPower(int8_t power) {
   const int8_t previous = _prefs.tx_power_dbm;
   if (_radio_available && !radio_driver.setTxPower(power)) {
@@ -6804,12 +6885,11 @@ bool MyMesh::applyAndSavePowerSaving(const char* value, char* reply) {
     return false;
   }
 
-  _prefs.powersaving_enabled = enabled ? 1 : 0;
-  sensors.setPowerSavingEnabled(enabled);
-  if (!savePrefs()) {
-    strcpy(reply, "Error: power saving changed for this boot but save failed");
+  if (!savePreference(_prefs.powersaving_enabled, static_cast<uint8_t>(enabled))) {
+    strcpy(reply, "Error: power saving could not be saved");
     return false;
   }
+  sensors.setPowerSavingEnabled(enabled);
   snprintf(reply, 160, "OK - powersaving %s", enabled ? "on" : "off");
   return true;
 }
@@ -6970,12 +7050,30 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
     return false;
   }
 
+  const uint8_t previous_enabled = _prefs.rx_powersaving_enabled;
+  const uint8_t previous_level = _prefs.rx_ps_level;
+  const uint8_t previous_preamble = _prefs.rx_ps_preamble;
+  const uint32_t previous_rx = _prefs.rx_ps_rx_us, previous_sleep = _prefs.rx_ps_sleep_us;
   _prefs.rx_powersaving_enabled = enabled;
   _prefs.rx_ps_rx_us = rx_us;
   _prefs.rx_ps_sleep_us = sleep_us;
   _prefs.rx_ps_level = level;
   _prefs.rx_ps_preamble = preamble;
-  savePrefs();
+  if (!savePrefs()) {
+    _prefs.rx_powersaving_enabled = previous_enabled;
+    _prefs.rx_ps_rx_us = previous_rx;
+    _prefs.rx_ps_sleep_us = previous_sleep;
+    _prefs.rx_ps_level = previous_level;
+    _prefs.rx_ps_preamble = previous_preamble;
+    if (_radio_available
+        && !radio_driver.setRxPowerSaving(previous_enabled != 0, previous_rx, previous_sleep)) {
+      saved_radio_apply_pending = true;
+      radio_apply_retry_at = 0;
+      radio_apply_failures = 0;
+    }
+    strcpy(reply, "Error: RX power saving could not be saved");
+    return false;
+  }
   snprintf(reply, 160, "OK - %s,%lu,%lu",
            enabled ? "on" : "off", (unsigned long)rx_us,
            (unsigned long)sleep_us);
@@ -8045,23 +8143,20 @@ void MyMesh::handleTerminalCommand(char* command) {
           || parsed < 0.0f || parsed > 9.0f) {
         terminalOutput().print("  ERROR: airtime factor must be 0-9\r\n");
       } else {
-        _prefs.airtime_factor = parsed;
-        savePrefs();
-        terminalOutput().print("  OK\r\n");
+        terminalOutput().print(savePreference(_prefs.airtime_factor, parsed)
+            ? "  OK\r\n" : "  ERROR: airtime factor could not be saved\r\n");
       }
     } else if (strncmp(config, "name ", 5) == 0 && config[5] != 0) {
-      StrHelper::strncpy(_prefs.node_name, config + 5, sizeof(_prefs.node_name));
-      savePrefs();
-      terminalOutput().print("  OK\r\n");
+      terminalOutput().print(saveAdvertName(config + 5)
+          ? "  OK\r\n" : "  ERROR: name could not be saved\r\n");
     } else if (strncmp(config, "lat ", 4) == 0) {
       float parsed = 0.0f;
       if (!mesh::cli::parseDecimalStrict(config + 4, parsed)
           || parsed < -90.0f || parsed > 90.0f) {
         terminalOutput().print("  ERROR: latitude must be -90 to 90\r\n");
       } else {
-        sensors.node_lat = parsed;
-        savePrefs();
-        terminalOutput().print("  OK\r\n");
+        terminalOutput().print(saveAdvertLocation(parsed, sensors.node_lon)
+            ? "  OK\r\n" : "  ERROR: latitude could not be saved\r\n");
       }
     } else if (strncmp(config, "lon ", 4) == 0) {
       float parsed = 0.0f;
@@ -8069,9 +8164,8 @@ void MyMesh::handleTerminalCommand(char* command) {
           || parsed < -180.0f || parsed > 180.0f) {
         terminalOutput().print("  ERROR: longitude must be -180 to 180\r\n");
       } else {
-        sensors.node_lon = parsed;
-        savePrefs();
-        terminalOutput().print("  OK\r\n");
+        terminalOutput().print(saveAdvertLocation(sensors.node_lat, parsed)
+            ? "  OK\r\n" : "  ERROR: longitude could not be saved\r\n");
       }
     } else if (strncmp(config, "tx ", 3) == 0) {
       handleCommand(command, 0, local_reply);
@@ -8392,11 +8486,12 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     while (*command == ' ' || *command == '\t') command++;
   }
 
-  if (_radio_profiles.handle(command, reply, reply_capacity)) return true;
+  if (_radio_profiles.handle(command, reply, reply_capacity, sender_timestamp != 0)) return true;
   if (!strncmp(command, "set tempradio ", 14)) command += 4;
   if (!strcmp(command, "get tempradio")) command += 4;
   char profile_command[140];
   const uint16_t previous_primary_preamble = _radio_profiles.primaryPreamble();
+  uint16_t requested_primary_preamble = previous_primary_preamble;
   if (!strncmp(command, "set radio ", 10)) {
     char legacy[120];
     uint16_t preamble = 0;
@@ -8408,9 +8503,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     if (!_radio_profiles.acceptsPrimary(f, bw, sf, cr, preamble)) {
       snprintf(reply, reply_capacity, "Error: radio params unsupported"); return true;
     }
-    if (!_radio_profiles.savePrimaryPreamble(preamble)) {
-      snprintf(reply, reply_capacity, "Error: preamble could not be saved"); return true;
-    }
+    requested_primary_preamble = preamble;
     snprintf(profile_command, sizeof(profile_command), "set radio %s", legacy);
     command = profile_command;
   }
@@ -8488,14 +8581,19 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
             command, sender_timestamp, reply)) {
       return false;
     }
-    if (_prefs.getRadioPrefs()->isDirty()) {
+    if (_prefs.getRadioPrefs()->isDirty() && strncmp(reply, "OK", 2) == 0) {
       if (strncmp(command, "set radio ", 10) == 0) {
         recalcRxPowerSavingFromLevel(
             _prefs.rx_ps_level, _prefs.sf, _prefs.bw,
             _prefs.rx_ps_preamble, &_prefs.rx_ps_rx_us,
             &_prefs.rx_ps_sleep_us);
       }
-      if (!savePrefs()) {
+      // Both validators must accept before either persistent image changes.
+      // In particular, the shared prefs parser has a tighter BW tolerance.
+      const bool primary_radio_command = strncmp(command, "set radio ", 10) == 0;
+      const bool preamble_saved = !primary_radio_command
+          || _radio_profiles.savePrimaryPreamble(requested_primary_preamble);
+      if (!preamble_saved || !savePrefs()) {
         _prefs.freq = previous_freq;
         _prefs.bw = previous_bw;
         _prefs.sf = previous_sf;
@@ -8507,7 +8605,9 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         _prefs.rx_ps_rx_us = previous_rx_us;
         _prefs.rx_ps_sleep_us = previous_sleep_us;
         _prefs.clearDirty();
-        if (strncmp(command, "set radio ", 10) == 0
+        if (!preamble_saved) {
+          strcpy(reply, "Error: preamble could not be saved");
+        } else if (primary_radio_command
             && !_radio_profiles.savePrimaryPreamble(previous_primary_preamble)) {
           strcpy(reply, "Error: radio save failed; preamble rollback failed");
         } else {
@@ -8536,15 +8636,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     if (!AdvertDataParser::isValidName(name)) {
       strcpy(reply, "Error, bad chars");
     } else {
-      char previous[sizeof(_prefs.node_name)];
-      memcpy(previous, _prefs.node_name, sizeof(previous));
-      StrHelper::strncpy(_prefs.node_name, name, sizeof(_prefs.node_name));
-      if (!savePrefs()) {
-        memcpy(_prefs.node_name, previous, sizeof(_prefs.node_name));
-        strcpy(reply, "Error: name changed but save failed");
-      } else {
-        strcpy(reply, "OK");
-      }
+      strcpy(reply, saveAdvertName(name) ? "OK" : "Error: name could not be saved");
     }
     return true;
   }
@@ -8893,7 +8985,10 @@ void MyMesh::loop() {
     // once the receive/response path is idle.
     radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
     if (applySavedRadioParams()
-        && radio_driver.setTxPower(_prefs.tx_power_dbm)) {
+        && radio_driver.setTxPower(_prefs.tx_power_dbm)
+        && (!radio_driver.supportsRxPowerSaving()
+            || radio_driver.setRxPowerSaving(_prefs.rx_powersaving_enabled != 0,
+                                             _prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us))) {
       saved_radio_apply_pending = false;
       radio_apply_retry_at = 0;
       radio_apply_failures = 0;

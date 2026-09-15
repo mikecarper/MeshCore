@@ -84,28 +84,35 @@ size_t RAK13800EthernetInterface::write(const uint8_t *buf, size_t size) {
 }
 
 bool RAK13800EthernetInterface::isConnected() const {
-  return _isConnected;
+  return isEnabled() && _isConnected;
+}
+
+void RAK13800EthernetInterface::disconnectClient() {
+  _isConnected = false;
+  client.stop();
 }
 
 void RAK13800EthernetInterface::loop() {
 
   Ethernet.maintain();
-  const bool wasConnected = _isConnected;
+  if (!isEnabled()) return;
+  if (_isConnected && !client.connected()) {
+    _isConnected = false;
+    onClientDisconnected();
+  }
   
   auto newClient = server.accept();
   if (newClient) {
     IPAddress remoteIp = newClient.remoteIP();
     uint16_t remotePort = newClient.remotePort();
     ETHERNET_DEBUG_PRINTLN("New client accepted %u.%u.%u.%u:%u", remoteIp[0], remoteIp[1], remoteIp[2], remoteIp[3], remotePort);
-    if (client) {
-      ETHERNET_DEBUG_PRINTLN("Closing previous client");
-      client.stop();
-    }
+    disconnectClient();
+    onClientConnected((uint32_t)remoteIp);
+    // Finish old-owner cancellation before publishing the replacement socket.
     client = newClient;
-    onClientConnected();
   }
 
   _isConnected = client.connected();
-  if (wasConnected && !_isConnected) onClientDisconnected();
+  if (!_isConnected) onClientDisconnected();
 
 }

@@ -57,6 +57,8 @@ struct CLI {
   bool preamble_save_success = true;
   unsigned preamble_saves = 0;
   bool savePrimaryPreamble(uint16_t) { ++preamble_saves; return preamble_save_success; }
+  bool hasReplyMutation() const { return false; }
+  bool finishReplyMutation(bool) { return true; }
 };
 struct Radio { uint32_t last_rx = 0; uint32_t getLastRecvMillis() { return last_rx; } };
 struct Barrier { bool held = false; bool waiting() const { return held; } void clear() { held = false; } };
@@ -83,6 +85,9 @@ public:
   uint32_t getLastMeshCoreRecvMillis() const { return last_meshcore_rx; }
   RTC rtc;
   Barrier temp_radio_reply_barrier;
+  uint32_t primary_radio_mutation_generation = 0, radio_reply_deadline = 0;
+  bool primary_radio_mutation_starts_temp = false;
+  bool radio_reply_secondary = false;
   mesh::RxInactivityWatchdog rx_inactivity_watchdog;
   mesh::RepeaterRadioTiming radio_timing;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
@@ -157,6 +162,20 @@ static void startTemp(MyMesh& m, int minutes) {
   assert(m.temp_radio_applied);
 }
 int main() {
+  { // Expiring one scheduled lease must retain a later temporary entry.
+    MyMesh m;
+    char reply[160];
+    m.addScheduledRadioParams(true, 910, 250, 5, 5, m.rtc.now + 2, m.rtc.now + 62, reply);
+    m.addScheduledRadioParams(true, 911, 250, 5, 5, m.rtc.now + 122, m.rtc.now + 182, reply);
+    assert(m.countScheduledRadioSettings(true) == 2);
+    m.advance(2); m.servicePostMeshLoop(); assert(m.temp_radio_applied);
+    m.advance(60); m.servicePostMeshLoop();
+    assert(m.countScheduledRadioSettings(true) == 1 && !m.temp_radio_applied);
+    m.advance(60); m.servicePostMeshLoop(); assert(m.temp_radio_applied);
+    const auto before = m.primary_radio_mutation_generation;
+    m.queueSavedRadioApply();
+    assert(m.primary_radio_mutation_generation != before);
+  }
   for (bool rollover : {false, true}) {
     MyMesh m;
     if (rollover) { now_ms = UINT32_MAX - 30000; m.last_millis = now_ms; }

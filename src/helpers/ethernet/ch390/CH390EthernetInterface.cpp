@@ -69,11 +69,20 @@ size_t CH390EthernetInterface::write(const uint8_t *buf, size_t size) {
 }
 
 bool CH390EthernetInterface::isConnected() const {
-  return _isConnected;
+  return isEnabled() && _isConnected;
+}
+
+void CH390EthernetInterface::disconnectClient() {
+  _isConnected = false;
+  client.stop();
 }
 
 void CH390EthernetInterface::loop() {
-  const bool wasConnected = _isConnected;
+  if (!isEnabled()) return;
+  if (_isConnected && !client.connected()) {
+    _isConnected = false;
+    onClientDisconnected();
+  }
   
   if (server.hasClient()) {
     auto newClient = server.available();
@@ -81,16 +90,15 @@ void CH390EthernetInterface::loop() {
       IPAddress remoteIp = newClient.remoteIP();
       uint16_t remotePort = newClient.remotePort();
       ETHERNET_DEBUG_PRINTLN("New client accepted %u.%u.%u.%u:%u", remoteIp[0], remoteIp[1], remoteIp[2], remoteIp[3], remotePort);
-      if (client) {
-        ETHERNET_DEBUG_PRINTLN("Closing previous client");
-        client.stop();
-      }
+      disconnectClient();
+      onClientConnected((uint32_t)remoteIp);
+      // The old owner's producers are cancelled before the new socket can
+      // become visible to the serial manager or receive any queued replies.
       client = newClient;
-      onClientConnected();
     }
   }
 
   _isConnected = client.connected();
-  if (wasConnected && !_isConnected) onClientDisconnected();
+  if (!_isConnected) onClientDisconnected();
 
 }

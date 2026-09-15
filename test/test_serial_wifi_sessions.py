@@ -45,6 +45,17 @@ SCENARIOS = (
     "disable cancels owner once and resets partial RX state",
     "maximum-sized partly sent frame stays intact before higher priority response",
     "maximum-sized partial frame and parked queue survive owner swap",
+    "oversized header disconnects immediately without reading its body",
+    "invalid type disconnects without discard loop or tail dispatch",
+    "zero-length header disconnects without tail dispatch",
+    "incomplete payload disconnects after bounded deadline",
+    "incomplete header disconnects after bounded deadline",
+    "short payload read never dispatches a truncated command",
+    "short header read disconnects and resets framing",
+    "fragmented legal frame completes before deadline",
+    "maximum-sized and consecutive legal frames parse intact",
+    "incomplete payload deadline survives millis rollover",
+    "physical disconnect cancels once even with incomplete input and queued reply",
 )
 
 
