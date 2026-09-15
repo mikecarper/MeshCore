@@ -3128,8 +3128,19 @@ follow <code>tx.reply</code> below (both TX-capable profiles by default). Ordina
 on the primary profile by default. Use an OTA-capable build and the usual OTA
 setup on every participating node; a temporary profile does not add OTA support
 to firmware built without it.</p>
-<p>New settings take effect after a short reply allowance. Temporary periods and
-schedules live in RAM and disappear on reboot. Timer expiry also uses monotonic
+<p>Local settings take effect after a short reply allowance. On repeaters, immediate
+remote <code>radio2</code>/<code>tempradio2</code> changes (including <code>off</code>) wait until their exact reply
+copies finish, with at least one successfully transmitted. A reply that cannot
+be queued or whose copies all fail cancels the change. Queued replies have a
+five-minute deadline; an already-transmitting copy may finish under the normal
+radio watchdog. This confirms transmission, not reception by the remote client.</p>
+<p>Permanent remote changes are prepared in an uncommitted file before replying;
+the saved configuration is replaced only after reply transmission. If that
+replacement fails, the old channel remains active and the commit retries.
+Local <code>get radio2.status</code> reports this pending state. Roles without the tracked remote
+reply path require local USB for these immediate secondary-profile changes.</p>
+<p>Temporary periods and schedules live in RAM and disappear on reboot. Waiting
+for a reply does not extend a temporary lease. Timer expiry also uses monotonic
 time, so setting the clock backwards cannot extend a temporary session.</p>
 <h2 id="repeater-room-server-and-sensor-replies">Repeater, room-server, and sensor replies</h2>
 <p>These roles default to <strong><code>tx.reply both</code></strong>: locally generated replies are queued

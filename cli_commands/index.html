@@ -7070,6 +7070,14 @@ command-by-command nRF52 and ESP32 build tables.</p>
 <p>The first word of a command is case-insensitive, so <code>set</code>, <code>Set</code>, and <code>SET</code>
 are equivalent, as are <code>get</code>, <code>Get</code>, and the other command verbs. The case of
 arguments such as node names, passwords, and keys is left unchanged.</p>
+<p>Repeater retries carrying the same logical request ID and original command
+bytes reuse the cached result, even when command parsing trims whitespace or
+splits arguments in place. Changing the timestamp alone does not execute the
+operation again. Normal authentication and stale-request checks still apply.
+Deferred commands and host-service replies remain bound to the full authenticated
+public key, even if permission changes move ACL entries. Removing or revoking
+the requester cancels pending execution; a running <code>setperm</code> can still acknowledge
+its own completed change to the original sender.</p>
 <p>Use the site search or your browser's Find command with everyday wording such
 as <strong>tx retries</strong>, <strong>retry attempts</strong>, <strong>serial logging</strong>, or <strong>tx power</strong>.
 <strong>Search terms</strong> below are alternative wording to help find a command, not
@@ -8213,6 +8221,10 @@ settings use a safe effective power without replacing the saved preference.</p>
 - <code>timeout_mins</code>: Duration in minutes (must be &gt; 0)</p>
 <p><strong>Notes:</strong>
 - <code>tempradio</code> is not saved to preferences and clears on reboot.
+- On repeaters, remote <code>tempradio</code> and <code>normalradio</code> wait for their exact reply
+  copies to finish, with at least one transmitted. This also covers the <code>set</code>
+  alias, case-insensitive verbs, and client correlation prefixes. Failed replies
+  cancel an unconfirmed temporary handoff; hard lease expiry still takes priority.
 - <code>normalradio</code> cancels pending and active temporary-radio windows, then
   restores the saved radio tuple after its CLI reply has drained on the
   current channel. Permanent <code>radioat</code> entries are not removed.

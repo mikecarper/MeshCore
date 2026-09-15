@@ -3615,7 +3615,11 @@ target to match this node and its version to be newer than the running valid End
 <code>ota pull &lt;MID8&gt;</code> remains the deliberate override for an older or unsigned partial.
 For bring-up/debugging, <code>ota dev resume &lt;MID8&gt;</code> performs the same explicit MID-bound re-adoption without
 starting a new network fetch. After reboot it requires the MID; bare <code>ota dev resume</code> is accepted only while
-an active/requested session MID still exists, and malformed or missing identifiers are rejected.</p>
+an active/requested session MID still exists, and malformed or missing identifiers are rejected.
+If raw flash contains multiple valid staged headers, automatic resume leaves them untouched rather than
+guessing which is newest. Specify the intended MID to select its unique checkpoint; ambiguous matches are
+rejected. Temporary storage read failures no longer consume a download slot indefinitely: host storage
+pauses for reconnection, while non-reconnectable storage reports a storage error and can be retried.</p>
 <p>Recommended for most people: leave both <strong>off</strong> and update by hand. Use <code>autoinstall trusted</code> only once
 you've added the signer's key (next section) and you trust them to push updates unattended. Automatic
 admission and final apply both reject zero, equal, or older signed versions; a dishonest catalog version
