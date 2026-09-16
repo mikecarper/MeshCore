@@ -16,6 +16,7 @@ theme:
     - search.suggest
 
 extra_css:
+  - https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
   - _stylesheets/extra.css
   - _stylesheets/firmware_picker.css
   - _stylesheets/telemetry_decoder.css
@@ -23,7 +24,8 @@ extra_css:
   - _stylesheets/preset_test.css
 
 extra_javascript:
+  - https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
   - _javascript/firmware_picker.js
   - _javascript/telemetry_decoder.js
   - _javascript/filter_tool.js
-  - _javascript/preset_test.js?v=20260916-2
+  - _javascript/preset_test.js?v=20260916-3

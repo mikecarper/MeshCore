@@ -278,13 +278,35 @@ clock</code></pre>
               <span>End date and time</span>
               <input type="datetime-local" name="end" step="60" required>
             </label>
-            <label>
-              <span>Time zone</span>
-              <select name="tz" required>
-                <option value="UTC">UTC</option>
-              </select>
-              <small>All IANA time zones supported by this browser are listed.</small>
-            </label>
+            <div class="preset-test-timezone-picker">
+              <div class="preset-test-timezone-toolbar">
+                <div>
+                  <span>Selected time zone</span>
+                  <strong data-role="selected-time-zone">Detecting browser time zone…</strong>
+                </div>
+                <button type="button" data-action="use-browser-time-zone">
+                  Use browser time zone
+                </button>
+              </div>
+              <input type="hidden" name="tz" required>
+              <div
+                class="preset-test-timezone-map"
+                data-role="timezone-map"
+                aria-label="Interactive world map for selecting a time zone"
+              ></div>
+              <p class="preset-test-timezone-status" data-role="timezone-map-status" aria-live="polite">
+                Loading time zone map…
+              </p>
+              <small>
+                Click a region to select its IANA time zone. The initial selection
+                comes from <code>tz=</code> when present; otherwise it uses your
+                browser's time zone. Map design inspired by
+                <a href="https://zones.arilyn.cc/" target="_blank" rel="noopener">zones.arilyn.cc</a>;
+                boundaries from
+                <a href="https://github.com/evansiroky/timezone-boundary-builder" target="_blank" rel="noopener">Timezone Boundary Builder</a>
+                and © OpenStreetMap contributors.
+              </small>
+            </div>
             <div class="preset-test-generator-subheading">Test radio profile</div>
             <label>
               <span>Frequency (MHz)</span>

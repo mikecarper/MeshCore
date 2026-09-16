@@ -1,7 +1,13 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
 const tool = require("../docs/_javascript/preset_test.js");
+
+const pageSource = fs.readFileSync("docs/preset_test.md", "utf8");
+assert.match(pageSource, /data-role="timezone-map"/);
+assert.match(pageSource, /type="hidden" name="tz"/);
+assert.doesNotMatch(pageSource, /<select name="tz"/);
 
 const query =
   "?start=2026-09-21T17:00:00-07:00" +
