@@ -18,6 +18,10 @@ assert.strictEqual(config.sf, 8);
 assert.strictEqual(config.cr, 7);
 assert.strictEqual(config.tz, "America/Los_Angeles");
 assert.strictEqual(config.tx, 22);
+assert.strictEqual(config.normalFreq, 910.525);
+assert.strictEqual(config.normalBw, 62.5);
+assert.strictEqual(config.normalSf, 7);
+assert.strictEqual(config.normalCr, 5);
 assert.strictEqual(defaults.startEpoch, config.startEpoch);
 assert.strictEqual(defaults.endEpoch, config.endEpoch);
 assert.strictEqual(defaults.freq, config.freq);
@@ -58,6 +62,10 @@ assert.strictEqual(
     "get tempradioat2"
 );
 assert.strictEqual(commands.stockLeaveIn30, "tempradio 910.1,500,8,7,30");
+assert.strictEqual(
+  commands.stockCancelDuring,
+  "tempradio 910.525,62.5,7,5,1"
+);
 assert.strictEqual(
   commands.companionLeaveIn30,
   "set radio2.cross on\n" +
@@ -101,6 +109,10 @@ const generated = tool.configFromGenerator({
   bw: "500",
   sf: "8",
   cr: "7",
+  normalfreq: "910.525",
+  normalbw: "62.5",
+  normalsf: "7",
+  normalcr: "5",
   tx: "22",
 });
 assert.strictEqual(generated.startEpoch, config.startEpoch);
@@ -136,6 +148,18 @@ assert.throws(
   () => tool.configFromSearch("?tx=61"),
   /tx must be between/
 );
+assert.throws(
+  () => tool.configFromSearch("?normalbw=100"),
+  /normalbw must be one of/
+);
+
+const alternateReturn = tool.configFromSearch(
+  "?normalfreq=915.5&normalbw=125&normalsf=9&normalcr=6"
+);
+assert.strictEqual(
+  tool.commandsFor(alternateReturn, alternateReturn.startMs).stockCancelDuring,
+  "tempradio 915.5,125,9,6,1"
+);
 
 const changed = tool.configFromSearch(
   "?start=1790035200&end=1790208000&freq=915.25&bw=125&sf=10&cr=5"
@@ -154,6 +178,10 @@ assert.strictEqual(shared.searchParams.get("end"), "2026-09-24T00:00:00.000Z");
 assert.strictEqual(shared.searchParams.get("freq"), "915.25");
 assert.strictEqual(shared.searchParams.get("tz"), "America/Los_Angeles");
 assert.strictEqual(shared.searchParams.get("tx"), "22");
+assert.strictEqual(shared.searchParams.get("normalfreq"), "910.525");
+assert.strictEqual(shared.searchParams.get("normalbw"), "62.5");
+assert.strictEqual(shared.searchParams.get("normalsf"), "7");
+assert.strictEqual(shared.searchParams.get("normalcr"), "5");
 assert.strictEqual(shared.searchParams.has("stale"), false);
 assert.strictEqual(shared.hash, "#commands");
 
