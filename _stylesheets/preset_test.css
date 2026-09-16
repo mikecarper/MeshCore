@@ -278,6 +278,17 @@
   font-weight: 700;
 }
 
+.preset-test-generator-subheading {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--preset-border);
+  padding: 0.3rem 0 0.35rem;
+  color: var(--preset-cyan);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .preset-test-generator input,
 .preset-test-generator select {
   box-sizing: border-box;
