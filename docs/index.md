@@ -11,6 +11,7 @@ Below are a few quick start guides.
 - [Full Companion feature switches](./full_companion_features.md)
 - [Frequently Asked Questions](./faq.md)
 - [Firmware Picker](./firmware_picker.md)
+- [Temporary Radio Test Command Generator](./preset_test.md)
 - [CLI Commands](./cli_commands.md)
 - [LoRa CLI Host Service](./host_cli_service.md)
 - [Filter Policy Playground](./filter_tool.md)
