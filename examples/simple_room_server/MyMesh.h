@@ -504,7 +504,7 @@ public:
 
   static bool saveFilter(ClientInfo* client);
 
-  void saveIdentity(const mesh::LocalIdentity& new_id) override;
+  bool saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override;
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   void handleLocalCommand(char* command, char* reply, Stream& output) {

@@ -1067,7 +1067,7 @@ public:
   void onDefaultRegionChanged(const RegionEntry* r) override;
   mesh::LocalIdentity& getSelfId() override { return self_id; }
 
-  void saveIdentity(const mesh::LocalIdentity& new_id) override;
+  bool saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override;
 
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)

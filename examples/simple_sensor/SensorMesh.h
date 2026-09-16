@@ -92,7 +92,7 @@ public:
   void formatRadioStatsReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
   mesh::LocalIdentity& getSelfId() override { return self_id; }
-  void saveIdentity(const mesh::LocalIdentity& new_id) override;
+  bool saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override { }
   mesh::Radio* getProfileRadio() override { return _radio; }
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) override;

@@ -10574,7 +10574,7 @@ void MyMesh::formatPacketStatsReply(char *reply) {
                                        getNumRecvFlood(), getNumRecvDirect());
 }
 
-void MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) {
+bool MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   IdentityStore store(*_fs, "");
 #elif defined(ESP32)
@@ -10584,7 +10584,7 @@ void MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) {
 #else
 #error "need to define saveIdentity()"
 #endif
-  store.save("_main", new_id);
+  return store.saveWithRetry("_main", new_id);
 }
 
 void MyMesh::clearStats() {

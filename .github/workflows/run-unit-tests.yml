@@ -91,6 +91,7 @@ jobs:
           python3 -B test/test_ota_identity_policy.py -v
           python3 -B test/test_companion_radio_gain_restore.py -v
           python3 -B test/test_common_radio_persistence.py -v
+          python3 -B test/test_common_cli_save_results.py -v
           python3 -B test/test_common_prefs_commit.py -v
           python3 -B test/test_mqtt_prefs_commit.py -v
           python3 -B test/test_identity_and_settings_recovery.py -v

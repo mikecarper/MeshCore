@@ -424,6 +424,7 @@ public:
 
   bool isDirty() const override { return ConfigSerializer::isDirty() || radio.isDirty() || custom.isDirty(); }
   void clearDirty() override { ConfigSerializer::clearDirty(); radio.clearDirty(); custom.clearDirty(); }
+  void markUnsaved() { markDirty(); }
 };
 
 #ifdef WITH_MQTT_BRIDGE
@@ -515,7 +516,7 @@ public:
   virtual bool supportsAdvancedRetryConfig() const { return false; }
   virtual void onRetryConfigChanged() { }
   virtual mesh::LocalIdentity& getSelfId() = 0;
-  virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
+  virtual bool saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) = 0;
   virtual uint32_t getTempRadioDurationSeconds() const { return 0; }
@@ -761,10 +762,13 @@ class CommonCLI {
   bool _com_prefs_needs_upgrade = false;  // old-format legacy prefs detected; rewrite once after load
   bool _common_save_result_known = false;
   bool _common_save_succeeded = false;
+  uint32_t _prefs_save_failures = 0;
   mesh::RadioProfileCLI _radio_profiles;
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
   void savePrefs(
+      PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common);
+  bool trySavePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common);
   bool saveObserverPrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);

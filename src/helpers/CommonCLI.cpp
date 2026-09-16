@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "CommonCLI.h"
+#include "PrefsSaveReplyGuard.h"
 #include <helpers/ui/DisplayPowerSettings.h>
 #include "CLICommandUtils.h"
 #include "FloodAdvertCLI.h"
@@ -2448,16 +2449,52 @@ bool CommonCLI::saveMQTTPrefs(FILESYSTEM* fs) {
 #define MIN_LOCAL_ADVERT_INTERVAL   60
 
 void CommonCLI::savePrefs(PrefsSaveRouting::Scope scope) {
-  uint8_t old_advert_interval = _prefs->advert_interval;
-  if (_prefs->advert_interval * 2 < MIN_LOCAL_ADVERT_INTERVAL) {
+  if (!trySavePrefs(scope)) {
+    ++_prefs_save_failures;
+    if (PrefsSaveRouting::planFor(scope).common
+        && (!_common_save_result_known || !_common_save_succeeded)) {
+      _prefs->markUnsaved();
+    }
+  }
+}
+
+bool CommonCLI::trySavePrefs(PrefsSaveRouting::Scope scope) {
+  const PrefsSaveRouting::Plan plan = PrefsSaveRouting::planFor(scope);
+  const uint8_t old_advert_interval = _prefs->advert_interval;
+  if (plan.common && _prefs->advert_interval * 2 < MIN_LOCAL_ADVERT_INTERVAL) {
     _prefs->advert_interval = 0;  // turn it off, now that device has been manually configured
   }
-  // If advert_interval was changed, update the timer to reflect the change
-  if (old_advert_interval != _prefs->advert_interval) {
-    _callbacks->updateAdvertTimer();
+  // A previous successful transaction must not mask a callback that did not
+  // save this time. Both images have independent commit results.
+  if (plan.common) {
+    _common_save_result_known = false;
+    _common_save_succeeded = false;
   }
+#ifdef WITH_MQTT_BRIDGE
+  if (plan.observer) {
+    _observer_save_result_known = false;
+    _observer_save_succeeded = false;
+  }
+#endif
   _callbacks->savePrefs(scope);
-  _prefs->clearDirty();
+  const bool common_saved = !plan.common
+      || (_common_save_result_known && _common_save_succeeded);
+  if (plan.common) {
+    if (common_saved) {
+      _prefs->clearDirty();
+      if (old_advert_interval != _prefs->advert_interval) {
+        _callbacks->updateAdvertTimer();
+      }
+    } else {
+      _prefs->advert_interval = old_advert_interval;
+    }
+  }
+#ifdef WITH_MQTT_BRIDGE
+  return common_saved && (!plan.observer
+      || (_observer_save_result_known && _observer_save_succeeded));
+#else
+  return common_saved;
+#endif
 }
 
 bool CommonCLI::saveObserverPrefs() {
@@ -2465,7 +2502,9 @@ bool CommonCLI::saveObserverPrefs() {
   _observer_save_result_known = false;
   _observer_save_succeeded = false;
   _callbacks->savePrefs(PrefsSaveRouting::Scope::Observer);
-  return _observer_save_result_known && _observer_save_succeeded;
+  const bool saved = _observer_save_result_known && _observer_save_succeeded;
+  if (!saved) ++_prefs_save_failures;
+  return saved;
 #else
   return false;
 #endif
@@ -2518,6 +2557,7 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 }
 
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
+    PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
     if (mesh::wireless::control().handle(command, reply, 160, millis(),
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
@@ -2712,8 +2752,14 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       }
     } else if (memcmp(command, "password ", 9) == 0) {
       // change admin password
+      char previous[sizeof(_prefs->password)];
+      memcpy(previous, _prefs->password, sizeof(previous));
       StrHelper::strncpy(_prefs->password, &command[9], sizeof(_prefs->password));
-      savePrefs();
+      if (!trySavePrefs()) {
+        memcpy(_prefs->password, previous, sizeof(previous));
+        strcpy(reply, "Error: password not saved; unchanged");
+        return;
+      }
       sprintf(reply, "password now: %s", _prefs->password);   // echo back just to let admin know for sure!!
     } else if (memcmp(command, "clear stats", 11) == 0) {
       _callbacks->clearStats();
@@ -3462,28 +3508,46 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "ERROR: telemetry.access must be all or acl");
     }
   } else if (memcmp(config, "flood.advert.interval ", 22) == 0) {
-    int hours = _atoi(&config[22]);
-    if ((hours > 0 && hours < 3) || (hours > 168)) {
-      strcpy(reply, "Error: interval range is 3-168 hours");
+    uint32_t hours = 0;
+    if (!parseUint32Strict(&config[22], hours)
+        || (hours != 0 && (hours < 3 || hours > 168))) {
+      strcpy(reply, "Error: interval must be 0 (off) or 3-168 hours");
     } else {
+      const uint8_t previous = _prefs->flood_advert_interval;
       _prefs->flood_advert_interval = (uint8_t)(hours);
+      if (!trySavePrefs()) {
+        _prefs->flood_advert_interval = previous;
+        strcpy(reply, "Error: interval not saved; unchanged");
+        return;
+      }
       _callbacks->updateFloodAdvertTimer();
-      savePrefs();
       strcpy(reply, "OK");
     }
   } else if (memcmp(config, "advert.interval ", 16) == 0) {
-    int mins = _atoi(&config[16]);
-    if ((mins > 0 && mins < MIN_LOCAL_ADVERT_INTERVAL) || (mins > 240)) {
-      sprintf(reply, "Error: interval range is %d-240 minutes", MIN_LOCAL_ADVERT_INTERVAL);
+    uint32_t mins = 0;
+    if (!parseUint32Strict(&config[16], mins)
+        || (mins != 0 && (mins < MIN_LOCAL_ADVERT_INTERVAL || mins > 240))) {
+      sprintf(reply, "Error: interval must be 0 (off) or %d-240 minutes", MIN_LOCAL_ADVERT_INTERVAL);
     } else {
+      const uint8_t previous = _prefs->advert_interval;
       _prefs->advert_interval = (uint8_t)(mins / 2);
+      if (!trySavePrefs()) {
+        _prefs->advert_interval = previous;
+        strcpy(reply, "Error: interval not saved; unchanged");
+        return;
+      }
       _callbacks->updateAdvertTimer();
-      savePrefs();
       strcpy(reply, "OK");
     }
   } else if (memcmp(config, "guest.password ", 15) == 0) {
+    char previous[sizeof(_prefs->guest_password)];
+    memcpy(previous, _prefs->guest_password, sizeof(previous));
     StrHelper::strncpy(_prefs->guest_password, &config[15], sizeof(_prefs->guest_password));
-    savePrefs();
+    if (!trySavePrefs()) {
+      memcpy(_prefs->guest_password, previous, sizeof(previous));
+      strcpy(reply, "Error: guest password not saved; unchanged");
+      return;
+    }
     strcpy(reply, "OK");
   } else if (memcmp(config, "prv.key ", 8) == 0) {
     uint8_t prv_key[PRV_KEY_SIZE];
@@ -3492,7 +3556,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (success && mesh::LocalIdentity::validatePrivateKey(prv_key)) {
       mesh::LocalIdentity new_id;
       new_id.readFrom(prv_key, PRV_KEY_SIZE);
-      _callbacks->saveIdentity(new_id);
+      if (!_callbacks->saveIdentity(new_id)) {
+        strcpy(reply, "Error: identity not saved; current key unchanged");
+        return;
+      }
       strcpy(reply, "OK, reboot to apply! New pubkey: ");
       mesh::Utils::toHex(&reply[33], new_id.pub_key, PUB_KEY_SIZE);
     } else {

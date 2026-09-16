@@ -2821,6 +2821,12 @@ is_lora_ota_build() {
   local env_name=$1
   local env_name_lc=${env_name,,}
 
+  # KISS uses the radio as a host-controlled modem. Shared board flags do not
+  # add an application OTA manager or CLI, even under the auto/FULL profiles.
+  if is_kiss_modem_target "$env_name"; then
+    return 1
+  fi
+
   # ESP32 USB and WiFi companions keep OTA so they can seed a host folder over
   # serial or TCP and can participate in LoRa OTA without using the FULL profile.
   if is_esp32_usb_wifi_companion_ota_build "$env_name"; then

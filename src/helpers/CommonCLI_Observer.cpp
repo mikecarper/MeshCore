@@ -637,7 +637,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
         strcpy(reply, "Error: filter must be all, none, or a CSV of types 0-15 / names (advert,txt_msg,...)");
       } else {
         _mqtt_prefs.mqtt_slot_packet_filter[slot] = filter_mask;
-        savePrefs();
+        saveObserverPrefs();
         char filter_text[MQTTPacketFilter::kFilterTextSize];
         MQTTPacketFilter::format(filter_mask, filter_text, sizeof(filter_text));
         snprintf(reply, 160, "OK - slot %d packet types: %s", slot + 1, filter_text);

@@ -319,6 +319,29 @@ require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
 # replace each with that exact board's Full target.
 init_project_context >/dev/null
 
+# KISS inherits board OTA flags, not the application OTA implementation.
+for kiss_env in "${SUPPORTED_PIO_ENVS[@]}"; do
+  is_kiss_modem_target "$kiss_env" || continue
+  for kiss_profile in auto standard full; do
+    (
+      BUILD_PROFILE_FOR_TARGET=$kiss_profile
+      ESP32_FULL_BUILD=1
+      if is_lora_ota_build "$kiss_env"; then
+        fail "$kiss_env $kiss_profile incorrectly promises LoRa OTA"
+      fi
+      BUILD_CAPABILITIES=()
+      BUILD_EXPECTATIONS=()
+      BUILD_REDUCTIONS=()
+      declare_build_capability_contract "$kiss_env" "${PIO_ENV_PLATFORM_BY_NAME[$kiss_env]}"
+      for expectation in "${BUILD_EXPECTATIONS[@]}"; do
+        case "$expectation" in
+          ota.update.lora=*|ota.cli=*) fail "$kiss_env $kiss_profile has an impossible OTA contract" ;;
+        esac
+      done
+    )
+  done
+done
+
 # The portable inflater is shared by every Arduino platform, but it does not
 # supply the OTA manager or a supported bootloader/apply path. In particular,
 # auto overlays for PicoW and RAK_3x72 must remain buildable without OTA.
