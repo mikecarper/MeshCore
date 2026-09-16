@@ -1,6 +1,7 @@
 #include <helpers/ClientACL.cpp>
 #include <helpers/ClientACLCLI.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/LazyPersistence.h>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -32,6 +33,13 @@ static Stream console;
 Stream& usbConsolePort() { return console; }
 }
 
+static mesh::LocalIdentity self_id;
+static unsigned long dirty_contacts_expiry = 0;
+static uint8_t contacts_save_failures = 0;
+static const unsigned long LAZY_CONTACTS_WRITE_DELAY = 5000;
+static unsigned long futureMillis(unsigned long delay) { return delay + 1; }
+static unsigned gps_updates = 0;
+static void updateGpsTelemetryPolicy() { ++gps_updates; }
 #include "production.h"
 
 static ClientInfo* add(ClientACL& acl, unsigned index, uint8_t permissions) {
@@ -244,6 +252,44 @@ static void repeater_delegation_stays_denied() {
   }
 }
 
+static void permissions_validate_before_mutation() {
+  for (auto handler : {repeaterCommand, roomCommand, sensorCommand}) {
+    for (uint32_t timestamp : {0U, 12345U}) {
+      FakeFilesystem fs;
+      ClientACL acl;
+      acl.load(&fs, self_id);
+      auto* admin = add(acl, 0, PERM_ACL_ADMIN);
+      auto* target = add(acl, 1, PERM_ACL_ADMIN);
+      uint8_t target_key[PUB_KEY_SIZE];
+      memcpy(target_key, target->id.pub_key, sizeof(target_key));
+      char key[65]; mesh::Utils::toHex(key, target_key, sizeof(target_key));
+      CHECK(acl.save(&fs));
+      const auto durable = fs.files;
+      for (const char* value : {"", "invalid", "-1", "256", "259", "3bad", "3.0",
+                                "+", "4294967296", "99999999999999999999999"}) {
+        char command[140], reply[160] = {};
+        snprintf(command, sizeof(command), "setperm %s %s", key, value);
+        dirty_contacts_expiry = 0;
+        gps_updates = 0;
+        handler(acl, timestamp ? admin : nullptr, timestamp, command, reply);
+        CHECK(strncmp(reply, "Err", 3) == 0);
+        CHECK(acl.getNumClients() == 2 && acl.getClient(target_key, PUB_KEY_SIZE)->isAdmin());
+        CHECK(dirty_contacts_expiry == 0 && fs.files == durable);
+        CHECK(gps_updates == 0);
+      }
+      for (unsigned value : {1U, 2U, 3U, 5U, 255U, 0U}) {
+        char command[140], reply[160] = {};
+        snprintf(command, sizeof(command), "setperm %s %u", key, value);
+        dirty_contacts_expiry = 0;
+        handler(acl, timestamp ? admin : nullptr, timestamp, command, reply);
+        CHECK(strcmp(reply, "OK") == 0 && dirty_contacts_expiry != 0);
+        auto* changed = acl.getClient(target_key, PUB_KEY_SIZE);
+        CHECK(value == 0 ? changed == nullptr : changed && changed->permissions == value);
+      }
+    }
+  }
+}
+
 int main() {
   empty_and_single_entry();
   skips_inactive_and_preserves_full_keys();
@@ -254,5 +300,6 @@ int main() {
   listing_does_not_mutate_acl();
   actual_role_dispatch_handles_radio_and_local();
   repeater_delegation_stays_denied();
-  puts("9 ACL CLI checks passed");
+  permissions_validate_before_mutation();
+  puts("10 ACL CLI checks passed");
 }

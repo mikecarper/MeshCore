@@ -515,10 +515,46 @@ static void incomplete_acl_load_is_never_authoritative() {
   }
 }
 
+static void replay_metadata_errors_never_erase_authority() {
+  for (unsigned fault = 0; fault < 2; ++fault) {
+    FakeFilesystem fs;
+    ClientACL acl;
+    acl.load(&fs, SELF);
+    CHECK(acl.authorizeLoginTimestamp(KEY, 100, 0, PERM_ACL_ADMIN));
+    auto* client = acl.putClient(mesh::Identity(KEY), PERM_ACL_ADMIN);
+    CHECK(client);
+    client->last_timestamp = 500;
+    const auto original = fs.files[PRIMARY];
+    if (fault == 0) fs.unreadable.insert(PRIMARY);
+    else fs.metadata_error = true;
+    CHECK(!mesh::recoverClientLoginReplayFiles(&fs, validateLoginReplayFileIntegrity));
+    uint32_t ceiling;
+    bool found;
+    CHECK(!readClientLoginReplayCeiling(&fs, KEY, &ceiling, &found));
+    CHECK(!writeClientLoginReplayCeiling(&fs, KEY, 900,
+        mesh::ClientLoginReplayReservationAction::CreateNew));
+    ClientLoginReplayClampResult result{};
+    CHECK(!acl.clampLoginReplayTimestamps(KEY, 50, result));
+    check_empty_result(result);
+    CHECK(client->last_timestamp == 500);
+    CHECK(!acl.authorizeLoginTimestamp(KEY, 99, 0, PERM_ACL_READ_ONLY));
+    CHECK(fs.files[PRIMARY] == original);
+    ClientACL reboot;
+    reboot.load(&fs, SELF);
+    CHECK(!reboot.authorizeLoginTimestamp(KEY, 99, 0, PERM_ACL_READ_ONLY));
+    CHECK(fs.files[PRIMARY] == original);
+    fs.unreadable.clear(); fs.metadata_error = false;
+    reboot.load(&fs, SELF);
+    CHECK(!reboot.authorizeLoginTimestamp(KEY, 100, 0, PERM_ACL_ADMIN));
+    CHECK(reboot.authorizeLoginTimestamp(KEY, 161, 0, PERM_ACL_ADMIN));
+  }
+}
+
 int main() {
   const struct { const char* name; void (*run)(); } tests[] = {
     {"allocation failure preserves clients", allocation_failure_preserves_saved_clients},
     {"incomplete ACL is not authoritative", incomplete_acl_load_is_never_authoritative},
+    {"replay read and metadata failures stay closed", replay_metadata_errors_never_erase_authority},
     {"missing read differs from empty file", missing_read_is_not_empty_file},
     {"first admin and monotonic retries", first_admin_and_retries},
     {"reboot preserves ceiling", reboot_preserves_ceiling},
@@ -548,5 +584,5 @@ int main() {
     test.run();
     std::printf("PASS: %s\n", test.name);
   }
-  std::puts("26 ClientACL SPIFFS checks passed");
+  std::puts("27 ClientACL SPIFFS checks passed");
 }

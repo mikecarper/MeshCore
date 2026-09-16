@@ -12,6 +12,10 @@ class LocalIdentity : public Identity {
 public:
   uint8_t private_key[64] = {};
   mutable unsigned derivations = 0;
+  template <typename Reader> bool readFrom(Reader& in) {
+    return in.read(pub_key, sizeof(pub_key)) == sizeof(pub_key)
+        && in.read(private_key, sizeof(private_key)) == sizeof(private_key);
+  }
   size_t writeTo(uint8_t* out, size_t size) const {
     if (size < 96) return 0;
     memcpy(out, private_key, 64);

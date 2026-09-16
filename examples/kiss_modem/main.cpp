@@ -58,15 +58,16 @@ void loadOrCreateIdentity() {
   bool identity_ready = true;
   if (needs_identity) {
     identity_ready = mesh::generateUsableLocalIdentity(identity, radio_new_identity);
-    if (identity_ready) store.save("_main", identity);
+    if (identity_ready) identity_ready = store.saveWithRetry("_main", identity);
   }
 
 #if defined(ESP32_PLATFORM)
   mesh::discardESP32TrueRandom();
 #endif
   if (!identity_ready) {
-    MESH_DEBUG_PRINTLN("Identity generation exhausted all attempts; rebooting");
+    MESH_DEBUG_PRINTLN("Identity generation or persistence failed after retries; rebooting");
     board.reboot();
+    halt(); // Never let setup continue if a platform's reboot returns.
   }
 }
 

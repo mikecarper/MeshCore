@@ -15,6 +15,7 @@ class IdentityStore {
   FILESYSTEM* _fs;
   const char* _dir;
 public:
+  static constexpr unsigned IO_ATTEMPTS = 3;
   IdentityStore(FILESYSTEM& fs, const char* dir): _fs(&fs), _dir(dir) { }
 
   void begin() {
@@ -25,5 +26,7 @@ public:
   bool load(const char *name, mesh::LocalIdentity& id);
   bool load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz);
   bool save(const char *name, const mesh::LocalIdentity& id);
+  // Startup must not run with a new identity that was never made durable.
+  bool saveWithRetry(const char *name, const mesh::LocalIdentity& id);
   bool save(const char *name, const mesh::LocalIdentity& id, const char display_name[]);
 };

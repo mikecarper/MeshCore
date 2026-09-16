@@ -22,6 +22,7 @@ public:
   File(FakeFilesystem* filesystem, const char* name, bool write)
       : fs(filesystem), path(name), writing(write) {}
   explicit operator bool() const { return fs != nullptr; }
+  bool isDirectory() const { return false; }
   bool open(const char* name, uint8_t mode);
   size_t read(uint8_t* bytes, size_t length);
   size_t write(const uint8_t* bytes, size_t length);
@@ -41,6 +42,7 @@ public:
   unsigned fail_open_remaining = std::numeric_limits<unsigned>::max();
   int stat_error = 0;
   unsigned fail_rename = 0, renames = 0, writes = 0;
+  unsigned read_opens = 0;
   std::vector<Files> snapshots;
   bool exists(const char* path) const {
 #if defined(ESP32_PLATFORM)
@@ -54,6 +56,7 @@ public:
   void _unlockFS() {}
   FakeFilesystem* _getFS() { return this; }
   File open(const char* path, const char* mode = "r", bool = false) {
+    if (*mode == 'r') ++read_opens;
     if (fail_open == path && fail_open_remaining != 0) {
       --fail_open_remaining;
       return File();

@@ -54,11 +54,68 @@ class IdentityAndSettingsRecovery(unittest.TestCase):
         program += 'namespace mesh { template <typename Filesystem>\n' + extract_braced(
             presence, 'bool filePresence(') + '\n}\n'
         for signature in ('bool IdentityStore::recover(',
+                          'bool IdentityStore::load(const char *name, mesh::LocalIdentity& id)',
+                          'bool IdentityStore::load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz)',
+                          'bool IdentityStore::saveWithRetry(',
                           'bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id)',
                           'bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id, const char display_name[])'):
             program += extract_braced(source, signature) + '\n'
         program += r'''
 int main() {
+  // Startup reads reopen a transiently failing file and never publish a
+  // partially read key. Exhausted reads still permit provisioning a new key.
+  for (bool display : {false, true}) {
+    for (unsigned misses : {0U, 1U, 2U, 3U}) {
+      filesystem = FakeFilesystem();
+      IdentityStore store(filesystem, "");
+      mesh::LocalIdentity saved, live;
+      memset(saved.pub_key, 7, PUB_KEY_SIZE);
+      memset(saved.private_key, 8, PRV_KEY_SIZE);
+      memset(live.pub_key, 9, PUB_KEY_SIZE);
+      assert(store.save("main", saved, "saved name"));
+      char name[32] = "unchanged";
+      filesystem.fail_open = "/main.id";
+      filesystem.fail_open_remaining = misses;
+      filesystem.read_opens = 0;
+      const bool loaded = display ? store.load("main", live, name, sizeof(name))
+                                  : store.load("main", live);
+      assert(loaded == (misses < IdentityStore::IO_ATTEMPTS));
+      assert(filesystem.read_opens == (misses < 3 ? misses + 1 : 3));
+      if (loaded) {
+        assert(memcmp(live.pub_key, saved.pub_key, PUB_KEY_SIZE) == 0);
+        assert(memcmp(live.private_key, saved.private_key, PRV_KEY_SIZE) == 0);
+        if (display) assert(strcmp(name, "saved name") == 0);
+      } else {
+        assert(live.pub_key[0] == 9 && strcmp(name, "unchanged") == 0);
+        assert(store.saveWithRetry("main", live));
+      }
+    }
+  }
+  filesystem = FakeFilesystem();
+  IdentityStore boot_store(filesystem, "");
+  mesh::LocalIdentity old_identity, new_identity;
+  memset(old_identity.pub_key, 7, PUB_KEY_SIZE);
+  memset(new_identity.pub_key, 9, PUB_KEY_SIZE);
+  assert(boot_store.save("main", old_identity));
+  const auto previous = filesystem.files["/main.id"];
+  filesystem.max_read = 3;
+  filesystem.read_opens = 0;
+  char optional_name[32] = "keep default";
+  assert(!boot_store.load("main", new_identity, optional_name, sizeof(optional_name)));
+  assert(filesystem.read_opens == 3 && new_identity.pub_key[0] == 9);
+  assert(strcmp(optional_name, "keep default") == 0);
+  filesystem.max_read = std::numeric_limits<size_t>::max();
+  assert(boot_store.load("main", new_identity, optional_name, sizeof(optional_name)));
+  assert(strcmp(optional_name, "keep default") == 0); // key-only image is valid
+  memset(new_identity.pub_key, 9, PUB_KEY_SIZE);
+  filesystem.fail_open = "/main.id.tmp";
+  filesystem.fail_open_remaining = 2;
+  assert(boot_store.saveWithRetry("main", new_identity));
+  assert(filesystem.files["/main.id"] != previous);
+  const auto committed = filesystem.files["/main.id"];
+  filesystem.fail_open_remaining = std::numeric_limits<unsigned>::max();
+  assert(!boot_store.saveWithRetry("main", old_identity));
+  assert(filesystem.files["/main.id"] == committed);
   for (bool display : {false, true}) {
     for (unsigned fault = 0; fault < 4; ++fault) {
       filesystem = FakeFilesystem();
@@ -96,6 +153,16 @@ int main() {
 }
 '''
         compile_run(program, platform)
+
+    def test_startup_requires_durable_generated_identity(self):
+        for role in ('simple_repeater', 'simple_room_server', 'simple_sensor',
+                     'kiss_modem', 'simple_secure_chat'):
+            with self.subTest(role=role):
+                source = (ROOT / 'examples' / role / 'main.cpp').read_text()
+                self.assertIn('if (identity_ready) identity_ready = store.saveWithRetry(', source)
+                failed = extract_braced(source, 'if (!identity_ready)')
+                self.assertIn('board.reboot();', failed)
+                self.assertIn('halt();' if role == 'kiss_modem' else 'return;', failed)
 
     def test_esp32_preferences_and_channels_recover_or_reset(self):
         store = (ROOT / 'examples/companion_radio/DataStore.cpp').read_text()

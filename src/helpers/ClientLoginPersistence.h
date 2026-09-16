@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "FilePresence.h"
 
 namespace mesh {
 
@@ -162,14 +163,18 @@ inline bool validateClientLoginReplayImage(const uint8_t* image,
 
 template <typename Filesystem>
 bool removeClientLoginReplayArtifact(Filesystem* fs, const char* path) {
-  if (!fs->exists(path)) return true;
-  fs->remove(path);
-  return !fs->exists(path);
+  bool present = false;
+  if (!filePresence(fs, path, present)) return false;
+  if (!present) return true;
+  return fs->remove(path) && filePresence(fs, path, present) && !present;
 }
 
 template <typename Filesystem, typename Validator>
 bool recoverClientLoginReplayFiles(Filesystem* fs, Validator is_valid) {
-  if (fs->exists(CLIENT_LOGIN_REPLAY_PRIMARY_PATH)
+  bool primary = false, backup = false;
+  if (!filePresence(fs, CLIENT_LOGIN_REPLAY_PRIMARY_PATH, primary)
+      || !filePresence(fs, CLIENT_LOGIN_REPLAY_BACKUP_PATH, backup)) return false;
+  if (primary
       && is_valid(fs, CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
     // The validated primary is already authoritative.  Cleanup failure must
     // not disable replay protection or make committed state appear absent.
@@ -177,7 +182,7 @@ bool recoverClientLoginReplayFiles(Filesystem* fs, Validator is_valid) {
     removeClientLoginReplayArtifact(fs, CLIENT_LOGIN_REPLAY_BACKUP_PATH);
     return true;
   }
-  if (fs->exists(CLIENT_LOGIN_REPLAY_BACKUP_PATH)
+  if (backup
       && is_valid(fs, CLIENT_LOGIN_REPLAY_BACKUP_PATH)) {
     if (!removeClientLoginReplayArtifact(fs,
                                           CLIENT_LOGIN_REPLAY_PRIMARY_PATH)
@@ -190,8 +195,7 @@ bool recoverClientLoginReplayFiles(Filesystem* fs, Validator is_valid) {
   }
   // A never-created store is the upgrade/first-boot case.  An invalid live or
   // backup image is different: retain it for diagnosis and fail closed.
-  return !fs->exists(CLIENT_LOGIN_REPLAY_PRIMARY_PATH)
-      && !fs->exists(CLIENT_LOGIN_REPLAY_BACKUP_PATH)
+  return !primary && !backup
       && removeClientLoginReplayArtifact(fs,
                                           CLIENT_LOGIN_REPLAY_TEMP_PATH);
 }
@@ -204,9 +208,9 @@ bool publishClientLoginReplayTemp(Filesystem* fs,
     removeClientLoginReplayArtifact(fs, CLIENT_LOGIN_REPLAY_TEMP_PATH);
     return false;
   }
-  if (fs->exists(CLIENT_LOGIN_REPLAY_BACKUP_PATH)) return false;
-
-  const bool had_primary = fs->exists(CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+  bool backup = false, had_primary = false;
+  if (!filePresence(fs, CLIENT_LOGIN_REPLAY_BACKUP_PATH, backup) || backup
+      || !filePresence(fs, CLIENT_LOGIN_REPLAY_PRIMARY_PATH, had_primary)) return false;
   if (had_primary
       && !fs->rename(CLIENT_LOGIN_REPLAY_PRIMARY_PATH,
                      CLIENT_LOGIN_REPLAY_BACKUP_PATH)) {

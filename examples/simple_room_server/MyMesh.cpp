@@ -2376,8 +2376,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       uint8_t pubkey[PUB_KEY_SIZE];
       if (hex_len > 0 && hex_len <= PUB_KEY_SIZE * 2 && (hex_len & 1) == 0
           && mesh::Utils::fromHex(pubkey, (int)(hex_len / 2), hex)) {
-        uint8_t perms = atoi(sp);
-        if (acl.applyPermissions(self_id, pubkey, (int)(hex_len / 2), perms)) {
+        uint32_t perms;
+        if (!mesh::cli::parseUnsignedIntegerStrict(sp, perms) || perms > UINT8_MAX) {
+          strcpy(reply, "Err - permissions must be 0-255");
+        } else if (acl.applyPermissions(self_id, pubkey, (int)(hex_len / 2), static_cast<uint8_t>(perms))) {
           mesh::scheduleLazyPersistenceMutation(
               dirty_contacts_expiry, contacts_save_failures,
               futureMillis(LAZY_CONTACTS_WRITE_DELAY));

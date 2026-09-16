@@ -61,7 +61,10 @@ public:
   size_t fail_read_open = 0;
   size_t fail_read_after = 0;
 
-  bool exists(const char* path) const { return files.count(path) != 0; }
+  // ESP32 VFS exists() opens the file; stat/rename use the namespace instead.
+  bool exists(const char* path) const {
+    return files.count(path) != 0 && unreadable.count(path) == 0;
+  }
   File open(const char* path, const char* mode = "r", bool = false) {
     const std::string name(path);
     if (mode[0] == 'r') {
@@ -86,7 +89,7 @@ public:
   }
   bool rename(const char* from, const char* to) {
     if (fail_rename_from == from || fail_rename_from_paths.count(from)
-        || !exists(from) || exists(to)) return false;
+        || files.count(from) == 0 || files.count(to) != 0) return false;
     files[to] = files[from];
     files.erase(from);
     return true;

@@ -24,47 +24,55 @@ bool IdentityStore::recover(const char* name) {
 }
 
 bool IdentityStore::load(const char *name, mesh::LocalIdentity& id) {
-  if (!recover(name)) return false;
-  bool loaded = false;
-  char filename[40];
-  sprintf(filename, "%s/%s.id", _dir, name);
-  if (_fs->exists(filename)) {
-#if defined(RP2040_PLATFORM)
-    File file = _fs->open(filename, "r");
-#else
-    File file = _fs->open(filename);
-#endif
-    if (file) {
-      loaded = id.readFrom(file);
-      file.close();
-    }
-  }
-  return loaded;
+  return load(name, id, nullptr, 0);
 }
 
 bool IdentityStore::load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz) {
-  if (!recover(name)) return false;
-  bool loaded = false;
   char filename[40];
-  sprintf(filename, "%s/%s.id", _dir, name);
-  if (_fs->exists(filename)) {
+  if (snprintf(filename, sizeof(filename), "%s/%s.id", _dir, name)
+      >= (int)sizeof(filename)) return false;
+  for (unsigned attempt = 0; attempt < IO_ATTEMPTS; ++attempt) {
+    if (!recover(name)) continue;
+    bool present = false;
+    if (!mesh::filePresence(_fs, filename, present)) continue;
+    if (!present) return false;
 #if defined(RP2040_PLATFORM)
     File file = _fs->open(filename, "r");
 #else
     File file = _fs->open(filename);
 #endif
-    if (file) {
-      loaded = id.readFrom(file);
-
-      int n = max_name_sz;   // up to 32 bytes
-      if (n > 32) n = 32;
-      file.read((uint8_t *) display_name, n);
-      display_name[n - 1] = 0;  // ensure null terminator
-
+    if (!file || file.isDirectory()) {
       file.close();
+      continue;
     }
+    mesh::LocalIdentity loaded;
+    if (!loaded.readFrom(file)) {
+      file.close();
+      continue;
+    }
+    // The legacy display name is optional. A key-only image remains valid;
+    // neither a short name nor a partial key may leak into the caller's state.
+    if (display_name != nullptr && max_name_sz > 0) {
+      const int n = max_name_sz > 32 ? 32 : max_name_sz;
+      char loaded_name[32];
+      if (file.read(reinterpret_cast<uint8_t*>(loaded_name), n) == n) {
+        loaded_name[n - 1] = 0;
+        memcpy(display_name, loaded_name, n);
+      }
+    }
+    file.close();
+    id = loaded;
+    return true;
   }
-  return loaded;
+  // Callers may provision a replacement after bounded recovery is exhausted.
+  return false;
+}
+
+bool IdentityStore::saveWithRetry(const char* name, const mesh::LocalIdentity& id) {
+  for (unsigned attempt = 0; attempt < IO_ATTEMPTS; ++attempt) {
+    if (save(name, id)) return true;
+  }
+  return false;
 }
 
 bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id) {

@@ -283,7 +283,9 @@ static bool readClientLoginReplayCeiling(
     bool* found) {
   *ceiling = 0;
   *found = false;
-  if (!fs->exists(mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) return true;
+  bool present = false;
+  if (!mesh::filePresence(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH, present)) return false;
+  if (!present) return true;
   if (!validateLoginReplayFileIntegrity(
           fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
     return false;
@@ -338,7 +340,9 @@ static bool writeClientLoginReplayCeiling(
     mesh::ClientLoginReplayReservationAction action) {
   if (action == mesh::ClientLoginReplayReservationAction::None) return true;
 #if defined(NRF52_PLATFORM)
-  if (fs->exists(mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)
+  bool primary_exists = false;
+  if (!mesh::filePresence(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH, primary_exists)) return false;
+  if (primary_exists
       && !validateLoginReplayFileIntegrity(
           fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
     return false;
@@ -352,7 +356,9 @@ static bool writeClientLoginReplayCeiling(
 
   File source = mesh::emptyFile(fs);
   size_t record_count = 0;
-  if (fs->exists(mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
+  bool source_exists = false;
+  if (!mesh::filePresence(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH, source_exists)) return false;
+  if (source_exists) {
     source = openRead(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
     // A previously present image becoming unreadable is not a first login.
     // Check again after opening so disappearance/truncation cannot underflow
@@ -487,7 +493,11 @@ bool ClientACL::clampLoginReplayTimestamps(
   if (_fs == NULL || !login_replay_store_available || now == 0) return false;
 
   ClientLoginReplayClampResult pending = {};
-  if (_fs->exists(mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
+  bool primary = false, backup = false, temp = false;
+  if (!mesh::filePresence(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH, primary)
+      || !mesh::filePresence(_fs, mesh::CLIENT_LOGIN_REPLAY_BACKUP_PATH, backup)
+      || !mesh::filePresence(_fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH, temp)) return false;
+  if (primary) {
     File source = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
     uint32_t original_crc = 0;
     const bool valid = copyClampedLoginReplay(
@@ -546,8 +556,7 @@ bool ClientACL::clampLoginReplayTimestamps(
         return false;
       }
     }
-  } else if (_fs->exists(mesh::CLIENT_LOGIN_REPLAY_BACKUP_PATH)
-             || _fs->exists(mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH)) {
+  } else if (backup || temp) {
     // Recovery is performed by load(). Do not mistake an interrupted/corrupt
     // transaction for a never-created store during this explicit operation.
     login_replay_store_available = false;
@@ -585,10 +594,11 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   // rename.  The live image remains authoritative.
   mesh::removeClientLoginReplayArtifact(
       _fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH);
+  bool replay_exists = false;
   login_replay_store_available =
-      !_fs->exists(mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)
-      || validateLoginReplayFileIntegrity(
-          _fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+      mesh::filePresence(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH, replay_exists)
+      && (!replay_exists || validateLoginReplayFileIntegrity(
+          _fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH));
 #else
   login_replay_store_available = mesh::recoverClientLoginReplayFiles(
       _fs, validateLoginReplayFileIntegrity);

@@ -26,6 +26,7 @@ def role_handler(role, source):
     body = extract_braced(source, f"void {owner}::handleCommand(uint32_t sender_timestamp,")
     zero_guard = re.search(r"if \([^\n]+sender_timestamp == 0\) sender_timestamp = 1;", body).group()
     prefix = extract_braced(body, "if (strlen(command) > 4 && command[2] == '|')")
+    permissions = extract_braced(body, 'if (memcmp(command, "setperm ", 8) == 0)')
     paged = extract_braced(body, "if (mesh::cli::handleACLGet(")
     local = extract_braced(body, 'if (sender_timestamp == 0 && strcmp(command, "get acl") == 0)')
     # The room source opens its next conditional branch's preprocessor guard
@@ -46,7 +47,7 @@ static void {role}Command(ClientACL& acl, ClientInfo* sender,
   {prefix}
   mesh::cli::normalizeCommandVerb(command);
   {guard}
-  {paged} else {local} else strcpy(reply, "unhandled");
+  {permissions} else {paged} else {local} else strcpy(reply, "unhandled");
 }}
 """
 
@@ -61,7 +62,10 @@ class ClientAclCliTest(unittest.TestCase):
         hex_chars = re.search(r"static const char hex_chars\[\].*;", utils).group()
         generated = "namespace mesh {\n" + hex_chars + "\n"
         generated += extract_braced(utils, "void Utils::toHex(") + "\n"
-        generated += extract_braced(utils, "void Utils::printHex(") + "\n}\n"
+        for signature in ("void Utils::printHex(", "static uint8_t hexVal(",
+                          "bool Utils::isHexChar(", "bool Utils::fromHex("):
+            generated += extract_braced(utils, signature) + "\n"
+        generated += "}\n"
         for signature in (
             "static bool commandFamilyMatches(", "static bool isCommonManagerReadOnlyAllowed(",
             "static bool isRegionMgrAllowed(", "static bool isFilterMgrAllowed(",
@@ -80,6 +84,8 @@ class Stream;
 namespace mesh { class Utils { public:
   static void toHex(char*, const uint8_t*, size_t);
   static void printHex(Stream&, const uint8_t*, size_t);
+  static bool isHexChar(char);
+  static bool fromHex(uint8_t*, int, const char*);
 }; }
 """)
             (work / "production.h").write_text(generated)
@@ -96,7 +102,7 @@ namespace mesh { class Utils { public:
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
                     self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
-                    self.assertIn("9 ACL CLI checks passed", checked.stdout)
+                    self.assertIn("10 ACL CLI checks passed", checked.stdout)
 
     def test_remote_dispatch_stays_behind_existing_admin_guards(self):
         for role, path in ROLES.items():
