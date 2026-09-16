@@ -229,6 +229,20 @@
     });
   }
 
+  function setMaterialCommandCopyEnabled(root, name, enabled) {
+    root.querySelectorAll('[data-command="' + name + '"]').forEach(function (code) {
+      const container = code.closest(".highlight") || code.closest("pre") || code.parentElement;
+      if (!container) return;
+      container.querySelectorAll(
+        'button.md-code__button[data-md-type="copy"], button.md-clipboard'
+      ).forEach(function (button) {
+        button.disabled = !enabled;
+        if (enabled) button.removeAttribute("aria-disabled");
+        else button.setAttribute("aria-disabled", "true");
+      });
+    });
+  }
+
   function fallbackCopy(text) {
     const area = document.createElement("textarea");
     area.value = text;
@@ -341,6 +355,8 @@
       }
       setCommandEnabled(root, "stock-now", phase === "active");
       setCommandEnabled(root, "companion-now", phase === "active");
+      setMaterialCommandCopyEnabled(root, "stock-now", phase === "active");
+      setMaterialCommandCopyEnabled(root, "companion-now", phase === "active");
       setText(
         root,
         '[data-role="stock-now-note"]',
@@ -362,6 +378,14 @@
     }
 
     render();
+    if (typeof global.MutationObserver === "function") {
+      const materialCopyObserver = new global.MutationObserver(function () {
+        const enabled = phaseAt(config, Date.now()) === "active";
+        setMaterialCommandCopyEnabled(root, "stock-now", enabled);
+        setMaterialCommandCopyEnabled(root, "companion-now", enabled);
+      });
+      materialCopyObserver.observe(root, { childList: true, subtree: true });
+    }
     global.setInterval(render, 1000);
   }
 
