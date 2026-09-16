@@ -41,6 +41,23 @@ class BluetoothMacContractTests(unittest.TestCase):
             self.nrf_source,
         )
 
+    def test_pico_rejects_unsupported_identity_policies_before_saving(self):
+        pico = source("src/helpers/rp2040/SerialBLEInterface.cpp")
+        self.assertIn(
+            "if (custom_address || clear_bonds || stealth_pair_once || bonded_only_peer) return false;",
+            pico,
+        )
+        mac = self.mesh[self.mesh.index("bool MyMesh::applyAndSaveBluetoothMac("):
+                        self.mesh.index("void MyMesh::formatBluetoothMacStatus(")]
+        self.assertLess(mac.index("#if defined(RP2040_PLATFORM)"),
+                        mac.index("saveBluetoothMac(mode, address)"))
+        self.assertIn("mode != mesh::companion::BLUETOOTH_MAC_DEFAULT", mac)
+        stealth = self.mesh[self.mesh.index("bool MyMesh::applyAndSaveBluetoothStealth("):
+                            self.mesh.index("void MyMesh::formatBluetoothStealthStatus(")]
+        self.assertLess(stealth.index("#if defined(RP2040_PLATFORM)"),
+                        stealth.index("setCompanionBluetoothStealth(_prefs,"))
+        self.assertIn('if (strcmp(value, "on") == 0)', stealth)
+
     def test_esp32_supports_nimble_and_bluedroid(self):
         self.assertIn("BLEDevice::setOwnAddr(native_address)", self.esp_source)
         self.assertIn("BLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM)", self.esp_source)

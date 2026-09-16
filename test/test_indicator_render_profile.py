@@ -191,7 +191,9 @@ int main() {
         enum_start = ui.index("  enum HomePage {")
         enum = ui[enum_start : ui.index("\n  };", enum_start)]
         self.assertIn(
-            "#if UI_WIFI_SETUP_HOME_PAGE == 1\n    WIFI_SETUP,\n#endif\n    Count",
+            "#if UI_WIFI_SETUP_HOME_PAGE == 1\n    WIFI_SETUP,\n#endif\n"
+            "#if !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))\n"
+            "    DISCOVERY,\n#endif\n    Count",
             enum,
         )
         self.assertIn("_page == HomePage::WIFI_SETUP", ui)

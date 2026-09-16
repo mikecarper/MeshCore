@@ -2799,7 +2799,7 @@ void setup() {
 #endif
 
 // Load WiFi credentials without starting the radio.
-#ifdef WIFI_SSID
+#if defined(ESP32) && defined(WIFI_SSID)
   loadCompanionWiFiCredentials();
 #endif
 

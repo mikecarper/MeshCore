@@ -51,7 +51,7 @@ public:
   /**
    * init the BLE interface.
    * @param prefix   a prefix for the device name
-   * @param name  IN/OUT - a name for the device (combined with prefix). If "@@MAC", is modified and returned
+   * @param name  a name for the device (combined with prefix), or "@@MAC"
    * @param pin_code   the BLE security pin
    */
   bool begin(const char* prefix, const char* name, uint32_t pin_code,
@@ -70,7 +70,9 @@ public:
   void disable() override;
   bool isEnabled() const override { return _isEnabled; }
   bool isConnected() const override;
+  bool isReadBusy() const override;
   bool isWriteBusy() const override;
+  bool hasPendingIO() const override;
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
 };

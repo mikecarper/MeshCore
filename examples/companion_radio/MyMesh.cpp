@@ -6841,6 +6841,13 @@ bool MyMesh::applyAndSaveBluetoothMac(const char* value, char* reply,
     mode = mesh::companion::BLUETOOTH_MAC_CUSTOM;
   }
 
+#if defined(RP2040_PLATFORM)
+  if (mode != mesh::companion::BLUETOOTH_MAC_DEFAULT) {
+    snprintf(reply, reply_size, "Error: Bluetooth address overrides are not supported on Pico W");
+    return false;
+  }
+#endif
+
   if (!saveBluetoothMac(mode, address)) {
     snprintf(reply, reply_size, "Error: Bluetooth MAC save failed");
     return false;
@@ -6912,6 +6919,13 @@ bool MyMesh::applyAndSaveBluetoothStealth(const char* value, char* reply,
              "Error: use set bluetooth.stealth on|off");
     return false;
   }
+
+#if defined(RP2040_PLATFORM)
+  if (strcmp(value, "on") == 0) {
+    snprintf(reply, reply_size, "Error: Bluetooth stealth is not supported on Pico W");
+    return false;
+  }
+#endif
 
   const uint8_t previous_mode = _prefs.bluetooth_stealth_mode;
   const uint8_t previous_type = _prefs.bluetooth_stealth_peer_type;

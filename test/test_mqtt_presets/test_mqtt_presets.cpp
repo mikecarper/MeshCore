@@ -156,6 +156,17 @@ TEST(MQTTPresets, WcmeshIsJwtWithIsrgRootX1) {
   EXPECT_FALSE(mqttPresetUsesDevicePubkeyUsername(p));
 }
 
+TEST(MQTTPresets, BsmeshIsJwtWithIsrgRootX1) {
+  const MQTTPresetDef* p = findMQTTPreset("bsmesh");
+  ASSERT_NE(nullptr, p);
+  EXPECT_EQ(MQTT_AUTH_JWT, p->auth_type);
+  EXPECT_EQ(MQTT_TOPIC_MESHCORE, p->topic_style);
+  EXPECT_STREQ("wss://mqtt.bsmesh.de:8885", p->server_url);
+  EXPECT_STREQ("mqtt.bsmesh.de", p->jwt_audience);
+  EXPECT_EQ(ISRG_ROOT_X1, p->ca_cert);
+  EXPECT_FALSE(mqttPresetNeedsSlotCredentials(p));
+}
+
 // ---- slot count constants -------------------------------------------------
 
 TEST(MQTTPresets, SlotCountsAreSane) {

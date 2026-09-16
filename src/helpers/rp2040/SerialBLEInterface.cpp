@@ -172,7 +172,18 @@ bool SerialBLEInterface::isConnected() const {
 }
 
 bool SerialBLEInterface::isWriteBusy() const {
+  BluetoothLock lock;
   return send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
+}
+
+bool SerialBLEInterface::isReadBusy() const {
+  BluetoothLock lock;
+  return recv_queue_len > 0;
+}
+
+bool SerialBLEInterface::hasPendingIO() const {
+  BluetoothLock lock;
+  return recv_queue_len > 0 || send_queue_len > 0 || _tx_pending;
 }
 
 size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
