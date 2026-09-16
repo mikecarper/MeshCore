@@ -16,9 +16,12 @@ assert.strictEqual(config.endEpoch - config.startEpoch, 48 * 60 * 60);
 assert.strictEqual(config.freq, 910.1);
 assert.strictEqual(config.sf, 8);
 assert.strictEqual(config.cr, 7);
+assert.strictEqual(config.tz, "America/Los_Angeles");
+assert.strictEqual(config.tx, 22);
 assert.strictEqual(defaults.startEpoch, config.startEpoch);
 assert.strictEqual(defaults.endEpoch, config.endEpoch);
 assert.strictEqual(defaults.freq, config.freq);
+assert.strictEqual(defaults.tz, config.tz);
 
 const before = Date.parse("2026-09-21T16:59:00-07:00");
 const beforeSetup = Date.parse("2026-09-21T15:59:59-07:00");
@@ -54,6 +57,13 @@ assert.strictEqual(
     "set tempradioat2 910.1,500,8,7,rxtx,1790035200,1790208000\n" +
     "get tempradioat2"
 );
+assert.strictEqual(commands.stockLeaveIn30, "tempradio 910.1,500,8,7,30");
+assert.strictEqual(
+  commands.companionLeaveIn30,
+  "set radio2.cross on\n" +
+    "del tempradioat2 all\n" +
+    "set tempradio2 910.1,500,8,7,rxtx,30"
+);
 
 assert.strictEqual(tool.scheduleAvailability(config, before).available, true);
 assert.strictEqual(tool.scheduleAvailability(config, active).available, false);
@@ -61,6 +71,46 @@ assert.strictEqual(
   tool.scheduleAvailability(config, config.endMs - tool.SCHEDULE_HORIZON_MS - 1).available,
   false
 );
+
+assert.strictEqual(
+  tool.zonedInputValue(config.startMs, "America/Los_Angeles"),
+  "2026-09-21T17:00"
+);
+assert.strictEqual(
+  tool.zonedInputValue(config.startMs, "America/New_York"),
+  "2026-09-21T20:00"
+);
+assert.strictEqual(
+  tool.localDateTimeToMs("2026-09-21T17:00", "America/Los_Angeles"),
+  config.startMs
+);
+assert.throws(
+  () => tool.localDateTimeToMs("2026-03-08T02:30", "America/Los_Angeles"),
+  /does not exist/
+);
+assert.throws(
+  () => tool.localDateTimeToMs("2026-11-01T01:30", "America/Los_Angeles"),
+  /ambiguous/
+);
+
+const generated = tool.configFromGenerator({
+  start: "2026-09-21T17:00",
+  end: "2026-09-23T17:00",
+  tz: "America/Los_Angeles",
+  freq: "910.1",
+  bw: "500",
+  sf: "8",
+  cr: "7",
+  tx: "22",
+});
+assert.strictEqual(generated.startEpoch, config.startEpoch);
+assert.strictEqual(generated.endEpoch, config.endEpoch);
+assert.strictEqual(generated.tz, "America/Los_Angeles");
+
+const estimates = tool.radioEstimates(config);
+assert.ok(Math.abs(estimates.bitrateKbps - 8.9285714286) < 0.000001);
+assert.ok(Math.abs(estimates.sensitivityDbm - (-121.0102999566)) < 0.000001);
+assert.ok(Math.abs(estimates.linkBudgetDb - 143.0102999566) < 0.000001);
 
 assert.throws(
   () => tool.configFromSearch("?start=bad"),
@@ -78,6 +128,14 @@ assert.throws(
   () => tool.configFromSearch("?start=1790208000&end=1790035200"),
   /end must be later/
 );
+assert.throws(
+  () => tool.configFromSearch("?tz=Moon%2FTranquility"),
+  /tz must be a valid IANA time zone/
+);
+assert.throws(
+  () => tool.configFromSearch("?tx=61"),
+  /tx must be between/
+);
 
 const changed = tool.configFromSearch(
   "?start=1790035200&end=1790208000&freq=915.25&bw=125&sf=10&cr=5"
@@ -94,6 +152,8 @@ const shared = new URL(tool.configuredUrl(
 assert.strictEqual(shared.searchParams.get("start"), "2026-09-22T00:00:00.000Z");
 assert.strictEqual(shared.searchParams.get("end"), "2026-09-24T00:00:00.000Z");
 assert.strictEqual(shared.searchParams.get("freq"), "915.25");
+assert.strictEqual(shared.searchParams.get("tz"), "America/Los_Angeles");
+assert.strictEqual(shared.searchParams.get("tx"), "22");
 assert.strictEqual(shared.searchParams.has("stale"), false);
 assert.strictEqual(shared.hash, "#commands");
 

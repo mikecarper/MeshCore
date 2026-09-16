@@ -6,8 +6,8 @@ September 21, 2026 at 5:00 PM through Wednesday, September 23 at 5:00 PM
 Pacific time** (48 hours), using **910.1 MHz, 500 kHz, SF8, CR7**.
 
 The page reads the complete test definition from its URL. Change the query
-parameters to reuse it for a different window or radio tuple; no source edit is
-required.
+parameters to reuse it for a different window, display time zone, or radio
+tuple; no source edit is required.
 
 <div class="preset-test" data-preset-test>
   <div class="preset-test-error" data-role="config-error" role="alert" hidden></div>
@@ -35,8 +35,9 @@ required.
       </div>
 
       <dl class="preset-test-window">
-        <div><dt>Start</dt><dd data-role="start-pacific"></dd></div>
-        <div><dt>End</dt><dd data-role="end-pacific"></dd></div>
+        <div><dt>Start</dt><dd data-role="start-zoned"></dd></div>
+        <div><dt>End</dt><dd data-role="end-zoned"></dd></div>
+        <div><dt>Display time zone</dt><dd data-role="display-zone"></dd></div>
         <div><dt>Firmware epochs</dt><dd><code data-role="epoch-range"></code></dd></div>
       </dl>
     </section>
@@ -211,11 +212,19 @@ clock</code></pre>
 
         <article class="preset-test-card">
           <h3>Stock · while it is running</h3>
+          <h4>Leave now</h4>
           <pre><code data-command="stock-cancel-during"></code></pre>
           <button type="button" data-copy-command="stock-cancel-during">Copy restore command</button>
           <p class="preset-test-note">
             <code>normalradio</code> cancels pending and active primary TempRadio
             windows and restores the saved primary tuple after its reply drains.
+          </p>
+          <h4>Leave in 30 minutes</h4>
+          <pre><code data-command="stock-leave-30"></code></pre>
+          <button type="button" data-copy-command="stock-leave-30">Copy 30-minute command</button>
+          <p class="preset-test-note">
+            This replaces the current temporary timeout with 30 minutes, then
+            restores the saved primary tuple automatically.
           </p>
         </article>
 
@@ -227,26 +236,133 @@ clock</code></pre>
 
         <article class="preset-test-card">
           <h3>Companion · while it is running</h3>
+          <h4>Leave now</h4>
           <pre><code data-command="companion-cancel-during"></code></pre>
           <button type="button" data-copy-command="companion-cancel-during">Copy restore commands</button>
           <p class="preset-test-note">
             If <code>get radio2.cross</code> was not <code>auto</code> before the
             test, restore that recorded value instead.
           </p>
+          <h4>Leave in 30 minutes</h4>
+          <pre><code data-command="companion-leave-30"></code></pre>
+          <button type="button" data-copy-command="companion-leave-30">Copy 30-minute commands</button>
+          <p class="preset-test-note">
+            These commands clear any absolute second-profile schedule and give
+            the test profile a fresh 30-minute lease. The saved second profile
+            returns at expiry, but crossing remains <code>on</code>; afterward,
+            restore the value you recorded before the test (<code>auto</code> is
+            the normal default).
+          </p>
         </article>
       </div>
     </section>
 
     <section aria-labelledby="share-title">
-      <h2 id="share-title">Reuse this page for another test</h2>
+      <h2 id="share-title">Build a link for another test</h2>
       <p>
-        Set <code>start</code> and <code>end</code> to ISO-8601 timestamps with an
-        explicit UTC offset, or to Unix epoch seconds. Set <code>freq</code>,
-        <code>bw</code>, <code>sf</code>, and <code>cr</code> to the desired radio
-        tuple. The current configuration link is normalized to UTC.
+        Enter the test times in the selected time zone and choose the radio
+        tuple. The generated URL converts the times to exact UTC instants and
+        keeps <code>tz</code> so the page displays them in the organizer's local
+        time zone.
       </p>
-      <pre><code>?start=2026-09-21T17:00:00-07:00&amp;end=2026-09-23T17:00:00-07:00&amp;freq=910.1&amp;bw=500&amp;sf=8&amp;cr=7</code></pre>
-      <button type="button" data-copy-command="share-url">Copy configured page URL</button>
+
+      <div class="preset-test-generator-layout">
+        <form class="preset-test-generator" data-role="url-generator">
+          <div class="preset-test-generator-fields">
+            <label>
+              <span>Start date and time</span>
+              <input type="datetime-local" name="start" step="60" required>
+            </label>
+            <label>
+              <span>End date and time</span>
+              <input type="datetime-local" name="end" step="60" required>
+            </label>
+            <label>
+              <span>Time zone</span>
+              <input type="text" name="tz" list="preset-test-time-zones" required
+                     autocomplete="off" spellcheck="false">
+              <small>Use an IANA name such as America/Los_Angeles or UTC.</small>
+            </label>
+            <label>
+              <span>Frequency (MHz)</span>
+              <input type="number" name="freq" min="150" max="2500" step="0.001" required>
+            </label>
+            <label>
+              <span>Bandwidth (kHz)</span>
+              <select name="bw" required>
+                <option>7.8</option><option>10.4</option><option>15.6</option>
+                <option>20.8</option><option>31.25</option><option>41.7</option>
+                <option>62.5</option><option>125</option><option>250</option><option>500</option>
+              </select>
+            </label>
+            <label>
+              <span>Spreading factor</span>
+              <select name="sf" required>
+                <option>5</option><option>6</option><option>7</option><option>8</option>
+                <option>9</option><option>10</option><option>11</option><option>12</option>
+              </select>
+            </label>
+            <label>
+              <span>Coding-rate denominator</span>
+              <select name="cr" required>
+                <option>5</option><option>6</option><option>7</option><option>8</option>
+              </select>
+            </label>
+            <label>
+              <span>TX output for estimate (dBm)</span>
+              <input type="number" name="tx" min="-30" max="60" step="0.1" required>
+              <small>This estimate-only value does not change the TempRadio commands.</small>
+            </label>
+          </div>
+          <button type="submit">Generate test URL</button>
+        </form>
+
+        <aside class="preset-test-estimates" aria-labelledby="radio-estimates-title">
+          <h3 id="radio-estimates-title">Radio estimates</h3>
+          <dl>
+            <div><dt>Nominal LoRa bitrate</dt><dd data-role="estimate-rate">—</dd></div>
+            <div><dt>Estimated sensitivity</dt><dd data-role="estimate-sensitivity">—</dd></div>
+            <div><dt>TX output used</dt><dd data-role="estimate-tx">—</dd></div>
+            <div><dt>Estimated link budget</dt><dd data-role="estimate-budget">—</dd></div>
+          </dl>
+          <p class="preset-test-note">
+            The bitrate is the nominal LoRa physical-layer rate; usable payload
+            throughput is lower. Sensitivity assumes a 6 dB receiver noise figure
+            and the standard LoRa SNR threshold for the selected spreading factor.
+            Link budget is TX output minus that sensitivity, before antenna gain,
+            cable loss, path loss, interference, and implementation differences.
+          </p>
+        </aside>
+      </div>
+
+      <datalist id="preset-test-time-zones">
+        <option value="America/Los_Angeles"></option>
+        <option value="America/Denver"></option>
+        <option value="America/Chicago"></option>
+        <option value="America/New_York"></option>
+        <option value="America/Phoenix"></option>
+        <option value="Pacific/Honolulu"></option>
+        <option value="UTC"></option>
+        <option value="Europe/London"></option>
+        <option value="Europe/Berlin"></option>
+        <option value="Asia/Tokyo"></option>
+        <option value="Australia/Sydney"></option>
+      </datalist>
+
+      <p class="preset-test-error preset-test-generator-error"
+         data-role="generator-error" role="alert" hidden></p>
+      <pre class="preset-test-generated-url"><code data-command="generated-url"></code></pre>
+      <div class="preset-test-generator-actions">
+        <button type="button" data-copy-command="generated-url">Copy generated URL</button>
+        <a data-role="open-generated-url" target="_blank" rel="noopener">Open generated page</a>
+      </div>
+
+      <p class="preset-test-note">
+        Advanced use: <code>start</code> and <code>end</code> also accept ISO-8601
+        timestamps with explicit UTC offsets or Unix epoch seconds. The other URL
+        parameters are <code>tz</code>, <code>freq</code>, <code>bw</code>,
+        <code>sf</code>, <code>cr</code>, and estimate-only <code>tx</code>.
+      </p>
     </section>
   </div>
 </div>

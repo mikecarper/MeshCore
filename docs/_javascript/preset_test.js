@@ -4,10 +4,12 @@
   const DEFAULTS = Object.freeze({
     start: "2026-09-21T17:00:00-07:00",
     end: "2026-09-23T17:00:00-07:00",
+    tz: "America/Los_Angeles",
     freq: "910.1",
     bw: "500",
     sf: "8",
     cr: "7",
+    tx: "22",
   });
   const VALID_BANDWIDTHS = Object.freeze([
     7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500,
@@ -21,6 +23,18 @@
   function strictNumber(value, name) {
     const text = String(value).trim();
     if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) {
+      throw new PresetTestError(name + " must be a decimal number");
+    }
+    const parsed = Number(text);
+    if (!Number.isFinite(parsed)) {
+      throw new PresetTestError(name + " is outside the supported range");
+    }
+    return parsed;
+  }
+
+  function strictSignedNumber(value, name) {
+    const text = String(value).trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) {
       throw new PresetTestError(name + " must be a decimal number");
     }
     const parsed = Number(text);
@@ -65,6 +79,21 @@
     return String(Number(value));
   }
 
+  function validateTimeZone(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      throw new PresetTestError("tz must be an IANA time zone such as America/Los_Angeles");
+    }
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: text })
+        .resolvedOptions().timeZone;
+    } catch (error) {
+      throw new PresetTestError(
+        "tz must be a valid IANA time zone such as America/Los_Angeles or UTC"
+      );
+    }
+  }
+
   function configFromSearch(search) {
     const params = new URLSearchParams(search || "");
     const raw = {};
@@ -74,10 +103,12 @@
 
     const startMs = parseTimestamp(raw.start, "start");
     const endMs = parseTimestamp(raw.end, "end");
+    const tz = validateTimeZone(raw.tz);
     const freq = strictNumber(raw.freq, "freq");
     const bw = strictNumber(raw.bw, "bw");
     const sf = strictInteger(raw.sf, "sf");
     const cr = strictInteger(raw.cr, "cr");
+    const tx = strictSignedNumber(raw.tx, "tx");
 
     if (endMs <= startMs) {
       throw new PresetTestError("end must be later than start");
@@ -98,18 +129,24 @@
     if (cr < 5 || cr > 8) {
       throw new PresetTestError("cr must be between 5 and 8");
     }
+    if (tx < -30 || tx > 60) {
+      throw new PresetTestError("tx must be between -30 and 60 dBm");
+    }
 
     return Object.freeze({
       startMs: startMs,
       endMs: endMs,
       startEpoch: Math.floor(startMs / 1000),
       endEpoch: Math.floor(endMs / 1000),
+      tz: tz,
       freq: freq,
       bw: bw,
       sf: sf,
       cr: cr,
+      tx: tx,
       freqText: numberText(freq),
       bwText: numberText(bw),
+      txText: numberText(tx),
     });
   }
 
@@ -155,9 +192,36 @@
         config.startEpoch + "," + config.endEpoch + "\nget tempradioat2",
       stockCancelBefore: "get tempradioat\ndel tempradioat all",
       stockCancelDuring: "normalradio",
+      stockLeaveIn30: "tempradio " + tuple + ",30",
       companionCancelBefore:
         "get tempradioat2\ndel tempradioat2 all\nset radio2.cross auto",
       companionCancelDuring: "set tempradio2 off\nset radio2.cross auto",
+      companionLeaveIn30:
+        "set radio2.cross on\ndel tempradioat2 all\nset tempradio2 " +
+        tuple + ",rxtx,30",
+    });
+  }
+
+  function radioEstimates(config) {
+    const requiredSnr = {
+      5: -2.5,
+      6: -5,
+      7: -7.5,
+      8: -10,
+      9: -12.5,
+      10: -15,
+      11: -17.5,
+      12: -20,
+    }[config.sf];
+    const bandwidthHz = config.bw * 1000;
+    const bitrateKbps = (
+      config.sf * (4 / config.cr) * bandwidthHz / Math.pow(2, config.sf)
+    ) / 1000;
+    const sensitivityDbm = -174 + 10 * Math.log10(bandwidthHz) + 6 + requiredSnr;
+    return Object.freeze({
+      bitrateKbps: bitrateKbps,
+      sensitivityDbm: sensitivityDbm,
+      linkBudgetDb: config.tx - sensitivityDbm,
     });
   }
 
@@ -177,9 +241,9 @@
     return parts.join(" ");
   }
 
-  function formatPacific(milliseconds) {
+  function formatZoned(milliseconds, timeZone) {
     return new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Los_Angeles",
+      timeZone: timeZone,
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -188,6 +252,125 @@
       minute: "2-digit",
       timeZoneName: "short",
     }).format(new Date(milliseconds));
+  }
+
+  function zonedParts(milliseconds, timeZone) {
+    const result = {};
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(milliseconds)).forEach(function (part) {
+      if (part.type !== "literal") result[part.type] = Number(part.value);
+    });
+    return result;
+  }
+
+  function twoDigits(value) {
+    return String(value).padStart(2, "0");
+  }
+
+  function zonedInputValue(milliseconds, timeZone) {
+    const parts = zonedParts(milliseconds, timeZone);
+    return String(parts.year).padStart(4, "0") + "-" +
+      twoDigits(parts.month) + "-" + twoDigits(parts.day) + "T" +
+      twoDigits(parts.hour) + ":" + twoDigits(parts.minute);
+  }
+
+  function parseLocalDateTime(value, name) {
+    const text = String(value || "").trim();
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text);
+    if (!match) {
+      throw new PresetTestError(name + " must include a date and time");
+    }
+    const parts = {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+      hour: Number(match[4]),
+      minute: Number(match[5]),
+      second: Number(match[6] || 0),
+    };
+    const checked = new Date(Date.UTC(
+      parts.year, parts.month - 1, parts.day,
+      parts.hour, parts.minute, parts.second
+    ));
+    if (checked.getUTCFullYear() !== parts.year ||
+        checked.getUTCMonth() + 1 !== parts.month ||
+        checked.getUTCDate() !== parts.day ||
+        checked.getUTCHours() !== parts.hour ||
+        checked.getUTCMinutes() !== parts.minute ||
+        checked.getUTCSeconds() !== parts.second) {
+      throw new PresetTestError(name + " is not a valid calendar date and time");
+    }
+    return parts;
+  }
+
+  function sameDateTime(left, right) {
+    return left.year === right.year && left.month === right.month &&
+      left.day === right.day && left.hour === right.hour &&
+      left.minute === right.minute && left.second === right.second;
+  }
+
+  function offsetAt(milliseconds, timeZone) {
+    const parts = zonedParts(milliseconds, timeZone);
+    const rounded = Math.floor(milliseconds / 1000) * 1000;
+    return Date.UTC(
+      parts.year, parts.month - 1, parts.day,
+      parts.hour, parts.minute, parts.second
+    ) - rounded;
+  }
+
+  function localDateTimeToMs(value, timeZone, name) {
+    const label = name || "date and time";
+    const zone = validateTimeZone(timeZone);
+    const desired = parseLocalDateTime(value, label);
+    const wallMilliseconds = Date.UTC(
+      desired.year, desired.month - 1, desired.day,
+      desired.hour, desired.minute, desired.second
+    );
+    const offsets = new Set();
+    for (let hours = -48; hours <= 48; hours += 6) {
+      offsets.add(offsetAt(wallMilliseconds + hours * 60 * 60 * 1000, zone));
+    }
+    const matches = Array.from(offsets).map(function (offset) {
+      return wallMilliseconds - offset;
+    }).filter(function (candidate) {
+      return sameDateTime(zonedParts(candidate, zone), desired);
+    }).sort(function (left, right) { return left - right; });
+
+    if (matches.length === 0) {
+      throw new PresetTestError(
+        label + " does not exist in " + zone + " because of a clock change"
+      );
+    }
+    if (matches.length > 1) {
+      throw new PresetTestError(
+        label + " is ambiguous in " + zone + " because of a clock change"
+      );
+    }
+    return matches[0];
+  }
+
+  function configFromGenerator(values) {
+    const tz = validateTimeZone(values.tz);
+    const startMs = localDateTimeToMs(values.start, tz, "start");
+    const endMs = localDateTimeToMs(values.end, tz, "end");
+    const params = new URLSearchParams();
+    params.set("start", new Date(startMs).toISOString());
+    params.set("end", new Date(endMs).toISOString());
+    params.set("tz", tz);
+    params.set("freq", values.freq);
+    params.set("bw", values.bw);
+    params.set("sf", values.sf);
+    params.set("cr", values.cr);
+    params.set("tx", values.tx);
+    return configFromSearch("?" + params.toString());
   }
 
   function formatUtc(milliseconds) {
@@ -209,10 +392,12 @@
     url.search = "";
     url.searchParams.set("start", new Date(config.startMs).toISOString());
     url.searchParams.set("end", new Date(config.endMs).toISOString());
+    url.searchParams.set("tz", config.tz);
     url.searchParams.set("freq", config.freqText);
     url.searchParams.set("bw", config.bwText);
     url.searchParams.set("sf", String(config.sf));
     url.searchParams.set("cr", String(config.cr));
+    url.searchParams.set("tx", config.txText);
     return url.toString();
   }
 
@@ -287,8 +472,9 @@
     setText(root, '[data-field="bw-display"]', config.bwText);
     setText(root, '[data-field="sf"]', String(config.sf));
     setText(root, '[data-field="cr"]', String(config.cr));
-    setText(root, '[data-role="start-pacific"]', formatPacific(config.startMs));
-    setText(root, '[data-role="end-pacific"]', formatPacific(config.endMs));
+    setText(root, '[data-role="start-zoned"]', formatZoned(config.startMs, config.tz));
+    setText(root, '[data-role="end-zoned"]', formatZoned(config.endMs, config.tz));
+    setText(root, '[data-role="display-zone"]', config.tz);
     setText(
       root,
       '[data-role="epoch-range"]',
@@ -306,14 +492,86 @@
     setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
     setCommand(root, "stock-cancel-before", staticCommands.stockCancelBefore);
     setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
+    setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
     setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
     setCommand(root, "companion-cancel-during", staticCommands.companionCancelDuring);
+    setCommand(root, "companion-leave-30", staticCommands.companionLeaveIn30);
     setCommand(root, "reset-clock", CLOCK_RESET_COMMAND);
-    setCommand(
-      root,
-      "share-url",
-      configuredUrl(config, global.location ? global.location.href : "https://example.invalid/")
-    );
+
+    const generator = root.querySelector('[data-role="url-generator"]');
+    if (generator) {
+      generator.elements.start.value = zonedInputValue(config.startMs, config.tz);
+      generator.elements.end.value = zonedInputValue(config.endMs, config.tz);
+      generator.elements.tz.value = config.tz;
+      generator.elements.freq.value = config.freqText;
+      generator.elements.bw.value = config.bwText;
+      generator.elements.sf.value = String(config.sf);
+      generator.elements.cr.value = String(config.cr);
+      generator.elements.tx.value = config.txText;
+
+      const zoneList = root.querySelector("#preset-test-time-zones");
+      if (zoneList && typeof Intl.supportedValuesOf === "function") {
+        Intl.supportedValuesOf("timeZone").forEach(function (zone) {
+          if (!zoneList.querySelector('option[value="' + zone + '"]')) {
+            const option = document.createElement("option");
+            option.value = zone;
+            zoneList.appendChild(option);
+          }
+        });
+      }
+
+      function generateUrl() {
+        const errorBox = root.querySelector('[data-role="generator-error"]');
+        try {
+          const generated = configFromGenerator({
+            start: generator.elements.start.value,
+            end: generator.elements.end.value,
+            tz: generator.elements.tz.value,
+            freq: generator.elements.freq.value,
+            bw: generator.elements.bw.value,
+            sf: generator.elements.sf.value,
+            cr: generator.elements.cr.value,
+            tx: generator.elements.tx.value,
+          });
+          const url = configuredUrl(
+            generated,
+            global.location ? global.location.href : "https://example.invalid/"
+          );
+          setCommand(root, "generated-url", url);
+          setCommandEnabled(root, "generated-url", true);
+          const estimates = radioEstimates(generated);
+          setText(root, '[data-role="estimate-rate"]', estimates.bitrateKbps.toFixed(2) + " kbps");
+          setText(root, '[data-role="estimate-sensitivity"]', estimates.sensitivityDbm.toFixed(1) + " dBm");
+          setText(root, '[data-role="estimate-budget"]', estimates.linkBudgetDb.toFixed(1) + " dB");
+          setText(root, '[data-role="estimate-tx"]', generated.txText + " dBm");
+          const openLink = root.querySelector('[data-role="open-generated-url"]');
+          if (openLink) {
+            openLink.href = url;
+            openLink.hidden = false;
+          }
+          if (errorBox) {
+            errorBox.textContent = "";
+            errorBox.hidden = true;
+          }
+        } catch (error) {
+          setCommand(root, "generated-url", "Fix the highlighted configuration error first.");
+          setCommandEnabled(root, "generated-url", false);
+          const openLink = root.querySelector('[data-role="open-generated-url"]');
+          if (openLink) openLink.hidden = true;
+          if (errorBox) {
+            errorBox.textContent = error.message;
+            errorBox.hidden = false;
+          }
+        }
+      }
+
+      generator.addEventListener("submit", function (event) {
+        event.preventDefault();
+        generateUrl();
+      });
+      generator.addEventListener("change", generateUrl);
+      generateUrl();
+    }
 
     root.querySelectorAll("[data-copy-command]").forEach(function (button) {
       button.addEventListener("click", function () {
@@ -418,12 +676,18 @@
     CLOCK_RESET_COMMAND: CLOCK_RESET_COMMAND,
     PresetTestError: PresetTestError,
     configFromSearch: configFromSearch,
+    configFromGenerator: configFromGenerator,
+    validateTimeZone: validateTimeZone,
     phaseAt: phaseAt,
     remainingMinutes: remainingMinutes,
     immediateAvailable: immediateAvailable,
     scheduleAvailability: scheduleAvailability,
     commandsFor: commandsFor,
+    radioEstimates: radioEstimates,
     formatCountdown: formatCountdown,
+    formatZoned: formatZoned,
+    zonedInputValue: zonedInputValue,
+    localDateTimeToMs: localDateTimeToMs,
     configuredUrl: configuredUrl,
     init: init,
   });
