@@ -26,4 +26,4 @@ extra_javascript:
   - _javascript/firmware_picker.js
   - _javascript/telemetry_decoder.js
   - _javascript/filter_tool.js
-  - _javascript/preset_test.js
+  - _javascript/preset_test.js?v=20260916-2

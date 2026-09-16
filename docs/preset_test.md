@@ -47,8 +47,7 @@ tuple; no source edit is required.
       <p>
         The test will include bridges. If the Puget Sound area experiences a
         widespread power outage or loss of cellular service, we will end the
-        test early and revert to the normal
-        <code data-field="normal-profile">910.525,62.5,7,5</code> profile.
+        test early and revert to the normal 910.525 MHz channel.
       </p>
     </section>
 
@@ -217,10 +216,9 @@ clock</code></pre>
           <pre><code data-command="stock-cancel-during"></code></pre>
           <button type="button" data-copy-command="stock-cancel-during">Copy stock leave command</button>
           <p class="preset-test-note">
-            Stock MeshCore has no <code>normalradio</code> command. This starts a
-            one-minute temporary session on the normal return profile without
-            saving over the node's configuration. When that minute ends, the
-            node restores its saved radio settings.
+            Stock MeshCore has no <code>normalradio</code> command. This reboots
+            the node, which clears TempRadio and returns to its saved radio
+            settings. The command sends no reply; reconnect after the node starts.
           </p>
           <h4>Leave in 30 minutes</h4>
           <pre><code data-command="stock-leave-30"></code></pre>
@@ -318,32 +316,6 @@ clock</code></pre>
               <input type="number" name="tx" min="-30" max="60" step="0.1" required>
               <small>This estimate-only value does not change the TempRadio commands.</small>
             </label>
-            <div class="preset-test-generator-subheading">Normal return profile</div>
-            <label>
-              <span>Normal frequency (MHz)</span>
-              <input type="number" name="normalfreq" min="150" max="2500" step="0.001" required>
-            </label>
-            <label>
-              <span>Normal bandwidth (kHz)</span>
-              <select name="normalbw" required>
-                <option>7.8</option><option>10.4</option><option>15.6</option>
-                <option>20.8</option><option>31.25</option><option>41.7</option>
-                <option>62.5</option><option>125</option><option>250</option><option>500</option>
-              </select>
-            </label>
-            <label>
-              <span>Normal spreading factor</span>
-              <select name="normalsf" required>
-                <option>5</option><option>6</option><option>7</option><option>8</option>
-                <option>9</option><option>10</option><option>11</option><option>12</option>
-              </select>
-            </label>
-            <label>
-              <span>Normal coding-rate denominator</span>
-              <select name="normalcr" required>
-                <option>5</option><option>6</option><option>7</option><option>8</option>
-              </select>
-            </label>
           </div>
           <button type="submit">Generate test URL</button>
         </form>
@@ -379,9 +351,7 @@ clock</code></pre>
         timestamps with explicit UTC offsets or Unix epoch seconds. If
         <code>tz</code> is omitted, the page uses the browser's time zone. The
         other URL parameters are <code>freq</code>, <code>bw</code>,
-        <code>sf</code>, <code>cr</code>, <code>normalfreq</code>,
-        <code>normalbw</code>, <code>normalsf</code>, <code>normalcr</code>, and
-        estimate-only <code>tx</code>.
+        <code>sf</code>, <code>cr</code>, and estimate-only <code>tx</code>.
       </p>
     </section>
   </div>
