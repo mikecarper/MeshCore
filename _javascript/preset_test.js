@@ -9,10 +9,6 @@
     bw: "500",
     sf: "8",
     cr: "7",
-    normalfreq: "910.525",
-    normalbw: "62.5",
-    normalsf: "7",
-    normalcr: "5",
     tx: "22",
   });
   const VALID_BANDWIDTHS = Object.freeze([
@@ -147,10 +143,6 @@
     const bw = strictNumber(raw.bw, "bw");
     const sf = strictInteger(raw.sf, "sf");
     const cr = strictInteger(raw.cr, "cr");
-    const normalFreq = strictNumber(raw.normalfreq, "normalfreq");
-    const normalBw = strictNumber(raw.normalbw, "normalbw");
-    const normalSf = strictInteger(raw.normalsf, "normalsf");
-    const normalCr = strictInteger(raw.normalcr, "normalcr");
     const tx = strictSignedNumber(raw.tx, "tx");
 
     if (endMs <= startMs) {
@@ -172,22 +164,6 @@
     if (cr < 5 || cr > 8) {
       throw new PresetTestError("cr must be between 5 and 8");
     }
-    if (normalFreq < 150 || normalFreq > 2500) {
-      throw new PresetTestError("normalfreq must be between 150 and 2500 MHz");
-    }
-    if (!VALID_BANDWIDTHS.some(function (allowed) {
-      return Math.abs(allowed - normalBw) < 0.01;
-    })) {
-      throw new PresetTestError(
-        "normalbw must be one of " + VALID_BANDWIDTHS.join(", ") + " kHz"
-      );
-    }
-    if (normalSf < 5 || normalSf > 12) {
-      throw new PresetTestError("normalsf must be between 5 and 12");
-    }
-    if (normalCr < 5 || normalCr > 8) {
-      throw new PresetTestError("normalcr must be between 5 and 8");
-    }
     if (tx < -30 || tx > 60) {
       throw new PresetTestError("tx must be between -30 and 60 dBm");
     }
@@ -202,15 +178,9 @@
       bw: bw,
       sf: sf,
       cr: cr,
-      normalFreq: normalFreq,
-      normalBw: normalBw,
-      normalSf: normalSf,
-      normalCr: normalCr,
       tx: tx,
       freqText: numberText(freq),
       bwText: numberText(bw),
-      normalFreqText: numberText(normalFreq),
-      normalBwText: numberText(normalBw),
       txText: numberText(tx),
     });
   }
@@ -244,9 +214,6 @@
 
   function commandsFor(config, nowMs) {
     const tuple = [config.freqText, config.bwText, config.sf, config.cr].join(",");
-    const normalTuple = [
-      config.normalFreqText, config.normalBwText, config.normalSf, config.normalCr,
-    ].join(",");
     const minutes = remainingMinutes(config, nowMs);
     return Object.freeze({
       stockNow: "tempradio " + tuple + "," + minutes,
@@ -259,7 +226,7 @@
         "set radio2.cross on\nset tempradioat2 " + tuple + ",rxtx," +
         config.startEpoch + "," + config.endEpoch + "\nget tempradioat2",
       stockCancelBefore: "get tempradioat\ndel tempradioat all",
-      stockCancelDuring: "tempradio " + normalTuple + ",1",
+      stockCancelDuring: "reboot",
       stockLeaveIn30: "tempradio " + tuple + ",30",
       companionCancelBefore:
         "get tempradioat2\ndel tempradioat2 all\nset radio2.cross auto",
@@ -437,10 +404,6 @@
     params.set("bw", values.bw);
     params.set("sf", values.sf);
     params.set("cr", values.cr);
-    params.set("normalfreq", values.normalfreq);
-    params.set("normalbw", values.normalbw);
-    params.set("normalsf", values.normalsf);
-    params.set("normalcr", values.normalcr);
     params.set("tx", values.tx);
     return configFromSearch("?" + params.toString());
   }
@@ -469,10 +432,6 @@
     url.searchParams.set("bw", config.bwText);
     url.searchParams.set("sf", String(config.sf));
     url.searchParams.set("cr", String(config.cr));
-    url.searchParams.set("normalfreq", config.normalFreqText);
-    url.searchParams.set("normalbw", config.normalBwText);
-    url.searchParams.set("normalsf", String(config.normalSf));
-    url.searchParams.set("normalcr", String(config.normalCr));
     url.searchParams.set("tx", config.txText);
     return url.toString();
   }
@@ -551,11 +510,6 @@
     setText(root, '[data-field="bw-display"]', config.bwText);
     setText(root, '[data-field="sf"]', String(config.sf));
     setText(root, '[data-field="cr"]', String(config.cr));
-    setText(
-      root,
-      '[data-field="normal-profile"]',
-      [config.normalFreqText, config.normalBwText, config.normalSf, config.normalCr].join(",")
-    );
     setText(root, '[data-role="start-zoned"]', formatZoned(config.startMs, config.tz));
     setText(root, '[data-role="end-zoned"]', formatZoned(config.endMs, config.tz));
     setText(root, '[data-role="display-zone"]', config.tz);
@@ -599,10 +553,6 @@
       generator.elements.bw.value = config.bwText;
       generator.elements.sf.value = String(config.sf);
       generator.elements.cr.value = String(config.cr);
-      generator.elements.normalfreq.value = config.normalFreqText;
-      generator.elements.normalbw.value = config.normalBwText;
-      generator.elements.normalsf.value = String(config.normalSf);
-      generator.elements.normalcr.value = String(config.normalCr);
       generator.elements.tx.value = config.txText;
 
       function generateUrl() {
@@ -616,10 +566,6 @@
             bw: generator.elements.bw.value,
             sf: generator.elements.sf.value,
             cr: generator.elements.cr.value,
-            normalfreq: generator.elements.normalfreq.value,
-            normalbw: generator.elements.normalbw.value,
-            normalsf: generator.elements.normalsf.value,
-            normalcr: generator.elements.normalcr.value,
             tx: generator.elements.tx.value,
           });
           const url = configuredUrl(
