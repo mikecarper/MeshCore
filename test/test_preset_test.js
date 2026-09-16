@@ -21,12 +21,22 @@ assert.strictEqual(defaults.endEpoch, config.endEpoch);
 assert.strictEqual(defaults.freq, config.freq);
 
 const before = Date.parse("2026-09-21T16:59:00-07:00");
+const beforeSetup = Date.parse("2026-09-21T15:59:59-07:00");
+const setupOpens = Date.parse("2026-09-21T16:00:00-07:00");
 const active = Date.parse("2026-09-21T17:00:30-07:00");
 const ended = Date.parse("2026-09-23T17:00:00-07:00");
 assert.strictEqual(tool.phaseAt(config, before), "before");
 assert.strictEqual(tool.phaseAt(config, active), "active");
 assert.strictEqual(tool.phaseAt(config, ended), "ended");
+assert.strictEqual(tool.EARLY_JOIN_MS, 60 * 60 * 1000);
+assert.strictEqual(tool.CLOCK_RESET_COMMAND, "clkreboot");
+assert.strictEqual(tool.immediateAvailable(config, beforeSetup), false);
+assert.strictEqual(tool.immediateAvailable(config, setupOpens), true);
+assert.strictEqual(tool.immediateAvailable(config, before), true);
+assert.strictEqual(tool.immediateAvailable(config, active), true);
+assert.strictEqual(tool.immediateAvailable(config, ended), false);
 assert.strictEqual(tool.remainingMinutes(config, active), 2880);
+assert.strictEqual(tool.remainingMinutes(config, setupOpens), 2940);
 
 const commands = tool.commandsFor(config, active);
 assert.strictEqual(commands.stockNow, "tempradio 910.1,500,8,7,2880");

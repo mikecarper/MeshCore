@@ -99,6 +99,20 @@ clock</code></pre>
 clock</code></pre>
           <button type="button" data-copy-command="set-clock">Copy current clock command</button>
         </article>
+
+        <article class="preset-test-card preset-test-card--wide">
+          <h3>If the clock is ahead and cannot move backward</h3>
+          <p>
+            If setting the correct time returns <code>ERR: clock cannot go backwards</code>,
+            run the command below. It resets the clock to an older fallback date and
+            reboots the node immediately, so it sends no reply. After the node reconnects,
+            copy and run the fresh local clock command above, verify with <code>clock</code>,
+            and then add the <code>tempradioat</code> schedule again. The reboot clears any
+            pending scheduled entries.
+          </p>
+          <pre><code data-command="reset-clock">clkreboot</code></pre>
+          <button type="button" data-copy-command="reset-clock">Copy clock reset command</button>
+        </article>
       </div>
 
       <p class="preset-test-note">
@@ -109,11 +123,12 @@ clock</code></pre>
     </section>
 
     <section aria-labelledby="join-now-title">
-      <h2 id="join-now-title">Option 1: switch when the test begins</h2>
+      <h2 id="join-now-title">Option 1: switch during the setup window</h2>
       <p>
-        Open this page after the start time. Its timeout shrinks so every node
-        returns at the same end time. These copy buttons remain disabled before
-        the window to prevent an early switch.
+        The immediate commands become available one hour before the official
+        start. Their timeout shrinks so every node still returns at the same end
+        time. Before that setup window, the command text and copy controls stay
+        unavailable.
       </p>
 
       <div class="preset-test-grid">
