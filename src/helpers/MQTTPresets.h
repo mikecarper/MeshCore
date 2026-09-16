@@ -87,7 +87,7 @@ static inline bool mqttPresetNeedsSlotCredentials(const MQTTPresetDef* preset) {
 }
 
 // Number of built-in presets
-static const int MQTT_PRESET_COUNT = 35;
+static const int MQTT_PRESET_COUNT = 36;
 
 // Keep the certificate and preset tables in one translation unit. Defining
 // these as header-local constants created a complete flash copy in every MQTT
@@ -198,6 +198,7 @@ extern const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT] = {
     { "gomesh",        "wss://mqtt.gomesh.dev:443",               "mqtt.gomesh.dev",                 ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "idahomesh",     "wss://mqtt.idahomesh.org:443/mqtt",       "mqtt.idahomesh.org",              ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "ntxmesh",       "wss://ntxmesh.dhovin.me:8883",            "ntxmesh.dhovin.me",               ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    { "bsmesh",        "wss://mqtt.bsmesh.de:8885",               "mqtt.bsmesh.de",                  ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
 };
 
 #else
