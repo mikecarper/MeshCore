@@ -187,7 +187,8 @@
 /* Material adds its own copier to every code block. This page supplies
    state-aware copy buttons, so the generic buttons would bypass disabled
    pre-start commands and duplicate every enabled action. */
-.preset-test .md-clipboard {
+.preset-test .md-clipboard,
+.preset-test .md-code__button[data-md-type="copy"] {
   display: none !important;
 }
 
