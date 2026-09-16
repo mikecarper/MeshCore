@@ -21,7 +21,7 @@ extra_css:
   - _stylesheets/firmware_picker.css
   - _stylesheets/telemetry_decoder.css
   - _stylesheets/filter_tool.css
-  - _stylesheets/preset_test.css
+  - _stylesheets/preset_test.css?v=20260916-2
 
 extra_javascript:
   - https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
