@@ -4799,11 +4799,11 @@ a raw byte count.</p>
 - <code>0xFFFF</code> (<code>DATA_TYPE_DEV</code>) is the developer namespace for experimenting and developing apps.
 - Registered application/community namespaces occupy <code>0x0100</code>-<code>0xFEFF</code>; the remaining nonzero ranges are reserved for internal or development use. See the <a href="#registered-data_type-values">Registered data_type values</a> table below.</p>
 <p><strong>Limits</strong>:
-- Maximum payload length is <code>MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 167</code> bytes.
+- Maximum payload length is <code>MAX_GROUP_DATA_LENGTH = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE - 3 = 165</code> bytes.
 - Larger payloads are rejected with <code>PACKET_ERROR</code> (<code>ERR_CODE_ILLEGAL_ARG</code>).</p>
 <p><strong>Response</strong>: <code>PACKET_OK</code> (0x00) on success, or <code>PACKET_ERROR</code> (0x01) with one of:
 - <code>ERR_CODE_NOT_FOUND</code> (2) - unknown <code>channel_idx</code>
-- <code>ERR_CODE_ILLEGAL_ARG</code> (6) - invalid <code>path_len</code>, reserved <code>data_type</code> (<code>0x0000</code>), or payload larger than <code>MAX_CHANNEL_DATA_LENGTH</code>
+- <code>ERR_CODE_ILLEGAL_ARG</code> (6) - invalid <code>path_len</code>, reserved <code>data_type</code> (<code>0x0000</code>), or payload larger than <code>MAX_GROUP_DATA_LENGTH</code>
 - <code>ERR_CODE_TABLE_FULL</code> (3) - outbound send queue is full; retry later</p>
 <p><strong>Inbound datagrams</strong> are delivered to the host via <code>RESP_CODE_CHANNEL_DATA_RECV</code> (0x1B); see <a href="#receive-channel-data-datagram">Receive Channel Data Datagram</a>.</p>
 <h4 id="registered-data_type-values">Registered <code>data_type</code> values</h4>
