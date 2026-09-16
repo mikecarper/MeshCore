@@ -24,6 +24,7 @@ public:
   HeltecV4R8Board() : periph_power(PIN_VEXT_EN, PIN_VEXT_EN_ACTIVE) { }
 
   void begin();
+
   void onBeforeTransmit(void) override;
   void onAfterTransmit(void) override;
   void powerOff() override;

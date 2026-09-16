@@ -1,4 +1,5 @@
 #include "ConfigSerializer.h"
+#include <stdlib.h>   // atoi/atol/atof (Arduino.h pulls this in on-device, native builds do not)
 
 bool ConfigSerializer::saveSerial(Stream& s) {
   Context context(&s, OP::WRITE);

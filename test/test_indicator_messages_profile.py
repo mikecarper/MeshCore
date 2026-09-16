@@ -63,7 +63,8 @@ static_assert(TRANSPORT == 4, "transport");
 static_assert(ADVERT == 5, "advert");
 static_assert(SENSORS == 6, "sensors");
 static_assert(WIFI_SETUP == 7, "wifi setup");
-static_assert(Count == 8, "count");
+static_assert(DISCOVERY == 8, "discovery appended without reordering");
+static_assert(Count == 9, "count");
 int main() {{ return 0; }}
 """
         with tempfile.TemporaryDirectory() as temp_dir:

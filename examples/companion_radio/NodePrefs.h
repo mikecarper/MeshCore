@@ -1,5 +1,9 @@
 #pragma once
 
+#if defined(ENABLE_WIFI_INTERFACE) && !defined(WIFI_SSID)
+#define WIFI_SSID ""
+#endif
+
 #include <Arduino.h>
 #include <cstdint>
 
@@ -81,6 +85,20 @@ public:
       mesh::companion::BLUETOOTH_PEER_ADDRESS_NONE;
   uint8_t bluetooth_stealth_peer[mesh::companion::BLUETOOTH_MAC_BYTES] = {};
   uint8_t bluetooth_stealth_mode = mesh::companion::BLUETOOTH_STEALTH_OFF;
+  float tx_delay_factor = 0.5f;
+  float direct_tx_delay_factor = 0.2f;
+  uint8_t interference_threshold = 0;
+  uint8_t agc_reset_interval = 0;  // seconds / 4
+  int8_t tz_offset = 0;
+#ifdef TBEAM_1W
+  char fan_mode[5] = "auto";
+  uint8_t fan_lo = 30;
+  uint8_t fan_hi = 36;
+#endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+  char wifi_ssid[33] = {};
+  char wifi_pwd[64] = {};
+#endif
 
 private:
   class RadioPrefs : public CommonRadioPrefs {
@@ -93,14 +111,23 @@ private:
       def("sf", _parent->sf);
       def("cr", _parent->cr);
       def("cad", _parent->cad_enabled);
+      def("int_thr", _parent->interference_threshold);
       def("rxgain", _parent->rx_boosted_gain);
       def("fem_rxgain", _parent->radio_fem_rxgain);
       def("fem_txgain", _parent->radio_fem_txgain);
       def("tx", _parent->tx_power_dbm);
       def("af", _parent->airtime_factor);
       def("rxdelay", _parent->rx_delay_base);
+      def("f_txdelay", _parent->tx_delay_factor);
+      def("d_txdelay", _parent->direct_tx_delay_factor);
+      def("agc_int", _parent->agc_reset_interval);
       def("hash_mode", _parent->path_hash_mode);
       def("multi_ack", _parent->multi_acks);
+#ifdef TBEAM_1W
+      def("fan", _parent->fan_mode, sizeof(_parent->fan_mode));
+      def("fan_lo", _parent->fan_lo);
+      def("fan_hi", _parent->fan_hi);
+#endif
     }
 
   public:
@@ -127,17 +154,11 @@ private:
       markDirty();
     }
     float getAirtimeFactor() const override { return _parent->airtime_factor; }
-    void setAirtimeFactor(float value) override {
-      _parent->airtime_factor = value;
-      markDirty();
-    }
-    bool isCadEnabled() const override { return _parent->cad_enabled != 0; }
-    void setCadEnabled(bool enabled) override {
-      _parent->cad_enabled = enabled ? 1 : 0;
-      markDirty();
-    }
-    uint8_t getIntThresh() const override { return 0; }
-    void setIntThresh(uint8_t) override { }
+    void setAirtimeFactor(float af) override { _parent->airtime_factor = af; markDirty(); }
+    bool isCadEnabled() const override { return _parent->cad_enabled; }
+    void setCadEnabled(bool en) override { _parent->cad_enabled = en; markDirty(); }
+    uint8_t getIntThresh() const override { return _parent->interference_threshold; }
+    void setIntThresh(uint8_t t) override { _parent->interference_threshold = t; markDirty(); }
     uint8_t getRxGain() const override { return _parent->rx_boosted_gain; }
     void setRxGain(uint8_t value) override {
       _parent->rx_boosted_gain = value;
@@ -149,26 +170,20 @@ private:
       markDirty();
     }
     float getRxDelay() const override { return _parent->rx_delay_base; }
-    void setRxDelay(float value) override {
-      _parent->rx_delay_base = value;
-      markDirty();
-    }
-    uint8_t getAgcResetInt() const override { return 0; }
-    void setAgcResetInt(uint8_t) override { }
+    void setRxDelay(float d) override { _parent->rx_delay_base = d; markDirty(); }
+    uint8_t getAgcResetInt() const override { return _parent->agc_reset_interval * 4; }
+    void setAgcResetInt(uint8_t secs) override { _parent->agc_reset_interval = secs / 4; markDirty(); }
     uint8_t getHashMode() const override { return _parent->path_hash_mode; }
     void setHashMode(uint8_t value) override {
       _parent->path_hash_mode = value;
       markDirty();
     }
     uint8_t getMultiAcks() const override { return _parent->multi_acks; }
-    void setMultiAcks(uint8_t value) override {
-      _parent->multi_acks = value;
-      markDirty();
-    }
-    float getFloodTxDelay() const override { return 0.5f; }
-    void setFloodTxDelay(float) override { }
-    float getDirectTxDelay() const override { return 0.2f; }
-    void setDirectTxDelay(float) override { }
+    void setMultiAcks(uint8_t m) override { _parent->multi_acks = m; markDirty(); }
+    float getFloodTxDelay() const override { return _parent->tx_delay_factor; }
+    void setFloodTxDelay(float d) override { _parent->tx_delay_factor = d; markDirty(); }
+    float getDirectTxDelay() const override { return _parent->direct_tx_delay_factor; }
+    void setDirectTxDelay(float d) override { _parent->direct_tx_delay_factor = d; markDirty(); }
     uint8_t getFEMRxGain() const override { return _parent->radio_fem_rxgain; }
     void setFEMRxGain(uint8_t value) override {
       _parent->radio_fem_rxgain = value;

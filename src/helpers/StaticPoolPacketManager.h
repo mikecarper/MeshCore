@@ -28,7 +28,10 @@ public:
   int count() const { return _num; }
   int countBefore(uint32_t now) const;
   bool getNextTime(uint32_t now, uint32_t& scheduled_for) const;
-  mesh::Packet* itemAt(int i) const { return _table[i]; }
+  mesh::Packet* itemAt(int i) const {
+    if (i < 0 || i >= _num) return NULL;
+    return _table[i];
+  }
   mesh::Packet* removeByIdx(int i);
   bool reschedule(mesh::Packet* packet, uint32_t scheduled_for);
 };

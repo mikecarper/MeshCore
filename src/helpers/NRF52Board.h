@@ -37,6 +37,7 @@ protected:
   char *ota_name;
 
 #ifdef NRF52_POWER_MANAGEMENT
+  void pwrmgtInit() { initPowerMgr(); }
   uint32_t reset_reason;              // RESETREAS register value
   uint8_t shutdown_reason;            // GPREGRET value (why we entered last SYSTEMOFF)
   uint16_t boot_voltage_mv;           // Battery voltage at boot (millivolts)
@@ -44,6 +45,7 @@ protected:
   bool checkBootVoltage(const PowerMgtConfig* config);
   void enterSystemOff(uint8_t reason);
   void configureVoltageWake(uint8_t ain_channel, uint8_t refsel);
+  void pwrmgtWakeArmVbus() { armVbusWake(); }
   virtual void initiateShutdown(uint8_t reason);
 #endif
 
@@ -85,6 +87,8 @@ public:
   const char* getShutdownReasonString(uint8_t reason) override;
   bool isPowerManagementInitialized() const override { return power_mgr_initialized; }
   bool supportsVoltageWake() const override { return true; }
+  bool isPwrMgtInitialised() const override { return isPowerManagementInitialized(); }
+  bool getWakeLpcompSupported() const override { return supportsVoltageWake(); }
 #endif
 };
 

@@ -8,7 +8,7 @@
 #include "target.h"
 #include "u8g2_icons.h"
 
-#ifdef WIFI_SSID
+#if defined(ENABLE_WIFI_INTERFACE) || defined(WIFI_SSID)
   #include <WiFi.h>
 #endif
 
@@ -181,7 +181,7 @@ public:
       display.setCursor(0, 19);
       display.print(tmp);
 
-      #ifdef WIFI_SSID
+      #ifdef ENABLE_WIFI_INTERFACE
         IPAddress ip = WiFi.localIP();
         snprintf(tmp, sizeof(tmp), "IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
         display.setTextSize(1);

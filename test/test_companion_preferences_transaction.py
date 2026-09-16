@@ -49,6 +49,14 @@ int main(int argc,char** argv){
  strcpy(original.node_name,"durable node");original.freq=910.525f;
  original.ble_pin=876543;original.bluetooth_stealth_mode=2;
  original.gps_interval=123;original.sf=7;original.cr=7;original.bw=62.5f;
+ original.tx_delay_factor=1.25f;original.direct_tx_delay_factor=0.75f;
+ original.interference_threshold=8;original.agc_reset_interval=15;original.tz_offset=-7;
+#ifdef TBEAM_1W
+ strcpy(original.fan_mode,"on");original.fan_lo=33;original.fan_hi=42;
+#endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+ strcpy(original.wifi_ssid,"test-network");strcpy(original.wifi_pwd,"test-password");
+#endif
  assert(store.savePrefs(original,47.1,-122.2));
  const auto disk=store.fs.files["/new_prefs"];
  CompanionNodePrefs changed=original;changed.freq=910.1f;
@@ -74,6 +82,14 @@ int main(int argc,char** argv){
    CompanionNodePrefs loaded;double lat=0,lon=0;
    assert(store.loadPrefs(loaded,lat,lon));
    assert(loaded.freq==changed.freq&&loaded.ble_pin==original.ble_pin);
+   assert(loaded.tx_delay_factor==1.25f&&loaded.direct_tx_delay_factor==0.75f);
+   assert(loaded.interference_threshold==8&&loaded.agc_reset_interval==15&&loaded.tz_offset==-7);
+#ifdef TBEAM_1W
+   assert(!strcmp(loaded.fan_mode,"on")&&loaded.fan_lo==33&&loaded.fan_hi==42);
+#endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+   assert(!strcmp(loaded.wifi_ssid,"test-network")&&!strcmp(loaded.wifi_pwd,"test-password"));
+#endif
    assert(lat==42.3&&lon==-121.2);
  } else if(scenario==1){
    for(int fault : {0,1,2,3,4}){
@@ -143,6 +159,14 @@ int main(int argc,char** argv){
    CompanionNodePrefs snapshot=*prefs;
    assert(!snapshot.isDirty());
    prefs->~CompanionNodePrefs();
+ } else if(scenario==5){
+   DataStore legacy;legacy.fs.files["/new_prefs"]=disk;
+   legacy.fs.files["/new_prefs"].resize(215);
+   CompanionNodePrefs loaded;double lat=0,lon=0;
+   assert(legacy.loadPrefs(loaded,lat,lon));
+   assert(loaded.tx_delay_factor==0.5f&&loaded.direct_tx_delay_factor==0.2f);
+   assert(loaded.interference_threshold==0&&loaded.agc_reset_interval==0&&loaded.tz_offset==0);
+   assert(loaded.freq==original.freq&&loaded.ble_pin==original.ble_pin);
  } else if(scenario==4){
    DataStore legacy;legacy.fs.files["/node_prefs"]=disk;
    legacy.fs.fail_write_after=17;
@@ -211,11 +235,13 @@ inline char* utoa(unsigned int value,char* output,int base){
             (work / 'ContactFileTransaction.h').write_text(transaction.replace(
                 '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>'))
             (work / 'test.cpp').write_text(HARNESS.replace('@METHODS@', methods))
-            for platform in ('ESP32_PLATFORM', 'RP2040_PLATFORM', 'STM32_PLATFORM', 'NRF52_PLATFORM'):
+            for platform in ('ESP32_PLATFORM', 'RP2040_PLATFORM', 'STM32_PLATFORM', 'NRF52_PLATFORM',
+                             'ESP32_PLATFORM,TBEAM_1W', 'RP2040_PLATFORM,ENABLE_WIFI_INTERFACE'):
                 with self.subTest(platform=platform):
                     binary = work / 'test'
                     build = subprocess.run(['g++', '-std=c++17',
-                        '-D'+platform+'=1', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
+                        *['-D'+flag+'=1' for flag in platform.split(',')],
+                        '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                         '-fno-pie', '-no-pie', '-include', str(work / 'platform_shim.h'),
                         '-I', str(work),
                         '-I', str(ROOT / 'test/fixtures/radio_profiles/mocks'),
@@ -228,7 +254,7 @@ inline char* utoa(unsigned int value,char* output,int base){
                         str(ROOT / 'src/helpers/TxtDataHelpers.cpp'),
                         '-o', str(binary)], capture_output=True, text=True)
                     self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
-                    for scenario in range(5):
+                    for scenario in range(6):
                         with self.subTest(scenario=scenario):
                             run = subprocess.run([str(binary), str(scenario)], capture_output=True, text=True)
                             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

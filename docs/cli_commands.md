@@ -1174,7 +1174,7 @@ capacity. Remote use follows the existing administrator-command permissions.
 
 **Set by build flag:** `LORA_FREQ`, `LORA_BW`, `LORA_SF`, `LORA_CR`
 
-**Default:** `869.525,250,11,5`
+**Default:** `869.618,62.5,8,5`
 
 **Note:** Requires reboot to apply. If RXPS is enabled and the saved minimum
 level/preamble cannot safely cover the new radio timing, the command reply
@@ -1345,7 +1345,7 @@ preamble. LoRa OTA treats v1.17.1.5 as that capability boundary.
 **Parameters:**
 - `frequency`: Frequency in MHz
 
-**Default:** `869.525`
+**Default:** `869.618`
 
 **Note:** Requires reboot to apply
 
@@ -2275,7 +2275,7 @@ installed images need an updated build. See the [setting-dispatch audit](cli_set
 **Parameters:**
 - `value`: Direct transmit delay factor (0-2)
 
-**Default:** `0.2`
+**Default:** `0.3` (Repeater) - `0.2` (Room Server, Sensor)
 
 **Note:** Same collision-avoidance random window as `txdelay`, but applied to direct (non-flood, routed) traffic. The default is lower because direct packets are addressed to a specific next hop, so far fewer nodes compete to retransmit them.
 
@@ -2426,7 +2426,7 @@ reduce unnecessary recoveries when no traffic is expected.
 **Parameters:**
 - `hours`: Interval in hours (3-168)
 
-**Default:** `12` (Repeater) - `0` (Sensor)
+**Default:** `47` (Repeater, Room Server) - `0`, disabled (Sensor)
 
 ---
 
@@ -2438,7 +2438,12 @@ reduce unnecessary recoveries when no traffic is expected.
 **Parameters:**
 - `minutes`: Interval in minutes rounded down to the nearest multiple of 2 (61 becomes 60) (60-240)
 
-**Default:** `0`
+**Default:** `2` on a factory-fresh node, then `0` (disabled) once configured.
+
+**Note:** A new install ships with a 2 minute zero-hop advert interval. Saving
+any setting resets an interval below the 60 minute minimum to `0`, on the
+assumption that the node has now been deliberately configured. To keep zero-hop
+adverts running, set an explicit value in the 60-240 range.
 
 ---
 

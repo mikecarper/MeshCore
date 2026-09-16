@@ -1,4 +1,4 @@
-#include <helpers/esp32/SerialWifiInterface.h>
+#include <helpers/wifi/SerialWifiInterface.h>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>

@@ -3782,9 +3782,9 @@ apply_companion_radio_full_profile() {
 
   # A few BLE recipes list only their BLE implementation instead of the full
   # ESP32 helper directory. Add the WiFi transport explicitly in that case.
-  if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/*.cpp" \
-      && ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/esp32/SerialWifiInterface.cpp"; then
-    append_platformio_build_src_filter "+<helpers/esp32/SerialWifiInterface.cpp>"
+  if ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/wifi/*.cpp" \
+      && ! pio_env_option_contains "$pio_env_name" build_src_filter "helpers/wifi/SerialWifiInterface.cpp"; then
+    append_platformio_build_src_filter "+<helpers/wifi/SerialWifiInterface.cpp>"
   fi
 
   # WiFi recipes can have the inverse narrow filter. Preserve the existing

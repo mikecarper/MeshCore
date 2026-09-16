@@ -140,6 +140,7 @@ public:
     (void)blocked;
     return false;
   }
+  virtual bool isGPSDetected() const { return false; }
 
   // Helper functions to manage setting by keys (useful in many places ...)
   const char* getSettingByKey(const char* key) {

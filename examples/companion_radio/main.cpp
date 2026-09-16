@@ -53,19 +53,29 @@ MultiSerialInterface interface_manager;
     // include nrf52 bluetooth interface
     #include <helpers/nrf52/SerialBLEInterface.h>
     SerialBLEInterface bluetooth_interface;
+  #elif defined(RP2040_PLATFORM)
+    // include rp2040 (Pico W / CYW43) bluetooth interface
+    #include <helpers/rp2040/SerialBLEInterface.h>
+    SerialBLEInterface bluetooth_interface;
   #else
     #error "SerialBLEInterface is not defined for this platform"
   #endif
 #endif
 
 // include wifi interface
-#ifdef WIFI_SSID
+#if defined(ENABLE_WIFI_INTERFACE) || defined(WIFI_SSID)
+  #ifndef WIFI_SSID
+    #define WIFI_SSID ""
+  #endif
+  #ifndef WIFI_PWD
+    #define WIFI_PWD ""
+  #endif
   #ifndef TCP_PORT
     #define TCP_PORT 5000
   #endif
   #ifdef ESP32
     // include esp32 wifi interface
-    #include <helpers/esp32/SerialWifiInterface.h>
+    #include <helpers/wifi/SerialWifiInterface.h>
     #include <helpers/WiFiSetupPortal.h>
     #include <helpers/CLICommandUtils.h>
     #include <helpers/WiFiReconnectPolicy.h>
@@ -85,6 +95,19 @@ MultiSerialInterface interface_manager;
     SerialWifiInterface wifi_interface;
     #ifndef WIFI_PWD
       #define WIFI_PWD ""
+    #endif
+  #elif defined(RP2040_PLATFORM)
+    #include <helpers/wifi/SerialWifiInterface.h>
+    SerialWifiInterface wifi_interface;
+    static uint32_t last_wifi_reconnect_attempt = 0;
+    static bool pico_wifi_active = false;
+    static char pico_wifi_ssid[33] = {};
+    static char pico_wifi_pwd[64] = {};
+    #ifndef WIFI_RETRY_INTERVAL
+      #define WIFI_RETRY_INTERVAL 30000UL
+    #endif
+    #ifndef WIFI_RETRY_TIMEOUT
+      #define WIFI_RETRY_TIMEOUT 5000UL
     #endif
   #else
     #error "SerialWifiInterface is not defined for this platform"
@@ -2795,7 +2818,7 @@ void setup() {
 #endif
 
 // add wifi interface
-#ifdef WIFI_SSID
+#if defined(ESP32) && defined(WIFI_SSID)
   wifi_interface.setSessionChangedCallback(cancelCompanionWiFiSession, nullptr);
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   if (companionTransportWiFiActiveAtBoot()) {
@@ -2859,6 +2882,30 @@ void setup() {
 #endif
 
 // add usb interface
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+  wifi_interface.setSessionChangedCallback([](void*) {
+    if (interface_manager.isReplyRouteFor(&wifi_interface)) {
+      the_mesh.cancelSerialResponseStream();
+    }
+    the_mesh.cancelSerialOperationsForRoute(&wifi_interface);
+    interface_manager.forgetReplyRouteForDisconnected(&wifi_interface);
+  }, nullptr);
+  const auto* wifi_prefs = the_mesh.getNodePrefs();
+  StrHelper::strncpy(pico_wifi_ssid,
+      wifi_prefs->wifi_ssid[0] ? wifi_prefs->wifi_ssid : WIFI_SSID,
+      sizeof(pico_wifi_ssid));
+  StrHelper::strncpy(pico_wifi_pwd,
+      wifi_prefs->wifi_ssid[0] ? wifi_prefs->wifi_pwd : WIFI_PWD,
+      sizeof(pico_wifi_pwd));
+  pico_wifi_active = wifi_prefs->wifi_enabled && pico_wifi_ssid[0];
+  if (pico_wifi_active) {
+    WiFi.setTimeout(WIFI_RETRY_TIMEOUT);
+    WiFi.beginNoBlock(pico_wifi_ssid, pico_wifi_pwd);
+    last_wifi_reconnect_attempt = millis();
+    wifi_interface.begin(TCP_PORT);
+    interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+  }
+#endif
 #if defined(ENABLE_USB_INTERFACE)
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
   usb_serial_interface.begin(mesh::usbCompanionPort(),
@@ -2953,6 +3000,15 @@ void setup() {
 }
 
 void loop() {
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+  if (pico_wifi_active && WiFi.status() != WL_CONNECTED
+      && static_cast<uint32_t>(millis() - last_wifi_reconnect_attempt)
+          >= WIFI_RETRY_INTERVAL) {
+    WiFi.setTimeout(WIFI_RETRY_TIMEOUT);
+    WiFi.beginNoBlock(pico_wifi_ssid, pico_wifi_pwd);
+    last_wifi_reconnect_attempt = millis();
+  }
+#endif
   mesh::wireless::control().service(millis());
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog();

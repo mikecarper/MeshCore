@@ -588,12 +588,12 @@ a raw byte count.
 - Registered application/community namespaces occupy `0x0100`-`0xFEFF`; the remaining nonzero ranges are reserved for internal or development use. See the [Registered data_type values](#registered-data_type-values) table below.
 
 **Limits**:
-- Maximum payload length is `MAX_CHANNEL_DATA_LENGTH = MAX_FRAME_SIZE - 9 = 167` bytes.
+- Maximum payload length is `MAX_GROUP_DATA_LENGTH = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE - 3 = 165` bytes.
 - Larger payloads are rejected with `PACKET_ERROR` (`ERR_CODE_ILLEGAL_ARG`).
 
 **Response**: `PACKET_OK` (0x00) on success, or `PACKET_ERROR` (0x01) with one of:
 - `ERR_CODE_NOT_FOUND` (2) - unknown `channel_idx`
-- `ERR_CODE_ILLEGAL_ARG` (6) - invalid `path_len`, reserved `data_type` (`0x0000`), or payload larger than `MAX_CHANNEL_DATA_LENGTH`
+- `ERR_CODE_ILLEGAL_ARG` (6) - invalid `path_len`, reserved `data_type` (`0x0000`), or payload larger than `MAX_GROUP_DATA_LENGTH`
 - `ERR_CODE_TABLE_FULL` (3) - outbound send queue is full; retry later
 
 **Inbound datagrams** are delivered to the host via `RESP_CODE_CHANNEL_DATA_RECV` (0x1B); see [Receive Channel Data Datagram](#receive-channel-data-datagram).

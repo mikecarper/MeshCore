@@ -81,6 +81,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev
           python3 -B test/test_companion_tx_routing.py -v
+          python3 -B test/test_companion_discovery.py -v
           python3 -B test/test_companion_preferences_transaction.py -v
           python3 -B test/test_companion_radio_settings_transaction.py -v
           python3 -B test/test_companion_prefs_transactions.py -v

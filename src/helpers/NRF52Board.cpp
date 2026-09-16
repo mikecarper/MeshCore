@@ -263,7 +263,7 @@ const char* NRF52Board::getShutdownReasonString(uint8_t reason) {
 }
 
 bool NRF52Board::checkBootVoltage(const PowerMgtConfig* config) {
-  initPowerMgr();
+  pwrmgtInit();
 
   if (config == nullptr) return true;
 
@@ -381,22 +381,19 @@ void NRF52Board::configureVoltageWake(uint8_t ain_channel, uint8_t refsel) {
   NRF_LPCOMP->ENABLE = LPCOMP_ENABLE_ENABLE_Enabled;
   NRF_LPCOMP->TASKS_START = 1;
 
-  // Wait for comparator to settle before entering SYSTEMOFF
+  // Wait for comparator to settle
   for (uint8_t i = 0; i < 20 && !NRF_LPCOMP->EVENTS_READY; i++) {
     delayMicroseconds(50);
   }
 
   if (refsel == 7) {
-    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake configured (AIN%d, ref=ARef)", ain_channel);
+    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake armed (AIN%d, ref=ARef)", ain_channel);
   } else if (refsel <= 6) {
-    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake configured (AIN%d, ref=%d/8 VDD)",
-      ain_channel, refsel + 1);
+    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake armed (AIN%d, ref=%d/8 VDD)", ain_channel, refsel + 1);
   } else {
     uint8_t ref_num = (uint8_t)((refsel - 8) * 2 + 1);
-    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake configured (AIN%d, ref=%d/16 VDD)",
-      ain_channel, ref_num);
+    MESH_DEBUG_PRINTLN("PWRMGT: LPCOMP wake armed (AIN%d, ref=%d/16 VDD)", ain_channel, ref_num);
   }
-
 }
 
 void NRF52Board::armVbusWake() {
@@ -409,8 +406,7 @@ void NRF52Board::armVbusWake() {
     NRF_POWER->EVENTS_USBDETECTED = 0;
     NRF_POWER->INTENSET = POWER_INTENSET_USBDETECTED_Msk;
   }
-
-  MESH_DEBUG_PRINTLN("PWRMGT: VBUS wake configured");
+  MESH_DEBUG_PRINTLN("PWRMGT: VBUS wake armed");
 }
 #endif
 

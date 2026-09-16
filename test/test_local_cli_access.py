@@ -63,6 +63,9 @@ struct Store {
   bool formatFileSystem(){++erased;return success;}
 };
 struct Prefs {
+  float tx_delay_factor=0.5f, direct_tx_delay_factor=0.2f;
+  uint8_t interference_threshold=0, agc_reset_interval=0;
+  int8_t tz_offset=0;
   float freq=910, bw=125, airtime_factor=1, rx_delay_base=1;
   uint8_t sf=7, cr=5, path_hash_mode=0, multi_acks=0, rx_ps_level=0, rx_ps_preamble=16;
   uint32_t rx_ps_rx_us=1, rx_ps_sleep_us=1;

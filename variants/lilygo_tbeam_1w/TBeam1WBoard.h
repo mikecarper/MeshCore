@@ -1,6 +1,8 @@
 #pragma once
 
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <helpers/ESP32Board.h>
 #include "variant.h"
 
@@ -30,19 +32,45 @@ class CustomSX1262Wrapper;
 //   - Battery must support 2A+ discharge for high-power TX
 
 class TBeam1WBoard : public ESP32Board {
+public:
+  enum FanMode { FAN_ON, FAN_OFF, FAN_AUTO };
+
 private:
   bool radio_powered = false;
   bool lna_enabled = true;
   bool lna_driver_synced = false;
   CustomSX1262Wrapper* radio_driver = nullptr;
-  bool fan_running = false;
-  bool fan_temperature_valid = false;
-  uint32_t fan_started_at_ms = 0;
-  uint32_t fan_last_poll_ms = 0;
-  float fan_last_temperature_c = 0.0f;
+  bool _stopped = false;
+  KeyValueStore* _prefs = nullptr;
+  FanMode _mode = FAN_AUTO;
+  int _lo_c = FAN_DEFAULT_LO_C;
+  int _hi_c = FAN_DEFAULT_HI_C;
+  bool _thermal_on = false;  // onoff hysteresis; TX boost must not latch this
+  bool _fan_on = true;
+  float _temp_c = NAN;
+  bool _tx_active = false;
+  bool _tx_cooldown_active = false;
+  uint32_t _tx_until_ms = 0;
+  TaskHandle_t _fan_task = nullptr;
+  mutable portMUX_TYPE _fan_mux = portMUX_INITIALIZER_UNLOCKED;
+
+  void startFanTask();
+  void updateFan();
+  void setFanOutputLocked(bool enabled);
+  float readNtcTempC();
+  int cooldownSecsLocked();
+  bool isTxCoolingLocked(uint32_t now);
+  bool ntcImplausible(float temp_c) const;
+  bool persistKey(const char* key, const char* value);
+  static bool parseIntArg(const char* text, int& value);
+  void loadFanPrefs();
+  const char* modeNameLocked() const;
+  static void fanTaskThunk(void* arg);
 
 public:
   void begin();
+  void attachDynamicPrefs(KeyValueStore* prefs);
+  bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply) override;
   void onBeforeTransmit() override;
   void onAfterTransmit() override;
   uint16_t getBattMilliVolts() override;
@@ -60,9 +88,7 @@ public:
   bool canControlLoRaFemLna() const override;
   bool isLoRaFemLnaEnabled() const override;
 
-  // Temperature-gated cooling for the external PA. Every T-Beam 1W role
-  // services this from its main loop; the TX hooks also run it at the points
-  // where the PA can begin heating.
+  // Main-loop fallback if the background fan task could not be allocated.
   void updateFanControl();
   void setFanEnabled(bool enabled);
   bool isFanEnabled() const;

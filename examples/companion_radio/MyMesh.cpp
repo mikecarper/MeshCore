@@ -8,6 +8,9 @@
 #endif
 
 #include <Arduino.h> // needed for PlatformIO
+#ifdef ENABLE_WIFI_INTERFACE
+#include <WiFi.h>
+#endif
 #include <Mesh.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include <helpers/CompanionStatusResponse.h>
@@ -291,6 +294,10 @@ static mesh::Packet* emergency_client_repeat_packet;
 #define ERR_CODE_FILE_IO_ERROR          5
 #define ERR_CODE_ILLEGAL_ARG            6
 
+// Copied from simple_repeater (could probably be shared)
+#define CTL_TYPE_NODE_DISCOVER_REQ      0x80
+#define CTL_TYPE_NODE_DISCOVER_RESP     0x90
+
 #define MAX_SIGN_DATA_LEN               (8 * 1024) // 8K
 static constexpr unsigned long SIGN_SESSION_TIMEOUT_MILLIS = 120000;
 
@@ -571,7 +578,7 @@ uint32_t MyMesh::getCADFailMaxDuration() const {
 }
 
 int MyMesh::getInterferenceThreshold() const {
-  return 0; // disabled for now, until currentRSSI() problem is resolved
+  return _prefs.interference_threshold;
 }
 
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
@@ -580,11 +587,11 @@ int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
 }
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
-  uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * 0.5f);
+  uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
 }
 uint32_t MyMesh::getDirectRetransmitDelay(const mesh::Packet *packet) {
-  uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * 0.2f);
+  uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.direct_tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
 }
 
@@ -787,6 +794,60 @@ int MyMesh::getRecentlyHeard(AdvertPath dest[], int max_num) {
   }
   return max_num;
 }
+
+#if defined(DISPLAY_CLASS) && !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
+int MyMesh::getDiscoveredNodes(DiscoveredNode nodes[], int max_num) {
+  if (!nodes || max_num <= 0) return 0;
+  if (max_num > DISCOVERED_NODES_TABLE_SIZE) max_num = DISCOVERED_NODES_TABLE_SIZE;
+  if (max_num > disc_nodes_count) max_num = disc_nodes_count;
+
+  for (int i = 0; i < max_num; i++) {
+    nodes[i] = discovered_nodes[i];
+  }
+  return max_num;
+}
+
+bool MyMesh::requestRepeatersDiscovery() {
+  uint8_t cmd_bytes[6];
+  cmd_bytes[0] = CTL_TYPE_NODE_DISCOVER_REQ | 1; // DISCOVER_REQ | prefix only
+  cmd_bytes[1] = 0xFF;     // Repeaters
+  getRNG()->random(&cmd_bytes[2], 4); // tag
+  disc_nodes_count = 0;
+  disc_node_req_active = false;
+  memcpy(&disc_node_req_tag, &cmd_bytes[2], sizeof(disc_node_req_tag));
+  mesh::Packet* req = createControlData(cmd_bytes, sizeof(cmd_bytes));
+  if (req) {
+    sendZeroHop(req);
+    disc_node_req_active = true;
+    disc_node_req_at = millis();
+    return disc_node_req_active;
+  }
+  return false;
+}
+
+void MyMesh::checkControlDataForPendingDiscovery(uint8_t payload[], size_t p_len) {
+  if (!disc_node_req_active
+      || static_cast<uint32_t>(millis() - disc_node_req_at) >= 30000UL
+      || (p_len < 14)
+      || ((payload[0] & 0xF0) != CTL_TYPE_NODE_DISCOVER_RESP)
+      || (disc_nodes_count >= DISCOVERED_NODES_TABLE_SIZE)
+      || (memcmp(&payload[2], &disc_node_req_tag, 4))) {
+    return;
+  }
+  memcpy(&discovered_nodes[disc_nodes_count].pubkey_prefix, &payload[6], 8);
+  discovered_nodes[disc_nodes_count].type = payload[0] & 0xF;
+  discovered_nodes[disc_nodes_count].snr_out = ((int8_t)payload[1]) / 4.0;
+  discovered_nodes[disc_nodes_count].snr_in = _radio->getLastSNR();
+  ContactInfo* c = lookupContactByPubKey(&payload[6], 8);
+  if (c != NULL) {
+    StrHelper::strncpy(discovered_nodes[disc_nodes_count].name, c->name,
+                       sizeof(discovered_nodes[disc_nodes_count].name));
+  } else {
+    discovered_nodes[disc_nodes_count].name[0] = 0;
+  }
+  disc_nodes_count ++;
+}
+#endif
 
 #if COMPANION_FEATURE_TEXT_TERMINAL
 void MyMesh::onContactVisit(const ContactInfo& contact) {
@@ -1453,6 +1514,9 @@ void MyMesh::onControlDataRecv(mesh::Packet *packet) {
     MESH_DEBUG_PRINTLN("onControlDataRecv(), payload_len too long: %d", packet->payload_len);
     return;
   }
+#if defined(DISPLAY_CLASS) && !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
+  checkControlDataForPendingDiscovery(packet->payload, packet->payload_len);
+#endif
   int i = 0;
   out_frame[i++] = PUSH_CODE_CONTROL_DATA;
   out_frame[i++] = (int8_t)(packet->getSNR() * 4);
@@ -1620,6 +1684,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _temp_radio_failures = 0;
   _temp_radio_applied = false;
 #endif
+  cli_command[0] = 0;
   offline_queue_len = 0;
   offline_queue_head = 0;
 #if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
@@ -1642,7 +1707,9 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   send_unscoped = false;
 
   // defaults
-  _prefs.airtime_factor = 1.0; // one half
+  _prefs.airtime_factor = 1.0;
+  _prefs.tx_delay_factor = 0.5f;
+  _prefs.direct_tx_delay_factor = 0.2f;
   strcpy(_prefs.node_name, "NONAME");
   _prefs.freq = LORA_FREQ;
   _prefs.sf = LORA_SF;
@@ -1656,7 +1723,11 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.gps_interval = 0;      // Use the default 1-second fix-processing interval
   _prefs.autoadd_config = DEFAULT_AUTOADD_CONFIG;
   _prefs.path_hash_mode = DEFAULT_PATH_HASH_MODE;
+#ifdef RADIO_FEM_TXGAIN
+  _prefs.radio_fem_txgain = RADIO_FEM_TXGAIN;
+#else
   _prefs.radio_fem_txgain = 0;
+#endif
 #ifdef DEFAULT_RX_DELAY_BASE
   _prefs.rx_delay_base = DEFAULT_RX_DELAY_BASE;
 #endif
@@ -1865,6 +1936,10 @@ void MyMesh::begin(bool has_display, bool radio_available) {
 
   // sanitise bad pref values
   _prefs.rx_delay_base = constrain(_prefs.rx_delay_base, 0, 20.0f);
+  if (!isfinite(_prefs.tx_delay_factor)) _prefs.tx_delay_factor = 0.5f;
+  if (!isfinite(_prefs.direct_tx_delay_factor)) _prefs.direct_tx_delay_factor = 0.2f;
+  _prefs.tx_delay_factor = constrain(_prefs.tx_delay_factor, 0, 2.0f);
+  _prefs.direct_tx_delay_factor = constrain(_prefs.direct_tx_delay_factor, 0, 2.0f);
   if (!isfinite(_prefs.airtime_factor)) _prefs.airtime_factor = 1.0f;
   // `set dutycycle 1` stores factor 99; the legacy `set af` input limit is
   // narrower, but must not truncate an accepted duty cycle on restart.
@@ -4519,8 +4594,8 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
     } else if (data_type == DATA_TYPE_RESERVED) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
-    } else if (payload_len > MAX_CHANNEL_DATA_LENGTH) {
-      MESH_DEBUG_PRINTLN("CMD_SEND_CHANNEL_DATA payload too long: %d > %d", payload_len, MAX_CHANNEL_DATA_LENGTH);
+    } else if (payload_len > MAX_GROUP_DATA_LENGTH) {
+      MESH_DEBUG_PRINTLN("CMD_SEND_CHANNEL_DATA payload too long: %d > %d", payload_len, MAX_GROUP_DATA_LENGTH);
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else if (sendGroupData(channel.channel, path, path_len, data_type, payload, payload_len)) {
       writeOKFrame();
@@ -8406,7 +8481,8 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
 
   static const char* const exact_commands[] = {
     "get radio", "get freq", "get af", "get dutycycle", "get tx",
-    "get rxdelay", "get path.hash.mode", "get multi.acks"
+    "get rxdelay", "get path.hash.mode", "get multi.acks",
+    "get txdelay", "get direct.txdelay", "get int.thresh", "get agc.reset.interval"
   };
   for (const char* candidate : exact_commands) {
     if (strcmp(command, candidate) == 0) return true;
@@ -8414,7 +8490,8 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
 
   static const char* const set_prefixes[] = {
     "set radio ", "set af ", "set dutycycle ", "set rxdelay ",
-    "set path.hash.mode ", "set multi.acks "
+    "set path.hash.mode ", "set multi.acks ", "set txdelay ",
+    "set direct.txdelay ", "set int.thresh ", "set agc.reset.interval "
   };
   for (const char* prefix : set_prefixes) {
     if (strncmp(command, prefix, strlen(prefix)) == 0) return true;
@@ -8612,6 +8689,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     const uint8_t previous_cr = _prefs.cr;
     const float previous_af = _prefs.airtime_factor;
     const float previous_rxdelay = _prefs.rx_delay_base;
+    const float previous_txdelay = _prefs.tx_delay_factor;
+    const float previous_direct_txdelay = _prefs.direct_tx_delay_factor;
+    const uint8_t previous_interference = _prefs.interference_threshold;
+    const uint8_t previous_agc = _prefs.agc_reset_interval;
     const uint8_t previous_hash_mode = _prefs.path_hash_mode;
     const uint8_t previous_multi_acks = _prefs.multi_acks;
     const uint32_t previous_rx_us = _prefs.rx_ps_rx_us;
@@ -8640,6 +8721,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         _prefs.cr = previous_cr;
         _prefs.airtime_factor = previous_af;
         _prefs.rx_delay_base = previous_rxdelay;
+        _prefs.tx_delay_factor = previous_txdelay;
+        _prefs.direct_tx_delay_factor = previous_direct_txdelay;
+        _prefs.interference_threshold = previous_interference;
+        _prefs.agc_reset_interval = previous_agc;
         _prefs.path_hash_mode = previous_hash_mode;
         _prefs.multi_acks = previous_multi_acks;
         _prefs.rx_ps_rx_us = previous_rx_us;
@@ -8691,13 +8776,92 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     return true;
   }
 
-  return false;
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+  if (strcmp(command, "get wifi.ssid") == 0) {
+    const char* ssid = _prefs.wifi_ssid[0] ? _prefs.wifi_ssid : WIFI_SSID;
+    snprintf(reply, reply_capacity, "> %s", *ssid ? ssid : "(not set)");
+    return true;
+  }
+  if (strcmp(command, "get wifi.enabled") == 0) {
+    snprintf(reply, reply_capacity, "> %d", _prefs.wifi_enabled);
+    return true;
+  }
+  if (strcmp(command, "get wifi.status") == 0 || strcmp(command, "get wifi.ip") == 0) {
+    const bool connected = WiFi.status() == WL_CONNECTED;
+    if (strcmp(command, "get wifi.status") == 0) {
+      snprintf(reply, reply_capacity, "> %s", connected ? "connected" : "disconnected");
+    } else {
+      snprintf(reply, reply_capacity, "> %s", connected ? WiFi.localIP().toString().c_str() : "(not connected)");
+    }
+    return true;
+  }
+  const bool set_ssid = strncmp(command, "set wifi.ssid ", 14) == 0;
+  const bool set_pwd = strncmp(command, "set wifi.pwd ", 13) == 0;
+  const bool set_enabled = strncmp(command, "set wifi.enabled ", 17) == 0;
+  const bool clear_wifi = strcmp(command, "set wifi.clear") == 0;
+  if (set_ssid || set_pwd || set_enabled || clear_wifi) {
+    char old_ssid[sizeof(_prefs.wifi_ssid)], old_pwd[sizeof(_prefs.wifi_pwd)];
+    memcpy(old_ssid, _prefs.wifi_ssid, sizeof(old_ssid));
+    memcpy(old_pwd, _prefs.wifi_pwd, sizeof(old_pwd));
+    const uint8_t old_enabled = _prefs.wifi_enabled;
+    const char* value = command + (set_ssid ? 14 : set_pwd ? 13 : set_enabled ? 17 : 0);
+    int32_t enabled = 0;
+    if ((set_ssid && strlen(value) >= sizeof(_prefs.wifi_ssid))
+        || (set_pwd && strlen(value) >= sizeof(_prefs.wifi_pwd))
+        || (set_enabled && (!mesh::cli::parseIntegerStrict(value, enabled) || enabled < 0 || enabled > 1))) {
+      strcpy(reply, "Error: invalid WiFi setting");
+      return true;
+    }
+    if (set_ssid) strcpy(_prefs.wifi_ssid, value);
+    if (set_pwd) strcpy(_prefs.wifi_pwd, value);
+    if (set_enabled) _prefs.wifi_enabled = enabled;
+    if (clear_wifi) { _prefs.wifi_ssid[0] = 0; _prefs.wifi_pwd[0] = 0; }
+    if (savePrefs()) strcpy(reply, "OK - reboot to apply WiFi settings");
+    else {
+      memcpy(_prefs.wifi_ssid, old_ssid, sizeof(old_ssid));
+      memcpy(_prefs.wifi_pwd, old_pwd, sizeof(old_pwd));
+      _prefs.wifi_enabled = old_enabled;
+      strcpy(reply, "Error: WiFi setting could not be saved");
+    }
+    memset(old_pwd, 0, sizeof(old_pwd));
+    return true;
+  }
+#endif
+
+  if (strcmp(command, "get tz.offset") == 0) {
+    sprintf(reply, "> %d", _prefs.tz_offset);
+    return true;
+  }
+  if (strncmp(command, "set tz.offset ", 14) == 0) {
+    int32_t tz;
+    if (!mesh::cli::parseIntegerStrict(command + 14, tz) || tz < -12 || tz > 14) {
+      strcpy(reply, "Error, must be from -12 to +14");
+    } else {
+      const int8_t previous = _prefs.tz_offset;
+      _prefs.tz_offset = tz;
+      if (savePrefs()) strcpy(reply, "OK");
+      else {
+        _prefs.tz_offset = previous;
+        strcpy(reply, "Error: timezone could not be saved");
+      }
+    }
+    return true;
+  }
+
+  return false;  // not handled
 }
 
 void MyMesh::checkCLIRescueCmd() {
   Stream& output = mesh::usbTerminalPort();
   Stream& input = mesh::usbCompanionPort();
   int len = strlen(cli_command);
+  // `cli_command` must stay NUL-terminated within its bounds. If it ever isn't,
+  // strlen() above can return >= sizeof(cli_command) and the loop below would
+  // then index past the buffer, so clamp defensively.
+  if (len >= (int)sizeof(cli_command)) {
+    cli_command[0] = 0;
+    len = 0;
+  }
   while (input.available() && len < sizeof(cli_command)-1) {
     char c = input.read();
     if (c != '\n') {
@@ -8706,8 +8870,9 @@ void MyMesh::checkCLIRescueCmd() {
     }
     output.print(c);  // echo
   }
-  if (len == sizeof(cli_command)-1) {  // command buffer full
-    cli_command[sizeof(cli_command)-1] = '\r';
+  if (len == sizeof(cli_command)-1) {  // buffer full: treat as a completed line
+    cli_command[sizeof(cli_command)-2] = '\r';  // place end-of-line marker inside the buffer
+    cli_command[sizeof(cli_command)-1] = 0;     // keep the buffer NUL-terminated
   }
 
   if (len > 0 && cli_command[len - 1] == '\r') {  // received complete line
@@ -9051,6 +9216,11 @@ void MyMesh::loop() {
     checkCLIRescueCmd();
   } else {
     checkSerialInterface();
+#if defined(ENABLE_WIFI_INTERFACE) && defined(RP2040_PLATFORM) && !defined(ENABLE_USB_INTERFACE)
+    // RP2040 WiFi builds are headless and have no way into the rescue CLI (that needs a
+    // display + long-press), so serve config commands on the otherwise unused USB serial
+    checkCLIRescueCmd();
+#endif
   }
   servicePendingRadioParamApply();
 

@@ -88,7 +88,7 @@ assert re.search(
     setup,
 )
 assert re.search(
-    r"#ifdef WIFI_SSID\s+"
+    r"#if defined\(ESP32\) && defined\(WIFI_SSID\)\s+"
     # Registering a callback does not start the WiFi stack. It must remain
     # available for session cleanup, while startup stays behind the boot gate.
     r"wifi_interface\.setSessionChangedCallback\(cancelCompanionWiFiSession, nullptr\);\s+"

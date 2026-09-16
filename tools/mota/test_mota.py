@@ -518,7 +518,7 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
     profile = build.split("apply_companion_radio_full_profile()", 1)[1]
     profile = profile.split("apply_radio_overrides()", 1)[0]
     assert "-DWIFI_SSID=" in profile
-    assert "+<helpers/esp32/SerialWifiInterface.cpp>" in profile
+    assert "+<helpers/wifi/SerialWifiInterface.cpp>" in profile
     assert "meshadventurer_sx1262_companion_radio_full" in profile
     assert "meshadventurer_sx1268_companion_radio_full" in profile
     assert ("-DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 "

@@ -621,8 +621,8 @@ Mac: python3 should be already installed.
 
 Then it should be the same for all platforms:
 ```
-python3 -m venv meshcore
-cd meshcore && source bin/activate
+python3 -m venv meshcore-venv
+cd meshcore-venv && source bin/activate
 pip install -U platformio
 git clone https://github.com/meshcore-dev/MeshCore.git
 cd MeshCore

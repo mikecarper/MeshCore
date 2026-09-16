@@ -470,11 +470,11 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
       && [[ "$PLATFORMIO_BUILD_FLAGS" != *"WIFI_SSID"* ]]; then
     fail "$full_env Full Companion omitted ordinary WiFi credentials"
   fi
-  if ! pio_env_option_contains "$pio_env" build_src_filter "helpers/esp32/*.cpp" \
+  if ! pio_env_option_contains "$pio_env" build_src_filter "helpers/wifi/*.cpp" \
       && ! pio_env_option_contains "$pio_env" build_src_filter \
-          "helpers/esp32/SerialWifiInterface.cpp" \
+          "helpers/wifi/SerialWifiInterface.cpp" \
       && [[ "$PLATFORMIO_BUILD_SRC_FILTER" \
-          != *"helpers/esp32/SerialWifiInterface.cpp"* ]]; then
+          != *"helpers/wifi/SerialWifiInterface.cpp"* ]]; then
     fail "$full_env Full Companion omitted SerialWifiInterface"
   fi
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"WIFI_OTA_SEEDER=1"* ]] \

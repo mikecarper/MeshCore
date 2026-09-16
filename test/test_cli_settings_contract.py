@@ -190,7 +190,7 @@ class CLISettingsContractTest(unittest.TestCase):
             'password', 'prv.key',                   # Local secret/identity reads
             'pwrmgt.bootreason', 'role',             # Boot/build facts
             'radio.rxps.config',                     # Detail view of radio.rxps
-            'wifi.pwd',                              # Saved transport credentials
+            'wifi.status', 'wifi.ip',                # Live WiFi link state
         })
 
     def test_literal_key_comparison_lengths(self):

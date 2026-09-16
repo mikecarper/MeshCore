@@ -172,10 +172,14 @@ mesh::Packet* StaticPoolPacketManager::allocNew() {
 }
 
 void StaticPoolPacketManager::free(mesh::Packet* packet) {
-  unused.add(packet, 0, 0);
+  if (packet == NULL) return;
+  if (!unused.add(packet, 0, 0)) {
+    MESH_DEBUG_PRINTLN("free: unused queue full, possible double-free detected");
+  }
 }
 
 bool StaticPoolPacketManager::queueOutbound(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for) {
+  if (packet == NULL) return false;
   if (!send_queue.add(packet, priority, scheduled_for)) {
     MESH_DEBUG_PRINTLN("queueOutbound: send queue full, dropping packet");
     return false;
@@ -216,6 +220,7 @@ mesh::Packet* StaticPoolPacketManager::removeOutboundByIdx(int i) {
 }
 
 void StaticPoolPacketManager::queueInbound(mesh::Packet* packet, uint32_t scheduled_for) {
+  if (packet == NULL) return;
   if (!rx_queue.add(packet, 0, scheduled_for)) {
     MESH_DEBUG_PRINTLN("queueInbound: rx queue full, dropping packet");
     free(packet);

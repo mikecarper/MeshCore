@@ -368,7 +368,7 @@ class MessageNavigationTest(unittest.TestCase):
         home_navigation = home_navigation.split("#ifdef COMPANION_EXCLUSIVE_WIFI_BLE", 1)[0]
         home_navigation = home_navigation.replace("{\n", "{\n    Screen::handleInput(c);\n", 1)
         implementation += ("class HomeScreen : public Screen { public: UITask* _task; "
-                           "enum HomePage {FIRST,MESSAGES,RECENT,RADIO,Count}; int _page=0; "
+                           "enum HomePage {FIRST,MESSAGES,RECENT,RADIO,DISCOVERY,Count}; int _page=0; "
                            "HomeScreen(UITask* task):_task(task){}\n" + home_navigation +
                            "return false; } };\n")
         target = (ROOT / "variants/sensecap_indicator-espnow/target.cpp").read_text()

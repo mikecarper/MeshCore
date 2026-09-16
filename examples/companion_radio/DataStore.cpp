@@ -825,6 +825,13 @@ bool DataStore::loadPrefsInt(const char *filename,
             + sizeof(loaded_prefs.bluetooth_stealth_peer_type)
             + sizeof(loaded_prefs.bluetooth_stealth_peer)
             + sizeof(loaded_prefs.bluetooth_stealth_mode),
+        226,  // prior 215-byte image plus radio timing, interference, AGC and timezone
+#ifdef TBEAM_1W
+        233,  // fan mode and low/high thermistor thresholds
+#endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+        323,  // Pico W additionally persists its SSID/password (ESP32 uses NVS)
+#endif
     };
     const uint32_t prefs_size = file.size();
     bool known_size = false;
@@ -939,6 +946,23 @@ bool DataStore::loadPrefsInt(const char *filename,
                       sizeof(loaded_prefs.bluetooth_stealth_peer));                       // 208
     readOptionalField(&loaded_prefs.bluetooth_stealth_mode,
                       sizeof(loaded_prefs.bluetooth_stealth_mode));                       // 214
+    readOptionalField(&loaded_prefs.tx_delay_factor, sizeof(loaded_prefs.tx_delay_factor));
+    readOptionalField(&loaded_prefs.direct_tx_delay_factor, sizeof(loaded_prefs.direct_tx_delay_factor));
+    readOptionalField(&loaded_prefs.interference_threshold, sizeof(loaded_prefs.interference_threshold));
+    readOptionalField(&loaded_prefs.agc_reset_interval, sizeof(loaded_prefs.agc_reset_interval));
+    readOptionalField(&loaded_prefs.tz_offset, sizeof(loaded_prefs.tz_offset));
+#ifdef TBEAM_1W
+    readOptionalField(loaded_prefs.fan_mode, sizeof(loaded_prefs.fan_mode));
+    readOptionalField(&loaded_prefs.fan_lo, sizeof(loaded_prefs.fan_lo));
+    readOptionalField(&loaded_prefs.fan_hi, sizeof(loaded_prefs.fan_hi));
+    loaded_prefs.fan_mode[sizeof(loaded_prefs.fan_mode) - 1] = 0;
+#endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+    readOptionalField(loaded_prefs.wifi_ssid, sizeof(loaded_prefs.wifi_ssid));
+    readOptionalField(loaded_prefs.wifi_pwd, sizeof(loaded_prefs.wifi_pwd));
+    loaded_prefs.wifi_ssid[sizeof(loaded_prefs.wifi_ssid) - 1] = 0;
+    loaded_prefs.wifi_pwd[sizeof(loaded_prefs.wifi_pwd) - 1] = 0;
+#endif
 
     // Any bytes left over form only part of a historically appended field.
     // Preserve the file and defaults rather than treating that tail as EOF.
@@ -1064,6 +1088,31 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
                (uint8_t *)&_prefs.bluetooth_stealth_mode,
                sizeof(_prefs.bluetooth_stealth_mode))
                == sizeof(_prefs.bluetooth_stealth_mode);
+
+    success = success && file.write((uint8_t *)&_prefs.tx_delay_factor,
+        sizeof(_prefs.tx_delay_factor)) == sizeof(_prefs.tx_delay_factor);
+    success = success && file.write((uint8_t *)&_prefs.direct_tx_delay_factor,
+        sizeof(_prefs.direct_tx_delay_factor)) == sizeof(_prefs.direct_tx_delay_factor);
+    success = success && file.write((uint8_t *)&_prefs.interference_threshold,
+        sizeof(_prefs.interference_threshold)) == sizeof(_prefs.interference_threshold);
+    success = success && file.write((uint8_t *)&_prefs.agc_reset_interval,
+        sizeof(_prefs.agc_reset_interval)) == sizeof(_prefs.agc_reset_interval);
+    success = success && file.write((uint8_t *)&_prefs.tz_offset,
+        sizeof(_prefs.tz_offset)) == sizeof(_prefs.tz_offset);
+#ifdef TBEAM_1W
+    success = success && file.write((uint8_t *)_prefs.fan_mode,
+        sizeof(_prefs.fan_mode)) == sizeof(_prefs.fan_mode);
+    success = success && file.write((uint8_t *)&_prefs.fan_lo,
+        sizeof(_prefs.fan_lo)) == sizeof(_prefs.fan_lo);
+    success = success && file.write((uint8_t *)&_prefs.fan_hi,
+        sizeof(_prefs.fan_hi)) == sizeof(_prefs.fan_hi);
+#endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+    success = success && file.write((uint8_t *)_prefs.wifi_ssid,
+        sizeof(_prefs.wifi_ssid)) == sizeof(_prefs.wifi_ssid);
+    success = success && file.write((uint8_t *)_prefs.wifi_pwd,
+        sizeof(_prefs.wifi_pwd)) == sizeof(_prefs.wifi_pwd);
+#endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
     success = file.commit(success);
