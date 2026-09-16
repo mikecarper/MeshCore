@@ -282,9 +282,10 @@ clock</code></pre>
             </label>
             <label>
               <span>Time zone</span>
-              <input type="text" name="tz" list="preset-test-time-zones" required
-                     autocomplete="off" spellcheck="false">
-              <small>Use an IANA name such as America/Los_Angeles or UTC.</small>
+              <select name="tz" required>
+                <option value="UTC">UTC</option>
+              </select>
+              <small>All IANA time zones supported by this browser are listed.</small>
             </label>
             <div class="preset-test-generator-subheading">Test radio profile</div>
             <label>
@@ -365,20 +366,6 @@ clock</code></pre>
         </aside>
       </div>
 
-      <datalist id="preset-test-time-zones">
-        <option value="America/Los_Angeles"></option>
-        <option value="America/Denver"></option>
-        <option value="America/Chicago"></option>
-        <option value="America/New_York"></option>
-        <option value="America/Phoenix"></option>
-        <option value="Pacific/Honolulu"></option>
-        <option value="UTC"></option>
-        <option value="Europe/London"></option>
-        <option value="Europe/Berlin"></option>
-        <option value="Asia/Tokyo"></option>
-        <option value="Australia/Sydney"></option>
-      </datalist>
-
       <p class="preset-test-error preset-test-generator-error"
          data-role="generator-error" role="alert" hidden></p>
       <pre class="preset-test-generated-url"><code data-command="generated-url"></code></pre>
@@ -389,8 +376,9 @@ clock</code></pre>
 
       <p class="preset-test-note">
         Advanced use: <code>start</code> and <code>end</code> also accept ISO-8601
-        timestamps with explicit UTC offsets or Unix epoch seconds. The other URL
-        parameters are <code>tz</code>, <code>freq</code>, <code>bw</code>,
+        timestamps with explicit UTC offsets or Unix epoch seconds. If
+        <code>tz</code> is omitted, the page uses the browser's time zone. The
+        other URL parameters are <code>freq</code>, <code>bw</code>,
         <code>sf</code>, <code>cr</code>, <code>normalfreq</code>,
         <code>normalbw</code>, <code>normalsf</code>, <code>normalcr</code>, and
         estimate-only <code>tx</code>.

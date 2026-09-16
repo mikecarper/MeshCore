@@ -4,7 +4,7 @@
   const DEFAULTS = Object.freeze({
     start: "2026-09-21T17:00:00-07:00",
     end: "2026-09-23T17:00:00-07:00",
-    tz: "America/Los_Angeles",
+    tz: "",
     freq: "910.1",
     bw: "500",
     sf: "8",
@@ -98,12 +98,47 @@
     }
   }
 
-  function configFromSearch(search) {
+  function browserTimeZone() {
+    try {
+      return validateTimeZone(
+        new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+      );
+    } catch (error) {
+      return "UTC";
+    }
+  }
+
+  function supportedTimeZones(selectedTimeZone) {
+    const zones = new Set(["UTC"]);
+    if (typeof Intl.supportedValuesOf === "function") {
+      Intl.supportedValuesOf("timeZone").forEach(function (zone) {
+        zones.add(zone);
+      });
+    } else {
+      [
+        "Africa/Johannesburg", "America/Chicago", "America/Denver",
+        "America/Los_Angeles", "America/New_York", "America/Phoenix",
+        "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney", "Europe/Berlin",
+        "Europe/London", "Pacific/Auckland", "Pacific/Honolulu",
+      ].forEach(function (zone) { zones.add(zone); });
+    }
+    if (selectedTimeZone) zones.add(validateTimeZone(selectedTimeZone));
+    return Array.from(zones).sort(function (left, right) {
+      if (left === "UTC") return -1;
+      if (right === "UTC") return 1;
+      return left.localeCompare(right);
+    });
+  }
+
+  function configFromSearch(search, fallbackTimeZone) {
     const params = new URLSearchParams(search || "");
     const raw = {};
     Object.keys(DEFAULTS).forEach(function (key) {
       raw[key] = params.has(key) ? params.get(key) : DEFAULTS[key];
     });
+    if (!params.has("tz")) {
+      raw.tz = fallbackTimeZone || browserTimeZone();
+    }
 
     const startMs = parseTimestamp(raw.start, "start");
     const endMs = parseTimestamp(raw.end, "end");
@@ -500,7 +535,10 @@
   function init(root) {
     let config;
     try {
-      config = configFromSearch(global.location ? global.location.search : "");
+      config = configFromSearch(
+        global.location ? global.location.search : "",
+        browserTimeZone()
+      );
     } catch (error) {
       const box = root.querySelector('[data-role="config-error"]');
       box.hidden = false;
@@ -548,7 +586,15 @@
     if (generator) {
       generator.elements.start.value = zonedInputValue(config.startMs, config.tz);
       generator.elements.end.value = zonedInputValue(config.endMs, config.tz);
-      generator.elements.tz.value = config.tz;
+      const zoneSelect = generator.elements.tz;
+      zoneSelect.textContent = "";
+      supportedTimeZones(config.tz).forEach(function (zone) {
+        const option = document.createElement("option");
+        option.value = zone;
+        option.textContent = zone;
+        zoneSelect.appendChild(option);
+      });
+      zoneSelect.value = config.tz;
       generator.elements.freq.value = config.freqText;
       generator.elements.bw.value = config.bwText;
       generator.elements.sf.value = String(config.sf);
@@ -558,17 +604,6 @@
       generator.elements.normalsf.value = String(config.normalSf);
       generator.elements.normalcr.value = String(config.normalCr);
       generator.elements.tx.value = config.txText;
-
-      const zoneList = root.querySelector("#preset-test-time-zones");
-      if (zoneList && typeof Intl.supportedValuesOf === "function") {
-        Intl.supportedValuesOf("timeZone").forEach(function (zone) {
-          if (!zoneList.querySelector('option[value="' + zone + '"]')) {
-            const option = document.createElement("option");
-            option.value = zone;
-            zoneList.appendChild(option);
-          }
-        });
-      }
 
       function generateUrl() {
         const errorBox = root.querySelector('[data-role="generator-error"]');
@@ -732,6 +767,8 @@
     configFromSearch: configFromSearch,
     configFromGenerator: configFromGenerator,
     validateTimeZone: validateTimeZone,
+    browserTimeZone: browserTimeZone,
+    supportedTimeZones: supportedTimeZones,
     phaseAt: phaseAt,
     remainingMinutes: remainingMinutes,
     immediateAvailable: immediateAvailable,

@@ -6,9 +6,10 @@ const tool = require("../docs/_javascript/preset_test.js");
 const query =
   "?start=2026-09-21T17:00:00-07:00" +
   "&end=2026-09-23T17:00:00-07:00" +
+  "&tz=America%2FLos_Angeles" +
   "&freq=910.1&bw=500&sf=8&cr=7";
 const config = tool.configFromSearch(query);
-const defaults = tool.configFromSearch("");
+const defaults = tool.configFromSearch("", "America/Los_Angeles");
 
 assert.strictEqual(config.startEpoch, 1790035200);
 assert.strictEqual(config.endEpoch, 1790208000);
@@ -26,6 +27,24 @@ assert.strictEqual(defaults.startEpoch, config.startEpoch);
 assert.strictEqual(defaults.endEpoch, config.endEpoch);
 assert.strictEqual(defaults.freq, config.freq);
 assert.strictEqual(defaults.tz, config.tz);
+
+const browserZoneFallback = tool.configFromSearch("", "America/New_York");
+assert.strictEqual(browserZoneFallback.tz, "America/New_York");
+assert.strictEqual(
+  tool.configFromSearch("?tz=UTC", "America/New_York").tz,
+  "UTC"
+);
+assert.doesNotThrow(() => tool.validateTimeZone(tool.browserTimeZone()));
+const availableZones = tool.supportedTimeZones("America/Los_Angeles");
+assert.strictEqual(availableZones[0], "UTC");
+assert.ok(availableZones.includes("America/Los_Angeles"));
+assert.ok(availableZones.includes("America/New_York"));
+if (typeof Intl.supportedValuesOf === "function") {
+  assert.strictEqual(
+    availableZones.length,
+    new Set(["UTC", ...Intl.supportedValuesOf("timeZone")]).size
+  );
+}
 
 const before = Date.parse("2026-09-21T16:59:00-07:00");
 const beforeSetup = Date.parse("2026-09-21T15:59:59-07:00");
@@ -162,7 +181,8 @@ assert.strictEqual(
 );
 
 const changed = tool.configFromSearch(
-  "?start=1790035200&end=1790208000&freq=915.25&bw=125&sf=10&cr=5"
+  "?start=1790035200&end=1790208000&tz=America%2FLos_Angeles" +
+    "&freq=915.25&bw=125&sf=10&cr=5"
 );
 assert.strictEqual(
   tool.commandsFor(changed, changed.startMs).stockNow,
