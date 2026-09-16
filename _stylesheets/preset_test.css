@@ -163,6 +163,10 @@
   background: var(--md-default-bg-color);
 }
 
+.preset-test-card--wide {
+  grid-column: 1 / -1;
+}
+
 .preset-test-card h3 {
   margin-top: 0;
 }

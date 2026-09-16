@@ -13,6 +13,8 @@
     7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500,
   ]);
   const SCHEDULE_HORIZON_MS = 0x7fffffff;
+  const EARLY_JOIN_MS = 60 * 60 * 1000;
+  const CLOCK_RESET_COMMAND = "clkreboot";
 
   class PresetTestError extends Error {}
 
@@ -119,6 +121,10 @@
 
   function remainingMinutes(config, nowMs) {
     return Math.max(0, Math.ceil((config.endMs - nowMs) / 60000));
+  }
+
+  function immediateAvailable(config, nowMs) {
+    return nowMs >= config.startMs - EARLY_JOIN_MS && nowMs < config.endMs;
   }
 
   function scheduleAvailability(config, nowMs) {
@@ -302,6 +308,7 @@
     setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
     setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
     setCommand(root, "companion-cancel-during", staticCommands.companionCancelDuring);
+    setCommand(root, "reset-clock", CLOCK_RESET_COMMAND);
     setCommand(
       root,
       "share-url",
@@ -321,16 +328,28 @@
     function render() {
       const nowMs = Date.now();
       const phase = phaseAt(config, nowMs);
+      const immediateOpen = immediateAvailable(config, nowMs);
       const status = root.querySelector('[data-role="status"]');
       const schedule = scheduleAvailability(config, nowMs);
       const commands = commandsFor(config, nowMs);
 
       status.dataset.state = phase;
       if (phase === "before") {
-        status.textContent = "Scheduled";
-        setText(root, '[data-role="countdown-label"]', "Starts in");
-        setText(root, '[data-role="countdown"]', formatCountdown(config.startMs - nowMs));
-        setText(root, '[data-role="countdown-detail"]', "Do not use immediate TempRadio yet.");
+        if (immediateOpen) {
+          status.textContent = "Setup window open";
+          setText(root, '[data-role="countdown-label"]', "Test starts in");
+          setText(root, '[data-role="countdown"]', formatCountdown(config.startMs - nowMs));
+          setText(root, '[data-role="countdown-detail"]', "Immediate TempRadio commands are enabled.");
+        } else {
+          status.textContent = "Scheduled";
+          setText(root, '[data-role="countdown-label"]', "Commands open in");
+          setText(
+            root,
+            '[data-role="countdown"]',
+            formatCountdown(config.startMs - EARLY_JOIN_MS - nowMs)
+          );
+          setText(root, '[data-role="countdown-detail"]', "The setup window opens one hour before the test.");
+        }
       } else if (phase === "active") {
         status.textContent = "Test live";
         setText(root, '[data-role="countdown-label"]', "Ends in");
@@ -343,25 +362,27 @@
         setText(root, '[data-role="countdown-detail"]', "Temporary radios should be back on saved settings.");
       }
 
-      if (phase === "active") {
+      if (immediateOpen) {
         setCommand(root, "stock-now", commands.stockNow);
         setCommand(root, "companion-now", commands.companionNow);
       } else {
         const unavailable = phase === "before"
-          ? "Available when the test starts — use Option 2 to schedule now."
+          ? "Available one hour before the test — use Option 2 to schedule now."
           : "Test window ended — do not start TempRadio.";
         setCommand(root, "stock-now", unavailable);
         setCommand(root, "companion-now", unavailable);
       }
-      setCommandEnabled(root, "stock-now", phase === "active");
-      setCommandEnabled(root, "companion-now", phase === "active");
-      setMaterialCommandCopyEnabled(root, "stock-now", phase === "active");
-      setMaterialCommandCopyEnabled(root, "companion-now", phase === "active");
+      setCommandEnabled(root, "stock-now", immediateOpen);
+      setCommandEnabled(root, "companion-now", immediateOpen);
+      setMaterialCommandCopyEnabled(root, "stock-now", immediateOpen);
+      setMaterialCommandCopyEnabled(root, "companion-now", immediateOpen);
       setText(
         root,
         '[data-role="stock-now-note"]',
-        phase === "before"
-          ? "Available when the test starts; schedule it now with Option 2."
+        phase === "before" && !immediateOpen
+          ? "Available one hour before the test; schedule it now with Option 2."
+          : phase === "before"
+            ? "The setup window is open; the timeout includes the hour before the official start."
           : phase === "active"
             ? "The final argument is the live minutes remaining until the common end."
             : "The test window has ended."
@@ -380,7 +401,7 @@
     render();
     if (typeof global.MutationObserver === "function") {
       const materialCopyObserver = new global.MutationObserver(function () {
-        const enabled = phaseAt(config, Date.now()) === "active";
+        const enabled = immediateAvailable(config, Date.now());
         setMaterialCommandCopyEnabled(root, "stock-now", enabled);
         setMaterialCommandCopyEnabled(root, "companion-now", enabled);
       });
@@ -393,10 +414,13 @@
     DEFAULTS: DEFAULTS,
     VALID_BANDWIDTHS: VALID_BANDWIDTHS,
     SCHEDULE_HORIZON_MS: SCHEDULE_HORIZON_MS,
+    EARLY_JOIN_MS: EARLY_JOIN_MS,
+    CLOCK_RESET_COMMAND: CLOCK_RESET_COMMAND,
     PresetTestError: PresetTestError,
     configFromSearch: configFromSearch,
     phaseAt: phaseAt,
     remainingMinutes: remainingMinutes,
+    immediateAvailable: immediateAvailable,
     scheduleAvailability: scheduleAvailability,
     commandsFor: commandsFor,
     formatCountdown: formatCountdown,
