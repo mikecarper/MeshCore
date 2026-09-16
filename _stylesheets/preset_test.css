@@ -289,6 +289,80 @@
   text-transform: uppercase;
 }
 
+.preset-test-timezone-picker {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.preset-test-timezone-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: center;
+  margin-bottom: 0.55rem;
+}
+
+.preset-test-timezone-toolbar > div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.preset-test-timezone-toolbar span {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.preset-test-timezone-toolbar strong {
+  overflow-wrap: anywhere;
+  color: var(--preset-cyan);
+  font-family: var(--md-code-font-family);
+  font-size: 0.9rem;
+}
+
+.preset-test-timezone-toolbar button {
+  flex: 0 0 auto;
+  background: var(--preset-cyan);
+}
+
+.preset-test-timezone-map {
+  z-index: 1;
+  width: 100%;
+  height: clamp(18rem, 52vw, 31rem);
+  border: 1px solid var(--preset-border);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--preset-cyan) 5%, var(--md-default-bg-color));
+}
+
+.preset-test-timezone-map:focus-visible {
+  outline: 2px solid var(--preset-cyan);
+  outline-offset: 2px;
+}
+
+.preset-test-timezone-map .leaflet-control-attribution {
+  font-size: 0.62rem;
+}
+
+.preset-test-timezone-map .leaflet-tooltip {
+  color: #202020;
+  font-family: var(--md-text-font-family);
+}
+
+.preset-test-timezone-status {
+  min-height: 1.2em;
+  margin: 0.45rem 0 0;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.72rem;
+}
+
+.preset-test-timezone-status[data-state="error"] {
+  color: var(--md-code-hl-number-color);
+  font-weight: 700;
+}
+
 .preset-test-generator input,
 .preset-test-generator select {
   box-sizing: border-box;
@@ -405,5 +479,14 @@
 
   .preset-test-clock > span:last-child {
     grid-column: 1;
+  }
+
+  .preset-test-timezone-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .preset-test-timezone-toolbar button {
+    align-self: start;
   }
 }

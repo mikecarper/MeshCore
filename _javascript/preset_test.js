@@ -17,6 +17,33 @@
   const SCHEDULE_HORIZON_MS = 0x7fffffff;
   const EARLY_JOIN_MS = 60 * 60 * 1000;
   const CLOCK_RESET_COMMAND = "clkreboot";
+  const TIMEZONE_BOUNDARY_PATH = "../_data/timezones-2025b-simplified.json";
+  const TIMEZONE_MAP_STYLE = Object.freeze({
+    default: Object.freeze({
+      color: "#ffffff",
+      weight: 1,
+      opacity: 0.7,
+      dashArray: "3",
+      fillColor: "#087f8c",
+      fillOpacity: 0.14,
+    }),
+    hover: Object.freeze({
+      color: "#67204f",
+      weight: 2,
+      opacity: 1,
+      dashArray: "",
+      fillColor: "#b83280",
+      fillOpacity: 0.35,
+    }),
+    selected: Object.freeze({
+      color: "#67204f",
+      weight: 3,
+      opacity: 1,
+      dashArray: "",
+      fillColor: "#b83280",
+      fillOpacity: 0.5,
+    }),
+  });
 
   class PresetTestError extends Error {}
 
@@ -491,6 +518,130 @@
     return Promise.resolve();
   }
 
+  function timeZoneBoundaryUrl() {
+    let baseUrl = global.location
+      ? global.location.href
+      : "https://example.invalid/preset_test/";
+    if (typeof document !== "undefined") {
+      const script = document.querySelector('script[src*="_javascript/preset_test.js"]');
+      if (script && script.src) baseUrl = script.src;
+    }
+    return new URL(TIMEZONE_BOUNDARY_PATH, baseUrl).toString();
+  }
+
+  function initTimeZoneMap(root, initialTimeZone, onChange) {
+    const container = root.querySelector('[data-role="timezone-map"]');
+    const status = root.querySelector('[data-role="timezone-map-status"]');
+    const selectedLabel = root.querySelector('[data-role="selected-time-zone"]');
+    const browserButton = root.querySelector('[data-action="use-browser-time-zone"]');
+    const generator = root.querySelector('[data-role="url-generator"]');
+    const zoneInput = generator && generator.elements.tz;
+    let selectedZone = validateTimeZone(initialTimeZone);
+    let selectedLayer = null;
+    const layerByZone = new Map();
+    let map = null;
+
+    function showStatus(message, state) {
+      if (!status) return;
+      status.textContent = message;
+      status.dataset.state = state || "ready";
+    }
+
+    function setSelection(zone, options) {
+      const settings = options || {};
+      selectedZone = validateTimeZone(zone);
+      if (zoneInput) zoneInput.value = selectedZone;
+      if (selectedLabel) selectedLabel.textContent = selectedZone;
+
+      if (selectedLayer) {
+        selectedLayer.setStyle(TIMEZONE_MAP_STYLE.default);
+        selectedLayer.bringToBack();
+        selectedLayer = null;
+      }
+
+      const nextLayer = layerByZone.get(selectedZone);
+      if (nextLayer) {
+        selectedLayer = nextLayer;
+        selectedLayer.setStyle(TIMEZONE_MAP_STYLE.selected);
+        selectedLayer.bringToFront();
+        if (map && settings.focus) {
+          map.fitBounds(selectedLayer.getBounds(), { padding: [18, 18], maxZoom: 5 });
+        }
+        showStatus("Selected " + selectedZone + ".", "ready");
+      } else if (layerByZone.size) {
+        showStatus(
+          selectedZone + " is selected, but this zone has no visible land boundary on the map.",
+          "ready"
+        );
+      }
+
+      if (settings.notify && typeof onChange === "function") onChange(selectedZone);
+    }
+
+    if (zoneInput) zoneInput.value = selectedZone;
+    if (selectedLabel) selectedLabel.textContent = selectedZone;
+
+    if (browserButton) {
+      browserButton.addEventListener("click", function () {
+        setSelection(browserTimeZone(), { focus: true, notify: true });
+      });
+    }
+
+    if (!container) return;
+    if (!global.L || typeof global.L.map !== "function") {
+      showStatus(
+        "The map library did not load. The browser time zone is still selected.",
+        "error"
+      );
+      return;
+    }
+
+    const L = global.L;
+    map = L.map(container, {
+      minZoom: 1,
+      maxZoom: 8,
+      worldCopyJump: true,
+    }).setView([25, 10], 2);
+
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      minZoom: 1,
+      maxZoom: 8,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+
+    global.fetch(timeZoneBoundaryUrl()).then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    }).then(function (geoJson) {
+      L.geoJSON(geoJson, {
+        style: TIMEZONE_MAP_STYLE.default,
+        onEachFeature: function (feature, layer) {
+          const zone = feature && feature.properties && feature.properties.tzid;
+          if (!zone) return;
+          layerByZone.set(zone, layer);
+          layer.bindTooltip(zone, { sticky: true });
+          layer.on("mouseover", function () {
+            if (layer !== selectedLayer) layer.setStyle(TIMEZONE_MAP_STYLE.hover);
+          });
+          layer.on("mouseout", function () {
+            if (layer !== selectedLayer) layer.setStyle(TIMEZONE_MAP_STYLE.default);
+          });
+          layer.on("click", function () {
+            setSelection(zone, { focus: true, notify: true });
+          });
+        },
+      }).addTo(map);
+      setSelection(selectedZone, { focus: true, notify: false });
+      global.setTimeout(function () { map.invalidateSize(); }, 0);
+    }).catch(function () {
+      showStatus(
+        "The time zone boundaries could not be loaded. The current selection is still usable.",
+        "error"
+      );
+    });
+  }
+
   function init(root) {
     let config;
     try {
@@ -540,15 +691,8 @@
     if (generator) {
       generator.elements.start.value = zonedInputValue(config.startMs, config.tz);
       generator.elements.end.value = zonedInputValue(config.endMs, config.tz);
-      const zoneSelect = generator.elements.tz;
-      zoneSelect.textContent = "";
-      supportedTimeZones(config.tz).forEach(function (zone) {
-        const option = document.createElement("option");
-        option.value = zone;
-        option.textContent = zone;
-        zoneSelect.appendChild(option);
-      });
-      zoneSelect.value = config.tz;
+      generator.elements.tz.value = config.tz;
+      setText(root, '[data-role="selected-time-zone"]', config.tz);
       generator.elements.freq.value = config.freqText;
       generator.elements.bw.value = config.bwText;
       generator.elements.sf.value = String(config.sf);
@@ -606,6 +750,7 @@
       });
       generator.addEventListener("change", generateUrl);
       generateUrl();
+      initTimeZoneMap(root, config.tz, generateUrl);
     }
 
     root.querySelectorAll("[data-copy-command]").forEach(function (button) {
