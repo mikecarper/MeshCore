@@ -184,6 +184,13 @@
   overflow-wrap: anywhere;
 }
 
+/* Material adds its own copier to every code block. This page supplies
+   state-aware copy buttons, so the generic buttons would bypass disabled
+   pre-start commands and duplicate every enabled action. */
+.preset-test .md-clipboard {
+  display: none !important;
+}
+
 .preset-test button {
   border: 0;
   border-radius: 0.25rem;

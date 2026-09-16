@@ -329,8 +329,16 @@
         setText(root, '[data-role="countdown-detail"]', "Temporary radios should be back on saved settings.");
       }
 
-      setCommand(root, "stock-now", commands.stockNow);
-      setCommand(root, "companion-now", commands.companionNow);
+      if (phase === "active") {
+        setCommand(root, "stock-now", commands.stockNow);
+        setCommand(root, "companion-now", commands.companionNow);
+      } else {
+        const unavailable = phase === "before"
+          ? "Available when the test starts — use Option 2 to schedule now."
+          : "Test window ended — do not start TempRadio.";
+        setCommand(root, "stock-now", unavailable);
+        setCommand(root, "companion-now", unavailable);
+      }
       setCommandEnabled(root, "stock-now", phase === "active");
       setCommandEnabled(root, "companion-now", phase === "active");
       setText(
