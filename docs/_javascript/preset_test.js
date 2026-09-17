@@ -534,6 +534,7 @@
     const status = root.querySelector('[data-role="timezone-map-status"]');
     const selectedLabel = root.querySelector('[data-role="selected-time-zone"]');
     const browserButton = root.querySelector('[data-action="use-browser-time-zone"]');
+    const disclosure = container && container.closest("details");
     const generator = root.querySelector('[data-role="url-generator"]');
     const zoneInput = generator && generator.elements.tz;
     let selectedZone = validateTimeZone(initialTimeZone);
@@ -602,6 +603,18 @@
       maxZoom: 8,
       worldCopyJump: true,
     }).setView([25, 10], 2);
+
+    if (disclosure) {
+      disclosure.addEventListener("toggle", function () {
+        if (!disclosure.open || !map) return;
+        global.setTimeout(function () {
+          map.invalidateSize();
+          if (selectedLayer) {
+            map.fitBounds(selectedLayer.getBounds(), { padding: [18, 18], maxZoom: 5 });
+          }
+        }, 0);
+      });
+    }
 
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       minZoom: 1,

@@ -8,6 +8,11 @@ const pageSource = fs.readFileSync("docs/preset_test.md", "utf8");
 assert.match(pageSource, /data-role="timezone-map"/);
 assert.match(pageSource, /type="hidden" name="tz"/);
 assert.doesNotMatch(pageSource, /<select name="tz"/);
+assert.match(pageSource, /<details class="preset-test-generator-disclosure">/);
+assert.doesNotMatch(
+  pageSource,
+  /<details class="preset-test-generator-disclosure"\s+open/
+);
 
 const query =
   "?start=2026-09-21T17:00:00-07:00" +

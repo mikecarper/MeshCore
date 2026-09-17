@@ -259,13 +259,17 @@ clock</code></pre>
     </section>
 
     <section aria-labelledby="share-title">
-      <h2 id="share-title">Build a link for another test</h2>
-      <p>
+      <details class="preset-test-generator-disclosure">
+        <summary>
+          <h2 id="share-title">Build a link for another test</h2>
+        </summary>
+        <div class="preset-test-generator-disclosure-body">
+          <p>
         Enter the test times in the selected time zone and choose the radio
         tuple. The generated URL converts the times to exact UTC instants and
         keeps <code>tz</code> so the page displays them in the organizer's local
         time zone.
-      </p>
+          </p>
 
       <div class="preset-test-generator-layout">
         <form class="preset-test-generator" data-role="url-generator">
@@ -368,13 +372,15 @@ clock</code></pre>
         <a data-role="open-generated-url" target="_blank" rel="noopener">Open generated page</a>
       </div>
 
-      <p class="preset-test-note">
+          <p class="preset-test-note">
         Advanced use: <code>start</code> and <code>end</code> also accept ISO-8601
         timestamps with explicit UTC offsets or Unix epoch seconds. If
         <code>tz</code> is omitted, the page uses the browser's time zone. The
         other URL parameters are <code>freq</code>, <code>bw</code>,
         <code>sf</code>, <code>cr</code>, and estimate-only <code>tx</code>.
-      </p>
+          </p>
+        </div>
+      </details>
     </section>
   </div>
 </div>
