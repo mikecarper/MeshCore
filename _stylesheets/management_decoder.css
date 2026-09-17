@@ -1,0 +1,136 @@
+.management-tool {
+  --management-border: color-mix(in srgb, var(--md-default-fg-color) 18%, transparent);
+  --management-soft-bg: color-mix(in srgb, var(--md-default-fg-color) 5%, transparent);
+  --management-accent-bg: color-mix(in srgb, var(--md-primary-fg-color) 12%, transparent);
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--management-border);
+  border-radius: 0.65rem;
+  background: var(--md-default-bg-color);
+  box-shadow: 0 0.15rem 0.6rem color-mix(in srgb, #000 10%, transparent);
+}
+
+.management-tool [hidden] { display: none !important; }
+
+.management-tool label {
+  display: block;
+  margin: 0.8rem 0 0.35rem;
+  font-weight: 700;
+}
+
+.management-tool textarea,
+.management-tool input[type="text"],
+.management-tool input[type="password"] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 1px solid var(--management-border);
+  border-radius: 0.4rem;
+  color: var(--md-code-fg-color);
+  background: var(--md-code-bg-color);
+  font: 0.82rem/1.55 var(--md-code-font-family);
+}
+
+.management-tool textarea { min-height: 8rem; resize: vertical; overflow-wrap: anywhere; }
+
+.management-tool textarea:focus-visible,
+.management-tool input:focus-visible,
+.management-tool button:focus-visible {
+  outline: 0.15rem solid var(--md-accent-fg-color);
+  outline-offset: 0.12rem;
+}
+
+.management-help {
+  margin: 0.35rem 0 0;
+  color: color-mix(in srgb, var(--md-default-fg-color) 70%, transparent);
+  font-size: 0.82rem;
+}
+
+.management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  margin-top: 0.9rem;
+}
+
+.management-tool button {
+  appearance: none;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.75rem;
+  border: 1px solid var(--management-border);
+  border-radius: 0.35rem;
+  color: var(--md-default-fg-color);
+  background: var(--management-soft-bg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.management-tool button:hover {
+  border-color: var(--md-primary-fg-color);
+  background: var(--management-accent-bg);
+}
+
+.management-tool .management-primary-action {
+  border-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+}
+
+.management-tool .management-primary-action:hover { background: var(--md-primary-fg-color); filter: brightness(1.12); }
+.management-tool button:disabled { opacity: 0.65; cursor: progress; }
+
+.management-error,
+.management-warnings,
+.management-status {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border-left: 0.25rem solid;
+  border-radius: 0.25rem;
+}
+
+.management-error { border-color: #d32f2f; background: color-mix(in srgb, #d32f2f 10%, transparent); }
+.management-warnings { border-color: #ed9b00; background: color-mix(in srgb, #ed9b00 11%, transparent); }
+.management-warnings ul { margin: 0.25rem 0 0 1rem; }
+.management-status { border-color: #ed9b00; background: color-mix(in srgb, #ed9b00 11%, transparent); }
+.management-status-authenticated { border-color: #3b9c62; background: color-mix(in srgb, #3b9c62 11%, transparent); }
+
+.management-results { margin-top: 1.35rem; padding-top: 0.25rem; border-top: 1px solid var(--management-border); }
+.management-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.management-summary > div {
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--management-border);
+  border-radius: 0.4rem;
+  background: var(--management-soft-bg);
+}
+
+.management-summary dt {
+  color: color-mix(in srgb, var(--md-default-fg-color) 70%, transparent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.management-summary dd { margin: 0.2rem 0 0; overflow-wrap: anywhere; font-size: 0.88rem; font-weight: 600; }
+.management-table-wrap { max-height: 28rem; overflow: auto; border: 1px solid var(--management-border); border-radius: 0.4rem; }
+.management-tool .management-table { display: table; width: 100%; margin: 0; border-collapse: collapse; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.management-tool .management-table th,
+.management-tool .management-table td { padding: 0.5rem 0.65rem; border-bottom: 1px solid var(--management-border); text-align: left; }
+.management-tool .management-table th { position: sticky; top: 0; z-index: 1; background: var(--md-default-bg-color); }
+.management-tool .management-table tbody tr:last-child td { border-bottom: 0; }
+.management-tool .management-table tbody tr:nth-child(even) { background: var(--management-soft-bg); }
+
+@media (max-width: 44rem) {
+  .management-tool { padding: 0.75rem; }
+  .management-tool button { flex: 1 1 auto; }
+}

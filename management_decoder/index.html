@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/full_usb_logging_validation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/management_decoder/">
       
       
-        <link rel="prev" href="../full_companion_usb_switcher/">
+        <link rel="prev" href="../lora_ota_automation/">
       
       
-        <link rel="next" href="../gps_tracking/">
+        <link rel="next" href="../management_reports/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Full USB logging repair — 1.17.1.6 - MeshCore Docs</title>
+        <title>Management report decoder - MeshCore Docs</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#full-usb-logging-repair-11716" class="md-skip">
+        <a href="#management-report-decoder" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Full USB logging repair — 1.17.1.6
+              Management report decoder
             
           </span>
         </div>
@@ -1018,37 +1018,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Full USB logging repair — 1.17.1.6
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../full_usb_logging_validation/" class="md-nav__link">
         
   
   
@@ -1064,48 +1037,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#published-image-audit" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Published-image audit
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fix-and-regression-coverage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fix and regression coverage
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1330,10 +1261,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../management_decoder/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management report decoder
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1349,6 +1307,48 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#decode-a-management-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decode a management report
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-decoder-accepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the decoder accepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2895,10 +2895,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#published-image-audit" class="md-nav__link">
+  <a href="#decode-a-management-report" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Published-image audit
+        Decode a management report
       
     </span>
   </a>
@@ -2906,10 +2906,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fix-and-regression-coverage" class="md-nav__link">
+  <a href="#what-the-decoder-accepts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Fix and regression coverage
+        What the decoder accepts
       
     </span>
   </a>
@@ -2933,7 +2933,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/full_usb_logging_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/management_decoder.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2941,94 +2941,83 @@
   
 
 
-<h1 id="full-usb-logging-repair-11716">Full USB logging repair — 1.17.1.6</h1>
-<p>Audit date: 2026-09-13. Release firmware source: <code>306feebe6d648a247f925894f876be9d747fc8d2</code>.</p>
-<p>The original Station G2 Full Repeater and Full Room Server images omitted USB
-packet logging. Both inherited <code>-UMESH_PACKET_LOGGING</code> from their ordinary MQTT
-observer recipes. Full added <code>-DMESH_PACKET_LOGGING=1</code>, but PlatformIO's
-<code>ProcessFlags</code> moves undefines after defines in the compiler command. The
-resulting image compiled successfully with its packet logger removed.</p>
-<p>The previous release gate checked OTA and other features without requiring
-USB logging in Full infrastructure. An old passing manifest could also be
-reused by <code>--resume</code> without the new logging evidence.</p>
-<h2 id="published-image-audit">Published-image audit</h2>
-<p>Each downloaded/cached artifact was matched to GitHub's published SHA-256.
-The check inspected application bytes, including the application inside nRF52
-DFU ZIPs. It required the packet-log formatter and USB logging controls.</p>
-<table>
-<thead>
-<tr>
-<th>Release group</th>
-<th style="text-align: right;">Application images</th>
-<th style="text-align: right;">Missing USB packet logging</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>ESP32 Full infrastructure/utility</td>
-<td style="text-align: right;">157</td>
-<td style="text-align: right;">2</td>
-</tr>
-<tr>
-<td>ESP32 Full Companion</td>
-<td style="text-align: right;">52</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr>
-<td>nRF52 Full Companion</td>
-<td style="text-align: right;">43</td>
-<td style="text-align: right;">0</td>
-</tr>
-<tr>
-<td>Total</td>
-<td style="text-align: right;">252</td>
-<td style="text-align: right;">2</td>
-</tr>
-</tbody>
-</table>
-<p>Affected targets:</p>
+<h1 id="management-report-decoder">Management report decoder</h1>
+<p>Paste MGR1 management-report payloads or complete GroupData packets from a
+packet analyzer to read a radio's public management information. Everything,
+including password authentication and ACL decryption, happens locally in this
+browser. The report, password, and candidate public key are never uploaded.</p>
+<p>The public portion of a report is deliberately plaintext, but it is <strong>not
+authenticated</strong> until a management password is supplied. A password-authenticated
+page proves that its public fields and encrypted ACL bytes have not been altered
+by someone who does not know that password.</p>
+<h2 id="decode-a-management-report">Decode a management report</h2>
+<div class="management-tool" data-management-decoder>
+  <label for="management-packet-input">MGR1 payload or complete GroupData packet hex</label>
+  <textarea
+    id="management-packet-input"
+    data-role="input"
+    spellcheck="false"
+    autocomplete="off"
+    placeholder="Paste analyzer Raw Data, canonical MGR1 payload hex, or one MQTT raw value per line"
+    aria-describedby="management-packet-help"
+  ></textarea>
+  <p class="management-help" id="management-packet-help">
+    Spaces, line breaks, colons, dashes, <code>0x</code>, and MQTT JSON fields named
+    <code>raw</code> or <code>data</code> are accepted. Paste all pages from one report
+    together to view a complete multi-page ACL. Press Ctrl/Command+Enter to decode.
+  </p>
+
+  <label for="management-password-input">Management password <span>(optional for public fields; required for ACLs)</span></label>
+  <input id="management-password-input" data-role="password" type="password" autocomplete="new-password">
+  <p class="management-help">
+    The password remains in this page only. The decoder derives the MGR1 AES-SIV key in
+    your browser and does not send it anywhere.
+  </p>
+
+  <label for="management-candidate-input">Candidate administrator public key <span>(optional)</span></label>
+  <input id="management-candidate-input" data-role="candidate" type="text" autocomplete="off" spellcheck="false" placeholder="64 hexadecimal characters">
+  <p class="management-help">
+    ACL encryption reveals per-radio 12-byte fingerprints, not recoverable public keys.
+    Supplying a complete candidate key checks whether its fingerprint appears in this report.
+  </p>
+
+  <div class="management-actions">
+    <button class="management-primary-action" type="button" data-role="decode">Decode management report</button>
+    <button type="button" data-role="clear">Clear local data</button>
+    <button type="button" data-role="example">Load authenticated example</button>
+  </div>
+
+  <div class="management-error" data-role="error" role="alert" aria-live="polite" hidden></div>
+
+  <section class="management-results" data-role="results" aria-live="polite" hidden>
+    <div class="management-status" data-role="status"></div>
+    <dl class="management-summary" data-role="summary"></dl>
+    <div class="management-warnings" data-role="warnings" hidden>
+      <strong>Decode notes</strong>
+      <ul data-role="warning-list"></ul>
+    </div>
+    <h2>Encrypted ACL entries</h2>
+    <div class="management-table-wrap">
+      <table class="management-table" data-role="acl-table"></table>
+    </div>
+  </section>
+</div>
+
+<h2 id="what-the-decoder-accepts">What the decoder accepts</h2>
 <ul>
-<li><code>Station_G2_repeater_observer_mqtt</code></li>
-<li><code>Station_G2_room_server_observer_mqtt</code></li>
+<li>Complete <code>PAYLOAD_TYPE_GRP_DATA</code> (<code>0x06</code>) analyzer/MQTT packet hex. It checks
+  the MeshCore route header, encoded path length, MGR1 page bounds, and required
+  zero padding.</li>
+<li>A canonical MGR1 payload beginning with <code>4D475231</code> (<code>MGR1</code>).</li>
+<li>One raw packet or canonical payload per line; duplicate observations of an
+  identical page are deduplicated.</li>
 </ul>
-<p>V4/R8 Full builds and Station G2's Full ESP-NOW bridge passed. This audit does
-not count ordinary MQTT profiles that intentionally omit USB logging as
-broken. Artifact inspection proves compiled support, not hardware operation
-on every board.</p>
-<h2 id="fix-and-regression-coverage">Fix and regression coverage</h2>
-<ul>
-<li>Full builds that require logging remove inherited disables of
-  <code>MESH_PACKET_LOGGING</code> before PlatformIO parses flags. Other macros and
-  explicit logging-off profiles retain their policy.</li>
-<li>Full capability checks require the packet logger and USB controls in the
-  packaged application. Combined USB/WiFi profiles additionally require
-  the <code>logging.output</code> setter. ELF symbols or debug text cannot satisfy these
-  checks.</li>
-<li>Resumed builds must have passing application evidence for the current
-  logging contract, along with the existing artifact hashes and RAM checks.</li>
-<li>CI runs the flag, real PlatformIO/compiler, artifact, resume, and build-profile
-  regression suites.</li>
-</ul>
-<p>Focused verification (after installing PlatformIO and its tool-scons package):</p>
-<pre><code class="language-sh">python3 -B test/test_full_build_flag_dedup.py
-python3 -B test/test_full_logging_compile.py
-python3 -B test/test_firmware_capabilities.py
-python3 -B test/test_full_logging_resume.py
-bash test/test_build_profiles.sh
-python3 -B test/test_cascade_release_package.py
-</code></pre>
-<p>Both Station G2 profiles were rebuilt through <code>build.sh --full</code> with the
-original observer recipes, including their inherited logging undefines. They
-passed the new application checks, runtime RAM budgets, and both OTA slot
-size checks. The new checker rejects both original published images.</p>
-<p>On the Bellevue Station G2, the corrected Full repeater implementation also
-passed serial CLI and passive traffic checks: four RX and two TX packet log
-lines were captured. Its active temporary profile retained preamble 120 and
-the original schedule end time; the Pi relay services were restored.</p>
-<p>Corrected application SHA-256:</p>
-<pre><code class="language-text">Repeater:    81a0a2926d4e567c069d0b10f316047881bcedce062afaa42119dddb2baadf23
-Room Server: 7ee81f1cb65fc274bd363397c3c80ce9006d575efae50fe952c8ca246613a18c
-</code></pre>
+<p>Use the same password configured by <code>set mgmt.password</code>. A decoded ACL lists
+the report-specific fingerprints and the administrator and/or OTA-signer flags.
+It cannot turn a fingerprint back into a full key. Use the optional candidate
+field to test a specific full public key.</p>
+<p>For the report schedule, public-field layout, cryptographic design, and the
+offline Python capture tool, see <a href="../management_reports/">Management reports</a>.</p>
 
 
 

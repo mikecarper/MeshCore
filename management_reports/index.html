@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://mikecarper.github.io/MeshCore/management_reports/">
       
       
-        <link rel="prev" href="../lora_ota_automation/">
+        <link rel="prev" href="../management_decoder/">
       
       
         <link rel="next" href="../mbedtls-tls-footprint/">
@@ -57,6 +57,8 @@
       <link rel="stylesheet" href="../_stylesheets/firmware_picker.css">
     
       <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/management_decoder.css">
     
       <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
     
@@ -1243,6 +1245,33 @@
     
   
     Scripted LoRa OTA from start to finish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../management_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management report decoder
   
 
     
@@ -2738,10 +2767,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_90" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_91" >
         
           
-          <label class="md-nav__link" for="__nav_90" id="__nav_90_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_91" id="__nav_91_label" tabindex="0">
             
   
   
@@ -2759,8 +2788,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_90_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_90">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_91_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_91">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -3058,6 +3087,9 @@ or a JSON array of MQTT messages. Alternatively omit <code>--mqtt</code> for a J
 of canonical payload hex strings. <code>--match-admin FULL_PUBLIC_KEY</code> in canonical
 payload mode matches a known administrator against the encrypted fingerprints.
 This is an offline capture decoder, not a broker subscriber or downlink service.</p>
+<p>For a browser-local decoder that also decrypts and authenticates ACL entries,
+use the <a href="../management_decoder/">Management report decoder</a>. It does not upload
+the captured packet or password.</p>
 <h2 id="canonical-payload-little-endian">Canonical payload (little endian)</h2>
 <table>
 <thead>
@@ -3316,6 +3348,8 @@ public metadata and entry/page counts remain visible.</p>
         <script src="../_javascript/firmware_picker.js"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
+      
+        <script src="../_javascript/management_decoder.js"></script>
       
         <script src="../_javascript/filter_tool.js"></script>
       
