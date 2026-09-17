@@ -208,8 +208,9 @@ void setup() {
   // the receiver only until the first valid fix has been cached.
   sensors.setGpsTelemetryStopAfterFix(true);
   if (sensors.getLocationProvider() != NULL) {
-    // Keep GPS awake for at most 10 minutes, then asleep for one day.
-    sensors.getLocationProvider()->setPowerSavingProfile(600, 86400);
+    // Keep GPS awake for at most 10 minutes, then asleep for one week.
+    sensors.getLocationProvider()->setPowerSavingProfile(
+        10UL * 60UL, 7UL * 24UL * 60UL * 60UL);
   }
 #endif
 

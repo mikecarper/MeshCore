@@ -51,6 +51,12 @@ the next request can return that fix without another wake. `gps off` also
 cancels an acquisition already in progress. An acquisition that never obtains a
 fix retains the normal 15-minute safety timeout.
 
+When GPS and device power saving are both enabled, a repeater wakes GPS for up
+to 10 minutes to obtain a valid time and then sleeps it for seven days. A valid
+GPS time may correct the RTC either forward or backward. With device power
+saving off, an enabled GPS remains active and refreshes the RTC every 30
+minutes.
+
 ## Companion/Client Nodes
 
 Companion/client telemetry uses the existing companion telemetry permission

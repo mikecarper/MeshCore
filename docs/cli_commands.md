@@ -4302,6 +4302,11 @@ The GPS must be enabled. When GPS power saving has put an enabled receiver to
 sleep, this command schedules a sync and wakes it; after `set gps off`, it reports
 `gps is off` without scheduling work.
 
+On repeaters with device power saving enabled, the automatic GPS cycle wakes
+for up to 10 minutes and repeats seven days after GPS sleeps. A valid GPS time
+can correct the RTC either forward or backward. With device power saving off,
+an enabled GPS refreshes the RTC every 30 minutes.
+
 ---
 
 #### Set this node's location based on the GPS coordinates
