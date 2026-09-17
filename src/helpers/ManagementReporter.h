@@ -19,7 +19,7 @@ class ManagementReporter {
   ClientACL& acl;
   NodePrefs& prefs;
   CommonCLICallbacks& callbacks;
-  CommonCLI& cli;
+  CommonCLI& common_cli;
   FILESYSTEM* fs;
   Working* work = nullptr;
   uint8_t key[32] = {};
@@ -39,7 +39,7 @@ class ManagementReporter {
 public:
   ManagementReporter(Mesh& mesh, MainBoard& board, SensorManager& sensors,
                      ClientACL& acl, NodePrefs& prefs,
-                     CommonCLICallbacks& callbacks, CommonCLI& cli,
+                     CommonCLICallbacks& callbacks, CommonCLI& common_cli,
                      FILESYSTEM* fs);
   ~ManagementReporter();
   void loop(uint64_t node_uptime_seconds = UINT64_MAX);

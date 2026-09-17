@@ -37,9 +37,9 @@ struct ManagementReporter::Working {
 
 ManagementReporter::ManagementReporter(Mesh& mesh, MainBoard& board, SensorManager& sensors,
     ClientACL& acl, NodePrefs& prefs, CommonCLICallbacks& callbacks,
-    CommonCLI& cli, FILESYSTEM* fs)
+    CommonCLI& common_cli, FILESYSTEM* fs)
     : mesh(mesh), board(board), sensors(sensors), acl(acl), prefs(prefs),
-      callbacks(callbacks), cli(cli), fs(fs) {
+      callbacks(callbacks), common_cli(common_cli), fs(fs) {
   last_ms = millis(); healthy = load();
   if (healthy && enabled && !allocate()) healthy = false;
 }
@@ -72,7 +72,7 @@ bool ManagementReporter::load() {
         read32(b + 104) > 90 * DAY + 3600 || read32(b + 108) > 90 * DAY + 3600) continue;
     enabled = b[4]; direct_days = b[5]; keyed = b[6];
     flood_days = legacy ? (direct_days < 21 ? 21 : direct_days) : b[7];
-    if (legacy && b[7] != OUT_PATH_UNKNOWN) cli.adoptLegacyDataTxPath(b + 8, b[7]);
+    if (legacy && b[7] != OUT_PATH_UNKNOWN) common_cli.adoptLegacyDataTxPath(b + 8, b[7]);
     memcpy(key, b + 72, 32);
     schedule.direct = read32(b + 104); schedule.flood = read32(b + 108);
     if (!direct_days) schedule.direct = 0;
@@ -206,10 +206,10 @@ void ManagementReporter::start(bool flood) {
   w.route_path_len = OUT_PATH_UNKNOWN;
   memset(w.route_path, 0, sizeof(w.route_path));
   if (flood) {
-    if (!cli.resolveDataTxScope(w.scope)) return;
+    if (!common_cli.resolveDataTxScope(w.scope)) return;
   } else {
     const uint8_t* configured = nullptr;
-    if (!cli.getDataTxPath(configured, w.route_path_len)) return;
+    if (!common_cli.getDataTxPath(configured, w.route_path_len)) return;
     if (w.route_path_len & 63) {
       Packet::copyPath(w.route_path, configured, w.route_path_len);
     }
@@ -279,7 +279,7 @@ void ManagementReporter::loop(uint64_t node_uptime_seconds) {
     // due, the scoped flood replaces the redundant direct transmission.
     if (flood_days && !schedule.flood) start(true);
     if (!w.sending && direct_days
-        && cli.getDataTxPath(route_path, route_path_len) && !schedule.direct) {
+        && common_cli.getDataTxPath(route_path, route_path_len) && !schedule.direct) {
       start(false);
     }
   }
@@ -289,8 +289,8 @@ bool ManagementReporter::command(char* command, char* reply, size_t size) {
   if (!strcmp(command, "get mgmt")) {
     const uint8_t* route_path = nullptr; uint8_t route_path_len = OUT_PATH_UNKNOWN;
     TransportKey scope;
-    const bool routed = cli.getDataTxPath(route_path, route_path_len);
-    const bool scoped = cli.resolveDataTxScope(scope);
+    const bool routed = common_cli.getDataTxPath(route_path, route_path_len);
+    const bool scoped = common_cli.resolveDataTxScope(scope);
     char direct[12], flood[12];
     if (direct_days) snprintf(direct, sizeof(direct), "%ud", direct_days);
     else strcpy(direct, "off");
@@ -324,8 +324,8 @@ bool ManagementReporter::command(char* command, char* reply, size_t size) {
     const uint8_t* route_path = nullptr; uint8_t route_path_len = OUT_PATH_UNKNOWN;
     TransportKey scope;
     const bool direct_ready = !direct_days
-        || cli.getDataTxPath(route_path, route_path_len);
-    const bool flood_ready = !flood_days || cli.resolveDataTxScope(scope);
+        || common_cli.getDataTxPath(route_path, route_path_len);
+    const bool flood_ready = !flood_days || common_cli.resolveDataTxScope(scope);
     if (on && (!keyed || (!direct_days && !flood_days) || !direct_ready
         || !flood_ready || !allocate())) {
       snprintf(reply, size, "ERR: password, enabled route(s), data.tx path/region and free RAM required");
@@ -346,7 +346,7 @@ bool ManagementReporter::command(char* command, char* reply, size_t size) {
       char* end; const unsigned long n = strtoul(value, &end, 10);
       const uint8_t* route_path = nullptr; uint8_t route_path_len = OUT_PATH_UNKNOWN;
       if (!*value || *end || !Schedule::validDirect(n)
-          || !cli.getDataTxPath(route_path, route_path_len)) {
+          || !common_cli.getDataTxPath(route_path, route_path_len)) {
         snprintf(reply, size, "ERR: direct needs data.tx path and 5..90 days"); return true;
       }
       direct_days = n; schedule.direct = direct_days * DAY;
@@ -361,7 +361,7 @@ bool ManagementReporter::command(char* command, char* reply, size_t size) {
       char* end; const unsigned long n = strtoul(value, &end, 10);
       TransportKey scope;
       if (!*value || *end || !Schedule::validFlood(n)
-          || !cli.resolveDataTxScope(scope)) {
+          || !common_cli.resolveDataTxScope(scope)) {
         snprintf(reply, size, "ERR: flood needs data.tx region and 21..90 days"); return true;
       }
       flood_days = n; schedule.flood = flood_days * DAY;
@@ -371,8 +371,8 @@ bool ManagementReporter::command(char* command, char* reply, size_t size) {
     const uint8_t* route_path = nullptr; uint8_t route_path_len = OUT_PATH_UNKNOWN;
     TransportKey scope;
     if (!*value || *end || !Schedule::validDirect(n)
-        || !cli.getDataTxPath(route_path, route_path_len)
-        || !cli.resolveDataTxScope(scope)) {
+        || !common_cli.getDataTxPath(route_path, route_path_len)
+        || !common_cli.resolveDataTxScope(scope)) {
       snprintf(reply, size, "ERR: interval needs path, region and 5..90 days"); return true;
     }
     // Compatibility shorthand: configure both schedules together.
