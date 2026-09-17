@@ -244,6 +244,56 @@
   font-family: var(--md-code-font-family);
 }
 
+.preset-test-generator-disclosure {
+  border: 1px solid var(--preset-border);
+  border-radius: 0.65rem;
+  background: var(--md-default-bg-color);
+}
+
+.preset-test-generator-disclosure > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.preset-test-generator-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.preset-test-generator-disclosure > summary h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.preset-test-generator-disclosure > summary::after {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.24rem 0.58rem;
+  background: color-mix(in srgb, var(--preset-cyan) 12%, transparent);
+  color: var(--preset-cyan);
+  content: "Open generator";
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.preset-test-generator-disclosure[open] > summary {
+  border-bottom: 1px solid var(--preset-border);
+}
+
+.preset-test-generator-disclosure[open] > summary::after {
+  content: "Close generator";
+}
+
+.preset-test-generator-disclosure-body {
+  padding: 0 1rem 1rem;
+}
+
 .preset-test-generator-layout {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr);
