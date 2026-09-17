@@ -158,6 +158,24 @@ int main() {
   assert(task.getPreviewCount() == 32 && task.getMsgCount() == 0);
   displayPowerPrefs().inbox = DisplayInboxMode::Pending;
   assert(!messages.hasMessages());
+
+#if COMPANION_FEATURE_JOHN
+  // Receiving and downloading messages must leave an open reader alone.
+  Screen reader;
+  task.john_reader = task.curr = &reader;
+  for (bool connected : {false, true}) {
+    task.connected = connected;
+    for (int i = 0; i < 2; ++i) {
+      mesh.receive("while reading");
+      assert(task.isJohnReaderActive());
+    }
+    for (int remaining : {1, 0}) {
+      mesh.download();
+      assert(task.getMsgCount() == remaining);
+      assert(task.isJohnReaderActive());
+    }
+  }
+#endif
 }
 '''
 
@@ -260,13 +278,13 @@ int main() {
 '''
         self.compile_and_run(preamble + implementation)
 
-    def compile_and_run(self, source):
+    def compile_and_run(self, source, reader_enabled=0):
         compiler = shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler)
         with tempfile.TemporaryDirectory(prefix="mesh-inbox-test-") as directory:
             executable = Path(directory) / "inbox.exe"
             result = subprocess.run([
-                compiler, "-std=c++17", "-DCOMPANION_FEATURE_JOHN=0",
+                compiler, "-std=c++17", f"-DCOMPANION_FEATURE_JOHN={reader_enabled}",
                 "-I" + str(ROOT / "src"), "-I" + str(ROOT / "test/mocks"),
                 "-x", "c++", "-", str(ROOT / "src/helpers/ui/MomentaryButton.cpp"),
                 str(ROOT / "src/helpers/ui/DisplayDriver.cpp"), "-o", str(executable),
@@ -287,7 +305,47 @@ int main() {
         implementation += QUEUE
         for signature in ("bool MyMesh::addToOfflineQueue(", "int MyMesh::getFromOfflineQueue("):
             implementation += extract_braced(mesh, signature) + "\n"
-        self.compile_and_run(preamble + implementation + SCENARIOS)
+        for reader_enabled in (0, 1):
+            with self.subTest(reader_enabled=reader_enabled):
+                self.compile_and_run(preamble + implementation + SCENARIOS, reader_enabled)
+
+    def test_summary_shows_newest_visible_message_per_thread(self):
+        ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
+        implementation = extract_braced(ui, "class MsgPreviewScreen :") + ";\n"
+        scenarios = r'''
+struct SummaryDisplay : Display {
+  SummaryDisplay() { setDimensions(160, 160); }
+};
+int main() {
+  using namespace mesh::ui;
+  SummaryDisplay display;
+  UITask task(display);
+  MsgPreviewScreen messages(&task);
+  messages.addPreview(1, "Alice", "old public", 0, "Public", 0);
+  messages.addPreview(1, "Bob", "pending public", 0, "Public", 1);
+  messages.addPreview(1, "Alice", "delivered public", 0, "Public");
+  messages.addPreview(1, "Carol", "second channel", 2, "Second", 2);
+  messages.addPreview(0xFF, "Dan", "old direct", -1, nullptr, 3);
+  messages.addPreview(0xFF, "Dan", "new direct", -1, nullptr, 4);
+
+  for (auto mode : {DisplayInboxMode::History, DisplayInboxMode::Pending,
+                    DisplayInboxMode::Unread}) {
+    displayPowerPrefs().inbox = mode;
+    display.clear();
+    messages.renderSummary(display);
+    assert(display.rectangles.size() == 3); // One divider per thread.
+    assert(display.contains("Public") && display.contains("Second"));
+    assert(display.contains("Direct: Dan"));
+    assert(display.contains("second channel") && display.contains("new direct"));
+    assert(!display.contains("old public") && !display.contains("old direct"));
+    // A delivered newer entry cannot hide the newest pending entry.
+    const bool pending = mode == DisplayInboxMode::Pending;
+    assert(display.contains("pending public") == pending);
+    assert(display.contains("delivered public") == !pending);
+  }
+}
+'''
+        self.compile_and_run(PREAMBLE + implementation + scenarios)
 
     def test_summary_uses_newest_visible_message_per_thread(self):
         ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()

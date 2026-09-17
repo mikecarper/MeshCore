@@ -20,7 +20,7 @@ packer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(packer)
 
 
-class CompanionJohnTest(unittest.TestCase):
+class CompanionReaderTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.document = json.loads(packer.SOURCE.read_text(encoding="utf-8"))
@@ -83,11 +83,11 @@ class CompanionJohnTest(unittest.TestCase):
         cc, cxx = shutil.which("gcc"), shutil.which("g++")
         if not cc or not cxx:
             self.skipTest("host GCC and G++ required")
-        with tempfile.TemporaryDirectory(prefix="meshcore-john-") as directory:
+        with tempfile.TemporaryDirectory(prefix="meshcore-reader-") as directory:
             directory = Path(directory)
             for platform in ("ESP32_PLATFORM", "NRF52_PLATFORM"):
                 flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"]
-                obj, binary = directory / "tinf.o", directory / "john.exe"
+                obj, binary = directory / "tinf.o", directory / "reader.exe"
                 self.run_checked([cc, "-std=c11", "-Os", *flags, "-c",
                                   str(ROOT / "src/helpers/ota/OtaTinf.c"), "-o", str(obj)])
                 self.run_checked([cxx, "-std=c++17", "-Os", "-Wall", "-Wextra", "-Werror",
@@ -151,6 +151,8 @@ class CompanionJohnTest(unittest.TestCase):
         self.assertIn("#if COMPANION_FEATURE_JOHN\n#include \"JohnReaderScreen.h\"", ui)
         self.assertLess(ui.index("#define UI_BUTTON_READER_HINT 1"),
                         ui.index('#include "JohnReaderScreen.h"'))
+        # Queue downloads preserve the current screen unconditionally now;
+        # test_companion_inbox exercises this with the reader enabled.
         self.assertIn("else if (isJohnReaderActive())", ui)
         self.assertIn("c = handleLongPress(KEY_ENTER);", ui)
         self.assertIn("handleDoubleClick(KEY_PREV)", ui)

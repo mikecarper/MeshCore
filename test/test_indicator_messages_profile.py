@@ -99,6 +99,8 @@ int main() {{ return 0; }}
         self.assertIn("esp_timer_get_time()", ui)
         # Thread selection must respect the selected inbox view. The compiled
         # summary regression in test_companion_inbox covers this behavior.
+        # Summary deduplication must consider the selected inbox mode.
+        # test_companion_inbox checks the rendered rows for each mode.
 
 
 if __name__ == "__main__":
