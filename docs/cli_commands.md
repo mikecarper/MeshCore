@@ -3442,6 +3442,22 @@ Setting a clock alone never automatically resets this table.
 
 **Default:** `off`
 
+**Make a room read-only while allowing selected writers:**
+
+```text
+set allow.read.only on
+setperm <PUBKEY_USER_1> 2
+```
+
+With read-only mode on, a client without a valid room password can join as a
+read-only guest. Permission `2` gives the specified public key read-write
+access. Replace `<PUBKEY_USER_1>` with the user's full public key and repeat
+`setperm` for every approved writer.
+
+This does not remove write access from clients that already know the room
+password. Keep that password private, or replace it, if write access should be
+limited to the explicitly permitted users.
+
 ---
 
 ### Region Management (v1.10.+)
