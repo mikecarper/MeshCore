@@ -707,6 +707,10 @@
         if (profile.controls.rs232 && profile.role === "repeater" && profile.mode === "standard") {
           profile.connectionModes = ["standard", "rs232"];
         }
+        if (profile.controls.espnowBridge &&
+            ["repeater", "room"].includes(profile.role) && profile.mode === "standard") {
+          profile.connectionModes = ["standard", "espnow"];
+        }
       }
       profile.hardwareFamily = hardwareFamilyFor(
         profile.hardware,
@@ -1150,8 +1154,10 @@
       ], "Separate from device sleep and LoRa RXPS. Bluetooth coexistence can constrain the effective mode.");
     }
     if (info.mqtt) {
-      toggle("MQTT broker connections", "set mqtt.enabled", "get mqtt.enabled",
-        "Configure WiFi and broker slots first, using WebConfig or set mqtt1.preset/settings. Off keeps those settings. get mqtt.running checks the runtime; get mqtt.status shows connections.");
+      toggle(info.espnowBridge ? "MQTT + ESP-NOW bridge" : "MQTT broker connections", "set mqtt.enabled", "get mqtt.enabled",
+        info.espnowBridge
+          ? "This Full image has one shared bridge switch: On starts WiFi/MQTT and then ESP-NOW after WiFi associates; Off stops both. Configure WiFi and broker slots first, and set bridge.channel to your access point's fixed 2.4 GHz channel."
+          : "Configure WiFi and broker slots first, using WebConfig or set mqtt1.preset/settings. Off keeps those settings. get mqtt.running checks the runtime; get mqtt.status shows connections.");
       ["status", "packets", "raw", "rx"].forEach(function (name) {
         toggle("MQTT " + (name === "rx" ? "receive capture" : name + " publication"), "set mqtt." + name, "get mqtt." + name,
           name === "status" ? "Only controls status publishing; connections remain enabled. The check command reports connection status." : "");
@@ -1177,10 +1183,12 @@
       }), "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.");
     }
     if (info.espnowBridge && infrastructure) {
-      toggle("ESP-NOW bridge", "set bridge.enabled", "get bridge.running");
+      if (!info.mqtt) toggle("ESP-NOW bridge", "set bridge.enabled", "get bridge.running");
       section("ESP-NOW bridge framing", ["wrapped", "raw"].map(function (mode) {
         return { label: mode, commands: ["set bridge.format " + mode] };
-      }), "Set bridge.channel to the bridge channel. Primary ESP-NOW mesh uses set espnow.channel instead; see the board guide before changing channels.");
+      }), info.mqtt
+        ? "This Full image shares one 2.4 GHz radio between WiFi/MQTT and ESP-NOW. ESP-NOW begins after WiFi connects and only when bridge.channel matches that access point's fixed channel. Primary ESP-NOW mesh uses set espnow.channel instead."
+        : "Set bridge.channel to the bridge channel. Primary ESP-NOW mesh uses set espnow.channel instead; see the board guide before changing channels.");
     }
     if (full && /sensecapindicator/i.test(profile.target)) section("Indicator wireless transport", [
       { label: "WiFi", commands: ["set companion.transport wifi", "reboot"] },
