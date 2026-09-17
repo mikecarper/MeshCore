@@ -182,20 +182,6 @@ static void formatMQTTPresetListReply(char* reply, size_t reply_size, int start)
 bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* config, char* reply) {
 #ifdef WITH_MQTT_BRIDGE
   bool handled = true;
-  if (strncmp(config, "mqtt.enabled ", 13) == 0) {
-    const char* value = config + 13;
-    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error: use set mqtt.enabled on|off");
-    } else {
-      const bool enable = strcmp(value, "on") == 0;
-      _prefs->bridge_enabled = enable ? 1 : 0;
-      const bool applied = _callbacks->setMqttBridgeState(enable);
-      savePrefs();
-      strcpy(reply, applied ? "OK"
-                            : "Error: MQTT runtime change failed; setting saved");
-    }
-    return true;
-  }
   const auto restart_observer_bridge = [this]() {
     return mesh::cli::restartBridgeIfEnabled(
         _prefs->bridge_enabled != 0,

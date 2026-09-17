@@ -63,6 +63,7 @@ COMMON_QUERY_EXCEPTIONS = {
 }
 OBSERVER_QUERY_EXCEPTIONS = {
     'mqtt.config.valid': 'Configuration validation result',
+    'mqtt.enabled': 'Stored in common NodePrefs; set mqtt.enabled is handled by CommonCLI',
     'mqtt.ntp.diag': 'NTP diagnostics',
     'mqtt.presets': 'List of available presets',
     'mqtt.running': 'Live state; set mqtt.enabled controls intent',

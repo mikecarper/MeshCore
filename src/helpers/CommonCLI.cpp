@@ -3397,6 +3397,25 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
 #endif
+#ifdef WITH_MQTT_BRIDGE
+  // bridge_enabled is stored with the common node preferences.  Keep its
+  // MQTT-specific switch here rather than in the observer preferences
+  // handler, which must only write its own store.
+  if (strncmp(config, "mqtt.enabled ", 13) == 0) {
+    const char* value = config + 13;
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: use set mqtt.enabled on|off");
+    } else {
+      const bool enable = strcmp(value, "on") == 0;
+      _prefs->bridge_enabled = enable ? 1 : 0;
+      const bool applied = _callbacks->setMqttBridgeState(enable);
+      savePrefs();
+      strcpy(reply, applied ? "OK"
+                            : "Error: MQTT runtime change failed; setting saved");
+    }
+    return;
+  }
+#endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
 #if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)

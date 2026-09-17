@@ -120,7 +120,7 @@ class EspNowLifecycleTests(unittest.TestCase):
         self.assertIn('uint8_t espnow_bridge_enabled = 1;', prefs)
         self.assertIn('setEspNowBridgeState(enable)', common)
         self.assertIn('_prefs->espnow_bridge_enabled', common)
-        self.assertIn('setMqttBridgeState(enable)', observer)
+        self.assertIn('setMqttBridgeState(enable)', common)
         self.assertIn('isMqttBridgeRunning()', observer)
         for role in ('simple_repeater', 'simple_room_server'):
             header = (ROOT/f'examples/{role}/MyMesh.h').read_text()
