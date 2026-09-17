@@ -266,9 +266,9 @@ clock</code></pre>
         <div class="preset-test-generator-disclosure-body">
           <p>
         Enter the test times in the selected time zone and choose the radio
-        tuple. The generated URL converts the times to exact UTC instants and
-        keeps <code>tz</code> so the page displays them in the organizer's local
-        time zone.
+        tuple. The generated URL converts the times to exact UTC instants, keeps
+        the date punctuation readable, and keeps <code>tz</code> so the page
+        displays them in the organizer's local time zone.
           </p>
 
       <div class="preset-test-generator-layout">

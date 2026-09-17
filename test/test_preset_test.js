@@ -183,6 +183,12 @@ const shared = new URL(tool.configuredUrl(
   changed,
   "https://example.test/preset-test/?stale=yes#commands"
 ));
+assert.strictEqual(
+  shared.href,
+  "https://example.test/preset-test/?start=2026-09-22T00:00:00.000Z" +
+    "&end=2026-09-24T00:00:00.000Z&tz=America/Los_Angeles" +
+    "&freq=915.25&bw=125&sf=10&cr=5&tx=22#commands"
+);
 assert.strictEqual(shared.searchParams.get("start"), "2026-09-22T00:00:00.000Z");
 assert.strictEqual(shared.searchParams.get("end"), "2026-09-24T00:00:00.000Z");
 assert.strictEqual(shared.searchParams.get("freq"), "915.25");

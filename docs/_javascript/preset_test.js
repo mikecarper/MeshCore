@@ -449,17 +449,27 @@
     }).format(new Date(milliseconds));
   }
 
+  function readableQueryValue(value) {
+    return encodeURIComponent(String(value))
+      .replace(/%3A/gi, ":")
+      .replace(/%2F/gi, "/");
+  }
+
   function configuredUrl(config, baseUrl) {
     const url = new URL(baseUrl);
-    url.search = "";
-    url.searchParams.set("start", new Date(config.startMs).toISOString());
-    url.searchParams.set("end", new Date(config.endMs).toISOString());
-    url.searchParams.set("tz", config.tz);
-    url.searchParams.set("freq", config.freqText);
-    url.searchParams.set("bw", config.bwText);
-    url.searchParams.set("sf", String(config.sf));
-    url.searchParams.set("cr", String(config.cr));
-    url.searchParams.set("tx", config.txText);
+    const values = [
+      ["start", new Date(config.startMs).toISOString()],
+      ["end", new Date(config.endMs).toISOString()],
+      ["tz", config.tz],
+      ["freq", config.freqText],
+      ["bw", config.bwText],
+      ["sf", String(config.sf)],
+      ["cr", String(config.cr)],
+      ["tx", config.txText],
+    ];
+    url.search = "?" + values.map(function (entry) {
+      return entry[0] + "=" + readableQueryValue(entry[1]);
+    }).join("&");
     return url.toString();
   }
 
