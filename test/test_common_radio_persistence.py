@@ -1,5 +1,6 @@
 """Exercise production infrastructure radio saves with real file transactions."""
 from pathlib import Path
+import os
 import re
 import subprocess
 import tempfile
@@ -51,6 +52,7 @@ struct CommonCLI {
 #endif
     prefs.freq=910; prefs.bw=62.5f; prefs.sf=7; prefs.cr=5;
     prefs.tx_power_dbm=30; prefs.primary_radio_preamble=48;
+    prefs.espnow_bridge_enabled=1;
     prefs.rx_ps_rx_us=111; prefs.rx_ps_sleep_us=222;
   }
   void savePrefs(FILESYSTEM*,PrefsSaveRouting::Scope);
@@ -76,9 +78,10 @@ int main() {
   CommonCLI cli;
   assert(cli.saveCommonPrefs());
   auto original=cli.fs.files["/com_prefs"];
-  const size_t preamble_offset=original.size()-2;
+  const size_t preamble_offset=original.size()-3;
   assert(preamble_offset>=864);
   assert(original[preamble_offset]==48 && original[preamble_offset+1]==0);
+  assert(original[preamble_offset+2]==1);
   Capture capture; assert(writeCommonPrefsImage(capture,&cli.prefs));
   assert(capture.bytes==original); // Both serializers retain the same layout.
   for (int fault : {0,1,2,3,4}) {
@@ -105,6 +108,7 @@ int main() {
   float freq=0,bw=0;memcpy(&freq,committed.data()+72,4);memcpy(&bw,committed.data()+116,4);
   assert(freq==920 && bw==125 && committed[112]==9 && committed[113]==6);
   assert(committed[preamble_offset]==96 && committed[preamble_offset+1]==0);
+  assert(committed[preamble_offset+2]==1);
   assert(cli._radio_profiles.saved==96 && cli.prefs.tx_power_dbm==22);
   assert(cli.prefs.rx_ps_rx_us==900 && cli.prefs.rx_ps_sleep_us==1200);
   // Old and torn tails preserve the imported legacy preamble; valid tails win.
@@ -113,6 +117,7 @@ int main() {
   assert(cli.loadTail({0,64,0})==64);
   assert(cli.loadTail({0,7,0})==64);
   assert(cli.loadTail({0,0,0})==0);
+  assert(cli.loadTail({0,64,0,0})==64 && cli.prefs.espnow_bridge_enabled==0);
   for(float bad : {NAN,INFINITY,149.0f,2501.0f})
     assert(!cli.savePrimaryRadioParams(bad,125,9,6,0));
   assert(cli.fs.files["/com_prefs"]==committed);
@@ -138,6 +143,9 @@ class CommonRadioPersistenceTest(unittest.TestCase):
         tail = extract_braced(source, 'if (file.available() >= (int)sizeof(_prefs->bridge_format))')
         code = HARNESS.replace('@FIELDS@',fields).replace('@METHODS@',methods)
         code = code.replace('@SERIALIZER@',serializer).replace('@TAIL@',tail)
+        sanitizer_flags = [] if os.name == 'nt' else [
+            '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
+            '-fno-pie', '-no-pie']
         with tempfile.TemporaryDirectory(prefix='common-radio-save-') as directory:
             work = Path(directory)
             transaction = (ROOT / 'src/helpers/ContactFileTransaction.h').read_text()
@@ -148,7 +156,7 @@ class CommonRadioPersistenceTest(unittest.TestCase):
                 with self.subTest(platform=platform):
                     exe = work / 'test'
                     built = subprocess.run(['g++','-std=c++17','-DENABLE_OTA=1','-D'+platform+'=1',
-                        '-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie',
+                        *sanitizer_flags,
                         '-I'+str(work),'-I'+str(ROOT/'test/fixtures/radio_profiles/mocks'),
                         '-I'+str(ROOT/'src'),'-I'+str(ROOT/'src/helpers'),
                         str(work/'test.cpp'),'-o',str(exe)],
