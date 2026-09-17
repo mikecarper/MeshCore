@@ -6,6 +6,7 @@
 #include <helpers/FloodAdvertCLI.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/ota/OtaFormat.h>
+#include <helpers/ManagementReport.h>
 #include <vector>
 
 class TraceTestClock : public mesh::MillisecondClock {
@@ -164,6 +165,43 @@ static mesh::Packet makeFloodPacket(uint8_t payload_type) {
   packet.payload_len = 1;
   packet.payload[0] = 0x42;
   return packet;
+}
+
+TEST(ManagementRouting, GroupDataForBothRoutesKeepsPublicHeaderAndLegacyLength) {
+  TraceTestRadio radio; TraceTestClock clock; TraceTestRNG rng; TraceTestRTC rtc;
+  TraceTestTables tables; StaticPoolPacketManager pool(8);
+  TraceTestMesh mesh(radio, clock, rng, rtc, pool, tables);
+  uint8_t raw[mesh::management::HEADER + mesh::management::TAG] = {};
+  memcpy(raw, "MGR1", 4); raw[79] = 1;
+  const uint8_t path[] = {0x12, 0xab};
+  uint8_t scope_key[16]; memset(scope_key, 0x42, sizeof(scope_key));
+  for (bool flood : {false, true}) {
+    auto* p = mesh.createRawData(raw, sizeof(raw)); ASSERT_NE(nullptr, p);
+    ASSERT_TRUE(mesh.sendManagementData(p, flood, path, 2, 2,
+                                        flood ? scope_key : nullptr));
+    EXPECT_EQ(PAYLOAD_TYPE_GRP_DATA, p->getPayloadType());
+    EXPECT_EQ(flood, p->isRouteFlood());
+    EXPECT_EQ(0, memcmp(p->payload, raw, sizeof(raw)));
+    EXPECT_EQ(0u, (p->payload_len - 3u) % 16u);
+    EXPECT_TRUE(mesh::management::validPage(p->payload, p->payload_len, true));
+    EXPECT_EQ(flood ? 0 : 2, p->getPathHashCount());
+    if (!flood) EXPECT_EQ(0, memcmp(p->path, path, 2));
+  }
+}
+
+TEST(ManagementRouting, FloodForwardingDoesNotNeedAKeyAndStillHonorsFilters) {
+  TraceTestRadio radio; TraceTestClock clock; TraceTestRNG rng; TraceTestRTC rtc;
+  TraceTestTables tables; StaticPoolPacketManager pool(8);
+  TraceTestMesh mesh(radio, clock, rng, rtc, pool, tables);
+  mesh.forwardFloods = true;
+  mesh::Packet p;
+  p.header = (PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT) | ROUTE_TYPE_FLOOD;
+  p.setPathHashSizeAndCount(1, 0); memcpy(p.payload, "MGR1", 4); p.payload[79] = 1;
+  p.payload_len = mesh::management::floodSize(mesh::management::HEADER + mesh::management::TAG);
+  EXPECT_NE(ACTION_RELEASE, mesh.receivePacket(&p));
+  EXPECT_FALSE(mesh.groupPacketObserved); // never delivered as decrypted channel data
+  mesh.rejectFloods = true;
+  EXPECT_EQ(ACTION_RELEASE, mesh.receivePacket(&p));
 }
 
 class RetryCodingRateRadio : public TraceTestRadio {

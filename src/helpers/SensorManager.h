@@ -43,6 +43,7 @@ class SensorManager {
   void finishGpsTelemetryAcquisition(unsigned long now, bool use_weighted_average);
   void updateGpsTelemetryCache(float lat, float lon, float altitude, unsigned long now);
   void maybeStopGpsForTelemetry(unsigned long now);
+  void cancelGpsTelemetryDemand(unsigned long now);
 
 protected:
   virtual bool telemetryGpsDetected() const { return false; }

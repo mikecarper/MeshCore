@@ -3493,8 +3493,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 
 #if MESH_ENABLE_TELEMETRY_HISTORY
   telemetry_history_tx_enabled = false;
-  memset(telemetry_history_tx_path, 0, sizeof(telemetry_history_tx_path));
-  telemetry_history_tx_path_len = OUT_PATH_UNKNOWN;
   telemetry_history_tx_interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
   telemetry_history_tx_pending = 0;
   telemetry_history_tx_manual = false;
@@ -3641,6 +3639,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+  _cli.beginManagement(*this, _fs);
 #if MESH_ENABLE_TELEMETRY_HISTORY
   loadTelemetryHistoryTxPrefs();
 #endif
@@ -11431,10 +11430,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       strcpy(reply, "Err - not permitted");
       return;
     }
-    if (telemetry_history_tx_path_len == OUT_PATH_UNKNOWN
-        || telemetry_history_tx_path_len == OUT_PATH_FORCE_FLOOD
-        || !mesh::Packet::isValidPathLen(telemetry_history_tx_path_len)) {
-      strcpy(reply, "Err - configure telemetry.tx direct or path first");
+    const uint8_t* data_path = NULL;
+    uint8_t data_path_len = OUT_PATH_UNKNOWN;
+    if (!_cli.getDataTxPath(data_path, data_path_len)) {
+      strcpy(reply, "Err - configure data.tx path first");
       return;
     }
     if (telemetry_history_tx_pending != 0) {
@@ -11506,10 +11505,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
         strcpy(reply, "Err - use: set telemetry.tx schedule <off|1-30d>");
         return;
       }
-      if (telemetry_history_tx_path_len == OUT_PATH_UNKNOWN
-          || telemetry_history_tx_path_len == OUT_PATH_FORCE_FLOOD
-          || !mesh::Packet::isValidPathLen(telemetry_history_tx_path_len)) {
-        strcpy(reply, "Err - configure telemetry.tx direct or path first");
+      const uint8_t* data_path = NULL;
+      uint8_t data_path_len = OUT_PATH_UNKNOWN;
+      if (!_cli.getDataTxPath(data_path, data_path_len)) {
+        strcpy(reply, "Err - configure data.tx path first");
         return;
       }
       enable = true;
@@ -11569,7 +11568,6 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     }
 
     const bool previous_enabled = telemetry_history_tx_enabled;
-    const uint8_t previous_path_len = telemetry_history_tx_path_len;
     const uint8_t previous_pending = telemetry_history_tx_pending;
     const bool previous_manual = telemetry_history_tx_manual;
     const uint8_t previous_external_channel =
@@ -11578,9 +11576,6 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
         telemetry_history_tx_external_chunk;
     const uint64_t previous_next_tx = telemetry_history_next_tx_uptime;
     const uint64_t previous_resume_tx = telemetry_history_tx_resume_uptime;
-    uint8_t previous_path[MAX_PATH_SIZE];
-    memcpy(previous_path, telemetry_history_tx_path, sizeof(previous_path));
-
     if (strcmp(spec, "off") == 0) {
       telemetry_history_tx_enabled = false;
       telemetry_history_tx_pending = 0;
@@ -11590,42 +11585,24 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       telemetry_history_next_tx_uptime = 0;
       telemetry_history_tx_resume_uptime = 0;
     } else {
-      uint8_t path[MAX_PATH_SIZE];
-      uint8_t path_len = OUT_PATH_UNKNOWN;
-      const char* err = NULL;
-      if (!parsePathCommand(spec, path, path_len, err)
-          || path_len == OUT_PATH_UNKNOWN
-          || path_len == OUT_PATH_FORCE_FLOOD) {
-        strcpy(reply, err != NULL ? err
-                                 : "Err - telemetry.tx needs a direct path");
-        return;
-      }
+      if (!_cli.setDataTxPath(spec, reply, 160)) return;
       telemetry_history_tx_enabled = true;
-      telemetry_history_tx_path_len = path_len;
       telemetry_history_tx_pending = 0;
       telemetry_history_tx_manual = false;
       telemetry_history_tx_external_channel = 0;
       telemetry_history_tx_external_chunk = 0;
       telemetry_history_next_tx_uptime = 0;
       telemetry_history_tx_resume_uptime = 0;
-      memset(telemetry_history_tx_path, 0,
-             sizeof(telemetry_history_tx_path));
-      if ((path_len & 63U) != 0) {
-        mesh::Packet::copyPath(telemetry_history_tx_path, path, path_len);
-      }
     }
 
     if (!saveTelemetryHistoryTxPrefs()) {
       telemetry_history_tx_enabled = previous_enabled;
-      telemetry_history_tx_path_len = previous_path_len;
       telemetry_history_tx_pending = previous_pending;
       telemetry_history_tx_manual = previous_manual;
       telemetry_history_tx_external_channel = previous_external_channel;
       telemetry_history_tx_external_chunk = previous_external_chunk;
       telemetry_history_next_tx_uptime = previous_next_tx;
       telemetry_history_tx_resume_uptime = previous_resume_tx;
-      memcpy(telemetry_history_tx_path, previous_path,
-             sizeof(telemetry_history_tx_path));
       strcpy(reply, "Err - unable to save telemetry.tx");
     } else if (telemetry_history_tx_enabled) {
       snprintf(reply, 160, "OK - telemetry.tx schedule=%ud temp=165 volt=165",
@@ -12251,8 +12228,6 @@ uint8_t MyMesh::resizeTelemetryGpsDays(uint8_t requested_days) {
 
 void MyMesh::loadTelemetryHistoryTxPrefs() {
   telemetry_history_tx_enabled = false;
-  memset(telemetry_history_tx_path, 0, sizeof(telemetry_history_tx_path));
-  telemetry_history_tx_path_len = OUT_PATH_UNKNOWN;
   telemetry_history_tx_interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
   telemetry_history_tx_pending = 0;
   telemetry_history_tx_manual = false;
@@ -12265,23 +12240,29 @@ void MyMesh::loadTelemetryHistoryTxPrefs() {
   File file = openFloodSettingsRead(_fs, TELEMETRY_HISTORY_TX_PREFS_FILE);
   if (!file) return;
 
-  uint8_t magic[4];
+  uint8_t magic[4] = {};
   uint8_t enabled = 0;
   uint8_t path_len = OUT_PATH_UNKNOWN;
   uint8_t interval_days = TELEMETRY_HISTORY_TX_DEFAULT_DAYS;
-  uint8_t path[MAX_PATH_SIZE];
-  bool valid = file.read(magic, sizeof(magic)) == sizeof(magic)
-      && memcmp(magic, "THT2", sizeof(magic)) == 0
-      && file.read(&enabled, sizeof(enabled)) == sizeof(enabled)
-      && file.read(&path_len, sizeof(path_len)) == sizeof(path_len)
-      && file.read(&interval_days, sizeof(interval_days))
-             == sizeof(interval_days)
-      && file.read(path, sizeof(path)) == sizeof(path);
+  uint8_t path[MAX_PATH_SIZE] = {};
+  bool valid = file.read(magic, sizeof(magic)) == sizeof(magic);
+  const bool legacy = valid && memcmp(magic, "THT2", sizeof(magic)) == 0;
+  if (legacy) {
+    valid = file.read(&enabled, sizeof(enabled)) == sizeof(enabled)
+        && file.read(&path_len, sizeof(path_len)) == sizeof(path_len)
+        && file.read(&interval_days, sizeof(interval_days)) == sizeof(interval_days)
+        && file.read(path, sizeof(path)) == sizeof(path);
+  } else if (valid && memcmp(magic, "THT3", sizeof(magic)) == 0) {
+    valid = file.read(&enabled, sizeof(enabled)) == sizeof(enabled)
+        && file.read(&interval_days, sizeof(interval_days)) == sizeof(interval_days);
+  } else {
+    valid = false;
+  }
   file.close();
 
   valid = valid && enabled <= 1 && interval_days >= 1
       && interval_days <= TELEMETRY_HISTORY_TX_MAX_DAYS;
-  if (enabled != 0) {
+  if (legacy && enabled != 0) {
     valid = valid && path_len != OUT_PATH_UNKNOWN
         && path_len != OUT_PATH_FORCE_FLOOD
         && mesh::Packet::isValidPathLen(path_len);
@@ -12289,9 +12270,11 @@ void MyMesh::loadTelemetryHistoryTxPrefs() {
   if (!valid) return;
 
   telemetry_history_tx_enabled = enabled != 0;
-  telemetry_history_tx_path_len = path_len;
   telemetry_history_tx_interval_days = interval_days;
-  memcpy(telemetry_history_tx_path, path, sizeof(telemetry_history_tx_path));
+  if (legacy && path_len != OUT_PATH_UNKNOWN
+      && mesh::Packet::isValidPathLen(path_len)) {
+    _cli.adoptLegacyDataTxPath(path, path_len);
+  }
 }
 
 bool MyMesh::saveTelemetryHistoryTxPrefs() {
@@ -12299,19 +12282,13 @@ bool MyMesh::saveTelemetryHistoryTxPrefs() {
   File file = openFloodSettingsWrite(_fs, TELEMETRY_HISTORY_TX_PREFS_FILE);
   if (!file) return false;
 
-  const uint8_t magic[4] = {'T', 'H', 'T', '2'};
+  const uint8_t magic[4] = {'T', 'H', 'T', '3'};
   const uint8_t enabled = telemetry_history_tx_enabled ? 1 : 0;
   bool success = file.write(magic, sizeof(magic)) == sizeof(magic)
       && file.write(&enabled, sizeof(enabled)) == sizeof(enabled)
-      && file.write(&telemetry_history_tx_path_len,
-                    sizeof(telemetry_history_tx_path_len))
-             == sizeof(telemetry_history_tx_path_len)
       && file.write(&telemetry_history_tx_interval_days,
                     sizeof(telemetry_history_tx_interval_days))
-             == sizeof(telemetry_history_tx_interval_days)
-      && file.write(telemetry_history_tx_path,
-                    sizeof(telemetry_history_tx_path))
-             == sizeof(telemetry_history_tx_path);
+             == sizeof(telemetry_history_tx_interval_days);
   file.close();
   return success;
 }
@@ -12321,9 +12298,11 @@ void MyMesh::formatTelemetryHistoryTxStatus(char* reply,
   char source_id[mesh::TelemetryHistory::BINARY_SOURCE_ID_SIZE * 2U + 1U];
   mesh::Utils::toHex(source_id, self_id.pub_key,
                      mesh::TelemetryHistory::BINARY_SOURCE_ID_SIZE);
+  const uint8_t* data_path = NULL;
+  uint8_t data_path_len = OUT_PATH_UNKNOWN;
+  const bool have_path = _cli.getDataTxPath(data_path, data_path_len);
   char path_reply[132];
-  formatPathReply(telemetry_history_tx_path,
-                  telemetry_history_tx_path_len,
+  formatPathReply(data_path, have_path ? data_path_len : OUT_PATH_UNKNOWN,
                   path_reply, sizeof(path_reply));
   snprintf(reply, reply_size, "> %s%ud id=%s i2c=%u p=%s",
            telemetry_history_tx_enabled ? "on " : "off ",
@@ -12336,6 +12315,9 @@ void MyMesh::formatTelemetryHistoryTxStatus(char* reply,
 
 bool MyMesh::sendTelemetryHistorySnapshot(
     mesh::TelemetryHistory::Series series) {
+  const uint8_t* data_path = NULL;
+  uint8_t data_path_len = OUT_PATH_UNKNOWN;
+  if (!_cli.getDataTxPath(data_path, data_path_len)) return false;
   uint8_t payload[mesh::TelemetryHistory::BINARY_PAYLOAD_SIZE];
   const size_t payload_len = series == mesh::TelemetryHistory::SERIES_VOLTAGE
       ? telemetry_history.formatVoltageBinarySnapshot(
@@ -12346,12 +12328,14 @@ bool MyMesh::sendTelemetryHistorySnapshot(
 
   mesh::Packet* packet = createRawData(payload, payload_len);
   if (packet == NULL) return false;
-  return sendDirect(packet, telemetry_history_tx_path,
-                    telemetry_history_tx_path_len);
+  return sendDirect(packet, data_path, data_path_len);
 }
 
 bool MyMesh::sendExternalVoltageHistorySnapshot(uint8_t channel_index,
                                                 uint8_t chunk_index) {
+  const uint8_t* data_path = NULL;
+  uint8_t data_path_len = OUT_PATH_UNKNOWN;
+  if (!_cli.getDataTxPath(data_path, data_path_len)) return false;
   const uint8_t channel =
       external_voltage_history.populatedChannelAt(channel_index);
   if (channel == 0) return false;
@@ -12365,8 +12349,7 @@ bool MyMesh::sendExternalVoltageHistorySnapshot(uint8_t channel_index,
 
   mesh::Packet* packet = createRawData(payload, payload_len);
   if (packet == NULL) return false;
-  return sendDirect(packet, telemetry_history_tx_path,
-                    telemetry_history_tx_path_len);
+  return sendDirect(packet, data_path, data_path_len);
 }
 
 void MyMesh::serviceTelemetryHistoryTx() {
@@ -12383,6 +12366,9 @@ void MyMesh::serviceTelemetryHistoryTx() {
                < mesh::TelemetryHistory::BINARY_MAX_SAMPLES) {
       return;
     }
+    const uint8_t* data_path = NULL;
+    uint8_t data_path_len = OUT_PATH_UNKNOWN;
+    if (!_cli.getDataTxPath(data_path, data_path_len)) return;
     telemetry_history_tx_manual = false;
     telemetry_history_tx_resume_uptime = 0;
     telemetry_history_tx_pending = TELEMETRY_HISTORY_TX_TEMPERATURE

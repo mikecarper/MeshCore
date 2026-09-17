@@ -149,6 +149,7 @@ static bool isGpioConfig(const char* config) {
 
 void CommonCLI::loop() {
   _radio_profiles.loop();
+  loopManagement();
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   _user_gpio.loop();
   UserGpio::Completion completion;
@@ -2559,6 +2560,7 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
+    if (handleManagementCommand(command, reply)) return;
     if (mesh::wireless::control().handle(command, reply, 160, millis(),
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
     if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;

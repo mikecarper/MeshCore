@@ -15,6 +15,10 @@ public:
   void setTransportAvailable(bool available) {
     setGpsTelemetryTransportAvailable(available);
   }
+  void setLocationAccessAvailable(bool available) {
+    setTelemetryLocationAccessAvailable(available);
+  }
+  void service(unsigned long now) { loopGpsTelemetry(now); }
   bool receiverRequired(unsigned long now) const {
     return gpsTelemetryReceiverRequired(now);
   }
@@ -73,6 +77,30 @@ TEST(GpsTransportOwnership, UserPreferenceSurvivesBlockAndRestartsOnRelease) {
   sensors.setTransportAvailable(true);
   EXPECT_TRUE(sensors.active);
   EXPECT_EQ(2, sensors.starts);
+}
+
+TEST(GpsTransportOwnership, UserOffCancelsTelemetryAcquisitionAndHold) {
+  resetArduinoMock();
+  TestGpsSensorManager sensors;
+  CayenneLPP telemetry(64);
+
+  sensors.setLocationAccessAvailable(true);
+  EXPECT_FALSE(sensors.queryLocation(telemetry));
+  ASSERT_TRUE(sensors.active);
+  ASSERT_TRUE(sensors.receiverRequired(millis()));
+
+  // This is the path used by `gps off`/`set gps off`. It must immediately
+  // override a telemetry acquisition and the request's two-hour hold.
+  sensors.setUserEnabled(false);
+  EXPECT_FALSE(sensors.active);
+  EXPECT_FALSE(sensors.receiverRequired(millis()));
+  EXPECT_EQ(1, sensors.stops);
+
+  // Location-access policy may still be enabled, but the scheduled refresh
+  // must not immediately turn the receiver back on in the next loop.
+  sensors.service(millis());
+  EXPECT_FALSE(sensors.active);
+  EXPECT_EQ(1, sensors.starts);
 }
 
 TEST(GpsTransportOwnership, LastGoodCacheSurvivesTemporaryUartOwnership) {

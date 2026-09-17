@@ -1,4 +1,6 @@
 #include "Mesh.h"
+#include <helpers/ManagementReport.h>
+#include <SHA256.h>
 #include "helpers/ota/OtaFormat.h"   // request types used by TempRadio relay-pressure tracking
 //#include <Arduino.h>
 #if defined(ENABLE_OTA)
@@ -1143,6 +1145,18 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
     case PAYLOAD_TYPE_GRP_TXT: {
       if (!hasValidEncryptedPayloadLength(pkt->payload_len, 1)) {
         MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete group packet", getLogDateTime());
+        break;
+      }
+
+      // MGR1 is a plaintext management extension, not an encrypted channel
+      // datagram. Keep the legacy group payload length shape for opaque relay
+      // compatibility. Recognize it before any channel decryption/delivery.
+      if (pkt->getPayloadType() == PAYLOAD_TYPE_GRP_DATA &&
+          management::validPage(pkt->payload, pkt->payload_len, true)) {
+        if (!_tables->wasSeen(pkt)) {
+          _tables->markSeen(pkt);
+          action = routeRecvPacket(pkt);
+        }
         break;
       }
 
@@ -2963,6 +2977,42 @@ bool Mesh::sendOtaFlood(Packet* packet, uint32_t delay_millis) {
   return sendPacket(packet, otaTrafficPriority(packet->payload, packet->payload_len), delay_millis);
 }
 #endif
+
+bool Mesh::sendManagementData(Packet* packet, bool flood, const uint8_t* path,
+                               uint8_t path_len, uint8_t flood_hash_size,
+                               const uint8_t* scope_key) {
+  if (!packet) return false;
+  bool scope_valid = false;
+  if (scope_key) {
+    for (unsigned i = 0; i < 16; ++i) scope_valid |= scope_key[i] != 0;
+  }
+  if (isAnyTempRadioActive() || packet->getPayloadType() != PAYLOAD_TYPE_RAW_CUSTOM ||
+      !management::validPage(packet->payload, packet->payload_len) ||
+      (flood && !scope_valid) ||
+      (!flood && (!Packet::isValidPathLen(path_len) || ((path_len & 63) && !path)))) {
+    releasePacket(packet); return false;
+  }
+  packet->header = (PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT)
+      | (flood ? ROUTE_TYPE_TRANSPORT_FLOOD : ROUTE_TYPE_DIRECT);
+  const size_t padded = management::floodSize(packet->payload_len);
+  memset(packet->payload + packet->payload_len, 0, padded - packet->payload_len);
+  packet->payload_len = padded;
+  if (flood) {
+    SHA256 sha;
+    sha.resetHMAC(scope_key, 16);
+    const uint8_t type = packet->getPayloadType();
+    sha.update(&type, 1); sha.update(packet->payload, packet->payload_len);
+    sha.finalizeHMAC(scope_key, 16,
+                     reinterpret_cast<uint8_t*>(&packet->transport_codes[0]), 2);
+    if (packet->transport_codes[0] == 0) ++packet->transport_codes[0];
+    else if (packet->transport_codes[0] == 0xffff) --packet->transport_codes[0];
+    packet->transport_codes[1] = 0;
+    packet->setPathHashSizeAndCount(flood_hash_size >= 1 && flood_hash_size <= 3 ? flood_hash_size : 1, 0);
+  }
+  else packet->path_len = Packet::copyPath(packet->path, path, path_len);
+  _tables->markSent(packet);
+  return sendPacket(packet, 3, 1000);
+}
 
 bool Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size) {
   if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {

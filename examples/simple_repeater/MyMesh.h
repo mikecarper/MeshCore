@@ -536,8 +536,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   mesh::TelemetryHistory telemetry_history;
   mesh::ExternalVoltageHistory external_voltage_history;
   bool telemetry_history_tx_enabled;
-  uint8_t telemetry_history_tx_path[MAX_PATH_SIZE];
-  uint8_t telemetry_history_tx_path_len;
   uint8_t telemetry_history_tx_interval_days;
   uint8_t telemetry_history_tx_pending;
   bool telemetry_history_tx_manual;
@@ -978,6 +976,13 @@ public:
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
   const char* getRole() override { return FIRMWARE_ROLE; }
+  bool managementNtpSynced() const override {
+#ifdef WITH_MQTT_BRIDGE
+    return mqtt_bridge && mqtt_bridge->hasFreshNtpThisBoot();
+#else
+    return false;
+#endif
+  }
   const char* getNodeName() { return _prefs.node_name; }
   NodePrefs* getNodePrefs() {
     return &_prefs;

@@ -1016,6 +1016,7 @@ void SensorMesh::begin(FILESYSTEM* fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+  _cli.beginManagement(*this, _fs);
 
   acl.load(_fs, self_id);
   region_map.load(_fs);

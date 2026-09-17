@@ -453,6 +453,8 @@ struct LegacyObserverTail {
 
 class CommonCLICallbacks {
 public:
+  // True only after an actual NTP response this boot, not a plausible RTC.
+  virtual bool managementNtpSynced() const { return false; }
   virtual mesh::Radio* getProfileRadio() { return nullptr; }
   virtual mesh::FloodAdvertLimiter* getFloodAdvertLimiter() { return nullptr; }
   // Ordinary CommonCLI setters mutate NodePrefs and therefore save only the
@@ -729,7 +731,19 @@ class LegacyUpgradeGate;
 }
 #endif
 
+namespace mesh {
+class ManagementReporter;
+struct DataRouteState;
+}
 class CommonCLI {
+  mesh::ManagementReporter* _management = nullptr;
+  mesh::DataRouteState* _data_route = nullptr;
+  mesh::Mesh* _management_mesh = nullptr;
+  FILESYSTEM* _management_fs = nullptr;
+  uint64_t _management_uptime_ms = 0;
+  uint32_t _management_last_ms = 0;
+  bool handleManagementCommand(char* command, char* reply);
+  bool handleDataTxCommand(char* command, char* reply);
   mesh::RTCClock* _rtc;
   NodePrefs* _prefs;
   CommonCLICallbacks* _callbacks;
@@ -802,6 +816,17 @@ class CommonCLI {
   bool handleObserverCommand(uint32_t sender_timestamp, char* command, char* reply);
 
 public:
+  void beginManagement(mesh::Mesh& mesh, FILESYSTEM* fs);
+  void loopManagement();
+  // Shared delivery configuration for scheduled/background data producers.
+  // Fresh installs use a zero-hop direct path and automatic region scope;
+  // producers retain independent disabled-by-default schedules.
+  bool getDataTxPath(const uint8_t*& path, uint8_t& path_len) const;
+  bool resolveDataTxScope(TransportKey& scope, char* resolved_name = nullptr,
+                          size_t resolved_name_size = 0,
+                          bool* ambiguous = nullptr) const;
+  bool adoptLegacyDataTxPath(const uint8_t* path, uint8_t path_len);
+  bool setDataTxPath(const char* spec, char* reply, size_t reply_size);
   bool saveCommonPrefs();
   bool savePrimaryRadioParams(float freq, float bw, uint8_t sf, uint8_t cr,
                               uint16_t preamble);

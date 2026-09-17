@@ -607,6 +607,11 @@ public:
   Packet* createPathReturn(const uint8_t* dest_hash, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createPathReturn(const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createRawData(const uint8_t* data, size_t len);
+  // Background management traffic, without direct/flood automatic retries.
+  // Takes ownership on success AND failure, like sendDirect/sendFlood.
+  bool sendManagementData(Packet* packet, bool flood, const uint8_t* path,
+                          uint8_t path_len, uint8_t flood_hash_size = 1,
+                          const uint8_t* scope_key = nullptr);
 
 #if defined(ENABLE_OTA)
   // Build a PAYLOAD_TYPE_OTA packet from raw OTA message bytes (route set by sendOtaFlood).

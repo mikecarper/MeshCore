@@ -56,6 +56,24 @@ void SensorManager::maybeStopGpsForTelemetry(unsigned long now) {
   }
 }
 
+void SensorManager::cancelGpsTelemetryDemand(unsigned long now) {
+  // An explicit user-off request must win over work started by an earlier
+  // telemetry query.  Otherwise the acquisition/hold state can keep a GPS
+  // powered for up to two hours after the user turned it off.
+  gps_acquiring = false;
+  gps_acquire_has_fix = false;
+  gps_hold_until = 0;
+  gps_acquire_started_at = 0;
+  gps_stable_started_at = 0;
+  gps_weighted_lat = 0;
+  gps_weighted_lon = 0;
+  gps_weighted_altitude = 0;
+  gps_weight_sum = 0;
+  gps_weight_count = 0;
+  // Do not let the background cache refresh immediately undo the command.
+  gps_next_cache_update_at = now + GPS_TELEMETRY_CACHE_INTERVAL_SEC * 1000UL;
+}
+
 void SensorManager::beginGpsTelemetryAcquisition(unsigned long now) {
   if (!gps_transport_available || !telemetryGpsDetected() || gps_acquiring) return;
 
@@ -162,6 +180,7 @@ void SensorManager::setGpsTelemetryUserEnabled(bool enabled) {
     if (gps_transport_available && telemetryGpsDetected()
         && !telemetryGpsActive()) telemetryGpsStart();
   } else {
+    cancelGpsTelemetryDemand(now);
     maybeStopGpsForTelemetry(now);
   }
 }

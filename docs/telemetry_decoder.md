@@ -20,19 +20,19 @@ observer that will receive and upload the raw packets. Use `direct` when the
 observer is a zero-hop neighbor:
 
 ```text
-set telemetry.tx direct
+set data.tx path direct
 send telemetry.tx now
 ```
 
 For a routed observer, provide its comma-separated hop hashes instead:
 
 ```text
-set telemetry.tx A1B2,C3D4
+set data.tx path A1B2,C3D4
 send telemetry.tx now
 ```
 
-Configuring the route also enables the default two-day schedule. To keep the
-route but use it only for manual tests, turn off the schedule before sending:
+The shared route does not enable telemetry. Automatic telemetry is off on a
+fresh install; to explicitly keep the route manual-only before sending:
 
 ```text
 set telemetry.tx schedule off

@@ -597,6 +597,11 @@ The feature is omitted from flash-constrained STM32 repeater and room images.
 - `set telemetry.tx <off|direct|path>`
 - `set telemetry.tx schedule <off|1-30d>`
 - `send telemetry.tx now`
+- `get data.tx`
+- `get data.tx path`
+- `set data.tx path <direct|none|path>`
+- `get data.tx region`
+- `set data.tx region <auto|default|none|name>`
 
 **Parameters:**
 
@@ -619,12 +624,13 @@ The feature is omitted from flash-constrained STM32 repeater and room images.
   needed to leave at least 2048 bytes free and replies with the days and pages
   actually available. For example, a request can return
   `OK - telemetry.gps days=18 pages=36 requested=30`.
-- `direct`: Send the binary temperature and voltage snapshots zero-hop to a
-  neighboring MQTT observer.
+- `direct`: Set the shared `data.tx` path to zero-hop and, in the legacy
+  combined command, enable the telemetry schedule.
 - `path`: A comma-separated direct route using the same one-, two-, or
   three-byte hop hashes accepted by `set outpath`.
-- `schedule`: Automatic interval in whole days. The default is `2d`; `off`
-  retains the configured direct path for manual test sends.
+- `schedule`: Automatic interval in whole days. Automatic transmission is off
+  on a fresh install. The retained cadence defaults to `2d`; `off` retains the
+  shared route for manual test sends.
 
 Local serial and remote administrator CLI sessions can read the history on
 both roles. Collection uses the MCU temperature, battery voltage, external I2C
@@ -645,10 +651,13 @@ Use the browser-based [Telemetry history decoder](telemetry_decoder.md) to
 turn a reply into a timestamped table or downloadable CSV without uploading
 the data.
 
-`telemetry.tx` is disabled by default. Its schedule and direct path are stored
-across reboots. Configuring `direct` or a routed path enables the default `2d`
-schedule; `set telemetry.tx schedule` changes it from one through 30 days or
-turns it off. An automatic run waits until 165 half-hour positions are
+`telemetry.tx` is disabled by default. Its enabled state and cadence are stored
+separately from the shared `data.tx` path and region. `data.tx` defaults to
+zero-hop `direct` plus `region=auto`, but it does not enable telemetry or any
+other producer. For compatibility, `set telemetry.tx direct|path` updates the
+shared path and enables the default `2d` schedule; new configuration should use
+`set data.tx path ...` followed by `set telemetry.tx schedule ...`.
+An automatic run waits until 165 half-hour positions are
 available, then sends one maximum-size temperature packet, one maximum-size
 battery-voltage packet, and up to three `IVB1` packets for every populated I2C
 voltage channel. GPS is never included in this raw transmission. The history

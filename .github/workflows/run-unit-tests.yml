@@ -10,6 +10,20 @@ on:
   workflow_dispatch:
 
 jobs:
+  management-reports:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install real crypto implementations for cross-language tests
+        run: |
+          python3 -m pip install platformio pycryptodome==3.23.0
+          pio pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/management-test
+      - name: Verify protocol, encryption, scheduling and MQTT decoding
+        run: python3 -B test/test_management_report.py -v
+
   stm32-companion-smoke:
     runs-on: ubuntu-latest
     steps:
