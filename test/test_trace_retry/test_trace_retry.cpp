@@ -196,8 +196,12 @@ TEST(ManagementRouting, FloodForwardingDoesNotNeedAKeyAndStillHonorsFilters) {
   mesh.forwardFloods = true;
   mesh::Packet p;
   p.header = (PAYLOAD_TYPE_GRP_DATA << PH_TYPE_SHIFT) | ROUTE_TYPE_FLOOD;
-  p.setPathHashSizeAndCount(1, 0); memcpy(p.payload, "MGR1", 4); p.payload[79] = 1;
+  p.setPathHashSizeAndCount(1, 0);
   p.payload_len = mesh::management::floodSize(mesh::management::HEADER + mesh::management::TAG);
+  memset(p.payload, 0, p.payload_len);
+  memcpy(p.payload, "MGR1", 4);
+  p.payload[79] = 1; // one page containing zero ACL entries
+  ASSERT_TRUE(mesh::management::validPage(p.payload, p.payload_len, true));
   EXPECT_NE(ACTION_RELEASE, mesh.receivePacket(&p));
   EXPECT_FALSE(mesh.groupPacketObserved); // never delivered as decrypted channel data
   mesh.rejectFloods = true;

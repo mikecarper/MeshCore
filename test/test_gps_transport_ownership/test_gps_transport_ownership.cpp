@@ -18,6 +18,9 @@ public:
   void setLocationAccessAvailable(bool available) {
     setTelemetryLocationAccessAvailable(available);
   }
+  void setStopAfterFix(bool enabled) {
+    setGpsTelemetryStopAfterFix(enabled);
+  }
   void service(unsigned long now) { loopGpsTelemetry(now); }
   bool receiverRequired(unsigned long now) const {
     return gpsTelemetryReceiverRequired(now);
@@ -103,6 +106,29 @@ TEST(GpsTransportOwnership, UserOffCancelsTelemetryAcquisitionAndHold) {
   EXPECT_EQ(1, sensors.starts);
 }
 
+TEST(GpsTransportOwnership, RepeaterTelemetryStopsAfterFirstFix) {
+  resetArduinoMock();
+  TestGpsSensorManager sensors;
+  CayenneLPP telemetry(64);
+
+  sensors.setStopAfterFix(true);
+  EXPECT_FALSE(sensors.queryLocation(telemetry));
+  ASSERT_TRUE(sensors.active);
+  ASSERT_TRUE(sensors.receiverRequired(millis()));
+
+  sensors.acceptFix(47.61f, -122.33f, 125.0f, millis());
+  EXPECT_FALSE(sensors.active);
+  EXPECT_FALSE(sensors.receiverRequired(millis()));
+  EXPECT_EQ(1, sensors.starts);
+  EXPECT_EQ(1, sensors.stops);
+
+  // The next request receives the cached fix without another GPS wake.
+  EXPECT_TRUE(sensors.queryLocation(telemetry));
+  EXPECT_EQ(1, telemetry.gps_count);
+  EXPECT_FALSE(sensors.active);
+  EXPECT_EQ(1, sensors.starts);
+}
+
 TEST(GpsTransportOwnership, LastGoodCacheSurvivesTemporaryUartOwnership) {
   resetArduinoMock();
   TestGpsSensorManager sensors;
@@ -112,6 +138,9 @@ TEST(GpsTransportOwnership, LastGoodCacheSurvivesTemporaryUartOwnership) {
   sensors.acceptFix(47.61f, -122.33f, 125.0f, millis());
   g_mock_millis += 31000;
   sensors.acceptFix(47.61f, -122.33f, 125.0f, millis());
+  // Non-repeater roles retain the normal two-hour request hold.
+  EXPECT_TRUE(sensors.active);
+  EXPECT_TRUE(sensors.receiverRequired(millis()));
   ASSERT_TRUE(sensors.queryLocation(telemetry));
   ASSERT_EQ(1, telemetry.gps_count);
 

@@ -4288,6 +4288,10 @@ Companion reports `on` or `off`; infrastructure includes receiver details:
 - `off` when the GPS hardware is disabled
 - `on, {active|deactivated}, {fix|no fix}, {sat count} sats` when the GPS hardware is enabled
 
+On repeaters, `gps off` cancels any acquisition already in progress. A later
+authorized location-telemetry request may wake the receiver, but only until its
+first valid fix is cached; the receiver then powers down again.
+
 ---
 
 #### Sync this node's clock with GPS time

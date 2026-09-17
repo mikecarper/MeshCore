@@ -204,6 +204,9 @@ void setup() {
 #endif
 
 #if ENV_INCLUDE_GPS == 1
+  // With GPS manually off, an authorized location telemetry request may wake
+  // the receiver only until the first valid fix has been cached.
+  sensors.setGpsTelemetryStopAfterFix(true);
   if (sensors.getLocationProvider() != NULL) {
     // Keep GPS awake for at most 10 minutes, then asleep for one day.
     sensors.getLocationProvider()->setPowerSavingProfile(600, 86400);

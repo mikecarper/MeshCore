@@ -18,6 +18,7 @@ class SensorManager {
   bool gps_location_access_available = false;
   bool gps_transport_available = true;
   bool gps_user_enabled = false;
+  bool gps_stop_after_fix = false;
   bool gps_acquiring = false;
   bool gps_acquire_has_fix = false;
   float gps_cache_lat = 0;
@@ -100,6 +101,13 @@ public:
   }
   virtual void loop() { }
   virtual void setTelemetryLocationAccessAvailable(bool available);
+  void setGpsTelemetryStopAfterFix(bool enabled) {
+#if ENV_INCLUDE_GPS
+    gps_stop_after_fix = enabled;
+#else
+    (void)enabled;
+#endif
+  }
   virtual int getNumSettings() const { return 0; }
   virtual const char* getSettingName(int i) const { return NULL; }
   virtual const char* getSettingValue(int i) const { return NULL; }

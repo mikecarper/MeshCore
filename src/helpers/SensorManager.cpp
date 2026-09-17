@@ -115,6 +115,18 @@ bool SensorManager::queryGpsTelemetry(uint8_t requester_permissions, CayenneLPP&
                      gps_cache_altitude);
     return true;
   }
+  if (gps_stop_after_fix && !gps_user_enabled) {
+    // Repeaters acquire only when the cached position is stale. The request
+    // returns without GPS while acquisition is in progress; the next request
+    // can use the cached fix without waking the receiver again.
+    if (!gpsTelemetryCacheFresh(now) && !gps_acquiring) {
+      beginGpsTelemetryAcquisition(now);
+    }
+    if (!gpsTelemetryCacheFresh(now)) return false;
+    telemetry.addGPS(TELEM_CHANNEL_SELF, gps_cache_lat, gps_cache_lon,
+                     gps_cache_altitude);
+    return true;
+  }
   gps_hold_until = now + GPS_TELEMETRY_HOLD_SEC * 1000UL;
   if (!telemetryGpsActive()) telemetryGpsStart();
   if (!gpsTelemetryCacheFresh(now) && !gps_acquiring) beginGpsTelemetryAcquisition(now);
@@ -138,6 +150,11 @@ void SensorManager::processGpsTelemetryFix(float lat, float lon, float altitude,
     gps_stable_started_at = now;
     gps_stable_origin_lat = lat;
     gps_stable_origin_lon = lon;
+    if (gps_stop_after_fix && !gps_user_enabled) {
+      updateGpsTelemetryCache(lat, lon, altitude, now);
+      finishGpsTelemetryAcquisition(now, false);
+      return;
+    }
   }
 
   static const float STABLE_RADIUS_M2 =

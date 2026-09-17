@@ -31,16 +31,25 @@ The cache behavior is:
 - Omit GPS from telemetry if there is no fix or if the cached fix is more than
   12 hours old.
 
-When a telemetry request asks for location, GPS is kept on for 2 hours after the
-latest location request. During that hold window, later location telemetry
-requests can use fresh GPS data as soon as valid fixes are available.
+When a telemetry request asks for location, GPS is normally kept on for 2 hours
+after the latest location request. During that hold window, later location
+telemetry requests can use fresh GPS data as soon as valid fixes are available.
 
 If GPS is manually enabled, it stays on and valid fixes continue to update the
 cache.
 
 If no contact or ACL client can receive location telemetry, the scheduled
-2-hour refresh does not run. A real location telemetry request still turns GPS
-on for the 2-hour hold window, and manual GPS-on still keeps the cache updated.
+2-hour refresh does not run. A real location telemetry request can still turn
+GPS on, and manual GPS-on still keeps the cache updated.
+
+## Repeater Nodes
+
+Repeaters use a shorter on-demand policy when GPS is manually off. An authorized
+location-telemetry request wakes the receiver only when its cached position is
+stale. The first valid fix is cached and the receiver immediately powers down;
+the next request can return that fix without another wake. `gps off` also
+cancels an acquisition already in progress. An acquisition that never obtains a
+fix retains the normal 15-minute safety timeout.
 
 ## Companion/Client Nodes
 
@@ -55,15 +64,15 @@ Location telemetry is sent only when the requester's effective telemetry
 permissions include location. Those permissions are derived from the companion
 telemetry mode settings and contact flags.
 
+No new phone app behavior is required. Existing clients see the existing GPS
+telemetry field when it is present.
+
 The scheduled GPS cache refresh runs only when at least one stored contact has
 effective location telemetry access:
 
 - `location: allow all` with at least one stored contact
 - `location: allow flags` with at least one stored contact whose flags include
   location
-
-No new phone app behavior is required. Existing clients see the existing GPS
-telemetry field when it is present.
 
 ## Sensor Nodes
 
