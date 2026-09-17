@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/preamble_detection_investigation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/management_reports/">
       
       
-        <link rel="prev" href="../pr7_review_validation/">
+        <link rel="prev" href="../lora_ota_automation/">
       
       
-        <link rel="next" href="../preset_test/">
+        <link rel="next" href="../mbedtls-tls-footprint/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Off-channel preamble investigation - MeshCore Docs</title>
+        <title>Management reports (MGR1) - MeshCore Docs</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#off-channel-preamble-investigation" class="md-skip">
+        <a href="#management-reports-mgr1" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Off-channel preamble investigation
+              Management reports (MGR1)
             
           </span>
         </div>
@@ -1259,10 +1259,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../management_reports/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management reports (MGR1)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1278,6 +1305,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routing-and-mqtt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routing and MQTT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#canonical-payload-little-endian" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Canonical payload (little endian)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cryptography" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cryptography
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1826,37 +1917,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Off-channel preamble investigation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../preamble_detection_investigation/" class="md-nav__link">
         
   
   
@@ -1872,92 +1936,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#controlled-experiment" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Controlled experiment
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Results
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-this-explains" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What this explains
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#follow-up-candidates-not-implemented-fixes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Follow-up candidates, not implemented fixes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#reproduction-provenance-and-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reproduction, provenance, and checks
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#device-handoff" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Device handoff
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2910,10 +2888,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#controlled-experiment" class="md-nav__link">
+  <a href="#cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Controlled experiment
+        CLI
       
     </span>
   </a>
@@ -2921,10 +2899,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#results" class="md-nav__link">
+  <a href="#routing-and-mqtt" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Results
+        Routing and MQTT
       
     </span>
   </a>
@@ -2932,10 +2910,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-this-explains" class="md-nav__link">
+  <a href="#canonical-payload-little-endian" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What this explains
+        Canonical payload (little endian)
       
     </span>
   </a>
@@ -2943,32 +2921,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#follow-up-candidates-not-implemented-fixes" class="md-nav__link">
+  <a href="#cryptography" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Follow-up candidates, not implemented fixes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#reproduction-provenance-and-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reproduction, provenance, and checks
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#device-handoff" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Device handoff
+        Cryptography
       
     </span>
   </a>
@@ -2992,7 +2948,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/preamble_detection_investigation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/management_reports.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -3000,205 +2956,307 @@
   
 
 
-<h1 id="off-channel-preamble-investigation">Off-channel preamble investigation</h1>
-<p>Measured 2026-09-14. <strong>The SF8 off-channel preamble indication reproduces with
-a stationary, fully initialized receiver, without profile hopping or fast RX
-reuse.</strong> Both boards reproduce it when their transmitter/receiver roles are
-reversed. This is evidence of transmitter-associated off-channel detection in
-this close-range bench setup, not evidence that the channel jump needs more
-settling time.</p>
-<p>The earlier SF8 scan's long software guard explains its missed listening
-opportunity. The earlier SF6 scan miss remains unresolved: its trace had no
-preamble indication or guard hold. No production guard or acquisition policy
-was changed during this investigation.</p>
-<h2 id="controlled-experiment">Controlled experiment</h2>
-<ul>
-<li>XIAO ESP32-S3 + WIO SX1262 (COM31) and SenseCAP Indicator ESP32-S3 LoRa
-  (COM28). The Indicator RP2040 and RAK4631 were not modified.</li>
-<li>Receiver fixed at 910.000 MHz. Transmitter silent, on frequency, or offset
-  by +/-250, +/-500 or +/-1,000 kHz. These are offsets, not bandwidths.</li>
-<li>125 kHz bandwidth, SF8 or SF6, CR4/5, 32 programmed preamble symbols,
-  -9 dBm, one 16-byte sequence-tagged synthetic payload per transmitting case.</li>
-<li>Each case fully initializes both radios. RX uses ordinary <code>startReceive()</code>;
-  profile-switch optimization and experimental omission masks are disabled.
-  Buffered 8 MHz SPI remains enabled. No hops, warm-retune reuse, CAD, or
-  <code>isReceiving()</code> software guard runs during these controls.</li>
-<li>TX is prepared before RX is armed. Each receive window lasts 450 ms;
-  all eight cases are shuffled within each balanced round, seed 814910.
-  The full RX window completes even when an off-frequency packet is not
-  received, as expected. An on-frequency positive-control failure stops the
-  experiment. No RF retransmissions are used to repair a result.</li>
-<li>The HAL records actual outgoing <code>SetRfFrequency</code> bytes on both boards,
-  and the frequency word present at <code>SetTx</code>. The host verifies these words
-  against the requested frequencies. This checks commands sent to the chip,
-  not an independent measurement of the emitted RF spectrum.</li>
-<li>Existing IRQ replies are observed and IRQs additionally polled at a nominal
-  64 us interval. Events are buffered in RAM; timestamps are software
-  observations, not synchronized RF arrival times. Unknown payload contents
-  are not exported.</li>
-</ul>
-<p>The three completed matrices contain <strong>128 windows: 112 transmitted probes
-and 16 silent controls</strong>. A separate initial 450 ms receiver-only smoke check
-was also performed. These are bounded diagnostic controls, not another
-100-packets-per-channel capacity sweep.</p>
-<h2 id="results">Results</h2>
-<p>Entries below are windows with a preamble indication / tested windows. Each
-positive window reported one indication; latched IRQs do not count continuous
-detector activity or prove a valid packet.</p>
+<h1 id="management-reports-mgr1">Management reports (MGR1)</h1>
+<p>Available on repeater (including observer), room-server and sensor firmware.
+Companions/terminal-chat nodes and KISS modems do not originate these reports.
+Off by default. A management password and explicit enable are both required.
+No radio settings, existing preferences layout, or OTA authorization policy is
+changed by enabling reporting. This protocol does <strong>not</strong> authorize updates.</p>
+<h2 id="cli">CLI</h2>
+<p>Run through the existing local CLI or an authenticated administrator session:</p>
+<pre><code>get data.tx
+set data.tx path 1:12ab77
+set data.tx region auto
+set mgmt.password &lt;12-to-96-byte password&gt;
+set mgmt.direct 5
+set mgmt.flood 21
+set mgmt.enabled on
+get mgmt
+set mgmt.enabled off
+</code></pre>
+<p>Use a long randomly generated password. There is no password getter. Firmware
+stores the derived 32-byte key, not the plaintext password. That stored key is
+equivalent authority to decrypt reports and must also be protected. Passwords
+entered into terminal programs may still be recorded by those programs.</p>
+<p><code>data.tx</code> is the single shared route for management reports, telemetry history,
+and future scheduled data producers. Its fresh-install defaults are <code>path=direct</code>
+(zero hops) and <code>region=auto</code>; configuring it never enables a producer. Paths
+use <code>1:</code>, <code>2:</code> or <code>3:</code> followed by complete hop hashes without separators, or
+the comma-separated form accepted by <code>set outpath</code>. <code>none</code> removes the path.
+<code>get/set mgmt.path</code> remain compatibility aliases for <code>get/set data.tx path</code>.</p>
+<p><code>region=auto</code> uses the radio's configured default region when it is usable;
+otherwise it resolves the unique deepest flood-enabled entry in the region
+hierarchy. If equally deep candidates make that choice ambiguous, it resolves
+to nothing and no fallback is transmitted. <code>default</code> requires and follows
+<code>region default</code>; a region name pins that named scope. <code>none</code> disables scoped fallback. The
+resolved transport key is looked up when a report starts, so edits to the region
+definition take effect without rewriting <code>/data_tx</code>.</p>
+<p>The direct path leads to the receiver/uplink's vicinity; this broadcast-radio
+datagram has no private destination identity. The radio ID in the payload
+identifies the reporter.</p>
+<p>Direct and flood schedules are independently configurable and may each be
+turned off. Fresh settings are <code>direct=5d</code> and <code>flood=21d</code>; global reporting is
+still off until <code>mgmt.enabled on</code>. Direct accepts 5–90 days and requires the
+shared path. Flood accepts 21–90 days and requires a resolvable shared region.
+At least one route must remain active while reporting is enabled. The legacy
+<code>set mgmt.interval N</code> shorthand enables both, setting direct to <code>N</code> and flood to
+<code>max(21,N)</code>. No transmission is sent merely by configuring a password. Initial
+reporting waits for the configured schedules. Reports have deterministic
+per-radio/per-sequence jitter of up to an hour; pages are spaced at least a
+minute apart.</p>
+<p>The radio cannot know that an observer uploaded a packet to MQTT, so the flood
+schedule is deliberately independent of direct transmission. A region-scoped
+<code>TRANSPORT_FLOOD</code> is sent at its independently configured interval. An
+unresolved or ambiguous data region blocks that transmission
+rather than sending an unscoped flood. If direct and flood become due together,
+the flood is sent and replaces the redundant direct copy.
+Ordinary reports are never retried in a tight loop; a partial report gives up
+after an hour. Existing relay filters, hop limits and duty constraints still apply.</p>
+<p>Schedule state is atomically reserved <strong>before</strong> transmission, and checkpointed
+hourly. Timers use elapsed powered-on time rather than the RTC: clock corrections
+cannot create floods, and reboot does not clear the budget. Downtime is not
+credited; each reboot can delay a report by up to an additional hour. This is a
+deliberately conservative tradeoff for nodes with unreliable clocks. Off/on and
+password changes do not reset the flood limit. Corrupt/unreadable state or failed
+writes stop reporting; <code>get mgmt</code> shows <code>FAULT(no TX)</code> until storage is repaired
+and the radio restarted. <code>/management</code> and the shared <code>/data_tx</code> are versioned,
+CRC-protected, and replaced transactionally.</p>
+<p>Weekly history is collected once a minute while enabled. Hour-bucket extrema
+cover 7 days to 7 days + 1 hour (conservative boundary bucket). The first report
+after enable/reboot is marked partial where appropriate. Since-report extrema
+reset after all pages have been queued, retaining readings taken since the
+snapshot for the next report. These statistics are not durable;
+reboot loses the history, not the flood countdown. Temperature is MCU temperature,
+not ambient. Reporting does not wake GPS, start Wi-Fi, or initialize external OTA
+media. Unknown capabilities/readiness are explicitly distinguishable from false.
+History/snapshot working memory is allocated only when reporting is enabled and
+is bounded to 1.5 KiB, plus a small configuration object and temporary stack use.</p>
+<h2 id="routing-and-mqtt">Routing and MQTT</h2>
+<p>Both direct/path and flood reports use <strong><code>PAYLOAD_TYPE_GRP_DATA</code> (<code>0x06</code>)</strong>.
+The route bits independently select direct or flood. <code>MGR1</code> is an application
+extension with <strong>literally plaintext public fields</strong>, not a call to the ordinary
+encrypted <code>createGroupDatagram()</code> builder. A fixed public marker is not an owner
+or password-derived channel ID. There is no outer channel encryption.</p>
+<p>The body is padded with zeroes to a group-compatible length <code>3 + 16*n</code> (maximum
+179 bytes). Existing repeaters in the checked upstream implementation route group
+data without requiring a successful channel decryption. This fork recognizes the
+management envelope before ordinary channel processing. Reception of a management
+packet never exempts it from forwarding policy. Some third-party firmware may
+apply additional channel/layout policies; interoperability with every fork is
+not guaranteed. Packet logging/uplinks can capture it without the password.</p>
+<p><code>RAW_CUSTOM</code> (<code>0x0F</code>) is <strong>not used for reports</strong> because stock upstream does
+not flood-route it.</p>
+<p>The observer's existing MQTT <code>PACKET</code> JSON supplies the complete frame in <code>raw</code>.
+No broker configuration or password changes are necessary to capture a report.
+The decoder understands all four route forms, 1–3-byte hashes, scope transport
+codes, and duplicate copies heard by several uplinks:</p>
+<pre><code>python -m pip install -r tools/management/requirements.txt
+python tools/management/report.py --mqtt capture.jsonl
+</code></pre>
+<p>The password is prompted, not supplied as a process argument. Input may be JSONL
+or a JSON array of MQTT messages. Alternatively omit <code>--mqtt</code> for a JSON array
+of canonical payload hex strings. <code>--match-admin FULL_PUBLIC_KEY</code> in canonical
+payload mode matches a known administrator against the encrypted fingerprints.
+This is an offline capture decoder, not a broker subscriber or downlink service.</p>
+<h2 id="canonical-payload-little-endian">Canonical payload (little endian)</h2>
 <table>
 <thead>
 <tr>
-<th>Transmitter offset</th>
-<th style="text-align: right;">SF8, XIAO RX</th>
-<th style="text-align: right;">SF8, Indicator RX</th>
-<th style="text-align: right;">SF6, XIAO RX</th>
+<th style="text-align: right;">Offset</th>
+<th style="text-align: right;">Bytes</th>
+<th>Field</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Silent</td>
-<td style="text-align: right;">0/8</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">0/4</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">4</td>
+<td><code>MGR1</code></td>
 </tr>
 <tr>
-<td>On frequency</td>
-<td style="text-align: right;">8/8</td>
-<td style="text-align: right;">4/4</td>
-<td style="text-align: right;">4/4</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">16</td>
+<td>First 16 bytes of reporter public key</td>
 </tr>
 <tr>
-<td>-250 kHz</td>
-<td style="text-align: right;">8/8</td>
-<td style="text-align: right;">4/4</td>
-<td style="text-align: right;">1/4</td>
+<td style="text-align: right;">20</td>
+<td style="text-align: right;">4</td>
+<td>Persisted report sequence (never wraps; exhaustion stops TX)</td>
 </tr>
 <tr>
-<td>+250 kHz</td>
-<td style="text-align: right;">8/8</td>
-<td style="text-align: right;">4/4</td>
-<td style="text-align: right;">0/4</td>
+<td style="text-align: right;">24</td>
+<td style="text-align: right;">4</td>
+<td>RTC Unix timestamp; advisory, may be wrong</td>
 </tr>
 <tr>
-<td>-500 kHz</td>
-<td style="text-align: right;">5/8</td>
-<td style="text-align: right;">3/4</td>
-<td style="text-align: right;">0/4</td>
+<td style="text-align: right;">28</td>
+<td style="text-align: right;">4</td>
+<td>Firmware major/minor/patch/pre packed as mOTA version</td>
 </tr>
 <tr>
-<td>+500 kHz</td>
-<td style="text-align: right;">1/8</td>
-<td style="text-align: right;">3/4</td>
-<td style="text-align: right;">0/4</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">4</td>
+<td>Bootloader packed version, or unknown</td>
 </tr>
 <tr>
-<td>-1,000 kHz</td>
-<td style="text-align: right;">5/8</td>
-<td style="text-align: right;">4/4</td>
-<td style="text-align: right;">0/4</td>
+<td style="text-align: right;">36</td>
+<td style="text-align: right;">4</td>
+<td>EndF target ID</td>
 </tr>
 <tr>
-<td>+1,000 kHz</td>
-<td style="text-align: right;">5/8</td>
-<td style="text-align: right;">3/4</td>
-<td style="text-align: right;">0/4</td>
+<td style="text-align: right;">40</td>
+<td style="text-align: right;">8</td>
+<td>Complete mOTA delta-base body hash</td>
+</tr>
+<tr>
+<td style="text-align: right;">48</td>
+<td style="text-align: right;">4</td>
+<td>EndF image length</td>
+</tr>
+<tr>
+<td style="text-align: right;">52</td>
+<td style="text-align: right;">4</td>
+<td>Staging capacity; planning still checks actual package geometry</td>
+</tr>
+<tr>
+<td style="text-align: right;">56</td>
+<td style="text-align: right;">4</td>
+<td>OTA capability bits</td>
+</tr>
+<tr>
+<td style="text-align: right;">60</td>
+<td style="text-align: right;">2</td>
+<td>Uptime hours, saturated at 65535</td>
+</tr>
+<tr>
+<td style="text-align: right;">62</td>
+<td style="text-align: right;">4</td>
+<td>Weekly minimum mV, minimum °C, maximum °C</td>
+</tr>
+<tr>
+<td style="text-align: right;">66</td>
+<td style="text-align: right;">4</td>
+<td>Since-report extrema in the same format</td>
+</tr>
+<tr>
+<td style="text-align: right;">70</td>
+<td style="text-align: right;">1</td>
+<td>History coverage hours, capped at 168</td>
+</tr>
+<tr>
+<td style="text-align: right;">71</td>
+<td style="text-align: right;">1</td>
+<td>Interval days for this report's direct or flood schedule</td>
+</tr>
+<tr>
+<td style="text-align: right;">72</td>
+<td style="text-align: right;">1</td>
+<td>Role: 1 repeater, 2 room server, 3 sensor</td>
+</tr>
+<tr>
+<td style="text-align: right;">73</td>
+<td style="text-align: right;">1</td>
+<td>Compiled/detected capability bits</td>
+</tr>
+<tr>
+<td style="text-align: right;">74</td>
+<td style="text-align: right;">1</td>
+<td>Active status bits</td>
+</tr>
+<tr>
+<td style="text-align: right;">75</td>
+<td style="text-align: right;">1</td>
+<td>Mask of status bits whose state is known</td>
+</tr>
+<tr>
+<td style="text-align: right;">76</td>
+<td style="text-align: right;">2</td>
+<td>Validity/partial-history flags</td>
+</tr>
+<tr>
+<td style="text-align: right;">78</td>
+<td style="text-align: right;">1</td>
+<td>Zero-based page index</td>
+</tr>
+<tr>
+<td style="text-align: right;">79</td>
+<td style="text-align: right;">1</td>
+<td>Total pages (1–6)</td>
+</tr>
+<tr>
+<td style="text-align: right;">80</td>
+<td style="text-align: right;">1</td>
+<td>Unique ACL count (0–36)</td>
+</tr>
+<tr>
+<td style="text-align: right;">81</td>
+<td style="text-align: right;">1</td>
+<td>First ACL index in this page</td>
+</tr>
+<tr>
+<td style="text-align: right;">82</td>
+<td style="text-align: right;">1</td>
+<td>ACL entries on this page (0–6)</td>
+</tr>
+<tr>
+<td style="text-align: right;">83</td>
+<td style="text-align: right;">13 × count</td>
+<td>AES-SIV encrypted ACL entries</td>
+</tr>
+<tr>
+<td style="text-align: right;">after ACL</td>
+<td style="text-align: right;">16</td>
+<td>Full AES-SIV authentication tag</td>
+</tr>
+<tr>
+<td style="text-align: right;">after tag</td>
+<td style="text-align: right;">0–15</td>
+<td>Zero padding to group-compatible length; not part of canonical payload</td>
 </tr>
 </tbody>
 </table>
-<p>All <strong>16 on-frequency probes delivered valid payloads</strong>. None of the 96
-off-frequency probes delivered a valid payload. No silent control detected a
-preamble. Completed windows ended in RX mode with zero device errors; there
-were no foreign valid payloads or trace overflows.</p>
-<p>Most off-frequency detections stopped at <code>PreambleDetected</code> (0x0004). Four
-progressed further but failed CRC (<code>seen_irq=0x0056</code>: preamble, header, RxDone,
-CRC error): two at +250 kHz with XIAO RX, and one each at +250 and +1,000 kHz
-with Indicator RX. Therefore <strong>HeaderValid alone would not prove that these
-off-frequency indications are legitimate traffic</strong>.</p>
-<p>In forward SF8 on-frequency controls, instantaneous RSSI at the first preamble
-was -42 to -41 dBm; at +/-250 kHz it was -91 to -88 dBm. These are instantaneous
-receiver readings, not calibrated measurements of transmitted leakage or a
-sensitivity test. Board positions and attenuation were not systematically
-varied. Reversing roles reproduces the behavior but does not isolate its
-physical path.</p>
-<h2 id="what-this-explains">What this explains</h2>
-<p>The <a href="../sf8_5p1_trace_validation/">earlier SF8 four-channel scan</a> missed probe
-13 on 910.250 MHz after detecting a bare preamble while tuned to 910.000 MHz.
-The existing <code>CustomSX1262::isReceiving()</code> guard allowed 91 ms for preamble
-progression, consistent with the observed 92.257 ms from first preamble
-observation to the stale-bit clear. That produced approximately 102 ms total
-occupancy on the wrong channel and a 135.145 ms target-channel revisit gap.
-The programmed 32-symbol preamble lasted only 65.536 ms.</p>
-<p>The delayed retune itself took 550 us. These controls reproduce the suspect
-off-frequency indication with no retunes at all. Together the evidence
-supports <strong>off-channel acquisition plus a long guard hold</strong> as the SF8
-failure mechanism, rather than slow SPI or a demonstrated need for a longer
-post-jump delay. It does not independently prove the RF source of that one
-historical scan event.</p>
-<p>The controlled-transmitter association and quiet silent controls make random
-ambient RF alone an inadequate explanation of the repeated bench result.
-Exact RF cause remains unmeasured: receiver selectivity/false acquisition,
-transmitter spectral leakage, and coupling between the nearby boards are
-not separated by these tests. No spectrum-analyzer capture or calibrated
-attenuation sweep was performed. Increasing channel spacing is not established
-as a fix: SF8 indications also occurred at +/-1 MHz.</p>
-<p>The <a href="../sf6_5p1_trace_validation/">earlier SF6 miss</a> had no observed nonzero IRQ
-or guard hold. The four successful stationary SF6 positive controls show the
-fixed-channel link works, but do not establish the acquisition time needed
-after a retune. These small, differently sized samples are not packet-error
-rate estimates or proof of a zero-loss channel count.</p>
-<h2 id="follow-up-candidates-not-implemented-fixes">Follow-up candidates, not implemented fixes</h2>
-<p>Semtech documents that false LoRa detections can occur and describes
-<code>SetLoRaSymbNumTimeout</code> as validating reception over multiple symbols before
-continuing when the modem locks. This is a candidate to investigate, not a
-drop-in verified fix. Its behavior in continuous RX and through each retune
-must be measured. See section 13.4.9, page 99 of the
-<a href="https://resource.heltec.cn/download/WiFi_LoRa_32_V4/datasheet/SX1261_2%20V2-2.pdf">Semtech SX1261/2 datasheet, revision 2.2</a>.</p>
-<p>Useful next experiments would qualify/revalidate preambles before granting a
-long scan hold, and repeat the controls with lower signal levels or increased
-physical isolation. Any candidate must preserve legitimate weak signals and
-long preambles. Blindly shortening the current guard, or requiring only a
-header indication, is not justified by these results. No production radio
-change was made in this diagnostic turn.</p>
-<h2 id="reproduction-provenance-and-checks">Reproduction, provenance, and checks</h2>
-<p>See the <a href="../tools/hil/profile_switch_README.md#stationary-off-channel-preamble-controls">stationary diagnostic instructions</a>.
-The same diagnostic firmware binaries were used for all three matrices.
-Base commit <code>c329cf1fc1e7f2e8c8733ab0d000094730458fe3</code> plus local changes;
-RadioLib 7.7.1 at <code>187ef24791c3d844939b2be13a68bd890bd04e4c</code>, Espressif32
-6.11.0 / Arduino ESP32 2.0.17. Both HIL targets built and uploaded successfully.
-All <strong>29 selected host/native tests passed</strong> after testing.</p>
-<p>Raw results and SHA-256:</p>
-<ul>
-<li><a href="../tools/hil/preamble_stationary_sf8_results.json">Forward SF8, eight rounds</a>:
-  <code>e876a8b1727c5584aa67cb4fcdcae5ca30701e90f7ed998b5df36c37d245f7b0</code></li>
-<li><a href="../tools/hil/preamble_stationary_sf8_reverse_results.json">Reverse SF8, four rounds</a>:
-  <code>83b576544f807c6b81ee83a7db487137ef2584cb4981e475c7e7ac50e4fa2363</code></li>
-<li><a href="../tools/hil/preamble_stationary_sf6_run2_results.json">Forward SF6, four rounds</a>:
-  <code>bdb65b4e23d8b05c8523cec092533509021f878518a38523b02135b810da991b</code></li>
-<li><a href="../tools/hil/preamble_stationary_sf6_results.json">Aborted initial SF6 launch</a>
-  is retained: no trials and no RF probes. A host reboot-command quoting
-  failure left the diagnostic image unready after the preceding run. After
-  correcting the command and rebooting both boards, the complete SF6 matrix
-  was recorded to the separate <code>run2</code> path. A subsequent host cleanup change
-  ensures an already-opened receiver port is closed if opening TX fails.</li>
-</ul>
-<p>Tested firmware SHA-256:</p>
-<ul>
-<li>XIAO: <code>f89da2a2e542df481ff6c26d2492dcc46db8794b5549d3b4f73217767130a21d</code></li>
-<li>Indicator: <code>e58207c7e63de625bee2d4e4400eb934b2737f51e8babc7c1fddd85c48efdda6</code></li>
-</ul>
-<h2 id="device-handoff">Device handoff</h2>
-<p>Fresh full 8 MiB backups were taken and separately verified before flashing,
-in the private current-user MeshCore backup directory. No backup contents
-or identity/channel secrets are in the diagnostic results.</p>
-<ul>
-<li>XIAO backup: <code>5e5825b625a0e6ded65aafa72658eb3b15b466316a9efe8239b2f09de9418e63</code></li>
-<li>Indicator backup: <code>6f834296d4e29e4fe17297aad0a9e2bf2adcf0a1391cf645de1bc51aebfd70de</code></li>
-</ul>
-<p>Both original images were restored after the controls, separately verified
-against the complete 8 MiB flash with matching digests, and hardware-reset.
-The RAK4631 and Indicator RP2040 were untouched; the XIAO soak logger was not
-restarted. The temporary HIL build overlay was removed. Investigation source,
-tests, and results were initially handed off locally before publication.</p>
+<p>Each private entry is a per-radio 12-byte keyed fingerprint followed by flags:
+bit 0 administrator, bit 1 trusted OTA signer. Duplicate entries combine flags.
+An oversized ACL fails closed rather than silently truncating. The reported
+allowlist includes all current full administrators and all four possible trusted
+OTA signing keys; region/filter managers and ordinary clients are excluded.</p>
+<p>Feature bits: 0 Wi-Fi, 1 GPS, 2 NTP, 3 USB data, 4 LoRa OTA. Wi-Fi active means
+connected, GPS means receiver enabled (not necessarily a fix), NTP means an
+actual accepted NTP response this boot, USB means observable native USB data
+connection (not power or an unobservable external UART bridge). OTA capability
+means compiled support; active means an established usable apply/store path.</p>
+<p>Validity bits: 0 firmware version, 1 bootloader version, 2 EndF/base identity,
+3 staging capacity, 4 partial week, 5 partial since-report period, 6 MCU temperature.
+Voltage is unsigned millivolts, zero missing. Temperatures: zero missing,
+1–251 represent −50…200 °C, 252 below range, 253 above range, 254–255 reserved.
+OTA bits: 0 protocol compiled, 1 transfer DEFLATE, 2 2-KiB app transfer blocks;
+bits 8–23 are apply codec bits (full/sequential/in-place). Transfer DEFLATE is
+not compressed bootloader apply. There is <strong>no manifest ID</strong>. Exact old binaries
+are still needed on the computer to generate a differential update; a hash alone
+cannot reconstruct them. Unknown metadata must not be treated as OTA readiness.</p>
+<h2 id="cryptography">Cryptography</h2>
+<p>Password root: <code>SHA256("#" || literal UTF-8 password)</code> (hashtag-style derivation).
+Subkeys: <code>HMAC-SHA256(root, ASCII_domain || radio_id16)</code>.
+Domains: <code>MeshCore-MGR1-SIV</code>, <code>MeshCore-MGR1-ACL</code>.
+Fingerprint: <code>HMAC-SHA256(ACL_subkey, radio_id16 || full_admin_key32)[0:12]</code>.
+The same owner has different fingerprints on different radios. A collector
+needs a candidate administrator's full key to identify a fingerprint.</p>
+<p>Encryption is <a href="https://www.rfc-editor.org/rfc/rfc5297">RFC 5297 AES-SIV-CMAC-256</a>,
+using the existing rweather AES primitive. The single associated-data string is
+the complete 83-byte clear header. Ciphertext is exactly the ACL byte length.
+Full 16-byte tag, no truncation. This deterministic misuse-resistant mode avoids
+reliance on the firmware's noncryptographic general-purpose RNG or RTC nonces.
+An identical restored snapshot may repeat ciphertext, but does not expose XORs
+of different ACL plaintexts as nonce-reused stream encryption would.</p>
+<p>All public fields are readable without a password but are authenticated only to
+password holders. A shared password authenticates knowledge of that password,
+<strong>not</strong> a unique individual radio identity; another holder can forge reports.
+There is no per-device signature. Collectors must enforce their own persisted
+sequence/replay policy and explicitly handle factory resets/restored backups.
+The decoder verifies snapshot consistency but does not maintain a database.
+This fast password derivation permits offline guessing, so twelve characters
+is only a minimum length, not a guarantee of password strength. Packet timing,
+public metadata and entry/page counts remain visible.</p>
 
 
 

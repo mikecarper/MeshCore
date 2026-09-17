@@ -3430,6 +3430,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../management_reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management reports (MGR1)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../mbedtls-tls-footprint/" class="md-nav__link">
         
   
@@ -4788,10 +4815,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_89" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_90" >
         
           
-          <label class="md-nav__link" for="__nav_89" id="__nav_89_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_90" id="__nav_90_label" tabindex="0">
             
   
   
@@ -4809,8 +4836,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_89_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_89">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_90_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_90">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -7551,6 +7578,11 @@ runtime retention change are held in RAM and reset after a reboot.</p>
 <li><code>set telemetry.tx &lt;off|direct|path&gt;</code></li>
 <li><code>set telemetry.tx schedule &lt;off|1-30d&gt;</code></li>
 <li><code>send telemetry.tx now</code></li>
+<li><code>get data.tx</code></li>
+<li><code>get data.tx path</code></li>
+<li><code>set data.tx path &lt;direct|none|path&gt;</code></li>
+<li><code>get data.tx region</code></li>
+<li><code>set data.tx region &lt;auto|default|none|name&gt;</code></li>
 </ul>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -7573,12 +7605,13 @@ runtime retention change are held in RAM and reset after a reboot.</p>
   needed to leave at least 2048 bytes free and replies with the days and pages
   actually available. For example, a request can return
   <code>OK - telemetry.gps days=18 pages=36 requested=30</code>.</li>
-<li><code>direct</code>: Send the binary temperature and voltage snapshots zero-hop to a
-  neighboring MQTT observer.</li>
+<li><code>direct</code>: Set the shared <code>data.tx</code> path to zero-hop and, in the legacy
+  combined command, enable the telemetry schedule.</li>
 <li><code>path</code>: A comma-separated direct route using the same one-, two-, or
   three-byte hop hashes accepted by <code>set outpath</code>.</li>
-<li><code>schedule</code>: Automatic interval in whole days. The default is <code>2d</code>; <code>off</code>
-  retains the configured direct path for manual test sends.</li>
+<li><code>schedule</code>: Automatic interval in whole days. Automatic transmission is off
+  on a fresh install. The retained cadence defaults to <code>2d</code>; <code>off</code> retains the
+  shared route for manual test sends.</li>
 </ul>
 <p>Local serial and remote administrator CLI sessions can read the history on
 both roles. Collection uses the MCU temperature, battery voltage, external I2C
@@ -7595,10 +7628,13 @@ significant bit first, oldest sample first.</p>
 <p>Use the browser-based <a href="../telemetry_decoder/">Telemetry history decoder</a> to
 turn a reply into a timestamped table or downloadable CSV without uploading
 the data.</p>
-<p><code>telemetry.tx</code> is disabled by default. Its schedule and direct path are stored
-across reboots. Configuring <code>direct</code> or a routed path enables the default <code>2d</code>
-schedule; <code>set telemetry.tx schedule</code> changes it from one through 30 days or
-turns it off. An automatic run waits until 165 half-hour positions are
+<p><code>telemetry.tx</code> is disabled by default. Its enabled state and cadence are stored
+separately from the shared <code>data.tx</code> path and region. <code>data.tx</code> defaults to
+zero-hop <code>direct</code> plus <code>region=auto</code>, but it does not enable telemetry or any
+other producer. For compatibility, <code>set telemetry.tx direct|path</code> updates the
+shared path and enables the default <code>2d</code> schedule; new configuration should use
+<code>set data.tx path ...</code> followed by <code>set telemetry.tx schedule ...</code>.
+An automatic run waits until 165 half-hour positions are
 available, then sends one maximum-size temperature packet, one maximum-size
 battery-voltage packet, and up to three <code>IVB1</code> packets for every populated I2C
 voltage channel. GPS is never included in this raw transmission. The history
