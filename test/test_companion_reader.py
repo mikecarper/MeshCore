@@ -14,8 +14,8 @@ from test_message_navigation import PREAMBLE
 from test_replay_reset_integration import extract_braced
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / "test/fixtures/companion_john"
-spec = importlib.util.spec_from_file_location("pack_john", ROOT / "tools/bible/pack_john.py")
+FIXTURE = ROOT / "test/fixtures/companion_reader"
+spec = importlib.util.spec_from_file_location("pack_reader", ROOT / "tools/bible/pack_reader.py")
 packer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(packer)
 
@@ -48,10 +48,10 @@ class CompanionReaderTest(unittest.TestCase):
 
     def test_ascii_typography_preserves_words_case_and_pinned_source(self):
         original = copy.deepcopy(self.document)
-        sample = '\u201cJohn\u2019s\u00a0Word\u201d\u2014\u2018Test\u2019\u2013Yes!'
-        self.assertEqual(packer.ascii_verse(sample, 64), b'"John\'s Word"-\'Test\'-Yes!')
-        self.assertEqual(packer.ascii_verse('Already ASCII: John 3:16.', 64),
-                         b'Already ASCII: John 3:16.')
+        sample = '\u201creader\u2019s\u00a0Word\u201d\u2014\u2018Test\u2019\u2013Yes!'
+        self.assertEqual(packer.ascii_verse(sample, 64), b'"reader\'s Word"-\'Test\'-Yes!')
+        self.assertEqual(packer.ascii_verse('Already ASCII: reader 3:16.', 64),
+                         b'Already ASCII: reader 3:16.')
         # Bounds apply after conversion, not to the original multibyte form.
         self.assertEqual(packer.ascii_verse('\u201cHi\u201d', 4), b'"Hi"')
         with self.assertRaises(ValueError):
@@ -92,8 +92,8 @@ class CompanionReaderTest(unittest.TestCase):
                                   str(ROOT / "src/helpers/ota/OtaTinf.c"), "-o", str(obj)])
                 self.run_checked([cxx, "-std=c++17", "-Os", "-Wall", "-Wextra", "-Werror",
                                   *flags, "-I" + str(ROOT / "src"), "-I" + str(FIXTURE),
-                                  str(FIXTURE / "test_john.cpp"),
-                                  str(ROOT / "src/helpers/CompanionJohn.cpp"), str(obj), "-o", str(binary)])
+                                  str(FIXTURE / "test_reader_lookup.cpp"),
+                                  str(ROOT / "src/helpers/CompanionReader.cpp"), str(obj), "-o", str(binary)])
                 result = self.run_checked([str(binary), "--dump"])
                 actual = dict(line.split("\t", 1) for line in result.splitlines())
                 self.assertEqual(actual, self.expected_verses)
@@ -105,28 +105,28 @@ class CompanionReaderTest(unittest.TestCase):
         for flags in ([], ["-DESP32_PLATFORM=1"], ["-DNRF52_PLATFORM=1"],
                       ["-DESP32_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1"],
                       ["-DESP32_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1",
-                       "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_JOHN=0"]):
+                       "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_READER=0"]):
             result = self.run_checked([cxx, "-E", "-P", *flags,
-                                      str(ROOT / "src/helpers/CompanionJohn.cpp")])
-            self.assertNotIn("johnData", result)
-            self.assertNotIn("handleJohnCommand", result)
+                                      str(ROOT / "src/helpers/CompanionReader.cpp")])
+            self.assertNotIn("readerData", result)
+            self.assertNotIn("handleReaderCommand", result)
 
     def test_terminal_dispatch_is_separate_from_bounded_api_replies(self):
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")
         start = source.index("void MyMesh::handleTerminalCommand(")
         end = source.index("\nvoid MyMesh::enterCLIRescue()", start)
         terminal = source[start:end]
-        self.assertEqual(source.count("mesh::handleJohnCommand("), 1)
-        self.assertLess(terminal.index("mesh::handleJohnCommand("),
+        self.assertEqual(source.count("mesh::handleReaderCommand("), 1)
+        self.assertLess(terminal.index("mesh::handleReaderCommand("),
                         terminal.index("char local_reply[160]"))
-        self.assertIn("get John <chapter>:<verse> (World English Bible, offline)", terminal)
-        self.assertEqual(terminal.count("#if COMPANION_FEATURE_JOHN"), 2)
+        self.assertIn("get reader <chapter>:<verse> (World English Bible, offline)", terminal)
+        self.assertEqual(terminal.count("#if COMPANION_FEATURE_READER"), 2)
 
     def test_reader_navigation_and_bookmark_recovery(self):
         cc, cxx = shutil.which("gcc"), shutil.which("g++")
         if not cc or not cxx:
             self.skipTest("host GCC and G++ required")
-        with tempfile.TemporaryDirectory(prefix="meshcore-john-reader-") as directory:
+        with tempfile.TemporaryDirectory(prefix="meshcore-reader-reader-") as directory:
             directory = Path(directory)
             flags = ["-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"]
             obj, binary = directory / "tinf.o", directory / "reader.exe"
@@ -139,21 +139,21 @@ class CompanionReaderTest(unittest.TestCase):
                                       f"-DUI_BUTTON_READER_HINT={button_hint}",
                                       f"-DUI_READER_TOUCH_BAR={touch_bar}",
                                       "-I" + str(ROOT / "src"), "-I" + str(FIXTURE),
-                                      str(FIXTURE / "test_reader.cpp"), str(ROOT / "src/helpers/CompanionJohn.cpp"),
+                                      str(FIXTURE / "test_reader_screen.cpp"), str(ROOT / "src/helpers/CompanionReader.cpp"),
                                       str(obj), "-o", str(binary)])
                     self.run_checked([str(binary)])
 
     def test_reader_button_routing_and_profile_gate(self):
         ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text(encoding="utf-8")
         long_press = ui[ui.index("char UITask::handleLongPress("):]
-        self.assertLess(long_press.index("isJohnReaderActive()"), long_press.index("enterCLIRescue()"))
+        self.assertLess(long_press.index("isReaderActive()"), long_press.index("enterCLIRescue()"))
         self.assertLess(long_press.index("isRadioPage()"), long_press.index("enterCLIRescue()"))
-        self.assertIn("#if COMPANION_FEATURE_JOHN\n#include \"JohnReaderScreen.h\"", ui)
+        self.assertIn("#if COMPANION_FEATURE_READER\n#include \"ReaderScreen.h\"", ui)
         self.assertLess(ui.index("#define UI_BUTTON_READER_HINT 1"),
-                        ui.index('#include "JohnReaderScreen.h"'))
+                        ui.index('#include "ReaderScreen.h"'))
         # Queue downloads preserve the current screen unconditionally now;
         # test_companion_inbox exercises this with the reader enabled.
-        self.assertIn("else if (isJohnReaderActive())", ui)
+        self.assertIn("else if (isReaderActive())", ui)
         self.assertIn("c = handleLongPress(KEY_ENTER);", ui)
         self.assertIn("handleDoubleClick(KEY_PREV)", ui)
 
@@ -166,7 +166,7 @@ struct Board {
   bool isUsbHostConnected() const { return host; }
 };
 struct Interfaces { bool takePairingRequest() { return false; } };
-struct JohnReaderScreen : Screen { int saves = 0; void flush() { ++saves; } };
+struct ReaderScreen : Screen { int saves = 0; void flush() { ++saves; } };
 '''
         members = r'''
   Board* _board;
@@ -189,12 +189,12 @@ int main() {
   displayPowerPrefs().usb = {DisplayMode::On, 5};
   Display display;
   Screen home;
-  JohnReaderScreen reader;
+  ReaderScreen reader;
   Board board;
   Interfaces interfaces;
   UITask task(display);
   task._board = &board; task._interfaceManager = &interfaces;
-  task.curr = task.home = &home; task.john_reader = &reader;
+  task.curr = task.home = &home; task.reader = &reader;
   task.servicePairingState();
   assert(!display.isOn() && reader.saves == 0);
   task.curr = &reader;
@@ -204,7 +204,7 @@ int main() {
   assert(display.isOn() && reader.saves == 0);
   g_mock_millis = 5000; task.servicePairingState();
   assert(!display.isOn());
-  const int expected_saves = COMPANION_FEATURE_JOHN ? 1 : 0;
+  const int expected_saves = COMPANION_FEATURE_READER ? 1 : 0;
   assert(reader.saves == expected_saves);
   task.servicePairingState();
   assert(reader.saves == expected_saves); // No repeated writes while dark.
@@ -233,7 +233,7 @@ int main() {
             for enabled in (0, 1):
                 with self.subTest(reader_enabled=enabled):
                     binary = directory / "power.exe"
-                    self.run_checked([compiler, "-std=c++17", f"-DCOMPANION_FEATURE_JOHN={enabled}",
+                    self.run_checked([compiler, "-std=c++17", f"-DCOMPANION_FEATURE_READER={enabled}",
                                       "-I" + str(ROOT / "src"), "-I" + str(ROOT / "test/mocks"),
                                       str(directory / "power.cpp"),
                                       str(ROOT / "src/helpers/ui/MomentaryButton.cpp"),

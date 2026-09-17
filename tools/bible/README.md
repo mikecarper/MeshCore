@@ -1,10 +1,10 @@
-# Offline John lookup
+# Offline Reader lookup
 
 ESP32 and nRF52 **Full Companion** USB terminals (and the ESP32 TCP terminal)
-include the 879 verses of John from the World English Bible:
+include an embedded 879-verse corpus from the World English Bible:
 
 ```text
-get John 3:16
+get reader 3:16
 ```
 
 Book/verb case and surrounding spaces are ignored. One chapter:verse reference
@@ -13,14 +13,14 @@ verse text is printed in full, including verses longer than the ordinary
 160-byte CLI response. This is a local terminal command, not a LoRa request or
 an extension of the framed Companion API. No WiFi, phone, API key, filesystem
 space or bootloader update is needed. Reduced/ordinary Companion and other
-roles omit the corpus. `COMPANION_FEATURE_JOHN=0` excludes it from a Full build.
+roles omit the corpus. `COMPANION_FEATURE_READER=0` excludes it from a Full build.
 
-## On-device reader
+## On-device Reader
 
 Full Companions using the `ui-new` display (including the V4) also offer a
-reader from the radio-settings page:
+Reader from the radio-settings page:
 
-- Long press opens John 1:1 initially, or resumes the saved position.
+- Long press opens at the first reference, or resumes the saved position.
 - Single click advances one screenful, then to the next verse.
 - Double click goes back one screenful; at a verse boundary it shows the
   previous verse's last screenful.
@@ -50,8 +50,7 @@ Squeezed Regular 6 on panels at least 128x64 (or 64x128 when rotated), and
 5px Picopixel on smaller panels. The reference and part counter retain their
 normal header font, stacking on narrow rotated screens to avoid overlap. On
 the V4's 128x64 display, five complete 8-pixel-spaced body rows fit above the
-navigation hint, and John
-3:16 fits on one screen. Wrapping and pagination use the selected font's
+navigation hint, and reference 3:16 fits on one screen. Wrapping and pagination use the selected font's
 actual character widths and line height. Any panel with either dimension at
 least 160px uses its normal font, including rotated 80x160 panels. Larger display classes, and builds with
 `UI_SMALL_MESSAGE_FONT=0`, retain the regular body font. Existing bookmarks
@@ -70,18 +69,18 @@ It is checkpointed after two seconds without navigation and flushed on exit,
 screen sleep, or UI shutdown. Writes occur only for changed positions; failures
 remain pending for retry. Abrupt power loss during the two-second debounce may
 lose that last movement. Returning to the very first screen clears the bookmark
-instead of saving a John 1:1 record. Opening and closing there creates no file.
+instead of saving a first-reference record. Opening and closing there creates no file.
 
-The bookmark uses `/john.pos` on the primary filesystem, with a verified `.tmp`
+The bookmark uses `/reader.pos` on the primary filesystem, with a verified `.tmp`
 replacement and `.bak` fallback for interrupted saves. It does not change the
 radio-preference layout, contacts, channels, or keys. A malformed bookmark
-falls back to the previous valid record or John 1:1; no filesystem is formatted.
+falls back to the previous valid record or the first reference; no filesystem is formatted.
 The reader allocates only a small cursor object on first use, reusing the
 same flash corpus and on-demand 2 KiB decode scratch as the terminal.
 
 ## Source and reproduction
 
-`john-web.json` contains only John, copied from eBible.org's verse-per-line
+`reader-web.json` contains the embedded corpus, copied from eBible.org's verse-per-line
 **engwebp** source (World English Bible, American English Protestant edition,
 a subset of the World English Bible Updated). The JSON records the archive URL,
 source date and SHA-256 hashes. The verse-per-line export omits footnotes and
@@ -102,14 +101,14 @@ moving upstream text. See the [official download inventory](https://ebible.org/f
 Regenerate or verify the firmware header:
 
 ```sh
-python tools/bible/pack_john.py
-python tools/bible/pack_john.py --check
-python tools/bible/pack_john.py --compare
-python test/test_companion_john.py
+python tools/bible/pack_reader.py
+python tools/bible/pack_reader.py --check
+python tools/bible/pack_reader.py --compare
+python test/test_companion_reader.py
 ```
 
 To deliberately update the source, download `engwebp_vpl.zip` from the recorded
-URL, then run `python tools/bible/import_web_john.py /path/to/engwebp_vpl.zip`.
+URL, then run `python tools/bible/import_web_reader.py /path/to/engwebp_vpl.zip`.
 Review the plaintext changes and regenerate the header. This importer does
 not download content automatically or add other books to the firmware.
 
@@ -155,7 +154,7 @@ on RAK3401 and 4.7 KiB on V4, including the main-loop/UI frames but before
 framework/task and interrupt overhead. The ESP32-S3 V4 terminal's corresponding
 decode path is approximately 4.6 KiB.
 This is a compiler-derived estimate, not a hardware stack high-water reading.
-Ordinary non-John commands never enter the decode-buffer function. Its object
+Ordinary non-reader commands never enter the decode-buffer function. Its object
 file has zero `.data`/`.bss`; the screen reader adds only its small UI state.
 
 Tests compare all 879 decoded verses and terminal responses with an independently
@@ -185,7 +184,7 @@ The small-font C++11 reader fixture also passes AddressSanitizer and
 UndefinedBehaviorSanitizer, the 22 existing nRF52 ExtraFS contract tests pass,
 and the separate shared-font check matches all 95 printable ASCII glyphs
 against Adafruit Picopixel. All 13 memory-policy tests pass in WSL. The following
-USA Cascade Full builds include the local ASCII John reader changes on top of
+USA Cascade Full builds include the local ASCII Reader changes on top of
 `03e42830`; both pass firmware-size, runtime-RAM and capability checks:
 
 | Build | Flash bytes | Static RAM bytes | Runtime RAM available / required |
@@ -205,7 +204,7 @@ readings; those earlier builds were not flashed to hardware.
 ### Adaptive 6px/5px update, 2026-09-08
 
 The reader now shares `SmallMessageText` with messages on base `8f5614c9`.
-All ten John host tests pass on both Windows and Linux. The actual reader
+All ten reader host tests pass on both Windows and Linux. The actual reader
 also passes AddressSanitizer and UndefinedBehaviorSanitizer across all ten
 screen geometries above, including resizing and bookmark migration. The
 separate shared-font test checks all 95 glyphs of both fonts against their
@@ -214,7 +213,7 @@ upstream fixtures; the four T096 footer/profile checks also pass.
 The T096 Full FEM-on USA Cascade build uses 573,384 flash bytes and 135,452
 static RAM bytes, with 100,060 runtime bytes available against 75,298 required.
 Its ten capability markers pass. The application-only UF2 was installed on
-the T096, then the full running version and John 1:1, 3:16 and 21:25 were
+the T096, then the full running version and references 1:1, 3:16 and 21:25 were
 verified over USB. The API snapshots confirm unchanged identity, contacts,
 channels, self settings, auto-add, tuning and custom variables. No bootloader
 or filesystem was erased. Physical on-screen readability and button behavior
@@ -225,7 +224,7 @@ with 263,936 internal runtime bytes available against 175,872 required. All 13
 capability markers pass. The nonmerged application was installed in both
 existing V4 app slots; their hashes were verified, and the bootloader, partition
 table, NVS, OTA selector, SPIFFS and coredump regions compare byte-for-byte with
-the pre-update full-flash backup. The full running version and John 1:1, 3:16,
+the pre-update full-flash backup. The full running version and references 1:1, 3:16,
 21:17 (the longest verse) and 21:25 were verified over USB. Pre/post API snapshots
 match for identity, contacts, channels, self settings, auto-add, tuning, custom
 variables, Bluetooth name and default flood scope.
@@ -235,7 +234,7 @@ same 135,452 static RAM bytes and runtime budget as the scaled build. The actual
 driver header/drawing-method fixture passes in native and legacy modes, with
 both constructor variants; it checks complete pixel coverage and all 95 native
 6px glyphs. Linux additionally runs that fixture with address/undefined-behavior
-sanitizers. The John tests include 160x80 navigation and bookmark migration.
+sanitizers. The reader tests include 160x80 navigation and bookmark migration.
 The adaptive reader's compiler-reported process frame is 2,504 bytes on T096
 and 2,512 bytes on V4; these are not total stack high-water measurements.
 
@@ -254,7 +253,7 @@ the compact-panel footer policy. Normal-font line heights drive message and
 radio spacing; Indicator render profiles keep their existing geometry.
 
 Validation: 35 Python-host tests (including actual-driver recording fixtures,
-all 879 John verses across 17 geometries, shared fonts, wake and pairing),
+all 879 corpus verses across 17 geometries, shared fonts, wake and pairing),
 30 native dashboard tests, and nine message-history/layout tests pass. Linux
 pixel/transfer/font fixtures use address/undefined-behavior sanitizers. The
 T096 normal-font routing check was rerun after its final assertion was added.
@@ -263,7 +262,7 @@ The T096 Full FEM-on USA Cascade build on `0058f721` plus these local changes
 uses 573,480 flash bytes and 135,452 static RAM bytes. Runtime capacity is
 100,060 bytes against 75,298 required; all ten capability checks pass. Its
 application-only UF2 was installed, and USB reports
-`v1.17.1.5-native-normal-0058f721`. John 1:1, 3:16 and 21:25 work. API snapshots
+`v1.17.1.5-native-normal-0058f721`. References 1:1, 3:16 and 21:25 work. API snapshots
 match for identity/private key, contacts, channels, self settings, auto-add,
 tuning and custom variables. The bootloader and storage were not flashed.
 Other panel families were host-tested, not physically flashed or visually

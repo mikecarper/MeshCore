@@ -71,7 +71,7 @@ inline ParseResult parse(const char* command, Reference& ref) {
   skipSpace(command);
   if (!token(command, "get")) return ParseResult::NoMatch;
   skipSpace(command);
-  if (!token(command, "john")) return ParseResult::NoMatch;
+  if (!token(command, "reader")) return ParseResult::NoMatch;
   skipSpace(command);
   if (!number(command, ref.chapter) || *command != ':') return ParseResult::Invalid;
   ++command;

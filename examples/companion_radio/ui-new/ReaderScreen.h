@@ -1,6 +1,6 @@
 #pragma once
-#include <helpers/CompanionJohn.h>
-#include <helpers/bible/JohnReader.h>
+#include <helpers/CompanionReader.h>
+#include <helpers/bible/Reader.h>
 #include <helpers/ui/ReaderNavigationHint.h>
 #if UI_SMALL_MESSAGE_FONT || UI_BUTTON_READER_HINT
 #include <helpers/ui/SmallMessageText.h>
@@ -8,7 +8,7 @@
 
 // Included by UITask.cpp after the task and MyMesh declarations. Only a small
 // cursor/checkpoint object persists; the 2 KiB decode buffer is on demand.
-class JohnReaderScreen : public UIScreen {
+class ReaderScreen : public UIScreen {
   UITask* _task;
   DisplayDriver* _display;
   mesh::bible::ReaderBookmark _bookmark;
@@ -79,12 +79,12 @@ class JohnReaderScreen : public UIScreen {
     // At most two lookups: the current verse, then its adjacent verse when
     // navigation crosses a boundary. No recursive decode or second buffer.
     for (int pass = 0; pass < 2; ++pass) {
-      const LookupResult result = mesh::readJohnVerse(
+      const LookupResult result = mesh::readReaderVerse(
           referenceAt(pos.verse), scratch, sizeof(scratch), text);
       if (result != LookupResult::Found) {
         if (draw) {
           body.setColor(UIColor::warning_txt);
-          body.drawTextEllipsized(0, top, width, "John unavailable");
+          body.drawTextEllipsized(0, top, width, "Reader unavailable");
 #if UI_BUTTON_READER_HINT
 #if UI_READER_TOUCH_BAR
           mesh::ui::drawReaderTouchBar(hint_text, _touch_bar);
@@ -92,7 +92,7 @@ class JohnReaderScreen : public UIScreen {
           mesh::ui::drawButtonReaderHint(hint_text, hint);
 #endif
 #endif
-        } else _task->showAlert("John data error", 1500);
+        } else _task->showAlert("Reader data error", 1500);
         return;
       }
       memmove(scratch, text, strlen(text) + 1);
@@ -114,7 +114,7 @@ class JohnReaderScreen : public UIScreen {
       if (!draw) return;
       char label[32], progress[16];
       const Reference ref = referenceAt(pos.verse);
-      snprintf(label, sizeof(label), "John %u:%u", ref.chapter, ref.verse);
+      snprintf(label, sizeof(label), "Reader %u:%u", ref.chapter, ref.verse);
       snprintf(progress, sizeof(progress), "%u/%u", page.part, page.parts);
       const int progress_width = _display->getTextWidth(progress);
       if (stacked_header || _display->getTextWidth(label) > width - progress_width - 4)
@@ -147,18 +147,18 @@ public:
 #if UI_READER_TOUCH_BAR
   const mesh::ui::TouchNavigationBar* readerTouchBar() const { return &_touch_bar; }
 #endif
-  JohnReaderScreen(UITask* task, DisplayDriver* display) : _task(task), _display(display) {}
+  ReaderScreen(UITask* task, DisplayDriver* display) : _task(task), _display(display) {}
   void open() {
     if (!_loaded) {
       mesh::bible::Position pos;
-      the_mesh.loadJohnBookmark(pos);
+      the_mesh.loadReaderBookmark(pos);
       _bookmark.restore(pos);
       _loaded = true;
     }
   }
   bool flush() {
     if (!_bookmark.dirty()) return true;
-    if (!the_mesh.saveJohnBookmark(_bookmark.position())) {
+    if (!the_mesh.saveReaderBookmark(_bookmark.position())) {
       _retry_at = millis() + 30000;
       return false;
     }
@@ -186,7 +186,7 @@ public:
       }
       return true;
     }
-    if (key == KEY_ENTER || key == KEY_CANCEL) { _task->closeJohnReader(); return true; }
+    if (key == KEY_ENTER || key == KEY_CANCEL) { _task->closeReader(); return true; }
     return false;
   }
 };

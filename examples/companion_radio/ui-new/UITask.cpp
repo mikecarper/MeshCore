@@ -90,8 +90,8 @@ static uint64_t companionMessageElapsedMillis(uint64_t heard_millis) {
 #endif
 #endif
 
-#if COMPANION_FEATURE_JOHN
-#include "JohnReaderScreen.h"
+#if COMPANION_FEATURE_READER
+#include "ReaderScreen.h"
 #include <new>
 #endif
 
@@ -575,7 +575,7 @@ public:
   }
 
   void showFirstPage() { _page = HomePage::FIRST; }
-#if COMPANION_FEATURE_JOHN
+#if COMPANION_FEATURE_READER
   bool isRadioPage() const { return _page == HomePage::RADIO; }
 #endif
 
@@ -1169,9 +1169,9 @@ public:
       _page = (_page + HomePage::Count - 1) % HomePage::Count;
       return true;
     }
-#if COMPANION_FEATURE_JOHN
+#if COMPANION_FEATURE_READER
     if (key == KEY_ENTER && _page == HomePage::RADIO) {
-      _task->showJohnReader();
+      _task->showReader();
       return true;
     }
 #endif
@@ -1823,17 +1823,17 @@ void UITask::showMessages() {
   setCurrScreen(msg_preview);
 }
 
-#if COMPANION_FEATURE_JOHN
-void UITask::showJohnReader() {
+#if COMPANION_FEATURE_READER
+void UITask::showReader() {
   if (!_display || isPairingScreenActive()) return;
   if (!_display->isOn()) _display->wake(mesh::ui::DisplayWake::Button);
-  if (!john_reader) john_reader = new (std::nothrow) JohnReaderScreen(this, _display);
-  if (!john_reader) { showAlert("Reader: no memory", 1500); return; }
-  static_cast<JohnReaderScreen*>(john_reader)->open();
-  setCurrScreen(john_reader);
+  if (!reader) reader = new (std::nothrow) ReaderScreen(this, _display);
+  if (!reader) { showAlert("Reader: no memory", 1500); return; }
+  static_cast<ReaderScreen*>(reader)->open();
+  setCurrScreen(reader);
 }
 
-void UITask::closeJohnReader() {
+void UITask::closeReader() {
   // Home retains the selected radio page while the reader is open.
   setCurrScreen(home);
 }
@@ -1911,8 +1911,8 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
     // pairing completes or the pairing display window expires.
     _deferred_msg_preview = true;
   }
-#if COMPANION_FEATURE_JOHN
-  else if (isJohnReaderActive()) {
+#if COMPANION_FEATURE_READER
+  else if (isReaderActive()) {
     // Queue incoming messages without stealing the reader's page.
     _deferred_msg_preview = true;
   }
@@ -1951,9 +1951,9 @@ void UITask::userLedHandler() {
 }
 
 void UITask::setCurrScreen(UIScreen* c) {
-#if COMPANION_FEATURE_JOHN
-  if (isJohnReaderActive() && c != john_reader
-      && !static_cast<JohnReaderScreen*>(john_reader)->flush()) {
+#if COMPANION_FEATURE_READER
+  if (isReaderActive() && c != reader
+      && !static_cast<ReaderScreen*>(reader)->flush()) {
     showAlert("Bookmark save failed", 1500);
   }
 #endif
@@ -2033,9 +2033,9 @@ void UITask::servicePairingState() {
       _board->isExternalPowered() || _board->isUsbHostConnected(),
       hasConnection(), isPairingScreenActive())) {
     _next_refresh = 0;
-#if COMPANION_FEATURE_JOHN
-    if (!_display->isOn() && isJohnReaderActive())
-      static_cast<JohnReaderScreen*>(john_reader)->flush();
+#if COMPANION_FEATURE_READER
+    if (!_display->isOn() && isReaderActive())
+      static_cast<ReaderScreen*>(reader)->flush();
 #endif
   }
 }
@@ -2045,8 +2045,8 @@ void UITask::servicePairingState() {
 */
 void UITask::shutdown(bool restart){
   if (!prepareForShutdown()) return;
-#if COMPANION_FEATURE_JOHN
-  if (john_reader) static_cast<JohnReaderScreen*>(john_reader)->flush();
+#if COMPANION_FEATURE_READER
+  if (reader) static_cast<ReaderScreen*>(reader)->flush();
 #endif
 
   #ifdef PIN_BUZZER
@@ -2126,8 +2126,8 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_ENTER);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-#if COMPANION_FEATURE_JOHN
-    if (isJohnReaderActive() || (curr == home && static_cast<HomeScreen*>(home)->isRadioPage()))
+#if COMPANION_FEATURE_READER
+    if (isReaderActive() || (curr == home && static_cast<HomeScreen*>(home)->isRadioPage()))
       c = handleLongPress(KEY_ENTER);
     else
 #endif
@@ -2277,8 +2277,8 @@ void UITask::loop() {
 #endif
 
   if (curr) curr->poll();
-#if COMPANION_FEATURE_JOHN
-  if (john_reader && curr != john_reader) john_reader->poll();
+#if COMPANION_FEATURE_READER
+  if (reader && curr != reader) reader->poll();
 #endif
 
   if (_display != NULL && _display->isOn()) {
@@ -2372,9 +2372,9 @@ void UITask::getTouchControls(mesh::ui::TouchSplitSelector& transport_touch_sele
 #if UI_READER_TOUCH_BAR
     if (curr == msg_preview)
       reader_touch_bar = static_cast<MsgPreviewScreen*>(msg_preview)->readerTouchBar();
-#if COMPANION_FEATURE_JOHN
-    else if (isJohnReaderActive())
-      reader_touch_bar = static_cast<JohnReaderScreen*>(john_reader)->readerTouchBar();
+#if COMPANION_FEATURE_READER
+    else if (isReaderActive())
+      reader_touch_bar = static_cast<ReaderScreen*>(reader)->readerTouchBar();
 #endif
 #endif
 }
@@ -2396,12 +2396,12 @@ char UITask::handleLongPress(char c) {
   // Exit an incoming message preview even during the startup rescue window.
   // The on-screen reader hint must not unexpectedly enter CLI rescue.
   if (curr == msg_preview) return c;
-#if COMPANION_FEATURE_JOHN
+#if COMPANION_FEATURE_READER
   // The radio page's reader gesture, including exit, takes precedence over
   // the global early-boot rescue gesture just like the WiFi setup page.
-  if (isJohnReaderActive()) { closeJohnReader(); return 0; }
+  if (isReaderActive()) { closeReader(); return 0; }
   if (curr == home && static_cast<HomeScreen*>(home)->isRadioPage()) {
-    showJohnReader();
+    showReader();
     return 0;
   }
 #endif
@@ -2428,8 +2428,8 @@ char UITask::handleDoubleClick(char c) {
 char UITask::handleMultiClick(char c, bool backwards) {
   MESH_DEBUG_PRINTLN("UITask: %s-click triggered", backwards ? "quadruple" : "triple");
   if (curr == msg_preview
-#if COMPANION_FEATURE_JOHN
-      || isJohnReaderActive()
+#if COMPANION_FEATURE_READER
+      || isReaderActive()
 #endif
   ) {
     return checkDisplayOn(backwards ? KEY_UP : KEY_DOWN);

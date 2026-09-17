@@ -51,7 +51,7 @@ CLI rescue instead; wait for that startup window to finish before opening
 the inbox. Exiting a message preview and the WiFi setup page's hold action
 remain available immediately.
 
-The hidden [John reader](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/bible/README.md#on-device-reader), opened
+The hidden [Reader](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/bible/README.md#on-device-reader), opened
 by a long press on the radio page, uses the same button hints. Three taps jump
 to the first verse of the next chapter; four taps jump to the first verse of
 the previous chapter. Chapter navigation stops at the beginning and end of

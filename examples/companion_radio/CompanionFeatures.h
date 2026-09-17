@@ -1,5 +1,5 @@
 #pragma once
-#include <helpers/CompanionJohnConfig.h>
+#include <helpers/CompanionReaderConfig.h>
 #include <helpers/ota/OtaMemoryPolicy.h>
 
 // The role terminal is also used by WebConfig on WiFi-only Companions. Its

@@ -360,9 +360,9 @@ public:
     if (saved) _prefs.clearDirty();
     return saved;
   }
-#if COMPANION_FEATURE_JOHN
-  bool loadJohnBookmark(mesh::bible::Position& pos) { return _store->loadJohnBookmark(pos); }
-  bool saveJohnBookmark(mesh::bible::Position pos) { return _store->saveJohnBookmark(pos); }
+#if COMPANION_FEATURE_READER
+  bool loadReaderBookmark(mesh::bible::Position& pos) { return _store->loadReaderBookmark(pos); }
+  bool saveReaderBookmark(mesh::bible::Position pos) { return _store->saveReaderBookmark(pos); }
 #endif
 
 #if ENV_INCLUDE_GPS == 1

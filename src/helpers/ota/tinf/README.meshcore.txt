@@ -13,7 +13,7 @@ MeshCore changes are marked in tinf.h and tinflate.c. They add
 tinf_uncompress_exact(), which accepts legal padding bits in the byte containing
 the final end-of-block code but rejects any trailing whole input byte. The C
 implementation is included by ../OtaTinf.c for ENABLE_OTA application builds,
-COMPANION_FEATURE_JOHN offline lookup, and the native OTA test profile.
+COMPANION_FEATURE_READER offline lookup, and the native OTA test profile.
 ../OtaDeflate.cpp is the small C++
 callback adapter. Keeping the decoder in a true C translation unit avoids the
 several-kilobyte penalty produced by the embedded C++ toolchains. Firmware

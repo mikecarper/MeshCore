@@ -179,12 +179,12 @@ for the state machine and limitations.
 ESP32 and nRF52 Full Companions include an offline World English Bible lookup:
 
 ```text
-get John 3:16
+get reader 3:16
 ```
 
-This returns a single complete verse from John, using plain ASCII punctuation
+This returns a single complete verse from the embedded corpus, using plain ASCII punctuation
 with unchanged wording and capitalization, through the local USB/TCP terminal.
-See [John lookup and compression](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/bible/README.md) for the
+See [Reader lookup and compression](https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/bible/README.md) for the
 source, supported build profiles and memory costs.
 
 ```

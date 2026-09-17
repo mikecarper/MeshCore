@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import only John from eBible.org's public-domain engwebp VPL download."""
+"""Import the source for the offline Reader from eBible.org's engwebp VPL download."""
 import argparse
 import hashlib
 import json
@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import zipfile
 
-from pack_john import SOURCE, pack, references
+from pack_reader import SOURCE, pack, references
 
 SOURCE_URL = "https://ebible.org/Scriptures/engwebp_vpl.zip"
 MEMBER = "engwebp_vpl.txt"
@@ -24,10 +24,10 @@ def import_archive(path):
             continue
         match = re.fullmatch(r"JOH ([0-9]+:[0-9]+) (.+)", line)
         if not match or match[1] in verses:
-            raise ValueError("invalid or duplicate John verse in source")
+            raise ValueError("invalid or duplicate Reader verse in source")
         verses[match[1]] = match[2]
     if set(verses) != set(references()):
-        raise ValueError("the source must contain exactly the 879 verses of John")
+        raise ValueError("the source must contain exactly the 879 Reader verses")
     document = {
         "translation": "WEB",
         "edition": "World English Bible, American English, Protestant Edition (engwebp)",
@@ -52,7 +52,7 @@ def main():
     document = import_archive(args.archive)
     args.output.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n",
                            encoding="utf-8", newline="\n")
-    print(f"Imported {len(document['verses'])} verses of John; source {document['source_date']}")
+    print(f"Imported {len(document['verses'])} Reader verses; source {document['source_date']}")
 
 
 if __name__ == "__main__":

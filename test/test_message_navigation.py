@@ -117,15 +117,15 @@ public:
   UIScreen* curr=nullptr;
   UIScreen* msg_preview=nullptr;
   UIScreen* home=nullptr;
-  UIScreen* john_reader=nullptr;
+  UIScreen* reader=nullptr;
   uint32_t _auto_off=0,_next_refresh=0;
   int buzzer_changes=0;
   int getMsgCount() const { return 0; }
   explicit UITask(DisplayDriver& display) : _display(&display) {}
-  bool isJohnReaderActive() const { return john_reader && curr==john_reader; }
+  bool isReaderActive() const { return reader && curr==reader; }
   void gotoHomeScreen() { curr=home; }
   void toggleBuzzer() { ++buzzer_changes; }
-  void showJohnReader() { curr=john_reader; }
+  void showReader() { curr=reader; }
   void showAlert(const char*,int) {}
   char handleLongPress(char c) { return c; }
   char handleMultiClick(char,bool);
@@ -159,7 +159,7 @@ int main() {
   HomeScreen home(&task);
   Screen group;
   MsgPreviewScreen messages(&task);
-  task.home=&home; task.msg_preview=task.curr=&messages; task.john_reader=&group;
+  task.home=&home; task.msg_preview=task.curr=&messages; task.reader=&group;
   messages.addPreview(1,"Alice","public old",0,"Public");
   messages.addPreview(1,"Bob","public new",0,"Public");
   messages.addPreview(1,"Carol","second",2,"Second");
@@ -289,7 +289,7 @@ int main() {
   g_mock_millis+=25; task.pollButton();
   g_mock_millis+=MOMENTARY_BUTTON_MULTI_CLICK_MS; task.pollButton();
   assert(home.key==0);
-#if COMPANION_FEATURE_JOHN
+#if COMPANION_FEATURE_READER
   task.curr=&group;
   gesture(task,1); assert(group.key==KEY_NEXT && group.events==1);
   gesture(task,2); assert(group.key==KEY_PREV && group.events==2);
@@ -391,7 +391,7 @@ class MessageNavigationTest(unittest.TestCase):
                 binary = Path(temp) / "navigation"
                 result = subprocess.run([
                     "c++", "-std=c++17", signedness,
-                    f"-DCOMPANION_FEATURE_JOHN={enabled}",
+                    f"-DCOMPANION_FEATURE_READER={enabled}",
                     *flags,
                     "-I" + str(ROOT / "src"), "-I" + str(ROOT / "test/mocks"),
                     "-fsanitize=address,undefined", "-fno-pie", "-no-pie",

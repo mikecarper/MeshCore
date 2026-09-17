@@ -27,7 +27,7 @@
  * MeshCore modifications (2026):
  * - expose tinf_uncompress_exact() to reject trailing whole input bytes;
  * - compile this vendored implementation through OtaTinf.c only, keeping
- *   it out of builds which need neither OTA nor offline John lookup.
+ *   it out of builds which need neither OTA nor offline reader lookup.
  * See README.meshcore.txt for the upstream revision and integration details.
  */
 

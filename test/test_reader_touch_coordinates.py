@@ -223,7 +223,7 @@ class ReaderTouchCoordinatesTest(unittest.TestCase):
         source = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
         self.assertIn("layout.header_divider_y + 1", source)
         self.assertIn("if (!_display->isOn()) reader_touch_bar = nullptr;", source)
-        reader = (ROOT / "examples/companion_radio/ui-new/JohnReaderScreen.h").read_text()
+        reader = (ROOT / "examples/companion_radio/ui-new/ReaderScreen.h").read_text()
         self.assertIn("makeReaderTouchBar(hint_text, bottom, top - 1)", reader)
 
 

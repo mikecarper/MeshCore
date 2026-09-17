@@ -1,5 +1,5 @@
-#include <helpers/CompanionJohn.h>
-#include <helpers/bible/JohnBookmarkFiles.h>
+#include <helpers/CompanionReader.h>
+#include <helpers/bible/ReaderBookmarkFiles.h>
 #include <helpers/ui/UIScreen.h>
 #include <cassert>
 #include <cstdio>
@@ -41,18 +41,18 @@ struct Files {
 struct FakeMesh {
   Files files;
   int saves = 0;
-  bool loadJohnBookmark(Position& p) { return loadReaderBookmark(files, p); }
-  bool saveJohnBookmark(Position p) { ++saves; return saveReaderBookmark(files, p); }
+  bool loadReaderBookmark(Position& p) { return mesh::bible::loadReaderBookmark(files, p); }
+  bool saveReaderBookmark(Position p) { ++saves; return mesh::bible::saveReaderBookmark(files, p); }
 } the_mesh;
 
 class UITask {
 public:
   bool closed = false;
   std::string alert;
-  void closeJohnReader() { closed = true; }
+  void closeReader() { closed = true; }
   void showAlert(const char* text, int) { alert = text; }
 };
-#include "../../../examples/companion_radio/ui-new/JohnReaderScreen.h"
+#include "../../../examples/companion_radio/ui-new/ReaderScreen.h"
 
 class Display : public DisplayDriver {
   int x = 0, y = 0;
@@ -141,25 +141,25 @@ int main(int argc, char** argv) {
     if (argc > 2) assert(std::freopen(argv[2], "w", stdout));
     Display display(128, 64);
     UITask task;
-    JohnReaderScreen first(&task, &display);
+    ReaderScreen first(&task, &display);
     first.open(); first.render(display);
-    std::puts("FRAME 128 64 John 1:1");
+    std::puts("FRAME 128 64 reader 1:1");
     display.dump();
-    assert(the_mesh.saveJohnBookmark(pos(91))); // John 3:16
-    JohnReaderScreen verse(&task, &display);
+    assert(the_mesh.saveReaderBookmark(pos(91))); // reader 3:16
+    ReaderScreen verse(&task, &display);
     verse.open();
     for (int part = 0; part < (UI_SMALL_MESSAGE_FONT ? 1 : 2); ++part) {
       display.clear(); verse.render(display);
-      std::printf("FRAME 128 64 John 3:16 part %d\n", part + 1);
+      std::printf("FRAME 128 64 reader 3:16 part %d\n", part + 1);
       display.dump();
       verse.handleInput(KEY_NEXT);
     }
 #if UI_SMALL_MESSAGE_FONT
     Display tiny(72, 40);
-    assert(the_mesh.saveJohnBookmark(pos(91)));
-    JohnReaderScreen tiny_verse(&task, &tiny);
+    assert(the_mesh.saveReaderBookmark(pos(91)));
+    ReaderScreen tiny_verse(&task, &tiny);
     tiny_verse.open(); tiny_verse.render(tiny);
-    std::puts("FRAME 72 40 John 3:16 on a tiny screen (5px)");
+    std::puts("FRAME 72 40 reader 3:16 on a tiny screen (5px)");
     tiny.dump();
     tiny.resize(40, 72);
     tiny_verse.render(tiny);
@@ -199,9 +199,9 @@ int main(int argc, char** argv) {
     auto measure = [&expected_text](const char* line) { return expected_text.getTextWidth(line); };
     UITask task;
     the_mesh = FakeMesh{};
-    JohnReaderScreen screen(&task, &display);
+    ReaderScreen screen(&task, &display);
     screen.open();
-    assert(screen.flush() && the_mesh.saves == 0); // don't create John 1:1
+    assert(screen.flush() && the_mesh.saves == 0); // don't create reader 1:1
 #if UI_BUTTON_READER_HINT
     display.clear(); screen.render(display);
     Display footer(display.width(), display.height());
@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
     char scratch[kBlockSize];
     for (uint16_t verse = 0; verse < kVerseCount; ++verse) {
       const char* text;
-      assert(mesh::readJohnVerse(referenceAt(verse), scratch, sizeof(scratch), text) == LookupResult::Found);
+      assert(mesh::readReaderVerse(referenceAt(verse), scratch, sizeof(scratch), text) == LookupResult::Found);
       memmove(scratch, text, strlen(text) + 1);
       std::string rebuilt;
       uint16_t offset = 0;
@@ -304,27 +304,27 @@ int main(int argc, char** argv) {
       touch_gesture(x, screen.readerTouchBar()->top, x, screen.readerTouchBar()->top);
     };
     tap(2); assert(screen.flush());
-    Position saved; assert(the_mesh.loadJohnBookmark(saved) && saved.verse == 1);
+    Position saved; assert(the_mesh.loadReaderBookmark(saved) && saved.verse == 1);
     tap(1); assert(screen.flush());
-    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    assert(!the_mesh.loadReaderBookmark(saved) && saved.atStart());
     tap(3); assert(screen.flush());
-    assert(the_mesh.loadJohnBookmark(saved) && referenceAt(saved.verse).chapter == 2);
+    assert(the_mesh.loadReaderBookmark(saved) && referenceAt(saved.verse).chapter == 2);
     tap(0); assert(screen.flush());
-    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    assert(!the_mesh.loadReaderBookmark(saved) && saved.atStart());
     tap(4); assert(task.closed);
     task.closed = false;
     touch_gesture(120,70,120,70); assert(screen.flush());
-    assert(the_mesh.loadJohnBookmark(saved) && saved.verse == 1);
+    assert(the_mesh.loadReaderBookmark(saved) && saved.verse == 1);
     touch_gesture(40,70,40,70); assert(screen.flush());
-    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    assert(!the_mesh.loadReaderBookmark(saved) && saved.atStart());
     touch_gesture(120,70,40,70); assert(screen.flush());
-    assert(the_mesh.loadJohnBookmark(saved) && saved.verse == 1);
+    assert(the_mesh.loadReaderBookmark(saved) && saved.verse == 1);
     touch_gesture(40,70,120,70); assert(screen.flush());
-    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    assert(!the_mesh.loadReaderBookmark(saved) && saved.atStart());
     touch_gesture(80,100,80,50); assert(screen.flush());
-    assert(the_mesh.loadJohnBookmark(saved) && referenceAt(saved.verse).chapter == 2);
+    assert(the_mesh.loadReaderBookmark(saved) && referenceAt(saved.verse).chapter == 2);
     touch_gesture(80,50,80,100); assert(screen.flush());
-    assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+    assert(!the_mesh.loadReaderBookmark(saved) && saved.atStart());
     touch_gesture(80,0,80,0); assert(task.closed);
 #endif
   }
@@ -337,7 +337,7 @@ int main(int argc, char** argv) {
   the_mesh = FakeMesh{};
   Display chapters_display(128, 64);
   UITask chapters_task;
-  JohnReaderScreen chapters(&chapters_task, &chapters_display);
+  ReaderScreen chapters(&chapters_task, &chapters_display);
   chapters.open();
   assert(chapters.handleInput(KEY_UP));
   assert(chapters.flush() && the_mesh.saves == 0);
@@ -345,7 +345,7 @@ int main(int argc, char** argv) {
     assert(chapters.handleInput(KEY_DOWN));
     assert(chapters.flush());
     Position saved;
-    assert(the_mesh.loadJohnBookmark(saved));
+    assert(the_mesh.loadReaderBookmark(saved));
     assert(referenceAt(saved.verse).chapter == chapter && saved.offset == 0);
     assert(referenceAt(saved.verse).verse == 1);
   }
@@ -353,66 +353,66 @@ int main(int argc, char** argv) {
   assert(chapters.handleInput(KEY_DOWN));
   assert(chapters.flush() && the_mesh.saves == writes);
   // Moving backwards from the middle of a chapter reaches the preceding one.
-  assert(the_mesh.saveJohnBookmark(pos(91, 12))); // 3:16, with a stale page offset
-  JohnReaderScreen middle(&chapters_task, &chapters_display);
+  assert(the_mesh.saveReaderBookmark(pos(91, 12))); // 3:16, with a stale page offset
+  ReaderScreen middle(&chapters_task, &chapters_display);
   middle.open();
   assert(middle.handleInput(KEY_UP) && middle.flush());
   Position chapter_saved;
-  assert(the_mesh.loadJohnBookmark(chapter_saved));
+  assert(the_mesh.loadReaderBookmark(chapter_saved));
   assert(referenceAt(chapter_saved.verse).chapter == 2);
   assert(referenceAt(chapter_saved.verse).verse == 1 && chapter_saved.offset == 0);
   assert(middle.handleInput(KEY_UP) && middle.flush());
-  assert(!the_mesh.loadJohnBookmark(chapter_saved) && chapter_saved.atStart());
+  assert(!the_mesh.loadReaderBookmark(chapter_saved) && chapter_saved.atStart());
 
   // Resume within a split verse; independent screen and store lifecycle.
   the_mesh = FakeMesh{};
   Display display(64,32);
   UITask task;
-  JohnReaderScreen first(&task, &display);
+  ReaderScreen first(&task, &display);
   first.open(); first.handleInput(KEY_NEXT);
   display.clear(); first.render(display); const auto body = display.body();
   first.poll(); assert(the_mesh.saves == 0);
   test_now += 2000; first.poll(); assert(the_mesh.saves == 1);
   first.poll(); assert(the_mesh.saves == 1);
   Position saved;
-  assert(the_mesh.loadJohnBookmark(saved) && saved.verse == 0 && saved.offset > 0);
-  JohnReaderScreen rebooted(&task, &display);
+  assert(the_mesh.loadReaderBookmark(saved) && saved.verse == 0 && saved.offset > 0);
+  ReaderScreen rebooted(&task, &display);
   rebooted.open(); display.clear(); rebooted.render(display);
   assert(display.body() == body);
   rebooted.handleInput(KEY_PREV); assert(rebooted.flush());
-  assert(!the_mesh.files.exists("/john.pos") && !the_mesh.files.exists("/john.pos.bak"));
-  assert(!the_mesh.loadJohnBookmark(saved) && saved.atStart());
+  assert(!the_mesh.files.exists("/reader.pos") && !the_mesh.files.exists("/reader.pos.bak"));
+  assert(!the_mesh.loadReaderBookmark(saved) && saved.atStart());
 
 #if UI_SMALL_MESSAGE_FONT
   // A bookmark from the old 6-pixel-wide font resumes on the new page that
   // contains those words; it does not advance to another verse or lose them.
   char scratch[kBlockSize];
   const char* text;
-  assert(mesh::readJohnVerse({3, 16}, scratch, sizeof(scratch), text) == LookupResult::Found);
+  assert(mesh::readReaderVerse({3, 16}, scratch, sizeof(scratch), text) == LookupResult::Found);
   const auto legacy_measure = [](const char* line) { return strlen(line) * 6; };
   const auto legacy = readerPage(text, 0, 128, 5, legacy_measure);
   assert(text[legacy.next]);
   the_mesh = FakeMesh{};
-  assert(the_mesh.saveJohnBookmark(pos(91, legacy.next)));
+  assert(the_mesh.saveReaderBookmark(pos(91, legacy.next)));
   Display migrated_display(128,64);
   mesh::ui::SmallMessageText compact(migrated_display);
   const auto compact_measure = [&compact](const char* line) { return compact.getTextWidth(line); };
   const auto compact_page = readerPage(text, legacy.next, 128,
       compact.lineCount(12, migrated_display.bodyBottom()), compact_measure);
   assert(compact_page.start <= legacy.next && compact_page.next > legacy.next);
-  JohnReaderScreen migrated(&task, &migrated_display);
+  ReaderScreen migrated(&task, &migrated_display);
   migrated.open(); migrated.render(migrated_display); assert(migrated.flush());
-  assert(the_mesh.loadJohnBookmark(saved) && saved == pos(91, compact_page.start));
-  assert(compact_page.parts == 1); // John 3:16 now fits in one V4 screen
+  assert(the_mesh.loadReaderBookmark(saved) && saved == pos(91, compact_page.start));
+  assert(compact_page.parts == 1); // reader 3:16 now fits in one V4 screen
 
   // Reflow an already-open reader when panel geometry crosses the 5px/6px
   // threshold, and when a tiny panel rotates into the stacked-header layout.
   for (const auto& dimensions : {std::make_pair(72,40), {128,64}, {40,72}, {64,128}, {32,128}, {160,80}, {80,160}, {159,80}}) {
-    assert(the_mesh.saveJohnBookmark(pos(91, legacy.next)));
+    assert(the_mesh.saveReaderBookmark(pos(91, legacy.next)));
     Display changed(72,40);
-    JohnReaderScreen active(&task, &changed);
+    ReaderScreen active(&task, &changed);
     active.open(); active.render(changed); assert(active.flush());
-    Position before; assert(the_mesh.loadJohnBookmark(before));
+    Position before; assert(the_mesh.loadReaderBookmark(before));
     changed.resize(dimensions.first, dimensions.second);
     mesh::ui::SmallMessageText small_font(changed);
     const bool small = changed.useSmallMessageFont();
@@ -424,10 +424,10 @@ int main(int argc, char** argv) {
         new_measure);
     assert(new_page.start <= before.offset && new_page.next > before.offset);
     active.render(changed); assert(active.flush());
-    Position after; assert(the_mesh.loadJohnBookmark(after));
+    Position after; assert(the_mesh.loadReaderBookmark(after));
     assert(after == pos(91, new_page.start));
     const auto rendered = changed.body();
-    JohnReaderScreen reopened(&task, &changed);
+    ReaderScreen reopened(&task, &changed);
     reopened.open(); changed.clear(); reopened.render(changed);
     assert(changed.body() == rendered);
   }
@@ -459,12 +459,12 @@ int main(int argc, char** argv) {
   }
   // A reset between renames recovers the previous record, not the .tmp.
   Files interrupted = original;
-  assert(interrupted.rename("/john.pos", "/john.pos.bak"));
+  assert(interrupted.rename("/reader.pos", "/reader.pos.bak"));
   assert(loadReaderBookmark(interrupted, saved) && saved == pos(4, 12));
   assert(saveReaderBookmark(interrupted, pos(20)));
   assert(saveReaderBookmark(interrupted, pos(0)) && interrupted.data.empty());
   Files damaged;
-  damaged.data["/john.pos"] = {1, 2, 3};
+  damaged.data["/reader.pos"] = {1, 2, 3};
   assert(!loadReaderBookmark(damaged, saved) && saved.atStart());
   assert(saveReaderBookmark(damaged, pos(10)));
   assert(loadReaderBookmark(damaged, saved) && saved == pos(10));

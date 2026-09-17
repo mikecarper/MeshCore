@@ -11,8 +11,8 @@
 #include <errno.h>
 #include <sys/stat.h>
 #endif
-#if COMPANION_FEATURE_JOHN
-#include <helpers/bible/JohnBookmarkFiles.h>
+#if COMPANION_FEATURE_READER
+#include <helpers/bible/ReaderBookmarkFiles.h>
 #endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -446,12 +446,12 @@ File DataStore::openRead(const char* filename) {
   return openRead(_fs, filename);
 }
 
-#if COMPANION_FEATURE_JOHN
+#if COMPANION_FEATURE_READER
 namespace {
-class JohnBookmarkFiles {
+class ReaderBookmarkFiles {
   FILESYSTEM* _fs;
 public:
-  explicit JohnBookmarkFiles(FILESYSTEM* fs) : _fs(fs) {}
+  explicit ReaderBookmarkFiles(FILESYSTEM* fs) : _fs(fs) {}
   bool exists(const char* path) {
 #if defined(NRF52_PLATFORM)
     bool present = false;
@@ -496,20 +496,20 @@ public:
 };
 } // namespace
 
-bool DataStore::loadJohnBookmark(mesh::bible::Position& pos) {
+bool DataStore::loadReaderBookmark(mesh::bible::Position& pos) {
   pos = mesh::bible::Position{};
 #if defined(NRF52_PLATFORM)
   if (_primary_storage_unavailable) return false;
 #endif
-  JohnBookmarkFiles files(_fs);
+  ReaderBookmarkFiles files(_fs);
   return mesh::bible::loadReaderBookmark(files, pos);
 }
 
-bool DataStore::saveJohnBookmark(mesh::bible::Position pos) {
+bool DataStore::saveReaderBookmark(mesh::bible::Position pos) {
 #if defined(NRF52_PLATFORM)
   if (_primary_storage_unavailable) return false;
 #endif
-  JohnBookmarkFiles files(_fs);
+  ReaderBookmarkFiles files(_fs);
   return mesh::bible::saveReaderBookmark(files, pos);
 }
 #endif

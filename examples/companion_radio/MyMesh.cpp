@@ -14,7 +14,7 @@
 #include <Mesh.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include <helpers/CompanionStatusResponse.h>
-#include <helpers/CompanionJohn.h>
+#include <helpers/CompanionReader.h>
 #include <helpers/IdentityGeneration.h>
 #include <helpers/LazyPersistence.h>
 #include <helpers/StorageLayout.h>
@@ -7881,8 +7881,8 @@ void MyMesh::handleTerminalCommand(char* command) {
   if (*command == 0) return;
   mesh::cli::normalizeCommandVerb(command);
 
-#if COMPANION_FEATURE_JOHN
-  if (mesh::handleJohnCommand(command, terminalOutput())) return;
+#if COMPANION_FEATURE_READER
+  if (mesh::handleReaderCommand(command, terminalOutput())) return;
 #endif
 
   char local_reply[160];
@@ -8362,8 +8362,8 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  board\r\n");
     terminalOutput().print("  version\r\n");
     terminalOutput().print("  get storage.layout\r\n");
-#if COMPANION_FEATURE_JOHN
-    terminalOutput().print("  get John <chapter>:<verse> (World English Bible, offline)\r\n");
+#if COMPANION_FEATURE_READER
+    terminalOutput().print("  get reader <chapter>:<verse> (World English Bible, offline)\r\n");
 #endif
     terminalOutput().print("  get pwrmgt.bootreason\r\n");
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS

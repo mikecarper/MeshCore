@@ -159,20 +159,20 @@ int main() {
   displayPowerPrefs().inbox = DisplayInboxMode::Pending;
   assert(!messages.hasMessages());
 
-#if COMPANION_FEATURE_JOHN
+#if COMPANION_FEATURE_READER
   // Receiving and downloading messages must leave an open reader alone.
   Screen reader;
-  task.john_reader = task.curr = &reader;
+  task.reader = task.curr = &reader;
   for (bool connected : {false, true}) {
     task.connected = connected;
     for (int i = 0; i < 2; ++i) {
       mesh.receive("while reading");
-      assert(task.isJohnReaderActive());
+      assert(task.isReaderActive());
     }
     for (int remaining : {1, 0}) {
       mesh.download();
       assert(task.getMsgCount() == remaining);
-      assert(task.isJohnReaderActive());
+      assert(task.isReaderActive());
     }
   }
 #endif
@@ -284,7 +284,7 @@ int main() {
         with tempfile.TemporaryDirectory(prefix="mesh-inbox-test-") as directory:
             executable = Path(directory) / "inbox.exe"
             result = subprocess.run([
-                compiler, "-std=c++17", f"-DCOMPANION_FEATURE_JOHN={reader_enabled}",
+                compiler, "-std=c++17", f"-DCOMPANION_FEATURE_READER={reader_enabled}",
                 "-I" + str(ROOT / "src"), "-I" + str(ROOT / "test/mocks"),
                 "-x", "c++", "-", str(ROOT / "src/helpers/ui/MomentaryButton.cpp"),
                 str(ROOT / "src/helpers/ui/DisplayDriver.cpp"), "-o", str(executable),

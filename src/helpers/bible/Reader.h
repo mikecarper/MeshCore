@@ -1,5 +1,5 @@
 #pragma once
-#include "JohnLookup.h"
+#include "ReaderLookup.h"
 
 namespace mesh { namespace bible {
 
@@ -92,7 +92,7 @@ inline uint32_t bookmarkChecksum(const uint8_t* data) {
   return hash;
 }
 inline void encodeBookmark(Position pos, uint8_t (&out)[kBookmarkBytes]) {
-  out[0] = 'J'; out[1] = 'N'; out[2] = 1; out[3] = 0;
+  out[0] = 'R'; out[1] = 'D'; out[2] = 1; out[3] = 0;
   out[4] = pos.verse; out[5] = pos.verse >> 8;
   out[6] = pos.offset; out[7] = pos.offset >> 8;
   const uint32_t hash = bookmarkChecksum(out);
@@ -100,7 +100,7 @@ inline void encodeBookmark(Position pos, uint8_t (&out)[kBookmarkBytes]) {
 }
 inline bool decodeBookmark(const uint8_t (&in)[kBookmarkBytes], Position& pos) {
   pos = Position{};
-  if (in[0] != 'J' || in[1] != 'N' || in[2] != 1 || in[3] != 0) return false;
+  if (in[0] != 'R' || in[1] != 'D' || in[2] != 1 || in[3] != 0) return false;
   const uint32_t hash = bookmarkChecksum(in);
   for (unsigned i = 0; i < 4; ++i)
     if (in[8 + i] != static_cast<uint8_t>(hash >> (8 * i))) return false;
@@ -112,7 +112,7 @@ inline bool decodeBookmark(const uint8_t (&in)[kBookmarkBytes], Position& pos) {
   return true;
 }
 
-// Debounced checkpointing: no writes just for opening John 1:1, no rewrite
+// Debounced checkpointing: no writes just for opening reader 1:1, no rewrite
 // of unchanged positions, and a failed save remains pending for retry.
 class ReaderBookmark {
   Position _position, _saved;

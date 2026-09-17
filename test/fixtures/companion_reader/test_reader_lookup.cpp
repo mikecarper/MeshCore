@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include <helpers/CompanionJohn.h>
-#include <helpers/bible/JohnData.generated.h>
+#include <helpers/CompanionReader.h>
+#include <helpers/bible/ReaderData.generated.h>
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -10,23 +10,23 @@ using namespace mesh::bible;
 
 int main(int argc, char**) {
   Reference ref = {};
-  for (const char* cmd : {"get John 3:16", " GET\tJoHn 3:16 \t", "get john 03:16"}) {
+  for (const char* cmd : {"get reader 3:16", " GET\treader 3:16 \t", "get reader 03:16"}) {
     assert(parse(cmd, ref) == ParseResult::Valid && ref.chapter == 3 && ref.verse == 16);
   }
-  for (const char* cmd : {"get John", "get John 0:1", "get John 22:1",
-       "get John 1:52", "get John 3:0", "get John -3:16", "get John 3:16-18",
-       "get John 3:16 junk", "get John 9999999999:1", "get John 1:9999999999",
-       "get John 3:", "get John 3:16\x1b", "get John 3 :16", "get John :16"}) {
+  for (const char* cmd : {"get reader", "get reader 0:1", "get reader 22:1",
+       "get reader 1:52", "get reader 3:0", "get reader -3:16", "get reader 3:16-18",
+       "get reader 3:16 junk", "get reader 9999999999:1", "get reader 1:9999999999",
+       "get reader 3:", "get reader 3:16\x1b", "get reader 3 :16", "get reader :16"}) {
     assert(parse(cmd, ref) == ParseResult::Invalid);
   }
-  for (const char* cmd : {"get name", "forget John 3:16", "get johnny 3:16",
-       "get 1 John 3:16", "getJohn 3:16", "", "get J", "get", "g"}) {
+  for (const char* cmd : {"get name", "forget reader 3:16", "get readerny 3:16",
+       "get 1 reader 3:16", "getreader 3:16", "", "get J", "get", "g"}) {
     assert(parse(cmd, ref) == ParseResult::NoMatch);
     Stream output;
-    assert(!mesh::handleJohnCommand(cmd, output) && output.text.empty());
+    assert(!mesh::handleReaderCommand(cmd, output) && output.text.empty());
   }
   assert(parse(nullptr, ref) == ParseResult::NoMatch);
-  const Corpus& corpus = generated::johnCorpus;
+  const Corpus& corpus = generated::readerCorpus;
   struct Guarded { uint32_t pre; char scratch[kBlockSize]; uint32_t post; } buf = {};
   buf.pre = 0x11223344; buf.post = 0xaabbccdd;
   unsigned count = 0;
@@ -36,9 +36,9 @@ int main(int argc, char**) {
       assert(lookup(corpus, {chapter, verse}, buf.scratch, kBlockSize, text) == LookupResult::Found);
       assert(buf.pre == 0x11223344 && buf.post == 0xaabbccdd);
       char cmd[32];
-      snprintf(cmd, sizeof(cmd), "get John %u:%u", chapter, verse);
+      snprintf(cmd, sizeof(cmd), "get reader %u:%u", chapter, verse);
       Stream output;
-      assert(mesh::handleJohnCommand(cmd, output));
+      assert(mesh::handleReaderCommand(cmd, output));
       const std::string expected = "\r\n" + std::string(text) + "\r\n";
       assert(output.text.find(expected) != std::string::npos);
       for (const unsigned char* c = reinterpret_cast<const unsigned char*>(text); *c; ++c)
@@ -88,7 +88,7 @@ int main(int argc, char**) {
     assert(text == nullptr && buf.pre == 0x11223344 && buf.post == 0xaabbccdd);
   }
   Stream invalid;
-  assert(mesh::handleJohnCommand("get John 3:99", invalid));
+  assert(mesh::handleReaderCommand("get reader 3:99", invalid));
   assert(invalid.text.find("ERROR") != std::string::npos);
   if (argc == 1) std::puts("All 879 verses, terminal output, parser and corruption checks passed");
 }
