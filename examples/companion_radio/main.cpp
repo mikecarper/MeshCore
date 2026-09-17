@@ -413,8 +413,9 @@ static bool applyCompanionPowerSaving(bool enabled) {
 
 #if COMPANION_IDF_PM_AVAILABLE
   const uint32_t min_mhz = enabled && max_mhz > 40 ? 40 : max_mhz;
-#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-  // Automatic light sleep interrupts native USB CDC on ESP32 companions.
+#if (defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
+    || defined(ENABLE_USB_INTERFACE)
+  // Automatic light sleep interrupts native USB CDC and USB companions.
   // Frequency scaling remains active when device power saving is enabled.
   const bool automatic_light_sleep = false;
 #else
