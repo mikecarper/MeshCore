@@ -1128,6 +1128,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#repeater-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeater Nodes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companionclient-nodes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2932,6 +2943,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#repeater-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeater Nodes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companionclient-nodes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3025,14 +3047,21 @@ zero coordinates.</p>
 <li>Omit GPS from telemetry if there is no fix or if the cached fix is more than
   12 hours old.</li>
 </ul>
-<p>When a telemetry request asks for location, GPS is kept on for 2 hours after the
-latest location request. During that hold window, later location telemetry
-requests can use fresh GPS data as soon as valid fixes are available.</p>
+<p>When a telemetry request asks for location, GPS is normally kept on for 2 hours
+after the latest location request. During that hold window, later location
+telemetry requests can use fresh GPS data as soon as valid fixes are available.</p>
 <p>If GPS is manually enabled, it stays on and valid fixes continue to update the
 cache.</p>
 <p>If no contact or ACL client can receive location telemetry, the scheduled
-2-hour refresh does not run. A real location telemetry request still turns GPS
-on for the 2-hour hold window, and manual GPS-on still keeps the cache updated.</p>
+2-hour refresh does not run. A real location telemetry request can still turn
+GPS on, and manual GPS-on still keeps the cache updated.</p>
+<h2 id="repeater-nodes">Repeater Nodes</h2>
+<p>Repeaters use a shorter on-demand policy when GPS is manually off. An authorized
+location-telemetry request wakes the receiver only when its cached position is
+stale. The first valid fix is cached and the receiver immediately powers down;
+the next request can return that fix without another wake. <code>gps off</code> also
+cancels an acquisition already in progress. An acquisition that never obtains a
+fix retains the normal 15-minute safety timeout.</p>
 <h2 id="companionclient-nodes">Companion/Client Nodes</h2>
 <p>Companion/client telemetry uses the existing companion telemetry permission
 system:</p>
@@ -3044,6 +3073,8 @@ system:</p>
 <p>Location telemetry is sent only when the requester's effective telemetry
 permissions include location. Those permissions are derived from the companion
 telemetry mode settings and contact flags.</p>
+<p>No new phone app behavior is required. Existing clients see the existing GPS
+telemetry field when it is present.</p>
 <p>The scheduled GPS cache refresh runs only when at least one stored contact has
 effective location telemetry access:</p>
 <ul>
@@ -3051,8 +3082,6 @@ effective location telemetry access:</p>
 <li><code>location: allow flags</code> with at least one stored contact whose flags include
   location</li>
 </ul>
-<p>No new phone app behavior is required. Existing clients see the existing GPS
-telemetry field when it is present.</p>
 <h2 id="sensor-nodes">Sensor Nodes</h2>
 <p>Sensor telemetry access is controlled by:</p>
 <pre><code class="language-text">get telemetry.access

@@ -11011,6 +11011,9 @@ clear recent.repeater
 Companion reports <code>on</code> or <code>off</code>; infrastructure includes receiver details:
 - <code>off</code> when the GPS hardware is disabled
 - <code>on, {active|deactivated}, {fix|no fix}, {sat count} sats</code> when the GPS hardware is enabled</p>
+<p>On repeaters, <code>gps off</code> cancels any acquisition already in progress. A later
+authorized location-telemetry request may wake the receiver, but only until its
+first valid fix is cached; the receiver then powers down again.</p>
 <hr />
 <h4 id="sync-this-nodes-clock-with-gps-time">Sync this node's clock with GPS time</h4>
 <p><strong>Usage:</strong> 
