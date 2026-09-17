@@ -564,7 +564,8 @@ public:
   // station interface so it can share the AP-selected channel safely.
   bool startSharedEspNowBridgeIfReady() {
     if (espnow_bridge.isRunning()) return true;
-    if (!bridge || !bridge->isRunning() || !WiFi.isConnected()) return false;
+    if (!_prefs.espnow_bridge_enabled) return false;
+    if (bridge && bridge->isRunning() && !WiFi.isConnected()) return false;
     if (!millisHasNowPassed(shared_espnow_retry_at)) return false;
     shared_espnow_retry_at = millis() + 5000;
     configureBridgeFilter(&espnow_bridge);
@@ -581,20 +582,22 @@ public:
 #endif
   }
 
-
-  void configureBridgeFilter(AbstractBridge* active_bridge) {
-#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
-    active_bridge->setPacketFilter([](void* context, const mesh::Packet* packet) {
-      return static_cast<MyMesh*>(context)->allowTransportPacket(packet, 2);  // RULE_MODE_BRIDGE
-    }, this);
-#else
-    (void)active_bridge;
-#endif
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+  bool isEspNowBridgeRunning() override {
+    return espnow_bridge.isRunning();
   }
 
-  bool setBridgeState(bool enable) override {
-#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
-    if (!enable && !bridge && !espnow_bridge.isRunning()) return true;
+  bool setMqttBridgeState(bool enable) override {
+    if (!enable) {
+      if (bridge && bridge->isRunning()) bridge->end();
+      _alerter.setBridge(nullptr);
+      return !bridge || !bridge->isRunning();
+    }
+    // Give the WiFi station to MQTT while it associates. ESP-NOW is restarted
+    // after the AP channel is known, which avoids a raw ESP-NOW-only session
+    // pinning the station to a different channel.
+    if (espnow_bridge.isRunning()) espnow_bridge.end();
+    shared_espnow_retry_at = 0;
     if (!bridge) {
       MQTTNodeInfo node_info;
       node_info.node_name = _prefs.node_name;
@@ -608,39 +611,87 @@ public:
                               getRTCClock(), &self_id);
       if (!bridge) return false;
     }
-    if (enable) {
-      if (!bridge->isRunning()) {
-        char device_id[65];
-        mesh::LocalIdentity self_id = getSelfId();
-        mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
-        bridge->setDeviceID(device_id);
-        bridge->setFirmwareVersion(getFirmwareVer());
-        bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
-        bridge->setBuildDate(getBuildDate());
-        bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
+    if (!bridge->isRunning()) {
+      char device_id[65];
+      mesh::LocalIdentity self_id = getSelfId();
+      mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
+      bridge->setDeviceID(device_id);
+      bridge->setFirmwareVersion(getFirmwareVer());
+      bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
+      bridge->setBuildDate(getBuildDate());
+      bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
 #ifdef WITH_SNMP
-        if (_cli.getObserverPrefs()->snmp_enabled) {
-          _snmp_agent.setNodeName(_prefs.node_name);
-          _snmp_agent.setFirmwareVersion(getFirmwareVer());
-          bridge->setSNMPAgent(&_snmp_agent);
-        }
-#endif
-        configureBridgeFilter(bridge);
-        bridge->begin();
-        _alerter.setBridge(bridge);
+      if (_cli.getObserverPrefs()->snmp_enabled) {
+        _snmp_agent.setNodeName(_prefs.node_name);
+        _snmp_agent.setFirmwareVersion(getFirmwareVer());
+        bridge->setSNMPAgent(&_snmp_agent);
       }
-      if (!bridge->isRunning()) return false;
+#endif
+      configureBridgeFilter(bridge);
+      bridge->begin();
+      _alerter.setBridge(bridge);
+    }
+    if (_prefs.espnow_bridge_enabled) startSharedEspNowBridgeIfReady();
+    return bridge->isRunning();
+  }
+
+  bool setEspNowBridgeState(bool enable) override {
+    if (!enable) {
+      if (espnow_bridge.isRunning()) espnow_bridge.end();
       shared_espnow_retry_at = 0;
+      return !espnow_bridge.isRunning();
+    }
+    if (espnow_bridge.isRunning()) return true;
+    shared_espnow_retry_at = 0;
+    if (bridge && bridge->isRunning()) {
       startSharedEspNowBridgeIfReady();
-      // The MQTT task owns association. ESP-NOW starts after it sees the
-      // active AP channel and accepts the configured bridge channel.
       return true;
     }
+    configureBridgeFilter(&espnow_bridge);
+    espnow_bridge.begin();
+    return espnow_bridge.isRunning();
+  }
+
+  bool restartMqttBridge() override {
+#ifdef WITH_WEBCONFIG
+    if (_wc_batch_active) {
+      _wc_restart_pending = true;
+      return true;
+    }
+#endif
     if (espnow_bridge.isRunning()) espnow_bridge.end();
-    if (bridge->isRunning()) bridge->end();
+    if (bridge && bridge->isRunning()) bridge->end();
     shared_espnow_retry_at = 0;
     _alerter.setBridge(nullptr);
-    return !bridge->isRunning() && !espnow_bridge.isRunning();
+    return !_prefs.bridge_enabled || setMqttBridgeState(true);
+  }
+
+  bool restartEspNowBridge() override {
+    if (espnow_bridge.isRunning()) espnow_bridge.end();
+    shared_espnow_retry_at = 0;
+    return !_prefs.espnow_bridge_enabled || setEspNowBridgeState(true);
+  }
+#endif
+
+
+  void configureBridgeFilter(AbstractBridge* active_bridge) {
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
+    active_bridge->setPacketFilter([](void* context, const mesh::Packet* packet) {
+      return static_cast<MyMesh*>(context)->allowTransportPacket(packet, 2);  // RULE_MODE_BRIDGE
+    }, this);
+#else
+    (void)active_bridge;
+#endif
+  }
+
+  bool setBridgeState(bool enable) override {
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+    if (!enable) return setEspNowBridgeState(false) && setMqttBridgeState(false);
+    const bool mqtt_ok = _prefs.bridge_enabled
+        ? setMqttBridgeState(true) : setMqttBridgeState(false);
+    const bool espnow_ok = _prefs.espnow_bridge_enabled
+        ? setEspNowBridgeState(true) : setEspNowBridgeState(false);
+    return mqtt_ok && espnow_ok;
 #else
     // An absent MQTT bridge is already stopped. Do not allocate one solely to
     // satisfy an idempotent disable request.
@@ -705,11 +756,7 @@ public:
       return true;
     }
 #endif
-    if (espnow_bridge.isRunning()) espnow_bridge.end();
-    if (bridge && bridge->isRunning()) bridge->end();
-    shared_espnow_retry_at = 0;
-    _alerter.setBridge(nullptr);
-    return setBridgeState(true);
+    return restartEspNowBridge() && restartMqttBridge();
 #else
     if (!bridge) return false;
 #ifdef WITH_WEBCONFIG

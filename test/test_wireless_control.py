@@ -338,6 +338,10 @@ struct {
  bool hasWirelessNetworkClient(){return network;}
  bool isBridgeRunning(){return bridge;}
  bool setBridgeState(bool on){bridge=on;return true;}
+ bool isMqttBridgeRunning(){return bridge;}
+ bool isEspNowBridgeRunning(){return bridge;}
+ bool setMqttBridgeState(bool on){bridge=on;return true;}
+ bool setEspNowBridgeState(bool on){bridge=on;return true;}
  bool stopWebConfig(char*){web=false;stopping=true;return true;}
  bool startWebConfig(bool,char*){web=true;return true;}
 } the_mesh;

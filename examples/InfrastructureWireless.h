@@ -26,10 +26,10 @@ public:
     if (the_mesh.isWebConfigActive()) mask |= mesh::wireless::WiFi;
 #endif
 #ifdef WITH_MQTT_BRIDGE
-    if (the_mesh.isBridgeRunning()) mask |= mesh::wireless::WiFi;
+    if (the_mesh.isMqttBridgeRunning()) mask |= mesh::wireless::WiFi;
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
-    if (the_mesh.isBridgeRunning()) mask |= mesh::wireless::EspNow;
+    if (the_mesh.isEspNowBridgeRunning()) mask |= mesh::wireless::EspNow;
 #endif
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
     if (radio_driver.isEnabled()) mask |= mesh::wireless::EspNow;
@@ -61,12 +61,12 @@ public:
           resume_web_ = the_mesh.isWebConfigActive();
 #endif
 #ifdef WITH_MQTT_BRIDGE
-          resume_mqtt_ = the_mesh.isBridgeRunning();
+          resume_mqtt_ = the_mesh.isMqttBridgeRunning();
 #endif
           wifi_saved_ = true;
         }
 #ifdef WITH_MQTT_BRIDGE
-        if (!the_mesh.setBridgeState(false)) return Result::Failed;
+        if (!the_mesh.setMqttBridgeState(false)) return Result::Failed;
 #endif
 #ifdef WITH_WEBCONFIG
         if (the_mesh.isWebConfigActive()) {
@@ -102,7 +102,7 @@ public:
           || !(enabled() & mesh::wireless::WiFi)
 #endif
           ) {
-        if (!the_mesh.setBridgeState(true)) return Result::Failed;
+        if (!the_mesh.setMqttBridgeState(true)) return Result::Failed;
       }
 #endif
       wifi_saved_ = resume_web_ = resume_mqtt_ = false;
@@ -111,7 +111,7 @@ public:
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
     if (service == mesh::wireless::EspNow)
-      return the_mesh.setBridgeState(on) ? Result::Done : Result::Failed;
+      return the_mesh.setEspNowBridgeState(on) ? Result::Done : Result::Failed;
 #endif
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
     if (service == mesh::wireless::EspNow) {

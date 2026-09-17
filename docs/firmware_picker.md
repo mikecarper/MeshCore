@@ -180,8 +180,12 @@ For commands and option explanations, follow the
 
 An ESP-NOW bridge target keeps LoRa as its primary mesh radio. Expanded ESP32
 Full repeater and room-server images combine ESP-NOW with WiFi MQTT in the
-same firmware. Both use one 2.4 GHz radio, so the ESP-NOW bridge channel must
-match the connected WiFi access point's fixed channel. Its runtime
+same firmware. MQTT and ESP-NOW are independent runtime transports: use
+`set mqtt.enabled on|off` for MQTT and `set bridge.enabled on|off` (or
+`set espnow.enabled on|off`) for ESP-NOW, so either or both can run. Both use
+one 2.4 GHz radio, so when both are enabled the ESP-NOW bridge channel must
+match the connected WiFi access point's fixed channel. ESP-NOW-only mode does
+not require WiFi credentials. Its runtime
 `bridge.format` setting chooses the peer protocol: `wrapped` (the
 backward-compatible bridge-to-bridge default using `bridge.secret`) or `raw`
 (direct MeshCore ESP-NOW LR frames for `Generic_ESPNOW`,

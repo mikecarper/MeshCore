@@ -113,6 +113,25 @@ int main(){
 '''
 
 class EspNowLifecycleTests(unittest.TestCase):
+    def test_combined_full_transport_controls_are_independent(self):
+        common = (ROOT/'src/helpers/CommonCLI.cpp').read_text()
+        observer = (ROOT/'src/helpers/CommonCLI_Observer.cpp').read_text()
+        prefs = (ROOT/'src/helpers/CommonCLI.h').read_text()
+        self.assertIn('uint8_t espnow_bridge_enabled = 1;', prefs)
+        self.assertIn('setEspNowBridgeState(enable)', common)
+        self.assertIn('_prefs->espnow_bridge_enabled', common)
+        self.assertIn('setMqttBridgeState(enable)', observer)
+        self.assertIn('isMqttBridgeRunning()', observer)
+        for role in ('simple_repeater', 'simple_room_server'):
+            header = (ROOT/f'examples/{role}/MyMesh.h').read_text()
+            combined = method(header, 'bool setBridgeState(bool enable) override')
+            self.assertIn('setMqttBridgeState(true)', combined)
+            self.assertIn('setEspNowBridgeState(true)', combined)
+            mqtt = method(header, 'bool setMqttBridgeState(bool enable) override')
+            espnow = method(header, 'bool setEspNowBridgeState(bool enable) override')
+            self.assertIn('if (espnow_bridge.isRunning()) espnow_bridge.end();', mqtt)
+            self.assertIn('if (mqtt_bridge' if role == 'simple_repeater' else 'if (bridge', espnow)
+
     def test_sdk_failures_stop_and_restart(self):
         header=(ROOT/'src/helpers/esp32/ESPNOWRadio.h').read_text()
         source=(ROOT/'src/helpers/esp32/ESPNOWRadio.cpp').read_text()

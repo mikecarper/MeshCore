@@ -1286,6 +1286,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
                         && preamble <= mesh::RadioProfiles::MaxPreamble))) {
                   _prefs->primary_radio_preamble = preamble;
                 }
+                if (file.available() >= (int)sizeof(_prefs->espnow_bridge_enabled)) {
+                  file.read((uint8_t *)&_prefs->espnow_bridge_enabled,
+                            sizeof(_prefs->espnow_bridge_enabled));
+                }
               }
             }
           }
@@ -1359,6 +1363,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     }
 #endif
     _prefs->bridge_enabled = constrain(_prefs->bridge_enabled, 0, 1);
+    _prefs->espnow_bridge_enabled = constrain(_prefs->espnow_bridge_enabled, 0, 1);
     _prefs->bridge_delay = constrain(_prefs->bridge_delay, 0, 10000);
     _prefs->bridge_pkt_src = constrain(_prefs->bridge_pkt_src, 0, 1);
     _prefs->bridge_baud = constrain(_prefs->bridge_baud, 9600, BRIDGE_MAX_BAUD);
@@ -1607,6 +1612,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->bridge_uart);                     // 862
   WRITE_COMMON_PREFS(&prefs->bridge_format);                   // 863
   WRITE_COMMON_PREFS(&prefs->primary_radio_preamble);          // appended primary tuple field
+  WRITE_COMMON_PREFS(&prefs->espnow_bridge_enabled);           // appended Full ESP-NOW intent
 
 #undef WRITE_COMMON_PREFS_BYTES
 #undef WRITE_COMMON_PREFS
@@ -1764,6 +1770,7 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
     file.write((uint8_t *)&_prefs->bridge_uart, sizeof(_prefs->bridge_uart));                       // 862
     file.write((uint8_t *)&_prefs->bridge_format, sizeof(_prefs->bridge_format));                   // 863
     file.write((uint8_t *)&_prefs->primary_radio_preamble, sizeof(_prefs->primary_radio_preamble)); // appended
+    file.write((uint8_t *)&_prefs->espnow_bridge_enabled, sizeof(_prefs->espnow_bridge_enabled));   // appended
 
     _common_save_succeeded = file.commit();
     if (!_common_save_succeeded) {
@@ -3343,7 +3350,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _prefs->usb_logging_enabled = usb_enabled ? 1 : 0;
     _prefs->bridge_enabled = wifi_enabled ? 1 : 0;
     mesh::setUsbLoggingEnabled(usb_enabled);
-    _callbacks->setBridgeState(wifi_enabled);
+    _callbacks->setMqttBridgeState(wifi_enabled);
     savePrefs();
     snprintf(reply, 160, "OK - logging.output %s (saved)", value);
     return;
@@ -3392,6 +3399,19 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   // Observer/MQTT/WiFi/timezone/alert/SNMP commands live in CommonCLI_Observer.cpp.
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+  if (memcmp(config, "espnow.enabled ", 15) == 0) {
+    const char* value = config + 15;
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      strcpy(reply, "Error: use set espnow.enabled on|off");
+    } else {
+      char canonical[28];
+      snprintf(canonical, sizeof(canonical), "set bridge.enabled %s", value);
+      handleSetCmd(sender_timestamp, canonical, reply);
+    }
+    return;
+  }
+#endif
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   if (handleSdCardSetCmd(config, reply)) return;
 #endif
@@ -4246,6 +4266,15 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (!parseOnOffStrict(&config[15], enable)) {
       strcpy(reply, "Error: usage set bridge.enabled on|off");
     } else {
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+      // In a combined Full image bridge.enabled retains its ESP-NOW meaning;
+      // mqtt.enabled is the independent MQTT switch.
+      _prefs->espnow_bridge_enabled = enable;
+      const bool applied = _callbacks->setEspNowBridgeState(enable);
+      savePrefs();
+      strcpy(reply, applied ? "OK"
+                            : "Error: ESP-NOW runtime change failed; setting saved");
+#else
       #ifdef WITH_RS232_BRIDGE
       if (enable
           && _sensors->gpsSerialTransportMayConflict(_prefs->bridge_uart)
@@ -4291,6 +4320,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, applied ? "OK"
                             : "Error: bridge runtime change failed; setting saved");
 #endif
+#endif
     }
   } else if (memcmp(config, "bridge.delay ", 13) == 0) {
     int32_t bridge_delay = 0;
@@ -4331,7 +4361,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       const uint32_t previous_baud = _prefs->bridge_baud;
       const bool previous_running = _callbacks->isBridgeRunning();
       _prefs->bridge_baud = baud;
-      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
+      const bool applied =
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+          !_prefs->espnow_bridge_enabled || _callbacks->restartEspNowBridge();
+#else
+          !_prefs->bridge_enabled || _callbacks->restartBridge();
+#endif
       if (applied) {
         savePrefs();
         strcpy(reply, "OK");
@@ -4374,7 +4409,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       const uint8_t previous_uart = _prefs->bridge_uart;
       const bool previous_running = _callbacks->isBridgeRunning();
       _prefs->bridge_uart = (uint8_t)uart;
-      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
+      const bool applied =
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+          !_prefs->espnow_bridge_enabled || _callbacks->restartEspNowBridge();
+#else
+          !_prefs->bridge_enabled || _callbacks->restartBridge();
+#endif
       if (!applied) {
         _prefs->bridge_uart = previous_uart;
         const bool restored = previous_running
@@ -4401,7 +4441,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (mesh::bridge::parseEspNowBridgeChannel(
             &config[15], _prefs->bridge_format, channel)) {
       _prefs->bridge_channel = channel;
-      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
+      const bool applied =
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+          !_prefs->espnow_bridge_enabled || _callbacks->restartEspNowBridge();
+#else
+          !_prefs->bridge_enabled || _callbacks->restartBridge();
+#endif
       savePrefs();
       strcpy(reply, applied ? "OK"
                             : "Error: setting saved; bridge failed to restart");
@@ -4416,7 +4461,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "Error: secret must be 1-%u characters", (unsigned)(sizeof(_prefs->bridge_secret) - 1));
     } else {
       StrHelper::strncpy(_prefs->bridge_secret, secret, sizeof(_prefs->bridge_secret));
-      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
+      const bool applied =
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+          !_prefs->espnow_bridge_enabled || _callbacks->restartEspNowBridge();
+#else
+          !_prefs->bridge_enabled || _callbacks->restartBridge();
+#endif
       savePrefs();
       strcpy(reply, applied ? "OK"
                             : "Error: setting saved; bridge failed to restart");
@@ -4430,7 +4480,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "Error: set bridge.channel to 1-13 before changing format");
     } else {
       _prefs->bridge_format = format;
-      const bool applied = !_prefs->bridge_enabled || _callbacks->restartBridge();
+      const bool applied =
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+          !_prefs->espnow_bridge_enabled || _callbacks->restartEspNowBridge();
+#else
+          !_prefs->bridge_enabled || _callbacks->restartBridge();
+#endif
       savePrefs();
       if (!applied) {
         strcpy(reply, "Error: setting saved; bridge failed to restart");
@@ -4839,7 +4894,9 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", _callbacks->getRole());
   } else if (configKeyEquals(config, "bridge.type")) {
     sprintf(reply, "> %s",
-#ifdef WITH_RS232_BRIDGE
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+            "mqtt+espnow"
+#elif defined(WITH_RS232_BRIDGE)
             "rs232"
 #elif WITH_ESPNOW_BRIDGE
             "espnow"
@@ -4851,9 +4908,25 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     );
 #ifdef WITH_BRIDGE
   } else if (configKeyEquals(config, "bridge.enabled")) {
-    sprintf(reply, "> %s", _prefs->bridge_enabled ? "on" : "off");
+    sprintf(reply, "> %s",
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+            _prefs->espnow_bridge_enabled ? "on" : "off");
+#else
+            _prefs->bridge_enabled ? "on" : "off");
+#endif
   } else if (configKeyEquals(config, "bridge.running")) {
-    sprintf(reply, "> %s", _callbacks->isBridgeRunning() ? "on" : "off");
+    sprintf(reply, "> %s",
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+            _callbacks->isEspNowBridgeRunning() ? "on" : "off");
+#else
+            _callbacks->isBridgeRunning() ? "on" : "off");
+#endif
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+  } else if (configKeyEquals(config, "espnow.enabled")) {
+    sprintf(reply, "> %s", _prefs->espnow_bridge_enabled ? "on" : "off");
+  } else if (configKeyEquals(config, "espnow.running")) {
+    sprintf(reply, "> %s", _callbacks->isEspNowBridgeRunning() ? "on" : "off");
+#endif
   } else if (configKeyEquals(config, "bridge.delay")) {
     sprintf(reply, "> %d", (uint32_t)_prefs->bridge_delay);
   } else if (configKeyEquals(config, "bridge.source")) {

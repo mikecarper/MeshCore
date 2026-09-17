@@ -1012,9 +1012,10 @@ const combinedObserver = combinedCatalog.profiles.find(profile => profile.target
 assert.deepStrictEqual(picker.profileFieldValues(combinedObserver, 'mode'), ['standard', 'espnow']);
 assert(picker.profileMatches(combinedObserver, {mode: 'espnow'}, ['mode']));
 const combinedDirections = picker.runtimeDirections(combinedObserver, {logging: 'usb'});
-assert(combinedDirections.some(section => section.title === 'MQTT + ESP-NOW bridge'));
-assert(!combinedDirections.some(section => section.title === 'ESP-NOW bridge'));
+assert(combinedDirections.some(section => section.title === 'MQTT broker connections'));
+assert(combinedDirections.some(section => section.title === 'ESP-NOW bridge'));
 assert.strictEqual(commands(combinedDirections).filter(command => command === 'set mqtt.enabled on').length, 1);
+assert.strictEqual(commands(combinedDirections).filter(command => command === 'set bridge.enabled on').length, 1);
 console.log('current release metadata and capacity directions tests passed');
 
 assert.strictEqual(nrf.chipFamily, 'nrf52');

@@ -331,7 +331,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 #endif
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
-  if (_prefs.bridge_enabled && bridge) bridge->onPacketReceived(pkt);
+  if (_prefs.bridge_enabled && bridge && bridge->isRunning()) bridge->onPacketReceived(pkt);
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
   if (_prefs.bridge_pkt_src == 1 && espnow_bridge.isRunning()) {
@@ -373,7 +373,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed TX packets - bridge decides based on mqtt.tx setting
-  if (_prefs.bridge_enabled && bridge) bridge->sendPacket(pkt);
+  if (_prefs.bridge_enabled && bridge && bridge->isRunning()) bridge->sendPacket(pkt);
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
   if (_prefs.bridge_pkt_src == 0 && espnow_bridge.isRunning()) {
@@ -1321,6 +1321,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 
   // bridge defaults (same as repeater)
   _prefs.bridge_enabled = 1;    // enabled
+  _prefs.espnow_bridge_enabled = 1;  // preserves the Full image's former combined default
   _prefs.bridge_delay   = 500;  // milliseconds
   _prefs.bridge_pkt_src = 1;    // logRx (RX packets)
   _prefs.bridge_baud = 115200;  // baud rate
@@ -1458,6 +1459,10 @@ void MyMesh::begin(FILESYSTEM *fs) {
   }
 #endif
 
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+  if (_prefs.espnow_bridge_enabled) setEspNowBridgeState(true);
+#endif
+
   // Wire fault-alert reporter. begin() is safe regardless of bridge state.
   // Passing `this` as the callbacks lets the reporter resolve a TransportKey
   // scope (alert.region override, falling back to default_scope) so alert
@@ -1470,7 +1475,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #if defined(WITH_WEBCONFIG) && !defined(WEBCONFIG_NO_AUTO_AP)
   bool start_webui = WebConfigServer::loadEnabled(false);
 #ifdef WITH_MQTT_BRIDGE
-  start_webui = start_webui || _cli.getObserverPrefs()->wifi_ssid[0] == 0;
+  start_webui = start_webui || (_prefs.bridge_enabled
+      && _cli.getObserverPrefs()->wifi_ssid[0] == 0);
   if (start_webui && _cli.getObserverPrefs()->wifi_ssid[0] == 0) {
 #if defined(WITH_ESPNOW_BRIDGE)
     if (espnow_bridge.isRunning()) espnow_bridge.end();
@@ -2008,7 +2014,7 @@ void MyMesh::onConfigBatchEnd() {
   if (_wc_restart_pending) {
     _wc_restart_pending = false;
     _wc_slot_restart_mask = 0;
-    if (_prefs.bridge_enabled) restartBridge();
+    if (_prefs.bridge_enabled) restartMqttBridge();
     return;
   }
   const uint8_t mask = _wc_slot_restart_mask;

@@ -48,6 +48,7 @@ def full_command_keys(text):
 COMMON_QUERY_EXCEPTIONS = {
     'bootloader.ver': 'Installed bootloader identity',
     'bridge.running': 'Live bridge state; set bridge.enabled controls intent',
+    'espnow.running': 'Live ESP-NOW bridge state; set espnow.enabled controls intent',
     'bridge.type': 'Build-selected bridge transport',
     'password': 'Written by the password command, not set password',
     'public.key': 'Derived from identity; written through set prv.key',
@@ -80,6 +81,8 @@ class CLISettingsContractTest(unittest.TestCase):
             'esp32_web': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'ADMIN_PASSWORD', 'MESH_USB_LOGGING_AVAILABLE'],
             'esp32_mqtt': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'WITH_MQTT_BRIDGE', 'WITH_BRIDGE',
                            'WITH_MQTT_NEIGHBORS', 'MESH_USB_LOGGING_AVAILABLE'],
+            'esp32_mqtt_espnow': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'WITH_MQTT_BRIDGE',
+                                   'WITH_ESPNOW_BRIDGE', 'WITH_BRIDGE'],
             'rs232_gps': ['WITH_BRIDGE', 'WITH_RS232_BRIDGE', 'ENV_INCLUDE_GPS'],
             'espnow': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'WITH_BRIDGE', 'WITH_ESPNOW_BRIDGE', 'MESH_PRIMARY_ESPNOW'],
             'lr2021': ['USE_LR2021'],
