@@ -90,7 +90,10 @@ def generate(stage, config):
                 'webconfig': 'web.webconfig' in caps,
                 'mqtt': enabled('WITH_MQTT_BRIDGE'),
                 'rs232': enabled('WITH_RS232_BRIDGE'),
-                'espnowBridge': enabled('WITH_ESPNOW_BRIDGE'),
+                # Expanded ESP32 Full observer builds add ESP-NOW at build
+                # time, so it is recorded in the qualified manifest instead
+                # of the base PlatformIO environment's static flags.
+                'espnowBridge': enabled('WITH_ESPNOW_BRIDGE') or 'bridge.espnow' in caps,
                 'primaryEspnow': enabled('MESH_PRIMARY_ESPNOW'),
                 'snmp': enabled('WITH_SNMP'),
                 'updateMethods': manifest.get('ota_update_methods', []),

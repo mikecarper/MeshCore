@@ -121,7 +121,7 @@ Commands:
   build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases and Terminal Chat targets replaced by Full Companion remain available as explicit builds.
   build-firmwares-logging-matrix: Build canonical standard artifacts with merged runtime USB logging plus unified FULL ESP32 USB+WiFi and FULL fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. KISS, BLE-only Companion, and constrained LoRa-OTA repeater contracts do not gain plaintext USB logging.
   build-companion-firmwares-logging-matrix: Build canonical Companion targets with merged runtime USB logging where the transport is safe, plus applicable MQTT and expanded FULL profiles. Full Companion replaces separate USB, BLE, WiFi, Terminal Chat, and USB-logging artifacts where an exact combined recipe exists.
-  build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT where supported, LoRa OTA, and expanded dual-OTA partitions.
+  build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT plus ESP-NOW where a matching MQTT recipe exists, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only the FULL USB-logging fallback for targets without a matching WiFi MQTT environment.
   build-matching-firmwares <build-match-spec>: Build all firmwares for build targets containing the string given for <build-match-spec>.
   build-companion-firmwares: Build canonical companion firmwares; legacy setting aliases remain available as direct builds.
@@ -699,7 +699,7 @@ prompt_for_build_mode() {
     "Build canonical companion firmwares (Full replaces separate transports; power saving and FEM/RX gain are runtime configurable)"
     "Build all chat room server firmwares"
     "Build all sensor firmwares"
-    "Build FULL ESP32 firmwares (all features, USB logging, WiFi MQTT where available, and LoRa OTA)"
+    "Build FULL ESP32 firmwares (all features, USB logging, WiFi MQTT + ESP-NOW where available, and LoRa OTA)"
     "Build only FULL ESP32 USB-logging fallbacks for targets without WiFi MQTT"
     "Build canonical full Companion firmwares (runtime FEM control and host-backed LoRa OTA)"
   )
@@ -795,7 +795,7 @@ prompt_for_single_target_build_profile() {
   local options=(
     "Auto (keep target capabilities and enforce the current partition)"
     "Standard portable image (allow documented legacy-slot reductions)"
-    "FULL everything (all features, 254 neighbors, USB logging, WiFi MQTT where available, LoRa OTA, expanded dual-OTA partitions)"
+    "FULL everything (all features, 254 neighbors, USB logging, WiFi MQTT + ESP-NOW where available, LoRa OTA, expanded dual-OTA partitions)"
   )
 
   echo "Select the Option 1 build profile:"
@@ -821,7 +821,7 @@ prompt_for_single_target_build_profile() {
       3)
         BUILD_PROFILE_OVERRIDE="full"
         SINGLE_TARGET_FULL_BUILD=1
-        echo "Using FULL everything: all features, 254 neighbors, USB logging, WiFi MQTT where available, LoRa OTA, and expanded dual-OTA partitions."
+        echo "Using FULL everything: all features, 254 neighbors, USB logging, WiFi MQTT + ESP-NOW where available, LoRa OTA, and expanded dual-OTA partitions."
         return 0
         ;;
     esac
@@ -2348,9 +2348,17 @@ get_unified_full_infrastructure_target() {
   local target=$1
   local candidate
   local base=${target%_}
+  local mqtt_base=$base
 
   [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = "ESP32_PLATFORM" ] || return 1
-  case "${base,,}" in
+  # A Full ESP-NOW bridge is the same combined infrastructure image as the
+  # matching WiFi/MQTT observer. Preserve the ESP-NOW target as an accepted
+  # input, but resolve it to the MQTT recipe which supplies WiFi, TLS, and the
+  # bridge implementation; the Full overlay adds ESP-NOW back in below.
+  case "${mqtt_base,,}" in
+    *_repeater_bridge_espnow) mqtt_base=${mqtt_base%_bridge_espnow} ;;
+  esac
+  case "${mqtt_base,,}" in
     *_repeater|*_room_server|*_repeater_observer_mqtt|*_room_server_observer_mqtt) ;;
     *) return 1 ;;
   esac
@@ -2358,7 +2366,7 @@ get_unified_full_infrastructure_target() {
   # These plain Full recipes retain more routing capacity than their MQTT
   # siblings (T-Beam flood rules / room neighbors, TLora repeater neighbors).
   # They are intentional alternatives, not duplicate Full artifacts.
-  case "${base,,}" in
+  case "${mqtt_base,,}" in
     tbeam_sx1262_repeater|tbeam_sx1276_repeater|\
     tbeam_sx1262_room_server|tbeam_sx1276_room_server|\
     lilygo_tlora_v2_1_1_6_repeater) return 1 ;;
@@ -2367,7 +2375,7 @@ get_unified_full_infrastructure_target() {
   # Some exact hardware recipes have a trailing underscore on either side.
   # Require the same board as well as the same role/hardware name; never fold
   # a display, radio, storage, Ethernet, or serial-bridge variant into this.
-  for candidate in "$target" "${base}_observer_mqtt" "${base}_observer_mqtt_"; do
+  for candidate in "$target" "${mqtt_base}_observer_mqtt" "${mqtt_base}_observer_mqtt_"; do
     if is_mqtt_bridge_target "$candidate" \
         && supports_esp32_full_build "$candidate" \
         && [ -n "${PIO_ENV_BOARD_BY_NAME[$target]:-}" ] \
@@ -2377,6 +2385,24 @@ get_unified_full_infrastructure_target() {
     fi
   done
   return 1
+}
+
+apply_esp32_full_shared_bridge_profile() {
+  local env_name=$1
+
+  # Full infrastructure images use the MQTT observer recipe for WiFi/TLS and
+  # add the cooperative ESP-NOW bridge. Companion Full is a different client
+  # transport role, not an infrastructure packet bridge.
+  if [ "$ESP32_FULL_BUILD" != "1" ] \
+      || [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" != "ESP32_PLATFORM" ] \
+      || is_esp32_companion_build "$env_name" \
+      || ! is_mqtt_bridge_target "$env_name"; then
+    return 0
+  fi
+
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWITH_ESPNOW_BRIDGE=1"
+  append_platformio_build_src_filter "+<helpers/bridges/ESPNowBridge.cpp>"
+  record_build_capability "bridge.espnow"
 }
 
 configure_unified_full_infrastructure_output() {
@@ -4316,6 +4342,7 @@ build_firmware() {
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_constrained_companion_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
+  apply_esp32_full_shared_bridge_profile "$env_name"
   apply_esp32_full_async_tcp_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
   apply_nrf52_size_profile "$env_name"
@@ -5090,7 +5117,7 @@ configure_effective_build_profile() {
             BUILD_PROFILE_EFFECTIVE="full"
             SINGLE_TARGET_FULL_BUILD=1
             RESOLVED_BUILD_TARGETS=("$unified_target")
-            echo "Using ${unified_target} as the combined Full image for ${target}; logging/MQTT are runtime settings."
+            echo "Using ${unified_target} as the combined Full image for ${target}; logging, MQTT, and ESP-NOW are runtime settings."
             echo "Use --build-profile standard for the original portable partition/OTA target contract."
           elif supports_esp32_full_build "$target"; then
             BUILD_PROFILE_EFFECTIVE="full"
@@ -5135,6 +5162,11 @@ configure_effective_build_profile() {
         fi
         if is_companion_radio_full_target "$target"; then
           BUILD_PROFILE_EFFECTIVE="full"
+        elif unified_target=$(get_unified_full_infrastructure_target "$target"); then
+          BUILD_PROFILE_EFFECTIVE="full"
+          SINGLE_TARGET_FULL_BUILD=1
+          RESOLVED_BUILD_TARGETS=("$unified_target")
+          echo "Using ${unified_target} as the combined Full image for ${target}; MQTT and ESP-NOW are runtime services."
         elif supports_esp32_full_build "$target"; then
           BUILD_PROFILE_EFFECTIVE="full"
           SINGLE_TARGET_FULL_BUILD=1
@@ -5537,7 +5569,7 @@ run_full_esp32_profile() {
     MQTT_BRIDGE_OVERRIDE="off"
     FIRMWARE_FILENAME_INFIX="full-logging"
   else
-    echo "${profile_label}: building ${#full_targets[@]} unified feature-complete ESP32 target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), USB packet logging, direct WiFi MQTT, and expanded dual-OTA partitions."
+    echo "${profile_label}: building ${#full_targets[@]} unified feature-complete ESP32 target(s) with up to ${ESP32_FULL_MAX_NEIGHBOURS} neighbors (target DRAM limits apply), USB packet logging, direct WiFi MQTT plus ESP-NOW, and expanded dual-OTA partitions."
     echo "Unified FULL artifacts include LoRa OTA, keep verbose debug off, and use filename form: name-full-usb-wifi-ota-version."
     MESHDEBUG_OVERRIDE="off"
     PACKET_LOGGING_OVERRIDE="on"
@@ -6225,7 +6257,7 @@ main() {
     INTERACTIVE_BUILD_SELECTION=1
     prompt_for_build_mode
     if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
-      echo "Skipping separate debug and MQTT prompts; FULL everything enables USB logging and WiFi MQTT where the hardware supports it."
+      echo "Skipping separate debug and MQTT prompts; FULL everything enables USB logging and WiFi MQTT + ESP-NOW where the hardware supports it."
     elif is_automatic_profile_command "${SELECTED_COMMAND_ARGS[0]}"; then
       if is_logging_matrix_command "${SELECTED_COMMAND_ARGS[0]}"; then
         echo "Skipping debug and MQTT prompts; this action builds standard artifacts with merged runtime USB logging and unified FULL profiles automatically."

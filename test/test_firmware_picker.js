@@ -1003,6 +1003,18 @@ for (const profile of capacityProfiles) {
 const currentObserver = currentCatalog.profiles.find(profile => profile.target === observer.target);
 assert.deepStrictEqual(picker.runtimeDirections(currentObserver, {logging: 'usb'})[0].actions[0].commands,
   ['set logging.output usb', 'get logging.output']);
+const combinedControlData = JSON.parse(JSON.stringify(currentControls));
+combinedControlData.profiles[currentObserver.target].espnowBridge = true;
+const combinedCatalog = picker.buildCatalog([
+  release(currentControls.familyTag, '2026-09-13T00:00:00Z', currentAssets),
+], combinedControlData);
+const combinedObserver = combinedCatalog.profiles.find(profile => profile.target === currentObserver.target);
+assert.deepStrictEqual(picker.profileFieldValues(combinedObserver, 'mode'), ['standard', 'espnow']);
+assert(picker.profileMatches(combinedObserver, {mode: 'espnow'}, ['mode']));
+const combinedDirections = picker.runtimeDirections(combinedObserver, {logging: 'usb'});
+assert(combinedDirections.some(section => section.title === 'MQTT + ESP-NOW bridge'));
+assert(!combinedDirections.some(section => section.title === 'ESP-NOW bridge'));
+assert.strictEqual(commands(combinedDirections).filter(command => command === 'set mqtt.enabled on').length, 1);
 console.log('current release metadata and capacity directions tests passed');
 
 assert.strictEqual(nrf.chipFamily, 'nrf52');

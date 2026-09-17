@@ -1147,6 +1147,13 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
   if (mqtt_bridge) mqtt_bridge->onPacketReceived(pkt);
+  #ifdef WITH_ESPNOW_BRIDGE
+  // ESP-NOW follows bridge.source, independently of MQTT's mqtt.rx policy.
+  ESPNowBridge* espnow = &espnow_bridge;
+  if (_prefs.bridge_pkt_src == 1 && espnow && espnow->isRunning()) {
+    espnow->sendPacket(pkt);
+  }
+  #endif
 #elif defined(WITH_BRIDGE)
   // Non-MQTT bridge: use bridge.source setting
   AbstractBridge* active_bridge = activeBridge();
@@ -1192,6 +1199,12 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed TX packets - bridge decides based on mqtt.tx setting
   if (mqtt_bridge) mqtt_bridge->sendPacket(pkt);
+  #ifdef WITH_ESPNOW_BRIDGE
+  ESPNowBridge* espnow = &espnow_bridge;
+  if (_prefs.bridge_pkt_src == 0 && espnow && espnow->isRunning()) {
+    espnow->sendPacket(pkt);
+  }
+  #endif
 #elif defined(WITH_BRIDGE)
   // Non-MQTT bridge: use bridge.source setting
   AbstractBridge* active_bridge = activeBridge();
@@ -3389,6 +3402,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       anon_limiter(4, 180)   // max 4 every 3 minutes
 #if defined(WITH_MQTT_BRIDGE)
       , mqtt_bridge(nullptr)
+  #if defined(WITH_ESPNOW_BRIDGE)
+      , espnow_bridge(&_prefs, _mgr, &rtc)
+      , shared_espnow_retry_at(0)
+  #endif
 #elif defined(WITH_RS232_BRIDGE)
       , bridge(nullptr)
 #elif defined(WITH_ESPNOW_BRIDGE)
@@ -3767,6 +3784,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
       configureBridgeFilter(active_bridge);
       active_bridge->begin();
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+      startSharedEspNowBridgeIfReady();
+#endif
     }
 #endif
   }
@@ -3788,6 +3808,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // persistent WebUI master switch defaults off on infrastructure roles.
   start_webui = start_webui || _cli.getObserverPrefs()->wifi_ssid[0] == 0;
   if (start_webui && _cli.getObserverPrefs()->wifi_ssid[0] == 0) {
+  #if defined(WITH_ESPNOW_BRIDGE)
+    if (espnow_bridge.isRunning()) espnow_bridge.end();
+  #endif
     if (mqtt_bridge && mqtt_bridge->isRunning()) mqtt_bridge->end();
   }
 #endif
@@ -12517,8 +12540,16 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
   expireRecentRepeatersIfDue();
 #endif
 
-#if defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
-  // MQTT runs its own task; serial and ESP-NOW bridges remain cooperative.
+#if defined(WITH_ESPNOW_BRIDGE)
+  // MQTT runs on Core 0. ESP-NOW remains cooperative, including in the
+  // combined Full image where both transports share the WiFi station radio.
+  #if defined(WITH_MQTT_BRIDGE)
+  if (espnow_bridge.isRunning()) espnow_bridge.loop();
+  else startSharedEspNowBridgeIfReady();
+  #else
+  if (bridge.isRunning()) bridge.loop();
+  #endif
+#elif defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
   AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) active_bridge->loop();
 #endif
@@ -13184,6 +13215,9 @@ bool MyMesh::hasPendingWork() const {
 #if defined(WITH_BRIDGE)
   const AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) return true;
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+  if (espnow_bridge.isRunning()) return true;
+#endif
 #endif
   if (radio_driver.isWatchdogObserving()) return true;  // keep MCU awake for one radio duty cycle
   if (radio_driver.isCalibratingNoiseFloor()) return true;  // keep MCU awake for the noise-floor window

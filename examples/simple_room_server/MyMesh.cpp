@@ -333,6 +333,11 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
   // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
   if (_prefs.bridge_enabled && bridge) bridge->onPacketReceived(pkt);
 #endif
+#ifdef WITH_ESPNOW_BRIDGE
+  if (_prefs.bridge_pkt_src == 1 && espnow_bridge.isRunning()) {
+    espnow_bridge.sendPacket(pkt);
+  }
+#endif
 
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
@@ -369,6 +374,11 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed TX packets - bridge decides based on mqtt.tx setting
   if (_prefs.bridge_enabled && bridge) bridge->sendPacket(pkt);
+#endif
+#ifdef WITH_ESPNOW_BRIDGE
+  if (_prefs.bridge_pkt_src == 0 && espnow_bridge.isRunning()) {
+    espnow_bridge.sendPacket(pkt);
+  }
 #endif
 
   if (_logging) {
@@ -1231,6 +1241,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       telemetry(MAX_PACKET_PAYLOAD - 4)
 #ifdef WITH_MQTT_BRIDGE
       , bridge(nullptr)
+  #if defined(WITH_ESPNOW_BRIDGE)
+      , espnow_bridge(&_prefs, _mgr, &rtc)
+      , shared_espnow_retry_at(0)
+  #endif
 #endif
 {
   last_millis = 0;
@@ -1437,6 +1451,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
       configureBridgeFilter(bridge);
       bridge->begin();
+#if defined(WITH_ESPNOW_BRIDGE)
+      startSharedEspNowBridgeIfReady();
+#endif
     }
   }
 #endif
@@ -1455,6 +1472,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #ifdef WITH_MQTT_BRIDGE
   start_webui = start_webui || _cli.getObserverPrefs()->wifi_ssid[0] == 0;
   if (start_webui && _cli.getObserverPrefs()->wifi_ssid[0] == 0) {
+#if defined(WITH_ESPNOW_BRIDGE)
+    if (espnow_bridge.isRunning()) espnow_bridge.end();
+#endif
     if (bridge && bridge->isRunning()) bridge->end();
   }
 #endif
@@ -2519,6 +2539,10 @@ void MyMesh::loop() {
 #ifdef WITH_MQTT_BRIDGE
   // bridge.loop() is now handled by FreeRTOS task on Core 0 - no need to call it here
 #endif
+#ifdef WITH_ESPNOW_BRIDGE
+  if (espnow_bridge.isRunning()) espnow_bridge.loop();
+  else startSharedEspNowBridgeIfReady();
+#endif
 
   if (millisHasNowPassed(next_push) && acl.getNumClients() > 0) {
     // check for ACK timeouts
@@ -2876,6 +2900,9 @@ bool MyMesh::hasPendingWork() const {
 #endif
 #if defined(WITH_BRIDGE)
   if (bridge && bridge->isRunning()) return true; // bridge needs WiFi radio, can't sleep
+#if defined(WITH_ESPNOW_BRIDGE)
+  if (espnow_bridge.isRunning()) return true;
+#endif
 #endif
   if (radio_driver.isWatchdogObserving()) return true; // keep MCU awake for one radio duty cycle
   if (radio_driver.isCalibratingNoiseFloor()) return true; // keep MCU awake for the noise-floor window

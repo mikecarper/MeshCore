@@ -695,6 +695,28 @@ for logging_target in Station_G2_repeater_observer_mqtt \
   verify_full_logging_contract "$logging_target" 1 off 1 yes yes
   verify_full_logging_contract "$logging_target" 0 "" 0 no no
 done
+
+# Expanded ESP32 infrastructure Full images keep the MQTT observer recipe and
+# add the cooperative ESP-NOW bridge source. This is build-time composition,
+# not a second standalone image selected by the filename.
+ESP32_FULL_BUILD=1
+PLATFORMIO_BUILD_FLAGS=""
+PLATFORMIO_BUILD_SRC_FILTER=""
+BUILD_CAPABILITIES=()
+apply_esp32_full_shared_bridge_profile Station_G2_repeater_observer_mqtt
+[[ "$PLATFORMIO_BUILD_FLAGS" == *"-DWITH_ESPNOW_BRIDGE=1"* ]] \
+  || fail "Station G2 Full MQTT image did not enable ESP-NOW"
+[[ "$PLATFORMIO_BUILD_SRC_FILTER" == *"helpers/bridges/ESPNowBridge.cpp"* ]] \
+  || fail "Station G2 Full MQTT image did not include the ESP-NOW bridge"
+[[ " ${BUILD_CAPABILITIES[*]} " == *" bridge.espnow "* ]] \
+  || fail "Station G2 Full MQTT image did not report ESP-NOW capability"
+[[ "$(get_unified_full_infrastructure_target Station_G2_repeater_bridge_espnow)" \
+    = "Station_G2_repeater_observer_mqtt" ]] \
+  || fail "Station G2 Full ESP-NOW target did not resolve to the combined MQTT recipe"
+ESP32_FULL_BUILD=0
+PLATFORMIO_BUILD_FLAGS=""
+PLATFORMIO_BUILD_SRC_FILTER=""
+
 for logging_target in Station_G2_repeater_bridge_espnow heltec_v4_sensor; do
   verify_full_logging_contract "$logging_target" 1 "" 0 yes no
   verify_full_logging_contract "$logging_target" 1 on 1 yes no

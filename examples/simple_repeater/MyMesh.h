@@ -564,6 +564,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   int  matching_peer_indexes[MAX_CLIENTS];
 #if defined(WITH_MQTT_BRIDGE)
   MQTTBridge* mqtt_bridge;
+  // Expanded ESP32 Full builds run MQTT and ESP-NOW on the same 2.4 GHz
+  // station interface. MQTT owns the WiFi connection; ESP-NOW must therefore
+  // use that AP's channel (ESPNowBridge rejects a mismatch at start).
+  #if defined(WITH_ESPNOW_BRIDGE)
+  ESPNowBridge espnow_bridge;
+  uint32_t shared_espnow_retry_at = 0;
+  #endif
 #elif defined(WITH_RS232_BRIDGE)
   RS232Bridge* bridge;
   uint8_t active_rs232_bridge_uart = 0;
@@ -588,6 +595,21 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #else
     return &bridge;
 #endif
+  }
+#endif
+
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+  // MQTT creates its WiFi task asynchronously. Do not let ESP-NOW touch the
+  // station interface until that task has associated, otherwise it could bring
+  // up a second WiFi owner before the AP selects the shared channel.
+  bool startSharedEspNowBridgeIfReady() {
+    if (espnow_bridge.isRunning()) return true;
+    if (!mqtt_bridge || !mqtt_bridge->isRunning() || !WiFi.isConnected()) return false;
+    if (!millisHasNowPassed(shared_espnow_retry_at)) return false;
+    shared_espnow_retry_at = millis() + 5000;
+    configureBridgeFilter(&espnow_bridge);
+    espnow_bridge.begin();
+    return espnow_bridge.isRunning();
   }
 #endif
 #ifdef WITH_SNMP
@@ -1216,11 +1238,60 @@ public:
 #endif
 
   bool isBridgeRunning() const override {
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+    return (mqtt_bridge && mqtt_bridge->isRunning()) || espnow_bridge.isRunning();
+#else
     const AbstractBridge* active_bridge = activeBridge();
     return active_bridge != nullptr && active_bridge->isRunning();
+#endif
   }
 
   bool setBridgeState(bool enable) override {
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+    // The combined Full bridge is intentionally one saved switch. ESP-NOW is
+    // started only after MQTT has brought WiFi up, so it can validate and share
+    // the access point channel instead of retuning the station interface.
+    if (!enable && !mqtt_bridge && !espnow_bridge.isRunning()) return true;
+    if (!mqtt_bridge) {
+      MQTTNodeInfo node_info;
+      node_info.node_name = _prefs.node_name;
+      node_info.freq = &_prefs.freq;
+      node_info.bw = &_prefs.bw;
+      node_info.sf = &_prefs.sf;
+      node_info.cr = &_prefs.cr;
+      node_info.repeat_flag = &_prefs.disable_fwd;
+      node_info.repeat_when_nonzero = false;
+      mqtt_bridge = new MQTTBridge(node_info, _cli.getObserverPrefs(),
+                                   getRTCClock(), &self_id);
+      if (!mqtt_bridge) return false;
+    }
+    if (enable) {
+      if (!mqtt_bridge->isRunning()) {
+        char device_id[65];
+        mesh::LocalIdentity self_id = getSelfId();
+        mesh::Utils::toHex(device_id, self_id.pub_key, PUB_KEY_SIZE);
+        mqtt_bridge->setDeviceID(device_id);
+        mqtt_bridge->setFirmwareVersion(getFirmwareVer());
+        mqtt_bridge->setBoardModel(_cli.getBoard()->getManufacturerName());
+        mqtt_bridge->setBuildDate(getBuildDate());
+        mqtt_bridge->setStatsSources(this, _radio, _cli.getBoard(), _ms);
+        configureBridgeFilter(mqtt_bridge);
+        mqtt_bridge->begin();
+        _alerter.setBridge(mqtt_bridge);
+      }
+      if (!mqtt_bridge->isRunning()) return false;
+      shared_espnow_retry_at = 0;
+      startSharedEspNowBridgeIfReady();
+      // MQTT has started successfully; ESP-NOW joins after its WiFi station
+      // associates and validates the configured shared channel.
+      return true;
+    }
+    if (espnow_bridge.isRunning()) espnow_bridge.end();
+    if (mqtt_bridge->isRunning()) mqtt_bridge->end();
+    shared_espnow_retry_at = 0;
+    _alerter.setBridge(nullptr);
+    return !mqtt_bridge->isRunning() && !espnow_bridge.isRunning();
+#else
     // Disabling an already-absent heap-backed bridge is successful and must
     // not allocate an instance merely to stop it. The embedded ESP-NOW bridge
     // is always present, so it continues through the normal state check.
@@ -1299,9 +1370,23 @@ public:
 #endif
       return stopped;
     }
+#endif
   }
 
   bool restartBridge() override {
+#if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
+#ifdef WITH_WEBCONFIG
+    if (_wc_batch_active) {
+      _wc_restart_pending = true;
+      return true;
+    }
+#endif
+    if (espnow_bridge.isRunning()) espnow_bridge.end();
+    if (mqtt_bridge && mqtt_bridge->isRunning()) mqtt_bridge->end();
+    shared_espnow_retry_at = 0;
+    _alerter.setBridge(nullptr);
+    return setBridgeState(true);
+#else
 #ifdef WITH_RS232_BRIDGE
     // RS-232 changes must be applied synchronously so the CLI can commit or
     // roll back the selected pins/baud. This branch also reconstructs a bridge
@@ -1337,6 +1422,7 @@ public:
     configureBridgeFilter(active_bridge);
     active_bridge->begin();
     return active_bridge->isRunning();
+#endif
 #endif
   }
 

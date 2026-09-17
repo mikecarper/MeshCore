@@ -178,7 +178,10 @@ Ethernet bridge firmware because those paths use different compiled drivers.
 For commands and option explanations, follow the
 [ESP-NOW bridge setup guide](espnow_bridge_setup.md).
 
-An ESP-NOW bridge target keeps LoRa as its primary mesh radio. Its runtime
+An ESP-NOW bridge target keeps LoRa as its primary mesh radio. Expanded ESP32
+Full repeater and room-server images combine ESP-NOW with WiFi MQTT in the
+same firmware. Both use one 2.4 GHz radio, so the ESP-NOW bridge channel must
+match the connected WiFi access point's fixed channel. Its runtime
 `bridge.format` setting chooses the peer protocol: `wrapped` (the
 backward-compatible bridge-to-bridge default using `bridge.secret`) or `raw`
 (direct MeshCore ESP-NOW LR frames for `Generic_ESPNOW`,
