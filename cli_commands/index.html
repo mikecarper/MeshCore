@@ -10321,6 +10321,17 @@ Setting a clock alone never automatically resets this table.</p>
 <p><strong>Parameters:</strong>
 - <code>state</code>: <code>on</code> (enable) or <code>off</code> (disable)</p>
 <p><strong>Default:</strong> <code>off</code></p>
+<p><strong>Make a room read-only while allowing selected writers:</strong></p>
+<pre><code class="language-text">set allow.read.only on
+setperm &lt;PUBKEY_USER_1&gt; 2
+</code></pre>
+<p>With read-only mode on, a client without a valid room password can join as a
+read-only guest. Permission <code>2</code> gives the specified public key read-write
+access. Replace <code>&lt;PUBKEY_USER_1&gt;</code> with the user's full public key and repeat
+<code>setperm</code> for every approved writer.</p>
+<p>This does not remove write access from clients that already know the room
+password. Keep that password private, or replace it, if write access should be
+limited to the explicitly permitted users.</p>
 <hr />
 <h3 id="region-management-v110">Region Management (v1.10.+)</h3>
 <h4 id="bulk-load-region-lists">Bulk-load region lists</h4>
