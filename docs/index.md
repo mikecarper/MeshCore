@@ -16,6 +16,7 @@ Below are a few quick start guides.
 - [LoRa CLI Host Service](./host_cli_service.md)
 - [Filter Policy Playground](./filter_tool.md)
 - [Telemetry Decoder](./telemetry_decoder.md)
+- [Management Report Decoder](./management_decoder.md)
 - [CLI Availability by Firmware Build](./cli_build_matrix.md)
 - [Classic ESP32 image memory budget](./esp32_memory_budget.md)
 - [Full Companion contact caches and capacity trials](./companion_contact_cache.md)

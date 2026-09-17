@@ -122,6 +122,10 @@ of canonical payload hex strings. `--match-admin FULL_PUBLIC_KEY` in canonical
 payload mode matches a known administrator against the encrypted fingerprints.
 This is an offline capture decoder, not a broker subscriber or downlink service.
 
+For a browser-local decoder that also decrypts and authenticates ACL entries,
+use the [Management report decoder](management_decoder.md). It does not upload
+the captured packet or password.
+
 ## Canonical payload (little endian)
 
 | Offset | Bytes | Field |
