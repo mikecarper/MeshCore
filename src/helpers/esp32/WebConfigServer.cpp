@@ -1642,9 +1642,11 @@ void WebConfigServer::handleUi(AsyncWebServerRequest* req) {
   }
   AsyncWebServerResponse* res =
       new WebConfigPacedProgmemResponse("text/html; charset=utf-8",
-                                       WEBCONFIG_HTML_GZ,
-                                       WEBCONFIG_HTML_GZ_LEN);
-  res->addHeader("Content-Encoding", "gzip");
+                                       WEBCONFIG_HTML_BR,
+                                       WEBCONFIG_HTML_BR_LEN);
+  // Keep exactly one whole-page asset in flash. Brotli is decoded by the
+  // browser; the ESP32 only streams these precompressed bytes.
+  res->addHeader("Content-Encoding", "br");
   res->addHeader("Cache-Control", "public, max-age=31536000, immutable");
   req->send(res);
 }

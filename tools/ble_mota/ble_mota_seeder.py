@@ -19,6 +19,10 @@ import sys
 import zlib
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+from zopfli_compress import raw_deflate_compress  # noqa: E402
+
 BLEAK_IMPORT_ERROR: ImportError | None = None
 try:
     from bleak import BleakClient, BleakScanner
@@ -97,8 +101,7 @@ class MotaFile:
             raw = stream.read(raw_length)
         if len(raw) != raw_length:
             return None
-        compressor = zlib.compressobj(level=9, method=zlib.DEFLATED, wbits=-11)
-        encoded = compressor.compress(raw) + compressor.flush()
+        encoded = raw_deflate_compress(raw)
         return encoded if 0 < len(encoded) < len(raw) else None
 
     @staticmethod

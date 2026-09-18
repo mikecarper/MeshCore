@@ -63,7 +63,7 @@ class CompanionReaderTest(unittest.TestCase):
         packed, blocks = packer.pack(self.document)
         self.assertEqual(sum(block[2] for block in blocks), 96568)
         self.assertEqual(len(blocks), 49)
-        self.assertEqual(len(packed) + 12 * len(blocks), 43891)
+        self.assertEqual(len(packed) + 12 * len(blocks), 42775)
 
     def test_invalid_sources_are_rejected(self):
         for bad_text in ("", "leading\ncommand", "bad\x1b[2J", "bad\0text",

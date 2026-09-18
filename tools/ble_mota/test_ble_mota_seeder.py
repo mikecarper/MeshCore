@@ -68,7 +68,8 @@ class TransportDeflateTests(unittest.TestCase):
             self.assertEqual(status, seeder.STATUS_OK)
             self.assertEqual(struct.unpack_from("<H", payload)[0], total)
             encoded.extend(payload[2:])
-        self.assertEqual((encoded[0] >> 1) & 0x03, 2)  # dynamic Huffman (BTYPE=2)
+        # Zopfli may start with a stored, fixed, or dynamic sub-block; the
+        # protocol promises a valid raw stream, not a particular block type.
         self.assertEqual(zlib.decompress(bytes(encoded), wbits=-11), self.raw)
 
         compressor_1k = zlib.compressobj(

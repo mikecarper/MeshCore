@@ -1,0 +1,3 @@
+# Reproducible compressors for firmware-resident and OTA assets.
+brotli==1.2.0
+zopfli==0.4.3

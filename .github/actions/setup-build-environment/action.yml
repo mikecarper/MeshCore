@@ -19,7 +19,7 @@ runs:
     - name: Install PlatformIO
       shell: bash
       run: |
-        pip install --upgrade platformio
+        pip install --upgrade platformio -r requirements-build.txt
 
     # Keep the complete version suffix. For example:
     # - room-server-v1.2.3 -> v1.2.3

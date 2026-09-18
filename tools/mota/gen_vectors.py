@@ -11,12 +11,15 @@ Run:  ./meshcore/bin/python tools/mota/gen_vectors.py
 from __future__ import annotations
 
 import random
-import zlib
+import sys
 from pathlib import Path
 
 import motalib as ml
 
-OUT = Path(__file__).resolve().parents[2] / "test" / "test_ota" / "mota_vectors.h"
+ROOT = Path(__file__).resolve().parents[2]
+OUT = ROOT / "test" / "test_ota" / "mota_vectors.h"
+sys.path.insert(0, str(ROOT / "scripts"))
+from zopfli_compress import raw_deflate_compress  # noqa: E402
 
 
 def _carr(name, data: bytes) -> str:
@@ -155,8 +158,7 @@ def main():
     compressed_lengths = []
     for offset in range(0, len(sim2k_image), 2048):
         block = sim2k_image[offset:offset + 2048]
-        encoder = zlib.compressobj(level=9, wbits=-15)
-        encoded = encoder.compress(block) + encoder.flush()
+        encoded = raw_deflate_compress(block)
         assert 0 < len(encoded) < len(block), (len(block), len(encoded))
         compressed_offsets.append(len(compressed))
         compressed_lengths.append(len(encoded))

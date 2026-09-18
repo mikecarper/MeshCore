@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import gzip
+import brotli
 from pathlib import Path
 import re
 import unittest
@@ -19,14 +19,14 @@ def function_body(source: str, start: str, end: str) -> str:
 
 def embedded_ui() -> str:
     header = EMBEDDED_UI.read_text(encoding="utf-8")
-    length = int(re.search(r"WEBCONFIG_HTML_GZ_LEN = (\d+);", header).group(1))
+    length = int(re.search(r"WEBCONFIG_HTML_BR_LEN = (\d+);", header).group(1))
     array = header.split(
-        "const uint8_t WEBCONFIG_HTML_GZ[] PROGMEM = {", 1
+        "const uint8_t WEBCONFIG_HTML_BR[] PROGMEM = {", 1
     )[1]
     blob = bytes(
         int(value, 16) for value in re.findall(r"0x([0-9a-f]{2})", array)
     )[:length]
-    return gzip.decompress(blob).decode("utf-8")
+    return brotli.decompress(blob).decode("utf-8")
 
 
 class WebConfigSecretMaskingTest(unittest.TestCase):

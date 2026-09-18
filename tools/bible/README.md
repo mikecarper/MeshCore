@@ -101,6 +101,7 @@ moving upstream text. See the [official download inventory](https://ebible.org/f
 Regenerate or verify the firmware header:
 
 ```sh
+python -m pip install -r requirements-build.txt
 python tools/bible/pack_reader.py
 python tools/bible/pack_reader.py --check
 python tools/bible/pack_reader.py --compare
@@ -119,16 +120,19 @@ terminators, versus 98,911 bytes for the pinned UTF-8 source):
 
 | Block limit | Blocks | DEFLATE bytes | Index bytes | Total flash data | Savings |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 KiB | 101 | 48,175 | 1,212 | 49,387 | 48.86% |
-| **2 KiB** | **49** | **43,303** | **588** | **43,891** | **54.55%** |
-| 4 KiB | 24 | 39,549 | 288 | 39,837 | 58.75% |
+| 1 KiB | 101 | 47,133 | 1,212 | 48,345 | 49.94% |
+| **2 KiB** | **49** | **42,187** | **588** | **42,775** | **55.70%** |
+| 4 KiB | 24 | 38,366 | 288 | 38,654 | 59.97% |
 
-Savings in the table are relative to uncompressed ASCII. At the chosen 2 KiB
-limit, ASCII typography saves **981 data bytes (2.19%)** compared with the
-previous 44,872-byte UTF-8 DEFLATE data and index. No 6-bit packing is used.
+Savings in the table are relative to uncompressed ASCII. Google Zopfli 0.4.3
+uses 15 optimization iterations to write standards-compliant raw DEFLATE, so
+the existing firmware decoder and RAM use do not change. At the chosen 2 KiB
+limit, the Zopfli asset is **2,097 bytes (4.67%)** smaller than the prior
+44,872-byte UTF-8 level-9 DEFLATE data and index; that result includes the
+existing ASCII typography conversion. No 6-bit packing is used.
 
-The chosen 2 KiB limit saves 5,496 flash bytes over 1 KiB for another 1 KiB
-of temporary decode storage. Going to 4 KiB saves only another 4,054 flash
+The chosen 2 KiB limit saves 5,570 flash bytes over 1 KiB for another 1 KiB
+of temporary decode storage. Going to 4 KiB saves only another 4,121 flash
 bytes and doubles that buffer. The 2 KiB choice leaves more stack headroom
 for nRF52's existing BLE/USB/radio calls. These figures include block-index
 padding but exclude the small command code, attribution strings and decoder.
