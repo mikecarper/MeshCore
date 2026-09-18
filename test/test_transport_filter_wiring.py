@@ -15,8 +15,14 @@ PACKET = r'''
 #include <cstring>
 namespace mesh {
 struct Packet {
- uint8_t payload[64] = {}, payload_len = 32, type = 5;
- uint8_t getPayloadType() const { return type; }
+ uint8_t payload[64] = {}, payload_len = 32, type = 5, header = (5 << 2);
+ uint8_t getPayloadType() const { return (header >> 2) & 0x0f; }
+ bool violatesRoutePolicy() const {
+   const uint8_t route = header & 0x03;
+   const uint8_t payload_type = (header >> 2) & 0x0f;
+   return (route == 0 || route == 1)
+       && (payload_type == 9 || payload_type == 11);
+ }
  int getRawLength() const { return 32; }
  uint16_t writeTo(uint8_t* bytes) const { memcpy(bytes,payload,32);return 32; }
 };
