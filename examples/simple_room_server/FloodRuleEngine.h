@@ -6,6 +6,7 @@
 
 #include <Arduino.h>
 #include <Mesh.h>
+#include <new>
 
 #include <helpers/IdentityStore.h>
 #include <helpers/RegionMap.h>
@@ -71,9 +72,16 @@ private:
     bool rate_window_active;
   };
 
+  // This table is 6,200 bytes.  Keep it in the constructor-time heap rather
+  // than inside the global MyMesh object: classic ESP32 has a small static
+  // DRAM window but substantially more internal heap at this point in boot.
+  // Allocation is deliberately all-or-nothing.  A node must never fall back
+  // to silently running without its configured flood rules.
+  static_assert(sizeof(Entry) == 200,
+                "Update the flood-rule runtime RAM budget in check_firmware_ram.py");
   FILESYSTEM* _fs;
   RegionMap* _regions;
-  Entry _entries[RULE_SLOTS];
+  Entry* _entries;
 
   void seedDefaults();
   void load();

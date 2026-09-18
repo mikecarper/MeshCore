@@ -98,11 +98,22 @@ def requirements(platform, defines, target):
         engine = integer(defines, "MESH_ENABLE_FLOOD_RULE_ENGINE", int(platform != "STM32_PLATFORM"))
         slots = integer(defines, "FLOOD_PACKET_FILTER_SLOTS", 63 if engine else 16)
         parts["flood_filter_table"] = slots * (200 if engine else 40) + 16
+    if "room_server" in target.lower() and integer(
+            defines, "MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE", 0):
+        # FloodRuleEngine keeps all 31 persisted rules in one startup heap
+        # allocation.  Its C++ assertion pins Entry to the budgeted 200 bytes.
+        parts["room_flood_rule_table"] = 31 * 200 + 16
     if "ENABLE_OTA" in defines and "OTA_HEAP_CONTEXT" in defines:
         parts["ota_context"] = 16384 + 16
     if display and display != "NullDisplayDriver":
         parts["display_pixels_and_driver"] = display_heap
-        parts["screen_objects_and_history"] = 8192 if companion else 2048
+        screen_budget = integer(defines, "MESH_COMPANION_SCREEN_STARTUP_BYTES", 0)
+        if companion and screen_budget:
+            # A target using this override has a source-side static assertion
+            # that covers its concrete startup screens and allocator overhead.
+            parts["screen_objects_and_history"] = screen_budget
+        else:
+            parts["screen_objects_and_history"] = 8192 if companion else 2048
         if companion:
             # ui-new retains 32 previews in one heap allocation. The baseline
             # covers 78 bytes per message; budget larger buffers explicitly,
@@ -113,7 +124,7 @@ def requirements(platform, defines, target):
             small_font = integer(defines, "UI_SMALL_MESSAGE_FONT", int(small_display))
             default_preview = 161 if small_font else 78
             extra = max(0, integer(defines, "UI_MSG_PREVIEW_SIZE", default_preview) - 78)
-            if extra:
+            if extra and not screen_budget:
                 parts["expanded_message_previews"] = 32 * ((extra + 7) // 8) * 8
     parts["allocation_and_transient_margin"] = 16384 if platform == "ESP32_PLATFORM" else 4096
     required = sum(parts.values())
@@ -124,7 +135,8 @@ def requirements(platform, defines, target):
     largest = max(display_heap, parts["radio_packet_pool"], 8192 if platform == "ESP32_PLATFORM" else 0)
     if "expanded_message_previews" in parts:
         largest = max(largest, 8192 + parts["expanded_message_previews"])
-    for name in ("client_table", "flood_filter_table", "ota_context"):
+    for name in ("client_table", "flood_filter_table", "room_flood_rule_table",
+                 "ota_context", "screen_objects_and_history"):
         largest = max(largest, parts.get(name, 0))
     return {"required_heap_bytes": required, "required_contiguous_bytes": largest,
             "components": parts, "display": display, "full_companion": full}

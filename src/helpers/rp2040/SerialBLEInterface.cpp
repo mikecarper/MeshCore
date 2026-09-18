@@ -151,7 +151,7 @@ void SerialBLEInterface::enable() {
   if (_isEnabled) return;
   _isEnabled = true;
   clearBuffers();
-  BLE.startAdvertising(true);
+  BLE.startAdvertising();
 }
 
 void SerialBLEInterface::disconnect() {

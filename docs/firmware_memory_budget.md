@@ -37,7 +37,10 @@ The [small-screen message layout](v4_pixel5_font_trial.md) retains complete
 160-byte messages. Its expanded preview records add 2,816 bytes to the
 startup allowance and increase the contiguous history allocation budget.
 The V4 can allocate that history in PSRAM; the guard conservatively reserves
-internal capacity so that PSRAM availability cannot hide a RAM shortage.
+internal capacity so that PSRAM availability cannot hide a RAM shortage. A
+target may replace the generic UI allowance only with
+`MESH_COMPANION_SCREEN_STARTUP_BYTES`; a source-side assertion then covers its
+actual startup screens plus ESP32 allocator overhead.
 
 These are engineering allowances for supported configurations, not measured
 free heap after boot or a guarantee against every future allocation failure.

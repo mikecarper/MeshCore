@@ -3,6 +3,7 @@
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <helpers/FloodFilterPolicy.h>
@@ -394,8 +395,13 @@ static bool verifyWrittenFile(FILESYSTEM* fs, const char* path,
 
 }  // namespace
 
-FloodRuleEngine::FloodRuleEngine() : _fs(NULL), _regions(NULL) {
-  memset(_entries, 0, sizeof(_entries));
+FloodRuleEngine::FloodRuleEngine()
+    : _fs(NULL), _regions(NULL),
+      _entries(new (std::nothrow) Entry[RULE_SLOTS]) {
+  // MyMesh is constructed before setup(), while the internal heap is
+  // unfragmented.  The runtime RAM gate budgets this exact allocation.
+  if (_entries == NULL) abort();
+  memset(_entries, 0, sizeof(Entry) * RULE_SLOTS);
 }
 
 void FloodRuleEngine::begin(FILESYSTEM* fs, RegionMap* regions) {
@@ -405,7 +411,7 @@ void FloodRuleEngine::begin(FILESYSTEM* fs, RegionMap* regions) {
 }
 
 void FloodRuleEngine::seedDefaults() {
-  memset(_entries, 0, sizeof(_entries));
+  memset(_entries, 0, sizeof(Entry) * RULE_SLOTS);
   Entry& entry = _entries[0];
   entry.active = true;
   entry.payload_type = PAYLOAD_TYPE_OTA;
@@ -423,7 +429,7 @@ void FloodRuleEngine::load() {
 
   enum class FileState : uint8_t { Missing, Valid, Invalid, Unreadable };
   auto loadFile = [this](const char* path) -> FileState {
-    memset(_entries, 0, sizeof(_entries));
+    memset(_entries, 0, sizeof(Entry) * RULE_SLOTS);
     if (!_fs->exists(path)) return FileState::Missing;
     File file = openRead(_fs, path);
     if (!file) return FileState::Unreadable;
@@ -655,7 +661,7 @@ void FloodRuleEngine::load() {
         && file.available() == 0;
   }
     file.close();
-    if (!success) memset(_entries, 0, sizeof(_entries));
+    if (!success) memset(_entries, 0, sizeof(Entry) * RULE_SLOTS);
     return success ? FileState::Valid : FileState::Invalid;
   };
 
@@ -1746,7 +1752,7 @@ void FloodRuleEngine::remove(const char* args, char* reply) {
   if (asciiEqual(selector, "all")) {
     Entry previous[RULE_SLOTS];
     memcpy(previous, _entries, sizeof(previous));
-    memset(_entries, 0, sizeof(_entries));
+    memset(_entries, 0, sizeof(Entry) * RULE_SLOTS);
     if (!save()) {
       memcpy(_entries, previous, sizeof(_entries));
       copyString(reply, "Err - unable to save flood filter", 160);

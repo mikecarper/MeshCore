@@ -1757,6 +1757,17 @@ public:
   }
 };
 
+#if defined(MESH_COMPANION_SCREEN_STARTUP_BYTES)
+// The target may replace the generic UI allowance with a tighter measured
+// bound.  Keep the check next to the actual allocations so a future screen
+// growth cannot silently invalidate its runtime-RAM budget.  ESP32's checked
+// heap allocator can consume up to 16 bytes per allocation.
+static_assert(sizeof(SplashScreen) + sizeof(HomeScreen)
+                  + sizeof(MsgPreviewScreen) + 3 * 16
+              <= MESH_COMPANION_SCREEN_STARTUP_BYTES,
+              "Increase MESH_COMPANION_SCREEN_STARTUP_BYTES and its RAM budget");
+#endif
+
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
