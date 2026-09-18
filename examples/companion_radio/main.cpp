@@ -228,6 +228,90 @@ MyMesh the_mesh(radio_driver, fast_rng, rtc_clock, tables, store
    #endif
 );
 
+#if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI) && defined(PIN_USER_BTN)
+namespace {
+// The Wio E5 mini has no display, but its single button is still useful:
+// double-click sends an advert; long-press during early boot enters the USB
+// rescue CLI; a later long-press powers the board off.  Keep those controls
+// without pulling in the display-oriented UITask and its NullDisplayDriver.
+constexpr uint32_t WIO_E5_BUTTON_READ_INTERVAL_MS = 10;
+constexpr uint32_t WIO_E5_BUTTON_DEBOUNCE_MS = 50;
+constexpr uint32_t WIO_E5_BUTTON_MULTI_CLICK_MS = 500;
+constexpr uint32_t WIO_E5_BUTTON_LONG_PRESS_MS = 3000;
+constexpr uint32_t WIO_E5_RESCUE_WINDOW_MS = 8000;
+
+bool wio_e5_button_raw_pressed = false;
+bool wio_e5_button_pressed = false;
+bool wio_e5_button_long_press_handled = false;
+uint8_t wio_e5_button_clicks = 0;
+uint32_t wio_e5_button_last_read_at = 0;
+uint32_t wio_e5_button_raw_changed_at = 0;
+uint32_t wio_e5_button_pressed_at = 0;
+uint32_t wio_e5_button_released_at = 0;
+uint32_t wio_e5_controls_started_at = 0;
+
+bool wioE5ButtonPressed() {
+  return digitalRead(PIN_USER_BTN) == LOW;
+}
+
+void beginWioE5HeadlessControls() {
+  const uint32_t now = millis();
+  wio_e5_button_raw_pressed = wioE5ButtonPressed();
+  wio_e5_button_pressed = wio_e5_button_raw_pressed;
+  // Match Button::begin(): a button already held across boot must be released
+  // and pressed again before it can trigger a long-press action.
+  wio_e5_button_long_press_handled = wio_e5_button_pressed;
+  wio_e5_button_raw_changed_at = now;
+  wio_e5_controls_started_at = now;
+}
+
+void serviceWioE5HeadlessControls() {
+  const uint32_t now = millis();
+  if (now - wio_e5_button_last_read_at < WIO_E5_BUTTON_READ_INTERVAL_MS) {
+    return;
+  }
+  wio_e5_button_last_read_at = now;
+
+  const bool raw_pressed = wioE5ButtonPressed();
+  if (raw_pressed != wio_e5_button_raw_pressed) {
+    wio_e5_button_raw_pressed = raw_pressed;
+    wio_e5_button_raw_changed_at = now;
+  }
+
+  if (now - wio_e5_button_raw_changed_at > WIO_E5_BUTTON_DEBOUNCE_MS
+      && raw_pressed != wio_e5_button_pressed) {
+    wio_e5_button_pressed = raw_pressed;
+    if (wio_e5_button_pressed) {
+      wio_e5_button_pressed_at = now;
+      wio_e5_button_long_press_handled = false;
+    } else if (!wio_e5_button_long_press_handled) {
+      ++wio_e5_button_clicks;
+      wio_e5_button_released_at = now;
+    }
+  }
+
+  if (wio_e5_button_pressed && !wio_e5_button_long_press_handled
+      && now - wio_e5_button_pressed_at > WIO_E5_BUTTON_LONG_PRESS_MS) {
+    wio_e5_button_long_press_handled = true;
+    wio_e5_button_clicks = 0;
+    if (now - wio_e5_controls_started_at < WIO_E5_RESCUE_WINDOW_MS) {
+      the_mesh.enterCLIRescue();
+    } else if (the_mesh.prepareForUserShutdown()) {
+      board.powerOff();
+    }
+  }
+
+  if (!wio_e5_button_pressed && wio_e5_button_clicks != 0
+      && now - wio_e5_button_released_at > WIO_E5_BUTTON_MULTI_CLICK_MS) {
+    if (wio_e5_button_clicks == 2) {
+      (void)the_mesh.advert();
+    }
+    wio_e5_button_clicks = 0;
+  }
+}
+}  // namespace
+#endif
+
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
 #include <helpers/ota/MotaSourceSerial.h>
 #include <helpers/ota/OtaContext.h>
@@ -2992,6 +3076,9 @@ void setup() {
 #ifdef DISPLAY_CLASS
   ui_task.begin(disp, &sensors, the_mesh.getNodePrefs());  // still want to pass this in as dependency, as prefs might be moved
 #endif
+#if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI) && defined(PIN_USER_BTN)
+  beginWioE5HeadlessControls();
+#endif
 
   board.onBootComplete();
 
@@ -3044,6 +3131,9 @@ void loop() {
   ble_mota_source_control.loop();
 #endif
   sensors.loop();
+#if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI) && defined(PIN_USER_BTN)
+  serviceWioE5HeadlessControls();
+#endif
 #ifdef DISPLAY_CLASS
   #ifdef INDICATOR_WIFI_FONT_RECOVERY
   // The Indicator keeps rendering with its built-in fallback while a missing

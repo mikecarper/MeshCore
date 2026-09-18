@@ -221,6 +221,9 @@ public:
   void handleCmdFrame(size_t len);
   bool advert();
   void enterCLIRescue();
+  // Physical controls must flush deferred contact writes before entering a
+  // board's irreversible power-off state.
+  bool prepareForUserShutdown() { return prepareForUiShutdown(); }
 
 #if COMPANION_FEATURE_TEXT_TERMINAL
   void enterTerminalMode(bool show_banner = true);

@@ -60,7 +60,6 @@ REQUIRE_OTA_UPDATES="${REQUIRE_OTA_UPDATES:-}"
 OTA_EXCLUDED_TARGETS=()
 LOGGING_MATRIX_FAILURES=()
 LOGGING_MATRIX_DEFERRED_TARGETS=()
-LOGGING_MATRIX_DEFERRED_CAPACITY_TARGETS=()
 RADIO_PRESET_SELECTION=""
 KISS_MODE_OVERRIDE="${KISS_MODE_OVERRIDE-}"
 PARSED_COMMAND_ARGS=()
@@ -2100,23 +2099,6 @@ is_rak_gps_retaining_ota_target() {
 is_logging_size_constrained_target() {
   case "$1" in
     Tiny_Relay_companion_radio_usb|Tiny_Relay_repeater|RAK_3x72_companion_radio_usb|RAK_3x72_repeater|wio-e5_companion_radio_usb|wio-e5_repeater|wio-e5-repeater_bridge_rs232|wio-e5-mini_companion_radio_usb|wio-e5-mini_repeater|wio-e5-mini_sensor)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-is_logging_matrix_capacity_deferred_target() {
-  # This STM32WL Companion needs 238 KiB with its complete storage, sensor,
-  # and runtime USB logging contract, while the deployed layout reserves
-  # 32 KiB of its 256 KiB flash for LittleFS.  Do not silently shrink that
-  # storage or remove a feature just to publish a matrix artifact.  The target
-  # remains directly buildable for capacity work; it is omitted from the
-  # logging matrix until its storage-layout decision is explicitly approved.
-  case "$1" in
-    wio-e5-mini_companion_radio_usb)
       return 0
       ;;
     *)
@@ -5680,7 +5662,6 @@ run_logging_matrix_build_targets() {
   fi
   LOGGING_MATRIX_FAILURES=()
   LOGGING_MATRIX_DEFERRED_TARGETS=()
-  LOGGING_MATRIX_DEFERRED_CAPACITY_TARGETS=()
   if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ]; then
     printf '%s\n' "${OTA_EXCLUDED_TARGETS[@]}" > "${OUTPUT_DIR}/ota-excluded-targets.txt"
   fi
@@ -5689,10 +5670,6 @@ run_logging_matrix_build_targets() {
 
   for target in "${targets[@]}"; do
     if is_mqtt_bridge_target "$target"; then
-      continue
-    fi
-    if is_logging_matrix_capacity_deferred_target "$target"; then
-      LOGGING_MATRIX_DEFERRED_CAPACITY_TARGETS+=("$target")
       continue
     fi
     if requires_esp32_full_cli_profile "$target"; then
@@ -5750,10 +5727,6 @@ run_logging_matrix_build_targets() {
   if [ ${#LOGGING_MATRIX_DEFERRED_TARGETS[@]} -gt 0 ]; then
     echo "${#LOGGING_MATRIX_DEFERRED_TARGETS[@]} standard ESP32 target(s) exceeded the portable OTA slot and were deferred to the expanded FULL pass:"
     printf '  %s\n' "${LOGGING_MATRIX_DEFERRED_TARGETS[@]}"
-  fi
-  if [ ${#LOGGING_MATRIX_DEFERRED_CAPACITY_TARGETS[@]} -gt 0 ]; then
-    echo "${#LOGGING_MATRIX_DEFERRED_CAPACITY_TARGETS[@]} standard target(s) are deferred pending an approved storage-capacity decision:"
-    printf '  %s\n' "${LOGGING_MATRIX_DEFERRED_CAPACITY_TARGETS[@]}"
   fi
   if [ ${#LOGGING_MATRIX_FAILURES[@]} -gt 0 ]; then
     echo "Logging matrix completed with ${#LOGGING_MATRIX_FAILURES[@]} failed build(s):"
