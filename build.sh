@@ -2387,6 +2387,30 @@ get_unified_full_infrastructure_target() {
   return 1
 }
 
+# A same-partition FULL release keeps the logical target's mOTA identity while
+# it may compile the matching observer recipe for its MQTT/TLS/ESP-NOW sources.
+# That lets a deployed ordinary role update to the complete image without
+# treating an observer environment name as a different target. If a board has
+# no matching observer recipe, its own source tree remains the Full build base.
+get_exact_identity_full_pio_env() {
+  local env_name=$1
+  local candidate=""
+
+  is_esp32_full_only_bulk_target "$env_name" || {
+    printf '%s\n' "$env_name"
+    return 0
+  }
+
+  candidate=$(get_unified_full_infrastructure_target "$env_name") || candidate=""
+  if [ -n "$candidate" ] \
+      && is_esp32_full_only_bulk_target "$candidate" \
+      && [ "${PIO_ENV_BOARD_BY_NAME[$candidate]:-}" = "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" ]; then
+    printf '%s\n' "$candidate"
+  else
+    printf '%s\n' "$env_name"
+  fi
+}
+
 apply_esp32_full_shared_bridge_profile() {
   local env_name=$1
 
@@ -2956,31 +2980,49 @@ supports_esp32_full_build() {
     && ! is_lora_ota_only_target "$env_name"
 }
 
-# These targets have an exact FULL partition identity and were audited to have
-# no target-specific contact, neighbour, channel, or queue capacity reduction.
-# In bulk release builds their portable image is therefore redundant: publish
-# the FULL image under the same environment identity instead.  Do not add an
-# environment here unless both its partition history and capacity limits have
-# been reviewed.  An explicit `--standard` build remains the recovery route.
+# These ESP32 targets keep their exact partition table when the FULL overlay is
+# applied. In bulk release builds the portable artifact is therefore redundant:
+# publish FULL under the same mOTA identity. This inventory is derived from the
+# resolved board recipe, including per-environment partition overrides. An
+# explicit `--standard` build remains the recovery route. Keep targets whose
+# FULL build changes partitions out of this list: mOTA correctly rejects those
+# migrations.
 is_esp32_full_only_bulk_target() {
   local env_name=${1,,}
 
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] || return 1
 
   case "$env_name" in
-    heltec_rc32_repeater|heltec_rc32_repeater_bridge_espnow|heltec_rc32_room_server|heltec_rc32_sensor|heltec_rc32_companion_radio_full|\
-    heltec_rc32_without_display_repeater|heltec_rc32_without_display_repeater_bridge_espnow|heltec_rc32_without_display_room_server|heltec_rc32_without_display_sensor|heltec_rc32_without_display_companion_radio_full|\
-    thinknode_m9_repeater_|thinknode_m9_room_server_|thinknode_m9_companion_radio_full_|\
-    station_g3_esp32_repeater|station_g3_esp32_logging_repeater|station_g3_esp32_room_server|station_g3_esp32_repeater_observer_mqtt|station_g3_esp32_room_server_observer_mqtt|station_g3_esp32_companion_radio_full|\
-    lilygo_teth_elite_sx1262_repeater|lilygo_teth_elite_sx1262_room_server|lilygo_teth_elite_sx1262_companion_radio_full|\
+    heltec_e290_repeater|heltec_e290_repeater_bridge_espnow|heltec_e290_room_server|\
+    heltec_v3_repeater|heltec_v3_repeater_bridge_rs232|heltec_v3_repeater_bridge_espnow|heltec_v3_repeater_observer_mqtt|heltec_v3_repeater_observer_mqtt_sim|heltec_v3_room_server|heltec_v3_room_server_observer_mqtt|heltec_v3_sensor|\
+    heltec_wsl3_repeater|heltec_wsl3_repeater_bridge_rs232|heltec_wsl3_repeater_bridge_espnow|heltec_wsl3_repeater_observer_mqtt|heltec_wsl3_room_server|heltec_wsl3_room_server_observer_mqtt|heltec_wsl3_sensor|\
+    lilygo_tbeam_1w_repeater|lilygo_tbeam_1w_repeater_bridge_espnow|lilygo_tbeam_1w_repeater_observer_mqtt|lilygo_tbeam_1w_room_server|lilygo_tbeam_1w_room_server_observer_mqtt|\
+    heltec_rc32_repeater|heltec_rc32_repeater_bridge_espnow|heltec_rc32_room_server|heltec_rc32_sensor|\
+    heltec_rc32_without_display_repeater|heltec_rc32_without_display_repeater_bridge_espnow|heltec_rc32_without_display_room_server|heltec_rc32_without_display_sensor|\
+    heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_bridge_espnow|heltec_wireless_tracker_room_server|\
+    thinknode_m9_repeater_|thinknode_m9_room_server_|\
+    heltec_t190_repeater_|heltec_t190_repeater_observer_mqtt|heltec_t190_repeater_bridge_espnow_|heltec_t190_room_server_|heltec_t190_room_server_observer_mqtt|\
+    meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_room_server|meshnology_w12_sensor|\
+    mke_s3_repeater|mke_s3_repeater_bridge_rs232|mke_s3_repeater_bridge_espnow|mke_s3_room_server|mke_s3_sensor|\
+    heltec_v2_repeater|heltec_v2_repeater_bridge_espnow|heltec_v2_room_server|heltec_v2_companion_radio_wifi|\
+    heltec_wireless_paper_repeater|heltec_wireless_paper_repeater_bridge_espnow|heltec_wireless_paper_room_server|\
+    heltec_tracker_v1_1_repeater_observer_mqtt|heltec_tracker_v1_1_room_server_observer_mqtt|\
+    heltec_tracker_v2_repeater|heltec_tracker_v2_repeater_bridge_espnow|heltec_tracker_v2_repeater_observer_mqtt|heltec_tracker_v2_room_server|heltec_tracker_v2_room_server_observer_mqtt|heltec_tracker_v2_sensor|\
+    t_beam_s3_supreme_sx1262_repeater|t_beam_s3_supreme_sx1262_repeater_bridge_espnow|t_beam_s3_supreme_sx1262_repeater_observer_mqtt|t_beam_s3_supreme_sx1262_room_server|t_beam_s3_supreme_sx1262_room_server_observer_mqtt|\
+    heltec_e213_repeater|heltec_e213_repeater_bridge_espnow|heltec_e213_room_server|\
     station_g2_repeater_observer_mqtt|station_g2_room_server_observer_mqtt|\
-    sensecapindicator-lora-n16r2_companion_radio_full|\
-    t_beam_s3_supreme_sx1262_repeater|t_beam_s3_supreme_sx1262_repeater_bridge_espnow|t_beam_s3_supreme_sx1262_repeater_observer_mqtt|t_beam_s3_supreme_sx1262_room_server|t_beam_s3_supreme_sx1262_room_server_observer_mqtt|t_beam_s3_supreme_sx1262_companion_radio_full|\
-    thinknode_m7_repeater|thinknode_m7_room_server|thinknode_m7_repeater_observer_mqtt|thinknode_m7_room_server_observer_mqtt|thinknode_m7_companion_radio_full|\
-    why2025_badge_repeater_|why2025_badge_companion_radio_full_|\
-    sensecapindicator-lora_companion_radio_full|\
-    m5stack_unit_c6l_companion_radio_full|lilygo_tlora_c6_companion_radio_full_|meshimi_companion_radio_full_|xiao_c6_companion_radio_full_|\
-    lilygo_tlora_v2_1_1_6_repeater|lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_repeater_bridge_rs232|lilygo_tlora_v2_1_1_6_repeater_bridge_espnow)
+    xiao_s3_repeater|xiao_s3_repeater_bridge_espnow|xiao_s3_room_server|xiao_s3_sensor|\
+    heltec_v4_repeater|heltec_v4_repeater_bridge_espnow|heltec_v4_repeater_observer_mqtt|heltec_v4_room_server|heltec_v4_room_server_observer_mqtt|heltec_v4_sensor|\
+    heltec_v4_expansionkit_repeater|heltec_v4_expansionkit_repeater_observer_mqtt|heltec_v4_expansionkit_room_server_observer_mqtt|\
+    heltec_v4_tft_repeater|heltec_v4_tft_repeater_bridge_espnow|heltec_v4_tft_room_server|heltec_v4_tft_sensor|\
+    lilygo_teth_elite_sx1262_repeater|lilygo_teth_elite_sx1262_room_server|\
+    station_g3_esp32_repeater|station_g3_esp32_logging_repeater|station_g3_esp32_room_server|station_g3_esp32_repeater_observer_mqtt|station_g3_esp32_room_server_observer_mqtt|\
+    rak_3112_repeater|rak_3112_repeater_bridge_rs232|rak_3112_repeater_bridge_espnow|rak_3112_repeater_observer_mqtt|rak_3112_room_server|rak_3112_room_server_observer_mqtt|rak_3112_sensor|\
+    xiao_s3_wio_repeater|xiao_s3_wio_repeater_bridge_espnow|xiao_s3_wio_repeater_observer_mqtt|xiao_s3_wio_room_server|xiao_s3_wio_room_server_observer_mqtt|xiao_s3_wio_sensor|\
+    lilygo_tdeck_repeater|\
+    thinknode_m7_repeater|thinknode_m7_room_server|thinknode_m7_repeater_observer_mqtt|thinknode_m7_room_server_observer_mqtt|\
+    heltec_v4_r8_repeater|heltec_v4_r8_repeater_observer_mqtt|heltec_v4_r8_room_server|heltec_v4_r8_room_server_observer_mqtt|heltec_v4_r8_sensor|\
+    heltec_v4_r8_tft_repeater|heltec_v4_r8_tft_repeater_observer_mqtt|heltec_v4_r8_tft_portrait_repeater_observer_mqtt|heltec_v4_r8_tft_room_server|heltec_v4_r8_tft_room_server_observer_mqtt|heltec_v4_r8_tft_portrait_room_server_observer_mqtt|heltec_v4_r8_tft_sensor)
       return 0
       ;;
   esac
@@ -3042,6 +3084,7 @@ declare_build_capability_contract() {
   local env_platform=$2
   local env_name_lc=${env_name,,}
   local pio_env_name
+  local exact_identity_full_pio_env
 
   declare_full_logging_application_contract "$env_name"
   record_build_capability "profile.${BUILD_PROFILE_FOR_TARGET}"
@@ -3274,7 +3317,7 @@ apply_esp32_full_size_profile() {
     return 0
   fi
 
-  # The FULL artifact uses expanded dual-OTA slots, so restore features that
+  # The FULL artifact uses the board's dual-OTA slots, so restore features that
   # target or legacy-slot profiles disabled only to save application space.
   append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UWEBCONFIG_DISABLED -DWIFI_OTA_SEEDER=1 -DMESHCORE_EXPANDED_PARTITION_PROFILE=1"
@@ -4297,10 +4340,19 @@ build_firmware() {
   fi
 
   if [ "$ESP32_FULL_BUILD" = "1" ] \
+      && is_esp32_full_only_bulk_target "$env_name"; then
+    exact_identity_full_pio_env=$(get_exact_identity_full_pio_env "$env_name")
+    if [ "$exact_identity_full_pio_env" != "$pio_env_name" ]; then
+      echo "FULL ${env_name} retains its mOTA identity while compiling observer feature base ${exact_identity_full_pio_env}."
+      pio_env_name=$exact_identity_full_pio_env
+    fi
+  fi
+
+  if [ "$ESP32_FULL_BUILD" = "1" ] \
       || is_companion_radio_full_target "$env_name"; then
     BUILD_PROFILE_FOR_TARGET="full"
   fi
-  configure_unified_full_infrastructure_output "$env_name"
+  configure_unified_full_infrastructure_output "$pio_env_name"
   echo "Effective feature profile for ${env_name}: ${BUILD_PROFILE_FOR_TARGET}"
 
   commit_hash=$(git rev-parse --short HEAD)
@@ -4393,7 +4445,7 @@ build_firmware() {
   apply_esp32_lora_ota_size_profile "$env_name"
   apply_esp32_constrained_companion_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
-  apply_esp32_full_shared_bridge_profile "$env_name"
+  apply_esp32_full_shared_bridge_profile "$pio_env_name"
   apply_esp32_full_async_tcp_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
   apply_nrf52_size_profile "$env_name"

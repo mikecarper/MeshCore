@@ -42,28 +42,35 @@ assert_auto_unified Heltec_T190_repeater_ Heltec_T190_repeater_observer_mqtt
 assert_auto_unified LilyGo_TLora_V2_1_1_6_room_server LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_
 assert_auto_unified heltec_v4_r8_repeater_observer_mqtt heltec_v4_r8_repeater_observer_mqtt
 
-# Only targets whose exact FULL environment was audited for partition history
-# and every capacity limit may omit their redundant portable bulk artifact.
+# Only targets whose standard and FULL board recipes retain the exact same
+# partition table may omit their redundant portable bulk artifact.
 full_only_count=0
 for target in "${!PIO_ENV_PLATFORM_BY_NAME[@]}"; do
   if is_esp32_full_only_bulk_target "$target"; then
     full_only_count=$((full_only_count + 1))
   fi
 done
-[ "$full_only_count" -eq 47 ] || fail "expected 47 audited FULL-only targets, found $full_only_count"
+[ "$full_only_count" -eq 129 ] || fail "expected 129 same-partition FULL-only targets, found $full_only_count"
 
 for target in heltec_rc32_repeater Station_G2_repeater_observer_mqtt \
-    SenseCapIndicator-LoRa-N16R2_companion_radio_full \
-    LilyGo_Tlora_C6_companion_radio_full_ \
-    LilyGo_TLora_V2_1_1_6_repeater_bridge_espnow; do
-  is_esp32_full_only_bulk_target "$target" || fail "missed audited FULL-only target $target"
+    Heltec_v3_repeater heltec_v4_r8_repeater \
+    heltec_v4_tft_repeater RAK_3112_repeater; do
+  is_esp32_full_only_bulk_target "$target" || fail "missed same-partition FULL-only target $target"
 done
 for target in LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_ \
-    LilyGo_TLora_V2_1_1_6_companion_radio_wifi heltec_v4_r8_repeater; do
+    LilyGo_TLora_V2_1_1_6_companion_radio_wifi \
+    LilyGo_TLora_V2_1_1_6_repeater_bridge_espnow WHY2025_badge_repeater_; do
   if is_esp32_full_only_bulk_target "$target"; then
-    fail "consolidated target with a capacity or partition caveat: $target"
+    fail "consolidated target with a partition migration: $target"
   fi
 done
+
+[ "$(get_exact_identity_full_pio_env heltec_v4_r8_repeater)" \
+    = heltec_v4_r8_repeater_observer_mqtt ] \
+  || fail "V4 R8 Full lost its observer feature base"
+[ "$(get_exact_identity_full_pio_env heltec_v4_r8_sensor)" \
+    = heltec_v4_r8_sensor ] \
+  || fail "V4 R8 sensor should retain its own feature base"
 
 # Portable images and exact reduced OTA identities must not be consolidated.
 for target in heltec_v4_r8_repeater heltec_v4_r8_room_server \
@@ -153,6 +160,24 @@ done
 (
   ESP32_FULL_BUILD=0
   BUILD_PROFILE_EFFECTIVE=standard
+  BUILD_PROFILE_OVERRIDE=auto
+  BUILD_PROFILE_EXPLICIT=0
+  BATCH_BUILD_MODE=1
+  FIRMWARE_VERSION=vtest
+  RESUME_BUILD_OUTPUT=1
+  FIRMWARE_FILENAME_INFIX=""
+  observed_filename=""
+  build_artifacts_exist() {
+    observed_filename=$2
+    return 0
+  }
+  build_firmware heltec_v4_r8_repeater >/dev/null
+  [[ "$observed_filename" == heltec_v4_r8_repeater-full-usb-wifi-ota-vtest-* ]] \
+    || fail "V4 Full did not keep its identity and unified feature recipe"
+)
+(
+  ESP32_FULL_BUILD=0
+  BUILD_PROFILE_EFFECTIVE=standard
   BUILD_PROFILE_OVERRIDE=standard
   BUILD_PROFILE_EXPLICIT=1
   BATCH_BUILD_MODE=1
@@ -177,9 +202,10 @@ done
   run_logging_matrix_build_targets heltec_v4_r8_repeater \
     heltec_v4_r8_repeater_lora_ota_no_external_sensors \
     heltec_v4_r8_repeater_observer_mqtt >/dev/null
-  [ "$standard_built" = 'heltec_v4_r8_repeater heltec_v4_r8_repeater_lora_ota_no_external_sensors' ] \
-    || fail "matrix removed a portable build"
-  [ "$full_built" = heltec_v4_r8_repeater_observer_mqtt ] || fail "matrix duplicated Full"
+  [ "$standard_built" = heltec_v4_r8_repeater_lora_ota_no_external_sensors ] \
+    || fail "matrix changed the distinct reduced OTA build"
+  [ "$full_built" = 'heltec_v4_r8_repeater heltec_v4_r8_repeater_observer_mqtt' ] \
+    || fail "matrix did not retain V4's exact and legacy Full identities"
   [ "$ESP32_LORA_OTA_APP_LIMIT" = 1310720 ] || fail "changed the 1.25 MiB portable limit"
 )
 
