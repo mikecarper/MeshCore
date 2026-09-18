@@ -2993,7 +2993,10 @@ single allocation.</p>
 160-byte messages. Its expanded preview records add 2,816 bytes to the
 startup allowance and increase the contiguous history allocation budget.
 The V4 can allocate that history in PSRAM; the guard conservatively reserves
-internal capacity so that PSRAM availability cannot hide a RAM shortage.</p>
+internal capacity so that PSRAM availability cannot hide a RAM shortage. A
+target may replace the generic UI allowance only with
+<code>MESH_COMPANION_SCREEN_STARTUP_BYTES</code>; a source-side assertion then covers its
+actual startup screens plus ESP32 allocator overhead.</p>
 <p>These are engineering allowances for supported configurations, not measured
 free heap after boot or a guarantee against every future allocation failure.
 Unknown platforms, unknown display drivers and missing linker metadata fail
