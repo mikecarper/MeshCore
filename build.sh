@@ -2956,6 +2956,37 @@ supports_esp32_full_build() {
     && ! is_lora_ota_only_target "$env_name"
 }
 
+# These targets have an exact FULL partition identity and were audited to have
+# no target-specific contact, neighbour, channel, or queue capacity reduction.
+# In bulk release builds their portable image is therefore redundant: publish
+# the FULL image under the same environment identity instead.  Do not add an
+# environment here unless both its partition history and capacity limits have
+# been reviewed.  An explicit `--standard` build remains the recovery route.
+is_esp32_full_only_bulk_target() {
+  local env_name=${1,,}
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] || return 1
+
+  case "$env_name" in
+    heltec_rc32_repeater|heltec_rc32_repeater_bridge_espnow|heltec_rc32_room_server|heltec_rc32_sensor|heltec_rc32_companion_radio_full|\
+    heltec_rc32_without_display_repeater|heltec_rc32_without_display_repeater_bridge_espnow|heltec_rc32_without_display_room_server|heltec_rc32_without_display_sensor|heltec_rc32_without_display_companion_radio_full|\
+    thinknode_m9_repeater_|thinknode_m9_room_server_|thinknode_m9_companion_radio_full_|\
+    station_g3_esp32_repeater|station_g3_esp32_logging_repeater|station_g3_esp32_room_server|station_g3_esp32_repeater_observer_mqtt|station_g3_esp32_room_server_observer_mqtt|station_g3_esp32_companion_radio_full|\
+    lilygo_teth_elite_sx1262_repeater|lilygo_teth_elite_sx1262_room_server|lilygo_teth_elite_sx1262_companion_radio_full|\
+    station_g2_repeater_observer_mqtt|station_g2_room_server_observer_mqtt|\
+    sensecapindicator-lora-n16r2_companion_radio_full|\
+    t_beam_s3_supreme_sx1262_repeater|t_beam_s3_supreme_sx1262_repeater_bridge_espnow|t_beam_s3_supreme_sx1262_repeater_observer_mqtt|t_beam_s3_supreme_sx1262_room_server|t_beam_s3_supreme_sx1262_room_server_observer_mqtt|t_beam_s3_supreme_sx1262_companion_radio_full|\
+    thinknode_m7_repeater|thinknode_m7_room_server|thinknode_m7_repeater_observer_mqtt|thinknode_m7_room_server_observer_mqtt|thinknode_m7_companion_radio_full|\
+    why2025_badge_repeater_|why2025_badge_companion_radio_full_|\
+    sensecapindicator-lora_companion_radio_full|\
+    m5stack_unit_c6l_companion_radio_full|lilygo_tlora_c6_companion_radio_full_|meshimi_companion_radio_full_|xiao_c6_companion_radio_full_|\
+    lilygo_tlora_v2_1_1_6_repeater|lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_repeater_bridge_rs232|lilygo_tlora_v2_1_1_6_repeater_bridge_espnow)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 requires_esp32_full_cli_profile() {
   local env_name=$1
 
@@ -4227,6 +4258,26 @@ build_firmware() {
       && [ -n "${PIO_ENV_COMPLETE_OTA_BASE_BY_NAME[$env_name]+x}" ]; then
     pio_env_name=${PIO_ENV_COMPLETE_OTA_BASE_BY_NAME[$env_name]}
     echo "Complete OTA pass uses feature-rich base environment ${pio_env_name} with stable target identity ${env_name}."
+  fi
+
+  # Canonical bulk releases omit the redundant portable image for targets
+  # whose exact environment identity has been approved for FULL-only output.
+  # Keep an explicit standard request untouched so maintainers retain a
+  # portable recovery build when diagnosing field devices.
+  if [ "$ESP32_FULL_BUILD" != "1" ] \
+      && [ "$BUILD_PROFILE_FOR_TARGET" = "standard" ] \
+      && [ "${BATCH_BUILD_MODE:-0}" = "1" ] \
+      && [ "${BUILD_PROFILE_EXPLICIT:-0}" != "1" ] \
+      && is_esp32_full_only_bulk_target "$env_name"; then
+    ESP32_FULL_BUILD=1
+    if ! is_companion_radio_full_target "$env_name"; then
+      MESHDEBUG_OVERRIDE="off"
+      PACKET_LOGGING_OVERRIDE="on"
+      MQTT_BRIDGE_OVERRIDE="off"
+      MQTT_DEBUG_OVERRIDE="off"
+      FIRMWARE_FILENAME_INFIX="full-logging"
+    fi
+    echo "Promoting ${env_name} to its canonical exact-identity FULL release image."
   fi
 
   if [ "$ESP32_FULL_BUILD" != "1" ] \
@@ -5546,6 +5597,13 @@ run_full_esp32_profile() {
     if [ -z "$full_target" ] || ! supports_esp32_full_build "$full_target"; then
       continue
     fi
+    # The logging matrix has already emitted these approved targets under
+    # their exact environment names. Do not replace that identity with a
+    # generic MQTT/unified sibling in this legacy resolution pass.
+    if [ "${FULL_ONLY_EXACT_PROFILE_ACTIVE:-0}" = "1" ] \
+        && is_esp32_full_only_bulk_target "$full_target"; then
+      continue
+    fi
     if [ -z "${seen_full_targets[$full_target]+x}" ]; then
       full_targets+=("$full_target")
       seen_full_targets["$full_target"]=1
@@ -5598,6 +5656,34 @@ run_full_esp32_profile() {
   return "$build_status"
 }
 
+run_full_only_esp32_profile() {
+  local targets=("$@")
+  local pass_status=0
+  local BUILD_PROFILE_EFFECTIVE=full
+  local MESHDEBUG_OVERRIDE=off
+  local PACKET_LOGGING_OVERRIDE=on
+  local MQTT_BRIDGE_OVERRIDE=off
+  local MQTT_DEBUG_OVERRIDE=off
+  local FIRMWARE_FILENAME_INFIX=full-logging
+  local ESP32_FULL_BUILD=1
+
+  if [ ${#targets[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  echo "FULL-only exact-identity pass: building ${#targets[@]} audited ESP32 target(s) with expanded dual-OTA partitions and USB packet logging."
+  echo "These artifacts retain each target's own mOTA identity and use filename form: name-full-logging-ota-version."
+  run_logged_build_targets "${targets[@]}"
+  pass_status=$?
+  if [ "$pass_status" -eq 130 ]; then
+    return 130
+  fi
+  if [ "$pass_status" -ne 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
 run_full_esp32_build_targets() {
   local profile_mode=$1
   shift
@@ -5642,6 +5728,7 @@ run_logging_matrix_build_targets() {
   local targets=("$@")
   local target
   local standard_targets=()
+  local full_only_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
   local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
@@ -5650,11 +5737,13 @@ run_logging_matrix_build_targets() {
   local original_esp32_full_build=$ESP32_FULL_BUILD
   local original_profile_build_workers=$PROFILE_BUILD_WORKERS
   local full_only_standard_skip_count=0
+  local full_only_exact_count=0
   local merged_usb_logging_count=0
   local constrained_merged_logging_count=0
   local build_status=0
   local pass_status=0
   local DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL=0
+  local FULL_ONLY_EXACT_PROFILE_ACTIVE=0
 
   if [ ${#targets[@]} -eq 0 ]; then
     echo "No build targets resolved."
@@ -5669,6 +5758,18 @@ run_logging_matrix_build_targets() {
   echo "Option 3 PlatformIO policy: one target build at a time, ${OPTION3_PIO_JOBS} compiler job(s) inside that process."
 
   for target in "${targets[@]}"; do
+    if is_esp32_full_only_bulk_target "$target"; then
+      full_only_exact_count=$((full_only_exact_count + 1))
+      # Full companion environments already select their complete profile in
+      # build_firmware, so keep them in the ordinary pass to preserve their
+      # established companion-specific recipe.
+      if is_companion_radio_full_target "$target"; then
+        standard_targets+=("$target")
+      else
+        full_only_targets+=("$target")
+      fi
+      continue
+    fi
     if is_mqtt_bridge_target "$target"; then
       continue
     fi
@@ -5692,6 +5793,9 @@ run_logging_matrix_build_targets() {
   if [ "$full_only_standard_skip_count" -gt 0 ]; then
     echo "Deferring ${full_only_standard_skip_count} ESP32 ESP-NOW target(s) to their FULL logging fallback; its persistent USB gate also provides normal output-off operation."
   fi
+  if [ "$full_only_exact_count" -gt 0 ]; then
+    echo "Publishing ${full_only_exact_count} audited ESP32 target(s) as their exact-identity FULL release only; explicit --standard remains available for recovery."
+  fi
   ESP32_FULL_BUILD=0
   MESHDEBUG_OVERRIDE=""
   PACKET_LOGGING_OVERRIDE=""
@@ -5706,6 +5810,12 @@ run_logging_matrix_build_targets() {
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   fi
 
+  run_full_only_esp32_profile "${full_only_targets[@]}"
+  pass_status=$?
+  if [ "$pass_status" -eq 130 ]; then return 130; fi
+  if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+
+  FULL_ONLY_EXACT_PROFILE_ACTIVE=1
   run_full_esp32_profile "FULL unified pass" "unified" "${targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
