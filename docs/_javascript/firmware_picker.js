@@ -502,6 +502,26 @@
     });
   }
 
+  function omitLegacyObserverCompatibilityProfiles(profiles) {
+    const targets = new Set((profiles || []).map(function (profile) {
+      return String(profile && profile.target || "").toLowerCase();
+    }));
+
+    return (profiles || []).filter(function (profile) {
+      const target = String(profile && profile.target || "");
+      // Same-partition ESP32 migrations publish the ordinary target's Full
+      // image with its established mOTA identity. The former observer-named
+      // Full image remains in the release for deployed devices that still use
+      // that identity, but it is not a second picker choice when the exact
+      // successor is present. Keep an unmatched observer image visible: it
+      // may still be the only compatible recipe for that hardware/role.
+      const successor = target.replace(
+        /_observer_mqtt_?(?=-full-usb-wifi$)/i, ""
+      );
+      return successor === target || !targets.has(successor.toLowerCase());
+    });
+  }
+
   function applyFullCompanionCapabilities(profiles) {
     return (profiles || []).map(function (profile) {
       if (!isFullCompanion(profile)) return profile;
@@ -681,10 +701,12 @@
     }).filter(function (profile) {
       return !isHiddenLegacyProfile(profile);
     });
-    const profiles = applyMergedStandardUsbLoggingCapabilities(
-      applyMergedRak4631RepeaterCapabilities(
-        omitTransportsReplacedByFull(
-          applyFullCompanionCapabilities(visibleProfiles)
+    const profiles = omitLegacyObserverCompatibilityProfiles(
+      applyMergedStandardUsbLoggingCapabilities(
+        applyMergedRak4631RepeaterCapabilities(
+          omitTransportsReplacedByFull(
+            applyFullCompanionCapabilities(visibleProfiles)
+          )
         )
       )
     ).sort(function (a, b) {
@@ -1773,6 +1795,8 @@
       applyFullCompanionCapabilities,
     canonicalHardware: canonicalHardware,
     omitTransportsReplacedByFull: omitTransportsReplacedByFull,
+    omitLegacyObserverCompatibilityProfiles:
+      omitLegacyObserverCompatibilityProfiles,
     omitTransportsReplacedByDualCdcFull:
       omitTransportsReplacedByFull,
     omitNrf52TransportsReplacedByFull:

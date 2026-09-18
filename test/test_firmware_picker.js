@@ -545,6 +545,32 @@ assert(picker.profileMatchesFacets(mqtt, {
   feature: "full",
 }));
 
+// Phase one of the same-partition ESP32 migration keeps the legacy observer
+// artifact downloadable for its distinct deployed mOTA identity, but offers
+// the ordinary target's exact-identity Full successor in the picker. An
+// unmatched observer profile remains visible.
+const observerMigrationCatalog = picker.buildCatalog([
+  release(family, "2026-09-18T12:00:00Z", [
+    asset("Heltec_v3_repeater-full-usb-wifi-ota-" + family + ".bin"),
+    asset(
+      "Heltec_v3_repeater_observer_mqtt-full-usb-wifi-ota-" +
+        family + ".bin"
+    ),
+    asset(
+      "Heltec_v3_room_server_observer_mqtt-full-usb-wifi-ota-" +
+        family + ".bin"
+    ),
+  ]),
+]);
+assert.strictEqual(observerMigrationCatalog.rows.length, 3);
+assert.deepStrictEqual(
+  observerMigrationCatalog.profiles.map(function (item) { return item.target; }),
+  [
+    "Heltec_v3_repeater-full-usb-wifi",
+    "Heltec_v3_room_server_observer_mqtt-full-usb-wifi",
+  ]
+);
+
 const fullCompanionSteps = picker.installSteps(v4Full, "merged-bin");
 assert(fullCompanionSteps.some(function (step) {
   return step.includes("usb.logging");

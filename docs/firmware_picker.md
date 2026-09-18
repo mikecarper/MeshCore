@@ -414,6 +414,12 @@ off and the normal ASCII-to-binary mode switch occurs. nRF52 Full Companion
 retains its optional dedicated interface `02`.
 Exact filename search still finds old aliases from earlier releases.
 
+For same-partition ESP32 infrastructure migrations, the picker similarly
+recommends the ordinary target's exact-identity Full image when it is present.
+The former observer-named Full image remains available through exact filename
+search for deployed devices that still use that mOTA identity; it is not shown
+as a second recommended configuration.
+
 ## Maintaining the runtime directions
 
 The online picker and downloadable HTML use the same command renderer.
