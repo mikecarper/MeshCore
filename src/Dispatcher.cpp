@@ -715,23 +715,32 @@ void Dispatcher::checkRecv() {
 #endif
       snr = _radio->getLastSNR();
       rssi = _radio->getLastRSSI();
-      logRxRaw(snr, rssi, raw, len);
 
-      pkt = _mgr->allocNew();
-      if (pkt == NULL) {
-        MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): WARNING: received data, no unused packets available!", getLogDateTime());
+      // TRACE and CONTROL are direct-only.  Reject a flood framing before
+      // raw hooks can expose it to USB logs, MQTT, ESP-NOW, or another bridge.
+      // The header check is deliberate: it also holds when the packet pool is
+      // exhausted, so an invalid frame never slips out through a raw sink.
+      if (Packet::violatesRoutePolicy(raw[0])) {
+        pkt = NULL;
       } else {
-        if (tryParsePacket(pkt, raw, len)) {
-          last_meshcore_recv_millis = _ms->getMillis();
-          if (auto* p = _radio->profiles()) ++p->rx_packets[pkt->radio_profile];
-          pkt->_snr = snr * 4.0f;
-          pkt->_rssi = (int16_t)rssi;
-          score = _radio->packetScore(snr, len);
-          air_time = _radio->getEstAirtimeFor(len);
-          rx_air_time += air_time;
+        logRxRaw(snr, rssi, raw, len);
+
+        pkt = _mgr->allocNew();
+        if (pkt == NULL) {
+          MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): WARNING: received data, no unused packets available!", getLogDateTime());
         } else {
-          _mgr->free(pkt);  // put back into pool
-          pkt = NULL;
+          if (tryParsePacket(pkt, raw, len)) {
+            last_meshcore_recv_millis = _ms->getMillis();
+            if (auto* p = _radio->profiles()) ++p->rx_packets[pkt->radio_profile];
+            pkt->_snr = snr * 4.0f;
+            pkt->_rssi = (int16_t)rssi;
+            score = _radio->packetScore(snr, len);
+            air_time = _radio->getEstAirtimeFor(len);
+            rx_air_time += air_time;
+          } else {
+            _mgr->free(pkt);  // put back into pool
+            pkt = NULL;
+          }
         }
       }
     } else {
@@ -978,6 +987,9 @@ void Dispatcher::releasePacket(Packet* packet) {
 }
 
 bool Dispatcher::queueOutboundPacket(Packet* packet, uint8_t priority, uint32_t delay_millis) {
+  if (packet->violatesRoutePolicy()) {
+    return false;
+  }
   if (!radio_available) {
     MESH_DEBUG_PRINTLN("%s Dispatcher::sendPacket(): radio unavailable", getLogDateTime());
     return false;

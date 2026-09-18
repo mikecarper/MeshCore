@@ -705,6 +705,26 @@ TEST(MeshReceiveHooks, GroupPacketIsObservedWhenForwardingIsDisabled) {
   EXPECT_TRUE(node.groupPacketObserved);
 }
 
+TEST(MeshReceiveHooks, FloodTraceAndControlAreNeverForwarded) {
+  TraceTestClock clock;
+  TraceTestRTC rtc;
+  TraceTestRNG rng;
+  TraceTestRadio radio;
+  ForwardingTestTables tables;
+  StaticPoolPacketManager manager(12);
+  TraceTestMesh node(radio, clock, rng, rtc, manager, tables);
+  node.forwardFloods = true;
+
+  for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD}) {
+    for (uint8_t type : {PAYLOAD_TYPE_TRACE, PAYLOAD_TYPE_CONTROL}) {
+      mesh::Packet packet = makeFloodPacket(type);
+      packet.header = route | (type << PH_TYPE_SHIFT);
+      EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+      EXPECT_EQ(0, tables.mark_seen_calls);
+    }
+  }
+}
+
 static mesh::Packet* makeTrace(TraceTestMesh& node, uint32_t tag, uint32_t auth,
                                const uint8_t* route, uint8_t route_len) {
   mesh::Packet* packet = node.createTrace(tag, auth, 0);

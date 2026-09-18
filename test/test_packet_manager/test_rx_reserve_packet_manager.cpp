@@ -102,6 +102,12 @@ protected:
     completed_packet = packet;
     completed_packets++;
   }
+  void logRxRaw(float, float, const uint8_t[], int) override {
+    raw_receive_logs++;
+  }
+  void logRx(mesh::Packet*, int, float) override {
+    parsed_receive_logs++;
+  }
 
 public:
   mesh::Packet* failed_packet = nullptr;
@@ -109,6 +115,8 @@ public:
   int completed_packets = 0;
   int free_count_during_failure = -1;
   int received_packets = 0;
+  int raw_receive_logs = 0;
+  int parsed_receive_logs = 0;
   int forced_rx_delay = -1;
   bool bypass_rx_delay = false;
   bool configured_cad_enabled = false;
@@ -246,6 +254,85 @@ TEST(Dispatcher, FloodPacketWaitsForConfiguredRxDelayWithoutBypass) {
   clock.now = 1100;
   dispatcher.loop();
   EXPECT_EQ(1, dispatcher.received_packets);
+}
+
+TEST(Dispatcher, FloodTraceAndControlAreDroppedBeforeLogsAndRouting) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD}) {
+    for (uint8_t type : {PAYLOAD_TYPE_TRACE, PAYLOAD_TYPE_CONTROL}) {
+      uint8_t raw[7] = {};
+      int raw_len = 0;
+      raw[raw_len++] = route | (type << PH_TYPE_SHIFT);
+      if (route == ROUTE_TYPE_TRANSPORT_FLOOD) {
+        raw_len += 4;  // transport codes
+      }
+      raw[raw_len++] = 0;  // zero-hop path
+      raw[raw_len++] = 0x42;
+
+      clock.now++;
+      radio.queueRx(raw, raw_len);
+      dispatcher.loop();
+    }
+  }
+
+  EXPECT_EQ(0, dispatcher.raw_receive_logs);
+  EXPECT_EQ(0, dispatcher.parsed_receive_logs);
+  EXPECT_EQ(0, dispatcher.received_packets);
+  EXPECT_EQ(0U, dispatcher.getLastMeshCoreRecvMillis());
+  EXPECT_EQ(0U, dispatcher.getNumRecvFlood());
+  EXPECT_EQ(4, manager.getFreeCount());
+}
+
+TEST(Dispatcher, DirectTraceAndControlRemainValid) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  for (uint8_t type : {PAYLOAD_TYPE_TRACE, PAYLOAD_TYPE_CONTROL}) {
+    const uint8_t raw[] = {
+      static_cast<uint8_t>(ROUTE_TYPE_DIRECT | (type << PH_TYPE_SHIFT)), 0, 0x42
+    };
+    clock.now++;
+    radio.queueRx(raw, sizeof(raw));
+    dispatcher.loop();
+  }
+
+  EXPECT_EQ(2, dispatcher.raw_receive_logs);
+  EXPECT_EQ(2, dispatcher.parsed_receive_logs);
+  EXPECT_EQ(2, dispatcher.received_packets);
+  EXPECT_EQ(2U, dispatcher.getLastMeshCoreRecvMillis());
+  EXPECT_EQ(2U, dispatcher.getNumRecvDirect());
+}
+
+TEST(Dispatcher, FloodTraceAndControlCannotBeQueuedForTransmit) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.begin();
+
+  for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD}) {
+    for (uint8_t type : {PAYLOAD_TYPE_TRACE, PAYLOAD_TYPE_CONTROL}) {
+      mesh::Packet* packet = dispatcher.obtainNewPacket();
+      ASSERT_NE(packet, nullptr);
+      packet->header = route | (type << PH_TYPE_SHIFT);
+      packet->setPathHashSizeAndCount(1, 0);
+      packet->payload_len = 1;
+      packet->payload[0] = 0x42;
+      EXPECT_FALSE(dispatcher.sendPacket(packet, 0));
+      EXPECT_FALSE(dispatcher.hasOutbound());
+    }
+  }
+
+  EXPECT_EQ(4, manager.getFreeCount());
+  EXPECT_EQ(0, radio.send_starts);
 }
 
 TEST(Dispatcher, RejectedRadioPacketsCannotFeedMeshCoreRxWatchdog) {

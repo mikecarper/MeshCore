@@ -11,7 +11,10 @@ protected:
   // Called on the mesh loop, before copying/marking/queuing a packet. Never
   // invoke the policy from a WiFi callback or the MQTT publishing task.
   bool allowsPacket(const mesh::Packet* packet) const {
-    return packet && (!_packet_filter
+    // Route policy is transport-independent: a flood-framed TRACE or CONTROL
+    // must never be relayed through a bridge even if the role has no custom
+    // bridge filter configured.
+    return packet && !packet->violatesRoutePolicy() && (!_packet_filter
         || _packet_filter(_packet_filter_context, packet));
   }
 

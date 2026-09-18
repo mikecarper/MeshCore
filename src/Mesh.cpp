@@ -918,6 +918,11 @@ int Mesh::searchChannelsByHash(const uint8_t* hash, GroupChannel channels[], int
 }
 
 DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
+  // Trace and control payloads are direct-only.  Dispatcher enforces this for
+  // RF input before any logging/bridge hook; retain the core check for packets
+  // arriving through another transport implementation.
+  if (pkt->violatesRoutePolicy()) return ACTION_RELEASE;
+
   observeForwardedAdvertEcho(pkt);
   if (pkt->isRouteDirect()) {
     cancelDirectRetryOnEcho(pkt);
@@ -3015,8 +3020,8 @@ bool Mesh::sendManagementData(Packet* packet, bool flood, const uint8_t* path,
 }
 
 bool Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_size) {
-  if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
-    MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): TRACE type not suspported", getLogDateTime());
+  if (packet == NULL) return false;
+  if (Packet::isDirectOnlyPayloadType(packet->getPayloadType())) {
     releasePacket(packet);
     return false;
   }
@@ -3047,8 +3052,8 @@ bool Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_si
 }
 
 bool Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_millis, uint8_t path_hash_size) {
-  if (packet->getPayloadType() == PAYLOAD_TYPE_TRACE) {
-    MESH_DEBUG_PRINTLN("%s Mesh::sendFlood(): TRACE type not suspported", getLogDateTime());
+  if (packet == NULL) return false;
+  if (Packet::isDirectOnlyPayloadType(packet->getPayloadType())) {
     releasePacket(packet);
     return false;
   }

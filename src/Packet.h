@@ -84,6 +84,20 @@ public:
   bool isRouteFlood() const { return getRouteType() == ROUTE_TYPE_FLOOD || getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD; }
   bool isRouteDirect() const { return getRouteType() == ROUTE_TYPE_DIRECT || getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT; }
 
+  // TRACE gathers per-hop state and CONTROL can carry local discovery state.
+  // Neither has flood semantics.  Keep this header-only so raw receive sinks
+  // can reject a prohibited packet before exporting it to USB/MQTT/bridges.
+  static bool isDirectOnlyPayloadType(uint8_t payload_type) {
+    return payload_type == PAYLOAD_TYPE_TRACE || payload_type == PAYLOAD_TYPE_CONTROL;
+  }
+  static bool violatesRoutePolicy(uint8_t packet_header) {
+    const uint8_t route = packet_header & PH_ROUTE_MASK;
+    const uint8_t payload_type = (packet_header >> PH_TYPE_SHIFT) & PH_TYPE_MASK;
+    return (route == ROUTE_TYPE_FLOOD || route == ROUTE_TYPE_TRANSPORT_FLOOD)
+        && isDirectOnlyPayloadType(payload_type);
+  }
+  bool violatesRoutePolicy() const { return violatesRoutePolicy(header); }
+
   bool hasTransportCodes() const { return getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD || getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT; }
 
   /**
