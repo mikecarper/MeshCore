@@ -813,6 +813,11 @@ for constrained_companion in \
   is_logging_size_constrained_target "$constrained_companion" \
     || fail "$constrained_companion enabled oversized verbose mesh diagnostics"
 done
+is_logging_matrix_capacity_deferred_target wio-e5-mini_companion_radio_usb \
+  || fail "Wio E5 Mini Companion was not deferred pending its storage decision"
+if is_logging_matrix_capacity_deferred_target wio-e5-mini_repeater; then
+  fail "Wio E5 Mini capacity deferral expanded beyond the affected Companion"
+fi
 if uses_merged_standard_usb_logging nrf_repeater_lora_ota_no_external_sensors; then
   fail "LoRa OTA repeater incorrectly merged USB logging"
 fi
