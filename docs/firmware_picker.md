@@ -420,6 +420,17 @@ The former observer-named Full image remains available through exact filename
 search for deployed devices that still use that mOTA identity; it is not shown
 as a second recommended configuration.
 
+Some normal ESP32 roles begin in the legacy 1.25 MiB dual-OTA layout but have
+a canonical Full image with a larger partition table. Their Full image keeps
+the ordinary target identity for future mOTA updates, but the first install is
+always its exact `-merged.bin` over USB: LoRa mOTA intentionally rejects a
+package whose partition signature differs from the running layout. During this
+transition the portable artifact remains published for already-installed
+nodes. The current migration set is LilyGo T3S3 SX1262/SX1276 repeater and
+room-server roles, Station G2 repeater and room-server roles, and ThinkNode M2
+repeater and room-server roles. Station G2 moves to two 6.25 MiB slots;
+the 4 MiB T3S3 and ThinkNode M2 boards move to two 1984 KiB slots.
+
 ## Maintaining the runtime directions
 
 The online picker and downloadable HTML use the same command renderer.

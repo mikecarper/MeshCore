@@ -65,12 +65,35 @@ for target in LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_ \
   fi
 done
 
+# Partition-changing normal roles publish a canonical Full image alongside
+# their portable compatibility image. They must never be mistaken for the
+# same-partition policy, which is the only policy allowed to install through
+# the automatic mOTA target alias.
+for target in LilyGo_T3S3_sx1262_repeater \
+    LilyGo_T3S3_sx1262_room_server \
+    LilyGo_T3S3_sx1276_repeater \
+    LilyGo_T3S3_sx1276_room_server \
+    Station_G2_repeater Station_G2_room_server \
+    ThinkNode_M2_Repeater ThinkNode_M2_room_server; do
+  is_esp32_partition_migration_full_target "$target" \
+    || fail "missed partition-migration Full target $target"
+  if is_esp32_full_only_bulk_target "$target"; then
+    fail "partition-migration target was incorrectly made FULL-only: $target"
+  fi
+done
+
 [ "$(get_exact_identity_full_pio_env heltec_v4_r8_repeater)" \
     = heltec_v4_r8_repeater_observer_mqtt ] \
   || fail "V4 R8 Full lost its observer feature base"
 [ "$(get_exact_identity_full_pio_env heltec_v4_r8_sensor)" \
     = heltec_v4_r8_sensor ] \
   || fail "V4 R8 sensor should retain its own feature base"
+[ "$(get_exact_identity_full_pio_env Station_G2_repeater)" \
+    = Station_G2_repeater_observer_mqtt ] \
+  || fail "Station G2 migration Full lost its observer feature base"
+[ "$(get_exact_identity_full_pio_env LilyGo_T3S3_sx1262_room_server)" \
+    = LilyGo_T3S3_sx1262_room_server_observer_mqtt ] \
+  || fail "T3S3 migration Full lost its observer feature base"
 [ "$(get_exact_identity_full_migration_target heltec_v4_r8_repeater_observer_mqtt)" \
     = heltec_v4_r8_repeater ] \
   || fail "legacy V4 R8 observer lacks its canonical migration target"
@@ -79,6 +102,9 @@ if get_exact_identity_full_migration_target heltec_v4_r8_repeater >/dev/null; th
 fi
 if get_exact_identity_full_migration_target heltec_v4_r8_repeater_observer_mqtt_sim >/dev/null; then
   fail "simulated observer target unexpectedly received a migration alias"
+fi
+if get_exact_identity_full_migration_target Station_G2_repeater_observer_mqtt >/dev/null; then
+  fail "partition-changing Station G2 observer unexpectedly received an mOTA alias"
 fi
 
 # Portable images and exact reduced OTA identities must not be consolidated.
@@ -229,6 +255,18 @@ done
   [ "${#calls[@]}" -eq 1 ] || fail "FULL-only targets emitted duplicate matrix artifacts"
   [ "${calls[0]}" = 'full:1:full-logging:heltec_rc32_repeater heltec_rc32_repeater_bridge_espnow' ] \
     || fail "matrix did not build exact FULL-only identities"
+)
+
+(
+  calls=()
+  run_logged_build_targets() {
+    calls+=("$BUILD_PROFILE_EFFECTIVE:$ESP32_FULL_BUILD:$FIRMWARE_FILENAME_INFIX:$*")
+  }
+  run_partition_migration_full_esp32_profile \
+    Station_G2_repeater Station_G2_room_server Heltec_v3_repeater >/dev/null
+  [ "${#calls[@]}" -eq 1 ] || fail "partition-migration pass emitted the wrong number of builds"
+  [ "${calls[0]}" = 'full:1:full-logging:Station_G2_repeater Station_G2_room_server' ] \
+    || fail "partition-migration pass lost canonical normal identities"
 )
 
 # The default build settings retain power saving; this does not overwrite

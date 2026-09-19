@@ -2387,23 +2387,25 @@ get_unified_full_infrastructure_target() {
   return 1
 }
 
-# A same-partition FULL release keeps the logical target's mOTA identity while
-# it may compile the matching observer recipe for its MQTT/TLS/ESP-NOW sources.
-# That lets a deployed ordinary role update to the complete image without
-# treating an observer environment name as a different target. If a board has
-# no matching observer recipe, its own source tree remains the Full build base.
+# A canonical FULL release keeps the logical target's mOTA identity while it
+# may compile the matching observer recipe for its MQTT/TLS/ESP-NOW sources.
+# Same-partition targets can receive that image through mOTA. Partition-
+# migration targets require their merged image to be flashed once first, but
+# then use this same normal-target identity for every later FULL update. If a
+# board has no matching observer recipe, its own source tree remains the Full
+# build base.
 get_exact_identity_full_pio_env() {
   local env_name=$1
   local candidate=""
 
-  is_esp32_full_only_bulk_target "$env_name" || {
+  is_esp32_canonical_full_release_target "$env_name" || {
     printf '%s\n' "$env_name"
     return 0
   }
 
   candidate=$(get_unified_full_infrastructure_target "$env_name") || candidate=""
   if [ -n "$candidate" ] \
-      && is_esp32_full_only_bulk_target "$candidate" \
+      && supports_esp32_full_build "$candidate" \
       && [ "${PIO_ENV_BOARD_BY_NAME[$candidate]:-}" = "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" ]; then
     printf '%s\n' "$candidate"
   else
@@ -3056,6 +3058,34 @@ is_esp32_full_only_bulk_target() {
   return 1
 }
 
+# These normal role identities still ship a portable legacy image for installed
+# nodes, but also need a canonical FULL artifact for the one-time wired layout
+# migration. They are deliberately separate from the FULL-only list above:
+# their deployed 0x140000 slots differ from the expanded table, so LoRa mOTA
+# must not try to cross this boundary. The matching merged image is the
+# migration package; after it is flashed, later normal-target FULL packages
+# use the same logical mOTA identity.
+is_esp32_partition_migration_full_target() {
+  local env_name=${1,,}
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] || return 1
+
+  case "$env_name" in
+    lilygo_t3s3_sx1262_repeater|lilygo_t3s3_sx1262_room_server|\
+    lilygo_t3s3_sx1276_repeater|lilygo_t3s3_sx1276_room_server|\
+    station_g2_repeater|station_g2_room_server|\
+    thinknode_m2_repeater|thinknode_m2_room_server)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_esp32_canonical_full_release_target() {
+  is_esp32_full_only_bulk_target "$1" \
+    || is_esp32_partition_migration_full_target "$1"
+}
+
 requires_esp32_full_cli_profile() {
   local env_name=$1
 
@@ -3115,6 +3145,15 @@ declare_build_capability_contract() {
 
   declare_full_logging_application_contract "$env_name"
   record_build_capability "profile.${BUILD_PROFILE_FOR_TARGET}"
+
+  if [ "$env_platform" = "ESP32_PLATFORM" ] \
+      && [ "$BUILD_PROFILE_FOR_TARGET" = "full" ]; then
+    if is_esp32_full_only_bulk_target "$env_name"; then
+      record_build_capability "release.full.same_partition_successor"
+    elif is_esp32_partition_migration_full_target "$env_name"; then
+      record_build_capability "release.full.partition_migration_usb"
+    fi
+  fi
 
   if [ "$env_platform" = "NRF52_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
     # Prove the real DFU service is linked, not merely a generic OTA CLI stub.
@@ -4369,10 +4408,14 @@ build_firmware() {
   fi
 
   if [ "$ESP32_FULL_BUILD" = "1" ] \
-      && is_esp32_full_only_bulk_target "$env_name"; then
+      && is_esp32_canonical_full_release_target "$env_name"; then
     exact_identity_full_pio_env=$(get_exact_identity_full_pio_env "$env_name")
     if [ "$exact_identity_full_pio_env" != "$pio_env_name" ]; then
-      echo "FULL ${env_name} retains its mOTA identity while compiling observer feature base ${exact_identity_full_pio_env}."
+      if is_esp32_partition_migration_full_target "$env_name"; then
+        echo "Partition-migration FULL ${env_name} retains its mOTA identity while compiling observer feature base ${exact_identity_full_pio_env}."
+      else
+        echo "FULL ${env_name} retains its mOTA identity while compiling observer feature base ${exact_identity_full_pio_env}."
+      fi
       pio_env_name=$exact_identity_full_pio_env
     fi
   fi
@@ -5690,6 +5733,14 @@ run_full_esp32_profile() {
     if [ -z "$full_target" ] || ! supports_esp32_full_build "$full_target"; then
       continue
     fi
+    # The canonical normal-target FULL artifact was already emitted by the
+    # partition-migration pass. Do not rebuild it as an identical fallback.
+    # Observer identities are intentionally not skipped: existing observer
+    # nodes still need their exact legacy mOTA asset during the transition.
+    if [ "${PARTITION_MIGRATION_FULL_PROFILE_ACTIVE:-0}" = "1" ] \
+        && is_esp32_partition_migration_full_target "$full_target"; then
+      continue
+    fi
     # The logging matrix has already emitted these approved targets under
     # their exact environment names. Do not replace that identity with a
     # generic MQTT/unified sibling in this legacy resolution pass.
@@ -5777,6 +5828,60 @@ run_full_only_esp32_profile() {
   return 0
 }
 
+run_partition_migration_full_esp32_profile() {
+  local targets=("$@")
+  local target
+  local pass_status=0
+  local build_status=0
+  local BUILD_PROFILE_EFFECTIVE=full
+  local -a migration_targets=()
+  local -A seen_migration_targets=()
+  local original_meshdebug_override=$MESHDEBUG_OVERRIDE
+  local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
+  local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
+  local original_mqtt_debug_override=$MQTT_DEBUG_OVERRIDE
+  local original_firmware_filename_infix=$FIRMWARE_FILENAME_INFIX
+  local original_esp32_full_build=$ESP32_FULL_BUILD
+
+  for target in "${targets[@]}"; do
+    if ! is_esp32_partition_migration_full_target "$target" \
+        || [ -n "${seen_migration_targets[$target]+x}" ]; then
+      continue
+    fi
+    migration_targets+=("$target")
+    seen_migration_targets["$target"]=1
+  done
+
+  if [ ${#migration_targets[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  echo "Partition-migration FULL pass: building ${#migration_targets[@]} canonical ESP32 target(s)."
+  echo "Each normal-target FULL artifact keeps its mOTA identity after its matching merged image is flashed once; legacy 1.25 MiB artifacts remain published during the transition."
+  MESHDEBUG_OVERRIDE=off
+  PACKET_LOGGING_OVERRIDE=on
+  MQTT_BRIDGE_OVERRIDE=off
+  MQTT_DEBUG_OVERRIDE=off
+  FIRMWARE_FILENAME_INFIX=full-logging
+  ESP32_FULL_BUILD=1
+
+  run_logged_build_targets "${migration_targets[@]}"
+  pass_status=$?
+  if [ "$pass_status" -eq 130 ]; then
+    build_status=130
+  elif [ "$pass_status" -ne 0 ]; then
+    build_status=1
+  fi
+
+  MESHDEBUG_OVERRIDE=$original_meshdebug_override
+  PACKET_LOGGING_OVERRIDE=$original_packet_logging_override
+  MQTT_BRIDGE_OVERRIDE=$original_mqtt_bridge_override
+  MQTT_DEBUG_OVERRIDE=$original_mqtt_debug_override
+  FIRMWARE_FILENAME_INFIX=$original_firmware_filename_infix
+  ESP32_FULL_BUILD=$original_esp32_full_build
+  return "$build_status"
+}
+
 run_full_esp32_build_targets() {
   local profile_mode=$1
   shift
@@ -5831,12 +5936,14 @@ run_logging_matrix_build_targets() {
   local original_profile_build_workers=$PROFILE_BUILD_WORKERS
   local full_only_standard_skip_count=0
   local full_only_exact_count=0
+  local partition_migration_full_count=0
   local merged_usb_logging_count=0
   local constrained_merged_logging_count=0
   local build_status=0
   local pass_status=0
   local DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL=0
   local FULL_ONLY_EXACT_PROFILE_ACTIVE=0
+  local PARTITION_MIGRATION_FULL_PROFILE_ACTIVE=0
 
   if [ ${#targets[@]} -eq 0 ]; then
     echo "No build targets resolved."
@@ -5889,6 +5996,14 @@ run_logging_matrix_build_targets() {
   if [ "$full_only_exact_count" -gt 0 ]; then
     echo "Publishing ${full_only_exact_count} audited ESP32 target(s) as their exact-identity FULL release only; explicit --standard remains available for recovery."
   fi
+  for target in "${targets[@]}"; do
+    if is_esp32_partition_migration_full_target "$target"; then
+      partition_migration_full_count=$((partition_migration_full_count + 1))
+    fi
+  done
+  if [ "$partition_migration_full_count" -gt 0 ]; then
+    echo "Publishing ${partition_migration_full_count} canonical ESP32 FULL migration target(s) alongside their legacy portable artifacts; flash each matching merged image once before mOTA can use FULL."
+  fi
   ESP32_FULL_BUILD=0
   MESHDEBUG_OVERRIDE=""
   PACKET_LOGGING_OVERRIDE=""
@@ -5907,6 +6022,12 @@ run_logging_matrix_build_targets() {
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+
+  run_partition_migration_full_esp32_profile "${targets[@]}"
+  pass_status=$?
+  if [ "$pass_status" -eq 130 ]; then return 130; fi
+  if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+  PARTITION_MIGRATION_FULL_PROFILE_ACTIVE=1
 
   FULL_ONLY_EXACT_PROFILE_ACTIVE=1
   run_full_esp32_profile "FULL unified pass" "unified" "${targets[@]}"

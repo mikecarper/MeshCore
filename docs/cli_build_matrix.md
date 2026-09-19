@@ -55,6 +55,11 @@ portable application slot, remain available and remain in the standard matrix
 pass. Select `--build-profile standard` to retain the original target and
 partition contract. Moving from a plain target to its MQTT sibling changes the
 LoRa OTA target identity; existing nodes need an appropriate wired migration.
+For the normal-role partition migrations, the matrix also publishes a
+canonical Full image under the normal target identity. Install its matching
+merged image over USB once; mOTA rejects the incompatible partition signature
+until that migration is complete, then later Full updates use the normal
+target ID. The portable image remains available while deployed nodes move.
 The default `cascade` settings profile enables device and LoRa RX power saving;
 saved preferences take precedence, and active USB/network services can prevent
 device sleep. `--profile default` instead uses the upstream power-saving defaults.
