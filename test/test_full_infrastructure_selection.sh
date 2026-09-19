@@ -71,6 +71,15 @@ done
 [ "$(get_exact_identity_full_pio_env heltec_v4_r8_sensor)" \
     = heltec_v4_r8_sensor ] \
   || fail "V4 R8 sensor should retain its own feature base"
+[ "$(get_exact_identity_full_migration_target heltec_v4_r8_repeater_observer_mqtt)" \
+    = heltec_v4_r8_repeater ] \
+  || fail "legacy V4 R8 observer lacks its canonical migration target"
+if get_exact_identity_full_migration_target heltec_v4_r8_repeater >/dev/null; then
+  fail "ordinary V4 R8 target unexpectedly has a migration alias"
+fi
+if get_exact_identity_full_migration_target heltec_v4_r8_repeater_observer_mqtt_sim >/dev/null; then
+  fail "simulated observer target unexpectedly received a migration alias"
+fi
 
 # Portable images and exact reduced OTA identities must not be consolidated.
 for target in heltec_v4_r8_repeater heltec_v4_r8_room_server \

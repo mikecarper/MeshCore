@@ -2411,6 +2411,33 @@ get_exact_identity_full_pio_env() {
   fi
 }
 
+# A legacy observer FULL image can make one automatic OTA hop to the ordinary
+# target whose exact-identity FULL image now replaces it. The old image keeps
+# its own target ID until that hop, so deployed nodes remain discoverable and
+# manual pulls stay target-specific. Only same-partition policy targets get an
+# alias; partition-changing targets must continue through their existing path.
+get_exact_identity_full_migration_target() {
+  local env_name=$1
+  local successor=""
+
+  case "${env_name,,}" in
+    *_observer_mqtt)
+      successor=${env_name%_observer_mqtt}
+      ;;
+    *_observer_mqtt_)
+      successor=${env_name%_observer_mqtt_}
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  is_esp32_full_only_bulk_target "$env_name" || return 1
+  is_esp32_full_only_bulk_target "$successor" || return 1
+  [ "$(get_exact_identity_full_pio_env "$successor")" = "$env_name" ] || return 1
+  printf '%s\n' "$successor"
+}
+
 apply_esp32_full_shared_bridge_profile() {
   local env_name=$1
 
@@ -4262,6 +4289,8 @@ build_firmware() {
   local firmware_filename
   local mota_target_id
   local mota_target_flag=""
+  local mota_migration_target=""
+  local mota_migration_flag=""
   local original_platformio_build_flags
   local original_platformio_build_unflags
   local original_platformio_build_src_filter
@@ -4352,6 +4381,18 @@ build_firmware() {
       || is_companion_radio_full_target "$env_name"; then
     BUILD_PROFILE_FOR_TARGET="full"
   fi
+
+  if [ "$ESP32_FULL_BUILD" = "1" ]; then
+    mota_migration_target=$(get_exact_identity_full_migration_target "$env_name") || mota_migration_target=""
+    if [ -n "$mota_migration_target" ]; then
+      local mota_migration_target_id
+      mota_migration_target_id=$(python3 -c "import hashlib,sys;print('0x%08x'%int.from_bytes(hashlib.sha256(sys.argv[1].encode()).digest()[:4],'little'))" "$mota_migration_target" 2>/dev/null || echo "")
+      if [ -n "$mota_migration_target_id" ]; then
+        mota_migration_flag=" -DMOTA_MIGRATION_TARGET_ID=${mota_migration_target_id}"
+        echo "Legacy FULL ${env_name} will accept successor mOTA target ${mota_migration_target}."
+      fi
+    fi
+  fi
   configure_unified_full_infrastructure_output "$pio_env_name"
   echo "Effective feature profile for ${env_name}: ${BUILD_PROFILE_FOR_TARGET}"
 
@@ -4431,7 +4472,7 @@ build_firmware() {
     original_platformio_extra_scripts=""
   fi
 
-  export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_BUILD_EPOCH=${firmware_build_epoch} -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}"
+  export PLATFORMIO_BUILD_FLAGS="${original_platformio_build_flags} -DFIRMWARE_BUILD_DATE='\"${firmware_build_date}\"' -DFIRMWARE_BUILD_EPOCH=${firmware_build_epoch} -DFIRMWARE_VERSION='\"${embedded_version_string}\"' -DOTA_VARIANT='\"${env_name}\"'${mota_target_flag}${mota_migration_flag}"
   disable_debug_flags "$env_name"
   apply_debug_overrides "$env_name"
   apply_mqtt_bridge_override "$env_name"

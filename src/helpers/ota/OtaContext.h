@@ -647,6 +647,11 @@ struct OtaContext {
     target_id = 0;
 #endif
     manager.begin(target_id, send, ctx);
+#if defined(MOTA_MIGRATION_TARGET_ID)
+    // Legacy observer images keep their deployed target identity for serving
+    // and diagnostics, but automatically accept one canonical successor image.
+    manager.set_auto_migration_target((uint32_t)(MOTA_MIGRATION_TARGET_ID));
+#endif
     // Every OTA-capable application can receive ordinary raw RFC1951 transport blocks. OtaManager advertises
     // that permission only because this exact, bounded decoder is registered; non-OTA builds do not compile
     // OtaContext or link the decoder implementation.

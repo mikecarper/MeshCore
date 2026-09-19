@@ -712,6 +712,11 @@ transmission per hop.
 - **`target_id` vs `hw_id`** - complementary, not redundant: `target_id` is the fetch-routing key
   (hw + role + partition); `hw_id` is the human-readable brick-safety key (hardware only). Same board, two
   roles => same `hw_id`, different `target_id`.
+- **One-way target migration:** a release may compile `MOTA_MIGRATION_TARGET_ID` into a legacy image. While
+  that image is running, automatic fetch accepts only the declared successor target; manual pulls remain
+  unchanged. The staged manifest must still match the requested successor target, the signed `hw_id`, image
+  hash, codec, and partition/layout checks. After reboot the successor's EndF becomes the node's normal
+  identity, so later updates use the canonical target. The migration alias is not used for bootloader packages.
 - **Naming a `target_id` locally:** only the 4-byte `target_id` ever travels on the wire. To show *which*
   board/role a target is, a node (and `motatool`) reverse-looks-it-up in `src/helpers/ota/OtaTargets.h` -
   a generated `target_id -> env-name` table covering every `ENABLE_OTA` env (`tools/mota/gen_targets.py`,
@@ -736,7 +741,7 @@ transmission per hop.
   the app mints an authenticated one-reset media authorization for OTAFIX.
   **Transfer needs no trust** - blocks are content-addressed against the manifest's merkle root.
 - **Policies (persisted):** `autofetch` in {off, any, signed} (default off) gates automatic block fetching of
-  own-target adverts; `autoinstall` in {off, trusted} (default off) gates auto-apply of a COMPLETE signed +
+  own-target (or an explicitly compiled one-way successor) adverts; `autoinstall` in {off, trusted} (default off) gates auto-apply of a COMPLETE signed +
   allowlisted fetch. Conservative defaults: a fresh node discovers + announces but never fetches/installs
   without operator intent.
 - **Supersession:** a newer version announced mid-download does not abort the in-progress transfer

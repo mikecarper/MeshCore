@@ -455,6 +455,14 @@ public:
   static const uint8_t AUTOFETCH_OFF = 0, AUTOFETCH_ANY = 1, AUTOFETCH_SIGNED = 2;
   void set_autofetch(uint8_t p) { _autofetch = p; reDiscover(); }
   uint8_t autofetch() const { return _autofetch; }
+  // One-way release migration for a legacy identity. Automatic OTA follows the
+  // successor target while the running firmware continues to report its own
+  // target until that successor is installed. Manual pulls are unaffected.
+  void set_auto_migration_target(uint32_t target_id) {
+    _migration_target = target_id != _target ? target_id : 0;
+    reDiscover();
+  }
+  uint32_t auto_migration_target() const { return _migration_target; }
   void set_auto_version_floor(uint32_t running_version, bool enforce = true) {
     _running_fw_version = running_version;
     _enforce_auto_version = enforce;
@@ -728,6 +736,7 @@ private:
   MerkleAccumulator _resume_merkle;
   uint32_t   _req_start = 0, _req_count = 0;   // most recently requested block + active flight size
   uint32_t   _desired_target = 0;              // manual cross-target override (0 = auto / own target)
+  uint32_t   _migration_target = 0;             // one-way automatic successor target for legacy releases
   uint8_t    _desired_mid[4] = {0,0,0,0};      // pull a specific manifest_id (see want_mid)
   bool       _have_desired_mid = false;
   uint8_t    _apply_codec = CODEC_DETOOLS_SEQUENTIAL;  // platform's delta codec (OtaContext sets it)

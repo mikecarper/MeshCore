@@ -2443,6 +2443,31 @@ TEST(OtaTransfer, TwoManagersFullTransfer) {
   EXPECT_TRUE(mota_check_image_hash_full(m));
 }
 
+TEST(OtaTransfer, LegacyIdentityAutomaticallyFetchesItsSuccessor) {
+  g_q.clear();
+  OtaManager server, client;
+  OtaStoreRam<4096> store;
+  SendTo to_client{&client}, to_server{&server};
+  const uint32_t legacy_target = SIM_TARGET_ID ^ 0x13579BDFu;
+
+  server.begin(/*server's own target irrelevant for serving*/ 0, sim_send, &to_client);
+  client.begin(legacy_target, sim_send, &to_server);
+  client.set_auto_migration_target(SIM_TARGET_ID);
+  client.set_fetch_store(&store);
+  client.set_autofetch(OtaManager::AUTOFETCH_ANY);
+
+  ASSERT_TRUE(server.serve(SIM_MOTA, SIM_MOTA_LEN));
+  server.announce();
+  pump(client, &server);
+
+  ASSERT_EQ(client.fetchState(), OtaManager::COMPLETE);
+  MotaManifest migrated;
+  ASSERT_TRUE(mota_parse(store.data(), store.staged_size(), migrated));
+  EXPECT_EQ(migrated.target_id, SIM_TARGET_ID);
+  EXPECT_EQ(client.target(), legacy_target);  // identity changes only after reboot/apply
+  EXPECT_EQ(client.auto_migration_target(), SIM_TARGET_ID);
+}
+
 TEST(OtaTransfer, LegacyOneKilobyteV2CodecStillStagesOriginalContainer) {
   g_q.clear();
   MotaManifest manifest;

@@ -81,6 +81,7 @@ uint8_t* OtaManager::ensureScratch() {
 
 void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _target = my_target_id; _send = send; _ctx = ctx;
+  _migration_target = 0;
   _fstate = IDLE; _have = 0; _fbc = 0;
   _paused_from = IDLE;
   _fetch_error = FETCH_ERROR_NONE;
@@ -1099,7 +1100,8 @@ bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint32_t fw_versio
     return memcmp(mid, _desired_mid, 4) == 0 && (_desired_target == 0 || target == _desired_target);
   if (_desired_target) return target == _desired_target;                          // cross-target want (role switch)
   if (_autofetch == AUTOFETCH_OFF) return false;                                  // discover only
-  if (target != _target) return false;                                            // auto-fetch = our own target
+  const uint32_t auto_target = _migration_target ? _migration_target : _target;
+  if (target != auto_target) return false;                                        // own target or one-way successor
   if (_autofetch == AUTOFETCH_SIGNED && !(flags & MFLAG_SIGNED)) return false;    // signed-only policy
   if (_enforce_auto_version &&
       !ota_trusted_auto_version_allows(_running_fw_version, fw_version)) return false;
@@ -1608,7 +1610,9 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
     return false;
   }
   const bool automatic_resume = want_mid == nullptr;
-  const uint32_t expected_target = automatic_resume ? _target : _fexpected_target;
+  const uint32_t expected_target = automatic_resume
+      ? (_migration_target ? _migration_target : _target)
+      : _fexpected_target;
   if (!_fetch->reopenFor(want_mid, expected_target)) return false;
   uint32_t total = _fetch->staged_size();
   uint8_t hdr[8];
