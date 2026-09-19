@@ -13,6 +13,10 @@ assert.doesNotMatch(
   pageSource,
   /<details class="preset-test-generator-disclosure"\s+open/
 );
+assert.match(pageSource, /Stock firmware has no <code>tempradioat<\/code> command/);
+assert.doesNotMatch(pageSource, /data-command="stock-scheduled"/);
+assert.doesNotMatch(pageSource, /Stock · before it starts/);
+assert.doesNotMatch(pageSource, /Normal return profile/);
 
 const query =
   "?start=2026-09-21T17:00:00-07:00" +
@@ -73,10 +77,8 @@ assert.strictEqual(tool.remainingMinutes(config, setupOpens), 2940);
 
 const commands = tool.commandsFor(config, active);
 assert.strictEqual(commands.stockNow, "tempradio 910.1,500,8,7,2880");
-assert.strictEqual(
-  commands.stockScheduled,
-  "set tempradioat 910.1,500,8,7,1790035200,1790208000\nget tempradioat"
-);
+assert.strictEqual(commands.stockScheduled, undefined);
+assert.strictEqual(commands.stockCancelBefore, undefined);
 assert.strictEqual(
   commands.companionNow,
   "set radio2.cross on\nset tempradio2 910.1,500,8,7,rxtx,2880"
@@ -90,7 +92,7 @@ assert.strictEqual(
 assert.strictEqual(commands.stockLeaveIn30, "tempradio 910.1,500,8,7,30");
 assert.strictEqual(
   commands.stockCancelDuring,
-  "reboot"
+  "tempradio 910.1,500,8,7,1"
 );
 assert.strictEqual(
   commands.companionLeaveIn30,
@@ -177,6 +179,10 @@ const changed = tool.configFromSearch(
 assert.strictEqual(
   tool.commandsFor(changed, changed.startMs).stockNow,
   "tempradio 915.25,125,10,5,2880"
+);
+assert.strictEqual(
+  tool.commandsFor(changed, changed.startMs).stockCancelDuring,
+  "tempradio 915.25,125,10,5,1"
 );
 
 const shared = new URL(tool.configuredUrl(
