@@ -246,14 +246,10 @@
       stockNow: "tempradio " + tuple + "," + minutes,
       companionNow:
         "set radio2.cross on\nset tempradio2 " + tuple + ",rxtx," + minutes,
-      stockScheduled:
-        "set tempradioat " + tuple + "," + config.startEpoch + "," + config.endEpoch +
-        "\nget tempradioat",
       companionScheduled:
         "set radio2.cross on\nset tempradioat2 " + tuple + ",rxtx," +
         config.startEpoch + "," + config.endEpoch + "\nget tempradioat2",
-      stockCancelBefore: "get tempradioat\ndel tempradioat all",
-      stockCancelDuring: "reboot",
+      stockCancelDuring: "tempradio " + tuple + ",1",
       stockLeaveIn30: "tempradio " + tuple + ",30",
       companionCancelBefore:
         "get tempradioat2\ndel tempradioat2 all\nset radio2.cross auto",
@@ -700,9 +696,7 @@
     );
 
     const staticCommands = commandsFor(config, config.startMs);
-    setCommand(root, "stock-scheduled", staticCommands.stockScheduled);
     setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
-    setCommand(root, "stock-cancel-before", staticCommands.stockCancelBefore);
     setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
     setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
     setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
@@ -827,11 +821,19 @@
         setCommand(root, "stock-now", commands.stockNow);
         setCommand(root, "companion-now", commands.companionNow);
       } else {
-        const unavailable = phase === "before"
-          ? "Available one hour before the test — use Option 2 to schedule now."
-          : "Test window ended — do not start TempRadio.";
-        setCommand(root, "stock-now", unavailable);
-        setCommand(root, "companion-now", unavailable);
+        const endedMessage = "Test window ended — do not start TempRadio.";
+        setCommand(
+          root,
+          "stock-now",
+          phase === "before" ? "Available one hour before the test." : endedMessage
+        );
+        setCommand(
+          root,
+          "companion-now",
+          phase === "before"
+            ? "Available one hour before the test — use Option 2 to schedule now."
+            : endedMessage
+        );
       }
       setCommandEnabled(root, "stock-now", immediateOpen);
       setCommandEnabled(root, "companion-now", immediateOpen);
@@ -849,9 +851,7 @@
             : "The test window has ended."
       );
 
-      setCommandEnabled(root, "stock-scheduled", schedule.available);
       setCommandEnabled(root, "companion-scheduled", schedule.available);
-      setText(root, '[data-role="stock-schedule-note"]', schedule.reason);
 
       const nowEpoch = Math.floor(nowMs / 1000);
       setText(root, '[data-role="browser-utc"]', formatUtc(nowMs));

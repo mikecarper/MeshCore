@@ -2898,7 +2898,8 @@ tuple; no source edit is required.</p>
       <p>
         The test will include bridges. If the Puget Sound area experiences a
         widespread power outage or loss of cellular service, we will end the
-        test early and revert to the normal 910.525 MHz channel.
+        test early. A stock node's one-minute temporary test profile then ends
+        on that node's own saved radio settings.
       </p>
     </section>
 
@@ -2916,10 +2917,10 @@ tuple; no source edit is required.</p>
     <section aria-labelledby="clock-check-title">
       <h2 id="clock-check-title">Check the node clock before scheduling</h2>
       <p>
-        <code>tempradioat</code> and <code>tempradioat2</code> use UTC Unix time.
-        Run <code>clock</code> on every node and compare it with the browser UTC
-        time below. It should agree to within about a minute. A wrong clock can
-        start late, start immediately, or cause the schedule to be rejected.
+        The Companion <code>tempradioat2</code> scheduler uses UTC Unix time.
+        Run <code>clock</code> on every Companion and compare it with the browser
+        UTC time below. It should agree to within about a minute. A wrong clock
+        can start late, start immediately, or cause the schedule to be rejected.
       </p>
 
       <div class="preset-test-clock-check">
@@ -2959,8 +2960,8 @@ clock</code></pre>
             run the command below. It resets the clock to an older fallback date and
             reboots the node immediately, so it sends no reply. After the node reconnects,
             copy and run the fresh local clock command above, verify with <code>clock</code>,
-            and then add the <code>tempradioat</code> schedule again. The reboot clears any
-            pending scheduled entries.
+            and then add the Companion <code>tempradioat2</code> schedule again. The
+            reboot clears any pending scheduled entries.
           </p>
           <pre><code data-command="reset-clock">clkreboot</code></pre>
           <button type="button" data-copy-command="reset-clock">Copy clock reset command</button>
@@ -2968,9 +2969,10 @@ clock</code></pre>
       </div>
 
       <p class="preset-test-note">
-        The schedule must be queued while both its start and end are in the
-        future and within the firmware's roughly 24-day scheduling horizon.
-        Scheduled entries are held in RAM and disappear if the node reboots.
+        The Companion schedule must be queued while both its start and end are
+        in the future and within the firmware's roughly 24-day scheduling
+        horizon. Scheduled entries are held in RAM and disappear if the node
+        reboots.
       </p>
     </section>
 
@@ -3011,22 +3013,25 @@ clock</code></pre>
     </section>
 
     <section aria-labelledby="schedule-title">
-      <h2 id="schedule-title">Option 2: schedule it in advance</h2>
+      <h2 id="schedule-title">Option 2: schedule a Companion in advance</h2>
       <p>
-        Use this only after checking the clock above. The exact UTC epochs are
-        built into the commands, so the node switches at the common start and
-        restores its saved configuration at the common end.
+        Stock firmware has no <code>tempradioat</code> command, so a stock node
+        cannot be queued in advance. Return during the one-hour setup window and
+        use Option 1. A Companion can use the exact UTC epochs below to switch at
+        the common start and restore its saved configuration at the common end.
       </p>
 
       <div class="preset-test-grid">
         <article class="preset-test-card">
           <div class="preset-test-card-heading">
             <h3>Stock repeater, room server, or sensor</h3>
-            <span>Primary schedule</span>
+            <span>No advance schedule</span>
           </div>
-          <pre><code data-command="stock-scheduled"></code></pre>
-          <button type="button" data-copy-command="stock-scheduled">Copy schedule commands</button>
-          <p class="preset-test-note" data-role="stock-schedule-note"></p>
+          <p class="preset-test-note">
+            Stock firmware provides <code>tempradio</code>, but not
+            <code>tempradioat</code>. Use the immediate stock command in Option 1
+            after its setup window opens.
+          </p>
         </article>
 
         <article class="preset-test-card">
@@ -3048,28 +3053,24 @@ clock</code></pre>
     <section aria-labelledby="cancel-title">
       <h2 id="cancel-title">Cancel or leave the test</h2>
       <p>
-        Use the command for the node type and timing. The <code>all</code> forms
-        remove every temporary schedule in that family. To preserve another
-        schedule, first run the corresponding <code>get</code> command and replace
-        <code>all</code> with its displayed entry number.
+        A stock node can leave an active test as shown below. For a Companion
+        schedule, the <code>all</code> form removes every temporary schedule in
+        that family. To preserve another schedule, first run the corresponding
+        <code>get</code> command and replace <code>all</code> with its displayed
+        entry number.
       </p>
 
       <div class="preset-test-cancel-grid">
-        <article class="preset-test-card">
-          <h3>Stock · before it starts</h3>
-          <pre><code data-command="stock-cancel-before"></code></pre>
-          <button type="button" data-copy-command="stock-cancel-before">Copy cancel commands</button>
-        </article>
-
         <article class="preset-test-card">
           <h3>Stock · while it is running</h3>
           <h4>Leave now · stock compatible</h4>
           <pre><code data-command="stock-cancel-during"></code></pre>
           <button type="button" data-copy-command="stock-cancel-during">Copy stock leave command</button>
           <p class="preset-test-note">
-            Stock MeshCore has no <code>normalradio</code> command. This reboots
-            the node, which clears TempRadio and returns to its saved radio
-            settings. The command sends no reply; reconnect after the node starts.
+            Stock MeshCore has no <code>normalradio</code> command. This starts a
+            one-minute temporary session on this page's test profile without
+            saving over the node's configuration. When that minute ends, the node
+            restores whatever primary radio settings it had saved.
           </p>
           <h4>Leave in 30 minutes</h4>
           <pre><code data-command="stock-leave-30"></code></pre>
@@ -3236,10 +3237,12 @@ clock</code></pre>
   </div>
 </div>
 
-<p>The scheduled commands require current full-parser firmware. Companion
-<code>tempradio2</code> and <code>tempradioat2</code> require a build with dual-radio-profile support.
-If a node reports an unknown command, update it or use only a method that its
-installed firmware documents.</p>
+<p>Stock firmware does not support advance TempRadio scheduling; use its immediate
+<code>tempradio</code> command during the setup window. The Companion scheduling
+commands require current full-parser firmware, and
+<code>tempradio2</code> and <code>tempradioat2</code> require a build with
+dual-radio-profile support. If a node reports an unknown command, use only a
+method that its installed firmware documents.</p>
 
 
 
@@ -3304,7 +3307,7 @@ installed firmware documents.</p>
       
         <script src="../_javascript/filter_tool.js"></script>
       
-        <script src="../_javascript/preset_test.js?v=20260916-5"></script>
+        <script src="../_javascript/preset_test.js?v=20260919-1"></script>
       
     
   </body>
