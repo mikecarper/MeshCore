@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import zlib
 from pathlib import Path
+from unittest import mock
 
 import ble_mota_seeder as seeder
 
@@ -77,6 +78,19 @@ class TransportDeflateTests(unittest.TestCase):
         )
         encoded_1k = compressor_1k.compress(self.raw) + compressor_1k.flush()
         self.assertLess(len(encoded) + 400, len(encoded_1k))
+
+    def test_uses_maximum_zopfli_iterations_for_mota_transport(self):
+        compressor = zlib.compressobj(
+            level=9, method=zlib.DEFLATED, wbits=-11
+        )
+        expected = compressor.compress(self.raw) + compressor.flush()
+        with mock.patch.object(
+            seeder, "raw_deflate_compress", return_value=expected
+        ) as compress:
+            self.assertEqual(self.catalog.files[0].deflated_block(0), expected)
+        compress.assert_called_once_with(
+            self.raw, numiterations=seeder.MOTA_ZOPFLI_ITERATIONS
+        )
 
     def test_rejects_bad_block_range_and_oversized_chunk(self):
         self.assertEqual(self.exchange(1, 0, 0)[0], seeder.STATUS_ERR)

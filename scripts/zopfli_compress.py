@@ -32,11 +32,17 @@ if zopfli.__version__ != ZOPFLI_VERSION:
 # Fifteen iterations is the upstream binding's practical default for assets
 # of this size and keeps CI/build times reasonable.
 ITERATIONS = 15
+# Zopfli has no finite algorithmic iteration ceiling.  Its ``--i1000``
+# convention is the maximum-effort setting used for host-cached mOTA transfer
+# blocks, where the extra host CPU time is preferable to wasting radio airtime.
+MAXIMUM_ITERATIONS = 1000
 
 
-def _options() -> dict[str, int | bool]:
+def _options(numiterations: int = ITERATIONS) -> dict[str, int | bool]:
+    if numiterations < 1:
+        raise ValueError("Zopfli requires at least one iteration")
     return {
-        "numiterations": ITERATIONS,
+        "numiterations": numiterations,
         "blocksplitting": True,
         "blocksplittinglast": False,
         "blocksplittingmax": 15,
@@ -54,9 +60,9 @@ def gzip_compress(data: bytes) -> bytes:
     return bytes(encoded)
 
 
-def raw_deflate_compress(data: bytes) -> bytes:
-    """Compress *data* to an RFC 1951 raw DEFLATE stream using Google Zopfli."""
-    encoded = _zlib.compress(data, **_options())
+def raw_deflate_compress(data: bytes, *, numiterations: int = ITERATIONS) -> bytes:
+    """Compress *data* to an RFC 1951 raw-DEFLATE stream with Zopfli."""
+    encoded = _zlib.compress(data, **_options(numiterations))
     # A zlib wrapper is exactly a two-byte header and four-byte Adler-32
     # trailer. Removing it preserves the RFC 1951 body expected by tinf.
     if len(encoded) < 6 or (encoded[0] & 0x0F) != 8:

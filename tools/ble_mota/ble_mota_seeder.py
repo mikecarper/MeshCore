@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from zopfli_compress import raw_deflate_compress  # noqa: E402
+from zopfli_compress import MAXIMUM_ITERATIONS, raw_deflate_compress  # noqa: E402
 
 BLEAK_IMPORT_ERROR: ImportError | None = None
 try:
@@ -62,6 +62,9 @@ STATUS_ERR = 1
 MOTA_READ_MAX = 192
 MOTA_DEFLATE_CHUNK_MAX = 190
 MOTA_DEFLATE_BLOCK_MAX = 2048
+# This work occurs on the host and each result is cached while its chunks are
+# served.  Use Zopfli's maximum-effort convention to reduce LoRa airtime.
+MOTA_ZOPFLI_ITERATIONS = MAXIMUM_ITERATIONS
 MOTA_DESC_WIRE = 38
 MOTA_SOURCE_CAP_DEFLATE_BLOCK = 0x01
 MOTA_HEADER_LEN = 8
@@ -101,7 +104,7 @@ class MotaFile:
             raw = stream.read(raw_length)
         if len(raw) != raw_length:
             return None
-        encoded = raw_deflate_compress(raw)
+        encoded = raw_deflate_compress(raw, numiterations=MOTA_ZOPFLI_ITERATIONS)
         return encoded if 0 < len(encoded) < len(raw) else None
 
     @staticmethod
