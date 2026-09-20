@@ -3706,11 +3706,12 @@ tested redundant standby/IRQ/buffer/packet setup and SPI transfer changes.
 Its fastest candidate measured 0.535 ms mean on XIAO but 8.203 ms on the
 Indicator, whose radio GPIOs go through an I2C expander. The validated production
 implementation now opts XIAO S3 WIO and Indicator LoRa into buffered 8 MHz SPI
-and a guarded fast-RX state machine. The <code>heltec_v4_kiss_modem</code> target uses the
-same guarded path only for KISS dual-profile scanning; its normal V4 roles keep
-their established HAL/timing policy. That host-powered KISS target uses the
-existing V4 160 MHz role override, but still needs an exact-image hardware
-timing check before its nominal 600 µs target is claimed. It skips redundant
+and a guarded fast-RX state machine. The <code>heltec_v4_kiss_modem</code> and
+<code>Station_G3_ESP32_kiss_modem</code> targets use the same guarded path only for KISS
+dual-profile scanning; their normal board roles keep their established
+HAL/timing policy. V4 uses its existing 160 MHz role override and Station G3
+uses its base 240 MHz setting, but both still need an exact-image hardware
+timing check before a nominal 600 µs target is claimed. It skips redundant
 standby, IRQ mapping,
 buffer-base writes and modem queries only during an owned continuous RX-to-RX
 retune. Preamble/packet parameters (including the IQ workaround), stale-IRQ
