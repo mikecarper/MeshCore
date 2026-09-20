@@ -1,9 +1,10 @@
-# Default temporary radio test · 910.1 MHz · September 21–23, 2026
+# <span data-role="preset-test-page-title">Default temporary radio test · 910.1 MHz · September 21–23, 2026</span>
 
 Use this page to join the shared temporary radio test without overwriting the
-node's saved primary radio settings. The default window is **Monday,
-September 21, 2026 at 5:00 PM through Wednesday, September 23 at 5:00 PM
-Pacific time** (48 hours), using **910.1 MHz, 500 kHz, SF8, CR7**.
+node's saved primary radio settings. <span data-role="preset-test-page-summary">The
+default window is <strong>Monday, September 21, 2026 at 5:00 PM through
+Wednesday, September 23 at 5:00 PM Pacific time</strong> (48 hours), using
+<strong>910.1 MHz, 500 kHz, SF8, CR7</strong>.</span>
 
 The page reads the complete test definition from its URL. Change the query
 parameters to reuse it for a different window, display time zone, or radio
@@ -14,7 +15,7 @@ tuple; no source edit is required.
 
   <div data-role="content">
     <section class="preset-test-hero" aria-labelledby="preset-test-title">
-      <p class="preset-test-eyebrow">MeshCore · default 48-hour temporary preset test</p>
+      <p class="preset-test-eyebrow" data-role="preset-test-eyebrow">MeshCore · default 48-hour temporary preset test</p>
       <div class="preset-test-hero-row">
         <div>
           <h2 id="preset-test-title">

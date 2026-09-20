@@ -212,6 +212,48 @@
     });
   }
 
+  function isDefaultPreset(config) {
+    return (
+      config.startMs === parseTimestamp(DEFAULTS.start, "start") &&
+      config.endMs === parseTimestamp(DEFAULTS.end, "end") &&
+      config.freq === Number(DEFAULTS.freq) &&
+      config.bw === Number(DEFAULTS.bw) &&
+      config.sf === Number(DEFAULTS.sf) &&
+      config.cr === Number(DEFAULTS.cr) &&
+      config.tx === Number(DEFAULTS.tx)
+    );
+  }
+
+  function presetDurationText(config) {
+    const hours = (config.endMs - config.startMs) / (60 * 60 * 1000);
+    if (Number.isInteger(hours)) return hours + (hours === 1 ? " hour" : " hours");
+    return formatCountdown(config.endMs - config.startMs);
+  }
+
+  function presetDurationLabel(config) {
+    const hours = (config.endMs - config.startMs) / (60 * 60 * 1000);
+    if (Number.isInteger(hours)) return hours + "-hour";
+    return presetDurationText(config);
+  }
+
+  function presetPageTitle(config) {
+    return (isDefaultPreset(config) ? "Default temporary" : "Temporary") +
+      " radio test · " + config.freqText + " MHz";
+  }
+
+  function presetPageSummary(config) {
+    return "The " + (isDefaultPreset(config) ? "default" : "configured") +
+      " window is " + formatZoned(config.startMs, config.tz) + " through " +
+      formatZoned(config.endMs, config.tz) + " (" + presetDurationText(config) +
+      "), using " + config.freqText + " MHz, " + config.bwText + " kHz, SF" +
+      config.sf + ", CR" + config.cr + ", " + config.txText + " dBm.";
+  }
+
+  function presetEyebrow(config) {
+    return "MeshCore · " + (isDefaultPreset(config) ? "default " : "") +
+      presetDurationLabel(config) + " temporary preset test";
+  }
+
   function phaseAt(config, nowMs) {
     if (nowMs < config.startMs) return "before";
     if (nowMs < config.endMs) return "active";
@@ -475,6 +517,13 @@
     });
   }
 
+  function setPageText(selector, value) {
+    if (!global.document) return;
+    global.document.querySelectorAll(selector).forEach(function (element) {
+      element.textContent = value;
+    });
+  }
+
   function setCommand(root, name, value) {
     setText(root, '[data-command="' + name + '"]', value);
     root.querySelectorAll('[data-copy-command="' + name + '"]').forEach(function (button) {
@@ -676,6 +725,9 @@
       return;
     }
 
+    setPageText('[data-role="preset-test-page-title"]', presetPageTitle(config));
+    setPageText('[data-role="preset-test-page-summary"]', presetPageSummary(config));
+    setText(root, '[data-role="preset-test-eyebrow"]', presetEyebrow(config));
     setText(root, '[data-field="freq-display"]', config.freq.toFixed(3));
     setText(root, '[data-field="bw-display"]', config.bwText);
     setText(root, '[data-field="sf"]', String(config.sf));
@@ -880,6 +932,12 @@
     PresetTestError: PresetTestError,
     configFromSearch: configFromSearch,
     configFromGenerator: configFromGenerator,
+    isDefaultPreset: isDefaultPreset,
+    presetDurationText: presetDurationText,
+    presetDurationLabel: presetDurationLabel,
+    presetPageTitle: presetPageTitle,
+    presetPageSummary: presetPageSummary,
+    presetEyebrow: presetEyebrow,
     validateTimeZone: validateTimeZone,
     browserTimeZone: browserTimeZone,
     supportedTimeZones: supportedTimeZones,

@@ -5,11 +5,9 @@ const fs = require("fs");
 const tool = require("../docs/_javascript/preset_test.js");
 
 const pageSource = fs.readFileSync("docs/preset_test.md", "utf8");
-assert.match(
-  pageSource,
-  /^# Default temporary radio test · 910\.1 MHz · September 21–23, 2026$/m
-);
-assert.match(pageSource, /MeshCore · default 48-hour temporary preset test/);
+assert.match(pageSource, /data-role="preset-test-page-title"/);
+assert.match(pageSource, /data-role="preset-test-page-summary"/);
+assert.match(pageSource, /data-role="preset-test-eyebrow"/);
 assert.match(pageSource, /data-role="timezone-map"/);
 assert.match(pageSource, /type="hidden" name="tz"/);
 assert.doesNotMatch(pageSource, /<select name="tz"/);
@@ -47,6 +45,20 @@ assert.strictEqual(defaults.sf, 8);
 assert.strictEqual(defaults.cr, 7);
 assert.strictEqual(defaults.tx, 22);
 assert.strictEqual(defaults.tz, config.tz);
+assert.strictEqual(tool.isDefaultPreset(defaults), true);
+assert.strictEqual(tool.presetPageTitle(defaults), "Default temporary radio test · 910.1 MHz");
+assert.match(tool.presetPageSummary(defaults), /910\.1 MHz, 500 kHz, SF8, CR7, 22 dBm/);
+assert.strictEqual(tool.presetEyebrow(defaults), "MeshCore · default 48-hour temporary preset test");
+
+const requestedLink = tool.configFromSearch(
+  "?start=2026-09-22T00:00:00.000Z&end=2026-09-24T00:00:00.000Z" +
+    "&tz=America%2FLos_Angeles&freq=911.3&bw=500&sf=8&cr=7&tx=22"
+);
+assert.strictEqual(tool.isDefaultPreset(requestedLink), false);
+assert.strictEqual(tool.presetPageTitle(requestedLink), "Temporary radio test · 911.3 MHz");
+assert.match(tool.presetPageSummary(requestedLink), /911\.3 MHz, 500 kHz, SF8, CR7, 22 dBm/);
+assert.doesNotMatch(tool.presetPageSummary(requestedLink), /910\.1 MHz/);
+assert.strictEqual(tool.presetEyebrow(requestedLink), "MeshCore · 48-hour temporary preset test");
 
 const browserZoneFallback = tool.configFromSearch("", "America/New_York");
 assert.strictEqual(browserZoneFallback.tz, "America/New_York");
