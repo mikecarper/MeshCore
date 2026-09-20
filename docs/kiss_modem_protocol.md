@@ -2,6 +2,10 @@
 
 Standard KISS TNC firmware for MeshCore LoRa radios. Compatible with any KISS client (Direwolf, APRSdroid, YAAC, etc.) for sending and receiving raw packets. MeshCore-specific extensions (cryptography, radio configuration, telemetry) are available through the standard SetHardware (0x06) command.
 
+KISS protocol version 2 adds an opt-in logical port 1 for MeshCore's second
+time-shared LoRa profile. It is still one physical transceiver: the firmware
+fast-switches between `radio` and `radio2`; it does not create a second radio.
+
 ## Serial Configuration
 
 115200 baud, 8N1, no flow control.
@@ -30,7 +34,7 @@ The type byte is split into two nibbles:
 
 | Bits | Field   | Description                         |
 |------|---------|-------------------------------------|
-| 7-4  | Port    | Port number (0 for single-port TNC) |
+| 7-4  | Port    | `0` primary `radio`; `1` secondary `radio2` for Data only in protocol v2; controls stay on port 0 |
 | 3-0  | Command | Command number                      |
 
 Maximum unescaped frame size: 512 bytes.
@@ -41,7 +45,7 @@ Maximum unescaped frame size: 512 bytes.
 
 | Command     | Value  | Data               | Description                                                 |
 |-------------|--------|--------------------|-------------------------------------------------------------|
-| Data        | `0x00` | Raw packet         | Queue packet for transmission (one pending at a time)       |
+| Data        | `0x00` | Raw packet         | Queue on primary `radio`; use type `0x10` to queue on `radio2` in v2 (one pending packet total) |
 | TXDELAY     | `0x01` | Delay (1 byte)     | Transmitter keyup delay in 10ms units (default: 50 = 500ms) |
 | Persistence | `0x02` | P (1 byte)         | CSMA persistence parameter 0-255 (default: 63)              |
 | SlotTime    | `0x03` | Interval (1 byte)  | CSMA slot interval in 10ms units (default: 10 = 100ms)      |
@@ -54,11 +58,34 @@ Maximum unescaped frame size: 512 bytes.
 
 | Type | Value  | Data       | Description                |
 |------|--------|------------|----------------------------|
-| Data | `0x00` | Raw packet | Received packet from radio |
+| Data | `0x00` | Raw packet | Received packet from primary `radio` |
+| Data | `0x10` | Raw packet | Received packet from secondary `radio2` (v2) |
 
-Data frames carry raw packet data only, with no metadata prepended. The Data command payload is limited to 255 bytes to match the MeshCore maximum transmission unit (MAX_TRANS_UNIT); frames larger than 255 bytes are silently dropped. The KISS specification recommends at least 1024 bytes for general-purpose TNCs; this modem is intended for MeshCore packets only, whose protocol MTU is 255 bytes.
+Data frames carry raw packet data only, with no metadata prepended. The Data command payload is limited to 255 bytes to match the MeshCore maximum transmission unit (MAX_TRANS_UNIT); frames larger than 255 bytes are silently dropped. The KISS specification recommends at least 1024 bytes for general-purpose TNCs; this modem is intended for MeshCore packets only, whose protocol MTU is 255 bytes. A v2 port-1 Data packet reaches RF only while `radio2` is configured `rxtx`; with `off` or `rx`, the modem returns `TxDone(0)` and never falls back to primary.
 
 Only one packet may be pending for radio transmission at a time. If the host sends a second Data frame before the first has completed, the modem responds with Error (0xF1) and TxBusy (0x07).
+
+### Fast dual-profile receive switching
+
+After OpenHop (or another KISS client) configures `radio2` or `tempradio2`,
+the board's `radio_driver.loop()` performs the RF hops locally. KISS does not
+send a command for every hop: that would be slower than the serial link alone.
+The shared scanner uses a **600 µs nominal retune allowance** per hop, with
+the profile timing/preamble calculation accounting for it. It is a measured
+target rather than a hard maximum; packet handling and a slow board loop can
+extend an individual hop. The KISS parser services at most 32 incoming bytes
+per outer loop so a busy OpenHop serial peer cannot starve the scanner.
+
+Thus “around 0.6 ms” refers to the on-board RF setting transition, not a full
+host-to-board request/response round trip. The returned Data port (`0x00` or
+`0x10`) identifies which profile actually received each packet.
+
+`SetRadio2` and `SetTempRadio2` acknowledge that their tuple was accepted and
+scheduled; they do not acknowledge that a receiver has already entered that
+tuple. The next local scanner service performs the retune. KISS clients should
+configure the profiles once and let the board perform automatic time-sharing;
+a 115200-baud serial round trip cannot be a 0.6 ms receive-hop control plane.
+Clients that need temporary-lease state can poll `GetTempRadio2`.
 
 ### Host Output Backpressure
 
@@ -118,6 +145,10 @@ MeshCore-specific functionality uses the standard KISS SetHardware command. The 
 | Reboot          | `0x18` | -                                        |
 | SetSignalReport | `0x19` | Enable (1): 0x00=disable, nonzero=enable |
 | GetSignalReport | `0x1A` | -                                        |
+| SetRadio2       | `0x1B` | Radio2 parameters (13; see below)       |
+| GetRadio2       | `0x1C` | -                                        |
+| SetTempRadio2   | `0x1D` | Radio2 parameters + duration (15)       |
+| GetTempRadio2   | `0x1E` | -                                        |
 
 ### Response Sub-commands (TNC to Host)
 
@@ -147,6 +178,8 @@ Response codes use the high-bit convention: `response = command | 0x80`. Generic
 | DeviceName   | `0x96` | Name (variable, UTF-8)                  |
 | Pong         | `0x97` | -                                       |
 | SignalReport | `0x9A` | Status (1): 0x00=disabled, 0x01=enabled |
+| Radio2       | `0x9C` | Saved radio2 parameters (13)             |
+| TempRadio2   | `0x9E` | Active temporary radio2 + remaining minutes (15) |
 | OK           | `0xF0` | -                                       |
 | Error        | `0xF1` | Error code (1)                          |
 | TxDone       | `0xF8` | Result (1): 0x00=failed, 0x01=success   |
@@ -170,7 +203,7 @@ The TNC sends these SetHardware frames without a preceding request:
 
 **TxDone (0xF8)**: Sent after radio transmission completes. Contains a single byte: 0x01 for success, 0x00 for failure. Delivery to the host may be delayed under serial backpressure but is not dropped.
 
-**RxMeta (0xF9)**: Sent after each standard data frame (type 0x00) with SNR (1 byte, signed, value x4) and RSSI (1 byte, signed, dBm). Queued with the data frame; omitted if the data frame cannot be queued. Enabled by default; toggle with SetSignalReport. Standard KISS clients ignore this frame.
+**RxMeta (0xF9)**: Sent after each Data frame (type 0x00 or v2 type 0x10) with SNR (1 byte, signed, value x4) and RSSI (1 byte, signed, dBm). It remains exactly two bytes; the Data port identifies the receiving profile. Queued with the data frame; omitted if the data frame cannot be queued. Enabled by default; toggle with SetSignalReport. Standard KISS clients ignore this frame.
 
 ## Data Formats
 
@@ -184,6 +217,43 @@ All values little-endian.
 | Bandwidth | 4 bytes | Hz (e.g., 62500)        |
 | SF        | 1 byte  | Spreading factor (5-12) |
 | CR        | 1 byte  | Coding rate (5-8)       |
+
+### Secondary Radio Parameters (SetRadio2 / Radio2 response)
+
+`SetRadio2` is the binary KISS equivalent of `radio2`. It changes only RAM
+state for this KISS session; it does not write the Mesh CLI profile file.
+All values are little-endian. The mode values are `0=off`, `1=rx`, and
+`2=rxtx`. An `off` tuple may contain zero radio parameters, which are ignored.
+
+| Field     | Size    | Description                         |
+|-----------|---------|-------------------------------------|
+| Frequency | 4 bytes | Hz                                  |
+| Bandwidth | 4 bytes | Hz                                  |
+| SF        | 1 byte  | Spreading factor (5-12)             |
+| CR        | 1 byte  | Coding rate (5-8)                   |
+| Mode      | 1 byte  | `off`, `rx`, or `rxtx` as above     |
+| Preamble  | 2 bytes | Symbols; `0` chooses automatic      |
+
+`GetRadio2` returns this exact 13-byte tuple. The modem preserves the exact
+frequency and bandwidth values sent by the host even though its radio driver
+uses floating-point MHz/kHz internally.
+
+### Temporary Secondary Radio (SetTempRadio2 / TempRadio2 response)
+
+`SetTempRadio2` is the binary KISS equivalent of `tempradio2`: the 13-byte
+secondary tuple followed by `duration_minutes:u16`, from 1 to 10080. It is
+RAM-only and automatically restores the saved `radio2` tuple on expiry or
+reboot. A mode `off` with duration zero cancels the temporary lease and
+immediately restores saved `radio2`; all other `off`/zero-duration combinations
+are invalid. `GetTempRadio2` returns the active 13-byte tuple plus remaining
+minutes, rounded up. It returns a zero/off tuple with zero duration when no
+temporary lease is active.
+
+Changing saved `radio2` during an active temporary lease does not interrupt
+the active tuple; the replacement becomes active when the lease ends. Pending
+KISS Data is bound to a profile generation at queue time. If that profile is
+replaced before RF transmission begins, the modem sends normal `TxDone(0)` and
+never falls back to the other profile.
 
 ### Version (Version response)
 
@@ -285,5 +355,6 @@ Data returned in CayenneLPP format. See [CayenneLPP documentation](https://docs.
 - All multi-byte values are little-endian unless stated otherwise
 - SNR values in RxMeta are multiplied by 4 for 0.25 dB precision
 - TxDone is sent as a SetHardware event after each transmission
-- Standard KISS clients receive only type 0x00 data frames and can safely ignore all SetHardware (0x06) frames
+- Legacy KISS clients use only type 0x00 data and remain compatible. Version-2-aware clients can use type 0x10 to send on, or identify reception from, `radio2`.
+- Standard KISS clients can safely ignore all SetHardware (0x06) frames
 - See [packet_format.md](./packet_format.md) for packet format

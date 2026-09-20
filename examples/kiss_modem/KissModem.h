@@ -21,6 +21,9 @@
 #define KISS_MAX_ENCODED_FRAME_SIZE (KISS_FRAME_BOUNDARY_BYTES + KISS_MAX_ESCAPED_PAYLOAD_SIZE)
 #define KISS_TX_FRAME_QUEUE_DEPTH 2
 #define KISS_HW_MAX_PAYLOAD_SIZE (KISS_MAX_FRAME_SIZE + KISS_HW_SUBCMD_BYTES)
+// Bound host parsing work so a busy USB/UART peer cannot starve the on-board
+// dual-profile scanner. A partial KISS frame is retained across calls.
+#define KISS_RX_SERVICE_BYTE_BUDGET 32
 
 #define KISS_CMD_DATA        0x00
 #define KISS_CMD_TXDELAY     0x01
@@ -62,6 +65,10 @@
 #define HW_CMD_REBOOT            0x18
 #define HW_CMD_SET_SIGNAL_REPORT 0x19
 #define HW_CMD_GET_SIGNAL_REPORT 0x1A
+#define HW_CMD_SET_RADIO2        0x1B
+#define HW_CMD_GET_RADIO2        0x1C
+#define HW_CMD_SET_TEMPRADIO2    0x1D
+#define HW_CMD_GET_TEMPRADIO2    0x1E
 
 /* Response code = command code | 0x80.  Generic / unsolicited use 0xF0+. */
 #define HW_RESP(cmd)             ((cmd) | 0x80)
@@ -82,7 +89,13 @@
 #define HW_ERR_ENCRYPT_FAILED    0x06
 #define HW_ERR_TX_BUSY           0x07
 
-#define KISS_FIRMWARE_VERSION 1
+#define KISS_RADIO_PARAMS_SIZE       10
+#define KISS_RADIO2_PARAMS_SIZE      13
+#define KISS_TEMPRADIO2_PARAMS_SIZE  15
+#define KISS_MAX_TEMPRADIO2_MINUTES  10080
+
+/* Version 2 adds the logical secondary-radio KISS port and radio2 commands. */
+#define KISS_FIRMWARE_VERSION 2
 
 typedef void (*SetRadioCallback)(float freq, float bw, uint8_t sf, uint8_t cr);
 typedef void (*SetTxPowerCallback)(uint8_t power);
@@ -95,6 +108,14 @@ struct RadioConfig {
   uint8_t sf;
   uint8_t cr;
   uint8_t tx_power;
+};
+
+// Keep the exact host wire tuple beside the float profile used by the radio.
+// A float cannot preserve every whole-Hz value in the KISS representation.
+struct Radio2Config {
+  mesh::RadioProfileConfig profile;
+  uint32_t freq_hz = 0;
+  uint32_t bw_hz = 0;
 };
 
 enum TxState {
@@ -122,6 +143,8 @@ class KissModem {
   uint8_t _pending_tx[KISS_MAX_PACKET_SIZE];
   uint16_t _pending_tx_len;
   bool _has_pending_tx;
+  uint8_t _pending_tx_profile;
+  uint32_t _pending_tx_profile_generation;
 
   uint8_t _txdelay;
   uint8_t _persistence;
@@ -138,6 +161,12 @@ class KissModem {
   GetStatsCallback _getStatsCallback;
 
   RadioConfig _config;
+  // KISS settings are host-session state only.  They intentionally do not use
+  // the CLI's persistent radio-profile storage.
+  Radio2Config _saved_radio2;
+  Radio2Config _temporary_radio2;
+  bool _temporary_radio2_active;
+  uint32_t _temporary_radio2_end_ms;
   bool _signal_report_enabled;
   uint8_t _tx_frame_buf[KISS_TX_FRAME_QUEUE_DEPTH][KISS_MAX_ENCODED_FRAME_SIZE];
   uint16_t _tx_frame_len[KISS_TX_FRAME_QUEUE_DEPTH];
@@ -165,6 +194,15 @@ class KissModem {
   void processFrame();
   void handleHardwareCommand(uint8_t sub_cmd, const uint8_t* data, uint16_t len);
   void processTx();
+  void expireTemporaryRadio2();
+  bool pendingTxProfileUnchanged() const;
+  mesh::RadioParamApplyResult preparePendingTransmitProfile();
+  uint32_t pendingTxAirtime(uint16_t len);
+  bool decodeRadio2Config(const uint8_t* data, Radio2Config& config) const;
+  void encodeRadio2Config(const Radio2Config& config, uint8_t* data) const;
+  bool validateRadio2Config(const Radio2Config& config) const;
+  void syncPrimaryConfigFromRadio();
+  void syncSavedRadio2FromRadio();
 
   void handleGetIdentity();
   void handleGetRandom(const uint8_t* data, uint16_t len);
@@ -177,6 +215,10 @@ class KissModem {
   void handleSetRadio(const uint8_t* data, uint16_t len);
   void handleSetTxPower(const uint8_t* data, uint16_t len);
   void handleGetRadio();
+  void handleSetRadio2(const uint8_t* data, uint16_t len);
+  void handleGetRadio2();
+  void handleSetTempRadio2(const uint8_t* data, uint16_t len);
+  void handleGetTempRadio2();
   void handleGetTxPower();
   void handleGetVersion();
   void handleGetCurrentRssi();
@@ -205,7 +247,13 @@ public:
   void setGetCurrentRssiCallback(GetCurrentRssiCallback cb) { _getCurrentRssiCallback = cb; }
   void setGetStatsCallback(GetStatsCallback cb) { _getStatsCallback = cb; }
 
-  void onPacketReceived(int8_t snr, int8_t rssi, const uint8_t* packet, uint16_t len);
+  /**
+   * profile is the physical profile selected when recvRaw completed.  It maps
+   * directly to the KISS port nibble (0=radio, 1=radio2) without touching the
+   * raw MeshCore packet or the fixed RxMeta payload.
+   */
+  void onPacketReceived(int8_t snr, int8_t rssi, const uint8_t* packet, uint16_t len,
+                        uint8_t profile = 0);
   bool isTxBusy() const { return _tx_state != TX_IDLE; }
   /** True only when radio is actually transmitting; use to skip recvRaw in main loop. */
   bool isActuallyTransmitting() const { return _tx_state == TX_SENDING; }

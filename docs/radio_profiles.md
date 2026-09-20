@@ -11,8 +11,10 @@ profile makes the other unavailable until that packet finishes.
 
 The second-profile commands are shared by repeater, Companion, room server,
 sensor and standalone terminal-chat firmware with a LoRa radio. ESP-NOW-only
-devices reject LoRa profile commands. KISS is a raw host-controlled modem and
-does not expose these Mesh CLI commands or Mesh retry queues.
+devices reject LoRa profile commands. KISS is a raw host-controlled modem: it
+exposes equivalent RAM-only binary `SetRadio2`/`SetTempRadio2` commands and
+logical KISS Data ports, documented in [the KISS modem protocol](kiss_modem_protocol.md).
+It does not use the Mesh CLI's persistent profile file or Mesh retry queues.
 
 ## Quick setup
 
@@ -474,7 +476,12 @@ tested redundant standby/IRQ/buffer/packet setup and SPI transfer changes.
 Its fastest candidate measured 0.535 ms mean on XIAO but 8.203 ms on the
 Indicator, whose radio GPIOs go through an I2C expander. The validated production
 implementation now opts XIAO S3 WIO and Indicator LoRa into buffered 8 MHz SPI
-and a guarded fast-RX state machine. It skips redundant standby, IRQ mapping,
+and a guarded fast-RX state machine. The `heltec_v4_kiss_modem` target uses the
+same guarded path only for KISS dual-profile scanning; its normal V4 roles keep
+their established HAL/timing policy. That host-powered KISS target uses the
+existing V4 160 MHz role override, but still needs an exact-image hardware
+timing check before its nominal 600 µs target is claimed. It skips redundant
+standby, IRQ mapping,
 buffer-base writes and modem queries only during an owned continuous RX-to-RX
 retune. Preamble/packet parameters (including the IQ workaround), stale-IRQ
 clearing, RX commands and BUSY waits remain. TX, CAD, sleep, reset, RXPS and

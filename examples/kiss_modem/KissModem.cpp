@@ -1,6 +1,39 @@
 #include "KissModem.h"
 #include <CayenneLPP.h>
 
+namespace {
+
+uint16_t readU16LE(const uint8_t* data) {
+  return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
+}
+
+uint32_t readU32LE(const uint8_t* data) {
+  return (uint32_t)data[0] | ((uint32_t)data[1] << 8)
+      | ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+}
+
+void writeU16LE(uint8_t* data, uint16_t value) {
+  data[0] = (uint8_t)value;
+  data[1] = (uint8_t)(value >> 8);
+}
+
+void writeU32LE(uint8_t* data, uint32_t value) {
+  data[0] = (uint8_t)value;
+  data[1] = (uint8_t)(value >> 8);
+  data[2] = (uint8_t)(value >> 16);
+  data[3] = (uint8_t)(value >> 24);
+}
+
+uint32_t frequencyToHz(float mhz) {
+  return mhz > 0 ? (uint32_t)((double)mhz * 1000000.0 + 0.5) : 0;
+}
+
+uint32_t bandwidthToHz(float khz) {
+  return khz > 0 ? (uint32_t)((double)khz * 1000.0 + 0.5) : 0;
+}
+
+}  // namespace
+
 KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& rng,
                      mesh::Radio& radio, mesh::MainBoard& board, SensorManager& sensors)
   : _serial(serial), _identity(identity), _rng(rng), _radio(radio), _board(board), _sensors(sensors) {
@@ -9,6 +42,8 @@ KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& r
   _rx_active = false;
   _has_pending_tx = false;
   _pending_tx_len = 0;
+  _pending_tx_profile = 0;
+  _pending_tx_profile_generation = 0;
   _txdelay = KISS_DEFAULT_TXDELAY;
   _persistence = KISS_DEFAULT_PERSISTENCE;
   _slottime = KISS_DEFAULT_SLOTTIME;
@@ -21,6 +56,10 @@ KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& r
   _getCurrentRssiCallback = nullptr;
   _getStatsCallback = nullptr;
   _config = {0, 0, 0, 0, 0};
+  _saved_radio2 = {};
+  _temporary_radio2 = {};
+  _temporary_radio2_active = false;
+  _temporary_radio2_end_ms = 0;
   _signal_report_enabled = true;
   resetOutputQueue();
 }
@@ -30,7 +69,11 @@ void KissModem::begin() {
   _rx_escaped = false;
   _rx_active = false;
   _has_pending_tx = false;
+  _pending_tx_profile = 0;
+  _pending_tx_profile_generation = 0;
   _tx_state = TX_IDLE;
+  syncPrimaryConfigFromRadio();
+  syncSavedRadio2FromRadio();
   resetOutputQueue();
 }
 
@@ -200,10 +243,13 @@ void KissModem::writeHardwareError(uint8_t error_code) {
 }
 
 void KissModem::loop() {
+  expireTemporaryRadio2();
   tryFlushFrames();
 
-  while (_serial.available()) {
+  uint8_t serviced_bytes = 0;
+  while (serviced_bytes < KISS_RX_SERVICE_BYTE_BUDGET && _serial.available()) {
     uint8_t b = _serial.read();
+    ++serviced_bytes;
 
     if (b == KISS_FEND) {
       if (_rx_active && _rx_len > 0) {
@@ -254,22 +300,36 @@ void KissModem::processFrame() {
   uint8_t port = (type_byte >> 4) & 0x0F;
   uint8_t cmd = type_byte & 0x0F;
 
-  if (port != 0) return;
-
   const uint8_t* data = &_rx_buf[1];
   uint16_t data_len = _rx_len - 1;
 
-  switch (cmd) {
-    case KISS_CMD_DATA:
-      if (data_len > 0 && data_len <= KISS_MAX_PACKET_SIZE && !_has_pending_tx) {
-        memcpy(_pending_tx, data, data_len);
-        _pending_tx_len = data_len;
-        _has_pending_tx = true;
-      } else if (_has_pending_tx) {
-        writeHardwareError(HW_ERR_TX_BUSY);
-      }
-      break;
+  // KISS v2 exposes the two time-shared profiles as logical data ports.  All
+  // configuration/control commands remain on port 0, so legacy KISS clients
+  // keep their exact command framing.
+  if (cmd == KISS_CMD_DATA) {
+    if (port > 1) return;
+    if (data_len == 0 || data_len > KISS_MAX_PACKET_SIZE) return;
+    if (_has_pending_tx) {
+      writeHardwareError(HW_ERR_TX_BUSY);
+      return;
+    }
 
+    const mesh::RadioProfiles* profiles = _radio.profiles();
+    // Accept a legal logical port even if its current profile cannot TX.  The
+    // state machine emits the normal TxDone(0) verdict below, which lets KISS
+    // clients resolve a Data request without guessing whether F1 belonged to
+    // DATA or to an unrelated concurrent SetHardware command.
+    memcpy(_pending_tx, data, data_len);
+    _pending_tx_len = data_len;
+    _pending_tx_profile = port;
+    _pending_tx_profile_generation = profiles ? profiles->generation[port] : 0;
+    _has_pending_tx = true;
+    return;
+  }
+
+  if (port != 0) return;
+
+  switch (cmd) {
     case KISS_CMD_TXDELAY:
       if (data_len >= 1) _txdelay = data[0];
       break;
@@ -381,10 +441,50 @@ void KissModem::handleHardwareCommand(uint8_t sub_cmd, const uint8_t* data, uint
     case HW_CMD_GET_SIGNAL_REPORT:
       handleGetSignalReport();
       break;
+    case HW_CMD_SET_RADIO2:
+      handleSetRadio2(data, len);
+      break;
+    case HW_CMD_GET_RADIO2:
+      handleGetRadio2();
+      break;
+    case HW_CMD_SET_TEMPRADIO2:
+      handleSetTempRadio2(data, len);
+      break;
+    case HW_CMD_GET_TEMPRADIO2:
+      handleGetTempRadio2();
+      break;
     default:
       writeHardwareError(HW_ERR_UNKNOWN_CMD);
       break;
   }
+}
+
+void KissModem::expireTemporaryRadio2() {
+  if (!_temporary_radio2_active
+      || (int32_t)(millis() - _temporary_radio2_end_ms) < 0) return;
+
+  mesh::RadioProfiles* profiles = _radio.profiles();
+  if (profiles) profiles->setSecondary(_saved_radio2.profile, false);
+  _temporary_radio2_active = false;
+  _temporary_radio2_end_ms = 0;
+  _temporary_radio2 = {};
+}
+
+bool KissModem::pendingTxProfileUnchanged() const {
+  const mesh::RadioProfiles* profiles = _radio.profiles();
+  if (!profiles) return _pending_tx_profile == 0;
+  return _pending_tx_profile <= 1
+      && profiles->generation[_pending_tx_profile] == _pending_tx_profile_generation
+      && profiles->canTransmit(_pending_tx_profile);
+}
+
+mesh::RadioParamApplyResult KissModem::preparePendingTransmitProfile() {
+  if (!pendingTxProfileUnchanged()) return mesh::RadioParamApplyResult::FAILED;
+  return _radio.prepareTransmitProfile(_pending_tx_profile);
+}
+
+uint32_t KissModem::pendingTxAirtime(uint16_t len) {
+  return _radio.getProfileAirtime(_pending_tx_profile, len);
 }
 
 void KissModem::processTx() {
@@ -402,6 +502,13 @@ void KissModem::processTx() {
       break;
 
     case TX_WAIT_CLEAR:
+      {
+      const auto result = preparePendingTransmitProfile();
+      if (result == mesh::RadioParamApplyResult::BUSY) break;
+      if (result != mesh::RadioParamApplyResult::APPLIED) {
+        setTxDonePending(0x00);
+        break;
+      }
       if (!_radio.isReceiving()) {
         uint8_t rand_val;
         _rng.random(&rand_val, 1);
@@ -412,9 +519,10 @@ void KissModem::processTx() {
           _tx_timer = millis();
           _tx_state = TX_SLOT_WAIT;
         }
-      } else if (millis() - _tx_timer >= _radio.getEstAirtimeFor(KISS_MAX_PACKET_SIZE) * KISS_TX_TIMEOUT_FACTOR) {
+      } else if (millis() - _tx_timer >= pendingTxAirtime(KISS_MAX_PACKET_SIZE) * KISS_TX_TIMEOUT_FACTOR) {
         _tx_timer = millis();
         _tx_state = TX_DELAY;
+      }
       }
       break;
 
@@ -427,6 +535,20 @@ void KissModem::processTx() {
 
     case TX_DELAY:
       if (millis() - _tx_timer >= (uint32_t)_txdelay * 10) {
+        // The scanner runs after this modem loop.  Retune at the last safe
+        // instant so TXDELAY cannot make a queued port-1 packet leak out on
+        // the primary profile.
+        const auto result = preparePendingTransmitProfile();
+        if (result == mesh::RadioParamApplyResult::BUSY) break;
+        if (result != mesh::RadioParamApplyResult::APPLIED) {
+          setTxDonePending(0x00);
+          break;
+        }
+        if (!_fullduplex && _radio.isReceiving()) {
+          _tx_timer = millis();
+          _tx_state = TX_WAIT_CLEAR;
+          break;
+        }
         if (_radio.startSendRaw(_pending_tx, _pending_tx_len)) {
           _tx_timer = millis();
           _tx_state = TX_SENDING;
@@ -440,7 +562,7 @@ void KissModem::processTx() {
       if (_radio.isSendComplete()) {
         _radio.onSendFinished();
         setTxDonePending(0x01);
-      } else if (millis() - _tx_timer >= _radio.getEstAirtimeFor(_pending_tx_len) * KISS_TX_TIMEOUT_FACTOR) {
+      } else if (millis() - _tx_timer >= pendingTxAirtime(_pending_tx_len) * KISS_TX_TIMEOUT_FACTOR) {
         _radio.onSendFinished();
         setTxDonePending(0x00);
       }
@@ -455,8 +577,10 @@ void KissModem::processTx() {
   }
 }
 
-void KissModem::onPacketReceived(int8_t snr, int8_t rssi, const uint8_t* packet, uint16_t len) {
-  if (queueFrame(KISS_CMD_DATA, packet, len) && _signal_report_enabled) {
+void KissModem::onPacketReceived(int8_t snr, int8_t rssi, const uint8_t* packet, uint16_t len, uint8_t profile) {
+  if (profile > 1) return;
+  const uint8_t data_type = (uint8_t)((profile << 4) | KISS_CMD_DATA);
+  if (queueFrame(data_type, packet, len) && _signal_report_enabled) {
     uint8_t meta[2] = { (uint8_t)snr, (uint8_t)rssi };
     writeHardwareFrame(HW_RESP_RX_META, meta, 2);
   }
@@ -571,22 +695,97 @@ void KissModem::handleHash(const uint8_t* data, uint16_t len) {
   writeHardwareFrame(HW_RESP(HW_CMD_HASH), hash, 32);
 }
 
+bool KissModem::decodeRadio2Config(const uint8_t* data, Radio2Config& config) const {
+  config = {};
+  config.freq_hz = readU32LE(data);
+  config.bw_hz = readU32LE(data + 4);
+  config.profile.params.freq = (float)((double)config.freq_hz / 1000000.0);
+  config.profile.params.bw = (float)((double)config.bw_hz / 1000.0);
+  config.profile.params.sf = data[8];
+  config.profile.params.cr = data[9];
+  const uint8_t mode = data[10];
+  if (mode > (uint8_t)mesh::RadioProfileMode::RxTx) return false;
+  config.profile.mode = (mesh::RadioProfileMode)mode;
+  config.profile.params.preamble = readU16LE(data + 11);
+  return true;
+}
+
+void KissModem::encodeRadio2Config(const Radio2Config& config, uint8_t* data) const {
+  writeU32LE(data, config.freq_hz);
+  writeU32LE(data + 4, config.bw_hz);
+  data[8] = config.profile.params.sf;
+  data[9] = config.profile.params.cr;
+  data[10] = (uint8_t)config.profile.mode;
+  writeU16LE(data + 11, config.profile.params.preamble);
+}
+
+bool KissModem::validateRadio2Config(const Radio2Config& config) const {
+  const mesh::RadioProfiles* profiles = _radio.profiles();
+  if (!profiles) return false;
+  if ((uint8_t)config.profile.mode > (uint8_t)mesh::RadioProfileMode::RxTx) return false;
+  if (config.profile.mode == mesh::RadioProfileMode::Off) return true;
+  if (!_radio.validateProfile(config.profile.params)) return false;
+  mesh::RadioProfiles preview = *profiles;
+  preview.secondary = config.profile;
+  return preview.automaticPreambleFits();
+}
+
+void KissModem::syncPrimaryConfigFromRadio() {
+  const mesh::RadioProfiles* profiles = _radio.profiles();
+  if (!profiles) return;
+  _config.freq_hz = frequencyToHz(profiles->primary.freq);
+  _config.bw_hz = bandwidthToHz(profiles->primary.bw);
+  _config.sf = profiles->primary.sf;
+  _config.cr = profiles->primary.cr;
+}
+
+void KissModem::syncSavedRadio2FromRadio() {
+  const mesh::RadioProfiles* profiles = _radio.profiles();
+  if (!profiles) return;
+  _saved_radio2.profile = profiles->secondary;
+  _saved_radio2.freq_hz = frequencyToHz(profiles->secondary.params.freq);
+  _saved_radio2.bw_hz = bandwidthToHz(profiles->secondary.params.bw);
+}
+
 void KissModem::handleSetRadio(const uint8_t* data, uint16_t len) {
-  if (len < 10) {
+  if (len < KISS_RADIO_PARAMS_SIZE) {
     writeHardwareError(HW_ERR_INVALID_LENGTH);
     return;
   }
-  if (!_setRadioCallback) {
-    writeHardwareError(HW_ERR_NO_CALLBACK);
-    return;
+
+  RadioConfig requested = _config;
+  requested.freq_hz = readU32LE(data);
+  requested.bw_hz = readU32LE(data + 4);
+  requested.sf = data[8];
+  requested.cr = data[9];
+
+  mesh::RadioProfiles* profiles = _radio.profiles();
+  if (profiles) {
+    mesh::RadioProfileParams params = profiles->primary;
+    params.freq = (float)((double)requested.freq_hz / 1000000.0);
+    params.bw = (float)((double)requested.bw_hz / 1000.0);
+    params.sf = requested.sf;
+    params.cr = requested.cr;
+    const auto result = _radio.trySetPrimaryParams(params, false);
+    if (result == mesh::RadioParamApplyResult::BUSY) {
+      writeHardwareError(HW_ERR_TX_BUSY);
+      return;
+    }
+    if (result != mesh::RadioParamApplyResult::APPLIED) {
+      writeHardwareError(HW_ERR_INVALID_PARAM);
+      return;
+    }
+  } else {
+    if (!_setRadioCallback) {
+      writeHardwareError(HW_ERR_NO_CALLBACK);
+      return;
+    }
+    _setRadioCallback((float)((double)requested.freq_hz / 1000000.0),
+                      (float)((double)requested.bw_hz / 1000.0),
+                      requested.sf, requested.cr);
   }
 
-  memcpy(&_config.freq_hz, data, 4);
-  memcpy(&_config.bw_hz, data + 4, 4);
-  _config.sf = data[8];
-  _config.cr = data[9];
-
-  _setRadioCallback(_config.freq_hz / 1000000.0f, _config.bw_hz / 1000.0f, _config.sf, _config.cr);
+  _config = requested;
   writeHardwareFrame(HW_RESP_OK, nullptr, 0);
 }
 
@@ -606,12 +805,103 @@ void KissModem::handleSetTxPower(const uint8_t* data, uint16_t len) {
 }
 
 void KissModem::handleGetRadio() {
-  uint8_t buf[10];
-  memcpy(buf, &_config.freq_hz, 4);
-  memcpy(buf + 4, &_config.bw_hz, 4);
+  syncPrimaryConfigFromRadio();
+  uint8_t buf[KISS_RADIO_PARAMS_SIZE];
+  writeU32LE(buf, _config.freq_hz);
+  writeU32LE(buf + 4, _config.bw_hz);
   buf[8] = _config.sf;
   buf[9] = _config.cr;
-  writeHardwareFrame(HW_RESP(HW_CMD_GET_RADIO), buf, 10);
+  writeHardwareFrame(HW_RESP(HW_CMD_GET_RADIO), buf, sizeof(buf));
+}
+
+void KissModem::handleSetRadio2(const uint8_t* data, uint16_t len) {
+  if (len != KISS_RADIO2_PARAMS_SIZE) {
+    writeHardwareError(HW_ERR_INVALID_LENGTH);
+    return;
+  }
+  mesh::RadioProfiles* profiles = _radio.profiles();
+  if (!profiles) {
+    writeHardwareError(HW_ERR_NO_CALLBACK);
+    return;
+  }
+
+  Radio2Config config;
+  if (!decodeRadio2Config(data, config) || !validateRadio2Config(config)) {
+    writeHardwareError(HW_ERR_INVALID_PARAM);
+    return;
+  }
+
+  // Like the CLI, changing the saved secondary profile must not interrupt an
+  // active temporary lease.  It becomes active when that lease ends.
+  _saved_radio2 = config;
+  if (!_temporary_radio2_active) profiles->setSecondary(_saved_radio2.profile, false);
+  writeHardwareFrame(HW_RESP_OK, nullptr, 0);
+}
+
+void KissModem::handleGetRadio2() {
+  if (!_radio.profiles()) {
+    writeHardwareError(HW_ERR_NO_CALLBACK);
+    return;
+  }
+  uint8_t buf[KISS_RADIO2_PARAMS_SIZE];
+  encodeRadio2Config(_saved_radio2, buf);
+  writeHardwareFrame(HW_RESP(HW_CMD_GET_RADIO2), buf, sizeof(buf));
+}
+
+void KissModem::handleSetTempRadio2(const uint8_t* data, uint16_t len) {
+  if (len != KISS_TEMPRADIO2_PARAMS_SIZE) {
+    writeHardwareError(HW_ERR_INVALID_LENGTH);
+    return;
+  }
+  mesh::RadioProfiles* profiles = _radio.profiles();
+  if (!profiles) {
+    writeHardwareError(HW_ERR_NO_CALLBACK);
+    return;
+  }
+
+  Radio2Config config;
+  const uint16_t minutes = readU16LE(data + KISS_RADIO2_PARAMS_SIZE);
+  if (!decodeRadio2Config(data, config)) {
+    writeHardwareError(HW_ERR_INVALID_PARAM);
+    return;
+  }
+
+  if (config.profile.mode == mesh::RadioProfileMode::Off && minutes == 0) {
+    _temporary_radio2 = {};
+    _temporary_radio2_active = false;
+    _temporary_radio2_end_ms = 0;
+    profiles->setSecondary(_saved_radio2.profile, false);
+    writeHardwareFrame(HW_RESP_OK, nullptr, 0);
+    return;
+  }
+  if (config.profile.mode == mesh::RadioProfileMode::Off || minutes == 0
+      || minutes > KISS_MAX_TEMPRADIO2_MINUTES || !validateRadio2Config(config)) {
+    writeHardwareError(HW_ERR_INVALID_PARAM);
+    return;
+  }
+
+  _temporary_radio2 = config;
+  _temporary_radio2_active = true;
+  _temporary_radio2_end_ms = millis() + (uint32_t)minutes * 60000UL;
+  profiles->setSecondary(_temporary_radio2.profile, true);
+  writeHardwareFrame(HW_RESP_OK, nullptr, 0);
+}
+
+void KissModem::handleGetTempRadio2() {
+  if (!_radio.profiles()) {
+    writeHardwareError(HW_ERR_NO_CALLBACK);
+    return;
+  }
+  uint8_t buf[KISS_TEMPRADIO2_PARAMS_SIZE] = {};
+  if (_temporary_radio2_active) {
+    encodeRadio2Config(_temporary_radio2, buf);
+    const uint32_t now = millis();
+    const uint32_t remaining_ms = (int32_t)(_temporary_radio2_end_ms - now) > 0
+        ? _temporary_radio2_end_ms - now : 0;
+    const uint32_t remaining_minutes = (remaining_ms + 59999UL) / 60000UL;
+    writeU16LE(buf + KISS_RADIO2_PARAMS_SIZE, (uint16_t)remaining_minutes);
+  }
+  writeHardwareFrame(HW_RESP(HW_CMD_GET_TEMPRADIO2), buf, sizeof(buf));
 }
 
 void KissModem::handleGetTxPower() {

@@ -173,9 +173,13 @@ void loop() {
     uint8_t rx_buf[256];
     int rx_len = radio_driver.recvRaw(rx_buf, sizeof(rx_buf));
     if (rx_len > 0) {
+      // Snapshot before the receive-complete hook or fast profile scanner can
+      // retune the one physical radio.  KISS port 0/1 reports this origin.
+      const uint8_t profile = radio_driver.receiveProfile();
       int8_t snr = (int8_t)(radio_driver.getLastSNR() * 4);
       int8_t rssi = (int8_t)radio_driver.getLastRSSI();
-      modem->onPacketReceived(snr, rssi, rx_buf, rx_len);
+      modem->onPacketReceived(snr, rssi, rx_buf, rx_len, profile);
+      radio_driver.onReceiveProcessed();
     }
   }
 
