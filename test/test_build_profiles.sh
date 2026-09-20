@@ -319,6 +319,37 @@ require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
 # replace each with that exact board's Full target.
 init_project_context >/dev/null
 
+# ESP32 and nRF52 standalone room servers receive the same lean LoRa-OTA
+# sibling as repeaters. Sensor roles stay on their ordinary recipe so this
+# cannot accidentally become a blanket no-external-sensors policy.
+while IFS='|' read -r room_env room_ota_env; do
+  is_supported_build_env "$room_ota_env" \
+    || fail "$room_ota_env was not registered as a room-server LoRa OTA target"
+  [ "$(get_pio_build_env "$room_ota_env")" = "$room_env" ] \
+    || fail "$room_ota_env did not retain its room-server PlatformIO recipe"
+  [ "$(get_reduced_lora_ota_target "$room_env")" = "$room_ota_env" ] \
+    || fail "$room_env did not resolve its reduced room-server OTA sibling"
+  (
+    BUILD_PROFILE_FOR_TARGET=standard
+    ESP32_FULL_BUILD=0
+    is_lora_ota_build "$room_ota_env" \
+      || fail "$room_ota_env did not enable LoRa OTA"
+  )
+done <<'ROOM_OTA_SPECS'
+Heltec_v3_room_server|Heltec_v3_room_server_lora_ota_no_external_sensors
+RAK_3401_room_server|RAK_3401_room_server_lora_ota_no_external_sensors
+ROOM_OTA_SPECS
+print_release_firmware_targets get-room-server-firmwares-to-build | grep -Fx \
+  RAK_3401_room_server_lora_ota_no_external_sensors >/dev/null \
+  || fail "room-server release resolution omitted its portable LoRa OTA target"
+for sensor_ota_env in \
+    Heltec_v3_sensor_lora_ota_no_external_sensors \
+    RAK_3401_sensor_lora_ota_no_external_sensors; do
+  if is_supported_build_env "$sensor_ota_env"; then
+    fail "$sensor_ota_env was incorrectly generated from a sensor role"
+  fi
+done
+
 # KISS inherits board OTA flags, not the application OTA implementation.
 for kiss_env in "${SUPPORTED_PIO_ENVS[@]}"; do
   is_kiss_modem_target "$kiss_env" || continue
@@ -561,16 +592,20 @@ unset PLATFORMIO_BUILD_FLAGS PLATFORMIO_BUILD_UNFLAGS \
   PLATFORMIO_BUILD_SRC_FILTER
 
 # An environment that includes only the tiny OTA inflater still needs the C++
-# protocol implementation when build.sh overlays LoRa OTA.
-reduced_nrf_ota_env=RAK_3401_repeater_lora_ota_no_external_sensors
-reduced_nrf_pio_env=$(get_pio_build_env "$reduced_nrf_ota_env")
-PLATFORMIO_BUILD_SRC_FILTER=""
-PLATFORMIO_EXTRA_SCRIPTS=""
-apply_nrf52_lora_ota_build_recipe "$reduced_nrf_ota_env" "$reduced_nrf_pio_env"
-if ! pio_env_option_contains "$reduced_nrf_pio_env" build_src_filter "helpers/ota/*.cpp" \
-    && [[ "$PLATFORMIO_BUILD_SRC_FILTER" != *"helpers/ota/*.cpp"* ]]; then
-  fail "$reduced_nrf_ota_env omitted the OTA C++ implementation"
-fi
+# protocol implementation when build.sh overlays LoRa OTA. Room servers use
+# the same nRF52 overlay as repeaters.
+for reduced_nrf_ota_env in \
+    RAK_3401_repeater_lora_ota_no_external_sensors \
+    RAK_3401_room_server_lora_ota_no_external_sensors; do
+  reduced_nrf_pio_env=$(get_pio_build_env "$reduced_nrf_ota_env")
+  PLATFORMIO_BUILD_SRC_FILTER=""
+  PLATFORMIO_EXTRA_SCRIPTS=""
+  apply_nrf52_lora_ota_build_recipe "$reduced_nrf_ota_env" "$reduced_nrf_pio_env"
+  if ! pio_env_option_contains "$reduced_nrf_pio_env" build_src_filter "helpers/ota/*.cpp" \
+      && [[ "$PLATFORMIO_BUILD_SRC_FILTER" != *"helpers/ota/*.cpp"* ]]; then
+    fail "$reduced_nrf_ota_env omitted the OTA C++ implementation"
+  fi
+done
 unset PLATFORMIO_BUILD_SRC_FILTER PLATFORMIO_EXTRA_SCRIPTS
 
 # The bounded AsyncTCP task stack belongs to every ESP32 Full profile, including
@@ -727,26 +762,40 @@ for logging_target in Station_G2_companion_radio_full RAK_4631_companion_radio_f
   verify_full_logging_contract "$logging_target" 0 off 1 yes no
 done
 
-# Synthetic inventory: one ESP32 target qualified for expanded Full and one
-# nRF52 target which must attempt complete LoRa OTA in its current partition.
+# Synthetic inventory: ESP32 and nRF52 repeater/room-server targets with the
+# same lean OTA policy. The sensor deliberately has no lean sibling.
 SUPPORTED_PIO_ENVS=(
   esp_repeater
   esp_repeater_lora_ota_no_external_sensors
+  esp_room_server
+  esp_room_server_lora_ota_no_external_sensors
   nrf_repeater
   nrf_repeater_lora_ota_no_external_sensors
+  nrf_room_server
+  nrf_room_server_lora_ota_no_external_sensors
   nrf_qspi_repeater
   nrf_qspi_repeater_lora_ota_no_external_sensors
+  nrf_qspi_room_server
+  nrf_qspi_room_server_lora_ota_no_external_sensors
   nrf_sensor
 )
 PIO_ENV_PLATFORM_BY_NAME[esp_repeater]=ESP32_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[esp_repeater_lora_ota_no_external_sensors]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[esp_room_server]=ESP32_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[esp_room_server_lora_ota_no_external_sensors]=ESP32_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[nrf_repeater]=NRF52_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[nrf_repeater_lora_ota_no_external_sensors]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[nrf_room_server]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[nrf_room_server_lora_ota_no_external_sensors]=NRF52_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[nrf_qspi_repeater]=NRF52_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[nrf_qspi_repeater_lora_ota_no_external_sensors]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[nrf_qspi_room_server]=NRF52_PLATFORM
+PIO_ENV_PLATFORM_BY_NAME[nrf_qspi_room_server_lora_ota_no_external_sensors]=NRF52_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[nrf_sensor]=NRF52_PLATFORM
 PIO_ENV_QSPI_OTA_BY_NAME[nrf_qspi_repeater_lora_ota_no_external_sensors]=1
+PIO_ENV_QSPI_OTA_BY_NAME[nrf_qspi_room_server_lora_ota_no_external_sensors]=1
 PIO_ENV_FULL_BUILD_BY_NAME[esp_repeater]=1
+PIO_ENV_FULL_BUILD_BY_NAME[esp_room_server]=1
 
 RESOLVED_BUILD_TARGETS=(esp_repeater)
 configure_effective_build_profile build-firmware >/dev/null
@@ -755,6 +804,16 @@ configure_effective_build_profile build-firmware >/dev/null
 [ "$AUTO_REDUCED_FALLBACK_TARGET" = \
   esp_repeater_lora_ota_no_external_sensors ] \
   || fail "ESP32 reduced fallback was not resolved"
+
+BUILD_PROFILE_OVERRIDE=auto
+BUILD_PROFILE_EXPLICIT=0
+RESOLVED_BUILD_TARGETS=(esp_room_server)
+configure_effective_build_profile build-firmware >/dev/null
+[ "$BUILD_PROFILE_EFFECTIVE" = full ] || fail "ESP32 room server auto did not prefer Full"
+[ "$AUTO_PREFER_FULL_BUILD" = 1 ] || fail "ESP32 room-server Full pass was not scheduled"
+[ "$AUTO_REDUCED_FALLBACK_TARGET" = \
+  esp_room_server_lora_ota_no_external_sensors ] \
+  || fail "ESP32 room-server reduced fallback was not resolved"
 
 BUILD_PROFILE_OVERRIDE=auto
 BUILD_PROFILE_EXPLICIT=0
@@ -770,6 +829,18 @@ configure_effective_build_profile build-firmware >/dev/null
 
 BUILD_PROFILE_OVERRIDE=auto
 BUILD_PROFILE_EXPLICIT=0
+RESOLVED_BUILD_TARGETS=(nrf_room_server)
+configure_effective_build_profile build-firmware >/dev/null
+[ "${RESOLVED_BUILD_TARGETS[0]}" = \
+  nrf_room_server_lora_ota_no_external_sensors ] \
+  || fail "nRF52 room-server complete OTA pass did not select the OTA identity"
+[ "$AUTO_COMPLETE_FIRST_PASS" = 1 ] \
+  || fail "nRF52 room-server complete first pass was not scheduled"
+[ "$AUTO_PUBLISH_REDUCED_SECOND_PASS" = 1 ] \
+  || fail "internal-flash nRF52 room-server reduced second artifact was not scheduled"
+
+BUILD_PROFILE_OVERRIDE=auto
+BUILD_PROFILE_EXPLICIT=0
 RESOLVED_BUILD_TARGETS=(nrf_qspi_repeater)
 configure_effective_build_profile build-firmware >/dev/null
 [ "$AUTO_COMPLETE_FIRST_PASS" = 1 ] \
@@ -779,14 +850,23 @@ configure_effective_build_profile build-firmware >/dev/null
 
 BUILD_PROFILE_OVERRIDE=auto
 BUILD_PROFILE_EXPLICIT=0
+RESOLVED_BUILD_TARGETS=(nrf_qspi_room_server)
+configure_effective_build_profile build-firmware >/dev/null
+[ "$AUTO_COMPLETE_FIRST_PASS" = 1 ] \
+  || fail "external-storage nRF52 room-server complete first pass was not scheduled"
+[ "$AUTO_PUBLISH_REDUCED_SECOND_PASS" = 0 ] \
+  || fail "external-storage nRF52 room-server incorrectly scheduled a redundant artifact"
+
+BUILD_PROFILE_OVERRIDE=auto
+BUILD_PROFILE_EXPLICIT=0
 RESOLVED_BUILD_TARGETS=(nrf_sensor)
 configure_effective_build_profile build-firmware >/dev/null
 [ "$BUILD_PROFILE_EFFECTIVE" = auto ] \
   || fail "nRF52 sensor did not retain its ordinary auto profile"
 [ "$AUTO_COMPLETE_FIRST_PASS" = 0 ] \
-  || fail "non-repeater nRF52 target incorrectly scheduled OTA profile passes"
+  || fail "nRF52 sensor incorrectly scheduled OTA profile passes"
 [ "$AUTO_PUBLISH_REDUCED_SECOND_PASS" = 0 ] \
-  || fail "non-repeater nRF52 target incorrectly scheduled two artifacts"
+  || fail "nRF52 sensor incorrectly scheduled two artifacts"
 
 # Ordinary USB-loggable roles compile their historical logging profile into
 # the canonical artifact. LoRa OTA repeaters, KISS, and BLE keep their distinct
@@ -1018,6 +1098,8 @@ verify_reduced_sensor_flags() {
 
 verify_reduced_sensor_flags \
   RAK_3401_repeater_lora_ota_no_external_sensors 1
+verify_reduced_sensor_flags \
+  RAK_3401_room_server_lora_ota_no_external_sensors 1
 verify_reduced_sensor_flags \
   Heltec_t114_repeater_lora_ota_no_external_sensors 0
 

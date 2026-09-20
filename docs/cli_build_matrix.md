@@ -28,7 +28,7 @@ and partition policy:
 
 | Selection | Behavior |
 | --- | --- |
-| `auto` | For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other repeaters attempt the complete recipe in their current application region. A non-repeater keeps every capability declared by its resolved PlatformIO recipe, including LoRa OTA, and fails instead of silently removing one that does not fit. A measured repeater flash/partition overflow starts the standard `no_external_sensors` LoRa OTA pass. Internal-flash nRF52 repeaters publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD repeaters do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract. |
+| `auto` | For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other standalone repeaters and room servers attempt the complete recipe in their current application region. Other roles keep every capability declared by their resolved PlatformIO recipe, including LoRa OTA, and fail instead of silently removing one that does not fit. A measured repeater or room-server flash/partition overflow starts the standard `no_external_sensors` LoRa OTA pass. Internal-flash nRF52 repeaters and room servers publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD roles do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract. |
 | `standard` | Immediately uses the deployed/portable partition contract and its documented reductions. This is useful when the operator already knows the expanded or complete image is unsuitable. |
 | `full` | Requires a qualified ESP32 expanded-partition target (or an explicitly named Full Companion). Install a matching merged image when this changes the partition table. |
 
@@ -60,6 +60,10 @@ canonical Full image under the normal target identity. Install its matching
 merged image over USB once; mOTA rejects the incompatible partition signature
 until that migration is complete, then later Full updates use the normal
 target ID. The portable image remains available while deployed nodes move.
+
+Legacy supported ESP32 Wi-Fi repeaters can use the
+[Wi-Fi partition migration](esp32_wifi_partition_migration.md) bridge to
+preserve their identity and install an expanded Full image without a USB flash.
 The default `cascade` settings profile enables device and LoRa RX power saving;
 saved preferences take precedence, and active USB/network services can prevent
 device sleep. `--profile default` instead uses the upstream power-saving defaults.
@@ -96,7 +100,7 @@ getters; relaying a command over LoRa keeps its remote restrictions.
 | Standard non-MQTT repeater or room server | Keeps the normal role CLI and, where USB is a safe plaintext console, embeds debug/packet logging behind persistent `get/set usb.logging`. The explicitly selected portable policy can omit WebConfig and browser WiFi OTA, so those commands are unavailable and the omission is recorded in the capability manifest. |
 | Legacy standard logging | No longer emitted separately. Its behavior is compiled into the ordinary artifact. Size-constrained STM32 targets embed packet logging without verbose `MESH_DEBUG`. |
 | LoRa-OTA (`-ota-`) | LoRa OTA adds the `ota ...` commands; it does not otherwise reduce the role CLI. ESP32 `no_external_sensors` artifacts retain the compact browser WiFi uploader, the complete CLI, and up to 254 neighbors, subject to recorded internal-DRAM reductions. |
-| Internal-flash nRF52 repeater auto pair | `full-ota` retains the board's external-sensor drivers; `reduced-ota` omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured cost below 5 KiB. Both artifacts carry the same stable OTA target identity and are checked for `ota ...` and `retry.preset`; RAK artifacts also verify the retained monitor drivers. |
+| Internal-flash nRF52 repeater/room-server auto pair | `full-ota` retains the board's external-sensor drivers; `reduced-ota` omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured cost below 5 KiB. Both artifacts carry the same stable OTA target identity and are checked for `ota ...` and `retry.preset`; RAK artifacts also verify the retained monitor drivers. |
 | ESP32 MQTT observer or ESP-NOW bridge | Always uses the expanded FULL partition profile. The build never substitutes a reduced CLI to fit the legacy application slot. |
 | FULL ESP32 USB + WiFi | Uses the matching MQTT target with packet logging on, verbose debug off, and the complete command surface supported by that role and hardware. `get/set logging.output off\|usb\|wifi\|both` selects and persists the active output paths. |
 | FULL ESP32 logging fallback | Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet logging enabled and the complete command surface supported by that role and hardware. Its persistent USB gate also covers output-off operation, avoiding a second FULL ESP-NOW image. |

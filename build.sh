@@ -79,7 +79,7 @@ BUILD_BACKGROUND_HANDOFF_STATE=""
 BUILD_SCRIPT_LOCK_FD=""
 INTERACTIVE_BUILD_SELECTION=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak13302_w25q16_lora_ota|repeater_rak15001_slot_c_lora_ota|repeater_w25q16_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak13302_w25q16_lora_ota|repeater_rak15001_slot_c_lora_ota|repeater_w25q16_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_lora_ota_no_external_sensors|room_svr_lora_ota_no_external_sensors|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -119,7 +119,7 @@ Commands:
   list|-l: List firmwares available to build.
   build-firmware <target>: Build the firmware for the given build target.
   build-firmwares: Build canonical firmwares for all targets. Runtime-setting aliases and Terminal Chat targets replaced by Full Companion remain available as explicit builds.
-  build-firmwares-logging-matrix: Build canonical standard artifacts with merged runtime USB logging plus unified FULL ESP32 USB+WiFi and FULL fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. KISS, BLE-only Companion, and constrained LoRa-OTA repeater contracts do not gain plaintext USB logging.
+  build-firmwares-logging-matrix: Build canonical standard artifacts with merged runtime USB logging plus unified FULL ESP32 USB+WiFi and FULL fallback profiles, logging each target under out/build-logs/ and continuing after failures. MQTT observers and ESP-NOW bridges always use FULL. KISS, BLE-only Companion, and constrained LoRa-OTA repeater/room-server contracts do not gain plaintext USB logging.
   build-companion-firmwares-logging-matrix: Build canonical Companion targets with merged runtime USB logging where the transport is safe, plus applicable MQTT and expanded FULL profiles. Full Companion replaces separate USB, BLE, WiFi, Terminal Chat, and USB-logging artifacts where an exact combined recipe exists.
   build-full-esp32-firmwares: Build feature-complete ESP32 profiles with up to 254 neighbors, USB packet logging, WiFi MQTT plus ESP-NOW where a matching MQTT recipe exists, LoRa OTA, and expanded dual-OTA partitions.
   build-full-esp32-logging-firmwares: Build only the FULL USB-logging fallback for targets without a matching WiFi MQTT environment.
@@ -132,13 +132,13 @@ Commands:
   build-kiss-radio-firmwares: Build all KISS radio firmwares for all build targets.
   get-companion-firmwares-to-build: List canonical attached companion targets for release automation; Full Companion replaces separate transport artifacts where qualified.
   get-repeater-firmwares-to-build: List canonical, specialized external-storage, and deployed-target OTA compatibility repeaters for release automation.
-  get-room-server-firmwares-to-build: List standard room-server targets for release automation.
+  get-room-server-firmwares-to-build: List standard and portable LoRa-OTA room-server targets for release automation.
 
 Options:
   --firmware-version <version>: Firmware version to embed.
   --radio-preset <name|number>: Override the USA Cascadia radio default. Stable names are usa-cascadia and target; legacy menu numbers remain accepted.
   --profile <default|cascade>: Override runtime settings embedded in the firmware (not its feature set).
-  --build-profile <auto|standard|full>: Select feature/partition policy. Auto uses the combined Full MQTT/USB/WiFi recipe when it covers the plain infrastructure target; otherwise it first builds complete LoRa-OTA-capable firmware with a measured-size fallback. Internal-flash nRF52 repeaters also publish the reduced image for delta-staging headroom. Standard preserves portable images, including the 1.25 MiB slot; full requires the expanded ESP32 recipe.
+  --build-profile <auto|standard|full>: Select feature/partition policy. Auto uses the combined Full MQTT/USB/WiFi recipe when it covers the plain infrastructure target; otherwise it first builds complete LoRa-OTA-capable firmware with a measured-size fallback. Internal-flash nRF52 repeaters and room servers also publish the reduced image for delta-staging headroom. Standard preserves portable images, including the 1.25 MiB slot; full requires the expanded ESP32 recipe.
   --auto|--standard|--full: Short forms of --build-profile.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
@@ -334,11 +334,11 @@ for section, options in data:
 ' "$SUPPORTED_PLATFORM_PATTERN" <<<"$PIO_CONFIG_JSON"
     )
 
-    # Keep each ordinary repeater environment feature-rich (including external
-    # sensors), and expose a separately named no-external-sensors OTA build for
-    # ESP32/nRF52 repeaters that need a lean staging profile. These two platforms
-    # have a complete apply path; RP2040 and STM32 do not yet have the required
-    # bootloader/apply path.
+    # Keep each ordinary repeater and room-server environment feature-rich
+    # (including external sensors), and expose a separately named
+    # no-external-sensors OTA build for ESP32/nRF52 infrastructure roles that
+    # need a lean staging profile. These two platforms have a complete apply
+    # path; RP2040 and STM32 do not yet have the required bootloader/apply path.
     local env_name ota_env full_env usb_env ble_env
     local -a base_envs=("${SUPPORTED_PIO_ENVS[@]}")
     for env_name in "${base_envs[@]}"; do
@@ -347,17 +347,18 @@ for section, options in data:
         *) continue ;;
       esac
       # Generate one lean LoRa-OTA image for each board's standalone repeater
-      # role. Observer, Ethernet, and bridge profiles are separate roles; any
-      # purpose-built OTA versions of those remain explicit PlatformIO targets.
+      # or room-server role. Sensor, observer, Ethernet, and bridge profiles
+      # stay on their explicit PlatformIO recipes.
       case "${env_name,,}" in
-        *_repeater|*_repeater_|*_repeatr|*_repeatr_) ;;
+        *_repeater|*_repeater_|*_repeatr|*_repeatr_|*_room_server|*_room_server_|*_room_svr|*_room_svr_) ;;
         *) continue ;;
       esac
-      # SolarXiao 30S/33S repeaters already use matched external QSPI staging,
-      # so their normal full-sensor image is install-capable. A second lean
-      # no-external-sensors target provides no additional OTA capability.
+      # SolarXiao 30S/33S repeater and room-server roles already use matched
+      # external QSPI staging, so their normal full-sensor image is
+      # install-capable. A second lean no-external-sensors target provides no
+      # additional OTA capability.
       case "${env_name,,}" in
-        solarxiao_30s_repeater|solarxiao_33s_repeater) continue ;;
+        solarxiao_30s_repeater|solarxiao_33s_repeater|solarxiao_30s_room_server|solarxiao_33s_room_server) continue ;;
       esac
       ota_env="${env_name%_}_lora_ota_no_external_sensors"
       PIO_ENV_COMPLETE_OTA_BASE_BY_NAME["$ota_env"]="$env_name"
@@ -594,6 +595,9 @@ canonicalize_variant_suffix() {
       ;;
     companion_ble|companion_radio_ble)
       echo "companion_radio_ble"
+      ;;
+    room_svr_lora_ota_no_external_sensors|room_server_lora_ota_no_external_sensors)
+      echo "room_server_lora_ota_no_external_sensors"
       ;;
     room_svr|room_server)
       echo "room_server"
@@ -1976,6 +1980,12 @@ print_release_firmware_targets() {
       ;;
     get-room-server-firmwares-to-build)
       get_pio_envs_ending_with_string "_room_server"
+      for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
+        if is_room_server_role_target "$env_name" \
+            && is_lora_ota_no_external_sensors_target "$env_name"; then
+          printf '%s\n' "$env_name"
+        fi
+      done
       ;;
     *)
       return 1
@@ -2884,7 +2894,8 @@ get_reduced_lora_ota_target() {
     echo "$target"
     return 0
   fi
-  if ! is_repeater_role_target "$target"; then
+  if ! is_repeater_role_target "$target" \
+      && ! is_room_server_role_target "$target"; then
     return 1
   fi
 
@@ -2927,10 +2938,10 @@ is_lora_ota_build() {
 
   # A single-target auto build promises to preserve the capabilities declared
   # by its resolved PlatformIO environment and fail if they do not fit.  Keep
-  # that contract for nRF52 Companion and other non-repeater roles which
-  # deliberately inherit the shared OTA recipe.  The standard/release profile
-  # continues through the opt-in policy below and may select its documented
-  # portable reductions.
+  # that contract for nRF52 Companion and roles other than standalone repeaters
+  # and room servers which deliberately inherit the shared OTA recipe. The
+  # standard/release profile continues through the opt-in policy below and may
+  # select its documented portable reductions.
   if [ "${BUILD_PROFILE_FOR_TARGET:-$BUILD_PROFILE_EFFECTIVE}" = "auto" ]; then
     return 0
   fi
@@ -2951,12 +2962,12 @@ is_lora_ota_build() {
     return 1
   fi
 
-  # The constrained portable OTA profile is only emitted for repeaters. FULL
-  # ESP32 builds returned above also enable LoRa OTA for room-server, sensor,
-  # observer, and bridge roles because their expanded slots have room for every
-  # feature.
+  # The constrained portable OTA profile is emitted for standalone repeaters
+  # and room servers. FULL ESP32 builds returned above also enable LoRa OTA for
+  # sensor, observer, and bridge roles because their expanded slots have room
+  # for every feature.
   case "$env_name_lc" in
-    *repeater*|*repeatr*) return 0 ;;
+    *repeater*|*repeatr*|*room_server*|*room_svr*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -6153,7 +6164,7 @@ run_auto_two_pass_build() {
     echo "Auto pass 1 failed for a non-size reason; refusing to hide the compiler or capability failure with a reduced build."
   elif [ "$AUTO_PUBLISH_REDUCED_SECOND_PASS" = "1" ] \
       && [ -n "$fallback_target" ]; then
-    echo "Auto pass 1 succeeded. Internal-flash nRF52 repeater policy also publishes a reduced LoRa OTA image with more delta-staging headroom."
+    echo "Auto pass 1 succeeded. Internal-flash nRF52 repeater/room-server policy also publishes a reduced LoRa OTA image with more delta-staging headroom."
     ESP32_FULL_BUILD=0
     BUILD_PROFILE_EFFECTIVE="standard"
     FIRMWARE_FILENAME_INFIX="reduced-ota"

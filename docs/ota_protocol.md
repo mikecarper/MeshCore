@@ -133,12 +133,13 @@ artifacts, including room, sensor, and repeater roles, must fit the legacy slot 
 limit and the target's actual app partition. The ESP32-C6 `no_external_sensors` OTA siblings are the narrow
 exception: the Arduino 3.x WiFi runtime cannot fit that cross-family ceiling, so those images retain their
 established target-specific 1920 KiB or larger A/B app layout and are checked against the actual app
-partition. For standalone ESP32 and nRF52 repeaters that need a lean staging
-profile, `build.sh` also exposes an explicit `*_lora_ota_no_external_sensors`
-artifact: the ordinary repeater remains sensor-enabled, while that sibling
-trims selected optional environmental/ranging drivers for LoRa distribution. SolarXiao 30S and 33S use
-matched external QSPI staging, so their ordinary full-sensor repeater is already install-capable and no
-redundant lean sibling is generated. Integrated GPS and other
+partition. For standalone ESP32 and nRF52 repeater and room-server roles that
+need a lean staging profile, `build.sh` also exposes an explicit
+`*_lora_ota_no_external_sensors` artifact: the ordinary role remains
+sensor-enabled, while that sibling trims selected optional environmental/ranging
+drivers for LoRa distribution. SolarXiao 30S and 33S use matched external QSPI
+staging, so their ordinary full-sensor repeater and room-server images are
+already install-capable and no redundant lean sibling is generated. Integrated GPS and other
 board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. The legacy
 suffix describes a driver trim, not removal of the generic I2C bus. Reduced RAK3401 and RAK4631 profiles
 retain INA219, INA226, INA260, and INA3221 voltage/current monitors. These are retained optional-sensor-table
@@ -167,9 +168,10 @@ WiFi-heavy non-companion roles are not reduced to fit the legacy application slo
 promotes every ESP32 MQTT observer and ESP-NOW bridge to the expanded FULL partition profile. These artifacts
 retain the complete role CLI, WebConfig where supported, display and optional sensor support, full timezone
 and TLS behavior, and the board's normal power-management implementation. The compact CLI is not compiled
-into any build. Ordinary repeater builds remain sensor-enabled; only explicitly named
-`*_lora_ota_no_external_sensors` siblings trim selected optional environmental/ranging drivers for LoRa
-distribution, and those siblings retain the complete CLI and target-declared I2C peripherals.
+into any build. Ordinary repeater and room-server builds remain sensor-enabled;
+only explicitly named `*_lora_ota_no_external_sensors` siblings trim selected
+optional environmental/ranging drivers for LoRa distribution, and those
+siblings retain the complete CLI and target-declared I2C peripherals.
 
 MQTT observer radio and bridge preferences use verified temporary files plus a recoverable backup. A reset
 during a settings save restores the last committed common preference image or publishes the completed new
@@ -192,7 +194,7 @@ full ElegantOTA where that target declares the required library, and LoRa OTA fo
 including room servers, sensors, observers, and bridges. They use expanded A/B partition
 tables: 1984 KiB application slots on 4 MiB boards and the framework's larger dual-OTA tables on 8 MiB
 and 16 MiB boards. Explicit `*_lora_ota_no_external_sensors` targets are not duplicated; their ordinary
-repeater build is the FULL, sensor-enabled counterpart. The
+repeater or room-server build is the FULL, sensor-enabled counterpart. The
 `*-full-usb-wifi-ota-*` profile enables USB packet logging and MQTT, with a
 persistent `logging.output` selector; its verbose internal debug remains off.
 The fallback `*-full-logging-ota-*` profile enables USB debug and packet

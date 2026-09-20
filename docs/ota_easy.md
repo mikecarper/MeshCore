@@ -82,7 +82,7 @@ Both paths require:
 
 - A destination artifact explicitly identified by its release table as install-capable. Some lean internal
   nRF52 builds carry `lora_ota_no_external_sensors` in the filename, while matched QSPI boards enable install
-  support in the normal full-sensor repeater artifact, so filename text alone is not authoritative. Confirm
+  support in the normal full-sensor repeater or room-server artifact, so filename text alone is not authoritative. Confirm
   support with `ota self` and `ota status`. Intermediate repeaters do **not** need an install-capable build:
   current repeater firmware relays OTA packets opaquely without storing or installing them.
 - An OTA-enabled MeshCore source connected to the computer by USB serial, or
@@ -94,8 +94,9 @@ apply their normal forwarding filters, duplicate checks, and flood limits; they 
 payload. If any required window closes, the transfer stops making progress and can resume during a later
 overlapping window.
 
-`build.sh` provides a `*_repeater_lora_ota_no_external_sensors` build for standalone ESP32 and nRF52 repeater
-targets that need a smaller internal update workspace. Those siblings omit selected optional environmental
+`build.sh` provides a `*_repeater_lora_ota_no_external_sensors` or
+`*_room_server_lora_ota_no_external_sensors` build for standalone ESP32 and nRF52
+infrastructure targets that need a smaller internal update workspace. Those siblings omit selected optional environmental
 and ranging drivers while retaining board-native features such as displays, buttons, battery monitoring,
 and GPS where the target uses the GPS-preserving lean profile. RAK3401 and RAK4631 reduced builds also
 retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors; together these drivers cost less
@@ -116,7 +117,7 @@ bus at those addresses. Keep RAK12500 at `0x42`, strap INA3221 A0 to SCL for `0x
 
 Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
-repeater install-capable; those targets do not need to reserve internal flash
+repeater or room-server install-capable; those targets do not need to reserve internal flash
 for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
 path and therefore do not emit redundant no-external-sensors siblings. A
 RAK19007 can use the same separately wired W25Q16 with either RAK4631 or
@@ -131,13 +132,13 @@ as recorded in their capability manifests. RP2040 and STM32
 repeaters do not currently have a safe self-apply path, but current repeater
 firmware can still relay OTA packets opaquely during TempRadio.
 
-For one explicitly selected internal-flash nRF52 repeater, the default
+For one explicitly selected internal-flash nRF52 repeater or room server, the default
 `--build-profile auto` run emits two install-capable choices. The
 `*-full-ota-*` artifact retains external sensors, while the
 `*_lora_ota_no_external_sensors-reduced-ota-*` artifact trades only those
 optional drivers not explicitly retained by the board profile for more delta-staging space. They retain the same OTA target
 identity so update tooling does not confuse the optimization choice with a
-different board. QSPI- and SD-backed repeaters emit only the complete choice
+different board. QSPI- and SD-backed repeater and room-server roles emit only the complete choice
 unless a measured size failure requires a fallback.
 
 nRF52 `-ota-` siblings are compiled with size optimization instead of the Adafruit platform's default
