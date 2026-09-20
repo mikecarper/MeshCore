@@ -1397,6 +1397,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fast-dual-profile-receive-switching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fast dual-profile receive switching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#host-output-backpressure" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1512,6 +1523,28 @@
     <span class="md-ellipsis">
       
         Radio Parameters (SetRadio / Radio response)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secondary-radio-parameters-setradio2-radio2-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secondary Radio Parameters (SetRadio2 / Radio2 response)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#temporary-secondary-radio-settempradio2-tempradio2-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temporary Secondary Radio (SetTempRadio2 / TempRadio2 response)
       
     </span>
   </a>
@@ -3343,6 +3376,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#fast-dual-profile-receive-switching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fast dual-profile receive switching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#host-output-backpressure" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3458,6 +3502,28 @@
     <span class="md-ellipsis">
       
         Radio Parameters (SetRadio / Radio response)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secondary-radio-parameters-setradio2-radio2-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secondary Radio Parameters (SetRadio2 / Radio2 response)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#temporary-secondary-radio-settempradio2-tempradio2-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temporary Secondary Radio (SetTempRadio2 / TempRadio2 response)
       
     </span>
   </a>
@@ -3639,6 +3705,9 @@
 
 <h1 id="meshcore-kiss-modem-protocol">MeshCore KISS Modem Protocol</h1>
 <p>Standard KISS TNC firmware for MeshCore LoRa radios. Compatible with any KISS client (Direwolf, APRSdroid, YAAC, etc.) for sending and receiving raw packets. MeshCore-specific extensions (cryptography, radio configuration, telemetry) are available through the standard SetHardware (0x06) command.</p>
+<p>KISS protocol version 2 adds an opt-in logical port 1 for MeshCore's second
+time-shared LoRa profile. It is still one physical transceiver: the firmware
+fast-switches between <code>radio</code> and <code>radio2</code>; it does not create a second radio.</p>
 <h2 id="serial-configuration">Serial Configuration</h2>
 <p>115200 baud, 8N1, no flow control.</p>
 <h2 id="frame-format">Frame Format</h2>
@@ -3693,7 +3762,7 @@
 <tr>
 <td>7-4</td>
 <td>Port</td>
-<td>Port number (0 for single-port TNC)</td>
+<td><code>0</code> primary <code>radio</code>; <code>1</code> secondary <code>radio2</code> for Data only in protocol v2; controls stay on port 0</td>
 </tr>
 <tr>
 <td>3-0</td>
@@ -3719,7 +3788,7 @@
 <td>Data</td>
 <td><code>0x00</code></td>
 <td>Raw packet</td>
-<td>Queue packet for transmission (one pending at a time)</td>
+<td>Queue on primary <code>radio</code>; use type <code>0x10</code> to queue on <code>radio2</code> in v2 (one pending packet total)</td>
 </tr>
 <tr>
 <td>TXDELAY</td>
@@ -3780,12 +3849,36 @@
 <td>Data</td>
 <td><code>0x00</code></td>
 <td>Raw packet</td>
-<td>Received packet from radio</td>
+<td>Received packet from primary <code>radio</code></td>
+</tr>
+<tr>
+<td>Data</td>
+<td><code>0x10</code></td>
+<td>Raw packet</td>
+<td>Received packet from secondary <code>radio2</code> (v2)</td>
 </tr>
 </tbody>
 </table>
-<p>Data frames carry raw packet data only, with no metadata prepended. The Data command payload is limited to 255 bytes to match the MeshCore maximum transmission unit (MAX_TRANS_UNIT); frames larger than 255 bytes are silently dropped. The KISS specification recommends at least 1024 bytes for general-purpose TNCs; this modem is intended for MeshCore packets only, whose protocol MTU is 255 bytes.</p>
+<p>Data frames carry raw packet data only, with no metadata prepended. The Data command payload is limited to 255 bytes to match the MeshCore maximum transmission unit (MAX_TRANS_UNIT); frames larger than 255 bytes are silently dropped. The KISS specification recommends at least 1024 bytes for general-purpose TNCs; this modem is intended for MeshCore packets only, whose protocol MTU is 255 bytes. A v2 port-1 Data packet reaches RF only while <code>radio2</code> is configured <code>rxtx</code>; with <code>off</code> or <code>rx</code>, the modem returns <code>TxDone(0)</code> and never falls back to primary.</p>
 <p>Only one packet may be pending for radio transmission at a time. If the host sends a second Data frame before the first has completed, the modem responds with Error (0xF1) and TxBusy (0x07).</p>
+<h3 id="fast-dual-profile-receive-switching">Fast dual-profile receive switching</h3>
+<p>After OpenHop (or another KISS client) configures <code>radio2</code> or <code>tempradio2</code>,
+the board's <code>radio_driver.loop()</code> performs the RF hops locally. KISS does not
+send a command for every hop: that would be slower than the serial link alone.
+The shared scanner uses a <strong>600 µs nominal retune allowance</strong> per hop, with
+the profile timing/preamble calculation accounting for it. It is a measured
+target rather than a hard maximum; packet handling and a slow board loop can
+extend an individual hop. The KISS parser services at most 32 incoming bytes
+per outer loop so a busy OpenHop serial peer cannot starve the scanner.</p>
+<p>Thus “around 0.6 ms” refers to the on-board RF setting transition, not a full
+host-to-board request/response round trip. The returned Data port (<code>0x00</code> or
+<code>0x10</code>) identifies which profile actually received each packet.</p>
+<p><code>SetRadio2</code> and <code>SetTempRadio2</code> acknowledge that their tuple was accepted and
+scheduled; they do not acknowledge that a receiver has already entered that
+tuple. The next local scanner service performs the retune. KISS clients should
+configure the profiles once and let the board perform automatic time-sharing;
+a 115200-baud serial round trip cannot be a 0.6 ms receive-hop control plane.
+Clients that need temporary-lease state can poll <code>GetTempRadio2</code>.</p>
 <h3 id="host-output-backpressure">Host Output Backpressure</h3>
 <p>Outbound frames are encoded into a 2-slot queue and flushed when serial output space is available; <code>loop()</code> never blocks on writes. Radio TX state advances independently of host read speed. TxDone is retained until it can be queued. If the outbound queue is full, the modem responds with Error (0xF1) and TxBusy (0x07). Hosts should read serial promptly to avoid delayed responses.</p>
 <h3 id="csma-behavior">CSMA Behavior</h3>
@@ -3945,6 +4038,26 @@
 <td><code>0x1A</code></td>
 <td>-</td>
 </tr>
+<tr>
+<td>SetRadio2</td>
+<td><code>0x1B</code></td>
+<td>Radio2 parameters (13; see below)</td>
+</tr>
+<tr>
+<td>GetRadio2</td>
+<td><code>0x1C</code></td>
+<td>-</td>
+</tr>
+<tr>
+<td>SetTempRadio2</td>
+<td><code>0x1D</code></td>
+<td>Radio2 parameters + duration (15)</td>
+</tr>
+<tr>
+<td>GetTempRadio2</td>
+<td><code>0x1E</code></td>
+<td>-</td>
+</tr>
 </tbody>
 </table>
 <h3 id="response-sub-commands-tnc-to-host">Response Sub-commands (TNC to Host)</h3>
@@ -4069,6 +4182,16 @@
 <td>Status (1): 0x00=disabled, 0x01=enabled</td>
 </tr>
 <tr>
+<td>Radio2</td>
+<td><code>0x9C</code></td>
+<td>Saved radio2 parameters (13)</td>
+</tr>
+<tr>
+<td>TempRadio2</td>
+<td><code>0x9E</code></td>
+<td>Active temporary radio2 + remaining minutes (15)</td>
+</tr>
+<tr>
 <td>OK</td>
 <td><code>0xF0</code></td>
 <td>-</td>
@@ -4140,7 +4263,7 @@
 <h3 id="unsolicited-events">Unsolicited Events</h3>
 <p>The TNC sends these SetHardware frames without a preceding request:</p>
 <p><strong>TxDone (0xF8)</strong>: Sent after radio transmission completes. Contains a single byte: 0x01 for success, 0x00 for failure. Delivery to the host may be delayed under serial backpressure but is not dropped.</p>
-<p><strong>RxMeta (0xF9)</strong>: Sent after each standard data frame (type 0x00) with SNR (1 byte, signed, value x4) and RSSI (1 byte, signed, dBm). Queued with the data frame; omitted if the data frame cannot be queued. Enabled by default; toggle with SetSignalReport. Standard KISS clients ignore this frame.</p>
+<p><strong>RxMeta (0xF9)</strong>: Sent after each Data frame (type 0x00 or v2 type 0x10) with SNR (1 byte, signed, value x4) and RSSI (1 byte, signed, dBm). It remains exactly two bytes; the Data port identifies the receiving profile. Queued with the data frame; omitted if the data frame cannot be queued. Enabled by default; toggle with SetSignalReport. Standard KISS clients ignore this frame.</p>
 <h2 id="data-formats">Data Formats</h2>
 <h3 id="radio-parameters-setradio-radio-response">Radio Parameters (SetRadio / Radio response)</h3>
 <p>All values little-endian.</p>
@@ -4175,6 +4298,69 @@
 </tr>
 </tbody>
 </table>
+<h3 id="secondary-radio-parameters-setradio2-radio2-response">Secondary Radio Parameters (SetRadio2 / Radio2 response)</h3>
+<p><code>SetRadio2</code> is the binary KISS equivalent of <code>radio2</code>. It changes only RAM
+state for this KISS session; it does not write the Mesh CLI profile file.
+All values are little-endian. The mode values are <code>0=off</code>, <code>1=rx</code>, and
+<code>2=rxtx</code>. An <code>off</code> tuple may contain zero radio parameters, which are ignored.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Size</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Frequency</td>
+<td>4 bytes</td>
+<td>Hz</td>
+</tr>
+<tr>
+<td>Bandwidth</td>
+<td>4 bytes</td>
+<td>Hz</td>
+</tr>
+<tr>
+<td>SF</td>
+<td>1 byte</td>
+<td>Spreading factor (5-12)</td>
+</tr>
+<tr>
+<td>CR</td>
+<td>1 byte</td>
+<td>Coding rate (5-8)</td>
+</tr>
+<tr>
+<td>Mode</td>
+<td>1 byte</td>
+<td><code>off</code>, <code>rx</code>, or <code>rxtx</code> as above</td>
+</tr>
+<tr>
+<td>Preamble</td>
+<td>2 bytes</td>
+<td>Symbols; <code>0</code> chooses automatic</td>
+</tr>
+</tbody>
+</table>
+<p><code>GetRadio2</code> returns this exact 13-byte tuple. The modem preserves the exact
+frequency and bandwidth values sent by the host even though its radio driver
+uses floating-point MHz/kHz internally.</p>
+<h3 id="temporary-secondary-radio-settempradio2-tempradio2-response">Temporary Secondary Radio (SetTempRadio2 / TempRadio2 response)</h3>
+<p><code>SetTempRadio2</code> is the binary KISS equivalent of <code>tempradio2</code>: the 13-byte
+secondary tuple followed by <code>duration_minutes:u16</code>, from 1 to 10080. It is
+RAM-only and automatically restores the saved <code>radio2</code> tuple on expiry or
+reboot. A mode <code>off</code> with duration zero cancels the temporary lease and
+immediately restores saved <code>radio2</code>; all other <code>off</code>/zero-duration combinations
+are invalid. <code>GetTempRadio2</code> returns the active 13-byte tuple plus remaining
+minutes, rounded up. It returns a zero/off tuple with zero duration when no
+temporary lease is active.</p>
+<p>Changing saved <code>radio2</code> during an active temporary lease does not interrupt
+the active tuple; the replacement becomes active when the lease ends. Pending
+KISS Data is bound to a profile generation at queue time. If that profile is
+replaced before RF transmission begins, the modem sends normal <code>TxDone(0)</code> and
+never falls back to the other profile.</p>
 <h3 id="version-version-response">Version (Version response)</h3>
 <table>
 <thead>
@@ -4404,7 +4590,8 @@
 <li>All multi-byte values are little-endian unless stated otherwise</li>
 <li>SNR values in RxMeta are multiplied by 4 for 0.25 dB precision</li>
 <li>TxDone is sent as a SetHardware event after each transmission</li>
-<li>Standard KISS clients receive only type 0x00 data frames and can safely ignore all SetHardware (0x06) frames</li>
+<li>Legacy KISS clients use only type 0x00 data and remain compatible. Version-2-aware clients can use type 0x10 to send on, or identify reception from, <code>radio2</code>.</li>
+<li>Standard KISS clients can safely ignore all SetHardware (0x06) frames</li>
 <li>See <a href="../packet_format/">packet_format.md</a> for packet format</li>
 </ul>
 
