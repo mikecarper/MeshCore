@@ -1,4 +1,4 @@
-# Temporary radio test command generator
+# Default temporary radio test · 910.1 MHz · September 21–23, 2026
 
 Use this page to join the shared temporary radio test without overwriting the
 node's saved primary radio settings. The default window is **Monday,
@@ -14,7 +14,7 @@ tuple; no source edit is required.
 
   <div data-role="content">
     <section class="preset-test-hero" aria-labelledby="preset-test-title">
-      <p class="preset-test-eyebrow">MeshCore · temporary preset test</p>
+      <p class="preset-test-eyebrow">MeshCore · default 48-hour temporary preset test</p>
       <div class="preset-test-hero-row">
         <div>
           <h2 id="preset-test-title">

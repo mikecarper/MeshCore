@@ -5,6 +5,11 @@ const fs = require("fs");
 const tool = require("../docs/_javascript/preset_test.js");
 
 const pageSource = fs.readFileSync("docs/preset_test.md", "utf8");
+assert.match(
+  pageSource,
+  /^# Default temporary radio test · 910\.1 MHz · September 21–23, 2026$/m
+);
+assert.match(pageSource, /MeshCore · default 48-hour temporary preset test/);
 assert.match(pageSource, /data-role="timezone-map"/);
 assert.match(pageSource, /type="hidden" name="tz"/);
 assert.doesNotMatch(pageSource, /<select name="tz"/);
@@ -37,6 +42,10 @@ assert.strictEqual(config.tx, 22);
 assert.strictEqual(defaults.startEpoch, config.startEpoch);
 assert.strictEqual(defaults.endEpoch, config.endEpoch);
 assert.strictEqual(defaults.freq, config.freq);
+assert.strictEqual(defaults.bw, 500);
+assert.strictEqual(defaults.sf, 8);
+assert.strictEqual(defaults.cr, 7);
+assert.strictEqual(defaults.tx, 22);
 assert.strictEqual(defaults.tz, config.tz);
 
 const browserZoneFallback = tool.configFromSearch("", "America/New_York");
