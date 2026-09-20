@@ -30,4 +30,4 @@ extra_javascript:
   - _javascript/telemetry_decoder.js
   - _javascript/management_decoder.js
   - _javascript/filter_tool.js
-  - _javascript/preset_test.js?v=20260919-1
+  - _javascript/preset_test.js?v=20260920-1
