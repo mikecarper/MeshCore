@@ -875,6 +875,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32 legacy-partition migration over Wi-Fi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../espnow_bridge_setup/" class="md-nav__link">
         
   
@@ -1261,6 +1288,33 @@
     
   
     Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Heltec V4 legacy-partition migration over Wi-Fi
   
 
     
@@ -2800,10 +2854,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_91" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_93" >
         
           
-          <label class="md-nav__link" for="__nav_91" id="__nav_91_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_93" id="__nav_93_label" tabindex="0">
             
   
   
@@ -2821,8 +2875,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_91_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_91">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_93_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_93">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -3082,7 +3136,7 @@ and partition policy:</p>
 <tbody>
 <tr>
 <td><code>auto</code></td>
-<td>For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other repeaters attempt the complete recipe in their current application region. A non-repeater keeps every capability declared by its resolved PlatformIO recipe, including LoRa OTA, and fails instead of silently removing one that does not fit. A measured repeater flash/partition overflow starts the standard <code>no_external_sensors</code> LoRa OTA pass. Internal-flash nRF52 repeaters publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD repeaters do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract.</td>
+<td>For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other standalone repeaters and room servers attempt the complete recipe in their current application region. Other roles keep every capability declared by their resolved PlatformIO recipe, including LoRa OTA, and fail instead of silently removing one that does not fit. A measured repeater or room-server flash/partition overflow starts the standard <code>no_external_sensors</code> LoRa OTA pass. Internal-flash nRF52 repeaters and room servers publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD roles do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract.</td>
 </tr>
 <tr>
 <td><code>standard</code></td>
@@ -3119,7 +3173,10 @@ For the normal-role partition migrations, the matrix also publishes a
 canonical Full image under the normal target identity. Install its matching
 merged image over USB once; mOTA rejects the incompatible partition signature
 until that migration is complete, then later Full updates use the normal
-target ID. The portable image remains available while deployed nodes move.
+target ID. The portable image remains available while deployed nodes move.</p>
+<p>Legacy supported ESP32 Wi-Fi repeaters can use the
+<a href="../esp32_wifi_partition_migration/">Wi-Fi partition migration</a> bridge to
+preserve their identity and install an expanded Full image without a USB flash.
 The default <code>cascade</code> settings profile enables device and LoRa RX power saving;
 saved preferences take precedence, and active USB/network services can prevent
 device sleep. <code>--profile default</code> instead uses the upstream power-saving defaults.</p>
@@ -3191,7 +3248,7 @@ getters; relaying a command over LoRa keeps its remote restrictions.</p>
 <td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader, the complete CLI, and up to 254 neighbors, subject to recorded internal-DRAM reductions.</td>
 </tr>
 <tr>
-<td>Internal-flash nRF52 repeater auto pair</td>
+<td>Internal-flash nRF52 repeater/room-server auto pair</td>
 <td><code>full-ota</code> retains the board's external-sensor drivers; <code>reduced-ota</code> omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured cost below 5 KiB. Both artifacts carry the same stable OTA target identity and are checked for <code>ota ...</code> and <code>retry.preset</code>; RAK artifacts also verify the retained monitor drivers.</td>
 </tr>
 <tr>

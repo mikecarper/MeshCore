@@ -751,6 +751,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32 legacy-partition migration over Wi-Fi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../espnow_bridge_setup/" class="md-nav__link">
         
   
@@ -1137,6 +1164,33 @@
     
   
     Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Heltec V4 legacy-partition migration over Wi-Fi
   
 
     
@@ -2917,10 +2971,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_91" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_93" >
         
           
-          <label class="md-nav__link" for="__nav_91" id="__nav_91_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_93" id="__nav_93_label" tabindex="0">
             
   
   
@@ -2938,8 +2992,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_91_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_91">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_93_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_93">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -3405,7 +3459,7 @@ contract.</p>
 <ul>
 <li>A destination artifact explicitly identified by its release table as install-capable. Some lean internal
   nRF52 builds carry <code>lora_ota_no_external_sensors</code> in the filename, while matched QSPI boards enable install
-  support in the normal full-sensor repeater artifact, so filename text alone is not authoritative. Confirm
+  support in the normal full-sensor repeater or room-server artifact, so filename text alone is not authoritative. Confirm
   support with <code>ota self</code> and <code>ota status</code>. Intermediate repeaters do <strong>not</strong> need an install-capable build:
   current repeater firmware relays OTA packets opaquely without storing or installing them.</li>
 <li>An OTA-enabled MeshCore source connected to the computer by USB serial, or
@@ -3416,8 +3470,9 @@ contract.</p>
 apply their normal forwarding filters, duplicate checks, and flood limits; they do not interpret the OTA
 payload. If any required window closes, the transfer stops making progress and can resume during a later
 overlapping window.</p>
-<p><code>build.sh</code> provides a <code>*_repeater_lora_ota_no_external_sensors</code> build for standalone ESP32 and nRF52 repeater
-targets that need a smaller internal update workspace. Those siblings omit selected optional environmental
+<p><code>build.sh</code> provides a <code>*_repeater_lora_ota_no_external_sensors</code> or
+<code>*_room_server_lora_ota_no_external_sensors</code> build for standalone ESP32 and nRF52
+infrastructure targets that need a smaller internal update workspace. Those siblings omit selected optional environmental
 and ranging drivers while retaining board-native features such as displays, buttons, battery monitoring,
 and GPS where the target uses the GPS-preserving lean profile. RAK3401 and RAK4631 reduced builds also
 retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors; together these drivers cost less
@@ -3436,7 +3491,7 @@ bus at those addresses. Keep RAK12500 at <code>0x42</code>, strap INA3221 A0 to 
 <code>-DTELEM_INA3221_ADDRESS=0x43</code> when both are installed.</p>
 <p>Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
-repeater install-capable; those targets do not need to reserve internal flash
+repeater or room-server install-capable; those targets do not need to reserve internal flash
 for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
 path and therefore do not emit redundant no-external-sensors siblings. A
 RAK19007 can use the same separately wired W25Q16 with either RAK4631 or
@@ -3450,13 +3505,13 @@ ota</code>), the complete CLI, and up to 254 neighbors; constrained targets use 
 as recorded in their capability manifests. RP2040 and STM32
 repeaters do not currently have a safe self-apply path, but current repeater
 firmware can still relay OTA packets opaquely during TempRadio.</p>
-<p>For one explicitly selected internal-flash nRF52 repeater, the default
+<p>For one explicitly selected internal-flash nRF52 repeater or room server, the default
 <code>--build-profile auto</code> run emits two install-capable choices. The
 <code>*-full-ota-*</code> artifact retains external sensors, while the
 <code>*_lora_ota_no_external_sensors-reduced-ota-*</code> artifact trades only those
 optional drivers not explicitly retained by the board profile for more delta-staging space. They retain the same OTA target
 identity so update tooling does not confuse the optimization choice with a
-different board. QSPI- and SD-backed repeaters emit only the complete choice
+different board. QSPI- and SD-backed repeater and room-server roles emit only the complete choice
 unless a measured size failure requires a fallback.</p>
 <p>nRF52 <code>-ota-</code> siblings are compiled with size optimization instead of the Adafruit platform's default
 speed optimization. This prevents the retained software Ed25519 fallback from expanding beyond the fixed

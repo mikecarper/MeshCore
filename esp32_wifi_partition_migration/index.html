@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/companion_contact_cache_results/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/esp32_wifi_partition_migration/">
       
       
-        <link rel="prev" href="../companion_contact_cache/">
+        <link rel="prev" href="../esp32_memory_budget/">
       
       
-        <link rel="next" href="../companion_offline_queue/">
+        <link rel="next" href="../espnow_bridge_setup/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Contact-cache and NimBLE RAM qualification - MeshCore Docs</title>
+        <title>ESP32 legacy-partition migration over Wi-Fi - MeshCore Docs</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contact-cache-and-nimble-ram-qualification" class="md-skip">
+        <a href="#esp32-legacy-partition-migration-over-wi-fi" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contact-cache and NimBLE RAM qualification
+              ESP32 legacy-partition migration over Wi-Fi
             
           </span>
         </div>
@@ -505,37 +505,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contact-cache and NimBLE RAM qualification
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../companion_contact_cache_results/" class="md-nav__link">
         
   
   
@@ -551,70 +524,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#linked-internal-ram" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Linked internal RAM
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#physical-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Physical checks
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shared-secret-timing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shared-secret timing
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#regression-checks-and-evidence" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Regression checks and evidence
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -839,10 +748,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32 legacy-partition migration over Wi-Fi
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -858,6 +794,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-bridge-preserves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the bridge preserves
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#eligible-source-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Eligible source layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-and-migrate-a-seeed-xiao-esp32-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build and migrate a Seeed XIAO ESP32-S3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heltec-v4-v43" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heltec V4 / V4.3
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2971,10 +2971,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#linked-internal-ram" class="md-nav__link">
+  <a href="#what-the-bridge-preserves" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Linked internal RAM
+        What the bridge preserves
       
     </span>
   </a>
@@ -2982,10 +2982,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#physical-checks" class="md-nav__link">
+  <a href="#eligible-source-layout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Physical checks
+        Eligible source layout
       
     </span>
   </a>
@@ -2993,10 +2993,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#shared-secret-timing" class="md-nav__link">
+  <a href="#build-and-migrate-a-seeed-xiao-esp32-s3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Shared-secret timing
+        Build and migrate a Seeed XIAO ESP32-S3
       
     </span>
   </a>
@@ -3004,10 +3004,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#regression-checks-and-evidence" class="md-nav__link">
+  <a href="#heltec-v4-v43" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Regression checks and evidence
+        Heltec V4 / V4.3
       
     </span>
   </a>
@@ -3031,7 +3031,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/companion_contact_cache_results.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/esp32_wifi_partition_migration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -3039,242 +3039,90 @@
   
 
 
-<h1 id="contact-cache-and-nimble-ram-qualification">Contact-cache and NimBLE RAM qualification</h1>
-<p>Test date: 2026-09-08. Firmware source: <code>b68aa1c6</code>.</p>
-<p>All six constrained ESP32 Full Companion trials pass the linked RAM budget
-at <strong>350 contacts, 40 channels and 256 normal offline frames</strong>. Their final
-capability manifests confirm compiled Bluetooth/mOTA support and valid WiFi
-OTA layouts.
-These are the optional environments in the
-<a href="../companion_contact_cache/">contact-cache guide</a>. Ordinary release recipes
-retain their established contact limits pending qualification on those boards.</p>
-<h2 id="linked-internal-ram">Linked internal RAM</h2>
-<p>Every column below uses 350 contacts, 40 channels and 256 normal offline
-frames. Values are bytes available for runtime allocations after linking.
-The final margin subtracts the existing conservative runtime reservation;
-it is not a measurement of live free heap.</p>
+<h1 id="esp32-legacy-partition-migration-over-wi-fi">ESP32 legacy-partition migration over Wi-Fi</h1>
+<p>The partition-migration bridge lets a supported ESP32 node move from a small
+dual-OTA layout to a verified larger dual-OTA layout without cable flashing.
+It is designed for inaccessible repeaters: the bridge itself fits a legacy
+1.25 MiB slot, replaces the table from Wi-Fi, and then exposes Wi-Fi again for
+the full application image.</p>
+<p>It currently has explicit, byte-for-byte generated target plans for Arduino
+ESP32 <code>default_8MB.csv</code> and <code>default_16MB.csv</code>. It does not guess a table for
+other flash sizes. Adding a board later means adding one reviewed target plan
+and its generated table-prefix test; the bridge core is otherwise shared.</p>
 <table>
 <thead>
 <tr>
-<th>Hardware</th>
-<th style="text-align: right;">Bluedroid</th>
-<th style="text-align: right;">NimBLE</th>
-<th style="text-align: right;">NimBLE + mOTA queue loan</th>
-<th style="text-align: right;">Plus contact caches</th>
-<th style="text-align: right;">Final margin</th>
+<th>Flash size</th>
+<th>Target table</th>
+<th>app0 / app1 size</th>
+<th>Typical board</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Heltec V3</td>
-<td style="text-align: right;">143,776</td>
-<td style="text-align: right;">158,896</td>
-<td style="text-align: right;">170,152</td>
-<td style="text-align: right;">196,168</td>
-<td style="text-align: right;">23,112</td>
+<td>8 MiB</td>
+<td><code>default_8MB.csv</code></td>
+<td>0x330000 / 0x330000</td>
+<td>Seeed XIAO ESP32-S3</td>
 </tr>
 <tr>
-<td>Wireless Tracker</td>
-<td style="text-align: right;">148,432</td>
-<td style="text-align: right;">163,536</td>
-<td style="text-align: right;">174,792</td>
-<td style="text-align: right;">200,824</td>
-<td style="text-align: right;">30,838</td>
-</tr>
-<tr>
-<td>Tracker V2, FEM on</td>
-<td style="text-align: right;">133,064</td>
-<td style="text-align: right;">148,168</td>
-<td style="text-align: right;">159,416</td>
-<td style="text-align: right;">185,456</td>
-<td style="text-align: right;">15,470</td>
-</tr>
-<tr>
-<td>Heltec CT62</td>
-<td style="text-align: right;">99,040</td>
-<td style="text-align: right;">114,096</td>
-<td style="text-align: right;">125,312</td>
-<td style="text-align: right;">151,344</td>
-<td style="text-align: right;">15,152</td>
-</tr>
-<tr>
-<td>XIAO ESP32-C3</td>
-<td style="text-align: right;">98,816</td>
-<td style="text-align: right;">113,888</td>
-<td style="text-align: right;">125,120</td>
-<td style="text-align: right;">151,152</td>
-<td style="text-align: right;">14,960</td>
-</tr>
-<tr>
-<td>Generic ESP-NOW</td>
-<td style="text-align: right;">99,776</td>
-<td style="text-align: right;">114,800</td>
-<td style="text-align: right;">126,032</td>
-<td style="text-align: right;">152,064</td>
-<td style="text-align: right;">15,872</td>
+<td>16 MiB</td>
+<td><code>default_16MB.csv</code></td>
+<td>0x640000 / 0x640000</td>
+<td>Heltec V4 / V4.3 OLED</td>
 </tr>
 </tbody>
 </table>
-<p>NimBLE recovers about 14.7 KiB. Contact caches add about 25.4 KiB on top of
-NimBLE and the shared mOTA workspace. NimBLE alone fails the unchanged budget
-at this capacity on all six; adding the queue loan passes only on the original
-Wireless Tracker. Adding the contact caches passes all six, with 14.6-30.1 KiB
-of margin. The same Bluetooth runtime allowance is used in every comparison.</p>
-<p>The shared mOTA queue stays at 256 frames normally and retains 128 while
-mOTA borrows its workspace, then returns to 256. A queue above 128 must be
-synchronized before that workspace can be borrowed; unread frames are not
-discarded to start mOTA. PSRAM-backed queues retain their existing policy.</p>
-<p>The baseline builds use <code>b041fc7f</code>; the final builds use <code>b68aa1c6</code>, with the
-same ESP32 Arduino 2.0.17 toolchain and NimBLE-Arduino 2.5.1 where applicable.</p>
-<p>The CT62, XIAO C3 and Generic ESP-NOW applications fit two 1.5 MiB OTA slots
-on 4 MiB flash. Their explicit trial layouts retain 896 KiB SPIFFS and the
-existing SPIFFS/coredump addresses. Install the merged image over USB when
-changing from the ordinary single-slot Full layout. The other three trials
-also retain verified dual WiFi OTA slots. All six remain mOTA senders.</p>
-<p>Additional builds check the platform and default-policy branches:</p>
-<table>
-<thead>
-<tr>
-<th>Build</th>
-<th style="text-align: right;">Available bytes</th>
-<th style="text-align: right;">Reserved runtime bytes</th>
-<th style="text-align: right;">Margin bytes</th>
-<th>Policy</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>T096 Full, FEM on</td>
-<td style="text-align: right;">100,076</td>
-<td style="text-align: right;">73,728</td>
-<td style="text-align: right;">26,348</td>
-<td>nRF52 path/secret caches</td>
-</tr>
-<tr>
-<td>RAK3401 Full</td>
-<td style="text-align: right;">99,900</td>
-<td style="text-align: right;">50,976</td>
-<td style="text-align: right;">48,924</td>
-<td>nRF52 path/secret caches</td>
-</tr>
-<tr>
-<td>Wireless Paper Full</td>
-<td style="text-align: right;">187,360</td>
-<td style="text-align: right;">152,576</td>
-<td style="text-align: right;">34,784</td>
-<td>ESP32 caches, existing Bluedroid</td>
-</tr>
-<tr>
-<td>V4 Full NimBLE</td>
-<td style="text-align: right;">263,944</td>
-<td style="text-align: right;">173,056</td>
-<td style="text-align: right;">90,888</td>
-<td>Complete contacts in PSRAM</td>
-</tr>
-<tr>
-<td>XIAO nRF52 legacy BLE Companion</td>
-<td style="text-align: right;">84,368</td>
-<td style="text-align: right;">38,688</td>
-<td style="text-align: right;">45,680</td>
-<td>Existing inline contact storage</td>
-</tr>
-</tbody>
-</table>
-<p>The V4 test-only forced-cache build also passes its RAM budget. The V4 normally
-keeps complete contacts in PSRAM; forcing caches adds internal RAM overhead.
-The six-board savings above apply to boards without PSRAM.</p>
-<h2 id="physical-checks">Physical checks</h2>
-<p>The VM V4 used the test-only cache override. USB tests verified all 350
-contacts and all 64 saved path bytes per contact, cold individual lookups,
-replacement of the complete path set, and persistence after reboot. A secret
-workload contacted 21 distinct synthetic peers, then the first peer twice:
-22 calculations, one RAM hit, and no secret-file access under the ESP32 policy.</p>
-<p>A sustained send test exposed a false receive watchdog recovery. RX could
-occur inside the main loop between two successful transmissions, while the
-watchdog observed TX at both loop boundaries. It counted from the start of
-the whole burst and could reset a working radio during a later CAD pause.
-<code>468cc3cf</code> restarts the receive recovery allowance after each successful TX.
-The native regression fails before that change and passes afterward; it also
-checks that a stuck receiver still gets recovered.</p>
-<p>The corrected V4 passed the same 23-datagram workload with zero radio error
-flags. It also passed a complete 350-path replacement, another send workload
-and a post-reboot path check with zero radio error flags. The replacement
-took about 127 seconds: dirty-cache eviction still performs synchronous
-SPIFFS contact-file saves, so bulk path updates remain a latency workload
-to qualify on the other ESP32 boards. After that run it reported 133,828 bytes free internal heap, a minimum
-of 130,976 bytes, and a largest free block of 122,868 bytes. These readings
-belong to the forced-cache V4 workload, not the six other boards.</p>
-<p>After qualification, the VM V4 was erased to remove synthetic contacts and
-installed with the normal PSRAM-backed V4 NimBLE trial from <code>b68aa1c6</code>. It is
-named <code>NimBLE-V4-VM</code>, uses the PIN shown on its display, and has powersaving
-off for USB use. That clean setup reported 143,612 bytes of free internal heap
-and passed 201 local USB requests with zero radio error flags. The Mercer V4 and
-XIAO S3 were left on their previously qualified NimBLE builds.</p>
-<p>The Mercer RAK3401 Full Companion verified 350 paths, eviction and persistence.
-Its first secret workload produced 21 calculations, one flash hit and one RAM
-hit with no skipped saves. After reboot, the same workload produced 22 flash
-hits, one RAM hit and <strong>zero calculations</strong>. Both completed with zero radio
-error flags. The final <code>b68aa1c6</code> RAK image repeated the 350-path and saved-secret
-checks with zero radio errors and zero calculations. The RAK was returned to
-the published <code>26303793</code> repeater
-application with its original repeater name and USA Cascade settings; the
-Pi's MQTT logger was restarted after the exclusive USB tests.</p>
-<h2 id="shared-secret-timing">Shared-secret timing</h2>
-<table>
-<thead>
-<tr>
-<th>Hardware/filesystem</th>
-<th style="text-align: right;">Successful saved-secret lookup</th>
-<th style="text-align: right;">Key exchange</th>
-<th>Selected miss policy</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>V4 / SPIFFS</td>
-<td style="text-align: right;">132,427 us</td>
-<td style="text-align: right;">21,932 us</td>
-<td>Recalculate</td>
-</tr>
-<tr>
-<td>RAK3401 / LittleFS</td>
-<td style="text-align: right;">7,812-8,789 us</td>
-<td style="text-align: right;">31,250 us</td>
-<td>Read saved entry, calculate on miss</td>
-</tr>
-</tbody>
-</table>
-<p>The SPIFFS timing comes from the earlier forced flash-cache experiment. The
-final ESP32 policy does no secret-file I/O. Both platforms reuse the 16 most
-recent secrets from RAM. These are elapsed-time measurements, not energy
-measurements; timing on other ESP32/nRF52 boards remains to be measured.</p>
-<h2 id="regression-checks-and-evidence">Regression checks and evidence</h2>
-<p>The contact-cache suite exercises the production cache and persistence code
-under address/undefined-behavior sanitizers, with the real Ed25519 key-exchange
-implementation. Its cases include 350 paths, identity changes, snapshots,
-legacy migration, storage faults, handle exhaustion and packet release when
-a cold path cannot be read. The related contract suites passed 62 checks.
-The native queue/store suites passed 27 cases, the radio-liveness suite passed
-eight, and the partition-selection suite passed 11.</p>
-<p>Hardware reproduction commands are in the
-<a href="../companion_contact_cache/#regression-checks">contact-cache guide</a>. The tracked
-harness is <code>tools/hil/contact_cache_serial_stress.py</code>. It requires exclusive
-access to the specified Companion data port.</p>
-<p>Local evidence in the qualification workspace:</p>
+<h2 id="what-the-bridge-preserves">What the bridge preserves</h2>
+<p>Before it touches the partition table, the bridge reads the historical
+<code>/identity/_main.id</code> SPIFFS file. It requires all 96 bytes (32-byte public key
+followed by its 64-byte private key), stages them in an NVS namespace that is
+unchanged by both target layouts, then changes the table. On the first boot
+with the expanded layout it writes the staged value into SPIFFS, reads it back
+byte-for-byte, and only then clears the NVS staging record and offers the final
+uploader.</p>
+<p>The private identity is the guaranteed preservation boundary. The old SPIFFS
+image is deliberately not raw-copied into an expanded partition: SPIFFS is not
+safe to resize that way. Other SPIFFS-backed settings can be recreated after
+the full image boots.</p>
+<h2 id="eligible-source-layout">Eligible source layout</h2>
+<p>The bridge only accepts a source table that has all of the following:</p>
 <ul>
-<li><code>.releases/nimble-six-capacity/control/results.json</code>: 18 baseline builds.</li>
-<li><code>.releases/contact-cache/qualified/control/results.json</code>: final build results.</li>
-<li><code>.releases/contact-cache/qualified/built/</code>: firmware, ELFs, maps, RAM reports,
-  partition tables and capability manifests.</li>
-<li><code>.releases/contact-cache/qualified/control/</code>: final V4 USB and flash checks.</li>
-<li><code>.releases/contact-cache/control/</code>: earlier experiments, RAK results and
-  regression logs, including the watchdog's failing/passing test runs.</li>
+<li>NVS at <code>0x9000</code>, size <code>0x5000</code>, and OTA metadata at <code>0xE000</code>, size <code>0x2000</code>.</li>
+<li>Two distinct, non-empty OTA application slots and a non-empty SPIFFS
+  partition, all inside the physical flash size.</li>
+<li>A known exact 8 MiB or 16 MiB physical flash capacity and a source table
+  different from that capacity's target table.</li>
 </ul>
-<p>Each final RAM report is checked against its ELF hash. All 12 final builds pass
-their RAM and OTA capability checks. Physical testing here covers the V4 and
-RAK3401; the six constrained ESP32 boards still need pairing, WiFi/BLE/LoRa
-coexistence and sustained-load testing on their own hardware. No GitHub release
-assets or firmware-picker entries were replaced by these experimental builds.</p>
+<p>This means the source app-slot and SPIFFS sizes can vary; the bridge validates
+the live geometry instead of carrying board-name rules. It also ensures it is
+running from one source OTA slot. If it arrived in B, it CRC-copies itself to
+the future A address, selects A in OTA metadata, writes the table, and
+restarts. It therefore works whether the browser OTA updater placed the bridge
+in legacy A or B.</p>
+<p>Keep power stable while the bridge is replacing the 4 KiB table sector. A loss
+of power before that point leaves the old table and source intact. After that
+small critical write, the selected A copy of the bridge is the recovery path.</p>
+<h2 id="build-and-migrate-a-seeed-xiao-esp32-s3">Build and migrate a Seeed XIAO ESP32-S3</h2>
+<p>The production bridge is a legacy-slot application image:</p>
+<pre><code class="language-powershell">&amp; &quot;$env:USERPROFILE\.platformio\penv\Scripts\pio.exe&quot; run -e xiao_s3_partition_migrator
+</code></pre>
+<p>Build the Full XIAO image with its 8 MiB table:</p>
+<pre><code class="language-powershell">$env:MESHCORE_ESP32_FULL_BUILD = '1'
+&amp; &quot;$env:USERPROFILE\.platformio\penv\Scripts\pio.exe&quot; run -e Xiao_S3_WIO_repeater_observer_mqtt
+</code></pre>
+<p>Upload the bridge through the legacy node's existing Wi-Fi browser updater.
+Then join <code>MeshCore-Migrate</code> (password <code>meshcore-migrate</code>) and wait for
+<strong>Expanded layout ready</strong>. Upload the Full app-only <code>.bin</code> from the second
+build at <code>/update</code>. Do not upload an <code>-merged.bin</code>: merged images include
+bootloader and table offsets for cable flashing, not browser OTA.</p>
+<p><code>xiao_s3_partition_legacy_seed</code> is a disposable-hardware test image only. It
+models the legacy table and an identity file; it is not a deployable repeater.</p>
+<h2 id="heltec-v4-v43">Heltec V4 / V4.3</h2>
+<p>Build <code>heltec_v4_partition_migrator</code>, upload it through the legacy Wi-Fi
+updater, then upload the Full V4 app-only image after the bridge reports ready.
+The 16 MiB target table creates two 6.25 MiB OTA slots. See the
+<a href="../heltec_v4_wifi_partition_migration/">V4 build notes</a> for its build command.</p>
 
 
 
