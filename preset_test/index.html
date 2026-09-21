@@ -62,7 +62,7 @@
     
       <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
     
-      <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260916-3">
+      <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260921-1">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -2987,6 +2987,36 @@ create a shareable temporary-radio test URL.</span></p>
         </div>
       </div>
 
+      <div class="preset-test-clock-override">
+        <label>
+          <span>Node clock reported by <code>clock</code> (UTC, optional)</span>
+          <input
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+            spellcheck="false"
+            data-role="node-clock-input"
+            placeholder="02:42 22/9/2026 UTC"
+          >
+          <small>
+            Paste the node's <code>clock</code> reply immediately after it arrives.
+            The firmware form <code>02:42 - 22/9/2026 UTC</code> is also accepted.
+            Leave this blank to keep the normal UTC schedule epochs unchanged.
+          </small>
+        </label>
+        <button type="button" data-action="apply-node-clock">Apply clock conversion</button>
+      </div>
+      <p class="preset-test-clock-status" data-role="node-clock-status" aria-live="polite">
+        No node-clock correction is applied. Scheduled commands use the normal UTC epochs.
+      </p>
+
+      <p class="preset-test-note">
+        This changes only the absolute <code>tempradioat</code> and
+        <code>tempradioat2</code> epochs shown on this page; it does not issue a
+        clock-setting command. The correction is for this node only. If the node
+        clock later syncs or jumps, delete and queue the schedule again.
+      </p>
+
       <div class="preset-test-grid preset-test-grid--clock">
         <article class="preset-test-card">
           <h3>Remote admin session</h3>
@@ -3015,6 +3045,10 @@ clock</code></pre>
             copy and run the fresh local clock command above, verify with <code>clock</code>,
             and then add the Companion <code>tempradioat2</code> schedule again. The
             reboot clears any pending scheduled entries.
+          </p>
+          <p>
+            If resetting or correcting this remote node's clock is not safe, leave
+            it unchanged and use the optional node-clock conversion above instead.
           </p>
           <pre><code data-command="reset-clock">clkreboot</code></pre>
           <button type="button" data-copy-command="reset-clock">Copy clock reset command</button>
@@ -3072,7 +3106,9 @@ clock</code></pre>
         <code>tempradioat</code>. A Companion can instead schedule its second
         profile with <code>tempradioat2</code>. Both commands use the exact UTC
         epochs below, switch at the common start, and restore saved settings at
-        the common end. Room-server and sensor roles use Option 1 instead.
+        the common end. A node-clock conversion above replaces only those command
+        epochs with its per-node translated values. Room-server and sensor roles
+        use Option 1 instead.
       </p>
 
       <div class="preset-test-grid">
@@ -3393,7 +3429,7 @@ clock</code></pre>
       
         <script src="../_javascript/filter_tool.js"></script>
       
-        <script src="../_javascript/preset_test.js?v=20260921-2"></script>
+        <script src="../_javascript/preset_test.js?v=20260921-3"></script>
       
     
   </body>

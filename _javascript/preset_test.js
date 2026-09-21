@@ -15,6 +15,7 @@
     7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500,
   ]);
   const SCHEDULE_HORIZON_MS = 0x7fffffff;
+  const SCHEDULER_EPOCH_MAX = 0xffffffff;
   const EARLY_JOIN_MS = 60 * 60 * 1000;
   const CLOCK_RESET_COMMAND = "clkreboot";
   const TIMEZONE_BOUNDARY_PATH = "../_data/timezones-2025b-simplified.json";
@@ -100,6 +101,74 @@
       );
     }
     return milliseconds;
+  }
+
+  function parseNodeClock(value) {
+    const text = String(value || "").trim();
+    if (!text) return null;
+    const match = /^(\d{1,2}):(\d{2})\s*(?:-\s*)?(\d{1,2})\/(\d{1,2})\/(\d{4})\s+UTC$/i.exec(text);
+    if (!match) {
+      throw new PresetTestError(
+        "node clock must be HH:mm DD/M/YYYY UTC"
+      );
+    }
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    const day = Number(match[3]);
+    const month = Number(match[4]);
+    const year = Number(match[5]);
+    if (hour > 23 || minute > 59 || day < 1 || month < 1 || month > 12) {
+      throw new PresetTestError("node clock must be a real UTC date and time");
+    }
+    const milliseconds = Date.UTC(year, month - 1, day, hour, minute, 0);
+    const parsed = new Date(milliseconds);
+    if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 ||
+        parsed.getUTCDate() !== day || parsed.getUTCHours() !== hour ||
+        parsed.getUTCMinutes() !== minute) {
+      throw new PresetTestError("node clock must be a real UTC date and time");
+    }
+    const epoch = Math.floor(milliseconds / 1000);
+    if (epoch < 0 || epoch > SCHEDULER_EPOCH_MAX) {
+      throw new PresetTestError("node clock must be within the firmware epoch range");
+    }
+    return epoch;
+  }
+
+  function nodeClockOffsetSeconds(nodeClockEpoch, browserNowMs) {
+    if (nodeClockEpoch === null) return 0;
+    if (!Number.isSafeInteger(nodeClockEpoch) ||
+        nodeClockEpoch < 0 || nodeClockEpoch > SCHEDULER_EPOCH_MAX) {
+      throw new PresetTestError("node clock must be a Unix epoch within the firmware range");
+    }
+    if (!Number.isFinite(browserNowMs)) {
+      throw new PresetTestError("browser clock is unavailable");
+    }
+    const browserEpoch = Math.floor(browserNowMs / 60000) * 60;
+    return nodeClockEpoch - browserEpoch;
+  }
+
+  function schedulerEpochs(config, clockOffsetSeconds) {
+    const offset = clockOffsetSeconds == null ? 0 : clockOffsetSeconds;
+    if (!Number.isSafeInteger(offset)) {
+      throw new PresetTestError("node clock offset must be whole seconds");
+    }
+    const startEpoch = config.startEpoch + offset;
+    const endEpoch = config.endEpoch + offset;
+    if (startEpoch < 1 || endEpoch < 1 ||
+        startEpoch > SCHEDULER_EPOCH_MAX || endEpoch > SCHEDULER_EPOCH_MAX) {
+      throw new PresetTestError("adjusted scheduler epochs are outside the firmware range");
+    }
+    return Object.freeze({ startEpoch: startEpoch, endEpoch: endEpoch });
+  }
+
+  function formatClockOffset(seconds) {
+    const absolute = Math.abs(seconds);
+    const hours = Math.floor(absolute / 3600);
+    const minutes = Math.floor((absolute % 3600) / 60);
+    const parts = [];
+    if (hours) parts.push(hours + "h");
+    if (minutes || !parts.length) parts.push(minutes + "m");
+    return parts.join(" ");
   }
 
   function numberText(value) {
@@ -295,19 +364,20 @@
     return { available: true, reason: "Ready to queue after the node clock is verified." };
   }
 
-  function commandsFor(config, nowMs) {
+  function commandsFor(config, nowMs, clockOffsetSeconds) {
     const tuple = [config.freqText, config.bwText, config.sf, config.cr].join(",");
     const minutes = remainingMinutes(config, nowMs);
+    const scheduled = schedulerEpochs(config, clockOffsetSeconds);
     return Object.freeze({
       stockNow: "tempradio " + tuple + "," + minutes,
       companionNow:
         "set radio2.cross on\nset tempradio2 " + tuple + ",rxtx," + minutes,
       primaryScheduled:
-        "set tempradioat " + tuple + "," + config.startEpoch + "," +
-        config.endEpoch + "\nget tempradioat",
+        "set tempradioat " + tuple + "," + scheduled.startEpoch + "," +
+        scheduled.endEpoch + "\nget tempradioat",
       companionScheduled:
         "set radio2.cross on\nset tempradioat2 " + tuple + ",rxtx," +
-        config.startEpoch + "," + config.endEpoch + "\nget tempradioat2",
+        scheduled.startEpoch + "," + scheduled.endEpoch + "\nget tempradioat2",
       stockCancelDuring: "tempradio " + tuple + ",1",
       stockLeaveIn30: "tempradio " + tuple + ",30",
       primaryCancel:
@@ -753,6 +823,61 @@
     const builderDisclosure = root.querySelector('[data-role="url-builder-disclosure"]');
     if (builderDisclosure) builderDisclosure.open = !showTest;
 
+    let activeClockOffsetSeconds = 0;
+
+    function setScheduledCommands() {
+      const staticCommands = commandsFor(
+        config,
+        config.startMs,
+        activeClockOffsetSeconds
+      );
+      setCommand(root, "primary-scheduled", staticCommands.primaryScheduled);
+      setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
+      return staticCommands;
+    }
+
+    function setNodeClockStatus(message, state) {
+      const status = root.querySelector('[data-role="node-clock-status"]');
+      if (!status) return;
+      status.textContent = message;
+      status.dataset.state = state || "normal";
+    }
+
+    function applyNodeClock() {
+      const input = root.querySelector('[data-role="node-clock-input"]');
+      const text = input ? input.value : "";
+      if (!String(text).trim()) {
+        activeClockOffsetSeconds = 0;
+        setScheduledCommands();
+        setNodeClockStatus(
+          "No node-clock correction is applied. Scheduled commands use the normal UTC epochs.",
+          "normal"
+        );
+        return;
+      }
+      try {
+        const nodeClockEpoch = parseNodeClock(text);
+        const offset = nodeClockOffsetSeconds(nodeClockEpoch, Date.now());
+        schedulerEpochs(config, offset);
+        activeClockOffsetSeconds = offset;
+        setScheduledCommands();
+        const direction = offset === 0
+          ? "matches browser UTC to the minute"
+          : "is " + formatClockOffset(offset) + (offset > 0 ? " ahead of" : " behind") +
+            " browser UTC";
+        setNodeClockStatus(
+          "Node clock " + direction + ". Absolute schedule commands now use this fixed correction. " +
+          "If the node clock later syncs or jumps, delete and requeue the schedule.",
+          "adjusted"
+        );
+      } catch (error) {
+        setNodeClockStatus(
+          error.message + ". The previous schedule correction remains unchanged.",
+          "error"
+        );
+      }
+    }
+
     if (showTest) {
       setPageText('[data-role="preset-test-page-title"]', presetPageTitle(config));
       setPageText('[data-role="preset-test-page-summary"]', presetPageSummary(config));
@@ -776,9 +901,7 @@
           " window. Saved primary settings return automatically at the end."
       );
 
-      const staticCommands = commandsFor(config, config.startMs);
-      setCommand(root, "primary-scheduled", staticCommands.primaryScheduled);
-      setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
+      const staticCommands = setScheduledCommands();
       setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
       setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
       setCommand(root, "primary-cancel", staticCommands.primaryCancel);
@@ -786,6 +909,22 @@
       setCommand(root, "companion-cancel-during", staticCommands.companionCancelDuring);
       setCommand(root, "companion-leave-30", staticCommands.companionLeaveIn30);
       setCommand(root, "reset-clock", CLOCK_RESET_COMMAND);
+    }
+
+    if (showTest) {
+      const nodeClockInput = root.querySelector('[data-role="node-clock-input"]');
+      const applyNodeClockButton = root.querySelector('[data-action="apply-node-clock"]');
+      if (nodeClockInput) {
+        nodeClockInput.addEventListener("change", applyNodeClock);
+        nodeClockInput.addEventListener("keydown", function (event) {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          applyNodeClock();
+        });
+      }
+      if (applyNodeClockButton) {
+        applyNodeClockButton.addEventListener("click", applyNodeClock);
+      }
     }
 
     const generator = root.querySelector('[data-role="url-generator"]');
@@ -873,7 +1012,7 @@
       const status = root.querySelector('[data-role="status"]');
       const primarySchedule = primaryScheduleAvailability(config, nowMs);
       const schedule = scheduleAvailability(config, nowMs);
-      const commands = commandsFor(config, nowMs);
+      const commands = commandsFor(config, nowMs, activeClockOffsetSeconds);
 
       status.dataset.state = phase;
       if (phase === "before") {
@@ -963,9 +1102,14 @@
     DEFAULTS: DEFAULTS,
     VALID_BANDWIDTHS: VALID_BANDWIDTHS,
     SCHEDULE_HORIZON_MS: SCHEDULE_HORIZON_MS,
+    SCHEDULER_EPOCH_MAX: SCHEDULER_EPOCH_MAX,
     EARLY_JOIN_MS: EARLY_JOIN_MS,
     CLOCK_RESET_COMMAND: CLOCK_RESET_COMMAND,
     PresetTestError: PresetTestError,
+    parseNodeClock: parseNodeClock,
+    nodeClockOffsetSeconds: nodeClockOffsetSeconds,
+    schedulerEpochs: schedulerEpochs,
+    formatClockOffset: formatClockOffset,
     configFromSearch: configFromSearch,
     configFromGenerator: configFromGenerator,
     isDefaultPreset: isDefaultPreset,
