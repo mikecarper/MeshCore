@@ -11,11 +11,9 @@ assert.match(pageSource, /data-role="preset-test-eyebrow"/);
 assert.match(pageSource, /data-role="timezone-map"/);
 assert.match(pageSource, /type="hidden" name="tz"/);
 assert.doesNotMatch(pageSource, /<select name="tz"/);
-assert.match(pageSource, /<details class="preset-test-generator-disclosure">/);
-assert.doesNotMatch(
-  pageSource,
-  /<details class="preset-test-generator-disclosure"\s+open/
-);
+assert.match(pageSource, /data-role="test-content" hidden/);
+assert.match(pageSource, /data-role="test-content-footer" hidden/);
+assert.match(pageSource, /data-role="url-builder-disclosure" open/);
 assert.match(pageSource, /data-command="primary-scheduled"/);
 assert.match(pageSource, /data-command="primary-cancel"/);
 assert.match(pageSource, /Simple Repeater primary radio/);
@@ -29,6 +27,13 @@ const query =
   "&freq=910.1&bw=500&sf=8&cr=7";
 const config = tool.configFromSearch(query);
 const defaults = tool.configFromSearch("", "America/Los_Angeles");
+
+assert.strictEqual(tool.hasPresetParameters(""), false);
+assert.strictEqual(tool.hasPresetParameters("?"), false);
+assert.strictEqual(tool.hasPresetParameters("?utm_source=example"), false);
+assert.strictEqual(tool.hasPresetParameters("?freq=911.3"), true);
+assert.strictEqual(tool.hasPresetParameters("?tz=UTC"), true);
+assert.strictEqual(tool.hasPresetParameters("?start=bad"), true);
 
 assert.strictEqual(config.startEpoch, 1790035200);
 assert.strictEqual(config.endEpoch, 1790208000);

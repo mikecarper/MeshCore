@@ -1,19 +1,15 @@
-# <span data-role="preset-test-page-title">Default temporary radio test · 910.1 MHz · September 21–23, 2026</span>
+# <span data-role="preset-test-page-title">Temporary radio test builder</span>
 
-Use this page to join the shared temporary radio test without overwriting the
-node's saved primary radio settings. <span data-role="preset-test-page-summary">The
-default window is <strong>Monday, September 21, 2026 at 5:00 PM through
-Wednesday, September 23 at 5:00 PM Pacific time</strong> (48 hours), using
-<strong>910.1 MHz, 500 kHz, SF8, CR7</strong>.</span>
+<span data-role="preset-test-page-summary">Choose a window and radio tuple to
+create a shareable temporary-radio test URL.</span>
 
-The page reads the complete test definition from its URL. Change the query
-parameters to reuse it for a different window, display time zone, or radio
-tuple; no source edit is required.
+Open a generated URL to see that test's status, instructions, and commands.
 
 <div class="preset-test" data-preset-test>
   <div class="preset-test-error" data-role="config-error" role="alert" hidden></div>
 
   <div data-role="content">
+    <div data-role="test-content" hidden>
     <section class="preset-test-hero" aria-labelledby="preset-test-title">
       <p class="preset-test-eyebrow" data-role="preset-test-eyebrow">MeshCore · default 48-hour temporary preset test</p>
       <div class="preset-test-hero-row">
@@ -288,10 +284,12 @@ clock</code></pre>
       </div>
     </section>
 
+    </div>
+
     <section aria-labelledby="share-title">
-      <details class="preset-test-generator-disclosure">
+      <details class="preset-test-generator-disclosure" data-role="url-builder-disclosure" open>
         <summary>
-          <h2 id="share-title">Build a link for another test</h2>
+          <h2 id="share-title">Build a temporary radio test URL</h2>
         </summary>
         <div class="preset-test-generator-disclosure-body">
           <p>
@@ -412,13 +410,17 @@ clock</code></pre>
         </div>
       </details>
     </section>
+
+    <div data-role="test-content-footer" hidden>
+      <p>
+        Primary <code>tempradioat</code> scheduling is implemented by the Simple
+        Repeater role; room-server and sensor roles use their immediate
+        <code>tempradio</code> command during the setup window. The Companion
+        scheduling commands require current full-parser firmware, and
+        <code>tempradio2</code> and <code>tempradioat2</code> require a build with
+        dual-radio-profile support. If a node reports an unknown command, use only
+        a method that its installed firmware documents.
+      </p>
+    </div>
   </div>
 </div>
-
-Primary <code>tempradioat</code> scheduling is implemented by the Simple Repeater
-role; room-server and sensor roles use their immediate <code>tempradio</code>
-command during the setup window. The Companion scheduling commands require
-current full-parser firmware, and
-<code>tempradio2</code> and <code>tempradioat2</code> require a build with
-dual-radio-profile support. If a node reports an unknown command, use only a
-method that its installed firmware documents.
