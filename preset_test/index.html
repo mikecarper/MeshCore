@@ -27,7 +27,7 @@
     
     
       
-        <title>Default temporary radio test · 910.1 MHz · September 21–23, 2026 - MeshCore Docs</title>
+        <title>Temporary radio test builder - MeshCore Docs</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#default-temporary-radio-test-9101-mhz-september-2123-2026" class="md-skip">
+        <a href="#temporary-radio-test-builder" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Default temporary radio test · 910.1 MHz · September 21–23, 2026
+              Temporary radio test builder
             
           </span>
         </div>
@@ -1955,7 +1955,7 @@
   <span class="md-ellipsis">
     
   
-    Default temporary radio test · 910.1 MHz · September 21–23, 2026
+    Temporary radio test builder
   
 
     
@@ -2906,19 +2906,15 @@
   
 
 
-<h1 id="default-temporary-radio-test-9101-mhz-september-2123-2026"><span data-role="preset-test-page-title">Default temporary radio test · 910.1 MHz · September 21–23, 2026</span></h1>
-<p>Use this page to join the shared temporary radio test without overwriting the
-node's saved primary radio settings. <span data-role="preset-test-page-summary">The
-default window is <strong>Monday, September 21, 2026 at 5:00 PM through
-Wednesday, September 23 at 5:00 PM Pacific time</strong> (48 hours), using
-<strong>910.1 MHz, 500 kHz, SF8, CR7</strong>.</span></p>
-<p>The page reads the complete test definition from its URL. Change the query
-parameters to reuse it for a different window, display time zone, or radio
-tuple; no source edit is required.</p>
+<h1 id="temporary-radio-test-builder"><span data-role="preset-test-page-title">Temporary radio test builder</span></h1>
+<p><span data-role="preset-test-page-summary">Choose a window and radio tuple to
+create a shareable temporary-radio test URL.</span></p>
+<p>Open a generated URL to see that test's status, instructions, and commands.</p>
 <div class="preset-test" data-preset-test>
   <div class="preset-test-error" data-role="config-error" role="alert" hidden></div>
 
   <div data-role="content">
+    <div data-role="test-content" hidden>
     <section class="preset-test-hero" aria-labelledby="preset-test-title">
       <p class="preset-test-eyebrow" data-role="preset-test-eyebrow">MeshCore · default 48-hour temporary preset test</p>
       <div class="preset-test-hero-row">
@@ -3193,10 +3189,12 @@ clock</code></pre>
       </div>
     </section>
 
+    </div>
+
     <section aria-labelledby="share-title">
-      <details class="preset-test-generator-disclosure">
+      <details class="preset-test-generator-disclosure" data-role="url-builder-disclosure" open>
         <summary>
-          <h2 id="share-title">Build a link for another test</h2>
+          <h2 id="share-title">Build a temporary radio test URL</h2>
         </summary>
         <div class="preset-test-generator-disclosure-body">
           <p>
@@ -3317,16 +3315,20 @@ clock</code></pre>
         </div>
       </details>
     </section>
+
+    <div data-role="test-content-footer" hidden>
+      <p>
+        Primary <code>tempradioat</code> scheduling is implemented by the Simple
+        Repeater role; room-server and sensor roles use their immediate
+        <code>tempradio</code> command during the setup window. The Companion
+        scheduling commands require current full-parser firmware, and
+        <code>tempradio2</code> and <code>tempradioat2</code> require a build with
+        dual-radio-profile support. If a node reports an unknown command, use only
+        a method that its installed firmware documents.
+      </p>
+    </div>
   </div>
 </div>
-
-<p>Primary <code>tempradioat</code> scheduling is implemented by the Simple Repeater
-role; room-server and sensor roles use their immediate <code>tempradio</code>
-command during the setup window. The Companion scheduling commands require
-current full-parser firmware, and
-<code>tempradio2</code> and <code>tempradioat2</code> require a build with
-dual-radio-profile support. If a node reports an unknown command, use only a
-method that its installed firmware documents.</p>
 
 
 
@@ -3391,7 +3393,7 @@ method that its installed firmware documents.</p>
       
         <script src="../_javascript/filter_tool.js"></script>
       
-        <script src="../_javascript/preset_test.js?v=20260921-1"></script>
+        <script src="../_javascript/preset_test.js?v=20260921-2"></script>
       
     
   </body>

@@ -131,6 +131,13 @@
     }
   }
 
+  function hasPresetParameters(search) {
+    const params = new URLSearchParams(search || "");
+    return Object.keys(DEFAULTS).some(function (key) {
+      return params.has(key);
+    });
+  }
+
   function supportedTimeZones(selectedTimeZone) {
     const zones = new Set(["UTC"]);
     if (typeof Intl.supportedValuesOf === "function") {
@@ -723,52 +730,63 @@
   }
 
   function init(root) {
+    const search = global.location ? global.location.search : "";
+    let showTest = hasPresetParameters(search);
     let config;
     try {
       config = configFromSearch(
-        global.location ? global.location.search : "",
+        search,
         browserTimeZone()
       );
     } catch (error) {
       const box = root.querySelector('[data-role="config-error"]');
       box.hidden = false;
       box.textContent = "Invalid test URL: " + error.message;
-      root.querySelector('[data-role="content"]').hidden = true;
-      return;
+      config = configFromSearch("", browserTimeZone());
+      showTest = false;
     }
 
-    setPageText('[data-role="preset-test-page-title"]', presetPageTitle(config));
-    setPageText('[data-role="preset-test-page-summary"]', presetPageSummary(config));
-    setText(root, '[data-role="preset-test-eyebrow"]', presetEyebrow(config));
-    setText(root, '[data-field="freq-display"]', config.freq.toFixed(3));
-    setText(root, '[data-field="bw-display"]', config.bwText);
-    setText(root, '[data-field="sf"]', String(config.sf));
-    setText(root, '[data-field="cr"]', String(config.cr));
-    setText(root, '[data-role="start-zoned"]', formatZoned(config.startMs, config.tz));
-    setText(root, '[data-role="end-zoned"]', formatZoned(config.endMs, config.tz));
-    setText(root, '[data-role="display-zone"]', config.tz);
-    setText(
-      root,
-      '[data-role="epoch-range"]',
-      config.startEpoch + " → " + config.endEpoch
-    );
-    setText(
-      root,
-      '[data-role="window-summary"]',
-      "A " + formatCountdown(config.endMs - config.startMs) +
-        " window. Saved primary settings return automatically at the end."
-    );
+    const testContent = root.querySelector('[data-role="test-content"]');
+    if (testContent) testContent.hidden = !showTest;
+    const testFooter = root.querySelector('[data-role="test-content-footer"]');
+    if (testFooter) testFooter.hidden = !showTest;
+    const builderDisclosure = root.querySelector('[data-role="url-builder-disclosure"]');
+    if (builderDisclosure) builderDisclosure.open = !showTest;
 
-    const staticCommands = commandsFor(config, config.startMs);
-    setCommand(root, "primary-scheduled", staticCommands.primaryScheduled);
-    setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
-    setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
-    setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
-    setCommand(root, "primary-cancel", staticCommands.primaryCancel);
-    setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
-    setCommand(root, "companion-cancel-during", staticCommands.companionCancelDuring);
-    setCommand(root, "companion-leave-30", staticCommands.companionLeaveIn30);
-    setCommand(root, "reset-clock", CLOCK_RESET_COMMAND);
+    if (showTest) {
+      setPageText('[data-role="preset-test-page-title"]', presetPageTitle(config));
+      setPageText('[data-role="preset-test-page-summary"]', presetPageSummary(config));
+      setText(root, '[data-role="preset-test-eyebrow"]', presetEyebrow(config));
+      setText(root, '[data-field="freq-display"]', config.freq.toFixed(3));
+      setText(root, '[data-field="bw-display"]', config.bwText);
+      setText(root, '[data-field="sf"]', String(config.sf));
+      setText(root, '[data-field="cr"]', String(config.cr));
+      setText(root, '[data-role="start-zoned"]', formatZoned(config.startMs, config.tz));
+      setText(root, '[data-role="end-zoned"]', formatZoned(config.endMs, config.tz));
+      setText(root, '[data-role="display-zone"]', config.tz);
+      setText(
+        root,
+        '[data-role="epoch-range"]',
+        config.startEpoch + " → " + config.endEpoch
+      );
+      setText(
+        root,
+        '[data-role="window-summary"]',
+        "A " + formatCountdown(config.endMs - config.startMs) +
+          " window. Saved primary settings return automatically at the end."
+      );
+
+      const staticCommands = commandsFor(config, config.startMs);
+      setCommand(root, "primary-scheduled", staticCommands.primaryScheduled);
+      setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
+      setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
+      setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
+      setCommand(root, "primary-cancel", staticCommands.primaryCancel);
+      setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
+      setCommand(root, "companion-cancel-during", staticCommands.companionCancelDuring);
+      setCommand(root, "companion-leave-30", staticCommands.companionLeaveIn30);
+      setCommand(root, "reset-clock", CLOCK_RESET_COMMAND);
+    }
 
     const generator = root.querySelector('[data-role="url-generator"]');
     if (generator) {
@@ -845,6 +863,8 @@
         });
       });
     });
+
+    if (!showTest) return;
 
     function render() {
       const nowMs = Date.now();
@@ -956,6 +976,7 @@
     presetEyebrow: presetEyebrow,
     validateTimeZone: validateTimeZone,
     browserTimeZone: browserTimeZone,
+    hasPresetParameters: hasPresetParameters,
     supportedTimeZones: supportedTimeZones,
     phaseAt: phaseAt,
     remainingMinutes: remainingMinutes,
