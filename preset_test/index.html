@@ -2972,10 +2972,12 @@ tuple; no source edit is required.</p>
     <section aria-labelledby="clock-check-title">
       <h2 id="clock-check-title">Check the node clock before scheduling</h2>
       <p>
-        The Companion <code>tempradioat2</code> scheduler uses UTC Unix time.
-        Run <code>clock</code> on every Companion and compare it with the browser
-        UTC time below. It should agree to within about a minute. A wrong clock
-        can start late, start immediately, or cause the schedule to be rejected.
+        The primary <code>tempradioat</code> and Companion
+        <code>tempradioat2</code> schedulers use UTC Unix time. Run
+        <code>clock</code> on every node that will be scheduled and compare it
+        with the browser UTC time below. It should agree to within about a minute.
+        A wrong clock can start late, start immediately, or cause the schedule to
+        be rejected.
       </p>
 
       <div class="preset-test-clock-check">
@@ -3068,24 +3070,39 @@ clock</code></pre>
     </section>
 
     <section aria-labelledby="schedule-title">
-      <h2 id="schedule-title">Option 2: schedule a Companion in advance</h2>
+      <h2 id="schedule-title">Option 2: schedule a supported node in advance</h2>
       <p>
-        Stock firmware has no <code>tempradioat</code> command, so a stock node
-        cannot be queued in advance. Return during the one-hour setup window and
-        use Option 1. A Companion can use the exact UTC epochs below to switch at
-        the common start and restore its saved configuration at the common end.
+        A Simple Repeater build can schedule its primary radio with
+        <code>tempradioat</code>. A Companion can instead schedule its second
+        profile with <code>tempradioat2</code>. Both commands use the exact UTC
+        epochs below, switch at the common start, and restore saved settings at
+        the common end. Room-server and sensor roles use Option 1 instead.
       </p>
 
       <div class="preset-test-grid">
         <article class="preset-test-card">
           <div class="preset-test-card-heading">
-            <h3>Stock repeater, room server, or sensor</h3>
+            <h3>Room server or sensor</h3>
             <span>No advance schedule</span>
           </div>
           <p class="preset-test-note">
-            Stock firmware provides <code>tempradio</code>, but not
-            <code>tempradioat</code>. Use the immediate stock command in Option 1
-            after its setup window opens.
+            Use the immediate <code>tempradio</code> command in Option 1 after
+            its setup window opens.
+          </p>
+        </article>
+
+        <article class="preset-test-card">
+          <div class="preset-test-card-heading">
+            <h3>Simple Repeater primary radio</h3>
+            <span>Primary schedule</span>
+          </div>
+          <pre><code data-command="primary-scheduled"></code></pre>
+          <button type="button" data-copy-command="primary-scheduled">Copy schedule commands</button>
+          <p class="preset-test-note">
+            This is available only on a Simple Repeater build with primary
+            scheduled-radio support. It changes the primary tuple at the start
+            and restores the saved tuple at the end. If <code>get tempradioat</code>
+            returns <code>Error: unsupported</code>, use Option 1 instead.
           </p>
         </article>
 
@@ -3108,11 +3125,11 @@ clock</code></pre>
     <section aria-labelledby="cancel-title">
       <h2 id="cancel-title">Cancel or leave the test</h2>
       <p>
-        A stock node can leave an active test as shown below. For a Companion
-        schedule, the <code>all</code> form removes every temporary schedule in
-        that family. To preserve another schedule, first run the corresponding
-        <code>get</code> command and replace <code>all</code> with its displayed
-        entry number.
+        A stock node can leave an active test as shown below. For a primary or
+        Companion schedule, the <code>all</code> form removes every temporary
+        schedule in that family. To preserve another schedule, first run the
+        corresponding <code>get</code> command and replace <code>all</code> with
+        its displayed entry number.
       </p>
 
       <div class="preset-test-cancel-grid">
@@ -3133,6 +3150,17 @@ clock</code></pre>
           <p class="preset-test-note">
             This replaces the current temporary timeout with 30 minutes, then
             restores the saved primary tuple automatically.
+          </p>
+        </article>
+
+        <article class="preset-test-card">
+          <h3>Simple Repeater · scheduled primary radio</h3>
+          <pre><code data-command="primary-cancel"></code></pre>
+          <button type="button" data-copy-command="primary-cancel">Copy cancel commands</button>
+          <p class="preset-test-note">
+            Before the start, this removes the queued temporary schedule. While
+            it is running, it also restores the saved primary tuple after the
+            command reply drains.
           </p>
         </article>
 
@@ -3292,9 +3320,10 @@ clock</code></pre>
   </div>
 </div>
 
-<p>Stock firmware does not support advance TempRadio scheduling; use its immediate
-<code>tempradio</code> command during the setup window. The Companion scheduling
-commands require current full-parser firmware, and
+<p>Primary <code>tempradioat</code> scheduling is implemented by the Simple Repeater
+role; room-server and sensor roles use their immediate <code>tempradio</code>
+command during the setup window. The Companion scheduling commands require
+current full-parser firmware, and
 <code>tempradio2</code> and <code>tempradioat2</code> require a build with
 dual-radio-profile support. If a node reports an unknown command, use only a
 method that its installed firmware documents.</p>
@@ -3362,7 +3391,7 @@ method that its installed firmware documents.</p>
       
         <script src="../_javascript/filter_tool.js"></script>
       
-        <script src="../_javascript/preset_test.js?v=20260920-1"></script>
+        <script src="../_javascript/preset_test.js?v=20260921-1"></script>
       
     
   </body>
