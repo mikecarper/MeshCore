@@ -16,9 +16,10 @@ assert.doesNotMatch(
   pageSource,
   /<details class="preset-test-generator-disclosure"\s+open/
 );
-assert.match(pageSource, /Stock firmware has no <code>tempradioat<\/code> command/);
-assert.doesNotMatch(pageSource, /data-command="stock-scheduled"/);
-assert.doesNotMatch(pageSource, /Stock · before it starts/);
+assert.match(pageSource, /data-command="primary-scheduled"/);
+assert.match(pageSource, /data-command="primary-cancel"/);
+assert.match(pageSource, /Simple Repeater primary radio/);
+assert.doesNotMatch(pageSource, /Stock firmware has no <code>tempradioat<\/code> command/);
 assert.doesNotMatch(pageSource, /Normal return profile/);
 
 const query =
@@ -59,6 +60,10 @@ assert.strictEqual(tool.presetPageTitle(requestedLink), "Temporary radio test ·
 assert.match(tool.presetPageSummary(requestedLink), /911\.3 MHz, 500 kHz, SF8, CR7, 22 dBm/);
 assert.doesNotMatch(tool.presetPageSummary(requestedLink), /910\.1 MHz/);
 assert.strictEqual(tool.presetEyebrow(requestedLink), "MeshCore · 48-hour temporary preset test");
+assert.strictEqual(
+  tool.commandsFor(requestedLink, requestedLink.startMs).primaryScheduled,
+  "set tempradioat 911.3,500,8,7,1790035200,1790208000\nget tempradioat"
+);
 
 const browserZoneFallback = tool.configFromSearch("", "America/New_York");
 assert.strictEqual(browserZoneFallback.tz, "America/New_York");
@@ -98,8 +103,11 @@ assert.strictEqual(tool.remainingMinutes(config, setupOpens), 2940);
 
 const commands = tool.commandsFor(config, active);
 assert.strictEqual(commands.stockNow, "tempradio 910.1,500,8,7,2880");
-assert.strictEqual(commands.stockScheduled, undefined);
-assert.strictEqual(commands.stockCancelBefore, undefined);
+assert.strictEqual(
+  commands.primaryScheduled,
+  "set tempradioat 910.1,500,8,7,1790035200,1790208000\nget tempradioat"
+);
+assert.strictEqual(commands.primaryCancel, "get tempradioat\ndel tempradioat all");
 assert.strictEqual(
   commands.companionNow,
   "set radio2.cross on\nset tempradio2 910.1,500,8,7,rxtx,2880"
@@ -124,6 +132,8 @@ assert.strictEqual(
 
 assert.strictEqual(tool.scheduleAvailability(config, before).available, true);
 assert.strictEqual(tool.scheduleAvailability(config, active).available, false);
+assert.strictEqual(tool.primaryScheduleAvailability(config, before).available, true);
+assert.strictEqual(tool.primaryScheduleAvailability(config, active).available, false);
 assert.strictEqual(
   tool.scheduleAvailability(config, config.endMs - tool.SCHEDULE_HORIZON_MS - 1).available,
   false

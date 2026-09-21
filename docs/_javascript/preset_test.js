@@ -281,6 +281,13 @@
     return { available: true, reason: "Ready to queue after the node clock is verified." };
   }
 
+  function primaryScheduleAvailability(config, nowMs) {
+    if (nowMs >= config.startMs) {
+      return { available: false, reason: "The start time has passed; use the immediate option." };
+    }
+    return { available: true, reason: "Ready to queue after the node clock is verified." };
+  }
+
   function commandsFor(config, nowMs) {
     const tuple = [config.freqText, config.bwText, config.sf, config.cr].join(",");
     const minutes = remainingMinutes(config, nowMs);
@@ -288,11 +295,16 @@
       stockNow: "tempradio " + tuple + "," + minutes,
       companionNow:
         "set radio2.cross on\nset tempradio2 " + tuple + ",rxtx," + minutes,
+      primaryScheduled:
+        "set tempradioat " + tuple + "," + config.startEpoch + "," +
+        config.endEpoch + "\nget tempradioat",
       companionScheduled:
         "set radio2.cross on\nset tempradioat2 " + tuple + ",rxtx," +
         config.startEpoch + "," + config.endEpoch + "\nget tempradioat2",
       stockCancelDuring: "tempradio " + tuple + ",1",
       stockLeaveIn30: "tempradio " + tuple + ",30",
+      primaryCancel:
+        "get tempradioat\ndel tempradioat all",
       companionCancelBefore:
         "get tempradioat2\ndel tempradioat2 all\nset radio2.cross auto",
       companionCancelDuring: "set tempradio2 off\nset radio2.cross auto",
@@ -748,9 +760,11 @@
     );
 
     const staticCommands = commandsFor(config, config.startMs);
+    setCommand(root, "primary-scheduled", staticCommands.primaryScheduled);
     setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
     setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
     setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
+    setCommand(root, "primary-cancel", staticCommands.primaryCancel);
     setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
     setCommand(root, "companion-cancel-during", staticCommands.companionCancelDuring);
     setCommand(root, "companion-leave-30", staticCommands.companionLeaveIn30);
@@ -837,6 +851,7 @@
       const phase = phaseAt(config, nowMs);
       const immediateOpen = immediateAvailable(config, nowMs);
       const status = root.querySelector('[data-role="status"]');
+      const primarySchedule = primaryScheduleAvailability(config, nowMs);
       const schedule = scheduleAvailability(config, nowMs);
       const commands = commandsFor(config, nowMs);
 
@@ -903,6 +918,7 @@
             : "The test window has ended."
       );
 
+      setCommandEnabled(root, "primary-scheduled", primarySchedule.available);
       setCommandEnabled(root, "companion-scheduled", schedule.available);
 
       const nowEpoch = Math.floor(nowMs / 1000);
@@ -945,6 +961,7 @@
     remainingMinutes: remainingMinutes,
     immediateAvailable: immediateAvailable,
     scheduleAvailability: scheduleAvailability,
+    primaryScheduleAvailability: primaryScheduleAvailability,
     commandsFor: commandsFor,
     radioEstimates: radioEstimates,
     formatCountdown: formatCountdown,
