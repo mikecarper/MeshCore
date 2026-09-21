@@ -4180,9 +4180,20 @@ output_artifact_exists() {
 }
 
 build_artifacts_exist() {
-  local env_name=$1
-  local env_platform=$2
-  local firmware_filename=$3
+  # Keep the two-argument helper form usable by focused resume tests and
+  # external callers. Production builds pass the logical environment as the
+  # first argument so the KISS exemption is applied consistently.
+  local env_name=""
+  local env_platform
+  local firmware_filename
+  if [ "$#" -ge 3 ]; then
+    env_name=$1
+    env_platform=$2
+    firmware_filename=$3
+  else
+    env_platform=$1
+    firmware_filename=$2
+  fi
 
   output_artifact_exists "${firmware_filename}.capabilities.json" || return 1
   python3 scripts/firmware_memory_manifest.py validate-package \
@@ -4201,7 +4212,7 @@ proven = {(item.get("capability"), item.get("evidence"))
 required = {tuple(value.split("=", 1)) for value in sys.argv[2:]}
 sys.exit(0 if required <= proven else 1)
 PY
-  if requires_wireless_self_update "$env_name"; then
+  if [ -n "$env_name" ] && requires_wireless_self_update "$env_name"; then
     python3 - "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" <<'PY' || return 1
 import json, sys
 manifest = json.load(open(sys.argv[1]))
