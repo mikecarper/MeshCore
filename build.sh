@@ -2035,6 +2035,16 @@ is_kiss_modem_target() {
   esac
 }
 
+requires_wireless_self_update() {
+  # KISS firmware is a host-controlled radio modem, not a standalone node.
+  # It deliberately has no application updater: the connected host performs
+  # any firmware maintenance over its wired programming interface. Building
+  # it with --include-kiss must not misrepresent that as an OTA regression.
+  [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ] \
+    && ! is_companion_build "$1" \
+    && ! is_kiss_modem_target "$1"
+}
+
 is_bluetooth_target() {
   case "$(get_variant_name_for_env "$1")" in
     companion_radio_ble|*_companion_radio_ble)
@@ -4067,7 +4077,7 @@ write_build_capability_manifest() {
   )
   local item
 
-  if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ] && ! is_companion_build "$env_name"; then
+  if requires_wireless_self_update "$env_name"; then
     checker_args+=(--require-ota)
   fi
   if [ "$env_platform" = "ESP32_PLATFORM" ]; then
@@ -4170,8 +4180,9 @@ output_artifact_exists() {
 }
 
 build_artifacts_exist() {
-  local env_platform=$1
-  local firmware_filename=$2
+  local env_name=$1
+  local env_platform=$2
+  local firmware_filename=$3
 
   output_artifact_exists "${firmware_filename}.capabilities.json" || return 1
   python3 scripts/firmware_memory_manifest.py validate-package \
@@ -4190,7 +4201,7 @@ proven = {(item.get("capability"), item.get("evidence"))
 required = {tuple(value.split("=", 1)) for value in sys.argv[2:]}
 sys.exit(0 if required <= proven else 1)
 PY
-  if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ]; then
+  if requires_wireless_self_update "$env_name"; then
     python3 - "${OUTPUT_DIR}/${firmware_filename}.capabilities.json" <<'PY' || return 1
 import json, sys
 manifest = json.load(open(sys.argv[1]))
@@ -4496,7 +4507,7 @@ build_firmware() {
   local embedded_version_string="${firmware_version}${embedded_build_suffix}${embedded_variant_tag}-${commit_hash}"
 
   declare_full_logging_application_contract "$env_name"
-  if [ "$RESUME_BUILD_OUTPUT" == "1" ] && build_artifacts_exist "$env_platform" "$firmware_filename"; then
+  if [ "$RESUME_BUILD_OUTPUT" == "1" ] && build_artifacts_exist "$env_name" "$env_platform" "$firmware_filename"; then
     echo "Skipping ${env_name}; existing artifacts found for ${firmware_filename}."
     return 0
   fi

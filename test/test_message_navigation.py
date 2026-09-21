@@ -366,6 +366,12 @@ class MessageNavigationTest(unittest.TestCase):
         home = source[source.index("class HomeScreen :"):]
         home_navigation = home[home.index("  bool handleInput(char c) override {"):]
         home_navigation = home_navigation.split("#ifdef COMPANION_EXCLUSIVE_WIFI_BLE", 1)[0]
+        # This focused navigation harness intentionally omits HomeScreen's
+        # radio-page timing state. Entering the radio page resets that state
+        # in production, but it is unrelated to the button routing exercised
+        # below, so remove only that call from the extracted fragment.
+        home_navigation = home_navigation.replace(
+            "if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();\n", "")
         home_navigation = home_navigation.replace("{\n", "{\n    Screen::handleInput(c);\n", 1)
         implementation += ("class HomeScreen : public Screen { public: UITask* _task; "
                            "enum HomePage {FIRST,MESSAGES,RECENT,RADIO,DISCOVERY,Count}; int _page=0; "

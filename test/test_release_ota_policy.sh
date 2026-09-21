@@ -27,6 +27,17 @@ resolve_command_targets build-firmwares-logging-matrix >/dev/null
   || fail "USB-updated Companion was excluded"
 [ "${#OTA_EXCLUDED_TARGETS[@]}" = 2 ] || fail "missing exclusion report"
 
+# KISS is a host-controlled modem, so including it in a logging build does
+# not turn it into a self-updating infrastructure node. Its cable-only
+# maintenance path must not reject an otherwise valid KISS artifact.
+REQUIRE_OTA_UPDATES=1
+requires_wireless_self_update Heltec_t096_kiss_modem \
+  && fail "KISS modem incorrectly requires wireless self-update"
+requires_wireless_self_update nrf_repeater \
+  || fail "standalone nRF repeater lost wireless self-update requirement"
+requires_wireless_self_update esp_companion_radio_full \
+  && fail "Companion incorrectly requires wireless self-update"
+
 parse_cli_options build-firmwares-logging-matrix --allow-no-ota
 resolve_command_targets "${PARSED_COMMAND_ARGS[@]}" >/dev/null
 [ "${#RESOLVED_BUILD_TARGETS[@]}" = 5 ] || fail "development override lost targets"
