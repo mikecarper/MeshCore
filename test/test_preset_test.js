@@ -35,6 +35,10 @@ const defaults = tool.configFromSearch("", "America/Los_Angeles");
 assert.strictEqual(tool.hasPresetParameters(""), false);
 assert.strictEqual(tool.hasPresetParameters("?"), false);
 assert.strictEqual(tool.hasPresetParameters("?utm_source=example"), false);
+assert.strictEqual(
+  tool.hasPresetParameters("?node_clock=1790044920&node_clock_at=1790034120"),
+  false
+);
 assert.strictEqual(tool.hasPresetParameters("?freq=911.3"), true);
 assert.strictEqual(tool.hasPresetParameters("?tz=UTC"), true);
 assert.strictEqual(tool.hasPresetParameters("?start=bad"), true);
@@ -128,6 +132,12 @@ assert.strictEqual(
   adjustedCommands.stockNow,
   tool.commandsFor(clockAdjustedLink, clockAdjustedLink.startMs).stockNow
 );
+const pageOnlyClockUrl = new URL(tool.configuredUrl(
+  clockAdjustedLink,
+  "https://example.test/preset-test/"
+));
+assert.strictEqual(pageOnlyClockUrl.searchParams.has("node_clock"), false);
+assert.strictEqual(pageOnlyClockUrl.searchParams.has("node_clock_at"), false);
 assert.throws(
   () => tool.schedulerEpochs(clockAdjustedLink, tool.SCHEDULER_EPOCH_MAX),
   /outside the firmware range/

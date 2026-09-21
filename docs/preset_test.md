@@ -108,8 +108,9 @@ Open a generated URL to see that test's status, instructions, and commands.
       <p class="preset-test-note">
         This changes only the absolute <code>tempradioat</code> and
         <code>tempradioat2</code> epochs shown on this page; it does not issue a
-        clock-setting command. The correction is for this node only. If the node
-        clock later syncs or jumps, delete and queue the schedule again.
+        clock-setting command. The correction is for this node and this open page
+        only: it is never added to generated URLs, and is cleared on reload. If
+        the node clock later syncs or jumps, delete and queue the schedule again.
       </p>
 
       <div class="preset-test-grid preset-test-grid--clock">
