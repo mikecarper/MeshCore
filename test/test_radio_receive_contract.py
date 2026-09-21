@@ -36,7 +36,8 @@ HARNESS = r'''
 #define NF_CALIB_INTERVAL_MS 2000UL
 #define NF_CALIB_TIMEOUT_MS NoiseFloorEstimator::WINDOW_TIMEOUT_MS
 #define NF_CONTINUOUS_TIMEOUT_MS NoiseFloorEstimator::WINDOW_TIMEOUT_MS
-#define NF_CALIB_SETTLE_MS 20UL
+#define NF_CALIB_SETTLE_MS 7UL
+#define NF_FAST_PROFILE_REFRESH_INTERVAL_MS (15UL * 60UL * 1000UL)
 static volatile uint8_t state = STATE_RX;
 static uint32_t now_ms = 0;
 uint32_t millis() { return now_ms; }
@@ -62,11 +63,15 @@ struct RadioLibWrapper {
   bool serviceCarrierWave() { return false; } // dedicated CW harness owns this path
   mesh::RadioProfiles _profiles;
   uint32_t _profile_visit_us = 0;
+  uint32_t _profile_scan_generation[2] = {};
+  uint8_t _active_profile = 0;
+  bool _profile_rxps_suspended = false;
   void serviceProfileScan() {} // separate profile-scan harness exercises tuning
   Board board; Board* _board = &board;
   Radio radio; Radio* _radio = &radio;
   bool _rx_ps_enabled = false, _rx_ps_armed = false, _rx_ps_continuous_fallback = false;
-  bool _nf_calib_active = false, _nf_refresh_requested = true, _noise_floor_valid = true;
+  bool _nf_calib_active = false, _nf_refresh_requested = true, _noise_floor_valid = true,
+      _noise_floor_secondary_valid = true;
   bool _cad_enabled = true, packet = false, busy = false, inject_arm_irq = false;
   bool _rx_boosted_gain_valid = false, _cur_rx_boosted_gain = false;
   bool _wd_last_busy = false;
@@ -75,12 +80,17 @@ struct RadioLibWrapper {
   unsigned long _nf_last_calib = 0, _nf_calib_deadline = 0, _nf_sample_from = 0;
   unsigned long _wd_last_transition = 0, _wd_stuck_thresh = 0, _wd_observe_ms = 0;
   int16_t _threshold = 0, _noise_floor = -105;
-  int32_t _noise_floor_centi_dbm = -10500;
+  int32_t _noise_floor_centi_dbm = -10500, _noise_floor_secondary_centi_dbm = -10600;
   int arm_result = 0, chip_mode = 1;
   float rssi = -100;
   unsigned arms = 0, stops = 0, soft = 0, hard = 0, reads = 0, mode_reads = 0;
   bool inject_mode_irq = false;
   NoiseFloorEstimator _floor_estimator;
+  NoiseFloorEstimator _secondary_floor_estimator;
+  NoiseFloorEstimator& profileFloorEstimator(uint8_t profile) {
+    return profile == 1 ? _secondary_floor_estimator : _floor_estimator;
+  }
+  uint16_t profilePreamble(uint8_t profile) const { return _profiles.preamble(profile, 32); }
   RadioLibWrapper() { state = STATE_RX; now_ms = 100; }
   bool isChipBusy() { return busy; }
   bool isReceivingPacket() { return packet; }
@@ -109,6 +119,7 @@ struct RadioLibWrapper {
   void startRecv();
   void checkReceiveMode(uint32_t);
   void loop();
+  void triggerNoiseFloorCalibrate(int);
   void requestRestartRecv();
   void noiseFloorCalibCheck(unsigned long);
   void endNoiseFloorCalib(unsigned long);
@@ -180,13 +191,13 @@ int main() {
   {
     RadioLibWrapper w;
     w.startRecv();
-    for (; now_ms < 120; ++now_ms) w.loop();
+    for (; now_ms < 107; ++now_ms) w.loop();
     assert(w.reads == 0);
     w.loop();
     assert(w.reads == 1);
     now_ms = 200;
     w.startRecv(); // CAD/TX re-arm must settle again, retaining earlier samples
-    for (; now_ms < 220; ++now_ms) w.loop();
+    for (; now_ms < 207; ++now_ms) w.loop();
     assert(w.reads == 1 && w._floor_estimator.count() == 1);
     w.loop();
     assert(w.reads == 2 && w._floor_estimator.count() == 2);
@@ -199,6 +210,80 @@ int main() {
       w.loop();
     }
     assert(w._noise_floor_centi_dbm == -10125);
+  }
+  // After dual-profile initialization, the Dispatcher's two-second
+  // maintenance tick updates the threshold but must not restart calibration.
+  // A profile whose normal visit is under 7 ms gets one new bounded 7 ms
+  // sample set after fifteen minutes; a naturally long profile does not.
+  {
+    RadioLibWrapper w;
+    mesh::RadioProfileConfig second;
+    second.params.freq = 910.5; second.params.bw = 62.5; second.params.sf = 7; second.params.cr = 5;
+    second.mode = mesh::RadioProfileMode::RxTx;
+    w._profiles.primary = second.params;
+    w._profiles.setSecondary(second, false);
+    w._nf_refresh_requested = false;
+    w._noise_floor_valid = w._noise_floor_secondary_valid = true;
+    w.triggerNoiseFloorCalibrate(7);
+    assert(!w._nf_refresh_requested && w._threshold == 7);
+    w._noise_floor_secondary_valid = false;
+    w.triggerNoiseFloorCalibrate(8);
+    assert(w._nf_refresh_requested && w._threshold == 8);
+  }
+  {
+    RadioLibWrapper w;
+    mesh::RadioProfileConfig second;
+    second.params.freq = 910.5; second.params.bw = 500; second.params.sf = 5; second.params.cr = 5;
+    second.mode = mesh::RadioProfileMode::Rx;
+    w._profiles.primary = second.params;
+    w._profiles.setSecondary(second, false);
+    w._nf_refresh_requested = false;
+    w._noise_floor_valid = w._noise_floor_secondary_valid = true;
+    w._nf_last_calib = now_ms;
+    now_ms += NF_FAST_PROFILE_REFRESH_INTERVAL_MS - 1;
+    w.triggerNoiseFloorCalibrate(7);
+    assert(!w._nf_refresh_requested);
+    ++now_ms;
+    w.triggerNoiseFloorCalibrate(7);
+    assert(w._nf_refresh_requested);
+  }
+  {
+    RadioLibWrapper w;
+    mesh::RadioProfileConfig second;
+    second.params.freq = 910.5; second.params.bw = 62.5; second.params.sf = 7; second.params.cr = 5;
+    second.mode = mesh::RadioProfileMode::Rx;
+    w._profiles.primary = second.params;
+    w._profiles.setSecondary(second, false);
+    w._nf_refresh_requested = false;
+    w._noise_floor_valid = w._noise_floor_secondary_valid = true;
+    w._nf_last_calib = now_ms;
+    now_ms += NF_FAST_PROFILE_REFRESH_INTERVAL_MS;
+    w.triggerNoiseFloorCalibrate(7);
+    assert(!w._nf_refresh_requested);
+  }
+  now_ms = 100; // subsequent timing tests use their original short timeline
+  // R1 and R2 collect distinct RSSI populations across alternating visits;
+  // publishing one must never blend the other channel into its floor.
+  {
+    RadioLibWrapper w;
+    mesh::RadioProfileConfig second;
+    second.params.freq = 910.5; second.params.bw = 62.5; second.params.sf = 7; second.params.cr = 5;
+    second.mode = mesh::RadioProfileMode::RxTx;
+    w._profiles.primary = second.params;
+    w._profiles.setSecondary(second, false);
+    w._profile_scan_generation[0] = w._profiles.generation[0];
+    w._profile_scan_generation[1] = w._profiles.generation[1];
+    w._profile_rxps_suspended = true;
+    w._noise_floor_valid = w._noise_floor_secondary_valid = false;
+    w._nf_refresh_requested = true;
+    w._nf_sample_from = 0;
+    for (unsigned i = 0; i < NoiseFloorEstimator::SAMPLE_COUNT; ++i) {
+      w._active_profile = 0; w.rssi = -100; w.loop(); now_ms += 50;
+      w._active_profile = 1; w.rssi = -90; w.loop(); now_ms += 50;
+    }
+    w.loop(); // publish after both profile estimators complete
+    assert(!w._nf_refresh_requested && w._noise_floor_centi_dbm == -10000);
+    assert(w._noise_floor_secondary_centi_dbm == -9000);
   }
   // Hardware standby RSSI is not background noise, even if software says RX.
   {
@@ -505,7 +590,7 @@ int main() {
         source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         names = [('int16_t','performChannelScanWithTimeout'), ('bool','isPacketPendingOrReceiving'),
                  ('bool','isChannelActive'), ('void','startRecv'), ('void','checkReceiveMode'),
-                 ('void','loop'), ('void','requestRestartRecv'), ('void','noiseFloorCalibCheck'),
+                 ('void','loop'), ('void','triggerNoiseFloorCalibrate'), ('void','requestRestartRecv'), ('void','noiseFloorCalibCheck'),
                  ('void','endNoiseFloorCalib'), ('void','requestNoiseFloorRefresh'),
                  ('void','recalibrateNoiseFloor'), ('void','resetAGC')]
         methods = '\n'.join(method(source, f'{kind} RadioLibWrapper::{name}(') for kind,name in names)

@@ -168,6 +168,16 @@ public:
   BoundedTextRows(DisplayDriver& d, const DisplayRegion& r, int spacing = 2)
       : display(d), region(r), next_y(r.y), gap(spacing) {}
 
+  int nextY() const { return next_y; }
+
+  bool reserve() {
+    const int height = display.textLineHeight();
+    if (height <= 0 || !displayRegionContainsLine(region, next_y, height))
+      return false;
+    next_y += height + gap;
+    return true;
+  }
+
   bool draw(const char* text, bool centered = true) {
     const int height = display.textLineHeight();
     if (height <= 0 || !displayRegionContainsLine(region, next_y, height))

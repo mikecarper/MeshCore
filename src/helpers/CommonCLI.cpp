@@ -793,8 +793,15 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
     _com_prefs_needs_upgrade = false;
 #endif
   } else {
-    // File doesn't exist - set default bridge settings for fresh installs
+    // File doesn't exist - set defaults for a fresh install. Dual R1/R2
+    // scanning keeps the node awake, so only that configuration starts with
+    // device power saving off. A saved preference is never rewritten here.
     is_fresh_install = true;
+    mesh::Radio* profile_radio = _callbacks->getProfileRadio();
+    const bool dual_radio_active = profile_radio != NULL
+        && profile_radio->profiles() != NULL
+        && profile_radio->profiles()->enabled();
+    _prefs->powersaving_enabled = DEFAULT_POWERSAVING_ENABLED && !dual_radio_active ? 1 : 0;
     _prefs->bridge_pkt_src = 1;  // Default to RX (logRx) for new installs
   }
 #ifdef WITH_MQTT_BRIDGE

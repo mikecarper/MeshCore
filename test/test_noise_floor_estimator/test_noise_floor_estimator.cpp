@@ -19,6 +19,18 @@ TEST(NoiseFloorEstimator, RequiresACompleteSpacedBlock) {
   EXPECT_GT(NoiseFloorEstimator::WINDOW_TIMEOUT_MS, 3150U);
 }
 
+TEST(NoiseFloorEstimator, ReportsBestCaseRemainingSecondsWithTenths) {
+  NoiseFloorEstimator n;
+  EXPECT_EQ(64, n.samplesRemaining());
+  EXPECT_FLOAT_EQ(3.2f, n.secondsRemaining());
+  for (unsigned i = 0; i < 20; ++i) ASSERT_TRUE(n.add(-100, i * 50));
+  EXPECT_EQ(44, n.samplesRemaining());
+  EXPECT_FLOAT_EQ(2.2f, n.secondsRemaining());
+  for (unsigned i = 20; i < 64; ++i) ASSERT_TRUE(n.add(-100, i * 50));
+  EXPECT_EQ(0, n.samplesRemaining());
+  EXPECT_FLOAT_EQ(0.0f, n.secondsRemaining());
+}
+
 TEST(NoiseFloorEstimator, RejectsSparseLowOutliersAndMajorityTraffic) {
   NoiseFloorEstimator n;
   int32_t floor = 0;

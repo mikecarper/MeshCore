@@ -241,7 +241,9 @@ struct Context {
   float freq;
   uint8_t sf;
   float bw;
+  const char* radio_label;  // "" for the sole/default profile, otherwise R1/R2/T1/T2
   bool link_up;
+  bool dual_radio;
 };
 
 struct RowText {
@@ -316,7 +318,11 @@ inline void composeRow(Row row, const Context& ctx, const RadioActivitySnapshot&
       formatAge(scratch, sizeof(scratch), s.last_packet_age_ms, s.has_last_packet);
       snprintf(out->left, sizeof(out->left), "RX %s", scratch);
       out->left_color = s.has_last_packet ? TEXT : MUTED;
-      snprintf(out->right, sizeof(out->right), ctx.link_up ? "WiFi OK" : "WiFi --");
+      if (ctx.dual_radio) {
+        snprintf(out->right, sizeof(out->right), ctx.link_up ? "WiFi OK R2 ON" : "WiFi -- R2 ON");
+      } else {
+        snprintf(out->right, sizeof(out->right), ctx.link_up ? "WiFi OK" : "WiFi --");
+      }
       out->right_color = ctx.link_up ? GOOD : WARN;
       break;
 
@@ -485,7 +491,15 @@ inline void drawHeader(DisplayDriver& d, const Layout& l, const Context& ctx) {
 
 inline void drawRadioStrip(DisplayDriver& d, const Layout& l, const Context& ctx) {
   char tmp[32];
-  formatRadioStrip(tmp, sizeof(tmp), ctx.freq, ctx.sf, ctx.bw);
+  char params[32];
+  formatRadioStrip(params, sizeof(params), ctx.freq, ctx.sf, ctx.bw);
+  if (ctx.radio_label && ctx.radio_label[0]) {
+    // Tags are R1/R2/T1/T2. Bounds keep this header-only layout safe even if
+    // a future caller supplies a longer diagnostic label.
+    snprintf(tmp, sizeof(tmp), "%.3s %.27s", ctx.radio_label, params);
+  } else {
+    snprintf(tmp, sizeof(tmp), "%s", params);
+  }
   char fitted[32];
   fitToChars(fitted, sizeof(fitted), tmp, l.max_chars);
   d.setTextSize(1);

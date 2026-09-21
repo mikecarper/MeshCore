@@ -39,7 +39,9 @@ Context makeContext(const char* name = "Ridgeline North") {
   c.freq = 910.525f;
   c.sf = 7;
   c.bw = 62.5f;
+  c.radio_label = "";
   c.link_up = true;
+  c.dual_radio = false;
   return c;
 }
 
@@ -155,6 +157,18 @@ TEST(ObserverDashboardFormat, EmptyWindowNeverProducesNanOrInfinity) {
   EXPECT_STREQ("SNR --", rf.left);
   EXPECT_STREQ("AIR 0.0%", rf.right);
   EXPECT_STREQ("RX --", status.left);
+}
+
+TEST(ObserverDashboardFormat, StatusRowIdentifiesAnActiveSecondRadio) {
+  Context ctx = makeContext();
+  ctx.dual_radio = true;
+  RowText status;
+  composeRow(ROW_STATUS, ctx, makeEmpty(), &status);
+  EXPECT_STREQ("WiFi OK R2 ON", status.right);
+
+  ctx.link_up = false;
+  composeRow(ROW_STATUS, ctx, makeEmpty(), &status);
+  EXPECT_STREQ("WiFi -- R2 ON", status.right);
 }
 
 TEST(ObserverDashboardFormat, EveryRowFitsTheCharacterBudget) {
@@ -496,6 +510,27 @@ TEST(ObserverDashboardSignature, LinkStateOnlyTouchesTheStatusRow) {
   uint32_t sa[ROW_COUNT], sb[ROW_COUNT];
   allRowSignatures(l, up, s, sa);
   allRowSignatures(l, down, s, sb);
+
+  for (int r = 0; r < ROW_COUNT; r++) {
+    if (r == ROW_STATUS) {
+      EXPECT_NE(sa[r], sb[r]);
+    } else {
+      EXPECT_EQ(sa[r], sb[r]) << "row " << r;
+    }
+  }
+}
+
+TEST(ObserverDashboardSignature, SecondRadioStateOnlyTouchesTheStatusRow) {
+  Layout l = portraitLayout();
+  RadioActivitySnapshot s = makeBusy();
+
+  Context single = makeContext();
+  Context dual = makeContext();
+  dual.dual_radio = true;
+
+  uint32_t sa[ROW_COUNT], sb[ROW_COUNT];
+  allRowSignatures(l, single, s, sa);
+  allRowSignatures(l, dual, s, sb);
 
   for (int r = 0; r < ROW_COUNT; r++) {
     if (r == ROW_STATUS) {

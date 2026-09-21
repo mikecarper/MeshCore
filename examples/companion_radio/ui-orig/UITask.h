@@ -42,6 +42,9 @@ class UITask : public AbstractUITask {
   bool _displayWasOn = false;  // Track display state before button press
   unsigned long _pairing_screen_until;
   unsigned long ui_started_at;
+  uint32_t _radio_profile_page_started_at = 0;
+  bool _dual_radio_enabled_seen = false;
+  uint8_t _radio_profile_display_page_seen = 0;
 
   // Button handlers
 #ifdef PIN_USER_BTN
@@ -64,6 +67,9 @@ class UITask : public AbstractUITask {
   void handleButtonLongPress();
   bool shouldPlayMessageTone() const;
   bool isPairingScreenActive() const;
+  void resetRadioProfileDisplayPage();
+  bool showingSecondaryRadioProfilePage();
+  void serviceRadioProfileDisplayPage();
   void showPairingPin();
   void finishPairingScreen(bool timed_out);
 

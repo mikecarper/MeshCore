@@ -26,6 +26,8 @@ class UITask {
   NodePrefs* _node_prefs;
   char _version_info[32];
   unsigned long _started_at = 0;
+  uint32_t _radio_profile_page_started_at = 0;
+  bool _dual_radio_enabled_seen = false;
 #ifdef DISPLAY_TOUCH_TOGGLE
   unsigned long _powering_off_at = 0;
 #endif
@@ -61,6 +63,8 @@ class UITask {
   uint8_t _flip_seen = 0xFF;         // 0xFF forces the first apply
   void applyDisplayFlip();
 
+  void resetRadioProfileDisplayPage();
+  bool showingSecondaryRadioProfilePage();
 
   void renderCurrScreen();
 public:

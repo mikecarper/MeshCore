@@ -12,11 +12,13 @@ HARNESS = r'''
 #include <initializer_list>
 #include <RadioProfiles.h>
 #include <helpers/radiolib/RXPowerSaving.h>
+#include <helpers/radiolib/NoiseFloorEstimator.h>
 #define RADIOLIB_ERR_NONE 0
 #define STATE_IDLE 0
 #define STATE_RX 1
 #define STATE_TX_WAIT 3
 #define STATE_INT_READY 16
+#define NF_CALIB_SETTLE_MS 7UL
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 namespace mesh { enum class RadioParamApplyResult { APPLIED, BUSY, FAILED }; }
 static uint64_t elapsed_us;
@@ -33,7 +35,14 @@ struct RadioLibWrapper {
   bool _rx_ps_enabled=true, _rx_ps_armed=true, _rx_ps_continuous_fallback=false;
   bool _profile_saved_rxps=false, _profile_rxps_suspended=false;
   bool _profile_standby_held=false, _saved_standby_xosc=false;
-  bool _nf_calib_active=false, _noise_floor_valid=true, _profile_refresh_required=false;
+  bool _nf_calib_active=false, _nf_refresh_requested=false, _noise_floor_valid=true, _noise_floor_secondary_valid=true, _profile_refresh_required=false;
+  unsigned long _nf_last_calib=0, _nf_calib_deadline=0, _nf_sample_from=0;
+  NoiseFloorEstimator _floor_estimator;
+  NoiseFloorEstimator _secondary_floor_estimator;
+  static constexpr uint32_t NoiseFloorSettleMillis=7UL;
+  NoiseFloorEstimator& profileFloorEstimator(uint8_t profile) {
+    return profile == 1 ? _secondary_floor_estimator : _floor_estimator;
+  }
   uint32_t _rx_ps_rx_us=50000, _rx_ps_sleep_us=50000;
   uint8_t _active_profile=0, _cur_sf=7, _cur_cr=5;
   uint32_t _profile_generation=1, _profile_visit_us=0, _profile_retry_at=0;
@@ -184,6 +193,7 @@ int main() {
   }
   {
     RadioLibWrapper w; w.enable();
+    w._nf_refresh_requested=false; // exercise the ordinary, post-calibration cadence
     assert(w._profile_rxps_suspended && !w._rx_ps_enabled && !w._rx_ps_armed);
     assert(w.chip.standbyXOSC && w._profile_standby_held && !w._saved_standby_xosc);
     w.setProfileStandbyWarm(true); // repeated requests must not overwrite the saved RC policy
@@ -211,8 +221,33 @@ int main() {
     w._profiles.secondary.params.bw=62.5;
     ++w._profiles.generation[1];
     w.serviceProfileScan();assert(w._active_profile==1); // slower channel first
+    w._nf_refresh_requested=false; // ordinary cadence after the replacement baseline
     elapsed_us+=w._profiles.listenUs(1)-1;w.serviceProfileScan();assert(w._active_profile==1);
     elapsed_us++;w.serviceProfileScan();assert(w._active_profile==0);
+  }
+  {
+    // SX126x profiles need at most a 7ms settle. A shorter visit is extended
+    // only to that bound, never to the former 20ms calibration bound.
+    RadioLibWrapper w;
+    w._nf_refresh_requested=true;
+    w.enable();
+    const auto primary_visit=w._profiles.listenUs(0);
+    const auto calibrated_visit=primary_visit < 7000 ? 7000 : primary_visit;
+    elapsed_us += calibrated_visit - 1; w.serviceProfileScan(); assert(w._active_profile==0);
+    elapsed_us++; w.serviceProfileScan(); assert(w._active_profile==1);
+  }
+  {
+    // Between spaced noise samples, even a very short profile must keep its
+    // normal visit. Calibration may not turn every fast scan hop into 7ms.
+    RadioLibWrapper w;
+    w._nf_refresh_requested=true;
+    w.enable();
+    w._floor_estimator.add(-100, millis());
+    w._active_profile=0;
+    w._profile_visit_us=micros();
+    const auto primary_visit=w._profiles.listenUs(0);
+    elapsed_us += primary_visit - 1; w.serviceProfileScan(); assert(w._active_profile==0);
+    elapsed_us++; w.serviceProfileScan(); assert(w._active_profile==1);
   }
   {
     RadioLibWrapper w;w.enable();w.fail=true;

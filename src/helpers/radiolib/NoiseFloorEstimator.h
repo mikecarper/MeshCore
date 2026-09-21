@@ -22,6 +22,13 @@ private:
 
 public:
   uint16_t count() const { return _count; }
+  uint16_t samplesRemaining() const { return SAMPLE_COUNT - _count; }
+  // This is the best-case remaining time: rejected RSSI reads and received
+  // packets deliberately pause the collection window rather than fabricate
+  // samples. It is useful for a compact UI progress indication.
+  float secondsRemaining() const {
+    return samplesRemaining() * (SAMPLE_INTERVAL_MS / 1000.0f);
+  }
   bool complete() const { return _count == SAMPLE_COUNT; }
   bool ready(uint32_t now) const {
     return !complete() && (_count == 0 || uint32_t(now - _last_sample_at) >= SAMPLE_INTERVAL_MS);

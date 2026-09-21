@@ -20,7 +20,7 @@
   #define DEFAULT_CAD_ENABLED 0
 #endif
 #ifndef DEFAULT_POWERSAVING_ENABLED
-  #define DEFAULT_POWERSAVING_ENABLED 0
+  #define DEFAULT_POWERSAVING_ENABLED 1
 #endif
 
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
@@ -156,7 +156,7 @@ public:
   uint8_t bridge_channel = 0; // 1-13 (ESP-NOW only)
   char bridge_secret[16] = {}; // for XOR encryption of bridge packets (ESP-NOW only)
   // Power setting
-  uint8_t powersaving_enabled = 0; // boolean
+  uint8_t powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0; // boolean
   uint8_t reboot_interval = 0; // hours, 0-255 (default 0=disable)
   // Gps settings
   uint8_t gps_enabled = 0;

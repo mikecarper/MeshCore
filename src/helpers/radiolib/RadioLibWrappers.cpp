@@ -13,7 +13,11 @@
 #define NF_CALIB_INTERVAL_MS  2000UL    // match the original 2-second refresh cadence
 #define NF_CALIB_TIMEOUT_MS   NoiseFloorEstimator::WINDOW_TIMEOUT_MS
 #define NF_CONTINUOUS_TIMEOUT_MS NoiseFloorEstimator::WINDOW_TIMEOUT_MS
-#define NF_CALIB_SETTLE_MS    20UL      // frontend/AGC settle after RX entry
+#define NF_CALIB_SETTLE_MS    RadioLibWrapper::NoiseFloorSettleMillis
+// A profile normally visited for less than its RSSI settle time stays fast
+// during ordinary scanning. Refresh its floor with one bounded slow-visit
+// sample set every fifteen minutes instead.
+#define NF_FAST_PROFILE_REFRESH_INTERVAL_MS (15UL * 60UL * 1000UL)
 
 static volatile uint8_t state = STATE_IDLE;
 
@@ -64,7 +68,9 @@ void RadioLibWrapper::begin() {
 
   _noise_floor = 0;
   _noise_floor_centi_dbm = 0;
+  _noise_floor_secondary_centi_dbm = 0;
   _noise_floor_valid = false;
+  _noise_floor_secondary_valid = false;
   _threshold = 0;
   _cad_enabled = false;
   _rx_mode_checked_at = millis();
@@ -75,6 +81,7 @@ void RadioLibWrapper::begin() {
 
   // start average out some samples
   _floor_estimator.reset(true);
+  _secondary_floor_estimator.reset(true);
   _nf_calib_active = false;
   _nf_last_calib = 0;
   _nf_sample_from = 0;
@@ -324,6 +331,11 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
     if (!restored || (resume && !isInRecvMode())) _profile_refresh_required = true;
   }
   _profile_visit_us = micros();
+  // A profile retune re-enters RX on a different tuple. Do not read its
+  // instantaneous RSSI until the chip family's settle interval has elapsed.
+  if (applied && _nf_refresh_requested) {
+    _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
+  }
   const uint32_t elapsed = _profile_visit_us - started;
   if (elapsed > _profiles.longest_switch_us) _profiles.longest_switch_us = elapsed;
   return applied ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
@@ -361,7 +373,15 @@ void RadioLibWrapper::serviceProfileScan() {
     _rx_ps_enabled = false;
     _profile_rxps_suspended = true;
     _nf_calib_active = false;
-    _noise_floor_valid = false;  // a single-channel floor cannot describe both channels
+    // Each profile owns a floor. Start fresh, independent baselines so RSSI
+    // values from two frequencies are never blended into one estimate.
+    _noise_floor_valid = false;
+    _noise_floor_secondary_valid = false;
+    _nf_refresh_requested = true;
+    _nf_last_calib = 0;
+    _nf_calib_deadline = 0;
+    _floor_estimator.reset(true);
+    _secondary_floor_estimator.reset(true);
     _profile_refresh_required = true; // refresh side detectors even if the tuple is unchanged
     setProfileStandbyWarm(true);
     endReconfigure(resume);
@@ -370,11 +390,32 @@ void RadioLibWrapper::serviceProfileScan() {
   const bool restart_scan = _profiles.enabled()
       && (_profile_scan_generation[0] != _profiles.generation[0]
           || _profile_scan_generation[1] != _profiles.generation[1]);
+  if (restart_scan) {
+    // A profile changed while scanning. Discard both partial baselines before
+    // the first visit on the replacement tuples.
+    _noise_floor_valid = false;
+    _noise_floor_secondary_valid = false;
+    _nf_refresh_requested = true;
+    _nf_last_calib = 0;
+    _nf_calib_deadline = 0;
+    _floor_estimator.reset(true);
+    _secondary_floor_estimator.reset(true);
+  }
   if (!_profiles.enabled()) target = 0;
   else if (restart_scan) target = _profiles.slowerProfile();
-  else if ((uint32_t)(micros() - _profile_visit_us) >= _profiles.listenUs(
-      _active_profile, profilePreamble(_profiles.slowerProfile()))) {
-    target ^= 1;
+  else {
+    uint32_t visit_us = _profiles.listenUs(
+        _active_profile, profilePreamble(_profiles.slowerProfile()));
+    // A normal visit can be shorter than the RSSI settle interval on some
+    // chips. Hold only a visit that is actually due to contribute its next
+    // 50ms-spaced sample; very fast profiles otherwise retain their ordinary
+    // scan cadence throughout calibration.
+    const NoiseFloorEstimator& estimator = profileFloorEstimator(_active_profile);
+    if (_nf_refresh_requested && estimator.ready(static_cast<uint32_t>(millis()))
+        && visit_us < NF_CALIB_SETTLE_MS * 1000UL) {
+      visit_us = NF_CALIB_SETTLE_MS * 1000UL;
+    }
+    if ((uint32_t)(micros() - _profile_visit_us) >= visit_us) target ^= 1;
   }
   const auto result = tuneProfile(target);
   if (restart_scan && result == mesh::RadioParamApplyResult::APPLIED) {
@@ -466,9 +507,22 @@ void RadioLibWrapper::idle() {
 
 void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
-  // Calibration is independent of interference detection. Callers such as the
-  // Dispatcher and KISS modem use a zero threshold but still expect a fresh
-  // floor measurement on every scheduled request.
+  // The Dispatcher calls this every two seconds. Repeatedly recalibrating a
+  // dual-profile scanner would repeatedly lengthen its visits. Once both
+  // baselines are valid, retain them until a real RF-path change—except for a
+  // fast profile: it receives one new bounded 7 ms-visit sample set every
+  // fifteen minutes. Profiles already visiting for at least 7 ms need no
+  // artificial slowdown after their normal baseline.
+  if (_profiles.enabled() && _noise_floor_valid && _noise_floor_secondary_valid) {
+    const uint16_t preamble = profilePreamble(_profiles.slowerProfile());
+    const bool fast_profile = _profiles.listenUs(0, preamble) < NF_CALIB_SETTLE_MS * 1000UL
+        || _profiles.listenUs(1, preamble) < NF_CALIB_SETTLE_MS * 1000UL;
+    if (fast_profile && _nf_last_calib != 0
+        && (uint32_t)(millis() - _nf_last_calib) >= NF_FAST_PROFILE_REFRESH_INTERVAL_MS) {
+      requestNoiseFloorRefresh();
+    }
+    return;
+  }
   requestNoiseFloorRefresh();
 }
 
@@ -476,9 +530,11 @@ void RadioLibWrapper::recalibrateNoiseFloor() {
   // A gain or tuning change starts a new baseline. Keep the published value
   // available while discarding the old samples and rise-hold history.
   _noise_floor_valid = false;
+  _noise_floor_secondary_valid = false;
   _nf_refresh_requested = true;
   _nf_last_calib = 0;
   _floor_estimator.reset(true);
+  _secondary_floor_estimator.reset(true);
 
   const unsigned long now = millis();
   _nf_sample_from = now + NF_CALIB_SETTLE_MS;
@@ -497,6 +553,7 @@ void RadioLibWrapper::requestNoiseFloorRefresh() {
   if (_nf_refresh_requested) return;
   _nf_refresh_requested = true;
   _floor_estimator.reset();
+  _secondary_floor_estimator.reset();
   _nf_calib_deadline = 0;  // starts when continuous RX is actually available
 }
 
@@ -517,8 +574,10 @@ void RadioLibWrapper::resetAGC() {
   // for LBT while the next spaced block is collected. Gain/tuning changes use
   // recalibrateNoiseFloor() directly to seed a fresh baseline.
   const bool previous_valid = _noise_floor_valid;
+  const bool previous_secondary_valid = _noise_floor_secondary_valid;
   recalibrateNoiseFloor();
   _noise_floor_valid = previous_valid;
+  _noise_floor_secondary_valid = previous_secondary_valid;
 }
 
 bool RadioLibWrapper::recoverRadio(bool hard) {
@@ -815,13 +874,69 @@ bool RadioLibWrapper::serviceCarrierWave() {
 
 void RadioLibWrapper::loop() {
   if (serviceCarrierWave()) return;
-  serviceProfileScan();
-  // Calibration batches need one stable channel. Do not publish a noise floor
-  // assembled from different frequencies, or let a batch pin the scan on one.
   if (_profiles.enabled()) {
-    checkReceiveMode(static_cast<uint32_t>(millis()));
+    const unsigned long now = millis();
+    checkReceiveMode(static_cast<uint32_t>(now));
+
+    const bool restart_scan = _profile_scan_generation[0] != _profiles.generation[0]
+        || _profile_scan_generation[1] != _profiles.generation[1];
+    if (!_profile_rxps_suspended || restart_scan) {
+      // Entering scan mode or changing a profile retunes before sampling. A
+      // sample from the previous physical tuple would be misleading.
+      serviceProfileScan();
+      return;
+    }
+
+    if (_nf_refresh_requested && _nf_calib_deadline == 0 && state == STATE_RX) {
+      _nf_calib_deadline = now + NF_CONTINUOUS_TIMEOUT_MS;
+    }
+    if (_nf_refresh_requested && _floor_estimator.complete()
+        && _secondary_floor_estimator.complete()) {
+      if (_floor_estimator.publish(_noise_floor_centi_dbm, _noise_floor_valid)) {
+        _noise_floor_valid = true;
+        _noise_floor = (_noise_floor_centi_dbm - 50) / 100;
+      }
+      if (_secondary_floor_estimator.publish(_noise_floor_secondary_centi_dbm,
+                                              _noise_floor_secondary_valid)) {
+        _noise_floor_secondary_valid = true;
+      }
+      _nf_refresh_requested = false;
+      _nf_last_calib = now;
+      _nf_calib_deadline = 0;
+      MESH_DEBUG_PRINTLN("RadioLibWrapper: profile noise floors = %d, %d",
+                         (int)_noise_floor,
+                         (int)((_noise_floor_secondary_centi_dbm - 50) / 100));
+    } else if (_nf_refresh_requested && _nf_calib_deadline != 0
+        && (long)(now - _nf_calib_deadline) >= 0) {
+      // Busy profile visits must not pin dual-profile scanning indefinitely.
+      _nf_refresh_requested = false;
+      _nf_last_calib = now;
+      _nf_calib_deadline = 0;
+      _floor_estimator.reset();
+      _secondary_floor_estimator.reset();
+    } else {
+      NoiseFloorEstimator& estimator = profileFloorEstimator(_active_profile);
+      if (_nf_refresh_requested && state == STATE_RX
+        && !estimator.complete() && !_rx_ps_armed
+        && estimator.ready(static_cast<uint32_t>(now))
+        && !(_nf_sample_from != 0 && (long)(now - _nf_sample_from) < 0)
+        && !isChipBusy() && !isPacketPendingOrReceiving()) {
+        // Preserve samples across visits, but never let one profile's RSSI
+        // contaminate the other profile's independent noise-floor estimate.
+        _nf_sample_from = now + NoiseFloorEstimator::SAMPLE_INTERVAL_MS;
+        if (readReceiveMode() == 0) {
+          estimator.reset(true);
+        } else if (!isPacketPendingOrReceiving()) {
+          estimator.add(getCurrentRSSI(), static_cast<uint32_t>(now));
+        }
+      }
+    }
+    // Sample before deciding whether to hop. serviceProfileScan() extends a
+    // short visit only when the active profile still needs a safe sample.
+    serviceProfileScan();
     return;
   }
+  serviceProfileScan();
   if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
     rxPsWatchdogCheck();
   }

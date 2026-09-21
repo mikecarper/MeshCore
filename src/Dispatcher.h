@@ -134,6 +134,22 @@ public:
   virtual float getNoiseFloorDbm() const {
     return static_cast<float>(getNoiseFloor());
   }
+  // Profile zero is the primary radio.  Radios that scan a second profile can
+  // expose its independent floor without changing the legacy stats API.
+  virtual float getNoiseFloorDbm(uint8_t profile) const {
+    (void)profile;
+    return getNoiseFloorDbm();
+  }
+
+  // A zero result means there is no active sampled calibration window (or
+  // that this transport does not expose one). The estimate itself may remain
+  // visible while a later refresh is being collected.
+  virtual float getNoiseFloorCalibrationSecondsRemaining() const { return 0.0f; }
+  virtual float getNoiseFloorCalibrationSecondsRemaining(uint8_t profile) const {
+    (void)profile;
+    return getNoiseFloorCalibrationSecondsRemaining();
+  }
+  virtual bool isCalibratingNoiseFloor() const { return false; }
 
   virtual void triggerNoiseFloorCalibrate(int threshold) { }
 

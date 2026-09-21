@@ -243,3 +243,7 @@ private:
   }
 #endif
 };
+
+// The display implementation is kept independent of the sketch-local MyMesh
+// subclass, while still needing its configured radio profiles.
+SensorMesh& activeSensorMesh();

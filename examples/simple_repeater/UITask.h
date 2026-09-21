@@ -25,6 +25,15 @@ class UITask {
   char _version_info[32];
   unsigned long _powering_off_at = 0;
   unsigned long _started_at = 0;
+  uint8_t _radio_profile_display_page = 0;
+  bool _dual_radio_enabled_seen = false;
+
+  void resetRadioProfileDisplayPage();
+  void advanceRadioProfileDisplayPage();
+  uint8_t currentRadioProfileDisplayPage();
+  bool showingSecondaryRadioProfilePage();
+  bool showingRadioProfileSystemStatusPage(uint8_t* status_page_index = nullptr);
+  uint8_t radioProfileSystemStatusPageCount() const;
 
 #ifdef DISPLAY_REDRAW_ON_CHANGE
   uint32_t _last_frame_signature = 0;

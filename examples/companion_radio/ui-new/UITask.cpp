@@ -12,6 +12,9 @@
   #include <helpers/ui/SmallMessageText.h>
 #endif
 #include <helpers/ui/CompanionTransportSelectorLayout.h>
+#include <helpers/ui/RadioProfileDisplayPage.h>
+#include <helpers/ui/RadioProfileSystemStatus.h>
+#include <RadioProfiles.h>
 #include "../MyMesh.h"
 #include "../CompanionWiFi.h"
 #include "target.h"
@@ -64,6 +67,38 @@ static uint64_t companionMessageElapsedMillis(uint64_t heard_millis) {
   return static_cast<uint32_t>(millis()
       - static_cast<uint32_t>(heard_millis));
 #endif
+}
+
+static mesh::ui::RadioProfileSystemStatus radioProfileSystemStatus(
+    const CompanionNodePrefs& prefs) {
+  mesh::ui::RadioProfileSystemStatus status;
+  const auto* radio = the_mesh.getProfileRadio();
+  const mesh::RadioProfiles* profiles = radio ? radio->profiles() : NULL;
+  status.public_key = the_mesh.self_id.pub_key;
+  status.powersaving_enabled = prefs.powersaving_enabled != 0;
+#if ENV_INCLUDE_GPS == 1
+  status.gps_enabled = prefs.gps_enabled != 0;
+#endif
+  status.fem_enabled = board.canControlLoRaFemLna()
+      && board.isLoRaFemLnaEnabled();
+  status.rx_boosted_gain = prefs.rx_boosted_gain != 0;
+  status.rx_powersaving_enabled = prefs.rx_powersaving_enabled != 0;
+  status.cad_enabled = prefs.cad_enabled != 0;
+  status.dual_radio_enabled = profiles != NULL && profiles->enabled();
+  if (status.dual_radio_enabled) {
+    status.secondary_temporary = profiles->secondary_temporary;
+    status.secondary_mode = profiles->secondary.mode;
+    status.cross = profiles->cross;
+  }
+  status.noise_floor_1 = radio_driver.getNoiseFloorDbm(0);
+  status.noise_floor_1_seconds =
+      radio_driver.getNoiseFloorCalibrationSecondsRemaining(0);
+  if (status.dual_radio_enabled) {
+    status.noise_floor_2 = radio_driver.getNoiseFloorDbm(1);
+    status.noise_floor_2_seconds =
+        radio_driver.getNoiseFloorCalibrationSecondsRemaining(1);
+  }
+  return status;
 }
 
 #ifndef UI_RECENT_LIST_SIZE
@@ -421,6 +456,8 @@ class HomeScreen : public UIScreen {
 #endif
   uint32_t _uptime_last_millis;
   uint64_t _uptime_millis;
+  uint32_t _radio_profile_page_started_at = 0;
+  bool _dual_radio_enabled_seen = false;
   AdvertPath recent[UI_RECENT_LIST_SIZE];
 #if !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
   DiscoveredNode discovered[UI_RECENT_LIST_SIZE];
@@ -556,6 +593,35 @@ class HomeScreen : public UIScreen {
       next_sensors_refresh = millis() + 60000; // refresh sensor values every 1 min
 #endif
     }
+  }
+
+  void resetRadioProfileDisplayPage() {
+    _radio_profile_page_started_at = millis();
+    _dual_radio_enabled_seen = the_mesh.isDualRadioActive();
+  }
+
+  bool showingSecondaryRadioProfilePage(DisplayDriver& display,
+                                        int status_top) {
+    const bool dual_radio_enabled = the_mesh.isDualRadioActive();
+    const uint32_t now = millis();
+    if (dual_radio_enabled != _dual_radio_enabled_seen) {
+      _dual_radio_enabled_seen = dual_radio_enabled;
+      _radio_profile_page_started_at = now;
+    }
+    display.setTextSize(1);
+    const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
+        display, dual_radio_enabled, status_top);
+    return mesh::ui::showSecondaryRadioProfilePage(dual_radio_enabled,
+        status_pages,
+        now - _radio_profile_page_started_at);
+  }
+
+  int radioProfileRefreshMillis() const {
+    const uint32_t elapsed = millis() - _radio_profile_page_started_at;
+    const uint32_t remaining = mesh::ui::RADIO_PROFILE_DISPLAY_PAGE_MILLIS
+        - elapsed % mesh::ui::RADIO_PROFILE_DISPLAY_PAGE_MILLIS;
+    return remaining < UI_RADIO_REFRESH_MILLIS ? (int)remaining
+        : UI_RADIO_REFRESH_MILLIS;
   }
 
 public:
@@ -893,13 +959,50 @@ public:
     } else if (_page == HomePage::RADIO) {
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
+      const auto* radio = the_mesh.getProfileRadio();
+      const mesh::RadioProfiles* profiles = radio ? radio->profiles() : NULL;
+      const bool dual_radio = profiles != NULL && profiles->enabled();
+      const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
+          display, dual_radio, body_top);
+      uint8_t status_page_index = 0;
+      if (mesh::ui::showRadioProfileSystemStatusPage(dual_radio, status_pages,
+              millis() - _radio_profile_page_started_at, &status_page_index)) {
+        mesh::ui::drawRadioProfileSystemStatusPage(display,
+            radioProfileSystemStatus(*_node_prefs), status_page_index, body_top);
+        return radioProfileRefreshMillis();
+      }
+      const bool secondary_page = showingSecondaryRadioProfilePage(display,
+                                                                     body_top);
+      float freq = _node_prefs->freq;
+      float bw = _node_prefs->bw;
+      uint8_t sf = _node_prefs->sf;
+      uint8_t cr = _node_prefs->cr;
+      const char* profile_tag = "";
+      if (dual_radio) {
+        const uint8_t profile = secondary_page ? 1 : 0;
+        const auto& params = profiles->params(profile);
+        freq = params.freq;
+        bw = params.bw;
+        sf = params.sf;
+        cr = params.cr;
+        profile_tag = mesh::ui::radioProfileDisplayTag(profile,
+            profile == 1 ? profiles->secondary_temporary : profiles->primary_temporary);
+      }
       // freq / sf
       display.setCursor(0, body_top);
-      sprintf(tmp, "FQ: %06.3f   SF: %d", _node_prefs->freq, _node_prefs->sf);
+      if (dual_radio) {
+        snprintf(tmp, sizeof(tmp), "%s F:%06.3f S:%d", profile_tag, freq, sf);
+      } else {
+        snprintf(tmp, sizeof(tmp), "FQ: %06.3f   SF: %d", freq, sf);
+      }
       display.print(tmp);
 
       display.setCursor(0, body_top + row_height);
-      sprintf(tmp, "BW: %03.2f     CR: %d", _node_prefs->bw, _node_prefs->cr);
+      if (dual_radio) {
+        snprintf(tmp, sizeof(tmp), "%s B:%03.2f C:%d", profile_tag, bw, cr);
+      } else {
+        snprintf(tmp, sizeof(tmp), "BW: %03.2f     CR: %d", bw, cr);
+      }
       display.print(tmp);
 
       // tx power,  noise floor
@@ -907,11 +1010,23 @@ public:
       sprintf(tmp, "TX: %ddBm", _node_prefs->tx_power_dbm);
       display.print(tmp);
       display.setCursor(0, body_top + 3 * row_height);
-      float noise_floor = radio_driver.getNoiseFloorDbm();
+      // The RF rows above can be showing R1 or R2.  Read the matching
+      // estimator too; otherwise an R2-labelled page silently showed R1's
+      // noise floor.
+      const uint8_t noise_profile = dual_radio && secondary_page ? 1 : 0;
+      const char* noise_label = dual_radio
+          ? (noise_profile == 0 ? "N1" : "N2") : "Noise floor";
+      float noise_floor = radio_driver.getNoiseFloorDbm(noise_profile);
       if (noise_floor == 0.0f) {
-        strcpy(tmp, "Noise floor: measuring");
+        const float seconds = radio_driver
+            .getNoiseFloorCalibrationSecondsRemaining(noise_profile);
+        if (seconds > 0.0f) {
+          snprintf(tmp, sizeof(tmp), "%s: %.1fs", noise_label, seconds);
+        } else {
+          snprintf(tmp, sizeof(tmp), "%s: WAIT", noise_label);
+        }
       } else {
-        snprintf(tmp, sizeof(tmp), "Noise floor: %.1f", noise_floor);
+        snprintf(tmp, sizeof(tmp), "%s: %.1f", noise_label, noise_floor);
       }
       display.print(tmp);
 #ifdef COMPANION_EXCLUSIVE_WIFI_BLE
@@ -1152,7 +1267,7 @@ public:
       }
 #endif
     }
-    if (_page == HomePage::RADIO) return UI_RADIO_REFRESH_MILLIS;
+    if (_page == HomePage::RADIO) return radioProfileRefreshMillis();
 #if UI_MESSAGES_HOME_PAGE == 1
     if (_page == HomePage::MESSAGES) return 1000;
 #endif
@@ -1167,6 +1282,7 @@ public:
     const uint8_t key = static_cast<uint8_t>(c);
     if (key == KEY_LEFT || key == KEY_PREV) {
       _page = (_page + HomePage::Count - 1) % HomePage::Count;
+      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
       return true;
     }
 #if COMPANION_FEATURE_READER
@@ -1177,6 +1293,7 @@ public:
 #endif
     if (key == KEY_NEXT || key == KEY_RIGHT) {
       _page = (_page + 1) % HomePage::Count;
+      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
       if (_page == HomePage::RECENT) {
         _task->showAlert("Recent adverts", 800);
       }

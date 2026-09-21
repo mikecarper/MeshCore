@@ -4,7 +4,10 @@
 #endif
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/ui/BluetoothPairingUiPolicy.h>
+#include <helpers/ui/RadioProfileDisplayPage.h>
+#include <helpers/ui/RadioProfileSystemStatus.h>
 #include "../MyMesh.h"
+#include <RadioProfiles.h>
 #include "target.h"
 #include "u8g2_icons.h"
 
@@ -27,6 +30,42 @@
 #endif
 
 #define LONG_PRESS_MILLIS   1200
+
+namespace {
+
+mesh::ui::RadioProfileSystemStatus radioProfileSystemStatus(
+    const CompanionNodePrefs& prefs) {
+  mesh::ui::RadioProfileSystemStatus status;
+  const auto* radio = the_mesh.getProfileRadio();
+  const mesh::RadioProfiles* profiles = radio ? radio->profiles() : NULL;
+  status.public_key = the_mesh.self_id.pub_key;
+  status.powersaving_enabled = prefs.powersaving_enabled != 0;
+#if ENV_INCLUDE_GPS == 1
+  status.gps_enabled = prefs.gps_enabled != 0;
+#endif
+  status.fem_enabled = board.canControlLoRaFemLna()
+      && board.isLoRaFemLnaEnabled();
+  status.rx_boosted_gain = prefs.rx_boosted_gain != 0;
+  status.rx_powersaving_enabled = prefs.rx_powersaving_enabled != 0;
+  status.cad_enabled = prefs.cad_enabled != 0;
+  status.dual_radio_enabled = profiles != NULL && profiles->enabled();
+  if (status.dual_radio_enabled) {
+    status.secondary_temporary = profiles->secondary_temporary;
+    status.secondary_mode = profiles->secondary.mode;
+    status.cross = profiles->cross;
+  }
+  status.noise_floor_1 = radio_driver.getNoiseFloorDbm(0);
+  status.noise_floor_1_seconds =
+      radio_driver.getNoiseFloorCalibrationSecondsRemaining(0);
+  if (status.dual_radio_enabled) {
+    status.noise_floor_2 = radio_driver.getNoiseFloorDbm(1);
+    status.noise_floor_2_seconds =
+        radio_driver.getNoiseFloorCalibrationSecondsRemaining(1);
+  }
+  return status;
+}
+
+}  // namespace
 
 #ifndef UI_RECENT_LIST_SIZE
   #define UI_RECENT_LIST_SIZE 4
@@ -124,6 +163,8 @@ class HomeScreen : public UIScreen {
   bool sensors_scroll = false;
   int sensors_scroll_offset = 0;
   int next_sensors_refresh = 0;
+  uint32_t _radio_profile_page_started_at = 0;
+  bool _dual_radio_enabled_seen = false;
 
   void refresh_sensors() {
     if (millis() > next_sensors_refresh) {
@@ -146,10 +187,39 @@ class HomeScreen : public UIScreen {
     }
   }
 
+  void resetRadioProfileDisplayPage() {
+    _radio_profile_page_started_at = millis();
+    _dual_radio_enabled_seen = the_mesh.isDualRadioActive();
+  }
+
+  bool showingSecondaryRadioProfilePage(DisplayDriver& display) {
+    const bool dual_radio_enabled = the_mesh.isDualRadioActive();
+    const uint32_t now = millis();
+    if (dual_radio_enabled != _dual_radio_enabled_seen) {
+      _dual_radio_enabled_seen = dual_radio_enabled;
+      _radio_profile_page_started_at = now;
+    }
+    display.setTextSize(1);
+    const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
+        display, dual_radio_enabled, 8);
+    return mesh::ui::showSecondaryRadioProfilePage(dual_radio_enabled,
+        status_pages,
+        now - _radio_profile_page_started_at);
+  }
+
+  int radioProfileRefreshMillis() const {
+    const uint32_t elapsed = millis() - _radio_profile_page_started_at;
+    const uint32_t remaining = mesh::ui::RADIO_PROFILE_DISPLAY_PAGE_MILLIS
+        - elapsed % mesh::ui::RADIO_PROFILE_DISPLAY_PAGE_MILLIS;
+    return remaining < 5000 ? static_cast<int>(remaining) : 5000;
+  }
+
 public:
   HomeScreen(UITask* task, mesh::RTCClock* rtc, SensorManager* sensors, CompanionNodePrefs* node_prefs)
      : _task(task), _rtc(rtc), _sensors(sensors), _node_prefs(node_prefs), _page(0),
-       _shutdown_init(false), sensors_lpp(200) {  }
+       _shutdown_init(false), sensors_lpp(200) {
+    resetRadioProfileDisplayPage();
+  }
 
   void showFirstPage() { _page = HomePage::FIRST; }
 
@@ -230,23 +300,72 @@ public:
     } else if (_page == HomePage::RADIO) {
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
+      const auto* radio = the_mesh.getProfileRadio();
+      const mesh::RadioProfiles* profiles = radio ? radio->profiles() : NULL;
+      const bool dual_radio = profiles != NULL && profiles->enabled();
+      const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
+          display, dual_radio, 8);
+      uint8_t status_page_index = 0;
+      if (mesh::ui::showRadioProfileSystemStatusPage(dual_radio, status_pages,
+              millis() - _radio_profile_page_started_at, &status_page_index)) {
+        mesh::ui::drawRadioProfileSystemStatusPage(display,
+            radioProfileSystemStatus(*_node_prefs), status_page_index, 8);
+        return radioProfileRefreshMillis();
+      }
+      const bool secondary_page = showingSecondaryRadioProfilePage(display);
+      const uint8_t profile = dual_radio && secondary_page ? 1 : 0;
+      float freq = _node_prefs->freq;
+      float bw = _node_prefs->bw;
+      uint8_t sf = _node_prefs->sf;
+      uint8_t cr = _node_prefs->cr;
+      const char* profile_tag = "";
+      if (dual_radio) {
+        const auto& params = profiles->params(profile);
+        freq = params.freq;
+        bw = params.bw;
+        sf = params.sf;
+        cr = params.cr;
+        profile_tag = mesh::ui::radioProfileDisplayTag(profile,
+            profile == 1 ? profiles->secondary_temporary
+                         : profiles->primary_temporary);
+      }
       // frequency and spreading factor
       display.setCursor(0, 8);
-      sprintf(tmp, "FQ %06.3f", _node_prefs->freq);
+      if (dual_radio) {
+        snprintf(tmp, sizeof(tmp), "%s F:%06.3f", profile_tag, freq);
+      } else {
+        snprintf(tmp, sizeof(tmp), "FQ %06.3f", freq);
+      }
       display.print(tmp);
-      sprintf(tmp, "SF%d", _node_prefs->sf);
+      snprintf(tmp, sizeof(tmp), "S:%d", sf);
       display.drawTextRightAlign(display.width(), 8, tmp);
       // bandwidth and coding rate
       display.setCursor(0, 17);
-      sprintf(tmp, "BW %03.2f", _node_prefs->bw);
+      if (dual_radio) {
+        snprintf(tmp, sizeof(tmp), "%s B:%03.2f", profile_tag, bw);
+      } else {
+        snprintf(tmp, sizeof(tmp), "BW %03.2f", bw);
+      }
       display.print(tmp);
-      sprintf(tmp, "CR%d", _node_prefs->cr);
+      snprintf(tmp, sizeof(tmp), "C:%d", cr);
       display.drawTextRightAlign(display.width(), 17, tmp);
       // tx power and noise floor
       display.setCursor(0, 26);
-      sprintf(tmp, "NF %ddB", radio_driver.getNoiseFloor());
+      const char* noise_label = dual_radio ? (profile == 0 ? "N1" : "N2") : "NF";
+      const float noise_floor = radio_driver.getNoiseFloorDbm(profile);
+      if (noise_floor == 0.0f) {
+        const float seconds = radio_driver
+            .getNoiseFloorCalibrationSecondsRemaining(profile);
+        if (seconds > 0.0f) {
+          snprintf(tmp, sizeof(tmp), "%s:%.1fs", noise_label, seconds);
+        } else {
+          snprintf(tmp, sizeof(tmp), "%s:WAIT", noise_label);
+        }
+      } else {
+        snprintf(tmp, sizeof(tmp), "%s:%.1f", noise_label, noise_floor);
+      }
       display.print(tmp);
-      sprintf(tmp, "TX%d", _node_prefs->tx_power_dbm);
+      snprintf(tmp, sizeof(tmp), "TX:%d", _node_prefs->tx_power_dbm);
       display.drawTextRightAlign(display.width(), 26, tmp);
 
     } else if (_page == HomePage::BLUETOOTH) {
@@ -387,16 +506,20 @@ public:
         // display.drawTextCentered(display.width() / 2, 40 - 11, "hibernate:" PRESS_LABEL);
       }
     }
-    return 5000;   // next render after 5000 ms
+    // Keep the compact radio page on the R1/R2 boundary; other tiny pages
+    // retain their existing low-refresh cadence.
+    return _page == HomePage::RADIO ? radioProfileRefreshMillis() : 5000;
   }
 
   bool handleInput(char c) override {
     if (c == KEY_LEFT || c == KEY_PREV) {
       _page = (_page + HomePage::Count - 1) % HomePage::Count;
+      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
       return true;
     }
     if (c == KEY_NEXT || c == KEY_RIGHT) {
       _page = (_page + 1) % HomePage::Count;
+      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
       if (_page == HomePage::RECENT) {
         _task->showAlert("Recent adverts", 800);
       }

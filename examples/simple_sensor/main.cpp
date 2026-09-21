@@ -52,6 +52,10 @@ SimpleMeshTables tables;
 
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
 
+SensorMesh& activeSensorMesh() {
+  return the_mesh;
+}
+
 void halt() {
   while (1) ;
 }

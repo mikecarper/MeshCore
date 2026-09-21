@@ -64,6 +64,44 @@ int main() {
 
   mesh::ui::SmallMessageText body(display);
   assert(body.capitalHeight() == 6);
+  // The repeater's T096 status column uses the driver's normal 6x8 font.
+  const char* status_rows[] = {"GPS:OFF", "FEM:OFF", "RXB:OFF", "RXPS:OFF", "CAD:OFF"};
+  for (int i = 0; i < 5; ++i) {
+    assert(display.getTextWidth(status_rows[i]) <= 50);
+    display.clear();
+    display.drawTextRightAlign(158, 10 + (i < 4 ? i : 5) * 10, status_rows[i]);
+    assert(canvas.x >= 108 && canvas.x + display.getTextWidth(status_rows[i]) <= 158);
+  }
+  const char* noise_floor_rows[] = {"N1:-123.4", "N2:-123.4", "N1:4.2s", "N2:WAIT"};
+  for (const char* noise_floor : noise_floor_rows) {
+    // Decimal per-radio floors need 54px. The final T096 row has no wide
+    // left-column field, so it may use four pixels of its empty gutter.
+    assert(display.getTextWidth(noise_floor) <= 54);
+    display.clear();
+    display.drawTextRightAlign(158, 70, noise_floor);
+    assert(canvas.x >= 104 && canvas.x + display.getTextWidth(noise_floor) <= 158);
+  }
+  const char* radio_tags[] = {"R2:ON", "T2:ON"};
+  for (const char* tag : radio_tags) {
+    assert(display.getTextWidth(tag) <= 50);
+    display.clear();
+    display.drawTextRightAlign(158, 50, tag);
+    assert(canvas.x >= 108 && canvas.x + display.getTextWidth(tag) <= 158);
+  }
+  const char* dual_radio_rows[] = {"R1 F:2500.000 S:12", "T1 B:1625.00 C:8",
+                                   "R2 F:2500.000 S:12", "T2 B:1625.00 C:8"};
+  for (const char* row : dual_radio_rows) {
+    assert(display.getTextWidth(row) <= 108);
+  }
+  assert(display.getTextWidth("ID:ABCDEF") <= 108);
+  assert(display.getTextWidth("R2:RXTX") <= 108);
+  assert(display.getTextWidth("X:AUTO") <= 108);
+  // The name owns the full normal-font top row; radio/status columns start
+  // below it and cannot cause name wrapping.
+  canvas.prints = 0;
+  assert(display.getTextWidth("MercerWoodMesh T096 Node") <= 160);
+  display.drawTextEllipsized(0, 0, 160, "MercerWoodMesh T096 Node");
+  assert(canvas.prints == 1);
 #if defined(HELTEC_T096)
   assert(body.lineCount(12) == 8);
   // Check all 95 real font glyphs against their native bitmap coordinates.

@@ -33,12 +33,15 @@ protected:
   uint32_t n_recv, n_sent, n_recv_errors;
   int16_t _noise_floor, _threshold;
   int32_t _noise_floor_centi_dbm;
+  int32_t _noise_floor_secondary_centi_dbm = 0;
   float _last_rssi, _last_snr;
   bool _cad_enabled;
   uint32_t _cad_scan_timeout_override_ms;
   bool _noise_floor_valid;
+  bool _noise_floor_secondary_valid = false;
   bool _nf_refresh_requested;
   NoiseFloorEstimator _floor_estimator;
+  NoiseFloorEstimator _secondary_floor_estimator;
   uint32_t _rx_mode_checked_at = 0;
   uint8_t _rx_mode_failures = 0;
   unsigned long last_recv_millis;
@@ -101,6 +104,43 @@ protected:
   unsigned long _nf_last_calib;       // millis of last completed/attempted window
   unsigned long _nf_calib_deadline;   // abort window if the batch can't complete
   unsigned long _nf_sample_from;      // no samples before this (RX entry settle)
+  // The T096 SX1262 bench test found RSSI valid and stable by 7 ms after RX
+  // entry, including the 500 kHz/SF5 worst-case profile. Retain the
+  // conservative 20 ms path for the other radio families.
+#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)
+  static constexpr uint32_t NoiseFloorSettleMillis = 7UL;
+#else
+  static constexpr uint32_t NoiseFloorSettleMillis = 20UL;
+#endif
+
+  NoiseFloorEstimator& profileFloorEstimator(uint8_t profile) {
+    return profile == 1 ? _secondary_floor_estimator : _floor_estimator;
+  }
+  const NoiseFloorEstimator& profileFloorEstimator(uint8_t profile) const {
+    return profile == 1 ? _secondary_floor_estimator : _floor_estimator;
+  }
+  float profileNoiseFloorSecondsRemaining(uint8_t profile) const {
+    if (!isCalibratingNoiseFloor()) return 0.0f;
+    const NoiseFloorEstimator& estimator = profileFloorEstimator(profile);
+    if (!_profiles.enabled()) return estimator.secondsRemaining();
+
+    // Each profile receives one sample per complete scan cycle.  The floor
+    // that belongs to a short visit may wait only as long as the chip family
+    // needs for RSSI settling; the UI must follow this true cadence.
+    const uint32_t preamble = profilePreamble(_profiles.slowerProfile());
+    uint32_t primary_visit = _profiles.listenUs(0, preamble);
+    uint32_t secondary_visit = _profiles.listenUs(1, preamble);
+    const uint32_t minimum_visit = NoiseFloorSettleMillis * 1000UL;
+    if (primary_visit < minimum_visit) primary_visit = minimum_visit;
+    if (secondary_visit < minimum_visit) secondary_visit = minimum_visit;
+    uint32_t switch_us = _profiles.longest_switch_us;
+    if (switch_us < mesh::RadioProfiles::SwitchBudgetUs) {
+      switch_us = mesh::RadioProfiles::SwitchBudgetUs;
+    }
+    const uint64_t cycle_us = uint64_t(primary_visit) + secondary_visit
+        + 2ULL * switch_us + mesh::RadioProfiles::LoopBudgetUs;
+    return estimator.samplesRemaining() * (cycle_us / 1000000.0f);
+  }
 
   static constexpr bool hasDirectRadioResetPin() {
 #if defined(P_LORA_RESET)
@@ -270,6 +310,21 @@ public:
   float getNoiseFloorDbm() const override {
     return _noise_floor_centi_dbm / 100.0f;
   }
+  float getNoiseFloorDbm(uint8_t profile) const override {
+    if (profile == 1 && _profiles.enabled()) {
+      return _noise_floor_secondary_centi_dbm / 100.0f;
+    }
+    return getNoiseFloorDbm();
+  }
+  float getNoiseFloorCalibrationSecondsRemaining() const override {
+    const float primary = profileNoiseFloorSecondsRemaining(0);
+    if (!_profiles.enabled()) return primary;
+    const float secondary = profileNoiseFloorSecondsRemaining(1);
+    return primary > secondary ? primary : secondary;
+  }
+  float getNoiseFloorCalibrationSecondsRemaining(uint8_t profile) const override {
+    return profileNoiseFloorSecondsRemaining(profile);
+  }
   void triggerNoiseFloorCalibrate(int threshold) override;
   void recalibrateNoiseFloor() override;
   void setCADEnabled(bool enable) override { _cad_enabled = enable; }
@@ -300,7 +355,7 @@ public:
   bool isWatchdogObserving() const { return _wd_observe_until != 0; }
   // true while a noise-floor batch needs prompt loop service; the app's
   // hasPendingWork() keeps the MCU awake for the bounded spaced-sample window.
-  bool isCalibratingNoiseFloor() const {
+  bool isCalibratingNoiseFloor() const override {
     return _nf_calib_active
         || (_nf_refresh_requested
             && (!_rx_ps_enabled || _rx_ps_continuous_fallback));

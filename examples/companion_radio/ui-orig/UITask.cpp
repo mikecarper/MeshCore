@@ -5,6 +5,9 @@
 #include <Arduino.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/ui/BluetoothPairingUiPolicy.h>
+#include <helpers/ui/RadioProfileDisplayPage.h>
+#include <helpers/ui/RadioProfileSystemStatus.h>
+#include <RadioProfiles.h>
 #include "../MyMesh.h"
 
 #define AUTO_OFF_MILLIS     15000   // 15 seconds
@@ -29,6 +32,49 @@
 #ifndef USER_BTN_PRESSED
 #define USER_BTN_PRESSED LOW
 #endif
+
+namespace {
+
+mesh::ui::RadioProfileSystemStatus radioProfileSystemStatus(
+    const CompanionNodePrefs& prefs, const mesh::MainBoard& board) {
+  mesh::ui::RadioProfileSystemStatus status;
+  const auto* radio = the_mesh.getProfileRadio();
+  const mesh::RadioProfiles* profiles = radio ? radio->profiles() : NULL;
+  status.public_key = the_mesh.self_id.pub_key;
+  status.powersaving_enabled = prefs.powersaving_enabled != 0;
+#if ENV_INCLUDE_GPS == 1
+  status.gps_enabled = prefs.gps_enabled != 0;
+#endif
+  status.fem_enabled = board.canControlLoRaFemLna()
+      && board.isLoRaFemLnaEnabled();
+  status.rx_boosted_gain = prefs.rx_boosted_gain != 0;
+  status.rx_powersaving_enabled = prefs.rx_powersaving_enabled != 0;
+  status.cad_enabled = prefs.cad_enabled != 0;
+  status.dual_radio_enabled = profiles != NULL && profiles->enabled();
+  if (status.dual_radio_enabled) {
+    status.secondary_temporary = profiles->secondary_temporary;
+    status.secondary_mode = profiles->secondary.mode;
+    status.cross = profiles->cross;
+  }
+  status.noise_floor_1 = radio_driver.getNoiseFloorDbm(0);
+  status.noise_floor_1_seconds =
+      radio_driver.getNoiseFloorCalibrationSecondsRemaining(0);
+  if (status.dual_radio_enabled) {
+    status.noise_floor_2 = radio_driver.getNoiseFloorDbm(1);
+    status.noise_floor_2_seconds =
+        radio_driver.getNoiseFloorCalibrationSecondsRemaining(1);
+  }
+  return status;
+}
+
+uint8_t radioProfileStatusPageCount(DisplayDriver& display,
+                                    bool dual_radio_enabled) {
+  display.setTextSize(1);
+  return mesh::ui::radioProfileSystemStatusPageCount(display,
+                                                       dual_radio_enabled);
+}
+
+}  // namespace
 
 // 'meshcore', 128x13px
 static const uint8_t meshcore_logo [] PROGMEM = {
@@ -56,6 +102,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
 
   clearMsgPreview();
   _node_prefs = node_prefs;
+  resetRadioProfileDisplayPage();
   if (_display != NULL) {
     _display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(), hasConnection());
   }
@@ -110,6 +157,39 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
   _userButtonAnalog->onAnyPress([this]() { handleButtonAnyPress(); });
 #endif
   ui_started_at = millis();
+}
+
+void UITask::resetRadioProfileDisplayPage() {
+  _radio_profile_page_started_at = millis();
+  _dual_radio_enabled_seen = the_mesh.isDualRadioActive();
+  _radio_profile_display_page_seen = 0;
+}
+
+bool UITask::showingSecondaryRadioProfilePage() {
+  const bool dual_radio_enabled = the_mesh.isDualRadioActive();
+  const uint32_t now = millis();
+  if (dual_radio_enabled != _dual_radio_enabled_seen) {
+    _dual_radio_enabled_seen = dual_radio_enabled;
+    _radio_profile_page_started_at = now;
+  }
+  const uint8_t status_pages = radioProfileStatusPageCount(*_display,
+                                                            dual_radio_enabled);
+  return mesh::ui::showSecondaryRadioProfilePage(dual_radio_enabled,
+      status_pages,
+      now - _radio_profile_page_started_at);
+}
+
+void UITask::serviceRadioProfileDisplayPage() {
+  const bool dual_radio_enabled = the_mesh.isDualRadioActive();
+  const uint8_t status_pages = radioProfileStatusPageCount(*_display,
+                                                            dual_radio_enabled);
+  const uint8_t page = mesh::ui::radioProfileDisplayPageIndex(
+      dual_radio_enabled, status_pages,
+      millis() - _radio_profile_page_started_at);
+  if (page != _radio_profile_display_page_seen) {
+    _radio_profile_display_page_seen = page;
+    _need_refresh = true;
+  }
 }
 
 bool UITask::shouldPlayMessageTone() const {
@@ -272,6 +352,18 @@ void UITask::renderCurrScreen() {
     _display->setCursor((_display->width() - textWidth) / 2, 22);
     _display->print(_version_info);
   } else {  // home screen
+    const bool dual_radio_enabled = the_mesh.isDualRadioActive();
+    const uint8_t status_pages = radioProfileStatusPageCount(
+        *_display, dual_radio_enabled);
+    uint8_t status_page_index = 0;
+    if (mesh::ui::showRadioProfileSystemStatusPage(dual_radio_enabled,
+            status_pages, millis() - _radio_profile_page_started_at,
+            &status_page_index)) {
+      mesh::ui::drawRadioProfileSystemStatusPage(*_display,
+          radioProfileSystemStatus(*_node_prefs, *_board), status_page_index);
+      _need_refresh = false;
+      return;
+    }
     // node name
     _display->setCursor(0, 0);
     _display->setTextSize(1);
@@ -281,15 +373,42 @@ void UITask::renderCurrScreen() {
     // battery voltage
     renderBatteryIndicator(_board->getBattMilliVolts());
 
-    // freq / sf
+    const auto* radio = the_mesh.getProfileRadio();
+    const mesh::RadioProfiles* profiles = radio ? radio->profiles() : NULL;
+    const bool secondary_page = showingSecondaryRadioProfilePage();
+    const bool dual_radio = profiles != NULL && profiles->enabled();
+    float freq = _node_prefs->freq;
+    float bw = _node_prefs->bw;
+    uint8_t sf = _node_prefs->sf;
+    uint8_t cr = _node_prefs->cr;
+    const char* profile_tag = "";
+    if (dual_radio) {
+      const uint8_t profile = secondary_page ? 1 : 0;
+      const auto& params = profiles->params(profile);
+      freq = params.freq;
+      bw = params.bw;
+      sf = params.sf;
+      cr = params.cr;
+      profile_tag = mesh::ui::radioProfileDisplayTag(profile,
+          profile == 1 ? profiles->secondary_temporary : profiles->primary_temporary);
+    }
+
+    // Compact R1/R2 rows preserve every RF field on 128px displays.
     _display->setCursor(0, 20);
     _display->setColor(UIColor::secondary_txt);
-    sprintf(tmp, "FREQ: %06.3f SF%d", _node_prefs->freq, _node_prefs->sf);
+    if (dual_radio) {
+      snprintf(tmp, sizeof(tmp), "%s F:%06.3f S:%d", profile_tag, freq, sf);
+    } else {
+      snprintf(tmp, sizeof(tmp), "FREQ: %06.3f SF%d", freq, sf);
+    }
     _display->print(tmp);
 
-    // bw / cr
     _display->setCursor(0, 30);
-    sprintf(tmp, "BW: %03.2f CR: %d", _node_prefs->bw, _node_prefs->cr);
+    if (dual_radio) {
+      snprintf(tmp, sizeof(tmp), "%s B:%03.2f C:%d", profile_tag, bw, cr);
+    } else {
+      snprintf(tmp, sizeof(tmp), "BW: %03.2f CR: %d", bw, cr);
+    }
     _display->print(tmp);
 
     // BT pin
@@ -538,6 +657,10 @@ void UITask::loop() {
 #endif
 
   if (_display != NULL && _display->isOn()) {
+    if (!isPairingScreenActive() && !_alert[0] && !(_origin[0] && _msg[0])
+        && (millis() - ui_started_at) >= BOOT_SCREEN_MILLIS) {
+      serviceRadioProfileDisplayPage();
+    }
     static bool _firstBoot = true;
     if(_firstBoot && (millis() - ui_started_at) >= BOOT_SCREEN_MILLIS) {
       _need_refresh = true;
@@ -560,6 +683,7 @@ void UITask::handleButtonAnyPress() {
   if (_display != NULL) {
     _displayWasOn = _display->isOn();  // Track display state before any action
     _display->wake(mesh::ui::DisplayWake::Button);
+    if (!_displayWasOn) resetRadioProfileDisplayPage();
   }
 }
 
