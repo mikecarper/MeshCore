@@ -14,6 +14,10 @@ assert.doesNotMatch(pageSource, /<select name="tz"/);
 assert.match(pageSource, /data-role="test-content" hidden/);
 assert.match(pageSource, /data-role="test-content-footer" hidden/);
 assert.match(pageSource, /data-role="url-builder-disclosure" open/);
+assert.match(pageSource, /data-role="node-clock-input"/);
+assert.match(pageSource, /placeholder="02:42 22\/9\/2026 UTC"/);
+assert.match(pageSource, /data-action="apply-node-clock"/);
+assert.match(pageSource, /data-role="node-clock-status"/);
 assert.match(pageSource, /data-command="primary-scheduled"/);
 assert.match(pageSource, /data-command="primary-cancel"/);
 assert.match(pageSource, /Simple Repeater primary radio/);
@@ -34,6 +38,31 @@ assert.strictEqual(tool.hasPresetParameters("?utm_source=example"), false);
 assert.strictEqual(tool.hasPresetParameters("?freq=911.3"), true);
 assert.strictEqual(tool.hasPresetParameters("?tz=UTC"), true);
 assert.strictEqual(tool.hasPresetParameters("?start=bad"), true);
+
+const observedAt = Date.parse("2026-09-21T23:42:37.000Z");
+const parsedNodeClock = tool.parseNodeClock("02:42 22/9/2026 UTC");
+assert.strictEqual(parsedNodeClock, 1790044920);
+assert.strictEqual(
+  tool.parseNodeClock("02:42 - 22/9/2026 UTC"),
+  parsedNodeClock
+);
+assert.strictEqual(tool.parseNodeClock(""), null);
+assert.strictEqual(tool.nodeClockOffsetSeconds(parsedNodeClock, observedAt), 10800);
+assert.strictEqual(tool.nodeClockOffsetSeconds(null, observedAt), 0);
+assert.strictEqual(tool.formatClockOffset(10800), "3h");
+assert.strictEqual(tool.formatClockOffset(-90), "1m");
+assert.throws(
+  () => tool.parseNodeClock("02:42 22/9/2026"),
+  /node clock must be HH:mm DD\/M\/YYYY UTC/
+);
+assert.throws(
+  () => tool.parseNodeClock("25:42 22/9/2026 UTC"),
+  /real UTC date and time/
+);
+assert.throws(
+  () => tool.parseNodeClock("02:42 29/2/2025 UTC"),
+  /real UTC date and time/
+);
 
 assert.strictEqual(config.startEpoch, 1790035200);
 assert.strictEqual(config.endEpoch, 1790208000);
@@ -68,6 +97,40 @@ assert.strictEqual(tool.presetEyebrow(requestedLink), "MeshCore · 48-hour tempo
 assert.strictEqual(
   tool.commandsFor(requestedLink, requestedLink.startMs).primaryScheduled,
   "set tempradioat 911.3,500,8,7,1790035200,1790208000\nget tempradioat"
+);
+
+const clockAdjustedLink = tool.configFromSearch(
+  "?start=2026-09-22T00:00:00.000Z&end=2026-09-24T00:00:00.000Z" +
+    "&tz=America%2FLos_Angeles&freq=910.3&bw=500&sf=8&cr=7&tx=22"
+);
+const clockOffset = tool.nodeClockOffsetSeconds(parsedNodeClock, observedAt);
+const adjustedEpochs = tool.schedulerEpochs(clockAdjustedLink, clockOffset);
+assert.deepStrictEqual(adjustedEpochs, {
+  startEpoch: 1790046000,
+  endEpoch: 1790218800,
+});
+const adjustedCommands = tool.commandsFor(
+  clockAdjustedLink,
+  clockAdjustedLink.startMs,
+  clockOffset
+);
+assert.strictEqual(
+  adjustedCommands.primaryScheduled,
+  "set tempradioat 910.3,500,8,7,1790046000,1790218800\nget tempradioat"
+);
+assert.strictEqual(
+  adjustedCommands.companionScheduled,
+  "set radio2.cross on\n" +
+    "set tempradioat2 910.3,500,8,7,rxtx,1790046000,1790218800\n" +
+    "get tempradioat2"
+);
+assert.strictEqual(
+  adjustedCommands.stockNow,
+  tool.commandsFor(clockAdjustedLink, clockAdjustedLink.startMs).stockNow
+);
+assert.throws(
+  () => tool.schedulerEpochs(clockAdjustedLink, tool.SCHEDULER_EPOCH_MAX),
+  /outside the firmware range/
 );
 
 const browserZoneFallback = tool.configFromSearch("", "America/New_York");
