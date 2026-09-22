@@ -2736,11 +2736,7 @@ requires_full_usb_packet_logging() {
   # Full Companion and the combined USB+WiFi infrastructure artifact always
   # carry the logger behind runtime controls. Other Full profiles retain the
   # ordinary explicit logging-off/disable-debug behavior.
-  # T1000-E Full has a single, stability-critical USB CDC endpoint. It keeps
-  # that endpoint for Companion data and the terminal, not optional packet
-  # logging, so its packaged contract must not promise a logger.
-  [ "$env_name" != "t1000e_companion_radio_full" ] \
-    && is_companion_radio_full_target "$env_name" && return 0
+  is_companion_radio_full_target "$env_name" && return 0
   [ "$ESP32_FULL_BUILD" = "1" ] || return 1
   is_companion_build "$env_name" && return 1
   [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ] && return 0
@@ -3291,9 +3287,7 @@ declare_build_capability_contract() {
     record_build_expectation "companion.usb" "+++MESHCORE-TERM-START"
     record_build_expectation "companion.bluetooth" \
       "Companion: starting Bluetooth"
-    if [ "$env_name" != "t1000e_companion_radio_full" ]; then
-      record_build_expectation "companion.usb_logging" "get usb.logging"
-    fi
+    record_build_expectation "companion.usb_logging" "get usb.logging"
     record_build_expectation "companion.usb_mota_source" "ota folder on"
     record_build_expectation "companion.mota_sender" \
       "_ZN4mesh3ota16SerialMotaSource4read"
@@ -3852,9 +3846,9 @@ apply_companion_radio_full_profile() {
     # an exclusive host-folder mode with its existing `ota folder on` preamble.
     # CDC 1 is a write-only plaintext packet/debug logging stream; BLE remains
     # an independent Companion link. ESP32 intentionally does not use this
-    # dual-CDC capability. The T1000-E's nRF52840 USB hardware resets when
-    # its persisted logging preference asks TinyUSB to activate CDC 1, so it
-    # intentionally keeps logging on the primary USB interface instead.
+    # dual-CDC capability. The T1000-E has one stable CDC endpoint only: its
+    # logging preference claims that primary port as an ASCII terminal plus
+    # logs, and therefore never creates CDC 1 or mixes logs with framed USB.
     append_platformio_build_unflags "-UOTA_FOLDER_SERIAL"
     # The nRF52 core's production-safe Bluefruit bootstrap must retain its
     # early SoftDevice diagnostics.  Without CFG_DEBUG, a few nRF52840 USB
@@ -3864,15 +3858,11 @@ apply_companion_radio_full_profile() {
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_BLE_MOTA_SOURCE=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1 -DCFG_DEBUG=1 -DRECOVERABLE_EXTERNAL_RADIO=1"
     if [ "$env_name" = "t1000e_companion_radio_full" ]; then
       # The T1000-E's primary CDC transport is the only USB interface. Its
-      # optional packet/debug logger can make the device reset while a host is
-      # enumerating, so keep Full Companion USB strictly data/terminal-only.
-      # This also ignores a stale persisted `usb.logging on` preference from
-      # an older dual-CDC image, allowing the device to recover automatically.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_USB_LOGGING_DISABLED=1"
-      # MESH_USB_LOGGING_DISABLED still silences MeshCore's optional packet
-      # logger on the shared CDC endpoint. The shared nRF52 Full profile above
-      # retains the validated BLE bootstrap and radio recovery behavior.
-      append_platformio_build_unflags "-UMESH_DEBUG -UMESH_PACKET_LOGGING"
+      # `usb.logging on` selects an input-capable ASCII logging terminal on
+      # CDC 0. `usb.logging off` restores automatic framed-Companion detection.
+      # Do not instantiate or re-enumerate a second CDC interface on this
+      # board: its native USB/SoftDevice handoff is sensitive to that change.
+      :
     else
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1"
     fi

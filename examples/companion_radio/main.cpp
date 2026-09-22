@@ -976,6 +976,19 @@ static void beginUsbDefaultSession() {
 static void serviceUsbTerminal() {
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
   if (usb_mota_mode) {
+#if MESH_USB_LOGGING_AVAILABLE
+    // A single-TTY logger and framed USB mOTA cannot share the primary USB
+    // stream. A remote logging change can arrive while mOTA owns USB, so stop
+    // the transfer before its next binary exchange and return to ASCII.
+    if (!mesh::hasDedicatedUsbLoggingPort()
+        && mesh::isUsbLoggingEnabled()) {
+      leaveUsbMotaMode(false);
+      enterUsbLoggingTerminalMode();
+      usbTerminalOutput().print(
+          "\r\nUSB mOTA stopped: USB logging owns this port\r\n> ");
+      return;
+    }
+#endif
     serviceUsbMota();
     return;
   }
@@ -1093,6 +1106,15 @@ static void serviceUsbTerminal() {
       // instead of letting the ordinary terminal command handler leave the
       // stream in line-oriented mode.
       if (strcmp(usb_terminal_line, USB_MOTA_START_TOKEN) == 0) {
+#if MESH_USB_LOGGING_AVAILABLE
+        if (!mesh::hasDedicatedUsbLoggingPort()
+            && mesh::isUsbLoggingEnabled()) {
+          clearUsbTerminalLine();
+          usbTerminalOutput().print(
+              "\r\nERROR: set usb.logging off before USB mOTA\r\n> ");
+          return;
+        }
+#endif
         leaveUsbTerminalMode(false);
         enterUsbMotaMode(mesh::UsbMotaEntryOrigin::ASCII);
         return;

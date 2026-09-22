@@ -598,8 +598,12 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
       || fail "$full_env must keep a single USB CDC interface"
     [[ "$PLATFORMIO_BUILD_FLAGS" != *"MESH_DUAL_CDC_LOGGING=1"* ]] \
       || fail "$full_env must keep USB logging on its primary interface"
-    [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_USB_LOGGING_DISABLED=1"* ]] \
-      || fail "$full_env must disable its unstable primary USB logger"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"MESH_USB_LOGGING_DISABLED=1"* ]] \
+      || fail "$full_env must retain its single-port USB logging terminal"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_DEBUG=1"* ]] \
+      || fail "$full_env must retain USB diagnostics on its logging terminal"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_PACKET_LOGGING=1"* ]] \
+      || fail "$full_env must retain packet logging on its logging terminal"
     [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_BLE_PRPH_MTU="* ]] \
       || fail "$full_env must retain the normal Full-Companion BLE bandwidth"
     [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_BLUETOOTH_BOOT_DELAY_MS="* ]] \
@@ -794,7 +798,7 @@ done
 for logging_target in Station_G2_companion_radio_full RAK_4631_companion_radio_full; do
   verify_full_logging_contract "$logging_target" 0 off 1 yes no
 done
-verify_full_logging_contract t1000e_companion_radio_full 0 off 1 no no
+verify_full_logging_contract t1000e_companion_radio_full 0 off 1 yes no
 
 # Synthetic inventory: ESP32 and nRF52 repeater/room-server targets with the
 # same lean OTA policy. The sensor deliberately has no lean sibling.

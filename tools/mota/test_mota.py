@@ -339,12 +339,12 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert "-DCFG_TUD_CDC=2" in nrf52_full
     assert "-DMESH_DUAL_CDC_LOGGING=1" in nrf52_full
     # Every nRF52 Full image keeps the proven Bluefruit bootstrap and radio
-    # recovery profile. T1000-E alone disables its optional packet logger
-    # because its sole CDC endpoint is reserved for Companion data/terminal.
+    # recovery profile. T1000-E keeps its sole CDC endpoint for a mutually
+    # exclusive ASCII logging terminal rather than instantiating CDC 1.
     assert "-DCFG_DEBUG=1" in nrf52_full
     assert "-DRECOVERABLE_EXTERNAL_RADIO=1" in nrf52_full
     assert 'if [ "$env_name" = "t1000e_companion_radio_full" ]; then' in nrf52_full
-    assert "-DMESH_USB_LOGGING_DISABLED=1" in nrf52_full
+    assert "MESH_USB_LOGGING_DISABLED" not in nrf52_full
     esp32_full = full.split("return 0\n  fi", 1)[1]
     assert "-DCFG_TUD_CDC=2" not in esp32_full
     assert "-DMESH_DUAL_CDC_LOGGING=1" not in esp32_full
@@ -481,6 +481,12 @@ def test_single_tty_logging_off_restores_each_builds_default_mode():
         "if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {", 1
     )[1].split("}", 1)[0]
     assert "leaveUsbTerminalMode(true);" in terminal_stop
+    usb_mota_start = service.split(
+        "if (strcmp(usb_terminal_line, USB_MOTA_START_TOKEN) == 0) {", 1
+    )[1].split("leaveUsbTerminalMode(false);", 1)[0]
+    assert "set usb.logging off before USB mOTA" in usb_mota_start
+    assert "!mesh::hasDedicatedUsbLoggingPort()" in usb_mota_start
+    assert "mesh::isUsbLoggingEnabled()" in usb_mota_start
     assert "if (!usb_logging_terminal_mode" in service
     assert "usb_binary_startup_probe.shouldStart(" in service
 
