@@ -8,10 +8,12 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +36,34 @@ def chromium_path():
 
 
 BROWSER = chromium_path()
+
+
+def run_browser(args):
+    options = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+    if os.name == "nt":
+        options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        options["start_new_session"] = True
+    process = subprocess.Popen(args, **options)
+    try:
+        stdout, stderr = process.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        # Chrome can leave renderer processes writing to its temporary profile.
+        # Kill the whole tree before TemporaryDirectory tries to remove it.
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=False)
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if process.poll() is None:
+            process.kill()
+        process.communicate()
+        raise
+    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
 
 
 def embedded_page():
@@ -124,32 +154,58 @@ window.addEventListener("load",function(){
         self.assertIsNotNone(marker)
         page = source.replace(marker, prelude + marker, 1)
 
-        with tempfile.TemporaryDirectory(prefix="meshcore-webconfig-runtime-") as tmp:
-            tmp_path = Path(tmp)
-            html = tmp_path / "index.html"
-            profile = tmp_path / "profile"
-            profile.mkdir()
-            html.write_text(page, encoding="utf-8")
-            args = [
-                BROWSER,
-                "--headless=new",
-                "--disable-gpu",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--user-data-dir=" + str(profile),
-                "--virtual-time-budget=" + str(virtual_time),
-                "--dump-dom",
-                html.as_uri(),
-            ]
-            if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
-                args.insert(1, "--no-sandbox")
-            result = subprocess.run(args, capture_output=True, timeout=30)
+        for attempt in range(2):
+            with tempfile.TemporaryDirectory(prefix="meshcore-webconfig-runtime-",
+                                             ignore_cleanup_errors=True) as tmp:
+                tmp_path = Path(tmp)
+                html = tmp_path / "index.html"
+                profile = tmp_path / "profile"
+                profile.mkdir()
+                html.write_text(page, encoding="utf-8")
+                args = [
+                    BROWSER,
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--user-data-dir=" + str(profile),
+                    "--virtual-time-budget=" + str(virtual_time),
+                    "--dump-dom",
+                    html.as_uri(),
+                ]
+                if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
+                    args.insert(1, "--no-sandbox")
+                try:
+                    result = run_browser(args)
+                except subprocess.TimeoutExpired:
+                    if attempt:
+                        self.fail("Headless browser timed out twice")
+                    continue
+            break
 
         stderr = result.stderr.decode("utf-8", "replace")
         self.assertEqual(result.returncode, 0, stderr)
         dom = result.stdout.decode("utf-8", "replace")
         self.assertNotIn("data-test-error=", dom)
         return dom
+
+    def test_browser_timeout_retries_with_fresh_profile(self):
+        completed = subprocess.CompletedProcess(
+            ["browser"], 0, b"<html><body>retry succeeded</body></html>", b""
+        )
+        with mock.patch(__name__ + ".BROWSER", "browser"), mock.patch(
+            __name__ + ".run_browser",
+            side_effect=[subprocess.TimeoutExpired("browser", 30), completed],
+        ) as launch:
+            self.assertIn("retry succeeded", self.run_page(""))
+        profiles = [
+            next(arg for arg in call.args[0] if arg.startswith("--user-data-dir="))
+            for call in launch.call_args_list
+        ]
+        self.assertEqual(len(profiles), 2)
+        self.assertNotEqual(*profiles)
+        for profile in profiles:
+            self.assertFalse(Path(profile.split("=", 1)[1]).exists())
 
     def test_companion_console_runs_commands_and_uses_role_suggestions(self):
         status, config = self.setup_values()
