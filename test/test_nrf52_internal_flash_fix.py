@@ -28,7 +28,19 @@ class Nrf52InternalFlashFixTest(unittest.TestCase):
     def test_all_nrf52_builds_load_fix(self):
         ini = (ROOT / "platformio.ini").read_text(encoding="utf-8")
         self.assertIn("pre:scripts/nrf52_internal_flash_fix.py", ini)
-        self.assertIn("*InternalFileSytem*src*flash*flash_nrf5x.c", SCRIPT.read_text())
+        self.assertIn('"*flash_nrf5x.c"', SCRIPT.read_text())
+        # The hardware-in-loop images intentionally bypass nrf52_base, but
+        # still use the same framework and must not regress to its unsafe SVC
+        # flash-completion wait.
+        for path in (ROOT / "tools/hil/profile_fixed_tx.ini",
+                     ROOT / "tools/hil/profile_switch.ini"):
+            contents = path.read_text(encoding="utf-8")
+            self.assertEqual(contents.count("pre:scripts/nrf52_usb_power_fix.py"),
+                             contents.count("pre:scripts/nrf52_internal_flash_fix.py"),
+                             str(path))
+            for section in contents.split("[env:"):
+                if "pre:scripts/nrf52_usb_power_fix.py" in section:
+                    self.assertIn("pre:scripts/nrf52_internal_flash_fix.py", section)
 
     def test_application_softdevice_checks_use_compiler_safe_wrapper(self):
         helper = ROOT / "src/helpers/nrf52/SoftDeviceState.h"

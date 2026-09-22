@@ -50,7 +50,7 @@ def replace_driver(build_env, node):
 def install(build_env):
     build_env.AddBuildMiddleware(
         replace_driver,
-        "*InternalFileSytem*src*flash*flash_nrf5x.c",
+        "*flash_nrf5x.c",
     )
 
 
