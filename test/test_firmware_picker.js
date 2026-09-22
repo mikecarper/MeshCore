@@ -1012,7 +1012,7 @@ console.log('role-specific runtime directions tests passed');
 // above keep the older release's USB and capacity workarounds intact.
 const currentControls = require('../docs/_data/firmware_controls.json');
 const currentAssets = Object.entries(currentControls.profiles).map(([target, info]) => {
-  const source = info.memorySource || currentControls.source;
+  const source = info.loggingSource || info.memorySource || currentControls.source;
   const tag = currentControls.familyTag.replace(/-[0-9a-f]{8}$/, '-' + source.slice(0, 8));
   return asset(target + '-' + tag + (info.platform === 'NRF52_PLATFORM' ? '.uf2' : '.bin'));
 });
@@ -1021,6 +1021,37 @@ const currentCatalog = picker.buildCatalog([
 ], currentControls);
 assert.strictEqual(currentCatalog.rows.length, currentAssets.length);
 assert(currentCatalog.profiles.every(profile => profile.controls && profile.chipFamily !== 'unknown'));
+const ikokaNormal = currentCatalog.profiles.find(profile =>
+  profile.target === 'ikoka_stick_nrf_30dbm_repeater');
+const ikokaLean = currentCatalog.profiles.find(profile =>
+  profile.target === 'ikoka_stick_nrf_30dbm_repeater_lora_ota_no_external_sensors');
+assert.strictEqual(ikokaNormal.ota, 'lora-receiver');
+assert.strictEqual(ikokaNormal.logging, 'usb-runtime');
+assert.deepStrictEqual(ikokaNormal.loggingModes, ['none', 'usb']);
+assert.deepStrictEqual(picker.runtimeDirections(ikokaNormal, {logging: 'usb'})[0].actions[0].commands,
+  ['set usb.logging on']);
+assert.strictEqual(ikokaLean.ota, 'lora-receiver');
+assert.strictEqual(ikokaLean.logging, 'none');
+assert.deepStrictEqual(ikokaLean.loggingModes, ['none']);
+const ikokaUrl = 'https://example.com/firmware_picker/?chipFamily=nrf52&hardwareFamily=ikoka_stick_nrf_30dbm&hardware=ikoka_stick_nrf_30dbm&role=repeater&variant=default&install=zip&chipAuto=1';
+const ikokaRelease = release(currentControls.familyTag, '2026-09-13T00:00:00Z',
+  [ikokaNormal, ikokaLean].map(profile => {
+    const source = currentControls.profiles[profile.target].loggingSource;
+    const tag = currentControls.familyTag.replace(/-[0-9a-f]{8}$/, '-' + source.slice(0, 8));
+    return asset(profile.target + '-ota-' + tag + '.zip');
+  }));
+const ikokaCatalog = picker.buildCatalog([ikokaRelease], currentControls);
+const ikokaSelection = picker.selectionFromUrl(ikokaUrl, ikokaCatalog.profiles);
+assert.deepStrictEqual(ikokaSelection.unavailable, []);
+assert.deepStrictEqual(ikokaCatalog.profiles.filter(profile =>
+  picker.profileMatchesFacets(profile, ikokaSelection.filters)).map(profile => profile.target),
+  ['ikoka_stick_nrf_30dbm_repeater']);
+const mismatchedIkoka = picker.buildCatalog([
+  release(currentControls.familyTag, '2026-09-13T00:00:00Z', [
+    asset('ikoka_stick_nrf_30dbm_repeater-ota-' + currentControls.familyTag + '.zip'),
+  ]),
+], currentControls).profiles[0];
+assert.strictEqual(mismatchedIkoka.logging, 'none', 'Logging metadata must match the published build source');
 const capacityProfiles = currentCatalog.profiles.filter(profile => profile.controls.memoryNote);
 assert(capacityProfiles.length > 0, 'Regeneration must preserve capacity directions');
 for (const profile of capacityProfiles) {

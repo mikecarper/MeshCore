@@ -576,6 +576,39 @@
     });
   }
 
+  function applyReleaseRuntimeCapabilities(profile, controls) {
+    if (["none", "lora-receiver", "lora-source"].includes(controls.otaRole)) {
+      profile.ota = controls.otaRole;
+    }
+
+    const modes = controls.loggingModes;
+    const source = controls.loggingSource;
+    const sourceMatches = !source || (typeof source === "string" &&
+      /^[0-9a-f]{40}$/i.test(source) && profile.files.length > 0 &&
+      profile.files.every(function (file) {
+        return file.name.toLowerCase().replace(/\.(bin|hex|uf2|zip)$/i, "")
+          .replace(/-merged$/, "")
+          .endsWith("-" + source.slice(0, 8).toLowerCase());
+      }));
+    if (sourceMatches && Array.isArray(modes)) {
+      const key = modes.join(",");
+      if (key === "none") {
+        profile.logging = "none";
+        profile.loggingModes = ["none"];
+      } else if (key === "none,usb" && controls.loggingControl === "usb.logging") {
+        profile.logging = "usb-runtime";
+        profile.loggingModes = modes.slice();
+      } else if (key === "none,usb,wifi,both" &&
+                 controls.loggingControl === "logging.output") {
+        profile.logging = "runtime";
+        profile.loggingModes = modes.slice();
+      }
+    }
+    if (typeof controls.dedicatedUsbLogging === "boolean") {
+      profile.dedicatedUsbLogging = controls.dedicatedUsbLogging;
+    }
+  }
+
   function hardwareFamilyFor(hardware, hardwareNames) {
     const value = String(hardware || "");
     const lowerValue = value.toLowerCase();
@@ -723,7 +756,9 @@
       if (controlData && controlData.familyTag === releaseSet.familyTag &&
           controlData.profiles && controlData.profiles[profile.target]) {
         profile.controls = controlData.profiles[profile.target];
-        if (isFullCompanion(profile) && profile.controls.mqtt) {
+        applyReleaseRuntimeCapabilities(profile, profile.controls);
+        if (isFullCompanion(profile) && profile.controls.mqtt &&
+            !Array.isArray(profile.controls.loggingModes)) {
           profile.loggingModes = ["none", "usb", "wifi", "both"];
         }
         if (profile.controls.rs232 && profile.role === "repeater" && profile.mode === "standard") {

@@ -26,7 +26,7 @@ extra_css:
 
 extra_javascript:
   - https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
-  - _javascript/firmware_picker.js
+  - _javascript/firmware_picker.js?v=20260921-1
   - _javascript/telemetry_decoder.js
   - _javascript/management_decoder.js
   - _javascript/filter_tool.js
