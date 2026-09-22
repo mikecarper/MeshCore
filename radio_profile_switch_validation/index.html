@@ -2283,6 +2283,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mercermesh-heltec-t096-sx1262-experiment-2026-09-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MercerMesh Heltec T096 SX1262 experiment (2026-09-21)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3280,6 +3291,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mercermesh-heltec-t096-sx1262-experiment-2026-09-21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MercerMesh Heltec T096 SX1262 experiment (2026-09-21)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3877,6 +3899,86 @@ against the pinned RadioLib. No firmware was uploaded, no radio command was
 issued, and no new RF result was collected. The temporary build overlay was
 removed. The earlier ~0.549 ms XIAO and ~8.263 ms Indicator timings do <strong>not</strong>
 measure this added optimization; its time saving and RF behavior await testing.</p>
+<h2 id="mercermesh-heltec-t096-sx1262-experiment-2026-09-21">MercerMesh Heltec T096 SX1262 experiment (2026-09-21)</h2>
+<p>The Pi has <strong>one</strong> Heltec T096 (USB serial <code>651F8E496197F882</code>); the other
+Heltec-named nRF52 is a MeshTower V2, not another T096. An application-only
+T096 HIL image tested two further RX-to-RX shortcuts with a buffered 8 MHz SPI
+bus: use SX1262 <code>SetFs</code> instead of warm XOSC standby, and skip
+<code>SetPacketParams</code> only when the LoRa RX packet tuple is unchanged. Both switches
+defaulted off in this HIL image. The image explicitly enabled the existing
+production fast-RX path. Normal T096 firmware does not currently enable that
+path or use the buffered SPI HAL, so these numbers are <strong>not</strong> stock T096
+switch timings.</p>
+<p>The same image ran 256 measured hops per configuration, after eight warm-up
+hops, on 909.5/909.75 MHz. <code>freq</code> held SF7/BW125/CR5; <code>both</code> alternated
+SF7/SF8 at BW125/CR5. Preamble was 32 symbols. The DWT cycle counter measured
+through RX re-entry and BUSY release. Every 8 MHz configuration had zero
+switch failures, mode/cache/RSSI errors, or BUSY timeouts.</p>
+<table>
+<thead>
+<tr>
+<th>8 MHz HIL configuration</th>
+<th style="text-align: right;">Frequency-only mean</th>
+<th style="text-align: right;">Frequency + SF mean</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fast RX baseline</td>
+<td style="text-align: right;">467.3 us</td>
+<td style="text-align: right;">553.6 us</td>
+</tr>
+<tr>
+<td><code>SetFs</code> only</td>
+<td style="text-align: right;">422.5 us</td>
+<td style="text-align: right;">517.4 us</td>
+</tr>
+<tr>
+<td>Unchanged packet tuple skip only</td>
+<td style="text-align: right;">357.7 us</td>
+<td style="text-align: right;">444.0 us</td>
+</tr>
+<tr>
+<td>Both</td>
+<td style="text-align: right;"><strong>313.0 us</strong></td>
+<td style="text-align: right;"><strong>407.8 us</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Combined savings were 154.3 us (33.0%) for frequency-only and 145.8 us
+(26.3%) for frequency-plus-SF relative to the same-image fast-RX baseline.
+Command counts confirmed one frequency command, IRQ clear and RX command per
+hop; the optimized cases eliminated the corresponding standby and packet
+commands. These are controlled short-range, same-band results, not a field
+packet-error rate or a qualification of large frequency jumps, sleep/wake,
+TX/CAD interruption, BLE scheduling, or all SX1262 boards.</p>
+<p>A separate RAK4631 fixed transmitter sent 16-byte synthetic packets at
+909.5 MHz/SF10/BW125/CR5/preamble32, -9 dBm chip power. The T096 hopped to
+909.75 MHz and back before each transmission. Baseline and combined shortcuts
+each delivered <strong>60/60</strong> packets after <strong>120</strong> fast hops, with payload sequence
+and content checked. The RAK bootloader on this exact fixture enumerated as
+<code>239A:002A</code> (the fixture's earlier <code>0029</code> expectation was corrected).</p>
+<p>Doubling buffered SPI to 16 MHz gave only 12–21 us (about 3–4%) savings in
+comparable successful cases, while five of eight setup attempts failed. The
+combined shortcut had no clean 16 MHz result. Keep this T096 at 8 MHz pending
+a separately diagnosed and repeatable 16 MHz bring-up; no 16 MHz over-air
+qualification was attempted.</p>
+<p>Both radios were restored via app-only DFU after the experiment: the T096 to
+<code>Heltec_t096_repeater</code> and the RAK to <code>RAK_4631_companion_radio_full</code>, each
+built at <code>v1.17.1.7-hil-restore-e7160dfd</code>. The T096 answered normal <code>version</code>
+and <code>board</code> commands; the RAK answered the Full Companion terminal's version
+command. The V4 observer's memory-soak service remained active. Reproducible
+bench code is in <code>tools/hil/profile_switch_t096_sx1262.cpp</code> and
+<code>tools/hil/t096_sx1262_packet_probe.py</code>.</p>
+<p>Follow-up: owned fast RX, <code>SetFs</code>, and acknowledged packet-tuple reuse are
+now defaults for <code>CustomSX1262</code> targets, including the original XIAO S3 WIO,
+Station G3 KISS, and Heltec V4 KISS paths. The Seeed Indicator retains its
+original owned-RX path but explicitly opts out of the two new shortcuts because
+its radio control and BUSY/IRQ pins run through an I2C expander. The owned-RX
+state now remembers only an acknowledged packet tuple and revokes it on
+ordinary packet setters, TX/CAD staging, standby outside the hop, sleep,
+reset, RX duty cycling, or command failure. The T096 numbers remain lab
+measurements, not on-board qualification of every <code>CustomSX1262</code> target.</p>
 
 
 
