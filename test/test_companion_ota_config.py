@@ -204,8 +204,10 @@ int main() {
   fs.files["/ota_config"][4]^=1;
   const auto damaged=fs.files["/ota_config"];
   reboot(fs);
-  command("ota config hops 7", "ERR");
-  assert(fs.files["/ota_config"]==damaged);
+  command("ota config hops 7", "OK");
+  assert(fs.files["/ota_config"]!=damaged && context.manager.hops==7);
+  reboot(fs);
+  assert(context.manager.hops==7);
   fs.files.clear(); reboot(fs);
   acquire_ok=false;
   command("ota config hops 7", "ERR unavailable");

@@ -11,6 +11,7 @@ namespace mesh { namespace ota {
 namespace {
 FILESYSTEM* settings_fs = nullptr;
 bool held = false;
+bool recoverable_corrupt_store = false;
 constexpr size_t ImageSize = 16 + MAX_OTA_SIGNERS * 32;
 constexpr size_t CrcOffset = ImageSize - 4;
 const char* const Path = "/ota_config";
@@ -69,45 +70,74 @@ bool decode(const uint8_t* image, OtaConfigState& state) {
   return true;
 }
 
-bool readImage(const char* path, uint8_t* image, OtaConfigState& state) {
+enum class ImageReadResult : uint8_t { Missing, Valid, Invalid, Unreadable };
+
+ImageReadResult readImage(const char* path, uint8_t* image, OtaConfigState& state) {
+  bool present = false;
+  if (!settings_fs || !pathPresence(path, present)) return ImageReadResult::Unreadable;
+  if (!present) return ImageReadResult::Missing;
 #if defined(NRF52_PLATFORM)
   File file(*settings_fs);
-  if (!file.open(path, FILE_O_READ)) return false;
+  if (!file.open(path, FILE_O_READ)) return ImageReadResult::Unreadable;
 #elif defined(STM32_PLATFORM)
   File file = settings_fs->open(path, FILE_O_READ);
 #else
   File file = settings_fs->open(path, "r");
 #endif
-  if (!file) return false;
-  const bool complete = file.size() == ImageSize
-      && file.read(image, ImageSize) == (int)ImageSize;
+  if (!file) return ImageReadResult::Unreadable;
+  const bool right_size = file.size() == ImageSize;
+  const bool complete = right_size && file.read(image, ImageSize) == (int)ImageSize;
   file.close();
-  return complete && decode(image, state);
+  if (!right_size) return ImageReadResult::Invalid;
+  if (!complete) return ImageReadResult::Unreadable;
+  return decode(image, state) ? ImageReadResult::Valid : ImageReadResult::Invalid;
+}
+
+bool discardCorruptSavedImagesForWrite() {
+  if (!held) return true;
+  if (!settings_fs || !recoverable_corrupt_store) return false;
+  // This is a user-triggered recovery for the separate OTA policy/allowlist;
+  // it never touches node identity, private keys, contacts, or common prefs.
+  if (!removeIfPresent(Path) || !removeIfPresent(Backup)) return false;
+  held = false;
+  recoverable_corrupt_store = false;
+  return true;
 }
 }
 
 void beginCompanionOtaConfig(FILESYSTEM* fs) {
   settings_fs = fs;
   held = false;
+  recoverable_corrupt_store = false;
 }
 
 bool loadCompanionOtaConfig(OtaConfigState& state) {
   if (!settings_fs) return false;
   uint8_t image[ImageSize];
-  bool primary = false, backup = false;
-  if (!pathPresence(Path, primary)) { held = true; return false; }
-  if (primary && readImage(Path, image, state)) return true;
-  if (primary) held = true;
-  if (!pathPresence(Backup, backup)) { held = true; return false; }
-  if (backup && readImage(Backup, image, state)) {
+  const ImageReadResult primary = readImage(Path, image, state);
+  bool loaded = primary == ImageReadResult::Valid;
+  ImageReadResult backup = ImageReadResult::Missing;
+  if (!loaded) backup = readImage(Backup, image, state);
+  if (!loaded && backup == ImageReadResult::Valid) {
     // Keep the verified previous settings even if recovery cannot rename them.
     // An unreadable primary may only have suffered a transient read failure;
     // do not remove it to promote the fallback.
-    if (primary || !settings_fs->rename(Backup, Path)) held = true;
+    if (primary == ImageReadResult::Unreadable
+        || (primary != ImageReadResult::Missing && !removeIfPresent(Path))
+        || !settings_fs->rename(Backup, Path)) held = true;
     return true;
   }
-  if (primary || backup) {
-    held = true;  // unreadable is not permission to overwrite with defaults
+  if (loaded) return true;
+  if (!loaded) {
+    held = primary != ImageReadResult::Missing || backup != ImageReadResult::Missing;
+    // A later explicit setting can recreate only files that were fully read
+    // and decoded as invalid. I/O failures and a valid backup stay protected.
+    recoverable_corrupt_store = held
+        && primary != ImageReadResult::Unreadable
+        && backup != ImageReadResult::Unreadable
+        && (primary == ImageReadResult::Invalid || backup == ImageReadResult::Invalid);
+  }
+  if (held) {
     return false;
   }
   state = OtaConfigState();
@@ -115,15 +145,21 @@ bool loadCompanionOtaConfig(OtaConfigState& state) {
 }
 
 bool saveCompanionOtaConfig(const OtaConfigState& state) {
-  if (!settings_fs || held || !validState(state)) return false;
+  if (!settings_fs || !validState(state) || !discardCorruptSavedImagesForWrite()) return false;
   uint8_t image[ImageSize] = {'O', 'C', 1, 0}, verify[ImageSize];
   OtaConfigState prior;
-  bool had_primary = false;
-  if (!pathPresence(Path, had_primary)) { held = true; return false; }
-  if (had_primary && !readImage(Path, verify, prior)) {
+  const ImageReadResult primary = readImage(Path, verify, prior);
+  if (primary == ImageReadResult::Unreadable) {
     held = true;
     return false;
   }
+  if (primary == ImageReadResult::Invalid) {
+    // The store changed after boot. Do not erase it on an implicit retry.
+    held = true;
+    recoverable_corrupt_store = true;
+    return false;
+  }
+  const bool had_primary = primary == ImageReadResult::Valid;
   image[4] = state.autofetch; image[5] = state.autoinstall; image[6] = state.hops;
   image[7] = state.allow.count();
   storage::writeLE16(image + 8, state.checkpoint);
@@ -144,7 +180,7 @@ bool saveCompanionOtaConfig(const OtaConfigState& state) {
   if (!file) return false;
   const bool wrote = file.write(image, sizeof(image)) == sizeof(image);
   file.flush(); file.close();
-  if (!wrote || !readImage(Temp, verify, prior)
+  if (!wrote || readImage(Temp, verify, prior) != ImageReadResult::Valid
       || memcmp(image, verify, sizeof(image))) return false;
   if (!removeIfPresent(Backup)) return false;
   if (had_primary && !settings_fs->rename(Path, Backup)) return false;

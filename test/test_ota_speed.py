@@ -61,8 +61,10 @@ int main() {
   fs.files["/ota_speed"][4] ^= 1; // damaged image is not partly adopted
   beginSpeedConfig(&fs);
   assert(speedFactor() == 1.0f);
-  command("set ota.speed 2", "ERR");
-  assert(speedFactor() == 1.0f);
+  command("set ota.speed 2", "OK ota.speed=2x (saved)");
+  assert(speedFactor() == 2.0f);
+  beginSpeedConfig(&fs);
+  assert(speedFactor() == 2.0f);
   fs.files.clear();
   beginSpeedConfig(&fs);
   command("ota set speed 1.125", "OK ota.speed=1.125x");
