@@ -363,7 +363,7 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
 
         main = MAIN.read_text(encoding="utf-8")
         geometry = re.search(
-            r"CustomLFS\s+ExtraFS\s*\(\s*(0x[0-9A-Fa-f]+)\s*,\s*"
+            r"ResilientInternalExtraFS\s+ExtraFS\s*\(\s*(0x[0-9A-Fa-f]+)\s*,\s*"
             r"(0x[0-9A-Fa-f]+)\s*,\s*128\s*\)",
             main,
         )
@@ -463,7 +463,7 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         ready_at = recover.index("validateLfsFilesystem(_fsExtra)", policy_at)
         unmount_at = recover.index("extra->end()", ready_at)
         remount_at = recover.index("extra->Adafruit_LittleFS::begin()", unmount_at)
-        repair_at = recover.index("reinitializeInternalExtraFS()", remount_at)
+        repair_at = recover.index("reinitializeInternalExtraFS(true)", remount_at)
         self.assertLess(ready_at, unmount_at)
         self.assertLess(unmount_at, remount_at)
         self.assertLess(remount_at, repair_at)
@@ -475,7 +475,7 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         store = STORE.read_text(encoding="utf-8")
         recover = function_body(store, "bool DataStore::recoverInternalExtraFSOnBoot()")
         failure_at = recover.index("InternalSecondaryFsRecoveryResult::Failed")
-        clear_at = recover.index("_secondary_authority_unknown = false;")
+        clear_at = recover.rindex("_secondary_authority_unknown = false;")
         failure = recover[failure_at:clear_at]
         self.assertIn("disableSecondaryFS(true);", failure)
         self.assertIn("return false;", failure)
@@ -509,7 +509,7 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         self.assertNotIn("format()", active_retry)
 
         reinitialize = function_body(
-            store, "bool DataStore::reinitializeInternalExtraFS()"
+            store, "bool DataStore::reinitializeInternalExtraFS(bool scan_physical_pages)"
         )
         geometry_at = reinitialize.index("isExpectedInternalExtraFsGeometry(")
         self.assertIn("isInternalExtraFsReservedByApplication(", reinitialize)
@@ -944,7 +944,7 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         # nonblank filesystem after any mount failure. The sole occurrence is
         # the separately scoped STM32 fallback.
         self.assertEqual(setup.count("InternalFS.begin();"), 1)
-        self.assertGreater(setup.index("#else", primary_policy), primary_format)
+        self.assertGreater(setup.index("#else\n  InternalFS.begin();", primary_policy), primary_format)
         self.assertIn("store.disableSecondaryFS(true);", setup)
         secondary_geometry = setup.index(
             "const bool extra_fs_geometry_valid ="
@@ -980,7 +980,7 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         self.assertIn("_store->repairInternalExtraFS()", repair)
         self.assertIn("_store->saveContacts(this, save_filter)", repair)
         self.assertIn("const bool channels_saved = saveChannels();", repair)
-        self.assertIn("_store->getStorageTotalKb() == 100", repair)
+        self.assertIn("capacity_kib >= 84 && capacity_kib <= 100", repair)
         self.assertIn("getStorageTotalKb()", repair)
 
         rescue = function_body(mesh, "void MyMesh::checkCLIRescueCmd()")

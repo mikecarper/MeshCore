@@ -1,6 +1,7 @@
 #include "SerialBLEInterface.h"
 #include "../BluetoothMac.h"
 #include "../CompanionFrameQueue.h"
+#include "SoftDeviceState.h"
 #include <stdio.h>
 #include <string.h>
 #include "ble_gap.h"
@@ -439,7 +440,7 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   if (!Bluefruit.begin()) {
     uint8_t softdevice_enabled = 0;
     const uint32_t softdevice_status =
-        sd_softdevice_is_enabled(&softdevice_enabled);
+        mesh_nrf52::softdeviceIsEnabled(softdevice_enabled);
     ble_gap_addr_t address = {};
     const uint32_t gap_status = softdevice_enabled
         ? sd_ble_gap_addr_get(&address) : NRF_ERROR_INVALID_STATE;

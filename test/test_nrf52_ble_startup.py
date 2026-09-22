@@ -63,6 +63,11 @@ struct ble_gap_conn_params_t { unsigned min_conn_interval, max_conn_interval, sl
 int sd_ble_gap_addr_set(ble_gap_addr_t*) { return NRF_SUCCESS; }
 int sd_ble_gap_addr_get(ble_gap_addr_t* a) { memset(a, 0, sizeof(*a)); return NRF_SUCCESS; }
 int sd_softdevice_is_enabled(uint8_t* enabled) { *enabled = 0; return NRF_SUCCESS; }
+namespace mesh_nrf52 {
+int softdeviceIsEnabled(uint8_t& enabled) {
+  return sd_softdevice_is_enabled(&enabled);
+}
+}
 int sd_ble_gap_ppcp_set(ble_gap_conn_params_t*) { return NRF_SUCCESS; }
 namespace mesh {
 struct Logging { void println(const char*) {} };

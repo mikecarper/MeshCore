@@ -2,6 +2,7 @@
 #include "NRF52Board.h"
 #include "PowerManagementUtils.h"
 #include "Nrf52BootloaderVersion.h"
+#include "nrf52/SoftDeviceState.h"
 #include <target.h>
 #ifdef USER_GPIO_CONTROL
 #include "UserGpioPinPolicy.h"
@@ -103,7 +104,7 @@ bool NRF52Board::isUserGpioAvailable(uint8_t pin) const {
 
 bool NRF52Board::rebootToUf2Bootloader() {
   uint8_t sd_enabled = 0;
-  if (sd_softdevice_is_enabled(&sd_enabled) != NRF_SUCCESS) return false;
+  if (mesh_nrf52::softdeviceIsEnabled(sd_enabled) != NRF_SUCCESS) return false;
 
   if (sd_enabled) {
     if (sd_power_gpregret_clr(0, 0xFF) != NRF_SUCCESS
@@ -211,7 +212,7 @@ void NRF52Board::initPowerMgr() {
   // Clear registers for next boot
   // Note: At this point SoftDevice may or may not be enabled
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
   if (sd_enabled) {
     sd_power_reset_reason_clr(0xFFFFFFFF);
     sd_power_gpregret_clr(1, 0xFF);
@@ -308,7 +309,7 @@ void NRF52Board::enterSystemOff(uint8_t reason) {
 
   // Record shutdown reason in GPREGRET2
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
   if (sd_enabled) {
     sd_power_gpregret_clr(1, 0xFF);
     sd_power_gpregret_set(1, reason);
@@ -399,7 +400,7 @@ void NRF52Board::configureVoltageWake(uint8_t ain_channel, uint8_t refsel) {
 void NRF52Board::armVbusWake() {
   // Configure VBUS (USB power) wake alongside (or instead of) LPCOMP.
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
   if (sd_enabled) {
     sd_power_usbdetected_enable(1);
   } else {
@@ -415,7 +416,7 @@ void NRF52BoardDCDC::begin() {
 
   // Enable DC/DC converter for improved power efficiency
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
   if (sd_enabled) {
     sd_power_dcdc_mode_set(NRF_POWER_DCDC_ENABLE);
   } else {
@@ -426,7 +427,7 @@ void NRF52BoardDCDC::begin() {
 bool NRF52Board::isExternalPowered() {
   // Check if SoftDevice is enabled before using its API
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
 
   if (sd_enabled) {
     uint32_t usb_status;
@@ -470,7 +471,7 @@ void NRF52Board::sleep(uint32_t secs) {
   // On nRF52, we use event-driven sleep instead of timed sleep
   // The 'secs' parameter is ignored - we wake on any interrupt
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
 
   if (sd_enabled) {
     // A single call is required here. If an interrupt arrived since the last
@@ -492,7 +493,7 @@ void NRF52Board::sleep(uint32_t secs) {
 // Temperature from NRF52 MCU
 float NRF52Board::getMCUTemperature() {
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
   if (sd_enabled) {
     uint32_t err_code;
     int32_t temp;
@@ -587,7 +588,7 @@ void NRF52Board::powerOff() {
 
   // Enter SYSTEMOFF
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
   if (sd_enabled) { // SoftDevice is enabled
     sd_power_system_off();
   } else { // SoftDevice is not enable

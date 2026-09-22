@@ -90,7 +90,7 @@ class DataStore
   void resetContactPageState(bool clear_incomplete = false);
 #if defined(EXTRAFS) && !defined(QSPIFLASH)
   bool recoverInternalExtraFSOnBoot();
-  bool reinitializeInternalExtraFS();
+  bool reinitializeInternalExtraFS(bool scan_physical_pages = false);
 #endif
 #endif
 
@@ -106,6 +106,10 @@ public:
   void begin();
   bool formatFileSystem();
   bool repairInternalExtraFS();
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+  bool requestInternalExtraFSBootScan();
+  bool formatInternalExtraFSHealth(char* reply, size_t reply_size) const;
+#endif
   FILESYSTEM* getPrimaryFS() const { return _fs; }
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
   void markPrimaryFSUnavailable();

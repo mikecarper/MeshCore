@@ -512,6 +512,7 @@ private:
                                        uint16_t released_slot);
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
   void repairInternalExtraFS(Stream& output);
+  void scanInternalExtraFS(Stream& output);
 #if defined(MESHCORE_EXTRAFS_HIL)
   bool handleExtraFsHilCommand(const char* command, char* reply,
                                size_t reply_size);

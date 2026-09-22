@@ -5,6 +5,7 @@
 #include "nrf_soc.h"
 
 #include "RAK4631Board.h"
+#include "../../src/helpers/nrf52/SoftDeviceState.h"
 
 #ifdef ETHERNET_ENABLED
 // Drive WB_IO2 HIGH as early as possible using direct register access.
@@ -47,7 +48,7 @@ void RAK4631Board::begin() {
   // merely skipping NRF52BoardDCDC::begin() would inherit any prior state.
   NRF52Board::begin();
   uint8_t sd_enabled = 0;
-  sd_softdevice_is_enabled(&sd_enabled);
+  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
   if (sd_enabled) {
     sd_power_dcdc_mode_set(NRF_POWER_DCDC_DISABLE);
   } else {

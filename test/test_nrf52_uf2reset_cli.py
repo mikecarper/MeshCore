@@ -18,7 +18,7 @@ chat = (ROOT / "examples/simple_secure_chat/main.cpp").read_text()
 assert "virtual bool rebootToUf2Bootloader() { return false; }" in main_board
 assert "bool rebootToUf2Bootloader() override;" in nrf_board_h
 assert "bool NRF52Board::rebootToUf2Bootloader()" in nrf_board_cpp
-assert "sd_softdevice_is_enabled(&sd_enabled) != NRF_SUCCESS" in nrf_board_cpp
+assert "mesh_nrf52::softdeviceIsEnabled(sd_enabled) != NRF_SUCCESS" in nrf_board_cpp
 clear = nrf_board_cpp.index("sd_power_gpregret_clr(0, 0xFF)")
 set_magic = nrf_board_cpp.index(
     "sd_power_gpregret_set(0, DFU_MAGIC_UF2_RESET)"

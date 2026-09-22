@@ -2676,6 +2676,12 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+  if (strcmp(command, "get flash.health") == 0) {
+    return _store->formatInternalExtraFSHealth(reply, reply_size);
+  }
+#endif
+
   if (strncmp(command, "get ", 4) == 0 &&
       mesh::cli::handleStorageLayoutGet(command + 4, board, reply,
                                         reply_size)) {
@@ -6036,7 +6042,9 @@ void MyMesh::repairInternalExtraFS(Stream& output) {
 
   const bool contacts_saved = _store->saveContacts(this, save_filter);
   const bool channels_saved = saveChannels();
-  const bool capacity_ready = _store->getStorageTotalKb() == 100;
+  const uint32_t capacity_kib = _store->getStorageTotalKb();
+  const bool capacity_ready = capacity_kib >= 84 && capacity_kib <= 100
+      && (capacity_kib % 4) == 0;
   if (contacts_saved && channels_saved && capacity_ready
       && !_store->hasPendingContactWrites()) {
     mesh::resetLazyPersistenceAfterSuccess(
@@ -6052,6 +6060,24 @@ void MyMesh::repairInternalExtraFS(Stream& output) {
     }
     output.println("  Error: ExtraFS is active, but data rebuild/verification failed; retry repair extrafs");
   }
+}
+
+void MyMesh::scanInternalExtraFS(Stream& output) {
+  if (!_store->requestInternalExtraFSBootScan()) {
+    output.println("  Error: could not record the boot-time ExtraFS scan request");
+    char health[160];
+    if (_store->formatInternalExtraFSHealth(health, sizeof(health))) {
+      output.printf("  > %s\n", health);
+    }
+    return;
+  }
+  output.println("  > boot-time physical scan scheduled; ExtraFS files will be erased; rebooting");
+  // This command deliberately discards the secondary filesystem. The normal
+  // scheduled-reboot path refuses to reset when unsaved contacts exist, which
+  // would strand the durable scan request on a damaged store.
+  output.flush();
+  delay(1000);
+  board.reboot();
 }
 
 #if defined(MESHCORE_EXTRAFS_HIL)
@@ -8349,6 +8375,8 @@ void MyMesh::handleTerminalCommand(char* command) {
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
   } else if (strcmp(command, "repair extrafs") == 0) {
     repairInternalExtraFS(terminalOutput());
+  } else if (strcmp(command, "scan extrafs erase") == 0) {
+    scanInternalExtraFS(terminalOutput());
 #endif
   } else if (strcmp(command, "ver") == 0) {
     terminalOutput().printf("Companion %s (protocol %u, build %s)\r\n",
@@ -8362,6 +8390,9 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  board\r\n");
     terminalOutput().print("  version\r\n");
     terminalOutput().print("  get storage.layout\r\n");
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+    terminalOutput().print("  get flash.health\r\n");
+#endif
 #if COMPANION_FEATURE_READER
     terminalOutput().print("  get reader <chapter>:<verse> (World English Bible, offline)\r\n");
 #endif
@@ -8453,6 +8484,7 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  channel <name-or-slot> <text>\r\n");
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
     terminalOutput().print("  repair extrafs (erases/rebuilds internal ExtraFS)\r\n");
+    terminalOutput().print("  scan extrafs erase (USB only; reboot for destructive page test)\r\n");
 #endif
 #if COMPANION_FEATURE_TEMP_RADIO || COMPANION_FEATURE_OTA_CLI
 #if COMPANION_FEATURE_TEMP_RADIO
@@ -8899,6 +8931,8 @@ void MyMesh::checkCLIRescueCmd() {
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
     } else if (strcmp(cli_command, "repair extrafs") == 0) {
       repairInternalExtraFS(output);
+    } else if (strcmp(cli_command, "scan extrafs erase") == 0) {
+      scanInternalExtraFS(output);
 #endif
     } else if (strcmp(cli_command, "rebuild") == 0) {
       bool success = _store->formatFileSystem();

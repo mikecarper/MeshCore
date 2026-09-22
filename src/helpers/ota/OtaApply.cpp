@@ -26,6 +26,7 @@
   #include "nrf.h"
   #include "nrf_soc.h"
   #include "nrf_sdm.h"
+  #include "../nrf52/SoftDeviceState.h"
   #if defined(OTA_SD_STORE)
     #include "OtaStoreSdNrf52.h"
   #endif
@@ -467,7 +468,7 @@ static OtaStoreFlashNrf52* g_nrf52_apply_store = nullptr;
 
 static void ota_nrf52_set_reset_handoff(uint8_t request, uint8_t source) {
   uint8_t sd_en = 0;
-  sd_softdevice_is_enabled(&sd_en);
+  mesh_nrf52::softdeviceIsEnabled(sd_en);
   if (sd_en) {                                 // POWER is SD-restricted while the SoftDevice runs
     sd_power_gpregret_clr(1, 0xFFFFFFFF);
     sd_power_gpregret_set(1, source);
@@ -481,7 +482,7 @@ static void ota_nrf52_set_reset_handoff(uint8_t request, uint8_t source) {
 
 static bool ota_nrf52_clear_reset_reasons() {
   uint8_t sd_en = 0;
-  if (sd_softdevice_is_enabled(&sd_en) != NRF_SUCCESS) return false;
+  if (mesh_nrf52::softdeviceIsEnabled(sd_en) != NRF_SUCCESS) return false;
   if (sd_en) {
     return sd_power_reset_reason_clr(0xFFFFFFFFu) == NRF_SUCCESS;
   }
@@ -527,7 +528,7 @@ void ota_reboot_to_bootloader_update() {
   source = GPREGRET2_OTA_STAGE_SD;
 #endif
   uint8_t sd_en = 0;
-  sd_softdevice_is_enabled(&sd_en);
+  mesh_nrf52::softdeviceIsEnabled(sd_en);
   if (sd_en) {
     sd_power_gpregret_clr(1, 0xFFFFFFFF);
     sd_power_gpregret_set(1, source);

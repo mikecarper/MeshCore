@@ -198,9 +198,9 @@ static bool isNetworkTerminalActive();
     DataStore store(InternalFS, QSPIFlash, rtc_clock);
   #else
     #if defined(EXTRAFS)
-      #include <CustomLFS.h>
+      #include "ResilientInternalExtraFS.h"
       extern "C" uint32_t __flash_arduino_end[];
-      CustomLFS ExtraFS(0xD4000, 0x19000, 128);
+      ResilientInternalExtraFS ExtraFS(0xD4000, 0x19000, 128);
       DataStore store(InternalFS, ExtraFS, rtc_clock);
     #else
       DataStore store(InternalFS, rtc_clock);
@@ -2799,7 +2799,12 @@ void setup() {
   const mesh::storage::InternalSecondaryFsBootResult primary_fs_boot =
       mesh::storage::prepareInternalSecondaryFilesystem(
           []() -> bool {
+#if defined(EXTRAFS) && !defined(QSPIFLASH)
+            return InternalFS.Adafruit_LittleFS::begin(
+                ResilientInternalExtraFS::primaryConfig());
+#else
             return InternalFS.Adafruit_LittleFS::begin();
+#endif
           },
           []() -> bool {
             return mesh::storage::isErasedFlashRange(
@@ -2848,6 +2853,10 @@ void setup() {
     }
   #else
   #if defined(EXTRAFS)
+      const bool extra_fs_map_ready =
+          (primary_fs_boot == mesh::storage::InternalSecondaryFsBootResult::Mounted
+           || primary_fs_boot == mesh::storage::InternalSecondaryFsBootResult::InitializedBlank)
+          && ExtraFS.loadPageMap(InternalFS);
       const bool extra_fs_geometry_valid =
           mesh::storage::isExpectedInternalExtraFsGeometry(
               ExtraFS.getFlashAddr(), ExtraFS.getFlashSize(),
@@ -2856,10 +2865,15 @@ void setup() {
               (uint32_t)(uintptr_t)__flash_arduino_end);
       // Initial mount is always non-destructive, even for blank media.
       // DataStore validates primary first, then retries/rebuilds ExtraFS.
-      if (!extra_fs_geometry_valid
+      if (!extra_fs_map_ready || !extra_fs_geometry_valid
+          || ExtraFS.recoveryPending()
           || !ExtraFS.Adafruit_LittleFS::begin()) {
-        if (!extra_fs_geometry_valid) {
+        if (!extra_fs_map_ready) {
+          MESH_DEBUG_PRINTLN("CustomLFS: bad-page map unreadable; preserving ExtraFS and blocking writes");
+        } else if (!extra_fs_geometry_valid) {
           MESH_DEBUG_PRINTLN("CustomLFS: internal ExtraFS geometry is not 100 KiB; refusing to mount or erase it");
+        } else if (ExtraFS.recoveryPending()) {
+          MESH_DEBUG_PRINTLN("CustomLFS: recorded physical page fault; deferring scan until primary validation");
         } else {
           MESH_DEBUG_PRINTLN("CustomLFS: internal ExtraFS mount failed; deferring automatic recovery until primary validation");
         }
@@ -3185,6 +3199,21 @@ void loop() {
   expireUsbBinaryStartupProbeBeforeDispatch();
 #endif
   the_mesh.loop();
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+  // The flash-page number is retained across a software reset without trying
+  // to write primary identity storage while radio/BLE tasks are running.
+  // Early boot then verifies and records the page map before remounting.
+  if (ExtraFS.ioFailed()) {
+    static uint32_t last_fault_record_attempt = 0;
+    if (static_cast<uint32_t>(millis() - last_fault_record_attempt) >= 5000) {
+      last_fault_record_attempt = millis();
+      if (ExtraFS.requestBootScan()) {
+        MESH_DEBUG_PRINTLN("ExtraFS: physical write failed; rebooting for isolated page scan");
+        board.reboot();
+      }
+    }
+  }
+#endif
 #ifdef RECOVERABLE_EXTERNAL_RADIO
   serviceCompanionRadioRecovery();
 #endif

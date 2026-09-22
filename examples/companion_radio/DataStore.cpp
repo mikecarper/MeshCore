@@ -210,7 +210,7 @@ void DataStore::begin() {
   #if defined(QSPIFLASH)
     #include <CustomLFS_QSPIFlash.h>
   #elif defined(EXTRAFS)
-    #include <CustomLFS.h>
+    #include "ResilientInternalExtraFS.h"
   #else 
     #include <InternalFileSystem.h>
   #endif
@@ -280,8 +280,10 @@ static void cleanupAtomicTempFiles(FILESYSTEM* fs) {
 bool DataStore::recoverInternalExtraFSOnBoot() {
   if (_configuredFsExtra == nullptr) return false;
 
-  CustomLFS* extra = static_cast<CustomLFS*>(_configuredFsExtra);
+  ResilientInternalExtraFS* extra =
+      static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
   if (_primary_storage_unavailable
+      || !extra->pageMapReady()
       || !mesh::storage::isExpectedInternalExtraFsGeometry(
           extra->getFlashAddr(), extra->getFlashSize(), extra->getBlockSize())
       || !mesh::storage::isInternalExtraFsReservedByApplication(
@@ -289,6 +291,19 @@ bool DataStore::recoverInternalExtraFSOnBoot() {
     disableSecondaryFS(true);
     MESH_DEBUG_PRINTLN("DataStore: refusing automatic ExtraFS recovery outside reserved 100 KiB region");
     return false;
+  }
+
+  if (extra->recoveryPending()) {
+    MESH_DEBUG_PRINTLN("DataStore: running requested boot-time ExtraFS scan");
+    if (!reinitializeInternalExtraFS(true)) {
+      disableSecondaryFS(true);
+      return false;
+    }
+    _secondary_authority_unknown = false;
+    _contact_load_incomplete = false;
+    _identity_creation_blocked = false;
+    _prefs_load_incomplete = false;
+    return true;
   }
 
   const mesh::storage::InternalSecondaryFsRecoveryResult result =
@@ -306,13 +321,15 @@ bool DataStore::recoverInternalExtraFSOnBoot() {
             return true;
           },
           [this]() -> bool {
-            MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS remains unusable; rebuilding 100 KiB (secondary-only data may be lost)");
-            return reinitializeInternalExtraFS();
+            MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS remains unusable after mount retry; scanning and rebuilding (secondary-only data may be lost)");
+            return reinitializeInternalExtraFS(true);
           });
   if (result == mesh::storage::InternalSecondaryFsRecoveryResult::Failed) {
     disableSecondaryFS(true);
     return false;
   }
+
+  extra->acknowledgeRecoveredBootHint();
 
   // This runs only before migration and user-data loading. Clear the initial
   // mount quarantine, not errors from a later incomplete contact/prefs load.
@@ -324,17 +341,29 @@ bool DataStore::recoverInternalExtraFSOnBoot() {
   return true;
 }
 
-bool DataStore::reinitializeInternalExtraFS() {
+bool DataStore::reinitializeInternalExtraFS(bool scan_physical_pages) {
   if (_configuredFsExtra == nullptr) return false;
 
-  CustomLFS* extra = static_cast<CustomLFS*>(_configuredFsExtra);
+  ResilientInternalExtraFS* extra =
+      static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
   if (!mesh::storage::isExpectedInternalExtraFsGeometry(
           extra->getFlashAddr(), extra->getFlashSize(),
           extra->getBlockSize())
+      || !extra->pageMapReady()
       || !mesh::storage::isInternalExtraFsReservedByApplication(
           (uint32_t)(uintptr_t)__flash_arduino_end)) {
     _fsExtra = nullptr;
     MESH_DEBUG_PRINTLN("DataStore: refusing internal ExtraFS repair with unexpected geometry");
+    return false;
+  }
+
+  // A physical test is destructive and must run only during early boot, before
+  // radio/UI tasks can issue competing SoftDevice flash operations. Ordinary
+  // USB repair and factory-reset paths retain the already-verified page map.
+  if ((scan_physical_pages && !extra->scanAndRetireBadPages())
+      || (extra->pageMapNeedsSave() && !extra->savePageMap(*_fs))) {
+    _fsExtra = nullptr;
+    MESH_DEBUG_PRINTLN("DataStore: ExtraFS physical scan or bad-page map save failed");
     return false;
   }
 
@@ -359,12 +388,15 @@ bool DataStore::reinitializeInternalExtraFS() {
     _fsExtra = nullptr;
     switch (result) {
       case mesh::storage::InternalSecondaryFsRepairResult::FormatFailed:
+        extra->setStage(ResilientInternalExtraFS::Stage::FormatFailed);
         MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repair format failed");
         break;
       case mesh::storage::InternalSecondaryFsRepairResult::MountFailed:
+        extra->setStage(ResilientInternalExtraFS::Stage::MountFailed);
         MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repair mount failed");
         break;
       case mesh::storage::InternalSecondaryFsRepairResult::ValidationFailed:
+        extra->setStage(ResilientInternalExtraFS::Stage::ValidationFailed);
         MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repair validation failed");
         break;
       default:
@@ -374,6 +406,7 @@ bool DataStore::reinitializeInternalExtraFS() {
   }
 
   _fsExtra = _configuredFsExtra;
+  extra->setStage(ResilientInternalExtraFS::Stage::Repaired);
   MESH_DEBUG_PRINTLN("DataStore: internal ExtraFS repaired and reactivated");
   return true;
 }
@@ -647,6 +680,38 @@ bool DataStore::repairInternalExtraFS() {
   return false;
 #endif
 }
+
+#if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
+bool DataStore::requestInternalExtraFSBootScan() {
+  if (_primary_storage_unavailable || _configuredFsExtra == nullptr) {
+    return false;
+  }
+  ResilientInternalExtraFS* extra =
+      static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
+  return extra->requestBootScan();
+}
+
+bool DataStore::formatInternalExtraFSHealth(char* reply,
+                                             size_t reply_size) const {
+  if (reply == nullptr || reply_size == 0 || _configuredFsExtra == nullptr) {
+    return false;
+  }
+  const ResilientInternalExtraFS* extra =
+      static_cast<const ResilientInternalExtraFS*>(_configuredFsExtra);
+  snprintf(reply, reply_size,
+           "ExtraFS %s; bad=0x%07lX; detected=0x%07lX; pending=0x%07lX; usable=%luK; mount=%s; last=%s; scanned=%u; boot=0x%02X",
+           extra->pageMapReady() ? "mapped" : "map-unreadable",
+           (unsigned long)extra->badPages(),
+           (unsigned long)extra->detectedBadPages(),
+           (unsigned long)extra->pendingPages(),
+           (unsigned long)(extra->usableBytes() / 1024),
+           _fsExtra == _configuredFsExtra ? "active" : "unavailable",
+           ResilientInternalExtraFS::stageName(extra->stage()),
+           (unsigned)extra->scannedPages(),
+           (unsigned)extra->bootMarkerAtInit());
+  return true;
+}
+#endif
 
 bool DataStore::loadMainIdentity(mesh::LocalIdentity &identity) {
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
