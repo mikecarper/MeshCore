@@ -10354,6 +10354,12 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "loggingControl": "usb.logging",
+      "loggingModes": [
+        "none",
+        "usb"
+      ],
+      "loggingSource": "283acd27f5887961de93cf8e2671e4ac7476f603",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
@@ -10391,6 +10397,10 @@
       "femRx": false,
       "femTx": false,
       "gps": false,
+      "loggingModes": [
+        "none"
+      ],
+      "loggingSource": "306feebe6d648a247f925894f876be9d747fc8d2",
       "mqtt": false,
       "platform": "NRF52_PLATFORM",
       "primaryEspnow": false,
