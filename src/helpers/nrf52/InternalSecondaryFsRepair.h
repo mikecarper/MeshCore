@@ -38,6 +38,7 @@ bool isErasedFlashRange(uint32_t start, uint32_t size, ReadWord read_word) {
 enum class InternalSecondaryFsBootResult {
   Mounted,
   InitializedBlank,
+  ReinitializedUnreadable,
   PreservedNonBlank,
   InitializationFailed,
 };

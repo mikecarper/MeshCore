@@ -24,18 +24,30 @@ bool IdentityStore::recover(const char* name) {
 }
 
 bool IdentityStore::load(const char *name, mesh::LocalIdentity& id) {
-  return load(name, id, nullptr, 0);
+  return loadResult(name, id) == IdentityLoadResult::Loaded;
 }
 
 bool IdentityStore::load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz) {
+  return loadResult(name, id, display_name, max_name_sz)
+      == IdentityLoadResult::Loaded;
+}
+
+IdentityLoadResult IdentityStore::loadResult(
+    const char *name, mesh::LocalIdentity& id) {
+  return loadResult(name, id, nullptr, 0);
+}
+
+IdentityLoadResult IdentityStore::loadResult(
+    const char *name, mesh::LocalIdentity& id, char display_name[],
+    int max_name_sz) {
   char filename[40];
   if (snprintf(filename, sizeof(filename), "%s/%s.id", _dir, name)
-      >= (int)sizeof(filename)) return false;
+      >= (int)sizeof(filename)) return IdentityLoadResult::Unreadable;
   for (unsigned attempt = 0; attempt < IO_ATTEMPTS; ++attempt) {
     if (!recover(name)) continue;
     bool present = false;
     if (!mesh::filePresence(_fs, filename, present)) continue;
-    if (!present) return false;
+    if (!present) return IdentityLoadResult::Missing;
 #if defined(RP2040_PLATFORM)
     File file = _fs->open(filename, "r");
 #else
@@ -62,10 +74,12 @@ bool IdentityStore::load(const char *name, mesh::LocalIdentity& id, char display
     }
     file.close();
     id = loaded;
-    return true;
+    return IdentityLoadResult::Loaded;
   }
-  // Callers may provision a replacement after bounded recovery is exhausted.
-  return false;
+  // An existing file which cannot be read is materially different from a
+  // fresh device. Startup callers must preserve it instead of replacing the
+  // radio's private key after a transient or localized flash failure.
+  return IdentityLoadResult::Unreadable;
 }
 
 bool IdentityStore::saveWithRetry(const char* name, const mesh::LocalIdentity& id) {

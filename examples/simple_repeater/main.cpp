@@ -12,6 +12,10 @@
 #if defined(ESP32_PLATFORM)
   #include <helpers/ESP32TrueRandom.h>
 #endif
+#if defined(NRF52_PLATFORM)
+  #include <helpers/nrf52/InternalPrimaryFsBoot.h>
+  #include <helpers/nrf52/RamFallbackFileSystem.h>
+#endif
 #if defined(ESP32) && MAX_RECENT_REPEATERS > 0
   #include <new>
 #endif
@@ -155,7 +159,25 @@ void setup() {
   fast_rng.begin(radio_driver.getRngSeed());
 
   FILESYSTEM* fs;
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+#if defined(NRF52_PLATFORM)
+  bool volatile_primary_fs = false;
+  mesh::storage::RamFallbackFileSystem* ram_primary_fs = nullptr;
+  const auto primary_fs_boot =
+      mesh::storage::beginInternalPrimaryFilesystemSafely(InternalFS);
+  if (mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)) {
+    fs = &InternalFS;
+  } else {
+    ram_primary_fs = mesh::storage::createRamFallbackFileSystem();
+    if (ram_primary_fs == nullptr) {
+      MESH_DEBUG_PRINTLN("InternalFS and RAM fallback initialization failed; rebooting");
+      board.reboot();
+      return;
+    }
+    fs = &ram_primary_fs->filesystem();
+    volatile_primary_fs = true;
+  }
+  IdentityStore store(*fs, "");
+#elif defined(STM32_PLATFORM)
   InternalFS.begin();
   fs = &InternalFS;
   IdentityStore store(InternalFS, "");
@@ -171,9 +193,29 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
-  const bool needs_identity = !store.load("_main", the_mesh.self_id)
-      || mesh::hasReservedIdentityPrefix(the_mesh.self_id);
-  bool identity_ready = true;
+#if defined(NRF52_PLATFORM)
+  IdentityLoadResult identity_load = volatile_primary_fs
+      ? store.loadResult("_main", the_mesh.self_id)
+      : mesh::storage::loadIdentityWithPrimaryRecovery(
+            InternalFS,
+            [&store]() { return store.loadResult("_main", the_mesh.self_id); });
+  if (identity_load == IdentityLoadResult::Unreadable) {
+    ram_primary_fs = mesh::storage::createRamFallbackFileSystem();
+    if (ram_primary_fs != nullptr) {
+      fs = &ram_primary_fs->filesystem();
+      store.useFileSystem(*fs);
+      volatile_primary_fs = true;
+      identity_load = IdentityLoadResult::Missing;
+    }
+  }
+#else
+  const IdentityLoadResult identity_load =
+      store.loadResult("_main", the_mesh.self_id);
+#endif
+  const bool needs_identity = identity_load == IdentityLoadResult::Missing
+      || (identity_load == IdentityLoadResult::Loaded
+          && mesh::hasReservedIdentityPrefix(the_mesh.self_id));
+  bool identity_ready = identity_load != IdentityLoadResult::Unreadable;
   if (needs_identity) {
     MESH_DEBUG_PRINTLN("Generating new keypair");
     identity_ready = mesh::generateUsableLocalIdentity(the_mesh.self_id, radio_new_identity);
@@ -217,6 +259,16 @@ void setup() {
   sensors.begin();
 
   the_mesh.begin(fs);
+
+#if defined(NRF52_PLATFORM)
+  if (volatile_primary_fs) {
+    strncpy(the_mesh.getNodePrefs()->node_name,
+            mesh::storage::BAD_FILESYSTEM_NODE_NAME,
+            sizeof(the_mesh.getNodePrefs()->node_name));
+    the_mesh.getNodePrefs()->node_name[
+        sizeof(the_mesh.getNodePrefs()->node_name) - 1] = 0;
+  }
+#endif
 
 #ifdef DISPLAY_CLASS
   if (display_ready) {

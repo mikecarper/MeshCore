@@ -36,6 +36,8 @@ public:
   size_t max_write = std::numeric_limits<size_t>::max();
   bool fail_read_open = false;
   bool fail_rename = false;
+  bool false_success_rename = false;
+  unsigned read_open_failures_remaining = 0;
   unsigned rename_calls = 0;
 
   bool exists(const char* path) const {
@@ -49,6 +51,7 @@ public:
   bool rename(const char* from, const char* to) {
     rename_calls++;
     if (fail_rename) return false;
+    if (false_success_rename) return true;
     auto source = files.find(from);
     if (source == files.end()) return false;
     files[to] = source->second;
@@ -69,6 +72,10 @@ bool FakeFile::open(const char* path, uint8_t mode) {
   _path = path;
   _write_mode = mode == FILE_O_WRITE;
   if (!_write_mode && (_fs->fail_read_open || !_fs->exists(path))) return false;
+  if (!_write_mode && _fs->read_open_failures_remaining > 0) {
+    _fs->read_open_failures_remaining--;
+    return false;
+  }
   if (_write_mode) {
     auto& contents = _fs->files[_path];
     _position = contents.size();
@@ -186,6 +193,34 @@ TEST(AtomicFileWriter, RenameFailurePreservesLiveFileAndCleansTemp) {
   EXPECT_EQ(fs.files["/prefs"], bytes("old"));
   EXPECT_FALSE(fs.exists("/prefs.tmp"));
   EXPECT_EQ(fs.rename_calls, 1u);
+}
+
+TEST(AtomicFileWriter, FalseSuccessRenameIsDetectedByLiveReadback) {
+  FakeFilesystem fs;
+  fs.files["/prefs"] = bytes("old");
+  fs.false_success_rename = true;
+
+  mesh::AtomicFileWriter writer(&fs, "/prefs");
+  const uint8_t replacement[] = {'n', 'e', 'w'};
+  ASSERT_EQ(writer.write(replacement, sizeof(replacement)), sizeof(replacement));
+
+  EXPECT_FALSE(writer.commit());
+  EXPECT_EQ(fs.files["/prefs"], bytes("old"));
+  EXPECT_FALSE(fs.exists("/prefs.tmp"));
+  EXPECT_EQ(fs.rename_calls, 1u);
+}
+
+TEST(AtomicFileWriter, ValidationRetriesTransientReadOpenFailures) {
+  FakeFilesystem fs;
+  fs.files["/prefs"] = bytes("old");
+  fs.read_open_failures_remaining = 2;
+
+  mesh::AtomicFileWriter writer(&fs, "/prefs");
+  const uint8_t replacement[] = {'n', 'e', 'w'};
+  ASSERT_EQ(writer.write(replacement, sizeof(replacement)), sizeof(replacement));
+
+  EXPECT_TRUE(writer.commit());
+  EXPECT_EQ(fs.files["/prefs"], bytes("new"));
 }
 
 TEST(AtomicFileWriter, AbandonedWriteAndStaleTempAreCleaned) {

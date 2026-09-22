@@ -14,12 +14,31 @@ spec.loader.exec_module(module)
 
 class Nrf52InternalFlashFixTest(unittest.TestCase):
     def test_wait_cannot_be_optimized_into_immediate_success(self):
-        source = "before\n" + module.OLD_WAIT + "    do_wait();\n  }\nafter\n"
+        source = ("before\n" + module.OLD_WAIT + "    do_wait();\n  }\n"
+                  + module.OLD_FLUSH + module.OLD_VERIFY + "after\n")
         patched = module.patched_source(source)
         self.assertIn("volatile uint8_t sd_en", patched)
         self.assertIn('''__asm volatile ("" ::: "memory");''', patched)
         self.assertIn("if (sd_en)", patched)
+        self.assertIn("mesh_flash_nrf5x_flush_checked", patched)
+        self.assertIn("volatile uint8_t const * flash", patched)
         self.assertEqual(module.patched_source(patched), patched)
+
+    def test_cache_failures_are_sticky_until_checked_sync(self):
+        patched = module.patched_cache_source(module.OLD_CACHE_FLUSH)
+        self.assertIn("mesh_flash_cache_take_flush_result", patched)
+        self.assertIn("mesh_flash_cache_flush_ok = false", patched)
+        self.assertIn("fc->program", patched)
+        self.assertIn("fc->verify", patched)
+        self.assertEqual(module.patched_cache_source(patched), patched)
+
+    def test_internalfs_propagates_checked_flush_failure(self):
+        source = (module.OLD_INTERNAL_READ + module.OLD_INTERNAL_PROG
+                  + module.OLD_INTERNAL_ERASE_WRITE + module.OLD_INTERNAL_SYNC)
+        patched = module.patched_internal_fs_source(source)
+        self.assertIn("== (int) size", patched)
+        self.assertIn("mesh_flash_nrf5x_flush_checked() ? 0 : LFS_ERR_IO", patched)
+        self.assertEqual(module.patched_internal_fs_source(patched), patched)
 
     def test_unrecognized_framework_fails_closed(self):
         with self.assertRaises(RuntimeError):
@@ -29,6 +48,8 @@ class Nrf52InternalFlashFixTest(unittest.TestCase):
         ini = (ROOT / "platformio.ini").read_text(encoding="utf-8")
         self.assertIn("pre:scripts/nrf52_internal_flash_fix.py", ini)
         self.assertIn('"*flash_nrf5x.c"', SCRIPT.read_text())
+        self.assertIn('"*flash_cache.c"', SCRIPT.read_text())
+        self.assertIn('"*InternalFileSystem.cpp"', SCRIPT.read_text())
         # The hardware-in-loop images intentionally bypass nrf52_base, but
         # still use the same framework and must not regress to its unsafe SVC
         # flash-completion wait.

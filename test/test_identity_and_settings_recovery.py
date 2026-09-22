@@ -56,6 +56,8 @@ class IdentityAndSettingsRecovery(unittest.TestCase):
         for signature in ('bool IdentityStore::recover(',
                           'bool IdentityStore::load(const char *name, mesh::LocalIdentity& id)',
                           'bool IdentityStore::load(const char *name, mesh::LocalIdentity& id, char display_name[], int max_name_sz)',
+                          'IdentityLoadResult IdentityStore::loadResult(\n    const char *name, mesh::LocalIdentity& id)',
+                          'IdentityLoadResult IdentityStore::loadResult(\n    const char *name, mesh::LocalIdentity& id, char display_name[]',
                           'bool IdentityStore::saveWithRetry(',
                           'bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id)',
                           'bool IdentityStore::save(const char *name, const mesh::LocalIdentity& id, const char display_name[])'):
@@ -87,6 +89,10 @@ int main() {
         if (display) assert(strcmp(name, "saved name") == 0);
       } else {
         assert(live.pub_key[0] == 9 && strcmp(name, "unchanged") == 0);
+        const auto state = display
+            ? store.loadResult("main", live, name, sizeof(name))
+            : store.loadResult("main", live);
+        assert(state == IdentityLoadResult::Loaded);
         assert(store.saveWithRetry("main", live));
       }
     }
@@ -160,6 +166,7 @@ int main() {
             with self.subTest(role=role):
                 source = (ROOT / 'examples' / role / 'main.cpp').read_text()
                 self.assertIn('if (identity_ready) identity_ready = store.saveWithRetry(', source)
+                self.assertIn('IdentityLoadResult::Unreadable', source)
                 failed = extract_braced(source, 'if (!identity_ready)')
                 self.assertIn('board.reboot();', failed)
                 self.assertIn('halt();' if role == 'kiss_modem' else 'return;', failed)

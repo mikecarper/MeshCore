@@ -4,13 +4,17 @@
 
 #include <helpers/IdentityStore.h>
 #include <helpers/AtomicFileWriter.h>
+#include <helpers/nrf52/InternalFlashStatus.h>
 #include <helpers/nrf52/SoftDeviceState.h>
 #include <nrf_soc.h>
 #include <string.h>
 
 namespace {
 constexpr char PAGE_MAP_PATH[] = "/extrafs.badpages";
-constexpr uint32_t PAGE_MAP_MAGIC = 0x31475042UL; // "BPG1" on nRF52
+constexpr char PAGE_MAP_BACKUP_PATH[] = "/extrafs.badpages.bak";
+constexpr uint32_t PAGE_MAP_V1_MAGIC = 0x31475042UL; // "BPG1" on nRF52
+constexpr uint32_t PAGE_MAP_V2_MAGIC = 0x32475042UL; // "BPG2" on nRF52
+constexpr uint8_t PAGE_MAP_READ_ATTEMPTS = 3;
 #if defined(NRF52840_XXAA)
 constexpr uint32_t PRIMARY_START = 0xED000UL;
 #else
@@ -67,16 +71,102 @@ int primaryErase(const struct lfs_config*, lfs_block_t block) {
 
 int primarySync(const struct lfs_config*) {
   FlashLock lock;
-  flash_nrf5x_flush();
-  return 0;
+  return mesh_flash_nrf5x_flush_checked() ? 0 : LFS_ERR_IO;
 }
 
-struct PageMapRecord {
+struct LegacyPageMapRecord {
   uint32_t magic;
   uint32_t bad_pages;
   uint32_t pending_pages;
   uint32_t check;
 };
+
+struct PageMapRecord {
+  uint32_t magic;
+  uint32_t generation;
+  uint32_t bad_pages;
+  uint32_t pending_pages;
+  uint32_t check;
+};
+
+enum class PageMapReadState : uint8_t { Missing, Valid, Invalid };
+
+struct PageMapCandidate {
+  PageMapReadState state = PageMapReadState::Invalid;
+  uint32_t generation = 0;
+  uint32_t bad_pages = 0;
+  uint32_t pending_pages = 0;
+  bool legacy = false;
+};
+
+bool validPageMapValues(uint32_t bad_pages, uint32_t pending_pages) {
+  return (bad_pages & ~mesh::storage::INTERNAL_EXTRAFS_PAGE_MASK) == 0
+      && (pending_pages
+          & ~(mesh::storage::INTERNAL_EXTRAFS_PAGE_MASK | (1UL << 31))) == 0
+      && (bad_pages & pending_pages
+          & mesh::storage::INTERNAL_EXTRAFS_PAGE_MASK) == 0
+      && mesh::storage::countInternalExtraFsBadPages(bad_pages) <= 4;
+}
+
+PageMapCandidate readPageMapCandidate(Adafruit_LittleFS& primary,
+                                      const char* path) {
+  PageMapCandidate candidate;
+  for (uint8_t attempt = 0; attempt < PAGE_MAP_READ_ATTEMPTS; ++attempt) {
+    struct lfs_info info = {};
+    primary._lockFS();
+    const int stat_result = lfs_stat(primary._getFS(), path, &info);
+    primary._unlockFS();
+    if (stat_result == LFS_ERR_NOENT) {
+      candidate.state = PageMapReadState::Missing;
+      return candidate;
+    }
+    if (stat_result != LFS_ERR_OK || info.type != LFS_TYPE_REG
+        || (info.size != sizeof(PageMapRecord)
+            && info.size != sizeof(LegacyPageMapRecord))) {
+      continue;
+    }
+
+    File file = primary.open(path, FILE_O_READ);
+    if (!file) continue;
+    if (info.size == sizeof(PageMapRecord)) {
+      PageMapRecord record = {};
+      const int count = file.read(reinterpret_cast<uint8_t*>(&record),
+                                  sizeof(record));
+      file.close();
+      if (count == sizeof(record) && record.magic == PAGE_MAP_V2_MAGIC
+          && record.check
+              == ~(record.magic ^ record.generation ^ record.bad_pages
+                   ^ record.pending_pages)
+          && validPageMapValues(record.bad_pages, record.pending_pages)) {
+        candidate.state = PageMapReadState::Valid;
+        candidate.generation = record.generation;
+        candidate.bad_pages = record.bad_pages;
+        candidate.pending_pages = record.pending_pages;
+        return candidate;
+      }
+    } else {
+      LegacyPageMapRecord record = {};
+      const int count = file.read(reinterpret_cast<uint8_t*>(&record),
+                                  sizeof(record));
+      file.close();
+      if (count == sizeof(record) && record.magic == PAGE_MAP_V1_MAGIC
+          && record.check
+              == ~(record.magic ^ record.bad_pages ^ record.pending_pages)
+          && validPageMapValues(record.bad_pages, record.pending_pages)) {
+        candidate.state = PageMapReadState::Valid;
+        candidate.bad_pages = record.bad_pages;
+        candidate.pending_pages = record.pending_pages;
+        candidate.legacy = true;
+        return candidate;
+      }
+    }
+  }
+  return candidate;
+}
+
+bool newerGeneration(uint32_t candidate, uint32_t reference) {
+  return static_cast<int32_t>(candidate - reference) > 0;
+}
 
 } // namespace
 
@@ -103,7 +193,7 @@ ResilientInternalExtraFS::ResilientInternalExtraFS(
   // bootloader leaves this register alone for an ordinary app reset.
   const uint8_t retained = static_cast<uint8_t>(NRF_POWER->GPREGRET2);
   _boot_marker_at_init = retained;
-  if (retained == BOOT_SCAN_ALL) {
+  if (retained == BOOT_SCAN_ALL || retained == BOOT_SCAN_REPEAT) {
     _boot_scan_requested = true;
     _boot_scan_forced = true;
   } else if (retained >= BOOT_SCAN_BAD_PAGE_BASE
@@ -132,37 +222,43 @@ bool ResilientInternalExtraFS::loadPageMap(Adafruit_LittleFS& primary) {
   _map_ready = false;
   _bad_pages = 0;
   _pending_pages = 0;
-  struct lfs_info info;
-  const int stat_result = lfs_stat(primary._getFS(), PAGE_MAP_PATH, &info);
-  if (stat_result == LFS_ERR_NOENT) {
+  _map_generation = 0;
+  _map_repair_needed = false;
+
+  const PageMapCandidate main = readPageMapCandidate(primary, PAGE_MAP_PATH);
+  const PageMapCandidate backup =
+      readPageMapCandidate(primary, PAGE_MAP_BACKUP_PATH);
+  if (main.state == PageMapReadState::Missing
+      && backup.state == PageMapReadState::Missing) {
     _configure_lfs();
     _map_ready = true;
     return true;
   }
-  if (stat_result != LFS_ERR_OK || info.type != LFS_TYPE_REG
-      || info.size != sizeof(PageMapRecord)) return false;
 
-  File file = primary.open(PAGE_MAP_PATH, FILE_O_READ);
-  if (!file) return false;
-  PageMapRecord record = {};
-  const int read_count = file.read(reinterpret_cast<uint8_t*>(&record),
-                                   sizeof(record));
-  file.close();
-  if (read_count != sizeof(record) || record.magic != PAGE_MAP_MAGIC
-      || record.check != ~(record.magic ^ record.bad_pages
-                           ^ record.pending_pages)
-      || (record.bad_pages & ~PAGE_MASK) != 0
-      || (record.pending_pages & ~(PAGE_MASK | SCAN_REQUEST)) != 0
-      || (record.bad_pages & record.pending_pages & PAGE_MASK) != 0
-      || countInternalExtraFsBadPages(
-             record.bad_pages | (record.pending_pages & PAGE_MASK))
-          > MAX_BAD_PAGES) {
+  const PageMapCandidate* chosen = nullptr;
+  if (main.state == PageMapReadState::Valid
+      && backup.state == PageMapReadState::Valid) {
+    chosen = newerGeneration(backup.generation, main.generation)
+        ? &backup : &main;
+    _map_repair_needed = main.legacy || backup.legacy
+        || main.generation != backup.generation
+        || main.bad_pages != backup.bad_pages
+        || main.pending_pages != backup.pending_pages;
+  } else if (main.state == PageMapReadState::Valid) {
+    chosen = &main;
+    _map_repair_needed = true;
+  } else if (backup.state == PageMapReadState::Valid) {
+    chosen = &backup;
+    _map_repair_needed = true;
+  } else {
     return false;
   }
-  _bad_pages = record.bad_pages;
-  _pending_pages = record.pending_pages;
-  _recorded_bad_pages = record.bad_pages;
-  _recorded_pending_pages = record.pending_pages;
+
+  _bad_pages = chosen->bad_pages;
+  _pending_pages = chosen->pending_pages;
+  _map_generation = chosen->generation;
+  _recorded_bad_pages = _bad_pages;
+  _recorded_pending_pages = _pending_pages;
   _configure_lfs();
   _map_ready = true;
   return true;
@@ -170,25 +266,45 @@ bool ResilientInternalExtraFS::loadPageMap(Adafruit_LittleFS& primary) {
 
 bool ResilientInternalExtraFS::savePageMap(Adafruit_LittleFS& primary) {
   if (!_map_ready) return false;
+  const uint32_t generation = _map_generation + 1;
   const PageMapRecord record = {
-      PAGE_MAP_MAGIC, _bad_pages, _pending_pages,
-      ~(PAGE_MAP_MAGIC ^ _bad_pages ^ _pending_pages)};
-  mesh::AtomicFileWriter writer(&primary, PAGE_MAP_PATH);
-  const bool saved = writer
-      && writer.write(reinterpret_cast<const uint8_t*>(&record),
-                      sizeof(record)) == sizeof(record)
-      && writer.commit();
+      PAGE_MAP_V2_MAGIC, generation, _bad_pages, _pending_pages,
+      ~(PAGE_MAP_V2_MAGIC ^ generation ^ _bad_pages ^ _pending_pages)};
+  const auto write_record = [&primary, &record](const char* path) -> bool {
+    mesh::AtomicFileWriter writer(&primary, path);
+    return writer
+        && writer.write(reinterpret_cast<const uint8_t*>(&record),
+                        sizeof(record)) == sizeof(record)
+        && writer.commit();
+  };
+  const bool main_saved = write_record(PAGE_MAP_PATH);
+  const bool backup_saved = write_record(PAGE_MAP_BACKUP_PATH);
+  const bool saved = main_saved && backup_saved;
   if (saved) {
+    _map_generation = generation;
     _recorded_bad_pages = _bad_pages;
     _recorded_pending_pages = _pending_pages;
+    _map_repair_needed = false;
   }
   _stage = saved ? Stage::MapSaved : Stage::MapSaveFailed;
   return saved;
 }
 
 bool ResilientInternalExtraFS::pageMapNeedsSave() const {
-  return _bad_pages != _recorded_bad_pages
+  return _map_repair_needed
+      || _bad_pages != _recorded_bad_pages
       || _pending_pages != _recorded_pending_pages;
+}
+
+void ResilientInternalExtraFS::resetPageMapForDestructiveRecovery() {
+  _bad_pages = 0;
+  _pending_pages = 0;
+  _recorded_bad_pages = 0;
+  _recorded_pending_pages = 0;
+  _map_generation = 0;
+  _map_repair_needed = true;
+  _map_ready = true;
+  _configure_lfs();
 }
 
 bool ResilientInternalExtraFS::setBootScanRequest(uint8_t value) {
@@ -218,17 +334,19 @@ bool ResilientInternalExtraFS::clearBootScanRequest() {
   return true;
 }
 
-bool ResilientInternalExtraFS::requestBootScan() {
-  if (!_map_ready) return false;
+bool ResilientInternalExtraFS::requestBootScan(bool force_full_scan) {
+  if (!_map_ready && !force_full_scan) return false;
   // Do not touch the primary filesystem while radio/BLE tasks are running.
   // The suspect 4 KiB page (if known) fits in one retained byte. A fault hint
   // first gets a non-destructive mount and traversal at boot; only an explicit
   // user scan or unrecoverable filesystem triggers the destructive test.
   uint8_t marker = BOOT_SCAN_ALL;
-  if ((_pending_pages & PAGE_MASK) != 0) {
+  if (!force_full_scan && (_pending_pages & PAGE_MASK) != 0) {
     for (uint8_t page = 0; page < PAGE_COUNT; ++page) {
       if ((_pending_pages & (1UL << page)) != 0) {
-        marker = BOOT_SCAN_BAD_PAGE_BASE + page;
+        marker = (_retained_bad_page == page)
+            ? BOOT_SCAN_REPEAT
+            : BOOT_SCAN_BAD_PAGE_BASE + page;
         break;
       }
     }
@@ -241,9 +359,16 @@ void ResilientInternalExtraFS::acknowledgeRecoveredBootHint() {
   // the existing filesystem after a transient runtime flash error. The
   // hint remains a diagnostic only; it is not a bad-page verdict.
   if (!_boot_scan_forced) {
-    clearBootScanRequest();
     _pending_pages &= SCAN_REQUEST;
-    _retained_bad_page = 0xFF;
+    if (_retained_bad_page < PAGE_COUNT) {
+      // Power management consumes GPREGRET2 during startup. Re-arm this first
+      // strike only after the filesystem has mounted and traversed cleanly. A
+      // later fault on the same page becomes the forced second-strike marker.
+      _boot_scan_requested =
+          setBootScanRequest(BOOT_SCAN_BAD_PAGE_BASE + _retained_bad_page);
+    } else {
+      clearBootScanRequest();
+    }
   }
 }
 
@@ -287,11 +412,12 @@ int ResilientInternalExtraFS::commitPage() {
     retirePending(_cached_page);
     return LFS_ERR_CORRUPT;
   }
-  flash_nrf5x_flush();
+  const bool flush_ok = mesh_flash_nrf5x_flush_checked();
   // Read actual flash, not flash_nrf5x_read(): that API may return its RAM
   // cache even when the physical erase/program silently failed.
-  if (memcmp(reinterpret_cast<const void*>(address), _page_buffer,
-             PAGE_SIZE) != 0) {
+  if (!flush_ok
+      || memcmp(reinterpret_cast<const void*>(address), _page_buffer,
+                PAGE_SIZE) != 0) {
     retirePending(_cached_page);
     return LFS_ERR_CORRUPT;
   }

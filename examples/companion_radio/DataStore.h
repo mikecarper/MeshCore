@@ -76,6 +76,7 @@ class DataStore
   bool _contact_load_incomplete = false;
   bool _primary_storage_unavailable = false;
   bool _secondary_authority_unknown = false;
+  bool _volatile_primary_fs = false;
   uint32_t _contact_page_generations[mesh::storage::CONTACT_PAGE_COUNT];
   bool _legacy_contacts_pending_cleanup;
   bool _legacy_migration_ready;
@@ -112,6 +113,10 @@ public:
 #endif
   FILESYSTEM* getPrimaryFS() const { return _fs; }
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
+#if defined(NRF52_PLATFORM)
+  void useVolatilePrimaryFS(FILESYSTEM& fs);
+  bool isVolatilePrimaryFS() const { return _volatile_primary_fs; }
+#endif
   void markPrimaryFSUnavailable();
   void disableSecondaryFS(bool authority_unknown = true);
   bool loadMainIdentity(mesh::LocalIdentity &identity);

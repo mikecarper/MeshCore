@@ -21,6 +21,9 @@
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/UsbAsciiBinarySwitch.h>
 #include <helpers/UsbLogging.h>
+#if defined(NRF52_PLATFORM)
+#include <helpers/nrf52/RamFallbackFileSystem.h>
+#endif
 #if defined(ENABLE_OTA)
 #include <helpers/ota/OtaContext.h>
 #endif
@@ -1852,6 +1855,17 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   // load persisted prefs
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
+
+#if defined(NRF52_PLATFORM)
+  // A volatile primary filesystem is the final recovery mode after the
+  // physical medium has exhausted its delayed reads and destructive repair.
+  // Apply the diagnostic name before BLE, USB, MQTT, or adverts consume it.
+  if (_store->isVolatilePrimaryFS()) {
+    strncpy(_prefs.node_name, mesh::storage::BAD_FILESYSTEM_NODE_NAME,
+            sizeof(_prefs.node_name));
+    _prefs.node_name[sizeof(_prefs.node_name) - 1] = 0;
+  }
+#endif
 
   // v1.17.1.2 repairs the Companion default-off regression for both fresh
   // installs and devices that already persisted the regressed value. The

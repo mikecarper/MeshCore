@@ -18,6 +18,7 @@ namespace mesh {
  */
 class AtomicFileWriter {
   static const size_t TEMP_PATH_CAPACITY = 96;
+  static const uint8_t VALIDATION_ATTEMPTS = 3;
 
   FILESYSTEM* _fs;
   const char* _target_path;
@@ -31,7 +32,7 @@ class AtomicFileWriter {
 
   static uint32_t updateCRC32(uint32_t crc, const uint8_t* data, size_t len);
   void removeTempFile();
-  bool validateTempFile();
+  bool validateFile(const char* path);
 
 public:
   AtomicFileWriter(FILESYSTEM* fs, const char* target_path);
@@ -76,28 +77,31 @@ void AtomicFileWriter::removeTempFile() {
   }
 }
 
-bool AtomicFileWriter::validateTempFile() {
-  File verify(*_fs);
-  if (!verify.open(_temp_path, FILE_O_READ)) return false;
+bool AtomicFileWriter::validateFile(const char* path) {
+  for (uint8_t attempt = 0; attempt < VALIDATION_ATTEMPTS; ++attempt) {
+    File verify(*_fs);
+    if (!verify.open(path, FILE_O_READ)) continue;
 
-  bool valid = verify.size() == _bytes_written;
-  uint32_t read_crc = 0xFFFFFFFFUL;
-  size_t remaining = _bytes_written;
-  uint8_t buf[64];
+    bool valid = verify.size() == _bytes_written;
+    uint32_t read_crc = 0xFFFFFFFFUL;
+    size_t remaining = _bytes_written;
+    uint8_t buf[64];
 
-  while (valid && remaining > 0) {
-    size_t chunk = remaining < sizeof(buf) ? remaining : sizeof(buf);
-    int count = verify.read(buf, (uint16_t)chunk);
-    if (count != (int)chunk) {
-      valid = false;
-      break;
+    while (valid && remaining > 0) {
+      size_t chunk = remaining < sizeof(buf) ? remaining : sizeof(buf);
+      int count = verify.read(buf, (uint16_t)chunk);
+      if (count != (int)chunk) {
+        valid = false;
+        break;
+      }
+      read_crc = updateCRC32(read_crc, buf, chunk);
+      remaining -= chunk;
     }
-    read_crc = updateCRC32(read_crc, buf, chunk);
-    remaining -= chunk;
-  }
 
-  verify.close();
-  return valid && remaining == 0 && read_crc == _crc;
+    verify.close();
+    if (valid && remaining == 0 && read_crc == _crc) return true;
+  }
+  return false;
 }
 
 AtomicFileWriter::AtomicFileWriter(FILESYSTEM* fs, const char* target_path)
@@ -166,8 +170,12 @@ bool AtomicFileWriter::commit(bool content_valid) {
     _opened = false;
   }
 
-  if (success) success = validateTempFile();
+  if (success) success = validateFile(_temp_path);
   if (success) success = _fs->rename(_temp_path, _target_path);
+  // A lower layer can acknowledge a metadata update before the physical page
+  // is durable. Validate the public filename too; callers must never clear a
+  // dirty flag or announce success while the old/corrupt file is still live.
+  if (success) success = validateFile(_target_path);
   if (!success) removeTempFile();
 
   _finished = true;

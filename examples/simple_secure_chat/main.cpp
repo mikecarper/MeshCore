@@ -7,6 +7,8 @@
 
 #if defined(NRF52_PLATFORM)
   #include <InternalFileSystem.h>
+  #include <helpers/nrf52/InternalPrimaryFsBoot.h>
+  #include <helpers/nrf52/RamFallbackFileSystem.h>
 #elif defined(RP2040_PLATFORM)
   #include <LittleFS.h>
 #elif defined(ESP32)
@@ -316,11 +318,10 @@ public:
   float getFreqPref() const { return _prefs.freq; }
   int8_t getTxPowerPref() const { return _prefs.tx_power_dbm; }
 
-  void begin(FILESYSTEM& fs) {
+  void begin(FILESYSTEM& fs, bool volatile_primary_fs = false) {
     _fs = &fs;
 
     BaseChatMesh::begin();
-    _radio_profiles.begin(_fs, _radio, getRTCClock());
 
   #if defined(NRF52_PLATFORM)
     IdentityStore store(fs, "");
@@ -330,15 +331,44 @@ public:
   #else
     IdentityStore store(fs, "/identity");
   #endif
-    const bool needs_identity = !store.load("_main", self_id, _prefs.node_name, sizeof(_prefs.node_name))
-        || mesh::hasReservedIdentityPrefix(self_id);  // legacy: node_name was from identity file
-    bool identity_ready = true;
+  #if defined(NRF52_PLATFORM)
+    IdentityLoadResult identity_load = volatile_primary_fs
+        ? store.loadResult("_main", self_id, _prefs.node_name,
+                           sizeof(_prefs.node_name))
+        : mesh::storage::loadIdentityWithPrimaryRecovery(
+              InternalFS, [this, &store]() {
+                return store.loadResult("_main", self_id, _prefs.node_name,
+                                        sizeof(_prefs.node_name));
+              });
+    if (identity_load == IdentityLoadResult::Unreadable) {
+      mesh::storage::RamFallbackFileSystem* ram_primary_fs =
+          mesh::storage::createRamFallbackFileSystem();
+      if (ram_primary_fs != nullptr) {
+        _fs = &ram_primary_fs->filesystem();
+        store.useFileSystem(*_fs);
+        volatile_primary_fs = true;
+        identity_load = IdentityLoadResult::Missing;
+      }
+    }
+  #else
+    const IdentityLoadResult identity_load = store.loadResult(
+        "_main", self_id, _prefs.node_name, sizeof(_prefs.node_name));
+  #endif
+    const bool needs_identity = identity_load == IdentityLoadResult::Missing
+        || (identity_load == IdentityLoadResult::Loaded
+            && mesh::hasReservedIdentityPrefix(self_id));  // legacy: node_name was from identity file
+    bool identity_ready = identity_load != IdentityLoadResult::Unreadable;
     if (needs_identity) {
       // Need way to get some entropy to seed RNG
-      Serial.println("Press ENTER to generate key:");
-      char c = 0;
-      while (c != '\n') {   // wait for ENTER to be pressed
-        if (Serial.available()) c = Serial.read();
+      if (!volatile_primary_fs) {
+        Serial.println("Press ENTER to generate key:");
+        char c = 0;
+        while (c != '\n') {   // wait for ENTER to be pressed
+          if (Serial.available()) c = Serial.read();
+        }
+      } else {
+        MESH_DEBUG_PRINTLN(
+            "Physical filesystem unavailable; generating volatile recovery identity");
       }
       ((StdRNG *)getRNG())->begin(millis());
 
@@ -359,6 +389,16 @@ public:
       board.reboot();
       return;
     }
+
+  #if defined(NRF52_PLATFORM)
+    if (volatile_primary_fs) {
+      strncpy(_prefs.node_name, mesh::storage::BAD_FILESYSTEM_NODE_NAME,
+              sizeof(_prefs.node_name));
+      _prefs.node_name[sizeof(_prefs.node_name) - 1] = 0;
+    }
+  #endif
+
+    _radio_profiles.begin(_fs, _radio, getRTCClock());
 
     // load persisted prefs
     if (_fs->exists("/node_prefs")) {
@@ -705,8 +745,22 @@ void setup() {
   fast_rng.begin(radio_driver.getRngSeed());
 
 #if defined(NRF52_PLATFORM)
-  InternalFS.begin();
-  the_mesh.begin(InternalFS);
+  FILESYSTEM* primary_fs = &InternalFS;
+  bool volatile_primary_fs = false;
+  mesh::storage::RamFallbackFileSystem* ram_primary_fs = nullptr;
+  const auto primary_fs_boot =
+      mesh::storage::beginInternalPrimaryFilesystemSafely(InternalFS);
+  if (!mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)) {
+    ram_primary_fs = mesh::storage::createRamFallbackFileSystem();
+    if (ram_primary_fs == nullptr) {
+      MESH_DEBUG_PRINTLN("InternalFS and RAM fallback initialization failed; rebooting");
+      board.reboot();
+      return;
+    }
+    primary_fs = &ram_primary_fs->filesystem();
+    volatile_primary_fs = true;
+  }
+  the_mesh.begin(*primary_fs, volatile_primary_fs);
 #elif defined(RP2040_PLATFORM)
   LittleFS.begin();
   the_mesh.begin(LittleFS);

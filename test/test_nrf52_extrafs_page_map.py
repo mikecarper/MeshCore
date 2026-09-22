@@ -69,16 +69,28 @@ int main() {
         store = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         device = (ROOT / "examples/companion_radio/ResilientInternalExtraFS.cpp").read_text()
+        device_header = (
+            ROOT / "examples/companion_radio/ResilientInternalExtraFS.h"
+        ).read_text()
         self.assertIn("reinitializeInternalExtraFS(true)", store)
         self.assertIn("scan_physical_pages && !extra->scanAndRetireBadPages()", store)
-        self.assertIn("extra->requestBootScan()", store)
+        self.assertIn("extra->requestBootScan(true)", store)
         self.assertIn("setBootScanRequest(marker)", device)
         self.assertIn("BOOT_SCAN_ALL", device)
+        self.assertIn("BOOT_SCAN_BAD_PAGE_BASE = 0x20", device_header)
+        self.assertIn("BOOT_SCAN_REPEAT = 0x3E", device_header)
+        self.assertIn("BOOT_SCAN_ALL = 0x3F", device_header)
+        self.assertNotIn("BOOT_SCAN_REPEAT_BASE", device_header)
+        page_markers = set(range(0x20, 0x20 + 25))
+        recovery_markers = page_markers | {0x3E, 0x3F}
+        ota_markers = {0x51, 0x53, 0xA6, 0xD4, 0xED}
+        ota_markers.update(range(0x90, 0xA0))
+        ota_markers.update(range(0xB1, 0xC0))
+        ota_markers.update(range(0xC1, 0xCA))
+        self.assertFalse(recovery_markers & ota_markers)
         self.assertIn("uint32_t bad = _bad_pages;", device)
         self.assertNotIn("_bad_pages | (_pending_pages & PAGE_MASK)", device)
-        self.assertIn("return _boot_scan_forced ||", (
-            ROOT / "examples/companion_radio/ResilientInternalExtraFS.h"
-        ).read_text())
+        self.assertIn("return _boot_scan_forced ||", device_header)
         self.assertIn("extra->acknowledgeRecoveredBootHint()", store)
         self.assertIn("extra->pageMapNeedsSave()", store)
         scan_command = mesh.split("void MyMesh::scanInternalExtraFS(Stream& output)", 1)[1]

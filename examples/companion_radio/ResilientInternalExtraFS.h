@@ -47,7 +47,9 @@ public:
   bool scanAndRetireBadPages();
   bool savePageMap(Adafruit_LittleFS& primary);
   bool pageMapNeedsSave() const;
-  bool requestBootScan();
+  void resetPageMapForDestructiveRecovery();
+  void requirePageMapRewrite() { _map_repair_needed = true; }
+  bool requestBootScan(bool force_full_scan = false);
   void acknowledgeRecoveredBootHint();
 
 protected:
@@ -59,10 +61,13 @@ private:
       mesh::storage::INTERNAL_EXTRAFS_PAGE_MASK;
   static constexpr uint32_t SCAN_REQUEST = 1UL << 31;
   static constexpr uint8_t MAX_BAD_PAGES = 4;
-  // GPREGRET2 is retained across a software reset. These values are distinct
-  // from the OTA/bootloader handoff and power-management reason codes.
-  static constexpr uint8_t BOOT_SCAN_ALL = 0x9F;
-  static constexpr uint8_t BOOT_SCAN_BAD_PAGE_BASE = 0x80;
+  // GPREGRET2 is retained across a software reset. Reserve 0x20..0x38 for
+  // the 25 physical ExtraFS pages and 0x3E/0x3F for aggregate scans. This is
+  // deliberately disjoint from OTA staging values, legacy apply results
+  // 0x90..0x9F and 0xB1..0xBF, and bootloader-update results 0xC1..0xC9.
+  static constexpr uint8_t BOOT_SCAN_ALL = 0x3F;
+  static constexpr uint8_t BOOT_SCAN_REPEAT = 0x3E;
+  static constexpr uint8_t BOOT_SCAN_BAD_PAGE_BASE = 0x20;
 
   uint32_t _bad_pages = 0;
   uint32_t _pending_pages = 0;
@@ -72,6 +77,8 @@ private:
   uint8_t _retained_bad_page = 0xFF;
   uint32_t _recorded_bad_pages = 0;
   uint32_t _recorded_pending_pages = 0;
+  uint32_t _map_generation = 0;
+  bool _map_repair_needed = false;
   uint32_t _cached_page = INVALID_PAGE;
   bool _dirty = false;
   bool _io_failed = false;

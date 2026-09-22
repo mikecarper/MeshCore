@@ -875,12 +875,12 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         self.assertIn("_identity_creation_blocked = true;", unmounted_branch)
         self.assertIn("_contact_load_incomplete = true;", unmounted_branch)
         self.assertIn("return;", unmounted_branch)
-        self.assertIn("_primary_storage_unavailable = true;", primary_failure_branch)
-        self.assertIn("_identity_creation_blocked = true;", primary_failure_branch)
-        self.assertIn("_contact_load_incomplete = true;", primary_failure_branch)
-        self.assertIn("return;", primary_failure_branch)
+        self.assertGreaterEqual(primary_failure_branch.count("delay(3000);"), 2)
+        self.assertIn("_fs->format()", primary_failure_branch)
+        self.assertIn("createRamFallbackFileSystem()", primary_failure_branch)
+        self.assertIn("useVolatilePrimaryFS", primary_failure_branch)
         self.assertNotIn("recoverPrimaryFilesystem", store_begin)
-        self.assertNotIn("->format(", store_begin)
+        self.assertIn("IdentityLoadResult::Unreadable", store_begin)
         secondary_failure = store_begin.index(
             "if (_fsExtra != nullptr && !validateLfsFilesystem(_fsExtra))"
         )
@@ -905,46 +905,36 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
 
         setup = function_body(MAIN.read_text(encoding="utf-8"), "void setup()")
         main = MAIN.read_text(encoding="utf-8")
+        primary_helper = (
+            ROOT / "src/helpers/nrf52/InternalPrimaryFsBoot.h"
+        ).read_text(encoding="utf-8")
         self.assertIn(
-            "static const uint32_t INTERNAL_PRIMARY_FS_START = 0x000ED000UL;",
-            main,
+            "static const uint32_t INTERNAL_PRIMARY_FS_START = 0xED000UL;",
+            primary_helper,
         )
         self.assertIn(
-            "static const uint32_t INTERNAL_PRIMARY_FS_START = 0x0006D000UL;",
-            main,
+            "static const uint32_t INTERNAL_PRIMARY_FS_START = 0x6D000UL;",
+            primary_helper,
         )
-        self.assertIn("7UL * FLASH_NRF52_PAGE_SIZE", main)
+        self.assertIn("7UL * FLASH_NRF52_PAGE_SIZE", primary_helper)
         primary_policy = setup.index(
             "InternalSecondaryFsBootResult primary_fs_boot"
         )
-        primary_mount = setup.index(
-            "InternalFS.Adafruit_LittleFS::begin()", primary_policy
-        )
-        blank_scan = setup.index("isErasedFlashRange(", primary_mount)
-        primary_format = setup.index("InternalFS.format()", blank_scan)
-        quarantine = setup.index("store.markPrimaryFSUnavailable()", primary_format)
-        store_begin = setup.index("store.begin()", quarantine)
-        self.assertLess(primary_policy, primary_mount)
-        self.assertLess(primary_mount, blank_scan)
-        self.assertLess(blank_scan, primary_format)
-        self.assertLess(primary_format, quarantine)
-        self.assertLess(quarantine, store_begin)
-        primary_policy_body = setup[primary_policy:quarantine]
-        self.assertIn("INTERNAL_PRIMARY_FS_START", primary_policy_body)
-        self.assertIn("INTERNAL_PRIMARY_FS_SIZE", primary_policy_body)
-        self.assertIn(
-            "InternalSecondaryFsBootResult::PreservedNonBlank",
-            primary_policy_body,
-        )
-        self.assertIn(
-            "InternalSecondaryFsBootResult::InitializationFailed",
-            primary_policy_body,
-        )
+        fallback = setup.index("createRamFallbackFileSystem()", primary_policy)
+        volatile_store = setup.index("store.useVolatilePrimaryFS", fallback)
+        store_begin = setup.index("store.begin()", volatile_store)
+        self.assertLess(primary_policy, fallback)
+        self.assertLess(fallback, volatile_store)
+        self.assertLess(volatile_store, store_begin)
+        self.assertIn("beginInternalPrimaryFilesystemSafely", setup)
+        self.assertGreaterEqual(primary_helper.count("delay(3000);"), 2)
+        self.assertIn("fs.format()", primary_helper)
+        self.assertIn("ReinitializedUnreadable", primary_helper)
         # Never call the core override in the nRF path: it auto-erases a
         # nonblank filesystem after any mount failure. The sole occurrence is
         # the separately scoped STM32 fallback.
         self.assertEqual(setup.count("InternalFS.begin();"), 1)
-        self.assertGreater(setup.index("#else\n  InternalFS.begin();", primary_policy), primary_format)
+        self.assertGreater(setup.index("#else\n  InternalFS.begin();", primary_policy), fallback)
         self.assertIn("store.disableSecondaryFS(true);", setup)
         secondary_geometry = setup.index(
             "const bool extra_fs_geometry_valid ="

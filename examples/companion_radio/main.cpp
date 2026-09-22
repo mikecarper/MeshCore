@@ -183,15 +183,8 @@ static bool isNetworkTerminalActive();
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   #include <InternalFileSystem.h>
   #if defined(NRF52_PLATFORM)
-    #include <flash/flash_nrf5x.h>
-    #include <helpers/nrf52/InternalSecondaryFsRepair.h>
-    #if defined(NRF52840_XXAA)
-      static const uint32_t INTERNAL_PRIMARY_FS_START = 0x000ED000UL;
-    #else
-      static const uint32_t INTERNAL_PRIMARY_FS_START = 0x0006D000UL;
-    #endif
-    static const uint32_t INTERNAL_PRIMARY_FS_SIZE =
-        7UL * FLASH_NRF52_PAGE_SIZE;
+    #include <helpers/nrf52/InternalPrimaryFsBoot.h>
+    #include <helpers/nrf52/RamFallbackFileSystem.h>
   #endif
   #if defined(QSPIFLASH)
     #include <CustomLFS_QSPIFlash.h>
@@ -2793,43 +2786,30 @@ void setup() {
   // InternalFileSystem::begin() auto-formats the entire primary store after a
   // mount failure. The base mount plus a full raw scan distinguishes a virgin
   // erased device from nonblank/corrupt identity storage. Only proven-erased
-  // media may be initialized automatically; format is followed by a required
-  // base remount because Adafruit_LittleFS::format() does not remount an
-  // already-unmounted instance.
+  // media may be initialized automatically. A nonblank failure gets three
+  // additional mounts three seconds apart before the unusable store is erased
+  // so the node can still recover without physical access.
   const mesh::storage::InternalSecondaryFsBootResult primary_fs_boot =
-      mesh::storage::prepareInternalSecondaryFilesystem(
-          []() -> bool {
+      mesh::storage::beginInternalPrimaryFilesystemSafely(
+          InternalFS,
 #if defined(EXTRAFS) && !defined(QSPIFLASH)
-            return InternalFS.Adafruit_LittleFS::begin(
-                ResilientInternalExtraFS::primaryConfig());
+          ResilientInternalExtraFS::primaryConfig()
 #else
-            return InternalFS.Adafruit_LittleFS::begin();
+          nullptr
 #endif
-          },
-          []() -> bool {
-            return mesh::storage::isErasedFlashRange(
-                INTERNAL_PRIMARY_FS_START, INTERNAL_PRIMARY_FS_SIZE,
-                [](uint32_t address) -> uint32_t {
-                  return *reinterpret_cast<const volatile uint32_t*>(address);
-                });
-          },
-          []() -> bool {
-            InternalFS.end();
-            return InternalFS.format();
-          });
-  if (primary_fs_boot
-          == mesh::storage::InternalSecondaryFsBootResult::PreservedNonBlank
-      || primary_fs_boot
-          == mesh::storage::InternalSecondaryFsBootResult::InitializationFailed) {
-    if (primary_fs_boot
-        == mesh::storage::InternalSecondaryFsBootResult::PreservedNonBlank) {
+      );
+  if (!mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)) {
+    mesh::storage::RamFallbackFileSystem* ram_primary_fs =
+        mesh::storage::createRamFallbackFileSystem();
+    if (ram_primary_fs != nullptr) {
       MESH_DEBUG_PRINTLN(
-          "InternalFS: mount failed; preserving nonblank primary storage and blocking startup writes");
+          "InternalFS: physical storage unusable; running from volatile RAM filesystem");
+      store.useVolatilePrimaryFS(ram_primary_fs->filesystem());
     } else {
       MESH_DEBUG_PRINTLN(
-          "InternalFS: erased primary storage initialization failed; blocking startup writes");
+          "InternalFS: physical storage and RAM fallback initialization failed");
+      store.markPrimaryFSUnavailable();
     }
-    store.markPrimaryFSUnavailable();
   }
 #else
   InternalFS.begin();
@@ -2854,8 +2834,8 @@ void setup() {
   #else
   #if defined(EXTRAFS)
       const bool extra_fs_map_ready =
-          (primary_fs_boot == mesh::storage::InternalSecondaryFsBootResult::Mounted
-           || primary_fs_boot == mesh::storage::InternalSecondaryFsBootResult::InitializedBlank)
+          !store.isVolatilePrimaryFS()
+          && mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)
           && ExtraFS.loadPageMap(InternalFS);
       const bool extra_fs_geometry_valid =
           mesh::storage::isExpectedInternalExtraFsGeometry(
@@ -2891,6 +2871,15 @@ void setup() {
         ,
         radio_available
   );
+#if defined(NRF52_PLATFORM)
+  if (store.isVolatilePrimaryFS()) {
+    strncpy(the_mesh.getNodePrefs()->node_name,
+            mesh::storage::BAD_FILESYSTEM_NODE_NAME,
+            sizeof(the_mesh.getNodePrefs()->node_name));
+    the_mesh.getNodePrefs()->node_name[
+        sizeof(the_mesh.getNodePrefs()->node_name) - 1] = 0;
+  }
+#endif
 #elif defined(RP2040_PLATFORM)
   LittleFS.begin();
   store.begin();

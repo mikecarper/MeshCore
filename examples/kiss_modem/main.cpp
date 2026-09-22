@@ -11,6 +11,8 @@
 
 #if defined(NRF52_PLATFORM)
   #include <InternalFileSystem.h>
+  #include <helpers/nrf52/InternalPrimaryFsBoot.h>
+  #include <helpers/nrf52/RamFallbackFileSystem.h>
 #elif defined(RP2040_PLATFORM)
   #include <LittleFS.h>
 #elif defined(ESP32)
@@ -39,7 +41,26 @@ void halt() {
 }
 
 void loadOrCreateIdentity() {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+#if defined(NRF52_PLATFORM)
+  bool volatile_primary_fs = false;
+  mesh::storage::RamFallbackFileSystem* ram_primary_fs = nullptr;
+  FILESYSTEM* identity_fs = nullptr;
+  const auto primary_fs_boot =
+      mesh::storage::beginInternalPrimaryFilesystemSafely(InternalFS);
+  if (mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)) {
+    identity_fs = &InternalFS;
+  } else {
+    ram_primary_fs = mesh::storage::createRamFallbackFileSystem();
+    if (ram_primary_fs == nullptr) {
+      MESH_DEBUG_PRINTLN("InternalFS and RAM fallback initialization failed; rebooting");
+      board.reboot();
+      halt();
+    }
+    identity_fs = &ram_primary_fs->filesystem();
+    volatile_primary_fs = true;
+  }
+  IdentityStore store(*identity_fs, "");
+#elif defined(STM32_PLATFORM)
   InternalFS.begin();
   IdentityStore store(InternalFS, "");
 #elif defined(ESP32)
@@ -53,9 +74,28 @@ void loadOrCreateIdentity() {
   #error "Filesystem not defined"
 #endif
 
-  const bool needs_identity = !store.load("_main", identity)
-      || mesh::hasReservedIdentityPrefix(identity);
-  bool identity_ready = true;
+#if defined(NRF52_PLATFORM)
+  IdentityLoadResult identity_load = volatile_primary_fs
+      ? store.loadResult("_main", identity)
+      : mesh::storage::loadIdentityWithPrimaryRecovery(
+            InternalFS,
+            [&store]() { return store.loadResult("_main", identity); });
+  if (identity_load == IdentityLoadResult::Unreadable) {
+    ram_primary_fs = mesh::storage::createRamFallbackFileSystem();
+    if (ram_primary_fs != nullptr) {
+      identity_fs = &ram_primary_fs->filesystem();
+      store.useFileSystem(*identity_fs);
+      volatile_primary_fs = true;
+      identity_load = IdentityLoadResult::Missing;
+    }
+  }
+#else
+  const IdentityLoadResult identity_load = store.loadResult("_main", identity);
+#endif
+  const bool needs_identity = identity_load == IdentityLoadResult::Missing
+      || (identity_load == IdentityLoadResult::Loaded
+          && mesh::hasReservedIdentityPrefix(identity));
+  bool identity_ready = identity_load != IdentityLoadResult::Unreadable;
   if (needs_identity) {
     identity_ready = mesh::generateUsableLocalIdentity(identity, radio_new_identity);
     if (identity_ready) identity_ready = store.saveWithRetry("_main", identity);
@@ -69,6 +109,12 @@ void loadOrCreateIdentity() {
     board.reboot();
     halt(); // Never let setup continue if a platform's reboot returns.
   }
+#if defined(NRF52_PLATFORM)
+  if (volatile_primary_fs) {
+    MESH_DEBUG_PRINTLN("Node: %s (volatile RAM storage)",
+                       mesh::storage::BAD_FILESYSTEM_NODE_NAME);
+  }
+#endif
 }
 
 void onSetRadio(float freq, float bw, uint8_t sf, uint8_t cr) {

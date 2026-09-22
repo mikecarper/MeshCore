@@ -19,6 +19,10 @@
 #include <helpers/AtomicFileWriter.h>
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
 #include <helpers/nrf52/InternalSecondaryFsRepair.h>
+#include "ResilientInternalExtraFS.h"
+#endif
+#if defined(NRF52_PLATFORM)
+#include <helpers/nrf52/RamFallbackFileSystem.h>
 #endif
 #endif
 
@@ -154,18 +158,98 @@ void DataStore::begin() {
 
   bool primary_ready = validateLfsFilesystem(_fs);
   if (!primary_ready) {
-    // A traversal error can be transient, and formatting here would erase the
-    // only identity before MyMesh can distinguish recovery from a fresh boot.
-    // Preserve the filesystem and fail closed; a reboot may recover it, while
-    // an explicit factory reset remains the destructive recovery operation.
+    for (uint8_t retry = 0; retry < 3 && !primary_ready; ++retry) {
+      delay(3000);
+      primary_ready = validateLfsFilesystem(_fs);
+    }
+    if (!primary_ready) {
+      MESH_DEBUG_PRINTLN(
+          "DataStore: primary metadata remains unreadable after delayed retries; reinitializing storage");
+      primary_ready = _fs->format() && validateLfsFilesystem(_fs);
+      if (!primary_ready) {
+        mesh::storage::RamFallbackFileSystem* ram_primary =
+            mesh::storage::createRamFallbackFileSystem();
+        if (ram_primary == nullptr) {
+          _primary_storage_unavailable = true;
+          _identity_creation_blocked = true;
+          _contact_load_incomplete = true;
+          _prefs_load_incomplete = true;
+          _fsExtra = nullptr;
+          return;
+        }
+        MESH_DEBUG_PRINTLN(
+            "DataStore: verified primary erase/write failed; using volatile RAM filesystem");
+        useVolatilePrimaryFS(ram_primary->filesystem());
+        primary_ready = true;
+      } else {
+        _identity_creation_blocked = false;
+        _contact_load_incomplete = false;
+        _prefs_load_incomplete = false;
+#if defined(EXTRAFS) && !defined(QSPIFLASH)
+        if (_configuredFsExtra != nullptr) {
+          ResilientInternalExtraFS* extra =
+              static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
+          const bool scan = !extra->pageMapReady();
+          if (scan) extra->resetPageMapForDestructiveRecovery();
+          else extra->requirePageMapRewrite();
+          if (!reinitializeInternalExtraFS(scan)) disableSecondaryFS(false);
+        }
+#endif
+      }
+    }
+  }
+
+  // A mounted filesystem can still contain an unreadable identity record.
+  // Keep the normal bounded reads, then try three more times three seconds
+  // apart. Only after those fail may startup wipe the unusable primary store.
+  mesh::LocalIdentity identity_probe;
+  IdentityLoadResult identity_state =
+      identity_store.loadResult("_main", identity_probe);
+  if (identity_state == IdentityLoadResult::Unreadable) {
+    for (uint8_t retry = 0; retry < 3; ++retry) {
+      delay(3000);
+      identity_state = identity_store.loadResult("_main", identity_probe);
+      if (identity_state != IdentityLoadResult::Unreadable) break;
+    }
+  }
+  if (identity_state == IdentityLoadResult::Unreadable) {
     MESH_DEBUG_PRINTLN(
-        "DataStore: primary LittleFS metadata is unavailable; preserving it and blocking startup writes");
-    _primary_storage_unavailable = true;
-    _identity_creation_blocked = true;
-    _contact_load_incomplete = true;
-    _prefs_load_incomplete = true;
-    _fsExtra = nullptr;
-    return;
+        "DataStore: identity remains unreadable after delayed retries; reinitializing primary storage");
+    const bool primary_reinitialized = _fs->format()
+        && validateLfsFilesystem(_fs);
+    if (!primary_reinitialized) {
+      mesh::storage::RamFallbackFileSystem* ram_primary =
+          mesh::storage::createRamFallbackFileSystem();
+      if (ram_primary == nullptr) {
+        _primary_storage_unavailable = true;
+        _identity_creation_blocked = true;
+        _contact_load_incomplete = true;
+        _prefs_load_incomplete = true;
+        _fsExtra = nullptr;
+        return;
+      }
+      MESH_DEBUG_PRINTLN(
+          "DataStore: verified primary erase/write failed; using volatile RAM filesystem");
+      useVolatilePrimaryFS(ram_primary->filesystem());
+    } else {
+      _identity_creation_blocked = false;
+      _contact_load_incomplete = false;
+      _prefs_load_incomplete = false;
+#if defined(EXTRAFS) && !defined(QSPIFLASH)
+      if (_configuredFsExtra != nullptr) {
+        ResilientInternalExtraFS* extra =
+            static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
+        const bool scan = !extra->pageMapReady();
+        if (scan) extra->resetPageMapForDestructiveRecovery();
+        else extra->requirePageMapRewrite();
+        if (!reinitializeInternalExtraFS(scan)) {
+          // The primary identity is now a fresh authoritative install. An
+          // unusable old secondary must not block that new identity.
+          disableSecondaryFS(false);
+        }
+      }
+#endif
+    }
   }
 #if defined(EXTRAFS) && !defined(QSPIFLASH)
   // Validate primary first: automatic secondary recovery must never hide a
@@ -257,7 +341,8 @@ static void cleanupAtomicTempFiles(FILESYSTEM* fs) {
   static const char* fixed_temp_paths[] = {
       "/_main.id.tmp", "/new_prefs.tmp", "/channels2.tmp",
       "/contacts3.tmp", "/contacts4.mig.tmp", "/adv_blobs.tmp",
-      "/.extrafs.mig.tmp"};
+      "/.extrafs.mig.tmp", "/extrafs.badpages.tmp",
+      "/extrafs.badpages.bak.tmp"};
   for (size_t i = 0; i < sizeof(fixed_temp_paths) / sizeof(fixed_temp_paths[0]); i++) {
     if (fs->exists(fixed_temp_paths[i])) fs->remove(fixed_temp_paths[i]);
   }
@@ -283,7 +368,6 @@ bool DataStore::recoverInternalExtraFSOnBoot() {
   ResilientInternalExtraFS* extra =
       static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
   if (_primary_storage_unavailable
-      || !extra->pageMapReady()
       || !mesh::storage::isExpectedInternalExtraFsGeometry(
           extra->getFlashAddr(), extra->getFlashSize(), extra->getBlockSize())
       || !mesh::storage::isInternalExtraFsReservedByApplication(
@@ -291,6 +375,21 @@ bool DataStore::recoverInternalExtraFSOnBoot() {
     disableSecondaryFS(true);
     MESH_DEBUG_PRINTLN("DataStore: refusing automatic ExtraFS recovery outside reserved 100 KiB region");
     return false;
+  }
+
+  if (!extra->pageMapReady()) {
+    MESH_DEBUG_PRINTLN(
+        "DataStore: both ExtraFS page maps are unreadable; scanning and rebuilding reserved secondary storage");
+    extra->resetPageMapForDestructiveRecovery();
+    if (!reinitializeInternalExtraFS(true)) {
+      disableSecondaryFS(true);
+      return false;
+    }
+    _secondary_authority_unknown = false;
+    _contact_load_incomplete = false;
+    _identity_creation_blocked = false;
+    _prefs_load_incomplete = false;
+    return true;
   }
 
   if (extra->recoveryPending()) {
@@ -330,6 +429,10 @@ bool DataStore::recoverInternalExtraFSOnBoot() {
   }
 
   extra->acknowledgeRecoveredBootHint();
+  if (extra->pageMapNeedsSave() && !extra->savePageMap(*_fs)) {
+    disableSecondaryFS(true);
+    return false;
+  }
 
   // This runs only before migration and user-data loading. Clear the initial
   // mount quarantine, not errors from a later incomplete contact/prefs load.
@@ -349,12 +452,18 @@ bool DataStore::reinitializeInternalExtraFS(bool scan_physical_pages) {
   if (!mesh::storage::isExpectedInternalExtraFsGeometry(
           extra->getFlashAddr(), extra->getFlashSize(),
           extra->getBlockSize())
-      || !extra->pageMapReady()
       || !mesh::storage::isInternalExtraFsReservedByApplication(
           (uint32_t)(uintptr_t)__flash_arduino_end)) {
     _fsExtra = nullptr;
     MESH_DEBUG_PRINTLN("DataStore: refusing internal ExtraFS repair with unexpected geometry");
     return false;
+  }
+  if (!extra->pageMapReady()) {
+    if (!scan_physical_pages) {
+      _fsExtra = nullptr;
+      return false;
+    }
+    extra->resetPageMapForDestructiveRecovery();
   }
 
   // A physical test is destructive and must run only during early boot, before
@@ -421,6 +530,21 @@ void DataStore::markPrimaryFSUnavailable() {
   _prefs_load_incomplete = true;
 #endif
 }
+
+#if defined(NRF52_PLATFORM)
+void DataStore::useVolatilePrimaryFS(FILESYSTEM& fs) {
+  _fs = &fs;
+  identity_store.useFileSystem(fs);
+  _fsExtra = nullptr;
+  _configuredFsExtra = nullptr;
+  _volatile_primary_fs = true;
+  _primary_storage_unavailable = false;
+  _secondary_authority_unknown = false;
+  _identity_creation_blocked = false;
+  _contact_load_incomplete = false;
+  _prefs_load_incomplete = false;
+}
+#endif
 
 void DataStore::disableSecondaryFS(bool authority_unknown) {
   _fsExtra = nullptr;
@@ -594,10 +718,22 @@ bool DataStore::formatFileSystem() {
   // Factory reset/rebuild is already an explicit destructive operation. Use
   // the configured pointer so it also clears and reactivates an ExtraFS which
   // normal boot deliberately quarantined after failed traversal validation.
-  const bool secondary_success = _configuredFsExtra == nullptr
-      || reinitializeInternalExtraFS();
+  bool secondary_success = true;
+  if (primary_success && _configuredFsExtra != nullptr) {
+    ResilientInternalExtraFS* extra =
+        static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
+    if (!extra->pageMapReady()) {
+      extra->resetPageMapForDestructiveRecovery();
+    } else {
+      // The primary format erased both map files. Recreate them before the
+      // secondary format so a reboot never guesses a retired page is healthy.
+      extra->requirePageMapRewrite();
+    }
+    secondary_success = reinitializeInternalExtraFS();
+  }
 #else
-  const bool secondary_success = _fsExtra == nullptr || _fsExtra->format();
+  const bool secondary_success = !primary_success
+      || _fsExtra == nullptr || _fsExtra->format();
 #endif
   const bool success = primary_success && secondary_success;
 #if defined(NRF52_PLATFORM)
@@ -688,7 +824,7 @@ bool DataStore::requestInternalExtraFSBootScan() {
   }
   ResilientInternalExtraFS* extra =
       static_cast<ResilientInternalExtraFS*>(_configuredFsExtra);
-  return extra->requestBootScan();
+  return extra->requestBootScan(true);
 }
 
 bool DataStore::formatInternalExtraFSHealth(char* reply,
