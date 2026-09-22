@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the actual task wrapper and BLE startup with injected allocation failures."""
+"""Run the actual task wrapper and BLE startup failure handling."""
 
 from pathlib import Path
 import subprocess
@@ -29,7 +29,6 @@ HARNESS = r'''
 #include <cstring>
 #include <helpers/BluetoothMac.h>
 #include <helpers/BleMotaProtocol.h>
-#include <helpers/nrf52/BleTaskStartup.h>
 #ifndef COMPANION_FEATURE_BLE_MOTA_SOURCE
 #define COMPANION_FEATURE_BLE_MOTA_SOURCE 1
 #endif
@@ -53,7 +52,6 @@ struct Logging { void println(const char*) {} };
 Logging& usbLoggingPort() { static Logging port; return port; }
 }
 
-static const char* fail_task = nullptr;
 static int fail_service = 0;
 static bool fail_softdevice = false;
 static unsigned last_depth;
@@ -62,9 +60,8 @@ extern "C" BaseType_t __wrap_xTaskCreate(TaskFunction_t, const char*,
 extern "C" BaseType_t __real_xTaskCreate(TaskFunction_t, const char* name,
     configSTACK_DEPTH_TYPE depth, void*, UBaseType_t, TaskHandle_t* out) {
   last_depth = depth;
-  bool fail = fail_task && name && strcmp(name, fail_task) == 0;
-  if (out) *out = fail ? nullptr : reinterpret_cast<void*>(1);
-  return fail ? 0 : pdPASS;
+  if (out) *out = reinterpret_cast<void*>(1);
+  return pdPASS;
 }
 struct Settings {
   template<class... T> void clearBonds(T...) {}
@@ -93,7 +90,8 @@ struct BluefruitStub {
     ++starts;
     if (fail_softdevice) return false;
     TaskHandle_t task;
-    // Match the pinned core: it ignores both worker creation return values.
+    // The pinned LTO core resolves these internal calls directly, rather than
+    // through the application's linker wrapper.
     __wrap_xTaskCreate(nullptr, "BLE", 1280, nullptr, 3, &task);
     __wrap_xTaskCreate(nullptr, "SOC", 200, nullptr, 3, &task);
     return true;
@@ -142,21 +140,18 @@ struct SerialBLEInterface {
 static SerialBLEInterface* instance = nullptr;
 @BEGIN@
 int main() {
-  mesh::nrf52::resetBleTaskStartup();
-  assert(!mesh::nrf52::bleTasksStarted());
   __wrap_xTaskCreate(nullptr, "loop", 1024, nullptr, 1, nullptr);
-  assert(last_depth == 2048 && !mesh::nrf52::bleTasksStarted());
+  assert(last_depth == 2048);
   __wrap_xTaskCreate(nullptr, "callback", 768, nullptr, 1, nullptr);
   assert(last_depth == 768);
   __wrap_xTaskCreate(nullptr, nullptr, 100, nullptr, 1, nullptr);
   assert(last_depth == 100);
-  for (int fault = 0; fault <= 8; ++fault) {
+  for (int fault = 0; fault <= 6; ++fault) {
 #if !COMPANION_FEATURE_BLE_MOTA_SOURCE
-    if (fault >= 5 && fault <= 7) continue;
+    if (fault >= 3 && fault <= 5) continue;
 #endif
     fail_softdevice = fault == 1;
-    fail_task = fault == 2 ? "BLE" : fault == 3 ? "SOC" : nullptr;
-    fail_service = fault >= 4 ? fault - 3 : 0;
+    fail_service = fault >= 2 ? fault - 1 : 0;
     SerialBLEInterface port;
     const int starts = Bluefruit.starts;
     const bool expected = fault == 0;
@@ -174,7 +169,7 @@ int main() {
 
 
 class Nrf52BleStartupTest(unittest.TestCase):
-    def test_all_startup_failures_are_reported_without_reinitializing(self):
+    def test_reported_startup_failures_are_not_reinitialized(self):
         begin = method((ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text(),
                        "bool SerialBLEInterface::begin(")
         header = (ROOT / "src/helpers/nrf52/SerialBLEInterface.h").read_text()

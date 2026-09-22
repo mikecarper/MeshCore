@@ -1,5 +1,4 @@
 #include "SerialBLEInterface.h"
-#include "BleTaskStartup.h"
 #include "../BluetoothMac.h"
 #include "../CompanionFrameQueue.h"
 #include <stdio.h>
@@ -424,11 +423,15 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   // If we want to control BLE LED ourselves, uncomment this:
   // Bluefruit.autoConnLed(false);
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
-  mesh::nrf52::resetBleTaskStartup();
-  if (!Bluefruit.begin() || !mesh::nrf52::bleTasksStarted()) {
+  // The pinned nRF52 core is built with LTO. Its internal xTaskCreate() calls
+  // are resolved before the application's linker wrappers, so a wrapper-based
+  // task observation incorrectly reports that the BLE/SOC workers never
+  // started. Bluefruit.begin() is the reliable startup result available to
+  // this application.
+  if (!Bluefruit.begin()) {
     instance = nullptr;
     mesh::usbLoggingPort().println(
-        "Bluetooth startup failed (SoftDevice/tasks); check runtime heap and reboot");
+        "Bluetooth startup failed; reboot required");
     return false;
   }
 

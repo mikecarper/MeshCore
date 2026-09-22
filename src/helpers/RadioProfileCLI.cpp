@@ -56,23 +56,34 @@ uint32_t remainingMillis(uint32_t end, uint32_t now) {
 }
 }
 
-bool RadioProfileCLI::readImage(const char* path, uint8_t* bytes, size_t size) {
+RadioProfileCLI::ImageReadResult RadioProfileCLI::readImage(
+    const char* path, uint8_t* bytes, size_t size) {
+  if (!fs_) return ImageReadResult::Unreadable;
 #if defined(NRF52_PLATFORM)
   File file(*fs_);
-  if (!file.open(path, FILE_O_READ)) return false;
+  if (!file.open(path, FILE_O_READ)) {
+    return fs_->exists(path) ? ImageReadResult::Unreadable
+                             : ImageReadResult::Missing;
+  }
 #elif defined(STM32_PLATFORM)
   File file = fs_->open(path, FILE_O_READ);
 #else
   File file = fs_->open(path, "r");
 #endif
-  if (!file) return false;
-  bool ok = file.size() == size && file.read(bytes, size) == (int)size;
+  if (!file) {
+    return fs_->exists(path) ? ImageReadResult::Unreadable
+                             : ImageReadResult::Missing;
+  }
+  const bool right_size = file.size() == size;
+  const bool read_complete = right_size && file.read(bytes, size) == (int)size;
   file.close();
-  if (!ok) return false;
+  if (!right_size) return ImageReadResult::Invalid;
+  if (!read_complete) return ImageReadResult::Unreadable;
   uint32_t stored;
   memcpy(&stored, bytes + size - 4, 4);
   return bytes[0] == 'R' && bytes[1] == '2' && bytes[2] == 1
-      && stored == checksum(bytes, size - 4);
+      && stored == checksum(bytes, size - 4)
+      ? ImageReadResult::Valid : ImageReadResult::Invalid;
 }
 
 bool RadioProfileCLI::writeImage(const char* path, const uint8_t* bytes, size_t size) {
@@ -90,11 +101,31 @@ bool RadioProfileCLI::writeImage(const char* path, const uint8_t* bytes, size_t 
   file.flush();
   file.close();
   uint8_t verify[ImageSize];
-  return ok && readImage(path, verify, size) && memcmp(bytes, verify, size) == 0;
+  return ok && readImage(path, verify, size) == ImageReadResult::Valid
+      && memcmp(bytes, verify, size) == 0;
 }
 
 bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, RadioCrossMode cross) {
+  if (!discardCorruptSavedImagesForWrite()) return false;
   return prepareSavedImage(TempPath, config, preamble, cross) && commitSavedImage(TempPath);
+}
+
+bool RadioProfileCLI::discardCorruptSavedImagesForWrite() {
+  if (!hold_) return true;
+  if (!fs_ || !recoverable_corrupt_store_) return false;
+
+  // This is deliberately a user-triggered recovery, never a boot-time cleanup.
+  // The flag is set only after every present candidate was read completely and
+  // proved invalid, so no valid radio2 configuration is discarded. This store
+  // contains only radio-profile settings; node identity, contacts, and normal
+  // Companion preferences live elsewhere.
+  const char* const paths[] = {ImagePath, BackupPath};
+  for (const char* path : paths) {
+    if (fs_->exists(path) && !fs_->remove(path)) return false;
+  }
+  hold_ = false;
+  recoverable_corrupt_store_ = false;
+  return true;
 }
 
 bool RadioProfileCLI::prepareSavedImage(const char* path, const RadioProfileConfig& config,
@@ -129,6 +160,8 @@ bool RadioProfileCLI::commitSavedImage(const char* path) {
 
 void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool infrastructure_replies) {
   fs_ = fs; radio_ = radio; rtc_ = rtc; last_ms_ = millis();
+  hold_ = false;
+  recoverable_corrupt_store_ = false;
   infrastructure_replies_ = infrastructure_replies;
   if (radio_ && radio_->profiles()) {
     radio_->profiles()->reply_tx = infrastructure_replies ? RADIO_TX_BOTH : RADIO_TX_AUTO;
@@ -136,8 +169,11 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
   }
   if (!fs_ || !radio_ || !radio_->profiles()) return;
   uint8_t bytes[ImageSize];
-  bool loaded = readImage(ImagePath, bytes, sizeof(bytes));
-  if (!loaded && readImage(BackupPath, bytes, sizeof(bytes))) {
+  const ImageReadResult primary_image = readImage(ImagePath, bytes, sizeof(bytes));
+  bool loaded = primary_image == ImageReadResult::Valid;
+  ImageReadResult backup_image = ImageReadResult::Missing;
+  if (!loaded) backup_image = readImage(BackupPath, bytes, sizeof(bytes));
+  if (!loaded && backup_image == ImageReadResult::Valid) {
     // Use the verified backup even when repairing the interrupted save is
     // impossible. Keep writes held so the sole committed image stays intact.
     loaded = true;
@@ -145,7 +181,15 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
         || !fs_->rename(BackupPath, ImagePath);
   }
   if (!loaded) {
-    hold_ = fs_->exists(ImagePath) || fs_->exists(BackupPath);
+    hold_ = primary_image != ImageReadResult::Missing
+        || backup_image != ImageReadResult::Missing;
+    // An unreadable file may be a transient filesystem fault. Do not remove
+    // it. A later explicit setter can recreate only files proven corrupt.
+    recoverable_corrupt_store_ = hold_
+        && primary_image != ImageReadResult::Unreadable
+        && backup_image != ImageReadResult::Unreadable
+        && (primary_image == ImageReadResult::Invalid
+            || backup_image == ImageReadResult::Invalid);
     return;
   }
   saved_.mode = (RadioProfileMode)bytes[3];
@@ -159,7 +203,14 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
   if ((uint8_t)saved_.mode > 2 || (uint8_t)cross_ > 2
       || (saved_.mode != RadioProfileMode::Off && !radio_->validateProfile(saved_.params))
       || (primary_preamble_ && (primary_preamble_ < 8 || primary_preamble_ > RadioProfiles::MaxPreamble))) {
+    // A CRC-valid image can still be semantically stale (for example, after
+    // an older build wrote a now-unsupported value). Do not recreate it if a
+    // structurally valid backup exists; that backup is the last known-good
+    // radio-profile image and must remain available for manual recovery.
+    const ImageReadResult backup_image = readImage(BackupPath, bytes, sizeof(bytes));
     hold_ = true; saved_ = {}; primary_preamble_ = 0; cross_ = RadioCrossMode::Auto;
+    recoverable_corrupt_store_ = backup_image != ImageReadResult::Valid
+        && backup_image != ImageReadResult::Unreadable;
     reply_setting_ = 0;  // reject the entire image, including its reply override
     return;
   }

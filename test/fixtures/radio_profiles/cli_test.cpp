@@ -254,9 +254,16 @@ int main(int argc, char** argv) {
     restored.loop();
     assert(radio.p.reply_tx==mesh::RADIO_TX_BOTH && !radio.p.reply_force);
     assert(!radio.p.enabled());
-    assert(restored.handle("set tx.reply radio",f.reply));
-    assert(strstr(f.reply,"Error"));
-    assert(f.fs.files["/radio_profiles"]==damaged);
+    assert(restored.handle("set radio2.cross on",f.reply));
+    assert(!strcmp(f.reply,"OK"));
+    assert(radio.p.cross==mesh::RadioCrossMode::On);
+    assert(restored.handle("set tempradio2 911.3,500,8,7,rxtx,2",f.reply));
+    assert(!strncmp(f.reply,"OK",2));
+    g_mock_millis+=2000; restored.loop();
+    assert(radio.p.secondary_temporary && radio.p.canCross());
+    Radio reboot; mesh::RadioProfileCLI repaired;
+    repaired.begin(&f.fs,&reboot,&f.clock,true);
+    assert(reboot.p.cross==mesh::RadioCrossMode::On);
   }
   {
     Fixture companion;
@@ -469,8 +476,51 @@ int main(int argc, char** argv) {
     Radio corrupt; mesh::RadioProfileCLI invalid;
     invalid.begin(&f.fs, &corrupt, &f.clock);
     assert(!corrupt.p.enabled());
-    assert(invalid.handle("set radio2 off", f.reply));
-    assert(strstr(f.reply,"Error")); // newer/corrupt image is not overwritten
+    const auto damaged=f.fs.files["/radio_profiles"];
+    f.fs.fail_remove=true;
+    assert(invalid.handle("set radio2.cross on", f.reply));
+    assert(strstr(f.reply,"Error")); // failed cleanup never overwrites corruption
+    assert(f.fs.files["/radio_profiles"]==damaged);
+    f.fs.fail_remove=false;
+    assert(invalid.handle("set radio2.cross on", f.reply));
+    assert(!strcmp(f.reply,"OK"));
+    assert(corrupt.p.cross==mesh::RadioCrossMode::On);
+    assert(invalid.handle("set tempradio2 911.3,500,8,7,rxtx,2", f.reply));
+    assert(!strncmp(f.reply,"OK",2));
+    g_mock_millis+=2000; invalid.loop();
+    assert(corrupt.p.secondary_temporary && corrupt.p.canCross());
+  }
+  {
+    Fixture f;
+    f.cmd("set radio2 910.5,500,8,5,rxtx,80");
+    const auto saved=f.fs.files["/radio_profiles"];
+    f.fs.fail_read_open=true;
+    Radio radio; mesh::RadioProfileCLI unavailable;
+    unavailable.begin(&f.fs, &radio, &f.clock);
+    f.fs.fail_read_open=false;
+    assert(unavailable.handle("set radio2.cross on", f.reply));
+    assert(strstr(f.reply,"Error")); // an I/O fault is never treated as corruption
+    assert(f.fs.files["/radio_profiles"]==saved);
+  }
+  {
+    Fixture f;
+    f.cmd("set radio2 910.5,500,8,5,rxtx,80");
+    const auto backup=f.fs.files["/radio_profiles"];
+    f.fs.files["/radio_profiles.bak"]=backup;
+    // This versioned image has a valid CRC but an unsupported saved mode.
+    // An intact backup must prevent automatic discard/recreation.
+    f.fs.files["/radio_profiles"][3]=3;
+    uint32_t crc=0xffffffffU;
+    for (size_t i=0;i<20;++i) {
+      crc ^= f.fs.files["/radio_profiles"][i];
+      for (unsigned bit=0;bit<8;++bit) crc=(crc>>1)^((crc&1)?0xedb88320U:0);
+    }
+    memcpy(f.fs.files["/radio_profiles"].data()+20,&crc,4);
+    Radio radio; mesh::RadioProfileCLI protected_backup;
+    protected_backup.begin(&f.fs, &radio, &f.clock);
+    assert(protected_backup.handle("set radio2.cross on", f.reply));
+    assert(strstr(f.reply,"Error"));
+    assert(f.fs.files["/radio_profiles.bak"]==backup);
   }
   {
     Fixture f;

@@ -36,7 +36,11 @@ class RadioProfileCLI {
   uint32_t schedule_retry_ms_ = 0;
   bool temp_pending_ = false, temp_active_ = false;
   bool hold_ = false;
+  // Set only after the active image is conclusively malformed and there is no
+  // readable backup. Read/I/O failures and an intact backup remain read-only.
+  bool recoverable_corrupt_store_ = false;
   bool publish_pending_ = false;
+  enum class ImageReadResult : uint8_t { Missing, Valid, Invalid, Unreadable };
   enum class RemoteMutation : uint8_t { None, Saved, Temporary, Off, TempOff, DeleteTemp };
   RemoteMutation remote_mutation_ = RemoteMutation::None;
   RadioProfileConfig remote_config_;
@@ -51,8 +55,9 @@ class RadioProfileCLI {
   bool prepareSavedImage(const char* path, const RadioProfileConfig& config,
                          uint16_t preamble, RadioCrossMode cross);
   bool commitSavedImage(const char* path);
+  bool discardCorruptSavedImagesForWrite();
   bool applyReplyMutation();
-  bool readImage(const char* path, uint8_t* bytes, size_t size);
+  ImageReadResult readImage(const char* path, uint8_t* bytes, size_t size);
   bool writeImage(const char* path, const uint8_t* bytes, size_t size);
   void publish();
   void formatConfig(char* reply, size_t capacity, const RadioProfileConfig& config,
