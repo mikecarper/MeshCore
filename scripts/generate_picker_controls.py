@@ -51,6 +51,29 @@ def capacity_note(reductions, defines):
     return ' '.join(notes)
 
 
+def runtime_metadata(manifest, mqtt):
+    """Keep picker choices tied to capabilities proven in this exact image."""
+    capabilities = set(manifest['capabilities'])
+    verified = {check['capability'] for check in manifest.get('verification', [])
+                if check.get('present') is True}
+    packaged = {check['capability'] for check in manifest.get('verification', [])
+                if check.get('present') is True and check.get('source') == 'packaged application'}
+    if 'ota.update.lora' in capabilities and 'lora' in manifest.get('ota_update_methods', []):
+        ota_role = 'lora-receiver'
+    elif 'companion.mota_sender' in verified:
+        ota_role = 'lora-source'
+    else:
+        ota_role = 'none'
+    result = {'otaRole': ota_role}
+    if {'logging.usb.packets', 'logging.usb.control'} <= packaged:
+        result['loggingModes'] = ['none', 'usb', 'wifi', 'both'] if mqtt else ['none', 'usb']
+        result['loggingControl'] = 'logging.output' if mqtt else 'usb.logging'
+        result['loggingSource'] = manifest['source_commit']
+    if 'companion.dedicated_usb_logging' in verified:
+        result['dedicatedUsbLogging'] = True
+    return result
+
+
 def generate(stage, config):
     plan = json.loads((stage / 'release-plan.json').read_text())
     envs = {name: dict(options) for name, options in config}
@@ -98,6 +121,7 @@ def generate(stage, config):
                 'snmp': enabled('WITH_SNMP'),
                 'updateMethods': manifest.get('ota_update_methods', []),
             }
+            controls.update(runtime_metadata(manifest, controls['mqtt']))
             if manifest.get('ota_update_requirements'):
                 controls['updateRequirements'] = manifest['ota_update_requirements']
             note = capacity_note(manifest.get('reductions', []), defines)

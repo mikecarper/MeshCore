@@ -11,6 +11,29 @@ SPEC.loader.exec_module(GENERATOR)
 
 
 class PickerControlsTests(unittest.TestCase):
+    def test_runtime_metadata_uses_verified_image_capabilities(self):
+        source = 'a' * 40
+        manifest = dict(source_commit=source,
+                        capabilities=['companion.mota_sender', 'logging.usb.packets',
+                                      'logging.usb.control', 'companion.dedicated_usb_logging'],
+                        ota_update_methods=[], verification=[
+                            dict(capability='companion.mota_sender', present=True, source='linked image'),
+                            dict(capability='companion.dedicated_usb_logging', present=True, source='linked image'),
+                            dict(capability='logging.usb.packets', present=True, source='packaged application'),
+                            dict(capability='logging.usb.control', present=True, source='packaged application'),
+                        ])
+        self.assertEqual(GENERATOR.runtime_metadata(manifest, False), dict(
+            otaRole='lora-source', loggingModes=['none', 'usb'],
+            loggingControl='usb.logging', loggingSource=source,
+            dedicatedUsbLogging=True))
+        self.assertEqual(GENERATOR.runtime_metadata(manifest, True)['loggingModes'],
+                         ['none', 'usb', 'wifi', 'both'])
+        manifest['verification'][-1]['source'] = 'linked image'
+        self.assertNotIn('loggingModes', GENERATOR.runtime_metadata(manifest, False))
+        manifest['capabilities'].append('ota.update.lora')
+        manifest['ota_update_methods'] = ['lora']
+        self.assertEqual(GENERATOR.runtime_metadata(manifest, False)['otaRole'], 'lora-receiver')
+
     def generate(self, reductions, *, source=None, flags=(), verified=True):
         initial = 'a' * 40
         manifest = dict(target='sample_companion_radio_full', platformio_env='sample',
