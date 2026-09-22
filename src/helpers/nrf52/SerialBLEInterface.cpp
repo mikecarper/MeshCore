@@ -407,6 +407,7 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   // or configuration and a reboot.
   if (_begin_attempted) return _begin_ready;
   _begin_attempted = true;
+  _begin_failure[0] = 0;
   instance = this;
   _successfulConnectionPending.store(false, std::memory_order_release);
   _successfulConnectionStarted.store(0, std::memory_order_relaxed);
@@ -422,16 +423,34 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   
   // If we want to control BLE LED ourselves, uncomment this:
   // Bluefruit.autoConnLed(false);
-  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
+  // Configure individual connection values rather than the all-or-nothing
+  // Bluefruit preset. Defaults are identical to BANDWIDTH_MAX; constrained
+  // board profiles can lower event/buffer reservations without shrinking the
+  // Companion's negotiated 247-byte MTU.
+  Bluefruit.configPrphConn(COMPANION_BLE_PRPH_MTU,
+                           COMPANION_BLE_PRPH_EVENT_LENGTH,
+                           COMPANION_BLE_PRPH_HVN_QUEUE,
+                           COMPANION_BLE_PRPH_WRCMD_QUEUE);
   // The pinned nRF52 core is built with LTO. Its internal xTaskCreate() calls
   // are resolved before the application's linker wrappers, so a wrapper-based
   // task observation incorrectly reports that the BLE/SOC workers never
   // started. Bluefruit.begin() is the reliable startup result available to
   // this application.
   if (!Bluefruit.begin()) {
+    uint8_t softdevice_enabled = 0;
+    const uint32_t softdevice_status =
+        sd_softdevice_is_enabled(&softdevice_enabled);
+    ble_gap_addr_t address = {};
+    const uint32_t gap_status = softdevice_enabled
+        ? sd_ble_gap_addr_get(&address) : NRF_ERROR_INVALID_STATE;
+    snprintf(_begin_failure, sizeof(_begin_failure),
+             "Bluefruit begin failed (SD %lu/%u, GAP %lu)",
+             (unsigned long)softdevice_status,
+             (unsigned)softdevice_enabled,
+             (unsigned long)gap_status);
     instance = nullptr;
     mesh::usbLoggingPort().println(
-        "Bluetooth startup failed; reboot required");
+        _begin_failure);
     return false;
   }
 
@@ -439,6 +458,9 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
 
   if (custom_address != nullptr) {
     if (!mesh::companion::isValidBluetoothMac(custom_address)) {
+      strncpy(_begin_failure, "custom Bluetooth MAC is invalid",
+              sizeof(_begin_failure) - 1);
+      _begin_failure[sizeof(_begin_failure) - 1] = 0;
       instance = nullptr;
       BLE_DEBUG_PRINTLN("Custom Bluetooth MAC is invalid");
       return false;
@@ -452,6 +474,9 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
     }
     const uint32_t address_error = sd_ble_gap_addr_set(&address);
     if (address_error != NRF_SUCCESS) {
+      snprintf(_begin_failure, sizeof(_begin_failure),
+               "custom Bluetooth MAC rejected (%lu)",
+               (unsigned long)address_error);
       instance = nullptr;
       BLE_DEBUG_PRINTLN("Custom Bluetooth MAC failed: %lu", address_error);
       return false;
@@ -474,6 +499,9 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   const int dev_name_len = snprintf(dev_name, sizeof(dev_name), "%s%s",
                                     prefix, suffix);
   if (dev_name_len < 0 || dev_name_len >= (int)sizeof(dev_name)) {
+    strncpy(_begin_failure, "Bluetooth device name is too long",
+            sizeof(_begin_failure) - 1);
+    _begin_failure[sizeof(_begin_failure) - 1] = 0;
     instance = nullptr;
     BLE_DEBUG_PRINTLN("Bluetooth device name is too long");
     return false;
@@ -514,57 +542,61 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
 
   bleuart.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);
   if (bleuart.begin() != ERROR_NONE) {
+    strncpy(_begin_failure, "Bluetooth UART service registration failed",
+            sizeof(_begin_failure) - 1);
+    _begin_failure[sizeof(_begin_failure) - 1] = 0;
     instance = nullptr;
     BLE_DEBUG_PRINTLN("Bluetooth UART service begin failed");
     return false;
   }
   bleuart.setRxCallback(onBleUartRX);
 
-#if COMPANION_FEATURE_BLE_MOTA_SOURCE
-  _mota_stream.setSender(sendMotaRequest, this);
-  _mota_stream.setActive(false);
-
-  _mota_service.setPermission(SECMODE_ENC_WITH_MITM,
-                              SECMODE_ENC_WITH_MITM);
-  if (_mota_service.begin() != ERROR_NONE) {
-    instance = nullptr;
-    BLE_DEBUG_PRINTLN("Bluetooth mOTA service begin failed");
-    return false;
-  }
-
-  _mota_request.setProperties(CHR_PROPS_NOTIFY);
-  _mota_request.setPermission(SECMODE_ENC_WITH_MITM,
-                              SECMODE_NO_ACCESS);
-  _mota_request.setMaxLen(mesh::ota::BLE_MOTA_REQUEST_MAX);
-  _mota_request.setUserDescriptor("mOTA device request");
-  if (_mota_request.begin() != ERROR_NONE) {
-    instance = nullptr;
-    BLE_DEBUG_PRINTLN("Bluetooth mOTA request characteristic begin failed");
-    return false;
-  }
-
-  _mota_response.setProperties(CHR_PROPS_WRITE);
-  _mota_response.setPermission(SECMODE_NO_ACCESS,
-                               SECMODE_ENC_WITH_MITM);
-  _mota_response.setMaxLen(mesh::ota::BLE_MOTA_RESPONSE_MAX);
-  _mota_response.setUserDescriptor("mOTA host response");
-  _mota_response.setWriteCallback(onMotaResponse);
-  if (_mota_response.begin() != ERROR_NONE) {
-    instance = nullptr;
-    BLE_DEBUG_PRINTLN("Bluetooth mOTA response characteristic begin failed");
-    return false;
+  // Register the legacy DFU service before the optional mOTA service. A
+  // fielded SoftDevice has a fixed GATT table: reserve the ordinary Companion
+  // and firmware-recovery transports first, then use whatever remains for
+  // the larger mOTA extension. Do not attempt a new service after an mOTA
+  // registration failure because Bluefruit cannot remove attributes that did
+  // fit from its active table.
+#if COMPANION_FEATURE_BLE_DFU
+  bledfu.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);
+  if (bledfu.begin() != ERROR_NONE) {
+    mesh::usbLoggingPort().println(
+        "Bluetooth DFU service unavailable; normal Companion Bluetooth continues");
   }
 #endif
 
+#if COMPANION_FEATURE_BLE_MOTA_SOURCE
+  _mota_stream.setSender(sendMotaRequest, this);
+  _mota_stream.setActive(false);
+  _mota_available = false;
 
-  // Register DFU on the main BLE stack so paired clients can discover it
-  // without switching the device into a separate OTA-only BLE mode first.
-  bledfu.setPermission(SECMODE_ENC_WITH_MITM, SECMODE_ENC_WITH_MITM);
-  if (bledfu.begin() != ERROR_NONE) {
-    instance = nullptr;
-    BLE_DEBUG_PRINTLN("Bluetooth DFU service begin failed");
-    return false;
+  _mota_service.setPermission(SECMODE_ENC_WITH_MITM,
+                              SECMODE_ENC_WITH_MITM);
+  if (_mota_service.begin() == ERROR_NONE) {
+    _mota_request.setProperties(CHR_PROPS_NOTIFY);
+    _mota_request.setPermission(SECMODE_ENC_WITH_MITM,
+                                SECMODE_NO_ACCESS);
+    _mota_request.setMaxLen(mesh::ota::BLE_MOTA_REQUEST_MAX);
+    _mota_request.setUserDescriptor("mOTA device request");
+    if (_mota_request.begin() == ERROR_NONE) {
+      _mota_response.setProperties(CHR_PROPS_WRITE);
+      _mota_response.setPermission(SECMODE_NO_ACCESS,
+                                   SECMODE_ENC_WITH_MITM);
+      _mota_response.setMaxLen(mesh::ota::BLE_MOTA_RESPONSE_MAX);
+      _mota_response.setUserDescriptor("mOTA host response");
+      _mota_response.setWriteCallback(onMotaResponse);
+      _mota_available = _mota_response.begin() == ERROR_NONE;
+    }
   }
+  if (!_mota_available) {
+    // GATT attributes cannot be removed after Bluefruit starts, so do not
+    // retry here.  Continuing with the already-registered UART service keeps
+    // the phone and USB recovery paths available; a corrected image can add
+    // the optional mOTA service on the next reboot.
+    mesh::usbLoggingPort().println(
+        "Bluetooth mOTA unavailable; normal Companion Bluetooth continues");
+  }
+#endif
 
   Bluefruit.Advertising.setType(
       BLE_GAP_ADV_TYPE_CONNECTABLE_SCANNABLE_UNDIRECTED);
@@ -985,7 +1017,8 @@ bool SerialBLEInterface::isConnected() const {
 
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
 bool SerialBLEInterface::isMotaChannelReady() {
-  return isConnected() && _conn_handle != BLE_CONN_HANDLE_INVALID
+  return _mota_available && isConnected()
+      && _conn_handle != BLE_CONN_HANDLE_INVALID
       && _mota_request.notifyEnabled(_conn_handle);
 }
 #endif

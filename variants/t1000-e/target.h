@@ -47,4 +47,8 @@ extern VolatileRTCClock rtc_clock;
 extern T1000SensorManager sensors;
 
 bool radio_init();
+// A Companion must remain serviceable over USB/Bluetooth even if the LR1110
+// is temporarily unavailable.  This seed keeps the local crypto RNG usable
+// until the radio recovery path can collect radio noise again.
+uint32_t radio_fallback_rng_seed();
 mesh::LocalIdentity radio_new_identity();

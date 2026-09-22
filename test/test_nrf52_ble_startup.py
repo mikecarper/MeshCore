@@ -32,8 +32,24 @@ HARNESS = r'''
 #ifndef COMPANION_FEATURE_BLE_MOTA_SOURCE
 #define COMPANION_FEATURE_BLE_MOTA_SOURCE 1
 #endif
+#ifndef COMPANION_FEATURE_BLE_DFU
+#define COMPANION_FEATURE_BLE_DFU 1
+#endif
+#ifndef COMPANION_BLE_PRPH_MTU
+#define COMPANION_BLE_PRPH_MTU 247
+#endif
+#ifndef COMPANION_BLE_PRPH_EVENT_LENGTH
+#define COMPANION_BLE_PRPH_EVENT_LENGTH 100
+#endif
+#ifndef COMPANION_BLE_PRPH_HVN_QUEUE
+#define COMPANION_BLE_PRPH_HVN_QUEUE 3
+#endif
+#ifndef COMPANION_BLE_PRPH_WRCMD_QUEUE
+#define COMPANION_BLE_PRPH_WRCMD_QUEUE 1
+#endif
 #define BLE_DEBUG_PRINTLN(...) do {} while (0)
 constexpr int BANDWIDTH_MAX = 3, NRF_SUCCESS = 0, ERROR_NONE = 0;
+constexpr int NRF_ERROR_INVALID_STATE = 8;
 constexpr int BLE_GAP_ADDR_TYPE_RANDOM_STATIC = 1, BLE_TX_POWER = 4;
 constexpr int BLE_MIN_CONN_INTERVAL = 12, BLE_MAX_CONN_INTERVAL = 24;
 constexpr int BLE_SLAVE_LATENCY = 4, BLE_CONN_SUP_TIMEOUT = 200;
@@ -46,6 +62,7 @@ struct ble_gap_addr_t { int addr_type; uint8_t addr[6]; };
 struct ble_gap_conn_params_t { unsigned min_conn_interval, max_conn_interval, slave_latency, conn_sup_timeout; };
 int sd_ble_gap_addr_set(ble_gap_addr_t*) { return NRF_SUCCESS; }
 int sd_ble_gap_addr_get(ble_gap_addr_t* a) { memset(a, 0, sizeof(*a)); return NRF_SUCCESS; }
+int sd_softdevice_is_enabled(uint8_t* enabled) { *enabled = 0; return NRF_SUCCESS; }
 int sd_ble_gap_ppcp_set(ble_gap_conn_params_t*) { return NRF_SUCCESS; }
 namespace mesh {
 struct Logging { void println(const char*) {} };
@@ -85,7 +102,16 @@ struct Settings {
 struct BluefruitStub {
   Settings Security, Periph, Advertising, ScanResponse;
   int starts = 0;
-  void configPrphBandwidth(int) {}
+  uint16_t mtu = 0, event_length = 0;
+  uint8_t hvn_queue = 0, wrcmd_queue = 0;
+  void configPrphConn(uint16_t configured_mtu, uint16_t configured_event_length,
+                      uint8_t configured_hvn_queue,
+                      uint8_t configured_wrcmd_queue) {
+    mtu = configured_mtu;
+    event_length = configured_event_length;
+    hvn_queue = configured_hvn_queue;
+    wrcmd_queue = configured_wrcmd_queue;
+  }
   bool begin() {
     ++starts;
     if (fail_softdevice) return false;
@@ -154,8 +180,15 @@ int main() {
     fail_service = fault >= 2 ? fault - 1 : 0;
     SerialBLEInterface port;
     const int starts = Bluefruit.starts;
-    const bool expected = fault == 0;
+    // UART is the required Companion transport.  The mOTA and Nordic DFU
+    // services are extensions: registration failure must leave UART BLE
+    // available for pairing, diagnostics, and recovery.
+    const bool expected = fault != 1 && fault != 2;
     assert(port.begin("MC-", "T096", 123456) == expected);
+    assert(Bluefruit.mtu == COMPANION_BLE_PRPH_MTU);
+    assert(Bluefruit.event_length == COMPANION_BLE_PRPH_EVENT_LENGTH);
+    assert(Bluefruit.hvn_queue == COMPANION_BLE_PRPH_HVN_QUEUE);
+    assert(Bluefruit.wrcmd_queue == COMPANION_BLE_PRPH_WRCMD_QUEUE);
     assert(Bluefruit.starts == starts + 1);
     assert((instance == &port) == expected);
     // Retrying a failed partial init must never allocate another stack/FIFO.
@@ -175,7 +208,9 @@ class Nrf52BleStartupTest(unittest.TestCase):
         header = (ROOT / "src/helpers/nrf52/SerialBLEInterface.h").read_text()
         # Use the real in-class startup initializers, too.
         fields = "\n".join(line for line in header.splitlines()
-                           if "bool _begin_" in line)
+                           if "bool _begin_" in line
+                           or "bool _mota_available" in line
+                           or "char _begin_failure" in line)
         self.assertTrue(fields)
         source = HARNESS.replace("@BEGIN@", begin).replace("@STARTUP_FIELDS@", fields)
         with tempfile.TemporaryDirectory(prefix="meshcore-ble-start-") as temp:

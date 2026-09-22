@@ -2095,8 +2095,16 @@ void halt() {
 
 #if defined(BLE_PIN_CODE)
   static bool companion_bluetooth_initialized = false;
+  static char companion_bluetooth_start_failure[96] =
+      "Bluetooth has not started";
   static uint32_t companion_bluetooth_start_at = 0;
   static constexpr uint32_t COMPANION_BLUETOOTH_RETRY_MS = 5000UL;
+#ifndef COMPANION_BLUETOOTH_BOOT_DELAY_MS
+  // Most boards can start Bluefruit as soon as the Companion store and radio
+  // are ready. A board profile may defer only its first start while a shared
+  // USB/radio power domain settles; retries continue to use the normal delay.
+  #define COMPANION_BLUETOOTH_BOOT_DELAY_MS 0UL
+#endif
   static uint8_t companion_bluetooth_session_address[
       mesh::companion::BLUETOOTH_MAC_BYTES] = {};
   static bool companion_bluetooth_session_address_ready = false;
@@ -2192,6 +2200,11 @@ void halt() {
     mesh::usbLoggingPort().println("Companion: starting Bluetooth");
     CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
     if (!prepareCompanionBluetoothIdentity(prefs)) {
+      strncpy(companion_bluetooth_start_failure,
+              "Bluetooth identity preparation could not save",
+              sizeof(companion_bluetooth_start_failure) - 1);
+      companion_bluetooth_start_failure[
+          sizeof(companion_bluetooth_start_failure) - 1] = 0;
       mesh::usbLoggingPort().println(
           "Companion: Bluetooth identity preparation failed; retrying");
       scheduleCompanionBluetoothRetry();
@@ -2199,6 +2212,11 @@ void halt() {
     }
     if (!interface_manager.addInterface(InterfaceType::Bluetooth,
                                         &bluetooth_interface)) {
+      strncpy(companion_bluetooth_start_failure,
+              "no free Companion interface slot",
+              sizeof(companion_bluetooth_start_failure) - 1);
+      companion_bluetooth_start_failure[
+          sizeof(companion_bluetooth_start_failure) - 1] = 0;
       mesh::usbLoggingPort().println(
           "Companion: no interface slot available for Bluetooth; retrying");
       scheduleCompanionBluetoothRetry();
@@ -2231,6 +2249,11 @@ void halt() {
                                    the_mesh.getBLEPin(), bluetooth_address,
                                    clear_bonds, stealth_pair_once,
                                    bonded_only_peer_ptr)) {
+      strncpy(companion_bluetooth_start_failure,
+              bluetooth_interface.beginFailure(),
+              sizeof(companion_bluetooth_start_failure) - 1);
+      companion_bluetooth_start_failure[
+          sizeof(companion_bluetooth_start_failure) - 1] = 0;
       interface_manager.removeInterface(&bluetooth_interface);
 #if defined(NRF52_PLATFORM)
       // A partly initialized Bluefruit stack cannot be started again safely.
@@ -2250,6 +2273,7 @@ void halt() {
         the_mesh.getNodePrefs()->powersaving_enabled != 0, false);
 #endif
     companion_bluetooth_initialized = true;
+    companion_bluetooth_start_failure[0] = 0;
     if (interface_manager.isEnabled()) bluetooth_interface.enable();
   }
 
@@ -2447,7 +2471,9 @@ bool handleCompanionBluetoothCommand(const char* command, char* reply,
   }
 #if defined(BLE_PIN_CODE)
   if (!companion_bluetooth_initialized) {
-    snprintf(reply, reply_size, "Error: Bluetooth unavailable in this boot; check transport mode/startup");
+    snprintf(reply, reply_size,
+             "Error: Bluetooth unavailable in this boot: %s",
+             companion_bluetooth_start_failure);
     return true;
   }
   if (action == CompanionBluetoothCommand::Get) {
@@ -2658,9 +2684,13 @@ bool handleCompanionWirelessCommand(const char* command, char* reply, size_t siz
 }
 
 void setup() {
+  // On nRF52 TinyUSB, bring the primary CDC transport up before any board or
+  // wireless preparation.  Bluefruit preserves USB power state while it
+  // enables the SoftDevice; a late first Serial.begin() can leave that enable
+  // path in an invalid state on native-USB boards such as the T1000-E.
+  Serial.begin(115200);
   mesh::wireless::control().begin(companion_wireless);
   mesh::prepareUsbLoggingPort();
-  Serial.begin(115200);
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
@@ -2962,7 +2992,15 @@ void setup() {
 // not be fragmented by WiFi. Other BLE companions start here.
 #if defined(BLE_PIN_CODE)
   #if !(defined(ESP32) && defined(WIFI_SSID))
-    startCompanionBluetooth();
+    #if COMPANION_BLUETOOTH_BOOT_DELAY_MS > 0
+      companion_bluetooth_start_at =
+          millis() + COMPANION_BLUETOOTH_BOOT_DELAY_MS;
+      if (companion_bluetooth_start_at == 0) {
+        companion_bluetooth_start_at = 1;
+      }
+    #else
+      startCompanionBluetooth();
+    #endif
   #endif
 #endif
 

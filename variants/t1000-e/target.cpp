@@ -80,6 +80,14 @@ bool radio_init() {
   return true;  // success
 }
 
+uint32_t radio_fallback_rng_seed() {
+  uint32_t seed = micros() ^ NRF_FICR->DEVICEID[0] ^ NRF_FICR->DEVICEID[1];
+#ifdef USE_CC310_HW_CRYPTO
+  mesh::mixCC310Random(reinterpret_cast<uint8_t*>(&seed), sizeof(seed));
+#endif
+  return seed;
+}
+
 mesh::LocalIdentity radio_new_identity() {
   RadioNoiseListener rng(radio);
   return mesh::LocalIdentity(&rng);  // create new random identity

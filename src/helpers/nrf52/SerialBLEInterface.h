@@ -16,8 +16,38 @@
 #define BLE_TX_POWER 4
 #endif
 
+// Bluefruit's BANDWIDTH_MAX preset reserves a 100-unit connection event and
+// three notification buffers. That is useful on boards with roomy RAM, but
+// it exceeds the usable SoftDevice reservation of some bootloader layouts.
+// Keep the existing preset as the default while allowing constrained boards
+// to retain the 247-byte MTU with a smaller event/buffer reservation.
+#ifndef COMPANION_BLE_PRPH_MTU
+#define COMPANION_BLE_PRPH_MTU 247
+#endif
+
+#ifndef COMPANION_BLE_PRPH_EVENT_LENGTH
+#define COMPANION_BLE_PRPH_EVENT_LENGTH 100
+#endif
+
+#ifndef COMPANION_BLE_PRPH_HVN_QUEUE
+#define COMPANION_BLE_PRPH_HVN_QUEUE 3
+#endif
+
+#ifndef COMPANION_BLE_PRPH_WRCMD_QUEUE
+#define COMPANION_BLE_PRPH_WRCMD_QUEUE 1
+#endif
+
+// Nordic UART is the required Companion service. The legacy Nordic DFU
+// service is an optional extension that some constrained field combinations
+// cannot register alongside the Companion GATT table.
+#ifndef COMPANION_FEATURE_BLE_DFU
+#define COMPANION_FEATURE_BLE_DFU 1
+#endif
+
 class SerialBLEInterface : public BaseSerialInterface {
+#if COMPANION_FEATURE_BLE_DFU
   BLEDfu bledfu;
+#endif
   BLEUart bleuart;
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   BLEService _mota_service = BLEService(mesh::ota::BLE_MOTA_SERVICE_UUID);
@@ -26,10 +56,15 @@ class SerialBLEInterface : public BaseSerialInterface {
   BLECharacteristic _mota_response =
       BLECharacteristic(mesh::ota::BLE_MOTA_RESPONSE_UUID);
   mesh::ota::BleMotaStream _mota_stream;
+  // The normal Nordic UART service is the Companion transport.  mOTA is an
+  // optional Full-Companion extension and must never take that transport down
+  // if a fielded SoftDevice rejects one of its extra GATT attributes.
+  bool _mota_available = false;
 #endif
   bool _isEnabled;
   bool _begin_attempted = false;
   bool _begin_ready = false;
+  char _begin_failure[96] = {};
   bool _isDeviceConnected;
   uint16_t _conn_handle;
   unsigned long _last_health_check;
@@ -129,6 +164,9 @@ public:
              bool clear_bonds = false, bool stealth_pair_once = false,
              const mesh::companion::BluetoothPeerIdentity*
                  bonded_only_peer = nullptr);
+  // Kept after a failed begin so a normal Companion terminal can report the
+  // cause even when early USB logging was not available.
+  const char* beginFailure() const { return _begin_failure; }
 
   void disconnect();
   void enable() override;

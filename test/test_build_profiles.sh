@@ -581,8 +581,41 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
     || fail "$full_env Full Companion omitted LoRa OTA seeding"
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"OTA_FOLDER_SERIAL=1"* ]] \
     || fail "$full_env Full Companion omitted USB folder seeding"
-  [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_BLE_MOTA_SOURCE=1"* ]] \
-    || fail "$full_env Full Companion omitted BLE folder seeding"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"CFG_DEBUG=1"* ]] \
+    || fail "$full_env Full Companion omitted the validated nRF52 BLE bootstrap"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"RECOVERABLE_EXTERNAL_RADIO=1"* ]] \
+    || fail "$full_env Full Companion must keep Companion transports available while radio recovery runs"
+  if [ "$full_env" = "t1000e_companion_radio_full" ]; then
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_BLE_MOTA_SOURCE=1"* ]] \
+      || fail "$full_env Full Companion omitted BLE folder seeding"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_FEATURE_BLE_MOTA_SOURCE=0"* ]] \
+      || fail "$full_env must not disable its BLE mOTA extension"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_FEATURE_BLE_DFU=0"* ]] \
+      || fail "$full_env must not disable its BLE DFU extension"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_FEATURE_DEDICATED_USB_LOGGING=1"* ]] \
+      || fail "$full_env must not enable its unstable second USB CDC interface"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"CFG_TUD_CDC=2"* ]] \
+      || fail "$full_env must keep a single USB CDC interface"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"MESH_DUAL_CDC_LOGGING=1"* ]] \
+      || fail "$full_env must keep USB logging on its primary interface"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_USB_LOGGING_DISABLED=1"* ]] \
+      || fail "$full_env must disable its unstable primary USB logger"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_BLE_PRPH_MTU="* ]] \
+      || fail "$full_env must retain the normal Full-Companion BLE bandwidth"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_BLUETOOTH_BOOT_DELAY_MS="* ]] \
+      || fail "$full_env must start Bluetooth promptly"
+  else
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_BLE_MOTA_SOURCE=1"* ]] \
+      || fail "$full_env Full Companion omitted BLE folder seeding"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_DEDICATED_USB_LOGGING=1"* ]] \
+      || fail "$full_env Full Companion omitted dedicated USB logging"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"CFG_TUD_CDC=2"* ]] \
+      || fail "$full_env Full Companion omitted its second USB CDC interface"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_DUAL_CDC_LOGGING=1"* ]] \
+      || fail "$full_env Full Companion omitted dedicated USB logging routing"
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *"MESH_USB_LOGGING_DISABLED=1"* ]] \
+      || fail "$full_env unexpectedly disabled USB logging"
+  fi
   if ! pio_env_option_contains "$pio_env" build_src_filter "helpers/ota/*.cpp" \
       && [[ "$PLATFORMIO_BUILD_SRC_FILTER" != *"helpers/ota/*.cpp"* ]]; then
     fail "$full_env Full Companion omitted the OTA C++ implementation"
@@ -761,6 +794,7 @@ done
 for logging_target in Station_G2_companion_radio_full RAK_4631_companion_radio_full; do
   verify_full_logging_contract "$logging_target" 0 off 1 yes no
 done
+verify_full_logging_contract t1000e_companion_radio_full 0 off 1 no no
 
 # Synthetic inventory: ESP32 and nRF52 repeater/room-server targets with the
 # same lean OTA policy. The sensor deliberately has no lean sibling.

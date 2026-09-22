@@ -338,6 +338,13 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     )[1].split("return 0", 1)[0]
     assert "-DCFG_TUD_CDC=2" in nrf52_full
     assert "-DMESH_DUAL_CDC_LOGGING=1" in nrf52_full
+    # Every nRF52 Full image keeps the proven Bluefruit bootstrap and radio
+    # recovery profile. T1000-E alone disables its optional packet logger
+    # because its sole CDC endpoint is reserved for Companion data/terminal.
+    assert "-DCFG_DEBUG=1" in nrf52_full
+    assert "-DRECOVERABLE_EXTERNAL_RADIO=1" in nrf52_full
+    assert 'if [ "$env_name" = "t1000e_companion_radio_full" ]; then' in nrf52_full
+    assert "-DMESH_USB_LOGGING_DISABLED=1" in nrf52_full
     esp32_full = full.split("return 0\n  fi", 1)[1]
     assert "-DCFG_TUD_CDC=2" not in esp32_full
     assert "-DMESH_DUAL_CDC_LOGGING=1" not in esp32_full
@@ -410,8 +417,7 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert "enterUsbLoggingTerminalMode();" in companion_main
     assert "usb_logging_terminal_mode" in companion_main
     assert "_prefs.usb_logging_enabled = 0" in companion
-    assert 'strcmp(value, "on reboot") == 0' in companion
-    assert 'strcmp(value, "off reboot") == 0' in companion
+    assert "mesh::cli::parseLoggingToggle(value, enabled, reboot_if_needed)" in companion
     assert "reboot required to change USB interfaces" in companion
     assert "rebooting to change USB interfaces" in companion
     assert "mesh::saveUsbLoggingBootPreference(enabled)" in companion

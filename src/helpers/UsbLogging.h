@@ -3,7 +3,7 @@
 // Canonical USB-capable images compile at least one of these two diagnostics.
 // One runtime gate covers every diagnostic category that writes to the USB
 // Serial stream, so a separate logging firmware is unnecessary.
-#if defined(ARDUINO) && \
+#if !defined(MESH_USB_LOGGING_DISABLED) && defined(ARDUINO) && \
     ((defined(MESH_DEBUG) && MESH_DEBUG) || \
      (defined(MESH_PACKET_LOGGING) && MESH_PACKET_LOGGING))
   #define MESH_USB_LOGGING_AVAILABLE 1
