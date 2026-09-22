@@ -19,8 +19,8 @@ class LR1110ProfileSwitchTests(unittest.TestCase):
             "wio_wm1110": "Nrf52BufferedRadioHal",
             "thinknode_m3": "Nrf52BufferedRadioHal",
             "minewsemi_me25ls01": "Nrf52BufferedRadioHal",
-            "thinknode_m7": "Esp32BufferedRadioHal",
-            "thinknode_m9": "Esp32BufferedRadioHal",
+            "thinknode_m7": "ESP32BufferedRadioHal",
+            "thinknode_m9": "ESP32BufferedRadioHal",
         }
         for target, hal in targets.items():
             with self.subTest(target=target):
@@ -32,12 +32,21 @@ class LR1110ProfileSwitchTests(unittest.TestCase):
                 self.assertIn(f"{hal} radioHal(", target_source)
                 self.assertIn("new Module(&radioHal,", target_source)
 
-        esp32_hal = (ROOT / "src/helpers/radiolib/Esp32BufferedRadioHal.h").read_text()
+        esp32_hal = (ROOT / "src/helpers/radiolib/ESP32BufferedRadioHal.h").read_text()
         nrf52_hal = (ROOT / "src/helpers/radiolib/Nrf52BufferedRadioHal.h").read_text()
         self.assertIn("SPISettings(hz, MSBFIRST, SPI_MODE0)", esp32_hal)
         self.assertIn("spi->transferBytes(out, in, len)", esp32_hal)
         self.assertIn("SPISettings(hz, MSBFIRST, SPI_MODE0)", nrf52_hal)
         self.assertIn("spi->transfer(out, in, len)", nrf52_hal)
+        for target in ("thinknode_m7", "thinknode_m9"):
+            source = (ROOT / "variants" / target / "target.cpp").read_text()
+            self.assertIn("ESP32BufferedRadioHal radioHal(", source)
+            self.assertIn(", 16000000);", source)
+
+    def test_esp32_buffered_hal_has_one_case_insensitive_header_name(self):
+        names = [p.name for p in (ROOT / "src/helpers/radiolib").iterdir()
+                 if p.name.casefold() == "esp32bufferedradiohal.h"]
+        self.assertEqual(names, ["ESP32BufferedRadioHal.h"])
 
     def test_checked_irq_snapshot_restores_spi_width_and_propagates_error(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR1110.h").read_text()
