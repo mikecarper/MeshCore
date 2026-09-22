@@ -3186,7 +3186,7 @@ hardware list first. You can skip it: picking hardware fills it in automatically
 <p>The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.</p>
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.6" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.6-runtime-2" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -3622,6 +3622,11 @@ Hardware-specific controls are enabled only when <code>_data/firmware_controls.j
 matches the selected release family and exact target. If that metadata is
 missing or belongs to another release, the picker retains basic role/logging
 directions and links the complete guide without inventing hardware support.
+For 1.17.1.6, that JSON also records the verified LoRa OTA role of each image
+and USB logging modes where the packaged application was checked. Logging
+metadata is tied to the source hash of its firmware file. The normal iKoka
+30 dBm repeater has USB logging and LoRa OTA; its compact no-external-sensors
+image has LoRa OTA without logging.
 Capacity directions come from each qualified profile's recorded reductions and
 are tied to the source hash of the selected download. The older 1.17.1.5 USB
 sleep workaround stays limited to that release.</p>
@@ -3711,7 +3716,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js"></script>
+        <script src="../_javascript/firmware_picker.js?v=20260921-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       
