@@ -13,6 +13,7 @@
 #include "esp_bt.h"
 #include "esp_pm.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
 #if defined(CONFIG_PM_ENABLE) && CONFIG_PM_ENABLE
 #define COMPANION_IDF_PM_AVAILABLE 1
 #else
@@ -28,6 +29,10 @@
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
 #include <esp_heap_caps.h>
 #endif
+#endif
+
+#ifdef USE_CC310_HW_CRYPTO
+#include <helpers/NRF52Crypto.h>
 #endif
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
@@ -434,6 +439,21 @@ static Nrf52BleMotaSourceControl ble_mota_source_control;
 static bool companion_radio_available = true;
 static unsigned long companion_radio_retry_at = 0;
 static const unsigned long COMPANION_RADIO_RETRY_MS = 60000UL;
+
+static uint32_t companionFallbackRngSeed() {
+#if defined(ESP32_PLATFORM)
+  return esp_random();
+#else
+  uint32_t seed = micros();
+#if defined(NRF52_PLATFORM)
+  seed ^= NRF_FICR->DEVICEID[0] ^ NRF_FICR->DEVICEID[1];
+#endif
+#ifdef USE_CC310_HW_CRYPTO
+  mesh::mixCC310Random(reinterpret_cast<uint8_t*>(&seed), sizeof(seed));
+#endif
+  return seed;
+#endif
+}
 
 static void serviceCompanionRadioRecovery() {
   if (companion_radio_available
@@ -2768,7 +2788,7 @@ void setup() {
   companion_radio_available = radio_available;
   companion_radio_retry_at = millis() + COMPANION_RADIO_RETRY_MS;
   fast_rng.begin(radio_available ? radio_driver.getRngSeed()
-                                 : radio_fallback_rng_seed());
+                                 : companionFallbackRngSeed());
 #ifdef DISPLAY_CLASS
   if (!radio_available && disp != NULL) {
     disp->startFrame();
