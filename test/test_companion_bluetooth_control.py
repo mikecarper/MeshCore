@@ -21,6 +21,7 @@ uint32_t now_ms=100;
 uint32_t millis(){return now_ms;}
 bool usb_open=false, usb_power=true, network_terminal=false;
 bool companion_bluetooth_initialized=true, usb_mota_mode=false;
+char companion_bluetooth_start_failure[96]="Bluetooth has not started";
 uint32_t companion_bluetooth_off_at=0;
 bool companion_bluetooth_force_off=false;
 struct Transport : BaseSerialInterface {
