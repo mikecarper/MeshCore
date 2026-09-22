@@ -2706,13 +2706,21 @@ bool handleCompanionWirelessCommand(const char* command, char* reply, size_t siz
 }
 
 void setup() {
+#if MESH_ESP32_HWCDC_SESSION_GUARD
+  // HWCDC's TX ring is resized before Serial.begin() creates its mutex and
+  // enables the USB ISR. This is deliberately before the nRF52 ordering below:
+  // prepareUsbLoggingPort() is otherwise a no-op outside ESP32 HWCDC.
+  mesh::prepareUsbLoggingPort();
+#endif
   // On nRF52 TinyUSB, bring the primary CDC transport up before any board or
   // wireless preparation.  Bluefruit preserves USB power state while it
   // enables the SoftDevice; a late first Serial.begin() can leave that enable
   // path in an invalid state on native-USB boards such as the T1000-E.
   Serial.begin(115200);
   mesh::wireless::control().begin(companion_wireless);
+#if !MESH_ESP32_HWCDC_SESSION_GUARD
   mesh::prepareUsbLoggingPort();
+#endif
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
