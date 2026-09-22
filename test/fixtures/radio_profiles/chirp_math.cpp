@@ -11,7 +11,6 @@ int main() {
   assert(Profiles::MinListenSymbols==4.6);
   assert(Profiles::SlowListenSymbols==4.6);
   assert(Profiles::MinFastListenSymbols==4.6);
-  assert(Profiles::SwitchBudgetUs==600);
   assert(Profiles::LoopBudgetUs==300);
   auto a=params(10,125),b=params(10,125);
   auto t=Profiles::calculateChirpTiming(a,b,1,0,1000,4000);
@@ -41,7 +40,11 @@ int main() {
       for (unsigned sf0=5;sf0<=12;++sf0) for(unsigned sf1=5;sf1<=12;++sf1) {
         Profiles p;p.primary=params(sf0,bw0);p.secondary.params=params(sf1,bw1);
         p.secondary.mode=mesh::RadioProfileMode::Rx;
-        auto minimum=Profiles::calculateChirpTiming(p.primary,p.secondary.params);
+        for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
+          p.sampleSwitch(0,1,545);p.sampleSwitch(1,0,545);
+        }
+        assert(p.switchBudgetUs()==600);
+        auto minimum=Profiles::calculateChirpTiming(p.primary,p.secondary.params,0,0,p.switchBudgetUs());
         assert(minimum.valid);
         for(unsigned i=0;i<2;++i) {
           const double symbols=4.6;
@@ -50,12 +53,17 @@ int main() {
           assert(p.automaticPreamble(i)==minimum.preamble[i]);
         }
         if (!p.automaticPreambleFits()) continue;
+        if (p.automaticPreamble(0)>Profiles::MaxAutomaticPreamble
+            || p.automaticPreamble(1)>Profiles::MaxAutomaticPreamble) {
+          assert(p.preamble(0,32)<=128 && p.preamble(1,32)<=128);
+          continue;
+        }
         auto actual=p.chirpTiming();
         assert(actual.valid);
         assert(p.listenUs(actual.slow)==Profiles::minimumListenUs(p.params(actual.slow),true));
         assert(p.listenUs(actual.slow^1)>=Profiles::minimumListenUs(p.params(actual.slow^1)));
         const double available=std::floor(p.preamble(actual.slow,32)*actual.symbol_us[actual.slow]/2
-            -p.listenUs(actual.slow)-2*Profiles::SwitchBudgetUs-Profiles::LoopBudgetUs);
+            -p.listenUs(actual.slow)-2*p.switchBudgetUs()-Profiles::LoopBudgetUs);
         const uint32_t fast_floor=Profiles::minimumListenUs(p.params(actual.slow^1));
         assert(p.listenUs(actual.slow^1)==(available>fast_floor ? (uint32_t)available : fast_floor));
         assert(2*actual.cycle_us<=p.preamble(actual.slow,32)*actual.symbol_us[actual.slow]+1e-6);
@@ -64,13 +72,21 @@ int main() {
       }
   Profiles p;p.primary=params(7,62.5);p.secondary.params=params(7,500);
   p.secondary.mode=mesh::RadioProfileMode::Rx;
+  assert(p.preamble(0,32)==128 && p.preamble(1,32)==128 && !p.switchTestReady());
+  for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
+    p.sampleSwitch(0,1,545);p.sampleSwitch(1,0,545);
+  }
   assert(p.listenUs(0)==9421 && p.listenUs(1)==21847);
   assert(p.chirpTiming().switch_us==600 && p.chirpTiming().loop_us==300 && p.chirpTiming().preamble[1]==64);
   auto before=p.chirpTiming();const auto wire0=p.preamble(0,32),wire1=p.preamble(1,32);
-  p.longest_switch_us=8428;auto overrun=p.chirpTiming();
-  assert(overrun.switch_us==8428 && overrun.preamble[0]>before.preamble[0]);
-  assert(p.preamble(0,32)==wire0 && p.preamble(1,32)==wire1);
-  p.longest_switch_us=0;p.primary.preamble=64;
+  p.sampleSwitch(0,1,8428);auto overrun=p.chirpTiming();
+  assert(overrun.switch_us==9271 && overrun.preamble[1]>before.preamble[1]);
+  assert(p.preamble(0,32)>=wire0 && p.preamble(1,32)>=wire1);
+  p.resetSwitchTest();
+  for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
+    p.sampleSwitch(0,1,545);p.sampleSwitch(1,0,545);
+  }
+  p.primary.preamble=64;
   assert(p.chirpTiming().preamble[0]==64 && p.listenUs(1)>21847);
   p.secondary.params.preamble=32;
   assert(p.preamble(1,32)==32 && p.chirpTiming().preamble[1]>32);
@@ -97,5 +113,29 @@ int main() {
   assert(p.automaticPreambleFits() && p.listenUs(1)==1418);
   // Long requested visits remain visible, not replaced by policy minima.
   t=Profiles::calculateChirpTiming(params(7,62.5),params(8,500),20000,30000);
-  assert(t.listen_us[0]==20000 && t.listen_us[1]==30000 && t.cycle_us==51500);
+  assert(t.listen_us[0]==20000 && t.listen_us[1]==30000 && t.cycle_us==50300);
+  Profiles measured;
+  measured.primary=params(7,500);
+  measured.secondary.params=params(7,500);
+  measured.secondary.mode=mesh::RadioProfileMode::Rx;
+  assert(!measured.switchTestReady() && measured.switchBudgetUs()==0);
+  assert(measured.preamble(0,32)==128 && measured.preamble(1,32)==128);
+  measured.sampleSwitch(0,0,10000); measured.sampleSwitch(0,1,0);
+  assert(measured.switch_test_samples[0]==0);
+  for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
+    measured.sampleSwitch(0,1,531); measured.sampleSwitch(1,0,480);
+  }
+  assert(measured.switchTestReady() && measured.switchBudgetUs()==585); // ceil(531 * 1.1)
+  assert(measured.preamble(0,32)>=32 && measured.preamble(0,32)%8==0);
+  assert(measured.preamble(1,32)>=32 && measured.preamble(1,32)%8==0);
+  measured.sampleSwitch(0,1,8428);
+  assert(measured.switchBudgetUs()==9271);
+  assert(measured.automaticPreamble(0)>128);
+  assert(measured.preamble(0,32)==128 && measured.chirpTiming().preamble[0]>128);
+  measured.secondary.params.preamble=88; // explicit overrides remain unchanged
+  assert(measured.preamble(1,32)==88);
+  auto replacement=measured.secondary;replacement.params.freq=910.5;
+  measured.setSecondary(replacement,true);
+  assert(!measured.switchTestReady() && measured.switchBudgetUs()==0);
+  assert(measured.preamble(0,32)==128 && measured.preamble(1,32)==88);
 }

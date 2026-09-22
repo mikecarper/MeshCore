@@ -49,7 +49,7 @@ struct RadioLibWrapper {
   uint32_t _profile_scan_generation[2]={};
   uint16_t _physical_preamble=32;
   float _cur_freq=909.5, _cur_bw=62.5;
-  unsigned applies=0, failRxStarts=0;
+  unsigned applies=0, failRxStarts=0, switch_apply_us=1200;
   unsigned coding_writes=0;
   bool coding_success=true;
   bool setCodingRate(uint8_t) { ++coding_writes; return coding_success; }
@@ -72,7 +72,7 @@ struct RadioLibWrapper {
     state=STATE_RX; _profile_visit_us=micros(); _rx_ps_armed=_rx_ps_enabled;
   }
   void stopReceiveDutyCycle() { _rx_ps_armed=false; }
-  bool applyParams(float f,float,uint8_t,uint8_t) { ++applies; elapsed_us+=1200; return !fail || f==909.5f; }
+  bool applyParams(float f,float,uint8_t,uint8_t) { ++applies; elapsed_us+=switch_apply_us; return !fail || f==909.5f; }
   void cacheParams(float f,float b,uint8_t s,uint8_t c) { _cur_freq=f;_cur_bw=b;_cur_sf=s;_cur_cr=c; }
   bool restoreAfterDeepInit() { return true; }
   void recalibrateNoiseFloor() { _noise_floor_valid=false; }
@@ -98,6 +98,35 @@ struct RadioLibWrapper {
 @METHODS@
 int main() {
   using Result=mesh::RadioParamApplyResult;
+  {
+    RadioLibWrapper w; w.enable();
+    assert(w._profiles.switchTestReady());
+    assert(w._profiles.switch_test_samples[0]==4 && w._profiles.switch_test_samples[1]==4);
+    assert(w._profiles.switchBudgetUs()==1320); // measured 1200 us plus 10%, no nominal floor
+    assert(w._profiles.preamble(0,32)>=32 && w._profiles.preamble(0,32)<=128);
+    assert(w._profiles.preamble(1,32)>=32 && w._profiles.preamble(1,32)<=128);
+    assert(w._profiles.preamble(0,32)%8==0 && w._profiles.preamble(1,32)%8==0);
+  }
+  {
+    RadioLibWrapper w; w._profiles.primary.bw=w._cur_bw=500; w.switch_apply_us=8428;
+    w.enable();
+    assert(w._profiles.switchTestReady() && w._profiles.switchBudgetUs()==9271);
+    assert(w._profiles.preamble(0,32)==128 && w._profiles.preamble(1,32)<=128);
+    assert(w._profiles.chirpTiming().preamble[0]>128);
+  }
+  {
+    RadioLibWrapper w; w.packet=true; w.enable();
+    assert(!w._profiles.switchTestReady() && w._profiles.switch_test_samples[0]==0);
+    w.packet=false; w.serviceProfileScan(); assert(w._profiles.switchTestReady());
+    w._profiles.setSecondary({},false);
+    assert(!w._profiles.switchTestReady());
+  }
+  {
+    RadioLibWrapper w; w.fail=true; w.enable();
+    assert(w._profiles.switch_failures==1 && w._profiles.switch_test_samples[0]==0);
+    w.fail=false; elapsed_us+=1000000; w.serviceProfileScan();
+    assert(w._profiles.switchTestReady());
+  }
   for (unsigned blocked=0; blocked<5; ++blocked) {
     RadioLibWrapper w;
     w._cw_active = blocked==0; w.busy = blocked==1; w.packet = blocked==2;

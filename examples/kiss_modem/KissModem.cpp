@@ -726,7 +726,7 @@ bool KissModem::validateRadio2Config(const Radio2Config& config) const {
   if (config.profile.mode == mesh::RadioProfileMode::Off) return true;
   if (!_radio.validateProfile(config.profile.params)) return false;
   mesh::RadioProfiles preview = *profiles;
-  preview.secondary = config.profile;
+  preview.setSecondary(config.profile, false);
   return preview.automaticPreambleFits();
 }
 

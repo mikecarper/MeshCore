@@ -805,10 +805,23 @@ timing, packet reception, and TX checks before claiming the 0.6 ms goal.
 the same 200 µs TCXO/fast-retune settings as the T1000-E variant. It never
 transmits, loads an identity, or writes saved settings. Its only frequencies
 are 909.5 and 909.75 MHz; the `mod`, `freq`, `both`, and `preamble` modes change
-SF7/SF8, frequency, both, or 32/48 preamble symbols respectively. A run adds
-eight warmup hops to the requested count and times the remainder with the
-nRF52840's 64 MHz cycle counter. A separate RSSI read checks that each resumed
-receiver responds after seven milliseconds of settling; it is outside timing.
+SF7/SF8, frequency, both, or 32/48 preamble symbols respectively. A run first
+times eight rapid startup-style hops (four in each direction), then the
+requested longer sample with 10 ms between hops. Results report each sample's
+mean/maximum and the production wrapper's 10%-guarded startup and final
+budgets. A separate RSSI read checks that each resumed receiver responds after
+seven milliseconds of settling; it is outside timing.
+
+The [four-hop comparison](profile_switch_t1000_spotcheck_results.json) ran
+three 1,000-hop combined frequency/SF trials. The rapid eight-hop samples
+averaged 504.346 us and peaked at 507.156 us; the 3,000 later hops averaged
+502.907 us and peaked at 503.172 us. The firmware's startup allowance was
+547 us in all three trials and covered every later hop. The cycle-counter
+measurement includes a post-retune BUSY check that the firmware's `micros()`
+sample ends before, so its 10% allowance is not exactly 110% of the reported
+cycle-counter maximum. This validates four samples per direction on this
+T1000-E only, not on every LR1110 or GPIO-expander board. The exact original
+Full Companion application was restored after the test.
 
 Build with `pio run -e profile_switch_t1000_lr1110`. Flash its application-only
 ZIP with serial DFU after verifying the board's unique USB serial number and

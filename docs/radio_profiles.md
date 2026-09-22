@@ -282,14 +282,27 @@ it automatically. Explicit values are used as entered, subject to the radio's
 limits and safe airtime arithmetic.
 
 Automatic dual-profile preambles round **up to a multiple of eight**, with a
-32-symbol minimum. Each idle scan starts with **4.6 symbols on the slower
+32-symbol minimum and a 128-symbol maximum. When a second profile activates,
+the radio first self-tests four successful RX-to-RX switches in each direction
+using the actual tuples. It defers the test while receiving, transmitting or
+busy, and never counts a failed switch. The 128-symbol automatic preamble is
+provisional until the test completes. The largest successful hop, rounded up
+with a **10% guard**, then supplies the per-switch allowance for both the
+automatic preambles and the scan dwell. There is no fixed switch-time floor.
+The measurement is reset when either profile changes, including when a
+`tempradio2` session starts or ends; it is not saved to flash.
+The rapid startup hops briefly interrupt reception on each channel; a new
+packet beginning during this test may be missed. An already detected packet
+defers the test instead of being interrupted.
+
+Each idle scan starts with **4.6 symbols on the slower
 profile**, then spends the remaining budgeted time on the faster profile,
 also with a **4.6-symbol floor**. Slower
 means a longer LoRa symbol (`2^SF / bandwidth`), regardless of profile number.
 The slower preamble sets the return deadline. The calculation allows two slow
-visits within that preamble, reserving 0.6 ms per switch and 0.3 ms of main-loop
+visits within that preamble, reserving the self-tested switch time per hop and 0.3 ms of main-loop
 margin. Fast-channel transmit preambles include sixteen acquisition symbols.
-For a primary SF7 / 62.5 kHz profile:
+For a primary SF7 / 62.5 kHz profile with a *measured* 600 us guarded switch allowance:
 
 | Secondary profile | Automatic secondary preamble | Previously tested explicit preamble | Primary preamble |
 | --- | ---: | ---: | ---: |
@@ -324,26 +337,42 @@ receiver's setting does not lengthen packets sent by other nodes.
 
 `get radio2.timing` (alias `get radio.timing`) reports the active pair in
 `radio,radio2` order: dwell in chirps, recommended preambles in symbols, and
-the switching/loop allowances. For SF7/62.5 on `radio` and SF7/500 on `radio2`:
+the switching/loop allowances. Before calibration it reports `timing self-test
+pending` and the provisional preambles. For SF7/62.5 on `radio` and SF7/500 on
+`radio2` after a 600 us guarded measurement:
 
 ```text
-> chirps=4.60,85.34; need=32,64; switch=600us; loop=300us (estimate); WARN recommended preamble: radio2=64
+> chirps=4.60,85.34; need=32,64; switch=600us; loop=300us (estimate); test=4/4,4/4 ready; WARN recommended preamble: radio2=64
 ```
 
 `WARN recommended preamble` identifies **each** profile whose recommendation
 exceeds the standard 32 symbols or its explicitly selected value. For example,
-with SF7/62.5 on the primary profile, `set radio2 910.5,500,7,5,rx,32` replies:
+with SF7/62.5 on the primary profile, `set radio2 910.5,500,7,5,rx,32`
+initially replies with `timing self-test pending`. Once active and measured,
+`get radio2` warns:
 
 ```text
-OK - radio2 rx; preamble=32; WARN recommended preamble: radio2=64; short override: radio2
+> 910.500,500.000,7,5,rx,32; WARN recommended preamble: radio2=64; short override: radio2
 ```
 
 Successful `set radio ...` replies also include the recommended preamble for
 each affected profile, calculated with the requested settings. A `short override`
 note identifies an explicit value below the estimate; it is not silently
 rewritten. Warnings are also included in profile settings/getters, scan info,
-temporary settings and schedule acknowledgments. `off` disables the dual-profile
-warning. A timing readout does not change settings or transmit a packet.
+temporary settings and schedule acknowledgments. These preamble-bearing replies
+also include `switch=547us` (or the current measured value) after the self-test
+for that exact profile pair. The first ACK for a new pair says `timing self-test
+pending` instead: it is sent before activation, so it cannot contain the future
+measurement. Query `get radio2` after activation to see the measured value beside
+the resulting preamble. `off` disables the dual-profile
+warning. `get radio2.status` shows self-test progress and the resulting guarded
+switch budget; its separate `max` field remains a lifetime diagnostic that can
+include failed/rolled-back retunes and is not used for calibration. If the
+recommendation exceeds 128, it additionally reports
+`WARN need >128`; an automatic preamble stays at 128, which may not be enough
+for reliable reception on that pair. Explicit preambles are not rewritten and
+still use the radio's ordinary validation limits. A timing readout does not
+change settings or transmit a packet.
 
 The shared `RadioProfiles::calculateChirpTiming()` function accepts both tuples,
 optional visit times in microseconds, a per-switch allowance and loop margin.
@@ -380,14 +409,15 @@ For the tested SF7/62.5 + SF8/500 pair with slow preamble 32, this yields
 9,421 us slow and 21,847 us fast (42.67 fast chirps). Swapping `radio` and
 `radio2` swaps the allocations automatically. The 0.3 ms reserve is not a sleep.
 
-The calculator accepts board-specific allowances, but production scheduling
-uses the requested **600 us per switch plus 300 us per cycle**. This is a
-nominal fast-switch allowance, not a worst-case bound. Diagnostics use the
-larger of 600 us and the observed maximum
-switch time; an overrun increases the warning estimate without automatically
-changing wire preambles or saved configuration. Recent V4 tests peaked at
-836 us (827 us in the 4.6/0.3 ms run), and Indicator reached 8428 us:
-both can exceed the nominal allowance.
+Production scheduling and automatic preambles use the **self-tested maximum
+successful switch plus 10%**, together with 300 us per cycle. Subsequent
+successful hops can only raise that allowance until the next profile change.
+The measured recommendation is rounded up to eight symbols and capped at 128
+for automatic settings. The calculator and warnings retain the *uncapped*
+recommendation so a slow board is not shown as safe merely because it hit the
+limit. Older V4 tests peaked at 836 us (827 us in the 4.6/0.3 ms run), and
+Indicator reached 8428 us; these are historical measurements, not default
+budgets for other boards.
 The model preserves two slow-profile return opportunities and the existing
 16-symbol fast-profile acquisition allowance. These are conservative policies,
 not a fitted success curve, and neither packet overlap nor arbitrary application
@@ -451,8 +481,8 @@ This does not disable the TCXO supply or its initial startup delay, and it is
 not conditional on 500 kHz bandwidth. Keeping the oscillator on uses additional
 power during the short standby intervals.
 
-The requested 0.6 ms switch budget is a nominal scheduling allowance, not a
-forced settling delay or a measured worst-case bound. The earlier standalone
+The switch-time self-test is not a forced settling delay or a proof of RF
+acquisition. The earlier standalone
 [keep-warm scan experiment](mixed_scan_validation.md) averaged about 1.19 ms
 of overhead per hop (scan-cycle time minus both receive windows, divided by
 two). That experiment used a leaner receive path; it is not a measurement or
@@ -502,10 +532,9 @@ The mixed-bandwidth timing figures above predate it. Four-channel SF6 scans
 still missed packets; faster switching is not proof of loss-free acquisition.
 See [production and USB validation](radio_profile_switch_validation.md#production-integration-and-usb-recovery-v8)
 for current measurements, lifecycle tests and limitations.
-The Indicator result also shows that the
-nominal 0.6 ms allowance is not an upper bound for every board; its scheduling
-and preambles need board-specific qualification. Measured overruns raise the
-recommended preambles shown by the CLI without rewriting configured values.
+The Indicator result shows why each board now measures its own switch time.
+That measurement adjusts automatic preambles and dwell, but it cannot verify
+RF acquisition or lengthen packets transmitted by other nodes.
 
 Single-channel noise-floor calibration and RSSI interference comparison are
 suspended while scanning. Retries use the radio's preamble/header activity

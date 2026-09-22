@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "experiment": "startup_four_per_direction_vs_long_run",
+  "board": "Seeed T1000-E LR1110",
+  "base_commit": "79fe4362",
+  "source": "working tree, including the radio2 self-test changes",
+  "firmware": "profile_switch_t1000_lr1110",
+  "settings": {
+    "mode": "both",
+    "primary": "909.5 MHz, 125 kHz, SF7, CR4/5",
+    "secondary": "909.75 MHz, 125 kHz, SF8, CR4/5",
+    "rx_only": true,
+    "tcxo_us": 200,
+    "spi_hz": 16000000,
+    "bulk_spi": true,
+    "spot_hops_per_direction": 4,
+    "long_hops_per_trial": 1000,
+    "trials": 3
+  },
+  "trial_results": [
+    {"spot_mean_us": 504.096, "spot_max_us": 507.156, "spot_model_budget_us": 547,
+     "long_mean_us": 502.9065, "long_max_us": 503.172, "long_model_budget_us": 547},
+    {"spot_mean_us": 504.4395, "spot_max_us": 506.531, "spot_model_budget_us": 547,
+     "long_mean_us": 502.9065, "long_max_us": 503.125, "long_model_budget_us": 547},
+    {"spot_mean_us": 504.502, "spot_max_us": 506.469, "spot_model_budget_us": 547,
+     "long_mean_us": 502.9065, "long_max_us": 503.125, "long_model_budget_us": 547}
+  ],
+  "summary": {
+    "spot_hops": 24,
+    "long_hops": 3000,
+    "spot_mean_us": 504.345833,
+    "spot_max_us": 507.156,
+    "long_mean_us": 502.9065,
+    "long_max_us": 503.172,
+    "spot_model_budget_us": 547,
+    "budget_covers_long_max": true,
+    "failures": 0,
+    "busy_timeouts": 0,
+    "rx_errors": 0,
+    "cache_errors": 0,
+    "rssi_errors": 0,
+    "original_full_companion_restored": true
+  },
+  "timing_note": "Cycle-counter results include the post-retune BUSY-low check. The firmware's guarded budget comes from its shorter micros() RX-reentry interval, so it is not exactly 110% of the cycle-counter maximum. The first eight rapid hops omit the 10 ms dwell and 7 ms RSSI settle used by the long-run collector; both delays are outside measured retune time."
+}

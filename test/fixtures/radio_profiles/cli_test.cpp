@@ -42,6 +42,13 @@ struct Fixture {
     return reply;
   }
   void advance(uint32_t ms, bool epoch=true) { g_mock_millis+=ms; if(epoch)clock.epoch+=ms/1000; cli.loop(); }
+  void finishTimingTest(uint32_t switch_us=545) {
+    for (unsigned i=0;i<mesh::RadioProfiles::SwitchTestSamplesPerDirection;++i) {
+      radio.p.sampleSwitch(0,1,switch_us);
+      radio.p.sampleSwitch(1,0,switch_us);
+    }
+    assert(radio.p.switchTestReady());
+  }
 };
 static void permanentScheduleOrder() {
   for (bool fail_first_save : {false, true}) {
@@ -324,9 +331,14 @@ int main(int argc, char** argv) {
     Fixture f;
     assert(!strcmp(f.cmd("get radio2"),"> off"));
     assert(!strcmp(f.cmd("get radio2.cross"),"> auto"));
-    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rxtx"),"WARN recommended preamble: radio2=64"));
+    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rxtx"),"timing self-test pending"));
     assert(!f.radio.p.enabled()); f.advance(2000); assert(f.radio.p.enabled());
+    assert(strstr(f.cmd("get radio2.timing"),"self-test pending"));
+    f.finishTimingTest();
     assert(strstr(f.cmd("get radio2"),"rxtx,64 (auto)"));
+    assert(strstr(f.reply,"switch=600us"));
+    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rxtx"),"preamble=64;"));
+    assert(strstr(f.reply,"switch=600us"));
     assert(strstr(f.cmd("get radio2.scan"),"slow=radio; listen_us=9421,21847"));
     assert(strstr(f.cmd("get radio2.timing"),"chirps=4.60,85.34; need=32,64"));
     assert(strstr(f.reply,"switch=600us"));
@@ -349,6 +361,22 @@ int main(int argc, char** argv) {
   }
   {
     Fixture f;
+    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rx"),"timing self-test pending"));
+    assert(!strstr(f.reply,"switch="));
+    f.advance(2000);
+    f.finishTimingTest(497); // 497 us observed with a 10% guard -> 547 us.
+    assert(f.radio.p.switchBudgetUs()==547);
+    assert(strstr(f.cmd("get radio2"),"switch=547us"));
+    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rx"),"switch=547us"));
+    assert(strstr(f.cmd("get radio2.timing"),"switch=547us"));
+    assert(!strstr(strstr(f.reply,"switch=")+1,"switch="));
+    assert(strstr(f.cmd("get radio2.status"),"budget=547us"));
+    assert(!strstr(f.reply,"switch=547us"));
+    assert(strstr(f.cmd("set radio2 911.5,500,7,5,rx"),"timing self-test pending"));
+    assert(!strstr(f.reply,"switch=547us"));
+  }
+  {
+    Fixture f;
     const char* invalid[] = {"910.5,500,7,5", "NaN,500,7,5,rx", "910.5,0,7,5,rx",
       "910.5,500,256,5,rx", "910.5,500,7,256,rx", "910.5,500,7,5,invalid",
       "910.5,500,7,5,rx,7", "910.5,500,7,5,rx,65535", "910.5,500,7,5,rx,32,junk",
@@ -367,20 +395,20 @@ int main(int argc, char** argv) {
     Fixture f;
     assert(!strcmp(f.cmd("get radio2.timing"),"> off"));
     // A short explicit preamble is not rewritten, and cannot hide a warning.
-    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rx,32"),"WARN recommended preamble: radio2=64"));
-    assert(strstr(f.reply,"short override: radio2"));
+    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rx,32"),"timing self-test pending"));
     f.advance(2000);
+    f.finishTimingTest();
     assert(f.radio.p.secondary.params.preamble==32);
     assert(strstr(f.cmd("get radio2"),"short override: radio2"));
-    f.radio.p.longest_switch_us=8428;
-    assert(strstr(f.cmd("get radio2.timing"),"switch=8428us"));
-    assert(strstr(f.reply,"WARN recommended preamble: radio="));
+    f.radio.p.sampleSwitch(0,1,8428);
+    assert(strstr(f.cmd("get radio2.timing"),"switch=9271us"));
+    assert(strstr(f.reply,"WARN recommended preamble: radio2="));
     assert(f.radio.p.secondary.params.preamble==32);
     // Primary getters use the saved primary's SF/BW instead of a temporary one.
     f.radio.p.primary.sf=10; f.radio.p.primary.bw=125;
     strcpy(f.reply,"> radio");
     f.cli.appendSavedPreamble(f.reply,sizeof(f.reply),7,62.5);
-    assert(strstr(f.reply,"WARN recommended preamble: radio="));
+    assert(strstr(f.reply,"timing self-test pending"));
     // Bounded appenders cannot corrupt neighboring bytes, even with tiny replies.
     for (size_t n=1;n<=160;++n) {
       char bytes[162]; memset(bytes,0x55,sizeof(bytes)); bytes[0]=0;
@@ -389,23 +417,22 @@ int main(int argc, char** argv) {
     }
     f.radio.p.primary.sf=10;f.radio.p.primary.bw=125;
     f.radio.p.secondary.params.sf=10;f.radio.p.secondary.params.bw=125;
-    f.radio.p.longest_switch_us=0;
+    f.radio.p.resetSwitchTest(); f.finishTimingTest();
     assert(!strstr(f.cmd("get radio2.timing"),"WARN"));
     // A selected value below 32 still gets the actual recommendation, not
     // merely a warning label with no preamble to use.
-    assert(strstr(f.cmd("set radio2 910.5,125,10,5,rx,16"),"WARN recommended preamble: radio2=32"));
-    assert(strstr(f.reply,"short override: radio2"));
+    assert(strstr(f.cmd("set radio2 910.5,125,10,5,rx,16"),"timing self-test pending"));
   }
   {
     Fixture f;
     f.radio.p.primary.sf=7;f.radio.p.primary.bw=500;
-    assert(strstr(f.cmd("set radio2 910.5,62.5,7,5,rx"),"WARN recommended preamble: radio=64"));
+    assert(strstr(f.cmd("set radio2 910.5,62.5,7,5,rx"),"timing self-test pending"));
     f.advance(2000);
+    f.finishTimingTest();
     assert(strstr(f.cmd("get radio2.timing"),"need=64,32"));
     strcpy(f.reply,"OK - reboot to apply");
     f.cli.appendPrimaryChirpWarning(f.reply,sizeof(f.reply),7,500,32);
-    assert(strstr(f.reply,"WARN recommended preamble: radio=64"));
-    assert(strstr(f.reply,"short override: radio"));
+    assert(strstr(f.reply,"timing self-test pending"));
     strcpy(f.reply,"OK - reboot to apply");
     f.cli.appendPrimaryChirpWarning(f.reply,sizeof(f.reply),7,62.5,0);
     assert(!strstr(f.reply,"WARN")); // Preview requested tuple, not the live one.
@@ -417,12 +444,24 @@ int main(int argc, char** argv) {
   {
     Fixture f;
     // The tested pair is allocated automatically without changing explicit 32.
-    assert(strstr(f.cmd("set radio2 910.5,500,8,5,rx,32"),"WARN recommended preamble: radio2=88"));
+    assert(strstr(f.cmd("set radio2 910.5,500,8,5,rx,32"),"timing self-test pending"));
     f.advance(2000);
+    f.finishTimingTest();
     assert(f.radio.p.secondary.params.preamble==32);
     assert(strstr(f.cmd("get radio2.scan"),"slow=radio; listen_us=9421,21847"));
     assert(strstr(f.cmd("get radio2.timing"),"chirps=4.60,42.67; need=32,88"));
     assert(strstr(f.reply,"loop=300us"));
+  }
+  {
+    Fixture f;
+    f.radio.p.primary.bw=500;
+    assert(strstr(f.cmd("set radio2 910.5,500,7,5,rx"),"timing self-test pending"));
+    f.advance(2000);
+    f.finishTimingTest(8428);
+    assert(f.radio.p.switchBudgetUs()==9271);
+    assert(f.radio.p.preamble(0,32)==128);
+    assert(strstr(f.cmd("get radio2.timing"),"WARN need >128: radio"));
+    assert(strstr(f.cmd("get radio2.status"),"WARN need >128: radio"));
   }
   {
     Fixture f;

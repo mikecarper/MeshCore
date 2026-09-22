@@ -1,5 +1,10 @@
 # Shared radio/radio2 chirp timing and preamble warnings
 
+Historical validation record: the nominal 600 us policy described below has
+been replaced by the activation self-test and 10% guarded measured budget.
+See [radio profiles](radio_profiles.md#preamble) for
+current behavior.
+
 Implemented in the `keymindCascade` working tree, 2026-09-14. The initial
 4.1/4000-us implementation record below is retained as history; the
 [4.6/300-us policy update](#automatic-46-chirp--300-us-policy-update) is now current.

@@ -376,6 +376,7 @@ void RadioProfileCLI::appendSavedPreamble(char* reply, size_t capacity, uint8_t 
   auto preview = *radio_->profiles();
   preview.primary.sf = sf; preview.primary.bw = bw;
   preview.primary.preamble = primary_preamble_;
+  if (preview.primary != radio_->profiles()->primary) preview.resetSwitchTest();
   const size_t used = strlen(reply);
   if (used < capacity) snprintf(reply + used, capacity - used, ",preamble=%u%s",
       preview.preamble(0, rxPowerSavingPreambleForParams(sf, bw)), primary_preamble_ ? "" : " (auto)");
@@ -387,14 +388,26 @@ void RadioProfileCLI::appendPrimaryChirpWarning(char* reply, size_t capacity, ui
   if (!radio_ || !radio_->profiles()) return;
   auto preview = *radio_->profiles();
   preview.primary.sf = sf; preview.primary.bw = bw; preview.primary.preamble = preamble;
+  if (preview.primary != radio_->profiles()->primary) preview.resetSwitchTest();
   appendChirpWarning(reply, capacity, preview);
 }
 
 void RadioProfileCLI::appendChirpWarning(char* reply, size_t capacity, const RadioProfiles& preview) {
   if (!capacity || !preview.enabled()) return;
+  if (!preview.switchTestReady()) {
+    const size_t used = strlen(reply);
+    if (used < capacity) snprintf(reply + used, capacity - used, "; timing self-test pending");
+    return;
+  }
   const auto timing = preview.chirpTiming();
   if (!timing.valid) return;
   size_t used = strlen(reply);
+  const bool over_a = timing.preamble[0] > RadioProfiles::MaxAutomaticPreamble;
+  const bool over_b = timing.preamble[1] > RadioProfiles::MaxAutomaticPreamble;
+  if (used < capacity && (over_a || over_b))
+    snprintf(reply + used, capacity - used, "; WARN need >128: %s",
+             over_a && over_b ? "radio,radio2" : over_a ? "radio" : "radio2");
+  used = strlen(reply);
   const bool short_a = preview.primary.preamble && preview.primary.preamble < timing.preamble[0];
   const bool short_b = preview.secondary.params.preamble && preview.secondary.params.preamble < timing.preamble[1];
   const bool a = timing.preamble[0] > 32 || short_a, b = timing.preamble[1] > 32 || short_b;
@@ -408,13 +421,22 @@ void RadioProfileCLI::appendChirpWarning(char* reply, size_t capacity, const Rad
   if (used < capacity && (short_a || short_b))
     snprintf(reply + used, capacity - used, "; short override: %s",
              short_a && short_b ? "radio,radio2" : short_a ? "radio" : "radio2");
+  // Preamble-bearing acknowledgements and getters share this formatter. Only
+  // report the measured allowance for the same calibrated profile pair; a new
+  // pair still has to activate and complete its self-test after the first ACK.
+  // Dedicated timing/status getters already include this value under their
+  // existing switch/budget labels.
+  used = strlen(reply);
+  if (used < capacity && !strstr(reply, "switch=") && !strstr(reply, "budget="))
+    snprintf(reply + used, capacity - used, "; switch=%luus",
+             (unsigned long)preview.switchBudgetUs());
 }
 
 void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProfileConfig& config,
                                    bool temporary, uint32_t remaining) const {
   if (config.mode == RadioProfileMode::Off) { snprintf(reply, capacity, "> off"); return; }
   RadioProfiles preview = *radio_->profiles();
-  preview.secondary = config;
+  preview.setSecondary(config, temporary);
   uint16_t preamble = preview.preamble(1, 32);
   snprintf(reply, capacity, "> %.3f,%.3f,%u,%u,%s,%u%s", config.params.freq, config.params.bw,
            config.params.sf, config.params.cr, modeName(config.mode), preamble,
@@ -499,11 +521,21 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     const auto& p = *radio_->profiles();
     const auto t = p.chirpTiming();
     if (!p.enabled()) snprintf(reply, capacity, "> off");
+    else if (!p.switchTestReady()) snprintf(reply, capacity,
+        "> timing self-test pending; test=%u/%u,%u/%u; provisional preamble=%u,%u",
+        p.switch_test_samples[0], RadioProfiles::SwitchTestSamplesPerDirection,
+        p.switch_test_samples[1], RadioProfiles::SwitchTestSamplesPerDirection,
+        radio_->profilePreamble(0), radio_->profilePreamble(1));
     else if (!t.valid) snprintf(reply, capacity, "Error: timing unavailable");
     else {
       snprintf(reply, capacity, "> chirps=%.2f,%.2f; need=%.0f,%.0f; switch=%luus; loop=%luus (estimate)",
           t.listen_us[0] / t.symbol_us[0], t.listen_us[1] / t.symbol_us[1],
           t.preamble[0], t.preamble[1], (unsigned long)t.switch_us, (unsigned long)t.loop_us);
+      size_t used = strlen(reply);
+      if (used < capacity) snprintf(reply + used, capacity - used, "; test=%u/%u,%u/%u%s",
+          p.switch_test_samples[0], RadioProfiles::SwitchTestSamplesPerDirection,
+          p.switch_test_samples[1], RadioProfiles::SwitchTestSamplesPerDirection,
+          p.switchTestReady() ? " ready" : " pending");
       appendChirpWarning(reply, capacity, p);
     }
     return true;
@@ -545,6 +577,14 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
         (unsigned long)p.tx_packets[0], (unsigned long)p.tx_packets[1],
         (unsigned long)p.switches, (unsigned long)p.switch_failures,
         (unsigned long)p.longest_switch_us, radio_->profilePreamble(0), radio_->profilePreamble(1));
+    if (p.enabled()) {
+      size_t used = strlen(reply);
+      if (used < capacity) snprintf(reply + used, capacity - used, "; test=%u/%u,%u/%u%s budget=%luus",
+          p.switch_test_samples[0], RadioProfiles::SwitchTestSamplesPerDirection,
+          p.switch_test_samples[1], RadioProfiles::SwitchTestSamplesPerDirection,
+          p.switchTestReady() ? " ready" : " pending", (unsigned long)p.switchBudgetUs());
+      appendChirpWarning(reply, capacity, p);
+    }
     return true;
   }
   if ((base || temporary) && verb == Get && !*args) {
@@ -630,7 +670,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   if (valid && scheduled) valid = cli::parseUnsignedIntegerStrict(parts[5], start);
   if (valid && scheduled_temp) valid = cli::parseUnsignedIntegerStrict(parts[6], end);
   if (valid) valid = radio_->validateProfile(config.params);
-  RadioProfiles preview = *radio_->profiles(); preview.secondary = config;
+  RadioProfiles preview = *radio_->profiles(); preview.setSecondary(config, false);
   if (valid) valid = preview.automaticPreambleFits();
   if (!valid) { snprintf(reply, capacity, "Error: use %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]", key,
       scheduled_temp ? ",start,end" : scheduled ? ",start" : temporary ? ",minutes" : ""); return true; }

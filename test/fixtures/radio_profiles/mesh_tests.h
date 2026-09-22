@@ -692,10 +692,13 @@ TEST(RadioProfiles, CrossPolicyAndReceiveOnlyMatrix) {
   }
 }
 
-TEST(RadioProfiles, AutomaticPreamblesIncludeNominalSwitchingMargin) {
+TEST(RadioProfiles, AutomaticPreamblesUseSelfTestedSwitchingMargin) {
   DualProfileTestRadio radio;
   auto& p = radio.config;
-  EXPECT_EQ(600, p.SwitchBudgetUs);
+  for (unsigned i = 0; i < p.SwitchTestSamplesPerDirection; ++i) {
+    p.sampleSwitch(0, 1, 545); p.sampleSwitch(1, 0, 545);
+  }
+  EXPECT_EQ(600, p.switchBudgetUs());
   EXPECT_EQ(300, p.LoopBudgetUs);
   const uint16_t expected[] = {64, 88, 32};
   for (int sf = 7; sf <= 9; ++sf) {
@@ -705,9 +708,9 @@ TEST(RadioProfiles, AutomaticPreamblesIncludeNominalSwitchingMargin) {
     EXPECT_EQ(0, p.preamble(1, 32) % 8);
     EXPECT_EQ(9421, p.listenUs(0));
     EXPECT_EQ(21847, p.listenUs(1));
-    EXPECT_LE(2 * (p.listenUs(0) + p.listenUs(1) + 2 * p.SwitchBudgetUs + p.LoopBudgetUs),
+    EXPECT_LE(2 * (p.listenUs(0) + p.listenUs(1) + 2 * p.switchBudgetUs() + p.LoopBudgetUs),
         p.preamble(0, 32) * p.symbolUs(p.primary));
-    EXPECT_LE(p.listenUs(1) + 2 * p.SwitchBudgetUs + p.LoopBudgetUs
+    EXPECT_LE(p.listenUs(1) + 2 * p.switchBudgetUs() + p.LoopBudgetUs
         + p.AcquisitionSymbols * p.symbolUs(p.primary), p.preamble(0, 32) * p.symbolUs(p.primary));
   }
   p.secondary.params.preamble = 40;
@@ -719,6 +722,9 @@ TEST(RadioProfiles, AutomaticPreamblesIncludeNominalSwitchingMargin) {
 TEST(RadioProfiles, SlowerProfileDeterminesOrderAndFasterReceiveWindow) {
   DualProfileTestRadio radio;
   auto& p = radio.config;
+  for (unsigned i = 0; i < p.SwitchTestSamplesPerDirection; ++i) {
+    p.sampleSwitch(0, 1, 545); p.sampleSwitch(1, 0, 545);
+  }
   EXPECT_EQ(0, p.slowerProfile());
   std::swap(p.primary, p.secondary.params);
   EXPECT_EQ(1, p.slowerProfile());

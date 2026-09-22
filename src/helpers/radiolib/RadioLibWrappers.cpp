@@ -338,6 +338,11 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
   }
   const uint32_t elapsed = _profile_visit_us - started;
   if (elapsed > _profiles.longest_switch_us) _profiles.longest_switch_us = elapsed;
+  // Learn the actual board's RX-to-RX retune cost on the first four good hops
+  // in each direction. Deferred and rolled-back operations are not samples.
+  if (applied && resume && old_profile != profile) {
+    _profiles.sampleSwitch(old_profile, profile, elapsed);
+  }
   return applied ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
 }
 
@@ -385,6 +390,28 @@ void RadioLibWrapper::serviceProfileScan() {
     _profile_refresh_required = true; // refresh side detectors even if the tuple is unchanged
     setProfileStandbyWarm(true);
     endReconfigure(resume);
+  }
+  if (_profiles.enabled() && !_profiles.switchTestReady()) {
+    // A bounded startup self-test uses the real RX-to-RX retune path for the
+    // active pair. Keep the 128-symbol provisional preamble until four good
+    // samples in each direction are available. A packet, TX, or BUSY radio
+    // defers the remaining hops without counting an invalid measurement.
+    for (uint8_t hops = 0; hops < 2 * mesh::RadioProfiles::SwitchTestSamplesPerDirection;
+         ++hops) {
+      if (_profiles.switchTestReady()) break;
+      const uint8_t from = _active_profile;
+      const uint8_t samples = _profiles.switch_test_samples[from];
+      const auto test_result = tuneProfile(from ^ 1);
+      if (test_result == mesh::RadioParamApplyResult::FAILED) {
+        _profile_retry_at = millis() + 1000;
+        tuneProfile(0);
+        return;
+      }
+      if (test_result != mesh::RadioParamApplyResult::APPLIED
+          || (samples < mesh::RadioProfiles::SwitchTestSamplesPerDirection
+              && _profiles.switch_test_samples[from] == samples)) return;
+    }
+    if (!_profiles.switchTestReady()) return;
   }
   uint8_t target = _active_profile;
   const bool restart_scan = _profiles.enabled()
@@ -463,7 +490,7 @@ bool RadioLibWrapper::setParams(float freq, float bw, uint8_t sf, uint8_t cr,
 mesh::RadioParamApplyResult RadioLibWrapper::trySetPrimaryParams(const mesh::RadioProfileParams& p,
     bool temporary, const uint32_t* timings) {
   auto preview = _profiles;
-  preview.primary = p;
+  preview.setPrimary(p, temporary);
   if (!validateProfile(p) || !preview.automaticPreambleFits()) return mesh::RadioParamApplyResult::FAILED;
   const auto previous = _profiles.primary;
   const bool was_temp = _profiles.primary_temporary;

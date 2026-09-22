@@ -40,13 +40,11 @@ class RadioProfiles {
   static constexpr double MinFastListenSymbols = MinListenSymbols;
   static constexpr uint8_t AcquisitionSymbols = 8;
   static constexpr uint16_t MaxPreamble = 65528;
-  // Recent V4 single-pass hops measured up to 836 us, including post-packet
-  // cache refresh; Indicator measured up to 8428 us (expander GPIO).
-  // Use the requested 0.6 ms nominal allowance for fast switching. This is
-  // not a worst-case bound; measured overruns raise diagnostic recommendations.
+  static constexpr uint16_t MaxAutomaticPreamble = 128;
+  // Successful RX-to-RX hops self-test the board-specific switch allowance.
   // Packet receptions can extend a visit; these budgets describe an idle scan.
-  static constexpr uint32_t SwitchBudgetUs = 600;
   static constexpr uint32_t LoopBudgetUs = 300;
+  static constexpr uint8_t SwitchTestSamplesPerDirection = 4;
 
   struct ChirpTiming {
     bool valid = false;
@@ -73,6 +71,29 @@ class RadioProfiles {
   uint32_t tx_packets[2] = {};
   uint32_t switch_failures = 0;
   uint32_t longest_switch_us = 0;
+  uint32_t switch_test_max_us[2] = {};
+  uint8_t switch_test_samples[2] = {};
+
+  void resetSwitchTest() {
+    switch_test_max_us[0] = switch_test_max_us[1] = 0;
+    switch_test_samples[0] = switch_test_samples[1] = 0;
+  }
+  void sampleSwitch(uint8_t from, uint8_t to, uint32_t elapsed_us) {
+    if (!enabled() || from > 1 || to > 1 || from == to || !elapsed_us) return;
+    if (switch_test_samples[from] < SwitchTestSamplesPerDirection) ++switch_test_samples[from];
+    if (elapsed_us > switch_test_max_us[from]) switch_test_max_us[from] = elapsed_us;
+  }
+  bool switchTestReady() const {
+    return switch_test_samples[0] >= SwitchTestSamplesPerDirection
+        && switch_test_samples[1] >= SwitchTestSamplesPerDirection;
+  }
+  uint32_t switchBudgetUs() const {
+    const uint32_t observed = switch_test_max_us[0] > switch_test_max_us[1]
+        ? switch_test_max_us[0] : switch_test_max_us[1];
+    if (!observed) return 0;
+    const uint64_t guarded = (uint64_t(observed) * 11 + 9) / 10;
+    return guarded > UINT32_MAX ? UINT32_MAX : uint32_t(guarded);
+  }
 
   bool enabled() const { return secondary.mode != RadioProfileMode::Off; }
   bool canTransmit(uint8_t profile, bool reply_rx_override = false) const {
@@ -147,7 +168,7 @@ class RadioProfiles {
   // including a longer fast visit selected by an explicit slow preamble.
   static ChirpTiming calculateChirpTiming(const RadioProfileParams& a, const RadioProfileParams& b,
       uint32_t visit_a_us = 0, uint32_t visit_b_us = 0,
-      uint32_t switch_us = SwitchBudgetUs, uint32_t loop_us = LoopBudgetUs) {
+      uint32_t switch_us = 0, uint32_t loop_us = LoopBudgetUs) {
     ChirpTiming t;
     if (!valid(a) || !valid(b)) return t;
     t.symbol_us[0] = symbolUs(a); t.symbol_us[1] = symbolUs(b);
@@ -171,7 +192,7 @@ class RadioProfiles {
     const uint8_t slow = slowerProfile();
     return preambleForVisits(params(profile), params(profile ^ 1), profile == slow,
         minimumListenUs(params(profile), profile == slow), minimumListenUs(params(profile ^ 1), (profile ^ 1) == slow),
-        2.0 * SwitchBudgetUs + LoopBudgetUs);
+        2.0 * switchBudgetUs() + LoopBudgetUs);
   }
   uint32_t listenUs(uint8_t profile, uint16_t slow_preamble = 0) const {
     const uint8_t slow = slowerProfile();
@@ -179,49 +200,50 @@ class RadioProfiles {
     if (!enabled() || profile == slow) return (uint32_t)ceil(minimum);
     if (!slow_preamble) slow_preamble = preamble(slow, 32);
     const double available = double(slow_preamble) / 2.0 * symbolUs(params(slow))
-        - minimumListenUs(params(slow), true) - 2.0 * SwitchBudgetUs - LoopBudgetUs;
+        - minimumListenUs(params(slow), true) - 2.0 * switchBudgetUs() - LoopBudgetUs;
     // Rejected previews must not cause an out-of-range floating-to-int cast.
     return available > UINT32_MAX ? UINT32_MAX
         : available > minimum ? (uint32_t)floor(available) : (uint32_t)minimum;
   }
   ChirpTiming chirpTiming() const {
     if (!enabled()) return {};
-    // Measured overruns raise advisory requirements only. Do not silently
-    // change wire preambles or persisted settings based on one slow hop.
-    const uint32_t budget = longest_switch_us > SwitchBudgetUs ? longest_switch_us : SwitchBudgetUs;
-    return calculateChirpTiming(primary, secondary.params, listenUs(0), listenUs(1), budget);
+    return calculateChirpTiming(primary, secondary.params, listenUs(0), listenUs(1), switchBudgetUs());
   }
   uint16_t preamble(uint8_t profile, uint16_t single_profile_default) const {
     const auto& p = params(profile);
     if (p.preamble) return p.preamble;
     if (!enabled()) return single_profile_default;
+    // Do not expose an unmeasured short preamble while the startup test runs.
+    if (!switchTestReady()) return MaxAutomaticPreamble;
     double symbols = automaticPreamble(profile);
     if (symbols < single_profile_default) symbols = single_profile_default;
-    if (symbols > MaxPreamble) symbols = MaxPreamble;
+    symbols = roundPreamble(symbols);
+    if (symbols > MaxAutomaticPreamble) symbols = MaxAutomaticPreamble;
     return (uint16_t)symbols;
   }
   bool automaticPreambleFits() const {
     for (uint8_t i = 0; i < (enabled() ? 2 : 1); ++i) {
       if (!valid(params(i)) || !safePreamble(params(i), preamble(i, 32))) return false;
-      if (!enabled()) continue;
-      if (!params(i).preamble && automaticPreamble(i) > MaxPreamble) return false;
     }
+    // Recommendations over 128 are reported as unsafe, but the profile can
+    // still run at the cap when its physical preamble is legal.
     if (enabled()) {
       const uint8_t slow = slowerProfile();
       const double available = double(preamble(slow, 32)) / 2.0 * symbolUs(params(slow))
-          - minimumListenUs(params(slow), true) - 2.0 * SwitchBudgetUs - LoopBudgetUs;
-      if (available < minimumListenUs(params(slow ^ 1))) return false;
+          - minimumListenUs(params(slow), true) - 2.0 * switchBudgetUs() - LoopBudgetUs;
+      if (available < minimumListenUs(params(slow ^ 1))
+          && params(slow).preamble) return false;
     }
     return true;
   }
   void setPrimary(const RadioProfileParams& p, bool temporary) {
-    if (primary != p || primary_temporary != temporary) ++generation[0];
+    if (primary != p || primary_temporary != temporary) { ++generation[0]; resetSwitchTest(); }
     primary = p;
     primary_temporary = temporary;
   }
   void setSecondary(const RadioProfileConfig& p, bool temporary) {
     if (secondary.params != p.params || secondary.mode != p.mode
-        || secondary_temporary != temporary) ++generation[1];
+        || secondary_temporary != temporary) { ++generation[1]; resetSwitchTest(); }
     secondary = p;
     secondary_temporary = temporary;
   }

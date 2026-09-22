@@ -133,10 +133,7 @@ protected:
     const uint32_t minimum_visit = NoiseFloorSettleMillis * 1000UL;
     if (primary_visit < minimum_visit) primary_visit = minimum_visit;
     if (secondary_visit < minimum_visit) secondary_visit = minimum_visit;
-    uint32_t switch_us = _profiles.longest_switch_us;
-    if (switch_us < mesh::RadioProfiles::SwitchBudgetUs) {
-      switch_us = mesh::RadioProfiles::SwitchBudgetUs;
-    }
+    const uint32_t switch_us = _profiles.switchBudgetUs();
     const uint64_t cycle_us = uint64_t(primary_visit) + secondary_visit
         + 2ULL * switch_us + mesh::RadioProfiles::LoopBudgetUs;
     return estimator.samplesRemaining() * (cycle_us / 1000000.0f);

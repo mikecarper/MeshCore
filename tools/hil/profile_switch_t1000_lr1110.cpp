@@ -201,7 +201,7 @@ void run(const char* mode, unsigned count, uint32_t sequence) {
   chip.hilInjectRxTimeout = injectTimeoutNextRun;
   injectTimeoutNextRun = false;
 
-  Timing total[2];
+  Timing spot[2], total[2];
   uint32_t failures = 0, busyDeferrals = 0, rxErrors = 0, cacheErrors = 0;
   uint32_t busyTimeouts = 0, rssiErrors = 0;
   const uint32_t rfBefore = radioHal.rfWrites;
@@ -227,9 +227,10 @@ void run(const char* mode, unsigned count, uint32_t sequence) {
   const uint64_t packetCyclesBefore = chip.fastPacketCycles;
   const uint64_t setRxCyclesBefore = chip.fastSetRxCycles;
   unsigned completed = 0;
+  uint32_t spotBudgetUs = 0;
   for (unsigned attempt = 0; completed < count + 8 && attempt < (count + 8) * 4; ++attempt) {
     if (!waitBusy()) { ++busyTimeouts; break; }
-    delay(10);  // Keep host I/O and dwell outside the measured retune.
+    if (completed >= 8) delay(10);  // The first eight hops match the rapid startup self-test.
     const uint8_t target = driver.receiveProfile() ^ 1;
     const uint32_t started = DWT->CYCCNT;
     const auto result = driver.hop(target);
@@ -245,13 +246,19 @@ void run(const char* mode, unsigned count, uint32_t sequence) {
     if (chip.getSpreadingFactor() != (target && modulation ? 8 : 7)
         || chip.getFreqMHz() != (target && frequency ? 909.75f : 909.5f)
         || chip.preambleSymbols() != (target && preambleChange ? 48 : 32)) ++cacheErrors;
-    delay(7);  // RSSI needs a settled receiver; this is outside switch timing.
-    float rssi = 0;
-    if (chip.getRssiInst(&rssi) != RADIOLIB_ERR_NONE || !isfinite(rssi)
-        || rssi < -180.0f || rssi > 20.0f) ++rssiErrors;
-    if (completed++ >= 8) total[target].add(elapsed);
+    if (completed < 8) spot[target].add(elapsed);
+    else {
+      delay(7);  // RSSI needs a settled receiver; this is outside switch timing.
+      float rssi = 0;
+      if (chip.getRssiInst(&rssi) != RADIOLIB_ERR_NONE || !isfinite(rssi)
+          || rssi < -180.0f || rssi > 20.0f) ++rssiErrors;
+      total[target].add(elapsed);
+    }
+    ++completed;
+    if (completed == 8) spotBudgetUs = driver.profiles()->switchBudgetUs();
   }
 
+  const uint32_t longBudgetUs = driver.profiles()->switchBudgetUs();
   driver.profiles()->setSecondary({}, true);
   auto restored = driver.hop(0);
   for (unsigned retry = 0; restored == mesh::RadioParamApplyResult::BUSY && retry < 20; ++retry) {
@@ -266,7 +273,8 @@ void run(const char* mode, unsigned count, uint32_t sequence) {
       "\"primary\":\"909.5,125,7,5\",\"secondary_freq_mhz\":%.2f,\"secondary_sf\":%u,"
       "\"secondary_preamble\":%u,"
       "\"tcxo_us\":%lu,\"spi_hz\":%lu,\"bulk_spi\":%s,"
-      "\"requested\":%u,\"completed\":%u,\"primary_busy_deferrals\":%lu,"
+      "\"requested\":%u,\"completed\":%u,\"spot_budget_us\":%lu,\"long_budget_us\":%lu,"
+      "\"primary_busy_deferrals\":%lu,"
       "\"busy_deferrals\":%lu,\"drain_calls\":%lu,\"drained_packets\":%lu,"
       "\"busy_high_checks\":%lu,"
       "\"receiving_true_checks\":%lu,\"failures\":%lu,"
@@ -278,13 +286,16 @@ void run(const char* mode, unsigned count, uint32_t sequence) {
       "\"standby_mean_us\":%.3f,\"apply_mean_us\":%.3f,\"receiving_check_mean_us\":%.3f,"
       "\"start_mode_mean_us\":%.3f,\"start_rx_mean_us\":%.3f,"
       "\"clear_mean_us\":%.3f,\"packet_mean_us\":%.3f,\"set_rx_mean_us\":%.3f,"
+      "\"spot_to_primary\":{\"n\":%lu,\"min_us\":%.3f,\"mean_us\":%.3f,\"max_us\":%.3f},"
+      "\"spot_to_secondary\":{\"n\":%lu,\"min_us\":%.3f,\"mean_us\":%.3f,\"max_us\":%.3f},"
       "\"to_primary\":{\"n\":%lu,\"min_us\":%.3f,\"mean_us\":%.3f,\"max_us\":%.3f},"
       "\"to_secondary\":{\"n\":%lu,\"min_us\":%.3f,\"mean_us\":%.3f,\"max_us\":%.3f}}\n",
       (unsigned long)sequence, mode, double(secondary.params.freq), unsigned(secondary.params.sf),
       unsigned(secondary.params.preamble),
       (unsigned long)configuredTcxoUs, (unsigned long)radioHal.spiHz,
       radioHal.bulkTransfer ? "true" : "false",
-      count, completed, (unsigned long)primaryBusyDeferrals, (unsigned long)busyDeferrals,
+      count, completed, (unsigned long)spotBudgetUs, (unsigned long)longBudgetUs,
+      (unsigned long)primaryBusyDeferrals, (unsigned long)busyDeferrals,
       (unsigned long)drainCalls, (unsigned long)drainedPackets,
       (unsigned long)(driver.busyHighChecks - busyHighBefore),
       (unsigned long)(driver.receivingTrueChecks - receivingTrueBefore),
@@ -320,6 +331,8 @@ void run(const char* mode, unsigned count, uint32_t sequence) {
       chip.getOptimizedProfileSwitches() == fastBefore ? 0.0
           : double(chip.fastSetRxCycles - setRxCyclesBefore) * 1000000.0
               / (chip.getOptimizedProfileSwitches() - fastBefore) / SystemCoreClock,
+      (unsigned long)spot[0].n, spot[0].minUs(), spot[0].meanUs(), spot[0].maxUs(),
+      (unsigned long)spot[1].n, spot[1].minUs(), spot[1].meanUs(), spot[1].maxUs(),
       (unsigned long)total[0].n, total[0].minUs(), total[0].meanUs(), total[0].maxUs(),
       (unsigned long)total[1].n, total[1].minUs(), total[1].meanUs(), total[1].maxUs());
 }
@@ -370,12 +383,13 @@ void loop() {
                       "\"init_rc\":%d,\"board\":\"Seeed T1000-E LR1110\","
                       "\"rx_frequencies_mhz\":[909.5,909.75],\"autonomous_tx\":false,\"tx_command\":false,"
                       "\"sd_fwid\":%u,\"app_base\":%u,\"cycle_hz\":%lu,\"tcxo_us\":%lu,"
-                      "\"spi_hz\":%lu,\"bulk_spi\":%s}\n",
+                      "\"spi_hz\":%lu,\"bulk_spi\":%s,\"last_sequence\":%lu}\n",
                       ready ? "true" : "false", initError,
                       unsigned(*reinterpret_cast<volatile uint16_t*>(0x300c)),
                       unsigned(*reinterpret_cast<volatile uint32_t*>(0x3008)),
                       (unsigned long)SystemCoreClock, (unsigned long)configuredTcxoUs,
-                      (unsigned long)radioHal.spiHz, radioHal.bulkTransfer ? "true" : "false");
+                      (unsigned long)radioHal.spiHz, radioHal.bulkTransfer ? "true" : "false",
+                      (unsigned long)nextSequence);
         Serial.print(info);
       } else if (sscanf(line, "fs %u %c", &count, &trailing) == 1 && count <= 1) {
         chip.hilUseFsOnRetune = count;

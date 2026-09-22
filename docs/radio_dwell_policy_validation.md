@@ -1,5 +1,9 @@
 # Automatic dwell policy: 4.6 chirps on both profiles
 
+Historical validation record: the nominal 600 us switch allowance below has
+been replaced by the activation self-test and a 10% guarded measured budget.
+See [radio profiles](radio_profiles.md#preamble) for current behavior.
+
 The shared `RadioProfiles` function uses a 4.6-symbol minimum for both logical
 profiles of one physical transceiver, rounded upward to a whole microsecond.
 The slower profile is selected by symbol duration, with primary winning ties.
