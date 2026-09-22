@@ -138,7 +138,7 @@ Options:
   --firmware-version <version>: Firmware version to embed.
   --radio-preset <name|number>: Override the USA Cascadia radio default. Stable names are usa-cascadia and target; legacy menu numbers remain accepted.
   --profile <default|cascade>: Override runtime settings embedded in the firmware (not its feature set).
-  --build-profile <auto|standard|full>: Select feature/partition policy. Auto uses the combined Full MQTT/USB/WiFi recipe when it covers the plain infrastructure target; otherwise it first builds complete LoRa-OTA-capable firmware with a measured-size fallback. Internal-flash nRF52 repeaters and room servers also publish the reduced image for delta-staging headroom. Standard preserves portable images, including the 1.25 MiB slot; full requires the expanded ESP32 recipe.
+  --build-profile <auto|standard|full>: Select feature/partition policy. Auto uses the combined Full MQTT/USB/WiFi recipe when it covers the plain infrastructure target; otherwise it first builds complete LoRa-OTA-capable firmware with a measured-size fallback. Internal-flash nRF52 repeaters and room servers also publish the reduced image for delta-staging headroom; XIAO nRF52 repeaters with external-QSPI staging publish one combined image. Standard preserves portable images, including the 1.25 MiB slot; full requires the expanded ESP32 recipe.
   --auto|--standard|--full: Short forms of --build-profile.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
@@ -353,12 +353,16 @@ for section, options in data:
         *_repeater|*_repeater_|*_repeatr|*_repeatr_|*_room_server|*_room_server_|*_room_svr|*_room_svr_) ;;
         *) continue ;;
       esac
-      # SolarXiao 30S/33S repeater and room-server roles already use matched
-      # external QSPI staging, so their normal full-sensor image is
-      # install-capable. A second lean no-external-sensors target provides no
-      # additional OTA capability.
+      # XIAO nRF52840 repeaters with raw-QSPI staging and the reserved
+      # bootloader scratch region keep sensors, packet logging, and LoRa OTA
+      # in their normal image. Do not publish a redundant reduced sibling.
+      if is_xiao_qspi_combined_repeater_target "$env_name"; then
+        continue
+      fi
+      # Leave SolarXiao room-server inventory unchanged; these roles are not
+      # part of the XIAO repeater consolidation.
       case "${env_name,,}" in
-        solarxiao_30s_repeater|solarxiao_33s_repeater|solarxiao_30s_room_server|solarxiao_33s_room_server) continue ;;
+        solarxiao_30s_room_server|solarxiao_33s_room_server) continue ;;
       esac
       ota_env="${env_name%_}_lora_ota_no_external_sensors"
       PIO_ENV_COMPLETE_OTA_BASE_BY_NAME["$ota_env"]="$env_name"
@@ -2080,6 +2084,22 @@ is_lora_ota_only_target() {
   [[ "$target_lc" == *lora_ota* ]]
 }
 
+is_xiao_qspi_combined_repeater_target() {
+  local env_name=$1
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "NRF52_PLATFORM" ] \
+    && [ "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" = "seeed-xiao-afruitnrf52-nrf52840" ] \
+    && [ "${PIO_ENV_QSPI_OTA_BY_NAME[$env_name]:-0}" = "1" ] \
+    && { [[ "${env_name,,}" == *_repeater ]] \
+         || [[ "${env_name,,}" == *_repeater_ ]]; }
+}
+
+is_xiao_qspi_canonical_repeater_build() {
+  is_xiao_qspi_combined_repeater_target "$1" \
+    && [ "$BUILD_PROFILE_FOR_TARGET" = "standard" ] \
+    && [ -z "$FIRMWARE_FILENAME_INFIX" ]
+}
+
 is_lora_ota_no_external_sensors_target() {
   local target_lc=${1,,}
   [[ "$target_lc" == *lora_ota_no_external_sensors ]]
@@ -3138,7 +3158,8 @@ record_application_expectation() {
 declare_full_logging_application_contract() {
   local env_name=$1
   BUILD_APPLICATION_EXPECTATIONS=()
-  if requires_full_usb_packet_logging "$env_name"; then
+  if requires_full_usb_packet_logging "$env_name" \
+      || is_xiao_qspi_canonical_repeater_build "$env_name"; then
     # Inspect the packaged application, not an ELF debug/symbol string. The
     # settings alone can exist in debug-only builds with packet logging absent.
     record_application_expectation "logging.usb.packets" \
@@ -3179,7 +3200,9 @@ declare_build_capability_contract() {
   if [ "$env_platform" = "NRF52_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
     # Prove the real DFU service is linked, not merely a generic OTA CLI stub.
     record_build_expectation "ota.update.bluetooth" "_ZN6BLEDfu5beginEv"
-    if is_lora_ota_build "$env_name" && ! is_companion_build "$env_name"; then
+    if { is_lora_ota_build "$env_name" \
+          || is_xiao_qspi_canonical_repeater_build "$env_name"; } \
+        && ! is_companion_build "$env_name"; then
       # nRF52 applies mOTA in its bootloader, so the ESP32 decoder marker is
       # absent. The checker also verifies the packaged app's EndF/storage layout.
       record_build_expectation "ota.update.lora" "invalid in-place patch geometry"
@@ -3209,7 +3232,8 @@ declare_build_capability_contract() {
     fi
   fi
 
-  if is_lora_ota_build "$env_name"; then
+  if is_lora_ota_build "$env_name" \
+      || is_xiao_qspi_canonical_repeater_build "$env_name"; then
     record_build_expectation "ota.cli" "OTA: status"
   fi
 
@@ -4077,7 +4101,8 @@ write_build_capability_manifest() {
   )
   local item
 
-  if requires_wireless_self_update "$env_name"; then
+  if requires_wireless_self_update "$env_name" \
+      || is_xiao_qspi_canonical_repeater_build "$env_name"; then
     checker_args+=(--require-ota)
   fi
   if [ "$env_platform" = "ESP32_PLATFORM" ]; then

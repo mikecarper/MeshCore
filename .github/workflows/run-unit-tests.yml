@@ -216,6 +216,7 @@ jobs:
           python3 -B test/test_full_logging_resume.py
           python3 -B test/test_firmware_capabilities.py
           bash test/test_build_profiles.sh
+          bash test/test_xiao_qspi_combined.sh
 
       - name: Verify nRF52 UF2-reset CLI coverage
         run: python3 -B test/test_nrf52_uf2reset_cli.py
