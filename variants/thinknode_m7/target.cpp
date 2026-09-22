@@ -1,11 +1,13 @@
 #include <Arduino.h>
 #include "target.h"
 #include <helpers/sensors/MicroNMEALocationProvider.h>
+#include <helpers/radiolib/Esp32BufferedRadioHal.h>
 
 ThinkNodeM7Board board;
 
 static SPIClass spi;
-RADIO_CLASS radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, spi);
+Esp32BufferedRadioHal radioHal(spi);
+RADIO_CLASS radio = new Module(&radioHal, P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY);
 WRAPPER_CLASS radio_driver(radio, board);
 
 ESP32RTCClock fallback_clock;
@@ -82,5 +84,4 @@ mesh::LocalIdentity radio_new_identity() {
   RadioNoiseListener rng(radio);
   return mesh::LocalIdentity(&rng);  // create new random identity
 }
-
 

@@ -458,3 +458,67 @@ against the pinned RadioLib. No firmware was uploaded, no radio command was
 issued, and no new RF result was collected. The temporary build overlay was
 removed. The earlier ~0.549 ms XIAO and ~8.263 ms Indicator timings do **not**
 measure this added optimization; its time saving and RF behavior await testing.
+
+## MercerMesh Heltec T096 SX1262 experiment (2026-09-21)
+
+The Pi has **one** Heltec T096 (USB serial `651F8E496197F882`); the other
+Heltec-named nRF52 is a MeshTower V2, not another T096. An application-only
+T096 HIL image tested two further RX-to-RX shortcuts with a buffered 8 MHz SPI
+bus: use SX1262 `SetFs` instead of warm XOSC standby, and skip
+`SetPacketParams` only when the LoRa RX packet tuple is unchanged. Both switches
+defaulted off in this HIL image. The image explicitly enabled the existing
+production fast-RX path. Normal T096 firmware does not currently enable that
+path or use the buffered SPI HAL, so these numbers are **not** stock T096
+switch timings.
+
+The same image ran 256 measured hops per configuration, after eight warm-up
+hops, on 909.5/909.75 MHz. `freq` held SF7/BW125/CR5; `both` alternated
+SF7/SF8 at BW125/CR5. Preamble was 32 symbols. The DWT cycle counter measured
+through RX re-entry and BUSY release. Every 8 MHz configuration had zero
+switch failures, mode/cache/RSSI errors, or BUSY timeouts.
+
+| 8 MHz HIL configuration | Frequency-only mean | Frequency + SF mean |
+| --- | ---: | ---: |
+| Fast RX baseline | 467.3 us | 553.6 us |
+| `SetFs` only | 422.5 us | 517.4 us |
+| Unchanged packet tuple skip only | 357.7 us | 444.0 us |
+| Both | **313.0 us** | **407.8 us** |
+
+Combined savings were 154.3 us (33.0%) for frequency-only and 145.8 us
+(26.3%) for frequency-plus-SF relative to the same-image fast-RX baseline.
+Command counts confirmed one frequency command, IRQ clear and RX command per
+hop; the optimized cases eliminated the corresponding standby and packet
+commands. These are controlled short-range, same-band results, not a field
+packet-error rate or a qualification of large frequency jumps, sleep/wake,
+TX/CAD interruption, BLE scheduling, or all SX1262 boards.
+
+A separate RAK4631 fixed transmitter sent 16-byte synthetic packets at
+909.5 MHz/SF10/BW125/CR5/preamble32, -9 dBm chip power. The T096 hopped to
+909.75 MHz and back before each transmission. Baseline and combined shortcuts
+each delivered **60/60** packets after **120** fast hops, with payload sequence
+and content checked. The RAK bootloader on this exact fixture enumerated as
+`239A:002A` (the fixture's earlier `0029` expectation was corrected).
+
+Doubling buffered SPI to 16 MHz gave only 12–21 us (about 3–4%) savings in
+comparable successful cases, while five of eight setup attempts failed. The
+combined shortcut had no clean 16 MHz result. Keep this T096 at 8 MHz pending
+a separately diagnosed and repeatable 16 MHz bring-up; no 16 MHz over-air
+qualification was attempted.
+
+Both radios were restored via app-only DFU after the experiment: the T096 to
+`Heltec_t096_repeater` and the RAK to `RAK_4631_companion_radio_full`, each
+built at `v1.17.1.7-hil-restore-e7160dfd`. The T096 answered normal `version`
+and `board` commands; the RAK answered the Full Companion terminal's version
+command. The V4 observer's memory-soak service remained active. Reproducible
+bench code is in `tools/hil/profile_switch_t096_sx1262.cpp` and
+`tools/hil/t096_sx1262_packet_probe.py`.
+
+Follow-up: owned fast RX, `SetFs`, and acknowledged packet-tuple reuse are
+now defaults for `CustomSX1262` targets, including the original XIAO S3 WIO,
+Station G3 KISS, and Heltec V4 KISS paths. The Seeed Indicator retains its
+original owned-RX path but explicitly opts out of the two new shortcuts because
+its radio control and BUSY/IRQ pins run through an I2C expander. The owned-RX
+state now remembers only an acknowledged packet tuple and revokes it on
+ordinary packet setters, TX/CAD staging, standby outside the hop, sleep,
+reset, RX duty cycling, or command failure. The T096 numbers remain lab
+measurements, not on-board qualification of every `CustomSX1262` target.

@@ -10,6 +10,59 @@ ROOT = Path(__file__).resolve().parents[1]
 class FastProfileSwitchTests(unittest.TestCase):
     compile_run = compiler.BatchedModulationTests.compile_run
 
+    def test_fast_switch_defaults_cover_sx1262_variants_except_indicator(self):
+        radio = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
+        self.assertIn("#define MC_SX1262_FAST_PROFILE_SWITCH 1", radio)
+        self.assertIn("#define MC_SX1262_FAST_FS MC_SX1262_FAST_PROFILE_SWITCH", radio)
+        self.assertIn("#define MC_SX1262_FAST_PACKET_CACHE MC_SX1262_FAST_PROFILE_SWITCH", radio)
+        found = set()
+        for path in (ROOT / "variants").glob("*/platformio.ini"):
+            config = path.read_text()
+            if "-D RADIO_CLASS=CustomSX1262" not in config:
+                continue
+            found.add(path.parent.name)
+            if path.parent.name == "sensecap_indicator-espnow":
+                self.assertIn("-D MC_SX1262_FAST_PROFILE_SWITCH=1", config)
+                self.assertIn("-D MC_SX1262_FAST_FS=0", config)
+                self.assertIn("-D MC_SX1262_FAST_PACKET_CACHE=0", config)
+                self.assertIn("IndicatorRadioHal", (path.parent / "target.cpp").read_text())
+            else:
+                self.assertNotIn("-D MC_SX1262_FAST_PROFILE_SWITCH=0", config)
+                self.assertNotIn("-D MC_SX1262_FAST_FS=0", config)
+                self.assertNotIn("-D MC_SX1262_FAST_PACKET_CACHE=0", config)
+        self.assertIn("sensecap_indicator-espnow", found)
+        self.assertGreater(len(found), 70)
+
+    def test_packet_tuple_requires_matching_acknowledged_owned_rx(self):
+        state = (ROOT / "src/helpers/radiolib/SX1262ProfileSwitchState.h").read_text()
+        harness = r'''
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+@STATE@
+int main() {
+  SX1262ProfileSwitchState s(true);
+  s.packetResult(0, 32, 1, 255, 0, 0);
+  assert(!s.matchesPacket(32, 1, 255, 0, 0));
+  s.rxResult(0, true);
+  s.begin(true, true);
+  s.standbyResult(0);
+  assert(s.matchesPacket(32, 1, 255, 0, 0));
+  assert(!s.matchesPacket(33, 1, 255, 0, 0));
+  assert(!s.matchesPacket(32, 0, 255, 0, 0));
+  assert(!s.matchesPacket(32, 1, 16, 0, 0));
+  assert(!s.matchesPacket(32, 1, 255, 1, 0));
+  assert(!s.matchesPacket(32, 1, 255, 0, 1));
+  s.invalidatePacket();
+  assert(!s.matchesPacket(32, 1, 255, 0, 0));
+  s.packetResult(0, 32, 1, 255, 0, 0);
+  assert(s.matchesPacket(32, 1, 255, 0, 0));
+  s.packetResult(-100, 32, 1, 255, 0, 0);
+  assert(s.failed() && !s.packetValid && !s.rxValid);
+}
+'''
+        self.compile_run(harness.replace("@STATE@", state))
+
     def test_owned_rx_window_commands_errors_and_lifecycle_invalidation(self):
         src = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
         state = (ROOT / "src/helpers/radiolib/SX1262ProfileSwitchState.h").read_text().replace("#pragma once", "")
@@ -17,7 +70,9 @@ class FastProfileSwitchTests(unittest.TestCase):
                       "void endProfileSwitch(", "bool profileSwitchFailed(", "int16_t restoreTcxoAfterSleep(",
                       "int16_t standby()", "int16_t standby(uint8_t", "int16_t sleep()",
                       "int16_t sleep(bool", "int16_t reset(bool", "int16_t stageMode(",
-                      "int16_t setPreambleLength(", "int16_t startReceive()",
+                      "int16_t setPreambleLength(", "int16_t setCRC(",
+                      "int16_t implicitHeader(", "int16_t explicitHeader()",
+                      "int16_t invertIQ(", "int16_t startReceive()",
                       "int16_t startReceiveDutyCycle("]
         methods = "\n".join(method(src, signature).replace(" override", "") for signature in signatures)
         harness = r'''
@@ -26,6 +81,8 @@ class FastProfileSwitchTests(unittest.TestCase):
 #include <cstddef>
 #include <string>
 @STATE@
+#define MC_SX1262_FAST_FS @FS@
+#define MC_SX1262_FAST_PACKET_CACHE @PACKET@
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_SX126X_STANDBY_XOSC 1
 #define RADIOLIB_SX126X_STANDBY_RC 0
@@ -41,8 +98,8 @@ using RadioModeType_t=int;
 using RadioLibIrqFlags_t=uint32_t;
 struct RadioModeConfig_t {};
 struct Module {
-  enum { MODE_RX=1 };std::string* trace;
-  void setRfSwitchState(int mode) { assert(mode==MODE_RX);*trace+='W'; }
+  enum { MODE_IDLE=0, MODE_RX=1 };std::string* trace;
+  void setRfSwitchState(int mode) { assert(mode==MODE_IDLE || mode==MODE_RX);*trace+=mode==MODE_RX?'W':'I'; }
 };
 struct SX1262 {
   std::string trace;char fail=0;int modem=1;bool standbyXOSC=true;
@@ -54,6 +111,7 @@ struct SX1262 {
   virtual ~SX1262()=default;
   int16_t call(char c) { trace+=c;return fail==c ? -100:0; }
   Module* getMod() { return mod; }
+  int16_t setFs() { return call('f'); }
   virtual int16_t standby() { return call('S'); }
   virtual int16_t standby(uint8_t) { return call('U'); }
   int16_t standby(uint8_t mode,bool wake) { assert(mode==1);return call(wake?'S':'s'); }
@@ -66,6 +124,10 @@ struct SX1262 {
   }
   virtual int16_t stageMode(RadioModeType_t mode,RadioModeConfig_t*) { return call(mode==1?'G':'T'); }
   virtual int16_t setPreambleLength(size_t n) { preambleLengthLoRa=n;return call('M'); }
+  int16_t setCRC(uint8_t,uint16_t,uint16_t,bool) { return call('c'); }
+  int16_t implicitHeader(size_t) { return call('h'); }
+  int16_t explicitHeader() { return call('e'); }
+  virtual int16_t invertIQ(bool) { return call('i'); }
   int16_t startReceive(uint32_t timeout,uint32_t flags,uint32_t mask,size_t len) {
     assert(timeout==0xffffff && flags==9 && mask==2 && len==0);
     int16_t rc=stageMode(1,nullptr);if(rc==0) rc=standby();if(rc==0) rc=call('F');return rc;
@@ -90,14 +152,16 @@ void prime(Radio& r) {
   r.trace.clear();assert(r.startReceive()==0);assert(r.trace==(wake ? "GUEVFQ":cold ? "GUFQ":"GSFQ"));
   assert(!r._coldStandby);
   assert(!r._profileSwitch.modulationValid); // full RX setup does not prime a tuple
-  assert(r._profileSwitch.rxValid);r.trace.clear();
+  assert(r._profileSwitch.rxValid && r._profileSwitch.packetValid);r.trace.clear();
 }
 void fast(Radio& r) {
-  r.beginProfileSwitch(true);assert(r.standby()==0);assert(r.trace=="s");r.trace.clear();
+  r.beginProfileSwitch(true);assert(r.standby()==0);
+  assert(r.trace==(MC_SX1262_FAST_FS ? "If" : "s"));r.trace.clear();
   r._profileSwitch.modulationResult(0,8,4,1,0);
   assert(r._profileSwitch.matchesModulation(8,4,1,0));
   assert(r.setPreambleLength(120)==0 && r.trace.empty());
-  assert(r.startReceive()==0 && r.trace=="CPWR");
+  const bool unchanged = r._profileSwitch.packetValid && r._profileSwitch.packetPreamble==120;
+  assert(r.startReceive()==0 && r.trace==(MC_SX1262_FAST_PACKET_CACHE && unchanged ? "CWR" : "CPWR"));
   assert(r.stagedMode==0 && r._profileSwitch.rxValid);
   assert(r._profileSwitch.modulationValid); // successful fast resume preserves it
   r.endProfileSwitch(true);assert(!r._profileSwitch.open);r.trace.clear();
@@ -122,7 +186,8 @@ int main() {
       case 5:x.reset();break;
       case 6:x.startReceiveDutyCycle(1000,1000);break;
     }
-    assert(!x._profileSwitch.rxValid && !x._profileSwitch.modulationValid);
+    assert(!x._profileSwitch.rxValid && !x._profileSwitch.modulationValid
+        && !x._profileSwitch.packetValid);
     x.trace.clear();x.beginProfileSwitch(true);
     const bool cold=x._coldStandby;
     const bool wake=x._tcxoWakePending;
@@ -135,10 +200,22 @@ int main() {
     x.beginProfileSwitch(gate!=2);x.trace.clear();
     assert(x.standby()==0 && x.trace=="S");x.endProfileSwitch(true);
   }
-  for(char fail:std::string("sCPR")) {
+  for(int setter=0;setter<5;++setter) {
+    Radio x;prime(x);
+    switch(setter) {
+      case 0:x.setPreambleLength(120);break;
+      case 1:x.setCRC(1);break;
+      case 2:x.implicitHeader(16);break;
+      case 3:x.explicitHeader();break;
+      case 4:x.invertIQ(true);break;
+    }
+    assert(!x._profileSwitch.packetValid && x._profileSwitch.rxValid);
+  }
+  const char standbyFail = MC_SX1262_FAST_FS ? 'f' : 's';
+  for(char fail:std::string(1,standbyFail)+"CPR") {
     Radio x;prime(x);x.beginProfileSwitch(true);x.fail=fail;
-    if(fail=='s') assert(x.standby()==-100);
-    else { assert(x.standby()==0);assert(x.startReceive()==-100); }
+    if(fail==standbyFail) assert(x.standby()==-100);
+    else { assert(x.standby()==0);if(fail=='P') x.setPreambleLength(120);assert(x.startReceive()==-100); }
     assert(x.profileSwitchFailed() && !x._profileSwitch.rxValid);
     assert(x.trace.back()==fail);x.endProfileSwitch(false);x.fail=0;prime(x);fast(x);
   }
@@ -158,7 +235,12 @@ int main() {
   assert(off.trace=="GUF" && !off._profileSwitch.rxValid);
 }
 '''
-        self.compile_run(harness.replace("@STATE@", state).replace("@METHODS@", methods))
+        for fs, packet in ((0, 0), (1, 1)):
+            with self.subTest(fs=fs, packet=packet):
+                self.compile_run(harness.replace("@STATE@", state)
+                                 .replace("@METHODS@", methods)
+                                 .replace("@FS@", str(fs))
+                                 .replace("@PACKET@", str(packet)))
 
 
 if __name__ == "__main__":

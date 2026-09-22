@@ -6,7 +6,22 @@
 #include "SX1262ProfileSwitchState.h"
 
 #ifndef MC_SX1262_FAST_PROFILE_SWITCH
-#define MC_SX1262_FAST_PROFILE_SWITCH 0
+// CustomSX1262 targets use direct radio I/O unless a board opts out. Keep
+// the owned RX-to-RX path available across those boards, including roles that
+// did not previously need a local profile scanner.
+#define MC_SX1262_FAST_PROFILE_SWITCH 1
+#endif
+
+#ifndef MC_SX1262_FAST_FS
+#define MC_SX1262_FAST_FS MC_SX1262_FAST_PROFILE_SWITCH
+#endif
+
+#ifndef MC_SX1262_FAST_PACKET_CACHE
+#define MC_SX1262_FAST_PACKET_CACHE MC_SX1262_FAST_PROFILE_SWITCH
+#endif
+
+#if (MC_SX1262_FAST_FS || MC_SX1262_FAST_PACKET_CACHE) && !MC_SX1262_FAST_PROFILE_SWITCH
+#error "SX1262 SetFs/packet reuse requires the owned fast profile-switch path"
 #endif
 
 #ifndef SX126X_TX_BUSY_TIMEOUT_MS
@@ -39,6 +54,11 @@ class CustomSX1262 : public SX1262 {
 #ifdef MC_SX1262_HIL
     // Same-image lab baseline: force only 0x8B, preserving fast RX ownership.
     void hilInvalidateModulation() { _profileSwitch.invalidateModulation(); }
+    // Same-image A/B overrides; these default off on every HIL reboot.
+    bool hilUseFsOnRetune = false;
+    bool hilSkipUnchangedPacket = false;
+    float hilFrequencyMHz() const { return freqMHz; }
+    uint32_t hilFsEntries = 0, hilPacketSkips = 0;
 #endif
 
     int16_t restoreTcxoAfterSleep() {
@@ -56,9 +76,22 @@ class CustomSX1262 : public SX1262 {
     int16_t standby() override {
       const bool alreadyAwake = !_coldStandby && _profileSwitch.active && _profileSwitch.rxValid;
       if (!alreadyAwake) _profileSwitch.invalidate();
-      int16_t rc = alreadyAwake
-          ? SX1262::standby(RADIOLIB_SX126X_STANDBY_XOSC, false)
-          : _coldStandby ? SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) : SX1262::standby();
+      int16_t rc;
+      bool useFs = MC_SX1262_FAST_FS != 0;
+#ifdef MC_SX1262_HIL
+      useFs = hilUseFsOnRetune;
+#endif
+      if (alreadyAwake && useFs) {
+        getMod()->setRfSwitchState(Module::MODE_IDLE);
+        rc = setFs();
+#ifdef MC_SX1262_HIL
+        if (rc == RADIOLIB_ERR_NONE) ++hilFsEntries;
+#endif
+      } else {
+        rc = alreadyAwake
+            ? SX1262::standby(RADIOLIB_SX126X_STANDBY_XOSC, false)
+            : _coldStandby ? SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) : SX1262::standby();
+      }
       if (rc == RADIOLIB_ERR_NONE) rc = restoreTcxoAfterSleep();
       if (rc != RADIOLIB_ERR_NONE) _coldStandby = true;
       _profileSwitch.standbyResult(rc);
@@ -97,7 +130,29 @@ class CustomSX1262 : public SX1262 {
         preambleLengthLoRa = symbols;
         return RADIOLIB_ERR_NONE;
       }
+      _profileSwitch.invalidatePacket();
       return SX1262::setPreambleLength(symbols);
+    }
+
+    // Ordinary packet setters may rewrite the hardware even when the LoRa
+    // software fields later return to their old values. Never reuse an RX
+    // acknowledgement across them, including when a setter reports failure.
+    int16_t setCRC(uint8_t len, uint16_t initial = 0x1D0F,
+                   uint16_t polynomial = 0x1021, bool inverted = true) {
+      _profileSwitch.invalidatePacket();
+      return SX1262::setCRC(len, initial, polynomial, inverted);
+    }
+    int16_t implicitHeader(size_t len) {
+      _profileSwitch.invalidatePacket();
+      return SX1262::implicitHeader(len);
+    }
+    int16_t explicitHeader() {
+      _profileSwitch.invalidatePacket();
+      return SX1262::explicitHeader();
+    }
+    int16_t invertIQ(bool enable) override {
+      _profileSwitch.invalidatePacket();
+      return SX1262::invertIQ(enable);
     }
 
     // Ordinary setters can change hardware or leave RadioLib's fields updated
@@ -449,11 +504,23 @@ class CustomSX1262 : public SX1262 {
         // Existing continuous RX already established buffer bases and the
         // MeshCore IRQ map (including preamble detection). No TX/CAD/sleep/
         // reset/staging may intervene without revoking that context.
+        bool skipPacket = MC_SX1262_FAST_PACKET_CACHE != 0;
+#ifdef MC_SX1262_HIL
+        skipPacket = hilSkipUnchangedPacket;
+#endif
+        skipPacket = skipPacket && _profileSwitch.matchesPacket(
+            preambleLengthLoRa, crcTypeLoRa, implicitLen,
+            headerType, invertIQEnabled);
         _profileSwitch.rxValid = false;  // fail closed on any command error
         int16_t rc = clearIrqStatus();
-        if (rc == RADIOLIB_ERR_NONE) {
+#ifdef MC_SX1262_HIL
+        if (rc == RADIOLIB_ERR_NONE && skipPacket) ++hilPacketSkips;
+#endif
+        if (rc == RADIOLIB_ERR_NONE && !skipPacket) {
           rc = setPacketParams(preambleLengthLoRa, crcTypeLoRa, implicitLen,
                                headerType, invertIQEnabled);
+          _profileSwitch.packetResult(rc, preambleLengthLoRa, crcTypeLoRa,
+                                      implicitLen, headerType, invertIQEnabled);
         }
         if (rc == RADIOLIB_ERR_NONE) {
           rxTimeout = RADIOLIB_SX126X_RX_TIMEOUT_INF;
@@ -476,6 +543,10 @@ class CustomSX1262 : public SX1262 {
           && getPacketType() == RADIOLIB_SX126X_PACKET_TYPE_LORA;
       _coldStandby = rc != RADIOLIB_ERR_NONE;
       _profileSwitch.rxResult(rc, reusable);
+      if (rc == RADIOLIB_ERR_NONE && reusable) {
+        _profileSwitch.packetResult(rc, preambleLengthLoRa, crcTypeLoRa,
+                                    implicitLen, headerType, invertIQEnabled);
+      }
       return rc;
     }
 

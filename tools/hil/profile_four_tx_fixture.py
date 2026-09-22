@@ -1,7 +1,7 @@
 """Exact five-radio fixture. Never enumerate duplicate CDC interfaces as boards."""
 TXS = (
     dict(channel=0, serial='9AB3B64C641BA927', topology='1-1.3.1', board='RAK4631',
-         env='profile_fixed_rak_tx', fwid=0xB6, app_base=0x26000, boot_vid=0x239A, boot_pid=0x0029),
+         env='profile_fixed_rak_tx', fwid=0xB6, app_base=0x26000, boot_vid=0x239A, boot_pid=0x002A),
     dict(channel=1, serial='651F8E496197F882', topology='1-1.2.3', board='Heltec T096',
          env='profile_fixed_t096_tx', fwid=0xB6, app_base=0x26000, boot_vid=0x239A, boot_pid=0x0071),
     dict(channel=2, serial='9352162A72082314', topology='1-1.2.2', board='Heltec MeshTower V2',

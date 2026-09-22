@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 // A short-lived capability for reusing a fully configured continuous-RX
@@ -12,12 +13,17 @@ struct SX1262ProfileSwitchState {
   int16_t error = 0;
   bool modulationValid = false;
   uint8_t modulationSf = 0, modulationBw = 0, modulationCr = 0, modulationLdro = 0;
+  bool packetValid = false;
+  size_t packetPreamble = 0;
+  uint8_t packetCrc = 0, packetImplicitLen = 0, packetHeader = 0, packetIq = 0;
 
   explicit SX1262ProfileSwitchState(bool enable) : enabled(enable) {}
   void invalidateModulation() { modulationValid = false; }
+  void invalidatePacket() { packetValid = false; }
   void invalidate() {
     rxValid = active = standbyReady = false;
     invalidateModulation();
+    invalidatePacket();
   }
   void begin(bool continuousRx, bool warm) {
     open = true;
@@ -51,6 +57,26 @@ struct SX1262ProfileSwitchState {
     modulationCr = cr;
     modulationLdro = ldro;
     modulationValid = true;
+  }
+  bool matchesPacket(size_t preamble, uint8_t crc, uint8_t implicitLen,
+                     uint8_t header, uint8_t iq) const {
+    return canResumeFast() && packetValid && packetPreamble == preamble
+        && packetCrc == crc && packetImplicitLen == implicitLen
+        && packetHeader == header && packetIq == iq;
+  }
+  void packetResult(int16_t result, size_t preamble, uint8_t crc,
+                    uint8_t implicitLen, uint8_t header, uint8_t iq) {
+    if (result != 0) {
+      if (open) error = result;
+      invalidate();
+      return;
+    }
+    packetPreamble = preamble;
+    packetCrc = crc;
+    packetImplicitLen = implicitLen;
+    packetHeader = header;
+    packetIq = iq;
+    packetValid = true;
   }
   bool failed() const { return open && error != 0; }
   void rxResult(int16_t result, bool reusable) {

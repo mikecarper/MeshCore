@@ -19,6 +19,19 @@ public:
 
   void setDeepInitCallback(DeepInitCallback callback) { _deep_init = callback; }
 
+protected:
+  void beginProfileRetune(bool continuousRx) override {
+    static_cast<CustomLR1110*>(_radio)->beginProfileSwitch(continuousRx);
+  }
+  void endProfileRetune(bool success) override {
+    static_cast<CustomLR1110*>(_radio)->endProfileSwitch(success);
+  }
+  void setProfileStandbyWarm(bool enabled) override {
+    static_cast<CustomLR1110*>(_radio)->setProfileStandbyWarm(enabled);
+  }
+
+public:
+
   void powerOff() {
     if (isCarrierWaveActive()) setCarrierWave(0, 0);
     _radio->standby(); _radio->sleep();
@@ -26,11 +39,18 @@ public:
 
 protected:
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    if (static_cast<CustomLR1110*>(_radio)->profileSwitchFailed()) return false;
+#if MC_LR1110_FAST_PROFILE_SWITCH
+    bool success = ((CustomLR1110 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
+        && ((CustomLR1110 *)_radio)->setLoRaModulationParams(bw, sf, cr) == RADIOLIB_ERR_NONE
+        && updatePreamble(sf, bw);
+#else
     bool success = ((CustomLR1110 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setBandwidth(bw) == RADIOLIB_ERR_NONE
         && ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE
         && updatePreamble(sf, bw);
+#endif
     if (!success) return false;
 
     PacketMillis pm = calcMaxPacketMillis(sf, bw, cr, preambleLengthForParams(sf, bw));

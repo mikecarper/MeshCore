@@ -100,12 +100,19 @@ The default `production` group compares batching/2 MHz, fast RX/2 MHz,
 buffered SPI/8 MHz and their combination. Bit 512 selects the actual production
 fast state machine; low mask bits remain zero. A hardware success counter must
 advance on fast trials and packet readiness, and remain unchanged on controls.
-XIAO S3 WIO and Indicator LoRa opt in to fast RX and buffered 8 MHz SPI in their
-normal variants. Other variants do not opt in to the fast path or faster SPI.
+Owned fast RX, `SetFs`, and skipping unchanged, acknowledged RX packet tuples
+are defaults for `CustomSX1262` boards with direct radio I/O. The Seeed
+Indicator deliberately retains its earlier fast path without the two new
+shortcuts: its radio control and BUSY/IRQ pins run through an I2C expander.
+XIAO S3 WIO, Station G3 KISS, Heltec V4 KISS, and the Indicator retain their
+existing buffered 8 MHz SPI choices; this change does not raise SPI speed on
+other boards. The new operations were checked over the air on a T096 SX1262
+fixture, not separately qualified for every board now using them.
 
 Fast RX reuses IRQ mapping and buffer bases only after successful continuous
-LoRa RX, within an owned warm retune. It retains packet-parameter/IQ programming,
-stale-IRQ clearing, RF-switch control, SetRx and BUSY waits. TX, CAD, ordinary
+LoRa RX, within an owned warm retune. It retains stale-IRQ clearing, RF-switch
+control, SetRx and BUSY waits. Packet-parameter/IQ programming remains on the
+Indicator and on any changed or untrusted packet tuple. TX, CAD, ordinary
 standby, sleep, reset, duty cycling and failed commands invalidate reuse. A
 failed RX resume rolls back the old tuple/profile through full setup.
 
@@ -783,3 +790,62 @@ Random arrival delays retain the existing distribution over approximately two
 nominal scan cycles, so their absolute time range scales with dwell.
 The [longer-dwell report](../../docs/four_fixed_tx_dwell_validation.md) records
 the user-stopped 6.1-symbol sample and completed 7.7-symbol repeat.
+
+## T1000-E LR1110 RX-only timing
+
+The checked FS-mode fast profile switch is enabled by default in
+`CustomLR1110` for all MeshCore LR1110 targets: T1000-E, Wio WM1110,
+ThinkNode M3/M7/M9, and Minewsemi ME25LS01. Their radio SPI paths now use
+16 MHz buffered transfers. Each board keeps its existing TCXO startup delay;
+the 0.6 ms combined-hop goal is **not** a 600 µs TCXO delay. Only the T1000-E
+has on-device timing validation so far. Other boards require measured retune
+timing, packet reception, and TX checks before claiming the 0.6 ms goal.
+
+`profile_switch_t1000_lr1110` uses the production `CustomLR1110Wrapper` and
+the same 200 µs TCXO/fast-retune settings as the T1000-E variant. It never
+transmits, loads an identity, or writes saved settings. Its only frequencies
+are 909.5 and 909.75 MHz; the `mod`, `freq`, `both`, and `preamble` modes change
+SF7/SF8, frequency, both, or 32/48 preamble symbols respectively. A run adds
+eight warmup hops to the requested count and times the remainder with the
+nRF52840's 64 MHz cycle counter. A separate RSSI read checks that each resumed
+receiver responds after seven milliseconds of settling; it is outside timing.
+
+Build with `pio run -e profile_switch_t1000_lr1110`. Flash its application-only
+ZIP with serial DFU after verifying the board's unique USB serial number and
+bootloader identity; do not use a whole-chip erase or UF2 copy as a substitute.
+At 115200 baud the commands are `info`, `spihz 2000000|8000000|16000000`,
+`bulk 0|1`, `run both 1000 1` (use a new sequence number per run), and
+`result result 1` to replay the last result without another RF run. `fs 0|1`
+compares the corrected XOSC standby with the default FS-mode retune.
+`clear 0|1|2` compares always-clear, never-clear (unsafe diagnostic only), and the
+default checked-clear path. `inject 1` puts a one-shot RX-timeout IRQ into the
+next run to verify checked clearing. `tcxo`
+accepts 50, 100, 150–200 in 10 µs steps, 400, 800, and 1600 µs for RAM-only
+experiments; reboot restores the compiled 200 µs. Each JSON result reports
+command counts, busy deferrals, drained test packets, failures, RX/cache/RSSI
+errors, and both timing directions. The RX-only harness discards pending packets
+before retrying a deferred hop; otherwise an unprocessed interrupt can stall
+the test even though production firmware would consume it.
+
+On the Pi-attached T1000-E, 16 MHz buffered SPI and default 200 µs TCXO,
+FS-mode retune plus checked IRQ clearing averaged about 0.504–0.508 ms for
+simultaneous frequency/SF changes, 0.384 ms for frequency only, 0.409 ms for SF
+only, and 0.361 ms for a preamble change. Three boot/run cycles with the final
+default HIL image each completed 1,008 combined hops; earlier runs completed
+three more combined cycles plus 1,008 of each single-change mode. No completed
+run had a radio, cache, RSSI, or BUSY-timeout error. An injected stale timeout
+IRQ was detected and cleared before RX re-entry. A corrected XOSC standby path
+with checked IRQ clearing took about 0.568–0.575 ms; always clearing took about
+0.60 ms. The old RadioLib `STANDBY_XOSC` constant is erroneously zero (RC mode),
+whose previous combined result was about 0.87 ms at a requested 180 µs. The
+unbuffered 2 MHz RC-standby baseline was about 1.36 ms.
+
+RadioLib converts the requested TCXO delay to 32.768 kHz ticks by truncating
+`delay / 30.52`, so requests of 160, 170, and 180 µs all programmed five ticks
+(about 153 µs), while 200 µs programs six (about 183 µs). The earlier 150 µs
+trial failed after reset; the 160/170 µs runs developed deferrals, but those
+differences do not establish a precise hardware threshold. With true XOSC or
+FS-mode retuning, 180 and 200 µs produced indistinguishable warm-hop timing;
+200 µs remains the selected startup setting. These are room-temperature,
+single-unit, RX-only retune/command-health measurements, not over-the-air
+packet reception, TX operation, or voltage/temperature-corner qualification.
