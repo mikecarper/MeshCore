@@ -19,6 +19,12 @@ int main() {
   p.primary={909.5f,62.5f,32,7,5};
   p.secondary.params={910.5f,500,32,8,5};
   p.secondary.mode=mesh::RadioProfileMode::Rx;
+  // Match the production startup self-test before comparing visit durations.
+  for (unsigned i=0; i<p.SwitchTestSamplesPerDirection; ++i) {
+    p.sampleSwitch(0,1,545);
+    p.sampleSwitch(1,0,545);
+  }
+  assert(p.switchTestReady() && p.switchBudgetUs()==600);
   assert(pairListenUs(0,0)==8397);
   assert(pairListenUs(1,0)==23171);
   assert(pairListenUs(0,0,2048)==10445 && pairListenUs(1,0,2048)==21123);
