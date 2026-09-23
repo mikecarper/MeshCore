@@ -65,6 +65,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   bool _begin_attempted = false;
   bool _begin_ready = false;
   char _begin_failure[96] = {};
+  char _active_name[48] = {};
   bool _isDeviceConnected;
   uint16_t _conn_handle;
   unsigned long _last_health_check;
@@ -166,6 +167,9 @@ public:
              bool clear_bonds = false, bool stealth_pair_once = false,
              const mesh::companion::BluetoothPeerIdentity*
                  bonded_only_peer = nullptr);
+  // Refresh the GAP and scan-response name after a saved node/Bluetooth name
+  // changes. A connected phone is left alone; the next idle pass applies it.
+  bool refreshName(const char* prefix, const char* name);
   // Kept after a failed begin so a normal Companion terminal can report the
   // cause even when early USB logging was not available.
   const char* beginFailure() const { return _begin_failure; }

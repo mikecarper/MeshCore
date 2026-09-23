@@ -6663,11 +6663,19 @@ bool MyMesh::applyAndSaveBluetoothName(const char* value, char* reply,
 
   if (use_default) {
     snprintf(reply, reply_size,
+#if defined(NRF52_PLATFORM)
+             "OK - Bluetooth name follows %s<node name>; advertising refreshes after disconnect",
+#else
              "OK - Bluetooth name follows %s<node name>; reboot required",
+#endif
              BLE_NAME_PREFIX);
   } else {
     snprintf(reply, reply_size,
+#if defined(NRF52_PLATFORM)
+             "OK - Bluetooth name saved as '%s'; advertising refreshes after disconnect", value);
+#else
              "OK - Bluetooth name saved as '%s'; reboot required", value);
+#endif
   }
   return true;
 }

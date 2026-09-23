@@ -30,6 +30,27 @@
 
 static SerialBLEInterface* instance = nullptr;
 
+static bool formatDeviceName(char* dest, size_t capacity,
+                             const char* prefix, const char* name) {
+  if (dest == nullptr || capacity == 0 || prefix == nullptr || name == nullptr) {
+    return false;
+  }
+  char resolved_name[32];
+  const char* suffix = name;
+  if (strcmp(name, "@@MAC") == 0) {
+    ble_gap_addr_t addr;
+    if (sd_ble_gap_addr_get(&addr) == NRF_SUCCESS) {
+      snprintf(resolved_name, sizeof(resolved_name),
+               "%02X%02X%02X%02X%02X%02X",
+               addr.addr[5], addr.addr[4], addr.addr[3], addr.addr[2],
+               addr.addr[1], addr.addr[0]);
+      suffix = resolved_name;
+    }
+  }
+  const int length = snprintf(dest, capacity, "%s%s", prefix, suffix);
+  return length >= 0 && length < (int)capacity;
+}
+
 #if defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL
 // Bluefruit's bonded CCCD flash write resets some nRF52 Full Companions.
 // Retain the small SoftDevice system-attribute image in RAM for reconnects
@@ -616,22 +637,8 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
     }
   }
  
-  char resolved_name[32];
-  const char* suffix = name;
-  if (strcmp(name, "@@MAC") == 0) {
-    ble_gap_addr_t addr;
-    if (sd_ble_gap_addr_get(&addr) == NRF_SUCCESS) {
-      snprintf(resolved_name, sizeof(resolved_name),
-               "%02X%02X%02X%02X%02X%02X",
-               addr.addr[5], addr.addr[4], addr.addr[3], addr.addr[2],
-               addr.addr[1], addr.addr[0]);
-      suffix = resolved_name;
-    }
-  }
-  char dev_name[32+16];
-  const int dev_name_len = snprintf(dev_name, sizeof(dev_name), "%s%s",
-                                    prefix, suffix);
-  if (dev_name_len < 0 || dev_name_len >= (int)sizeof(dev_name)) {
+  char dev_name[sizeof(_active_name)];
+  if (!formatDeviceName(dev_name, sizeof(dev_name), prefix, name)) {
     strncpy(_begin_failure, "Bluetooth device name is too long",
             sizeof(_begin_failure) - 1);
     _begin_failure[sizeof(_begin_failure) - 1] = 0;
@@ -660,6 +667,7 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   
   Bluefruit.setTxPower(BLE_TX_POWER);
   Bluefruit.setName(dev_name);
+  memcpy(_active_name, dev_name, strlen(dev_name) + 1);
 
   Bluefruit.Security.setMITM(true);
   Bluefruit.Security.setPIN(charpin);
@@ -749,6 +757,35 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   }
 
   _begin_ready = true;
+  return true;
+}
+
+bool SerialBLEInterface::refreshName(const char* prefix, const char* name) {
+  if (!_begin_ready || _conn_handle != BLE_CONN_HANDLE_INVALID) return false;
+
+  char desired[sizeof(_active_name)];
+  if (!formatDeviceName(desired, sizeof(desired), prefix, name)) return false;
+  if (strcmp(desired, _active_name) == 0) return true;
+
+  const bool was_advertising = isAdvertising();
+  if (was_advertising && !Bluefruit.Advertising.stop()) return false;
+
+  Bluefruit.setName(desired);
+  char actual[sizeof(_active_name)];
+  const size_t actual_len = Bluefruit.getName(actual, sizeof(actual));
+  if (actual_len != strlen(desired)
+      || memcmp(actual, desired, actual_len) != 0) {
+    if (was_advertising) startAdvertising("advertising failed after name refresh");
+    return false;
+  }
+
+  // Directed bonded-only advertisements have no payload to refresh.
+  if (!_bonded_only) {
+    Bluefruit.ScanResponse.clearData();
+    Bluefruit.ScanResponse.addName();
+  }
+  memcpy(_active_name, desired, strlen(desired) + 1);
+  if (was_advertising) startAdvertising("advertising failed after name refresh");
   return true;
 }
 

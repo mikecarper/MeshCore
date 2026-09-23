@@ -2323,6 +2323,24 @@ void halt() {
     startCompanionBluetooth();
   }
 
+#if defined(NRF52_PLATFORM)
+  static void serviceCompanionBluetoothName() {
+    if (!companion_bluetooth_initialized) return;
+    static uint32_t last_check = 0;
+    const uint32_t now = millis();
+    if ((uint32_t)(now - last_check) < 250) return;
+    last_check = now;
+
+    const CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
+    if (prefs == nullptr) return;
+    const bool custom =
+        mesh::companion::hasCustomBluetoothName(prefs->bluetooth_name);
+    bluetooth_interface.refreshName(custom ? "" : BLE_NAME_PREFIX,
+                                    custom ? prefs->bluetooth_name
+                                           : prefs->node_name);
+  }
+#endif
+
   static void serviceCompanionBluetoothIdentity() {
     if (!companion_bluetooth_initialized) return;
 
@@ -3472,5 +3490,8 @@ void loop() {
 #endif
   serviceCompanionBluetoothIdentity();
   serviceCompanionBluetoothControl();
+#if defined(NRF52_PLATFORM)
+  serviceCompanionBluetoothName();
+#endif
 #endif
 }
