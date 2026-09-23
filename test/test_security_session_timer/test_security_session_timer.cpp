@@ -26,6 +26,15 @@ TEST(SecuritySessionTimer, RestartUsesTheLatestConnection) {
   EXPECT_TRUE(timer.expired(1200, 200));
 }
 
+TEST(SecuritySessionTimer, SecuredButIdleCompanionLinkExpiresAtFifteenSeconds) {
+  SecuritySessionTimer timer;
+  timer.start(4000);
+  EXPECT_FALSE(timer.expired(18999, 15000));
+  EXPECT_TRUE(timer.expired(19000, 15000));
+  timer.cancel();  // First Companion data arrived.
+  EXPECT_FALSE(timer.expired(100000, 15000));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -80,9 +80,11 @@ class SerialBLEInterface : public BaseSerialInterface {
   std::atomic<bool> _advertisingSuppressed{false};
   std::atomic<bool> _bondedOnlyRecoveryPending{false};
   std::atomic<bool> _pairingRequestPending{false};
+  std::atomic<bool> _companionDataSeen{false};
   std::atomic<bool> _successfulConnectionPending{false};
   std::atomic<uint32_t> _successfulConnectionStarted{0};
   SecuritySessionTimer _security_timer;
+  SecuritySessionTimer _companion_start_timer;
   mesh::BleTxStallWatchdog _tx_stall_watchdog;
   mesh::BleDisconnectRecovery _tx_disconnect_recovery;
 
@@ -169,6 +171,7 @@ public:
   const char* beginFailure() const { return _begin_failure; }
 
   void disconnect();
+  void loop() override;
   void enable() override;
   void disable() override;
   bool isEnabled() const override { return _isEnabled; }
@@ -194,7 +197,13 @@ public:
   Stream& motaStream() { return _mota_stream; }
   bool isMotaChannelReady();
   bool isMotaStreamActive() const { return _mota_stream.isActive(); }
-  void setMotaStreamActive(bool active) { _mota_stream.setActive(active); }
+  void setMotaStreamActive(bool active) {
+    _mota_stream.setActive(active);
+    if (active) {
+      _companionDataSeen.store(true, std::memory_order_release);
+      _companion_start_timer.cancel();
+    }
+  }
 #endif
 };
 

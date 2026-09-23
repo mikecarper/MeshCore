@@ -29,6 +29,7 @@ HARNESS = r'''
 #include <cstring>
 #include <helpers/BluetoothMac.h>
 #include <helpers/BleMotaProtocol.h>
+#include <helpers/nrf52/SecuritySessionTimer.h>
 #ifndef COMPANION_FEATURE_BLE_MOTA_SOURCE
 #define COMPANION_FEATURE_BLE_MOTA_SOURCE 1
 #endif
@@ -147,6 +148,8 @@ struct MotaStream {
 };
 struct SerialBLEInterface {
   @STARTUP_FIELDS@
+  std::atomic<bool> _companionDataSeen{false};
+  SecuritySessionTimer _companion_start_timer;
   std::atomic<bool> _successfulConnectionPending{false};
   std::atomic<uint32_t> _successfulConnectionStarted{0};
   std::atomic<bool> _bondedOnlyRecoveryPending{false}, _advertisingSuppressed{false};

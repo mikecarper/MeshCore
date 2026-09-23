@@ -12,6 +12,7 @@
 #define BLE_HEALTH_CHECK_INTERVAL  10000  // Advertising watchdog check every 10 seconds
 #define BLE_RETRY_THROTTLE_MS      250    // Throttle retries to 250ms when queue buildup detected
 #define BLE_BOND_PERSIST_TIMEOUT_MS 15000 // Bound first-pair transition recovery
+#define BLE_COMPANION_START_TIMEOUT_MS 15000 // Release a secured link with no app data
 
 // Connection parameters (units: interval=1.25ms, timeout=10ms)
 #define BLE_MIN_CONN_INTERVAL      12     // 15ms
@@ -130,6 +131,8 @@ void SerialBLEInterface::onConnect(uint16_t connection_handle) {
     instance->_conn_handle = connection_handle;
     instance->_isDeviceConnected = false;
     instance->_security_timer.start(millis());
+    instance->_companion_start_timer.cancel();
+    instance->_companionDataSeen.store(false, std::memory_order_release);
     instance->clearBuffers();
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
     instance->setMotaStreamActive(false);
@@ -145,6 +148,7 @@ void SerialBLEInterface::onDisconnect(uint16_t connection_handle, uint8_t reason
       instance->_conn_handle = BLE_CONN_HANDLE_INVALID;
       instance->_isDeviceConnected = false;
       instance->_security_timer.cancel();
+      instance->_companion_start_timer.cancel();
       instance->clearBuffers();
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
       instance->setMotaStreamActive(false);
@@ -169,6 +173,9 @@ void SerialBLEInterface::onMotaResponse(
     // Disable the link so the current transaction times out and the main loop
     // detaches it instead of consuming a partial or injected frame.
     instance->setMotaStreamActive(false);
+  } else {
+    instance->_companionDataSeen.store(true, std::memory_order_release);
+    instance->_companion_start_timer.cancel();
   }
 }
 
@@ -213,6 +220,9 @@ void SerialBLEInterface::onSecured(uint16_t connection_handle) {
             "SerialBLEInterface: secured connection was not bonded");
       }
       instance->_security_timer.cancel();
+      if (!instance->_companionDataSeen.load(std::memory_order_acquire)) {
+        instance->_companion_start_timer.start(millis());
+      }
       
       // Connection interval units: 1.25ms, supervision timeout units: 10ms
       // Apple: "The product will not read or use the parameters in the Peripheral Preferred Connection Parameters characteristic."
@@ -532,6 +542,8 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   instance = this;
   _successfulConnectionPending.store(false, std::memory_order_release);
   _successfulConnectionStarted.store(0, std::memory_order_relaxed);
+  _companionDataSeen.store(false, std::memory_order_release);
+  _companion_start_timer.cancel();
   _bondedOnlyRecoveryPending.store(false, std::memory_order_release);
   _advertisingSuppressed.store(false, std::memory_order_release);
   _stealth_pair_once = stealth_pair_once;
@@ -873,6 +885,7 @@ void SerialBLEInterface::serviceTxRecovery(uint32_t now) {
     _isDeviceConnected = false;
     _peer_address_valid = false;
     _security_timer.cancel();
+    _companion_start_timer.cancel();
     clearBuffers();
     if (advertisingAllowed() && !isAdvertising()) {
       startAdvertising("advertising failed after TX recovery");
@@ -907,6 +920,7 @@ void SerialBLEInterface::recoverStalledTx(const char* cause) {
   recv_queue_len = 0;
   _last_retry_attempt = 0;
   _tx_stall_watchdog.reset();
+  _companion_start_timer.cancel();
   bleuart.flush();
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   setMotaStreamActive(false);
@@ -962,10 +976,49 @@ void SerialBLEInterface::disable() {
   Bluefruit.Advertising.stop();
   disconnect();
   _security_timer.cancel();
+  _companion_start_timer.cancel();
   _last_health_check = 0;
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   setMotaStreamActive(false);
 #endif
+}
+
+void SerialBLEInterface::loop() {
+  const uint32_t now = (uint32_t)millis();
+  serviceBondedOnlyTransition();
+  if (_tx_disconnect_recovery.pending()) {
+    serviceTxRecovery(now);
+    return;
+  }
+  if (!_isEnabled) return;
+
+  if (_conn_handle != BLE_CONN_HANDLE_INVALID) {
+    if (_security_timer.expired(now)) {
+      // Keep the two-minute PIN-entry window, but do not let an unfinished
+      // security exchange occupy the only BLE connection indefinitely.
+      BLE_DEBUG_PRINTLN("SerialBLEInterface: security setup timed out");
+      _security_timer.cancel();
+      disconnect();
+    }
+    if (_companionDataSeen.load(std::memory_order_acquire)) {
+      _companion_start_timer.cancel();
+    } else if (_isDeviceConnected && _companion_start_timer.expired(
+                   now, BLE_COMPANION_START_TIMEOUT_MS)) {
+      // iOS can report a secured BLE link while the app never establishes its
+      // UART session. Release that occupied link so the app can reconnect.
+      recoverStalledTx("no Companion data after secured BLE connection");
+    }
+    return;
+  }
+
+  if (advertisingAllowed()
+      && now - _last_health_check >= BLE_HEALTH_CHECK_INTERVAL) {
+    _last_health_check = now;
+    if (!isAdvertising()) {
+      BLE_DEBUG_PRINTLN("SerialBLEInterface: advertising watchdog restarting");
+      startAdvertising("advertising watchdog restart failed");
+    }
+  }
 }
 
 size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
@@ -1062,32 +1115,6 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
     return len;
   }
   
-  // Advertising watchdog: periodically check if advertising is running, restart if not
-  // Only run when truly disconnected (no connection handle), not during connection establishment
-  unsigned long now = millis();
-  if (_isEnabled && _conn_handle != BLE_CONN_HANDLE_INVALID
-      && _security_timer.expired(now)) {
-    // A client may open a link and never finish PIN/bond negotiation.  That
-    // otherwise suppresses advertising forever because a connection handle
-    // remains live.  Disconnect only: inactivity is not evidence of a stale
-    // bond, so do not erase anything here.
-    BLE_DEBUG_PRINTLN("SerialBLEInterface: security setup timed out after %lu ms",
-                      (unsigned long)BLE_SECURITY_SESSION_TIMEOUT_MS);
-    _security_timer.cancel();
-    disconnect();
-  }
-  if (advertisingAllowed() && !isConnected()
-      && _conn_handle == BLE_CONN_HANDLE_INVALID) {
-    if (now - _last_health_check >= BLE_HEALTH_CHECK_INTERVAL) {
-      _last_health_check = now;
-      
-      if (!isAdvertising()) {
-        BLE_DEBUG_PRINTLN("SerialBLEInterface: advertising watchdog - advertising stopped, restarting");
-        startAdvertising("advertising watchdog restart failed");
-      }
-    }
-  }
-  
   return 0;
 }
 
@@ -1128,6 +1155,8 @@ void SerialBLEInterface::onBleUartRX(uint16_t conn_handle) {
     instance->recv_queue[instance->recv_queue_len].len = read_len;
     instance->bleuart.readBytes(instance->recv_queue[instance->recv_queue_len].buf, read_len);
     instance->recv_queue_len++;
+    instance->_companionDataSeen.store(true, std::memory_order_release);
+    instance->_companion_start_timer.cancel();
   }
 }
 
