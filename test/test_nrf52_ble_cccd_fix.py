@@ -27,6 +27,32 @@ class Nrf52BleCccdFixTest(unittest.TestCase):
         ini = (ROOT / "platformio.ini").read_text(encoding="utf-8")
         self.assertIn("pre:scripts/nrf52_ble_cccd_fix.py", ini)
 
+    def test_full_companion_initializes_cccd_from_ram_before_empty_fallback(self):
+        patched = module.patched_connection_source(
+            module.OLD_CONNECTION_INCLUDE + module.OLD_LOAD
+        )
+        self.assertIn("mesh_nrf52_restore_ram_cccd", patched)
+        self.assertLess(patched.index("!mesh_nrf52_restore_ram_cccd"),
+                        patched.index("!loadCccd()"))
+        self.assertLess(patched.index("!loadCccd()"),
+                        patched.index("sd_ble_gatts_sys_attr_set(_conn_hdl, NULL"))
+        self.assertEqual(module.patched_connection_source(patched), patched)
+
+    def test_full_companion_restores_same_peers_cccd_without_flash(self):
+        app = (ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text(encoding="utf-8")
+        self.assertIn("captureCccdInRam", app)
+        self.assertIn("std::atomic<bool> valid", app)
+        self.assertIn("cccdPeersMatch", app)
+        self.assertIn("BLE_UUID_DESCRIPTOR_CLIENT_CHAR_CONFIG", app)
+        self.assertIn("sd_ble_gatts_sys_attr_get", app)
+        self.assertIn("sd_ble_gatts_sys_attr_set", app)
+        self.assertIn('__asm__ __volatile__("" ::: "memory")', app)
+        self.assertIn("cccd_written_this_connection || !peer", app)
+        self.assertIn("bool mesh_nrf52_restore_ram_cccd", app)
+        self.assertIn("captureCccdDeferred", app)
+        self.assertIn("ada_callback(&instance->_peer_address", app)
+        self.assertNotIn("mesh_nrf52_service_cccd_save", app)
+
 
 if __name__ == "__main__":
     unittest.main()

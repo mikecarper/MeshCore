@@ -29,6 +29,94 @@
 
 static SerialBLEInterface* instance = nullptr;
 
+#if defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL
+// Bluefruit's bonded CCCD flash write resets some nRF52 Full Companions.
+// Retain the small SoftDevice system-attribute image in RAM for reconnects
+// during this boot. A reboot intentionally discards it; the client can then
+// subscribe normally without a risky flash write.
+static constexpr uint16_t CCCD_RAM_CACHE_MAX = 128;
+static constexpr uint32_t CCCD_SYS_ATTR_FLAGS =
+    BLE_GATTS_SYS_ATTR_FLAG_SYS_SRVCS | BLE_GATTS_SYS_ATTR_FLAG_USR_SRVCS;
+struct CccdRamCache {
+  uint8_t attrs[CCCD_RAM_CACHE_MAX] = {};
+  uint16_t length = 0;
+  ble_gap_addr_t peer = {};
+  std::atomic<bool> valid{false};
+};
+static CccdRamCache cccd_ram_cache;
+static bool cccd_written_this_connection = false;
+
+static bool cccdPeersMatch(const ble_gap_addr_t& a,
+                           const ble_gap_addr_t& b) {
+  if (a.addr_type == b.addr_type
+      && memcmp(a.addr, b.addr, sizeof(a.addr)) == 0) return true;
+
+  // iPhones may reconnect from a different resolvable private address. The
+  // stored bond maps both addresses to the same stable peer identity.
+  ble_gap_addr_t a_lookup = a;
+  ble_gap_addr_t b_lookup = b;
+  bond_keys_t a_keys;
+  bond_keys_t b_keys;
+  return bond_load_keys(BLE_GAP_ROLE_PERIPH, &a_lookup, &a_keys)
+      && bond_load_keys(BLE_GAP_ROLE_PERIPH, &b_lookup, &b_keys)
+      && a_keys.peer_id.id_addr_info.addr_type
+             == b_keys.peer_id.id_addr_info.addr_type
+      && memcmp(a_keys.peer_id.id_addr_info.addr,
+                b_keys.peer_id.id_addr_info.addr,
+                sizeof(a_keys.peer_id.id_addr_info.addr)) == 0;
+}
+
+bool mesh_nrf52_restore_ram_cccd(uint16_t handle,
+                                  const ble_gap_addr_t* peer) {
+  if (!cccd_ram_cache.valid.load(std::memory_order_acquire)
+      || cccd_written_this_connection || !peer
+      || !cccdPeersMatch(cccd_ram_cache.peer, *peer)) {
+    BLE_DEBUG_PRINTLN("CCCD RAM not restored at initialization: valid=%u written=%u",
+                      (unsigned)cccd_ram_cache.valid.load(std::memory_order_relaxed),
+                      (unsigned)cccd_written_this_connection);
+    return false;
+  }
+  // The first sys_attr_set on a connection must contain the saved CCCD.
+  // Bluefruit's no-file fallback initializes everything to off otherwise.
+  const uint32_t status = sd_ble_gatts_sys_attr_set(
+      handle, cccd_ram_cache.attrs, cccd_ram_cache.length,
+      CCCD_SYS_ATTR_FLAGS);
+  if (status != NRF_SUCCESS) {
+    BLE_DEBUG_PRINTLN("CCCD RAM initialization failed: %lu",
+                      (unsigned long)status);
+    cccd_ram_cache.valid.store(false, std::memory_order_release);
+    return false;
+  }
+  BLE_DEBUG_PRINTLN("CCCD RAM initialized: len=%u",
+                    (unsigned)cccd_ram_cache.length);
+  return true;
+}
+
+static void captureCccdInRam(uint16_t handle, const ble_gap_addr_t& peer) {
+  cccd_ram_cache.valid.store(false, std::memory_order_release);
+  uint16_t length = sizeof(cccd_ram_cache.attrs);
+  const uint32_t status = sd_ble_gatts_sys_attr_get(
+      handle, cccd_ram_cache.attrs, &length, CCCD_SYS_ATTR_FLAGS);
+  // The SoftDevice SVC writes through this pointer, but its GCC wrapper has
+  // no memory clobber. Force LTO to reload the returned length from memory.
+  __asm__ __volatile__("" ::: "memory");
+  if (status != NRF_SUCCESS || length == 0
+      || length > CCCD_RAM_CACHE_MAX) {
+    BLE_DEBUG_PRINTLN("CCCD RAM capture: status=%lu len=%u",
+                      (unsigned long)status, (unsigned)length);
+    return;
+  }
+  cccd_ram_cache.length = length;
+  cccd_ram_cache.peer = peer;
+  cccd_ram_cache.valid.store(true, std::memory_order_release);
+  BLE_DEBUG_PRINTLN("CCCD RAM captured: len=%u", (unsigned)length);
+}
+
+static void captureCccdDeferred(uint16_t handle, ble_gap_addr_t* peer) {
+  if (peer) captureCccdInRam(handle, *peer);
+}
+#endif
+
 static bool isBondAuthenticationFailure(uint8_t reason) {
   return reason == BLE_HCI_AUTHENTICATION_FAILURE ||
          reason == BLE_HCI_STATUS_CODE_PIN_OR_KEY_MISSING ||
@@ -202,6 +290,11 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
       instance->_peer_address = connected->peer_addr;
       instance->_peer_address_valid = true;
       instance->_bond_removed_for_connection = false;
+#if defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL
+      cccd_written_this_connection = false;
+      BLE_DEBUG_PRINTLN("CCCD RAM connect: cached=%u",
+                        (unsigned)cccd_ram_cache.valid.load(std::memory_order_relaxed));
+#endif
     }
   } else if (evt->header.evt_id == BLE_GAP_EVT_CONN_SEC_UPDATE) {
     uint16_t conn_handle = evt->evt.gap_evt.conn_handle;
@@ -218,6 +311,30 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
       instance->_security_timer.cancel();
       sd_ble_gap_disconnect(conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     }
+#if defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL
+  } else if (evt->header.evt_id == BLE_GATTS_EVT_WRITE) {
+    const ble_gatts_evt_write_t& write = evt->evt.gatts_evt.params.write;
+    if (write.uuid.type == BLE_UUID_TYPE_BLE
+        && write.uuid.uuid == BLE_UUID_DESCRIPTOR_CLIENT_CHAR_CONFIG
+        && instance->_peer_address_valid) {
+      cccd_written_this_connection = true;
+      BLE_DEBUG_PRINTLN("CCCD RAM write: len=%u value=%u",
+                        (unsigned)write.len,
+                        (unsigned)(write.len ? write.data[0] : 0));
+      // Mirror Bluefruit's deferred CCCD save timing, but copy only to RAM.
+      // Reading during the BLE event is too early: sys_attr_get succeeds but
+      // returns the pre-write CCCD even though notifyEnabled() is already on.
+      cccd_ram_cache.valid.store(false, std::memory_order_release);
+      if (!ada_callback(&instance->_peer_address,
+                        sizeof(instance->_peer_address), captureCccdDeferred,
+                        evt->evt.gatts_evt.conn_handle,
+                        &instance->_peer_address)) {
+        BLE_DEBUG_PRINTLN("CCCD RAM capture could not be queued");
+      }
+    }
+#endif
+  } else if (evt->header.evt_id == BLE_GATTS_EVT_SYS_ATTR_MISSING) {
+    BLE_DEBUG_PRINTLN("CCCD RAM system attributes missing");
   } else if (evt->header.evt_id == BLE_GAP_EVT_DISCONNECTED) {
     ble_gap_evt_disconnected_t const* disconnected = &evt->evt.gap_evt.params.disconnected;
     if (isBondAuthenticationFailure(disconnected->reason)) {
@@ -227,6 +344,9 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
             "bond authentication disconnect");
       }
     }
+#if defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL
+    cccd_written_this_connection = false;
+#endif
     instance->_peer_address_valid = false;
   } else if (evt->header.evt_id == BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST) {
     uint16_t conn_handle = evt->evt.gap_evt.conn_handle;
