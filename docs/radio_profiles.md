@@ -300,30 +300,31 @@ profile**, then spends the remaining budgeted time on the faster profile,
 also with a **4.6-symbol floor**. Slower
 means a longer LoRa symbol (`2^SF / bandwidth`), regardless of profile number.
 The slower preamble sets the return deadline. The calculation allows two slow
-visits within that preamble, reserving the self-tested switch time per hop and 0.3 ms of main-loop
-margin. Fast-channel transmit preambles include sixteen acquisition symbols.
-For a primary SF7 / 62.5 kHz profile with a *measured* 600 us guarded switch allowance:
+visits within that preamble, reserving the self-tested, 10%-guarded switch time
+per hop. There is no extra fixed main-loop allowance. Fast-channel transmit
+preambles include sixteen acquisition symbols.
+For a primary SF7 / 62.5 kHz profile with a 763 us measured maximum switch
+(840 us after the 10% guard, from the BLE-on T1000-E trial):
 
 | Secondary profile | Automatic secondary preamble | Previously tested explicit preamble | Primary preamble |
 | --- | ---: | ---: | ---: |
 | SF9 / 500 kHz | 32 | 32 | 32 |
-| SF8 / 500 kHz | 88 | 64 | 32 |
+| SF8 / 500 kHz | 40 | 64 | 32 |
 | SF7 / 500 kHz | 64 | 80 | 32 |
 
 With preamble 32 on that slower profile, its visit is 9.421 ms and the faster
-visit is 21.847 ms, plus the actual switching time. Increasing the slow preamble
+visit is 21.667 ms, plus the actual switching time. Increasing the slow preamble
 also increases the time available on the fast channel. If the symbols are equal
 in length, the primary profile goes first. Detected packets hold the current
 channel until reception finishes.
 
-The SF8 / 500 kHz value also retains the measured 88-symbol floor from the
-production V4/XIAO tests, where 72 and 80 each missed a packet.
-The explicit values come from the
-[production validation](radio_profiles_validation.md): the final fast-channel
-attempts each received 50/50 packets at 4.8 slow symbols. Automatic values use
-the switching and loop-jitter allowances below.
+The SF8 / 500 kHz value is calculated from the same formula as every other
+profile; the older pair-specific 88-symbol floor has been removed. The explicit
+values come from [historical production validation](radio_profiles_validation.md):
+the final fast-channel attempts each received 50/50 packets at 4.8 slow symbols.
+Automatic values use the measured switch allowance below.
 Those explicit-preamble tests used the older 4.8-symbol policy; they do not
-validate the new 4.6-symbol slow dwell / 0.3 ms reserve. The
+validate the newer 4.6-symbol slow dwell. The
 [4.6/0.3 ms two-profile bench](radio_dwell_policy_validation.md#hardware-context) received 197/200
 at SF7/62.5 + SF8/500 with explicit 32-symbol preambles. The newer four-channel
 5.1/6.1/7.7 tests also had misses, so this is a timing policy, not a claim of zero packet loss.
@@ -338,12 +339,26 @@ receiver's setting does not lengthen packets sent by other nodes.
 `get radio2.timing` (alias `get radio.timing`) reports the active pair in
 `radio,radio2` order: dwell in chirps, recommended preambles in symbols, and
 the switching/loop allowances. Before calibration it reports `timing self-test
-pending` and the provisional preambles. For SF7/62.5 on `radio` and SF7/500 on
-`radio2` after a 600 us guarded measurement:
+pending` and the provisional preambles. On the T1000-E, the Full Companion now
+uses RTC2 for both retune timing and scan visits (about 31 us resolution).
+Previously, the nRF52 `micros()` fallback counted 1,024 Hz RTOS ticks: a real
+sub-millisecond retune could be reported as exactly 977 us, and two ticks as
+1,953 us. Those old numbers are timer artifacts, not measured RF costs.
+For SF7/62.5 on `radio` and SF8/500 on `radio2`, one live BLE-on read returned:
 
 ```text
-> chirps=4.60,85.34; need=32,64; switch=600us; loop=300us (estimate); test=4/4,4/4 ready; WARN recommended preamble: radio2=64
+> chirps=4.60,42.84; need=32,40; switch=706us; loop=0us; test=4/4,4/4 ready; WARN recommended preamble: radio2=40
 ```
+
+Later good hops in another BLE-on trial raised the measured maximum to 763 us
+(840 us with the 10% guard); the recommendation stayed at 40 symbols.
+
+The measured switch duration is wall time, so an interrupt during the hop is
+included. Bluetooth's SoftDevice may still preempt application code; this
+clock correction does not stop it. Ordinary Companion/USB work in the main
+loop does not run inside the synchronous retune, but it can delay when the
+next scan visit begins. The zero fixed loop allowance is not a guarantee of
+lossless reception under arbitrary application load.
 
 `WARN recommended preamble` identifies **each** profile whose recommendation
 exceeds the standard 32 symbols or its explicitly selected value. For example,
@@ -383,14 +398,13 @@ T[i] = 2^SF[i] * 1000 / BW_kHz[i]
 slow = profile with the longer T (radio wins ties)
 L[slow] = max(requested_visit_us[slow], ceil(4.6 * T[slow]))
 L[fast] = max(requested_visit_us[fast], ceil(4.6 * T[fast]))
-O    = 2 * switch_us + loop_margin_us
+O    = 2 * switch_us
 C    = L[radio] + L[radio2] + O
 
 P[slow] = round_up_to_8(max(32, 2 * C / T[slow]))
 P[fast] = round_up_to_8(max(32, (L[slow] + O) / T[fast] + 16))
 ```
 
-The previous SF8/500 versus SF7/62.5 measured 88-symbol floor remains in force.
 Automatic selection uses the minimum visits to choose a preamble, then allocates
 the fast visit from half the slow preamble's duration. Diagnostics feed the
 actual allocated visits back into the same function, including longer visits
@@ -406,11 +420,11 @@ fast_dwell = max(ceil(4.6 * T[fast]),
 ```
 
 For the tested SF7/62.5 + SF8/500 pair with slow preamble 32, this yields
-9,421 us slow and 21,847 us fast (42.67 fast chirps). Swapping `radio` and
-`radio2` swaps the allocations automatically. The 0.3 ms reserve is not a sleep.
+9,421 us slow and 21,197 us fast (41.40 fast chirps) with the 1,075 us guarded
+switch allowance above. Swapping `radio` and `radio2` swaps the allocations automatically.
 
 Production scheduling and automatic preambles use the **self-tested maximum
-successful switch plus 10%**, together with 300 us per cycle. Subsequent
+successful switch plus 10%**, without an additional fixed loop allowance. Subsequent
 successful hops can only raise that allowance until the next profile change.
 The measured recommendation is rounded up to eight symbols and capped at 128
 for automatic settings. The calculator and warnings retain the *uncapped*

@@ -367,11 +367,11 @@ int main(int argc, char** argv) {
     assert(strstr(f.reply,"switch=600us"));
     assert(strstr(f.cmd("set radio2 910.5,500,7,5,rxtx"),"preamble=64;"));
     assert(strstr(f.reply,"switch=600us"));
-    assert(strstr(f.cmd("get radio2.scan"),"slow=radio; listen_us=9421,21847"));
-    assert(strstr(f.cmd("get radio2.timing"),"chirps=4.60,85.34; need=32,64"));
+    assert(strstr(f.cmd("get radio2.scan"),"slow=radio; listen_us=9421,22147"));
+    assert(strstr(f.cmd("get radio2.timing"),"chirps=4.60,86.51; need=32,64"));
     assert(strstr(f.reply,"switch=600us"));
-    assert(strstr(f.reply,"loop=300us"));
-    assert(strstr(f.reply,"estimate"));
+    assert(strstr(f.reply,"loop=0us"));
+    assert(!strstr(f.reply,"estimate"));
     assert(strstr(f.reply,"WARN recommended preamble: radio2=64"));
     char timing_reply[160]; strcpy(timing_reply, f.reply);
     assert(!strcmp(f.cmd("get radio.timing"),timing_reply));
@@ -476,9 +476,9 @@ int main(int argc, char** argv) {
     f.advance(2000);
     f.finishTimingTest();
     assert(f.radio.p.secondary.params.preamble==32);
-    assert(strstr(f.cmd("get radio2.scan"),"slow=radio; listen_us=9421,21847"));
-    assert(strstr(f.cmd("get radio2.timing"),"chirps=4.60,42.67; need=32,88"));
-    assert(strstr(f.reply,"loop=300us"));
+    assert(strstr(f.cmd("get radio2.scan"),"slow=radio; listen_us=9421,22147"));
+    assert(strstr(f.cmd("get radio2.timing"),"chirps=4.60,43.26; need=32,40"));
+    assert(strstr(f.reply,"loop=0us"));
   }
   {
     Fixture f;

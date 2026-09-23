@@ -11,7 +11,7 @@ int main() {
   assert(Profiles::MinListenSymbols==4.6);
   assert(Profiles::SlowListenSymbols==4.6);
   assert(Profiles::MinFastListenSymbols==4.6);
-  assert(Profiles::LoopBudgetUs==300);
+  assert(Profiles::LoopBudgetUs==0);
   auto a=params(10,125),b=params(10,125);
   auto t=Profiles::calculateChirpTiming(a,b,1,0,1000,4000);
   assert(t.valid && t.slow==0 && t.symbol_us[0]==8192);
@@ -31,9 +31,9 @@ int main() {
   b=params(10,1e-30f);assert(Profiles::minimumListenUs(b)==0);
   a=params(7,62.5);b=params(8,500);
   t=Profiles::calculateChirpTiming(a,b);
-  assert(t.preamble[1]==88); // Existing measured acquisition floor retained.
+  assert(t.preamble[1]==40); // Derived from dwell and acquisition, not a pair-specific floor.
   auto swapped=Profiles::calculateChirpTiming(b,a);
-  assert(swapped.slow==1 && swapped.preamble[0]==88);
+  assert(swapped.slow==1 && swapped.preamble[0]==40);
   assert(swapped.preamble[1]==t.preamble[0]);
   for (float bw0: {7.8f,62.5f,125.0f,250.0f,500.0f})
     for (float bw1: {7.8f,62.5f,125.0f,250.0f,500.0f})
@@ -76,8 +76,8 @@ int main() {
   for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
     p.sampleSwitch(0,1,545);p.sampleSwitch(1,0,545);
   }
-  assert(p.listenUs(0)==9421 && p.listenUs(1)==21847);
-  assert(p.chirpTiming().switch_us==600 && p.chirpTiming().loop_us==300 && p.chirpTiming().preamble[1]==64);
+  assert(p.listenUs(0)==9421 && p.listenUs(1)==22147);
+  assert(p.chirpTiming().switch_us==600 && p.chirpTiming().loop_us==0 && p.chirpTiming().preamble[1]==64);
   auto before=p.chirpTiming();const auto wire0=p.preamble(0,32),wire1=p.preamble(1,32);
   p.sampleSwitch(0,1,8428);auto overrun=p.chirpTiming();
   assert(overrun.switch_us==9271 && overrun.preamble[1]>before.preamble[1]);
@@ -97,23 +97,23 @@ int main() {
   p.primary=params(7,62.5);p.primary.preamble=32;
   p.secondary.params=params(8,500);p.secondary.params.preamble=32;
   p.secondary.mode=mesh::RadioProfileMode::Rx;
-  assert(p.automaticPreambleFits() && p.listenUs(0)==9421 && p.listenUs(1)==21847);
+  assert(p.automaticPreambleFits() && p.listenUs(0)==9421 && p.listenUs(1)==22147);
   assert(p.preamble(0,32)==32 && p.preamble(1,32)==32);
-  assert(p.chirpTiming().preamble[1]==88);
+  assert(p.chirpTiming().preamble[1]==40);
   std::swap(p.primary,p.secondary.params);
-  assert(p.slowerProfile()==1 && p.listenUs(1)==9421 && p.listenUs(0)==21847);
+  assert(p.slowerProfile()==1 && p.listenUs(1)==9421 && p.listenUs(0)==22147);
   p.secondary.params.preamble=8;
   assert(!p.automaticPreambleFits());
-  // This formerly fit the 4.1 fast floor (1050 us), but not 4.6 (1178 us).
+  // With no fixed loop reserve, 27 symbols cannot cover both 4.6-symbol visits.
   p.primary=params(7,500);p.secondary.params=params(7,500);
-  p.primary.preamble=30;
+  p.primary.preamble=27;
   assert(p.listenUs(0)==1178 && p.listenUs(1)>=1178);
   assert(!p.automaticPreambleFits());
   p.primary.preamble=32;
-  assert(p.automaticPreambleFits() && p.listenUs(1)==1418);
+  assert(p.automaticPreambleFits() && p.listenUs(1)==1718);
   // Long requested visits remain visible, not replaced by policy minima.
   t=Profiles::calculateChirpTiming(params(7,62.5),params(8,500),20000,30000);
-  assert(t.listen_us[0]==20000 && t.listen_us[1]==30000 && t.cycle_us==50300);
+  assert(t.listen_us[0]==20000 && t.listen_us[1]==30000 && t.cycle_us==50000);
   Profiles measured;
   measured.primary=params(7,500);
   measured.secondary.params=params(7,500);
@@ -138,4 +138,17 @@ int main() {
   measured.setSecondary(replacement,true);
   assert(!measured.switchTestReady() && measured.switchBudgetUs()==0);
   assert(measured.preamble(0,32)==128 && measured.preamble(1,32)==88);
+
+  // A T1000-E-sized 977 us hop calibrates to 1075 us, yet SF8/500 no longer
+  // inherits the historical 88-symbol floor or a fixed 300 us loop pad.
+  Profiles t1000;
+  t1000.primary=params(7,62.5);
+  t1000.secondary.params=params(8,500);
+  t1000.secondary.mode=mesh::RadioProfileMode::RxTx;
+  for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
+    t1000.sampleSwitch(0,1,977);t1000.sampleSwitch(1,0,977);
+  }
+  assert(t1000.switchBudgetUs()==1075);
+  assert(t1000.preamble(0,32)==32 && t1000.preamble(1,32)==40);
+  assert(t1000.chirpTiming().loop_us==0 && t1000.chirpTiming().preamble[1]==40);
 }

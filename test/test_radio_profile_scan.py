@@ -24,6 +24,8 @@ namespace mesh { enum class RadioParamApplyResult { APPLIED, BUSY, FAILED }; }
 static uint64_t elapsed_us;
 static uint8_t state;
 uint32_t micros() { return (uint32_t)elapsed_us; }
+uint32_t profileTimestamp() { return micros(); }
+uint32_t profileElapsedUs(uint32_t since, uint32_t now) { return now - since; }
 uint32_t millis() { return (uint32_t)(elapsed_us / 1000); }
 struct Chip { bool standbyXOSC=false; int standby() { return 0; } };
 using CustomSX1262 = Chip;
@@ -45,7 +47,7 @@ struct RadioLibWrapper {
   }
   uint32_t _rx_ps_rx_us=50000, _rx_ps_sleep_us=50000;
   uint8_t _active_profile=0, _cur_sf=7, _cur_cr=5;
-  uint32_t _profile_generation=1, _profile_visit_us=0, _profile_retry_at=0;
+  uint32_t _profile_generation=1, _profile_visit_stamp=0, _profile_retry_at=0;
   uint32_t _profile_scan_generation[2]={};
   uint16_t _physical_preamble=32;
   float _cur_freq=909.5, _cur_bw=62.5;
@@ -57,7 +59,7 @@ struct RadioLibWrapper {
     state=STATE_RX; elapsed_us=100000;
     auto& p=_profiles.primary;
     p.freq=_cur_freq; p.bw=_cur_bw; p.sf=_cur_sf; p.cr=_cur_cr;
-    _profile_visit_us=micros();
+    _profile_visit_stamp=profileTimestamp();
   }
   bool isChipBusy() { return busy; }
   bool isInRecvMode() const { return (state & ~STATE_INT_READY) == STATE_RX; }
@@ -69,7 +71,7 @@ struct RadioLibWrapper {
   void startRecv() {
     if (failRxStarts) { --failRxStarts; state=STATE_IDLE; return; }
     if (_profile_rxps_suspended) assert(chip.standbyXOSC && !_rx_ps_enabled);
-    state=STATE_RX; _profile_visit_us=micros(); _rx_ps_armed=_rx_ps_enabled;
+    state=STATE_RX; _profile_visit_stamp=profileTimestamp(); _rx_ps_armed=_rx_ps_enabled;
   }
   void stopReceiveDutyCycle() { _rx_ps_armed=false; }
   bool applyParams(float f,float,uint8_t,uint8_t) { ++applies; elapsed_us+=switch_apply_us; return !fail || f==909.5f; }
@@ -273,7 +275,7 @@ int main() {
     w.enable();
     w._floor_estimator.add(-100, millis());
     w._active_profile=0;
-    w._profile_visit_us=micros();
+    w._profile_visit_stamp=profileTimestamp();
     const auto primary_visit=w._profiles.listenUs(0);
     elapsed_us += primary_visit - 1; w.serviceProfileScan(); assert(w._active_profile==0);
     elapsed_us++; w.serviceProfileScan(); assert(w._active_profile==1);

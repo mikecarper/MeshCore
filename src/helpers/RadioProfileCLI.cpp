@@ -528,9 +528,10 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
         radio_->profilePreamble(0), radio_->profilePreamble(1));
     else if (!t.valid) snprintf(reply, capacity, "Error: timing unavailable");
     else {
-      snprintf(reply, capacity, "> chirps=%.2f,%.2f; need=%.0f,%.0f; switch=%luus; loop=%luus (estimate)",
+      snprintf(reply, capacity, "> chirps=%.2f,%.2f; need=%.0f,%.0f; switch=%luus; loop=%luus%s",
           t.listen_us[0] / t.symbol_us[0], t.listen_us[1] / t.symbol_us[1],
-          t.preamble[0], t.preamble[1], (unsigned long)t.switch_us, (unsigned long)t.loop_us);
+          t.preamble[0], t.preamble[1], (unsigned long)t.switch_us,
+          (unsigned long)t.loop_us, t.loop_us ? " (estimate)" : "");
       size_t used = strlen(reply);
       if (used < capacity) snprintf(reply + used, capacity - used, "; test=%u/%u,%u/%u%s",
           p.switch_test_samples[0], RadioProfiles::SwitchTestSamplesPerDirection,

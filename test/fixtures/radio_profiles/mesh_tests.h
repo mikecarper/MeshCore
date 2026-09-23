@@ -699,15 +699,15 @@ TEST(RadioProfiles, AutomaticPreamblesUseSelfTestedSwitchingMargin) {
     p.sampleSwitch(0, 1, 545); p.sampleSwitch(1, 0, 545);
   }
   EXPECT_EQ(600, p.switchBudgetUs());
-  EXPECT_EQ(300, p.LoopBudgetUs);
-  const uint16_t expected[] = {64, 88, 32};
+  EXPECT_EQ(0, p.LoopBudgetUs);
+  const uint16_t expected[] = {64, 40, 32};
   for (int sf = 7; sf <= 9; ++sf) {
     p.secondary.params.sf = sf;
     EXPECT_EQ(expected[sf-7], p.preamble(1, 32));
     EXPECT_EQ(32, p.preamble(0, 32));
     EXPECT_EQ(0, p.preamble(1, 32) % 8);
     EXPECT_EQ(9421, p.listenUs(0));
-    EXPECT_EQ(21847, p.listenUs(1));
+    EXPECT_EQ(22147, p.listenUs(1));
     EXPECT_LE(2 * (p.listenUs(0) + p.listenUs(1) + 2 * p.switchBudgetUs() + p.LoopBudgetUs),
         p.preamble(0, 32) * p.symbolUs(p.primary));
     EXPECT_LE(p.listenUs(1) + 2 * p.switchBudgetUs() + p.LoopBudgetUs
@@ -729,9 +729,9 @@ TEST(RadioProfiles, SlowerProfileDeterminesOrderAndFasterReceiveWindow) {
   std::swap(p.primary, p.secondary.params);
   EXPECT_EQ(1, p.slowerProfile());
   EXPECT_EQ(9421, p.listenUs(1));
-  EXPECT_EQ(21847, p.listenUs(0));
+  EXPECT_EQ(22147, p.listenUs(0));
   p.secondary.params.preamble = 40;
-  EXPECT_EQ(30039, p.listenUs(0));
+  EXPECT_EQ(30339, p.listenUs(0));
   p.secondary.params.preamble = 8;
   EXPECT_FALSE(p.automaticPreambleFits()); // no safe time for the faster channel
 }

@@ -42,8 +42,9 @@ class RadioProfiles {
   static constexpr uint16_t MaxPreamble = 65528;
   static constexpr uint16_t MaxAutomaticPreamble = 128;
   // Successful RX-to-RX hops self-test the board-specific switch allowance.
-  // Packet receptions can extend a visit; these budgets describe an idle scan.
-  static constexpr uint32_t LoopBudgetUs = 300;
+  // Packet receptions can extend a visit. No fixed loop allowance is added to
+  // the self-tested, guarded switch time in the idle-scan timing model.
+  static constexpr uint32_t LoopBudgetUs = 0;
   static constexpr uint8_t SwitchTestSamplesPerDirection = 4;
 
   struct ChirpTiming {
@@ -148,21 +149,17 @@ class RadioProfiles {
     return isfinite(symbol) && symbol > 0 && symbol <= UINT32_MAX / symbols
         ? (uint32_t)ceil(symbols * symbol) : 0;
   }
-  static double preambleForVisits(const RadioProfileParams& p, const RadioProfileParams& other,
-      bool slow, double own_us, double other_us, double overhead_us) {
+  static double preambleForVisits(const RadioProfileParams& p, bool slow,
+      double own_us, double other_us, double overhead_us) {
     const double symbol = symbolUs(p);
     if (symbol <= 0) return 32;
-    double result = slow ? roundPreamble(2.0 * (own_us + other_us + overhead_us) / symbol)
+    return slow ? roundPreamble(2.0 * (own_us + other_us + overhead_us) / symbol)
         : roundPreamble((other_us + overhead_us) / symbol + 2 * AcquisitionSymbols);
-    // Production V4/XIAO empirical floor; retain prior measured margin.
-    if (!slow && p.sf == 8 && p.bw == 500 && other.sf == 7 && other.bw == 62.5f && result < 88)
-      result = 88;
-    return result;
   }
   // A two-profile idle-scan timing policy, NOT a fitted zero-loss model.
   // Use a 4.6-symbol minimum on both profiles. Reserve
   // two return opportunities on the slow profile, and blind time + 16
-  // acquisition symbols on the fast one. The 4.6/300-us pair bench received
+  // acquisition symbols on the fast one. The 4.6-symbol pair bench received
   // 197/200: a sweep fitting inside 32 is not a guarantee of acquisition.
   // Explicit visit times let diagnostics account for the actual scheduler,
   // including a longer fast visit selected by an explicit slow preamble.
@@ -180,8 +177,8 @@ class RadioProfiles {
     t.switch_us = switch_us; t.loop_us = loop_us;
     const double overhead = 2.0 * switch_us + loop_us;
     t.cycle_us = double(t.listen_us[0]) + t.listen_us[1] + overhead;
-    t.preamble[0] = preambleForVisits(a, b, t.slow == 0, t.listen_us[0], t.listen_us[1], overhead);
-    t.preamble[1] = preambleForVisits(b, a, t.slow == 1, t.listen_us[1], t.listen_us[0], overhead);
+    t.preamble[0] = preambleForVisits(a, t.slow == 0, t.listen_us[0], t.listen_us[1], overhead);
+    t.preamble[1] = preambleForVisits(b, t.slow == 1, t.listen_us[1], t.listen_us[0], overhead);
     t.valid = true;
     return t;
   }
@@ -190,7 +187,7 @@ class RadioProfiles {
     // Keep the hot retune path to one profile's calculation; the full
     // validated diagnostic structure is only needed by CLI/reporting.
     const uint8_t slow = slowerProfile();
-    return preambleForVisits(params(profile), params(profile ^ 1), profile == slow,
+    return preambleForVisits(params(profile), profile == slow,
         minimumListenUs(params(profile), profile == slow), minimumListenUs(params(profile ^ 1), (profile ^ 1) == slow),
         2.0 * switchBudgetUs() + LoopBudgetUs);
   }

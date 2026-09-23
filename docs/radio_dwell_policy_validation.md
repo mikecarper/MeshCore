@@ -2,6 +2,9 @@
 
 Historical validation record: the nominal 600 us switch allowance below has
 been replaced by the activation self-test and a 10% guarded measured budget.
+The current automatic policy also removed the fixed 300 us loop allowance and
+the pair-specific SF8/500 88-symbol floor. Values below are retained as bench
+history, not current automatic defaults.
 See [radio profiles](radio_profiles.md#preamble) for current behavior.
 
 The shared `RadioProfiles` function uses a 4.6-symbol minimum for both logical

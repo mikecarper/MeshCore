@@ -21,6 +21,39 @@
 
 static volatile uint8_t state = STATE_IDLE;
 
+// The Adafruit nRF52 core's micros() falls back to 1024 Hz RTOS ticks when
+// DWT is disabled. A sub-millisecond retune then appears to take exactly
+// 977 us (or 1953 us across two ticks), making the learned switch allowance
+// and scan dwell inaccurate. RTC2 is otherwise unused on the T1000-E and
+// provides a continuous 32768 Hz clock without changing micros() globally or
+// holding the high-frequency clock on for this measurement.
+static uint32_t profileTimestamp() {
+#if defined(T1000_E) && defined(NRF52_PLATFORM)
+  static bool started = false;
+  if (!started) {
+    NRF_RTC2->TASKS_STOP = 1;
+    NRF_RTC2->PRESCALER = 0;
+    NRF_RTC2->TASKS_CLEAR = 1;
+    NRF_RTC2->TASKS_START = 1;
+    started = true;
+  }
+  return NRF_RTC2->COUNTER;
+#else
+  return micros();
+#endif
+}
+
+static uint32_t profileElapsedUs(uint32_t since, uint32_t now) {
+#if defined(T1000_E) && defined(NRF52_PLATFORM)
+  // RTC2 is 24-bit and wraps every 512 seconds. Active scanning samples it
+  // many times per second; a freshly configured profile gets a new visit stamp.
+  const uint32_t ticks = (now - since) & 0x00ffffffUL;
+  return static_cast<uint32_t>((uint64_t(ticks) * 15625 + 511) >> 9);
+#else
+  return now - since;
+#endif
+}
+
 // this function is called when a complete packet
 // is transmitted by the module
 static
@@ -33,6 +66,7 @@ void setFlag(void) {
 }
 
 void RadioLibWrapper::begin() {
+  (void) profileTimestamp();
 #ifdef USE_CC310_HW_CRYPTO
   // Initialize CryptoCell once from normal task context. The session helper
   // still initializes lazily if an earlier crypto operation runs first.
@@ -254,7 +288,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     }
   }
 
-  _profile_visit_us = micros();
+  _profile_visit_stamp = profileTimestamp();
   return success ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
 }
 
@@ -287,7 +321,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
   if (!_profile_refresh_required && _active_profile == profile && _profile_generation == _profiles.generation[profile]
       && _physical_preamble == preamble) return mesh::RadioParamApplyResult::APPLIED;
   if (!validateProfile(p)) return mesh::RadioParamApplyResult::FAILED;
-  const uint32_t started = micros();
+  const uint32_t started = profileTimestamp();
   beginProfileRetune(isInRecvMode() && !_rx_ps_armed && !_rx_ps_enabled);
   const uint8_t resume = beginReconfigure();
   if (resume > 1) {
@@ -330,16 +364,17 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
     if (restored) endReconfigure(resume);
     if (!restored || (resume && !isInRecvMode())) _profile_refresh_required = true;
   }
-  _profile_visit_us = micros();
+  _profile_visit_stamp = profileTimestamp();
   // A profile retune re-enters RX on a different tuple. Do not read its
   // instantaneous RSSI until the chip family's settle interval has elapsed.
   if (applied && _nf_refresh_requested) {
     _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
   }
-  const uint32_t elapsed = _profile_visit_us - started;
+  const uint32_t elapsed = profileElapsedUs(started, _profile_visit_stamp);
   if (elapsed > _profiles.longest_switch_us) _profiles.longest_switch_us = elapsed;
-  // Learn the actual board's RX-to-RX retune cost on the first four good hops
-  // in each direction. Deferred and rolled-back operations are not samples.
+  // Require four good RX-to-RX hops in each direction before using the budget,
+  // then continue raising the observed maximum as later good hops run.
+  // Deferred and rolled-back operations are not samples.
   if (applied && resume && old_profile != profile) {
     _profiles.sampleSwitch(old_profile, profile, elapsed);
   }
@@ -442,13 +477,13 @@ void RadioLibWrapper::serviceProfileScan() {
         && visit_us < NF_CALIB_SETTLE_MS * 1000UL) {
       visit_us = NF_CALIB_SETTLE_MS * 1000UL;
     }
-    if ((uint32_t)(micros() - _profile_visit_us) >= visit_us) target ^= 1;
+    if (profileElapsedUs(_profile_visit_stamp, profileTimestamp()) >= visit_us) target ^= 1;
   }
   const auto result = tuneProfile(target);
   if (restart_scan && result == mesh::RadioParamApplyResult::APPLIED) {
     _profile_scan_generation[0] = _profiles.generation[0];
     _profile_scan_generation[1] = _profiles.generation[1];
-    _profile_visit_us = micros();
+    _profile_visit_stamp = profileTimestamp();
   }
   if (result == mesh::RadioParamApplyResult::FAILED) {
     // Retry a rejected or failing profile at a bounded rate; retain primary RX.
@@ -1046,7 +1081,7 @@ void RadioLibWrapper::startRecv() {
   int err = startReceiveMode();
   if (err == RADIOLIB_ERR_NONE) {
     // A very short frame may complete while startReceiveMode() returns.
-    _profile_visit_us = micros();
+    _profile_visit_stamp = profileTimestamp();
     // Retain that RX interrupt instead of overwriting it with software state.
     noInterrupts();
     state = (state & STATE_INT_READY) | STATE_RX;

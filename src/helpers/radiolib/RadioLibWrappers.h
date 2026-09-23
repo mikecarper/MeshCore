@@ -81,7 +81,7 @@ protected:
   uint16_t _physical_preamble = 0;
   uint32_t _profile_generation = 0;
   uint32_t _profile_scan_generation[2] = {};
-  uint32_t _profile_visit_us = 0;
+  uint32_t _profile_visit_stamp = 0;
   uint32_t _profile_retry_at = 0;
   bool _profile_rxps_suspended = false;
   bool _profile_saved_rxps = false;

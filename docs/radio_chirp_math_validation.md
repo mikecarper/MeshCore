@@ -2,12 +2,15 @@
 
 Historical validation record: the nominal 600 us policy described below has
 been replaced by the activation self-test and 10% guarded measured budget.
+The later automatic policy also removed the pair-specific 88-symbol SF8/500
+floor and the fixed 300 us loop allowance; the older calculations below remain
+as test history.
 See [radio profiles](radio_profiles.md#preamble) for
 current behavior.
 
 Implemented in the `keymindCascade` working tree, 2026-09-14. The initial
 4.1/4000-us implementation record below is retained as history; the
-[4.6/300-us policy update](#automatic-46-chirp--300-us-policy-update) is now current.
+[4.6/300-us policy update](#automatic-46-chirp--300-us-policy-update) was a prior stage.
 No radios were flashed or RF experiments started for either function-only change.
 
 ## Initial implementation scope
