@@ -115,6 +115,19 @@ static int sha512_compress(sha512_context *md, unsigned char *buf)
     d += t0; \
     h  = t0 + t1;
 
+#if defined(ED25519_COMPACT_SHA512)
+    /* Same 80 rounds, with a fixed state rotation instead of eight copies of
+       the round body. Small STM32 images trade loop overhead for flash space;
+       neither the loop bounds nor memory indexes depend on secret data. */
+    for (i = 0; i < 80; ++i) {
+       int j;
+       uint64_t next;
+       RND(S[0],S[1],S[2],S[3],S[4],S[5],S[6],S[7],i);
+       next = S[7];
+       for (j = 7; j > 0; --j) S[j] = S[j - 1];
+       S[0] = next;
+    }
+#else
     for (i = 0; i < 80; i += 8) {
        RND(S[0],S[1],S[2],S[3],S[4],S[5],S[6],S[7],i+0);
        RND(S[7],S[0],S[1],S[2],S[3],S[4],S[5],S[6],i+1);
@@ -125,6 +138,7 @@ static int sha512_compress(sha512_context *md, unsigned char *buf)
        RND(S[2],S[3],S[4],S[5],S[6],S[7],S[0],S[1],i+6);
        RND(S[1],S[2],S[3],S[4],S[5],S[6],S[7],S[0],i+7);
    }
+#endif
 
    #undef RND
 

@@ -3662,7 +3662,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   loadTelemetryHistoryTxPrefs();
 #endif
 
-#ifdef SIM_WIFI_SSID
+#if defined(SIM_WIFI_SSID) && defined(WITH_MQTT_BRIDGE)
   // Emulator builds (Wokwi) boot with fresh NVS every run. Seed WiFi so the
   // observer auto-joins the simulator's network and brings the MQTT bridge up
   // (WiFi is driven by the bridge task), instead of raising the setup AP that
@@ -12842,7 +12842,7 @@ bool MyMesh::completeNeighborDiscoverEntry() {
     pubkey_hex,
     entry.snr / 4.0f,
     UINT32_MAX,
-    entry.scopes,
+    neighbor_discover_scopes[neighbor_discover_next],
     entry.status == ND_RESPONDED ? "responded"
       : (entry.status == ND_SEND_FAILED ? "send_failed" : "timeout")
   };
@@ -12868,7 +12868,8 @@ bool MyMesh::completeNeighborDiscoverEntry() {
 bool MyMesh::handleNeighborDiscoverResponse(int overlay_idx,
                                             const uint8_t* data, size_t len,
                                             float snr, int16_t rssi) {
-  if (overlay_idx < 0 || overlay_idx >= neighbor_discover_count) return false;
+  if (overlay_idx < 0 || overlay_idx >= neighbor_discover_count
+      || (size_t)overlay_idx >= NEIGHBOR_SCOPE_RESULTS) return false;
   NeighborDiscoverEntry& entry = neighbor_discover[overlay_idx];
   if (entry.status != ND_PENDING || len < 8) return false;
 
@@ -12877,11 +12878,12 @@ bool MyMesh::handleNeighborDiscoverResponse(int overlay_idx,
   if (tag != entry.tag) return false;
 
   size_t scope_len = len - 8;
-  if (scope_len >= sizeof(entry.scopes)) {
-    scope_len = sizeof(entry.scopes) - 1;
+  auto& scopes = neighbor_discover_scopes[overlay_idx];
+  if (scope_len >= sizeof(scopes)) {
+    scope_len = sizeof(scopes) - 1;
   }
-  memcpy(entry.scopes, &data[8], scope_len);
-  entry.scopes[scope_len] = 0;
+  memcpy(scopes, &data[8], scope_len);
+  scopes[scope_len] = 0;
   entry.status = ND_RESPONDED;
   // A zero-hop reply is proof we heard this neighbour now, so re-stamp both the
   // snapshot and live table with this packet's measurements. A stamp taken
@@ -13028,7 +13030,7 @@ void MyMesh::finishNeighborDiscover() {
       bool heard_known = neighborHeardAgeUsable(entry.heard_timestamp, now_secs);
       entries[i].heard_unknown = !heard_known;
       entries[i].heard_secs_ago = heard_known ? (now_secs - entry.heard_timestamp) : 0;
-      entries[i].scopes = entry.scopes;
+      entries[i].scopes = neighbor_discover_scopes[i];
       switch (entry.status) {
         case ND_RESPONDED:   entries[i].status = "responded"; break;
         case ND_SEND_FAILED: entries[i].status = "send_failed"; break;
@@ -13169,7 +13171,6 @@ bool MyMesh::startNeighborDiscover(char* reply) {
       entry.heard_timestamp = neighbours[i].heard_timestamp;
       entry.snr = neighbours[i].snr;
       entry.rssi = neighbours[i].rssi;
-      entry.scopes[0] = 0;
       entry.tag = 0;
       entry.status = ND_UNSENT;
       neighbor_discover_count++;
@@ -13193,6 +13194,7 @@ bool MyMesh::startNeighborDiscover(char* reply) {
     neighbor_discover[j] = entry;
   }
 
+  memset(neighbor_discover_scopes, 0, sizeof(neighbor_discover_scopes));
   neighbor_discover_next = 0;
   resetNeighborDiscoverJsonBudget();
   neighbor_discover_active = true;

@@ -4384,7 +4384,7 @@ run_pio_with_size_detection() {
     build_status=1
   elif [ "$build_status" -ne 0 ] \
       && grep -Eiq \
-        'will not fit in region|region .+ overflowed by|section .+ will not fit|sketch too big|program size is greater than maximum|exceed(s|ing).*(flash|partition|app)' \
+        'will not fit in region|region .+ overflowed by|section .+ will not fit|sketch too big|program size.*is greater than maximum|exceed(s|ing).*(flash|partition|app)' \
         "$build_output_log"; then
     build_status=42
   fi
@@ -5066,6 +5066,13 @@ is_runtime_setting_alias_target() {
 }
 
 is_redundant_bulk_build_target() {
+  # Bench fixtures and migration utilities use their dedicated PlatformIO
+  # recipes; they are not node firmware for the release/OTA packaging matrix.
+  case "${1,,}" in
+    profile_switch_*|*_partition_migrator|*_partition_migrator_test_*|*_partition_legacy_seed|*_sim)
+      return 0
+      ;;
+  esac
   # Keep every legacy name available to `build-firmware` and
   # `build-matching-firmwares`, but do not republish binaries that differ only
   # by a saved/default setting, or roles already supplied by Full Companion.

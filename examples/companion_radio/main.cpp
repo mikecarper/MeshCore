@@ -2285,7 +2285,11 @@ void halt() {
                                    clear_bonds, stealth_pair_once,
                                    bonded_only_peer_ptr)) {
       strncpy(companion_bluetooth_start_failure,
+#if defined(NRF52_PLATFORM)
               bluetooth_interface.beginFailure(),
+#else
+              "Bluetooth initialization failed",
+#endif
               sizeof(companion_bluetooth_start_failure) - 1);
       companion_bluetooth_start_failure[
           sizeof(companion_bluetooth_start_failure) - 1] = 0;

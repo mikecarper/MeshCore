@@ -38,7 +38,8 @@ pio_result=1
 for pio_message in \
   "firmware.elf section .text will not fit in region FLASH" \
   "region FLASH overflowed by 43080 bytes" \
-  "Error: The program size is greater than maximum allowed"; do
+  "Error: The program size is greater than maximum allowed" \
+  "Error: The program size (1314113 bytes) is greater than maximum allowed (1310720 bytes)"; do
   check_status 42
   grep -Fq "$pio_message" "$test_root/output" || fail "compiler output was lost"
 done

@@ -233,6 +233,8 @@ jobs:
         run: |
           bash test/test_build_size_detection.sh
           python3 -B test/test_firmware_ram.py
+          python3 -B test/test_neighbor_scope_storage.py
+          python3 -B test/test_ed25519_compact.py
           python3 -B test/test_cascade_release_package.py
           python3 -B test/test_t096_full_memory.py
           python3 -B test/test_nrf52_ble_startup.py

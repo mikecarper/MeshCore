@@ -12,6 +12,13 @@ fail() {
 [ "$OPTION3_BUILD_WORKERS" -eq 1 ] \
   || fail "logging matrix permits concurrent PlatformIO target builds"
 
+for utility in profile_switch_t096_sx1262 xiao_s3_partition_migrator \
+    heltec_v4_partition_migrator_test_hold xiao_s3_partition_legacy_seed \
+    Heltec_v3_repeater_observer_mqtt_sim; do
+  is_redundant_bulk_build_target "$utility" \
+    || fail "release matrix includes development utility $utility"
+done
+
 # Reduced RAK profiles all retain the compact INA set, but GPS depends on
 # whether the bridge already owns Serial1. Keep those independent contracts so
 # a valid Serial1 image cannot fail release qualification for an absent GPS

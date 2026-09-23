@@ -644,10 +644,16 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     int8_t snr;              // multiplied by 4
     int16_t rssi;            // dBm from the last packet heard from this neighbour
     uint32_t tag;            // anon-regions request tag we're waiting on
-    char scopes[96];         // scope names from the response
     uint8_t status;          // NeighborDiscoverStatus
   };
   NeighborDiscoverEntry neighbor_discover[MAX_NEIGHBOURS];
+  // Only the publishable prefix (plus the result that detects truncation)
+  // receives scope queries. Keep every neighbor snapshot, without reserving
+  // 96 response bytes for each entry that will never be queried.
+  static constexpr size_t NEIGHBOR_SCOPE_RESULTS =
+      MAX_NEIGHBOURS < MQTTBridge::NEIGHBORS_MAX_PUBLISH_ENTRIES + 1
+          ? MAX_NEIGHBOURS : MQTTBridge::NEIGHBORS_MAX_PUBLISH_ENTRIES + 1;
+  char neighbor_discover_scopes[NEIGHBOR_SCOPE_RESULTS][96];
   uint8_t neighbor_discover_count;
   uint8_t neighbor_discover_next;            // newest-first entry currently being queried
   uint8_t neighbor_discover_publish_count;    // completed prefix that fits the JSON buffer
