@@ -675,6 +675,23 @@ inline bool parseUnsignedIntegerStrict(const char* text, uint32_t& result) {
   return true;
 }
 
+// Bare values are UTC seconds; +N is N minutes from one command-time snapshot.
+// Resolve both endpoints against the same snapshot, never end against start.
+inline bool parseRadioScheduleTime(const char* text, uint32_t now, uint32_t& result) {
+  if (text == nullptr) return false;
+  while (*text == ' ' || *text == '\t') ++text;
+  const bool relative = *text == '+';
+  if (relative && (text[1] < '0' || text[1] > '9')) return false;
+  uint32_t value;
+  if (!parseUnsignedIntegerStrict(relative ? text + 1 : text, value)) return false;
+  if (relative) {
+    if (!value || value > (UINT32_MAX - now) / 60U) return false;
+    value = now + value * 60U;
+  }
+  result = value;
+  return true;
+}
+
 // Zero clears a custom port override; a full broker URI supplies its default.
 inline bool parseMqttPort(const char* text, uint16_t& result) {
   uint32_t value;

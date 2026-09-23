@@ -557,6 +557,51 @@ class RepeaterRadioTimingIntegrationTest(unittest.TestCase):
                 defines = "#define USE_LR2021 1\n" if lr2021 else ""
                 self.compile_and_run(defines + HARNESS.replace("@METHODS@", methods))
 
+    def test_scheduled_radio_relative_and_absolute_times(self):
+        source = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="utf-8")
+        parsers = "\n".join(method(source, signature) for signature in [
+            "static bool looksUnsignedInteger(", "static const char* skipSpacesConst(",
+            "static bool parseUint32Strict(", "static int countSeparatedParts(",
+            "static bool parseScheduledRadioArgs(",
+        ])
+        utils = (ROOT / "src/Utils.cpp").read_text(encoding="utf-8")
+        parts = method(utils, "int Utils::parseTextParts(")
+        self.compile_and_run(r'''
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <initializer_list>
+#include <helpers/CLICommandUtils.h>
+struct StrHelper {
+  static void strncpy(char* dst, const char* src, size_t n) { snprintf(dst, n, "%s", src); }
+};
+namespace mesh {
+struct Utils { static int parseTextParts(char*, const char*[], int, char); };
+@PARTS@
+}
+@PARSERS@
+int main() {
+  const uint32_t now = 1700000000;
+  float freq, bw; uint8_t sf, cr; uint32_t start, end;
+  assert(parseScheduledRadioArgs("910.5,500,8,5,+5,+15", true, freq,bw,sf,cr,start,end,now));
+  assert(start == now + 300 && end == now + 900);
+  assert(parseScheduledRadioArgs("910.5,500,8,5,1700000300,1700000900", true, freq,bw,sf,cr,start,end,now));
+  assert(start == now + 300 && end == now + 900);
+  assert(parseScheduledRadioArgs("910.5,500,8,5,1700000300,+15", true, freq,bw,sf,cr,start,end,now));
+  assert(start == now + 300 && end == now + 900);
+  assert(parseScheduledRadioArgs("910.5,500,8,5,+5", false, freq,bw,sf,cr,start,end,now));
+  assert(start == now + 300 && end == 0);
+  for (const char* invalid : {"+0", "+", "++1", "+ 1", "-1", "+1.5", "+1x", "+4294967295", "4294967296"}) {
+    start = 42;
+    assert(!mesh::cli::parseRadioScheduleTime(invalid, now, start));
+    assert(start == 42);
+  }
+  assert(mesh::cli::parseRadioScheduleTime(" +1 ", now, start) && start == now + 60);
+  assert(mesh::cli::parseRadioScheduleTime("+1", UINT32_MAX - 60, start) && start == UINT32_MAX);
+  assert(!mesh::cli::parseRadioScheduleTime("+1", UINT32_MAX - 59, start));
+}
+'''.replace("@PARTS@", parts).replace("@PARSERS@", parsers))
+
     def test_production_cli_replies_and_duration_validation(self):
         source = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="utf-8")
         parsers = "\n".join(method(source, signature) for signature in [

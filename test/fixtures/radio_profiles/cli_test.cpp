@@ -187,6 +187,33 @@ static void scheduledSaveFailureKeepsOriginalTimes() {
   assert(f.radio.p.secondary.params.freq == 910.5f);
 }
 
+static void relativeSchedules() {
+  Fixture f;
+  f.cmd("set tempradioat2 910.5,500,8,5,rxtx,+1,+3,80");
+  f.advance(59000);
+  assert(!f.radio.p.enabled());
+  f.advance(1000);
+  assert(f.radio.p.secondary_temporary);
+  f.advance(119000);
+  assert(f.radio.p.secondary_temporary);
+  f.advance(1000);
+  assert(!f.radio.p.enabled());
+  char command[160];
+  snprintf(command, sizeof(command), "set tempradioat2 911.5,500,8,5,rxtx,+1,%lu,80",
+      (unsigned long)(f.clock.epoch + 120));
+  f.cmd(command);
+  f.advance(60000);
+  assert(f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq == 911.5f);
+  f.advance(60000);
+  assert(!f.radio.p.enabled());
+  f.cmd("set radioat2 912.5,500,8,5,rx,+1,80");
+  f.advance(60000);
+  assert(!f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq == 912.5f);
+  f.cmd("set radioat2 912.5,500,8,5,rx,+0,80", false);
+  f.cmd("set radioat2 912.5,500,8,5,rx,+4294967295,80", false);
+  f.cmd("set tempradioat2 912.5,500,8,5,rx,+3,+1,80", false);
+}
+
 int main(int argc, char** argv) {
   if (argc == 2) {
     if (!strcmp(argv[1], "permanent_order")) permanentScheduleOrder();
@@ -195,6 +222,7 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[1], "save_failure")) scheduledSaveFailureKeepsOriginalTimes();
     else if (!strcmp(argv[1], "schedule_permutations")) schedulePermutations();
     else if (!strcmp(argv[1], "storage_isolation")) storageBackoffDoesNotDelayTemporaryWindows();
+    else if (!strcmp(argv[1], "relative_schedule")) relativeSchedules();
     else return 2;
     return 0;
   }

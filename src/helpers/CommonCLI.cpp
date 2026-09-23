@@ -364,7 +364,7 @@ static int countSeparatedParts(const char* s, char separator) {
 
 static bool parseScheduledRadioArgs(const char* args, bool temporary, float& freq, float& bw,
                                     uint8_t& sf, uint8_t& cr, uint32_t& start_time,
-                                    uint32_t& end_time) {
+                                    uint32_t& end_time, uint32_t now) {
   const int expected_parts = temporary ? 6 : 5;
   args = skipSpacesConst(args);
   if (countSeparatedParts(args, ',') != expected_parts) {
@@ -387,7 +387,7 @@ static bool parseScheduledRadioArgs(const char* args, bool temporary, float& fre
       || !mesh::cli::parseDecimalStrict(parts[1], bw)
       || !parseUint32Strict(parts[2], sf_u32)
       || !parseUint32Strict(parts[3], cr_u32)
-      || !parseUint32Strict(parts[4], start_time)) {
+      || !mesh::cli::parseRadioScheduleTime(parts[4], now, start_time)) {
     return false;
   }
   if (sf_u32 > 255 || cr_u32 > 255) {
@@ -396,7 +396,7 @@ static bool parseScheduledRadioArgs(const char* args, bool temporary, float& fre
 
   sf = (uint8_t)sf_u32;
   cr = (uint8_t)cr_u32;
-  if (temporary && !parseUint32Strict(parts[5], end_time)) {
+  if (temporary && !mesh::cli::parseRadioScheduleTime(parts[5], now, end_time)) {
     return false;
   }
   if (!temporary) {
@@ -3854,8 +3854,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     uint16_t preamble = 0;
     char legacy[120];
     if (!mesh::RadioProfileCLI::parseSuffix(&config[8], 5, legacy, sizeof(legacy), preamble)
-        || !parseScheduledRadioArgs(legacy, false, freq, bw, sf, cr, start_time, end_time)) {
-      strcpy(reply, "Error, use: set radioat f,bw,sf,cr,start");
+        || !parseScheduledRadioArgs(legacy, false, freq, bw, sf, cr, start_time, end_time, _rtc->getCurrentTime())) {
+      strcpy(reply, "Error, use: set radioat f,bw,sf,cr,start (UTC or +minutes)");
     } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)
         || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
       strcpy(reply, "Error, invalid radio params");
@@ -3873,8 +3873,8 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     uint16_t preamble = 0;
     char legacy[120];
     if (!mesh::RadioProfileCLI::parseSuffix(&config[12], 6, legacy, sizeof(legacy), preamble)
-        || !parseScheduledRadioArgs(legacy, true, freq, bw, sf, cr, start_time, end_time)) {
-      strcpy(reply, "Error, use: set tempradioat f,bw,sf,cr,start,end");
+        || !parseScheduledRadioArgs(legacy, true, freq, bw, sf, cr, start_time, end_time, _rtc->getCurrentTime())) {
+      strcpy(reply, "Error, use: set tempradioat f,bw,sf,cr,start,end (UTC or +minutes)");
     } else if (freq < 150.0f || freq > 2500.0f || sf < 5 || sf > 12 || cr < 5 || cr > 8 || !isValidLoRaBandwidth(bw)
         || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
       strcpy(reply, "Error, invalid radio params");

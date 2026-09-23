@@ -427,7 +427,7 @@ See the [implementation and validation notes](radio_dwell_policy_validation.md).
 
 ## Schedule the second profile
 
-Use UTC Unix timestamps (seconds):
+Use UTC Unix timestamps (seconds), or `+N` for N whole minutes from now:
 
 ```text
 set radioat2 910.5,500,8,5,rxtx,START[,PREAMBLE]
@@ -440,11 +440,19 @@ del radioat2 1
 del tempradioat2 all
 ```
 
-Replace `START`, `END` and the optional `PREAMBLE` with numbers; omit the square
+Replace `START` and `END` with timestamps or `+N`, and the optional `PREAMBLE`
+with a number; omit the square
 brackets. Each schedule family has four slots. Times must be in the future and
 within 24 days. Overlapping temporary second-profile sessions are rejected.
 `radioat2` changes the saved second profile when it starts; `tempradioat2`
 restores the saved profile at its end. Pending schedules do not survive reboot.
+
+For example, `set tempradioat2 910.5,500,8,5,rxtx,+5,+15` starts in 5 minutes
+and restores in 15 minutes (10 minutes active). Both offsets are measured from
+the same node-clock snapshot when accepting the command, not from each other.
+`set radioat2 910.5,500,8,5,rxtx,+5` schedules a saved change in 5 minutes.
+Offsets must be positive whole minutes. Absolute and relative endpoints can be
+mixed; bare numbers still mean UTC seconds. Existing clock requirements apply.
 
 ## Return to one profile
 

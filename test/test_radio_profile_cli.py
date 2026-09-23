@@ -20,7 +20,8 @@ class RadioProfileCLITest(unittest.TestCase):
                 str(ROOT/'test/fixtures/radio_profiles/cli_test.cpp'),
                 '-o', str(exe)], check=True, capture_output=True, text=True)
             for scenario in (None, 'permanent_order', 'temporary_boundary', 'lease_creation',
-                             'save_failure', 'schedule_permutations', 'storage_isolation'):
+                             'save_failure', 'schedule_permutations', 'storage_isolation',
+                             'relative_schedule'):
                 with self.subTest(scenario=scenario or 'commands_persistence_and_timers'):
                     subprocess.run([str(exe)] + ([scenario] if scenario else []), check=True)
 

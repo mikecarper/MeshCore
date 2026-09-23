@@ -665,17 +665,17 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       && cli::parseUnsignedIntegerStrict(parts[3], cr) && cr <= 255
       && parseMode(parts[4], config.mode);
   config.params.sf = sf; config.params.cr = cr;
+  const uint32_t epoch = scheduled && rtc_ ? rtc_->getCurrentTime() : 0;
   if (valid && count > expected) valid = parsePreamble(parts[expected], config.params.preamble);
   if (valid && temporary) valid = cli::parseUnsignedIntegerStrict(parts[5], minutes) && minutes >= 1 && minutes <= 10080;
-  if (valid && scheduled) valid = cli::parseUnsignedIntegerStrict(parts[5], start);
-  if (valid && scheduled_temp) valid = cli::parseUnsignedIntegerStrict(parts[6], end);
+  if (valid && scheduled) valid = cli::parseRadioScheduleTime(parts[5], epoch, start);
+  if (valid && scheduled_temp) valid = cli::parseRadioScheduleTime(parts[6], epoch, end);
   if (valid) valid = radio_->validateProfile(config.params);
   RadioProfiles preview = *radio_->profiles(); preview.setSecondary(config, false);
   if (valid) valid = preview.automaticPreambleFits();
   if (!valid) { snprintf(reply, capacity, "Error: use %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]", key,
-      scheduled_temp ? ",start,end" : scheduled ? ",start" : temporary ? ",minutes" : ""); return true; }
+      scheduled_temp ? ",start,end (UTC or +minutes)" : scheduled ? ",start (UTC or +minutes)" : temporary ? ",minutes" : ""); return true; }
   if (scheduled) {
-    const uint32_t epoch = rtc_ ? rtc_->getCurrentTime() : 0;
     if (!epoch || start <= epoch || (uint64_t)(start-epoch) * 1000 > 0x7fffffffULL
         || (scheduled_temp && (end <= start || (uint64_t)(end-epoch) * 1000 > 0x7fffffffULL))) {
       snprintf(reply, capacity, "Error: future UTC start/end required, within 24 days"); return true;
