@@ -3672,7 +3672,7 @@ not a fitted success curve, and neither packet overlap nor arbitrary application
 stalls can be made safe by a finite preamble recommendation.</p>
 <p>See the <a href="../radio_dwell_policy_validation/">implementation and validation notes</a>.</p>
 <h2 id="schedule-the-second-profile">Schedule the second profile</h2>
-<p>Use UTC Unix timestamps (seconds):</p>
+<p>Use UTC Unix timestamps (seconds), or <code>+N</code> for N whole minutes from now:</p>
 <pre><code class="language-text">set radioat2 910.5,500,8,5,rxtx,START[,PREAMBLE]
 set tempradioat2 910.5,500,8,5,rxtx,START,END[,PREAMBLE]
 get radioat2
@@ -3682,11 +3682,18 @@ get tempradioat2 1
 del radioat2 1
 del tempradioat2 all
 </code></pre>
-<p>Replace <code>START</code>, <code>END</code> and the optional <code>PREAMBLE</code> with numbers; omit the square
+<p>Replace <code>START</code> and <code>END</code> with timestamps or <code>+N</code>, and the optional <code>PREAMBLE</code>
+with a number; omit the square
 brackets. Each schedule family has four slots. Times must be in the future and
 within 24 days. Overlapping temporary second-profile sessions are rejected.
 <code>radioat2</code> changes the saved second profile when it starts; <code>tempradioat2</code>
 restores the saved profile at its end. Pending schedules do not survive reboot.</p>
+<p>For example, <code>set tempradioat2 910.5,500,8,5,rxtx,+5,+15</code> starts in 5 minutes
+and restores in 15 minutes (10 minutes active). Both offsets are measured from
+the same node-clock snapshot when accepting the command, not from each other.
+<code>set radioat2 910.5,500,8,5,rxtx,+5</code> schedules a saved change in 5 minutes.
+Offsets must be positive whole minutes. Absolute and relative endpoints can be
+mixed; bare numbers still mean UTC seconds. Existing clock requirements apply.</p>
 <h2 id="return-to-one-profile">Return to one profile</h2>
 <pre><code class="language-text">set radio2 off
 </code></pre>

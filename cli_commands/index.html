@@ -8439,10 +8439,16 @@ intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
 - <code>bw</code>: Bandwidth in kHz (same allowed values as <code>set radio</code>)
 - <code>sf</code>: Spreading factor (5-12)
 - <code>cr</code>: Coding rate (5-8)
-- <code>start_time</code>: Unix epoch time when the setting starts
-- <code>end_time</code>: Unix epoch time when a temporary setting reverts
+- <code>start_time</code>: UTC Unix epoch seconds, or <code>+N</code> for N whole minutes from now
+- <code>end_time</code>: UTC Unix epoch seconds, or <code>+N</code> for N whole minutes from now
 - <code>n</code>: Scheduled entry number from <code>get radioat</code> or <code>get tempradioat</code></p>
 <p><strong>Notes:</strong>
+- Both relative endpoints use the same command-time snapshot of the node clock.
+  For example, <code>set tempradioat 910.5,500,8,5,+5,+15</code> starts in 5 minutes
+  and reverts in 15 minutes (10 minutes active). <code>set radioat 910.5,500,8,5,+5</code>
+  schedules a saved change in 5 minutes. Bare numbers remain absolute timestamps;
+  absolute and relative endpoints can be mixed. Relative offsets must be positive.
+  The existing scheduler and clock behavior are unchanged.
 - <code>get radioat</code> and <code>get tempradioat</code> list all entries when <code>n</code> is omitted.
 - <code>del radioat</code> and <code>del tempradioat</code> delete all entries when <code>n</code> is omitted.
 - Each queue supports 3 entries. Scheduled entries are not saved across reboot.
