@@ -339,8 +339,9 @@ receiver's setting does not lengthen packets sent by other nodes.
 `get radio2.timing` (alias `get radio.timing`) reports the active pair in
 `radio,radio2` order: dwell in chirps, recommended preambles in symbols, and
 the switching/loop allowances. Before calibration it reports `timing self-test
-pending` and the provisional preambles. On the T1000-E, the Full Companion now
-uses RTC2 for both retune timing and scan visits (about 31 us resolution).
+pending` and the provisional preambles. On nRF52 boards, enabling `radio2`
+uses RTC2 for both retune timing and scan visits (about 31 us resolution);
+turning `radio2` off stops RTC2 and returns to the usual `micros()` clock.
 Previously, the nRF52 `micros()` fallback counted 1,024 Hz RTOS ticks: a real
 sub-millisecond retune could be reported as exactly 977 us, and two ticks as
 1,953 us. Those old numbers are timer artifacts, not measured RF costs.

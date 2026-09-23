@@ -24,8 +24,10 @@ namespace mesh { enum class RadioParamApplyResult { APPLIED, BUSY, FAILED }; }
 static uint64_t elapsed_us;
 static uint8_t state;
 uint32_t micros() { return (uint32_t)elapsed_us; }
-uint32_t profileTimestamp() { return micros(); }
-uint32_t profileElapsedUs(uint32_t since, uint32_t now) { return now - since; }
+static bool profile_clock_active=false;
+void syncProfileClock(bool dual_profile) { profile_clock_active=dual_profile; }
+uint32_t profileTimestamp(bool) { return micros(); }
+uint32_t profileElapsedUs(uint32_t since, uint32_t now, bool) { return now - since; }
 uint32_t millis() { return (uint32_t)(elapsed_us / 1000); }
 struct Chip { bool standbyXOSC=false; int standby() { return 0; } };
 using CustomSX1262 = Chip;
@@ -59,7 +61,7 @@ struct RadioLibWrapper {
     state=STATE_RX; elapsed_us=100000;
     auto& p=_profiles.primary;
     p.freq=_cur_freq; p.bw=_cur_bw; p.sf=_cur_sf; p.cr=_cur_cr;
-    _profile_visit_stamp=profileTimestamp();
+    _profile_visit_stamp=profileTimestamp(_profiles.enabled());
   }
   bool isChipBusy() { return busy; }
   bool isInRecvMode() const { return (state & ~STATE_INT_READY) == STATE_RX; }
@@ -71,7 +73,7 @@ struct RadioLibWrapper {
   void startRecv() {
     if (failRxStarts) { --failRxStarts; state=STATE_IDLE; return; }
     if (_profile_rxps_suspended) assert(chip.standbyXOSC && !_rx_ps_enabled);
-    state=STATE_RX; _profile_visit_stamp=profileTimestamp(); _rx_ps_armed=_rx_ps_enabled;
+    state=STATE_RX; _profile_visit_stamp=profileTimestamp(_profiles.enabled()); _rx_ps_armed=_rx_ps_enabled;
   }
   void stopReceiveDutyCycle() { _rx_ps_armed=false; }
   bool applyParams(float f,float,uint8_t,uint8_t) { ++applies; elapsed_us+=switch_apply_us; return !fail || f==909.5f; }
@@ -100,6 +102,15 @@ struct RadioLibWrapper {
 @METHODS@
 int main() {
   using Result=mesh::RadioParamApplyResult;
+  {
+    RadioLibWrapper w;
+    w.enable();
+    assert(profile_clock_active);
+    w._cw_active=true;
+    w._profiles.setSecondary({},false);
+    w.serviceProfileScan();
+    assert(!profile_clock_active); // even a carrier-wave early return stops RTC2
+  }
   {
     RadioLibWrapper w; w.enable();
     assert(w._profiles.switchTestReady());
@@ -275,7 +286,7 @@ int main() {
     w.enable();
     w._floor_estimator.add(-100, millis());
     w._active_profile=0;
-    w._profile_visit_stamp=profileTimestamp();
+    w._profile_visit_stamp=profileTimestamp(w._profiles.enabled());
     const auto primary_visit=w._profiles.listenUs(0);
     elapsed_us += primary_visit - 1; w.serviceProfileScan(); assert(w._active_profile==0);
     elapsed_us++; w.serviceProfileScan(); assert(w._active_profile==1);

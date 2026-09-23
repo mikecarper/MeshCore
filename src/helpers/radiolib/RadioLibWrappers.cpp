@@ -24,32 +24,44 @@ static volatile uint8_t state = STATE_IDLE;
 // The Adafruit nRF52 core's micros() falls back to 1024 Hz RTOS ticks when
 // DWT is disabled. A sub-millisecond retune then appears to take exactly
 // 977 us (or 1953 us across two ticks), making the learned switch allowance
-// and scan dwell inaccurate. RTC2 is otherwise unused on the T1000-E and
-// provides a continuous 32768 Hz clock without changing micros() globally or
-// holding the high-frequency clock on for this measurement.
-static uint32_t profileTimestamp() {
-#if defined(T1000_E) && defined(NRF52_PLATFORM)
-  static bool started = false;
-  if (!started) {
+// and scan dwell inaccurate. On nRF52, RTC2 provides a 32768 Hz profile clock
+// without changing micros() globally or holding the high-frequency clock on.
+// Keep it stopped in the ordinary single-profile mode.
+static void syncProfileClock(bool dual_profile) {
+#if defined(NRF52_PLATFORM)
+  static bool active = false;
+  if (active == dual_profile) return;
+  if (dual_profile) {
     NRF_RTC2->TASKS_STOP = 1;
     NRF_RTC2->PRESCALER = 0;
     NRF_RTC2->TASKS_CLEAR = 1;
     NRF_RTC2->TASKS_START = 1;
-    started = true;
+  } else {
+    NRF_RTC2->TASKS_STOP = 1;
   }
-  return NRF_RTC2->COUNTER;
+  active = dual_profile;
 #else
-  return micros();
+  (void) dual_profile;
 #endif
 }
 
-static uint32_t profileElapsedUs(uint32_t since, uint32_t now) {
-#if defined(T1000_E) && defined(NRF52_PLATFORM)
+static uint32_t profileTimestamp(bool dual_profile) {
+  syncProfileClock(dual_profile);
+#if defined(NRF52_PLATFORM)
+  if (dual_profile) return NRF_RTC2->COUNTER;
+#endif
+  return micros();
+}
+
+static uint32_t profileElapsedUs(uint32_t since, uint32_t now, bool dual_profile) {
+#if defined(NRF52_PLATFORM)
+  if (!dual_profile) return now - since;
   // RTC2 is 24-bit and wraps every 512 seconds. Active scanning samples it
   // many times per second; a freshly configured profile gets a new visit stamp.
   const uint32_t ticks = (now - since) & 0x00ffffffUL;
   return static_cast<uint32_t>((uint64_t(ticks) * 15625 + 511) >> 9);
 #else
+  (void) dual_profile;
   return now - since;
 #endif
 }
@@ -66,7 +78,7 @@ void setFlag(void) {
 }
 
 void RadioLibWrapper::begin() {
-  (void) profileTimestamp();
+  syncProfileClock(_profiles.enabled());
 #ifdef USE_CC310_HW_CRYPTO
   // Initialize CryptoCell once from normal task context. The session helper
   // still initializes lazily if an earlier crypto operation runs first.
@@ -288,7 +300,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     }
   }
 
-  _profile_visit_stamp = profileTimestamp();
+  _profile_visit_stamp = profileTimestamp(_profiles.enabled());
   return success ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
 }
 
@@ -321,7 +333,8 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
   if (!_profile_refresh_required && _active_profile == profile && _profile_generation == _profiles.generation[profile]
       && _physical_preamble == preamble) return mesh::RadioParamApplyResult::APPLIED;
   if (!validateProfile(p)) return mesh::RadioParamApplyResult::FAILED;
-  const uint32_t started = profileTimestamp();
+  const bool dual_profile = _profiles.enabled();
+  const uint32_t started = profileTimestamp(dual_profile);
   beginProfileRetune(isInRecvMode() && !_rx_ps_armed && !_rx_ps_enabled);
   const uint8_t resume = beginReconfigure();
   if (resume > 1) {
@@ -364,13 +377,13 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
     if (restored) endReconfigure(resume);
     if (!restored || (resume && !isInRecvMode())) _profile_refresh_required = true;
   }
-  _profile_visit_stamp = profileTimestamp();
+  _profile_visit_stamp = profileTimestamp(dual_profile);
   // A profile retune re-enters RX on a different tuple. Do not read its
   // instantaneous RSSI until the chip family's settle interval has elapsed.
   if (applied && _nf_refresh_requested) {
     _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
   }
-  const uint32_t elapsed = profileElapsedUs(started, _profile_visit_stamp);
+  const uint32_t elapsed = profileElapsedUs(started, _profile_visit_stamp, dual_profile);
   if (elapsed > _profiles.longest_switch_us) _profiles.longest_switch_us = elapsed;
   // Require four good RX-to-RX hops in each direction before using the budget,
   // then continue raising the observed maximum as later good hops run.
@@ -403,6 +416,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::tryRestoreCodingRate(uint8_t cr) {
 }
 
 void RadioLibWrapper::serviceProfileScan() {
+  syncProfileClock(_profiles.enabled());
   if (_cw_active) return;
   if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;
   _profile_retry_at = 0;
@@ -477,13 +491,13 @@ void RadioLibWrapper::serviceProfileScan() {
         && visit_us < NF_CALIB_SETTLE_MS * 1000UL) {
       visit_us = NF_CALIB_SETTLE_MS * 1000UL;
     }
-    if (profileElapsedUs(_profile_visit_stamp, profileTimestamp()) >= visit_us) target ^= 1;
+    if (profileElapsedUs(_profile_visit_stamp, profileTimestamp(true), true) >= visit_us) target ^= 1;
   }
   const auto result = tuneProfile(target);
   if (restart_scan && result == mesh::RadioParamApplyResult::APPLIED) {
     _profile_scan_generation[0] = _profiles.generation[0];
     _profile_scan_generation[1] = _profiles.generation[1];
-    _profile_visit_stamp = profileTimestamp();
+    _profile_visit_stamp = profileTimestamp(true);
   }
   if (result == mesh::RadioParamApplyResult::FAILED) {
     // Retry a rejected or failing profile at a bounded rate; retain primary RX.
@@ -935,6 +949,7 @@ bool RadioLibWrapper::serviceCarrierWave() {
 }
 
 void RadioLibWrapper::loop() {
+  syncProfileClock(_profiles.enabled());
   if (serviceCarrierWave()) return;
   if (_profiles.enabled()) {
     const unsigned long now = millis();
@@ -1081,7 +1096,7 @@ void RadioLibWrapper::startRecv() {
   int err = startReceiveMode();
   if (err == RADIOLIB_ERR_NONE) {
     // A very short frame may complete while startReceiveMode() returns.
-    _profile_visit_stamp = profileTimestamp();
+    _profile_visit_stamp = profileTimestamp(_profiles.enabled());
     // Retain that RX interrupt instead of overwriting it with software state.
     noInterrupts();
     state = (state & STATE_INT_READY) | STATE_RX;
