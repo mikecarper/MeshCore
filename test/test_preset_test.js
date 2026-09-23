@@ -14,6 +14,38 @@ assert.doesNotMatch(pageSource, /<select name="tz"/);
 assert.match(pageSource, /data-role="test-content" hidden/);
 assert.match(pageSource, /data-role="test-content-footer" hidden/);
 assert.match(pageSource, /data-role="url-builder-disclosure" open/);
+assert.match(pageSource, /class="preset-test-quick-command"/);
+assert.match(pageSource, /class="preset-test-generator-disclosure preset-test-stock-leave"/);
+assert.match(pageSource, /data-role="keymind-disclosure"/);
+assert.match(pageSource, /<details class="preset-test-generator-disclosure preset-test-keymind-disclosure"\s+data-role="keymind-disclosure">/);
+const keymindStart = pageSource.indexOf('data-role="keymind-disclosure"');
+const keymindEnd = pageSource.indexOf("</details>", keymindStart);
+const keymindContent = pageSource.slice(keymindStart, keymindEnd);
+assert(pageSource.indexOf('id="stock-test-title"') < keymindStart);
+assert(pageSource.indexOf('data-command="stock-now"') <
+  pageSource.indexOf('data-role="countdown"'));
+assert(pageSource.indexOf('data-command="stock-now"') <
+  pageSource.indexOf('data-role="url-builder-disclosure"'));
+assert(pageSource.indexOf('data-role="url-builder-disclosure"') <
+  pageSource.indexOf('data-role="test-content-footer"'));
+assert(pageSource.indexOf('data-role="test-content-footer"') < keymindStart);
+assert.strictEqual((pageSource.match(/data-command="stock-now"/g) || []).length, 1);
+assert.strictEqual((pageSource.match(/data-command="stock-cancel-during"/g) || []).length, 1);
+assert.doesNotMatch(keymindContent, /data-command="stock-now"/);
+for (const name of ["set-clock", "reset-clock", "companion-now", "primary-scheduled",
+  "companion-scheduled", "primary-cancel", "companion-cancel-before",
+  "companion-cancel-during"]) {
+  assert.match(keymindContent, new RegExp('data-command="' + name + '"'));
+}
+const openTags = [];
+for (const match of pageSource.matchAll(/<\/?(div|details|section|article|summary)\b[^>]*>/g)) {
+  if (match[0][1] === "/") {
+    assert.strictEqual(openTags.pop(), match[1], "nested page HTML must stay balanced");
+  } else {
+    openTags.push(match[1]);
+  }
+}
+assert.deepStrictEqual(openTags, []);
 assert.match(pageSource, /data-role="node-clock-input"/);
 assert.match(pageSource, /placeholder="02:42 22\/9\/2026 UTC"/);
 assert.match(pageSource, /data-action="apply-node-clock"/);
@@ -98,6 +130,10 @@ assert.strictEqual(tool.presetPageTitle(requestedLink), "Temporary radio test ·
 assert.match(tool.presetPageSummary(requestedLink), /911\.3 MHz, 500 kHz, SF8, CR7, 22 dBm/);
 assert.doesNotMatch(tool.presetPageSummary(requestedLink), /910\.1 MHz/);
 assert.strictEqual(tool.presetEyebrow(requestedLink), "MeshCore · 48-hour temporary preset test");
+assert.strictEqual(
+  tool.commandsFor(requestedLink, requestedLink.startMs).stockNow,
+  "tempradio 911.3,500,8,7,2880"
+);
 assert.strictEqual(
   tool.commandsFor(requestedLink, requestedLink.startMs).primaryScheduled,
   "set tempradioat 911.3,500,8,7,1790035200,1790208000\nget tempradioat"

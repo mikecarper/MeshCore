@@ -139,6 +139,27 @@
   margin-bottom: 0;
 }
 
+.preset-test-quick-command {
+  border: 1px solid var(--preset-border);
+  border-radius: 0.6rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem 1rem;
+  background: color-mix(in srgb, var(--preset-cyan) 5%, var(--md-default-bg-color));
+}
+
+.preset-test-quick-command h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.preset-test-quick-command .preset-test-note + .preset-test-note {
+  margin-top: 0.4rem;
+}
+
+.preset-test-stock-leave {
+  margin: 1rem 0;
+}
+
 .preset-test-error {
   color: var(--md-code-hl-number-color);
   font-weight: 650;
@@ -175,6 +196,8 @@
   padding-right: 0.5rem;
 }
 
+.preset-test-quick-command pre,
+.preset-test-stock-leave pre,
 .preset-test-card pre,
 .preset-test > [data-role="content"] > section > pre {
   margin: 0.8rem 0;
@@ -182,6 +205,8 @@
   border-radius: 0.35rem;
 }
 
+.preset-test-quick-command pre code,
+.preset-test-stock-leave pre code,
 .preset-test-card pre code,
 .preset-test > [data-role="content"] > section > pre code {
   white-space: pre-wrap;
@@ -346,6 +371,26 @@
 
 .preset-test-generator-disclosure[open] > summary::after {
   content: "Close generator";
+}
+
+.preset-test-stock-leave > summary::after {
+  content: "Show leave command";
+}
+
+.preset-test-stock-leave[open] > summary::after {
+  content: "Hide leave command";
+}
+
+.preset-test-keymind-disclosure > summary::after {
+  content: "Show advanced";
+}
+
+.preset-test-keymind-disclosure {
+  margin-top: 1.4rem;
+}
+
+.preset-test-keymind-disclosure[open] > summary::after {
+  content: "Hide advanced";
 }
 
 .preset-test-generator-disclosure-body {

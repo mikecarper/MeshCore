@@ -902,7 +902,6 @@
       );
 
       const staticCommands = setScheduledCommands();
-      setCommand(root, "stock-cancel-during", staticCommands.stockCancelDuring);
       setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
       setCommand(root, "primary-cancel", staticCommands.primaryCancel);
       setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
@@ -1057,19 +1056,27 @@
           root,
           "companion-now",
           phase === "before"
-            ? "Available one hour before the test — use Option 2 to schedule now."
+            ? "Available one hour before the test — schedule in advance below if supported."
             : endedMessage
         );
       }
+      setCommand(
+        root,
+        "stock-cancel-during",
+        immediateOpen ? commands.stockCancelDuring
+          : phase === "before" ? "Available after you join the test." : "Test ended — no need to leave."
+      );
       setCommandEnabled(root, "stock-now", immediateOpen);
+      setCommandEnabled(root, "stock-cancel-during", immediateOpen);
       setCommandEnabled(root, "companion-now", immediateOpen);
       setMaterialCommandCopyEnabled(root, "stock-now", immediateOpen);
+      setMaterialCommandCopyEnabled(root, "stock-cancel-during", immediateOpen);
       setMaterialCommandCopyEnabled(root, "companion-now", immediateOpen);
       setText(
         root,
         '[data-role="stock-now-note"]',
         phase === "before" && !immediateOpen
-          ? "Available one hour before the test; schedule it now with Option 2."
+          ? "The join command unlocks one hour before the test."
           : phase === "before"
             ? "The setup window is open; the timeout includes the hour before the official start."
           : phase === "active"
