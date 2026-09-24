@@ -103,6 +103,32 @@ TEST(Esp32PartitionMigrationPolicy, LoRaResumePreservesTheOldApplicationInEither
   EXPECT_TRUE(small_from_b.restore_identity_in_full);
 }
 
+TEST(Esp32PartitionMigrationPolicy, ExpandedLoRaHandoffUsesOnlyTheOppositeSlot) {
+  for (const auto& layout : {policy::kExpanded4MBLayout,
+                              policy::kExpanded8MBLayout,
+                              policy::kExpandedLayout}) {
+    const auto no_record_from_a = policy::planLoRaHandoff(
+        layout, layout.app0_address, 0xFF);
+    EXPECT_TRUE(no_record_from_a.valid);
+    EXPECT_EQ(1, no_record_from_a.other_slot);
+    EXPECT_FALSE(no_record_from_a.has_record);
+
+    const auto no_record_from_b = policy::planLoRaHandoff(
+        layout, layout.app1_address, 0xFF);
+    EXPECT_TRUE(no_record_from_b.valid);
+    EXPECT_EQ(0, no_record_from_b.other_slot);
+    EXPECT_FALSE(no_record_from_b.has_record);
+
+    const auto recorded = policy::planLoRaHandoff(
+        layout, layout.app1_address, 0);
+    EXPECT_TRUE(recorded.valid);
+    EXPECT_TRUE(recorded.has_record);
+    EXPECT_FALSE(policy::planLoRaHandoff(layout, layout.app1_address, 1).valid);
+    EXPECT_FALSE(policy::planLoRaHandoff(layout, layout.app0_address, 2).valid);
+    EXPECT_FALSE(policy::planLoRaHandoff(layout, 0x300000, 0xFF).valid);
+  }
+}
+
 TEST(Esp32PartitionMigrationPolicy, GeneratedTablePrefixContainsAllSixEntriesAndMd5) {
   EXPECT_EQ(0xE0U, policy::kExpandedPartitionTablePrefixBytes);
   EXPECT_EQ(0xAA, policy::kExpandedPartitionTablePrefix[0]);

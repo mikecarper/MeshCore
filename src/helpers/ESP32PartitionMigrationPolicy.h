@@ -280,6 +280,30 @@ struct LoRaResumePlan {
   bool restore_identity_in_full;
 };
 
+struct LoRaHandoffPlan {
+  bool valid;
+  uint8_t other_slot;
+  bool has_record;
+};
+
+// An already-expanded LoRa bridge has no handoff record. It may return to
+// the opposite slot, but never to itself or to a slot contradicted by a
+// staged record. Runtime code must still verify that image's identity and
+// bootability before selecting it.
+inline LoRaHandoffPlan planLoRaHandoff(const PartitionGeometry& layout,
+                                      uint32_t running_address,
+                                      uint8_t staged_slot) {
+  const bool in_app0 = running_address == layout.app0_address;
+  const bool in_app1 = running_address == layout.app1_address;
+  const uint8_t other = in_app0 ? 1 : 0;
+  const bool absent = staged_slot == 0xFF;
+  return {
+      (in_app0 || in_app1) && (absent || staged_slot == other),
+      other,
+      !absent,
+  };
+}
+
 constexpr bool overlaps(uint32_t a, uint32_t a_size,
                         uint32_t b, uint32_t b_size) {
   return static_cast<uint64_t>(a) < static_cast<uint64_t>(b) + b_size

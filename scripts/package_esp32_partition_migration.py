@@ -358,6 +358,15 @@ and the exact target ID in `manifest.json`. A stock image without that updater
 cannot take this route. The bridge checks the old receiver before changing the
 table and refuses if its image or target does not match.
 
+If this bridge is accidentally installed on a node that already has the
+expanded table, it verifies the other OTA slot's target, EndF image hash and
+bootability, then returns to that firmware without changing the table. It
+refuses a second migration bridge or an invalid other image; Wi-Fi recovery
+remains available if no safe LoRa image exists and identity restoration has
+completed. A failed identity restore disables firmware upload. Do not
+deliberately install the bridge on an already-expanded node; use the Full image
+directly.
+
 {slot_instructions}The Full image has {full_mota_blocks} blocks and needs a seeder with at least
 {full_mota_blocks * 4} bytes of proof scratch. Older 4 KiB-scratch seeders cannot
 serve more than 1024 blocks. Verify that a capable seeder lists the Full image

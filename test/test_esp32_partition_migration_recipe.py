@@ -110,6 +110,7 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
                        "v1.17.1.7-test", "01234567", full_mota_blocks=900)
         self.assertIn("old slot B", guide)
         self.assertIn("original private key from NVS", guide)
+        self.assertIn("accidentally installed on a node that already has", guide)
         self.assertIn("power loss during", guide)
         self.assertIn("exact\n   `Started:` URL", guide)
         self.assertIn("ota pull <id>", guide)
