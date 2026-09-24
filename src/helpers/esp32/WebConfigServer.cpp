@@ -238,6 +238,12 @@ static inline bool wcIsDeferredReboot(const char* cmd) {
   return strncmp(cmd, "reboot", 6) == 0;
 }
 
+static const char* const WC_BOARD_CMDS[] = {
+  "radio.fem.rxgain", "radio.fem.txgain", "fan",
+};
+static const size_t WC_BOARD_CMD_COUNT = sizeof(WC_BOARD_CMDS) / sizeof(WC_BOARD_CMDS[0]);
+static_assert(WC_BOARD_CMD_COUNT <= 8, "board command mask must fit uint8_t");
+
 // Commands the CLI reaches but the portal cannot honestly serve. Rejected at
 // POST so nothing in the sequence runs, rather than failing halfway with a
 // reply that does not explain itself. Returns the reason, or NULL if fine.
@@ -1007,7 +1013,23 @@ void WebConfigServer::finalizeTeardown() {
   _admin_pwd_set = false;
   _session_token[0] = 0;
   _stats_json[0] = 0;
+  _board_cmds = 0;
+  _board_cmds_probed = false;
   if (_cb) _cb->onWebConfigStopped();
+}
+
+void WebConfigServer::probeBoardCommands() {
+  char command[48], reply[160];
+  uint8_t mask = 0;
+  for (size_t i = 0; i < WC_BOARD_CMD_COUNT; ++i) {
+    snprintf(command, sizeof(command), "get %s", WC_BOARD_CMDS[i]);
+    reply[0] = 0;
+    _cb->execCommand(command, reply);
+    if (reply[0] == '>') mask |= static_cast<uint8_t>(1U << i);
+  }
+  WCLock lock(_mux);
+  _board_cmds = mask;
+  _board_cmds_probed = true;
 }
 
 void WebConfigServer::tick(uint32_t now) {
@@ -1029,6 +1051,8 @@ void WebConfigServer::tick(uint32_t now) {
     return;
   }
   if (_mode == MODE_OFF) return;
+
+  if (!_board_cmds_probed) probeBoardCommands();
 
   serviceTerminal(now);
 
@@ -1662,7 +1686,7 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
   }
   const bool has_mqtt = _mqtt_prefs != NULL;
 
-  DynamicJsonDocument doc(768);
+  DynamicJsonDocument doc(896);
   doc["mode"] = (_mode == MODE_SETUP) ? "setup" : "lan";
   doc["auth"] = authed;
   doc["needs_setup"] = (_wifi_ssid[0] == 0);
@@ -1678,6 +1702,25 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
   doc["build_date"] = _build_date;
   doc["role"] = _role;
   doc["board"] = _board_name;
+  uint8_t board_mask = 0;
+  bool board_probed = false;
+  {
+    WCLock lock(_mux);
+    board_mask = _board_cmds;
+    board_probed = _board_cmds_probed;
+  }
+  if (board_probed) {
+    char board_cmds[80] = {0};
+    size_t used = 0;
+    for (size_t i = 0; i < WC_BOARD_CMD_COUNT; ++i) {
+      if ((board_mask & (1U << i)) == 0) continue;
+      const int written = snprintf(board_cmds + used, sizeof(board_cmds) - used,
+                                   "%s%s", used ? "," : "", WC_BOARD_CMDS[i]);
+      if (written < 0 || static_cast<size_t>(written) >= sizeof(board_cmds) - used) break;
+      used += static_cast<size_t>(written);
+    }
+    doc["board_cmds"] = board_cmds;
+  }
   doc["uptime_s"] = millis() / 1000;
 #ifdef WITH_MQTT_BRIDGE
   doc["runtime_slots"] = has_mqtt ? RUNTIME_MQTT_SLOTS : 0;

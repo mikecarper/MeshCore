@@ -333,6 +333,8 @@ private:
   volatile uint32_t _stats_wanted_until = 0;
   uint32_t _stats_built_at = 0;
   char _stats_json[1024] = {0};
+  uint8_t _board_cmds = 0;
+  bool _board_cmds_probed = false;
 
   void createServer();
   void registerRoutes();
@@ -342,6 +344,7 @@ private:
   void detachRoutes();
   uint32_t handlerRefCount() const;
   void drainBatch(uint32_t now);
+  void probeBoardCommands();
   void serviceTerminal(uint32_t now);
   void closeTerminal();
   void serviceSetupWiFiHandoff(uint32_t now);

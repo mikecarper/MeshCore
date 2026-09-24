@@ -760,6 +760,11 @@ function boot(){
     st.nslots=st.hasMqtt?Math.min(s.active_slots||s.runtime_slots||0,s.runtime_slots||s.active_slots||0):0;
     if(s.max_cmds>0)CLI_MAX=s.max_cmds;
     st.fw=s.fw||"";st.build=s.build_date||"";st.role=s.role||"";st.board=s.board||"";
+    // Board-specific CLI commands this node answered for at startup. Controls
+    // for anything absent stay hidden: on this board they are not commands.
+    // The field is ABSENT, not empty, until the node has finished probing, and
+    // this page reads status once — so latch it only when it is really there.
+    setBoardCmds(s.board_cmds);
     $("#h-name").textContent=s.name||"MeshCore";
     $("#h-sub").textContent=s.role+" * "+shortVer()+" * "+s.board;
     var b=$("#h-badge");b.classList.remove("hide");
@@ -1905,7 +1910,6 @@ var CLI_KEYS=[
   ["dutycycle","Duty cycle percent (writes airtime factor)",0],
   ["cad","Listen before transmit",0,"on|off"],
   ["radio.rxgain","SX126x RX boosted gain",0,"on|off"],
-  ["radio.fem.rxgain","Front-end module RX gain",0],
   ["radio.rxps","RX duty-cycle power saving",0,"off|level 1-10|level 1-10 preamble 16|32|rx_us sleep_us"],
   ["radio.watchdog","Restart the radio if silent this long {0-120 min}",0],
   ["int.thresh","Interference threshold",0],
@@ -1929,6 +1933,8 @@ var CLI_KEYS=[
   ["wifi.ssid","WiFi network name",0],
   ["wifi.pwd","WiFi password",0],
   ["wifi.powersave","WiFi power-save mode",0,"none|min|max"],
+  ["link.status","Selected network, IP, signal and uptime",1],
+  ["link.diag","Ethernet selection and fallback diagnostics",1],
   ["wifi.status","WiFi connection, IP, RSSI and uptime",1],
   ["wifi.cli","Browser console",0,"on|off"],
   ["webui","WiFi settings website",0,"on|off"],
@@ -1974,6 +1980,46 @@ var CLI_KEYS=[
   ["bridge.format","ESP-NOW bridge wire format",0,"wrapped|raw"],
   ["bridge.secret","Bridge shared secret",0]
 ];
+/* Keys that come from Board::handleCommand(), not CommonCLI, so they exist only
+   on some boards. The node probes its own board at startup and names the ones it
+   answers in /api/status (board_cmds); the rest are never offered, because on
+   this board they are not commands at all. `gate` is the probed name — fan.lo
+   and fan.hi have no getter of their own and ride on `fan`.
+   [gate, key, description, mode, values] */
+var CLI_BOARD_KEYS=[
+  ["radio.fem.rxgain","radio.fem.rxgain","Front-end module RX gain",0,"on|off"],
+  ["radio.fem.txgain","radio.fem.txgain","Front-end module TX gain",0,"on|off"],
+  ["fan","fan","Fan mode, temperature and cooldown",0,"on|off|auto"],
+  ["fan","fan.lo","Fan-off temperature in C {0-100, below fan.hi}",2],
+  ["fan","fan.hi","Fan-on temperature in C {above fan.lo, max 120}",2]
+];
+function boardHas(gate){return st.boardCmds.indexOf(gate)>=0}
+// An absent board_cmds means the node has not finished probing its board, which
+// it does on the first tick after the routes go live — so in practice the very
+// first retry finds it. Retry rather than read absent as "no board commands",
+// which would hide working controls for the whole session. Backs off to ~15s
+// total: generous against a one-tick gap, and bounded, since a node that never
+// answers is one where hiding the controls is the right outcome anyway.
+function setBoardCmds(v,tries){
+  if(v===undefined||v===null){
+    tries=tries||0;
+    if(tries<10)setTimeout(function(){
+      api("/api/status").then(function(s){setBoardCmds(s.board_cmds,tries+1)})
+                        .catch(function(){});
+    },Math.min(300*(tries+1),2000));
+    return;
+  }
+  st.boardCmds=v.split(",").filter(Boolean);
+  cli.built=0;            // the command table is keyed on this; force a rebuild
+  applyBoardCmds();
+}
+// Board-specific rows in the settings form. Hidden unless the node answered for
+// the command at startup, so the form never shows a control that cannot apply.
+function applyBoardCmds(){
+  $("#sw-fem-rx").classList.toggle("hide",!boardHas("radio.fem.rxgain"));
+  $("#sw-fem-tx").classList.toggle("hide",!boardHas("radio.fem.txgain"));
+}
+
 // Per-slot keys, expanded across the slots this board actually runs.
 // [field, description, values]
 var CLI_SLOT=[
@@ -2076,8 +2122,8 @@ function cliKeys(){
 
 var cli={built:-1,tbl:[],hist:[],hix:-1,draft:"",sug:[],sel:-1,busy:false,shown:false,pwd:false};
 
-// Rebuilt when the slot count changes: `active_slots` decides how many
-// mqttN.* keys actually exist on this board.
+// Rebuilt when the board's surface changes: `active_slots` decides how many
+// mqttN.* keys exist, and board_cmds which of the board-specific keys do.
 function cliTable(){
   var signature=[st.role,st.nslots,st.hasMqtt,st.caps].join(":");
   if(cli.built===signature)return cli.tbl;
@@ -2115,6 +2161,10 @@ function cliEnum(key){
   var keys=cliKeys();
   for(var i=0;i<keys.length;i++){
     if(keys[i][0]===key)return keys[i][3]?keys[i][3].split("|"):null;
+  }
+  for(var j=0;j<CLI_BOARD_KEYS.length;j++){
+    var b=CLI_BOARD_KEYS[j];
+    if(b[1]===key&&boardHas(b[0]))return b[4]?b[4].split("|"):null;
   }
   return null;
 }

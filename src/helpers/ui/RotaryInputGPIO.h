@@ -7,7 +7,7 @@
 #define BUTTON_EVENT_DOWN 6
 
 class RotaryInputGPIO: public RotaryInput {
-  int8_t _pin_a; 
+  int8_t _pin_a;
   bool _pull_a;
   int8_t _pin_b;
   bool _pull_b;

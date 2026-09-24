@@ -20,7 +20,7 @@ static const char* const WC_ALLOWED_SET_KEYS[] = {
   // NodePrefs (radio / node)
   "name", "bluetooth.name", "bluetooth.mac", "bluetooth.stealth",
   "lat", "lon", "radio", "tx", "af", "rxdelay", "txdelay",
-  "cad", "radio.rxgain", "radio.fem.rxgain", "radio.rxps", "powersaving",
+  "cad", "radio.rxgain", "radio.fem.rxgain", "radio.fem.txgain", "radio.rxps", "powersaving",
   "repeat",
   "display.mode", "display.timeout", "display.usb.mode", "display.usb.timeout",
   "display.inbox",

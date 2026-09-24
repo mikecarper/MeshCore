@@ -3,7 +3,12 @@
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include "Stream.h"
+
+using std::atof;
+using std::atoi;
+using std::atol;
 
 inline uint32_t g_mock_millis = 0;
 

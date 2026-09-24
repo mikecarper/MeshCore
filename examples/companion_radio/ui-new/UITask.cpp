@@ -2281,7 +2281,7 @@ void UITask::loop() {
         ? checkDisplayOn(KEY_ENTER)
         : handleMultiClick(KEY_SELECT, ev == BUTTON_EVENT_QUADRUPLE_CLICK);
   }
-  #endif  
+  #endif
 #endif
 #if defined(UI_HAS_ROTARY_INPUT)
   RotaryInputEvent rotaryEv = rotary_input.poll();

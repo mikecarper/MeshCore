@@ -15,6 +15,8 @@ TEST(WebConfigKeys, AllowsKnownScalarKeys) {
   EXPECT_TRUE(wcIsAllowedSetKey("radio.rxps"));
   EXPECT_TRUE(wcIsAllowedSetKey("powersaving"));
   EXPECT_TRUE(wcIsAllowedSetKey("repeat"));
+  EXPECT_TRUE(wcIsAllowedSetKey("radio.fem.rxgain"));  // Board::handleCommand(), not CommonCLI
+  EXPECT_TRUE(wcIsAllowedSetKey("radio.fem.txgain"));
   EXPECT_TRUE(wcIsAllowedSetKey("wifi.ssid"));
   EXPECT_TRUE(wcIsAllowedSetKey("espnow.channel"));
   EXPECT_TRUE(wcIsAllowedSetKey("mqtt.iata"));

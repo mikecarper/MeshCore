@@ -24,7 +24,7 @@ RotaryInputEvent RotaryInputGPIO::poll() {
   if (!b_prec && b) { // rising edge of A
     if (a) {
       ev = RotaryInputEvent::Next;
-    } else { 
+    } else {
       ev = RotaryInputEvent::Prev;
     }
   }
