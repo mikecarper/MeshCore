@@ -7,15 +7,17 @@ updater for the full image after migration. The LoRa version retains the old
 OTA-capable repeater in the other expanded slot and returns to it after
 restoring identity, so it can fetch the full image over LoRa.
 
-It currently has explicit, byte-for-byte generated target plans for Arduino
-ESP32 `default_8MB.csv` and `default_16MB.csv`. It does not guess a table for
-other flash sizes. Adding a board later means adding one reviewed target plan
-and its generated table-prefix test; the bridge core is otherwise shared.
+It has explicit, byte-for-byte generated target plans for the 4 MiB MeshCore
+dual-OTA Full table and Arduino ESP32 `default_8MB.csv` and
+`default_16MB.csv`. It does not guess a table for other flash sizes. Adding a
+flash size later means adding one reviewed target plan and its generated
+table-prefix test; the bridge core is otherwise shared.
 
 | Flash size | Target table | app0 / app1 size | Typical board |
 | --- | --- | --- | --- |
-| 8 MiB | `default_8MB.csv` | 0x330000 / 0x330000 | Seeed XIAO ESP32-S3 |
-| 16 MiB | `default_16MB.csv` | 0x640000 / 0x640000 | Heltec V4 / V4.3 OLED |
+| 4 MiB | `variants/dual_ota_full_4MB.csv` | 0x1F0000 / 0x1F0000 | ThinkNode M2/M5, LilyGo T3S3, Nibble, Heltec CT62 |
+| 8 MiB | `default_8MB.csv` | 0x330000 / 0x330000 | Seeed XIAO ESP32-S3, Heltec V3 |
+| 16 MiB | `default_16MB.csv` | 0x640000 / 0x640000 | Heltec V4 / V4.3, Station G2 |
 
 ## Repeatable ESP32 build recipe
 
@@ -25,9 +27,10 @@ From a clean commit, run the shell menu in WSL/Linux:
 sh scripts/build_esp32_partition_migration.sh
 ```
 
-Choose one board, or **all qualified boards**. The script asks for the
-firmware version, radio preset, and profile, then builds the Full repeater
-images first, both small bridges for each selected board, and verifies each
+Choose one exact board/role, or **all listed board/role pairs**. The menu
+also offers all repeaters, all room servers, or all sensors separately. It asks
+for the firmware version, radio preset, and profile, then builds Full application
+images first, the available bridge(s) for each selected board, and verifies each
 ZIP. Only one PlatformIO process runs at a time; `build.sh` can clean the
 shared `.pio/build` tree between Full targets. The same menu can be run
 non-interactively:
@@ -39,12 +42,15 @@ sh scripts/build_esp32_partition_migration.sh --board heltec-v4 \
 sh scripts/build_esp32_partition_migration.sh --all \
   --version v1.17.1.7-halo-keymind-cascade-dev \
   --radio-preset usa-cascadia --profile cascade
+sh scripts/build_esp32_partition_migration.sh --role sensor \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
 ```
 
-`--all` creates one verified ZIP per currently qualified board and a release
+`--all` creates one verified ZIP per listed board/role pair and a release
 ZIP containing all of them, their hashes, and a manifest. This is a **local
 release bundle**, not an upload to GitHub Releases. It is not an archive of
-old firmware binaries. `--list-boards` shows the presently qualified choices.
+old firmware binaries. `--list-boards` shows the configured choices.
 The release fails instead of publishing a partial bundle if one board package
 is absent or fails verification.
 
@@ -56,24 +62,40 @@ python3 -B scripts/build_esp32_partition_migration.py \
   --radio-preset usa-cascadia --profile cascade
 ```
 
-The default builds all currently qualified boards. Add `--board heltec-v4`
+The default builds all configured board/role recipes. Add `--board heltec-v4`
 or `--board xiao-s3-wio` to build one; repeat `--board` for a selected set.
 Use `--dry-run` to inspect the command order without building. The resulting
 ZIPs appear under `.releases/esp32-expanded-<commit>/packages/`. The recipe
 requires a clean checkout so each ZIP identifies the firmware commit it was
 built from. It creates files only; it does not flash a device or erase flash.
 
-The historical 1.25 MiB release population is wider than these two boards.
-In particular, the portable LilyGo T3S3 SX1262/SX1276, Station G2, and
-ThinkNode M2 repeater/room-server targets have had 1.25 MiB slots. They are
-**not** silently treated as supported by `--all`: the 4 MiB boards require a
-different target table and a power-loss-safe LoRa receiver handoff, and every
-additional role needs an audited exact target identity. A 4 MiB Full build
-offers 1,984 KiB slots, not the 4 MiB-or-more slots possible on larger flash.
+The catalog covers canonical ESP32 repeater, room-server, and sensor roles on
+4, 8, and 16 MiB chip-family plans, including historical 1.25 MiB candidates
+now built with expanded tables. This includes ESP32-S3, original ESP32, and
+ESP32-C3 boards with an evidenced old default layout. `--list-boards` is the
+authoritative list of exact targets; specialty ESP-NOW/observer aliases are
+separate identities and are not packaged under their old IDs. With Wi-Fi OTA
+they can migrate to the
+same physical board's canonical role image; their feature settings may need
+to be recreated. The LoRa route still requires an exact old target ID. The
+catalog omits boards with no evidenced legacy default-layout build, such as
+boards introduced with `min_spiffs.csv` or another non-1.25 MiB layout. Some
+listed boards use larger slots today but had historical default-layout builds.
+A listed package is usable only when the installed old image has a working
+Wi-Fi updater and the bridge verifies its live source table. Menu inclusion
+does **not** override either check. The only LoRa
+bridge packages currently available are the exact-target Heltec V4 and XIAO
+S3 WIO repeater packages. On 4 MiB flash the expanded app1 overlaps old app1,
+so the currently safe LoRa receiver-copy method cannot be offered there. A
+4 MiB Full build offers 1,984 KiB slots, not 4 MiB per slot. A Wi-Fi-only ZIP
+can omit `full-application.mota` when its application exceeds the current
+2 KiB x 1024-block LoRa serving limit; `full-application.bin` remains the
+verified Wi-Fi update image.
 
-Other ESP32 boards need a reviewed flash-size/partition plan, exact LoRa OTA
-target ID, and board entry before they can be added to this recipe. Matching
-flash capacity alone is not enough to claim a package is safe for a board.
+Other ESP32 boards need a reviewed source updater, chip/flash-size bridge,
+verified Full image, and board entry before they can be added. The LoRa route
+also needs an exact old OTA target ID and a non-overlapping receiver handoff.
+Matching flash capacity alone is not enough to claim a package is safe.
 
 ## What the bridge preserves
 
@@ -100,7 +122,7 @@ The bridge only accepts a source table that has all of the following:
 - NVS at `0x9000`, size `0x5000`, and OTA metadata at `0xE000`, size `0x2000`.
 - Two distinct, non-empty OTA application slots and a non-empty SPIFFS
   partition, all inside the physical flash size.
-- A known exact 8 MiB or 16 MiB physical flash capacity and a source table
+- A known exact 4, 8, or 16 MiB physical flash capacity and a source table
   different from that capacity's target table.
 
 This means the source app-slot and SPIFFS sizes can vary; the bridge validates
@@ -113,6 +135,10 @@ in legacy A or B.
 Keep power stable while the bridge is replacing the 4 KiB table sector. A loss
 of power before that point leaves the old table and source intact. After that
 small critical write, the selected A copy of the bridge is the recovery path.
+The stock ESP32 bootloader reads one partition-table sector; rewriting that
+sector is **not atomic**. A power loss during its erase/write window can leave
+an unreadable table and require cable recovery. This recipe must not be called
+power-loss-proof on a device whose USB/serial flash port is inaccessible.
 
 ## Migrate a Seeed XIAO ESP32-S3
 

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,9 +17,39 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from build_esp32_partition_migration import (  # noqa: E402
     build_steps, bundle_release, verify_archive,
 )
+from package_esp32_partition_migration import BOARDS, readme  # noqa: E402
 
 
 class Esp32MigrationRecipeTest(unittest.TestCase):
+    def test_catalog_covers_all_three_roles_and_exact_flash_plans(self):
+        self.assertEqual({"repeater", "room-server", "sensor"},
+                         {spec["role"] for spec in BOARDS.values()})
+        self.assertIn("heltec-v4-sensor", BOARDS)
+        self.assertIn("xiao-s3-wio-sensor", BOARDS)
+        self.assertIn("heltec-ct62-sensor", BOARDS)
+        self.assertIn("nibble-zero-room-server", BOARDS)
+        self.assertEqual("esp32_c3_4mb_partition_migrator",
+                         BOARDS["heltec-ct62-sensor"]["wifi_bridge"])
+        self.assertEqual("esp32_4mb_partition_migrator",
+                         BOARDS["generic-e22-sx1262-repeater"]["wifi_bridge"])
+        self.assertEqual("esp32_s3_8mb_partition_migrator",
+                         BOARDS["heltec-v3-sensor"]["wifi_bridge"])
+        self.assertEqual("esp32_8mb_partition_migrator",
+                         BOARDS["heltec-v2-room-server"]["wifi_bridge"])
+        expected_slots = {4 * 1024 * 1024: 0x1F0000,
+                          8 * 1024 * 1024: 0x330000,
+                          16 * 1024 * 1024: 0x640000}
+        env_names = set()
+        for config in (ROOT / "variants").glob("*/platformio.ini"):
+            env_names.update(re.findall(r"^\[env:([^]]+)\]",
+                                        config.read_text(), re.MULTILINE))
+        for board, spec in BOARDS.items():
+            with self.subTest(board=board):
+                self.assertIn(spec["target"], env_names)
+                self.assertIn(spec["wifi_bridge"], env_names)
+                self.assertEqual(expected_slots[spec["flash_bytes"]],
+                                 spec["slot_bytes"])
+
     @unittest.skipIf(os.name == "nt", "POSIX shell menu runs in WSL/Linux")
     def test_shell_menu_and_noninteractive_selection(self):
         script = str(ROOT / "scripts/build_esp32_partition_migration.sh")
@@ -28,11 +59,18 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
                              cwd=ROOT, text=True, capture_output=True, check=True)
         self.assertIn("build-firmware heltec_v4_repeater", one.stdout)
         self.assertNotIn("build-firmware Xiao_S3_WIO_repeater", one.stdout)
-        self.assertNotIn("Bundle complete qualified set", one.stdout)
+        self.assertNotIn("Bundle all configured board/role recipes", one.stdout)
         all_boards = subprocess.run(["sh", script, "--all", *common],
                                     cwd=ROOT, text=True, capture_output=True, check=True)
         self.assertIn("build-firmware Xiao_S3_WIO_repeater", all_boards.stdout)
-        self.assertIn("Bundle complete qualified set", all_boards.stdout)
+        self.assertIn("build-firmware ThinkNode_M2_Repeater", all_boards.stdout)
+        self.assertIn("Bundle all configured board/role recipes", all_boards.stdout)
+        sensors = subprocess.run(["sh", script, "--role", "sensor", *common],
+                                 cwd=ROOT, text=True, capture_output=True,
+                                 check=True)
+        self.assertIn("build-firmware Xiao_S3_WIO_sensor", sensors.stdout)
+        self.assertNotIn("build-firmware Xiao_S3_WIO_repeater", sensors.stdout)
+        self.assertNotIn("Bundle all configured board/role recipes", sensors.stdout)
         interactive = subprocess.run(["sh", script], input="q\n",
                                      cwd=ROOT, text=True, capture_output=True,
                                      check=True)
@@ -40,7 +78,7 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
         invalid = subprocess.run(["sh", script, "--board", "unknown", *common],
                                  cwd=ROOT, text=True, capture_output=True)
         self.assertNotEqual(0, invalid.returncode)
-        self.assertIn("not qualified", invalid.stderr)
+        self.assertIn("not configured", invalid.stderr)
 
     def test_full_images_precede_every_bridge_and_builds_are_serial(self):
         steps = build_steps(["heltec-v4", "xiao-s3-wio"], "v1.17.1.7-test",
@@ -57,6 +95,31 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
             "xiao_s3_partition_migrator",
             "xiao_s3_partition_migrator_lora_repeater",
         ], [command[3] for command, _ in steps[2:]])
+
+    def test_wifi_only_4mb_roles_share_one_bridge(self):
+        steps = build_steps(["thinknode-m2-repeater", "thinknode-m2-room-server"],
+                            "v1.17.1.7-test", "usa-cascadia", "cascade", 4)
+        self.assertEqual([True, True, False], [full for _, full in steps])
+        self.assertEqual("ThinkNode_M2_Repeater", steps[0][0][3])
+        self.assertEqual("ThinkNode_M2_room_server", steps[1][0][3])
+        self.assertEqual("esp32_s3_4mb_partition_migrator", steps[2][0][3])
+        guide = readme("thinknode-m2-repeater", BOARDS["thinknode-m2-repeater"],
+                       "v1.17.1.7-test", "01234567")
+        self.assertIn("no LoRa bridge", guide)
+        self.assertIn("power loss during", guide)
+        self.assertIn("exact\n   `Started:` URL", guide)
+        self.assertNotIn("ota pull <id>", guide)
+        large_guide = readme("heltec-v3-sensor", BOARDS["heltec-v3-sensor"],
+                             "v1.17.1.7-test", "01234567", has_full_mota=False)
+        self.assertIn("does not include `full-application.mota`", large_guide)
+
+    def test_sensor_and_room_roles_share_the_8mb_bridge(self):
+        steps = build_steps(["xiao-s3-wio-sensor", "xiao-s3-wio-room-server"],
+                            "v1.17.1.7-test", "usa-cascadia", "cascade", 4)
+        self.assertEqual([True, True, False], [full for _, full in steps])
+        self.assertEqual("Xiao_S3_WIO_sensor", steps[0][0][3])
+        self.assertEqual("Xiao_S3_WIO_room_server", steps[1][0][3])
+        self.assertEqual("esp32_s3_8mb_partition_migrator", steps[2][0][3])
 
     def test_dry_run_has_no_build_side_effects(self):
         with tempfile.TemporaryDirectory(prefix="esp32-migration-plan-") as temporary:
@@ -102,7 +165,9 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
             package_dir.mkdir()
             version = "v1.17.1.7-test"
             source = "01234567"
-            for board in ("heltec-v4", "xiao-s3-wio"):
+            sample_boards = ["heltec-v4", "xiao-s3-wio-room-server",
+                             "heltec-ct62-sensor"]
+            for board in sample_boards:
                 payload = (board + " image").encode()
                 manifest = {
                     "board": board, "firmware_version": version,
@@ -118,24 +183,32 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
                     archive.writestr("manifest.json", json.dumps(manifest))
                     archive.writestr("full-application.bin", payload)
             release = bundle_release(output_root, package_dir,
-                                     ["heltec-v4", "xiao-s3-wio"],
+                                     sample_boards,
                                      version, source, "usa-cascadia", "cascade")
             with zipfile.ZipFile(release) as archive:
                 self.assertIsNone(archive.testzip())
                 release_manifest = json.loads(archive.read("release-manifest.json"))
-                self.assertEqual(["heltec-v4", "xiao-s3-wio"],
+                self.assertEqual(sample_boards,
                                  release_manifest["boards"])
+                self.assertEqual(["repeater", "room-server", "sensor"],
+                                 release_manifest["roles"])
+                self.assertEqual("repeater",
+                                 release_manifest["board_roles"]["heltec-v4"])
+                self.assertEqual("room-server", release_manifest["board_roles"][
+                    "xiao-s3-wio-room-server"])
+                self.assertEqual("sensor", release_manifest["board_roles"][
+                    "heltec-ct62-sensor"])
                 for name, checks in release_manifest["packages"].items():
                     data = archive.read(name)
                     self.assertEqual(checks["bytes"], len(data))
                     self.assertEqual(checks["sha256"], hashlib.sha256(data).hexdigest())
             self.assertEqual(release, bundle_release(
-                output_root, package_dir, ["heltec-v4", "xiao-s3-wio"],
+                output_root, package_dir, sample_boards,
                 version, source, "usa-cascadia", "cascade"))
-            (package_dir / f"xiao-s3-wio-{version}-{source}-migration.zip").unlink()
-            with self.assertRaisesRegex(ValueError, "missing xiao-s3-wio"):
+            (package_dir / f"heltec-ct62-sensor-{version}-{source}-migration.zip").unlink()
+            with self.assertRaisesRegex(ValueError, "missing heltec-ct62-sensor"):
                 bundle_release(output_root, package_dir,
-                               ["heltec-v4", "xiao-s3-wio"],
+                               sample_boards,
                                version, source, "usa-cascadia", "cascade")
 
 

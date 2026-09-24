@@ -3109,22 +3109,30 @@ is_esp32_full_only_bulk_target() {
 }
 
 # These normal role identities still ship a portable legacy image for installed
-# nodes, but also need a canonical FULL artifact for the one-time wired layout
+# nodes, but also need a canonical FULL artifact for the one-time layout
 # migration. They are deliberately separate from the FULL-only list above:
-# their deployed 0x140000 slots differ from the expanded table, so LoRa mOTA
-# must not try to cross this boundary. The matching merged image is the
-# migration package; after it is flashed, later normal-target FULL packages
-# use the same logical mOTA identity.
+# some deployed 0x140000 slots differ from the expanded table, so LoRa mOTA
+# must not try to cross this boundary. An exact-target Wi-Fi bridge and Full
+# application are packaged separately; after migration, later normal-target
+# FULL packages use the same logical mOTA identity.
 is_esp32_partition_migration_full_target() {
   local env_name=${1,,}
 
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "ESP32_PLATFORM" ] || return 1
 
   case "$env_name" in
+    ebyte_eora-s3_repeater|ebyte_eora-s3_room_server|\
+    generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
+    heltec_ct62_repeater|heltec_ct62_sensor|\
     lilygo_t3s3_sx1262_repeater|lilygo_t3s3_sx1262_room_server|\
     lilygo_t3s3_sx1276_repeater|lilygo_t3s3_sx1276_room_server|\
-    station_g2_repeater|station_g2_room_server|\
-    thinknode_m2_repeater|thinknode_m2_room_server)
+    station_g2_repeater|station_g2_logging_repeater|station_g2_room_server|\
+    thinknode_m2_repeater|thinknode_m2_room_server|\
+    thinknode_m5_repeater|thinknode_m5_room_server|\
+    xiao_c3_repeater|xiao_c3_room_server|\
+    tenstar_c3_sx1262_repeater|tenstar_c3_sx1268_repeater|\
+    nibble_zero_connect_repeater_|nibble_zero_connect_room_server_|\
+    nibble_screen_connect_repeater_|nibble_screen_connect_room_server_)
       return 0
       ;;
   esac
@@ -3202,7 +3210,7 @@ declare_build_capability_contract() {
     if is_esp32_full_only_bulk_target "$env_name"; then
       record_build_capability "release.full.same_partition_successor"
     elif is_esp32_partition_migration_full_target "$env_name"; then
-      record_build_capability "release.full.partition_migration_usb"
+      record_build_capability "release.full.partition_migration_ota"
     fi
   fi
 

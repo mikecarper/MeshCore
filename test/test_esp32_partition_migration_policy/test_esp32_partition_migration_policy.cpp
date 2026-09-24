@@ -4,12 +4,16 @@
 
 namespace policy = mesh::esp32_partition_migration;
 
-TEST(Esp32PartitionMigrationPolicy, AcceptsOnlyTheKnownLegacyV4Layout) {
+TEST(Esp32PartitionMigrationPolicy, AcceptsOnlyKnownFlashSizesWithLegacyLayout) {
   EXPECT_TRUE(policy::isLegacyLayout(policy::kLegacyLayout));
+  EXPECT_TRUE(policy::canMigrate(policy::kSmallRequiredFlashBytes,
+                                 policy::kLegacyLayout));
+  EXPECT_TRUE(policy::canMigrate(policy::kXiaoRequiredFlashBytes,
+                                 policy::kLegacyLayout));
   EXPECT_TRUE(policy::canMigrate(policy::kRequiredFlashBytes,
                                  policy::kLegacyLayout));
-  EXPECT_TRUE(policy::canMigrate(policy::kRequiredFlashBytes + 1,
-                                 policy::kLegacyLayout));
+  EXPECT_FALSE(policy::canMigrate(policy::kRequiredFlashBytes + 1,
+                                  policy::kLegacyLayout));
   EXPECT_FALSE(policy::canMigrate(policy::kRequiredFlashBytes - 1,
                                   policy::kLegacyLayout));
 
@@ -33,13 +37,18 @@ TEST(Esp32PartitionMigrationPolicy, ExpandedLayoutRetainsAndGrowsSpiffs) {
             policy::kExpandedLayout.spiffs_address);
 }
 
-TEST(Esp32PartitionMigrationPolicy, GenericPlansAcceptStableEightAndSixteenMiBLayouts) {
+TEST(Esp32PartitionMigrationPolicy, GenericPlansAcceptStableFourEightAndSixteenMiBLayouts) {
+  EXPECT_EQ(&policy::kTarget4MB, policy::targetForFlash(4U * 1024U * 1024U));
   EXPECT_EQ(&policy::kTarget8MB, policy::targetForFlash(8U * 1024U * 1024U));
   EXPECT_EQ(&policy::kTarget16MB, policy::targetForFlash(16U * 1024U * 1024U));
-  EXPECT_EQ(nullptr, policy::targetForFlash(4U * 1024U * 1024U));
+  EXPECT_EQ(nullptr, policy::targetForFlash(2U * 1024U * 1024U));
+  EXPECT_TRUE(policy::isTargetLayout(4U * 1024U * 1024U,
+                                     policy::kExpanded4MBLayout));
   EXPECT_TRUE(policy::isTargetLayout(8U * 1024U * 1024U,
                                      policy::kExpanded8MBLayout));
   EXPECT_TRUE(policy::canMigrateGeneric(8U * 1024U * 1024U,
+                                         policy::kLegacyLayout));
+  EXPECT_TRUE(policy::canMigrateGeneric(4U * 1024U * 1024U,
                                          policy::kLegacyLayout));
   EXPECT_TRUE(policy::canMigrateGeneric(16U * 1024U * 1024U,
                                          policy::kLegacyLayout));
@@ -77,6 +86,9 @@ TEST(Esp32PartitionMigrationPolicy, LoRaResumePreservesTheOldApplicationInEither
                                        policy::kLegacyLayout.app0_address).valid);
   EXPECT_FALSE(policy::planLoRaResume(policy::kLegacyLayout,
                                        policy::kExpandedLayout, 0x300000).valid);
+  EXPECT_FALSE(policy::planLoRaResume(policy::kLegacyLayout,
+                                       policy::kExpanded4MBLayout,
+                                       policy::kLegacyLayout.app0_address).valid);
 }
 
 TEST(Esp32PartitionMigrationPolicy, GeneratedTablePrefixContainsAllSixEntriesAndMd5) {
@@ -92,6 +104,9 @@ TEST(Esp32PartitionMigrationPolicy, GeneratedTablePrefixContainsAllSixEntriesAnd
   EXPECT_EQ(0x33, policy::kExpanded8MBPartitionTablePrefix[0x4A]);
   EXPECT_EQ(0x34, policy::kExpanded8MBPartitionTablePrefix[0x66]);
   EXPECT_EQ(0x67, policy::kExpanded8MBPartitionTablePrefix[0x86]);
+  EXPECT_EQ(0xC0U, policy::kExpanded4MBPartitionTablePrefixBytes);
+  EXPECT_EQ(0xEB, policy::kExpanded4MBPartitionTablePrefix[0xA0]);
+  EXPECT_EQ(0xEB, policy::kExpanded4MBPartitionTablePrefix[0xA1]);
 }
 
 int main(int argc, char** argv) {

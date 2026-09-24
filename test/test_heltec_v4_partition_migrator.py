@@ -17,6 +17,7 @@ XIAO_PROFILE = ROOT / "variants/xiao_s3_wio/platformio.ini"
 XIAO_MIGRATOR_BOARD = ROOT / "boards/seeed_xiao_esp32s3_migrator.json"
 PARTITIONS = Path.home() / ".platformio/packages/framework-arduinoespressif32/tools/partitions/default_16MB.csv"
 PARTITIONS_8MB = Path.home() / ".platformio/packages/framework-arduinoespressif32/tools/partitions/default_8MB.csv"
+PARTITIONS_4MB = ROOT / "variants/dual_ota_full_4MB.csv"
 GENERATOR = Path.home() / ".platformio/packages/framework-arduinoespressif32/tools/gen_esp32part.py"
 
 
@@ -98,6 +99,15 @@ class HeltecV4PartitionMigratorTest(unittest.TestCase):
             embedded_8mb = bytes(int(value, 16)
                                  for value in re.findall(r"0x([0-9A-F]{2})", block_8mb))
             self.assertEqual(embedded_8mb, generated_8mb.read_bytes()[:len(embedded_8mb)])
+            generated_4mb = Path(directory) / "default4.bin"
+            subprocess.run([sys.executable, str(GENERATOR), str(PARTITIONS_4MB),
+                            str(generated_4mb)], check=True, capture_output=True, text=True)
+            start_4mb = text.index("kExpanded4MBPartitionTablePrefix[]")
+            block_4mb = text[start_4mb:text.index("};", start_4mb)]
+            embedded_4mb = bytes(int(value, 16)
+                                 for value in re.findall(r"0x([0-9A-F]{2})", block_4mb))
+            self.assertEqual(0xC0, len(embedded_4mb))
+            self.assertEqual(embedded_4mb, generated_4mb.read_bytes()[:len(embedded_4mb)])
 
 
 if __name__ == "__main__":

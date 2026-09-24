@@ -455,11 +455,11 @@ bool publishExpandedPartitionTable(const migration::TargetPlan& plan) {
   if (result == ESP_OK) {
     result = esp_flash_write(chip, partition_table_bytes,
                              migration::kPartitionTableAddress,
-                             sizeof(partition_table_bytes));
+                             plan.partition_table_prefix_bytes);
     if (result == ESP_OK) {
       result = esp_flash_read(chip, partition_table_verified,
                               migration::kPartitionTableAddress,
-                              sizeof(partition_table_verified));
+                              plan.partition_table_prefix_bytes);
       ok = result == ESP_OK && memcmp(partition_table_verified,
           plan.partition_table_prefix, plan.partition_table_prefix_bytes) == 0;
       if (!ok) strcpy(status_text, "Partition table verification failed");

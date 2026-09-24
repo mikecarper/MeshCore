@@ -45,10 +45,14 @@ def build_steps(boards: list[str], version: str, radio_preset: str,
             "--require-ota", "--resume",
         ], True))
     # Full builds can clear .pio/build; every bridge must be built afterwards.
+    built_bridges: set[str] = set()
     for name in boards:
         for key in ("wifi_bridge", "lora_bridge"):
-            steps.append((["pio", "run", "-e", BOARDS[name][key],
-                           "-j", str(jobs)], False))
+            bridge = BOARDS[name][key]
+            if bridge and bridge not in built_bridges:
+                steps.append((["pio", "run", "-e", bridge,
+                               "-j", str(jobs)], False))
+                built_bridges.add(bridge)
     return steps
 
 
@@ -82,13 +86,15 @@ def bundle_release(output_root: Path, package_dir: Path, boards: list[str],
         packages.append((matches[0].name, data))
     manifest = {
         "format": "meshcore-esp32-partition-migration-release-v1",
-        "scope": "currently-qualified-board-recipes-only",
+        "scope": "configured-legacy-layout-board-role-recipes",
         "historical_firmware_binaries_included": False,
         "source_commit": source,
         "firmware_version": version,
         "radio_preset": radio_preset,
         "profile": profile,
         "boards": boards,
+        "board_roles": {name: BOARDS[name]["role"] for name in boards},
+        "roles": sorted({BOARDS[name]["role"] for name in boards}),
         "packages": {name: {"bytes": len(data),
                             "sha256": hashlib.sha256(data).hexdigest()}
                      for name, data in packages},
@@ -125,7 +131,9 @@ def main() -> None:
     parser.add_argument("--profile", choices=("default", "cascade"),
                         default="default", help="embedded runtime profile")
     parser.add_argument("--board", action="append", choices=tuple(BOARDS),
-                        help="repeat to select boards (default: all supported boards)")
+                        help="repeat to select board/role recipes (default: all configured recipes)")
+    parser.add_argument("--role", choices=("repeater", "room-server", "sensor"),
+                        help="build every configured board for this role")
     parser.add_argument("--jobs", type=int, default=4,
                         help="workers within each serial PlatformIO build")
     parser.add_argument("--output-root", type=Path,
@@ -133,7 +141,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true",
                         help="show the build order without writing files")
     parser.add_argument("--list-boards", action="store_true",
-                        help="print qualified board keys and exit")
+                        help="print configured board/role keys and exit")
     args = parser.parse_args()
     if args.list_boards:
         for name in BOARDS:
@@ -145,11 +153,16 @@ def main() -> None:
         parser.error("--version must be a filename-safe version token")
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    if args.board and args.role:
+        parser.error("choose --board or --role, not both")
     if os.name == "nt" and not args.dry_run:
         parser.error("run this recipe inside Linux/WSL, where bash and pio are available")
 
     source = git_output("rev-parse", "--short=8", "HEAD")
-    boards = list(dict.fromkeys(args.board or BOARDS))
+    if args.role:
+        boards = [name for name, spec in BOARDS.items() if spec["role"] == args.role]
+    else:
+        boards = list(dict.fromkeys(args.board or BOARDS))
     requested_root = args.output_root or Path(".releases") / f"esp32-expanded-{source}"
     output_root = (requested_root if requested_root.is_absolute()
                    else ROOT / requested_root).resolve()
@@ -161,7 +174,7 @@ def main() -> None:
         print(prefix + shlex.join(command), flush=True)
     print(f"Package {', '.join(boards)} into {package_dir}", flush=True)
     if set(boards) == set(BOARDS):
-        print(f"Bundle complete qualified set (not all historical ESP32 targets) in {output_root}", flush=True)
+        print(f"Bundle all configured board/role recipes (not historical binaries) in {output_root}", flush=True)
     if args.dry_run:
         return
 
