@@ -42,6 +42,10 @@ static volatile uint8_t state = STATE_RX;
 static uint32_t now_ms = 0;
 uint32_t millis() { return now_ms; }
 uint32_t micros() { return now_ms * 1000UL; }
+// The dedicated profile-clock contract exercises the production clock helpers.
+// This receive-state harness only needs their portable single-process behavior.
+void syncProfileClock(bool) {}
+uint32_t profileTimestamp(bool) { return micros(); }
 void noInterrupts() {}
 void interrupts() {}
 void yield() { ++now_ms; }
@@ -62,7 +66,7 @@ struct RadioLibWrapper {
   bool _cw_active = false;
   bool serviceCarrierWave() { return false; } // dedicated CW harness owns this path
   mesh::RadioProfiles _profiles;
-  uint32_t _profile_visit_us = 0;
+  uint32_t _profile_visit_stamp = 0;
   uint32_t _profile_scan_generation[2] = {};
   uint8_t _active_profile = 0;
   bool _profile_rxps_suspended = false;
