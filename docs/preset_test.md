@@ -9,7 +9,7 @@ create a shareable temporary-radio test URL.</span>
   <div data-role="content">
     <div data-role="test-content" hidden>
     <section class="preset-test-hero" aria-labelledby="preset-test-title">
-      <p class="preset-test-eyebrow" data-role="preset-test-eyebrow">MeshCore · default 48-hour temporary preset test</p>
+      <p class="preset-test-eyebrow" data-role="preset-test-eyebrow">MeshCore · one-day temporary preset test</p>
       <div class="preset-test-hero-row">
         <div>
           <h2 id="preset-test-title">
@@ -61,13 +61,36 @@ create a shareable temporary-radio test URL.</span>
     <div data-role="test-content-footer" hidden>
     <details class="preset-test-generator-disclosure preset-test-keymind-disclosure"
              data-role="keymind-disclosure">
-      <summary><h2>KeyMind firmware and advanced commands</h2></summary>
+      <summary><h2>KeyMind Cascade firmware and advanced commands</h2></summary>
       <div class="preset-test-generator-disclosure-body">
       <p>
         Use these only if your firmware supports the listed commands or you need
         dual-radio operation, scheduling, or clock correction.
       </p>
-      <p>Firmware schedule epochs: <code data-role="epoch-range"></code></p>
+
+      <section class="preset-test-schedule-mode" aria-labelledby="schedule-mode-title">
+        <h2 id="schedule-mode-title">Scheduled command timing</h2>
+        <fieldset>
+          <legend>Choose the syntax supported by the node</legend>
+          <label>
+            <input type="radio" name="schedule-command-mode" value="relative" checked>
+            <span><strong>KeyMind Cascade · <code>+minutes</code></strong> (default)</span>
+          </label>
+          <label>
+            <input type="radio" name="schedule-command-mode" value="absolute">
+            <span><strong>Absolute Unix time</strong></span>
+          </label>
+        </fieldset>
+        <p data-role="relative-schedule-note">
+          Relative commands calculate whole minutes from now to the shared start
+          and end. Both offsets use the node's same command-time snapshot, so no
+          clock correction is needed. Copy the command shortly after it is shown.
+        </p>
+        <p data-role="absolute-schedule-note" hidden>
+          Absolute commands use fixed UTC epochs. Verify or compensate for the
+          node clock with the controls below before queuing them.
+        </p>
+      </section>
 
     <section class="preset-test-warning" aria-labelledby="continuity-plan-title">
       <h2 id="continuity-plan-title">Bridges and early-revert plan</h2>
@@ -90,6 +113,8 @@ create a shareable temporary-radio test URL.</span>
       </p>
     </section>
 
+    <div data-role="absolute-clock-controls" hidden>
+      <p>Firmware schedule epochs: <code data-role="epoch-range"></code></p>
     <section aria-labelledby="clock-check-title">
       <h2 id="clock-check-title">Check the node clock before scheduling</h2>
       <p>
@@ -188,6 +213,7 @@ clock</code></pre>
         reboots.
       </p>
     </section>
+    </div>
 
     <section aria-labelledby="join-now-title">
       <h2 id="join-now-title">Companion: use both frequencies</h2>
@@ -218,11 +244,11 @@ clock</code></pre>
       <p>
         A Simple Repeater build can schedule its primary radio with
         <code>tempradioat</code>. A Companion can instead schedule its second
-        profile with <code>tempradioat2</code>. Both commands use the exact UTC
-        epochs below, switch at the common start, and restore saved settings at
-        the common end. A node-clock conversion above replaces only those command
-        epochs with its per-node translated values. Room-server and sensor roles
-        use the stock join command above instead.
+        profile with <code>tempradioat2</code>. The default KeyMind Cascade form
+        uses <code>+minutes</code> for both endpoints. Switch to Absolute Unix time
+        above for fixed UTC epochs and the node-clock correction tools. Both forms
+        switch at the common start and restore saved settings at the common end.
+        Room-server and sensor roles use the stock join command above instead.
       </p>
 
       <div class="preset-test-grid">
@@ -348,12 +374,14 @@ clock</code></pre>
         Enter the test times in the selected time zone and choose the radio
         tuple. The generated URL converts the times to exact UTC instants, keeps
         the date punctuation readable, and keeps <code>tz</code> so the page
-        displays them in the organizer's local time zone.
+        displays them in the organizer's local time zone. With no URL settings,
+        the builder starts at 5:00 PM tomorrow and ends at 5:00 PM the following
+        day in the selected time zone.
           </p>
 
       <div class="preset-test-generator-layout">
         <form class="preset-test-generator" data-role="url-generator">
-          <div class="preset-test-generator-fields">
+          <div class="preset-test-time-fields">
             <label>
               <span>Start date and time</span>
               <input type="datetime-local" name="start" step="60" required>
@@ -362,35 +390,40 @@ clock</code></pre>
               <span>End date and time</span>
               <input type="datetime-local" name="end" step="60" required>
             </label>
-            <div class="preset-test-timezone-picker">
-              <div class="preset-test-timezone-toolbar">
-                <div>
-                  <span>Selected time zone</span>
-                  <strong data-role="selected-time-zone">Detecting browser time zone…</strong>
-                </div>
-                <button type="button" data-action="use-browser-time-zone">
-                  Use browser time zone
-                </button>
+          </div>
+
+          <div class="preset-test-timezone-picker">
+            <div class="preset-test-timezone-toolbar">
+              <div>
+                <span>Selected time zone</span>
+                <strong data-role="selected-time-zone">Detecting browser time zone…</strong>
               </div>
-              <input type="hidden" name="tz" required>
-              <div
-                class="preset-test-timezone-map"
-                data-role="timezone-map"
-                aria-label="Interactive world map for selecting a time zone"
-              ></div>
-              <p class="preset-test-timezone-status" data-role="timezone-map-status" aria-live="polite">
-                Loading time zone map…
-              </p>
-              <small>
-                Click a region to select its IANA time zone. The initial selection
-                comes from <code>tz=</code> when present; otherwise it uses your
-                browser's time zone. Map design inspired by
-                <a href="https://zones.arilyn.cc/" target="_blank" rel="noopener">zones.arilyn.cc</a>;
-                boundaries from
-                <a href="https://github.com/evansiroky/timezone-boundary-builder" target="_blank" rel="noopener">Timezone Boundary Builder</a>
-                and © OpenStreetMap contributors.
-              </small>
+              <button type="button" data-action="use-browser-time-zone">
+                Use browser time zone
+              </button>
             </div>
+            <input type="hidden" name="tz" required>
+            <div
+              class="preset-test-timezone-map"
+              data-role="timezone-map"
+              aria-label="Interactive world map for selecting a time zone"
+            ></div>
+            <p class="preset-test-timezone-status" data-role="timezone-map-status" aria-live="polite">
+              Loading time zone map…
+            </p>
+            <small>
+              Click a region to select its IANA time zone. The initial selection
+              comes from <code>tz=</code> when present; otherwise it uses your
+              browser's time zone. Map design inspired by
+              <a href="https://zones.arilyn.cc/" target="_blank" rel="noopener">zones.arilyn.cc</a>;
+              boundaries from
+              <a href="https://github.com/evansiroky/timezone-boundary-builder" target="_blank" rel="noopener">Timezone Boundary Builder</a>
+              and © OpenStreetMap contributors.
+            </small>
+          </div>
+
+          <div class="preset-test-radio-layout">
+            <div class="preset-test-radio-fields">
             <div class="preset-test-generator-subheading">Test radio profile</div>
             <label>
               <span>Frequency (MHz)</span>
@@ -422,26 +455,28 @@ clock</code></pre>
               <input type="number" name="tx" min="-30" max="60" step="0.1" required>
               <small>This estimate-only value does not change the TempRadio commands.</small>
             </label>
+            </div>
+
+            <aside class="preset-test-estimates" aria-labelledby="radio-estimates-title">
+              <h3 id="radio-estimates-title">Radio estimates</h3>
+              <dl>
+                <div><dt>Nominal LoRa bitrate</dt><dd data-role="estimate-rate">—</dd></div>
+                <div><dt>Estimated sensitivity</dt><dd data-role="estimate-sensitivity">—</dd></div>
+                <div><dt>TX output used</dt><dd data-role="estimate-tx">—</dd></div>
+                <div><dt>Estimated link budget</dt><dd data-role="estimate-budget">—</dd></div>
+              </dl>
+              <p class="preset-test-note">
+                The bitrate is the nominal LoRa physical-layer rate; usable payload
+                throughput is lower. Sensitivity assumes a 6 dB receiver noise figure
+                and the standard LoRa SNR threshold for the selected spreading factor.
+                Link budget is TX output minus that sensitivity, before antenna gain,
+                cable loss, path loss, interference, and implementation differences.
+              </p>
+            </aside>
           </div>
+
           <button type="submit">Generate test URL</button>
         </form>
-
-        <aside class="preset-test-estimates" aria-labelledby="radio-estimates-title">
-          <h3 id="radio-estimates-title">Radio estimates</h3>
-          <dl>
-            <div><dt>Nominal LoRa bitrate</dt><dd data-role="estimate-rate">—</dd></div>
-            <div><dt>Estimated sensitivity</dt><dd data-role="estimate-sensitivity">—</dd></div>
-            <div><dt>TX output used</dt><dd data-role="estimate-tx">—</dd></div>
-            <div><dt>Estimated link budget</dt><dd data-role="estimate-budget">—</dd></div>
-          </dl>
-          <p class="preset-test-note">
-            The bitrate is the nominal LoRa physical-layer rate; usable payload
-            throughput is lower. Sensitivity assumes a 6 dB receiver noise figure
-            and the standard LoRa SNR threshold for the selected spreading factor.
-            Link budget is TX output minus that sensitivity, before antenna gain,
-            cable loss, path loss, interference, and implementation differences.
-          </p>
-        </aside>
       </div>
 
       <p class="preset-test-error preset-test-generator-error"

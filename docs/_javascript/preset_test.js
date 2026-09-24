@@ -2,8 +2,6 @@
   "use strict";
 
   const DEFAULTS = Object.freeze({
-    start: "2026-09-21T17:00:00-07:00",
-    end: "2026-09-23T17:00:00-07:00",
     tz: "",
     freq: "910.1",
     bw: "500",
@@ -17,6 +15,10 @@
   const SCHEDULE_HORIZON_MS = 0x7fffffff;
   const SCHEDULER_EPOCH_MAX = 0xffffffff;
   const EARLY_JOIN_MS = 60 * 60 * 1000;
+  const DEFAULT_START_HOUR = 17;
+  const DEFAULT_WINDOW_DAYS = 1;
+  const SCHEDULE_MODE_RELATIVE = "relative";
+  const SCHEDULE_MODE_ABSOLUTE = "absolute";
   const CLOCK_RESET_COMMAND = "clkreboot";
   const TIMEZONE_BOUNDARY_PATH = "../_data/timezones-2025b-simplified.json";
   const TIMEZONE_MAP_STYLE = Object.freeze({
@@ -202,7 +204,7 @@
 
   function hasPresetParameters(search) {
     const params = new URLSearchParams(search || "");
-    return Object.keys(DEFAULTS).some(function (key) {
+    return ["start", "end"].concat(Object.keys(DEFAULTS)).some(function (key) {
       return params.has(key);
     });
   }
@@ -229,7 +231,28 @@
     });
   }
 
-  function configFromSearch(search, fallbackTimeZone) {
+  function calendarDayValue(parts, daysLater) {
+    const value = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + daysLater));
+    return String(value.getUTCFullYear()).padStart(4, "0") + "-" +
+      twoDigits(value.getUTCMonth() + 1) + "-" + twoDigits(value.getUTCDate());
+  }
+
+  function defaultWindow(timeZone, nowMs) {
+    const zone = validateTimeZone(timeZone);
+    const now = nowMs == null ? Date.now() : Number(nowMs);
+    if (!Number.isFinite(now)) throw new PresetTestError("browser clock is unavailable");
+    const today = zonedParts(now, zone);
+    const startText = calendarDayValue(today, 1) + "T" +
+      twoDigits(DEFAULT_START_HOUR) + ":00";
+    const endText = calendarDayValue(today, 1 + DEFAULT_WINDOW_DAYS) + "T" +
+      twoDigits(DEFAULT_START_HOUR) + ":00";
+    return Object.freeze({
+      startMs: localDateTimeToMs(startText, zone, "default start"),
+      endMs: localDateTimeToMs(endText, zone, "default end"),
+    });
+  }
+
+  function configFromSearch(search, fallbackTimeZone, nowMs) {
     const params = new URLSearchParams(search || "");
     const raw = {};
     Object.keys(DEFAULTS).forEach(function (key) {
@@ -239,9 +262,14 @@
       raw.tz = fallbackTimeZone || browserTimeZone();
     }
 
-    const startMs = parseTimestamp(raw.start, "start");
-    const endMs = parseTimestamp(raw.end, "end");
     const tz = validateTimeZone(raw.tz);
+    const generatedWindow = defaultWindow(tz, nowMs);
+    let startMs = params.has("start")
+      ? parseTimestamp(params.get("start"), "start") : generatedWindow.startMs;
+    let endMs = params.has("end")
+      ? parseTimestamp(params.get("end"), "end") : generatedWindow.endMs;
+    if (params.has("start") && !params.has("end")) endMs = startMs + 86400000;
+    if (!params.has("start") && params.has("end")) startMs = endMs - 86400000;
     const freq = strictNumber(raw.freq, "freq");
     const bw = strictNumber(raw.bw, "bw");
     const sf = strictInteger(raw.sf, "sf");
@@ -289,14 +317,17 @@
   }
 
   function isDefaultPreset(config) {
+    const startLocal = zonedInputValue(config.startMs, config.tz);
+    const endLocal = zonedInputValue(config.endMs, config.tz);
+    const startParts = zonedParts(config.startMs, config.tz);
     return (
-      config.startMs === parseTimestamp(DEFAULTS.start, "start") &&
-      config.endMs === parseTimestamp(DEFAULTS.end, "end") &&
       config.freq === Number(DEFAULTS.freq) &&
       config.bw === Number(DEFAULTS.bw) &&
       config.sf === Number(DEFAULTS.sf) &&
       config.cr === Number(DEFAULTS.cr) &&
-      config.tx === Number(DEFAULTS.tx)
+      config.tx === Number(DEFAULTS.tx) &&
+      startLocal.endsWith("T17:00") &&
+      endLocal === calendarDayValue(startParts, DEFAULT_WINDOW_DAYS) + "T17:00"
     );
   }
 
@@ -354,30 +385,47 @@
         reason: "The end is outside the firmware's roughly 24-day horizon; return closer to the test.",
       };
     }
-    return { available: true, reason: "Ready to queue after the node clock is verified." };
+    return { available: true, reason: "Ready to queue." };
   }
 
   function primaryScheduleAvailability(config, nowMs) {
     if (nowMs >= config.startMs) {
       return { available: false, reason: "The start time has passed; use the immediate option." };
     }
-    return { available: true, reason: "Ready to queue after the node clock is verified." };
+    return { available: true, reason: "Ready to queue." };
   }
 
-  function commandsFor(config, nowMs, clockOffsetSeconds) {
+  function relativeMinutes(targetMs, nowMs) {
+    return Math.max(1, Math.ceil((targetMs - nowMs) / 60000));
+  }
+
+  function commandsFor(config, nowMs, clockOffsetSeconds, scheduleMode) {
     const tuple = [config.freqText, config.bwText, config.sf, config.cr].join(",");
     const minutes = remainingMinutes(config, nowMs);
-    const scheduled = schedulerEpochs(config, clockOffsetSeconds);
+    const mode = scheduleMode || SCHEDULE_MODE_RELATIVE;
+    if (mode !== SCHEDULE_MODE_RELATIVE && mode !== SCHEDULE_MODE_ABSOLUTE) {
+      throw new PresetTestError("schedule mode must be relative or absolute");
+    }
+    let startArgument;
+    let endArgument;
+    if (mode === SCHEDULE_MODE_RELATIVE) {
+      startArgument = "+" + relativeMinutes(config.startMs, nowMs);
+      endArgument = "+" + relativeMinutes(config.endMs, nowMs);
+    } else {
+      const scheduled = schedulerEpochs(config, clockOffsetSeconds);
+      startArgument = String(scheduled.startEpoch);
+      endArgument = String(scheduled.endEpoch);
+    }
     return Object.freeze({
       stockNow: "tempradio " + tuple + "," + minutes,
       companionNow:
         "set radio2.cross on\nset tempradio2 " + tuple + ",rxtx," + minutes,
       primaryScheduled:
-        "set tempradioat " + tuple + "," + scheduled.startEpoch + "," +
-        scheduled.endEpoch + "\nget tempradioat",
+        "set tempradioat " + tuple + "," + startArgument + "," +
+        endArgument + "\nget tempradioat",
       companionScheduled:
         "set radio2.cross on\nset tempradioat2 " + tuple + ",rxtx," +
-        scheduled.startEpoch + "," + scheduled.endEpoch + "\nget tempradioat2",
+        startArgument + "," + endArgument + "\nget tempradioat2",
       stockCancelDuring: "tempradio " + tuple + ",1",
       stockLeaveIn30: "tempradio " + tuple + ",30",
       primaryCancel:
@@ -824,16 +872,30 @@
     if (builderDisclosure) builderDisclosure.open = !showTest;
 
     let activeClockOffsetSeconds = 0;
+    let scheduleMode = SCHEDULE_MODE_RELATIVE;
 
-    function setScheduledCommands() {
+    function setScheduledCommands(nowMs) {
       const staticCommands = commandsFor(
         config,
-        config.startMs,
-        activeClockOffsetSeconds
+        nowMs == null ? Date.now() : nowMs,
+        activeClockOffsetSeconds,
+        scheduleMode
       );
       setCommand(root, "primary-scheduled", staticCommands.primaryScheduled);
       setCommand(root, "companion-scheduled", staticCommands.companionScheduled);
       return staticCommands;
+    }
+
+    function setScheduleMode(nextMode) {
+      scheduleMode = nextMode === SCHEDULE_MODE_ABSOLUTE
+        ? SCHEDULE_MODE_ABSOLUTE : SCHEDULE_MODE_RELATIVE;
+      const absoluteControls = root.querySelector('[data-role="absolute-clock-controls"]');
+      if (absoluteControls) absoluteControls.hidden = scheduleMode !== SCHEDULE_MODE_ABSOLUTE;
+      const relativeNote = root.querySelector('[data-role="relative-schedule-note"]');
+      if (relativeNote) relativeNote.hidden = scheduleMode !== SCHEDULE_MODE_RELATIVE;
+      const absoluteNote = root.querySelector('[data-role="absolute-schedule-note"]');
+      if (absoluteNote) absoluteNote.hidden = scheduleMode !== SCHEDULE_MODE_ABSOLUTE;
+      setScheduledCommands(Date.now());
     }
 
     function setNodeClockStatus(message, state) {
@@ -848,7 +910,7 @@
       const text = input ? input.value : "";
       if (!String(text).trim()) {
         activeClockOffsetSeconds = 0;
-        setScheduledCommands();
+        setScheduledCommands(Date.now());
         setNodeClockStatus(
           "No node-clock correction is applied. Scheduled commands use the normal UTC epochs.",
           "normal"
@@ -860,7 +922,7 @@
         const offset = nodeClockOffsetSeconds(nodeClockEpoch, Date.now());
         schedulerEpochs(config, offset);
         activeClockOffsetSeconds = offset;
-        setScheduledCommands();
+        setScheduledCommands(Date.now());
         const direction = offset === 0
           ? "matches browser UTC to the minute"
           : "is " + formatClockOffset(offset) + (offset > 0 ? " ahead of" : " behind") +
@@ -901,7 +963,7 @@
           " window. Saved primary settings return automatically at the end."
       );
 
-      const staticCommands = setScheduledCommands();
+      const staticCommands = setScheduledCommands(Date.now());
       setCommand(root, "stock-leave-30", staticCommands.stockLeaveIn30);
       setCommand(root, "primary-cancel", staticCommands.primaryCancel);
       setCommand(root, "companion-cancel-before", staticCommands.companionCancelBefore);
@@ -911,6 +973,13 @@
     }
 
     if (showTest) {
+      root.querySelectorAll('input[name="schedule-command-mode"]').forEach(function (input) {
+        input.addEventListener("change", function () {
+          if (input.checked) setScheduleMode(input.value);
+        });
+      });
+      setScheduleMode(SCHEDULE_MODE_RELATIVE);
+
       const nodeClockInput = root.querySelector('[data-role="node-clock-input"]');
       const applyNodeClockButton = root.querySelector('[data-action="apply-node-clock"]');
       if (nodeClockInput) {
@@ -928,6 +997,9 @@
 
     const generator = root.querySelector('[data-role="url-generator"]');
     if (generator) {
+      const sourceParams = new URLSearchParams(search || "");
+      const followsDefaultWindow = !sourceParams.has("start") && !sourceParams.has("end");
+      let timeFieldsEdited = false;
       generator.elements.start.value = zonedInputValue(config.startMs, config.tz);
       generator.elements.end.value = zonedInputValue(config.endMs, config.tz);
       generator.elements.tz.value = config.tz;
@@ -987,9 +1059,19 @@
         event.preventDefault();
         generateUrl();
       });
+      [generator.elements.start, generator.elements.end].forEach(function (input) {
+        input.addEventListener("input", function () { timeFieldsEdited = true; });
+      });
       generator.addEventListener("change", generateUrl);
       generateUrl();
-      initTimeZoneMap(root, config.tz, generateUrl);
+      initTimeZoneMap(root, config.tz, function (zone) {
+        if (followsDefaultWindow && !timeFieldsEdited) {
+          const nextWindow = defaultWindow(zone, Date.now());
+          generator.elements.start.value = zonedInputValue(nextWindow.startMs, zone);
+          generator.elements.end.value = zonedInputValue(nextWindow.endMs, zone);
+        }
+        generateUrl();
+      });
     }
 
     root.querySelectorAll("[data-copy-command]").forEach(function (button) {
@@ -1011,7 +1093,11 @@
       const status = root.querySelector('[data-role="status"]');
       const primarySchedule = primaryScheduleAvailability(config, nowMs);
       const schedule = scheduleAvailability(config, nowMs);
-      const commands = commandsFor(config, nowMs, activeClockOffsetSeconds);
+      const commands = commandsFor(
+        config, nowMs, activeClockOffsetSeconds, scheduleMode
+      );
+      setCommand(root, "primary-scheduled", commands.primaryScheduled);
+      setCommand(root, "companion-scheduled", commands.companionScheduled);
 
       status.dataset.state = phase;
       if (phase === "before") {
@@ -1111,6 +1197,10 @@
     SCHEDULE_HORIZON_MS: SCHEDULE_HORIZON_MS,
     SCHEDULER_EPOCH_MAX: SCHEDULER_EPOCH_MAX,
     EARLY_JOIN_MS: EARLY_JOIN_MS,
+    DEFAULT_START_HOUR: DEFAULT_START_HOUR,
+    DEFAULT_WINDOW_DAYS: DEFAULT_WINDOW_DAYS,
+    SCHEDULE_MODE_RELATIVE: SCHEDULE_MODE_RELATIVE,
+    SCHEDULE_MODE_ABSOLUTE: SCHEDULE_MODE_ABSOLUTE,
     CLOCK_RESET_COMMAND: CLOCK_RESET_COMMAND,
     PresetTestError: PresetTestError,
     parseNodeClock: parseNodeClock,
@@ -1127,6 +1217,7 @@
     presetEyebrow: presetEyebrow,
     validateTimeZone: validateTimeZone,
     browserTimeZone: browserTimeZone,
+    defaultWindow: defaultWindow,
     hasPresetParameters: hasPresetParameters,
     supportedTimeZones: supportedTimeZones,
     phaseAt: phaseAt,
