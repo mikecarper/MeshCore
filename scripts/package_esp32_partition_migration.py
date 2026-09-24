@@ -25,7 +25,6 @@ from firmware_memory_manifest import validate_package  # noqa: E402
 BOARDS = {
     "heltec-v4": {
         "target": "heltec_v4_repeater",
-        "full_env": "heltec_v4_repeater_observer_mqtt",
         "wifi_bridge": "heltec_v4_partition_migrator",
         "lora_bridge": "heltec_v4_partition_migrator_lora_repeater",
         "flash_bytes": 16 * 1024 * 1024,
@@ -34,7 +33,6 @@ BOARDS = {
     },
     "xiao-s3-wio": {
         "target": "Xiao_S3_WIO_repeater",
-        "full_env": "Xiao_S3_WIO_repeater_observer_mqtt",
         "wifi_bridge": "xiao_s3_partition_migrator",
         "lora_bridge": "xiao_s3_partition_migrator_lora_repeater",
         "flash_bytes": 8 * 1024 * 1024,
@@ -154,8 +152,12 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
             or not capabilities.get("ota_update_verified")):
         raise ValueError(f"{name}: Full build has the wrong target or lacks OTA")
 
-    table_path = ROOT / ".pio" / "build" / spec["full_env"] / "partitions.bin"
-    table = table_path.read_bytes()
+    # build.sh may clean .pio/build between board builds. Its merged image
+    # retains the exact bootloader/partition table/app bytes that were audited.
+    merged = (build_dir / (stem + "-merged.bin")).read_bytes()
+    if len(merged) < 0x9000 or merged[0x10000:] != full_path.read_bytes():
+        raise ValueError(f"{name}: merged image does not contain the release app")
+    table = merged[0x8000:0x9000]
     entries = partition_entries(table)
     if (entries.get("nvs") != (0x9000, 0x5000)
             or entries.get("otadata") != (0xE000, 0x2000)
