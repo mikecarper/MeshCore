@@ -152,14 +152,6 @@ esp_partition_t rawPartition(uint32_t address, uint32_t size, const char* label)
   return part;
 }
 
-esp_partition_t rawAppPartition(uint32_t address, uint32_t size,
-                                esp_partition_subtype_t subtype, const char* label) {
-  esp_partition_t part = rawPartition(address, size, label);
-  part.type = ESP_PARTITION_TYPE_APP;
-  part.subtype = subtype;
-  return part;
-}
-
 bool rangesOverlap(uint32_t first_address, uint32_t first_size,
                    uint32_t second_address, uint32_t second_size) {
   const uint64_t first_end = static_cast<uint64_t>(first_address) + first_size;
@@ -398,7 +390,7 @@ bool stageResumeSlot(uint8_t slot) {
   return saved;
 }
 
-bool resumeLegacyOtaReceiver(const migration::TargetPlan& plan) {
+bool resumeLegacyOtaReceiver() {
   Preferences migration_nvs;
   if (!migration_nvs.begin(kMigrationNvsNamespace, false)) {
     strcpy(status_text, "Could not read old LoRa application slot");
@@ -410,12 +402,12 @@ bool resumeLegacyOtaReceiver(const migration::TargetPlan& plan) {
     strcpy(status_text, "Expanded layout ready; no LoRa resume record");
     return false;
   }
-  const esp_partition_t old_app = slot == 0
-      ? rawAppPartition(plan.layout.app0_address, plan.layout.app0_size,
-                        ESP_PARTITION_SUBTYPE_APP_OTA_0, "app0")
-      : rawAppPartition(plan.layout.app1_address, plan.layout.app1_size,
-                        ESP_PARTITION_SUBTYPE_APP_OTA_1, "app1");
-  const esp_err_t selected = esp_ota_set_boot_partition(&old_app);
+  const esp_partition_t* old_app = esp_partition_find_first(
+      ESP_PARTITION_TYPE_APP,
+      slot == 0 ? ESP_PARTITION_SUBTYPE_APP_OTA_0 : ESP_PARTITION_SUBTYPE_APP_OTA_1,
+      nullptr);
+  const esp_err_t selected = old_app
+      ? esp_ota_set_boot_partition(old_app) : ESP_ERR_NOT_FOUND;
   if (selected != ESP_OK) {
     snprintf(status_text, sizeof(status_text), "Could not resume old LoRa app: %s",
              errName(selected));
@@ -569,20 +561,16 @@ void runMigration() {
   }
 #endif
 
-  // The OTA-select data records a slot identity. Select a descriptor for the
-  // bridge's expanded slot before replacing the table so the next boot runs
-  // the bridge at the correct address under the new layout.
+  // The OTA-select data records a slot identity. Select the bridge's currently
+  // registered legacy slot; after the table change, that slot identity points
+  // at the verified bridge copy under the expanded layout.
 #if defined(MESHCORE_MIGRATION_RESUME_OTA)
   const bool bridge_in_app0 = resume.bridge_slot == 0;
 #else
   const bool bridge_in_app0 = true;
 #endif
-  const esp_partition_t target_bridge = bridge_in_app0
-      ? rawAppPartition(plan->layout.app0_address, plan->layout.app0_size,
-                        ESP_PARTITION_SUBTYPE_APP_OTA_0, "app0")
-      : rawAppPartition(plan->layout.app1_address, plan->layout.app1_size,
-                        ESP_PARTITION_SUBTYPE_APP_OTA_1, "app1");
-  const esp_err_t select_result = esp_ota_set_boot_partition(&target_bridge);
+  const esp_err_t select_result = esp_ota_set_boot_partition(
+      bridge_in_app0 ? refs.app0 : refs.app1);
   if (select_result != ESP_OK) {
     snprintf(status_text, sizeof(status_text), "Could not select bridge slot: %s",
              errName(select_result));
@@ -700,8 +688,7 @@ void setup() {
     if (restoreStagedIdentity()) {
       strcpy(status_text, "Expanded layout ready");
 #if defined(MESHCORE_MIGRATION_RESUME_OTA)
-      const migration::TargetPlan* plan = migration::targetForFlash(flash_bytes);
-      if (plan) resumeLegacyOtaReceiver(*plan);
+      resumeLegacyOtaReceiver();
 #endif
     }
   } else if (findPartitions(refs, geometry)

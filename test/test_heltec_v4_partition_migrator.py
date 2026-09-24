@@ -54,13 +54,13 @@ class HeltecV4PartitionMigratorTest(unittest.TestCase):
         migration_body = source[source.index("void runMigration()") :]
         self.assertLess(migration_body.index("stageLegacyIdentity()"),
                         migration_body.index("copyAndVerify(*running"))
-        self.assertLess(migration_body.index("esp_ota_set_boot_partition(&target_bridge)"),
+        self.assertLess(migration_body.index("esp_ota_set_boot_partition(\n      bridge_in_app0 ? refs.app0 : refs.app1)"),
                         migration_body.index("publishExpandedPartitionTable(*plan)"))
         setup_body = source[source.index("void setup()") :]
         self.assertIn("restoreStagedIdentity()", setup_body)
-        self.assertIn("resumeLegacyOtaReceiver(*plan)", setup_body)
+        self.assertIn("resumeLegacyOtaReceiver()", setup_body)
         self.assertLess(setup_body.index("restoreStagedIdentity()"),
-                        setup_body.index("resumeLegacyOtaReceiver(*plan)"))
+                        setup_body.index("resumeLegacyOtaReceiver()"))
         self.assertIn("validLegacyOtaReceiver(*old_receiver)", migration_body)
         self.assertIn("copyAndVerify(*refs.app1", migration_body)
         self.assertIn("stageResumeSlot(resume.resume_slot)", migration_body)

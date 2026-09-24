@@ -61,13 +61,17 @@ def partition_entries(table: bytes) -> dict[str, tuple[int, int]]:
     return entries
 
 
-def mota_full(image: bytes, identity: FwIdent) -> bytes:
+def mota_full(image: bytes, identity: FwIdent, block_size: int) -> bytes:
+    # Device-side seeders keep at most 1024 Merkle leaves in 4 KiB scratch.
+    # The bridge fits 1 KiB blocks; a roughly 2 MiB Full image needs 2 KiB.
+    if (len(image) + block_size - 1) // block_size > 1024:
+        raise ValueError("mOTA image exceeds the device seeder's 1024-block limit")
     manifest = build_manifest(
         target_id=identity.target_id,
         fw_version=identity.fw_version,
         image_size=len(image),
         payload=image,
-        block_size=1024,
+        block_size=block_size,
         image_hash=hashlib.sha256(image).digest(),
         codec_id=CODEC_FULL,
         is_full=True,
@@ -78,6 +82,16 @@ def mota_full(image: bytes, identity: FwIdent) -> bytes:
     if problems:
         raise ValueError("mOTA verification failed: " + "; ".join(problems))
     return package
+
+
+def check_esp32_stage(package: bytes, image: bytes, slot_bytes: int) -> None:
+    # Mirror the ESP32 FULL staging geometry: the payload is written at the
+    # start of the inactive app, with metadata in aligned sectors at its end.
+    metadata_bytes = len(package) - len(image) - 5
+    metadata_flush = (metadata_bytes + 5 + 4095) & ~4095
+    if (len(package) > slot_bytes or metadata_flush > 65536
+            or len(image) > slot_bytes - metadata_flush):
+        raise ValueError("mOTA image cannot be staged in the inactive ESP32 slot")
 
 
 def readme(board: str, spec: dict, version: str, source: str) -> str:
@@ -166,12 +180,14 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
 
     files = {
         "wifi-bridge.bin": wifi_bridge,
-        "lora-bridge.mota": mota_full(lora_bridge, bridge_ident),
+        "lora-bridge.mota": mota_full(lora_bridge, bridge_ident, 1024),
         "full-application.bin": full_image,
-        "full-application.mota": mota_full(full_image, full_ident),
+        "full-application.mota": mota_full(full_image, full_ident, 2048),
         "target-partitions.bin": table,
         "capabilities.json": capability_path.read_bytes(),
     }
+    check_esp32_stage(files["lora-bridge.mota"], lora_bridge, LEGACY_SLOT_BYTES)
+    check_esp32_stage(files["full-application.mota"], full_image, slot_bytes)
     files["README.md"] = readme(name, spec, version, source).encode()
     manifest = {
         "board": name,
