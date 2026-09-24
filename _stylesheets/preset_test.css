@@ -393,19 +393,53 @@
   content: "Hide advanced";
 }
 
+.preset-test-schedule-mode fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.preset-test-schedule-mode legend {
+  grid-column: 1 / -1;
+  margin-bottom: 0.35rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.preset-test-schedule-mode label {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  border: 1px solid var(--preset-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  cursor: pointer;
+}
+
+.preset-test-schedule-mode input {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+  accent-color: var(--preset-accent);
+}
+
+.preset-test-schedule-mode label:has(input:checked) {
+  border-color: var(--preset-accent);
+  background: color-mix(in srgb, var(--preset-accent) 8%, transparent);
+}
+
 .preset-test-generator-disclosure-body {
   padding: 0 1rem 1rem;
 }
 
 .preset-test-generator-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr);
-  gap: 1rem;
-  align-items: start;
+  min-width: 0;
 }
 
-.preset-test-generator,
-.preset-test-estimates {
+.preset-test-generator {
   min-width: 0;
   border: 1px solid var(--preset-border);
   border-radius: 0.65rem;
@@ -413,10 +447,32 @@
   background: var(--md-default-bg-color);
 }
 
-.preset-test-generator-fields {
+.preset-test-time-fields,
+.preset-test-radio-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
+}
+
+.preset-test-time-fields {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.preset-test-radio-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr);
+  gap: 1rem;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+.preset-test-estimates {
+  min-width: 0;
+  border: 1px solid var(--preset-border);
+  border-radius: 0.65rem;
+  padding: 1rem;
+  background: var(--md-default-bg-color);
 }
 
 .preset-test-generator label {
@@ -443,7 +499,6 @@
 }
 
 .preset-test-timezone-picker {
-  grid-column: 1 / -1;
   min-width: 0;
 }
 
@@ -614,8 +669,13 @@
   .preset-test-grid--clock,
   .preset-test-clock-check,
   .preset-test-clock-override,
-  .preset-test-generator-layout,
-  .preset-test-generator-fields {
+  .preset-test-time-fields,
+  .preset-test-radio-layout,
+  .preset-test-radio-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .preset-test-schedule-mode fieldset {
     grid-template-columns: 1fr;
   }
 
