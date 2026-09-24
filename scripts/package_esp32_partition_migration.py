@@ -225,13 +225,16 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--source", required=True, help="eight-character source commit")
+    parser.add_argument("--board", action="append", choices=tuple(BOARDS),
+                        help="board to package; repeat for multiple boards (default: all)")
     args = parser.parse_args()
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
         parser.error("output directory must be empty")
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    archives = [package_board(name, spec, args.build_dir, args.output_dir,
+    selected = dict.fromkeys(args.board or BOARDS)
+    archives = [package_board(name, BOARDS[name], args.build_dir, args.output_dir,
                               args.version, args.source)
-                for name, spec in BOARDS.items()]
+                for name in selected]
     for archive in archives:
         print(f"{archive}: {archive.stat().st_size} bytes")
 

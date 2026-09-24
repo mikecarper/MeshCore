@@ -17,6 +17,30 @@ and its generated table-prefix test; the bridge core is otherwise shared.
 | 8 MiB | `default_8MB.csv` | 0x330000 / 0x330000 | Seeed XIAO ESP32-S3 |
 | 16 MiB | `default_16MB.csv` | 0x640000 / 0x640000 | Heltec V4 / V4.3 OLED |
 
+## Repeatable ESP32 build recipe
+
+From a clean commit, run the recipe in WSL/Linux. It builds the Full repeater
+images first, then both small bridges for each selected board, then verifies
+and publishes one ZIP per board. Only one PlatformIO process runs at a time;
+`build.sh` can clean the shared `.pio/build` tree between Full targets.
+
+```bash
+python3 -B scripts/build_esp32_partition_migration.py \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
+```
+
+The default builds both currently validated boards. Add `--board heltec-v4`
+or `--board xiao-s3-wio` to build one; repeat `--board` for a selected set.
+Use `--dry-run` to inspect the command order without building. The resulting
+ZIPs appear under `.releases/esp32-expanded-<commit>/packages/`. The recipe
+requires a clean checkout so each ZIP identifies the firmware commit it was
+built from. It creates files only; it does not flash a device or erase flash.
+
+Other ESP32 boards need a reviewed flash-size/partition plan, exact LoRa OTA
+target ID, and board entry before they can be added to this recipe. Matching
+flash capacity alone is not enough to claim a package is safe for a board.
+
 ## What the bridge preserves
 
 Before it touches the partition table, the bridge reads the historical
@@ -56,25 +80,15 @@ Keep power stable while the bridge is replacing the 4 KiB table sector. A loss
 of power before that point leaves the old table and source intact. After that
 small critical write, the selected A copy of the bridge is the recovery path.
 
-## Build and migrate a Seeed XIAO ESP32-S3
+## Migrate a Seeed XIAO ESP32-S3
 
-The production bridge is a legacy-slot application image:
-
-```powershell
-& "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe" run -e xiao_s3_partition_migrator
-```
-
-Build the Full XIAO image with its 8 MiB table:
-
-```powershell
-$env:MESHCORE_ESP32_FULL_BUILD = '1'
-& "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe" run -e Xiao_S3_WIO_repeater_observer_mqtt
-```
-
-Upload the bridge through the legacy node's existing Wi-Fi browser updater.
+Use `--board xiao-s3-wio` with the recipe above. Its Wi-Fi bridge is a
+legacy-slot application image; its Full image keeps the old repeater's exact
+LoRa OTA target ID. Upload `wifi-bridge.bin` from the ZIP through the legacy
+node's existing Wi-Fi browser updater.
 Then join `MeshCore-Migrate` (password `meshcore-migrate`) and wait for
-**Expanded layout ready**. Upload the Full app-only `.bin` from the second
-build at `/update`. Do not upload an `-merged.bin`: merged images include
+**Expanded layout ready**. Upload `full-application.bin` at `/update`.
+Do not upload an `-merged.bin`: merged images include
 bootloader and table offsets for cable flashing, not browser OTA.
 
 `xiao_s3_partition_legacy_seed` is a disposable-hardware test image only. It
