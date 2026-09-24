@@ -26,7 +26,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def git_output(*args: str) -> str:
-    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+    # This Windows checkout uses core.autocrlf=input. WSL often lacks that
+    # global setting and would misreport unchanged CRLF files as dirty.
+    return subprocess.check_output(
+        ["git", "-c", "core.autocrlf=input", *args], cwd=ROOT, text=True
+    ).strip()
 
 
 def build_steps(boards: list[str], version: str, radio_preset: str,
