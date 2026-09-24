@@ -22,7 +22,7 @@ extra_css:
   - _stylesheets/telemetry_decoder.css
   - _stylesheets/management_decoder.css
   - _stylesheets/filter_tool.css
-  - _stylesheets/preset_test.css?v=20260923-1
+  - _stylesheets/preset_test.css?v=20260923-2
 
 extra_javascript:
   - https://unpkg.com/leaflet@1.9.4/dist/leaflet.js

@@ -443,7 +443,7 @@
   min-width: 0;
   border: 1px solid var(--preset-border);
   border-radius: 0.65rem;
-  padding: 1rem;
+  padding: 0.8rem;
   background: var(--md-default-bg-color);
 }
 
@@ -451,7 +451,7 @@
 .preset-test-radio-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
+  gap: 0.65rem;
 }
 
 .preset-test-time-fields {
@@ -462,16 +462,16 @@
 .preset-test-radio-layout {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr);
-  gap: 1rem;
+  gap: 0.65rem;
   align-items: start;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
 }
 
 .preset-test-estimates {
   min-width: 0;
   border: 1px solid var(--preset-border);
   border-radius: 0.65rem;
-  padding: 1rem;
+  padding: 0.75rem;
   background: var(--md-default-bg-color);
 }
 
@@ -602,21 +602,21 @@
 }
 
 .preset-test-estimates h3 {
-  margin-top: 0;
+  margin: 0 0 0.65rem;
 }
 
 .preset-test-estimates dl {
   display: grid;
-  gap: 0.7rem;
-  margin: 0 0 1rem;
+  gap: 0.5rem;
+  margin: 0 0 0.7rem;
 }
 
 .preset-test-estimates dl > div {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.65rem;
   border-bottom: 1px solid var(--preset-border);
-  padding-bottom: 0.55rem;
+  padding-bottom: 0.4rem;
 }
 
 .preset-test-estimates dt {
@@ -631,6 +631,11 @@
   font-family: var(--md-code-font-family);
   font-weight: 750;
   text-align: right;
+}
+
+.preset-test-estimates .preset-test-note {
+  font-size: 0.76rem;
+  line-height: 1.45;
 }
 
 .preset-test-generator-error {
