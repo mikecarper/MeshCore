@@ -72,12 +72,16 @@ TEST(Esp32PartitionMigrationPolicy, LoRaResumePreservesTheOldApplicationInEither
     EXPECT_TRUE(from_a.valid);
     EXPECT_EQ(0, from_a.bridge_slot);
     EXPECT_EQ(1, from_a.resume_slot);
+    EXPECT_TRUE(from_a.copy_app1);
+    EXPECT_FALSE(from_a.restore_identity_in_full);
 
     const auto from_b = policy::planLoRaResume(policy::kLegacyLayout, target,
                                                policy::kLegacyLayout.app1_address);
     EXPECT_TRUE(from_b.valid);
     EXPECT_EQ(1, from_b.bridge_slot);
     EXPECT_EQ(0, from_b.resume_slot);
+    EXPECT_TRUE(from_b.copy_app1);
+    EXPECT_FALSE(from_b.restore_identity_in_full);
   }
 
   auto overlapping = policy::kExpanded8MBLayout;
@@ -89,6 +93,14 @@ TEST(Esp32PartitionMigrationPolicy, LoRaResumePreservesTheOldApplicationInEither
   EXPECT_FALSE(policy::planLoRaResume(policy::kLegacyLayout,
                                        policy::kExpanded4MBLayout,
                                        policy::kLegacyLayout.app0_address).valid);
+  const auto small_from_b = policy::planLoRaResume(
+      policy::kLegacyLayout, policy::kExpanded4MBLayout,
+      policy::kLegacyLayout.app1_address);
+  EXPECT_TRUE(small_from_b.valid);
+  EXPECT_EQ(1, small_from_b.bridge_slot);
+  EXPECT_EQ(0, small_from_b.resume_slot);
+  EXPECT_FALSE(small_from_b.copy_app1);
+  EXPECT_TRUE(small_from_b.restore_identity_in_full);
 }
 
 TEST(Esp32PartitionMigrationPolicy, GeneratedTablePrefixContainsAllSixEntriesAndMd5) {

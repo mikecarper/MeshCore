@@ -267,14 +267,17 @@ inline bool canMigrateGeneric(uint32_t flash_bytes,
       && !sameGeometry(geometry, plan->layout);
 }
 
-// A LoRa migration keeps the old OTA-capable application alive while the
-// bridge restores SPIFFS identity. Legacy app0 stays at its address; legacy
-// app1 is copied to the new app1 before the table is published. The bridge
-// boots first, then hands off to whichever slot contains the old application.
+// On 8/16 MiB flash the bridge can copy legacy app1 to its new address,
+// reboot, restore the staged identity, and hand off to the old receiver.
+// On 4 MiB flash that copy would overwrite legacy app1. The only safe LoRa
+// route there starts with the old receiver in app0 and the bridge in app1;
+// the new Full application must restore the NVS-staged identity on first boot.
 struct LoRaResumePlan {
   bool valid;
   uint8_t bridge_slot;
   uint8_t resume_slot;
+  bool copy_app1;
+  bool restore_identity_in_full;
 };
 
 constexpr bool overlaps(uint32_t a, uint32_t a_size,
@@ -288,19 +291,28 @@ inline LoRaResumePlan planLoRaResume(const PartitionGeometry& source,
                                     uint32_t running_address) {
   const bool in_app0 = running_address == source.app0_address;
   const bool in_app1 = running_address == source.app1_address;
+  const bool common = (in_app0 || in_app1)
+      && source.app0_address == target.app0_address
+      && source.app0_size <= target.app0_size
+      && source.app1_size <= target.app1_size
+      && !overlaps(source.app0_address, source.app0_size,
+                   source.app1_address, source.app1_size)
+      && !overlaps(source.app0_address, source.app0_size,
+                   target.app1_address, target.app1_size);
+  const bool can_copy = common
+      && !overlaps(source.app1_address, source.app1_size,
+                   target.app1_address, source.app1_size);
+  const bool direct_4mb = common && in_app1
+      && target.app1_address == kExpanded4MBLayout.app1_address
+      && target.app1_size == kExpanded4MBLayout.app1_size
+      && !overlaps(source.app0_address, source.app0_size,
+                   target.spiffs_address, target.spiffs_size);
   return {
-      (in_app0 || in_app1)
-          && source.app0_address == target.app0_address
-          && source.app0_size <= target.app0_size
-          && source.app1_size <= target.app1_size
-          && !overlaps(source.app0_address, source.app0_size,
-                       source.app1_address, source.app1_size)
-          && !overlaps(source.app0_address, source.app0_size,
-                       target.app1_address, source.app1_size)
-          && !overlaps(source.app1_address, source.app1_size,
-                       target.app1_address, source.app1_size),
+      can_copy || direct_4mb,
       static_cast<uint8_t>(in_app0 ? 0 : 1),
       static_cast<uint8_t>(in_app0 ? 1 : 0),
+      can_copy,
+      direct_4mb && !can_copy,
   };
 }
 

@@ -62,7 +62,9 @@ typedef bool (*ServeDeflateReadFn)(void* ctx, uint16_t block, uint8_t* dst,
                                    uint16_t dst_cap, uint16_t* dst_len);
 
 #ifndef OTA_PROOFGEN_SCRATCH
-  #if defined(OTA_SD_STORE)
+  #if defined(ESP32_PLATFORM)
+    #define OTA_PROOFGEN_SCRATCH 16384  // heap-backed; can seed <=4096 blocks (8 MiB at 2 KiB/block)
+  #elif defined(OTA_SD_STORE)
     #define OTA_PROOFGEN_SCRATCH 8192  // SD archive can seed <=2048 blocks (about 4 MiB at 2 KiB/block)
   #else
     #define OTA_PROOFGEN_SCRATCH 4096  // server proof-gen working buffer (supports up to 1024 blocks)

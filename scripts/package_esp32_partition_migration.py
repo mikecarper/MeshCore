@@ -117,9 +117,9 @@ def role_for_target(target: str) -> str:
     raise ValueError(f"migration target has no infrastructure role: {target}")
 
 
-def add_wifi_only_roles(family: str, flash_mib: int,
-                        targets: dict[str, str],
-                        bridge: str | None = None) -> None:
+def add_roles(family: str, flash_mib: int,
+              targets: dict[str, str],
+              bridge: str | None = None) -> None:
     """Register exact role identities; a family can have one or all roles."""
     if flash_mib not in (4, 8, 16):
         raise ValueError(f"unsupported migration flash size: {flash_mib} MiB")
@@ -148,8 +148,8 @@ def add_wifi_only_roles(family: str, flash_mib: int,
 
 
 # The first two repeater keys above retain their published LoRa-capable bridge
-# names. Other role packages use the chip-family Wi-Fi bridge. These are the
-# canonical ESP32 infrastructure identities on 4/8/16 MiB boards which can
+# names. Other role packages use a chip-family bridge for both Wi-Fi and LoRa.
+# These are the canonical ESP32 infrastructure identities on 4/8/16 MiB boards which can
 # have a deployed Arduino default.csv 1.25 MiB table, including historically
 # default.csv boards now using a larger layout. Other boards that were only
 # ever built with unrelated layouts are not represented as 1.25 MiB migrants.
@@ -237,35 +237,37 @@ for family, flash_mib, roles in (
     ("thinknode-m9", 16, {"repeater": "ThinkNode_M9_repeater_",
                              "room-server": "ThinkNode_M9_room_server_"}),
 ):
-    add_wifi_only_roles(family, flash_mib, roles)
+    add_roles(family, flash_mib, roles)
 
-add_wifi_only_roles("heltec-v2", 8, {
+add_roles("heltec-v2", 8, {
     "repeater": "Heltec_v2_repeater",
     "room-server": "Heltec_v2_room_server",
 }, bridge="esp32_8mb_partition_migrator")
-add_wifi_only_roles("heltec-ct62", 4, {
+add_roles("heltec-ct62", 4, {
     "repeater": "Heltec_ct62_repeater",
     "sensor": "Heltec_ct62_sensor",
 }, bridge="esp32_c3_4mb_partition_migrator")
-add_wifi_only_roles("xiao-c3", 4, {
+add_roles("xiao-c3", 4, {
     "repeater": "Xiao_C3_repeater",
     "room-server": "Xiao_C3_room_server",
 }, bridge="esp32_c3_4mb_partition_migrator")
-add_wifi_only_roles("tenstar-c3-sx1262", 4, {
+add_roles("tenstar-c3-sx1262", 4, {
     "repeater": "Tenstar_C3_sx1262_repeater",
 }, bridge="esp32_c3_4mb_partition_migrator")
-add_wifi_only_roles("tenstar-c3-sx1268", 4, {
+add_roles("tenstar-c3-sx1268", 4, {
     "repeater": "Tenstar_C3_sx1268_repeater",
 }, bridge="esp32_c3_4mb_partition_migrator")
-add_wifi_only_roles("generic-e22-sx1262", 4, {
+add_roles("generic-e22-sx1262", 4, {
     "repeater": "Generic_E22_sx1262_repeater",
 }, bridge="esp32_4mb_partition_migrator")
-add_wifi_only_roles("generic-e22-sx1268", 4, {
+add_roles("generic-e22-sx1268", 4, {
     "repeater": "Generic_E22_sx1268_repeater",
 }, bridge="esp32_4mb_partition_migrator")
 
 for specification in BOARDS.values():
     specification.setdefault("role", role_for_target(specification["target"]))
+    if specification["lora_bridge"] is None:
+        specification["lora_bridge"] = specification["wifi_bridge"] + "_lora"
 
 LEGACY_SLOT_BYTES = 0x140000
 
@@ -287,10 +289,11 @@ def partition_entries(table: bytes) -> dict[str, tuple[int, int]]:
 
 
 def mota_full(image: bytes, identity: FwIdent, block_size: int) -> bytes:
-    # Device-side seeders keep at most 1024 Merkle leaves in 4 KiB scratch.
-    # The bridge fits 1 KiB blocks; a roughly 2 MiB Full image needs 2 KiB.
-    if (len(image) + block_size - 1) // block_size > 1024:
-        raise ValueError("mOTA image exceeds the device seeder's 1024-block limit")
+    # The wire format supports more than the 1024 leaves held by older
+    # 4 KiB-scratch seeders. The package records the required scratch size so
+    # an operator can select a capable seeder before installing the bridge.
+    if (len(image) + block_size - 1) // block_size > 4096:
+        raise ValueError("mOTA image exceeds the supported 4096-block seeder limit")
     manifest = build_manifest(
         target_id=identity.target_id,
         fw_version=identity.fw_version,
@@ -320,7 +323,7 @@ def check_esp32_stage(package: bytes, image: bytes, slot_bytes: int) -> None:
 
 
 def readme(board: str, spec: dict, version: str, source: str,
-           has_full_mota: bool = True) -> str:
+           has_full_mota: bool = True, full_mota_blocks: int = 0) -> str:
     wifi_instructions = f"""## Wi-Fi route
 
 1. On the old node, run `start ota ap` through its authenticated terminal.
@@ -331,20 +334,47 @@ def readme(board: str, spec: dict, version: str, source: str,
 3. At that page's `/update`, upload `full-application.bin`.
 """
     if spec["lora_bridge"]:
-        lora_instructions = """## LoRa route
+        slot_instructions = (
+            """On this **4 MiB** layout, the bridge must be installed in old slot B
+while a verified old LoRa receiver remains in old slot A. If the old node is
+running B, first install/boot a working same-target old receiver in A, then
+install the bridge in B. A bridge installed in A refuses migration. After the
+table switch the old receiver in A may use a temporary identity; the Full
+application restores the original private key from NVS on its first boot.
+Do not abandon the update between those two boots.\n\n"""
+            if spec["flash_bytes"] == 4 * 1024 * 1024 else
+            "The bridge may be installed in either old OTA slot.\n\n"
+        )
+        handoff = (
+            "the original key stays staged in NVS until the Full firmware "
+            "restores it on first boot"
+            if spec["flash_bytes"] == 4 * 1024 * 1024 else
+            "the bridge restores the private key before handing off"
+        )
+        lora_instructions = f"""## LoRa route
 
-The old repeater must already have working MeshCore LoRa mOTA, a valid EndF,
+The old node must already have working MeshCore LoRa mOTA, a valid EndF,
 and the exact target ID in `manifest.json`. A stock image without that updater
 cannot take this route. The bridge checks the old receiver before changing the
 table and refuses if its image or target does not match.
 
+{slot_instructions}The Full image has {full_mota_blocks} blocks and needs a seeder with at least
+{full_mota_blocks * 4} bytes of proof scratch. Older 4 KiB-scratch seeders cannot
+serve more than 1024 blocks. Verify that a capable seeder lists the Full image
+before installing the bridge.
+
+The resized SPIFFS may reset saved radio settings. Before stage one, know
+the old receiver's compiled default radio profile and arrange a seeder on
+that profile for stage two; a remote node that cannot hear the seeder cannot
+finish its LoRa migration.
+
 1. Make `lora-bridge.mota` available from a compatible mOTA seeder. On the old
-   repeater use `ota ls`, `ota pull <id> flash`, then `ota install` after the
+   node use `ota ls`, `ota pull <id> flash`, then `ota install` after the
    complete download. A manual install handles an equal-version bridge.
-2. Keep power stable. The bridge expands the table, restores the private key,
-   and reboots into the preserved old LoRa repeater in the opposite slot.
+2. Keep power stable. The bridge expands the table; {handoff}. It then reboots
+   into the preserved old LoRa receiver in the opposite slot.
 3. Serve `full-application.mota`; again use `ota ls`, `ota pull <id> flash`,
-   then `ota install`. The old repeater now sees the expanded inactive slot.
+   then `ota install`. The old receiver now sees the expanded inactive slot.
    A full-image LoRa transfer can take considerable time.
 
 `full-application.bin` and `full-application.mota` are the same exact-target
@@ -381,9 +411,11 @@ The current partition table must have stable NVS at 0x9000, OTA metadata at
 0xE000, two OTA apps, and SPIFFS with `/identity/_main.id`.
 
 The bridge checks the live layout and refuses unsupported boards. It stages
-the 96-byte public/private identity in unchanged NVS, copies and verifies the
-required application, changes the partition table, then restores and verifies
-the identity in expanded SPIFFS. No full-chip erase or USB connection is used.
+the 96-byte public/private identity in unchanged NVS, preserves a bootable old
+receiver, and changes the partition table. On 8/16 MiB LoRa and Wi-Fi routes
+the bridge restores and verifies the identity in expanded SPIFFS; on the
+4 MiB LoRa route the new Full firmware does so at first boot. No full-chip
+erase or USB connection is used.
 The table sector and inactive app sectors are erased as part of migration.
 SPIFFS may be reformatted; other SPIFFS settings can be recreated.
 The stock bootloader has no atomic backup partition table: power loss during
@@ -447,7 +479,8 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
         "target-partitions.bin": table,
         "capabilities.json": capability_path.read_bytes(),
     }
-    if (len(full_image) + 2047) // 2048 <= 1024:
+    full_mota_blocks = (len(full_image) + 2047) // 2048
+    if full_mota_blocks <= 4096:
         candidate_mota = mota_full(full_image, full_ident, 2048)
         try:
             check_esp32_stage(candidate_mota, full_image, slot_bytes)
@@ -466,7 +499,8 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
         files["lora-bridge.mota"] = mota_full(lora_bridge, bridge_ident, 1024)
         check_esp32_stage(files["lora-bridge.mota"], lora_bridge, LEGACY_SLOT_BYTES)
     files["README.md"] = readme(name, spec, version, source,
-                                 "full-application.mota" in files).encode()
+                                 "full-application.mota" in files,
+                                 full_mota_blocks).encode()
     manifest = {
         "board": name,
         "role": spec["role"],
@@ -479,6 +513,10 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
         "legacy_slot_bytes": LEGACY_SLOT_BYTES,
         "expanded_slot_bytes": slot_bytes,
         "atomic_power_loss_recovery": False,
+        "lora_bridge_mode": ("slot-b-only-full-identity-recovery"
+                             if spec["flash_bytes"] == 4 * 1024 * 1024
+                             else "either-slot-preserve-receiver"),
+        "full_mota_seeder_scratch_bytes": full_mota_blocks * 4,
         "files": {filename: {"bytes": len(data), "sha256": sha256(data)}
                   for filename, data in files.items()},
     }
