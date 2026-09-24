@@ -146,6 +146,7 @@ struct MotaStream {
   template<class... T> void setSender(T...) {}
   void setActive(bool) {}
 };
+@FORMAT_DEVICE_NAME@
 struct SerialBLEInterface {
   @STARTUP_FIELDS@
   std::atomic<bool> _companionDataSeen{false};
@@ -211,16 +212,20 @@ int main() {
 
 class Nrf52BleStartupTest(unittest.TestCase):
     def test_reported_startup_failures_are_not_reinitialized(self):
-        begin = method((ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text(),
-                       "bool SerialBLEInterface::begin(")
+        implementation = (ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text()
+        begin = method(implementation, "bool SerialBLEInterface::begin(")
+        format_device_name = method(implementation, "static bool formatDeviceName(")
         header = (ROOT / "src/helpers/nrf52/SerialBLEInterface.h").read_text()
         # Use the real in-class startup initializers, too.
         fields = "\n".join(line for line in header.splitlines()
                            if "bool _begin_" in line
                            or "bool _mota_available" in line
-                           or "char _begin_failure" in line)
+                           or "char _begin_failure" in line
+                           or "char _active_name" in line)
         self.assertTrue(fields)
-        source = HARNESS.replace("@BEGIN@", begin).replace("@STARTUP_FIELDS@", fields)
+        source = (HARNESS.replace("@BEGIN@", begin)
+                 .replace("@FORMAT_DEVICE_NAME@", format_device_name)
+                 .replace("@STARTUP_FIELDS@", fields))
         with tempfile.TemporaryDirectory(prefix="meshcore-ble-start-") as temp:
             temp = Path(temp)
             (temp / "Arduino.h").write_text(RTOS)
