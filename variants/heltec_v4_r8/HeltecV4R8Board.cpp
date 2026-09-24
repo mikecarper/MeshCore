@@ -46,11 +46,15 @@ void HeltecV4R8Board::onAfterTransmit(void) {
 }
 
 void HeltecV4R8Board::powerOff() {
+  ESP32Board::powerOff();
+}
+
+void HeltecV4R8Board::shutdownPeripherals() {
+  ESP32Board::shutdownPeripherals();
   loRaFEMControl.setSleepModeEnable();
   digitalWrite(P_LORA_PA_POWER, LOW);
   rtc_gpio_hold_en((gpio_num_t)P_LORA_PA_POWER);
   periph_power.release();  // Drop the permanent antenna-boost/VEXT claim from begin().
-  ESP32Board::powerOff();
 }
 
 uint16_t HeltecV4R8Board::getBattMilliVolts() {

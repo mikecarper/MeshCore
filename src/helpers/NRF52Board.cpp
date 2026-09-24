@@ -596,6 +596,29 @@ void NRF52Board::powerOff() {
   }
 }
 
+void NRF52Board::enterDeepSleep(uint32_t secs) {
+  if (secs == 0) {
+    powerOff(); // Not wake up
+  } else {
+    shutdownPeripherals();
+
+// Clear FPU interrupt flags to avoid insomnia
+// see errata 87 for details
+// https://docs.nordicsemi.com/bundle/errata_nRF52840_Rev3/page/ERR/nRF52840/Rev3/latest/anomaly_840_87.html
+#if (__FPU_USED == 1)
+    __set_FPSCR(__get_FPSCR() & ~(0x0000009F));
+    (void)__get_FPSCR();
+    NVIC_ClearPendingIRQ(FPU_IRQn);
+#endif
+
+    // Attemp to sleep
+    vTaskDelay(pdMS_TO_TICKS(secs * 1000));
+
+    // Reboot for a fresh recovery
+    reboot();
+  }
+}
+
 bool NRF52Board::getBootloaderVersion(char* out, size_t max_len) {
   if (!out || max_len == 0u) return false;
   out[0] = 0;

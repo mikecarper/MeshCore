@@ -21,4 +21,5 @@ public:
   uint16_t getBattMilliVolts() override;
   const char* getManufacturerName() const override;
   void powerOff() override;
+  void shutdownPeripherals() override;
 };

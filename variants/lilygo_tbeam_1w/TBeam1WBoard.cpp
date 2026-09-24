@@ -130,6 +130,11 @@ const char* TBeam1WBoard::getManufacturerName() const {
 }
 
 void TBeam1WBoard::powerOff() {
+  ESP32Board::powerOff();
+}
+
+void TBeam1WBoard::shutdownPeripherals() {
+  ESP32Board::shutdownPeripherals();
   portENTER_CRITICAL(&_fan_mux);
   _stopped = true;
   _tx_active = false;
@@ -145,8 +150,7 @@ void TBeam1WBoard::powerOff() {
   radio_powered = false;
 
   digitalWrite(LED_PIN, LOW);
-
-  ESP32Board::powerOff();
+  digitalWrite(FAN_CTRL_PIN, LOW);
 }
 
 void TBeam1WBoard::attachRadioDriver(CustomSX1262Wrapper* driver) {

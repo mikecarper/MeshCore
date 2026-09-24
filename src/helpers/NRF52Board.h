@@ -68,6 +68,7 @@ public:
   bool rebootToUf2Bootloader() override;
   virtual void shutdownPeripherals();
   virtual void powerOff() override;
+  virtual void enterDeepSleep(uint32_t secs) override;
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;
   virtual bool startOTAUpdate(const char *id, char reply[], bool force_ap = false) override;
   virtual bool stopOTAUpdate(char reply[]) override;

@@ -22,7 +22,6 @@ public:
   void onBootComplete() override;
   void onBeforeTransmit() override;
   void onAfterTransmit() override;
-  void powerOff() override;
   uint16_t getBattMilliVolts() override;
   bool setAdcMultiplier(float multiplier) override;
   float getAdcMultiplier() const override { return adc_mult; }

@@ -35,7 +35,8 @@ void HeltecTrackerV2Board::begin() {
     loRaFEMControl.setRxModeEnable();
   }
 
-  void HeltecTrackerV2Board::powerOff() {
+  void HeltecTrackerV2Board::shutdownPeripherals() {
+    ESP32Board::shutdownPeripherals();
     // Turn off PA. Guarded because this board file is also compiled for the
     // heltec_tracker_v1_1 envs, which do not define P_LORA_PA_POWER (it is set
     // only in variants/heltec_tracker_v2/platformio.ini). Same guard idiom
@@ -44,8 +45,6 @@ void HeltecTrackerV2Board::begin() {
     digitalWrite(P_LORA_PA_POWER, LOW);
     rtc_gpio_hold_en((gpio_num_t)P_LORA_PA_POWER);
 #endif
-
-    ESP32Board::powerOff();
   }
 
   uint16_t HeltecTrackerV2Board::getBattMilliVolts()  {

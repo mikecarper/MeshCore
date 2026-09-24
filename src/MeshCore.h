@@ -149,6 +149,7 @@ public:
   // internally bounded operations can use this while retaining their own
   // timeout. Boards without an explicit watchdog need no implementation.
   virtual void serviceWatchdog() { /* no op */ }
+  virtual void enterDeepSleep(uint32_t secs) { (void)secs; }
   // Called by example setup() functions to signal that boot is complete.
   // Boards may override to stop a boot-indicator LED sequence or similar.
   // Default no-op: boards that don't care need not implement anything.

@@ -1119,11 +1119,7 @@ bool ESP32Board::otaFromManifest(const char* current_ver, bool dry_run, char rep
 }
 #endif  // WITH_MQTT_BRIDGE
 
-void ESP32Board::powerOff() {
-  enterDeepSleep(0); // Do not wakeup
-}
-
-void ESP32Board::enterDeepSleep(uint32_t secs) {
+void ESP32Board::shutdownPeripherals() {
   // Power off the display if any
 #ifdef DISPLAY_CLASS
   display.turnOff();
@@ -1155,6 +1151,14 @@ void ESP32Board::enterDeepSleep(uint32_t secs) {
   Serial.flush();
 #endif
   delay(100);
+}
+
+void ESP32Board::powerOff() {
+  enterDeepSleep(0); // Do not wakeup
+}
+
+void ESP32Board::enterDeepSleep(uint32_t secs) {
+  shutdownPeripherals();
 
   // Clear stale wakeup sources to avoid ghost wakeup
   // This is required when Power Management and automatic lightsleep are enabled
