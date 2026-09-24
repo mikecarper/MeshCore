@@ -42,6 +42,24 @@ assert_auto_unified Heltec_T190_repeater_ Heltec_T190_repeater_observer_mqtt
 assert_auto_unified LilyGo_TLora_V2_1_1_6_room_server LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_
 assert_auto_unified heltec_v4_r8_repeater_observer_mqtt heltec_v4_r8_repeater_observer_mqtt
 
+# A one-board migration package must retain the old repeater's mOTA identity,
+# even when its Full sources come from the matching observer environment.
+(
+  BUILD_PROFILE_OVERRIDE=full
+  BUILD_PROFILE_EXPLICIT=1
+  SINGLE_TARGET_FULL_BUILD=1
+  EXACT_IDENTITY_FULL_BUILD=1
+  RESOLVED_BUILD_TARGETS=(heltec_v4_repeater)
+  configure_effective_build_profile build-firmware >/dev/null
+  [ "${RESOLVED_BUILD_TARGETS[*]}" = heltec_v4_repeater ] \
+    || fail "exact Full target changed identity"
+  run_logged_build_targets() {
+    [ "${*}" = heltec_v4_repeater ] || fail "exact Full built a different target"
+    [ "$ESP32_FULL_BUILD" = 1 ] || fail "exact Full lost expanded partitions"
+  }
+  run_command build-firmware >/dev/null
+)
+
 # Only targets whose standard and FULL board recipes retain the exact same
 # partition table may omit their redundant portable bulk artifact.
 full_only_count=0
@@ -157,7 +175,7 @@ done
   observed_filename=""
   observed_output=""
   build_artifacts_exist() {
-    observed_filename=$2
+    observed_filename=$3
     observed_output="$PACKET_LOGGING_OVERRIDE/$MQTT_BRIDGE_OVERRIDE/$MESHDEBUG_OVERRIDE/$MQTT_DEBUG_OVERRIDE"
     return 0
   }
@@ -183,7 +201,7 @@ done
   observed_filename=""
   observed_full=0
   build_artifacts_exist() {
-    observed_filename=$2
+    observed_filename=$3
     observed_full=$ESP32_FULL_BUILD
     return 0
   }
@@ -203,7 +221,7 @@ done
   FIRMWARE_FILENAME_INFIX=""
   observed_filename=""
   build_artifacts_exist() {
-    observed_filename=$2
+    observed_filename=$3
     return 0
   }
   build_firmware heltec_v4_r8_repeater >/dev/null

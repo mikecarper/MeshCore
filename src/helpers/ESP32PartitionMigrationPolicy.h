@@ -222,6 +222,43 @@ inline bool canMigrateGeneric(uint32_t flash_bytes,
       && !sameGeometry(geometry, plan->layout);
 }
 
+// A LoRa migration keeps the old OTA-capable application alive while the
+// bridge restores SPIFFS identity. Legacy app0 stays at its address; legacy
+// app1 is copied to the new app1 before the table is published. The bridge
+// boots first, then hands off to whichever slot contains the old application.
+struct LoRaResumePlan {
+  bool valid;
+  uint8_t bridge_slot;
+  uint8_t resume_slot;
+};
+
+constexpr bool overlaps(uint32_t a, uint32_t a_size,
+                        uint32_t b, uint32_t b_size) {
+  return static_cast<uint64_t>(a) < static_cast<uint64_t>(b) + b_size
+      && static_cast<uint64_t>(b) < static_cast<uint64_t>(a) + a_size;
+}
+
+inline LoRaResumePlan planLoRaResume(const PartitionGeometry& source,
+                                    const PartitionGeometry& target,
+                                    uint32_t running_address) {
+  const bool in_app0 = running_address == source.app0_address;
+  const bool in_app1 = running_address == source.app1_address;
+  return {
+      (in_app0 || in_app1)
+          && source.app0_address == target.app0_address
+          && source.app0_size <= target.app0_size
+          && source.app1_size <= target.app1_size
+          && !overlaps(source.app0_address, source.app0_size,
+                       source.app1_address, source.app1_size)
+          && !overlaps(source.app0_address, source.app0_size,
+                       target.app1_address, source.app1_size)
+          && !overlaps(source.app1_address, source.app1_size,
+                       target.app1_address, source.app1_size),
+      static_cast<uint8_t>(in_app0 ? 0 : 1),
+      static_cast<uint8_t>(in_app0 ? 1 : 0),
+  };
+}
+
 static_assert(kExpandedLayout.app0_address + kExpandedLayout.app0_size
                   == kExpandedLayout.app1_address,
               "expanded OTA slots must be adjacent");

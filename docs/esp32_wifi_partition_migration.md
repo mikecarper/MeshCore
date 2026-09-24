@@ -1,10 +1,11 @@
-# ESP32 legacy-partition migration over Wi-Fi
+# ESP32 legacy-partition migration over Wi-Fi or LoRa
 
 The partition-migration bridge lets a supported ESP32 node move from a small
-dual-OTA layout to a verified larger dual-OTA layout without cable flashing.
-It is designed for inaccessible repeaters: the bridge itself fits a legacy
-1.25 MiB slot, replaces the table from Wi-Fi, and then exposes Wi-Fi again for
-the full application image.
+dual-OTA layout to a verified larger dual-OTA layout without cable flashing or
+a full-chip erase. It fits a legacy 1.25 MiB slot. The Wi-Fi version exposes an
+updater for the full image after migration. The LoRa version retains the old
+OTA-capable repeater in the other expanded slot and returns to it after
+restoring identity, so it can fetch the full image over LoRa.
 
 It currently has explicit, byte-for-byte generated target plans for Arduino
 ESP32 `default_8MB.csv` and `default_16MB.csv`. It does not guess a table for
@@ -30,6 +31,9 @@ The private identity is the guaranteed preservation boundary. The old SPIFFS
 image is deliberately not raw-copied into an expanded partition: SPIFFS is not
 safe to resize that way. Other SPIFFS-backed settings can be recreated after
 the full image boots.
+
+Migration does erase the 4 KiB partition-table sector and the destination app
+sectors. Expanded SPIFFS can be reformatted. It never issues a full-chip erase.
 
 ## Eligible source layout
 
@@ -75,6 +79,27 @@ bootloader and table offsets for cable flashing, not browser OTA.
 
 `xiao_s3_partition_legacy_seed` is a disposable-hardware test image only. It
 models the legacy table and an identity file; it is not a deployable repeater.
+
+## LoRa-only migration of a repeater
+
+The exact old repeater must already support MeshCore LoRa mOTA and have a valid
+EndF image identity. The LoRa bridge checks the old app's target ID and body
+hash before any partition-table write; an unsupported or damaged receiver is
+refused. It works from either legacy A or B. It copies legacy B to the future
+B address, boots the bridge once to restore the private key in expanded
+SPIFFS, then boots the preserved old repeater. That repeater can receive the
+full image into its now-expanded inactive slot.
+
+The board-specific LoRa bridges are `heltec_v4_partition_migrator_lora_repeater`
+and `xiao_s3_partition_migrator_lora_repeater`. Build the final repeater with
+`bash build.sh build-firmware <target> --full-exact` so its mOTA target ID
+still matches the old repeater. `scripts/package_esp32_partition_migration.py`
+checks the images, partition tables, hashes and mOTA containers and creates
+separate Wi-Fi/LoRa migration ZIPs for those two boards. The ZIP README gives
+the exact `ota ls`, `ota pull <id> flash`, `ota install` sequence.
+
+A stock repeater without LoRa mOTA cannot use the LoRa-only route. The
+Wi-Fi bridge remains the route for that device.
 
 ## Heltec V4 / V4.3
 

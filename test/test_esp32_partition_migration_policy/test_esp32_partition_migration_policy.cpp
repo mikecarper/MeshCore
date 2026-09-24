@@ -55,6 +55,30 @@ TEST(Esp32PartitionMigrationPolicy, GenericPlansAcceptStableEightAndSixteenMiBLa
                                           out_of_bounds));
 }
 
+TEST(Esp32PartitionMigrationPolicy, LoRaResumePreservesTheOldApplicationInEitherSlot) {
+  for (const auto& target : {policy::kExpanded8MBLayout,
+                             policy::kExpandedLayout}) {
+    const auto from_a = policy::planLoRaResume(policy::kLegacyLayout, target,
+                                               policy::kLegacyLayout.app0_address);
+    EXPECT_TRUE(from_a.valid);
+    EXPECT_EQ(0, from_a.bridge_slot);
+    EXPECT_EQ(1, from_a.resume_slot);
+
+    const auto from_b = policy::planLoRaResume(policy::kLegacyLayout, target,
+                                               policy::kLegacyLayout.app1_address);
+    EXPECT_TRUE(from_b.valid);
+    EXPECT_EQ(1, from_b.bridge_slot);
+    EXPECT_EQ(0, from_b.resume_slot);
+  }
+
+  auto overlapping = policy::kExpanded8MBLayout;
+  overlapping.app1_address = policy::kLegacyLayout.app1_address;
+  EXPECT_FALSE(policy::planLoRaResume(policy::kLegacyLayout, overlapping,
+                                       policy::kLegacyLayout.app0_address).valid);
+  EXPECT_FALSE(policy::planLoRaResume(policy::kLegacyLayout,
+                                       policy::kExpandedLayout, 0x300000).valid);
+}
+
 TEST(Esp32PartitionMigrationPolicy, GeneratedTablePrefixContainsAllSixEntriesAndMd5) {
   EXPECT_EQ(0xE0U, policy::kExpandedPartitionTablePrefixBytes);
   EXPECT_EQ(0xAA, policy::kExpandedPartitionTablePrefix[0]);

@@ -9,6 +9,12 @@
 #include <esp_attr.h>
 #include <esp_flash.h>
 #include <esp_partition.h>
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+#include <mbedtls/sha256.h>
+#ifndef MESHCORE_MIGRATION_EXPECTED_TARGET_ID
+#error "LoRa migration requires the exact legacy OTA target ID"
+#endif
+#endif
 
 #include <helpers/ESP32PartitionMigrationPolicy.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
@@ -33,6 +39,10 @@ constexpr char kMigrationNvsNamespace[] = "mesh-pt-migrate";
 constexpr char kMigrationIdentityKey[] = "identity";
 // NVS key names are limited to 15 characters.
 constexpr char kMigrationIdentityPendingKey[] = "id-pending";
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+constexpr char kMigrationResumeSlotKey[] = "resume-slot";
+constexpr size_t kEndfBytes = 56;
+#endif
 static_assert(sizeof(kMigrationNvsNamespace) - 1 <= 15,
               "ESP32 NVS namespace names are limited to 15 characters");
 
@@ -142,10 +152,11 @@ esp_partition_t rawPartition(uint32_t address, uint32_t size, const char* label)
   return part;
 }
 
-esp_partition_t rawApp0Partition(uint32_t address, uint32_t size, const char* label) {
+esp_partition_t rawAppPartition(uint32_t address, uint32_t size,
+                                esp_partition_subtype_t subtype, const char* label) {
   esp_partition_t part = rawPartition(address, size, label);
   part.type = ESP_PARTITION_TYPE_APP;
-  part.subtype = ESP_PARTITION_SUBTYPE_APP_OTA_0;
+  part.subtype = subtype;
   return part;
 }
 
@@ -322,6 +333,104 @@ bool restoreStagedIdentity() {
   return true;
 }
 
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+uint32_t readLe32(const uint8_t* bytes) {
+  return static_cast<uint32_t>(bytes[0])
+      | (static_cast<uint32_t>(bytes[1]) << 8)
+      | (static_cast<uint32_t>(bytes[2]) << 16)
+      | (static_cast<uint32_t>(bytes[3]) << 24);
+}
+
+// The preserved app must really be the LoRa OTA receiver for this exact
+// package. A valid EndF is emitted only for OTA-enabled MeshCore builds, and
+// its body hash prevents a stale marker from authorizing a damaged image.
+bool validLegacyOtaReceiver(const esp_partition_t& source) {
+  uint8_t header = 0;
+  if (esp_partition_read(&source, 0, &header, 1) != ESP_OK || header != 0xE9) {
+    strcpy(status_text, "Refused: old LoRa application image is invalid");
+    return false;
+  }
+  uint8_t trailer[kEndfBytes];
+  for (uint32_t base = 0; base < source.size;
+       base += sizeof(copy_buffer)) {
+    const uint32_t count = source.size - base < sizeof(copy_buffer)
+        ? source.size - base : sizeof(copy_buffer);
+    if (esp_partition_read(&source, base, copy_buffer, count) != ESP_OK) break;
+    for (uint32_t index = 0; index < count; ++index) {
+      if (copy_buffer[index] != 'E') continue;
+      const uint32_t marker = base + index;
+      if (marker + kEndfBytes > source.size
+          || esp_partition_read(&source, marker, trailer, sizeof(trailer)) != ESP_OK
+          || memcmp(trailer, "EndF", 4) != 0
+          || readLe32(trailer + 4) != marker
+          || readLe32(trailer + 20) != MESHCORE_MIGRATION_EXPECTED_TARGET_ID) {
+        continue;
+      }
+      mbedtls_sha256_context hash;
+      mbedtls_sha256_init(&hash);
+      bool valid = mbedtls_sha256_starts_ret(&hash, 0) == 0;
+      for (uint32_t offset = 0; valid && offset < marker;) {
+        const uint32_t length = marker - offset < sizeof(copy_buffer)
+            ? marker - offset : sizeof(copy_buffer);
+        valid = esp_partition_read(&source, offset, copy_buffer, length) == ESP_OK
+            && mbedtls_sha256_update_ret(&hash, copy_buffer, length) == 0;
+        offset += length;
+      }
+      uint8_t digest[32];
+      valid = valid && mbedtls_sha256_finish_ret(&hash, digest) == 0
+          && memcmp(digest, trailer + 8, 8) == 0;
+      mbedtls_sha256_free(&hash);
+      if (valid) return true;
+      strcpy(status_text, "Refused: old LoRa firmware EndF hash is invalid");
+      return false;
+    }
+  }
+  strcpy(status_text, "Refused: old LoRa firmware has no matching valid EndF");
+  return false;
+}
+
+bool stageResumeSlot(uint8_t slot) {
+  Preferences migration_nvs;
+  const bool opened = migration_nvs.begin(kMigrationNvsNamespace, false);
+  const bool saved = opened && migration_nvs.putUChar(kMigrationResumeSlotKey, slot) == 1;
+  if (opened) migration_nvs.end();
+  if (!saved) strcpy(status_text, "Could not stage old LoRa application slot");
+  return saved;
+}
+
+bool resumeLegacyOtaReceiver(const migration::TargetPlan& plan) {
+  Preferences migration_nvs;
+  if (!migration_nvs.begin(kMigrationNvsNamespace, false)) {
+    strcpy(status_text, "Could not read old LoRa application slot");
+    return false;
+  }
+  const uint8_t slot = migration_nvs.getUChar(kMigrationResumeSlotKey, 0xFF);
+  migration_nvs.end();
+  if (slot > 1) {
+    strcpy(status_text, "Expanded layout ready; no LoRa resume record");
+    return false;
+  }
+  const esp_partition_t old_app = slot == 0
+      ? rawAppPartition(plan.layout.app0_address, plan.layout.app0_size,
+                        ESP_PARTITION_SUBTYPE_APP_OTA_0, "app0")
+      : rawAppPartition(plan.layout.app1_address, plan.layout.app1_size,
+                        ESP_PARTITION_SUBTYPE_APP_OTA_1, "app1");
+  const esp_err_t selected = esp_ota_set_boot_partition(&old_app);
+  if (selected != ESP_OK) {
+    snprintf(status_text, sizeof(status_text), "Could not resume old LoRa app: %s",
+             errName(selected));
+    return false;
+  }
+  if (migration_nvs.begin(kMigrationNvsNamespace, false)) {
+    migration_nvs.remove(kMigrationResumeSlotKey);
+    migration_nvs.end();
+  }
+  strcpy(status_text, "Private key restored; resuming old LoRa firmware");
+  reboot_at = millis() + 1000;
+  return true;
+}
+#endif
+
 bool publishExpandedPartitionTable(const migration::TargetPlan& plan) {
   // Preserve ESP-IDF's normal OS flash hooks.  In particular, their start/end
   // hooks suspend the other core and safely disable/re-enable caches.  Do not
@@ -402,6 +511,22 @@ void runMigration() {
     return;
   }
 
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+  const migration::LoRaResumePlan resume = migration::planLoRaResume(
+      geometry, plan->layout, running->address);
+  if (!resume.valid) {
+    strcpy(status_text, "Refused: legacy slots cannot preserve LoRa receiver");
+    Serial.println(status_text);
+    return;
+  }
+  const esp_partition_t* old_receiver = resume.resume_slot == 0
+      ? refs.app0 : refs.app1;
+  if (!validLegacyOtaReceiver(*old_receiver)) {
+    Serial.println(status_text);
+    return;
+  }
+#endif
+
   Serial.println("Migration: staging private key; do not interrupt power");
   if (!stageLegacyIdentity()) {
     Serial.println(status_text);
@@ -409,9 +534,19 @@ void runMigration() {
   }
   Serial.println("Migration: private key safely staged in NVS");
 
-  // Always make target app0 contain this migration image. If it was uploaded
-  // into a different legacy slot, this preserves a Wi-Fi endpoint after the
-  // table change. Never erase a running source range while copying it.
+  // The Wi-Fi bridge always runs from target app0. The LoRa bridge instead
+  // keeps the old application in the other expanded slot, restores identity,
+  // then boots that old application to receive the final image by LoRa.
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+  Serial.println("Migration: preserving legacy app1 in expanded app1");
+  if (!copyAndVerify(*refs.app1, plan->layout.app1_address,
+                     refs.app1->size, "future-app1")
+      || !stageResumeSlot(resume.resume_slot)) {
+    Serial.println(status_text);
+    return;
+  }
+#else
+  // Never erase a running source range while copying it.
   if (running->address != plan->layout.app0_address) {
     if (running->size > plan->layout.app0_size) {
       strcpy(status_text, "Refused: migration slot is larger than future app0");
@@ -432,29 +567,36 @@ void runMigration() {
     }
     Serial.println("Migration: bridge image copied to app0");
   }
+#endif
 
   // The OTA-select data records a slot identity. Select a descriptor for the
-  // target app0 before replacing the table so the next boot runs this bridge
-  // at the target table's app0 address, never the blank new app1.
-  const esp_partition_t target_app0 = rawApp0Partition(plan->layout.app0_address,
-                                                        plan->layout.app0_size,
-                                                        "app0");
-  const esp_err_t select_result = esp_ota_set_boot_partition(&target_app0);
+  // bridge's expanded slot before replacing the table so the next boot runs
+  // the bridge at the correct address under the new layout.
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+  const bool bridge_in_app0 = resume.bridge_slot == 0;
+#else
+  const bool bridge_in_app0 = true;
+#endif
+  const esp_partition_t target_bridge = bridge_in_app0
+      ? rawAppPartition(plan->layout.app0_address, plan->layout.app0_size,
+                        ESP_PARTITION_SUBTYPE_APP_OTA_0, "app0")
+      : rawAppPartition(plan->layout.app1_address, plan->layout.app1_size,
+                        ESP_PARTITION_SUBTYPE_APP_OTA_1, "app1");
+  const esp_err_t select_result = esp_ota_set_boot_partition(&target_bridge);
   if (select_result != ESP_OK) {
-    snprintf(status_text, sizeof(status_text), "Could not select app0: %s",
+    snprintf(status_text, sizeof(status_text), "Could not select bridge slot: %s",
              errName(select_result));
     Serial.println(status_text);
     return;
   }
-  Serial.println("Migration: app0 selected for restart");
+  Serial.println("Migration: bridge slot selected for restart");
 
   Serial.println("Migration: publishing expanded partition table");
   // This bridge is built without native USB CDC, so a connected USB host cannot
   // post a flash-backed event while the partition-sector operation disables the
   // flash cache. Stop UART0 as well: the S3's serial event path is otherwise
-  // still able to interrupt the raw flash operation. The bridge itself is
-  // deliberately Wi-Fi-only; the final normal repeater build restores its
-  // standard USB behavior.
+  // still able to interrupt the raw flash operation. The bridge has no native
+  // USB CDC; the final normal repeater build restores its standard USB behavior.
   Serial.flush();
   Serial.end();
   const bool table_published = publishExpandedPartitionTable(*plan);
@@ -469,7 +611,11 @@ void runMigration() {
   if (kMigrationRestartDelayMs == 0) {
     strcpy(status_text, "Partition table verified; waiting for test reboot");
   } else {
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+    strcpy(status_text, "Migration complete; restarting LoRa bridge");
+#else
     strcpy(status_text, "Migration complete; restarting Wi-Fi uploader");
+#endif
     reboot_at = millis() + kMigrationRestartDelayMs;
   }
   Serial.println(status_text);
@@ -553,6 +699,10 @@ void setup() {
       && migration::isTargetLayout(flash_bytes, geometry)) {
     if (restoreStagedIdentity()) {
       strcpy(status_text, "Expanded layout ready");
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+      const migration::TargetPlan* plan = migration::targetForFlash(flash_bytes);
+      if (plan) resumeLegacyOtaReceiver(*plan);
+#endif
     }
   } else if (findPartitions(refs, geometry)
              && migration::canMigrateGeneric(flash_bytes, geometry)) {

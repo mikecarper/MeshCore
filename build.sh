@@ -23,6 +23,7 @@ MQTT_DEBUG_OVERRIDE="${MQTT_DEBUG_OVERRIDE-}"
 FIRMWARE_FILENAME_INFIX=""
 ESP32_FULL_BUILD=0
 SINGLE_TARGET_FULL_BUILD="${SINGLE_TARGET_FULL_BUILD:-0}"
+EXACT_IDENTITY_FULL_BUILD="${EXACT_IDENTITY_FULL_BUILD:-0}"
 AUTO_PREFER_FULL_BUILD=0
 AUTO_COMPLETE_FIRST_PASS=0
 AUTO_REDUCED_FALLBACK_TARGET=""
@@ -140,6 +141,7 @@ Options:
   --profile <default|cascade>: Override runtime settings embedded in the firmware (not its feature set).
   --build-profile <auto|standard|full>: Select feature/partition policy. Auto uses the combined Full MQTT/USB/WiFi recipe when it covers the plain infrastructure target; otherwise it first builds complete LoRa-OTA-capable firmware with a measured-size fallback. Internal-flash nRF52 repeaters and room servers also publish the reduced image for delta-staging headroom; XIAO nRF52 repeaters with external-QSPI staging publish one combined image. Standard preserves portable images, including the 1.25 MiB slot; full requires the expanded ESP32 recipe.
   --auto|--standard|--full: Short forms of --build-profile.
+  --full-exact: Build one expanded ESP32 release image under the requested target's own LoRa OTA identity.
   --skip-kiss|--include-kiss: Exclude (default) or include KISS modem targets in bulk builds.
   --clean|--resume: Clean output or resume existing Option 3/FULL-only artifacts.
   --require-ota: Require a verified wireless self-update path for infrastructure.
@@ -993,6 +995,13 @@ parse_cli_options() {
       --full)
         BUILD_PROFILE_OVERRIDE="full"
         BUILD_PROFILE_EXPLICIT=1
+        shift
+        ;;
+      --full-exact)
+        BUILD_PROFILE_OVERRIDE="full"
+        BUILD_PROFILE_EXPLICIT=1
+        SINGLE_TARGET_FULL_BUILD=1
+        EXACT_IDENTITY_FULL_BUILD=1
         shift
         ;;
       --skip-kiss)
@@ -5367,7 +5376,15 @@ configure_effective_build_profile() {
       ;;
   esac
 
-  if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
+  if [ "$EXACT_IDENTITY_FULL_BUILD" = "1" ]; then
+    if [ "$command_name" != "build-firmware" ] \
+        || [ "${#RESOLVED_BUILD_TARGETS[@]}" -ne 1 ] \
+        || ! is_esp32_canonical_full_release_target "$target"; then
+      echo "--full-exact requires one canonical ESP32 infrastructure target."
+      return 1
+    fi
+    BUILD_PROFILE_EFFECTIVE="full"
+  elif [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
     BUILD_PROFILE_EFFECTIVE="full"
   elif is_automatic_profile_command "$command_name"; then
     if [ "$BUILD_PROFILE_EXPLICIT" = "1" ] \
@@ -6270,6 +6287,11 @@ run_command() {
     return $?
   fi
 
+  if [ "$EXACT_IDENTITY_FULL_BUILD" = "1" ]; then
+    run_full_only_esp32_profile "${RESOLVED_BUILD_TARGETS[@]}"
+    return $?
+  fi
+
   if [ "$SINGLE_TARGET_FULL_BUILD" = "1" ]; then
     run_full_esp32_build_targets "all" "${RESOLVED_BUILD_TARGETS[@]}"
     return $?
@@ -6461,7 +6483,7 @@ launch_background_build() {
     PLATFORMIO_BUILD_UNFLAGS PLATFORMIO_BUILD_SRC_FILTER
     PLATFORMIO_EXTRA_SCRIPTS DISABLE_DEBUG OPTION3_PIO_JOBS OUTPUT_DIR
     FIRMWARE_VERSION FIRMWARE_BUILD_NUMBER BUILD_PROFILE_OVERRIDE
-    BUILD_PROFILE_EXPLICIT SINGLE_TARGET_FULL_BUILD FIRMWARE_PROFILE_OVERRIDE
+    BUILD_PROFILE_EXPLICIT SINGLE_TARGET_FULL_BUILD EXACT_IDENTITY_FULL_BUILD FIRMWARE_PROFILE_OVERRIDE
     MESHDEBUG_OVERRIDE PACKET_LOGGING_OVERRIDE MQTT_BRIDGE_OVERRIDE
     MQTT_DEBUG_OVERRIDE RADIO_SETTING_TITLE RADIO_FREQ_OVERRIDE
     RADIO_BW_OVERRIDE RADIO_SF_OVERRIDE RADIO_CR_OVERRIDE
