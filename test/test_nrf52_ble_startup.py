@@ -63,6 +63,7 @@ struct ble_gap_addr_t { int addr_type; uint8_t addr[6]; };
 struct ble_gap_conn_params_t { unsigned min_conn_interval, max_conn_interval, slave_latency, conn_sup_timeout; };
 int sd_ble_gap_addr_set(ble_gap_addr_t*) { return NRF_SUCCESS; }
 int sd_ble_gap_addr_get(ble_gap_addr_t* a) { memset(a, 0, sizeof(*a)); return NRF_SUCCESS; }
+@FORMAT_DEVICE_NAME@
 int sd_softdevice_is_enabled(uint8_t* enabled) { *enabled = 0; return NRF_SUCCESS; }
 namespace mesh_nrf52 {
 int softdeviceIsEnabled(uint8_t& enabled) {
@@ -211,16 +212,20 @@ int main() {
 
 class Nrf52BleStartupTest(unittest.TestCase):
     def test_reported_startup_failures_are_not_reinitialized(self):
-        begin = method((ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text(),
-                       "bool SerialBLEInterface::begin(")
+        serial_source = (ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text()
+        formatter = method(serial_source, "static bool formatDeviceName(")
+        begin = method(serial_source, "bool SerialBLEInterface::begin(")
         header = (ROOT / "src/helpers/nrf52/SerialBLEInterface.h").read_text()
         # Use the real in-class startup initializers, too.
         fields = "\n".join(line for line in header.splitlines()
                            if "bool _begin_" in line
                            or "bool _mota_available" in line
-                           or "char _begin_failure" in line)
+                           or "char _begin_failure" in line
+                           or "char _active_name" in line)
         self.assertTrue(fields)
-        source = HARNESS.replace("@BEGIN@", begin).replace("@STARTUP_FIELDS@", fields)
+        source = (HARNESS.replace("@BEGIN@", begin)
+                  .replace("@STARTUP_FIELDS@", fields)
+                  .replace("@FORMAT_DEVICE_NAME@", formatter))
         with tempfile.TemporaryDirectory(prefix="meshcore-ble-start-") as temp:
             temp = Path(temp)
             (temp / "Arduino.h").write_text(RTOS)
