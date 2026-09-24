@@ -19,10 +19,36 @@ and its generated table-prefix test; the bridge core is otherwise shared.
 
 ## Repeatable ESP32 build recipe
 
-From a clean commit, run the recipe in WSL/Linux. It builds the Full repeater
-images first, then both small bridges for each selected board, then verifies
-and publishes one ZIP per board. Only one PlatformIO process runs at a time;
-`build.sh` can clean the shared `.pio/build` tree between Full targets.
+From a clean commit, run the shell menu in WSL/Linux:
+
+```bash
+sh scripts/build_esp32_partition_migration.sh
+```
+
+Choose one board, or **all qualified boards**. The script asks for the
+firmware version, radio preset, and profile, then builds the Full repeater
+images first, both small bridges for each selected board, and verifies each
+ZIP. Only one PlatformIO process runs at a time; `build.sh` can clean the
+shared `.pio/build` tree between Full targets. The same menu can be run
+non-interactively:
+
+```bash
+sh scripts/build_esp32_partition_migration.sh --board heltec-v4 \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
+sh scripts/build_esp32_partition_migration.sh --all \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
+```
+
+`--all` creates one verified ZIP per currently qualified board and a release
+ZIP containing all of them, their hashes, and a manifest. This is a **local
+release bundle**, not an upload to GitHub Releases. It is not an archive of
+old firmware binaries. `--list-boards` shows the presently qualified choices.
+The release fails instead of publishing a partial bundle if one board package
+is absent or fails verification.
+
+The underlying Python recipe remains available:
 
 ```bash
 python3 -B scripts/build_esp32_partition_migration.py \
@@ -30,12 +56,20 @@ python3 -B scripts/build_esp32_partition_migration.py \
   --radio-preset usa-cascadia --profile cascade
 ```
 
-The default builds both currently validated boards. Add `--board heltec-v4`
+The default builds all currently qualified boards. Add `--board heltec-v4`
 or `--board xiao-s3-wio` to build one; repeat `--board` for a selected set.
 Use `--dry-run` to inspect the command order without building. The resulting
 ZIPs appear under `.releases/esp32-expanded-<commit>/packages/`. The recipe
 requires a clean checkout so each ZIP identifies the firmware commit it was
 built from. It creates files only; it does not flash a device or erase flash.
+
+The historical 1.25 MiB release population is wider than these two boards.
+In particular, the portable LilyGo T3S3 SX1262/SX1276, Station G2, and
+ThinkNode M2 repeater/room-server targets have had 1.25 MiB slots. They are
+**not** silently treated as supported by `--all`: the 4 MiB boards require a
+different target table and a power-loss-safe LoRa receiver handoff, and every
+additional role needs an audited exact target identity. A 4 MiB Full build
+offers 1,984 KiB slots, not the 4 MiB-or-more slots possible on larger flash.
 
 Other ESP32 boards need a reviewed flash-size/partition plan, exact LoRa OTA
 target ID, and board entry before they can be added to this recipe. Matching

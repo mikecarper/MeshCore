@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -67,10 +68,59 @@ def verify_archive(path: Path, board: str, version: str, source: str) -> None:
                 raise ValueError(f"{path}: invalid {filename}")
 
 
+def bundle_release(output_root: Path, package_dir: Path, boards: list[str],
+                   version: str, source: str, radio_preset: str,
+                   profile: str) -> Path:
+    """Atomically publish the complete, exact-source migration set."""
+    packages = []
+    for board in boards:
+        matches = list(package_dir.glob(f"{board}-{version}-{source}-migration.zip"))
+        if len(matches) != 1:
+            raise ValueError(f"release is missing {board}")
+        verify_archive(matches[0], board, version, source)
+        data = matches[0].read_bytes()
+        packages.append((matches[0].name, data))
+    manifest = {
+        "format": "meshcore-esp32-partition-migration-release-v1",
+        "scope": "currently-qualified-board-recipes-only",
+        "historical_firmware_binaries_included": False,
+        "source_commit": source,
+        "firmware_version": version,
+        "radio_preset": radio_preset,
+        "profile": profile,
+        "boards": boards,
+        "packages": {name: {"bytes": len(data),
+                            "sha256": hashlib.sha256(data).hexdigest()}
+                     for name, data in packages},
+    }
+    archive = output_root / f"esp32-partition-migration-{version}-{source}-release.zip"
+    with tempfile.NamedTemporaryFile(prefix="migration-release-", suffix=".zip",
+                                     dir=output_root, delete=False) as temporary:
+        temporary_path = Path(temporary.name)
+    try:
+        with zipfile.ZipFile(temporary_path, "w", compression=zipfile.ZIP_STORED) as result:
+            result.writestr("release-manifest.json", json.dumps(manifest, indent=2) + "\n")
+            for name, data in packages:
+                result.writestr(name, data)
+        with zipfile.ZipFile(temporary_path) as result:
+            if result.testzip() or set(result.namelist()) != {"release-manifest.json"} | {
+                    name for name, _ in packages}:
+                raise ValueError("release ZIP failed integrity check")
+        if archive.exists():
+            if hashlib.sha256(archive.read_bytes()).digest() != \
+                    hashlib.sha256(temporary_path.read_bytes()).digest():
+                raise ValueError(f"existing release differs: {archive}")
+        else:
+            temporary_path.replace(archive)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    return archive
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", required=True, help="firmware release version")
-    parser.add_argument("--radio-preset", required=True,
+    parser.add_argument("--version", help="firmware release version")
+    parser.add_argument("--radio-preset",
                         help="radio preset passed to build.sh")
     parser.add_argument("--profile", choices=("default", "cascade"),
                         default="default", help="embedded runtime profile")
@@ -82,7 +132,17 @@ def main() -> None:
                         help="release folder (default: .releases/esp32-expanded-<commit>)")
     parser.add_argument("--dry-run", action="store_true",
                         help="show the build order without writing files")
+    parser.add_argument("--list-boards", action="store_true",
+                        help="print qualified board keys and exit")
     args = parser.parse_args()
+    if args.list_boards:
+        for name in BOARDS:
+            print(name)
+        return
+    if not args.version or not args.radio_preset:
+        parser.error("--version and --radio-preset are required for a build")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+\-]*", args.version):
+        parser.error("--version must be a filename-safe version token")
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     if os.name == "nt" and not args.dry_run:
@@ -100,6 +160,8 @@ def main() -> None:
         prefix = f"OUTPUT_DIR={shlex.quote(str(build_dir))} " if full else ""
         print(prefix + shlex.join(command), flush=True)
     print(f"Package {', '.join(boards)} into {package_dir}", flush=True)
+    if set(boards) == set(BOARDS):
+        print(f"Bundle complete qualified set (not all historical ESP32 targets) in {output_root}", flush=True)
     if args.dry_run:
         return
 
@@ -146,6 +208,10 @@ def main() -> None:
             else:
                 staged.replace(destination)
             print(f"Ready: {destination}", flush=True)
+    if set(boards) == set(BOARDS):
+        print("Release: " + str(bundle_release(
+            output_root, package_dir, boards, args.version, source,
+            args.radio_preset, args.profile)), flush=True)
 
 
 if __name__ == "__main__":
