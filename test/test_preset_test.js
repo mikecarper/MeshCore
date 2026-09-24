@@ -121,9 +121,9 @@ assert.strictEqual(
 );
 assert.strictEqual(
   defaults.endMs,
-  Date.parse("2026-09-24T17:00:00-07:00")
+  Date.parse("2026-09-25T17:00:00-07:00")
 );
-assert.strictEqual(defaults.endEpoch - defaults.startEpoch, 24 * 60 * 60);
+assert.strictEqual(defaults.endEpoch - defaults.startEpoch, 48 * 60 * 60);
 assert.strictEqual(defaults.freq, config.freq);
 assert.strictEqual(defaults.bw, 500);
 assert.strictEqual(defaults.sf, 8);
@@ -131,10 +131,10 @@ assert.strictEqual(defaults.cr, 7);
 assert.strictEqual(defaults.tx, 22);
 assert.strictEqual(defaults.tz, config.tz);
 assert.strictEqual(tool.isDefaultPreset(defaults), true);
-assert.strictEqual(tool.isDefaultPreset(config), false);
+assert.strictEqual(tool.isDefaultPreset(config), true);
 assert.strictEqual(tool.presetPageTitle(defaults), "Default temporary radio test · 910.1 MHz");
 assert.match(tool.presetPageSummary(defaults), /910\.1 MHz, 500 kHz, SF8, CR7, 22 dBm/);
-assert.strictEqual(tool.presetEyebrow(defaults), "MeshCore · default 24-hour temporary preset test");
+assert.strictEqual(tool.presetEyebrow(defaults), "MeshCore · default 48-hour temporary preset test");
 
 const dstDefault = tool.configFromSearch(
   "?tz=America%2FLos_Angeles",
@@ -147,9 +147,9 @@ assert.strictEqual(
 );
 assert.strictEqual(
   tool.zonedInputValue(dstDefault.endMs, dstDefault.tz),
-  "2026-03-08T17:00"
+  "2026-03-09T17:00"
 );
-assert.strictEqual(dstDefault.endMs - dstDefault.startMs, 23 * 60 * 60 * 1000);
+assert.strictEqual(dstDefault.endMs - dstDefault.startMs, 47 * 60 * 60 * 1000);
 assert.strictEqual(tool.isDefaultPreset(dstDefault), true);
 
 const requestedLink = tool.configFromSearch(

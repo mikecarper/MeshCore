@@ -9,7 +9,7 @@ create a shareable temporary-radio test URL.</span>
   <div data-role="content">
     <div data-role="test-content" hidden>
     <section class="preset-test-hero" aria-labelledby="preset-test-title">
-      <p class="preset-test-eyebrow" data-role="preset-test-eyebrow">MeshCore · one-day temporary preset test</p>
+      <p class="preset-test-eyebrow" data-role="preset-test-eyebrow">MeshCore · default 48-hour temporary preset test</p>
       <div class="preset-test-hero-row">
         <div>
           <h2 id="preset-test-title">
@@ -375,8 +375,8 @@ clock</code></pre>
         tuple. The generated URL converts the times to exact UTC instants, keeps
         the date punctuation readable, and keeps <code>tz</code> so the page
         displays them in the organizer's local time zone. With no URL settings,
-        the builder starts at 5:00 PM tomorrow and ends at 5:00 PM the following
-        day in the selected time zone.
+        the builder starts at 5:00 PM tomorrow and ends at 5:00 PM two days
+        later in the selected time zone, creating a 48-hour window.
           </p>
 
       <div class="preset-test-generator-layout">

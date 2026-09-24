@@ -16,7 +16,7 @@
   const SCHEDULER_EPOCH_MAX = 0xffffffff;
   const EARLY_JOIN_MS = 60 * 60 * 1000;
   const DEFAULT_START_HOUR = 17;
-  const DEFAULT_WINDOW_DAYS = 1;
+  const DEFAULT_WINDOW_DAYS = 2;
   const SCHEDULE_MODE_RELATIVE = "relative";
   const SCHEDULE_MODE_ABSOLUTE = "absolute";
   const CLOCK_RESET_COMMAND = "clkreboot";
