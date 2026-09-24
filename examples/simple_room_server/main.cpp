@@ -280,6 +280,7 @@ void loop() {
   if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
+  board.loop();
 #if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::serviceUsbTerminalPort();
 #endif

@@ -229,6 +229,8 @@ void loop() {
     }
   }
 
+  board.loop();
+
   if ((uint32_t)(millis() - next_noise_floor_calib_ms) >= NOISE_FLOOR_CALIB_INTERVAL_MS) {
     radio_driver.triggerNoiseFloorCalibrate(0);
     next_noise_floor_calib_ms = millis();

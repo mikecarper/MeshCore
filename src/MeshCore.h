@@ -251,6 +251,9 @@ public:
     return false;
   }
 
+  // Let a board feed its watchdog and perform periodic housekeeping.
+  virtual void loop() {}
+
   inline static uint32_t n_cad_busy = 0;
 };
 

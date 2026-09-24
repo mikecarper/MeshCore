@@ -8824,6 +8824,14 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     return true;
   }
 
+  if (sender_timestamp == 0
+      && (strcmp(command, "poweroff") == 0
+          || strcmp(command, "shutdown") == 0)) {
+    strcpy(reply, "OK");
+    board.powerOff();
+    return true;
+  }
+
   if (strncmp(command, "set name ", 9) == 0) {
     const char* name = command + 9;
     if (!AdvertDataParser::isValidName(name)) {

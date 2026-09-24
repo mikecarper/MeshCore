@@ -390,6 +390,8 @@ static void __attribute__((noinline)) serviceCommandInterfaces() {
     command[0] = 0;  // reset command buffer
   }
 
+  board.loop();   // let the board feed its watchdog, run periodic housekeeping
+
 #ifdef ETHERNET_ENABLED
   ethernet_loop_maintain();
   if (ethernet_take_session_reset() || !ethernet_client.connected()) {

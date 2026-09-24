@@ -171,8 +171,8 @@ private:
     }
     float getRxDelay() const override { return _parent->rx_delay_base; }
     void setRxDelay(float d) override { _parent->rx_delay_base = d; markDirty(); }
-    uint8_t getAgcResetInt() const override { return _parent->agc_reset_interval * 4; }
-    void setAgcResetInt(uint8_t secs) override { _parent->agc_reset_interval = secs / 4; markDirty(); }
+    uint16_t getAgcResetInt() const override { return _parent->agc_reset_interval * 4; }
+    void setAgcResetInt(uint16_t secs) override { _parent->agc_reset_interval = secs / 4; markDirty(); }
     uint8_t getHashMode() const override { return _parent->path_hash_mode; }
     void setHashMode(uint8_t value) override {
       _parent->path_hash_mode = value;

@@ -3290,6 +3290,7 @@ void loop() {
   #endif
 #endif
   rtc_clock.tick();
+  board.loop();
 #ifdef TBEAM_1W
   board.updateFanControl();
 #endif
