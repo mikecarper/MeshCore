@@ -71,12 +71,12 @@ CRC error): two at +250 kHz with XIAO RX, and one each at +250 and +1,000 kHz
 with Indicator RX. Therefore **HeaderValid alone would not prove that these
 off-frequency indications are legitimate traffic**.
 
-In forward SF8 on-frequency controls, instantaneous RSSI at the first preamble
-was -42 to -41 dBm; at +/-250 kHz it was -91 to -88 dBm. These are instantaneous
-receiver readings, not calibrated measurements of transmitted leakage or a
-sensitivity test. Board positions and attenuation were not systematically
-varied. Reversing roles reproduces the behavior but does not isolate its
-physical path.
+In forward SF8 on-frequency controls, receiver signal strength (RSSI) sampled
+at the first preamble was -42 to -41 dBm; at +/-250 kHz it was -91 to -88 dBm.
+These are single-point receiver readings, not calibrated measurements of
+transmitted leakage or a sensitivity test. Board positions and attenuation
+were not systematically varied. Reversing roles reproduces the behavior but
+does not isolate its physical path.
 
 ## What this explains
 

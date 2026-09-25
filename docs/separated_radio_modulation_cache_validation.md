@@ -69,10 +69,10 @@ All 12 on-frequency probes delivered valid payloads. No off-frequency header
 or valid payload, silent preamble, device/read error, foreign valid payload,
 or trace overflow occurred. SF6 off-channel detections changed from 1/24 to
 0/24; SF8 from 32/48 to 4/48. These are small bounded samples, not sensitivity
-or packet-error-rate estimates. On-frequency instantaneous RSSI was -41 to
--40 dBm at SF6 and -42 dBm at SF8: the signal remains strong and readings are
-not calibrated attenuation measurements. Improvement cannot be attributed
-solely to separation or solely to normal gain.
+or packet-error-rate estimates. Signal strength (RSSI) sampled on-frequency
+was -41 to -40 dBm at SF6 and -42 dBm at SF8: the signal remains strong, but
+these are not calibrated attenuation measurements. Improvement cannot be
+attributed solely to separation or solely to normal gain.
 
 ## Four-channel SF6/125, 5.1-symbol visits
 

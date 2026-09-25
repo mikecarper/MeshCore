@@ -561,6 +561,10 @@ command `0x42` where the role supports the command; unavailable over LoRa.
 
 **Usage:** `stats-radio`
 
+`last_rssi` is the strength of the last received packet. It is not a live
+signal-strength meter and will not show an unmodulated carrier; see the
+[carrier-wave guide](carrier_wave.md) for a separate receiver that can measure one.
+
 **Local connection only:** USB, direct network CLI, or Companion binary
 command `0x42` where the role supports the command; unavailable over LoRa.
 

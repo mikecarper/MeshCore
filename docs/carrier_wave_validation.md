@@ -4,7 +4,8 @@ Tested on the MercerWoodMesh lab Pi on September 14, 2026 (Pacific), using
 base commit `9241ccc253ad2f8ac2c9a2fe756f59ba2f52505d` plus the CW changes.
 Test images are marked `v1.17.1.6-cw-test-9241ccc2`; they are development images.
 
-A separate RAK4631 sampled instantaneous RSSI every approximately 10 ms.
+A separate RAK4631 sampled live received signal strength (RSSI) about every
+10 ms, without needing to decode a packet.
 The transmitting boards ran the Full V4 repeater and Full T1000-E Companion
 builds. Both were configured for −9 dBm chip TX power, with profiles at
 909.5 and 919.5 MHz, BW125, SF7, CR5, and 32-symbol preambles.

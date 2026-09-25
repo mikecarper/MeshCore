@@ -42,13 +42,19 @@ Use the local USB or BLE console for immediate replies and manual stopping.
 An on-air CLI reply must wait until the carrier ends because LoRa packets
 cannot transmit during the test.
 
-A second radio on the same frequency can detect the carrier using
-instantaneous RSSI. Compare readings before, during, and after transmission;
-CAD and packet counters are not carrier detectors. This confirms RF activity,
-not calibrated output power, frequency accuracy, antenna match, or SWR.
-Afterward, exchange ordinary LoRa packets to verify both RX and TX recovery.
+A second radio on the same frequency can detect the carrier by measuring
+**live signal strength** (RSSI, short for received signal strength indicator):
+how much radio energy the receiver sees right now, even when it cannot decode
+a packet. A less-negative reading in dBm means a stronger signal. Compare it
+before, during, and after transmission. The normal `stats-radio` command shows
+the **last received packet's** RSSI, not this live reading, so it cannot by
+itself confirm a continuous carrier. CAD and packet counters are not carrier
+detectors either. A rising live reading confirms RF activity, not calibrated
+output power, frequency accuracy, antenna match, or SWR. Afterward, exchange
+ordinary LoRa packets to verify both RX and TX recovery.
 
-The reproducible bench witness is `tools/hil/cw_observer.cpp`, built with
-`tools/hil/cw_observer.ini` on a separate RAK4631. It never transmits on its own.
+The reproducible bench receiver that provides this live reading is
+`tools/hil/cw_observer.cpp`, built with `tools/hil/cw_observer.ini` on a
+separate RAK4631. It never transmits on its own.
 See the [hardware validation](carrier_wave_validation.md) for measured results,
 reproduction steps, and the tested preamble settings.
