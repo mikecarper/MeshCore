@@ -76,7 +76,7 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
     nrf52_base = pio.split("[nrf52_base]", 1)[1].split("\n[", 1)[0]
     assert nrf52_base.count("pre:scripts/nrf52_internal_bootloader_link.py") == 1
 
-    build = (root / "build.sh").read_text(encoding="utf-8")
+    build = (root / "build_legacy.sh").read_text(encoding="utf-8")
     recipe = build.split("apply_nrf52_lora_ota_build_recipe()", 1)[1]
     recipe = recipe.split("supports_nrf52_internal_bootloader_update()", 1)[0]
     assert "scripts/nrf52_internal_bootloader_link.py" not in recipe
@@ -162,7 +162,7 @@ def test_nrf52_hybrid_endf_profile_fails_closed():
 
 def test_full_esp32_profile_unifies_usb_logging_and_wifi_mqtt():
     root = Path(__file__).resolve().parents[2]
-    build = (root / "build.sh").read_text(encoding="utf-8")
+    build = (root / "build_legacy.sh").read_text(encoding="utf-8")
     profile = build.split("run_full_esp32_profile()", 1)[1]
     profile = profile.split("run_full_esp32_build_targets()", 1)[0]
 
@@ -306,7 +306,7 @@ def test_usb_companion_profiles_enable_the_usb_transport():
 
 def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     root = Path(__file__).resolve().parents[2]
-    build = (root / "build.sh").read_text(encoding="utf-8")
+    build = (root / "build_legacy.sh").read_text(encoding="utf-8")
 
     resolver = build.split("resolve_all_firmwares()", 1)[1]
     resolver = resolver.split("is_legacy_companion_power_saving_target()", 1)[0]
@@ -498,7 +498,7 @@ def test_single_tty_logging_off_keeps_ascii_until_explicit_mode_switch():
 
 def test_measured_full_companion_promotions_are_exact_and_bounded():
     root = Path(__file__).resolve().parents[2]
-    build = (root / "build.sh").read_text(encoding="utf-8")
+    build = (root / "build_legacy.sh").read_text(encoding="utf-8")
     qualified = build.split("# Some qualified boards historically", 1)[1]
     qualified = qualified.split("\n  fi\n}\n\nget_pio_envs", 1)[0]
 
@@ -602,7 +602,7 @@ def test_esp32_s3_full_profiles_use_arduino2_and_dio_boot_mode():
     assert "board_build.flash_mode = dio" in shared
     assert "[esp32_s3_dual_cdc_full]" not in project
 
-    build = (root / "build.sh").read_text(encoding="utf-8")
+    build = (root / "build_legacy.sh").read_text(encoding="utf-8")
     framework_selector = build.split(
         "requires_esp32_arduino3_framework()", 1
     )[1].split("prepare_esp32_arduino3_framework()", 1)[0]
@@ -1049,6 +1049,9 @@ def test_rak_nrf52_ota_profiles_keep_ina_and_gps_where_uart_is_available():
 
 
 def test_hardware_id_for_env():
+    assert ml.hardware_id_for_env("Heltec_WSL3_repeater") == "Heltec_v3"
+    assert ml.hardware_id_for_env("Heltec_WSL3_room_server") == "Heltec_v3"
+    assert ml.hardware_id_for_env("Heltec_WSL3_sensor") == "Heltec_v3"
     assert ml.hardware_id_for_env("Xiao_S3_WIO_partition_expander") == "Xiao_S3_WIO"
     assert ml.hardware_id_for_env("Xiao_S3_WIO_partition_expander") == ml.hardware_id_for_env("Xiao_S3_WIO_repeater")
     assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK4631"

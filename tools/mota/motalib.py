@@ -258,6 +258,7 @@ def hardware_id_for_env(env_name: str) -> str:
     # Match the explicit MOTA_HW_ID shared by every role in these variant
     # families. The environment spelling is not always the physical-board tag.
     family = {
+        "Heltec_WSL3": "Heltec_v3",
         "Heltec_t114_without_display": "Heltec_t114",
         "RAK_4631": "RAK4631",
     }.get(family, family)

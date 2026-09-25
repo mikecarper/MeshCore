@@ -103,6 +103,7 @@ def stage_release(work: Path, destination: Path, version: str,
         raise FileExistsError(f"release already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     short_source = source[:8]
+    tooling_source = git("rev-parse", "HEAD")
     artifact_version = f"{version}-{short_source}"
     records = collect_artifacts(work, artifact_version)
     if not records:
@@ -154,6 +155,7 @@ def stage_release(work: Path, destination: Path, version: str,
         manifest = {
             "format": "meshcore-local-release-v1",
             "source_commit": source,
+            "release_tooling_commit": tooling_source,
             "firmware_version": version,
             "radio": RADIO,
             "profile": "cascade",
@@ -165,7 +167,8 @@ def stage_release(work: Path, destination: Path, version: str,
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="ascii")
         (staging / "README.md").write_text(
             f"# MeshCore local release {version}\n\n"
-            f"Source commit: `{source}`. USA Cascade: 910.525 MHz, BW 62.5 kHz, SF7, CR5.\n"
+            f"Firmware source commit: `{source}`. Release tooling commit: `{tooling_source}`.\n"
+            "USA Cascade: 910.525 MHz, BW 62.5 kHz, SF7, CR5.\n"
             "This directory is a local verification release and was not uploaded to GitHub.\n\n"
             "Select firmware by exact board, radio, storage, and role. ESP32 merged images install\n"
             "bootloader, partition table, and application over USB. Existing 1.25 MiB ESP32\n"
