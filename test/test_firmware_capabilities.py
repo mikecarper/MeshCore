@@ -232,7 +232,11 @@ class FirmwareCapabilityCheckerTest(unittest.TestCase):
             details = manifest["ota_update_requirements"]["lora"]
             self.assertEqual(details["storage"], storage)
             self.assertEqual(details["package_types"], types)
-            self.assertTrue(details["bootloader_release"].endswith("0.11.0-OTAFIX2.4.6"))
+            if flags == 48:
+                self.assertIsNone(details["bootloader_release"])
+                self.assertIn("Merged RAK", details["bootloader"])
+            else:
+                self.assertTrue(details["bootloader_release"].endswith("0.11.0-OTAFIX2.4.6"))
 
     def test_nrf52_full_companion_cannot_claim_lora_self_update(self):
         result, manifest = self.run_checker(
