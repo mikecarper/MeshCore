@@ -296,6 +296,21 @@ const fullUsbLogging = picker.parseTargetProfile(
 assert.strictEqual(fullUsbLogging.mode, "usb");
 assert.strictEqual(fullUsbLogging.variant, "default");
 
+const partitionExpander = picker.parseTargetProfile(
+  "Xiao_S3_WIO_partition_expander"
+);
+assert.strictEqual(partitionExpander.role, "partition-expander");
+assert.strictEqual(partitionExpander.hardware, "Xiao_S3_WIO");
+assert.strictEqual(partitionExpander.explicitOta, "lora-receiver");
+assert.strictEqual(picker.ROLE_LABELS[partitionExpander.role],
+  "Partition Expander");
+assert(picker.installSteps(partitionExpander, "zip").some(function (step) {
+  return step.includes("not an nRF52 Serial DFU package");
+}));
+assert(picker.installSteps(partitionExpander, "bin").some(function (step) {
+  return step.includes("temporary bridge");
+}));
+
 const heltecV4Full = picker.parseTargetProfile(
   "heltec_v4_2_v4_3_companion_radio_full_femon"
 );

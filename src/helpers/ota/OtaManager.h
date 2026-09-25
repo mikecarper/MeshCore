@@ -62,7 +62,9 @@ typedef bool (*ServeDeflateReadFn)(void* ctx, uint16_t block, uint8_t* dst,
                                    uint16_t dst_cap, uint16_t* dst_len);
 
 #ifndef OTA_PROOFGEN_SCRATCH
-  #if defined(OTA_SD_STORE)
+  #if defined(ESP32_PLATFORM)
+    #define OTA_PROOFGEN_SCRATCH 16384  // heap-backed; can seed <=4096 blocks (8 MiB at 2 KiB/block)
+  #elif defined(OTA_SD_STORE)
     #define OTA_PROOFGEN_SCRATCH 8192  // SD archive can seed <=2048 blocks (about 4 MiB at 2 KiB/block)
   #else
     #define OTA_PROOFGEN_SCRATCH 4096  // server proof-gen working buffer (supports up to 1024 blocks)
@@ -213,7 +215,10 @@ static constexpr uint16_t ota_max_block_capability() { return (uint16_t)OTA_MAX_
 #error "OTA_FETCH_PIPELINE_INITIAL must be between 1 and OTA_FETCH_PIPELINE"
 #endif
 #ifndef OTA_FETCH_RETRY_MIN_MS
-#define OTA_FETCH_RETRY_MIN_MS 5000       // quiet-time floor: covers host/queue/turnaround latency on fast links
+#define OTA_FETCH_RETRY_MIN_MS 5000       // unanswered/empty flight: allow host and relay turnaround
+#endif
+#ifndef OTA_FETCH_RETRY_PARTIAL_MIN_MS
+#define OTA_FETCH_RETRY_PARTIAL_MIN_MS 1500 // after valid DATA, recover missing holes promptly on fast links
 #endif
 #ifndef OTA_FETCH_RETRY_MAX_MS
 #define OTA_FETCH_RETRY_MAX_MS 60000      // bound loss recovery when configured radio settings are impractical
@@ -407,6 +412,9 @@ public:
   void set_clock(uint32_t ms) { _now_ms = ms; }
   bool set_speed(float speed);
   float speed() const { return _speed; }
+  // Sender-only, loss-responsive packet pacing. This does not alter discovery,
+  // proof, or retry timers; the user's persisted speed remains an upper bound.
+  float adaptivePacketSpeed() const { return _adaptive_packet_speed; }
   uint32_t pacedDelay(uint32_t ms) const { return scaleDelay(ms, _speed); }
   // Faster pacing cannot shorten a loss-recovery deadline below the existing
   // physical packet-flight allowance. Slower pacing expands that allowance.
@@ -618,6 +626,8 @@ private:
   bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask,
                      bool wire_v2 = false, bool allow_deflate = false,
                      bool extended_length = false);
+  void noteServedRequestPacing(const uint8_t* mid, uint16_t block,
+                               uint16_t want, uint16_t full_mask);
   bool queueManifestJob(const uint8_t* mid, uint16_t want_mask);
   uint32_t manifestEgressGapMs() const;
   uint32_t proofEgressGapMs() const;
@@ -697,6 +707,14 @@ private:
   };
   ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
   uint8_t    _n_serve_jobs = 0;
+  float      _adaptive_packet_speed = 1.0f;
+  uint8_t    _pace_clean_blocks = 0;
+  uint8_t    _pace_mid[4] = {0};
+  uint16_t   _pace_last_full_block = 0;
+  bool       _pace_has_mid = false;
+  uint8_t    _pace_loss_mid[4] = {0};
+  uint16_t   _pace_last_loss_block = 0;
+  bool       _pace_has_loss = false;
   struct ManifestServeJob {
     OtaReplyRoute route;
     uint8_t mid[4];

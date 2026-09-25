@@ -12,6 +12,7 @@ namespace esp32_partition_migration {
 
 constexpr uint32_t kRequiredFlashBytes = 16U * 1024U * 1024U;
 constexpr uint32_t kXiaoRequiredFlashBytes = 8U * 1024U * 1024U;
+constexpr uint32_t kSmallRequiredFlashBytes = 4U * 1024U * 1024U;
 constexpr uint32_t kPartitionTableAddress = 0x8000;
 constexpr uint32_t kPartitionTableBytes = 0x1000;
 constexpr uint32_t kSectorBytes = 0x1000;
@@ -59,6 +60,17 @@ constexpr PartitionGeometry kExpanded8MBLayout = {
     0x670000, 0x180000,
 };
 
+// variants/dual_ota_full_4MB.csv. This is the largest practical dual-OTA
+// layout on a 4 MiB board. It preserves only a 64 KiB SPIFFS region, so the
+// private identity must be staged in stable NVS before the table is changed.
+constexpr PartitionGeometry kExpanded4MBLayout = {
+    0x9000, 0x5000,
+    0xE000, 0x2000,
+    0x10000, 0x1F0000,
+    0x200000, 0x1F0000,
+    0x3F0000, 0x10000,
+};
+
 constexpr bool sameGeometry(const PartitionGeometry& left,
                             const PartitionGeometry& right) {
   return left.nvs_address == right.nvs_address
@@ -83,7 +95,10 @@ constexpr bool isExpandedLayout(const PartitionGeometry& geometry) {
 
 constexpr bool canMigrate(uint32_t flash_bytes,
                           const PartitionGeometry& geometry) {
-  return flash_bytes >= kRequiredFlashBytes && isLegacyLayout(geometry);
+  return (flash_bytes == kSmallRequiredFlashBytes
+          || flash_bytes == kXiaoRequiredFlashBytes
+          || flash_bytes == kRequiredFlashBytes)
+      && isLegacyLayout(geometry);
 }
 
 // Binary prefix generated from Arduino-ESP32's default_16MB.csv by
@@ -160,6 +175,29 @@ constexpr uint8_t kExpanded8MBPartitionTablePrefix[] = {
 constexpr size_t kExpanded8MBPartitionTablePrefixBytes =
     sizeof(kExpanded8MBPartitionTablePrefix);
 
+// Generated from variants/dual_ota_full_4MB.csv with gen_esp32part.py.
+constexpr uint8_t kExpanded4MBPartitionTablePrefix[] = {
+    0xAA, 0x50, 0x01, 0x02, 0x00, 0x90, 0x00, 0x00, 0x00, 0x50, 0x00, 0x00,
+    0x6E, 0x76, 0x73, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAA, 0x50, 0x01, 0x00,
+    0x00, 0xE0, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x6F, 0x74, 0x61, 0x64,
+    0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xAA, 0x50, 0x00, 0x10, 0x00, 0x00, 0x01, 0x00,
+    0x00, 0x00, 0x1F, 0x00, 0x61, 0x70, 0x70, 0x30, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xAA, 0x50, 0x00, 0x11, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x1F, 0x00,
+    0x61, 0x70, 0x70, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAA, 0x50, 0x01, 0x82,
+    0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x01, 0x00, 0x73, 0x70, 0x69, 0x66,
+    0x66, 0x73, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xEB, 0xEB, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x80, 0xC5, 0x69, 0x36,
+    0x65, 0xF8, 0xAB, 0x77, 0x12, 0x5A, 0xB8, 0x36, 0xBD, 0x27, 0xF1, 0x1F,
+};
+
+constexpr size_t kExpanded4MBPartitionTablePrefixBytes =
+    sizeof(kExpanded4MBPartitionTablePrefix);
+
 struct TargetPlan {
   uint32_t flash_bytes;
   const char* name;
@@ -174,6 +212,12 @@ constexpr TargetPlan kTarget8MB = {
     kExpanded8MBPartitionTablePrefixBytes,
 };
 
+constexpr TargetPlan kTarget4MB = {
+    kSmallRequiredFlashBytes, "MeshCore dual_ota_full_4MB",
+    kExpanded4MBLayout, kExpanded4MBPartitionTablePrefix,
+    kExpanded4MBPartitionTablePrefixBytes,
+};
+
 constexpr TargetPlan kTarget16MB = {
     kRequiredFlashBytes, "Arduino default_16MB",
     kExpandedLayout, kExpandedPartitionTablePrefix,
@@ -181,7 +225,8 @@ constexpr TargetPlan kTarget16MB = {
 };
 
 constexpr const TargetPlan* targetForFlash(uint32_t flash_bytes) {
-  return flash_bytes == kXiaoRequiredFlashBytes ? &kTarget8MB
+  return flash_bytes == kSmallRequiredFlashBytes ? &kTarget4MB
+      : flash_bytes == kXiaoRequiredFlashBytes ? &kTarget8MB
       : flash_bytes == kRequiredFlashBytes ? &kTarget16MB
       : nullptr;
 }
@@ -222,6 +267,79 @@ inline bool canMigrateGeneric(uint32_t flash_bytes,
       && !sameGeometry(geometry, plan->layout);
 }
 
+// On 8/16 MiB flash the bridge can copy legacy app1 to its new address,
+// reboot, restore the staged identity, and hand off to the old receiver.
+// On 4 MiB flash that copy would overwrite legacy app1. The only safe LoRa
+// route there starts with the old receiver in app0 and the bridge in app1;
+// the new Full application must restore the NVS-staged identity on first boot.
+struct LoRaResumePlan {
+  bool valid;
+  uint8_t bridge_slot;
+  uint8_t resume_slot;
+  bool copy_app1;
+  bool restore_identity_in_full;
+};
+
+struct LoRaHandoffPlan {
+  bool valid;
+  uint8_t other_slot;
+  bool has_record;
+};
+
+// An already-expanded LoRa bridge has no handoff record. It may return to
+// the opposite slot, but never to itself or to a slot contradicted by a
+// staged record. Runtime code must still verify that image's identity and
+// bootability before selecting it.
+inline LoRaHandoffPlan planLoRaHandoff(const PartitionGeometry& layout,
+                                      uint32_t running_address,
+                                      uint8_t staged_slot) {
+  const bool in_app0 = running_address == layout.app0_address;
+  const bool in_app1 = running_address == layout.app1_address;
+  const uint8_t other = in_app0 ? 1 : 0;
+  const bool absent = staged_slot == 0xFF;
+  return {
+      (in_app0 || in_app1) && (absent || staged_slot == other),
+      other,
+      !absent,
+  };
+}
+
+constexpr bool overlaps(uint32_t a, uint32_t a_size,
+                        uint32_t b, uint32_t b_size) {
+  return static_cast<uint64_t>(a) < static_cast<uint64_t>(b) + b_size
+      && static_cast<uint64_t>(b) < static_cast<uint64_t>(a) + a_size;
+}
+
+inline LoRaResumePlan planLoRaResume(const PartitionGeometry& source,
+                                    const PartitionGeometry& target,
+                                    uint32_t running_address) {
+  const bool in_app0 = running_address == source.app0_address;
+  const bool in_app1 = running_address == source.app1_address;
+  const bool common = (in_app0 || in_app1)
+      && source.app0_address == target.app0_address
+      && source.app0_size <= target.app0_size
+      && source.app1_size <= target.app1_size
+      && !overlaps(source.app0_address, source.app0_size,
+                   source.app1_address, source.app1_size)
+      && !overlaps(source.app0_address, source.app0_size,
+                   target.app1_address, target.app1_size);
+  const bool can_copy = common
+      && !overlaps(source.app1_address, source.app1_size,
+                   target.app1_address, source.app1_size);
+  const bool direct_4mb = common && in_app1
+      && target.app1_address == kExpanded4MBLayout.app1_address
+      && target.app1_size == kExpanded4MBLayout.app1_size
+      && !overlaps(source.app0_address, source.app0_size,
+                   target.spiffs_address, target.spiffs_size);
+  return {
+      can_copy || direct_4mb,
+      static_cast<uint8_t>(in_app0 ? 0 : 1),
+      static_cast<uint8_t>(in_app0 ? 1 : 0),
+      can_copy,
+      direct_4mb && !can_copy,
+  };
+}
+
 static_assert(kExpandedLayout.app0_address + kExpandedLayout.app0_size
                   == kExpandedLayout.app1_address,
               "expanded OTA slots must be adjacent");
@@ -236,9 +354,21 @@ static_assert(kExpanded8MBLayout.app0_address + kExpanded8MBLayout.app0_size
 static_assert(kExpanded8MBLayout.app1_address + kExpanded8MBLayout.app1_size
                   == kExpanded8MBLayout.spiffs_address,
               "8 MiB expanded SPIFFS must follow both OTA slots");
+static_assert(kExpanded4MBLayout.app0_address + kExpanded4MBLayout.app0_size
+                  == kExpanded4MBLayout.app1_address,
+              "4 MiB expanded OTA slots must be adjacent");
+static_assert(kExpanded4MBLayout.app1_address + kExpanded4MBLayout.app1_size
+                  == kExpanded4MBLayout.spiffs_address,
+              "4 MiB expanded SPIFFS must follow both OTA slots");
+static_assert(kExpanded4MBLayout.spiffs_address + kExpanded4MBLayout.spiffs_size
+                  == kSmallRequiredFlashBytes,
+              "4 MiB target partitions must fit physical flash");
 static_assert(kExpandedPartitionTablePrefixBytes
                   == kExpanded8MBPartitionTablePrefixBytes,
               "target table buffers share one fixed DRAM size");
+static_assert(kExpanded4MBPartitionTablePrefixBytes
+                  <= kExpandedPartitionTablePrefixBytes,
+              "4 MiB partition table must fit the shared DRAM buffer");
 
 }  // namespace esp32_partition_migration
 }  // namespace mesh

@@ -147,7 +147,9 @@ static bool is_cmd(const char* a, const char* names, const char** rest) {
 static bool handle_dev(const char* d, char* reply, OtaContext& c);
 
 bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board) {
-  if (handleSpeedCommand(command, reply, 160)) return true;
+  const auto* active = ota_context_if_active();
+  const float adaptive_pace = active ? active->manager.adaptivePacketSpeed() : OTA_SPEED_DEFAULT;
+  if (handleSpeedCommand(command, reply, 160, adaptive_pace)) return true;
   const char* a = command + 3;
   if (*a != 0 && *a != ' ') return false;
   while (*a == ' ') a++;
@@ -1002,10 +1004,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       strcpy(reply, "ERR unknown OTA config setting");
     } else {                                            // show current policy
       uint8_t af = c.manager.autofetch();
-      char speed[16]; formatSpeed(speed, sizeof(speed));
+      char speed[16], packet[16];
+      formatSpeed(speed, sizeof(speed));
+      formatSpeedFactor(effectivePacketPace(c.manager.adaptivePacketSpeed()), packet, sizeof(packet));
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
       bool cache_ready = c.ensureSdCache();
-      snprintf(reply, 160, "ota config: speed=%sx cache=%s/%u autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u", speed,
+      snprintf(reply, 160, "ota config: speed=%sx packet=%sx cache=%s/%u autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u", speed, packet,
               cache_ready ? (c.sd_cache.autoCaptureEnabled() ? "on" : "off") : "unavailable",
               cache_ready ? (unsigned)c.sd_cache.capturedCount() : 0,
               af == OtaManager::AUTOFETCH_ANY ? "any" : af == OtaManager::AUTOFETCH_SIGNED ? "signed" : "off",
@@ -1014,11 +1018,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
               (unsigned)c.manager.max_hops(), (unsigned)c.allow.count());
 #else
 #if defined(OTA_SEEDER_ONLY)
-      snprintf(reply, 160, "ota config: speed=%sx mode=seeder-only autofetch=off autoinstall=off checkpoint=%u advert=%umin hops=%u", speed,
+      snprintf(reply, 160, "ota config: speed=%sx packet=%sx mode=seeder-only autofetch=off autoinstall=off checkpoint=%u advert=%umin hops=%u", speed, packet,
               (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),
               (unsigned)c.manager.max_hops());
 #else
-      snprintf(reply, 160, "ota config: speed=%sx autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u (persisted)", speed,
+      snprintf(reply, 160, "ota config: speed=%sx packet=%sx autofetch=%s autoinstall=%s checkpoint=%u advert=%umin hops=%u keys=%u (persisted)", speed, packet,
               af == OtaManager::AUTOFETCH_ANY ? "any" : af == OtaManager::AUTOFETCH_SIGNED ? "signed" : "off",
               c.autoinstall == OtaContext::AUTOINSTALL_TRUSTED ? "trusted" : "off",
               (unsigned)c.manager.checkpoint_blocks(), (unsigned)c.manager.advert_mins(),

@@ -51,6 +51,13 @@ assert.match(pageSource, /data-action="apply-node-clock"/);
 assert.match(pageSource, /data-role="node-clock-status"/);
 assert.match(pageSource, /data-command="primary-scheduled"/);
 assert.match(pageSource, /data-command="primary-cancel"/);
+assert.match(pageSource, /name="schedule-command-mode" value="relative" checked/);
+assert.match(pageSource, /KeyMind Cascade · <code>\+minutes<\/code>/);
+assert.match(pageSource, /name="schedule-command-mode" value="absolute"/);
+assert.match(pageSource, /data-role="absolute-clock-controls" hidden/);
+assert.match(pageSource, /class="preset-test-time-fields"/);
+assert.match(pageSource, /class="preset-test-radio-layout"/);
+assert.match(pageSource, /class="preset-test-radio-fields"/);
 assert.match(pageSource, /Simple Repeater primary radio/);
 assert.doesNotMatch(pageSource, /Stock firmware has no <code>tempradioat<\/code> command/);
 assert.doesNotMatch(pageSource, /Normal return profile/);
@@ -61,7 +68,8 @@ const query =
   "&tz=America%2FLos_Angeles" +
   "&freq=910.1&bw=500&sf=8&cr=7";
 const config = tool.configFromSearch(query);
-const defaults = tool.configFromSearch("", "America/Los_Angeles");
+const defaultNow = Date.parse("2026-09-22T08:00:00.000Z");
+const defaults = tool.configFromSearch("", "America/Los_Angeles", defaultNow);
 
 assert.strictEqual(tool.hasPresetParameters(""), false);
 assert.strictEqual(tool.hasPresetParameters("?"), false);
@@ -107,8 +115,15 @@ assert.strictEqual(config.sf, 8);
 assert.strictEqual(config.cr, 7);
 assert.strictEqual(config.tz, "America/Los_Angeles");
 assert.strictEqual(config.tx, 22);
-assert.strictEqual(defaults.startEpoch, config.startEpoch);
-assert.strictEqual(defaults.endEpoch, config.endEpoch);
+assert.strictEqual(
+  defaults.startMs,
+  Date.parse("2026-09-23T17:00:00-07:00")
+);
+assert.strictEqual(
+  defaults.endMs,
+  Date.parse("2026-09-25T17:00:00-07:00")
+);
+assert.strictEqual(defaults.endEpoch - defaults.startEpoch, 48 * 60 * 60);
 assert.strictEqual(defaults.freq, config.freq);
 assert.strictEqual(defaults.bw, 500);
 assert.strictEqual(defaults.sf, 8);
@@ -116,9 +131,26 @@ assert.strictEqual(defaults.cr, 7);
 assert.strictEqual(defaults.tx, 22);
 assert.strictEqual(defaults.tz, config.tz);
 assert.strictEqual(tool.isDefaultPreset(defaults), true);
+assert.strictEqual(tool.isDefaultPreset(config), true);
 assert.strictEqual(tool.presetPageTitle(defaults), "Default temporary radio test · 910.1 MHz");
 assert.match(tool.presetPageSummary(defaults), /910\.1 MHz, 500 kHz, SF8, CR7, 22 dBm/);
 assert.strictEqual(tool.presetEyebrow(defaults), "MeshCore · default 48-hour temporary preset test");
+
+const dstDefault = tool.configFromSearch(
+  "?tz=America%2FLos_Angeles",
+  "UTC",
+  Date.parse("2026-03-06T08:00:00.000Z")
+);
+assert.strictEqual(
+  tool.zonedInputValue(dstDefault.startMs, dstDefault.tz),
+  "2026-03-07T17:00"
+);
+assert.strictEqual(
+  tool.zonedInputValue(dstDefault.endMs, dstDefault.tz),
+  "2026-03-09T17:00"
+);
+assert.strictEqual(dstDefault.endMs - dstDefault.startMs, 47 * 60 * 60 * 1000);
+assert.strictEqual(tool.isDefaultPreset(dstDefault), true);
 
 const requestedLink = tool.configFromSearch(
   "?start=2026-09-22T00:00:00.000Z&end=2026-09-24T00:00:00.000Z" +
@@ -135,6 +167,15 @@ assert.strictEqual(
 );
 assert.strictEqual(
   tool.commandsFor(requestedLink, requestedLink.startMs).primaryScheduled,
+  "set tempradioat 911.3,500,8,7,+1,+2880\nget tempradioat"
+);
+assert.strictEqual(
+  tool.commandsFor(
+    requestedLink,
+    requestedLink.startMs,
+    0,
+    tool.SCHEDULE_MODE_ABSOLUTE
+  ).primaryScheduled,
   "set tempradioat 911.3,500,8,7,1790035200,1790208000\nget tempradioat"
 );
 
@@ -151,7 +192,8 @@ assert.deepStrictEqual(adjustedEpochs, {
 const adjustedCommands = tool.commandsFor(
   clockAdjustedLink,
   clockAdjustedLink.startMs,
-  clockOffset
+  clockOffset,
+  tool.SCHEDULE_MODE_ABSOLUTE
 );
 assert.strictEqual(
   adjustedCommands.primaryScheduled,
@@ -178,10 +220,12 @@ assert.throws(
   /outside the firmware range/
 );
 
-const browserZoneFallback = tool.configFromSearch("", "America/New_York");
+const browserZoneFallback = tool.configFromSearch(
+  "", "America/New_York", defaultNow
+);
 assert.strictEqual(browserZoneFallback.tz, "America/New_York");
 assert.strictEqual(
-  tool.configFromSearch("?tz=UTC", "America/New_York").tz,
+  tool.configFromSearch("?tz=UTC", "America/New_York", defaultNow).tz,
   "UTC"
 );
 assert.doesNotThrow(() => tool.validateTimeZone(tool.browserTimeZone()));
@@ -218,7 +262,7 @@ const commands = tool.commandsFor(config, active);
 assert.strictEqual(commands.stockNow, "tempradio 910.1,500,8,7,2880");
 assert.strictEqual(
   commands.primaryScheduled,
-  "set tempradioat 910.1,500,8,7,1790035200,1790208000\nget tempradioat"
+  "set tempradioat 910.1,500,8,7,+1,+2880\nget tempradioat"
 );
 assert.strictEqual(commands.primaryCancel, "get tempradioat\ndel tempradioat all");
 assert.strictEqual(
@@ -228,7 +272,7 @@ assert.strictEqual(
 assert.strictEqual(
   commands.companionScheduled,
   "set radio2.cross on\n" +
-    "set tempradioat2 910.1,500,8,7,rxtx,1790035200,1790208000\n" +
+    "set tempradioat2 910.1,500,8,7,rxtx,+1,+2880\n" +
     "get tempradioat2"
 );
 assert.strictEqual(commands.stockLeaveIn30, "tempradio 910.1,500,8,7,30");
@@ -241,6 +285,33 @@ assert.strictEqual(
   "set radio2.cross on\n" +
     "del tempradioat2 all\n" +
     "set tempradio2 910.1,500,8,7,rxtx,30"
+);
+
+const absoluteCommands = tool.commandsFor(
+  config,
+  active,
+  0,
+  tool.SCHEDULE_MODE_ABSOLUTE
+);
+assert.strictEqual(
+  absoluteCommands.primaryScheduled,
+  "set tempradioat 910.1,500,8,7,1790035200,1790208000\nget tempradioat"
+);
+assert.strictEqual(
+  absoluteCommands.companionScheduled,
+  "set radio2.cross on\n" +
+    "set tempradioat2 910.1,500,8,7,rxtx,1790035200,1790208000\n" +
+    "get tempradioat2"
+);
+assert.doesNotThrow(() => tool.commandsFor(
+  config,
+  active,
+  tool.SCHEDULER_EPOCH_MAX,
+  tool.SCHEDULE_MODE_RELATIVE
+));
+assert.throws(
+  () => tool.commandsFor(config, active, 0, "unsupported"),
+  /schedule mode must be relative or absolute/
 );
 
 assert.strictEqual(tool.scheduleAvailability(config, before).available, true);

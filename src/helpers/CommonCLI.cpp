@@ -792,6 +792,28 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
     }
     _com_prefs_needs_upgrade = false;
 #endif
+  } else if (fs->exists("/prefs.json")) {
+    // Stock 1.17.1 stored NodePrefs as JSON. A partition migration preserves
+    // that file byte-for-byte; import it before writing the current binary
+    // image so node name, passwords and primary radio survive the Full handoff.
+#if defined(NRF52_PLATFORM)
+    File legacy(*fs);
+    legacy.open("/prefs.json", FILE_O_READ);
+#elif defined(STM32_PLATFORM)
+    File legacy = fs->open("/prefs.json", FILE_O_READ);
+#else
+    File legacy = fs->open("/prefs.json", "r");
+#endif
+    if (legacy && _prefs->loadSerial(legacy)) {
+      loaded = true;
+      is_upgrade = true;
+#ifdef WITH_MQTT_BRIDGE
+      node_prefs_needs_migration = true;
+#else
+      savePrefs(fs);
+#endif
+    }
+    if (legacy) legacy.close();
   } else {
     // File doesn't exist - set defaults for a fresh install. Dual R1/R2
     // scanning keeps the node awake, so only that configuration starts with
@@ -2579,7 +2601,10 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
     if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
 #if defined(ENABLE_OTA)
-    if (mesh::ota::handleSpeedCommand(command, reply, 160)) return;
+    const auto* ota_context = mesh::ota::ota_context_if_active();
+    const float adaptive_ota_pace = ota_context
+        ? ota_context->manager.adaptivePacketSpeed() : mesh::ota::OTA_SPEED_DEFAULT;
+    if (mesh::ota::handleSpeedCommand(command, reply, 160, adaptive_ota_pace)) return;
 #endif
     if (strncmp(command, "set tempradio ", 14) == 0) {
       handleCommand(sender_timestamp, command + 4, reply);

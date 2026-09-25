@@ -1,6 +1,9 @@
 #include "IdentityStore.h"
 
 #include "FilePresence.h"
+#if defined(ESP32_PLATFORM)
+#include <Preferences.h>
+#endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include "AtomicFileWriter.h"
 #else
@@ -43,6 +46,47 @@ IdentityLoadResult IdentityStore::loadResult(
   char filename[40];
   if (snprintf(filename, sizeof(filename), "%s/%s.id", _dir, name)
       >= (int)sizeof(filename)) return IdentityLoadResult::Unreadable;
+#if defined(ESP32_PLATFORM)
+  // A 4 MiB LoRa partition migration must boot the old app0 receiver before
+  // the new Full image can run. The bridge staged the original key in stable
+  // NVS; that old receiver may have formatted the newly sized SPIFFS and
+  // generated a temporary key. Restore the original before normal startup
+  // accepts either that temporary key or a missing identity.
+  if (strcmp(_dir, "/identity") == 0 && strcmp(name, "_main") == 0) {
+    Preferences migration_nvs;
+    if (migration_nvs.begin("mesh-pt-migrate", true)) {
+      const bool pending = migration_nvs.getBool("id-pending", false);
+      uint8_t file_bytes[PUB_KEY_SIZE + PRV_KEY_SIZE];
+      const size_t staged = pending
+          ? migration_nvs.getBytes("identity", file_bytes, sizeof(file_bytes)) : 0;
+      migration_nvs.end();
+      if (pending) {
+        if (staged != sizeof(file_bytes)) return IdentityLoadResult::Unreadable;
+        uint8_t export_bytes[sizeof(file_bytes)];
+        memcpy(export_bytes, file_bytes + PUB_KEY_SIZE, PRV_KEY_SIZE);
+        memcpy(export_bytes + PRV_KEY_SIZE, file_bytes, PUB_KEY_SIZE);
+        mesh::LocalIdentity original;
+        original.readFrom(export_bytes, sizeof(export_bytes));
+        if (!saveWithRetry(name, original)) return IdentityLoadResult::Unreadable;
+        File restored = _fs->open(filename, "r");
+        uint8_t verified[sizeof(file_bytes)];
+        const bool matches = restored
+            && restored.read(verified, sizeof(verified)) == sizeof(verified)
+            && memcmp(file_bytes, verified, sizeof(file_bytes)) == 0;
+        if (restored) restored.close();
+        if (!matches) return IdentityLoadResult::Unreadable;
+        if (!migration_nvs.begin("mesh-pt-migrate", false))
+          return IdentityLoadResult::Unreadable;
+        // Clear the pending flag first: a power cut cannot then leave a
+        // pending flag pointing at already removed key bytes.
+        const bool cleared = migration_nvs.remove("id-pending");
+        if (cleared) migration_nvs.remove("identity");
+        migration_nvs.end();
+        if (!cleared) return IdentityLoadResult::Unreadable;
+      }
+    }
+  }
+#endif
   for (unsigned attempt = 0; attempt < IO_ATTEMPTS; ++attempt) {
     if (!recover(name)) continue;
     bool present = false;

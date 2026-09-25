@@ -2781,6 +2781,47 @@ TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) 
   EXPECT_EQ(server.pendingServeJobs(), 0u);
 }
 
+TEST(OtaTransfer, SenderPacketPaceBacksOffOnDistinctLostBlocks) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_EQ(manifest.block_count, 3u);
+
+  OtaManager server;
+  CapturedMessages sent;
+  server.begin(0, capture_send, &sent);
+  ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+
+  auto request = [&](uint16_t block, uint16_t mask) {
+    ReqMsg req{};
+    memcpy(req.manifest_id, manifest.merkle_root, 4);
+    req.block_idx = block;
+    req.want_mask = mask;
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    const uint16_t len = encode_req(wire, sizeof(wire), req);
+    return len != 0 && server.on_message(wire, len);
+  };
+
+  ASSERT_TRUE(request(0, 0xFFFF));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+  ASSERT_TRUE(request(0, 0x0001));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.5f);
+  ASSERT_TRUE(request(0, 0x0001));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.5f); // same hole cannot ratchet down
+  ASSERT_TRUE(request(1, 0x0001));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.4f);
+  ASSERT_TRUE(request(0, 0x0001));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.3f);
+  ASSERT_TRUE(request(1, 0x0001));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.25f); // automatic floor
+  ASSERT_TRUE(request(1, 0x0001));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.25f);
+
+  // Reinitializing a source starts with the configured maximum again.
+  server.begin(0, capture_send, &sent);
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+}
+
 TEST(OtaTransfer, LiteralLegacyFullMaskServesTwoKilobyteBlockInThirteenFragments) {
   MotaManifest manifest;
   ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
@@ -3744,6 +3785,7 @@ TEST(OtaTransfer, FlightRetriesOnlyMissingFragmentsAfterItsDeadline) {
   client.begin(SIM_TARGET_ID, capture_send, &sent);
   client.set_fetch_store(&store);
   client.set_clock(100);
+  client.set_link_timing(20, 2000);                      // direct SF5-class link
   client.pull(manifest.merkle_root, manifest.target_id);
   sent.items.clear();
   deliver_manifest_fragment(client, manifest.merkle_root, 0,
@@ -3752,6 +3794,10 @@ TEST(OtaTransfer, FlightRetriesOnlyMissingFragmentsAfterItsDeadline) {
                             manifest.manifest_start + OTA_MF_FRAG,
                             (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
   ASSERT_EQ(sent.items.size(), 1u);                       // conservative one-block probe flight
+  const uint32_t unanswered_timeout = client.fetchRetryTimeoutMs();
+  EXPECT_GE(unanswered_timeout, (uint32_t)OTA_FETCH_RETRY_MIN_MS);
+  client.note_rx_path_hops(0);
+  EXPECT_EQ(client.fetchRetryTimeoutMs(), unanswered_timeout); // path alone is not proof of a live response
 
   DataMsg first_fragment;
   memcpy(first_fragment.manifest_id, manifest.merkle_root, 4);
@@ -3765,6 +3811,8 @@ TEST(OtaTransfer, FlightRetriesOnlyMissingFragmentsAfterItsDeadline) {
   client.on_message(wire, wire_len);
 
   const uint32_t timeout = client.fetchRetryTimeoutMs();
+  EXPECT_EQ(timeout, (uint32_t)OTA_FETCH_RETRY_PARTIAL_MIN_MS);
+  EXPECT_LT(timeout, unanswered_timeout);
   client.set_clock(100 + timeout - 1);
   client.loop();                                         // no premature fixed-tick retry
   EXPECT_EQ(sent.items.size(), 1u);

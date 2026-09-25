@@ -360,11 +360,12 @@ class FormatTests(unittest.TestCase):
         with self.assertRaisesRegex(argparse.ArgumentTypeError, "bandwidth must be"):
             ota.parse_temp_radio("909.950,200,5,5,120")
 
-    def test_ota_runners_default_to_sf5_and_250_khz(self) -> None:
+    def test_ota_runners_use_the_same_lab_tuple(self) -> None:
         generic = ota.build_parser().parse_args(["release.mota", "remote"])
         chain = rak_chain.build_parser().parse_args([])
-        self.assertEqual(generic.temp_radio, "909.950,250,5,5,120")
-        self.assertEqual(chain.temp_radio, "909.950,250,5,5,120")
+        self.assertEqual(generic.temp_radio, ota.DEFAULT_LAB_TEMP_RADIO)
+        self.assertEqual(chain.temp_radio, ota.DEFAULT_LAB_TEMP_RADIO)
+        self.assertEqual(generic.temp_radio, "909.5,500,5,5,120")
         self.assertFalse(chain.legacy_full_airtime)
 
     def test_package_build_timeout_is_configurable_and_positive(self) -> None:
@@ -1736,7 +1737,7 @@ class SourceCliTests(unittest.TestCase):
         self.assertIn(
             mock.call(
                 mock.ANY,
-                "tempradio 909.950,250,5,5,120",
+                f"tempradio {ota.DEFAULT_LAB_TEMP_RADIO}",
                 retry=False,
             ),
             source_cli.call_args_list,

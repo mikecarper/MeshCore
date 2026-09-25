@@ -472,10 +472,10 @@ required `ver` command instead of entering an operator continuation loop.
 The default TempRadio tuple is:
 
 ```text
-909.950,250,5,5,120
+909.5,500,5,5,120
 ```
 
-The test default is 250 kHz bandwidth, SF5, and CR5. The frequency is only a
+The lab test default is 909.5 MHz, 500 kHz bandwidth, SF5, and CR5. The frequency is only a
 North American example: choose a legal frequency supported by every
 participating radio and appropriate to your location. Older radios that do not
 support SF5 require a complete replacement tuple passed with `--temp-radio`.

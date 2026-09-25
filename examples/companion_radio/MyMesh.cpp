@@ -2544,7 +2544,10 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 
   if (handleTxRoutingCommand(command, reply, reply_size)) return true;
 #if COMPANION_FEATURE_OTA_CLI
-  if (mesh::ota::handleSpeedCommand(command, reply, reply_size)) return true;
+  const auto* ota_context = mesh::ota::ota_context_if_active();
+  const float adaptive_ota_pace = ota_context
+      ? ota_context->manager.adaptivePacketSpeed() : mesh::ota::OTA_SPEED_DEFAULT;
+  if (mesh::ota::handleSpeedCommand(command, reply, reply_size, adaptive_ota_pace)) return true;
 #endif
   if (handleCompanionBluetoothCommand(command, reply, reply_size)) return true;
   if (handleCompanionWirelessCommand(command, reply, reply_size)) return true;

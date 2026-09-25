@@ -20,20 +20,26 @@ int main() {
     assert(!strncmp(reply, prefix, strlen(prefix)));
   };
   beginSpeedConfig(&fs);
-  command("get ota.speed", "> ota.speed=1x");
+  command("get ota.speed", "> ota.speed=1x packet=1x");
+  assert(handleSpeedCommand("get ota.speed", reply, sizeof reply, 0.25f));
+  assert(!strcmp(reply, "> ota.speed=1x packet=0.25x"));
+  assert(effectivePacketPace(0.25f) == 0.25f);
+  assert(effectivePacketPace(1.0f) == 1.0f);
   for (const auto* bad : {"", "0", "-1", "0.049", "3.01", "nan", "inf", "1e0", "1abc", "1 2"}) {
     const std::string text = std::string("set ota.speed ") + bad;
     command(text.c_str(), "ERR");
     assert(speedFactor() == 1.0f && fs.files.empty());
   }
-  command("set ota.speed .05", "OK ota.speed=0.05x (saved)");
+  command("set ota.speed .05", "OK ota.speed=0.05x (saved) packet=0.05x");
+  assert(handleSpeedCommand("get ota.speed", reply, sizeof reply, 0.25f));
+  assert(!strcmp(reply, "> ota.speed=0.05x packet=0.05x"));
   assert(validSpeed(speedFactor()));
   beginSpeedConfig(&fs);
-  command("get ota.speed", "> ota.speed=0.05x");
-  command("ota config speed 3", "OK ota.speed=3x (saved)");
-  command("ota config speed", "> ota.speed=3x");
-  command("ota cfg speed 0.5", "OK ota.speed=0.5x");
-  command("ota speed", "> ota.speed=0.5x");
+  command("get ota.speed", "> ota.speed=0.05x packet=0.05x");
+  command("ota config speed 3", "OK ota.speed=3x (saved) packet=1x");
+  command("ota config speed", "> ota.speed=3x packet=1x");
+  command("ota cfg speed 0.5", "OK ota.speed=0.5x (saved) packet=0.5x");
+  command("ota speed", "> ota.speed=0.5x packet=0.5x");
   command("get ota.speed 1", "ERR");
   assert(!handleSpeedCommand("get ota.speed.extra", reply, sizeof reply));
   assert(!handleSpeedCommand("ota config advert 10", reply, sizeof reply));

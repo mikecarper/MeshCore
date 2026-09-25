@@ -34,6 +34,7 @@ struct Manager {
   uint8_t max_hops() const { return hops; }
   uint16_t checkpoint_blocks() const { return checkpoint; }
   uint16_t advert_mins() const { return advert; }
+  float adaptivePacketSpeed() const { return 0.5f; }
   void set_autofetch(uint8_t v) { af=v; }
   void set_max_hops(uint8_t v) { hops=v; }
   void set_checkpoint_blocks(uint16_t v) { checkpoint=v; }
@@ -53,6 +54,8 @@ static bool ota_acquire_context(char* reply, size_t cap) {
 static OtaContext& ota_ctx() { return context; }
 static OtaContext* ota_context_if_active() { return &context; }
 static void formatSpeed(char* text, size_t) { strcpy(text, "1"); }
+static float effectivePacketPace(float adaptive) { return adaptive; }
+static void formatSpeedFactor(float factor, char* text, size_t cap) { snprintf(text, cap, "%g", factor); }
 @IS_CMD@
 static bool config(const char* rest, char* reply, OtaContext& c) {
   @CONFIG@
@@ -111,6 +114,7 @@ int main() {
     assert(!context.config_dirty);
   };
   reboot(fs);
+  command("ota config", "ota config: speed=1x packet=0.5x");
   for (const auto* setting : {"hops", "checkpoint", "advert"}) {
     const auto before=OtaConfigState::capture(context);
     for (const auto* bad : {"", " ", "x", "-1", "1x", "1 2", "1.0", "4294967296", "9999999999999999999999"}) {

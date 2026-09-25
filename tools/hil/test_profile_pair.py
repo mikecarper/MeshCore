@@ -35,7 +35,9 @@ int main() {
   assert(!pairPlanSupported(300,2048) && !pairPlanSupported(0,1024));
   assert(!pairPlanSupported(4000,1024) && !pairPlanSupported(0,40000));
   assert(pairListenUs(0,300,1024)==p.listenUs(0));
-  assert(pairListenUs(1,300,1024)==p.listenUs(1));
+  // This HIL case reserves 300 us for its loop; production now relies on the
+  // measured, guarded switch time and gives those 300 us back to fast RX.
+  assert(pairListenUs(1,300,1024)+300==p.listenUs(1));
   assert(pairProfiles[0].sf==7 && pairProfiles[0].bw==62.5f);
   assert(pairProfiles[1].sf==8 && pairProfiles[1].bw==500);
   assert(pairListenUs(1,4000)>4.1*512);

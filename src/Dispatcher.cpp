@@ -849,7 +849,7 @@ void Dispatcher::checkSend() {
   // override. RX processing and ordinary watchdogs continue in loop().
   if (!restoreOutboundTxOverrides()) return;
   const uint32_t now = _ms->getMillis();
-  if (ota_tx_airtime && now - ota_tx_finished_at >= ota::packetQuietTime(ota_tx_airtime, getOtaSpeedFactor())) {
+  if (ota_tx_airtime && now - ota_tx_finished_at >= ota::packetQuietTime(ota_tx_airtime, getOtaPacketSpeedFactor())) {
     ota_tx_airtime = 0;
   }
   uint32_t next_outbound;
@@ -870,7 +870,7 @@ void Dispatcher::checkSend() {
     return;
   }
   if (ota_tx_airtime) {
-    const uint32_t gap = ota::packetQuietTime(ota_tx_airtime, getOtaSpeedFactor());
+    const uint32_t gap = ota::packetQuietTime(ota_tx_airtime, getOtaPacketSpeedFactor());
     const uint32_t elapsed = now - ota_tx_finished_at;
     if (elapsed >= gap) ota_tx_airtime = 0;
     else if (pending && pending->getPayloadType() == PAYLOAD_TYPE_OTA) {

@@ -212,9 +212,9 @@ int main() {
 
 class Nrf52BleStartupTest(unittest.TestCase):
     def test_reported_startup_failures_are_not_reinitialized(self):
-        implementation = (ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text()
-        begin = method(implementation, "bool SerialBLEInterface::begin(")
-        format_device_name = method(implementation, "static bool formatDeviceName(")
+        serial_source = (ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text()
+        formatter = method(serial_source, "static bool formatDeviceName(")
+        begin = method(serial_source, "bool SerialBLEInterface::begin(")
         header = (ROOT / "src/helpers/nrf52/SerialBLEInterface.h").read_text()
         # Use the real in-class startup initializers, too.
         fields = "\n".join(line for line in header.splitlines()
@@ -224,8 +224,8 @@ class Nrf52BleStartupTest(unittest.TestCase):
                            or "char _active_name" in line)
         self.assertTrue(fields)
         source = (HARNESS.replace("@BEGIN@", begin)
-                 .replace("@FORMAT_DEVICE_NAME@", format_device_name)
-                 .replace("@STARTUP_FIELDS@", fields))
+                  .replace("@STARTUP_FIELDS@", fields)
+                  .replace("@FORMAT_DEVICE_NAME@", formatter))
         with tempfile.TemporaryDirectory(prefix="meshcore-ble-start-") as temp:
             temp = Path(temp)
             (temp / "Arduino.h").write_text(RTOS)
