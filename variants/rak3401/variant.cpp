@@ -56,8 +56,13 @@ void initVariant()
   // Keep the separately selected W25Q16 deselected before the RAK13302 starts
   // using their shared SCK/MOSI/MISO nets. A physical pull-up is still
   // required so CS# remains defined during reset and core-module swaps.
+#if defined(OTA_RAK_AUTO_STORE)
+  pinMode(31, OUTPUT);
+  digitalWrite(31, HIGH);
+#else
   pinMode(OTA_QSPI_CS_ARDUINO_PIN, OUTPUT);
   digitalWrite(OTA_QSPI_CS_ARDUINO_PIN, HIGH);
+#endif
 #endif
 
   // Keep the RAK13302 FEM disabled until board startup has completed its

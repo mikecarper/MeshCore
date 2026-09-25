@@ -26,7 +26,8 @@
   #if !defined(NRF52_PLATFORM) || !defined(OTA_FLASH_STORE)
     #error "OTA_INTERNAL_BOOTLOADER_UPDATE requires nRF52 internal-flash staging"
   #endif
-  #if defined(OTA_QSPI_STORE) || defined(OTA_SD_STORE) || defined(QSPIFLASH)
+  #if (defined(OTA_QSPI_STORE) && !defined(OTA_RAK_AUTO_STORE)) || \
+      defined(OTA_SD_STORE) || defined(QSPIFLASH)
     #error "internal bootloader staging cannot share an external OTA/filesystem store"
   #endif
 #endif

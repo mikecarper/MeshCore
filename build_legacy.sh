@@ -1985,6 +1985,15 @@ print_release_firmware_targets() {
       if is_supported_build_env "RAK_3401_repeater_rak13302_w25q16_lora_ota"; then
         printf '%s\n' "RAK_3401_repeater_rak13302_w25q16_lora_ota"
       fi
+      # One install image per RAK core now covers its matched internal and
+      # external staging choices. Older exact-identity targets remain as
+      # compatibility assets for nodes already installed in the field.
+      if is_supported_build_env "RAK_4631_repeater_unified_lora_ota"; then
+        printf '%s\n' "RAK_4631_repeater_unified_lora_ota"
+      fi
+      if is_supported_build_env "RAK_3401_repeater_unified_lora_ota"; then
+        printf '%s\n' "RAK_3401_repeater_unified_lora_ota"
+      fi
       # Functional consolidation does not change an installed image's mOTA
       # target ID. Keep exact Serial1/Serial2 bridge identities publishable as
       # compatibility assets while recommending the merged image for USB/new
@@ -2857,7 +2866,11 @@ requires_dram_limited_neighbors() {
       # Keep the board's 50 entries in Full; retain its display and services.
       if [ "$ESP32_FULL_BUILD" = "1" ]; then return 0; fi ;;
     heltec_t096_repeater_lora_ota_no_external_sensors|\
-    heltec_t1_repeater_lora_ota_no_external_sensors)
+    heltec_t1_repeater_lora_ota_no_external_sensors|\
+    rak_3401_repeater_unified_lora_ota|\
+    rak_4631_repeater_unified_lora_ota)
+      # Full sensors plus both OTA backends retain the board's original
+      # 50-neighbor table so the fixed mOTA RAM arena has usable heap.
       return 0 ;;
     generic_e22_sx1262_repeater_lora_ota_no_external_sensors|\
     generic_e22_sx1268_repeater_lora_ota_no_external_sensors|\
@@ -3776,7 +3789,9 @@ apply_nrf52_lora_ota_build_recipe() {
 # and build.sh release builds cannot silently differ.
 supports_nrf52_internal_bootloader_update() {
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "NRF52_PLATFORM" ] || return 1
-  [ "${PIO_ENV_QSPI_OTA_BY_NAME[$1]:-0}" = "0" ] || return 1
+  if [ "${PIO_ENV_QSPI_OTA_BY_NAME[$1]:-0}" != "0" ]; then
+    pio_env_option_contains "$1" build_flags "OTA_RAK_AUTO_STORE" || return 1
+  fi
   [ "${PIO_ENV_SD_OTA_BY_NAME[$1]:-0}" = "0" ] || return 1
   is_lora_ota_build "$1" || return 1
   grep -Fqx -- "$1" tools/mota/nrf52_internal_bootloader_targets.txt
@@ -3793,7 +3808,10 @@ apply_lora_ota_override() {
   fi
 
   if is_lora_ota_build "$env_name"; then
-    if [ "${PIO_ENV_QSPI_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
+    if pio_env_option_contains "$env_name" build_flags "OTA_RAK_AUTO_STORE"; then
+      append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_QSPI_STORE=1 -DOTA_FOLDER_SERIAL"
+    elif [ "${PIO_ENV_QSPI_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then
       append_platformio_build_unflags "-UENABLE_OTA -DDISABLE_LORA_OTA=1 -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -DOTA_QSPI_STORE=1 -DOTA_FOLDER_SERIAL"
     elif [ "${PIO_ENV_SD_OTA_BY_NAME[$env_name]:-0}" = "1" ]; then

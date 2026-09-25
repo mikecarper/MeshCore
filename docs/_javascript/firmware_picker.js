@@ -377,6 +377,9 @@
         ? "lora-source"
         : "";
     let variant = variantForProfile(parts.role, parts.tail);
+    if (/^RAK_(?:3401|4631)_repeater_unified_lora_ota$/i.test(target)) {
+      variant = "default";
+    }
     if (sourceHardware === "Station_G2_logging") {
       variant = variant === "default"
         ? "rx-boosted"
@@ -525,6 +528,17 @@
         /_observer_mqtt_?(?=-full-usb-wifi$)/i, ""
       );
       return successor === target || !targets.has(successor.toLowerCase());
+    });
+  }
+
+  function omitRakStorageProfilesWhenUnified(profiles) {
+    const targets = new Set((profiles || []).map(function (profile) {
+      return String(profile && profile.target || "").toLowerCase();
+    }));
+    return (profiles || []).filter(function (profile) {
+      const target = String(profile && profile.target || "").toLowerCase();
+      const match = /^rak_(3401|4631)_repeater_(?:lora_ota_no_external_sensors|w25q16_lora_ota|rak15001_slot_c_lora_ota|rak13302_w25q16_lora_ota)$/.exec(target);
+      return !match || !targets.has("rak_" + match[1] + "_repeater_unified_lora_ota");
     });
   }
 
@@ -743,8 +757,10 @@
     const profiles = omitLegacyObserverCompatibilityProfiles(
       applyMergedStandardUsbLoggingCapabilities(
         applyMergedRak4631RepeaterCapabilities(
-          omitTransportsReplacedByFull(
-            applyFullCompanionCapabilities(visibleProfiles)
+          omitRakStorageProfilesWhenUnified(
+            omitTransportsReplacedByFull(
+              applyFullCompanionCapabilities(visibleProfiles)
+            )
           )
         )
       )

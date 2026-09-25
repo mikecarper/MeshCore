@@ -895,6 +895,33 @@ assert.strictEqual(
   picker.humanizeVariant("rak13302-w25q16-lora-ota"),
   "RAK13302 + External storage board (W25Q16) LoRa OTA"
 );
+const rakStorageTargets = [
+  "RAK_4631_repeater_unified_lora_ota",
+  "RAK_4631_repeater_lora_ota_no_external_sensors",
+  "RAK_4631_repeater_rak15001_slot_c_lora_ota",
+  "RAK_4631_repeater_w25q16_lora_ota",
+  "RAK_3401_repeater_unified_lora_ota",
+  "RAK_3401_repeater_lora_ota_no_external_sensors",
+  "RAK_3401_repeater_rak13302_w25q16_lora_ota",
+];
+const rakStorageAssets = rakStorageTargets.map(function (target) {
+  return asset(target + "-ota-" + family + ".uf2");
+});
+const rakUnifiedCatalog = picker.buildCatalog([
+  release(family, "2026-09-25T00:00:00Z", rakStorageAssets),
+]);
+assert.deepStrictEqual(
+  rakUnifiedCatalog.profiles.map(function (item) { return item.target; }).sort(),
+  ["RAK_3401_repeater_unified_lora_ota", "RAK_4631_repeater_unified_lora_ota"].sort()
+);
+assert(rakUnifiedCatalog.profiles.every(function (item) {
+  return item.variant === "default" && item.ota === "lora-receiver";
+}));
+assert.strictEqual(rakUnifiedCatalog.rows.length, rakStorageTargets.length);
+const rakLegacyCatalog = picker.buildCatalog([
+  release(family, "2026-09-25T00:00:00Z", rakStorageAssets.slice(1, 4).concat(rakStorageAssets.slice(5))),
+]);
+assert.strictEqual(rakLegacyCatalog.profiles.length, 5);
 assert.strictEqual(picker.formatBytes(2097152), "2.00 MiB");
 assert.strictEqual(
   picker.parseFirmwareAsset(

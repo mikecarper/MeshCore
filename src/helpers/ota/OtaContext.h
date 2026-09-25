@@ -26,7 +26,9 @@
   #define OTA_DYNAMIC_CONTEXT 0
 #endif
 
-#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+  #include "OtaStoreAdaptiveNrf52.h"
+#elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
   #include "OtaStoreQspiNrf52.h"
 #elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   #include "OtaStoreSdNrf52.h"
@@ -107,6 +109,8 @@ struct OtaContext {
   // store object for OtaManager, while folder captures replace it with the
   // host-backed FolderMotaStore for the duration of the pull.
   OtaStoreRam<1> fetch_store;
+#elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+  OtaStoreAdaptiveNrf52 fetch_store;
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
   OtaStoreQspiNrf52 fetch_store;             // persistent raw QSPI staging, full + in-place delta
 #elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
@@ -305,7 +309,15 @@ struct OtaContext {
       }
     }
     bool ok;
-#if defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
+#if defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+    ok = fetch_store.usesExternal()
+        ? ota_apply_mota_nrf52(fetch_store.externalStore(), allow, apply_st, msg)
+        : fetch_store.usesInternal()
+          ? ota_apply_mota_nrf52(fetch_store.internalStore(), allow, apply_st, msg)
+          : false;
+    if (!fetch_store.usesExternal() && !fetch_store.usesInternal())
+      strncpy(msg, fetch_store.selectionReason(), 96);
+#elif defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     ok = ota_apply_mota_nrf52(fetch_store, allow, apply_st, msg);
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE)
     if (rescue_base_hash) {
@@ -346,9 +358,19 @@ struct OtaContext {
       msg[95] = 0; return false;
     }
     const OtaBootloaderIdentity& installed = bootloaderIdentity();
+#if defined(OTA_RAK_AUTO_STORE)
+    if (!fetch_store.usesInternal()) {
+      strncpy(msg, "bootloader LoRa update needs the internal OTAFIX profile", 96);
+      msg[95] = 0; return false;
+    }
+    bool ok = ota_prepare_bootloader_update_nrf52(
+        fetch_store.internalStore(), allow, installed, manager.fetchManifestId(), operator_mid,
+        operator_hash8, apply_st, msg);
+#else
     bool ok = ota_prepare_bootloader_update_nrf52(
         fetch_store, allow, installed, manager.fetchManifestId(), operator_mid,
         operator_hash8, apply_st, msg);
+#endif
     if (ok) { bootloader_apply_pending = true; apply_pending = true; }
     return ok;
 #else
@@ -664,6 +686,9 @@ struct OtaContext {
     manager.set_accept_full(true);
     manager.set_autofetch(OtaManager::AUTOFETCH_OFF);
     autoinstall = AUTOINSTALL_OFF;
+#elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+    manager.set_accept_full(fetch_store.usesExternal());
+    manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
 #elif defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     manager.set_accept_full(true);
     manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
@@ -678,7 +703,12 @@ struct OtaContext {
 #if defined(NRF52_PLATFORM) && \
     (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
      defined(OTA_SD_BOOTLOADER_UPDATE))
+#if defined(OTA_RAK_AUTO_STORE)
+    manager.set_accept_bootloader(fetch_store.usesInternal() &&
+        ota_bootloader_self_update_caps_valid(ota_bootloader_update_caps()));
+#else
     manager.set_accept_bootloader(true);
+#endif
 #else
     manager.set_accept_bootloader(false);
 #endif

@@ -221,6 +221,7 @@ class FirmwareCapabilityCheckerTest(unittest.TestCase):
         for flags, storage, types in [(16, "internal_flash_and_retained_ram", ["in_place_delta"]),
                                       (0, "internal_flash", ["in_place_delta"]),
                                       (4, "external_qspi", ["full", "in_place_delta"]),
+                                      (48, "adaptive_internal_or_external_qspi", ["full", "in_place_delta"]),
                                       (1, "external_sd", ["full", "in_place_delta"])]:
             result, manifest = self.run_checker(
                 b"dfu invalid in-place patch geometry", "--platform", "NRF52_PLATFORM",

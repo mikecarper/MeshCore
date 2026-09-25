@@ -166,6 +166,12 @@ public:
   OtaStoreQspiNrf52();
   ~OtaStoreQspiNrf52() override;
 
+#if defined(OTA_RAK_AUTO_STORE)
+  // Probe exact supported NOR parts before activating the nRF QSPI block.
+  // 0 = absent/unsupported, 1 = RAK15001 C, 2 = W25Q16, 3 = ambiguous.
+  static uint8_t autoDetect();
+#endif
+
   bool begin(uint32_t total_size) override;
   bool write(uint32_t offset, const uint8_t *data, uint32_t len) override;
   bool read(uint32_t offset, uint8_t *buf, uint32_t len) const override;

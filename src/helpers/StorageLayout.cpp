@@ -76,7 +76,21 @@ void formatStorageLayout(MainBoard& board, char* reply, size_t reply_size) {
            (unsigned long)internal_fs_start,
            (unsigned long)(internal_fs_size / 1024UL));
 
-#if defined(ENABLE_OTA) && defined(OTA_QSPI_STORE)
+#if defined(ENABLE_OTA) && defined(OTA_RAK_AUTO_STORE)
+  (void)board;
+  mesh::ota::OtaStoreAdaptiveNrf52& store = mesh::ota::ota_ctx().fetch_store;
+  if (store.usesExternal()) {
+    const uint32_t capacity = store.qspiCapacity();
+    appendStorageLayout(reply, reply_size,
+                        "; ota=%s qspi=%luK id=%06lX",
+                        store.selectionReason(), (unsigned long)(capacity / 1024UL),
+                        (unsigned long)store.jedec_id());
+  } else {
+    appendStorageLayout(reply, reply_size, "; ota=%s internal=%luK",
+                        store.selectionReason(),
+                        (unsigned long)(store.capacity() / 1024UL));
+  }
+#elif defined(ENABLE_OTA) && defined(OTA_QSPI_STORE)
   (void)board;
   mesh::ota::OtaStoreQspiNrf52& store = mesh::ota::ota_ctx().fetch_store;
   const uint32_t capacity = store.capacity();

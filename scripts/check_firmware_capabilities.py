@@ -24,13 +24,17 @@ def nrf52_lora_details(application):
         raise ValueError("nRF52 LoRa OTA requires a valid EndF and storage-layout record")
     if len(application) > layout.linked_app_end - layout.app_base:
         raise ValueError("nRF52 LoRa OTA application exceeds its linked flash region")
-    storage = ("external_qspi" if layout.qspi_backed else "external_sd" if layout.sd_backed
+    storage = ("adaptive_internal_or_external_qspi" if layout.auto_store
+               else "external_qspi" if layout.qspi_backed else "external_sd" if layout.sd_backed
                else "internal_flash_and_retained_ram" if layout.hybrid_ram else "internal_flash")
     notes = ["Use a destination-specific .mota package matching the board, target, and storage layout.",
              "An in-place delta requires the exact firmware currently running as its base.",
              "The package must fit the receiver's staging and apply workspace.",
              "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device."]
-    if layout.hybrid_ram:
+    if layout.auto_store:
+        notes.append("One application detects RAK external NOR and chooses QSPI only with the exact matching OTAFIX bootloader; otherwise it uses internal flash where safe.")
+        notes.append("External QSPI accepts full images and in-place deltas; internal flash accepts in-place deltas only and needs the retained-RAM OTAFIX profile.")
+    elif layout.hybrid_ram:
         notes.append("Requires OTAFIX 2.4.6 retained-RAM handoff support; a transfer cannot resume after the receiver restarts.")
     elif layout.external_backed:
         notes.append("Requires the matching external-storage hardware, wiring, and storage-aware OTAFIX bootloader.")
@@ -38,7 +42,7 @@ def nrf52_lora_details(application):
         notes.append("Internal storage accepts in-place application deltas, not full application packages.")
     return {
         "storage": storage,
-        "package_types": ["full", "in_place_delta"] if layout.external_backed else ["in_place_delta"],
+        "package_types": ["full", "in_place_delta"] if layout.auto_store or layout.external_backed else ["in_place_delta"],
         "bootloader": "Matching board/storage OTAFIX bootloader",
         "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6",
         "notes": notes,

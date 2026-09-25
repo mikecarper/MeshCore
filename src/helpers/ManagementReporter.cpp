@@ -149,7 +149,12 @@ void ManagementReporter::snapshot() {
   }
 #elif defined(NRF52_PLATFORM)
   const auto bl = ota::ota_bootloader_app_caps();
-#if defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE)
+#if defined(OTA_RAK_AUTO_STORE)
+  const auto* active_context = ota::ota_context_if_active();
+  const uint16_t codecs = bl.codec_mask &
+      (!active_context ? 4u : active_context->fetch_store.usesExternal() ? 5u :
+       active_context->fetch_store.usesInternal() ? 4u : 0u);
+#elif defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE)
   const uint16_t codecs = bl.codec_mask & 5u; // full + in-place
 #else
   const uint16_t codecs = bl.codec_mask & 4u; // internal app path accepts deltas only

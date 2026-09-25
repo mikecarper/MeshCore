@@ -86,6 +86,7 @@ NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS = 0x02
 NRF52_LAYOUT_FLAG_QSPI = 0x04
 NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH = 0x08
 NRF52_LAYOUT_FLAG_HYBRID_RAM = 0x10
+NRF52_LAYOUT_FLAG_AUTO_STORE = 0x20
 
 XIAO_BOOT_BOARD_ID_BASE = 0x28860044
 XIAO_BOOT_BOARD_ID_SENSE = 0x28860045
@@ -309,6 +310,10 @@ class Nrf52Layout:
     def hybrid_ram(self) -> bool:
         return bool(self.flags & NRF52_LAYOUT_FLAG_HYBRID_RAM)
 
+    @property
+    def auto_store(self) -> bool:
+        return bool(self.flags & NRF52_LAYOUT_FLAG_AUTO_STORE)
+
 def nrf52_stage_ceiling_for_layout(linked_app_end: int, uses_internal_extrafs: bool) -> int:
     """Select a safe staging ceiling from linker geometry and actual secondary-storage type."""
     if uses_internal_extrafs:
@@ -357,11 +362,14 @@ def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
         raise ValueError("invalid nRF52 app region")
     known_flags = (NRF52_LAYOUT_FLAG_SD | NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS |
                    NRF52_LAYOUT_FLAG_QSPI | NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH |
-                   NRF52_LAYOUT_FLAG_HYBRID_RAM)
+                   NRF52_LAYOUT_FLAG_HYBRID_RAM | NRF52_LAYOUT_FLAG_AUTO_STORE)
     if layout.flags & ~known_flags:
         raise ValueError(f"unsupported nRF52 layout flags 0x{layout.flags:X}")
     if layout.sd_backed and layout.qspi_backed:
         raise ValueError("nRF52 layout cannot use both SD and QSPI staging")
+    if layout.auto_store and (layout.sd_backed or layout.qspi_backed or
+                              layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS):
+        raise ValueError("nRF52 adaptive staging has its own exclusive layout flag")
     if layout.external_backed and layout.flags & NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS:
         raise ValueError("nRF52 external staging cannot also reserve internal ExtraFS")
     if layout.hybrid_ram:

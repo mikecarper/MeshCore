@@ -52,7 +52,7 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
         if line.strip() and not line.lstrip().startswith("#")
     ]
     assert len(inventory) == len(set(inventory))
-    assert len(inventory) == 21
+    assert len(inventory) == 23
     gat_targets = {
         "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors",
         "GAT562_Mesh_Tracker_Pro_repeater_lora_ota_no_external_sensors",
@@ -66,6 +66,8 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
         "Heltec_t096_repeater_lora_ota_no_external_sensors",
         "Heltec_t114_repeater_lora_ota_no_external_sensors",
         "RAK_3401_repeater_lora_ota_no_external_sensors",
+        "RAK_3401_repeater_unified_lora_ota",
+        "RAK_4631_repeater_unified_lora_ota",
     } <= set(inventory)
 
     target_header = (root / "src/helpers/ota/OtaTargets.h").read_text(encoding="utf-8")
@@ -1206,6 +1208,14 @@ def test_nrf52_layout_record_roundtrip_and_policy():
         ml.ensure_nrf52_layout(_fw(10, 2048), hybrid))
     assert ml.parse_nrf52_layout(hybrid_image) == hybrid
     assert hybrid.hybrid_ram and not hybrid.external_backed
+    adaptive = ml.Nrf52Layout(
+        ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+        ml.NRF52_APP_END,
+        ml.NRF52_LAYOUT_FLAG_HYBRID_RAM | ml.NRF52_LAYOUT_FLAG_AUTO_STORE)
+    adaptive_image, _ = ml.ensure_endf(
+        ml.ensure_nrf52_layout(_fw(11, 2048), adaptive))
+    assert ml.parse_nrf52_layout(adaptive_image) == adaptive
+    assert adaptive.auto_store and adaptive.hybrid_ram and not adaptive.external_backed
     assert ml.build_nrf52_layout(hybrid) == bytes.fromhex(
         "6d4f54414c617931011018000060020000d00e0000d00e00")
     hybrid_v7 = ml.Nrf52Layout(
@@ -1228,6 +1238,9 @@ def test_nrf52_layout_record_roundtrip_and_policy():
         ml.NRF52_LAYOUT_FLAG_HYBRID_RAM | ml.NRF52_LAYOUT_FLAG_QSPI,
         ml.NRF52_LAYOUT_FLAG_HYBRID_RAM |
         ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS,
+        ml.NRF52_LAYOUT_FLAG_AUTO_STORE | ml.NRF52_LAYOUT_FLAG_QSPI,
+        ml.NRF52_LAYOUT_FLAG_AUTO_STORE | ml.NRF52_LAYOUT_FLAG_SD,
+        ml.NRF52_LAYOUT_FLAG_AUTO_STORE | ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS,
     ):
         try:
             ml.build_nrf52_layout(ml.Nrf52Layout(

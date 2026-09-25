@@ -465,6 +465,9 @@ bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, Ap
 // not be published until the command reply has drained and reset is imminent.
 static OtaStoreFlashNrf52* g_nrf52_apply_store = nullptr;
 #endif
+#if defined(OTA_QSPI_STORE)
+static uint8_t g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_QSPI;
+#endif
 
 static void ota_nrf52_set_reset_handoff(uint8_t request, uint8_t source) {
   uint8_t sd_en = 0;
@@ -494,10 +497,26 @@ static bool ota_nrf52_clear_reset_reasons() {
 
 void ota_reboot_to_apply() {                   // public: set the apply magic + reset (does not return)
   uint8_t stage_handoff = GPREGRET2_OTA_STAGE_LEGACY;
-#if defined(OTA_SD_STORE)
+#if defined(OTA_RAK_AUTO_STORE)
+  if (g_nrf52_apply_store) {
+    if (g_nrf52_apply_store->is_hybrid()) {
+      if (!ota_nrf52_clear_reset_reasons() ||
+          !g_nrf52_apply_store->publish_hybrid_handoff()) {
+        ota_nrf52_set_reset_handoff(0u, 0xBDu);
+        NVIC_SystemReset();
+        return;
+      }
+      stage_handoff = GPREGRET2_OTA_STAGE_HYBRID;
+    } else {
+      stage_handoff = mota_nrf52_flash_stage_handoff(ota_nrf52_effective_stage_ceiling());
+    }
+  } else {
+    stage_handoff = g_nrf52_qspi_handoff;
+  }
+#elif defined(OTA_SD_STORE)
   stage_handoff = GPREGRET2_OTA_STAGE_SD;
 #elif defined(OTA_QSPI_STORE)
-  stage_handoff = GPREGRET2_OTA_STAGE_QSPI;
+  stage_handoff = g_nrf52_qspi_handoff;
 #elif defined(OTA_FLASH_STORE)
   if (g_nrf52_apply_store && g_nrf52_apply_store->is_hybrid()) {
     // The bootloader admits retained SRAM only after a clean software-reset
@@ -1171,7 +1190,23 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreSdNrf52& store,
 #if defined(OTA_QSPI_STORE)
 bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow,
                           ApplyState& st, char* msg) {
-  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", false, st, msg);
+#if defined(OTA_RAK_AUTO_STORE)
+  g_nrf52_apply_store = nullptr;
+#endif
+  g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_QSPI;
+  if (!ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", false, st, msg)) {
+    return false;
+  }
+#if defined(OTA_RAK_AUTO_STORE) && !defined(RAK_3401)
+  if (store.jedec_id() == 0xC84015UL) {
+    OtaBootloaderIdentity identity;
+    if (ota_installed_bootloader_identity(identity) && identity.crc_ok &&
+        strcmp(identity.device_name, "4631_AUTO_DFU") == 0) {
+      g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_RAK15001;
+    }
+  }
+#endif
+  return true;
 }
 
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)

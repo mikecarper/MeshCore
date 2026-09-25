@@ -265,6 +265,7 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
                         and _builds_companion_radio())
     sd_backed = _cppdef("OTA_SD_STORE") is not None
     qspi_backed = _cppdef("OTA_QSPI_STORE") is not None
+    auto_store = _cppdef("OTA_RAK_AUTO_STORE") is not None
     qspi_bootloader_update = _cppdef("OTA_QSPI_BOOTLOADER_UPDATE") is not None
     hybrid_ram = _cppdef("OTA_HYBRID_RAM_STORE") is not None
     internal_bootloader_update = _cppdef("OTA_INTERNAL_BOOTLOADER_UPDATE") is not None
@@ -276,6 +277,9 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         env["PROJECT_DIR"])
     if sd_backed and qspi_backed:
         raise RuntimeError("nRF52 build cannot enable both SD and QSPI OTA stores")
+    if auto_store and (not qspi_backed or _cppdef("OTA_FLASH_STORE") is None or
+                       not hybrid_ram or not internal_bootloader_update):
+        raise RuntimeError("RAK adaptive OTA requires both stores and retained-RAM internal support")
     if qspi_backed and _cppdef("QSPIFLASH") is not None:
         raise RuntimeError("raw QSPI OTA staging cannot share a chip with QSPIFLASH")
     if qspi_bootloader_update:
@@ -285,7 +289,7 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         if linked_app_end != ml.NRF52_BOOT_SCRATCH_START:
             raise RuntimeError("bootloader-update build must link exactly below scratch at 0xE0000")
     if internal_bootloader_update:
-        if sd_backed or qspi_backed or _cppdef("QSPIFLASH") is not None or internal_extrafs:
+        if sd_backed or (qspi_backed and not auto_store) or _cppdef("QSPIFLASH") is not None or internal_extrafs:
             raise RuntimeError("internal bootloader update cannot use SD/QSPI/ExtraFS")
         if linked_app_end != ml.NRF52_APP_END:
             raise RuntimeError("shared-slot bootloader update requires the normal 0xED000 linker ceiling")
@@ -297,10 +301,11 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     stage_ceiling = (ml.NRF52_APP_END if (sd_backed or qspi_backed) else
                      ml.nrf52_stage_ceiling_for_layout(linked_app_end, internal_extrafs))
     layout_flags = ((ml.NRF52_LAYOUT_FLAG_SD if sd_backed else 0) |
-                    (ml.NRF52_LAYOUT_FLAG_QSPI if qspi_backed else 0) |
+                    (ml.NRF52_LAYOUT_FLAG_QSPI if qspi_backed and not auto_store else 0) |
                     (ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS if internal_extrafs else 0) |
                     (ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH if qspi_bootloader_update else 0) |
-                    (ml.NRF52_LAYOUT_FLAG_HYBRID_RAM if hybrid_ram else 0))
+                    (ml.NRF52_LAYOUT_FLAG_HYBRID_RAM if hybrid_ram else 0) |
+                    (ml.NRF52_LAYOUT_FLAG_AUTO_STORE if auto_store else 0))
     layout = ml.Nrf52Layout(app_start, linked_app_end, stage_ceiling, layout_flags)
     body = ml.ensure_nrf52_layout(raw_body, layout)
     ident = _firmware_ident()

@@ -19,6 +19,12 @@ namespace ota {
 
 namespace {
 
+#if defined(OTA_RAK_AUTO_STORE)
+static uint8_t auto_cs_pin = NRF_QSPI_PIN_NOT_CONNECTED;
+static uint32_t auto_jedec_id = 0;
+static uint8_t auto_detection = 0xFF;
+#endif
+
 #if defined(OTA_QSPI_SCK_PHYSICAL_PIN) && defined(OTA_QSPI_SCK_ARDUINO_PIN)
 #error "QSPI SCK must use either a physical or Arduino pin override"
 #elif !defined(OTA_QSPI_SCK_PHYSICAL_PIN) && !defined(OTA_QSPI_SCK_ARDUINO_PIN)
@@ -100,10 +106,14 @@ static uint8_t qspi_sck_pin() {
 }
 
 static uint8_t qspi_cs_pin() {
+#if defined(OTA_RAK_AUTO_STORE)
+  return auto_cs_pin;
+#else
 #ifdef OTA_QSPI_CS_PHYSICAL_PIN
   return OTA_QSPI_CS_PHYSICAL_PIN;
 #else
   return arduino_to_physical(OTA_QSPI_CS_ARDUINO_PIN);
+#endif
 #endif
 }
 
@@ -243,7 +253,89 @@ static void wake_qspi_flash_before_activate(const nrf_qspi_pins_t& pins) {
   delayMicroseconds(MOTA_QSPI_DPD_WAKE_GUARD_US);
 }
 
+#if defined(OTA_RAK_AUTO_STORE)
+static uint8_t gpio_spi_byte(const nrf_qspi_pins_t& pins, uint8_t out) {
+  uint8_t in = 0;
+  for (uint8_t bit = 0; bit < 8u; ++bit) {
+    nrf_gpio_pin_write(pins.io0_pin, (out & 0x80u) != 0);
+    out <<= 1;
+    delayMicroseconds(1);
+    nrf_gpio_pin_set(pins.sck_pin);
+    delayMicroseconds(1);
+    in = (uint8_t)((in << 1) | nrf_gpio_pin_read(pins.io1_pin));
+    nrf_gpio_pin_clear(pins.sck_pin);
+    delayMicroseconds(1);
+  }
+  return in;
+}
+
+static uint32_t probe_nor(uint8_t cs) {
+  const nrf_qspi_pins_t pins = {
+    qspi_sck_pin(), cs, qspi_io0_pin(), qspi_io1_pin(),
+    qspi_io2_pin(), qspi_io3_pin()
+  };
+  // A previous reset may have left the NOR in deep power-down. This GPIO
+  // wake precedes the nRF QSPI ACTIVATE for the same reason as ensureFlash().
+  wake_qspi_flash_before_activate(pins);
+  nrf_gpio_pin_clear(cs);
+  delayMicroseconds(1);
+  (void)gpio_spi_byte(pins, 0x9Fu);
+  const uint32_t id = ((uint32_t)gpio_spi_byte(pins, 0xFFu) << 16) |
+                      ((uint32_t)gpio_spi_byte(pins, 0xFFu) << 8) |
+                      gpio_spi_byte(pins, 0xFFu);
+  nrf_gpio_pin_set(cs);
+  delayMicroseconds(1);
+  if (id == 0xC84015UL || id == 0xEF4015UL) {
+    // Detection is read-only. Return a recognized NOR to low-power standby;
+    // ensureFlash() issues its own 0xAB before taking over with QSPI.
+    nrf_gpio_pin_clear(cs);
+    delayMicroseconds(1);
+    (void)gpio_spi_byte(pins, 0xB9u);
+    nrf_gpio_pin_set(cs);
+    delayMicroseconds(MOTA_QSPI_DPD_ENTRY_GUARD_US);
+  }
+  return id;
+}
+#endif
+
 } // namespace
+
+#if defined(OTA_RAK_AUTO_STORE)
+uint8_t OtaStoreQspiNrf52::autoDetect() {
+  if (auto_detection != 0xFFu) return auto_detection;
+
+  const uint8_t w25_cs = arduino_to_physical(31);
+  nrf_gpio_pin_set(w25_cs);
+  nrf_gpio_cfg_output(w25_cs);
+#if defined(RAK_3401)
+  // RAK13302 shares clock/data with the flash. Its NSS must stay high while
+  // the GPIO probe owns those signals, then SPI1 is restored for the radio.
+  pinMode(P_LORA_NSS, OUTPUT);
+  digitalWrite(P_LORA_NSS, HIGH);
+  SPI1.end();
+  const uint32_t w25_id = probe_nor(w25_cs);
+  SPI1.begin();
+  auto_detection = w25_id == 0xEF4015UL ? 2u : 0u;
+#else
+  const uint8_t rak_cs = arduino_to_physical(26);
+  nrf_gpio_pin_set(rak_cs);
+  nrf_gpio_cfg_output(rak_cs);
+  const uint32_t rak_id = probe_nor(rak_cs);
+  const uint32_t w25_id = probe_nor(w25_cs);
+  const bool rak = rak_id == 0xC84015UL;
+  const bool w25 = w25_id == 0xEF4015UL;
+  auto_detection = rak && w25 ? 3u : rak ? 1u : w25 ? 2u : 0u;
+#endif
+  if (auto_detection == 1u) {
+    auto_cs_pin = arduino_to_physical(26);
+    auto_jedec_id = 0xC84015UL;
+  } else if (auto_detection == 2u) {
+    auto_cs_pin = w25_cs;
+    auto_jedec_id = 0xEF4015UL;
+  }
+  return auto_detection;
+}
+#endif
 
 OtaStoreQspiNrf52::OtaStoreQspiNrf52() {
   resetSession();
@@ -440,6 +532,14 @@ bool OtaStoreQspiNrf52::ensureFlash() {
   if (_jedec_id != (uint32_t)OTA_QSPI_EXPECTED_JEDEC_ID) {
     releaseFlash();
     fail("QSPI JEDEC ID does not match target");
+    return false;
+  }
+#endif
+#if defined(OTA_RAK_AUTO_STORE)
+  if (auto_detection == 0xFFu || auto_detection == 0u ||
+      auto_detection == 3u || _jedec_id != auto_jedec_id) {
+    releaseFlash();
+    fail("QSPI JEDEC ID does not match detected RAK storage");
     return false;
   }
 #endif

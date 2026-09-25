@@ -46,7 +46,14 @@ void initVariant()
   pinMode(PIN_LED2, OUTPUT);
   ledOff(PIN_LED2);;
 
-#if defined(OTA_QSPI_STORE) && defined(OTA_QSPI_CS_ARDUINO_PIN)
+#if defined(OTA_RAK_AUTO_STORE)
+  // Both candidates share SCK/MOSI/MISO. Hold both chip selects high until
+  // the exact JEDEC probe chooses one; W25Q16 also needs its reset pull-up.
+  pinMode(26, OUTPUT);
+  digitalWrite(26, HIGH);
+  pinMode(31, OUTPUT);
+  digitalWrite(31, HIGH);
+#elif defined(OTA_QSPI_STORE) && defined(OTA_QSPI_CS_ARDUINO_PIN)
   // Deselect a wired OTA NOR before any other device can toggle shared
   // WisBlock SPI nets. The W25Q16 installation also needs a physical CS#
   // pull-up so the signal is defined while the MCU is in reset.
