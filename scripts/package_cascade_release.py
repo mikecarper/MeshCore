@@ -15,6 +15,7 @@ from urllib.parse import quote, urljoin
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from firmware_memory_manifest import validate_package
+from check_nrf52_uf2 import check_uf2
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +65,7 @@ def collect_artifacts(directory, version):
         if platform == "NRF52_PLATFORM":
             if ".uf2" not in extensions or (manifest.get("ota_update_verified") and ".zip" not in extensions):
                 raise ValueError(f"{stem}: nRF52 UF2/DFU artifacts incomplete")
+            check_uf2(directory / (stem + ".uf2"))
         if any(item.stat().st_size == 0 for item in files):
             raise ValueError(f"{stem}: empty firmware artifact")
         memory = validate_package(directory / stem)

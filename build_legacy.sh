@@ -4214,6 +4214,7 @@ collect_nrf52_artifacts() {
   local build_output_dir="${PIO_BUILD_DIR_OVERRIDE:-${PLATFORMIO_BUILD_DIR:-.pio/build}}/${pio_env_name}"
 
   python3 bin/uf2conv/uf2conv.py "${build_output_dir}/firmware.hex" -c -o "${build_output_dir}/firmware.uf2" -f 0xADA52840 || return $?
+  python3 scripts/check_nrf52_uf2.py "${build_output_dir}/firmware.uf2" || return $?
   copy_build_output "${build_output_dir}/firmware.uf2" "${OUTPUT_DIR}/${firmware_filename}.uf2" || return $?
   if [ -f "${build_output_dir}/firmware.zip" ]; then
     copy_build_output "${build_output_dir}/firmware.zip" "${OUTPUT_DIR}/${firmware_filename}.zip" || return $?
@@ -4295,6 +4296,7 @@ PY
       ;;
     NRF52_PLATFORM)
       output_artifact_exists "${firmware_filename}.uf2" \
+        && python3 scripts/check_nrf52_uf2.py "${OUTPUT_DIR}/${firmware_filename}.uf2" >/dev/null 2>&1 \
         && { [ "${REQUIRE_OTA_UPDATES:-0}" != "1" ] \
              || output_artifact_exists "${firmware_filename}.zip"; }
       ;;

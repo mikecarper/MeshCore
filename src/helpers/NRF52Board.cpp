@@ -641,11 +641,12 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
   }
 
   if (!ota_ble_started) {
-    // Config the peripheral connection with maximum bandwidth
-    // more SRAM required by SoftDevice
-    // Note: All config***() function must be called before begin()
-    Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
-    Bluefruit.configPrphConn(92, BLE_GAP_EVENT_LENGTH_MIN, 16, 16);
+    // The application only needs the buttonless DFU control connection; the
+    // bootloader handles firmware data. Large ATT and queue reservations can
+    // make SoftDevice startup fail on an otherwise healthy repeater.
+    // All config***() calls must precede begin().
+    Bluefruit.configPrphConn(BLE_GATT_ATT_MTU_DEFAULT,
+                             BLE_GAP_EVENT_LENGTH_MIN, 2, 1);
 
     if (!Bluefruit.begin(1, 0)) {
       return false;
