@@ -1537,6 +1537,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#how-the-archives-are-distributed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the archives are distributed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3165,6 +3176,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#how-the-archives-are-distributed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the archives are distributed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3383,6 +3405,51 @@ even when the copy's <code>package.json</code> version differs -- verified twice
 fix was <code>rm -rf</code> the package and <code>pio pkg install</code> to re-download stock. A prepended library
 search path keeps the change scoped to one env, because the linker takes each archive member
 from the first archive that satisfies an undefined symbol.</p>
+<h3 id="how-the-archives-are-distributed">How the archives are distributed</h3>
+<p>They are not committed: ~6 MB per architecture, and they have to be rebuilt for every
+<code>platformio/espressif32</code> bump, so committing them would grow history permanently and go
+stale silently. Instead they are published as a release asset and fetched on demand:</p>
+<pre><code>scripts/fetch_mbedtls_4k.sh esp32s3            # download + verify against the manifest
+MESHCORE_REDUCED_TLS=1 pio run -e Heltec_v3_repeater_observer_mqtt
+</code></pre>
+<ul>
+<li><code>scripts/mbedtls_4k_manifest.txt</code> — per-arch sha256 of each archive. <strong>Update it on every
+  platform bump</strong>, together with the published asset.</li>
+<li><code>scripts/fetch_mbedtls_4k.sh</code> — downloads into <code>.mbedtls-4k/&lt;arch&gt;/</code> (gitignored) and
+  verifies. <code>MBEDTLS_4K_LOCAL=&lt;dir&gt;</code> copies from a local build tree instead of downloading.</li>
+<li><code>scripts/mbedtls_4k.py</code> — wired into <code>esp32_base.extra_scripts</code>, but a <strong>no-op unless
+  <code>MESHCORE_REDUCED_TLS=1</code></strong>, so ordinary builds need no artifact and behave as before.</li>
+</ul>
+<p>The opt-in path is deliberately loud, because both ways this can go wrong produce a
+firmware that looks correct and silently lacks the change:</p>
+<table>
+<thead>
+<tr>
+<th>failure</th>
+<th>what happens without a guard</th>
+<th>guard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>directory missing or partial</td>
+<td>linker ignores an unusable <code>-L</code> and resolves mbedTLS from the framework</td>
+<td>pre-build: hard error</td>
+</tr>
+<tr>
+<td>archives stale after a platform bump</td>
+<td>links the wrong build</td>
+<td>pre-build: sha256 vs manifest</td>
+</tr>
+<tr>
+<td><code>-L</code> present but outranked</td>
+<td>framework archives win, flag is inert</td>
+<td>post-link: <code>firmware.map</code> must resolve every <code>libmbed*.a</code> to <code>.mbedtls-4k/</code></td>
+</tr>
+</tbody>
+</table>
+<p>That last one is the reason the post-link check exists rather than trusting the flag: a
+build flag reaching the compiler proves nothing about what got linked.</p>
 <h2 id="how-to-verify-it-worked">How to verify it worked</h2>
 <ol>
 <li><code>strings</code>/<code>grep</code> the new <code>sdkconfig.h</code> for the four settings.</li>
