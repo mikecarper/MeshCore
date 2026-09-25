@@ -16,6 +16,12 @@ public:
     return in.read(pub_key, sizeof(pub_key)) == sizeof(pub_key)
         && in.read(private_key, sizeof(private_key)) == sizeof(private_key);
   }
+  void readFrom(const uint8_t* src, size_t len) {
+    if (len == sizeof(private_key) + sizeof(pub_key)) {
+      memcpy(private_key, src, sizeof(private_key));
+      memcpy(pub_key, src + sizeof(private_key), sizeof(pub_key));
+    }
+  }
   size_t writeTo(uint8_t* out, size_t size) const {
     if (size < 96) return 0;
     memcpy(out, private_key, 64);

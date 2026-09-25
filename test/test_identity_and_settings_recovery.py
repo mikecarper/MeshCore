@@ -51,6 +51,41 @@ class IdentityAndSettingsRecovery(unittest.TestCase):
         source = (ROOT / 'src/helpers/IdentityStore.cpp').read_text()
         presence = (ROOT / 'src/helpers/FilePresence.h').read_text()
         program = fixture_prefix() + '\n#include <helpers/IdentityStore.h>\n'
+        if platform == 'ESP32_PLATFORM':
+            program += r'''
+struct MigrationNvs {
+  bool pending = false;
+  std::vector<uint8_t> identity;
+} migration_nvs;
+class Preferences {
+public:
+  bool begin(const char* name, bool) {
+    assert(strcmp(name, "mesh-pt-migrate") == 0);
+    return true;
+  }
+  bool getBool(const char* key, bool fallback) {
+    assert(strcmp(key, "id-pending") == 0);
+    return migration_nvs.pending ? true : fallback;
+  }
+  size_t getBytes(const char* key, void* out, size_t length) {
+    assert(strcmp(key, "identity") == 0);
+    const size_t count = std::min(length, migration_nvs.identity.size());
+    if (count) memcpy(out, migration_nvs.identity.data(), count);
+    return count;
+  }
+  bool remove(const char* key) {
+    if (strcmp(key, "id-pending") == 0) {
+      const bool existed = migration_nvs.pending;
+      migration_nvs.pending = false;
+      return existed;
+    }
+    assert(strcmp(key, "identity") == 0);
+    migration_nvs.identity.clear();
+    return true;
+  }
+  void end() {}
+};
+'''
         program += 'namespace mesh { template <typename Filesystem>\n' + extract_braced(
             presence, 'bool filePresence(') + '\n}\n'
         for signature in ('bool IdentityStore::recover(',
@@ -155,6 +190,31 @@ int main() {
   assert(!recovering.recover("main") && filesystem.files.count("/main.id.bak"));
   filesystem.fail_rename = 0;
   assert(recovering.recover("main") && filesystem.files["/main.id"].size() == 96);
+#endif
+#if defined(ESP32_PLATFORM)
+  // A pending partition migration must replace a temporary key with the
+  // original one, and keep its NVS copy until the file is durable.
+  filesystem = FakeFilesystem();
+  migration_nvs = MigrationNvs();
+  IdentityStore migrated(filesystem, "/identity");
+  mesh::LocalIdentity temporary, restored;
+  memset(temporary.pub_key, 9, PUB_KEY_SIZE);
+  memset(temporary.private_key, 10, PRV_KEY_SIZE);
+  assert(migrated.save("_main", temporary));
+  migration_nvs.pending = true;
+  migration_nvs.identity.resize(PUB_KEY_SIZE + PRV_KEY_SIZE);
+  memset(migration_nvs.identity.data(), 7, PUB_KEY_SIZE);
+  memset(migration_nvs.identity.data() + PUB_KEY_SIZE, 8, PRV_KEY_SIZE);
+  filesystem.max_write = 3;
+  assert(migrated.loadResult("_main", restored) == IdentityLoadResult::Unreadable);
+  assert(migration_nvs.pending && migration_nvs.identity.size() == 96);
+  filesystem.max_write = std::numeric_limits<size_t>::max();
+  assert(migrated.loadResult("_main", restored) == IdentityLoadResult::Loaded);
+  assert(restored.pub_key[0] == 7 && restored.private_key[0] == 8);
+  assert(!migration_nvs.pending && migration_nvs.identity.empty());
+  mesh::LocalIdentity again;
+  assert(migrated.load("_main", again));
+  assert(again.pub_key[0] == 7 && again.private_key[0] == 8);
 #endif
 }
 '''
