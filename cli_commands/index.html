@@ -7633,6 +7633,9 @@ command <code>0x42</code> where the role supports the command; unavailable over 
 <h3 id="radio-stats-noise-floor-last-rssisnr-airtime-receive-errors">Radio Stats - Noise floor, Last RSSI/SNR, Airtime, Receive errors</h3>
 <p><strong>Search terms:</strong> signal strength, signal quality, RSSI, SNR, radio noise.</p>
 <p><strong>Usage:</strong> <code>stats-radio</code></p>
+<p><code>last_rssi</code> is the strength of the last received packet. It is not a live
+signal-strength meter and will not show an unmodulated carrier; see the
+<a href="../carrier_wave/">carrier-wave guide</a> for a separate receiver that can measure one.</p>
 <p><strong>Local connection only:</strong> USB, direct network CLI, or Companion binary
 command <code>0x42</code> where the role supports the command; unavailable over LoRa.</p>
 <hr />
