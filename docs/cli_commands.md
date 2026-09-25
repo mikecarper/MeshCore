@@ -196,8 +196,10 @@ set ota.speed <0.05..3>
 `1` preserves the current OTA timing. Values below `1` slow OTA traffic;
 values above `1` shorten adjustable delays. For example, `0.5` doubles those
 delays and `3` divides them by three. Decimal values such as `.05` work.
-`ota config speed <factor>` is an equivalent setter, and `ota config` shows
-the value. The setting is saved and can be changed during a transfer.
+`ota config speed <factor>` is an equivalent setter. `get ota.speed` and
+`ota config` show both the saved value and the effective `packet` pacing
+factor. Automatic loss response may make packet spacing slower without
+changing the saved setting. The setting can be changed during a transfer.
 
 Apply it on the source, destination, and relays. It controls all LoRa OTA
 packet types on both profiles, relay timing, discovery, and OTA adverts.

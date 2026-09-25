@@ -156,8 +156,8 @@ void beginSpeedConfig(FILESYSTEM* fs) {
 
 float speedFactor() { return factor; }
 
-void formatSpeed(char* text, size_t capacity) {
-  const uint32_t scaled = (uint32_t)(factor * 1000000.0f + 0.5f);
+void formatSpeedFactor(float speed, char* text, size_t capacity) {
+  const uint32_t scaled = (uint32_t)(speed * 1000000.0f + 0.5f);
   snprintf(text, capacity, "%u.%06u", (unsigned)(scaled / 1000000), (unsigned)(scaled % 1000000));
   if (!capacity) return;
   size_t n = strlen(text);
@@ -165,7 +165,17 @@ void formatSpeed(char* text, size_t capacity) {
   if (n && text[n - 1] == '.') text[n - 1] = 0;
 }
 
-bool handleSpeedCommand(const char* command, char* reply, size_t capacity) {
+void formatSpeed(char* text, size_t capacity) {
+  formatSpeedFactor(factor, text, capacity);
+}
+
+float effectivePacketPace(float adaptive_speed) {
+  if (!validSpeed(adaptive_speed)) adaptive_speed = OTA_SPEED_DEFAULT;
+  return factor < adaptive_speed ? factor : adaptive_speed;
+}
+
+bool handleSpeedCommand(const char* command, char* reply, size_t capacity,
+                        float adaptive_speed) {
   const char* value = nullptr;
   bool require_value = false, read_only = false;
   const char* const forms[] = {"set ota.speed", "get ota.speed", "ota config speed", "ota cfg speed", "ota set speed", "ota speed"};
@@ -194,8 +204,11 @@ bool handleSpeedCommand(const char* command, char* reply, size_t capacity) {
       return true;
     }
   }
-  char number[16]; formatSpeed(number, sizeof(number));
-  snprintf(reply, capacity, *value ? "OK ota.speed=%sx (saved)" : "> ota.speed=%sx", number);
+  char number[16], packet[16];
+  formatSpeed(number, sizeof(number));
+  formatSpeedFactor(effectivePacketPace(adaptive_speed), packet, sizeof(packet));
+  if (*value) snprintf(reply, capacity, "OK ota.speed=%sx (saved) packet=%sx", number, packet);
+  else snprintf(reply, capacity, "> ota.speed=%sx packet=%sx", number, packet);
   return true;
 }
 

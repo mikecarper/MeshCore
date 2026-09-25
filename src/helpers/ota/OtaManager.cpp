@@ -94,6 +94,10 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   memset(_src_advertised, 0, sizeof(_src_advertised));
   _n_src = 0; _n_cat = 0;
   clearPendingEgress();
+  _adaptive_packet_speed = 1.0f;
+  _pace_clean_blocks = 0;
+  _pace_has_mid = false;
+  _pace_has_loss = false;
 }
 
 // ---------------- serve (multi-mota registry) ----------------
@@ -682,6 +686,45 @@ bool OtaManager::loadActiveServeBlock() {
   return true;
 }
 
+void OtaManager::noteServedRequestPacing(const uint8_t* mid, uint16_t block,
+                                         uint16_t want, uint16_t full_mask) {
+  if (want != full_mask) {
+    // A sparse mask is the receiver's explicit evidence that our previous
+    // DATA burst left holes. One extra packet-airtime gap is much cheaper than
+    // repeated multi-second request turns on a fast link.
+    if (!_pace_has_loss || memcmp(_pace_loss_mid, mid, sizeof(_pace_loss_mid)) != 0
+        || _pace_last_loss_block != block) {
+      memcpy(_pace_loss_mid, mid, sizeof(_pace_loss_mid));
+      _pace_last_loss_block = block;
+      _pace_has_loss = true;
+      if (_adaptive_packet_speed > 0.5f) _adaptive_packet_speed = 0.5f;
+      else if (_adaptive_packet_speed > 0.25f) {
+        _adaptive_packet_speed -= 0.1f;
+        if (_adaptive_packet_speed < 0.25f) _adaptive_packet_speed = 0.25f;
+      }
+    }
+    _pace_clean_blocks = 0;
+    return;
+  }
+  if (!_pace_has_mid || memcmp(_pace_mid, mid, sizeof(_pace_mid)) != 0) {
+    memcpy(_pace_mid, mid, sizeof(_pace_mid));
+    _pace_has_mid = true;
+    _pace_last_full_block = block;
+    _pace_clean_blocks = 0;
+    return;
+  }
+  // Count only forward progress; duplicates of a full request are not proof
+  // that the receiver tolerated the current packet rate.
+  if (block <= _pace_last_full_block) return;
+  _pace_last_full_block = block;
+  if (_adaptive_packet_speed >= 1.0f) return;
+  if (++_pace_clean_blocks >= 16) {
+    _adaptive_packet_speed += 0.1f;
+    if (_adaptive_packet_speed > 1.0f) _adaptive_packet_speed = 1.0f;
+    _pace_clean_blocks = 0;
+  }
+}
+
 bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
   ReqWindowMsg rq;
   if (!decode_req_window(m, n, rq)) return false;
@@ -708,8 +751,11 @@ bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
     const uint16_t requested = wire_v2
         ? ota_req_v2_fragments(rq.items[i].want_mask) : rq.items[i].want_mask;
     const uint16_t want = (uint16_t)(requested & valid_mask);
-    if (want != 0) accepted |= queueServeJob(v->m.merkle_root, (uint16_t)idx, want,
-                                             wire_v2, allow_deflate, extended_length);
+    if (want != 0 && queueServeJob(v->m.merkle_root, (uint16_t)idx, want,
+                                  wire_v2, allow_deflate, extended_length)) {
+      accepted = true;
+      noteServedRequestPacing(v->m.merkle_root, (uint16_t)idx, want, valid_mask);
+    }
   }
   return accepted;
 }
@@ -1223,7 +1269,22 @@ uint32_t OtaManager::fetchRetryTimeoutMs() const {
   service = (service * _tx_spacing_permille + 999u) / 1000u;
   service = (service * 5u + 3u) / 4u;                    // 25% CAD/relay contention allowance
   service += OTA_FETCH_RETRY_GUARD_MS;
-  if (service < OTA_FETCH_RETRY_MIN_MS) service = OTA_FETCH_RETRY_MIN_MS;
+  uint64_t floor = OTA_FETCH_RETRY_MIN_MS;
+  if (_observed_path_transmissions != 0 && anyWireDataReceived()) {
+    // A valid fragment proves this source has already answered the current flight.
+    // Missing-fragment requests need not inherit the five-second allowance for
+    // an unanswered host/relay request. Four full-packet service intervals cover
+    // queued DATA/proof/turnaround; measured airtime and the observed path raise
+    // the floor automatically on slower or relayed links.
+    uint64_t partial_floor = (uint64_t)_radio_packet_airtime_ms
+        * _observed_path_transmissions * _tx_spacing_permille * 4u;
+    partial_floor = (partial_floor + 999u) / 1000u;
+    partial_floor += OTA_FETCH_RETRY_GUARD_MS;
+    if (partial_floor < OTA_FETCH_RETRY_PARTIAL_MIN_MS)
+      partial_floor = OTA_FETCH_RETRY_PARTIAL_MIN_MS;
+    if (partial_floor < floor) floor = partial_floor;
+  }
+  if (service < floor) service = floor;
   if (service > OTA_FETCH_RETRY_MAX_MS) service = OTA_FETCH_RETRY_MAX_MS;
   return retryDelay((uint32_t)service);
 }

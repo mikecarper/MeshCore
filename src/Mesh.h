@@ -542,6 +542,7 @@ protected:
   bool          _ota_temp_was_active = false;    // detects entry into a temporary-radio window
 #endif
   float getOtaSpeedFactor() const override;
+  float getOtaPacketSpeedFactor() const override;
   uint32_t getOtaPacketAirtime() const;
 
   /**

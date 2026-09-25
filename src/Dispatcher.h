@@ -423,6 +423,7 @@ protected:
 
   virtual float getAirtimeBudgetFactor() const;
   virtual float getOtaSpeedFactor() const { return 1.0f; }
+  virtual float getOtaPacketSpeedFactor() const { return getOtaSpeedFactor(); }
   virtual int calcRxDelay(float score, uint32_t air_time) const;
   virtual bool shouldBypassRxDelay(const Packet* packet) {
     (void)packet;

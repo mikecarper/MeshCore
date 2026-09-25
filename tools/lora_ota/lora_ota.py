@@ -63,6 +63,10 @@ MAX_ARCHIVE_MEMBER_SIZE = 64 * 1024 * 1024
 MAX_FIRMWARE_IMAGE_SIZE = 64 * 1024 * 1024
 LEGACY_TARGET_MAX_BLOCK_SIZE = 1024
 MOTA_MAX_BLOCK_SIZE = 2048
+# Lab/HIL OTA tests use one explicit tuple on every participating radio.
+# This is a bench default, not a regional or production firmware preset.
+# Override --temp-radio only when the hardware or local rules require it.
+DEFAULT_LAB_TEMP_RADIO = "909.5,500,5,5,120"
 TRANSMISSION_RETRY_LIMIT = 3
 TRANSMISSION_RETRY_WINDOW_SECONDS = 90
 TRANSMISSION_RETRY_DELAY_SECONDS = 2
@@ -7150,7 +7154,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--temp-radio", default="909.950,250,5,5,120",
+        "--temp-radio", default=DEFAULT_LAB_TEMP_RADIO,
         help="frequency,bw,sf,cr,minutes",
     )
     parser.add_argument(

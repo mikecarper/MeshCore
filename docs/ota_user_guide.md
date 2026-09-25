@@ -430,8 +430,13 @@ already received; queue congestion alone does not trigger legacy fallback.
 Retry timing includes the primary channel when an RX-only temporary radio2
 uses crossover to send requests there.
 
-`ota config speed 0.5` is an equivalent setter. `ota config speed` and
-`ota speed` read the current factor; the `ota config` summary also includes it.
+`ota config speed 0.5` is an equivalent setter. `get ota.speed`,
+`ota config speed`, and `ota speed` show both the saved `ota.speed` setting and
+the effective `packet` pace. The latter is the slower of the saved speed and
+the sender's automatic loss-responsive packet-spacing factor; it does not
+replace the saved setting or change non-packet OTA timers. The `ota config`
+summary also shows both values. If no OTA workspace is active, the automatic
+factor starts at 1, so `packet` reflects the saved setting up to 1x.
 The setting is available on OTA-enabled repeaters, rooms, sensors, Companions,
 and seeder-only builds. Its separate `/ota_speed` settings file preserves the
 existing preference layouts and does not need an active OTA workspace.

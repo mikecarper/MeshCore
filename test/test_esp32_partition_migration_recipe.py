@@ -17,8 +17,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from build_esp32_partition_migration import (  # noqa: E402
     build_steps, bundle_release, verify_archive,
 )
-from package_esp32_partition_migration import BOARDS, mota_full, readme  # noqa: E402
-from motalib import FwIdent  # noqa: E402
+from package_esp32_partition_migration import (  # noqa: E402
+    BOARDS, bridge_with_successor_endf, mota_full, readme,
+)
+from motalib import FwIdent, build_endf, parse_endf_ident  # noqa: E402
 
 
 class Esp32MigrationRecipeTest(unittest.TestCase):
@@ -35,6 +37,10 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
                          BOARDS["generic-e22-sx1262-repeater"]["wifi_bridge"])
         self.assertEqual("esp32_s3_8mb_partition_migrator",
                          BOARDS["heltec-v3-sensor"]["wifi_bridge"])
+        self.assertEqual("heltec_v4_partition_expander",
+                         BOARDS["heltec-v4"]["expander_bridge"])
+        self.assertEqual("Xiao_S3_WIO_partition_expander",
+                         BOARDS["xiao-s3-wio"]["expander_bridge"])
         self.assertEqual("esp32_8mb_partition_migrator",
                          BOARDS["heltec-v2-room-server"]["wifi_bridge"])
         expected_slots = {4 * 1024 * 1024: 0x1F0000,
@@ -49,6 +55,8 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
                 self.assertIn(spec["target"], env_names)
                 self.assertIn(spec["wifi_bridge"], env_names)
                 self.assertIn(spec["lora_bridge"], env_names)
+                if spec.get("expander_bridge"):
+                    self.assertIn(spec["expander_bridge"], env_names)
                 self.assertEqual(expected_slots[spec["flash_bytes"]],
                                  spec["slot_bytes"])
 
@@ -85,8 +93,8 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
     def test_full_images_precede_every_bridge_and_builds_are_serial(self):
         steps = build_steps(["heltec-v4", "xiao-s3-wio"], "v1.17.1.7-test",
                             "usa-cascadia", "cascade", 4)
-        self.assertEqual(6, len(steps))
-        self.assertEqual([True, True, False, False, False, False],
+        self.assertEqual(8, len(steps))
+        self.assertEqual([True, True] + [False] * 6,
                          [full for _, full in steps])
         self.assertEqual("heltec_v4_repeater", steps[0][0][3])
         self.assertEqual("Xiao_S3_WIO_repeater", steps[1][0][3])
@@ -94,9 +102,16 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
         self.assertEqual([
             "heltec_v4_partition_migrator",
             "heltec_v4_partition_migrator_lora_repeater",
+            "heltec_v4_partition_expander",
             "xiao_s3_partition_migrator",
             "xiao_s3_partition_migrator_lora_repeater",
+            "Xiao_S3_WIO_partition_expander",
         ], [command[3] for command, _ in steps[2:]])
+        guide = readme("heltec-v4", BOARDS["heltec-v4"],
+                       "v1.17.1.7-test", "01234567", full_mota_blocks=960)
+        self.assertIn("partition-expander.mota", guide)
+        self.assertIn("automatically", guide)
+        self.assertIn("already-expanded board", guide)
 
     def test_4mb_roles_share_two_chip_family_bridges(self):
         steps = build_steps(["thinknode-m2-repeater", "thinknode-m2-room-server"],
@@ -132,6 +147,15 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
         package = mota_full(image, FwIdent(0x01020304, 0xAABBCCDD, "TEST"), 2048)
         self.assertGreater(len(package), len(image))
 
+    def test_bridge_mota_rebinds_preexisting_temporary_role_endf(self):
+        body = b"\xe9" + b"bridge image"
+        temporary = body + build_endf(body, FwIdent(1, 0x12345678, "BOARD"))
+        successor = FwIdent(2, 0x87654321, "BOARD")
+        rebound = bridge_with_successor_endf(temporary, successor)
+        self.assertEqual(len(temporary), len(rebound))
+        self.assertEqual(successor, parse_endf_ident(rebound))
+        self.assertEqual(body, rebound[:-56])
+
     def test_dry_run_has_no_build_side_effects(self):
         with tempfile.TemporaryDirectory(prefix="esp32-migration-plan-") as temporary:
             output_root = Path(temporary) / "release"
@@ -145,6 +169,12 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
             self.assertIn("build-firmware heltec_v4_repeater", result.stdout)
             self.assertIn("pio run -e heltec_v4_partition_migrator", result.stdout)
             self.assertFalse(output_root.exists())
+
+    def test_partition_expanders_use_adaptive_four_block_transfer_window(self):
+        for variant in ("heltec_v4", "xiao_s3_wio"):
+            config = (ROOT / "variants" / variant / "platformio.ini").read_text()
+            expander = config.split("partition_expander]", 1)[1].split("\n[env:", 1)[0]
+            self.assertIn("-D OTA_FETCH_PIPELINE=4", expander)
 
     def test_archive_verification_rejects_changed_payload(self):
         with tempfile.TemporaryDirectory(prefix="esp32-migration-zip-") as temporary:

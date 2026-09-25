@@ -47,8 +47,8 @@ def build_steps(boards: list[str], version: str, radio_preset: str,
     # Full builds can clear .pio/build; every bridge must be built afterwards.
     built_bridges: set[str] = set()
     for name in boards:
-        for key in ("wifi_bridge", "lora_bridge"):
-            bridge = BOARDS[name][key]
+        for key in ("wifi_bridge", "lora_bridge", "expander_bridge"):
+            bridge = BOARDS[name].get(key)
             if bridge and bridge not in built_bridges:
                 steps.append((["pio", "run", "-e", bridge,
                                "-j", str(jobs)], False))

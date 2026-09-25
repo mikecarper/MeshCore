@@ -2452,7 +2452,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=ota.DEFAULT_RELAY_TX_DELAY,
         help="temporary flood txdelay for managed intermediate relays",
     )
-    parser.add_argument("--temp-radio", default="909.950,250,5,5,120")
+    parser.add_argument("--temp-radio", default=ota.DEFAULT_LAB_TEMP_RADIO)
     parser.add_argument(
         "--ota-hops",
         type=int,

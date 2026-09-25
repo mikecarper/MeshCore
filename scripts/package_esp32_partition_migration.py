@@ -14,8 +14,9 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools" / "mota"))
 from motalib import (  # noqa: E402
-    CODEC_FULL, FwIdent, build_container, build_manifest, ensure_endf,
-    hardware_id_for_env, pack_version, parse_container, parse_endf_ident,
+    CODEC_FULL, FwIdent, build_container, build_endf, build_manifest, has_endf,
+    hardware_id_for_env, pack_version, parse_container, parse_endf,
+    parse_endf_ident,
     target_id_for_env, verify,
 )
 from check_esp32_app_size import app_partition_size  # noqa: E402
@@ -25,6 +26,7 @@ from firmware_memory_manifest import validate_package  # noqa: E402
 BOARDS = {
     "heltec-v4": {
         "target": "heltec_v4_repeater",
+        "expander_bridge": "heltec_v4_partition_expander",
         "wifi_bridge": "heltec_v4_partition_migrator",
         "lora_bridge": "heltec_v4_partition_migrator_lora_repeater",
         "flash_bytes": 16 * 1024 * 1024,
@@ -33,6 +35,7 @@ BOARDS = {
     },
     "xiao-s3-wio": {
         "target": "Xiao_S3_WIO_repeater",
+        "expander_bridge": "Xiao_S3_WIO_partition_expander",
         "wifi_bridge": "xiao_s3_partition_migrator",
         "lora_bridge": "xiao_s3_partition_migrator_lora_repeater",
         "flash_bytes": 8 * 1024 * 1024,
@@ -312,6 +315,16 @@ def mota_full(image: bytes, identity: FwIdent, block_size: int) -> bytes:
     return package
 
 
+def bridge_with_successor_endf(image: bytes, successor: FwIdent) -> bytes:
+    """Bind a temporary role image to the old node's exact LoRa target.
+
+    PlatformIO can already append EndF for the temporary role. Keeping that
+    trailer would make the old repeater reject stage one on target mismatch.
+    """
+    body = parse_endf(image)[0] if has_endf(image) else image
+    return body + build_endf(body, successor)
+
+
 def check_esp32_stage(package: bytes, image: bytes, slot_bytes: int) -> None:
     # Mirror the ESP32 FULL staging geometry: the payload is written at the
     # start of the inactive app, with metadata in aligned sectors at its end.
@@ -324,6 +337,32 @@ def check_esp32_stage(package: bytes, image: bytes, slot_bytes: int) -> None:
 
 def readme(board: str, spec: dict, version: str, source: str,
            has_full_mota: bool = True, full_mota_blocks: int = 0) -> str:
+    expander_instructions = ""
+    if spec.get("expander_bridge"):
+        expander_instructions = f"""## Partition Expander route (automatic LoRa finish)
+
+For this exact **{spec['target']}** hardware/role, `partition-expander.bin`
+is an alternative to `wifi-bridge.bin` in step 1 above. It works from either
+legacy OTA slot. It stages and verifies the private identity, saved node name,
+radio profiles and ACL before changing the table. After **Expanded layout
+ready**, it listens on the saved primary radio profile and automatically
+fetches only this package's exact-target Full application. Serve
+`full-application.mota` on that profile; do not upload it to the browser.
+The bridge's status page reports the receiver profile and block progress.
+Keep only the intended Full build for this target on the seeder during the
+migration; the bridge pins the hardware/role target, not an individual MID.
+If installed on an already-expanded board, it returns to a verified Full image
+in the other slot. Without a recorded migration handoff or safe Full image, it
+does not fetch or replace an image; the status page explains whether Wi-Fi
+recovery is available. Firmware upload is disabled if identity verification
+failed.
+
+`partition-expander.mota` offers the same bridge as a first-stage LoRa update
+only if the installed old firmware already supports compatible mOTA and its
+target ID matches this repeater. A stock image without mOTA must use its
+existing Wi-Fi updater for stage one. Keep a compatible seeder available before
+installing the bridge; the bridge does not itself repeat normal traffic.
+"""
     wifi_instructions = f"""## Wi-Fi route
 
 1. On the old node, run `start ota ap` through its authenticated terminal.
@@ -414,7 +453,9 @@ Source: `{source}`; firmware version: `{version}`. This package is only for the
 physical board/role represented by `{spec['target']}` with
 {spec['flash_bytes'] // 1048576} MiB flash. A legacy Wi-Fi-updatable observer or
 bridge variant on the same hardware may migrate to this canonical Full target;
-its previous feature settings are not preserved. The LoRa route, where present,
+the Wi-Fi bridge stages its saved node/radio configuration and ACL when NVS has
+enough room, and refuses migration otherwise. The older LoRa handoff bridge
+preserves only the private identity. The LoRa route, where present,
 requires the old image's exact target ID.
 The current partition table must have stable NVS at 0x9000, OTA metadata at
 0xE000, two OTA apps, and SPIFFS with `/identity/_main.id`.
@@ -426,13 +467,17 @@ the bridge restores and verifies the identity in expanded SPIFFS; on the
 4 MiB LoRa route the new Full firmware does so at first boot. No full-chip
 erase or USB connection is used.
 The table sector and inactive app sectors are erased as part of migration.
-SPIFFS may be reformatted; other SPIFFS settings can be recreated.
+SPIFFS may be reformatted. The Wi-Fi bridge restores verified radio 1 and
+radio 2 settings, node name, ACL and login replay state, region keys, and
+selected network/OTA settings. Temporary radio sessions and logs are not
+preserved. The older LoRa handoff route may reset saved settings.
 The stock bootloader has no atomic backup partition table: power loss during
 the table-sector erase/write can still require cable recovery. Do not use this
 on an inaccessible node without accepting that risk and testing a sacrificial
 example of the same board first.
 
 {wifi_instructions}
+{expander_instructions}
 {lora_instructions}
 """
 
@@ -488,6 +533,16 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
         "target-partitions.bin": table,
         "capabilities.json": capability_path.read_bytes(),
     }
+    if spec.get("expander_bridge"):
+        expander_body = (ROOT / ".pio" / "build" / spec["expander_bridge"] /
+                         "firmware.bin").read_bytes()
+        expander_image = bridge_with_successor_endf(expander_body, bridge_ident)
+        if len(expander_image) > LEGACY_SLOT_BYTES:
+            raise ValueError(f"{name}: Partition Expander does not fit the legacy slot")
+        expander_mota = mota_full(expander_image, bridge_ident, 1024)
+        check_esp32_stage(expander_mota, expander_image, LEGACY_SLOT_BYTES)
+        files["partition-expander.bin"] = expander_body
+        files["partition-expander.mota"] = expander_mota
     full_mota_blocks = (len(full_image) + 2047) // 2048
     if full_mota_blocks <= 4096:
         candidate_mota = mota_full(full_image, full_ident, 2048)
@@ -502,7 +557,7 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
         raise ValueError(f"{name}: LoRa Full image exceeds the mOTA block limit")
     if spec["lora_bridge"]:
         lora_bridge_body = (ROOT / ".pio" / "build" / spec["lora_bridge"] / "firmware.bin").read_bytes()
-        lora_bridge, _ = ensure_endf(lora_bridge_body, bridge_ident)
+        lora_bridge = bridge_with_successor_endf(lora_bridge_body, bridge_ident)
         if len(lora_bridge) > LEGACY_SLOT_BYTES:
             raise ValueError(f"{name}: LoRa bridge does not fit the legacy slot")
         files["lora-bridge.mota"] = mota_full(lora_bridge, bridge_ident, 1024)
@@ -525,6 +580,7 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
         "lora_bridge_mode": ("slot-b-only-full-identity-recovery"
                              if spec["flash_bytes"] == 4 * 1024 * 1024
                              else "either-slot-preserve-receiver"),
+        "partition_expander": spec.get("expander_bridge"),
         "full_mota_seeder_scratch_bytes": full_mota_blocks * 4,
         "files": {filename: {"bytes": len(data), "sha256": sha256(data)}
                   for filename, data in files.items()},

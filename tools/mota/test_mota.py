@@ -1033,6 +1033,8 @@ def test_rak_nrf52_ota_profiles_keep_ina_and_gps_where_uart_is_available():
 
 
 def test_hardware_id_for_env():
+    assert ml.hardware_id_for_env("Xiao_S3_WIO_partition_expander") == "Xiao_S3_WIO"
+    assert ml.hardware_id_for_env("Xiao_S3_WIO_partition_expander") == ml.hardware_id_for_env("Xiao_S3_WIO_repeater")
     assert ml.hardware_id_for_env("RAK_4631_repeater") == "RAK4631"
     assert ml.hardware_id_for_env("RAK_4631_companion_radio_usb") == "RAK4631"
     assert (

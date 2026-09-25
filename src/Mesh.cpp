@@ -663,6 +663,16 @@ float Mesh::getOtaSpeedFactor() const {
 #endif
 }
 
+float Mesh::getOtaPacketSpeedFactor() const {
+  const float configured = getOtaSpeedFactor();
+#if defined(ENABLE_OTA)
+  const float adaptive = ota::ota_ctx().manager.adaptivePacketSpeed();
+  return configured < adaptive ? configured : adaptive;
+#else
+  return configured;
+#endif
+}
+
 uint32_t Mesh::getOtaPacketAirtime() const {
   const auto* profiles = _radio->profiles();
   if (!profiles || !profiles->enabled()) return _radio->getProfileAirtime(0, MAX_TRANS_UNIT);

@@ -9,13 +9,18 @@
 #include <esp_attr.h>
 #include <esp_flash.h>
 #include <esp_partition.h>
-#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+#include <esp_heap_caps.h>
+#if defined(MESHCORE_MIGRATION_RESUME_OTA) || defined(MOTA_MIGRATION_TARGET_ID)
 #include <mbedtls/sha256.h>
 #include <nvs.h>
 #endif
 
 #include <helpers/ESP32PartitionMigrationPolicy.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+
+#if defined(MOTA_MIGRATION_TARGET_ID)
+String partitionExpanderStatus();
+#endif
 
 namespace migration = mesh::esp32_partition_migration;
 
@@ -37,8 +42,48 @@ constexpr char kMigrationNvsNamespace[] = "mesh-pt-migrate";
 constexpr char kMigrationIdentityKey[] = "identity";
 // NVS key names are limited to 15 characters.
 constexpr char kMigrationIdentityPendingKey[] = "id-pending";
+constexpr char kMigrationConfigKey[] = "cfg-meta";
+constexpr char kMigrationConfigPendingKey[] = "cfg-pending";
+constexpr char kMigrationConfigRestoredKey[] = "cfg-restored";
+#if defined(MOTA_MIGRATION_TARGET_ID)
+constexpr char kExpanderHandoffKey[] = "full-handoff";
+#endif
+constexpr uint32_t kConfigStageMagic = 0x43464731U;
+constexpr size_t kMaxConfigFileBytes = 16384;
+// The common preferences hold node name, password and primary radio settings.
+// Other entries preserve access policy, extra radio profiles and the credentials
+// needed to remain manageable after the SPIFFS partition moves.
+struct ConfigFile { const char* path; const char* nvs_key; };
+constexpr ConfigFile kConfigFiles[] = {
+    {"/com_prefs", "cfg00"}, {"/node_prefs", "cfg01"},
+    {"/s_contacts", "cfg02"}, {"/s_login_replay", "cfg03"},
+    {"/regions2", "cfg04"}, {"/radio_profiles", "cfg05"},
+    {"/mqtt_prefs", "cfg06"}, {"/mqtt.json", "cfg07"},
+    {"/ota_config", "cfg08"}, {"/flood_filter", "cfg09"},
+    {"/flood_filter_bl", "cfg10"}, {"/flood_ch_scope", "cfg11"},
+    {"/flood_ch_req", "cfg12"}, {"/flood_grp_mod", "cfg13"},
+    {"/clock_sync", "cfg14"}, {"/display_prefs", "cfg15"},
+    {"/telemetry_tx", "cfg16"}, {"/data_tx", "cfg17"},
+    {"/com_prefs.bak", "cfg18"}, {"/radio_profiles.bak", "cfg19"},
+    {"/s_contacts.bak", "cfg20"}, {"/mqtt_prefs.bak", "cfg21"},
+    {"/regions2.bak", "cfg22"}, {"/prefs.json", "cfg23"},
+    {"/management", "cfg24"}, {"/management.bak", "cfg25"},
+    {"/s_login_replay.bak", "cfg26"}, {"/ota_config.bak", "cfg27"},
+    {"/ota_speed", "cfg28"}, {"/flood_ch_block", "cfg29"},
+    {"/bsec_state.bin", "cfg30"}, {"/display_prefs.bak", "cfg31"},
+};
+constexpr size_t kConfigFileCount = sizeof(kConfigFiles) / sizeof(kConfigFiles[0]);
+static_assert(kConfigFileCount <= 32, "config presence mask is 32 bits");
+struct ConfigStage {
+  uint32_t magic;
+  uint32_t present;
+  uint32_t sizes[kConfigFileCount];
+  uint32_t crcs[kConfigFileCount];
+};
 #if defined(MESHCORE_MIGRATION_RESUME_OTA)
 constexpr char kMigrationResumeSlotKey[] = "resume-slot";
+#endif
+#if defined(MESHCORE_MIGRATION_RESUME_OTA) || defined(MOTA_MIGRATION_TARGET_ID)
 constexpr size_t kEndfBytes = 56;
 constexpr char kBridgeImageMarker[] = "MeshCore ESP32 partition migration bridge image";
 // Earlier bridge packages predate the dedicated marker but contain this page title.
@@ -344,7 +389,197 @@ bool restoreStagedIdentity() {
   return true;
 }
 
-#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+#if !defined(MESHCORE_MIGRATION_RESUME_OTA)
+bool verifyExpandedIdentityFile() {
+  if (!SPIFFS.begin(false)) {
+    strcpy(status_text, "Refused: expanded identity filesystem is unavailable");
+    return false;
+  }
+  File identity = SPIFFS.open("/identity/_main.id", "r");
+  const bool available = identity && identity.size() >= kIdentityFileBytes
+      && identity.read(copy_buffer, kIdentityFileBytes) == kIdentityFileBytes;
+  if (identity) identity.close();
+  SPIFFS.end();
+  if (!available) strcpy(status_text, "Refused: restored private key is unavailable");
+  return available;
+}
+#endif
+
+bool readConfigStage(Preferences& nvs, ConfigStage& stage) {
+  if (nvs.getBytes(kMigrationConfigKey, &stage, sizeof(stage)) != sizeof(stage)
+      || stage.magic != kConfigStageMagic) {
+    strcpy(status_text, "Refused: staged configuration manifest is incomplete");
+    return false;
+  }
+  for (size_t i = 0; i < kConfigFileCount; ++i) {
+    const bool present = (stage.present & (1UL << i)) != 0;
+    if ((!present && stage.sizes[i] != 0)
+        || (present && (stage.sizes[i] == 0
+                        || stage.sizes[i] > kMaxConfigFileBytes
+                        || nvs.getBytesLength(kConfigFiles[i].nvs_key) != stage.sizes[i]))) {
+      snprintf(status_text, sizeof(status_text),
+               "Refused: staged %s is incomplete", kConfigFiles[i].path);
+      return false;
+    }
+  }
+  return true;
+}
+
+bool verifyStagedConfigBlob(Preferences& nvs, const ConfigStage& stage,
+                            size_t i, uint8_t* buffer) {
+  const size_t size = stage.sizes[i];
+  return nvs.getBytes(kConfigFiles[i].nvs_key, buffer, size) == size
+      && (~crc32(buffer, size)) == stage.crcs[i];
+}
+
+void clearConfigStageBlobs(Preferences& nvs) {
+  nvs.remove(kMigrationConfigKey);
+  for (const ConfigFile& file : kConfigFiles) nvs.remove(file.nvs_key);
+}
+
+bool validateStagedConfig() {
+  Preferences nvs;
+  if (!nvs.begin(kMigrationNvsNamespace, true)) return true;
+  const bool pending = nvs.getBool(kMigrationConfigPendingKey, false);
+  if (!pending) { nvs.end(); return true; }
+  ConfigStage stage = {};
+  bool valid = readConfigStage(nvs, stage);
+  for (size_t i = 0; valid && i < kConfigFileCount; ++i) {
+    if (!(stage.present & (1UL << i))) continue;
+    uint8_t* buffer = static_cast<uint8_t*>(heap_caps_malloc(
+        stage.sizes[i], MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    valid = buffer && verifyStagedConfigBlob(nvs, stage, i, buffer);
+    heap_caps_free(buffer);
+    if (!valid) snprintf(status_text, sizeof(status_text),
+                         "Refused: staged %s failed verification", kConfigFiles[i].path);
+  }
+  nvs.end();
+  return valid;
+}
+
+bool stageLegacyConfig() {
+  Preferences nvs;
+  if (!nvs.begin(kMigrationNvsNamespace, false)) {
+    strcpy(status_text, "Could not open NVS configuration staging");
+    return false;
+  }
+  if (nvs.getBool(kMigrationConfigPendingKey, false)) {
+    nvs.end();
+    return validateStagedConfig();
+  }
+  // A power failure before the commit marker can leave partial blobs. They
+  // are never authoritative and would otherwise consume the small NVS area.
+  if (!nvs.putBool(kMigrationConfigRestoredKey, false)) {
+    nvs.end();
+    strcpy(status_text, "Could not reset configuration handoff record");
+    return false;
+  }
+  clearConfigStageBlobs(nvs);
+  if (!SPIFFS.begin(false)) {
+    nvs.end();
+    strcpy(status_text, "Could not mount legacy configuration filesystem");
+    return false;
+  }
+  ConfigStage stage = {};
+  stage.magic = kConfigStageMagic;
+  bool saved = true;
+  for (size_t i = 0; saved && i < kConfigFileCount; ++i) {
+    if (!SPIFFS.exists(kConfigFiles[i].path)) continue;
+    File source = SPIFFS.open(kConfigFiles[i].path, "r");
+    const size_t size = source ? source.size() : 0;
+    if (size == 0 || size > kMaxConfigFileBytes) {
+      snprintf(status_text, sizeof(status_text),
+               "Refused: %s cannot fit NVS staging", kConfigFiles[i].path);
+      saved = false;
+    } else {
+      uint8_t* buffer = static_cast<uint8_t*>(heap_caps_malloc(
+          size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+      saved = buffer && source.read(buffer, size) == size;
+      if (saved) {
+        stage.sizes[i] = size;
+        stage.crcs[i] = ~crc32(buffer, size);
+        saved = nvs.putBytes(kConfigFiles[i].nvs_key, buffer, size) == size
+            && verifyStagedConfigBlob(nvs, stage, i, buffer);
+      }
+      heap_caps_free(buffer);
+      if (!saved) snprintf(status_text, sizeof(status_text),
+                           "Could not stage and verify %s", kConfigFiles[i].path);
+    }
+    if (source) source.close();
+    if (saved) stage.present |= (1UL << i);
+    delay(1);
+  }
+  SPIFFS.end();
+  if (saved) {
+    saved = nvs.putBytes(kMigrationConfigKey, &stage, sizeof(stage))
+                 == sizeof(stage)
+        && nvs.putBool(kMigrationConfigPendingKey, true);
+    if (!saved) strcpy(status_text, "Could not finish NVS configuration staging");
+  }
+  if (!saved) clearConfigStageBlobs(nvs);
+  nvs.end();
+  return saved && validateStagedConfig();
+}
+
+bool restoreStagedConfig() {
+  Preferences nvs;
+  if (!nvs.begin(kMigrationNvsNamespace, false)) return true;
+  if (!nvs.getBool(kMigrationConfigPendingKey, false)) {
+    // Cleanup may have been interrupted after the restored files were
+    // committed. This does not require another SPIFFS write.
+    clearConfigStageBlobs(nvs);
+    nvs.end();
+    return true;
+  }
+  ConfigStage stage = {};
+  if (!readConfigStage(nvs, stage) || !validateStagedConfig()) {
+    nvs.end();
+    return false;
+  }
+  if (!SPIFFS.begin(false)) {
+    nvs.end();
+    strcpy(status_text, "Could not mount expanded configuration filesystem");
+    return false;
+  }
+  bool restored = true;
+  for (size_t i = 0; restored && i < kConfigFileCount; ++i) {
+    if (!(stage.present & (1UL << i))) continue;
+    const size_t size = stage.sizes[i];
+    uint8_t* buffer = static_cast<uint8_t*>(heap_caps_malloc(
+        size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    restored = buffer && verifyStagedConfigBlob(nvs, stage, i, buffer);
+    if (restored) {
+      File destination = SPIFFS.open(kConfigFiles[i].path, "w");
+      restored = destination && destination.write(buffer, size) == size;
+      if (destination) { destination.flush(); destination.close(); }
+      File verify = SPIFFS.open(kConfigFiles[i].path, "r");
+      restored = restored && verify && verify.size() == size
+          && verify.read(buffer, size) == size
+          && (~crc32(buffer, size)) == stage.crcs[i];
+      if (verify) verify.close();
+    }
+    heap_caps_free(buffer);
+    if (!restored) snprintf(status_text, sizeof(status_text),
+                            "Could not restore and verify %s", kConfigFiles[i].path);
+    delay(1);
+  }
+  SPIFFS.end();
+  if (restored) {
+    // Record the verified restore before clearing the pending marker. A lost
+    // pending flag cannot otherwise prove that saved settings survived.
+    restored = nvs.putBool(kMigrationConfigRestoredKey, true);
+    if (restored) restored = nvs.remove(kMigrationConfigPendingKey);
+    if (restored) {
+      clearConfigStageBlobs(nvs);
+    } else {
+      strcpy(status_text, "Configuration restored; NVS commit needs retry");
+    }
+  }
+  nvs.end();
+  return restored;
+}
+
+#if defined(MESHCORE_MIGRATION_RESUME_OTA) || defined(MOTA_MIGRATION_TARGET_ID)
 uint32_t readLe32(const uint8_t* bytes) {
   return static_cast<uint32_t>(bytes[0])
       | (static_cast<uint32_t>(bytes[1]) << 8)
@@ -467,6 +702,62 @@ bool validOtherLoRaFirmware(const esp_partition_t& bridge,
   return true;
 }
 
+#if defined(MOTA_MIGRATION_TARGET_ID)
+bool stageExpanderHandoff() {
+  Preferences nvs;
+  if (!nvs.begin(kMigrationNvsNamespace, false)) {
+    strcpy(status_text, "Could not open Partition Expander handoff record");
+    return false;
+  }
+  const bool saved = nvs.putUChar(kExpanderHandoffKey, 0xA5) == 1;
+  nvs.end();
+  if (!saved) strcpy(status_text, "Could not save Partition Expander handoff record");
+  return saved;
+}
+
+bool hasExpanderHandoff() {
+  Preferences nvs;
+  if (!nvs.begin(kMigrationNvsNamespace, true)) return false;
+  const bool pending = nvs.getUChar(kExpanderHandoffKey, 0) == 0xA5;
+  nvs.end();
+  return pending;
+}
+
+bool hasVerifiedConfigHandoff() {
+  Preferences nvs;
+  if (!nvs.begin(kMigrationNvsNamespace, true)) return false;
+  const bool restored = nvs.getBool(kMigrationConfigRestoredKey, false);
+  nvs.end();
+  return restored;
+}
+
+bool returnToVerifiedFull() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const esp_partition_t* other = esp_ota_get_next_update_partition(nullptr);
+  if (!running || !other || running->address == other->address) return false;
+  OtaImageIdentity bridge;
+  OtaImageIdentity full;
+  if (!readVerifiedOtaIdentity(*running, bridge)
+      || !readVerifiedOtaIdentity(*other, full)
+      || full.target_id != (uint32_t)MOTA_MIGRATION_TARGET_ID
+      || memcmp(full.hardware_id, bridge.hardware_id,
+                sizeof(full.hardware_id)) != 0
+      || containsBridgeMarker(*other, full.body_bytes)
+             != BridgeMarkerResult::Missing) return false;
+  const esp_err_t selected = esp_ota_set_boot_partition(other);
+  if (selected != ESP_OK) {
+    snprintf(status_text, sizeof(status_text),
+             "Could not return to verified Full image: %s", errName(selected));
+    return false;
+  }
+  strcpy(status_text, "Already expanded; returning to verified Full image");
+  reboot_at = millis() + 1000;
+  return true;
+}
+#endif
+
+#if defined(MESHCORE_MIGRATION_RESUME_OTA)
+
 bool stageResumeSlot(uint8_t slot) {
   Preferences migration_nvs;
   const bool opened = migration_nvs.begin(kMigrationNvsNamespace, false);
@@ -529,6 +820,7 @@ bool resumeLegacyOtaReceiver(const migration::PartitionGeometry& geometry) {
   return true;
 }
 #endif
+#endif  // MESHCORE_MIGRATION_RESUME_OTA || MOTA_MIGRATION_TARGET_ID
 
 bool publishExpandedPartitionTable(const migration::TargetPlan& plan) {
   // Preserve ESP-IDF's normal OS flash hooks.  In particular, their start/end
@@ -632,6 +924,19 @@ void runMigration() {
     return;
   }
   Serial.println("Migration: private key safely staged in NVS");
+#if !defined(MESHCORE_MIGRATION_RESUME_OTA)
+  if (!stageLegacyConfig()) {
+    Serial.println(status_text);
+    return;
+  }
+  Serial.println("Migration: ACL, radio profiles and node configuration safely staged in NVS");
+#if defined(MOTA_MIGRATION_TARGET_ID)
+  if (!stageExpanderHandoff()) {
+    Serial.println(status_text);
+    return;
+  }
+#endif
+#endif
 
   // The Wi-Fi bridge always runs from target app0. The LoRa bridge instead
   // keeps the old application in the other expanded slot, restores identity,
@@ -736,6 +1041,13 @@ void sendHome(AsyncWebServerRequest* request) {
   page += "<h2>MeshCore Wi-Fi partition migration</h2><p>";
   page += mode;
   page += "</p>";
+#if defined(MOTA_MIGRATION_TARGET_ID)
+  if (expanded_layout_ready && identity_ready) {
+    page += "<p>";
+    page += partitionExpanderStatus();
+    page += "</p>";
+  }
+#endif
   if (expanded_layout_ready && identity_ready) {
     page += "<p>The expanded partition layout is active. If the bridge could "
             "not return to a verified LoRa image, Wi-Fi recovery is available "
@@ -809,7 +1121,12 @@ void setup() {
   if (findPartitions(refs, geometry)
       && migration::isTargetLayout(flash_bytes, geometry)) {
     expanded_layout_ready = true;
-    if (restoreStagedIdentity()) {
+    if (validateStagedConfig() && restoreStagedIdentity()
+#if !defined(MESHCORE_MIGRATION_RESUME_OTA)
+        && restoreStagedConfig()
+        && verifyExpandedIdentityFile()
+#endif
+        ) {
       identity_ready = true;
       strcpy(status_text, "Expanded layout ready");
 #if defined(MESHCORE_MIGRATION_RESUME_OTA)

@@ -15,6 +15,7 @@ PROFILE = ROOT / "variants/heltec_v4/platformio.ini"
 MIGRATOR_BOARD = ROOT / "boards/heltec_v4_migrator.json"
 XIAO_PROFILE = ROOT / "variants/xiao_s3_wio/platformio.ini"
 XIAO_MIGRATOR_BOARD = ROOT / "boards/seeed_xiao_esp32s3_migrator.json"
+EXPANDER = ROOT / "examples/partition_expander/main.cpp"
 PARTITIONS = Path.home() / ".platformio/packages/framework-arduinoespressif32/tools/partitions/default_16MB.csv"
 PARTITIONS_8MB = Path.home() / ".platformio/packages/framework-arduinoespressif32/tools/partitions/default_8MB.csv"
 PARTITIONS_4MB = ROOT / "variants/dual_ota_full_4MB.csv"
@@ -55,14 +56,24 @@ class HeltecV4PartitionMigratorTest(unittest.TestCase):
         migration_body = source[source.index("void runMigration()") :]
         self.assertLess(migration_body.index("stageLegacyIdentity()"),
                         migration_body.index("copyAndVerify(*running"))
-        self.assertLess(migration_body.index("esp_ota_set_boot_partition(\n      bridge_in_app0 ? refs.app0 : refs.app1)"),
+        self.assertLess(migration_body.index("esp_ota_set_boot_partition(\n      boot_in_app0 ? refs.app0 : refs.app1)"),
+                        migration_body.index("publishExpandedPartitionTable(*plan)"))
+        self.assertLess(migration_body.index("stageLegacyConfig()"),
+                        migration_body.index("copyAndVerify(*running"))
+        self.assertLess(migration_body.index("stageExpanderHandoff()"),
                         migration_body.index("publishExpandedPartitionTable(*plan)"))
         setup_body = source[source.index("void setup()") :]
         self.assertIn("restoreStagedIdentity()", setup_body)
-        self.assertIn("resumeLegacyOtaReceiver()", setup_body)
+        self.assertIn("restoreStagedConfig()", setup_body)
+        self.assertIn("verifyExpandedIdentityFile()", setup_body)
+        self.assertIn('kMigrationConfigRestoredKey[] = "cfg-restored"', source)
+        self.assertIn("nvs.putBool(kMigrationConfigRestoredKey, true)", source)
+        self.assertIn("resumeLegacyOtaReceiver(geometry)", setup_body)
         self.assertLess(setup_body.index("restoreStagedIdentity()"),
-                        setup_body.index("resumeLegacyOtaReceiver()"))
-        self.assertIn("validLegacyOtaReceiver(*old_receiver)", migration_body)
+                        setup_body.index("restoreStagedConfig()"))
+        self.assertLess(setup_body.index("restoreStagedConfig()"),
+                        setup_body.index("resumeLegacyOtaReceiver(geometry)"))
+        self.assertIn("validOtherLoRaFirmware(*running, *old_receiver)", migration_body)
         self.assertIn("copyAndVerify(*refs.app1", migration_body)
         self.assertIn("stageResumeSlot(resume.resume_slot)", migration_body)
         self.assertIn("AsyncElegantOTA.begin(&server)", source)
@@ -73,6 +84,11 @@ class HeltecV4PartitionMigratorTest(unittest.TestCase):
         self.assertIn("esp_flash_erase_region(chip", source)
         self.assertIn("esp_flash_write(chip", source)
         self.assertNotIn("#include <esp_flash_internal.h>", source)
+        for path in ("/com_prefs", "/node_prefs", "/s_contacts",
+                     "/s_login_replay", "/radio_profiles", "/regions2",
+                     "/com_prefs.bak", "/radio_profiles.bak", "/prefs.json",
+                     "/management", "/ota_speed", "/bsec_state.bin"):
+            self.assertIn(path, source)
 
         board = MIGRATOR_BOARD.read_text(encoding="utf-8")
         self.assertIn('"-DARDUINO_USB_CDC_ON_BOOT=0"', board)
@@ -108,6 +124,19 @@ class HeltecV4PartitionMigratorTest(unittest.TestCase):
                                  for value in re.findall(r"0x([0-9A-F]{2})", block_4mb))
             self.assertEqual(0xC0, len(embedded_4mb))
             self.assertEqual(embedded_4mb, generated_4mb.read_bytes()[:len(embedded_4mb)])
+
+    def test_expander_pins_full_target_and_reboots_after_apply(self):
+        expander = EXPANDER.read_text(encoding="utf-8")
+        self.assertIn("MOTA_MIGRATION_TARGET_ID", expander)
+        self.assertIn("manifest.is_full()", expander)
+        self.assertIn("loadPrimaryRadio(profile)", expander)
+        self.assertIn("returnToVerifiedFull()", expander)
+        self.assertIn("hasExpanderHandoff()", expander)
+        self.assertIn("hasVerifiedConfigHandoff()", expander)
+        self.assertIn("ota.apply_fetched(message)", expander)
+        self.assertIn("ota_reboot_to_apply()", expander)
+        self.assertLess(expander.index("ota.apply_fetched(message)"),
+                        expander.index("ota_reboot_to_apply()"))
 
 
 if __name__ == "__main__":
