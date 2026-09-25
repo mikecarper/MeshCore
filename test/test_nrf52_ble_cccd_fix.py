@@ -53,6 +53,17 @@ class Nrf52BleCccdFixTest(unittest.TestCase):
         self.assertIn("ada_callback(&instance->_peer_address", app)
         self.assertNotIn("mesh_nrf52_service_cccd_save", app)
 
+    def test_bluefruit_begin_uses_private_unoptimized_copy(self):
+        patched = module.patched_bluefruit_source(
+            "before\n" + module.OLD_BEGIN + "\nafter\n"
+        )
+        self.assertEqual(patched.count(module.FIXED_BEGIN), 1)
+        self.assertEqual(module.patched_bluefruit_source(patched), patched)
+
+    def test_unknown_bluefruit_source_fails_closed(self):
+        with self.assertRaises(RuntimeError):
+            module.patched_bluefruit_source("changed SDK layout")
+
 
 if __name__ == "__main__":
     unittest.main()

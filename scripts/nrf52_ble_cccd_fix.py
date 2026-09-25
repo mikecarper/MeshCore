@@ -1,4 +1,4 @@
-"""Avoid Bluefruit's unstable live CCCD persistence on nRF52 Full Companions.
+"""Apply nRF52 Bluefruit fixes in private build copies of framework sources.
 
 The pinned core saves every bonded CCCD write from its callback worker into
 InternalFS. On a T1000-E Full Companion this reproducibly resets the radio as
@@ -6,6 +6,9 @@ the client enables notifications, even after formatting InternalFS. Bond-key
 persistence still works. The Companion keeps recent CCCD state in RAM across
 BLE reconnects, without a live flash write.
 Patch a private build copy; never edit PlatformIO's shared framework cache.
+With the pinned GCC 14/LTO toolchain, the optimized Bluefruit.begin() fails
+on the RAK4631 repeater: S140 rejects a valid single-peripheral role request
+with NRF_ERROR_RESOURCES. The unoptimized method starts DFU successfully.
 """
 
 from pathlib import Path
@@ -40,6 +43,11 @@ bool mesh_nrf52_restore_ram_cccd(uint16_t conn_handle,
                                   const ble_gap_addr_t* peer);
 #endif
 """
+OLD_BEGIN = "bool AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count)"
+FIXED_BEGIN = (
+    'bool __attribute__((noinline, optimize("O0"))) '
+    'AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count)'
+)
 
 
 def patched_source(source):
@@ -66,19 +74,34 @@ def patched_connection_source(source):
     )
 
 
+def patched_bluefruit_source(source):
+    source = source.replace("\r\n", "\n")
+    if FIXED_BEGIN in source and OLD_BEGIN not in source:
+        return source
+    if source.count(OLD_BEGIN) != 1:
+        raise RuntimeError(
+            "nRF52 BLE startup fix: unrecognized framework source; review before building"
+        )
+    return source.replace(OLD_BEGIN, FIXED_BEGIN)
+
+
 def replace_framework_source(build_env, node):
     source = Path(node.srcnode().get_abspath())
-    if source.name not in ("BLEGatt.cpp", "BLEConnection.cpp") or source.parent.name != "src":
+    if source.name not in ("BLEGatt.cpp", "BLEConnection.cpp", "bluefruit.cpp") or source.parent.name != "src":
         return node
     original = source.read_text(encoding="utf-8")
-    patched = (patched_source(original) if source.name == "BLEGatt.cpp"
-               else patched_connection_source(original))
+    if source.name == "BLEGatt.cpp":
+        patched = patched_source(original)
+    elif source.name == "BLEConnection.cpp":
+        patched = patched_connection_source(original)
+    else:
+        patched = patched_bluefruit_source(original)
     build_env.AppendUnique(CPPPATH=[str(source.parent)])
     destination = Path(build_env.subst("$BUILD_DIR")) / "patched-nrf52-ble" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists() or destination.read_text(encoding="utf-8") != patched:
         destination.write_text(patched, encoding="utf-8")
-    print(f"nRF52 BLE: Full Companion CCCD workaround in {source.name}")
+    print(f"nRF52 BLE: private framework fix in {source.name}")
     return build_env.File(str(destination))
 
 
@@ -86,3 +109,4 @@ if "Import" in globals():
     Import("env")
     env.AddBuildMiddleware(replace_framework_source, "*BLEGatt.cpp")
     env.AddBuildMiddleware(replace_framework_source, "*BLEConnection.cpp")
+    env.AddBuildMiddleware(replace_framework_source, "*bluefruit.cpp")
