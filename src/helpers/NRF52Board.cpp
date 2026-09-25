@@ -668,11 +668,18 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
   Bluefruit.Advertising.clearData();
   Bluefruit.ScanResponse.clearData();
 
-  // Set up and start advertising
-  // Advertising packet
-  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addTxPower();
-  Bluefruit.Advertising.addName();
+  // Bluefruit.addName() can copy bytes past the GAP name when the optimized
+  // getName() reports the buffer capacity. Advertise the board's known name
+  // directly so DFU scanners see an exact, complete local name.
+  const size_t ota_name_len = strlen(ota_name);
+  if (ota_name_len > UINT8_MAX
+      || !Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE)
+      || !Bluefruit.Advertising.addTxPower()
+      || !Bluefruit.Advertising.addData(BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME,
+                                       ota_name, (uint8_t)ota_name_len)
+      || !Bluefruit.ScanResponse.addService(bledfu)) {
+    return false;
+  }
 
   /* Start Advertising
     - Enable auto advertising if disconnected
@@ -686,7 +693,7 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
   Bluefruit.Advertising.restartOnDisconnect(true);
   Bluefruit.Advertising.setInterval(32, 244); // in unit of 0.625 ms
   Bluefruit.Advertising.setFastTimeout(30);   // number of seconds in fast mode
-  Bluefruit.Advertising.start(0);             // 0 = Don't stop advertising after n seconds
+  if (!Bluefruit.Advertising.start(0)) return false;  // 0 = advertise until stopped
 
   ota_active = true;
   format_ota_reply(reply);
