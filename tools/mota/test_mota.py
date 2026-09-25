@@ -199,7 +199,12 @@ def test_espnow_tx_power_matches_cli_callback_contract():
 
     assert "bool setTxPower(int8_t dbm);" in header
     assert "bool ESPNOWRadio::setTxPower(int8_t dbm)" in implementation
-    assert "esp_wifi_set_max_tx_power(dbm * 4) == ESP_OK" in implementation
+    setter = implementation.split(
+        "bool ESPNOWRadio::setTxPower(int8_t dbm) {", 1
+    )[1].split("\n}", 1)[0]
+    assert "esp_wifi_set_max_tx_power(dbm * 4) != ESP_OK" in setter
+    assert setter.index("return false;") < setter.index("tx_power_dbm_ = dbm;")
+    assert "return true;" in setter
 
 
 def test_flash_constrained_stm32_repeaters_pin_the_size_qualified_toolchain():
@@ -436,7 +441,7 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     assert "is_esp32_dual_cdc_companion_radio_full_target" not in replacement
 
 
-def test_single_tty_logging_off_restores_each_builds_default_mode():
+def test_single_tty_logging_off_keeps_ascii_until_explicit_mode_switch():
     root = Path(__file__).resolve().parents[2]
     companion_main = (
         root / "examples/companion_radio/main.cpp"
@@ -465,21 +470,21 @@ def test_single_tty_logging_off_restores_each_builds_default_mode():
     assert "usb_terminal_discard_line = false;" in keep_ascii
     assert "leaveUsbTerminalMode" not in keep_ascii
 
-    # A command entered on the logging terminal follows the same split: Full
-    # stays in ASCII, while a non-Full Companion returns to Binary immediately.
+    # The command's reply remains visible in the ASCII terminal on every
+    # build. Turning logging off alone must not silently switch the session
+    # to Binary before the user sees that reply or chooses an explicit token.
     command_disable = service.split(
         "the_mesh.handleTerminalCommand(usb_terminal_line);", 1
     )[1].split('usbTerminalOutput().print("> ");', 1)[0]
     assert "!mesh::isUsbLoggingEnabled()" in command_disable
     assert "usb_logging_terminal_mode = false;" in command_disable
-    assert "#if defined(COMPANION_RADIO_FULL)" in command_disable
-    assert "leaveUsbTerminalMode(true);" in command_disable
+    assert "leaveUsbTerminalMode" not in command_disable
 
     # Full Companion reaches Binary through its ordinary explicit token or
     # framed startup probe after logging is disabled.
     terminal_stop = service.split(
         "if (strcmp(usb_terminal_line, USB_TERMINAL_STOP_TOKEN) == 0) {", 1
-    )[1].split("}", 1)[0]
+    )[1]
     assert "leaveUsbTerminalMode(true);" in terminal_stop
     usb_mota_start = service.split(
         "if (strcmp(usb_terminal_line, USB_MOTA_START_TOKEN) == 0) {", 1
@@ -671,6 +676,9 @@ def test_tbeam_1w_release_hardware_fixes_are_preserved():
     board_impl = (variant_root / "TBeam1WBoard.cpp").read_text(
         encoding="utf-8"
     )
+    board_header = (variant_root / "TBeam1WBoard.h").read_text(
+        encoding="utf-8"
+    )
     wrapper = (
         root / "src/helpers/radiolib/CustomSX1262Wrapper.h"
     ).read_text(encoding="utf-8")
@@ -711,13 +719,21 @@ def test_tbeam_1w_release_hardware_fixes_are_preserved():
     assert "applyCachedTxPower(int8_t dbm) override" in wrapper
     assert "SX126X_PA_RAMP_TIME" in wrapper
 
-    # Preserve the hardware-tested battery divider and fan thermostat.
+    # Preserve the hardware-tested battery divider and the current on/off fan
+    # hysteresis with a TX cooldown. These defaults replaced the old fixed
+    # 45/41 C thermostat when the fan controls became configurable.
     assert "#define BATTERY_PIN 4" in variant
     assert "#define BATTERY_SENSE_SAMPLES 30" in variant
     assert "#define ADC_MULTIPLIER 2.9333f" in variant
-    assert "#define FAN_TEMP_ON_C 45.0f" in board_impl
-    assert "#define FAN_TEMP_OFF_C 41.0f" in board_impl
-    assert "#define FAN_MIN_RUN_TIME_MS 5000UL" in board_impl
+    assert "#define FAN_DEFAULT_LO_C 30" in variant
+    assert "#define FAN_DEFAULT_HI_C 36" in variant
+    assert "#define FAN_TX_COOLDOWN_MS 15000" in variant
+    assert "_lo_c = FAN_DEFAULT_LO_C" in board_header
+    assert "_hi_c = FAN_DEFAULT_HI_C" in board_header
+    assert "_tx_until_ms = millis() + FAN_TX_COOLDOWN_MS" in board_impl
+    assert "if (t >= (float)_hi_c) _thermal_on = true;" in board_impl
+    assert "else if (t < (float)_lo_c) _thermal_on = false;" in board_impl
+    assert "enabled = _thermal_on || tx_cooling;" in board_impl
     for role_main in (
         "examples/companion_radio/main.cpp",
         "examples/simple_repeater/main.cpp",
