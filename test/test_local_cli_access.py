@@ -77,8 +77,10 @@ struct Prefs {
   void clearDirty(){}
 };
 struct Board {
+  int power_offs=0;
   bool rebootToUf2Bootloader(){return false;}
   bool handleCommand(const char*,uint32_t,char*){return false;}
+  void powerOff(){++power_offs;}
 } board;
 struct Radio {bool setTxPower(int){return true;}} radio_driver;
 struct AdvertDataParser {static bool isValidName(const char*){return true;}};
@@ -204,6 +206,13 @@ int main() {
   node.store.success=false;
   assert(node.handleCommand("erase",0,reply));
   assert(node.resets==1 && strstr(reply,"Err"));
+  for(const char* command:{"poweroff","shutdown"}) {
+    const int previous=board.power_offs;
+    node.handleCommand(command,100,reply);
+    assert(board.power_offs==previous);
+    assert(node.handleCommand(command,0,reply));
+    assert(!strcmp(reply,"OK") && board.power_offs==previous+1);
+  }
 }
 '''
 
