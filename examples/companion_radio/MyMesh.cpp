@@ -461,6 +461,19 @@ mesh::ota::OtaContext* MyMesh::acquireOfflineQueueForOta(void* owner) {
   return mesh->offline_queue.acquire(mesh->offline_queue_len, mesh->offline_queue_head);
 }
 
+uint16_t MyMesh::drainOfflineQueueForOta(void* owner) {
+  MyMesh* mesh = static_cast<MyMesh*>(owner);
+  uint8_t discarded[MAX_FRAME_SIZE];
+  uint16_t removed = 0;
+  // Explicit OTA work borrows the upper half of this volatile queue. Keep the
+  // newest 128 frames and notify the UI for each oldest frame consumed.
+  while (mesh->offline_queue_len > 128) {
+    if (mesh->getFromOfflineQueue(discarded) <= 0) break;
+    ++removed;
+  }
+  return removed;
+}
+
 void MyMesh::releaseOfflineQueueFromOta(void* owner) {
   MyMesh* mesh = static_cast<MyMesh*>(owner);
   mesh->offline_queue.release(mesh->offline_queue_head);
@@ -469,7 +482,8 @@ void MyMesh::releaseOfflineQueueFromOta(void* owner) {
 
 void MyMesh::initializeOfflineQueue() {
 #if defined(OTA_SHARED_COMPANION_QUEUE)
-  mesh::ota::ota_set_context_storage(this, acquireOfflineQueueForOta, releaseOfflineQueueFromOta);
+  mesh::ota::ota_set_context_storage(this, acquireOfflineQueueForOta,
+                                     releaseOfflineQueueFromOta, drainOfflineQueueForOta);
 #elif defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
   if (offline_queue != offline_queue_fallback || OFFLINE_QUEUE_SIZE <= offline_queue_capacity) return;
 
@@ -2287,7 +2301,8 @@ bool MyMesh::scheduleTempRadio(float freq, float bw, uint8_t sf, uint8_t cr,
   }
 
 #if defined(OTA_SHARED_COMPANION_QUEUE)
-  if (!mesh::ota::ota_acquire_context(reply, reply_size)) return false;
+  uint16_t drained = 0;
+  if (!mesh::ota::ota_acquire_context(reply, reply_size, true, &drained)) return false;
   mesh::ota::ota_ctx().release_when_idle = false;
 #endif
   _temp_radio_freq = freq;
@@ -2301,6 +2316,13 @@ bool MyMesh::scheduleTempRadio(float freq, float bw, uint8_t sf, uint8_t cr,
   snprintf(reply, reply_size, "OK - temp params for %lu mins",
            (unsigned long)timeout_mins);
   appendRxPowerSavingAdjustmentNote(reply, reply_size, sf, bw);
+#if defined(OTA_SHARED_COMPANION_QUEUE)
+  if (drained) {
+    size_t const used = strlen(reply);
+    snprintf(reply + used, reply_size - used, "; OTA cleared %u oldest queued messages",
+             (unsigned)drained);
+  }
+#endif
   return true;
 }
 
@@ -3375,7 +3397,22 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   if (strncmp(command, "ota", 3) == 0
       && (command[3] == 0 || command[3] == ' ')) {
     char ota_reply[160] = {0};
-    if (!mesh::ota::ota_acquire_context(ota_reply, sizeof(ota_reply))) {
+    const char* action = command + 3;
+    while (*action == ' ') ++action;
+    // Only an explicit transfer, catalog search, or source attach may evict
+    // unread offline frames. Read-only OTA queries leave the queue intact.
+    bool const drain_queue = strcmp(action, "folder on") == 0
+        || strcmp(action, "ls") == 0 || strncmp(action, "ls ", 3) == 0
+        || strncmp(action, "pull ", 5) == 0
+        || strncmp(action, "get ", 4) == 0
+        || strncmp(action, "download ", 9) == 0
+        || strcmp(action, "install") == 0
+        || strcmp(action, "apply") == 0
+        || strcmp(action, "applydelta") == 0
+        || strncmp(action, "bootloader install ", 19) == 0
+        || strncmp(action, "rescue install ", 15) == 0;
+    uint16_t drained = 0;
+    if (!mesh::ota::ota_acquire_context(ota_reply, sizeof(ota_reply), drain_queue, &drained)) {
       snprintf(reply, reply_size, "%s", ota_reply);
       return true;
     }
@@ -3388,6 +3425,11 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         snprintf(ota_reply, sizeof(ota_reply), "ERR OTA settings save failed; settings unchanged");
       }
       context.config_dirty = false;
+    }
+    if (drained) {
+      size_t const used = strlen(ota_reply);
+      snprintf(ota_reply + used, sizeof(ota_reply) - used,
+               "; cleared %u oldest queued messages for OTA", (unsigned)drained);
     }
     snprintf(reply, reply_size, "%s", ota_reply);
     return true;

@@ -744,7 +744,8 @@ OtaContext* ota_context_if_active();
 // Optional role-specific policy reload; registration updates idle/active policy
 // without allocating a context. A failed load leaves the prior policy intact.
 void ota_set_context_config_loader(bool (*load)(OtaConfigState&));
-bool ota_acquire_context(char* reply, size_t cap);
+bool ota_acquire_context(char* reply, size_t cap, bool drain_queue = false,
+                         uint16_t* drained = nullptr);
 void ota_begin_context(uint32_t target, OtaSend send, void* ctx,
                        const char* hw, const uint8_t* seeder_id);
 // Identity can become available after Mesh::begin or change through key import.
@@ -766,7 +767,7 @@ uint8_t ota_hop_limit();
 // ota_ctx() is only valid while storage is held. Callers that can run before a
 // successful ota_acquire_context() must gate on ota_context_if_active() first.
 void ota_set_context_storage(void* owner, OtaContext* (*acquire)(void*),
-                             void (*release)(void*));
+                             void (*release)(void*), uint16_t (*drain)(void*) = nullptr);
 void ota_release_context_if_idle(bool temporary_radio_active);
 
 // Loop helper for roles whose LoRa OTA only runs under the temporary radio

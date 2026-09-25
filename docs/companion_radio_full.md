@@ -361,6 +361,11 @@ Every corrected nRF52 Full profile keeps **256 offline frames normally** and
 temporarily lends 128 slots to mOTA to leave room for
 Bluetooth tasks, displays and UI allocations. Queue sharing preserves the
 board's contacts, channels, and USB/Bluetooth mOTA sending. See the [memory correction](releases/1.17.1.5.md#t096-full-companion-bluetooth-and-menu-freeze-report).
+If an explicit OTA source, discovery, download, install, or temporary-radio
+request needs that workspace while more than 128 unread frames are queued, the
+oldest volatile frames are consumed until 128 remain. The command reports the
+number removed. Read-only OTA status queries do not remove messages. Sync the
+queue to an app before starting OTA when those unread messages matter.
 
 The nRF52 target inherits the board's ordinary USB Companion installation
 format and adds BLE plus the serial mOTA source. It does not enable an SD cache

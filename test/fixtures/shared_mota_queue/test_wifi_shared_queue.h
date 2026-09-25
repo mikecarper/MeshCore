@@ -67,7 +67,7 @@ static void test_wifi_shared_queue(Queue& q, CheckMessages check_messages) {
   q.count = 129;
   Frame& extra = q.buffer.at((q.head + 128) % 256);
   extra.len = 176;
-  memset(extra.buf, 128, sizeof extra.buf);
+  memset(extra.buf, 129, sizeof extra.buf);
   auto refused = connect_host();
   WiFiOtaSeeder::loop();
   assert(!refused->connected && refused->requests == 0);

@@ -17,6 +17,7 @@ OtaContext* active_context = nullptr;
 void* storage_owner = nullptr;
 OtaContext* (*acquire_storage)(void*) = nullptr;
 void (*release_storage)(void*) = nullptr;
+uint16_t (*drain_storage)(void*) = nullptr;
 OtaSend saved_send = nullptr;
 void* saved_send_ctx = nullptr;
 uint32_t saved_target = 0;
@@ -50,11 +51,12 @@ void releaseHeapContext(void*) {
 }
 
 void ota_set_context_storage(void* owner, OtaContext* (*acquire)(void*),
-                             void (*release)(void*)) {
+                             void (*release)(void*), uint16_t (*drain)(void*)) {
   assert(!active_context);
   storage_owner = owner;
   acquire_storage = acquire;
   release_storage = release;
+  drain_storage = drain;
 }
 
 OtaContext& ota_ctx() {
@@ -80,7 +82,8 @@ void ota_refresh_seeder_identity(const uint8_t* seeder_id) {
   if (active_context) active_context->manager.set_seeder_id(seeder_id);
 }
 
-bool ota_acquire_context(char* reply, size_t cap) {
+bool ota_acquire_context(char* reply, size_t cap, bool drain_queue, uint16_t* drained) {
+  if (drained) *drained = 0;
   if (active_context) return true;
 #if defined(OTA_HEAP_CONTEXT)
   if (!acquire_storage) {   // no owner registered one: fall back to the heap
@@ -93,6 +96,11 @@ bool ota_acquire_context(char* reply, size_t cap) {
     return false;
   }
   active_context = acquire_storage(storage_owner);
+  if (!active_context && drain_queue && drain_storage) {
+    uint16_t const count = drain_storage(storage_owner);
+    if (drained) *drained = count;
+    active_context = acquire_storage(storage_owner);
+  }
   if (!active_context) {
     if (reply && cap) snprintf(reply, cap,
 #if defined(OTA_HEAP_CONTEXT)
@@ -153,7 +161,10 @@ OtaContext& ota_ctx() {
 }
 
 OtaContext* ota_context_if_active() { return &ota_ctx(); }
-bool ota_acquire_context(char*, size_t) { return true; }
+bool ota_acquire_context(char*, size_t, bool, uint16_t* drained) {
+  if (drained) *drained = 0;
+  return true;
+}
 void ota_begin_context(uint32_t target, OtaSend send, void* ctx,
                        const char* hw, const uint8_t* seeder_id) {
   ota_ctx().begin(target, send, ctx, hw);

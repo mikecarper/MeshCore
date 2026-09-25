@@ -25,6 +25,16 @@ struct Queue {
     Queue& q = *static_cast<Queue*>(owner);
     return q.buffer.acquire(q.count, q.head);
   }
+  static uint16_t drain(void* owner) {
+    Queue& q = *static_cast<Queue*>(owner);
+    uint16_t removed = 0;
+    while (q.count > 128) {
+      q.head = (q.head + 1) % q.buffer.capacity();
+      --q.count;
+      ++removed;
+    }
+    return removed;
+  }
   static void release(void* owner) {
     Queue& q = *static_cast<Queue*>(owner);
     q.buffer.release(q.head);
@@ -119,6 +129,7 @@ static void transfer(OtaContext& context, void* reply_route) {
 
 int main() {
   Queue q;
+  unsigned first_retained = 0;
   for (int i = 0; i < q.count; ++i) {
     Frame& frame = q.buffer.at((q.head + i) % q.buffer.capacity());
     frame.len = 176;
@@ -128,13 +139,13 @@ int main() {
     for (int i = 0; i < q.count; ++i) {
       const Frame& frame = q.buffer.at((q.head + i) % q.buffer.capacity());
       assert(frame.len == 176);
-      for (auto byte : frame.buf) assert(byte == i);
+      for (auto byte : frame.buf) assert(byte == i + first_retained);
     }
   };
   char reply[160] = {};
   assert(!ota_acquire_context(reply, sizeof reply));
   assert(strstr(reply, "not ready"));
-  ota_set_context_storage(&q, Queue::acquire, Queue::release);
+  ota_set_context_storage(&q, Queue::acquire, Queue::release, Queue::drain);
   uint8_t identity[4] = {1, 2, 3, 4};
   ota_begin_context(0, send, nullptr, "Heltec_t096", identity);
   assert(!ota_context_if_active() && q.buffer.capacity() == 256);
@@ -143,7 +154,11 @@ int main() {
   assert(strstr(reply, "sync unread messages"));
   assert(q.head == 191 && q.count == 129 && q.buffer.capacity() == 256);
   check_messages();
-  --q.count;
+  uint16_t drained = 0;
+  assert(ota_acquire_context(reply, sizeof reply, true, &drained));
+  assert(drained == 1 && q.count == 128 && q.head == 0);
+  first_retained = 1;
+  check_messages();
 
   for (unsigned cycle = 0; cycle < 8; ++cycle) {
     assert(ota_acquire_context(reply, sizeof reply));
@@ -249,4 +264,25 @@ int main() {
   assert(!ota_context_if_active() && q.buffer.capacity() == 256);
   check_messages();
 #endif
+
+  Queue full;
+  full.count = 256;
+  for (int i = 0; i < full.count; ++i) {
+    Frame& frame = full.buffer.at((full.head + i) % full.buffer.capacity());
+    frame.len = 176;
+    memset(frame.buf, i, sizeof frame.buf);
+  }
+  ota_set_context_storage(&full, Queue::acquire, Queue::release, Queue::drain);
+  ota_begin_context(0, send, nullptr, "Heltec_t096", identity);
+  assert(!ota_acquire_context(reply, sizeof reply));
+  drained = 0;
+  assert(ota_acquire_context(reply, sizeof reply, true, &drained));
+  assert(drained == 128 && full.count == 128 && full.head == 0);
+  for (int i = 0; i < full.count; ++i) {
+    const Frame& frame = full.buffer.at(i);
+    assert(frame.len == 176);
+    for (auto byte : frame.buf) assert(byte == i + 128);
+  }
+  ota_release_context_if_idle(false);
+  assert(!ota_context_if_active() && full.buffer.capacity() == 256);
 }

@@ -646,6 +646,7 @@ private:
   static_assert(OFFLINE_QUEUE_SIZE == 256, "Shared mOTA queue requires 256 normal slots");
   mesh::BorrowableFrameBuffer<Frame, OFFLINE_QUEUE_SIZE, 128, mesh::ota::OtaContext> offline_queue;
   static mesh::ota::OtaContext* acquireOfflineQueueForOta(void* owner);
+  static uint16_t drainOfflineQueueForOta(void* owner);
   static void releaseOfflineQueueFromOta(void* owner);
 #elif defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
   enum {

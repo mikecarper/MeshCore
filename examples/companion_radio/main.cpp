@@ -329,7 +329,8 @@ public:
       return false;
     }
 
-    if (!mesh::ota::ota_acquire_context(reply, reply_size)) return false;
+    uint16_t drained = 0;
+    if (!mesh::ota::ota_acquire_context(reply, reply_size, true, &drained)) return false;
     mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
     if (context.folder_active
         && context.folderLink() != mesh::ota::OtaContext::FOLDER_LINK_BLE) {
@@ -346,6 +347,12 @@ public:
             reply, reply_size)) {
       bluetooth_interface.setMotaStreamActive(false);
       return false;
+    }
+
+    if (drained) {
+      size_t const used = strlen(reply);
+      snprintf(reply + used, reply_size - used,
+               "; cleared %u oldest queued messages for OTA", (unsigned)drained);
     }
 
     context.manager.announce();

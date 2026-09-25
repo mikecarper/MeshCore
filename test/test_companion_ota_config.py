@@ -47,7 +47,11 @@ struct OtaContext {
 };
 static OtaContext context;
 static bool acquire_ok=true;
-static bool ota_acquire_context(char* reply, size_t cap) {
+static bool drain_requested=false;
+static bool ota_acquire_context(char* reply, size_t cap, bool drain=false,
+                                uint16_t* drained=nullptr) {
+  drain_requested=drain;
+  if (drained) *drained=0;
   if (!acquire_ok) snprintf(reply, cap, "ERR unavailable");
   return acquire_ok;
 }
@@ -62,6 +66,10 @@ static bool config(const char* rest, char* reply, OtaContext& c) {
   return true;
 }
 static bool handle_ota_command(const char* command, char* reply, int) {
+  if (!strcmp(command, "ota folder on")) {
+    strcpy(reply, "OK folder attached");
+    return true;
+  }
   if (!strcmp(command, "ota key add test-key")) {
     uint8_t key[32]={93};
     context.allow.add(key); context.config_dirty=true;
@@ -114,7 +122,10 @@ int main() {
     assert(!context.config_dirty);
   };
   reboot(fs);
+  command("ota folder on", "OK folder attached");
+  assert(drain_requested);
   command("ota config", "ota config: speed=1x packet=0.5x");
+  assert(!drain_requested);
   for (const auto* setting : {"hops", "checkpoint", "advert"}) {
     const auto before=OtaConfigState::capture(context);
     for (const auto* bad : {"", " ", "x", "-1", "1x", "1 2", "1.0", "4294967296", "9999999999999999999999"}) {
