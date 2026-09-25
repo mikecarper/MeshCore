@@ -334,6 +334,14 @@ occupied. See the
 [nRF52 QSPI guide](ota_nrf52_qspi.md#one-w25q16-wiring-for-rak4631-or-rak3401--rak13302)
 before installing either image.
 
+For a build that uses only the 2.54 mm headers, use the unified
+`RAK_4631_repeater_unified_lora_ota` or
+`RAK_3401_repeater_unified_lora_ota` image with its matching adaptive
+OTAFIX 2.4.8 bootloader. Wire `CLK` to J10 `TX1`, `DO` to J10 `RX1`, `DI` to
+J11 `IO1`, and `CS` to J11 `AIN1`; keep the `CS` pull-up and J12 power wiring.
+This gives up UART1 GPS/PPS but leaves I2C sensors and the RAK3401 radio
+available. See the [header-only wiring table](ota_nrf52_qspi.md#header-only-w25q16-wiring-for-the-unified-rak-images).
+
 ### 4. Build and check the in-place delta
 
 ```bash

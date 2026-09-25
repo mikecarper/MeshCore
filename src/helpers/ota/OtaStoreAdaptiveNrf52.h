@@ -50,6 +50,12 @@ class OtaStoreAdaptiveNrf52 : public OtaStore {
     }
     const bool qspi_bootloader = caps.present &&
         (caps.storage_flags & OTA_BL_STORAGE_QSPI) != 0;
+    if (detected == 2u && OtaStoreQspiNrf52::headerW25Detected() &&
+        (caps.storage_flags & OTA_BL_STORAGE_HEADER_W25) == 0) {
+      activateInternal();
+      _reason = "header W25 needs newer OTAFIX bootloader";
+      return;
+    }
     OtaBootloaderIdentity identity;
     const bool identity_valid = qspi_bootloader &&
         ota_installed_bootloader_identity(identity) && identity.crc_ok;
@@ -69,7 +75,8 @@ class OtaStoreAdaptiveNrf52 : public OtaStore {
     }
     if (choice == RakStorageChoice::Qspi) {
       activateExternal();
-      _reason = detected == 1u ? "RAK15001 C" : "W25Q16";
+      _reason = detected == 1u ? "RAK15001 C" :
+                OtaStoreQspiNrf52::headerW25Detected() ? "W25Q16 header" : "W25Q16 SPI";
       return;
     }
     _mode = UNSAFE;

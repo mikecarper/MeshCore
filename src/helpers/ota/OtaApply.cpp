@@ -1197,6 +1197,11 @@ bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow
   if (!ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", false, st, msg)) {
     return false;
   }
+#if defined(OTA_RAK_AUTO_STORE)
+  if (OtaStoreQspiNrf52::headerW25Detected()) {
+    g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_HEADER_W25;
+  }
+#endif
 #if defined(OTA_RAK_AUTO_STORE) && !defined(RAK_3401)
   if (store.jedec_id() == 0xC84015UL) {
     OtaBootloaderIdentity identity;

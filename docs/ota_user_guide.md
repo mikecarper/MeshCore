@@ -104,6 +104,11 @@ power the flash from VBAT. The three SPI signals require underside pads or an
 IO-connector interposer; the easy J10/J11/J12 headers do not expose them. The
 flash consumes no WisBlock slot, so a supported GPS can remain in slot A.
 
+The unified RAK repeater images additionally support a header-only W25Q16
+layout, using J10 `TX1`/`RX1` and J11 `IO1`/`AIN1`. This layout needs the
+matching adaptive OTAFIX 2.4.8 bootloader and gives up UART1 GPS/PPS; I2C
+sensors remain available. See the [pin table](ota_nrf52_qspi.md#header-only-w25q16-wiring-for-the-unified-rak-images).
+
 The ordinary full-sensor `RAK_4631_repeater` image remains too large for the
 safe internal in-place update limit. Without external flash, use
 `RAK_4631_repeater_lora_ota_no_external_sensors`; it trims selected optional

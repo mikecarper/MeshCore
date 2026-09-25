@@ -2,6 +2,9 @@
 #include "I2CAddressClaimPolicy.h"
 #include "EnvironmentI2CConfig.h"
 #include "NmeaSentenceProbe.h"
+#if defined(OTA_RAK_AUTO_STORE) && defined(RAK_BOARD)
+#include "../ota/OtaStoreQspiNrf52.h"
+#endif
 
 #include <Wire.h>
 
@@ -1226,6 +1229,18 @@ void EnvironmentSensorManager::initBasicGPS() {
 // or make a new location provider ...
 #ifdef RAK_WISBLOCK_GPS
 void EnvironmentSensorManager::rakGPSInit() {
+#if defined(OTA_RAK_AUTO_STORE) && defined(RAK_BOARD)
+  // The 2.54 mm header W25Q16 uses the UART1 and PPS pads. Probe before
+  // starting GPS discovery so UART1 never drives a NOR data/clock wire.
+  if (mesh::ota::OtaStoreQspiNrf52::headerW25Detected()) {
+    gps_active = false;
+    gps_detected = false;
+    gps_serial_transport = false;
+    i2cGPSFlag = false;
+    serialGPSFlag = false;
+    return;
+  }
+#endif
   // Preserve the established owner across repeated begin() calls. Clearing
   // this flag and starting Serial1 here would silently take UART1 back from an
   // active bridge.

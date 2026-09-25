@@ -47,8 +47,8 @@ void initVariant()
   ledOff(PIN_LED2);;
 
 #if defined(OTA_RAK_AUTO_STORE)
-  // Both candidates share SCK/MOSI/MISO. Hold both chip selects high until
-  // the exact JEDEC probe chooses one; W25Q16 also needs its reset pull-up.
+  // Keep both chip selects high through startup. RAK15001 and native W25Q16
+  // use the WisBlock SPI bus; a header W25Q16 uses TX1/RX1/IO1 instead.
   pinMode(26, OUTPUT);
   digitalWrite(26, HIGH);
   pinMode(31, OUTPUT);

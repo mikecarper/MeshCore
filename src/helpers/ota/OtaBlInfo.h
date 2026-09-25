@@ -84,7 +84,8 @@ static const uint8_t OTA_BL_STORAGE_SD            = 0x01;
 static const uint8_t OTA_BL_STORAGE_STAGE_CEILING = 0x02;
 static const uint8_t OTA_BL_STORAGE_QSPI          = 0x04;
 static const uint8_t OTA_BL_STORAGE_BOOT_UPDATE    = 0x08;
-static const uint8_t OTA_BL_STORAGE_KNOWN          = 0x0F;
+static const uint8_t OTA_BL_STORAGE_HEADER_W25     = 0x10;
+static const uint8_t OTA_BL_STORAGE_KNOWN          = 0x1F;
 static const uint8_t OTA_BL_PROFILE_SD_BOOT_UPDATE =
     OTA_BL_STORAGE_SD | OTA_BL_STORAGE_BOOT_UPDATE;
 static const uint8_t OTA_BL_PROFILE_INTERNAL_BOOT_UPDATE =

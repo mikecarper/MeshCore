@@ -56,6 +56,7 @@ static const uint8_t  GPREGRET2_OTA_STAGE_LEGACY   = 0xD4u;
 static const uint8_t  GPREGRET2_OTA_STAGE_EXPANDED = 0xEDu;
 static const uint8_t  GPREGRET2_OTA_STAGE_QSPI     = 0x51u;
 static const uint8_t  GPREGRET2_OTA_STAGE_RAK15001 = 0x52u;
+static const uint8_t  GPREGRET2_OTA_STAGE_HEADER_W25 = 0x54u;
 static const uint8_t  GPREGRET2_OTA_STAGE_SD       = 0x53u;
 static const uint8_t  GPREGRET2_OTA_STAGE_HYBRID   = 0xA6u;
 

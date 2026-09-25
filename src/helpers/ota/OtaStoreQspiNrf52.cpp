@@ -25,6 +25,12 @@ static uint32_t auto_jedec_id = 0;
 static uint8_t auto_detection = 0xFF;
 static uint32_t auto_rak_probe_id = 0;
 static uint32_t auto_w25_probe_id = 0;
+// The header-connected W25Q16 uses J10 TX1/RX1 and J11 IO1/AIN1. It is
+// mutually exclusive with GPS on this board but leaves both I2C pins free.
+static bool auto_header_w25 = false;
+static const uint8_t HEADER_SCK_PIN = 16; // J10 TX1, P0.16
+static const uint8_t HEADER_IO0_PIN = 17; // J11 IO1, P0.17, W25 DI
+static const uint8_t HEADER_IO1_PIN = 15; // J10 RX1, P0.15, W25 DO
 #endif
 
 #if defined(OTA_QSPI_SCK_PHYSICAL_PIN) && defined(OTA_QSPI_SCK_ARDUINO_PIN)
@@ -100,6 +106,9 @@ static uint8_t arduino_to_physical(uint32_t arduino_pin) {
 }
 
 static uint8_t qspi_sck_pin() {
+#if defined(OTA_RAK_AUTO_STORE)
+  if (auto_header_w25) return arduino_to_physical(HEADER_SCK_PIN);
+#endif
 #ifdef OTA_QSPI_SCK_PHYSICAL_PIN
   return OTA_QSPI_SCK_PHYSICAL_PIN;
 #else
@@ -120,6 +129,9 @@ static uint8_t qspi_cs_pin() {
 }
 
 static uint8_t qspi_io0_pin() {
+#if defined(OTA_RAK_AUTO_STORE)
+  if (auto_header_w25) return arduino_to_physical(HEADER_IO0_PIN);
+#endif
 #ifdef OTA_QSPI_IO0_PHYSICAL_PIN
   return OTA_QSPI_IO0_PHYSICAL_PIN;
 #else
@@ -128,6 +140,9 @@ static uint8_t qspi_io0_pin() {
 }
 
 static uint8_t qspi_io1_pin() {
+#if defined(OTA_RAK_AUTO_STORE)
+  if (auto_header_w25) return arduino_to_physical(HEADER_IO1_PIN);
+#endif
 #ifdef OTA_QSPI_IO1_PHYSICAL_PIN
   return OTA_QSPI_IO1_PHYSICAL_PIN;
 #else
@@ -320,18 +335,34 @@ uint8_t OtaStoreQspiNrf52::autoDetect() {
   pinMode(P_LORA_NSS, OUTPUT);
   digitalWrite(P_LORA_NSS, HIGH);
   SPI1.end();
-  const uint32_t w25_id = probe_nor(w25_cs);
-  auto_w25_probe_id = w25_id;
+  uint32_t w25_id = probe_nor(w25_cs);
   SPI1.begin();
-  auto_detection = w25_id == 0xEF4015UL ? 2u : 0u;
 #else
   const uint8_t rak_cs = arduino_to_physical(26);
   nrf_gpio_pin_set(rak_cs);
   nrf_gpio_cfg_output(rak_cs);
   const uint32_t rak_id = probe_nor(rak_cs);
-  const uint32_t w25_id = probe_nor(w25_cs);
+  uint32_t w25_id = probe_nor(w25_cs);
   auto_rak_probe_id = rak_id;
+#endif
+  if (w25_id != 0xEF4015UL) {
+    // GPS discovery calls this one-time probe before it starts UART1. Ending
+    // an unopened Adafruit UART can block indefinitely, so leave it alone.
+    auto_header_w25 = true;
+    const uint32_t header_id = probe_nor(w25_cs);
+    if (header_id == 0xEF4015UL) {
+      w25_id = header_id;
+    } else {
+      auto_header_w25 = false;
+      nrf_gpio_cfg_default(arduino_to_physical(HEADER_SCK_PIN));
+      nrf_gpio_cfg_default(arduino_to_physical(HEADER_IO0_PIN));
+      nrf_gpio_cfg_default(arduino_to_physical(HEADER_IO1_PIN));
+    }
+  }
   auto_w25_probe_id = w25_id;
+#if defined(RAK_3401)
+  auto_detection = w25_id == 0xEF4015UL ? 2u : 0u;
+#else
   const bool rak = rak_id == 0xC84015UL;
   const bool w25 = w25_id == 0xEF4015UL;
   auto_detection = rak && w25 ? 3u : rak ? 1u : w25 ? 2u : 0u;
@@ -344,6 +375,11 @@ uint8_t OtaStoreQspiNrf52::autoDetect() {
     auto_jedec_id = 0xEF4015UL;
   }
   return auto_detection;
+}
+
+bool OtaStoreQspiNrf52::headerW25Detected() {
+  autoDetect();
+  return auto_header_w25;
 }
 
 void OtaStoreQspiNrf52::autoProbeIds(uint32_t& rak15001, uint32_t& w25q16) {
