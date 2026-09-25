@@ -1,0 +1,34 @@
+{
+  "devices": {
+    "9352162A72082314": {
+      "board": "Heltec MeshTower V2 SD",
+      "bootloader_prefixes": ["heltec_mesh_tower_v2_sdcard"],
+      "firmware_prefixes": ["heltec_tower_v2"]
+    },
+    "651F8E496197F882": {
+      "board": "Heltec T096",
+      "bootloader_prefixes": ["heltec_t096"],
+      "firmware_prefixes": ["heltec_t096"]
+    },
+    "34A9141999729D5D": {
+      "board": "Seeed T1000-E",
+      "bootloader_prefixes": ["t1000_e"],
+      "firmware_prefixes": ["t1000e", "seeed_t1000_e"]
+    },
+    "0B81C9C68D8D01B4": {
+      "board": "RAK3401",
+      "bootloader_prefixes": ["wiscore_rak3401_auto"],
+      "firmware_prefixes": ["rak_3401"]
+    },
+    "9AB3B64C641BA927": {
+      "board": "RAK4631",
+      "bootloader_prefixes": ["wiscore_rak4631_auto"],
+      "firmware_prefixes": ["rak_4631"]
+    },
+    "93DA83ADF7B2092B": {
+      "board": "Heltec MeshPocket",
+      "bootloader_prefixes": ["heltec_mesh_pocket"],
+      "firmware_prefixes": ["mesh_pocket"]
+    }
+  }
+}
