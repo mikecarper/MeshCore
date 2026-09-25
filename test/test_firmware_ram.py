@@ -66,6 +66,12 @@ def esp_fixture(path, modern=False, fragmented=False):
 
 
 class FirmwareRamTest(unittest.TestCase):
+    def test_sh1107_framebuffer_is_budgeted(self):
+        policy = ram.requirements("NRF52_PLATFORM", {
+            "DISPLAY_CLASS": "SH1107Display",
+        }, "muzi_base_uno_superIO_companion_radio_ble")
+        self.assertEqual(policy["components"]["display_pixels_and_driver"], 4096)
+
     def test_heap_tables_and_ota_remain_in_runtime_budget(self):
         policy = ram.requirements("ESP32_PLATFORM", {
             "ENABLE_OTA": 1, "OTA_HEAP_CONTEXT": 1,

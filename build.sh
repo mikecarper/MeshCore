@@ -5086,7 +5086,7 @@ is_redundant_bulk_build_target() {
   # Bench fixtures and migration utilities use their dedicated PlatformIO
   # recipes; they are not node firmware for the release/OTA packaging matrix.
   case "${1,,}" in
-    profile_switch_*|*_partition_migrator|*_partition_migrator_test_*|*_partition_legacy_seed|*_sim)
+    profile_switch_*|*partition_migrator*|*partition_expander*|*_partition_legacy_seed|*_sim)
       return 0
       ;;
   esac

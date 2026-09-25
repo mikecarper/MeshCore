@@ -26,6 +26,7 @@ DISPLAY_HEAP = {
     "": 0, "NullDisplayDriver": 0,
     "ST7735Display": 25602,
     "SSD1306Display": 4096, "SH1106Display": 4096, "U8g2Display": 4096,
+    "SH1107Display": 4096,
     # These drivers render directly or embed their pixel storage in globals.
     "ST7789Display": 0, "ST7789LCDDisplay": 0, "NV3001BDisplay": 0,
     "GxEPDDisplay": 0, "E213Display": 8192, "E290Display": 8192,

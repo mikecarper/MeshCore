@@ -14,6 +14,10 @@ fail() {
 
 for utility in profile_switch_t096_sx1262 xiao_s3_partition_migrator \
     heltec_v4_partition_migrator_test_hold xiao_s3_partition_legacy_seed \
+    esp32_4mb_partition_migrator_lora \
+    heltec_v4_partition_migrator_lora_repeater \
+    heltec_v4_partition_migrator_lora_repeater_lora_ota_no_external_sensors \
+    Xiao_S3_WIO_partition_expander \
     Heltec_v3_repeater_observer_mqtt_sim; do
   is_redundant_bulk_build_target "$utility" \
     || fail "release matrix includes development utility $utility"

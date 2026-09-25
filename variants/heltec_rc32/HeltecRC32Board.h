@@ -20,6 +20,7 @@ public:
 
   void begin();
   void onBootComplete() override;
+  void powerOff() override;
   void onBeforeTransmit() override;
   void onAfterTransmit() override;
   uint16_t getBattMilliVolts() override;
