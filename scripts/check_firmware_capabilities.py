@@ -34,7 +34,7 @@ def nrf52_lora_details(application):
     if layout.auto_store:
         notes.append("One application detects RAK external NOR and chooses QSPI only with the exact matching OTAFIX bootloader; otherwise it uses internal flash where safe.")
         notes.append("External QSPI accepts full images and in-place deltas; internal flash accepts in-place deltas only and needs the retained-RAM OTAFIX profile.")
-        notes.append("The merged RAK OTAFIX bootloader is a local 2.4.8.1 preview; install the exact RAK core package by serial/BLE DFU or SWD. Bootloader self-update is unavailable in this merged profile.")
+        notes.append("The merged RAK OTAFIX bootloader is a local 2.4.8 build; install the exact RAK core package by serial/BLE DFU or SWD. Bootloader self-update is unavailable in this merged profile.")
     elif layout.hybrid_ram:
         notes.append("Requires OTAFIX 2.4.6 retained-RAM handoff support; a transfer cannot resume after the receiver restarts.")
     elif layout.external_backed:
