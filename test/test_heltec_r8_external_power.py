@@ -39,6 +39,7 @@ public:
   virtual void onBeforeTransmit() {}
   virtual void onAfterTransmit() {}
   virtual void powerOff() {}
+  virtual void shutdownPeripherals() {}
   virtual bool setLoRaFemLnaEnabled(bool) { return false; }
   virtual bool canControlLoRaFemLna() const { return false; }
   virtual bool isLoRaFemLnaEnabled() const { return false; }
