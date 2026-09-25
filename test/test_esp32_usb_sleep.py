@@ -255,9 +255,18 @@ class Esp32UsbSleepTest(unittest.TestCase):
 
     def test_g3_enables_gesture_polling_after_gpio_wake(self):
         profile = (ROOT / "variants/station_g3_esp32/platformio.ini").read_text()
-        base = profile.split("[Station_G3_ESP32]", 1)[1].split("\n[", 1)[0]
-        self.assertIn("-D MOMENTARY_BUTTON_WAKE_FROM_SLEEP=1", base)
-        self.assertIn("-D MOMENTARY_BUTTON_WAKE_HOLD_MS=120000UL", base)
+        def section(name):
+            header = f"\n[{name}]\n"
+            self.assertIn(header, profile)
+            return profile.split(header, 1)[1].split("\n[", 1)[0]
+
+        common = section("Station_G3_ESP32_common")
+        self.assertIn("-D MOMENTARY_BUTTON_WAKE_FROM_SLEEP=1", common)
+        self.assertIn("-D MOMENTARY_BUTTON_WAKE_HOLD_MS=120000UL", common)
+        for slot in ("Station_G3_ESP32", "Station_G3_ESP32_r2"):
+            selected = section(slot)
+            self.assertIn("extends = Station_G3_ESP32_common", selected)
+            self.assertIn("${Station_G3_ESP32_common.build_flags}", selected)
         for role in ("simple_repeater", "simple_room_server", "companion_radio"):
             main = (ROOT / f"examples/{role}/main.cpp").read_text()
             guard = main.split("#if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", 1)[1]
