@@ -37,6 +37,7 @@
     repeater: "Repeater",
     room: "Room Server",
     sensor: "Sensor / telemetry",
+    "partition-expander": "Partition Expander",
     terminal: "Terminal Chat",
     kiss: "KISS modem",
     other: "Other",
@@ -265,6 +266,10 @@
         pattern: /_sensor(?=$|[_-])/i,
       },
       {
+        role: "partition-expander",
+        pattern: /_partition_expander(?=$|[_-])/i,
+      },
+      {
         role: "terminal",
         pattern: /_terminal_chat(?=$|[_-])/i,
       },
@@ -365,7 +370,8 @@
       (parts.role === "companion" && mode === "full")
       ? "full"
       : "standard";
-    const explicitOta = lowerTarget.includes("lora_ota")
+    const explicitOta = parts.role === "partition-expander" ||
+      lowerTarget.includes("lora_ota")
       ? "lora-receiver"
       : parts.role === "companion" && mode === "full"
         ? "lora-source"
@@ -979,7 +985,8 @@
   }
 
   function optionSort(field, a, b) {
-    const roleOrder = ["companion", "repeater", "room", "sensor", "terminal", "kiss", "other"];
+    const roleOrder = ["companion", "repeater", "room", "sensor",
+      "partition-expander", "terminal", "kiss", "other"];
     const loggingOrder = ["none", "usb", "wifi", "both"];
     const otaOrder = ["none", "lora-receiver", "lora-source"];
     const featureOrder = ["standard", "full"];
@@ -1025,6 +1032,15 @@
       "Verify that the hardware name and every displayed variant match the physical board.",
       "Back up configuration, keys, and radio settings before changing roles or profiles.",
     ];
+    if (profile.role === "partition-expander") {
+      return common.concat(
+        kind === "zip"
+          ? ["This ZIP is a staged ESP32 partition-migration package, not an nRF52 Serial DFU package. Follow its included README for the existing Wi-Fi or LoRa update route."]
+          : ["Install this temporary bridge only through the existing OTA route documented for this exact board and source layout; do not flash it as permanent node firmware."],
+        ["Keep power stable while the partition table changes. Confirm that private identity restoration succeeded before transferring the exact Full application over LoRa or Wi-Fi.",
+          "The Partition Expander is a temporary update receiver, not a repeater, client, or sensor firmware."]
+      );
+    }
     const memory = profile.controls;
     const selectedAsset = canonicalAsset(profile.files, kind);
     if (memory && memory.memoryNote && memory.memorySource &&

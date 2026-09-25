@@ -758,7 +758,7 @@
   <span class="md-ellipsis">
     
   
-    ESP32 legacy-partition migration over Wi-Fi
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
   
 
     
@@ -2908,20 +2908,27 @@
 
 <h1 id="heltec-v4-legacy-partition-migration-over-wi-fi">Heltec V4 legacy-partition migration over Wi-Fi</h1>
 <p>Heltec V4/V4.3 OLED repeaters with their normal 16 MiB flash use the shared
-<a href="../esp32_wifi_partition_migration/">ESP32 Wi-Fi partition migration</a> bridge.
+<a href="../esp32_wifi_partition_migration/">ESP32 partition migration</a> bridge.
 It changes Arduino's old <code>default.csv</code> layout, with two 1.25 MiB OTA slots,
 to <code>default_16MB.csv</code>, with two 6.25 MiB OTA slots.</p>
-<p>Build the bridge application image:</p>
-<pre><code class="language-powershell">&amp; &quot;$env:USERPROFILE\.platformio\penv\Scripts\pio.exe&quot; run -e heltec_v4_partition_migrator
+<p>Build the complete V4 package with the repeatable ESP32 recipe in WSL/Linux:</p>
+<pre><code class="language-bash">python3 -B scripts/build_esp32_partition_migration.py \
+  --board heltec-v4 --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
 </code></pre>
-<p>Upload <code>.pio/build/heltec_v4_partition_migrator/firmware.bin</code> through the
+<p>The ZIP contains the Wi-Fi bridge, LoRa bridge, and exact-target Full image.
+Upload its <code>wifi-bridge.bin</code> through the
 legacy browser Wi-Fi updater. Rejoin <code>MeshCore-Migrate</code> with password
 <code>meshcore-migrate</code>; when it reports <strong>Expanded layout ready</strong>, upload the
-app-only Full V4 repeater image at <code>/update</code>.</p>
+ZIP's <code>full-application.bin</code> at <code>/update</code>.</p>
 <p>Do not use an <code>-merged.bin</code> in either browser uploader. Merged images contain
 bootloader and table offsets for cable flashing. The bridge preserves the
 private identity; other SPIFFS-backed settings may be recreated after the
 Full image starts.</p>
+<p>For an existing <code>heltec_v4_repeater</code> that already supports LoRa mOTA, use the
+separate LoRa migration package described in the shared guide. It preserves
+the old repeater across the partition change so the full image can also be
+installed over LoRa without reaching the board's Wi-Fi network.</p>
 
 
 

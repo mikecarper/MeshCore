@@ -758,7 +758,7 @@
   <span class="md-ellipsis">
     
   
-    ESP32 legacy-partition migration over Wi-Fi
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
   
 
     
@@ -3698,9 +3698,9 @@ current target retains the 2 KiB application default.
 cycle; unsupported firmware or a lost reply falls back directly to the
 required <code>ver</code> command instead of entering an operator continuation loop.</p>
 <p>The default TempRadio tuple is:</p>
-<pre><code class="language-text">909.950,250,5,5,120
+<pre><code class="language-text">909.5,500,5,5,120
 </code></pre>
-<p>The test default is 250 kHz bandwidth, SF5, and CR5. The frequency is only a
+<p>The lab test default is 909.5 MHz, 500 kHz bandwidth, SF5, and CR5. The frequency is only a
 North American example: choose a legal frequency supported by every
 participating radio and appropriate to your location. Older radios that do not
 support SF5 require a complete replacement tuple passed with <code>--temp-radio</code>.</p>

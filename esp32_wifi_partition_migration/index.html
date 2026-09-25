@@ -27,7 +27,7 @@
     
     
       
-        <title>ESP32 legacy-partition migration over Wi-Fi - MeshCore Docs</title>
+        <title>ESP32 legacy-partition migration over Wi-Fi or LoRa - MeshCore Docs</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#esp32-legacy-partition-migration-over-wi-fi" class="md-skip">
+        <a href="#esp32-legacy-partition-migration-over-wi-fi-or-lora" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ESP32 legacy-partition migration over Wi-Fi
+              ESP32 legacy-partition migration over Wi-Fi or LoRa
             
           </span>
         </div>
@@ -767,7 +767,7 @@
   <span class="md-ellipsis">
     
   
-    ESP32 legacy-partition migration over Wi-Fi
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
   
 
     
@@ -785,7 +785,7 @@
   <span class="md-ellipsis">
     
   
-    ESP32 legacy-partition migration over Wi-Fi
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
   
 
     
@@ -811,6 +811,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#repeatable-esp32-build-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeatable ESP32 build recipe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-bridge-preserves" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -833,10 +844,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-and-migrate-a-seeed-xiao-esp32-s3" class="md-nav__link">
+  <a href="#migrate-a-seeed-xiao-esp32-s3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build and migrate a Seeed XIAO ESP32-S3
+        Migrate a Seeed XIAO ESP32-S3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lora-only-migration-of-a-repeater" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa-only migration of a repeater
       
     </span>
   </a>
@@ -2971,6 +2993,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#repeatable-esp32-build-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeatable ESP32 build recipe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-bridge-preserves" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2993,10 +3026,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-and-migrate-a-seeed-xiao-esp32-s3" class="md-nav__link">
+  <a href="#migrate-a-seeed-xiao-esp32-s3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build and migrate a Seeed XIAO ESP32-S3
+        Migrate a Seeed XIAO ESP32-S3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lora-only-migration-of-a-repeater" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa-only migration of a repeater
       
     </span>
   </a>
@@ -3039,16 +3083,18 @@
   
 
 
-<h1 id="esp32-legacy-partition-migration-over-wi-fi">ESP32 legacy-partition migration over Wi-Fi</h1>
+<h1 id="esp32-legacy-partition-migration-over-wi-fi-or-lora">ESP32 legacy-partition migration over Wi-Fi or LoRa</h1>
 <p>The partition-migration bridge lets a supported ESP32 node move from a small
-dual-OTA layout to a verified larger dual-OTA layout without cable flashing.
-It is designed for inaccessible repeaters: the bridge itself fits a legacy
-1.25 MiB slot, replaces the table from Wi-Fi, and then exposes Wi-Fi again for
-the full application image.</p>
-<p>It currently has explicit, byte-for-byte generated target plans for Arduino
-ESP32 <code>default_8MB.csv</code> and <code>default_16MB.csv</code>. It does not guess a table for
-other flash sizes. Adding a board later means adding one reviewed target plan
-and its generated table-prefix test; the bridge core is otherwise shared.</p>
+dual-OTA layout to a verified larger dual-OTA layout without cable flashing or
+a full-chip erase. It fits a legacy 1.25 MiB slot. The Wi-Fi version exposes an
+updater for the full image after migration. The LoRa version retains the old
+OTA-capable repeater in the other expanded slot and returns to it after
+restoring identity, so it can fetch the full image over LoRa.</p>
+<p>It has explicit, byte-for-byte generated target plans for the 4 MiB MeshCore
+dual-OTA Full table and Arduino ESP32 <code>default_8MB.csv</code> and
+<code>default_16MB.csv</code>. It does not guess a table for other flash sizes. Adding a
+flash size later means adding one reviewed target plan and its generated
+table-prefix test; the bridge core is otherwise shared.</p>
 <table>
 <thead>
 <tr>
@@ -3060,19 +3106,89 @@ and its generated table-prefix test; the bridge core is otherwise shared.</p>
 </thead>
 <tbody>
 <tr>
+<td>4 MiB</td>
+<td><code>variants/dual_ota_full_4MB.csv</code></td>
+<td>0x1F0000 / 0x1F0000</td>
+<td>ThinkNode M2/M5, LilyGo T3S3, Nibble, Heltec CT62</td>
+</tr>
+<tr>
 <td>8 MiB</td>
 <td><code>default_8MB.csv</code></td>
 <td>0x330000 / 0x330000</td>
-<td>Seeed XIAO ESP32-S3</td>
+<td>Seeed XIAO ESP32-S3, Heltec V3</td>
 </tr>
 <tr>
 <td>16 MiB</td>
 <td><code>default_16MB.csv</code></td>
 <td>0x640000 / 0x640000</td>
-<td>Heltec V4 / V4.3 OLED</td>
+<td>Heltec V4 / V4.3, Station G2</td>
 </tr>
 </tbody>
 </table>
+<h2 id="repeatable-esp32-build-recipe">Repeatable ESP32 build recipe</h2>
+<p>From a clean commit, run the shell menu in WSL/Linux:</p>
+<pre><code class="language-bash">sh scripts/build_esp32_partition_migration.sh
+</code></pre>
+<p>Choose one exact board/role, or <strong>all listed board/role pairs</strong>. The menu
+also offers all repeaters, all room servers, or all sensors separately. It asks
+for the firmware version, radio preset, and profile, then builds Full application
+images first, the available bridge(s) for each selected board, and verifies each
+ZIP. Only one PlatformIO process runs at a time; <code>build.sh</code> can clean the
+shared <code>.pio/build</code> tree between Full targets. The same menu can be run
+non-interactively:</p>
+<pre><code class="language-bash">sh scripts/build_esp32_partition_migration.sh --board heltec-v4 \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
+sh scripts/build_esp32_partition_migration.sh --all \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
+sh scripts/build_esp32_partition_migration.sh --role sensor \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
+</code></pre>
+<p><code>--all</code> creates one verified ZIP per listed board/role pair and a release
+ZIP containing all of them, their hashes, and a manifest. This is a <strong>local
+release bundle</strong>, not an upload to GitHub Releases. It is not an archive of
+old firmware binaries. <code>--list-boards</code> shows the configured choices.
+The release fails instead of publishing a partial bundle if one board package
+is absent or fails verification.</p>
+<p>The underlying Python recipe remains available:</p>
+<pre><code class="language-bash">python3 -B scripts/build_esp32_partition_migration.py \
+  --version v1.17.1.7-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade
+</code></pre>
+<p>The default builds all configured board/role recipes. Add <code>--board heltec-v4</code>
+or <code>--board xiao-s3-wio</code> to build one; repeat <code>--board</code> for a selected set.
+Use <code>--dry-run</code> to inspect the command order without building. The resulting
+ZIPs appear under <code>.releases/esp32-expanded-&lt;commit&gt;/packages/</code>. The recipe
+requires a clean checkout so each ZIP identifies the firmware commit it was
+built from. It creates files only; it does not flash a device or erase flash.</p>
+<p>The catalog covers canonical ESP32 repeater, room-server, and sensor roles on
+4, 8, and 16 MiB chip-family plans, including historical 1.25 MiB candidates
+now built with expanded tables. This includes ESP32-S3, original ESP32, and
+ESP32-C3 boards with an evidenced old default layout. <code>--list-boards</code> is the
+authoritative list of exact targets; specialty ESP-NOW/observer aliases are
+separate identities and are not packaged under their old IDs. With Wi-Fi OTA
+they can migrate to the
+same physical board's canonical role image; their feature settings may need
+to be recreated. The LoRa route still requires an exact old target ID. The
+catalog omits boards with no evidenced legacy default-layout build, such as
+boards introduced with <code>min_spiffs.csv</code> or another non-1.25 MiB layout. Some
+listed boards use larger slots today but had historical default-layout builds.
+A listed package is usable only when the installed old image has a working
+Wi-Fi updater and the bridge verifies its live source table. Menu inclusion
+does <strong>not</strong> override either check. The only LoRa
+bridge packages currently available are the exact-target Heltec V4 and XIAO
+S3 WIO repeater packages. On 4 MiB flash the expanded app1 overlaps old app1,
+so the currently safe LoRa receiver-copy method cannot be offered there. A
+4 MiB Full build offers 1,984 KiB slots, not 4 MiB per slot. A Wi-Fi-only ZIP
+can omit <code>full-application.mota</code> when its application exceeds the current
+2 KiB x 1024-block LoRa serving limit; <code>full-application.bin</code> remains the
+verified Wi-Fi update image.</p>
+<p>Other ESP32 boards need a reviewed source updater, chip/flash-size bridge,
+verified Full image, and board entry before they can be added. The LoRa route
+also needs an exact old OTA target ID and a non-overlapping receiver handoff.
+Matching flash capacity alone is not enough to claim a package is safe.</p>
 <h2 id="what-the-bridge-preserves">What the bridge preserves</h2>
 <p>Before it touches the partition table, the bridge reads the historical
 <code>/identity/_main.id</code> SPIFFS file. It requires all 96 bytes (32-byte public key
@@ -3085,13 +3201,15 @@ uploader.</p>
 image is deliberately not raw-copied into an expanded partition: SPIFFS is not
 safe to resize that way. Other SPIFFS-backed settings can be recreated after
 the full image boots.</p>
+<p>Migration does erase the 4 KiB partition-table sector and the destination app
+sectors. Expanded SPIFFS can be reformatted. It never issues a full-chip erase.</p>
 <h2 id="eligible-source-layout">Eligible source layout</h2>
 <p>The bridge only accepts a source table that has all of the following:</p>
 <ul>
 <li>NVS at <code>0x9000</code>, size <code>0x5000</code>, and OTA metadata at <code>0xE000</code>, size <code>0x2000</code>.</li>
 <li>Two distinct, non-empty OTA application slots and a non-empty SPIFFS
   partition, all inside the physical flash size.</li>
-<li>A known exact 8 MiB or 16 MiB physical flash capacity and a source table
+<li>A known exact 4, 8, or 16 MiB physical flash capacity and a source table
   different from that capacity's target table.</li>
 </ul>
 <p>This means the source app-slot and SPIFFS sizes can vary; the bridge validates
@@ -3102,22 +3220,39 @@ restarts. It therefore works whether the browser OTA updater placed the bridge
 in legacy A or B.</p>
 <p>Keep power stable while the bridge is replacing the 4 KiB table sector. A loss
 of power before that point leaves the old table and source intact. After that
-small critical write, the selected A copy of the bridge is the recovery path.</p>
-<h2 id="build-and-migrate-a-seeed-xiao-esp32-s3">Build and migrate a Seeed XIAO ESP32-S3</h2>
-<p>The production bridge is a legacy-slot application image:</p>
-<pre><code class="language-powershell">&amp; &quot;$env:USERPROFILE\.platformio\penv\Scripts\pio.exe&quot; run -e xiao_s3_partition_migrator
-</code></pre>
-<p>Build the Full XIAO image with its 8 MiB table:</p>
-<pre><code class="language-powershell">$env:MESHCORE_ESP32_FULL_BUILD = '1'
-&amp; &quot;$env:USERPROFILE\.platformio\penv\Scripts\pio.exe&quot; run -e Xiao_S3_WIO_repeater_observer_mqtt
-</code></pre>
-<p>Upload the bridge through the legacy node's existing Wi-Fi browser updater.
+small critical write, the selected A copy of the bridge is the recovery path.
+The stock ESP32 bootloader reads one partition-table sector; rewriting that
+sector is <strong>not atomic</strong>. A power loss during its erase/write window can leave
+an unreadable table and require cable recovery. This recipe must not be called
+power-loss-proof on a device whose USB/serial flash port is inaccessible.</p>
+<h2 id="migrate-a-seeed-xiao-esp32-s3">Migrate a Seeed XIAO ESP32-S3</h2>
+<p>Use <code>--board xiao-s3-wio</code> with the recipe above. Its Wi-Fi bridge is a
+legacy-slot application image; its Full image keeps the old repeater's exact
+LoRa OTA target ID. Upload <code>wifi-bridge.bin</code> from the ZIP through the legacy
+node's existing Wi-Fi browser updater.
 Then join <code>MeshCore-Migrate</code> (password <code>meshcore-migrate</code>) and wait for
-<strong>Expanded layout ready</strong>. Upload the Full app-only <code>.bin</code> from the second
-build at <code>/update</code>. Do not upload an <code>-merged.bin</code>: merged images include
+<strong>Expanded layout ready</strong>. Upload <code>full-application.bin</code> at <code>/update</code>.
+Do not upload an <code>-merged.bin</code>: merged images include
 bootloader and table offsets for cable flashing, not browser OTA.</p>
 <p><code>xiao_s3_partition_legacy_seed</code> is a disposable-hardware test image only. It
 models the legacy table and an identity file; it is not a deployable repeater.</p>
+<h2 id="lora-only-migration-of-a-repeater">LoRa-only migration of a repeater</h2>
+<p>The exact old repeater must already support MeshCore LoRa mOTA and have a valid
+EndF image identity. The LoRa bridge checks the old app's target ID and body
+hash before any partition-table write; an unsupported or damaged receiver is
+refused. It works from either legacy A or B. It copies legacy B to the future
+B address, boots the bridge once to restore the private key in expanded
+SPIFFS, then boots the preserved old repeater. That repeater can receive the
+full image into its now-expanded inactive slot.</p>
+<p>The board-specific LoRa bridges are <code>heltec_v4_partition_migrator_lora_repeater</code>
+and <code>xiao_s3_partition_migrator_lora_repeater</code>. Build the final repeater with
+<code>bash build.sh build-firmware &lt;target&gt; --full-exact</code> so its mOTA target ID
+still matches the old repeater. <code>scripts/package_esp32_partition_migration.py</code>
+checks the images, partition tables, hashes and mOTA containers and creates
+separate Wi-Fi/LoRa migration ZIPs for those two boards. The ZIP README gives
+the exact <code>ota ls</code>, <code>ota pull &lt;id&gt; flash</code>, <code>ota install</code> sequence.</p>
+<p>A stock repeater without LoRa mOTA cannot use the LoRa-only route. The
+Wi-Fi bridge remains the route for that device.</p>
 <h2 id="heltec-v4-v43">Heltec V4 / V4.3</h2>
 <p>Build <code>heltec_v4_partition_migrator</code>, upload it through the legacy Wi-Fi
 updater, then upload the Full V4 app-only image after the bridge reports ready.

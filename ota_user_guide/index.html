@@ -758,7 +758,7 @@
   <span class="md-ellipsis">
     
   
-    ESP32 legacy-partition migration over Wi-Fi
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
   
 
     
@@ -3727,8 +3727,13 @@ Blocked block requests also preserve the v2 transfer format and fragments
 already received; queue congestion alone does not trigger legacy fallback.
 Retry timing includes the primary channel when an RX-only temporary radio2
 uses crossover to send requests there.</p>
-<p><code>ota config speed 0.5</code> is an equivalent setter. <code>ota config speed</code> and
-<code>ota speed</code> read the current factor; the <code>ota config</code> summary also includes it.
+<p><code>ota config speed 0.5</code> is an equivalent setter. <code>get ota.speed</code>,
+<code>ota config speed</code>, and <code>ota speed</code> show both the saved <code>ota.speed</code> setting and
+the effective <code>packet</code> pace. The latter is the slower of the saved speed and
+the sender's automatic loss-responsive packet-spacing factor; it does not
+replace the saved setting or change non-packet OTA timers. The <code>ota config</code>
+summary also shows both values. If no OTA workspace is active, the automatic
+factor starts at 1, so <code>packet</code> reflects the saved setting up to 1x.
 The setting is available on OTA-enabled repeaters, rooms, sensors, Companions,
 and seeder-only builds. Its separate <code>/ota_speed</code> settings file preserves the
 existing preference layouts and does not need an active OTA workspace.</p>

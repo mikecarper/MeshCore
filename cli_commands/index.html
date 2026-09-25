@@ -2926,7 +2926,7 @@
   <span class="md-ellipsis">
     
   
-    ESP32 legacy-partition migration over Wi-Fi
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
   
 
     
@@ -7345,8 +7345,10 @@ set ota.speed &lt;0.05..3&gt;
 <p><code>1</code> preserves the current OTA timing. Values below <code>1</code> slow OTA traffic;
 values above <code>1</code> shorten adjustable delays. For example, <code>0.5</code> doubles those
 delays and <code>3</code> divides them by three. Decimal values such as <code>.05</code> work.
-<code>ota config speed &lt;factor&gt;</code> is an equivalent setter, and <code>ota config</code> shows
-the value. The setting is saved and can be changed during a transfer.</p>
+<code>ota config speed &lt;factor&gt;</code> is an equivalent setter. <code>get ota.speed</code> and
+<code>ota config</code> show both the saved value and the effective <code>packet</code> pacing
+factor. Automatic loss response may make packet spacing slower without
+changing the saved setting. The setting can be changed during a transfer.</p>
 <p>Apply it on the source, destination, and relays. It controls all LoRa OTA
 packet types on both profiles, relay timing, discovery, and OTA adverts.
 Slower settings extend recovery waits and space queued OTA packets while
