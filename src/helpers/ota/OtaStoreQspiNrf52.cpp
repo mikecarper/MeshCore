@@ -23,6 +23,8 @@ namespace {
 static uint8_t auto_cs_pin = NRF_QSPI_PIN_NOT_CONNECTED;
 static uint32_t auto_jedec_id = 0;
 static uint8_t auto_detection = 0xFF;
+static uint32_t auto_rak_probe_id = 0;
+static uint32_t auto_w25_probe_id = 0;
 #endif
 
 #if defined(OTA_QSPI_SCK_PHYSICAL_PIN) && defined(OTA_QSPI_SCK_ARDUINO_PIN)
@@ -277,6 +279,10 @@ static uint32_t probe_nor(uint8_t cs) {
   // A previous reset may have left the NOR in deep power-down. This GPIO
   // wake precedes the nRF QSPI ACTIVATE for the same reason as ensureFlash().
   wake_qspi_flash_before_activate(pins);
+  // The wake helper leaves GPIO input buffers disconnected for QSPI handoff.
+  // This bit-banged JEDEC read instead samples IO1 through GPIO->IN, which
+  // requires the MISO input buffer to be connected.
+  nrf_gpio_cfg_input(pins.io1_pin, NRF_GPIO_PIN_NOPULL);
   nrf_gpio_pin_clear(cs);
   delayMicroseconds(1);
   (void)gpio_spi_byte(pins, 0x9Fu);
@@ -284,6 +290,7 @@ static uint32_t probe_nor(uint8_t cs) {
                       ((uint32_t)gpio_spi_byte(pins, 0xFFu) << 8) |
                       gpio_spi_byte(pins, 0xFFu);
   nrf_gpio_pin_set(cs);
+  nrf_gpio_input_disconnect(pins.io1_pin);
   delayMicroseconds(1);
   if (id == 0xC84015UL || id == 0xEF4015UL) {
     // Detection is read-only. Return a recognized NOR to low-power standby;
@@ -314,6 +321,7 @@ uint8_t OtaStoreQspiNrf52::autoDetect() {
   digitalWrite(P_LORA_NSS, HIGH);
   SPI1.end();
   const uint32_t w25_id = probe_nor(w25_cs);
+  auto_w25_probe_id = w25_id;
   SPI1.begin();
   auto_detection = w25_id == 0xEF4015UL ? 2u : 0u;
 #else
@@ -322,6 +330,8 @@ uint8_t OtaStoreQspiNrf52::autoDetect() {
   nrf_gpio_cfg_output(rak_cs);
   const uint32_t rak_id = probe_nor(rak_cs);
   const uint32_t w25_id = probe_nor(w25_cs);
+  auto_rak_probe_id = rak_id;
+  auto_w25_probe_id = w25_id;
   const bool rak = rak_id == 0xC84015UL;
   const bool w25 = w25_id == 0xEF4015UL;
   auto_detection = rak && w25 ? 3u : rak ? 1u : w25 ? 2u : 0u;
@@ -334,6 +344,12 @@ uint8_t OtaStoreQspiNrf52::autoDetect() {
     auto_jedec_id = 0xEF4015UL;
   }
   return auto_detection;
+}
+
+void OtaStoreQspiNrf52::autoProbeIds(uint32_t& rak15001, uint32_t& w25q16) {
+  autoDetect();
+  rak15001 = auto_rak_probe_id;
+  w25q16 = auto_w25_probe_id;
 }
 #endif
 

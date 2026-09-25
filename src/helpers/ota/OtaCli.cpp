@@ -742,10 +742,16 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
                c.fetch_store.last_stage(), c.fetch_store.last_error()[0] ? " error=" : "",
                c.fetch_store.last_error());
     } else if (c.fetch_store.usesInternal()) {
-      snprintf(reply, 160, "OTA storage: %s; internal capacity=%luK",
-               c.fetch_store.selectionReason(), (unsigned long)(c.fetch_store.capacity() / 1024));
+      uint32_t rak_id = 0, w25_id = 0;
+      OtaStoreQspiNrf52::autoProbeIds(rak_id, w25_id);
+      snprintf(reply, 160, "OTA storage: %s; internal capacity=%luK; probe rak=%06lX w25=%06lX",
+               c.fetch_store.selectionReason(), (unsigned long)(c.fetch_store.capacity() / 1024),
+               (unsigned long)rak_id, (unsigned long)w25_id);
     } else {
-      snprintf(reply, 160, "OTA storage unsafe: %s", c.fetch_store.selectionReason());
+      uint32_t rak_id = 0, w25_id = 0;
+      OtaStoreQspiNrf52::autoProbeIds(rak_id, w25_id);
+      snprintf(reply, 160, "OTA storage unsafe: %s; probe rak=%06lX w25=%06lX",
+               c.fetch_store.selectionReason(), (unsigned long)rak_id, (unsigned long)w25_id);
     }
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
     // This probe only reads JEDEC/SR1. capacity() deliberately preserves a

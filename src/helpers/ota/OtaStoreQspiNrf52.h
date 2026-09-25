@@ -170,6 +170,9 @@ public:
   // Probe exact supported NOR parts before activating the nRF QSPI block.
   // 0 = absent/unsupported, 1 = RAK15001 C, 2 = W25Q16, 3 = ambiguous.
   static uint8_t autoDetect();
+  // Raw read-only JEDEC results from the cached startup probe. Useful when a
+  // connected breakout is not one of the exact supported parts.
+  static void autoProbeIds(uint32_t& rak15001, uint32_t& w25q16);
 #endif
 
   bool begin(uint32_t total_size) override;
