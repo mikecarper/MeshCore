@@ -112,7 +112,7 @@ import sys
 sections = {section: dict(options) for section, options in json.load(sys.stdin)}
 
 def option_text(env_name, option_name):
-    section = sections.get(f"env:{env_name}")
+    section = sections.get(f"env:{env_name}", sections.get(env_name))
     if section is None:
         raise SystemExit(f"test_build_profiles: missing PlatformIO environment {env_name}")
     value = section.get(option_name, [])
@@ -241,6 +241,8 @@ reject(rc32_repeater, "build_flags", "ESP32_CPU_FREQ=160")
 # creating a second Wire instance on the same pins as the board bus.
 require("Heltec_t096_companion_radio_usb_femon", "build_flags", "ENV_PIN_SDA=PIN_WIRE1_SDA")
 require("Heltec_t096_companion_radio_usb_femon", "build_flags", "ENV_PIN_SCL=PIN_WIRE1_SCL")
+require("Heltec_t096", "build_flags", "LORA_TX_POWER=22")
+reject("Heltec_t096", "build_flags", "LORA_TX_POWER=9")
 require("Heltec_v3_companion_radio_wifi", "build_flags", "ENV_PIN_SDA=33")
 require("Heltec_v3_companion_radio_wifi", "build_flags", "ENV_PIN_SCL=34")
 

@@ -35,6 +35,7 @@ class CommonCLISaveResultsTest(unittest.TestCase):
         branches = '\nelse '.join(extract_braced(source, signature) for signature in (
             'if (memcmp(config, "flood.advert.interval ", 22) == 0)',
             'if (memcmp(config, "advert.interval ", 16) == 0)',
+            'if (memcmp(config, "flood.retry.count ", 18) == 0)',
             'if (memcmp(config, "guest.password ", 15) == 0)',
             'if (memcmp(config, "prv.key ", 8) == 0)',
             'if (memcmp(config, "multi.acks ", 11) == 0)'))

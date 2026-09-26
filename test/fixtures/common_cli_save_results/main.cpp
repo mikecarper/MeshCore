@@ -9,6 +9,7 @@
 #include <helpers/PrefsSaveReplyGuard.h>
 
 #define MIN_LOCAL_ADVERT_INTERVAL 60
+#define RETRY_PRESET_CUSTOM 0xFF
 #define PUB_KEY_SIZE 32
 #define PRV_KEY_SIZE 64
 namespace mesh {
@@ -26,6 +27,7 @@ struct Utils {
 }
 struct Prefs {
   uint8_t advert_interval = 30, flood_advert_interval = 12, multi_acks = 0;
+  uint8_t flood_retry_attempts = 8, retry_preset = 0;
   char password[16] = "old-admin", guest_password[16] = "old-guest";
   bool dirty = true;
   void clearDirty() { dirty = false; }
@@ -45,6 +47,7 @@ struct Callbacks {
   void savePrefs(PrefsSaveRouting::Scope);
   void updateAdvertTimer();
   void updateFloodAdvertTimer();
+  void onRetryConfigChanged() { ++flood_updates; }
   bool saveIdentity(const mesh::LocalIdentity&) { ++identity_saves; return identity_ok; }
 };
 struct CommonCLI {
@@ -58,6 +61,7 @@ struct CommonCLI {
   void savePrefs(PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common);
   bool trySavePrefs(PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common);
   bool saveObserverPrefs();
+  int _atoi(const char* value) { return std::atoi(value); }
   void set(const char* config, char* reply);
   void password(const char* command, char* reply);
 };
@@ -150,6 +154,25 @@ int main() {
       assert(cli.prefs.flood_advert_interval == cli.callbacks.persisted.flood_advert_interval);
     }
     assert(flood ? cli.callbacks.flood_updates == 3 : cli.callbacks.local_updates == 3);
+  }
+  {
+    CommonCLI cli;
+    cli.callbacks.common_ok = false;
+    cli.set("flood.retry.count 2", reply);
+    assert(error(reply) && cli.prefs.flood_retry_attempts == 2);
+    assert(cli.callbacks.persisted.flood_retry_attempts == 8);
+    assert(cli.callbacks.flood_updates == 1);
+    cli.callbacks.common_ok = true;
+    for (const char* value : {"2", "0", "15"}) {
+      cli.set((std::string("flood.retry.count ") + value).c_str(), reply);
+      assert(strcmp(reply, "OK") == 0);
+      assert(cli.prefs.flood_retry_attempts == std::atoi(value));
+      assert(cli.callbacks.persisted.flood_retry_attempts == std::atoi(value));
+      assert(cli.callbacks.persisted.retry_preset == RETRY_PRESET_CUSTOM);
+    }
+    CommonCLI reboot;
+    reboot.prefs = cli.callbacks.persisted;
+    assert(reboot.prefs.flood_retry_attempts == 15);
   }
   {
     CommonCLI cli;
