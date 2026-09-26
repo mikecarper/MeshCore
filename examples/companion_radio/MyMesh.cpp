@@ -3,6 +3,7 @@
 #include <helpers/CompanionTxRoutingCLI.h>
 #include "CompanionBluetooth.h"
 #include "CompanionWireless.h"
+#include "CompanionRetry.h"
 #if defined(MESH_SOAK_DIAGNOSTICS)
 #include "../../tools/hil/S3SoakDiagnostics.h"
 #endif
@@ -1110,12 +1111,23 @@ void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
 #endif
 
 bool MyMesh::allowFloodRetry(const mesh::Packet* packet) const {
-  if (packet == NULL) return false;
+  if (packet == NULL || _prefs.flood_retry_attempts == 0) return false;
   // A companion may retry its own advert once, using the core's deliberately
   // slow origin-advert delay. Do not add retries while relaying a neighbour's
   // advert; the ordinary forwarding and recent-echo guard still apply.
   return packet->getPayloadType() != PAYLOAD_TYPE_ADVERT
-      || isSelfOriginAdvert(packet);
+      || (_prefs.flood_retry_advert_enabled && isSelfOriginAdvert(packet));
+}
+
+uint8_t MyMesh::getFloodRetryMaxPathLength(const mesh::Packet* packet) const {
+  return applyGroupDataFloodRetryPathGate(
+      packet, _prefs.flood_retry_max_path,
+      _prefs.flood_retry_group_max_path);
+}
+
+uint8_t MyMesh::getFloodRetryMaxAttempts(const mesh::Packet* packet) const {
+  (void)packet;
+  return _prefs.flood_retry_attempts;
 }
 
 bool MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis) {
@@ -1977,6 +1989,16 @@ void MyMesh::begin(bool has_display, bool radio_available) {
   _prefs.sf = constrain(_prefs.sf, 5, 12);
   _prefs.cr = constrain(_prefs.cr, 5, 8);
   _prefs.tx_power_dbm = constrain(_prefs.tx_power_dbm, -9, MAX_LORA_TX_POWER);
+  _prefs.flood_retry_attempts = constrain(_prefs.flood_retry_attempts, 0, 15);
+  if (_prefs.flood_retry_max_path > 63
+      && _prefs.flood_retry_max_path != FLOOD_RETRY_PATH_GATE_DISABLED) {
+    _prefs.flood_retry_max_path = 1;
+  }
+  if (_prefs.flood_retry_group_max_path > 63
+      && _prefs.flood_retry_group_max_path != FLOOD_RETRY_PATH_GATE_DISABLED) {
+    _prefs.flood_retry_group_max_path = FLOOD_RETRY_PATH_GATE_DISABLED;
+  }
+  _prefs.flood_retry_advert_enabled = _prefs.flood_retry_advert_enabled ? 1 : 0;
   _prefs.multi_acks = constrain(_prefs.multi_acks, 0, 1);
   _prefs.manual_add_contacts = constrain(_prefs.manual_add_contacts, 0, 1);
   _prefs.vibe_quiet = constrain(_prefs.vibe_quiet, 0, 1);
@@ -2834,7 +2856,11 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 
   if (strcmp(command, "get radio.fem.txgain") == 0) {
     if (!board.canControlLoRaFemPaGain()) {
-      snprintf(reply, reply_size, "Error: unsupported");
+      if (board.isLoRaFemPaGainEnabled()) {
+        snprintf(reply, reply_size, "> on (fixed TX PA)");
+      } else {
+        snprintf(reply, reply_size, "Error: unsupported");
+      }
     } else {
       snprintf(reply, reply_size, "> %s",
                board.isLoRaFemPaGainEnabled() ? "on" : "off");
@@ -2848,7 +2874,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
       snprintf(reply, reply_size,
                "Error: use set radio.fem.txgain on|off");
     } else if (!board.canControlLoRaFemPaGain()) {
-      snprintf(reply, reply_size, "Error: unsupported");
+      snprintf(reply, reply_size, "%s", board.isLoRaFemPaGainEnabled()
+          ? "Error: TX PA is fixed on; use set tx to adjust power"
+          : "Error: unsupported");
     } else if (!applyAndSaveFemTxGain(strcmp(value, "on") == 0)) {
       snprintf(reply, reply_size, "Error: failed to apply or save FEM TX gain");
     } else {
@@ -8320,7 +8348,11 @@ void MyMesh::handleTerminalCommand(char* command) {
     }
   } else if (strcmp(command, "get radio.fem.txgain") == 0) {
     if (!board.canControlLoRaFemPaGain()) {
-      terminalOutput().print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
+      if (board.isLoRaFemPaGainEnabled()) {
+        terminalOutput().print("  FEM TX gain: on (fixed TX PA)\r\n");
+      } else {
+        terminalOutput().print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
+      }
     } else {
       terminalOutput().printf("  FEM TX gain: %s\r\n",
                     board.isLoRaFemPaGainEnabled() ? "on" : "off");
@@ -8417,7 +8449,9 @@ void MyMesh::handleTerminalCommand(char* command) {
       if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
         terminalOutput().print("  ERROR: use set radio.fem.txgain <on|off>\r\n");
       } else if (!board.canControlLoRaFemPaGain()) {
-        terminalOutput().print("  ERROR: FEM TX gain control is unsupported on this board\r\n");
+        terminalOutput().print(board.isLoRaFemPaGainEnabled()
+            ? "  ERROR: TX PA is fixed on; use set tx to adjust power\r\n"
+            : "  ERROR: FEM TX gain control is unsupported on this board\r\n");
       } else if (!applyAndSaveFemTxGain(strcmp(value, "on") == 0)) {
         terminalOutput().print("  ERROR: failed to apply FEM TX gain\r\n");
       } else {
@@ -8531,6 +8565,10 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  set radio.fem.rxgain <on|off>\r\n");
     terminalOutput().print("  get radio.fem.txgain\r\n");
     terminalOutput().print("  set radio.fem.txgain <on|off>\r\n");
+    terminalOutput().print("  get/set flood.retry.count <0-15>\r\n");
+    terminalOutput().print("  get/set flood.retry.path <0-63|off>\r\n");
+    terminalOutput().print("  get/set flood.retry.group.path <0-63|off>\r\n");
+    terminalOutput().print("  get/set flood.retry.advert <on|off>\r\n");
     terminalOutput().print("  card\r\n");
     terminalOutput().print("  import <meshcore://card>\r\n");
     terminalOutput().print("  clock\r\n");
@@ -8738,6 +8776,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     command = profile_command;
   }
   if (sender_timestamp == 0 && handleDirectCommand(command, reply, reply_capacity)) return true;
+
+  if (mesh::companion::handleRetryCommand(
+          _prefs, command, reply, reply_capacity,
+          [this]() { return savePrefs(); },
+          [this]() { cancelAllFloodRetries(); })) return true;
 
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
   if (mesh::isUsbMotaOwnerTransitionCommand(command)) {

@@ -33,4 +33,7 @@ public:
   bool setLoRaFemLnaEnabled(bool enable) override;
   bool canControlLoRaFemLna() const override;
   bool isLoRaFemLnaEnabled() const override;
+  // KCT8103L TX has no populated bypass path on T096. CSD shuts down the
+  // whole FEM, so the PA is always used when this board transmits.
+  bool isLoRaFemPaGainEnabled() const override { return true; }
 };

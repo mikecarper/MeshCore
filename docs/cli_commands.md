@@ -1491,6 +1491,7 @@ Station G2/G3 targets default to `off`.
 
 **Notes:**
 - This controls a software-selectable external LoRa FEM transmit gain where the board supports it.
+- Heltec T096 routes TX through its KCT8103L PA with no populated TX bypass. `get radio.fem.txgain` reports `on (fixed TX PA)`; `set radio.fem.txgain` cannot toggle it. Use `set tx <dBm>` to adjust SX1262 drive. The PA's `CSD` control shuts down the FEM and is not a lower-gain TX mode. See the [T096 schematic](https://resource.heltec.cn/download/Mesh_Node_T096/Schematic/Mesh_Node_T096_V0.2.pdf) and [KCT8103L product description](https://kxcomtech.com/en/product/info/1774).
 - On Station G3, remove the PA PL1 jumper to allow software control. `on` selects PA PL1 high/short and `off` selects PA PL1 low/open. The PA PL2 hardware jumper determines whether this switches between power levels 1/3 or 2/4.
 - Select an operating level and SX1262 transmit power that comply with local RF limits and the Station G3 power-supply requirements.
 - The setting is saved immediately, but on Station G3 the level is applied to the hardware at the start of the next transmit, so that the PA supply rail is never re-targeted while the PA is being driven. `get` reports the configured state, which may lead the hardware until the node next transmits.
@@ -3809,9 +3810,10 @@ set retry.preset mobile
 Flood retry resends flood-routed packets when the same packet is not heard from
 another qualifying repeater.
 
-The count, path, group-data path, and advert controls work on repeater, room-server, and sensor
-firmware. Flood forwarding must also be enabled for retries to run. Prefix,
-ignore, bridge, and bucket controls are repeater-only.
+The count, path, group-data path, and advert controls work on repeater,
+room-server, sensor, and Companion firmware. Infrastructure forwarding must
+also be enabled for retries to run. Prefix, ignore, bridge, and bucket controls
+are repeater-only.
 
 #### Hop-zero flood retry coding rate
 
@@ -3858,6 +3860,20 @@ setting or physical preamble.
 
 #### View or change flood retry count
 
+Companion firmware supports `flood.retry.count`, `flood.retry.path`,
+`flood.retry.group.path`, and `flood.retry.advert` through its text terminal and
+framed CLI. These settings persist across reboot. Companion retains its
+pre-existing defaults when upgrading an older preferences file: count `15`,
+general path gate `1`, group path gate `off`, and self-origin advert retries
+`on`. Companion uses the configured count directly, without the infrastructure
+role's hop-zero and one-hop multipliers. The shared payload caps below still
+apply. Companion only retries its **own** adverts; neighbor adverts remain
+ineligible even with `flood.retry.advert on`.
+
+The `infra`, `rooftop`, and `mobile` defaults and `retry.preset` command in this
+section apply to infrastructure roles. Companion does not expose repeater
+bridge or prefix retry filters.
+
 **Search terms:** flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.
 
 **Usage:**
@@ -3867,7 +3883,7 @@ setting or physical preamble.
 **Parameters:**
 - `count`: Base retry attempts after the original send, from `0` to `15`. `0` disables flood retry.
 
-**Note:** The role first calculates its retry count: path count 0 uses `count * 2`, path count 1 uses `count * 1.5` rounded up, and path count 2 and higher uses the configured base count, with a hard cap of `15`. A shared payload policy then applies to every build: `REQ` never retries; `GRP_TXT` keeps the role-calculated count; remote-login-critical `RESPONSE`, `TXT_MSG`, `ANON_REQ`, and `PATH` packets keep up to `15` at the originating node (path count 0) and cap at `2` after entering the path; all other flood payload types cap at `1`. These caps never raise a lower role-calculated count. Setting `count` to `0` immediately removes queued and future flood retries; a packet already transmitting is allowed to finish.
+**Note:** Infrastructure roles first calculate their retry count: path count 0 uses `count * 2`, path count 1 uses `count * 1.5` rounded up, and path count 2 and higher uses the configured base count, with a hard cap of `15`. Companion uses `count` directly. A shared payload policy then applies to every build: `REQ` never retries; `GRP_TXT` keeps the role-calculated count; remote-login-critical `RESPONSE`, `TXT_MSG`, `ANON_REQ`, and `PATH` packets keep up to `15` at the originating node (path count 0) and cap at `2` after entering the path; all other flood payload types cap at `1`. These caps never raise a lower role-calculated count. Setting `count` to `0` immediately removes queued and future flood retries; a packet already transmitting is allowed to finish.
 
 Forwarded neighbor adverts have an additional loop guard independent of the advert retry setting. After this node completes an advert transmission and hears a downstream copy with a longer path, it does not forward that same advert again while the advert's signed timestamp is less than six hours old. Self-originated adverts, adverts without a heard echo, and adverts six hours old or older are unaffected.
 
@@ -3923,7 +3939,7 @@ set flood.retry.path off
 
 **Note:** The stricter of `flood.retry.path` and `flood.retry.group.path` is used. A value of `1` allows retry sequences at path counts `0` and `1`; group data at path count `2` or higher is still forwarded normally but does not start a flood retry sequence. A value of `0` allows retries only at the originating sender.
 
-Setting `flood.retry.path` to `0` also sets `flood.retry.group.path` to `off` because the general zero-hop gate is already stricter. While the general gate remains `0`, attempts to set the group-data gate keep it `off`. Applying a named retry preset restores the group-data default of `1`.
+On infrastructure roles, setting `flood.retry.path` to `0` also sets `flood.retry.group.path` to `off` because the general zero-hop gate is already stricter. While the general gate remains `0`, attempts to set the group-data gate keep it `off`. Applying a named retry preset restores the group-data default of `1`. Companion retains the saved group gate, but the stricter general gate still wins.
 
 **Examples:**
 ```

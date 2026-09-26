@@ -285,6 +285,8 @@ protected:
   bool filterRecvFloodPacket(mesh::Packet* packet) override;
   bool allowPacketForward(const mesh::Packet* packet) override;
   bool allowFloodRetry(const mesh::Packet* packet) const override;
+  uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
+  uint8_t getFloodRetryMaxAttempts(const mesh::Packet* packet) const override;
 #ifdef COMPANION_MESH_CLOCK_SYNC
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                     uint32_t timestamp, const uint8_t* app_data,

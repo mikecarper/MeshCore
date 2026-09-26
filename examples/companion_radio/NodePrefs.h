@@ -99,6 +99,13 @@ public:
   char wifi_ssid[33] = {};
   char wifi_pwd[64] = {};
 #endif
+  // Keep these after every board-specific field: all existing prefs images
+  // must retain their exact offsets. Defaults reproduce the core Companion
+  // retry policy for older files that have no retry tail.
+  uint8_t flood_retry_attempts = 15;
+  uint8_t flood_retry_max_path = 1;
+  uint8_t flood_retry_group_max_path = 0xFF;
+  uint8_t flood_retry_advert_enabled = 1;
 
 private:
   class RadioPrefs : public CommonRadioPrefs {

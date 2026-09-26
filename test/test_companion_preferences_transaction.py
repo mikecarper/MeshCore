@@ -51,6 +51,8 @@ int main(int argc,char** argv){
  original.gps_interval=123;original.sf=7;original.cr=7;original.bw=62.5f;
  original.tx_delay_factor=1.25f;original.direct_tx_delay_factor=0.75f;
  original.interference_threshold=8;original.agc_reset_interval=15;original.tz_offset=-7;
+ original.flood_retry_attempts=4;original.flood_retry_max_path=3;
+ original.flood_retry_group_max_path=2;original.flood_retry_advert_enabled=0;
 #ifdef TBEAM_1W
  strcpy(original.fan_mode,"on");original.fan_lo=33;original.fan_hi=42;
 #endif
@@ -84,6 +86,8 @@ int main(int argc,char** argv){
    assert(loaded.freq==changed.freq&&loaded.ble_pin==original.ble_pin);
    assert(loaded.tx_delay_factor==1.25f&&loaded.direct_tx_delay_factor==0.75f);
    assert(loaded.interference_threshold==8&&loaded.agc_reset_interval==15&&loaded.tz_offset==-7);
+   assert(loaded.flood_retry_attempts==4&&loaded.flood_retry_max_path==3);
+   assert(loaded.flood_retry_group_max_path==2&&loaded.flood_retry_advert_enabled==0);
 #ifdef TBEAM_1W
    assert(!strcmp(loaded.fan_mode,"on")&&loaded.fan_lo==33&&loaded.fan_hi==42);
 #endif
@@ -166,7 +170,22 @@ int main(int argc,char** argv){
    assert(legacy.loadPrefs(loaded,lat,lon));
    assert(loaded.tx_delay_factor==0.5f&&loaded.direct_tx_delay_factor==0.2f);
    assert(loaded.interference_threshold==0&&loaded.agc_reset_interval==0&&loaded.tz_offset==0);
+   assert(loaded.flood_retry_attempts==15&&loaded.flood_retry_max_path==1);
+   assert(loaded.flood_retry_group_max_path==0xff&&loaded.flood_retry_advert_enabled==1);
    assert(loaded.freq==original.freq&&loaded.ble_pin==original.ble_pin);
+ } else if(scenario==6){
+   DataStore legacy;legacy.fs.files["/new_prefs"]=disk;
+#if defined(TBEAM_1W)
+   legacy.fs.files["/new_prefs"].resize(233);
+#elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+   legacy.fs.files["/new_prefs"].resize(323);
+#else
+   legacy.fs.files["/new_prefs"].resize(226);
+#endif
+   CompanionNodePrefs loaded;double lat=0,lon=0;
+   assert(legacy.loadPrefs(loaded,lat,lon));
+   assert(loaded.flood_retry_attempts==15&&loaded.flood_retry_max_path==1);
+   assert(loaded.flood_retry_group_max_path==0xff&&loaded.flood_retry_advert_enabled==1);
  } else if(scenario==4){
    DataStore legacy;legacy.fs.files["/node_prefs"]=disk;
    legacy.fs.fail_write_after=17;
@@ -254,7 +273,7 @@ inline char* utoa(unsigned int value,char* output,int base){
                         str(ROOT / 'src/helpers/TxtDataHelpers.cpp'),
                         '-o', str(binary)], capture_output=True, text=True)
                     self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
-                    for scenario in range(6):
+                    for scenario in range(7):
                         with self.subTest(scenario=scenario):
                             run = subprocess.run([str(binary), str(scenario)], capture_output=True, text=True)
                             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
