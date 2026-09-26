@@ -3364,8 +3364,8 @@ from the published firmware assets.</p>
 <td>Normal standalone operation without the dedicated logging/MQTT profile</td>
 </tr>
 <tr>
-<td>LoRa OTA repeater</td>
-<td>Repeater profile that can stage an exact matching update received over LoRa</td>
+<td>Receives LoRa OTA</td>
+<td>Repeater, room server, or sensor image that can stage an exact matching update received over LoRa</td>
 </tr>
 <tr>
 <td>LoRa OTA source only</td>
@@ -3555,14 +3555,13 @@ See the <a href="../radio_profiles/#companion-messages-on-both-profiles">two-pro
 <p>Never send a merged ESP32 image through browser OTA or LoRa OTA. Back up the
 node configuration and verify every filename suffix before flashing.</p>
 <h2 id="lora-ota-and-otafix">LoRa OTA and OTAFIX</h2>
-<p>A LoRa OTA repeater build installs repeater firmware that can receive and
-stage updates. A later LoRa update still needs an exact target identity,
+<p>A LoRa OTA capable build can receive and stage updates for its role. A later
+LoRa update still needs an exact target identity,
 compatible partition signature, matching radio settings, and the correct
 update package.</p>
-<p>nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board. There
-is no universal bootloader file. Use the
-<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6 for this release</a>
-and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.</p>
+<p>nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board and
+storage layout. Select the hardware-matched HEX, Serial DFU ZIP, or
+bootloader-update UF2 for the application image being installed.</p>
 <h2 id="hardware-and-variant-names">Hardware and variant names</h2>
 <p>Hardware families with multiple released targets get a second hardware-variant
 menu. It separates revisions, display type, expansion kit, radio/PA layout,
