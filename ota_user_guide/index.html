@@ -3540,7 +3540,9 @@ long ago it was seen. The fit marker:</p>
   in-place delta. A matched external-QSPI nRF52 can accept that full codec.</li>
 <li><strong>[rescue]</strong> - an installable in-place nRF52 delta for the same target, but this running firmware has no
   valid app-side EndF. It requires the explicit rescue download and install flow below.</li>
-<li><strong>[name]</strong> - a different known board or role (for example <code>[ProMicro_companion_radio_usb]</code>). Don't install it.</li>
+<li><strong>[name]</strong> - a different known board or role (for example <code>[ProMicro_companion_radio_usb]</code>).
+  Install it only if you deliberately chose a different role for the same hardware; the installer
+  still checks the hardware identity and partition layout.</li>
 <li><strong>[?]</strong> - can't tell (a build with no target id set, e.g. a bare IDE build rather than a release build).</li>
 </ul>
 <p>Run it again after a few seconds - discovery happens in the background, so the list fills in. Nothing is
@@ -3562,6 +3564,15 @@ attached (it shows the link, e.g. <code>folder: tcp 192.168.4.5</code>); it stre
 host folder - nothing is staged on this node. That's how you grab an <strong>exact copy of another device's
 firmware</strong> off the mesh (to a <code>.mota</code> file) so you can later build a <em>delta</em> against firmware you don't
 otherwise have. (<code>ota get</code> is an alias.)</p>
+<p><strong>Deliberate alternate image.</strong> An operator can choose a different target ID
+for the same physical board by selecting its exact manifest ID from <code>ota ls</code>,
+then running <code>ota pull &lt;MID8&gt; flash</code> and <code>ota install</code>. The target ID controls
+which image is discovered and fetched; it does not lock manual installs to
+the current role. The hardware identity, codec, image hash, and partition
+checks still run. Automatic updates follow the firmware's selected target
+(or its declared one-way successor), so use <code>ota config autofetch off</code> and
+<code>ota config autoinstall off</code> if you want to keep an alternate image without
+automatic convergence.</p>
 <p><strong><code>validate</code> (warm-start, advanced).</strong> Capturing a full image over the radio is slow. If you have a
 <em>similar</em> build on the computer (e.g. a fresh recompile of the same firmware), run motatool with
 <code>--seed &lt;that.mota&gt;</code> and add <strong><code>validate</code></strong>: the node fetches just the target's block fingerprints, keeps
