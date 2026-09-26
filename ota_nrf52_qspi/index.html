@@ -1789,6 +1789,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#header-only-w25q16-wiring-for-the-unified-rak-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Header-only W25Q16 wiring for the unified RAK images
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3043,6 +3054,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#header-only-w25q16-wiring-for-the-unified-rak-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Header-only W25Q16 wiring for the unified RAK images
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3291,6 +3313,59 @@ core:</p>
 </table>
 <p>The physical flash wiring is identical, but the two application and
 bootloader pairs are not interchangeable.</p>
+<h3 id="header-only-w25q16-wiring-for-the-unified-rak-images">Header-only W25Q16 wiring for the unified RAK images</h3>
+<p>The unified RAK repeater images and matching OTAFIX 2.4.8 adaptive bootloaders
+also support a W25Q16 through the RAK19007 2.54 mm headers. This arrangement
+does not need an IO-connector interposer or underside SPI solder points:</p>
+<table>
+<thead>
+<tr>
+<th>W25Q16 breakout</th>
+<th>RAK19007 header</th>
+<th>nRF52840 / Arduino pin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLK</code></td>
+<td>J10 <code>TX1</code></td>
+<td>P0.16 / <code>16</code></td>
+</tr>
+<tr>
+<td><code>DO</code> / MISO</td>
+<td>J10 <code>RX1</code></td>
+<td>P0.15 / <code>15</code></td>
+</tr>
+<tr>
+<td><code>DI</code> / MOSI</td>
+<td>J11 <code>IO1</code></td>
+<td>P0.17 / <code>17</code></td>
+</tr>
+<tr>
+<td><code>CS</code></td>
+<td>J11 <code>AIN1</code></td>
+<td>P0.31 / <code>31</code></td>
+</tr>
+<tr>
+<td><code>VCC</code></td>
+<td>J12 <code>VDD</code></td>
+<td>regulated 3.3 V</td>
+</tr>
+<tr>
+<td><code>GND</code></td>
+<td>J12 <code>GND</code></td>
+<td>ground</td>
+</tr>
+</tbody>
+</table>
+<p>Keep the approximately 10 kOhm <code>CS</code>-to-<code>VDD</code> pull-up. This mapping gives up
+the UART1 GPS and PPS pins while the flash is fitted. The unified firmware
+detects the exact <code>EF4015</code> device before GPS discovery and leaves I2C sensor
+pins <code>SDA</code> and <code>SCL</code> available. RAK4631 can still use its UART2 bridge; its
+UART1 bridge is unavailable with header flash. RAK3401 retains its 1 W radio
+and shared sensor/radio power rail. Do not substitute <code>SCL</code> for flash clock or
+use <code>SWCLK</code>, which is the debug clock. The older dedicated W25Q16 images above
+expect the WisBlock SPI connector wiring and do not use this header mapping.</p>
 <h2 id="one-time-prerequisite">One-time prerequisite</h2>
 <p>Install a QSPI-capable OTAFIX 2.4.1 preview.9 or newer bootloader for the exact
 board from the

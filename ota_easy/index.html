@@ -3660,6 +3660,13 @@ SPI pins require underside taps or an interposer, but no sensor slot is
 occupied. See the
 <a href="../ota_nrf52_qspi/#one-w25q16-wiring-for-rak4631-or-rak3401--rak13302">nRF52 QSPI guide</a>
 before installing either image.</p>
+<p>For a build that uses only the 2.54 mm headers, use the unified
+<code>RAK_4631_repeater_unified_lora_ota</code> or
+<code>RAK_3401_repeater_unified_lora_ota</code> image with its matching adaptive
+OTAFIX 2.4.8 bootloader. Wire <code>CLK</code> to J10 <code>TX1</code>, <code>DO</code> to J10 <code>RX1</code>, <code>DI</code> to
+J11 <code>IO1</code>, and <code>CS</code> to J11 <code>AIN1</code>; keep the <code>CS</code> pull-up and J12 power wiring.
+This gives up UART1 GPS/PPS but leaves I2C sensors and the RAK3401 radio
+available. See the <a href="../ota_nrf52_qspi/#header-only-w25q16-wiring-for-the-unified-rak-images">header-only wiring table</a>.</p>
 <h3 id="4-build-and-check-the-in-place-delta">4. Build and check the in-place delta</h3>
 <pre><code class="language-bash">mkdir -p ./motas
 motatool build \
