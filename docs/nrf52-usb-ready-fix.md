@@ -24,6 +24,10 @@ framework implementation stops the build for review. The backport:
 - rechecks attachment while waiting, including completion by another callback;
 - bounds both waits with one 100,000-poll budget, independent of OS ticks;
 - ignores stale READY on a disabled peripheral and exits if it is removed.
+- replays an already asserted regulator READY state when the application USB
+  task starts with VBUS present, as the bootloader does. The framework's
+  original startup replayed DETECTED only, so a missing later power edge could
+  leave the new application's USB transport unattached after a UF2 handoff.
 
 The poll budget is an iteration limit, not a promised elapsed-time timeout.
 If the clock/peripheral never becomes ready, the caller returns instead of
@@ -36,6 +40,7 @@ patched handler from the pinned-framework fixture, model W1C event semantics,
 and cover duplicate/nested callbacks, delayed/missing clocks and READY, removal,
 retry, and detached USB. Restoring the inherited READY prefix must reproduce
 the infinite wait under a subprocess deadline. Additional tests check SDK
-isolation, idempotence, fail-closed patching, and all nRF52 environment hooks.
+isolation, idempotence, fail-closed patching, the startup DETECTED/READY order,
+and all nRF52 environment hooks.
 The harness is shared with OTAFIX's TinyUSB fork at
 `test/otafix/nrf5x_power_test.py`; keep the two copies in sync when extending it.

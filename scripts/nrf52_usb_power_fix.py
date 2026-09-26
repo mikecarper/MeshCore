@@ -1,4 +1,4 @@
-"""Compile a build-local fix for the framework's inherited nRF52 USB READY hang.
+"""Compile build-local fixes for the framework's nRF52 USB power startup.
 
 Never modify PlatformIO's shared framework package. Fail closed if a framework
 update changes the code this narrow backport expects. The same handler policy
@@ -60,6 +60,22 @@ ATTACH = """      // Enable pull up
 
     case USB_EVT_REMOVED:"""
 
+OLD_PORT_INIT = """  if (usb_reg & POWER_USBREGSTATUS_VBUSDETECT_Msk) {
+    tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_DETECTED);
+  }
+}
+"""
+PORT_INIT = """  if (usb_reg & POWER_USBREGSTATUS_VBUSDETECT_Msk) {
+    tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_DETECTED);
+  }
+  // On an application handoff, VBUS and the regulator may already be ready.
+  // The power driver only reports future edges, so replay both initial states.
+  if (usb_reg & POWER_USBREGSTATUS_OUTPUTRDY_Msk) {
+    tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_READY);
+  }
+}
+"""
+
 
 def patched_source(source):
     source = source.replace("\r\n", "\n")
@@ -73,10 +89,24 @@ def patched_source(source):
     return source.replace(OLD_READY, READY).replace(OLD_ATTACH, ATTACH)
 
 
+def patched_port_source(source):
+    source = source.replace("\r\n", "\n")
+    if PORT_INIT in source and OLD_PORT_INIT not in source:
+        return source
+    if source.count(OLD_PORT_INIT) != 1:
+        raise RuntimeError(
+            "nRF52 USB power fix: unrecognized USB startup; review the "
+            "framework update before building (shared SDK was not modified)"
+        )
+    return source.replace(OLD_PORT_INIT, PORT_INIT)
+
+
 def replace_driver(build_env, node):
     # SCons passes a not-yet-created VariantDir node, not the SDK source path.
     source = Path(node.srcnode().get_abspath())
-    patched = patched_source(source.read_text(encoding="utf-8"))
+    patcher = (patched_port_source if source.name == "Adafruit_TinyUSB_nrf.cpp"
+               else patched_source)
+    patched = patcher(source.read_text(encoding="utf-8"))
     destination = Path(build_env.subst("$BUILD_DIR")) / "patched-nrf52-usb" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists() or destination.read_text(encoding="utf-8") != patched:
@@ -89,6 +119,10 @@ def install(build_env):
     build_env.AddBuildMiddleware(
         replace_driver,
         "*Adafruit_TinyUSB_Arduino*src*portable*nordic*nrf5x*dcd_nrf5x.c",
+    )
+    build_env.AddBuildMiddleware(
+        replace_driver,
+        "*Adafruit_TinyUSB_Arduino*src*arduino*ports*nrf*Adafruit_TinyUSB_nrf.cpp",
     )
 
 
