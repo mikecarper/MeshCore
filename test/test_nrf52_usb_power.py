@@ -4,6 +4,8 @@
 import configparser
 import importlib.util
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -15,6 +17,32 @@ SPEC = importlib.util.spec_from_file_location("usb_fix", ROOT / "scripts/nrf52_u
 FIX = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FIX)
 ORIGINAL = (ROOT / "test/fixtures/nrf52_usb_power_original.c").read_text()
+PORT_SOURCE = """
+typedef struct { unsigned USBREGSTATUS; } PowerRegisters;
+static PowerRegisters registers;
+#define NRF_POWER (&registers)
+#define POWER_USBREGSTATUS_VBUSDETECT_Msk 1u
+#define POWER_USBREGSTATUS_OUTPUTRDY_Msk 2u
+enum { NRFX_POWER_USB_EVT_DETECTED = 0, NRFX_POWER_USB_EVT_READY = 2 };
+static unsigned events[2], event_count;
+static void tusb_hal_nrf_power_event(unsigned event) { events[event_count++] = event; }
+static void usb_hardware_init(void) {
+  unsigned usb_reg = NRF_POWER->USBREGSTATUS;
+  if (usb_reg & POWER_USBREGSTATUS_VBUSDETECT_Msk) {
+    tusb_hal_nrf_power_event(NRFX_POWER_USB_EVT_DETECTED);
+  }
+}
+int main() {
+  for (unsigned status = 0; status < 4; ++status) {
+    registers.USBREGSTATUS = status;
+    event_count = 0;
+    usb_hardware_init();
+    if (event_count != ((status & 1u) != 0u) + ((status & 2u) != 0u)) return 1;
+    if (status & 1u && events[0] != NRFX_POWER_USB_EVT_DETECTED) return 2;
+    if (status & 2u && events[event_count - 1] != NRFX_POWER_USB_EVT_READY) return 3;
+  }
+}
+"""
 
 
 class UsbPowerTests(unittest.TestCase):
@@ -25,6 +53,26 @@ class UsbPowerTests(unittest.TestCase):
         fixed = FIX.patched_source(ORIGINAL)
         self.assertEqual(fixed, FIX.patched_source(ORIGINAL.replace("\n", "\r\n")))
         self.assertEqual(fixed, FIX.patched_source(fixed))
+
+    def test_initial_ready_is_replayed_after_detected(self):
+        compiler = shutil.which("c++")
+        if compiler is None:
+            self.skipTest("C++ compiler unavailable")
+        patched = FIX.patched_port_source(PORT_SOURCE)
+        self.assertEqual(patched, FIX.patched_port_source(patched))
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "usb_port.cpp"
+            program = Path(directory) / "usb_port"
+            source.write_text(patched)
+            subprocess.run([compiler, "-std=c++11", "-o", str(program), str(source)],
+                           check=True, capture_output=True)
+            subprocess.run([str(program)], check=True, capture_output=True)
+
+    def test_unrecognized_usb_port_fails_closed(self):
+        for source in ("", PORT_SOURCE.replace("USBREGSTATUS", "STATUS"),
+                       PORT_SOURCE + PORT_SOURCE):
+            with self.subTest(source=source[:40]), self.assertRaises(RuntimeError):
+                FIX.patched_port_source(source)
 
     def test_unrecognized_or_partly_fixed_driver_fails_closed(self):
         for source in ("", ORIGINAL.replace("hfclk_running()", "clock_running()"),
