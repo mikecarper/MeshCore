@@ -40,7 +40,7 @@ class IndicatorMessagesProfileTest(unittest.TestCase):
         self.assertIn("#if UI_MESSAGES_HOME_PAGE == 1\n    MESSAGES,", ui)
         self.assertIn("_page == HomePage::MESSAGES", ui)
 
-    def test_wifi_setup_is_eighth_without_reordering_existing_pages(self):
+    def test_radio_pages_precede_transport_and_wifi_setup(self):
         ui = UI.read_text(encoding="utf-8")
         enum_start = ui.index("  enum HomePage {")
         enum_end = ui.index("\n  };", enum_start) + len("\n  };")
@@ -59,12 +59,14 @@ static_assert(FIRST == 0, "first");
 static_assert(MESSAGES == 1, "messages");
 static_assert(RECENT == 2, "recent");
 static_assert(RADIO == 3, "radio");
-static_assert(TRANSPORT == 4, "transport");
-static_assert(ADVERT == 5, "advert");
-static_assert(SENSORS == 6, "sensors");
-static_assert(WIFI_SETUP == 7, "wifi setup");
-static_assert(DISCOVERY == 8, "discovery appended without reordering");
-static_assert(Count == 9, "count");
+static_assert(RADIO2 == 4, "second radio");
+static_assert(RADIO_STATUS == 5, "radio status");
+static_assert(TRANSPORT == 6, "transport");
+static_assert(ADVERT == 7, "advert");
+static_assert(SENSORS == 8, "sensors");
+static_assert(WIFI_SETUP == 9, "wifi setup");
+static_assert(DISCOVERY == 10, "discovery follows setup");
+static_assert(Count == 11, "count");
 int main() {{ return 0; }}
 """
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -13,7 +13,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "deduplicate_full_build_flags.py"
-BUILD_SCRIPT = ROOT / "build.sh"
+BUILD_SCRIPT = ROOT / "build_legacy.sh"
 
 
 class FakeEnvironment:

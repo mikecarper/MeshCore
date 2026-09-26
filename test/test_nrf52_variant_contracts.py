@@ -119,7 +119,7 @@ class Nrf52VariantContractsTest(unittest.TestCase):
     def test_rak3401_reduced_profile_names_its_narrow_sensor_trim(self) -> None:
         recipe = (ROOT / "variants/rak3401/platformio.ini").read_text()
         shared = (ROOT / "platformio.ini").read_text()
-        build_script = (ROOT / "build.sh").read_text()
+        build_script = (ROOT / "build_legacy.sh").read_text()
 
         expected_ina = {
             "ENV_INCLUDE_INA219",

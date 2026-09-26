@@ -9,7 +9,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = ROOT / "build.sh"
+BUILD = ROOT / "build_legacy.sh"
 MAIN = ROOT / "examples" / "companion_radio" / "main.cpp"
 MESH = ROOT / "examples" / "companion_radio" / "MyMesh.cpp"
 DATA_STORE = ROOT / "examples" / "companion_radio" / "DataStore.cpp"

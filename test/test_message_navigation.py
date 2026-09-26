@@ -46,6 +46,8 @@ struct StrHelper {
 };
 struct ChannelDetails { char name[32]; };
 struct Mesh {
+  bool dual_radio_active=false;
+  bool isDualRadioActive() const { return dual_radio_active; }
   bool getChannel(int channel,ChannelDetails& details) const {
     const char* names[]={"Public","","Second","Empty"};
     if (channel<0 || channel>=MAX_GROUP_CHANNELS) return false;
@@ -341,6 +343,20 @@ int main() {
   assert(home._page==HomeScreen::Count-1 && home.events==5);
   gesture(task,3); assert(task.buzzer_changes==1);
   gesture(task,4); assert(task.buzzer_changes==2);
+  // A single-profile board skips the two extra radio pages in both directions.
+  home._page=HomeScreen::RADIO;
+  gesture(task,1); assert(home._page==HomeScreen::DISCOVERY);
+  gesture(task,2); assert(home._page==HomeScreen::RADIO);
+  // With two profiles, the same physical button walks R1, R2 and status.
+  the_mesh.dual_radio_active=true;
+  gesture(task,1); assert(home._page==HomeScreen::RADIO2);
+  gesture(task,1); assert(home._page==HomeScreen::RADIO_STATUS);
+  home.handleInput(static_cast<char>(KEY_ENTER));
+  assert(home._radio_status_page==1);
+  gesture(task,1); assert(home._page==HomeScreen::DISCOVERY);
+  gesture(task,2); assert(home._page==HomeScreen::RADIO_STATUS);
+  gesture(task,2); assert(home._page==HomeScreen::RADIO2);
+  gesture(task,2); assert(home._page==HomeScreen::RADIO);
 }
 '''
 
@@ -366,16 +382,19 @@ class MessageNavigationTest(unittest.TestCase):
         home = source[source.index("class HomeScreen :"):]
         home_navigation = home[home.index("  bool handleInput(char c) override {"):]
         home_navigation = home_navigation.split("#ifdef COMPANION_EXCLUSIVE_WIFI_BLE", 1)[0]
-        # This focused navigation harness intentionally omits HomeScreen's
-        # radio-page timing state. Entering the radio page resets that state
-        # in production, but it is unrelated to the button routing exercised
-        # below, so remove only that call from the extracted fragment.
-        home_navigation = home_navigation.replace(
-            "if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();\n", "")
+        # Keep the real radio-page navigation helpers in this focused harness,
+        # so new home pages cannot silently bypass the button-routing test.
         home_navigation = home_navigation.replace("{\n", "{\n    Screen::handleInput(c);\n", 1)
+        radio_navigation = "\n".join(extract_braced(source, signature) for signature in (
+            "void resetRadioProfileDisplayPage() {",
+            "bool isPageVisible(uint8_t page) const {",
+            "void movePage(int direction) {",
+            "bool isRadioPage() const {"))
         implementation += ("class HomeScreen : public Screen { public: UITask* _task; "
-                           "enum HomePage {FIRST,MESSAGES,RECENT,RADIO,DISCOVERY,Count}; int _page=0; "
-                           "HomeScreen(UITask* task):_task(task){}\n" + home_navigation +
+                           "enum HomePage {FIRST,MESSAGES,RECENT,RADIO,RADIO2,RADIO_STATUS,DISCOVERY,Count}; "
+                           "int _page=0; uint32_t _radio_profile_page_started_at=0; "
+                           "uint8_t _radio_status_page=0; bool _dual_radio_enabled_seen=false; "
+                           "HomeScreen(UITask* task):_task(task){}\n" + radio_navigation + "\n" + home_navigation +
                            "return false; } };\n")
         target = (ROOT / "variants/sensecap_indicator-espnow/target.cpp").read_text()
         button = re.search(r"MomentaryButton user_btn\([^;]+;", target).group(0)
