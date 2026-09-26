@@ -30,9 +30,6 @@ assert_auto_unified() (
   }
   run_command build-firmware >/dev/null
   [ "${built[*]}" = "$expected" ] || fail "auto emitted duplicate Full artifacts"
-  built=()
-  run_full_esp32_build_targets all "$plain" "$expected" >/dev/null
-  [ "${built[*]}" = "$expected" ] || fail "matrix emitted duplicate Full artifacts"
 )
 
 assert_auto_unified heltec_v4_r8_repeater heltec_v4_r8_repeater_observer_mqtt
@@ -61,6 +58,28 @@ assert_auto_unified Station_G2_room_server Station_G2_room_server_observer_mqtt
   }
   run_command build-firmware >/dev/null
 )
+
+# Operators may still build an alternate Full identity that is omitted from
+# the ordinary bulk release, including capacity-specific plain recipes.
+for alternate in Tbeam_SX1262_repeater \
+    Tbeam_SX1262_repeater_bridge_espnow \
+    LilyGo_TLora_V2_1_1_6_repeater; do
+  (
+    BUILD_PROFILE_OVERRIDE=full
+    BUILD_PROFILE_EXPLICIT=1
+    SINGLE_TARGET_FULL_BUILD=1
+    EXACT_IDENTITY_FULL_BUILD=1
+    RESOLVED_BUILD_TARGETS=("$alternate")
+    configure_effective_build_profile build-firmware >/dev/null
+    [ "${RESOLVED_BUILD_TARGETS[*]}" = "$alternate" ] \
+      || fail "alternate Full target changed identity: $alternate"
+    run_logged_build_targets() {
+      [ "$*" = "$alternate" ] || fail "alternate Full built another target"
+      [ "$ESP32_FULL_BUILD" = 1 ] || fail "alternate Full lost expanded partitions"
+    }
+    run_command build-firmware >/dev/null
+  )
+done
 
 # Only targets whose standard and FULL board recipes retain the exact same
 # partition table may omit their redundant portable bulk artifact.
@@ -259,8 +278,8 @@ done
     heltec_v4_r8_repeater_observer_mqtt >/dev/null
   [ "$standard_built" = heltec_v4_r8_repeater_lora_ota_no_external_sensors ] \
     || fail "matrix changed the distinct reduced OTA build"
-  [ "$full_built" = 'heltec_v4_r8_repeater heltec_v4_r8_repeater_observer_mqtt' ] \
-    || fail "matrix did not retain V4's exact and legacy Full identities"
+  [ "$full_built" = heltec_v4_r8_repeater ] \
+    || fail "matrix emitted duplicate V4 Full identities"
   [ "$ESP32_LORA_OTA_APP_LIMIT" = 1310720 ] || fail "changed the 1.25 MiB portable limit"
 )
 
@@ -273,8 +292,53 @@ done
   run_logging_matrix_build_targets heltec_rc32_repeater \
     heltec_rc32_repeater_bridge_espnow >/dev/null
   [ "${#calls[@]}" -eq 1 ] || fail "FULL-only targets emitted duplicate matrix artifacts"
-  [ "${calls[0]}" = 'full:1:full-logging:heltec_rc32_repeater heltec_rc32_repeater_bridge_espnow' ] \
-    || fail "matrix did not build exact FULL-only identities"
+  [ "${calls[0]}" = 'full:1:full-logging:heltec_rc32_repeater' ] \
+    || fail "matrix emitted duplicate RC32 Full identities"
+)
+
+# A three-identity group keeps the audited plain target; a group without an
+# audited plain Full uses the feature-complete observer. Different hardware
+# variants must remain separate.
+(
+  calls=()
+  run_logged_build_targets() {
+    [ "$ESP32_FULL_BUILD" = 1 ] && calls+=("$*")
+  }
+  run_logging_matrix_build_targets Heltec_v3_repeater \
+    Heltec_v3_repeater_observer_mqtt Heltec_v3_repeater_bridge_espnow \
+    Tbeam_SX1262_repeater_bridge_espnow Tbeam_SX1262_repeater_observer_mqtt \
+    Heltec_v3_room_server >/dev/null
+  [ "${#calls[@]}" -eq 2 ] || fail "multi-role matrix emitted too many Full passes"
+  [ "${calls[0]}" = 'Heltec_v3_repeater Heltec_v3_room_server' ] \
+    || fail "plain V3 Full identity or separate room role was lost"
+  [ "${calls[1]}" = Tbeam_SX1262_repeater_observer_mqtt ] \
+    || fail "T-Beam observer Full identity was lost"
+)
+
+(
+  mapfile -t matrix_targets < <(resolve_logging_matrix_firmwares)
+  mapfile -t full_targets < <(select_ordinary_full_targets "${matrix_targets[@]}")
+  declare -A seen=()
+  for target in "${full_targets[@]}"; do
+    key=$(get_ordinary_full_group_key "$target") || fail "invalid Full target $target"
+    [ -z "${seen[$key]+x}" ] || fail "duplicate ordinary Full group $key"
+    seen[$key]=1
+  done
+  [ "${#full_targets[@]}" -gt 100 ] || fail "Full selection unexpectedly dropped board roles"
+)
+
+(
+  calls=()
+  run_logged_build_targets() { calls+=("$*"); }
+  run_full_esp32_build_targets all heltec_v4_r8_repeater \
+    heltec_v4_r8_repeater_observer_mqtt \
+    Tbeam_SX1262_repeater_bridge_espnow \
+    Tbeam_SX1262_repeater_observer_mqtt >/dev/null
+  [ "${#calls[@]}" -eq 2 ] || fail "Full-only bulk command emitted duplicate roles"
+  [ "${calls[0]}" = heltec_v4_r8_repeater ] \
+    || fail "Full-only bulk command lost the audited plain identity"
+  [ "${calls[1]}" = Tbeam_SX1262_repeater_observer_mqtt ] \
+    || fail "Full-only bulk command lost the T-Beam observer identity"
 )
 
 (

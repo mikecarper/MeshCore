@@ -2428,7 +2428,8 @@ get_unified_full_infrastructure_target() {
 
   # These plain Full recipes retain more routing capacity than their MQTT
   # siblings (T-Beam flood rules / room neighbors, TLora repeater neighbors).
-  # They are intentional alternatives, not duplicate Full artifacts.
+  # Keep them available for an explicit exact-identity build; the ordinary
+  # release chooses the MQTT observer for these board/role groups.
   case "${mqtt_base,,}" in
     tbeam_sx1262_repeater|tbeam_sx1276_repeater|\
     tbeam_sx1262_room_server|tbeam_sx1276_room_server|\
@@ -5412,8 +5413,10 @@ configure_effective_build_profile() {
   if [ "$EXACT_IDENTITY_FULL_BUILD" = "1" ]; then
     if [ "$command_name" != "build-firmware" ] \
         || [ "${#RESOLVED_BUILD_TARGETS[@]}" -ne 1 ] \
-        || ! is_esp32_canonical_full_release_target "$target"; then
-      echo "--full-exact requires one canonical ESP32 infrastructure target."
+        || [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" != ESP32_PLATFORM ] \
+        || ! supports_esp32_full_build "$target" \
+        || is_esp32_companion_build "$target"; then
+      echo "--full-exact requires one supported ESP32 infrastructure target."
       return 1
     fi
     BUILD_PROFILE_EFFECTIVE="full"
@@ -5810,6 +5813,69 @@ get_esp32_full_profile_target() {
   echo "$target"
 }
 
+# The ordinary release offers one Full image per physical board and role.
+# Keep the exact environment names for direct --full-exact builds and for
+# legacy/partition migration packages; this selection applies only to bulk
+# Full passes. Include the board in the key so similarly named recipes cannot
+# collapse distinct hardware.
+get_ordinary_full_group_key() {
+  local target=$1
+  local base=${target%_}
+  local role_base=$base
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = ESP32_PLATFORM ] || return 1
+  supports_esp32_full_build "$target" || return 1
+  case "${base,,}" in
+    *_repeater_observer_mqtt|*_room_server_observer_mqtt)
+      role_base=${base%_observer_mqtt} ;;
+    *_repeater_bridge_espnow)
+      role_base=${base%_bridge_espnow} ;;
+    *_repeater|*_room_server) ;;
+    *) role_base=$base ;;
+  esac
+  printf '%s|%s\n' "${PIO_ENV_BOARD_BY_NAME[$target]:-$target}" "${role_base,,}"
+}
+
+get_ordinary_full_priority() {
+  local target=$1
+  local base=${target%_}
+  case "${base,,}" in
+    *_observer_mqtt) echo 20 ;;
+    *_bridge_espnow) echo 10 ;;
+    *)
+      # G2's deployed Full identity is the observer. Other audited plain
+      # targets keep their own identity, with observer sources where needed.
+      if is_ordinary_partition_migration_full_target "$target" \
+          || is_esp32_full_only_bulk_target "$target"; then
+        echo 30
+      else
+        echo 0
+      fi ;;
+  esac
+}
+
+select_ordinary_full_targets() {
+  local target candidate key priority
+  local -a keys=()
+  local -A choice=() best_priority=()
+  for target in "$@"; do
+    candidate=$(get_esp32_full_profile_target "$target")
+    key=$(get_ordinary_full_group_key "$candidate") || continue
+    priority=$(get_ordinary_full_priority "$candidate")
+    if [ -z "${choice[$key]+x}" ]; then
+      keys+=("$key")
+      choice[$key]=$candidate
+      best_priority[$key]=$priority
+    elif [ "$priority" -gt "${best_priority[$key]}" ]; then
+      choice[$key]=$candidate
+      best_priority[$key]=$priority
+    fi
+  done
+  for key in "${keys[@]}"; do
+    printf '%s\n' "${choice[$key]}"
+  done
+}
+
 has_esp32_full_profile() {
   local target
   local candidate=""
@@ -5845,6 +5911,15 @@ run_full_esp32_profile() {
 
   for target in "${targets[@]}"; do
     full_profile_target=$(get_esp32_full_profile_target "$target")
+    # An earlier exact-identity pass already emitted this release's chosen
+    # Full image. Do this before resolving a plain target to its observer
+    # source, which would otherwise emit a second OTA identity.
+    if { [ "${PARTITION_MIGRATION_FULL_PROFILE_ACTIVE:-0}" = 1 ] \
+        && is_ordinary_partition_migration_full_target "$full_profile_target"; } \
+        || { [ "${FULL_ONLY_EXACT_PROFILE_ACTIVE:-0}" = 1 ] \
+        && is_esp32_full_only_bulk_target "$full_profile_target"; }; then
+      continue
+    fi
     # Use the same exact-board choice as single-target auto builds, including
     # historical trailing-underscore recipes such as Heltec T190.
     mqtt_target=$(get_unified_full_infrastructure_target "$full_profile_target") || mqtt_target=""
@@ -5864,21 +5939,6 @@ run_full_esp32_profile() {
       full_target=$(get_mqtt_enabled_target "$full_profile_target") || full_target=""
     fi
     if [ -z "$full_target" ] || ! supports_esp32_full_build "$full_target"; then
-      continue
-    fi
-    # The canonical normal-target FULL artifact was already emitted by the
-    # partition-migration pass. Do not rebuild it as an identical fallback.
-    # Observer identities are intentionally not skipped: existing observer
-    # nodes still need their exact legacy mOTA asset during the transition.
-    if [ "${PARTITION_MIGRATION_FULL_PROFILE_ACTIVE:-0}" = "1" ] \
-        && is_esp32_partition_migration_full_target "$full_target"; then
-      continue
-    fi
-    # The logging matrix has already emitted these approved targets under
-    # their exact environment names. Do not replace that identity with a
-    # generic MQTT/unified sibling in this legacy resolution pass.
-    if [ "${FULL_ONLY_EXACT_PROFILE_ACTIVE:-0}" = "1" ] \
-        && is_esp32_full_only_bulk_target "$full_target"; then
       continue
     fi
     if [ -z "${seen_full_targets[$full_target]+x}" ]; then
@@ -6029,9 +6089,23 @@ run_full_esp32_build_targets() {
   local profile_mode=$1
   shift
   local targets=("$@")
+  local ordinary_full_targets=()
+  local full_only_targets=()
+  local target
   local profile_name="FULL unified"
   local build_status=0
   local pass_status=0
+  local FULL_ONLY_EXACT_PROFILE_ACTIVE=0
+  local PARTITION_MIGRATION_FULL_PROFILE_ACTIVE=0
+
+  if [ "${SINGLE_TARGET_FULL_BUILD:-0}" = 1 ]; then
+    # A named single-target build is an explicit operator choice. Keep its
+    # historical observer/bridge resolution rather than applying bulk release
+    # identity selection to it.
+    ordinary_full_targets=("${targets[@]}")
+  else
+    mapfile -t ordinary_full_targets < <(select_ordinary_full_targets "${targets[@]}")
+  fi
 
   if [ "$profile_mode" = "fallback" ]; then
     profile_name="FULL logging fallback"
@@ -6039,15 +6113,32 @@ run_full_esp32_build_targets() {
 
   LOGGING_MATRIX_FAILURES=()
   if [ "$profile_mode" = "fallback" ]; then
-    run_full_esp32_profile "${profile_name}-only build" "fallback" "${targets[@]}"
+    run_full_esp32_profile "${profile_name}-only build" "fallback" "${ordinary_full_targets[@]}"
     build_status=$?
   else
-    run_full_esp32_profile "${profile_name} build" "unified" "${targets[@]}"
+    if [ "${SINGLE_TARGET_FULL_BUILD:-0}" != 1 ]; then
+      for target in "${ordinary_full_targets[@]}"; do
+        if is_esp32_full_only_bulk_target "$target"; then
+          full_only_targets+=("$target")
+        fi
+      done
+      run_full_only_esp32_profile "${full_only_targets[@]}"
+      pass_status=$?
+      if [ "$pass_status" -eq 130 ]; then return 130; fi
+      if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+      run_partition_migration_full_esp32_profile "${ordinary_full_targets[@]}"
+      pass_status=$?
+      if [ "$pass_status" -eq 130 ]; then return 130; fi
+      if [ "$pass_status" -ne 0 ]; then build_status=1; fi
+      FULL_ONLY_EXACT_PROFILE_ACTIVE=1
+      PARTITION_MIGRATION_FULL_PROFILE_ACTIVE=1
+    fi
+    run_full_esp32_profile "${profile_name} build" "unified" "${ordinary_full_targets[@]}"
     pass_status=$?
     if [ "$pass_status" -eq 130 ]; then return 130; fi
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
-    run_full_esp32_profile "FULL logging fallback build" "fallback" "${targets[@]}"
+    run_full_esp32_profile "FULL logging fallback build" "fallback" "${ordinary_full_targets[@]}"
     pass_status=$?
     if [ "$pass_status" -eq 130 ]; then return 130; fi
     if [ "$pass_status" -ne 0 ]; then build_status=1; fi
@@ -6070,6 +6161,7 @@ run_logging_matrix_build_targets() {
   local target
   local standard_targets=()
   local full_only_targets=()
+  local ordinary_full_targets=()
   local original_meshdebug_override=$MESHDEBUG_OVERRIDE
   local original_packet_logging_override=$PACKET_LOGGING_OVERRIDE
   local original_mqtt_bridge_override=$MQTT_BRIDGE_OVERRIDE
@@ -6094,6 +6186,7 @@ run_logging_matrix_build_targets() {
   fi
   LOGGING_MATRIX_FAILURES=()
   LOGGING_MATRIX_DEFERRED_TARGETS=()
+  mapfile -t ordinary_full_targets < <(select_ordinary_full_targets "${targets[@]}")
   if [ "${REQUIRE_OTA_UPDATES:-0}" = "1" ]; then
     printf '%s\n' "${OTA_EXCLUDED_TARGETS[@]}" > "${OUTPUT_DIR}/ota-excluded-targets.txt"
   fi
@@ -6102,14 +6195,11 @@ run_logging_matrix_build_targets() {
 
   for target in "${targets[@]}"; do
     if is_esp32_full_only_bulk_target "$target"; then
-      full_only_exact_count=$((full_only_exact_count + 1))
       # Full companion environments already select their complete profile in
       # build_firmware, so keep them in the ordinary pass to preserve their
       # established companion-specific recipe.
       if is_companion_radio_full_target "$target"; then
         standard_targets+=("$target")
-      else
-        full_only_targets+=("$target")
       fi
       continue
     fi
@@ -6129,6 +6219,14 @@ run_logging_matrix_build_targets() {
     fi
   done
 
+  for target in "${ordinary_full_targets[@]}"; do
+    if is_esp32_full_only_bulk_target "$target" \
+        && ! is_companion_radio_full_target "$target"; then
+      full_only_targets+=("$target")
+      full_only_exact_count=$((full_only_exact_count + 1))
+    fi
+  done
+
   echo "Profile 1/2: building ${#standard_targets[@]} standard target(s); ${merged_usb_logging_count} embed runtime-controlled USB logging in the ordinary artifact."
   if [ "$constrained_merged_logging_count" -gt 0 ]; then
     echo "Keeping verbose MESH_DEBUG off for ${constrained_merged_logging_count} size-constrained STM32 target(s); packet logging remains available at runtime."
@@ -6139,7 +6237,7 @@ run_logging_matrix_build_targets() {
   if [ "$full_only_exact_count" -gt 0 ]; then
     echo "Publishing ${full_only_exact_count} audited ESP32 target(s) as their exact-identity FULL release only; explicit --standard remains available for recovery."
   fi
-  for target in "${targets[@]}"; do
+  for target in "${ordinary_full_targets[@]}"; do
     if is_ordinary_partition_migration_full_target "$target"; then
       partition_migration_full_count=$((partition_migration_full_count + 1))
     fi
@@ -6166,19 +6264,19 @@ run_logging_matrix_build_targets() {
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
-  run_partition_migration_full_esp32_profile "${targets[@]}"
+  run_partition_migration_full_esp32_profile "${ordinary_full_targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
   PARTITION_MIGRATION_FULL_PROFILE_ACTIVE=1
 
   FULL_ONLY_EXACT_PROFILE_ACTIVE=1
-  run_full_esp32_profile "FULL unified pass" "unified" "${targets[@]}"
+  run_full_esp32_profile "FULL unified pass" "unified" "${ordinary_full_targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi
 
-  run_full_esp32_profile "FULL logging fallback pass" "fallback" "${targets[@]}"
+  run_full_esp32_profile "FULL logging fallback pass" "fallback" "${ordinary_full_targets[@]}"
   pass_status=$?
   if [ "$pass_status" -eq 130 ]; then return 130; fi
   if [ "$pass_status" -ne 0 ]; then build_status=1; fi

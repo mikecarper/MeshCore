@@ -46,15 +46,22 @@ an old or failed artifact without a verified sidecar.
 For a single ESP32 repeater or room-server target, `auto` selects its matching
 combined Full MQTT/USB/WiFi image when that image covers the plain Full recipe.
 The direct observer and Full-matrix paths use the same `full-usb-wifi-ota`
-artifact and runtime output controls. Plain Full T-Beam SX1262/SX1276 profiles
-and the TLora V2 repeater remain alternatives because their MQTT siblings have
-lower routing-table capacities.
+artifact and runtime output controls. The ordinary bulk release publishes one
+Full OTA identity per exact ESP32 board and role. Audited plain targets keep
+their identity while compiling the combined observer/ESP-NOW sources; G2 keeps
+its deployed observer identity. T-Beam SX1262/SX1276 and TLora V2 choose the
+observer in the ordinary release. Their plain Full recipes remain available
+as explicit alternatives with different routing capacities. Build one with
+`bash build.sh build-firmware <target> --full-exact`, then deliberately install
+it over LoRa with `ota pull <MID8> flash` and `ota install` on compatible
+hardware and partition layouts.
 
 Standard and reduced OTA images, including images that fit the 1.25 MiB
 portable application slot, remain available and remain in the standard matrix
 pass. Select `--build-profile standard` to retain the original target and
 partition contract. Moving from a plain target to its MQTT sibling changes the
-LoRa OTA target identity; existing nodes need an appropriate wired migration.
+LoRa OTA target identity; a partition layout change needs its matching
+migration step.
 For the normal-role partition migrations, the matrix also publishes a
 canonical Full image under the normal target identity. Install its matching
 merged image over USB once; mOTA rejects the incompatible partition signature

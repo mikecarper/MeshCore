@@ -97,6 +97,47 @@ def build_migration_artifacts(work: Path, version: str, short_source: str,
                 raise RuntimeError(f"migration utility {bridge} failed; see {log}")
 
 
+def select_ordinary_full_records(records: list[dict]) -> list[dict]:
+    """Keep one ESP32 Full OTA identity per board/role in the public matrix.
+
+    Explicit alternate images and old partition identities still belong in
+    their separately built migration packages or direct --full-exact builds.
+    This also removes stale sibling artifacts when a matrix build is resumed.
+    """
+    chosen: dict[str, tuple[int, dict]] = {}
+    passthrough: list[dict] = []
+    for record in records:
+        manifest = record["manifest"]
+        if manifest["platform"] != "ESP32_PLATFORM" or manifest["build_profile"] != "full":
+            passthrough.append(record)
+            continue
+        target = manifest["target"]
+        base = target.rstrip("_")
+        kind = "plain"
+        if base.lower().endswith("_observer_mqtt"):
+            base = base[:-len("_observer_mqtt")]
+            kind = "observer"
+        elif base.lower().endswith("_bridge_espnow"):
+            base = base[:-len("_bridge_espnow")]
+            kind = "bridge"
+        key = base.lower()
+        # G2's observer is the deployed Full identity. The other listed
+        # observer/bridge recipes offer features that their plain images do
+        # not combine, so keep the richer ordinary release choice.
+        special = key in {
+            "station_g2_repeater", "station_g2_room_server",
+            "tbeam_sx1262_repeater", "tbeam_sx1276_repeater",
+            "tbeam_sx1262_room_server", "tbeam_sx1276_room_server",
+            "lilygo_tlora_v2_1_1_6_repeater",
+            "meshadventurer_sx1262_repeater", "meshadventurer_sx1268_repeater",
+        }
+        priority = {"observer": 20, "bridge": 10, "plain": 0 if special else 30}[kind]
+        old = chosen.get(key)
+        if old is None or priority > old[0]:
+            chosen[key] = (priority, record)
+    return passthrough + [item[1] for item in chosen.values()]
+
+
 def stage_release(work: Path, migration_work: Path, destination: Path, version: str,
                   source: str) -> None:
     if destination.exists():
@@ -105,10 +146,7 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
     short_source = source[:8]
     tooling_source = git("rev-parse", "HEAD")
     artifact_version = f"{version}-{short_source}"
-    records = [record for record in collect_artifacts(work, artifact_version)
-               if not (record["manifest"]["build_profile"] == "full"
-                       and record["manifest"]["target"] in {
-                           "Station_G2_repeater", "Station_G2_room_server"})]
+    records = select_ordinary_full_records(collect_artifacts(work, artifact_version))
     if not records:
         raise ValueError("firmware matrix produced no qualified artifacts")
 

@@ -205,7 +205,9 @@ long ago it was seen. The fit marker:
   in-place delta. A matched external-QSPI nRF52 can accept that full codec.
 - **[rescue]** - an installable in-place nRF52 delta for the same target, but this running firmware has no
   valid app-side EndF. It requires the explicit rescue download and install flow below.
-- **[name]** - a different known board or role (for example `[ProMicro_companion_radio_usb]`). Don't install it.
+- **[name]** - a different known board or role (for example `[ProMicro_companion_radio_usb]`).
+  Install it only if you deliberately chose a different role for the same hardware; the installer
+  still checks the hardware identity and partition layout.
 - **[?]** - can't tell (a build with no target id set, e.g. a bare IDE build rather than a release build).
 
 Run it again after a few seconds - discovery happens in the background, so the list fills in. Nothing is
@@ -232,6 +234,16 @@ attached (it shows the link, e.g. `folder: tcp 192.168.4.5`); it streams the fir
 host folder - nothing is staged on this node. That's how you grab an **exact copy of another device's
 firmware** off the mesh (to a `.mota` file) so you can later build a *delta* against firmware you don't
 otherwise have. (`ota get` is an alias.)
+
+**Deliberate alternate image.** An operator can choose a different target ID
+for the same physical board by selecting its exact manifest ID from `ota ls`,
+then running `ota pull <MID8> flash` and `ota install`. The target ID controls
+which image is discovered and fetched; it does not lock manual installs to
+the current role. The hardware identity, codec, image hash, and partition
+checks still run. Automatic updates follow the firmware's selected target
+(or its declared one-way successor), so use `ota config autofetch off` and
+`ota config autoinstall off` if you want to keep an alternate image without
+automatic convergence.
 
 **`validate` (warm-start, advanced).** Capturing a full image over the radio is slow. If you have a
 *similar* build on the computer (e.g. a fresh recompile of the same firmware), run motatool with
