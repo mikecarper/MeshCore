@@ -162,7 +162,7 @@ from the published firmware assets.
 | Wi-Fi MQTT observer | Firmware connects directly to MQTT over Wi-Fi; this is not USB logging |
 | USB logging + Wi-Fi MQTT | Unified FULL image sends to both paths; avoid two publishers aimed at the same broker unless messages are deduplicated |
 | No logging | Normal standalone operation without the dedicated logging/MQTT profile |
-| LoRa OTA repeater | Repeater profile that can stage an exact matching update received over LoRa |
+| Receives LoRa OTA | Repeater, room server, or sensor image that can stage an exact matching update received over LoRa |
 | LoRa OTA source only | Full Companion serving a host-supplied update to another node without self-installing it |
 
 Connection and bridge choices depend on the selected role. Companion firmware
@@ -362,15 +362,14 @@ node configuration and verify every filename suffix before flashing.
 
 ## LoRa OTA and OTAFIX
 
-A LoRa OTA repeater build installs repeater firmware that can receive and
-stage updates. A later LoRa update still needs an exact target identity,
+A LoRa OTA capable build can receive and stage updates for its role. A later
+LoRa update still needs an exact target identity,
 compatible partition signature, matching radio settings, and the correct
 update package.
 
-nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board. There
-is no universal bootloader file. Use the
-[OTAFIX 2.4.6 for this release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
-and select the hardware-matched HEX, Serial DFU ZIP, or bootloader-update UF2.
+nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board and
+storage layout. Select the hardware-matched HEX, Serial DFU ZIP, or
+bootloader-update UF2 for the application image being installed.
 
 ## Hardware and variant names
 

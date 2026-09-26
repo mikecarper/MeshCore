@@ -29,7 +29,10 @@ done
 # marker, and so its manifest never advertises impossible hardware support.
 for rak_target in \
   RAK_3401_repeater_lora_ota_no_external_sensors \
+  RAK_3401_sensor_lora_ota_no_external_sensors \
   RAK_4631_repeater_lora_ota_no_external_sensors \
+  RAK_4631_room_server_ethernet_lora_ota_no_external_sensors \
+  RAK_4631_sensor_lora_ota_no_external_sensors \
   RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors \
   RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors; do
   is_rak_i2c_voltage_monitor_ota_target "$rak_target" \
@@ -37,7 +40,10 @@ for rak_target in \
 done
 for rak_target in \
   RAK_3401_repeater_lora_ota_no_external_sensors \
+  RAK_3401_sensor_lora_ota_no_external_sensors \
   RAK_4631_repeater_lora_ota_no_external_sensors \
+  RAK_4631_room_server_ethernet_lora_ota_no_external_sensors \
+  RAK_4631_sensor_lora_ota_no_external_sensors \
   RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors; do
   is_rak_gps_retaining_ota_target "$rak_target" \
     || fail "$rak_target lost its compatible GPS contract"
@@ -330,9 +336,19 @@ require(rak_usb, "build_flags", "FORCE_GPS_ALIVE")
 # replace each with that exact board's Full target.
 init_project_context >/dev/null
 
-# ESP32 and nRF52 standalone room servers receive the same lean LoRa-OTA
-# sibling as repeaters. Sensor roles stay on their ordinary recipe so this
-# cannot accidentally become a blanket no-external-sensors policy.
+# ESP32 room servers and sensors use their expanded Full image for LoRa OTA.
+for full_role_env in Heltec_v3_room_server Heltec_v3_sensor; do
+  supports_esp32_full_build "$full_role_env" \
+    || fail "$full_role_env lacks its ESP32 Full build"
+  (
+    ESP32_FULL_BUILD=1
+    is_lora_ota_build "$full_role_env" \
+      || fail "$full_role_env Full image lost LoRa OTA"
+  )
+done
+
+# Standalone room servers receive a lean LoRa OTA sibling. nRF52 sensors
+# receive an explicit lean sibling while their normal image keeps its sensors.
 while IFS='|' read -r room_env room_ota_env; do
   is_supported_build_env "$room_ota_env" \
     || fail "$room_ota_env was not registered as a room-server LoRa OTA target"
@@ -350,16 +366,57 @@ done <<'ROOM_OTA_SPECS'
 Heltec_v3_room_server|Heltec_v3_room_server_lora_ota_no_external_sensors
 RAK_3401_room_server|RAK_3401_room_server_lora_ota_no_external_sensors
 ROOM_OTA_SPECS
-print_release_firmware_targets get-room-server-firmwares-to-build | grep -Fx \
+room_release_targets=$(print_release_firmware_targets get-room-server-firmwares-to-build)
+printf '%s\n' "$room_release_targets" | grep -Fx \
   RAK_3401_room_server_lora_ota_no_external_sensors >/dev/null \
   || fail "room-server release resolution omitted its portable LoRa OTA target"
-for sensor_ota_env in \
-    Heltec_v3_sensor_lora_ota_no_external_sensors \
-    RAK_3401_sensor_lora_ota_no_external_sensors; do
-  if is_supported_build_env "$sensor_ota_env"; then
-    fail "$sensor_ota_env was incorrectly generated from a sensor role"
-  fi
+printf '%s\n' "$room_release_targets" | grep -Fx \
+  solarxiao_30S_room_server_lora_ota >/dev/null \
+  || fail "room-server release resolution omitted its QSPI LoRa OTA target"
+for room_ota_env in solarxiao_33S_room_server_lora_ota \
+    RAK_4631_room_server_ethernet_lora_ota_no_external_sensors; do
+  printf '%s\n' "$room_release_targets" | grep -Fx "$room_ota_env" >/dev/null \
+    || fail "room-server release resolution omitted $room_ota_env"
 done
+sensor_release_targets=$(resolve_sensor_firmwares)
+while IFS='|' read -r sensor_env sensor_ota_env; do
+  is_supported_build_env "$sensor_ota_env" \
+    || fail "$sensor_ota_env was not registered as a sensor LoRa OTA target"
+  [ "$(get_pio_build_env "$sensor_ota_env")" = "$sensor_env" ] \
+    || fail "$sensor_ota_env did not retain its sensor PlatformIO recipe"
+  printf '%s\n' "$sensor_release_targets" | grep -Fx "$sensor_ota_env" >/dev/null \
+    || fail "sensor release resolution omitted $sensor_ota_env"
+  (
+    BUILD_PROFILE_FOR_TARGET=standard
+    ESP32_FULL_BUILD=0
+    is_lora_ota_build "$sensor_ota_env" \
+      || fail "$sensor_ota_env did not enable LoRa OTA"
+  )
+done <<'SENSOR_OTA_SPECS'
+Heltec_t096_sensor|Heltec_t096_sensor_lora_ota_no_external_sensors
+Heltec_t114_sensor|Heltec_t114_sensor_lora_ota_no_external_sensors
+ProMicro_sensor|ProMicro_sensor_lora_ota_no_external_sensors
+R1Neo_sensor|R1Neo_sensor_lora_ota_no_external_sensors
+RAK_3401_sensor|RAK_3401_sensor_lora_ota_no_external_sensors
+RAK_4631_sensor|RAK_4631_sensor_lora_ota_no_external_sensors
+RAK_WisMesh_Tag_sensor|RAK_WisMesh_Tag_sensor_lora_ota_no_external_sensors
+t1000e_sensor|t1000e_sensor_lora_ota_no_external_sensors
+SENSOR_OTA_SPECS
+for solar_env in solarxiao_30S_room_server_lora_ota solarxiao_33S_room_server_lora_ota; do
+  is_supported_build_env "$solar_env" \
+    || fail "$solar_env QSPI room-server OTA target was not registered"
+  (
+    BUILD_PROFILE_FOR_TARGET=standard
+    ESP32_FULL_BUILD=0
+    is_lora_ota_build "$solar_env" \
+      || fail "$solar_env did not enable LoRa OTA"
+  )
+done
+is_supported_build_env RAK_4631_room_server_ethernet_lora_ota_no_external_sensors \
+  || fail "RAK4631 Ethernet room server lacked its lean LoRa OTA target"
+if is_supported_build_env Heltec_v3_sensor_lora_ota_no_external_sensors; then
+  fail "ESP32 sensors should use their Full OTA image"
+fi
 
 # KISS inherits board OTA flags, not the application OTA implementation.
 for kiss_env in "${SUPPORTED_PIO_ENVS[@]}"; do
@@ -1211,6 +1268,8 @@ is_redundant_bulk_build_target RAK_3401_terminal_chat \
   || fail "RP2040 Terminal Chat did not map to USB Companion"
 is_redundant_bulk_build_target PicoW_terminal_chat \
   || fail "Terminal Chat remained beside its matching USB Companion"
+is_redundant_bulk_build_target heltec_v4_repeater_legacy_partition_test \
+  || fail "legacy partition test fixture remained in bulk release builds"
 
 PIO_ENV_PLATFORM_BY_NAME[RAK_4631_companion_radio_ethernet]=NRF52_PLATFORM
 PIO_ENV_PLATFORM_BY_NAME[RAK_4631_companion_radio_full]=NRF52_PLATFORM

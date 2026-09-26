@@ -80,7 +80,7 @@ BUILD_BACKGROUND_HANDOFF_STATE=""
 BUILD_SCRIPT_LOCK_FD=""
 INTERACTIVE_BUILD_SELECTION=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak13302_w25q16_lora_ota|repeater_rak15001_slot_c_lora_ota|repeater_w25q16_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_lora_ota_no_external_sensors|room_svr_lora_ota_no_external_sensors|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak13302_w25q16_lora_ota|repeater_rak15001_slot_c_lora_ota|repeater_w25q16_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_ethernet_lora_ota_no_external_sensors|room_server_lora_ota_no_external_sensors|room_svr_lora_ota_no_external_sensors|room_server_lora_ota|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor_lora_ota_no_external_sensors|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -348,11 +348,15 @@ for section, options in data:
         ESP32_PLATFORM|NRF52_PLATFORM) ;;
         *) continue ;;
       esac
-      # Generate one lean LoRa-OTA image for each board's standalone repeater
-      # or room-server role. Sensor, observer, Ethernet, and bridge profiles
-      # stay on their explicit PlatformIO recipes.
+      # Generate a lean OTA image for standalone repeater/room roles and for
+      # nRF52 sensors. Sensor aliases retain the sensor application and core
+      # I2C/battery telemetry while omitting optional external driver code.
+      # ESP32 sensor and room roles use their expanded Full OTA image.
       case "${env_name,,}" in
         *_repeater|*_repeater_|*_repeatr|*_repeatr_|*_room_server|*_room_server_|*_room_svr|*_room_svr_) ;;
+        *_sensor|*_sensor_)
+          [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]}" = NRF52_PLATFORM ] || continue ;;
+        rak_4631_room_server_ethernet) ;;
         *) continue ;;
       esac
       # XIAO nRF52840 repeaters with raw-QSPI staging and the reserved
@@ -361,8 +365,8 @@ for section, options in data:
       if is_xiao_qspi_combined_repeater_target "$env_name"; then
         continue
       fi
-      # Leave SolarXiao room-server inventory unchanged; these roles are not
-      # part of the XIAO repeater consolidation.
+      # SolarXiao room servers use the explicit QSPI OTA recipes below, which
+      # preserve their complete sensor set and matching bootloader layout.
       case "${env_name,,}" in
         solarxiao_30s_room_server|solarxiao_33s_room_server) continue ;;
       esac
@@ -1420,7 +1424,7 @@ get_env_metadata() {
     repeater*)
       tag_prefix="$TAG_PREFIX_REPEATER"
       ;;
-    sensor)
+    sensor*)
       tag_prefix="$TAG_PREFIX_SENSOR"
       ;;
     *)
@@ -2009,7 +2013,8 @@ print_release_firmware_targets() {
       get_pio_envs_ending_with_string "_room_server"
       for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
         if is_room_server_role_target "$env_name" \
-            && is_lora_ota_no_external_sensors_target "$env_name"; then
+            && { is_lora_ota_no_external_sensors_target "$env_name" \
+                 || [[ "$env_name" == solarxiao_*_room_server_lora_ota ]]; }; then
           printf '%s\n' "$env_name"
         fi
       done
@@ -2041,7 +2046,7 @@ get_pio_envs_for_variant_role() {
       room_server:room_server*|room_server:*_room_server*)
         echo "$env"
         ;;
-      sensor:sensor|sensor:*_sensor)
+      sensor:sensor*|sensor:*_sensor*)
         echo "$env"
         ;;
       kiss:kiss_modem|kiss:*_kiss_modem)
@@ -2149,8 +2154,11 @@ is_rak_gps_retaining_ota_target() {
   # recipe and must not promise or require the WisBlock GPS provider.
   case "$target_lc" in
     rak_3401_repeater_lora_ota_no_external_sensors|\
+    rak_3401_sensor_lora_ota_no_external_sensors|\
     rak_4631_repeater_lora_ota_no_external_sensors|\
-    rak_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors)
+    rak_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|\
+    rak_4631_room_server_ethernet_lora_ota_no_external_sensors|\
+    rak_4631_sensor_lora_ota_no_external_sensors)
       return 0
       ;;
     *)
@@ -2931,7 +2939,7 @@ is_room_server_role_target() {
 
 is_sensor_role_target() {
   case "${1,,}" in
-    *_sensor|*_sensor_) return 0 ;;
+    *_sensor|*_sensor_|*_sensor_lora_ota_no_external_sensors) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -3020,12 +3028,10 @@ is_lora_ota_build() {
     return 1
   fi
 
-  # The constrained portable OTA profile is emitted for standalone repeaters
-  # and room servers. FULL ESP32 builds returned above also enable LoRa OTA for
-  # sensor, observer, and bridge roles because their expanded slots have room
-  # for every feature.
+  # The constrained OTA profile is also available for nRF52 sensors; ESP32
+  # sensors use the expanded Full image returned above.
   case "$env_name_lc" in
-    *repeater*|*repeatr*|*room_server*|*room_svr*) return 0 ;;
+    *repeater*|*repeatr*|*room_server*|*room_svr*|*_sensor_lora_ota_no_external_sensors) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -5112,7 +5118,8 @@ is_redundant_bulk_build_target() {
   # Bench fixtures and migration utilities use their dedicated PlatformIO
   # recipes; they are not node firmware for the release/OTA packaging matrix.
   case "${1,,}" in
-    profile_switch_*|*partition_migrator*|*partition_expander*|*_partition_legacy_seed|*_sim)
+    profile_switch_*|*partition_migrator*|*partition_expander*|*_partition_legacy_seed|\
+    *_legacy_partition_test|*_sim)
       return 0
       ;;
   esac

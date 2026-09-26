@@ -54,7 +54,7 @@
 
   const OTA_LABELS = Object.freeze({
     none: "No LoRa OTA",
-    "lora-receiver": "LoRa OTA repeater",
+    "lora-receiver": "Receives LoRa OTA",
     "lora-source": "LoRa OTA source only (Full Companion)",
   });
 
@@ -1075,7 +1075,7 @@
       ],
       zip: [
         "Use the ZIP as the native nRF52 Serial DFU package; it is not an extra archive.",
-        "For a LoRa OTA repeater, install the exact-board OTAFIX bootloader first.",
+        "For LoRa OTA reception, install the exact-board OTAFIX bootloader first.",
       ],
       uf2: [
         "Place the device in its UF2 bootloader mode and copy the UF2 to the mounted drive.",
@@ -1102,7 +1102,7 @@
     }
     if (profile.ota === "lora-receiver") {
       extra.push(
-        "This installs the LoRa OTA repeater profile. The later update package must still match the exact target and partition signature."
+        "This image can receive LoRa OTA updates. The later update package must still match the exact target and partition signature."
       );
     } else if (profile.ota === "lora-source") {
       extra.push(

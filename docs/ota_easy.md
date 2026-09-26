@@ -95,8 +95,10 @@ payload. If any required window closes, the transfer stops making progress and c
 overlapping window.
 
 `build.sh` provides a `*_repeater_lora_ota_no_external_sensors` or
-`*_room_server_lora_ota_no_external_sensors` build for standalone ESP32 and nRF52
-infrastructure targets that need a smaller internal update workspace. Those siblings omit selected optional environmental
+`*_room_server_lora_ota_no_external_sensors` build for standalone infrastructure
+targets that need a smaller internal update workspace. nRF52 sensors also have
+`*_sensor_lora_ota_no_external_sensors` builds. ESP32 room servers and sensors
+use their expanded Full image for LoRa OTA. These compact siblings omit selected optional environmental
 and ranging drivers while retaining board-native features such as displays, buttons, battery monitoring,
 and GPS where the target uses the GPS-preserving lean profile. RAK3401 and RAK4631 reduced builds also
 retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors; together these drivers cost less
@@ -119,7 +121,8 @@ Selected nRF52 boards with matched external
 QSPI application and bootloader support can instead make the normal full-sensor
 repeater or room-server install-capable; those targets do not need to reserve internal flash
 for the downloaded container. SolarXiao 30S and 33S use this matched external-QSPI
-path and therefore do not emit redundant no-external-sensors siblings. A
+path: repeaters retain their existing OTA target, and room servers use the explicit
+`*_room_server_lora_ota` target with the matching OTAFIX QSPI bootloader. A
 RAK19007 can use the same separately wired W25Q16 with either RAK4631 or
 RAK3401 + RAK13302: the flash consumes no WisBlock slot and GPS remains
 supported in slot A. This is not the RAK15001 arrangement; RAK15001 and

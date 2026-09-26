@@ -605,7 +605,7 @@ assert.strictEqual(lora.ota, "lora-receiver");
 assert.strictEqual(lora.variant, "no-external-sensors");
 assert.strictEqual(
   picker.OTA_LABELS["lora-receiver"],
-  "LoRa OTA repeater"
+  "Receives LoRa OTA"
 );
 assert(!Object.prototype.hasOwnProperty.call(
   picker.OTA_LABELS,

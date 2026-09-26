@@ -133,13 +133,14 @@ artifacts, including room, sensor, and repeater roles, must fit the legacy slot 
 limit and the target's actual app partition. The ESP32-C6 `no_external_sensors` OTA siblings are the narrow
 exception: the Arduino 3.x WiFi runtime cannot fit that cross-family ceiling, so those images retain their
 established target-specific 1920 KiB or larger A/B app layout and are checked against the actual app
-partition. For standalone ESP32 and nRF52 repeater and room-server roles that
-need a lean staging profile, `build.sh` also exposes an explicit
-`*_lora_ota_no_external_sensors` artifact: the ordinary role remains
-sensor-enabled, while that sibling trims selected optional environmental/ranging
-drivers for LoRa distribution. SolarXiao 30S and 33S use matched external QSPI
-staging, so their ordinary full-sensor repeater and room-server images are
-already install-capable and no redundant lean sibling is generated. Integrated GPS and other
+partition. ESP32 room servers and sensors use their expanded Full image for LoRa OTA.
+For standalone repeater and room-server roles, and for nRF52 sensors that need a lean
+staging profile, `build.sh` exposes an explicit `*_lora_ota_no_external_sensors`
+artifact: the ordinary role remains sensor-enabled, while that sibling trims
+selected optional environmental/ranging drivers for LoRa distribution. SolarXiao
+30S and 33S use matched external QSPI staging. Their repeaters keep the existing
+OTA target; their room servers use an explicit `*_room_server_lora_ota` image
+with the matching OTAFIX QSPI bootloader. Integrated GPS and other
 board-native telemetry remain enabled where the target selects the GPS-preserving lean profile. The legacy
 suffix describes a driver trim, not removal of the generic I2C bus. Reduced RAK3401 and RAK4631 profiles
 retain INA219, INA226, INA260, and INA3221 voltage/current monitors. These are retained optional-sensor-table
