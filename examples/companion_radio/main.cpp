@@ -620,6 +620,8 @@ static mesh::UsbBinaryStartupProbe usb_binary_startup_probe;
 static mesh::UsbAsciiSessionDefault usb_ascii_session_default;
 #if COMPANION_FEATURE_USB_MOTA_SOURCE
 static bool usb_mota_mode = false;
+static mesh::UsbMotaEntryOrigin usb_mota_entry_origin =
+    mesh::UsbMotaEntryOrigin::BINARY;
 static char usb_mota_line[32];
 static size_t usb_mota_line_len = 0;
 static bool usb_mota_disconnect_armed = false;
@@ -779,16 +781,23 @@ static void resetUsbMotaMode() {
 }
 
 static void leaveUsbMotaMode(bool acknowledge) {
+  const bool restore_ascii = acknowledge
+      && usb_mota_entry_origin == mesh::UsbMotaEntryOrigin::ASCII;
   char reply[160] = {0};
   the_mesh.handleLocalControlCommand("ota folder off", reply, sizeof(reply));
   if (acknowledge) {
     char transition_reply[224];
     snprintf(transition_reply, sizeof(transition_reply),
-             "\r\n%s\r\nOK - Binary mode\r\n", reply);
+             "\r\n%s\r\nOK - %s mode\r\n", reply,
+             restore_ascii ? "Terminal" : "Binary");
     queueUsbTerminalControlReply(transition_reply);
     drainUsbTerminalOutputBeforeProtocolSwitch();
   }
   resetUsbMotaMode();
+  // A text-first motatool session must hand CDC0 back to the text terminal.
+  // Otherwise closing the sender leaves this still-open USB host in Binary
+  // mode, and its next `ver` or `ota status` appears to get no reply.
+  if (restore_ascii) enterUsbTerminalMode(false);
 }
 
 static bool enterUsbMotaMode(mesh::UsbMotaEntryOrigin origin) {
@@ -796,6 +805,7 @@ static bool enterUsbMotaMode(mesh::UsbMotaEntryOrigin origin) {
   mesh::discardUsbTerminalOutput();
   usb_serial_interface.setPassthroughMode(true);
   usb_mota_mode = true;
+  usb_mota_entry_origin = origin;
   usb_mota_line_len = 0;
   usb_mota_line[0] = 0;
   usb_mota_disconnect_armed = isUsbTerminalDataConnected();
