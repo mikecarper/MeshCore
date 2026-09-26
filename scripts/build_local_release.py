@@ -97,7 +97,7 @@ def build_migration_artifacts(work: Path, version: str, short_source: str,
                 raise RuntimeError(f"migration utility {bridge} failed; see {log}")
 
 
-def stage_release(work: Path, destination: Path, version: str,
+def stage_release(work: Path, migration_work: Path, destination: Path, version: str,
                   source: str) -> None:
     if destination.exists():
         raise FileExistsError(f"release already exists: {destination}")
@@ -105,7 +105,10 @@ def stage_release(work: Path, destination: Path, version: str,
     short_source = source[:8]
     tooling_source = git("rev-parse", "HEAD")
     artifact_version = f"{version}-{short_source}"
-    records = collect_artifacts(work, artifact_version)
+    records = [record for record in collect_artifacts(work, artifact_version)
+               if not (record["manifest"]["build_profile"] == "full"
+                       and record["manifest"]["target"] in {
+                           "Station_G2_repeater", "Station_G2_room_server"})]
     if not records:
         raise ValueError("firmware matrix produced no qualified artifacts")
 
@@ -134,7 +137,7 @@ def stage_release(work: Path, destination: Path, version: str,
         migrations.mkdir()
         with tempfile.TemporaryDirectory(prefix="migration-package-", dir=staging) as temp_packages:
             package_command = [sys.executable, "-B", "scripts/package_esp32_partition_migration.py",
-                               "--build-dir", str(work), "--output-dir", temp_packages,
+                               "--build-dir", str(migration_work), "--output-dir", temp_packages,
                                "--version", version, "--source", short_source]
             package_log = work / "migration-packaging.log"
             with package_log.open("w", encoding="utf-8") as output:
@@ -222,9 +225,15 @@ def main() -> None:
         "--radio-preset", "usa-cascade-fixed", "--profile", "cascade",
         "--require-ota", "--skip-kiss", "--resume",
     ], work / "release-build.log", environment)
-    build_migration_artifacts(work, args.firmware_version, short_source,
-                              args.pio_jobs, environment)
-    stage_release(work, destination, args.firmware_version, source)
+    # Keep exact-identity migration inputs outside the ordinary firmware
+    # matrix. collect_artifacts() walks recursively, so nesting these under
+    # work would still publish a second Full image for the same G2 role.
+    migration_work = ROOT / ".releases" / f".migration-build-{label}"
+    migration_environment = environment.copy()
+    migration_environment["OUTPUT_DIR"] = str(migration_work)
+    build_migration_artifacts(migration_work, args.firmware_version, short_source,
+                              args.pio_jobs, migration_environment)
+    stage_release(work, migration_work, destination, args.firmware_version, source)
 
 
 if __name__ == "__main__":

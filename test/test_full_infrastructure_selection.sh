@@ -41,6 +41,8 @@ assert_auto_unified heltec_v4_r8_tft_repeater heltec_v4_r8_tft_repeater_observer
 assert_auto_unified Heltec_T190_repeater_ Heltec_T190_repeater_observer_mqtt
 assert_auto_unified LilyGo_TLora_V2_1_1_6_room_server LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_
 assert_auto_unified heltec_v4_r8_repeater_observer_mqtt heltec_v4_r8_repeater_observer_mqtt
+assert_auto_unified Station_G2_repeater Station_G2_repeater_observer_mqtt
+assert_auto_unified Station_G2_room_server Station_G2_room_server_observer_mqtt
 
 # A one-board migration package must retain the old repeater's mOTA identity,
 # even when its Full sources come from the matching observer environment.
@@ -280,11 +282,27 @@ done
   run_logged_build_targets() {
     calls+=("$BUILD_PROFILE_EFFECTIVE:$ESP32_FULL_BUILD:$FIRMWARE_FILENAME_INFIX:$*")
   }
+  run_logging_matrix_build_targets Station_G2_repeater \
+    Station_G2_repeater_observer_mqtt >/dev/null
+  full_calls=()
+  for call in "${calls[@]}"; do
+    [[ "$call" == full:1:* ]] && full_calls+=("$call")
+  done
+  [ "${#full_calls[@]}" -eq 1 ] || fail "G2 repeater matrix emitted two Full images"
+  [[ "${full_calls[0]}" == *:Station_G2_repeater_observer_mqtt ]] \
+    || fail "G2 repeater matrix lost the observer OTA identity"
+)
+
+(
+  calls=()
+  run_logged_build_targets() {
+    calls+=("$BUILD_PROFILE_EFFECTIVE:$ESP32_FULL_BUILD:$FIRMWARE_FILENAME_INFIX:$*")
+  }
   run_partition_migration_full_esp32_profile \
-    Station_G2_repeater Station_G2_room_server Heltec_v3_repeater >/dev/null
+    Station_G2_repeater Station_G2_room_server ThinkNode_M2_Repeater >/dev/null
   [ "${#calls[@]}" -eq 1 ] || fail "partition-migration pass emitted the wrong number of builds"
-  [ "${calls[0]}" = 'full:1:full-logging:Station_G2_repeater Station_G2_room_server' ] \
-    || fail "partition-migration pass lost canonical normal identities"
+  [ "${calls[0]}" = 'full:1:full-logging:ThinkNode_M2_Repeater' ] \
+    || fail "partition-migration pass emitted duplicate G2 Full identities"
 )
 
 # The default build settings retain power saving; this does not overwrite

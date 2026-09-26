@@ -5961,6 +5961,16 @@ run_full_only_esp32_profile() {
   return 0
 }
 
+is_ordinary_partition_migration_full_target() {
+  is_esp32_partition_migration_full_target "$1" || return 1
+  # G2's plain identity is built only inside its migration package; the
+  # observer identity is the one ordinary Full release image for each role.
+  case "$1" in
+    Station_G2_repeater|Station_G2_room_server) return 1 ;;
+  esac
+  return 0
+}
+
 run_partition_migration_full_esp32_profile() {
   local targets=("$@")
   local target
@@ -5977,7 +5987,7 @@ run_partition_migration_full_esp32_profile() {
   local original_esp32_full_build=$ESP32_FULL_BUILD
 
   for target in "${targets[@]}"; do
-    if ! is_esp32_partition_migration_full_target "$target" \
+    if ! is_ordinary_partition_migration_full_target "$target" \
         || [ -n "${seen_migration_targets[$target]+x}" ]; then
       continue
     fi
@@ -6130,7 +6140,7 @@ run_logging_matrix_build_targets() {
     echo "Publishing ${full_only_exact_count} audited ESP32 target(s) as their exact-identity FULL release only; explicit --standard remains available for recovery."
   fi
   for target in "${targets[@]}"; do
-    if is_esp32_partition_migration_full_target "$target"; then
+    if is_ordinary_partition_migration_full_target "$target"; then
       partition_migration_full_count=$((partition_migration_full_count + 1))
     fi
   done
