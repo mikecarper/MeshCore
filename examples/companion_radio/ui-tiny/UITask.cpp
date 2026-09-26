@@ -138,6 +138,9 @@ class HomeScreen : public UIScreen {
     FIRST,
     RECENT,
     RADIO,
+    // Only visible when the secondary radio profile is configured.
+    RADIO2,
+    RADIO_STATUS,
     BLUETOOTH,
     ADVERT,
 #if ENV_INCLUDE_GPS == 1
@@ -164,6 +167,7 @@ class HomeScreen : public UIScreen {
   int sensors_scroll_offset = 0;
   int next_sensors_refresh = 0;
   uint32_t _radio_profile_page_started_at = 0;
+  uint8_t _radio_status_page = 0;
   bool _dual_radio_enabled_seen = false;
 
   void refresh_sensors() {
@@ -189,22 +193,22 @@ class HomeScreen : public UIScreen {
 
   void resetRadioProfileDisplayPage() {
     _radio_profile_page_started_at = millis();
+    _radio_status_page = 0;
     _dual_radio_enabled_seen = the_mesh.isDualRadioActive();
   }
 
-  bool showingSecondaryRadioProfilePage(DisplayDriver& display) {
-    const bool dual_radio_enabled = the_mesh.isDualRadioActive();
-    const uint32_t now = millis();
-    if (dual_radio_enabled != _dual_radio_enabled_seen) {
-      _dual_radio_enabled_seen = dual_radio_enabled;
-      _radio_profile_page_started_at = now;
+  bool isPageVisible(uint8_t page) const {
+    return the_mesh.isDualRadioActive()
+        || (page != HomePage::RADIO2 && page != HomePage::RADIO_STATUS);
+  }
+
+  void movePage(int direction) {
+    do {
+      _page = (_page + HomePage::Count + direction) % HomePage::Count;
+    } while (!isPageVisible(_page));
+    if (_page == HomePage::RADIO || _page == HomePage::RADIO_STATUS) {
+      resetRadioProfileDisplayPage();
     }
-    display.setTextSize(1);
-    const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
-        display, dual_radio_enabled, 8);
-    return mesh::ui::showSecondaryRadioProfilePage(dual_radio_enabled,
-        status_pages,
-        now - _radio_profile_page_started_at);
   }
 
   int radioProfileRefreshMillis() const {
@@ -224,6 +228,13 @@ public:
   void showFirstPage() { _page = HomePage::FIRST; }
 
   void poll() override {
+    if (_dual_radio_enabled_seen != the_mesh.isDualRadioActive()) {
+      resetRadioProfileDisplayPage();
+    }
+    if (!isPageVisible(_page)) {
+      _page = HomePage::RADIO;
+      resetRadioProfileDisplayPage();
+    }
     if (_shutdown_init && !_task->isButtonPressed()) {  // must wait for USR button to be released
       _task->shutdown();
     }
@@ -297,7 +308,8 @@ public:
         display.setCursor(display.width() - timestamp_width - 1, y);
         display.print(tmp);
       }
-    } else if (_page == HomePage::RADIO) {
+    } else if (_page == HomePage::RADIO || _page == HomePage::RADIO2
+               || _page == HomePage::RADIO_STATUS) {
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
       const auto* radio = the_mesh.getProfileRadio();
@@ -306,13 +318,21 @@ public:
       const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
           display, dual_radio, 8);
       uint8_t status_page_index = 0;
-      if (mesh::ui::showRadioProfileSystemStatusPage(dual_radio, status_pages,
-              millis() - _radio_profile_page_started_at, &status_page_index)) {
+      const bool status_page = dual_radio
+          ? _page == HomePage::RADIO_STATUS
+          : mesh::ui::showRadioProfileSystemStatusPage(
+                false, status_pages,
+                millis() - _radio_profile_page_started_at,
+                &status_page_index);
+      if (status_page) {
+        if (dual_radio && status_pages != 0) {
+          status_page_index = _radio_status_page % status_pages;
+        }
         mesh::ui::drawRadioProfileSystemStatusPage(display,
             radioProfileSystemStatus(*_node_prefs), status_page_index, 8);
-        return radioProfileRefreshMillis();
+        return dual_radio ? 5000 : radioProfileRefreshMillis();
       }
-      const bool secondary_page = showingSecondaryRadioProfilePage(display);
+      const bool secondary_page = dual_radio && _page == HomePage::RADIO2;
       const uint8_t profile = dual_radio && secondary_page ? 1 : 0;
       float freq = _node_prefs->freq;
       float bw = _node_prefs->bw;
@@ -506,23 +526,24 @@ public:
         // display.drawTextCentered(display.width() / 2, 40 - 11, "hibernate:" PRESS_LABEL);
       }
     }
-    // Keep the compact radio page on the R1/R2 boundary; other tiny pages
-    // retain their existing low-refresh cadence.
-    return _page == HomePage::RADIO ? radioProfileRefreshMillis() : 5000;
+    return _page == HomePage::RADIO && !the_mesh.isDualRadioActive()
+        ? radioProfileRefreshMillis() : 5000;
   }
 
   bool handleInput(char c) override {
     if (c == KEY_LEFT || c == KEY_PREV) {
-      _page = (_page + HomePage::Count - 1) % HomePage::Count;
-      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
+      movePage(-1);
       return true;
     }
     if (c == KEY_NEXT || c == KEY_RIGHT) {
-      _page = (_page + 1) % HomePage::Count;
-      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
+      movePage(1);
       if (_page == HomePage::RECENT) {
         _task->showAlert("Recent adverts", 800);
       }
+      return true;
+    }
+    if (c == KEY_ENTER && _page == HomePage::RADIO_STATUS) {
+      _radio_status_page++;
       return true;
     }
     if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {

@@ -420,6 +420,9 @@ class HomeScreen : public UIScreen {
 #endif
     RECENT,
     RADIO,
+    // Only visible when the secondary radio profile is configured.
+    RADIO2,
+    RADIO_STATUS,
 #ifdef COMPANION_EXCLUSIVE_WIFI_BLE
     TRANSPORT,
 #else
@@ -457,6 +460,7 @@ class HomeScreen : public UIScreen {
   uint32_t _uptime_last_millis;
   uint64_t _uptime_millis;
   uint32_t _radio_profile_page_started_at = 0;
+  uint8_t _radio_status_page = 0;
   bool _dual_radio_enabled_seen = false;
   AdvertPath recent[UI_RECENT_LIST_SIZE];
 #if !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
@@ -597,23 +601,22 @@ class HomeScreen : public UIScreen {
 
   void resetRadioProfileDisplayPage() {
     _radio_profile_page_started_at = millis();
+    _radio_status_page = 0;
     _dual_radio_enabled_seen = the_mesh.isDualRadioActive();
   }
 
-  bool showingSecondaryRadioProfilePage(DisplayDriver& display,
-                                        int status_top) {
-    const bool dual_radio_enabled = the_mesh.isDualRadioActive();
-    const uint32_t now = millis();
-    if (dual_radio_enabled != _dual_radio_enabled_seen) {
-      _dual_radio_enabled_seen = dual_radio_enabled;
-      _radio_profile_page_started_at = now;
+  bool isPageVisible(uint8_t page) const {
+    return the_mesh.isDualRadioActive()
+        || (page != HomePage::RADIO2 && page != HomePage::RADIO_STATUS);
+  }
+
+  void movePage(int direction) {
+    do {
+      _page = (_page + HomePage::Count + direction) % HomePage::Count;
+    } while (!isPageVisible(_page));
+    if (_page == HomePage::RADIO || _page == HomePage::RADIO_STATUS) {
+      resetRadioProfileDisplayPage();
     }
-    display.setTextSize(1);
-    const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
-        display, dual_radio_enabled, status_top);
-    return mesh::ui::showSecondaryRadioProfilePage(dual_radio_enabled,
-        status_pages,
-        now - _radio_profile_page_started_at);
   }
 
   int radioProfileRefreshMillis() const {
@@ -642,7 +645,9 @@ public:
 
   void showFirstPage() { _page = HomePage::FIRST; }
 #if COMPANION_FEATURE_READER
-  bool isRadioPage() const { return _page == HomePage::RADIO; }
+  bool isRadioPage() const {
+    return _page == HomePage::RADIO || _page == HomePage::RADIO2;
+  }
 #endif
 
   bool isTransportSelectorPage() const {
@@ -658,6 +663,13 @@ public:
 #endif
 
   void poll() override {
+    if (_dual_radio_enabled_seen != the_mesh.isDualRadioActive()) {
+      resetRadioProfileDisplayPage();
+    }
+    if (!isPageVisible(_page)) {
+      _page = HomePage::RADIO;
+      resetRadioProfileDisplayPage();
+    }
 #if UI_WIFI_SETUP_HOME_PAGE == 1
     const bool wifi_setup_active = WebConfigServer::getSetupInfo(
         nullptr, 0, nullptr, 0);
@@ -715,13 +727,17 @@ public:
       display.setColor(UIColor::corp_blue);
     }
     int y = header_height + 2;
-    int x = display.width() / 2 - 5 * (HomePage::Count-1);
-    for (uint8_t i = 0; i < HomePage::Count; i++, x += 10) {
+    const int visible_pages = HomePage::Count
+        - (the_mesh.isDualRadioActive() ? 0 : 2);
+    int x = display.width() / 2 - 5 * (visible_pages - 1);
+    for (uint8_t i = 0; i < HomePage::Count; i++) {
+      if (!isPageVisible(i)) continue;
       if (i == _page) {
         display.fillRect(x-1, y-1, 4, 4);
       } else {
         display.fillRect(x, y, 2, 2);
       }
+      x += 10;
     }
 
     if (_page == HomePage::FIRST) {
@@ -956,7 +972,8 @@ public:
         display.setCursor(display.width() - timestamp_width - 1, y);
         display.print(tmp);
       }
-    } else if (_page == HomePage::RADIO) {
+    } else if (_page == HomePage::RADIO || _page == HomePage::RADIO2
+               || _page == HomePage::RADIO_STATUS) {
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
       const auto* radio = the_mesh.getProfileRadio();
@@ -965,14 +982,22 @@ public:
       const uint8_t status_pages = mesh::ui::radioProfileSystemStatusPageCount(
           display, dual_radio, body_top);
       uint8_t status_page_index = 0;
-      if (mesh::ui::showRadioProfileSystemStatusPage(dual_radio, status_pages,
-              millis() - _radio_profile_page_started_at, &status_page_index)) {
+      const bool status_page = dual_radio
+          ? _page == HomePage::RADIO_STATUS
+          : mesh::ui::showRadioProfileSystemStatusPage(
+                false, status_pages,
+                millis() - _radio_profile_page_started_at,
+                &status_page_index);
+      if (status_page) {
+        if (dual_radio && status_pages != 0) {
+          status_page_index = _radio_status_page % status_pages;
+        }
         mesh::ui::drawRadioProfileSystemStatusPage(display,
             radioProfileSystemStatus(*_node_prefs), status_page_index, body_top);
-        return radioProfileRefreshMillis();
+        return dual_radio ? UI_RADIO_REFRESH_MILLIS
+                          : radioProfileRefreshMillis();
       }
-      const bool secondary_page = showingSecondaryRadioProfilePage(display,
-                                                                     body_top);
+      const bool secondary_page = dual_radio && _page == HomePage::RADIO2;
       float freq = _node_prefs->freq;
       float bw = _node_prefs->bw;
       uint8_t sf = _node_prefs->sf;
@@ -1267,7 +1292,11 @@ public:
       }
 #endif
     }
-    if (_page == HomePage::RADIO) return radioProfileRefreshMillis();
+    if (_page == HomePage::RADIO && !the_mesh.isDualRadioActive()) {
+      return radioProfileRefreshMillis();
+    }
+    if (_page == HomePage::RADIO || _page == HomePage::RADIO2
+        || _page == HomePage::RADIO_STATUS) return UI_RADIO_REFRESH_MILLIS;
 #if UI_MESSAGES_HOME_PAGE == 1
     if (_page == HomePage::MESSAGES) return 1000;
 #endif
@@ -1281,19 +1310,17 @@ public:
     // Navigation codes exceed 0x7f; keep them valid with signed char too.
     const uint8_t key = static_cast<uint8_t>(c);
     if (key == KEY_LEFT || key == KEY_PREV) {
-      _page = (_page + HomePage::Count - 1) % HomePage::Count;
-      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
+      movePage(-1);
       return true;
     }
 #if COMPANION_FEATURE_READER
-    if (key == KEY_ENTER && _page == HomePage::RADIO) {
+    if (key == KEY_ENTER && isRadioPage()) {
       _task->showReader();
       return true;
     }
 #endif
     if (key == KEY_NEXT || key == KEY_RIGHT) {
-      _page = (_page + 1) % HomePage::Count;
-      if (_page == HomePage::RADIO) resetRadioProfileDisplayPage();
+      movePage(1);
       if (_page == HomePage::RECENT) {
         _task->showAlert("Recent adverts", 800);
       }
@@ -1302,6 +1329,10 @@ public:
         _task->showAlert("Repeater disc", 800);
       }
 #endif
+      return true;
+    }
+    if (key == KEY_ENTER && _page == HomePage::RADIO_STATUS) {
+      _radio_status_page++;
       return true;
     }
 #ifdef COMPANION_EXCLUSIVE_WIFI_BLE

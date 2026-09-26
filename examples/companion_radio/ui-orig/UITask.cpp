@@ -162,32 +162,36 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
 void UITask::resetRadioProfileDisplayPage() {
   _radio_profile_page_started_at = millis();
   _dual_radio_enabled_seen = the_mesh.isDualRadioActive();
-  _radio_profile_display_page_seen = 0;
+  _radio_profile_display_page = 0;
 }
 
 bool UITask::showingSecondaryRadioProfilePage() {
   const bool dual_radio_enabled = the_mesh.isDualRadioActive();
-  const uint32_t now = millis();
-  if (dual_radio_enabled != _dual_radio_enabled_seen) {
-    _dual_radio_enabled_seen = dual_radio_enabled;
-    _radio_profile_page_started_at = now;
+  if (dual_radio_enabled) {
+    return mesh::ui::showManualSecondaryRadioProfilePage(
+        true, _radio_profile_display_page);
   }
   const uint8_t status_pages = radioProfileStatusPageCount(*_display,
                                                             dual_radio_enabled);
   return mesh::ui::showSecondaryRadioProfilePage(dual_radio_enabled,
       status_pages,
-      now - _radio_profile_page_started_at);
+      millis() - _radio_profile_page_started_at);
 }
 
 void UITask::serviceRadioProfileDisplayPage() {
   const bool dual_radio_enabled = the_mesh.isDualRadioActive();
+  if (dual_radio_enabled != _dual_radio_enabled_seen) {
+    resetRadioProfileDisplayPage();
+    _need_refresh = true;
+  }
+  if (dual_radio_enabled) return;  // Button presses own all dual-radio pages.
   const uint8_t status_pages = radioProfileStatusPageCount(*_display,
                                                             dual_radio_enabled);
   const uint8_t page = mesh::ui::radioProfileDisplayPageIndex(
       dual_radio_enabled, status_pages,
       millis() - _radio_profile_page_started_at);
-  if (page != _radio_profile_display_page_seen) {
-    _radio_profile_display_page_seen = page;
+  if (page != _radio_profile_display_page) {
+    _radio_profile_display_page = page;
     _need_refresh = true;
   }
 }
@@ -356,9 +360,14 @@ void UITask::renderCurrScreen() {
     const uint8_t status_pages = radioProfileStatusPageCount(
         *_display, dual_radio_enabled);
     uint8_t status_page_index = 0;
-    if (mesh::ui::showRadioProfileSystemStatusPage(dual_radio_enabled,
-            status_pages, millis() - _radio_profile_page_started_at,
-            &status_page_index)) {
+    const bool status_page = dual_radio_enabled
+        ? mesh::ui::showManualRadioProfileSystemStatusPage(
+              true, status_pages, _radio_profile_display_page,
+              &status_page_index)
+        : mesh::ui::showRadioProfileSystemStatusPage(
+              false, status_pages, millis() - _radio_profile_page_started_at,
+              &status_page_index);
+    if (status_page) {
       mesh::ui::drawRadioProfileSystemStatusPage(*_display,
           radioProfileSystemStatus(*_node_prefs, *_board), status_page_index);
       _need_refresh = false;
@@ -696,7 +705,15 @@ void UITask::handleButtonShortPress() {
       if (_origin[0] && _msg[0]) {
         clearMsgPreview();
       } else {
-        // Otherwise, refresh the display
+        if (!_alert[0] && !isPairingScreenActive()
+            && the_mesh.isDualRadioActive()) {
+          const uint8_t status_pages = radioProfileStatusPageCount(
+              *_display, true);
+          const uint8_t page_count = mesh::ui::radioProfileDisplayPageCount(
+              true, status_pages);
+          _radio_profile_display_page =
+              (_radio_profile_display_page + 1) % page_count;
+        }
         _need_refresh = true;
       }
     } else {
