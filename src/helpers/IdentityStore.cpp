@@ -54,7 +54,9 @@ IdentityLoadResult IdentityStore::loadResult(
   // accepts either that temporary key or a missing identity.
   if (strcmp(_dir, "/identity") == 0 && strcmp(name, "_main") == 0) {
     Preferences migration_nvs;
-    if (migration_nvs.begin("mesh-pt-migrate", true)) {
+    // A fresh device has no migration namespace. Open read-write to create the
+    // empty namespace once instead of logging NVS_NOT_FOUND on every boot.
+    if (migration_nvs.begin("mesh-pt-migrate", false)) {
       const bool pending = migration_nvs.getBool("id-pending", false);
       uint8_t file_bytes[PUB_KEY_SIZE + PRV_KEY_SIZE];
       const size_t staged = pending

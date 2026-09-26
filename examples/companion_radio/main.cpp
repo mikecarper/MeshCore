@@ -1516,7 +1516,9 @@ void halt() {
   void reloadCompanionWiFiPowerSave() {
     uint8_t configured = mesh::wifi::kDefaultPowerSave;
     Preferences nvs;
-    if (nvs.begin("mesh-wifi", true)) {
+    // On a fresh install the namespace may not exist until WiFi setup runs.
+    // Create it here so loading the default does not log NVS_NOT_FOUND.
+    if (nvs.begin("mesh-wifi", false)) {
       configured = nvs.getUChar("powersave", mesh::wifi::kDefaultPowerSave);
       nvs.end();
     }
