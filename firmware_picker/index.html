@@ -3257,6 +3257,9 @@ from the published firmware assets.</p>
       exact board and role migration ZIP is listed, follow its included README
       for a supported Wi-Fi or LoRa route. USB installation uses the matching
       merged image instead. An app-only .bin cannot change the partition table.
+      If the installed firmware supports it, run <code>get storage.layout</code>
+      to see the live flash size and OTA slots. Firmware version alone does not
+      prove the installed layout.
     </p>
   </div>
 
@@ -3494,7 +3497,12 @@ Use the exact-board merged image over USB, or a supported exact board and role
 staged migration ZIP from the <a href="https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.17.1.7-halo-keymind-cascade-dev-2d03e098">utility release</a>.
 Read that ZIP's README before choosing the Wi-Fi or LoRa route. Do not send a
 loose app-only Full <code>.bin</code> directly to an older layout: the running application
-cannot move its own active and inactive partitions.</p>
+cannot move its own active and inactive partitions. Run
+<a href="../cli_commands/#show-the-storage-layout"><code>get storage.layout</code></a> on the installed
+firmware if available. It reports the live partition table; a version-based
+guess cannot confirm the installed layout. See the
+<a href="../esp32_partition_catalog/">partition lookup guide</a> when the old firmware lacks
+that command.</p>
 <p>Current <code>full-usb-wifi</code> profiles use one binary for no external output, USB
 packet logging/USB-connected MQTT, direct WiFi MQTT, or both. The picker shows
 that same exact binary for each compatible logging choice; select the saved
@@ -3786,7 +3794,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20260927-2"></script>
+        <script src="../_javascript/firmware_picker.js?v=20260927-3"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       

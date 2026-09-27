@@ -1065,6 +1065,11 @@
       "Verify that the hardware name and every displayed variant match the physical board.",
       "Back up configuration, keys, and radio settings before changing roles or profiles.",
     ];
+    if (isExpandedEsp32Infrastructure(profile)) {
+      common.push(
+        "If supported by the installed firmware, run get storage.layout to record the live flash size and OTA slots. Firmware version alone does not prove which partition table is installed."
+      );
+    }
     if (profile.role === "partition-expander") {
       return common.concat(
         kind === "zip"
