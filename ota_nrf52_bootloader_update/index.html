@@ -3130,14 +3130,14 @@ maintenance path, not a normal firmware update. A stock bootloader must first
 be replaced with the exact ABI-3 self-update-capable OTAFIX build over USB/BLE
 DFU or SWD. MeshTower SD also requires the BLM2 retained-auth version to be
 provisioned locally before either application or bootloader OTA.</p>
-<p>The adaptive RAK3401 and RAK4631 loaders are an exception: their 2.4.8
-application updater has ABI 2 and capability flags <code>0x16</code>, with no bootloader
-self-update code. The two <code>*_repeater_unified_lora_ota</code> MeshCore builds now
-include an application-owned recovery installer. Install that application
-through its normal exact-base application mOTA path first. It can then fetch
-an exact-board signed format-3 bootloader package from internal flash or a
-matched external NOR and invoke Nordic's MBR itself. A node that cannot run
-MeshCore and receive LoRa cannot use this path; use local UF2/DFU or SWD.</p>
+<p>The adaptive RAK3401 and RAK4631 OTAFIX 2.4.8 profiles support application
+full and delta updates, but not bootloader self-update. Their running
+bootloader protects <code>0xF4000..0x100000</code> with the nRF52840 ACL before starting
+MeshCore. This includes the MBR parameter page at <code>0xFE000</code>, so an application
+cannot initiate <code>COPY_BL</code> even after verifying a signed bootloader package.
+Hardware testing on a RAK3401 confirmed the MBR SVC enters a bus fault and
+leaves the installed bootloader unchanged. Migrate these profiles with their
+exact-board UF2 or local DFU package; do not offer a bootloader mOTA for them.</p>
 <h2 id="storage-layouts">Storage layouts</h2>
 <table>
 <thead>
@@ -3171,40 +3171,8 @@ MeshCore and receive LoRa cannot use this path; use local UF2/DFU or SWD.</p>
 <td style="text-align: right;">dynamic internal <code>0xE0000..0xEA000</code> scratch; live image must end by <code>0xE0000</code></td>
 <td>source <code>0x53</code>, flags <code>0x09</code></td>
 </tr>
-<tr>
-<td>Adaptive RAK3401/RAK4631 recovery application</td>
-<td style="text-align: right;">normal <code>0xED000</code> flash limit; live EndF and bank CRC must stop by <code>0xE2000</code></td>
-<td style="text-align: right;">internal <code>0xE2000</code> slot or exact matched NOR</td>
-<td style="text-align: right;">internal <code>0xE2000..0xEC000</code> raw copy</td>
-<td>application calls MBR; installed loader flags <code>0x16</code></td>
-</tr>
 </tbody>
 </table>
-<p>For adaptive RAK recovery, <code>ota bootloader status</code> reports the installed
-<code>3401_AUTO_DFU</code> or <code>4631_AUTO_DFU</code> identity. The host must build a signed
-format-3 package from a <em>newer</em> exact-board OTAFIX image with the same <code>0x16</code>
-capability marker and BLM2 continuity metadata. The package is full, so it
-does not depend on the installed bootloader bytes. Its target IDs are
-<code>D04AB3AB</code> and <code>FEEAFD1B</code>, respectively. The application requires a trusted
-signer, matching board name/ID and SoftDevice layout, complete Merkle and
-SHA-256 verification, explicit MID and image-hash confirmation, and a
-hash-valid live EndF plus safe bank settings before writing scratch. It
-copies each page with readback, hashes the final source again after the LoRa
-reply drains, then calls <code>SD_MBR_COMMAND_COPY_BL</code>. The old bootloader remains
-untouched until the MBR call. An installed 2.4.8 BLM2 loader rejects an equal
-or older version; a 2.4.8 image is therefore not a recovery upgrade for it.
-If scratch verification or the MBR call fails, the application resets without
-the bootloader-update trigger and reports <code>blup:CE</code> on its next OTA status.
-Build a candidate only from the matching <strong>newer</strong> OTAFIX bootloader HEX:</p>
-<pre><code class="language-bash">motatool build-bootloader --fw &lt;rak3401-auto-bootloader.hex&gt; \
-  --board wiscore_rak3401_auto --sign &lt;trusted-private-key&gt; \
-  --out &lt;rak3401-recovery.mota&gt;
-# For RAK4631 use --board wiscore_rak4631_auto and its own exact-board HEX.
-</code></pre>
-<p>Verify the signed file with the corresponding public key, serve it over LoRa,
-pull its MID manually, and run the same <code>ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;</code>
-confirmation shown below. A temporary or untrusted test signing key cannot
-install on a node whose allowlist does not contain its public key.</p>
 <p>The exact SD target is
 <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>. Its normal
 application FULL and delta updates continue to use the SD file without the
