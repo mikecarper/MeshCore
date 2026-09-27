@@ -1043,6 +1043,23 @@
     }, 0) >= 0;
   }
 
+  function isExpandedEsp32Infrastructure(profile) {
+    return profile && profile.controls &&
+      profile.controls.platform === "ESP32_PLATFORM" &&
+      ["repeater", "room", "sensor"].includes(profile.role) &&
+      /-full-(?:logging|usb-wifi)$/i.test(profile.target);
+  }
+
+  function migrationReleaseUrl(profile, asset) {
+    if (!isExpandedEsp32Infrastructure(profile) ||
+        !profile.releaseFamily || !asset || !asset.releaseUrl) return "";
+    const url = asset.releaseUrl.replace(
+      /\/releases\/tag\/[^/]+$/,
+      "/releases/tag/utility-" + encodeURIComponent(profile.releaseFamily)
+    );
+    return url !== asset.releaseUrl && isSafeGithubUrl(url) ? url : "";
+  }
+
   function installSteps(profile, kind) {
     const common = [
       "Verify that the hardware name and every displayed variant match the physical board.",
@@ -1087,6 +1104,11 @@
       ],
     };
     const extra = [];
+    if (isExpandedEsp32Infrastructure(profile) && kind === "bin") {
+      extra.push(
+        "If the node still has a smaller layout, first flash the matching merged image over USB or, if listed, use the exact board/role migration ZIP from the utility release and follow its README. Never send this app-only image across a partition change."
+      );
+    }
     if (profile.variant.includes("w25q16")) {
       extra.push(
         "Requires the external W25Q16 storage board, its exact documented wiring, and the matching storage-aware OTAFIX bootloader."
@@ -1422,6 +1444,12 @@
     const release = createElement("a", "Open release notes");
     release.href = asset.releaseUrl;
     actions.appendChild(release);
+    const migrationUrl = migrationReleaseUrl(profile, asset);
+    if (migrationUrl) {
+      const migration = createElement("a", "Check exact ESP32 migration ZIP");
+      migration.href = migrationUrl;
+      actions.appendChild(migration);
+    }
     card.appendChild(actions);
 
     const steps = createElement("div");
@@ -1884,6 +1912,7 @@
     runtimeDirections: runtimeDirections,
     renderRuntimeDirections: renderRuntimeDirections,
     installSteps: installSteps,
+    migrationReleaseUrl: migrationReleaseUrl,
     humanizeHardware: humanizeHardware,
     humanizeVariant: humanizeVariant,
     labelFor: labelFor,
