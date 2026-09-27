@@ -8908,10 +8908,23 @@ for the tested XIAO handoff and host-cache caveats.</p>
 - <code>get prv.key</code>
 - <code>set prv.key &lt;private_key&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>private_key</code>: Private key in hex format (64 hex characters)</p>
+- <code>private_key</code>: MeshCore expanded private key in hex format (128 hex characters)</p>
 <p><strong>Local connection only:</strong> <code>get prv.key</code>. Companion also requires
 <code>ENABLE_PRIVATE_KEY_EXPORT=1</code>; use binary command <code>0x42</code> or the text terminal.
 Infrastructure <code>set prv.key</code> retains its administrator access rules.</p>
+<p>Infrastructure repeaters with <code>ENABLE_PRIVATE_KEY_EXPORT=1</code> also support
+<code>backup prv.key &lt;16-hex-nonce&gt;</code> for authenticated remote administrators. It
+returns <code>KEYBACKUP &lt;nonce&gt; &lt;128-hex-private-key&gt;</code> only as an end-to-end encrypted
+direct CLI reply. This separate command does not make <code>get prv.key</code> remotely
+available. Treat the reply as a secret: clients must not put it in chat history
+or debug logs and should encrypt any saved backup. An administrator password
+alone is not a safe backup-file encryption key. Firmware does not retain this
+reply in its remote CLI retry cache.
+Companion firmware must advertise <code>get key.backup.transport</code> as
+<code>ephemeral-routed-v1</code> before the phone requests it; that build delivers the
+reply only to the live attached client that requested it, without offline
+queuing or terminal echo.
+Older Companion firmware is not a safe transport for this backup flow.</p>
 <p><strong>Note:</strong> Requires reboot to take effect after setting</p>
 <hr />
 <p><a id="change-this-nodes-admin-password"></a></p>
