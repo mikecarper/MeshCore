@@ -779,6 +779,10 @@
           controlData.profiles && controlData.profiles[profile.target]) {
         profile.controls = controlData.profiles[profile.target];
         applyReleaseRuntimeCapabilities(profile, profile.controls);
+        profile.migrationPackage = migrationPackageForProfile(
+          profile, controlData.partitionMigrations
+        );
+        profile.migrationAsset = migrationAssetForProfile(profile, rows);
         if (isFullCompanion(profile) && profile.controls.mqtt &&
             !Array.isArray(profile.controls.loggingModes)) {
           profile.loggingModes = ["none", "usb", "wifi", "both"];
@@ -1060,6 +1064,46 @@
     return url !== asset.releaseUrl && isSafeGithubUrl(url) ? url : "";
   }
 
+  function migrationPackageForProfile(profile, lookup) {
+    if (!isExpandedEsp32Infrastructure(profile) || !lookup) return "";
+    const target = profile.target.replace(/-full-(?:logging|usb-wifi)$/i, "");
+    // The packages name canonical physical board/role identities. Observer
+    // Full profiles use that same board/role's recipe; the package README
+    // still governs the installed OTA target/layout. Preserve every hardware
+    // variant (including logging hardware and trailing underscores).
+    const canonical = target.replace(/_observer_mqtt(?=_?$)/i, "");
+    const key = Object.prototype.hasOwnProperty.call(lookup, target)
+      ? target : canonical;
+    const packageName = Object.prototype.hasOwnProperty.call(lookup, key)
+      ? lookup[key] : "";
+    return typeof packageName === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(packageName)
+      ? packageName : "";
+  }
+
+  function migrationAssetForProfile(profile, rows) {
+    if (!profile.migrationPackage) return null;
+    const releaseUrl = migrationReleaseUrl(profile, profile.files[0]);
+    if (!releaseUrl) return null;
+    const name = profile.migrationPackage + "-" + profile.releaseFamily + "-migration.zip";
+    const downloadUrl = releaseUrl.replace("/releases/tag/", "/releases/download/") +
+      "/" + encodeURIComponent(name);
+    const matches = rows.filter(function (row) {
+      return row.name === name && row.releaseTag === "utility-" + profile.releaseFamily &&
+        row.releaseUrl === releaseUrl && row.url === downloadUrl;
+    });
+    // Only offer a download actually published for this release and exact
+    // board/role. Missing, unsafe, or ambiguous assets retain the fallback.
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function migrationLink(profile, asset) {
+    const fallback = migrationReleaseUrl(profile, asset);
+    if (!fallback) return null;
+    return profile.migrationAsset
+      ? { url: profile.migrationAsset.url, label: "Download exact partition-expansion ZIP" }
+      : { url: fallback, label: "Check partition-expansion availability" };
+  }
+
   function installSteps(profile, kind) {
     const common = [
       "Verify that the hardware name and every displayed variant match the physical board.",
@@ -1111,7 +1155,7 @@
     const extra = [];
     if (isExpandedEsp32Infrastructure(profile) && kind === "bin") {
       extra.push(
-        "If the node still has a smaller layout, first flash the matching merged image over USB or, if listed, use the exact board/role migration ZIP from the utility release and follow its README. Never send this app-only image across a partition change."
+        "If the node still has a smaller layout, first flash the matching merged image over USB or use the linked exact board/role migration ZIP, when available. Follow its README to check the installed OTA target and source layout before starting. Never send this app-only image across a partition change."
       );
     }
     if (profile.variant.includes("w25q16")) {
@@ -1449,10 +1493,10 @@
     const release = createElement("a", "Open release notes");
     release.href = asset.releaseUrl;
     actions.appendChild(release);
-    const migrationUrl = migrationReleaseUrl(profile, asset);
-    if (migrationUrl) {
-      const migration = createElement("a", "Check exact ESP32 migration ZIP");
-      migration.href = migrationUrl;
+    const migrationAction = migrationLink(profile, asset);
+    if (migrationAction) {
+      const migration = createElement("a", migrationAction.label);
+      migration.href = migrationAction.url;
       actions.appendChild(migration);
     }
     card.appendChild(actions);
@@ -1918,6 +1962,9 @@
     renderRuntimeDirections: renderRuntimeDirections,
     installSteps: installSteps,
     migrationReleaseUrl: migrationReleaseUrl,
+    migrationPackageForProfile: migrationPackageForProfile,
+    migrationAssetForProfile: migrationAssetForProfile,
+    migrationLink: migrationLink,
     humanizeHardware: humanizeHardware,
     humanizeVariant: humanizeVariant,
     labelFor: labelFor,
