@@ -4657,18 +4657,27 @@ which recovers if the recipient removed the sender contact. An ACK confirms
 that the recipient can decrypt normal DMs, so subsequent first attempts omit
 the extra packet until the sender reboots or the small recent-ACK cache is
 replaced.</p>
-<p>The receiving Companion verifies the introduction signature and adds the
-sender as a chat contact even when advert auto-add is off. It emits the usual
-<code>PUSH_CODE_NEW_ADVERT</code> contact frame before the normal private-message frame,
-so existing clients can associate the six-byte message prefix with the full
-key. A recipient running older firmware still needs the sender contact before
-it can decrypt a normal DM. This flow uses a second radio packet for the
-initial DM; <code>RESP_CODE_SENT</code> includes that scheduling delay in its timeout.</p>
+<p>The receiving Companion verifies the introduction signature. By default,
+<code>dm.one_key</code> is <code>off</code>: the sender is offered to the app as a synthetic
+<code>PUSH_CODE_NEW_ADVERT</code> (<code>0x8A</code>) but is not added as a contact. The app/user
+accepts through the normal add-contact command. Up to 15 verified, decryptable
+plain DMs are held in RAM and delivered after acceptance; the oldest rolls
+off first. The queue is lost on reboot. On high-contact nRF52 builds, the
+ordinary offline queue is 208 frames (previously 256) to retain the runtime
+heap margin for this separate 15-DM queue. The device sends a signed <code>DMR1</code>
+refusal, and the sender pushes <code>0x91</code> plus the full rejecting key to a
+connected app, then stops further introductions for that peer until reboot.
+Directly attached clients may use <code>get dm.one_key</code> or <code>set dm.one_key on|off</code>;
+<code>get dm.held</code> reports the number of held DMs. <code>on</code> auto-accepts verified senders.
+A recipient running older firmware still
+needs the sender contact before it can decrypt a normal DM. This flow uses
+a second radio packet for the initial DM; <code>RESP_CODE_SENT</code> includes that
+scheduling delay in its timeout.</p>
 <p>For a two-radio regression test, run <code>tools/hil/one_key_dm.py</code> with the USB
 serial paths for <code>--sender</code> and <code>--recipient</code>. <code>--reset-contact</code> removes the
 sender from recipient contacts, and <code>--zero-hop</code> sets the sender's route to
-zero hop when the devices are nearby. The test checks contact creation,
-message waiting, and the matching ACK without draining the offline queue.
+zero hop when the devices are nearby. The test checks the synthetic advert,
+refusal, manual acceptance, held-message delivery, and matching ACK.
 <code>--invalid-signature-first</code> also checks that a decryptable introduction with
 an invalid Ed25519 signature does not add a contact.</p>
 <p><code>CMD_RUN_CLI_COMMAND</code> is followed by the local CLI text without a terminating
@@ -5564,7 +5573,7 @@ Bytes 11+: Message Text (UTF-8)
 <tr>
 <td><code>0x8A</code></td>
 <td><code>PUSH_CODE_NEW_ADVERT</code></td>
-<td>Newly stored contact advertisement.</td>
+<td>New advert; a verified one-key DM may use this as an addable synthetic advert without storing the contact.</td>
 </tr>
 <tr>
 <td><code>0x8B</code></td>
@@ -5595,6 +5604,11 @@ Bytes 11+: Message Text (UTF-8)
 <td><code>0x90</code></td>
 <td><code>PUSH_CODE_CONTACTS_FULL</code></td>
 <td>Contact storage is full.</td>
+</tr>
+<tr>
+<td><code>0x91</code></td>
+<td><code>PUSH_CODE_ONE_KEY_DM_REJECTED</code></td>
+<td>One-key DM refused; bytes 1–32 contain the refusing contact's full public key.</td>
 </tr>
 </tbody>
 </table>

@@ -3073,8 +3073,12 @@ A reboot clears it.</p>
 <td style="text-align: right;">256</td>
 </tr>
 <tr>
-<td>nRF52840</td>
+<td>nRF52840 with at most 300 contact slots</td>
 <td style="text-align: right;">256</td>
+</tr>
+<tr>
+<td>nRF52840 with more than 300 contact slots (non-shared queue)</td>
+<td style="text-align: right;">208</td>
 </tr>
 <tr>
 <td>nRF52 Full Companion with the memory correction</td>
@@ -3124,7 +3128,9 @@ separately. Sharing recovers about 19 KiB on nRF52 Full. The ST7735 color-displa
 Full profiles require at least 72 KiB of heap space at link time; OLED and
 headless profiles use their own <a href="../firmware_memory_budget/">memory budgets</a>.</p>
 <p>Standard, logging, MQTT, and Cascade build overlays retain the selected target
-capacity; they do not silently shrink the queue.</p>
+capacity. The high-contact nRF52 default above is the exception: it reserves
+RAM for the separate 15-entry consent-pending DM queue. A target's explicit
+<code>OFFLINE_QUEUE_SIZE</code> still takes precedence.</p>
 <p>Each queue slot currently costs 177 bytes. A 256-frame queue reserves 45,312
 bytes, while a 512-frame queue reserves 90,624 bytes. There is no 256-frame
 protocol limit: the queue length and indexes can represent 512 or more. The
