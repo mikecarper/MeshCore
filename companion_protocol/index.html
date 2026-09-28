@@ -761,6 +761,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#private-text-when-only-the-sender-knows-the-recipient" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Private text when only the sender knows the recipient
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#bluetooth-lora-mota-source" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3708,6 +3719,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#private-text-when-only-the-sender-knows-the-recipient" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Private text when only the sender knows the recipient
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#bluetooth-lora-mota-source" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4624,6 +4646,31 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 </table>
 <p>The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.</p>
+<h3 id="private-text-when-only-the-sender-knows-the-recipient">Private text when only the sender knows the recipient</h3>
+<p>Clients continue to send an ordinary <code>CMD_SEND_TXT_MSG</code> (<code>0x02</code>) with
+<code>TXT_TYPE_PLAIN</code>; no client protocol change is needed. For a chat contact
+without a recent confirmed DM, Companion firmware first sends a signed,
+encrypted <a href="../payloads/#companion-one-key-dm-introduction">one-key introduction</a>
+that includes its full public key, then queues the normal private text after
+the introduction. It sends the introduction again on an application retry,
+which recovers if the recipient removed the sender contact. An ACK confirms
+that the recipient can decrypt normal DMs, so subsequent first attempts omit
+the extra packet until the sender reboots or the small recent-ACK cache is
+replaced.</p>
+<p>The receiving Companion verifies the introduction signature and adds the
+sender as a chat contact even when advert auto-add is off. It emits the usual
+<code>PUSH_CODE_NEW_ADVERT</code> contact frame before the normal private-message frame,
+so existing clients can associate the six-byte message prefix with the full
+key. A recipient running older firmware still needs the sender contact before
+it can decrypt a normal DM. This flow uses a second radio packet for the
+initial DM; <code>RESP_CODE_SENT</code> includes that scheduling delay in its timeout.</p>
+<p>For a two-radio regression test, run <code>tools/hil/one_key_dm.py</code> with the USB
+serial paths for <code>--sender</code> and <code>--recipient</code>. <code>--reset-contact</code> removes the
+sender from recipient contacts, and <code>--zero-hop</code> sets the sender's route to
+zero hop when the devices are nearby. The test checks contact creation,
+message waiting, and the matching ACK without draining the offline queue.
+<code>--invalid-signature-first</code> also checks that a decryptable introduction with
+an invalid Ed25519 signature does not add a contact.</p>
 <p><code>CMD_RUN_CLI_COMMAND</code> is followed by the local CLI text without a terminating
 NUL. The device returns <code>RESP_CODE_CLI_REPLY</code> (<code>0x1D</code>) followed by the reply
 text. This is separate from sending a remote on-air CLI command with

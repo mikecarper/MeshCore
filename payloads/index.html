@@ -2145,6 +2145,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#companion-one-key-dm-introduction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion one-key DM introduction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#room-server-login" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3547,6 +3558,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#companion-one-key-dm-introduction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion one-key DM introduction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#room-server-login" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4352,6 +4374,50 @@ same-timestamp mismatches are rejected.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="companion-one-key-dm-introduction">Companion one-key DM introduction</h3>
+<p>A Companion may send this request immediately before a normal private text
+packet when it has not received an ACK from that chat contact, and on each
+application retry. It lets the recipient learn the sender's full public key
+without a broadcast advert. The ciphertext contains:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th style="text-align: right;">Size (bytes)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag</td>
+<td style="text-align: right;">4</td>
+<td>unique sender timestamp</td>
+</tr>
+<tr>
+<td>marker</td>
+<td style="text-align: right;">4</td>
+<td>ASCII <code>DMK1</code></td>
+</tr>
+<tr>
+<td>name</td>
+<td style="text-align: right;">1–32</td>
+<td>sender name followed by NUL</td>
+</tr>
+<tr>
+<td>signature</td>
+<td style="text-align: right;">64</td>
+<td>Ed25519 signature by the sender</td>
+</tr>
+</tbody>
+</table>
+<p>The signed bytes are the recipient's full public key followed by the tag,
+marker, and NUL-terminated name. The recipient verifies that signature against
+the 32-byte sender key in the anonymous request header before creating a chat
+contact. A receiver that does not implement <code>DMK1</code> ignores the introduction;
+the following normal text packet still works when it already has the sender's
+key. The recipient's manual advert auto-add setting does not suppress a
+verified, addressed <code>DMK1</code> introduction. The sender's full public key remains
+visible in the radio packet header, as with other anonymous requests.</p>
 <h3 id="room-server-login">Room server login</h3>
 <table>
 <thead>
