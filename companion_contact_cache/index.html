@@ -27,7 +27,7 @@
     
     
       
-        <title>Full Companion contact caches - MeshCore Docs</title>
+        <title>Companion contact caches - MeshCore Docs</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#full-companion-contact-caches" class="md-skip">
+        <a href="#companion-contact-caches" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Full Companion contact caches
+              Companion contact caches
             
           </span>
         </div>
@@ -497,7 +497,7 @@
   <span class="md-ellipsis">
     
   
-    Full Companion contact caches
+    Companion contact caches
   
 
     
@@ -515,7 +515,7 @@
   <span class="md-ellipsis">
     
   
-    Full Companion contact caches
+    Companion contact caches
   
 
     
@@ -3138,16 +3138,19 @@
   
 
 
-<h1 id="full-companion-contact-caches">Full Companion contact caches</h1>
-<p>Full Companions on ESP32 and nRF52 without PSRAM now keep 16 outgoing paths
+<h1 id="companion-contact-caches">Companion contact caches</h1>
+<p>Full Companions on ESP32 and nRF52 without PSRAM, plus the high-contact RAK4631
+USB/BLE profiles, keep 16 outgoing paths
 and 16 shared secrets in RAM. Every contact remains in the contact table;
 selecting a different contact loads its saved path as needed. This recovers
 about 25.4 KiB of internal RAM in the 350-contact ESP32 qualification builds.</p>
 <p>See the <a href="../companion_contact_cache_results/">qualification results</a> for the
 six-board RAM comparison, physical tests, and shared-secret timings.</p>
 <p>PSRAM boards retain their existing complete contact table in external RAM.
-Legacy USB/BLE/WiFi Companion profiles also retain their inline paths and
-secrets. The build flag <code>MESH_CONTACT_CACHE=0</code> or <code>1</code> overrides this policy for
+Most legacy USB/BLE/WiFi Companion profiles retain inline paths and secrets.
+The high-contact RAK4631 USB/BLE profiles also enable the same cache,
+keeping all 350 contacts while making room for the shared 256-frame offline/DM
+pool. The build flag <code>MESH_CONTACT_CACHE=0</code> or <code>1</code> overrides this policy for
 qualification; it is not a runtime feature switch.</p>
 <h2 id="paths-and-persistence">Paths and persistence</h2>
 <p>The 16 resident paths use least-recently-used replacement. Contact records
