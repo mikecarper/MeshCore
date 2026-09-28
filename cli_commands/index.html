@@ -8395,6 +8395,9 @@ capacity. Remote use follows the existing administrator-command permissions.</p>
 - <code>cr</code>: Coding rate (5-8)</p>
 <p><strong>Set by build flag:</strong> <code>LORA_FREQ</code>, <code>LORA_BW</code>, <code>LORA_SF</code>, <code>LORA_CR</code></p>
 <p><strong>Default:</strong> <code>869.618,62.5,8,5</code></p>
+<p><code>get radio</code> returns exactly four comma-separated fields for compatibility with
+existing Companion apps. On dual-radio builds, use <code>get radio2</code> and
+<code>get radio.timing</code> for profile and timing diagnostics.</p>
 <p><strong>Note:</strong> Requires reboot to apply. If RXPS is enabled and the saved minimum
 level/preamble cannot safely cover the new radio timing, the command reply
 reports the effective level and preamble, or <code>RXPS continuous-fast</code> when no
