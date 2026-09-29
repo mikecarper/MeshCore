@@ -292,6 +292,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../bootloader_version_stock_audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stock nRF52 bootloader version audit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cad_scan_validation/" class="md-nav__link">
         
   
@@ -4925,10 +4952,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_94" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_95" >
         
           
-          <label class="md-nav__link" for="__nav_94" id="__nav_94_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_95" id="__nav_95_label" tabindex="0">
             
   
   
@@ -4946,8 +4973,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_94_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_94">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_95_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_95">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -11492,9 +11519,10 @@ repeater, and room-server firmware. It reads the installed bootloader region
 selected by the MBR/UICR boot address and bounded by the chip's flash geometry;
 it does not search application firmware or staged update files.</p>
 <p>The reader preserves a complete Adafruit/UF2 version string, including OTAFIX,
-preview, and vendor/build suffixes. If that string is absent or ambiguous, it
-uses the existing whole-image CRC and unique BLMF/BLM2 validation to read the
-embedded OTAFIX version (for example, <code>&gt; OTAFIX2.4.6</code>). Some current release
+preview, and vendor/build suffixes. Manufacturer two-component versions such as
+Seeed's <code>1.00</code> are preserved without inventing a patch number. If that string is
+absent or ambiguous, it uses the existing whole-image CRC and unique BLMF/BLM2
+validation to read the embedded OTAFIX version (for example, <code>&gt; OTAFIX2.4.6</code>). Some current release
 images, including MeshTower V2 SD 2.4.6, omit the UF2 text entirely. As a last
 OTAFIX-specific fallback, it accepts one unambiguous standalone version token
 such as <code>v0.11.0-OTAFIX2.4.9</code> from only the first 40 KiB of the identified
@@ -11508,6 +11536,8 @@ version field shared by every third-party bootloader. This is diagnostic only:
 displaying a version neither grants OTA capability nor bypasses install checks.
 The fix is in MeshCore application firmware; installing another bootloader alone
 does not update an older application's version reader.</p>
+<p>See the <a href="../bootloader_version_stock_audit/">stock bootloader audit</a> for tested
+manufacturer images and the boards still requiring untouched factory dumps.</p>
 <hr />
 <h4 id="view-power-management-support">View power management support</h4>
 <p><strong>Usage:</strong> <code>get pwrmgt.support</code></p>
