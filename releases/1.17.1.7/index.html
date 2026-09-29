@@ -3057,7 +3057,7 @@
 <ul>
 <li>Match the exact board and radio variant. Use the application image only with a compatible bootloader and partition layout.</li>
 <li>For an ESP32 that needs the expanded Full layout, flash the exact merged image over USB, or use a supported exact board and role migration ZIP from the utility release for a staged Wi-Fi or LoRa route. The 94 migration packages and complete bundle are included there. Read the package README before installation; the bridge writes the partition table and a power loss can require cable recovery. Run <code>get storage.layout</code> on the installed firmware if supported to see its live partitions; version alone cannot prove the installed layout. Do not send a loose app-only Full image directly to an older layout.</li>
-<li>nRF52 application UF2 and DFU packages do not install a bootloader. Use the matching OTAFIX 2.4.8 bootloader where required.</li>
+<li>nRF52 application UF2 and DFU packages do not install a bootloader. Use the matching <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.10">OTAFIX 2.4.10</a> bootloader where required. Standard RAK <code>3401_DFU</code> / <code>4631_DFU</code> bootloaders can receive the matching signed bootloader <code>.mota</code> over LoRa with a compatible OTA application. Devices already running the older <code>*_AUTO_DFU</code> identity require a local recovery bridge before installing the normal 2.4.10 image.</li>
 <li>The RAK 3x72, Tiny Relay, Wio-E5 Mini, and Wio-E5 USB Companion images retain their framed USB transport and 32 KiB LittleFS area. Packet diagnostics are omitted on these four 256 KiB STM32WL targets to keep the application within flash.</li>
 </ul>
 <h2 id="build-verification">Build verification</h2>
