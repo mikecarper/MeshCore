@@ -23,6 +23,11 @@
   ]);
 
   const FACET_FIELDS = Object.freeze(FILTER_FIELDS.concat(["install"]));
+  const PROFILE_FIELDS = Object.freeze(["ota", "feature", "variant"]);
+  const CHOICE_FIELDS = Object.freeze([
+    "chipFamily", "hardwareFamily", "hardware", "role", "logging",
+    "firmwareProfile", "mode", "install",
+  ]);
 
   const CHIP_FAMILY_LABELS = Object.freeze({
     esp32: "ESP32",
@@ -125,6 +130,7 @@
   ]);
 
   let pickerInstanceCount = 0;
+  let runtimeGroupCount = 0;
 
   function isSafeGithubUrl(value) {
     try {
@@ -883,6 +889,77 @@
     }).filter(Boolean)));
   }
 
+  // Keep the original URL facets, but select the correlated firmware
+  // capabilities together so OTA and its sensor/storage tradeoff take one click.
+  function firmwareProfileValue(filters) {
+    if (!PROFILE_FIELDS.some(function (field) { return filters[field]; })) return "";
+    return JSON.stringify(PROFILE_FIELDS.map(function (field) {
+      return filters[field] || "";
+    }));
+  }
+
+  function firmwareProfileFilters(value) {
+    let values;
+    try {
+      values = value ? JSON.parse(value) : ["", "", ""];
+    } catch (error) {
+      return null;
+    }
+    if (!Array.isArray(values) || values.length !== PROFILE_FIELDS.length ||
+        !values.every(function (entry) { return typeof entry === "string"; })) return null;
+    const filters = {};
+    PROFILE_FIELDS.forEach(function (field, index) { filters[field] = values[index]; });
+    return filters;
+  }
+
+  function firmwareProfileLabel(profile) {
+    const parts = [];
+    if (profile.feature === "full") parts.push("Full");
+    else if (profile.feature === "standard" && profile.ota !== "lora-receiver") {
+      parts.push("Standard");
+    }
+    if (profile.ota) parts.push(profile.ota === "lora-source"
+      ? "LoRa OTA source only" : labelFor("ota", profile.ota));
+    if (profile.variant && profile.variant !== "default") {
+      parts.push(humanizeVariant(profile.variant).replace(
+        "Reduced optional environmental/ranging drivers", "Reduced optional sensors"
+      ));
+    }
+    if (!PROFILE_FIELDS.every(function (field) { return profile[field]; })) {
+      parts.push("other profile choices open");
+    }
+    return parts.join(" - ");
+  }
+
+  function firmwareProfileChoices(profiles, filters) {
+    const compatible = (profiles || []).filter(function (profile) {
+      return profileMatchesFacets(profile, filters, PROFILE_FIELDS);
+    });
+    const choices = new Map();
+    compatible.forEach(function (profile) {
+      const value = firmwareProfileValue(profile);
+      if (!choices.has(value)) choices.set(value, {
+        value: value,
+        label: firmwareProfileLabel(profile),
+        filters: firmwareProfileFilters(value),
+      });
+    });
+    // Older share links can specify just OTA, feature or variant. Reflect
+    // that constraint visibly until the operator chooses a complete profile.
+    const selected = firmwareProfileValue(filters);
+    if (selected && !choices.has(selected) && compatible.some(function (profile) {
+      return profileMatches(profile, filters, PROFILE_FIELDS);
+    })) choices.set(selected, {
+      value: selected,
+      label: firmwareProfileLabel(filters),
+      filters: firmwareProfileFilters(selected),
+    });
+    return Array.from(choices.values()).sort(function (a, b) {
+      const byFull = Number(b.filters.feature === "full") - Number(a.filters.feature === "full");
+      return byFull || a.label.localeCompare(b.label, undefined, { numeric: true });
+    });
+  }
+
   function selectionUrl(url, filters, automaticChipFamily) {
     const result = new URL(url);
     FACET_FIELDS.forEach(function (field) {
@@ -1002,6 +1079,23 @@
     const element = document.createElement(tag);
     if (text != null) element.textContent = text;
     return element;
+  }
+
+  function renderRadioChoices(container, options, selected, name, field) {
+    container.replaceChildren();
+    options.forEach(function (option) {
+      const label = createElement("label");
+      label.className = "firmware-picker-radio-option";
+      const input = createElement("input");
+      input.type = "radio";
+      input.name = name;
+      input.value = option.value;
+      if (field) input.dataset.choiceField = field;
+      input.checked = selected === option.value;
+      label.appendChild(input);
+      label.appendChild(createElement("span", option.label));
+      container.appendChild(label);
+    });
   }
 
   function optionSort(field, a, b) {
@@ -1398,20 +1492,21 @@
       details.open = index === 0;
       details.appendChild(createElement("summary", item.title));
       if (item.note) details.appendChild(createElement("p", item.note));
-      const label = createElement("label", "Show steps for ");
-      const select = createElement("select");
-      select.setAttribute("aria-label", item.title);
-      item.actions.forEach(function (action, i) {
-        const option = createElement("option", action.label);
-        option.value = String(i);
-        select.appendChild(option);
-      });
-      label.appendChild(select);
-      details.appendChild(label);
+      const fieldset = createElement("fieldset");
+      fieldset.className = "firmware-picker-radio-control";
+      fieldset.appendChild(createElement("legend", "Show steps for " + item.title));
+      const choices = createElement("div");
+      choices.className = "firmware-picker-radio-options";
+      renderRadioChoices(choices, item.actions.map(function (action, i) {
+        return { value: String(i), label: action.label };
+      }), "0", "firmware-picker-runtime-" + (++runtimeGroupCount));
+      fieldset.appendChild(choices);
+      details.appendChild(fieldset);
       const output = createElement("div");
+      let actionIndex = 0;
       function show() {
         output.replaceChildren();
-        const action = item.actions[Number(select.value) || 0];
+        const action = item.actions[actionIndex];
         if (action.text) output.appendChild(createElement("p", action.text));
         if (action.commands) {
           const pre = createElement("pre");
@@ -1431,7 +1526,10 @@
           output.appendChild(button);
         }
       }
-      select.addEventListener("change", show);
+      choices.addEventListener("change", function (event) {
+        actionIndex = Number(event.target.value) || 0;
+        show();
+      });
       show();
       details.appendChild(output);
       panel.appendChild(details);
@@ -1467,9 +1565,7 @@
         }).join(" / "),
       ],
       ["Logging", labelFor("logging", selection && selection.logging || profile.logging)],
-      ["OTA", labelFor("ota", profile.ota)],
-      ["Feature profile", labelFor("feature", profile.feature)],
-      ["Variant", labelFor("variant", profile.variant, profile.hardware)],
+      ["Firmware profile", firmwareProfileLabel(profile)],
       ["Install operation", labelFor("install", installKind)],
       ["File", asset.name],
       ["Size", formatBytes(asset.size)],
@@ -1535,6 +1631,7 @@
     FACET_FIELDS.forEach(function (field) {
       controls[field] = form.querySelector('[data-field="' + field + '"]');
     });
+    controls.firmwareProfile = form.querySelector('[data-field="firmwareProfile"]');
     let catalog = { releaseSet: null, rows: [], profiles: [] };
     const filters = {};
     let automaticChipFamily = false;
@@ -1620,27 +1717,16 @@
     }
 
     function setRadioOptions(container, field, values, selected) {
-      container.replaceChildren();
       const options = [{ value: "", label: "Any" }].concat(
         values.slice().sort(function (a, b) {
           return optionSort(field, a, b);
         }).map(function (value) {
-          return { value: value, label: labelFor(field, value) };
+          return { value: value, label: field === "hardware"
+            ? humanizeHardwareVariant(value, filters.hardwareFamily)
+            : labelFor(field, value, filters.hardware || filters.hardwareFamily) };
         })
       );
-      options.forEach(function (option) {
-        const label = createElement("label");
-        label.className = "firmware-picker-radio-option";
-        const input = createElement("input");
-        input.type = "radio";
-        input.name = groupPrefix + "-" + field;
-        input.value = option.value;
-        input.dataset.choiceField = field;
-        input.checked = selected === option.value;
-        label.appendChild(input);
-        label.appendChild(createElement("span", option.label));
-        container.appendChild(label);
-      });
+      renderRadioChoices(container, options, selected, groupPrefix + "-" + field, field);
       const fieldset = container.closest("fieldset");
       if (fieldset) fieldset.disabled = values.length === 0;
     }
@@ -1676,6 +1762,7 @@
         changed = false;
         passes += 1;
         FACET_FIELDS.forEach(function (field) {
+          if (PROFILE_FIELDS.includes(field)) return;
           if (field === "hardware" && !filters.hardwareFamily) {
             if (filters.hardware) {
               filters.hardware = "";
@@ -1693,10 +1780,17 @@
             changed = true;
           }
         });
+        if (firmwareProfileValue(filters) && !matchingProfiles().length) {
+          PROFILE_FIELDS.forEach(function (field) { filters[field] = ""; });
+          changed = true;
+        }
       }
     }
 
     function refreshFacets() {
+      const active = document.activeElement;
+      const focusedChoice = active && form.contains(active) && active.type === "radio"
+        ? { field: active.dataset.choiceField, value: active.value } : null;
       if (automaticChipFamily) filters.chipFamily = "";
       stabilizeFilters();
       if (automaticChipFamily && filters.hardwareFamily) {
@@ -1706,6 +1800,11 @@
       FACET_FIELDS.forEach(function (field) {
         setControlOptions(field, valuesForField(field));
       });
+      const profileChoices = firmwareProfileChoices(catalog.profiles, filters);
+      const profileControl = controls.firmwareProfile;
+      renderRadioChoices(profileControl, [{ value: "", label: "Any" }].concat(profileChoices),
+        firmwareProfileValue(filters), groupPrefix + "-firmwareProfile", "firmwareProfile");
+      profileControl.closest("fieldset").disabled = profileChoices.length === 0;
       const hardwareVariants = valuesForField("hardware");
       const hardwareVariantControl = root.querySelector(
         '[data-role="hardware-variant-control"]'
@@ -1717,19 +1816,29 @@
         (filters.chipFamily ? " - " + labelFor("chipFamily", filters.chipFamily) : "");
       render();
       updateSelectionUrl();
+      // Rebuilding the options must not interrupt native radio keyboard navigation.
+      if (focusedChoice) {
+        const control = controls[focusedChoice.field];
+        const replacement = control && Array.from(control.querySelectorAll('input[type="radio"]'))
+          .find(function (input) { return input.value === focusedChoice.value; });
+        if (replacement) replacement.focus({ preventScroll: true });
+      }
     }
 
     function render() {
       result.hidden = true;
       missing.hidden = true;
       resultList.replaceChildren();
-      const missingFields = FACET_FIELDS.filter(function (field) {
+      const missingFields = CHOICE_FIELDS.filter(function (field) {
+        if (field === "firmwareProfile") return !PROFILE_FIELDS.every(function (part) {
+          return filters[part];
+        });
         return field !== "chipFamily" && !filters[field];
       });
       const matches = matchingProfiles();
 
       if (missingFields.length) {
-        if (missingFields.length === FACET_FIELDS.length - 1 && !filters.chipFamily) {
+        if (missingFields.length === CHOICE_FIELDS.length - 1 && !filters.chipFamily) {
           status.textContent = "Pick options in any order. " +
             matches.length + " compatible configurations are available.";
         } else {
@@ -1827,6 +1936,14 @@
     form.addEventListener("change", function (event) {
       const target = event.target;
       const field = target.dataset.choiceField || target.dataset.field;
+      if (field === "firmwareProfile") {
+        const chosen = firmwareProfileFilters(target.value);
+        if (!chosen) return;
+        if (linkStatus) linkStatus.textContent = "";
+        PROFILE_FIELDS.forEach(function (part) { filters[part] = chosen[part]; });
+        refreshFacets();
+        return;
+      }
       if (!FACET_FIELDS.includes(field)) return;
       if (linkStatus) linkStatus.textContent = "";
       if (field === "chipFamily") {
@@ -1918,6 +2035,7 @@
   const api = Object.freeze({
     FILTER_FIELDS: FILTER_FIELDS,
     FACET_FIELDS: FACET_FIELDS,
+    PROFILE_FIELDS: PROFILE_FIELDS,
     ROLE_LABELS: ROLE_LABELS,
     LOGGING_LABELS: LOGGING_LABELS,
     OTA_LABELS: OTA_LABELS,
@@ -1953,6 +2071,10 @@
     profileMatchesFacets: profileMatchesFacets,
     facetValues: facetValues,
     uniqueValues: uniqueValues,
+    firmwareProfileValue: firmwareProfileValue,
+    firmwareProfileFilters: firmwareProfileFilters,
+    firmwareProfileLabel: firmwareProfileLabel,
+    firmwareProfileChoices: firmwareProfileChoices,
     selectionUrl: selectionUrl,
     selectionFromUrl: selectionFromUrl,
     canonicalAsset: canonicalAsset,

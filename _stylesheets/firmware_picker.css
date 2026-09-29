@@ -98,10 +98,17 @@
   gap: 0.45rem;
 }
 
+.firmware-picker-control-help {
+  margin: 0 0 0.65rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.85rem;
+}
+
 .firmware-picker-radio-option {
   position: relative;
   display: inline-flex;
   min-width: 0;
+  max-width: 100%;
   cursor: pointer;
 }
 
@@ -123,6 +130,7 @@
   background: var(--md-default-bg-color);
   font-weight: 600;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .firmware-picker-radio-option input:checked + span {
@@ -328,7 +336,6 @@
   font-weight: 650;
 }
 
-.firmware-picker-runtime select,
 .firmware-picker-runtime button {
   padding: 0.5rem;
   margin: 0.4rem 0;

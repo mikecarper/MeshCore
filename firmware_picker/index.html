@@ -54,7 +54,7 @@
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css">
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20260929-1">
     
       <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
@@ -3256,7 +3256,7 @@
 <h1 id="firmware-picker">Firmware picker</h1>
 <p>Each result now includes <strong>Restore your settings after flashing</strong>. Its commands
 follow the selected logging mode and the exact image's verified role/hardware
-controls. Select On, Off, or Check to view and copy the commands; Companion
+controls. Click On, Off, or Check to view and copy the commands; Companion
 MQTT and GPS show their app/WebConfig steps instead. See
 <a href="../role_feature_switches/">feature switches by role</a> for the full reference.
 The <a href="https://flasher.meshcore.io/console">USB web console</a> works with the
@@ -3264,7 +3264,10 @@ default ASCII terminal on USB Companion and infrastructure roles.</p>
 <p>Pick the choices in any order. Every selection narrows all the other controls
 to firmware combinations that were actually built in the current release set.
 The optional chip-family filter (ESP32, nRF52, RP2040, or STM32) can narrow the
-hardware list first. You can skip it: picking hardware fills it in automatically.</p>
+hardware list first. You can skip it: picking hardware fills it in automatically.
+Chip family and hardware are the only dropdowns. All remaining choices use
+buttons. <strong>Firmware profile</strong> combines OTA support, Full/standard, and sensor
+or storage differences in one choice.</p>
 <p>The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.</p>
@@ -3317,12 +3320,12 @@ from the published firmware assets.</p>
       </select>
     </div>
 
-    <div class="firmware-picker-control firmware-picker-select-control" data-role="hardware-variant-control" hidden>
-      <label for="firmware-picker-hardware">Hardware variant</label>
-      <select id="firmware-picker-hardware" data-field="hardware" disabled>
-        <option value="">Choose hardware first</option>
-      </select>
-    </div>
+    <fieldset class="firmware-picker-control firmware-picker-radio-control firmware-picker-wide" data-radio-field="hardware" data-role="hardware-variant-control" disabled hidden>
+      <legend>Hardware variant</legend>
+      <div class="firmware-picker-radio-options" data-field="hardware">
+        Choose hardware first
+      </div>
+    </fieldset>
 
     <fieldset class="firmware-picker-control firmware-picker-radio-control firmware-picker-wide" data-radio-field="install" disabled>
       <legend>Install operation</legend>
@@ -3345,33 +3348,20 @@ from the published firmware assets.</p>
       </div>
     </fieldset>
 
-    <fieldset class="firmware-picker-control firmware-picker-radio-control" data-radio-field="ota" disabled>
-      <legend>OTA capability</legend>
-      <div class="firmware-picker-radio-options" data-field="ota">
-        Loading OTA choices...
+    <fieldset class="firmware-picker-control firmware-picker-radio-control firmware-picker-wide" data-radio-field="firmwareProfile" aria-describedby="firmware-picker-profile-help" disabled>
+      <legend>Firmware profile</legend>
+      <p id="firmware-picker-profile-help" class="firmware-picker-control-help">Each button combines OTA support with the feature, sensor, and storage choices for that image. Reduced optional sensors means fewer environmental/ranging drivers; I2C and supported board peripherals remain available.</p>
+      <div class="firmware-picker-radio-options" data-field="firmwareProfile">
+        Loading firmware profiles...
       </div>
     </fieldset>
 
-    <div class="firmware-picker-control firmware-picker-select-control">
-      <label for="firmware-picker-mode">Connection / bridge mode</label>
-      <select id="firmware-picker-mode" data-field="mode" disabled>
-        <option value="">Loading modes...</option>
-      </select>
-    </div>
-
-    <fieldset class="firmware-picker-control firmware-picker-radio-control" data-radio-field="feature" disabled>
-      <legend>Feature profile</legend>
-      <div class="firmware-picker-radio-options" data-field="feature">
-        Loading profiles...
+    <fieldset class="firmware-picker-control firmware-picker-radio-control firmware-picker-wide" data-radio-field="mode" disabled>
+      <legend>Connection / bridge mode</legend>
+      <div class="firmware-picker-radio-options" data-field="mode">
+        Loading modes...
       </div>
     </fieldset>
-
-    <div class="firmware-picker-control firmware-picker-select-control">
-      <label for="firmware-picker-variant">Firmware variant</label>
-      <select id="firmware-picker-variant" data-field="variant" disabled>
-        <option value="">Loading variants...</option>
-      </select>
-    </div>
 
     <div class="firmware-picker-form-actions firmware-picker-wide">
       <button type="reset" data-action="clear" disabled>Clear all choices</button>
@@ -3459,7 +3449,11 @@ from the published firmware assets.</p>
 </tr>
 <tr>
 <td>Receives LoRa OTA</td>
-<td>Repeater, room server, or sensor image that can stage an exact matching update received over LoRa</td>
+<td>Repeater, room server, or sensor image that can stage an exact matching update received over LoRa; any sensor/storage tradeoff appears on the same Firmware profile button</td>
+</tr>
+<tr>
+<td>Receives LoRa OTA - Reduced optional sensors</td>
+<td>Compact OTA image that omits selected optional environmental/ranging drivers while retaining generic I2C and supported board peripherals</td>
 </tr>
 <tr>
 <td>LoRa OTA source only</td>
@@ -3507,7 +3501,10 @@ without reloading the page or adding a Back-button entry for every click.</p>
 preselects that board, role, OTA capability, and storage profile.</p>
 <p>The query parameters are <code>chipFamily</code>, <code>hardwareFamily</code>, <code>hardware</code>, <code>role</code>,
 <code>logging</code>, <code>ota</code>, <code>mode</code>, <code>feature</code>, <code>variant</code>, and <code>install</code>. Values use the
-picker's internal identifiers rather than the displayed labels. The generated
+picker's internal identifiers rather than the displayed labels. One Firmware
+profile button sets <code>ota</code>, <code>feature</code>, and <code>variant</code> together. Existing links
+with only some of those choices still work and show their partial selection.
+The generated
 link also records <code>chipAuto</code> so automatic chip-family selection or an explicit
 <strong>Any</strong> choice behaves the same after reopening. Existing section anchors and
 unrelated query parameters are preserved.</p>
@@ -3672,16 +3669,15 @@ update package.</p>
 storage layout. Select the hardware-matched HEX, Serial DFU ZIP, or
 bootloader-update UF2 for the application image being installed.</p>
 <h2 id="hardware-and-variant-names">Hardware and variant names</h2>
-<p>Hardware families with multiple released targets get a second hardware-variant
-menu. It separates revisions, display type, expansion kit, radio/PA layout,
-pin map, and other physical differences without crowding the first menu. The
-firmware-variant menu separately exposes choices that still require different
-code or wiring, such as serial port or the legacy <code>no_external_sensors</code> target
-suffix. For RAK3401 and RAK4631, the picker labels that compact LoRa OTA option
-<strong>Internal storage (no external storage board)</strong>. Its result details explain
-the omitted optional environmental/ranging sensor drivers; the reduction does
-not disable generic I2C or unrelated board-integrated peripherals. Other boards
-retain the <strong>Reduced optional environmental/ranging drivers</strong> label.
+<p>Hardware families with multiple released targets get <strong>Hardware variant</strong>
+buttons. They separate revisions, display type, expansion kit, radio/PA layout,
+pin map, and other physical differences without crowding the Hardware dropdown.
+<strong>Firmware profile</strong> buttons combine OTA support, Full/standard, and choices
+that need a different image or wiring, such as serial port or external storage.
+The legacy <code>no_external_sensors</code> profile is labeled <strong>Receives LoRa OTA -
+Reduced optional sensors</strong> on the same button. On RAK3401 and RAK4631 this
+compact profile uses internal storage without an external storage board. The
+reduction does not disable generic I2C or unrelated board-integrated peripherals.
 Reduced RAK3401 and RAK4631 targets retain INA219/INA226/INA260/INA3221 as
 voltage/current entries in the optional sensor table. They are not the only I2C
 users: the SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS remain
@@ -3830,7 +3826,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20260927-4"></script>
+        <script src="../_javascript/firmware_picker.js?v=20260929-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       
