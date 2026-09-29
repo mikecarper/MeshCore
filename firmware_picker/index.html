@@ -3665,6 +3665,12 @@ states what each route preserves and which older layouts it accepts.</p>
 LoRa update still needs an exact target identity,
 compatible partition signature, matching radio settings, and the correct
 update package.</p>
+<p>nRF52 results include <strong>Latest nRF52 OTAFIX bootloader</strong>, linking to the
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest">latest OTAFIX release</a>.
+The link follows the current stable release automatically. Choose the package
+for the exact board and storage setup; application UF2 and DFU files do not
+install a bootloader. Follow the release's migration instructions if the
+installed version needs a recovery bridge.</p>
 <p>nRF52 LoRa OTA requires an OTAFIX bootloader built for the exact board and
 storage layout. Select the hardware-matched HEX, Serial DFU ZIP, or
 bootloader-update UF2 for the application image being installed.</p>
@@ -3826,7 +3832,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20260929-1"></script>
+        <script src="../_javascript/firmware_picker.js?v=20260929-2"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       

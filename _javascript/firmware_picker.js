@@ -1589,6 +1589,11 @@
     const release = createElement("a", "Open release notes");
     release.href = asset.releaseUrl;
     actions.appendChild(release);
+    if (profile.chipFamily === "nrf52") {
+      const bootloader = createElement("a", "Latest nRF52 OTAFIX bootloader");
+      bootloader.href = "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest";
+      actions.appendChild(bootloader);
+    }
     const migrationAction = migrationLink(profile, asset);
     if (migrationAction) {
       const migration = createElement("a", migrationAction.label);
@@ -1596,6 +1601,10 @@
       actions.appendChild(migration);
     }
     card.appendChild(actions);
+    if (profile.chipFamily === "nrf52") {
+      card.appendChild(createElement("p",
+        "Choose the bootloader package for this exact board and storage setup. Application UF2 and DFU files do not install a bootloader. Follow the bootloader release's migration instructions if your installed version needs a recovery bridge."));
+    }
 
     const steps = createElement("div");
     steps.className = "firmware-picker-steps";
