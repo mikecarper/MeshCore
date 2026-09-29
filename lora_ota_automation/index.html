@@ -3991,6 +3991,28 @@ QSPI pins or uses the chip as a
 Companion filesystem. The application and bootloader must both be from the
 matched repeater list in <a href="../ota_nrf52_qspi/">the nRF52 QSPI guide</a>.</p>
 <h2 id="6-add-intermediate-relays">6. Add intermediate relays</h2>
+<p>The runner automatically checks <code>ota config</code> on the destination, managed source,
+and each OTA-enabled relay before confirmation. The declared <code>--relay</code> count is
+the minimum required OTA reach: one relay requires at least one hop, not the
+direct-only <code>hops=0</code>. After the radio rehearsal passes, it rechecks the original
+policies and temporarily raises only limits below that minimum. Higher existing
+limits remain unchanged. Every change needs exact readback; a lost setter reply
+is reconciled by reading the policy, not blindly repeating the write.</p>
+<p>The original limits are restored after the download, before installation can
+reboot the destination, and cleanup also attempts restoration after an error or
+Ctrl-C. A serial seeder is stopped before the source text CLI is used. The
+private, password-free <code>ota-hop-settings.json</code> recovery file is flushed before
+any hop write. Hop limits are persisted by firmware: if the host loses power or
+a radio becomes unreachable, use that file's original values once the correct
+radio channel is reachable. Unexpected external policy changes are not overwritten.</p>
+<p>For a route containing additional, undeclared repeaters, add <code>--ota-hops N</code>
+(0..8, at least the declared relay count). This is a minimum, not a command to
+reduce larger limits. It does not discover or switch undeclared repeaters;
+all participating radios still need overlapping TempRadio windows. Direct runs
+without relays or a positive explicit minimum leave hop policies untouched.
+Explicitly non-OTA relays remain opaque forwarders; unsupported/ambiguous policy
+replies, authentication failures and timeouts on OTA participants stop the run.
+No signer, install-security or forwarding-filter checks are bypassed.</p>
 <p>List relays from farthest to nearest so each command is sent before its route
 moves to TempRadio. A bare relay name uses the destination password; use
 <code>NAME=PASSWORD</code> when it differs:</p>
@@ -4219,7 +4241,8 @@ download without replacing it.</p>
 <p>The working directory is created before a managed source can be changed, then
 retained and printed at exit. It contains the exact
 served mOTA, <code>motatool-serve.log</code>, extracted build inputs when needed, and
-<code>controller-radio.txt</code>. A managed source also gets a protected
+<code>controller-radio.txt</code>, plus <code>ota-hop-settings.json</code> when OTA reach needed a
+temporary increase. A managed source also gets a protected
 <code>source-rxps-settings.json</code> containing its exact original preference and
 idempotent restore command. Its contents and directory entry are flushed before
 RXPS is disabled. When the destination
