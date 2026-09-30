@@ -1852,10 +1852,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#phase-2-planned" class="md-nav__link">
+  <a href="#further-power-management-work-planned" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 2 (Planned)
+        Further power-management work (Planned)
       
     </span>
   </a>
@@ -3385,10 +3385,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#phase-2-planned" class="md-nav__link">
+  <a href="#further-power-management-work-planned" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 2 (Planned)
+        Further power-management work (Planned)
       
     </span>
   </a>
@@ -3821,6 +3821,12 @@
 </tr>
 </tbody>
 </table>
+<p>Boards with nRF52 power management and a text CLI also support saved
+<code>pwrmgt.bootlock</code>, <code>pwrmgt.cutoff</code>, <code>battery.profile</code>, <code>battery.empty</code>,
+<code>battery.full</code>, and relative <code>adc.multiplier</code> settings. See the
+<a href="../cli_commands/#configure-nrf52-battery-protection">CLI reference</a> for their
+ranges, board-specific defaults, and wake behavior. KISS builds honor a saved
+policy if one exists, but have no text CLI for changing it.</p>
 <p>On boards without power management enabled, <code>get pwrmgt.source</code> and
 <code>get pwrmgt.bootmv</code> return:</p>
 <pre><code>ERROR: Power management not supported
@@ -3837,11 +3843,10 @@ reset reason and <code>Not available</code> for the shutdown reason.</p>
 DEBUG: PWRMGT: Boot voltage = 3450 mV (threshold = 3300 mV)
 DEBUG: PWRMGT: LPCOMP wake configured (AIN7, ref=3/8 VDD)
 </code></pre>
-<h2 id="phase-2-planned">Phase 2 (Planned)</h2>
+<h2 id="further-power-management-work-planned">Further power-management work (Planned)</h2>
 <ul>
-<li>Runtime voltage monitoring</li>
-<li>Voltage state machine (Normal -&gt; Warning -&gt; Critical -&gt; Shutdown)</li>
-<li>Configurable thresholds</li>
+<li>A voltage state machine (Normal -&gt; Warning -&gt; Critical -&gt; Shutdown)</li>
+<li>Configurable wake comparator thresholds</li>
 <li>Load shedding callbacks for power reduction</li>
 <li>Deep sleep integration</li>
 <li>Scheduled wake-up</li>

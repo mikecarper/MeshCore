@@ -2596,6 +2596,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#configure-nrf52-battery-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure nRF52 battery protection
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -7212,6 +7223,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#configure-nrf52-battery-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure nRF52 battery protection
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -9054,7 +9076,13 @@ through binary command <code>0x42</code>; this command does not report the Bluet
 <p><strong>Parameters:</strong>
 - <code>value</code>: ADC multiplier (0.0-10.0)</p>
 <p><strong>Default:</strong> <code>0.0</code> (value defined by board)</p>
-<p><strong>Note:</strong> Returns "Error: unsupported by this board" if hardware doesn't support it</p>
+<p><strong>Note:</strong> On nRF52 boards with power management and a boot-voltage setting,
+this is a saved <em>relative</em> calibration: <code>1.000</code> keeps the board conversion,
+<code>1.050</code> raises all reported battery millivolts by 5%, and <code>0</code> resets to
+<code>1.000</code>. The allowed range is <code>0.500</code>–<code>1.500</code>. This affects boot protection,
+running cutoff, telemetry, battery alerts, and percentage. Calibrate against a
+voltmeter before enabling a low cutoff. Other boards retain their existing
+board-specific multiplier behavior, or return unsupported.</p>
 <hr />
 <h4 id="send-a-repeater-flood-text">Send a repeater flood text</h4>
 <p><strong>Usage:</strong>
@@ -11553,6 +11581,66 @@ manufacturer images and the boards still requiring untouched factory dumps.</p>
 <h4 id="view-the-boot-voltage">View the boot voltage</h4>
 <p><strong>Usage:</strong> <code>get pwrmgt.bootmv</code></p>
 <p><strong>Note:</strong> Returns an error on boards without power management support.</p>
+<hr />
+<h4 id="configure-nrf52-battery-protection">Configure nRF52 battery protection</h4>
+<p><strong>Usage:</strong> <code>get pwrmgt.bootlock</code>, <code>set pwrmgt.bootlock &lt;2500-4200&gt;</code></p>
+<p><strong>Usage:</strong> <code>get pwrmgt.cutoff</code>, <code>set pwrmgt.cutoff &lt;off|2500-4200&gt;</code></p>
+<p>Values are battery millivolts and are saved in internal storage. The boot lock
+defaults to each board's compiled threshold and takes effect on the next boot.
+Boards whose compiled boot lock is disabled also accept <code>set pwrmgt.bootlock off</code>.
+The running cutoff
+defaults to <code>off</code>; when enabled, three valid low readings at 30-second
+intervals shut the node down. Both checks are bypassed while externally
+powered. A nonzero cutoff cannot exceed the boot lock, and the boot lock
+cannot be disabled while a cutoff is active. A fixed 2000 mV pre-check
+protects flash on boards with a nonzero compiled boot lock before the saved
+setting can be loaded. In the <code>custom</code> profile, the lower limit for the boot
+lock and running cutoff is 2000 mV. Firmware warns when any saved voltage is
+below 2500 mV; that experimental range may brown out the board or interrupt
+flash writes. These commands are available on nRF52 boards with
+<code>NRF52_POWER_MANAGEMENT</code> and a boot-voltage configuration, in roles with a
+text CLI. The KISS modem has no text CLI for changing these settings.</p>
+<p><code>battery.profile</code> selects saved voltage-to-percentage endpoints and protection
+settings. <code>liion</code> uses 3000 mV = 0%, 4200 mV = 100%, the board's original boot
+lock, and running cutoff off. <code>lifepo4</code> uses 2700 mV = 0%, 3550 mV = 100%,
+2900 mV boot lock, and 2700 mV running cutoff. <code>custom</code> starts with the current
+values and allows endpoint overrides. These percentages are simple voltage
+estimates; they are not an accurate state-of-charge measurement under load.</p>
+<p><strong>WARNING: SELECTING LIFEPO4 DOES NOT CHANGE ANY BOARD'S CHARGING CIRCUIT. A
+4.2 V LI-ION CHARGER WILL STILL CHARGE TOWARD 4.2 V AND CAN DESTROY A LIFEPO4
+CELL. USE A LIFEPO4-COMPATIBLE CHARGER OR DISABLE/ISOLATE ON-BOARD CHARGING
+BEFORE CONNECTING A LIFEPO4 CELL.</strong> Check the charging hardware on every board
+before using this profile; firmware battery-profile and cutoff settings cannot
+make a Li-ion charger safe for LiFePO4.</p>
+<pre><code class="language-text">get battery.profile
+set battery.profile lifepo4
+set battery.profile liion
+set battery.profile custom
+get battery.empty
+set battery.empty 2700
+get battery.full
+set battery.full 3550
+get adc.multiplier
+set adc.multiplier 1.050
+</code></pre>
+<p>The custom empty/full endpoints may be 2000–4200 mV and must be at least 100 mV
+apart. Setting either endpoint automatically selects <code>custom</code>; boot lock and
+cutoff remain separately adjustable. <code>get pwrmgt.bootlock</code> and
+<code>get pwrmgt.cutoff</code> show the values in force after selecting a profile.</p>
+<p>For a RAK3401/RAK13302 LiFePO₄ cell:</p>
+<pre><code class="language-text">set battery.profile lifepo4
+</code></pre>
+<p>For example, the
+<a href="https://docs.rakwireless.com/product-categories/wisblock/rak19007/datasheet/">RAK19007 base-board datasheet</a>
+specifies 4.2 V charging for a Li-ion battery. The profile does not change it.</p>
+<p>The 2.7 V cutoff is a cell-protection choice, not a guarantee of 1 W RF
+output. The <a href="https://docs.rakwireless.com/product-categories/wisblock/rak13302/datasheet-vd/">RAK13302 datasheet</a>
+specifies 3.0 V minimum at VBAT and lists 5 V / 1 A peak for 30 dBm output.
+Use a cutoff at or above 3.0 V if keeping the radio within its published
+battery-input range matters; verify the actual voltage under transmit load.</p>
+<p>The shutdown wake comparator has a separate fixed hardware reference. Changing
+these millivolt settings does not change that wake threshold; a unit may need
+to charge above it or have USB power restored before it wakes.</p>
 <hr />
 <h3 id="ethernet-when-ethernet-support-is-compiled-in">Ethernet (when Ethernet support is compiled in)</h3>
 <p>Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S) Ethernet module. Use the <code>_ethernet</code> firmware variants (e.g. <code>RAK_4631_repeater_ethernet</code>) to enable this feature.</p>
