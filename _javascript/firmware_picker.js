@@ -98,6 +98,70 @@
   ]);
 
   const CANDIDATE_RESULT_LIMIT = 5;
+  const BOOTLOADER_REPO = "mikecarper/Adafruit_nRF52_Bootloader_OTAFIX";
+  const BOOTLOADER_RELEASE_URL = "https://github.com/" + BOOTLOADER_REPO + "/releases/latest";
+
+  function buildBootloaderCatalog(manifest, release) {
+    if (!manifest || manifest.schemaVersion !== 1 || manifest.repository !== BOOTLOADER_REPO ||
+        !Array.isArray(manifest.profiles)) throw new Error("Unsupported bootloader catalog");
+    const tag = release ? release.tag_name : manifest.tag;
+    if (!/^(?:v?[0-9]+\.[0-9]+\.[0-9]+-)?OTAFIX[0-9]+\.[0-9]+\.[0-9]+$/.test(tag) ||
+        (release && (release.draft || release.prerelease))) {
+      throw new Error("Expected a stable OTAFIX bootloader release");
+    }
+    const releaseUrl = "https://github.com/" + BOOTLOADER_REPO + "/releases/tag/" + tag;
+    if ((release ? release.html_url : manifest.releaseUrl) !== releaseUrl) {
+      throw new Error("Unexpected bootloader release URL");
+    }
+    const aliases = new Set();
+    const ids = new Set();
+    const profiles = manifest.profiles.map(function (profile) {
+      if (!/^[a-z0-9_]+$/.test(profile.id) || ids.has(profile.id) ||
+          !Array.isArray(profile.meshcoreHardware)) throw new Error("Invalid bootloader profile");
+      ids.add(profile.id);
+      profile.meshcoreHardware.forEach(function (hardware) {
+        if (!hardware || aliases.has(hardware)) throw new Error("Ambiguous bootloader hardware mapping");
+        aliases.add(hardware);
+      });
+      const files = {};
+      ["uf2", "zip", "hex"].forEach(function (kind) {
+        let file = profile.files && profile.files[kind];
+        if (release) {
+          const prefix = profile.id + "_bootloader-" + tag;
+          const matches = (release.assets || []).filter(function (asset) {
+            return kind === "uf2" ? asset.name === "update-" + prefix + "_mbr.uf2" :
+              asset.name.startsWith(prefix + "_s140_") &&
+              new RegExp("^[0-9]+\\.[0-9]+\\.[0-9]+\\." + kind + "$")
+                .test(asset.name.slice((prefix + "_s140_").length));
+          });
+          if (matches.length !== 1) return;
+          const asset = matches[0];
+          file = { name: asset.name, url: asset.browser_download_url, size: asset.size,
+            sha256: (asset.digest || "").replace(/^sha256:/, "") };
+        }
+        if (!file || typeof file.name !== "string" || file.size <= 0 ||
+            !/^[0-9a-f]{64}$/.test(file.sha256) ||
+            file.url !== "https://github.com/" + BOOTLOADER_REPO +
+              "/releases/download/" + tag + "/" + file.name) return;
+        const prefix = profile.id + "_bootloader-" + tag;
+        if (kind === "uf2" ? file.name !== "update-" + prefix + "_mbr.uf2" :
+            !file.name.startsWith(prefix + "_s140_") ||
+              !new RegExp("^[0-9]+\\.[0-9]+\\.[0-9]+\\." + kind + "$")
+                .test(file.name.slice((prefix + "_s140_").length))) return;
+        files[kind] = file;
+      });
+      return Object.assign({}, profile, { files: files });
+    }).filter(function (profile) { return Object.keys(profile.files).length === 3; });
+    return { tag: tag, version: tag.split("OTAFIX")[1], releaseUrl: releaseUrl, profiles: profiles };
+  }
+
+  function bootloaderForHardware(catalog, hardware, chipFamily) {
+    if (!catalog || chipFamily !== "nrf52" || !hardware) return null;
+    const matches = catalog.profiles.filter(function (profile) {
+      return profile.meshcoreHardware.includes(hardware);
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
 
   const HARDWARE_ALIASES = Object.freeze({
     // Generated Full Companion artifact name. It uses the standard Heltec V4
@@ -1589,11 +1653,6 @@
     const release = createElement("a", "Open release notes");
     release.href = asset.releaseUrl;
     actions.appendChild(release);
-    if (profile.chipFamily === "nrf52") {
-      const bootloader = createElement("a", "Latest nRF52 OTAFIX bootloader");
-      bootloader.href = "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest";
-      actions.appendChild(bootloader);
-    }
     const migrationAction = migrationLink(profile, asset);
     if (migrationAction) {
       const migration = createElement("a", migrationAction.label);
@@ -1601,10 +1660,6 @@
       actions.appendChild(migration);
     }
     card.appendChild(actions);
-    if (profile.chipFamily === "nrf52") {
-      card.appendChild(createElement("p",
-        "Choose the bootloader package for this exact board and storage setup. Application UF2 and DFU files do not install a bootloader. Follow the bootloader release's migration instructions if your installed version needs a recovery bridge."));
-    }
 
     const steps = createElement("div");
     steps.className = "firmware-picker-steps";
@@ -1642,6 +1697,8 @@
     });
     controls.firmwareProfile = form.querySelector('[data-field="firmwareProfile"]');
     let catalog = { releaseSet: null, rows: [], profiles: [] };
+    let bootloaderCatalog = null;
+    let bootloaderNotice = "Loading the latest bootloader downloads...";
     const filters = {};
     let automaticChipFamily = false;
     const groupPrefix = "firmware-picker-" + (++pickerInstanceCount);
@@ -1835,6 +1892,7 @@
     }
 
     function render() {
+      renderBootloader();
       result.hidden = true;
       missing.hidden = true;
       resultList.replaceChildren();
@@ -1906,6 +1964,43 @@
         );
       });
       result.hidden = false;
+    }
+
+    function renderBootloader() {
+      const panel = root.querySelector('[data-role="bootloader"]');
+      if (!panel) return;
+      const hardware = filters.hardware;
+      const chip = catalog.profiles.some(function (profile) {
+        return profile.hardware === hardware && profile.chipFamily === "nrf52";
+      }) ? "nrf52" : "";
+      panel.hidden = chip !== "nrf52";
+      if (panel.hidden) return;
+      const title = panel.querySelector('[data-role="bootloader-title"]');
+      const content = panel.querySelector('[data-role="bootloader-content"]');
+      content.replaceChildren();
+      title.textContent = "Bootloader for " + humanizeHardware(hardware) +
+        (bootloaderCatalog ? " - OTAFIX " + bootloaderCatalog.version : "");
+      const profile = bootloaderForHardware(bootloaderCatalog, hardware, chip);
+      if (profile) {
+        content.appendChild(createElement("p", profile.label));
+        const actions = createElement("div");
+        actions.className = "firmware-picker-actions";
+        [["uf2", "Bootloader UF2"], ["zip", "Bootloader DFU ZIP"],
+          ["hex", "Bootloader HEX (SWD)"]].forEach(function (item) {
+          const link = createElement("a", item[1]);
+          if (item[0] === "uf2") link.className = "firmware-picker-primary";
+          link.href = profile.files[item[0]].url;
+          actions.appendChild(link);
+        });
+        content.appendChild(actions);
+        content.appendChild(createElement("p", "UF2 updates an existing compatible bootloader. The DFU ZIP includes SoftDevice and bootloader; HEX is for SWD installation or recovery. Application firmware files do not install a bootloader. Follow the release's migration instructions if your installed identity needs a recovery bridge."));
+      } else if (bootloaderCatalog) {
+        content.appendChild(createElement("p", "No verified bootloader download matches this exact hardware in the current catalog. Check the release notes for board support."));
+      }
+      if (bootloaderNotice) content.appendChild(createElement("p", bootloaderNotice));
+      const notes = createElement("a", "Bootloader release notes and migration instructions");
+      notes.href = bootloaderCatalog ? bootloaderCatalog.releaseUrl : BOOTLOADER_RELEASE_URL;
+      content.appendChild(notes);
     }
 
     function renderSearch() {
@@ -1990,6 +2085,26 @@
       "/releases?per_page=20";
     const embeddedElement = document.getElementById("firmware-picker-data");
     const embedded = embeddedElement ? JSON.parse(embeddedElement.textContent) : null;
+    const bootloaderUrl = root.getAttribute("data-bootloaders-url");
+    const bootloaderManifestRequest = embedded ? Promise.resolve(embedded.bootloaders) :
+      bootloaderUrl ? fetch(bootloaderUrl).then(function (response) {
+        if (!response.ok) throw new Error("Bootloader catalog HTTP " + response.status);
+        return response.json();
+      }) : Promise.resolve(null);
+    const bootloaderReleaseRequest = embedded ? Promise.resolve(null) :
+      fetch("https://api.github.com/repos/" + BOOTLOADER_REPO + "/releases/latest",
+        { headers: { Accept: "application/vnd.github+json" } }).then(function (response) {
+          return response.ok ? response.json() : null;
+        }).catch(function () { return null; });
+    Promise.all([bootloaderManifestRequest, bootloaderReleaseRequest]).then(function (data) {
+      bootloaderCatalog = buildBootloaderCatalog(data[0], data[1]);
+      bootloaderNotice = embedded ? "Bootloader release included in this saved picker." :
+        data[1] ? "" : "Could not check for a newer bootloader release. Downloads are for the version shown above.";
+      renderBootloader();
+    }).catch(function () {
+      bootloaderNotice = "Bootloader downloads could not be loaded. Open the release notes below.";
+      renderBootloader();
+    });
     const controlUrl = root.getAttribute("data-controls-url");
     const controlRequest = embedded ? Promise.resolve(embedded.controls) : controlUrl ? fetch(controlUrl).then(function (response) {
       return response.ok ? response.json() : null;
@@ -2042,6 +2157,8 @@
   }
 
   const api = Object.freeze({
+    buildBootloaderCatalog: buildBootloaderCatalog,
+    bootloaderForHardware: bootloaderForHardware,
     FILTER_FIELDS: FILTER_FIELDS,
     FACET_FIELDS: FACET_FIELDS,
     PROFILE_FIELDS: PROFILE_FIELDS,
