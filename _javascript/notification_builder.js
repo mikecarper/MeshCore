@@ -33,6 +33,43 @@
       return { ms, hz: match[2] === "p" ? 0 : 440 * Math.pow(2, (midi - 69) / 12) };
     });
   }
+  function melodyWav(text) {
+    const notes = melody(text), rate = 22050;
+    const frames = Math.round(notes.reduce((total, note) => total + note.ms, 0) * rate / 1000);
+    const bytes = new Uint8Array(44 + frames * 2), view = new DataView(bytes.buffer);
+    const label = (offset, value) => { for (let i = 0; i < value.length; i++) bytes[offset + i] = value.charCodeAt(i); };
+    label(0, "RIFF"); view.setUint32(4, bytes.length - 8, true); label(8, "WAVE");
+    label(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true); label(36, "data"); view.setUint32(40, frames * 2, true);
+    let elapsed = 0, start = 0;
+    for (const note of notes) {
+      elapsed += note.ms;
+      const end = Math.round(elapsed * rate / 1000), count = end - start;
+      if (note.hz) {
+        // Match the buzzer's square wave, with short fades to avoid speaker clicks.
+        const fade = Math.min(rate * 0.003, count / 2);
+        for (let i = 0; i < count; i++) {
+          const envelope = Math.min(1, i / fade, (count - 1 - i) / fade);
+          const sample = Math.round(6553 * envelope) * (i * note.hz / rate % 1 < 0.5 ? 1 : -1);
+          view.setInt16(44 + (start + i) * 2, sample, true);
+        }
+      }
+      start = end;
+    }
+    return bytes;
+  }
+  function parseOutputs(config) {
+    const pulses = { vibration: pulse(config.vibration), led: pulse(config.led), gpio: [] };
+    const notes = melody(config.sound);
+    if (!["inherit", "on", "off"].includes(config.screen)) throw new Error("Screen must be on, off, or inherit.");
+    if (config.gpio !== "off" && config.gpio !== "inherit") {
+      const match = config.gpio.match(/^(\d{1,2}):(.+)$/);
+      if (!match || Number(match[1]) > 63) throw new Error("GPIO needs pin:pattern, for example 22:50,300,50.");
+      pulses.gpio = pulse(match[2]);
+    }
+    return { pulses, notes };
+  }
   function selector(config) {
     let target = "all";
     if (config.kind === "contact" || config.kind === "room") {
@@ -47,14 +84,7 @@
   }
   function commands(config) {
     const target = selector(config), result = [];
-    for (const name of ["vibration", "led"]) pulse(config[name]);
-    melody(config.sound);
-    if (!["inherit", "on", "off"].includes(config.screen)) throw new Error("Screen must be on, off, or inherit.");
-    if (config.gpio !== "off" && config.gpio !== "inherit") {
-      const match = config.gpio.match(/^(\d{1,2}):(.+)$/);
-      if (!match || Number(match[1]) > 63) throw new Error("GPIO needs pin:pattern, for example 22:50,300,50.");
-      pulse(match[2]);
-    }
+    parseOutputs(config);
     if (config.repeat !== "forever" && (!/^\d+$/.test(config.repeat) || Number(config.repeat) < 1 || Number(config.repeat) > 65535)) throw new Error("Repeat must be 1-65535 or forever.");
     if (!/^\d+$/.test(config.gap) || Number(config.gap) < 1 || Number(config.gap) > 60000) throw new Error("Repeat gap must be 1-60000 ms.");
     if (!["button", "connected", "never"].includes(config.stop)) throw new Error("Unknown stop condition.");
@@ -148,7 +178,8 @@
     if (root.dataset.ready) return; root.dataset.ready = "true";
     const find = role => root.querySelector('[data-role="' + role + '"]');
     const form = find("form"), error = find("error"), output = find("commands"), log = find("device-log");
-    let client = null, supported = null, previewTimer = null, audio = null, oscillators = [];
+    const audio = find("preview-audio");
+    let client = null, supported = null, previewTimer = null, previewUrl = null, previewVersion = 0;
     const config = () => Object.fromEntries(new FormData(form));
     function render() {
       try {
@@ -163,38 +194,58 @@
       for (const [key, value] of Object.entries(values)) if (form.elements[key]) form.elements[key].value = value;
       render();
     }
-    function stopPreview() {
+    function stopPreview(status = "Stopped") {
+      previewVersion++;
       clearInterval(previewTimer); previewTimer = null;
-      for (const oscillator of oscillators) { try { oscillator.stop(); } catch (_) {} } oscillators = [];
+      audio.onerror = null;
+      audio.pause(); audio.removeAttribute("src"); audio.load();
+      if (previewUrl) { global.URL.revokeObjectURL(previewUrl); previewUrl = null; }
       for (const item of root.querySelectorAll("[data-indicator]")) item.dataset.on = "false";
+      find("preview-sound").textContent = status;
     }
-    function preview() {
-      stopPreview(); const c = config(); commands(c);
-      const pulses = { vibration: pulse(c.vibration), led: pulse(c.led), gpio: pulse(c.gpio.includes(":") ? c.gpio.split(":")[1] : c.gpio) };
-      const notes = melody(c.sound), tuneMs = notes.reduce((n, item) => n + item.ms, 0);
+    async function preview() {
+      stopPreview(); const version = previewVersion, c = config();
+      // A local preview does not need a contact/room key or a saved repeat policy.
+      const { pulses, notes } = parseOutputs(c), tuneMs = notes.reduce((n, item) => n + item.ms, 0);
       const duration = Math.max(tuneMs, ...Object.values(pulses).map(list => list.reduce((a, b) => a + b, 0))) || 1000;
       // Preview one cycle. Never creates an unbounded oscillator or vibration loop.
-      if (notes.length && (global.AudioContext || global.webkitAudioContext)) {
-        audio = audio || new (global.AudioContext || global.webkitAudioContext)(); audio.resume();
-        let offset = 0;
-        for (const note of notes) {
-          if (note.hz) {
-            const oscillator = audio.createOscillator(), gain = audio.createGain();
-            oscillator.type = "square"; oscillator.frequency.value = note.hz; gain.gain.value = 0.03;
-            oscillator.connect(gain); gain.connect(audio.destination);
-            oscillator.start(audio.currentTime + offset / 1000); oscillator.stop(audio.currentTime + (offset + note.ms) / 1000);
-            oscillators.push(oscillator);
-          }
-          offset += note.ms;
+      if (notes.length) {
+        // Use media playback rather than Web Audio's ambient/ringer channel on iOS.
+        previewUrl = global.URL.createObjectURL(new Blob([melodyWav(c.sound)], { type: "audio/wav" }));
+        audio.src = previewUrl; audio.loop = false; audio.muted = false; audio.volume = 1;
+        find("preview-sound").textContent = "Starting melody...";
+        find("preview-time").textContent = "0 / " + duration + " ms";
+        audio.onerror = () => {
+          if (version !== previewVersion) return;
+          stopPreview("Sound unavailable"); error.textContent = "The browser could not play the sound preview.";
+        };
+        try { await audio.play(); }
+        catch (e) {
+          // Stop can cancel a pending play() without showing a playback failure.
+          if (version !== previewVersion) return;
+          stopPreview("Sound unavailable"); throw new Error("Sound preview could not start: " + e.message);
         }
+        if (version !== previewVersion) return;
+        find("preview-sound").textContent = "Playing melody";
+      } else {
+        find("preview-sound").textContent = c.sound === "inherit" ? "Choose a melody to preview inherited sound." : "Sound is off for this preview.";
       }
-      const started = performance.now();
+      let finishedAt = null;
+      const started = performance.now() - (notes.length ? audio.currentTime * 1000 : 0);
       previewTimer = setInterval(() => {
-        const elapsed = performance.now() - started;
+        if (!root.isConnected) { stopPreview(); return; }
+        let elapsed = performance.now() - started;
+        if (notes.length) {
+          if (!audio.ended) elapsed = audio.currentTime * 1000;
+          else {
+            if (finishedAt === null) finishedAt = performance.now();
+            elapsed = tuneMs + performance.now() - finishedAt;
+          }
+        }
         for (const name of Object.keys(pulses)) root.querySelector('[data-indicator="' + name + '"]').dataset.on = String(level(pulses[name], elapsed));
         root.querySelector('[data-indicator="screen"]').dataset.on = String(c.screen === "on");
         find("preview-time").textContent = Math.min(Math.round(elapsed), duration) + " / " + duration + " ms";
-        if (elapsed >= duration) stopPreview();
+        if (elapsed >= duration && (!notes.length || audio.ended)) stopPreview("Cycle finished");
       }, 10);
     }
     const append = text => { log.textContent += text + "\n"; log.scrollTop = log.scrollHeight; };
@@ -205,12 +256,12 @@
       return reply;
     }
     async function act(action) {
+      if (action === "preview-stop") { stopPreview(); return; }
       error.textContent = "";
-      const buttons = root.querySelectorAll("button[data-action]"); buttons.forEach(b => b.disabled = true);
+      const buttons = root.querySelectorAll("button[data-action]"); buttons.forEach(b => b.disabled = b.dataset.action !== "preview-stop");
       try {
         if (action === "copy") { await navigator.clipboard.writeText(commands(config()).join("\n"));find("copy-status").textContent = "Copied"; }
-        if (action === "preview") preview();
-        if (action === "preview-stop") stopPreview();
+        if (action === "preview") await preview();
         if (action === "connect") {
           if (!navigator.serial) throw new Error("USB testing requires Chrome or Edge with Web Serial support.");
           if (client) { await client.close(); client = null; }
@@ -240,9 +291,9 @@
       const example = event.target.closest("[data-example]"); if (example) preset(example.dataset.example);
       const button = event.target.closest("[data-action]"); if (button) act(button.dataset.action);
     });
-    global.addEventListener("pagehide", stopPreview);preset("food");
+    global.addEventListener("pagehide", () => stopPreview());preset("food");
   }
-  const api = { pulse, melody, selector, commands, notificationText, level, encodeCommand, FrameDecoder, SerialClient, EXAMPLES, init };
+  const api = { pulse, melody, melodyWav, parseOutputs, selector, commands, notificationText, level, encodeCommand, FrameDecoder, SerialClient, EXAMPLES, init };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   global.MeshCoreNotifications = api;
   if (typeof document !== "undefined") {
