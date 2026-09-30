@@ -20,7 +20,7 @@ The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.
 
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.7-runtime-2" data-bootloaders-url="../_data/bootloader_manifest.json?v=20260929-1" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.7-runtime-2" data-bootloaders-url="../_data/bootloader_manifest.json?v=20260929-2" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -398,6 +398,10 @@ includes the bootloader release named in its saved catalog. If a board has no
 verified mapping or a file is missing, the picker explains that instead of
 offering another board's bootloader. MeshTower internal and microSD remain
 separate; RAK3401 and RAK4631 each use their adaptive storage bootloader.
+Ikoka Stick, Nano and Handheld plus SolarXiao use the XIAO bootloader;
+Wio Tracker L1 1W and E-Ink use the L1 bootloader. See the
+[board coverage audit](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/blob/feature/ota-delta-apply/docs/meshcore-hardware-coverage.md)
+for the source checks and boards still awaiting a dedicated, tested release.
 
 Board mappings and file names, URLs, sizes and SHA-256 hashes come from
 `bootloader-manifest.json` in the

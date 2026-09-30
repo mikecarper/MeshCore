@@ -20,6 +20,29 @@ assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, "Heltec_tower
 assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, "RAK_3401", "nrf52").storage, "adaptive");
 assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, "RAK_4631", "nrf52").id, "wiscore_rak4631_auto");
 assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, "ThinkNode_M8", "nrf52"), null);
+const nrf52Hardware = require("./fixtures/firmware_picker_nrf52_1_17_1_7.json").hardware;
+assert.strictEqual(nrf52Hardware.length, 53);
+let mappedNrf52 = 0;
+for (const hardware of nrf52Hardware) {
+  const download = picker.bootloaderForHardware(bootloaderCatalog, hardware, "nrf52");
+  const unavailable = picker.unavailableBootloaderForHardware(bootloaderCatalog, hardware, "nrf52");
+  assert.strictEqual(Number(!!download) + Number(!!unavailable), 1, hardware + " needs an explicit coverage decision");
+  if (download) mappedNrf52++;
+  else {
+    assert(unavailable.reason.length > 20);
+    assert.strictEqual(unavailable.files, undefined);
+  }
+  assert.strictEqual(picker.unavailableBootloaderForHardware(bootloaderCatalog, hardware, "esp32"), null);
+}
+assert.strictEqual(mappedNrf52, 39);
+for (const hardware of nrf52Hardware.filter(h => /^(ikoka_|solarxiao_)/.test(h))) {
+  assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, hardware, "nrf52").id, "xiao_nrf52840_ble");
+}
+for (const hardware of ["WioTrackerL1-1W", "WioTrackerL1Eink"]) {
+  assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, hardware, "nrf52").id, "wio_tracker_l1");
+}
+assert(picker.unavailableBootloaderForHardware(bootloaderCatalog, "GAT562_Mesh_Watch13", "nrf52").reason.includes("vibration motor"));
+assert(picker.unavailableBootloaderForHardware(bootloaderCatalog, "wio_wm1110", "nrf52").reason.includes("does not make it XIAO"));
 const nextBootloaderTag = "v0.11.0-OTAFIX2.4.11";
 const nextBootloaderRelease = {
   tag_name: nextBootloaderTag, draft: false, prerelease: false,
@@ -44,6 +67,9 @@ assert.strictEqual(picker.bootloaderForHardware(picker.buildBootloaderCatalog(bo
 const ambiguousMapping = structuredClone(bootloaderManifest);
 ambiguousMapping.profiles[1].meshcoreHardware.push(ambiguousMapping.profiles[0].meshcoreHardware[0]);
 assert.throws(() => picker.buildBootloaderCatalog(ambiguousMapping), /Ambiguous bootloader hardware/);
+const shadowedMapping = structuredClone(bootloaderManifest);
+shadowedMapping.unavailableProfiles[0].meshcoreHardware.push("ikoka_stick_nrf_33dbm");
+assert.throws(() => picker.buildBootloaderCatalog(shadowedMapping), /Ambiguous bootloader hardware/);
 assert.throws(() => picker.buildBootloaderCatalog(bootloaderManifest, Object.assign({}, nextBootloaderRelease, {prerelease: true})), /stable OTAFIX/);
 console.log("exact bootloader downloads, storage variants, chip gating, latest version and unsafe catalog rejection passed");
 
