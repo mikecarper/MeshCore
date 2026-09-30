@@ -30,6 +30,7 @@
   #include "ota/OtaContext.h"   // persist/sync OTA policy + signer allowlist with NodePrefs
   #include "ota/OtaConfigState.h"
   #include "ota/OtaSpeedConfig.h"
+  #include "ota/OtaTowerStorageConfig.h"
 #endif
 
 #ifndef BRIDGE_MAX_BAUD
@@ -3164,6 +3165,9 @@ bool CommonCLI::handleSdCardSetCmd(const char* config, char* reply) {
   }
 
   const char* action_args = skipSpacesConst(config + 6);
+#if defined(OTA_SD_DUAL_STORE)
+  if (mesh::ota::handleTowerSdCommand(action_args, reply, 160)) return true;
+#endif
   bool is_format;
   bool force = false;
   if (strcmp(action_args, "format") == 0) {
@@ -3195,6 +3199,12 @@ bool CommonCLI::handleSdCardSetCmd(const char* config, char* reply) {
   }
 
   mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
+#if defined(OTA_SD_DUAL_STORE)
+  if (!context.fetch_store.usesExternal()) {
+    strcpy(reply, "Error: SD disabled; use set sdcard on and reboot");
+    return true;
+  }
+#endif
   if (context.apply_pending) {
     strcpy(reply, "Error: OTA apply is pending");
     return true;
@@ -3261,6 +3271,11 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
   }
 
   const char* query = skipSpacesConst(config + 6);
+#if defined(OTA_SD_DUAL_STORE)
+  if (!*query || strcmp(query, "status") == 0) {
+    return mesh::ota::handleTowerSdCommand("", reply, 160);
+  }
+#endif
   const uint32_t now = millis();
   if (*query == 0 || strcmp(query, "*") == 0) {
     char format_age[32];
@@ -3283,7 +3298,7 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
   } else if (strcmp(query, "free") == 0) {
     uint64_t used_bytes = 0;
     uint64_t free_bytes = 0;
-    mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().fetch_store;
+    auto& store = mesh::ota::ota_ctx().fetch_store;
     if (!store.getSpace(*_board, used_bytes, free_bytes)) {
       snprintf(reply, 160, "Error: SD card space query failed: %s",
                store.last_error());
@@ -3312,7 +3327,7 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
       }
       page = parsed;
     }
-    mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().fetch_store;
+    auto& store = mesh::ota::ota_ctx().fetch_store;
     if (!store.listFiles(*_board, (uint16_t)page, reply, 160)) {
       snprintf(reply, 160, "Error: SD card list failed: %s", store.last_error());
     }

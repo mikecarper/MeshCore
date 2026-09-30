@@ -181,6 +181,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
       "OTA: status | stats | ls | get <id> flash [rescue] | install | rescue install <hash16> | "
       "cancel | announce | self | folder | config | key");
 #endif
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_DUAL_STORE)
+    strcpy(reply,
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | self | sd [on|off] | folder | cache | config | key");
 #elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | storage | folder | config | key");
@@ -247,7 +250,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     // nRF52 applies via the bootloader - show (cached) whether it can, so `ota get`/`install` won't surprise.
     // blrc = the bootloader's last apply code (diagnostic; 0xB8=success, see ota_delta.c).
     const OtaBlCaps& bl = c.bootloaderAppCaps();
-#if defined(OTA_RAK_AUTO_STORE)
+#if defined(OTA_SD_DUAL_STORE)
+    const char* bl_state = !bl.present ? "NONE" :
+        c.fetch_store.usesExternal() ? "SD" : "internal";
+#elif defined(OTA_RAK_AUTO_STORE)
     const char* bl_state = !bl.present ? "NONE" :
         c.fetch_store.usesExternal() ? "QSPI" :
         c.fetch_store.usesInternal() ? "internal" : "storage-ERR";
@@ -351,23 +357,28 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     const OtaBlCaps& list_bl = c.bootloaderAppCaps();
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
     defined(OTA_SD_BOOTLOADER_UPDATE)
-    const OtaBlCaps& list_bl_update = c.bootloaderUpdateCaps();
+    const bool list_bl_update_supported = c.bootloaderUpdateSupported();
 #endif
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && (!defined(OTA_SD_STORE) || defined(OTA_SD_DUAL_STORE)) && \
     (!defined(OTA_QSPI_STORE) || defined(OTA_RAK_AUTO_STORE))
     SelfFwInfo list_self;
     bool list_has_endf = ota_self_firmware(list_self) && list_self.valid;
 #endif
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_BOOTLOADER_UPDATE)
     SelfFwInfo list_sd_self;
+    const uint32_t boot_scratch =
+#if defined(OTA_SD_DUAL_STORE)
+        c.fetch_store.usesInternal() ? MOTA_NRF52_SHARED_BOOT_STAGE_START :
+#endif
+        OTA_BOOT_SCRATCH_START;
     const bool list_sd_headroom = ota_self_firmware(list_sd_self) &&
         ota_bootloader_scratch_headroom_valid(
             list_sd_self.valid, mota_nrf52_app_base(), list_sd_self.image_len,
-            OTA_BOOT_SCRATCH_START) &&
+            boot_scratch) &&
         ota_bootloader_live_bank_preserves_scratch(
             mota_nrf52_app_base(), list_sd_self.image_len,
-            OTA_BOOT_SCRATCH_START);
+            boot_scratch);
 #endif
     uint32_t now = millis(); int shown = 0;
     uint16_t first = (uint16_t)(page - 1) * PAGE_SIZE;
@@ -401,7 +412,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         installable = h->flags == (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) &&
                       h->codec == CODEC_FULL && bid.present && bid.crc_ok &&
                       h->target_id == ota_bootloader_target_id(bid) &&
-                      ota_bootloader_self_update_caps_valid(list_bl_update);
+                      list_bl_update_supported;
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
         installable = installable && list_sd_headroom;
 #endif
@@ -412,7 +423,10 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #if defined(NRF52_PLATFORM)
         installable = installable && list_bl.present && list_bl.apply_abi >= MOTA_FORMAT_VER
                    && h->codec < 16 && (list_bl.codec_mask & (1u << h->codec));
-#if defined(OTA_SD_STORE)
+#if defined(OTA_SD_DUAL_STORE)
+        installable = installable && (list_bl.storage_flags &
+            (c.fetch_store.usesExternal() ? OTA_BL_STORAGE_SD : OTA_BL_STORAGE_STAGE_CEILING));
+#elif defined(OTA_SD_STORE)
         installable = installable && (list_bl.storage_flags & OTA_BL_STORAGE_SD);
 #elif defined(OTA_RAK_AUTO_STORE)
         if (c.fetch_store.usesExternal())
@@ -541,7 +555,6 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
      defined(OTA_SD_BOOTLOADER_UPDATE))
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
-        const OtaBlCaps& bl = c.bootloaderUpdateCaps();
         if (selflags != (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) ||
             selcodec != CODEC_FULL) {
           strcpy(reply, "ERR malformed bootloader catalog row; capture it to folder for inspection");
@@ -551,20 +564,25 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
           strcpy(reply, "ERR bootloader package does not match this installed bootloader identity");
           return true;
         }
-        if (!ota_bootloader_self_update_caps_valid(bl)) {
-          strcpy(reply, "ERR installed bootloader lacks safe LoRa bootloader-update support");
+        if (!c.bootloaderUpdateSupported()) {
+          strcpy(reply, "ERR installed bootloader lacks safe bootloader-update support for the selected storage");
           return true;
         }
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
         SelfFwInfo sd_self;
+        const uint32_t boot_scratch =
+#if defined(OTA_SD_DUAL_STORE)
+            c.fetch_store.usesInternal() ? MOTA_NRF52_SHARED_BOOT_STAGE_START :
+#endif
+            OTA_BOOT_SCRATCH_START;
         if (!ota_self_firmware(sd_self) ||
             !ota_bootloader_scratch_headroom_valid(
                 sd_self.valid, mota_nrf52_app_base(), sd_self.image_len,
-                OTA_BOOT_SCRATCH_START) ||
+                boot_scratch) ||
             !ota_bootloader_live_bank_preserves_scratch(
                 mota_nrf52_app_base(), sd_self.image_len,
-                OTA_BOOT_SCRATCH_START)) {
-          strcpy(reply, "ERR running firmware/settings do not preserve E0000 scratch; use local DFU/SWD");
+                boot_scratch)) {
+          strcpy(reply, "ERR running firmware/settings do not preserve bootloader staging; use local DFU/SWD");
           return true;
         }
 #endif
@@ -591,7 +609,15 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
                  need_abi, (unsigned)selcodec, bl.apply_abi, bl.codec_mask);
         return true;
       }
-#if defined(OTA_SD_STORE)
+#if defined(OTA_SD_DUAL_STORE)
+      const uint8_t storage = c.fetch_store.usesExternal() ? OTA_BL_STORAGE_SD : OTA_BL_STORAGE_STAGE_CEILING;
+      // Boot packages already passed the exact, source-aware privileged gate.
+      // Their primary SD identity stays 0x09 even when staging internally.
+      if (!selboot && !(bl.storage_flags & storage)) {
+        strcpy(reply, "ERR bootloader cannot apply from the configured OTA storage");
+        return true;
+      }
+#elif defined(OTA_SD_STORE)
       if (!(bl.storage_flags & OTA_BL_STORAGE_SD)) {
         strcpy(reply, "ERR bootloader cannot apply an update staged on SD; update it over USB first");
         return true;
@@ -691,7 +717,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (was_folder && c.folder_dest) c.folder_dest->clear();
     c.fetch_to_folder = false;
     c.manager.set_fetch_store(&c.fetch_store);   // revert to the default flash store (a folder pull switched it)
-#if defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+#if defined(NRF52_PLATFORM) && (defined(OTA_RAK_AUTO_STORE) || defined(OTA_SD_DUAL_STORE))
     c.manager.set_accept_full(c.fetch_store.usesExternal());
 #elif defined(NRF52_PLATFORM) && !defined(OTA_SD_STORE) && !defined(OTA_QSPI_STORE)
     c.manager.set_accept_full(false);
@@ -732,6 +758,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     if (!c.serving) c.serving = ota_serve_self(c, 0);
     c.manager.announce();
     sprintf(reply, "OK beacon sent (serving=%s)", c.serving ? "self fw" : "nothing");
+#endif
+
+#if defined(OTA_SD_DUAL_STORE)
+  // Tower owns the storage alias; dispatch before the older QSPI alias.
+  } else if (is_cmd(a, "sd|storage", &rest)) {
+    if (!handleTowerSdCommand(rest, reply, 160)) strcpy(reply, "ERR usage: ota sd [on|off]");
 #endif
 
   // ---- raw-QSPI staging diagnostics (read-only probe; preserves a latched fetch failure) ----
@@ -806,6 +838,9 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
     else
       snprintf(reply + n, 160 - n,
                " | bootloader: NO QSPI mota-apply support (install will refuse)");
+#elif defined(OTA_SD_DUAL_STORE)
+    snprintf(reply + n, 160 - n, " | store:%s | bootloader abi=%u flags=%02X",
+             c.fetch_store.usesExternal() ? "SD" : "internal", bl.apply_abi, bl.storage_flags);
 #elif defined(OTA_SD_STORE)
     if (bl.present && (bl.storage_flags & OTA_BL_STORAGE_SD))
       snprintf(reply + n, 160 - n, " | bootloader: SD apply OK (abi=%u codecs=0x%x)", bl.apply_abi, bl.codec_mask);
@@ -867,8 +902,8 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
         strcpy(reply, "Bootloader update unavailable: installed embedded manifest/CRC is invalid");
         return true;
       }
-      if (!ota_bootloader_self_update_caps_valid(bl)) {
-        strcpy(reply, "Bootloader update unavailable: installed bootloader supports application OTA only");
+      if (!c.bootloaderUpdateSupported()) {
+        strcpy(reply, "Bootloader update unavailable: installed bootloader does not support the selected storage");
         return true;
       }
       MotaManifest staged;
@@ -981,6 +1016,12 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 
   // ---- SD OTA archive: default-on capture of every advertised mOTA, retained and served after reboot. ----
   } else if (is_cmd(a, "cache|archive|seed", &rest)) {
+#if defined(OTA_SD_DUAL_STORE)
+    if (c.fetch_store.usesInternal()) {
+      strcpy(reply, "SD OTA archive disabled; use set sdcard on and reboot");
+      return true;
+    }
+#endif
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     const char* p = rest;
     if (strcmp(p, "on") == 0 || strcmp(p, "off") == 0) {

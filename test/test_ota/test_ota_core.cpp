@@ -278,6 +278,31 @@ TEST(OtaBootPackage, CandidateContinuityEnvelopeHasOneCanonicalFinalOffset) {
       store, 0, OTA_BL_PROFILE_SD_BOOT_UPDATE, identity, caps));
   EXPECT_EQ(identity.manifest_offset, OTA_BOOT_CANDIDATE_MANIFEST_OFFSET);
 
+  // Combined Tower successors must keep both the RAM ABI and internal-store
+  // extension. Put the record across a streaming chunk boundary.
+  auto combined = canonical;
+  const uint8_t dual_caps[32] = {
+    'M','O','T','A','R','A','M','A',1,0,72,0,0,0,1,0,
+    'M','O','T','A','S','T','O','R',1,0,16,0,2,0,0,0
+  };
+  auto check_combined = [&](bool expected) {
+    const uint32_t crc_offset = OTA_BOOT_CANDIDATE_MANIFEST_OFFSET + 40;
+    wr_u32le(combined.data() + crc_offset, ota_boot_image_crc32(combined.data(), combined.size(), crc_offset));
+    ASSERT_TRUE(store.begin((uint32_t)combined.size()));
+    ASSERT_TRUE(store.write(0, combined.data(), (uint32_t)combined.size()));
+    EXPECT_EQ(ota_bootloader_external_image_metadata(
+        store, 0, OTA_BL_PROFILE_SD_BOOT_UPDATE, identity, caps, OTA_BL_STORAGE_STAGE_CEILING), expected);
+  };
+  check_combined(false);
+  memcpy(combined.data() + 0x5F0, dual_caps, sizeof(dual_caps));
+  check_combined(true);
+  combined[0x60C] = 0x14; check_combined(false); // optional RAK NOR is not Tower internal
+  combined[0x60C] = 2;
+  memcpy(combined.data() + 0x800, dual_caps, sizeof(dual_caps));
+  check_combined(false); // duplicate RAM capability is ambiguous
+  memset(combined.data() + 0x800, 0, sizeof(dual_caps));
+  combined[0x60D] = 1; check_combined(false); // reserved bytes must stay zero
+
   // A second CRC-valid base identity still counts when its adjacent BLM2
   // extension is only half present. These coupled values are the fixed point
   // for this deterministic image. Counting continuity first would wrongly

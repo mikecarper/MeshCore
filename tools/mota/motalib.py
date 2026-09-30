@@ -855,16 +855,17 @@ def xiao_bootloader_caps_ok(image: bytes) -> bool:
 
 
 def bootloader_optional_app_storage(image: bytes) -> int:
-    record = (b"MOTARAMA" + struct.pack("<HHI", 1, 72, 65536) +
-              b"MOTASTOR" + struct.pack("<HHBBBB", 1, 16, 0x14, 0, 0, 0))
     offsets = [off for off in range(0, len(image) - 7, 4)
                if image[off:off + 8] == b"MOTASTOR"]
     if not offsets:
         return 0
-    if (len(offsets) != 1 or offsets[0] < 16 or
+    flags = image[offsets[0] + 12] if offsets[0] + 16 <= len(image) else 0
+    record = (b"MOTARAMA" + struct.pack("<HHI", 1, 72, 65536) +
+              b"MOTASTOR" + struct.pack("<HHBBBB", 1, 16, flags, 0, 0, 0))
+    if (len(offsets) != 1 or offsets[0] < 16 or flags not in (0x14, 0x02) or
             image[offsets[0] - 16:offsets[0] + 16] != record):
-        raise ValueError("optional RAK application storage marker is invalid or ambiguous")
-    return 0x14
+        raise ValueError("optional application storage marker is invalid or ambiguous")
+    return flags
 
 
 def validate_bootloader_image(image: bytes, target_id: Optional[int] = None,
@@ -899,10 +900,12 @@ def validate_bootloader_image(image: bytes, target_id: Optional[int] = None,
         expected = "/".join(f"0x{value:02X}" for value in expected_storage)
         raise ValueError(f"bootloader lacks exact ABI 3 self-update capabilities {expected}")
     optional_storage = bootloader_optional_app_storage(image)
-    if optional_storage and (actual_storage != BOOT_STORAGE_INTERNAL_UPDATE or
-            identity.board_id != 0x239A0029 or
-            identity.device_name not in ("3401_DFU", "4631_DFU")):
+    if optional_storage == 0x14 and (actual_storage != BOOT_STORAGE_INTERNAL_UPDATE or
+            identity.board_id != 0x239A0029 or identity.device_name not in ("3401_DFU", "4631_DFU")):
         raise ValueError("optional RAK application storage requires the deployed board identity")
+    if optional_storage == 0x02 and (actual_storage != BOOT_STORAGE_SD_UPDATE or
+            (identity.board_id, identity.device_name) != (0x239A0071, "TOWER_V2_OTA")):
+        raise ValueError("optional internal storage requires the deployed MeshTower SD identity")
     if actual_storage == BOOT_STORAGE_RAK_AUTO_UPDATE or optional_storage:
         ram_marker = b"MOTARAMA" + struct.pack("<HHI", 1, 72, 65536)
         count = sum(image[off:off + 16] == ram_marker

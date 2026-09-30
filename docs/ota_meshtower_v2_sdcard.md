@@ -1,5 +1,119 @@
 # MeshTower V2 microSD LoRa OTA
 
+## Development: combined SD/internal default
+
+The development version of
+`Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors` is the combined
+MeshTower default. It keeps the existing SD application identity and full-RAM
+linker. **This feature is hardware-tested but has not yet been published**;
+the older released downloads described below do not gain it automatically.
+
+Pair it with the combined `heltec_mesh_tower_v2_sdcard` OTAFIX bootloader. That
+bootloader preserves the SD `TOWER_V2_OTA` identity and primary `0x09` storage
+profile, adding internal staging through a separate validated `MOTASTOR=0x02`
+capability. Existing authenticated/BLM2 SD installations can upgrade the
+bootloader over their existing signed SD path. Internal-only `0x0A`
+installations need a one-time local USB/BLE DFU or SWD migration to the combined
+profile and matching firmware. Legacy SD bootloaders without BLM2 likewise need
+local migration. The shared boot target ID alone does not permit cross-profile OTA.
+
+| Selection | Application updates | Bootloader updates | SD access/archive |
+| --- | --- | --- | --- |
+| SD on (default) | Full images or in-place deltas from SD | Explicit signed package from SD | Enabled |
+| SD off, combined bootloader | In-place deltas from internal flash | Explicit signed package from internal flash | Disabled |
+| SD off, old SD-only bootloader | Unavailable until SD is re-enabled or the combined loader is installed | Unavailable on internal staging | Disabled |
+
+New controls:
+
+```text
+get sdcard
+get sdcard status
+set sdcard off
+# reboot to activate the saved selection
+set sdcard on
+# reboot to activate the saved selection
+ota sd
+ota sd off
+ota sd on
+```
+
+`ota storage` is an alias for `ota sd`. Status reports the active and saved
+selection and whether a reboot is needed. The choice is saved in an eight-byte
+CRC-protected internal LittleFS file (`/ota_sd`), using a verified temporary file
+and atomic rename. Only a genuinely absent setting defaults to on; corrupt data
+or an internal filesystem error defaults off. Saving a change does not interrupt
+or redirect an active transfer. Turning off does not erase existing card files.
+
+After reboot with SD off, the firmware does not mount/read/write the card,
+advertise its archive, or run card formatting/erasing. A missing or failed card
+while on produces an error: it never falls back to a stale internal package.
+`ota cache off` is unchanged: it only stops new archive capture and continues
+serving already-cached files; it does **not** turn off SD access.
+
+The combined app retains **254 neighbours and up to 254 archived mOTAs**. To
+retain those capacities, its internal mode uses flash-only staging rather than
+reserving the 64 KiB hybrid RAM arena. The bootloader understands hybrid handoff
+for compatible applications, but this default application does not use it.
+Internal-mode deltas need space for both the staged container and their in-place
+workspace; a delta built for the complete `0xC7000` SD workspace can be too large.
+SD mode retains the full/delta behavior documented below.
+
+For signed bootloader replacement, SD mode still checks the live image ends by
+`0xE0000`; internal mode checks against its `0xE2000` shared-stage boundary.
+Both validate the live image and boot settings before any scratch erase. Install
+the combined bootloader while SD is still on before selecting internal mode.
+
+Local qualification: combined firmware builds with 130,204 bytes linked RAM
+and the RAM budget check passes; 169 native OTA tests, the Tower settings/store
+fault tests, and 49 packaging tests pass. The combined bootloader fits its
+40,784-byte executable envelope with 45 bytes spare in the test build; recheck
+the exact release build.
+
+### Physical qualification (2026-09-29 Pacific)
+
+The MercerwoodMesh Pi's MeshTower V2 SD (`9352162A72082314`) with its 1 GB card
+was reached through VMware. A T096 Companion (`651F8E496197F882`) supplied the
+signed packages over LoRa; USB was used only for console control and readback,
+not to flash either image.
+
+| Test | Package bytes | Verified result |
+| --- | ---: | --- |
+| Existing SD-only OTAFIX 2.4.8 to combined 2.4.11-preview.1, using SD | 41,330 | Boot CRC `03FF791F`, `blup:C8`; original SD update identity retained |
+| Existing application to test A, full image using SD | 546,726 | Body `1B75ADE42ECA6805`, `blrc:B8`; SD defaults on |
+| Test A to B, delta using SD | 2,428 | Body `14A19875921931A2`, `blrc:B8` |
+| Test B to A, delta using internal flash with SD off | 2,428 | Body `1B75ADE42ECA6805`, `bl:internal blrc:B8` |
+| Test A to corrected test C, delta using internal flash with SD off | 45,649 | Body `B3BCBBB5038BC7E1`, `bl:internal blrc:B8` |
+| Combined preview.1 to preview.2, bootloader using internal flash with SD off | 41,330 | Boot CRC `4D0E9C55`, `bl:internal blup:C8`; application hash unchanged |
+
+Test C is `v1.17.1.9-tower-dual-test-c`, not a released firmware version. The
+saved SD-off setting survived resets and application updates. Card listing,
+free-space queries, formatting, and the archive were refused while disabled.
+The `ota storage` alias was exercised both ways: changing the saved value does
+not enable card access until reboot. After the final bootloader update, saving
+on and rebooting restored `active=on saved=on`, SD OTA selection, and card
+access (959.6 MiB free). No USB/SWD flashing was needed for these transitions.
+The board was left on test C and combined preview.2 with SD on. Temporary test
+signer keys were removed, leaving the original three trusted keys. Both radios'
+original channel, transmit power, and power-saving settings were restored;
+the test sender was stopped and reports no connected folder or served images.
+
+Physical card removal and power loss during image installation have not been
+tested; fault-injection and install-time power-cut coverage is from host tests.
+An unexpected Pi restart interrupted one download before installation: the
+Tower retained its existing firmware and SD-off setting, and the incomplete
+download was safely restarted. Transfer times
+are not a throughput benchmark: discovery sometimes required refreshing the
+source, and the full-image transfer took about 45 minutes on this bench.
+
+Release integration remains separate: bootloader CI currently pins
+`mikecarper/motatool` at `97431e56`, whose optional-storage parser accepts the
+RAK `0x14` record but rejects the Tower `0x02` record. Update that parser and its
+pinned revision before publishing through CI. Qualification packages used the
+updated MeshCore Python builder. No release, signer private key, or production
+download has been published by these tests.
+
+## Released SD-only behavior and setup
+
 For **1.17.1.5**, use the exact board/storage profile from
 [OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
 for nRF52 OTAFIX installations. New internal-flash hybrid receivers require

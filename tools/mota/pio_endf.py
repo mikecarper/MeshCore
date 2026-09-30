@@ -110,8 +110,17 @@ def _normalized_linker_path(value, project_dir):
 def _validate_nrf52_hybrid_profile(app_start, linked_app_end,
                                     hybrid_ram, internal_bootloader_update,
                                     active_linker, configured_linker,
-                                    project_dir):
+                                    project_dir, tower_dual=False):
     """Fail closed unless both macros and the dedicated SRAM linker agree."""
+    if tower_dual:
+        expected = _normalized_linker_path(
+            os.path.join(str(project_dir), "boards", "nrf52840_s140_v6_sd_ota.ld"), project_dir)
+        if (hybrid_ram or not internal_bootloader_update or
+                app_start != ml.NRF52_APP_BASE_S140_V6 or linked_app_end != ml.NRF52_APP_END or
+                any(_normalized_linker_path(value, project_dir) != expected
+                    for value in (active_linker, configured_linker))):
+            raise RuntimeError("combined MeshTower requires its unchanged SD linker and flash-only internal staging")
+        return
     if hybrid_ram != internal_bootloader_update:
         raise RuntimeError(
             "nRF52 hybrid RAM staging and internal bootloader update must be enabled together")
@@ -270,11 +279,16 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     hybrid_ram = _cppdef("OTA_HYBRID_RAM_STORE") is not None
     internal_bootloader_update = _cppdef("OTA_INTERNAL_BOOTLOADER_UPDATE") is not None
     sd_bootloader_update = _cppdef("OTA_SD_BOOTLOADER_UPDATE") is not None
+    tower_dual = _cppdef("OTA_SD_DUAL_STORE") is not None
+    if tower_dual and (env.subst("$PIOENV") != "Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors" or
+                       not sd_backed or not sd_bootloader_update or qspi_backed or auto_store or
+                       _cppdef("OTA_FLASH_STORE") is None or _cppdef("HELTEC_TOWER_V2_SDCARD") is None):
+        raise RuntimeError("combined SD/internal storage requires the exact MeshTower SD target")
     board = env.BoardConfig()
     _validate_nrf52_hybrid_profile(
         app_start, linked_app_end, hybrid_ram, internal_bootloader_update,
         env.get("LDSCRIPT_PATH", ""), board.get("build.ldscript", ""),
-        env["PROJECT_DIR"])
+        env["PROJECT_DIR"], tower_dual=tower_dual)
     if sd_backed and qspi_backed:
         raise RuntimeError("nRF52 build cannot enable both SD and QSPI OTA stores")
     if auto_store and (not qspi_backed or _cppdef("OTA_FLASH_STORE") is None or
@@ -289,7 +303,7 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         if linked_app_end != ml.NRF52_BOOT_SCRATCH_START:
             raise RuntimeError("bootloader-update build must link exactly below scratch at 0xE0000")
     if internal_bootloader_update:
-        if sd_backed or (qspi_backed and not auto_store) or _cppdef("QSPIFLASH") is not None or internal_extrafs:
+        if (sd_backed and not tower_dual) or (qspi_backed and not auto_store) or _cppdef("QSPIFLASH") is not None or internal_extrafs:
             raise RuntimeError("internal bootloader update cannot use SD/QSPI/ExtraFS")
         if linked_app_end != ml.NRF52_APP_END:
             raise RuntimeError("shared-slot bootloader update requires the normal 0xED000 linker ceiling")

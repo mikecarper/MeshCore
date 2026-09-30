@@ -497,7 +497,7 @@ static bool ota_nrf52_clear_reset_reasons() {
 
 void ota_reboot_to_apply() {                   // public: set the apply magic + reset (does not return)
   uint8_t stage_handoff = GPREGRET2_OTA_STAGE_LEGACY;
-#if defined(OTA_RAK_AUTO_STORE)
+#if defined(OTA_RAK_AUTO_STORE) || defined(OTA_SD_DUAL_STORE)
   if (g_nrf52_apply_store) {
     if (g_nrf52_apply_store->is_hybrid()) {
       if (!ota_nrf52_clear_reset_reasons() ||
@@ -511,7 +511,11 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
       stage_handoff = mota_nrf52_flash_stage_handoff(ota_nrf52_effective_stage_ceiling());
     }
   } else {
+#if defined(OTA_SD_DUAL_STORE)
+    stage_handoff = GPREGRET2_OTA_STAGE_SD;
+#else
     stage_handoff = g_nrf52_qspi_handoff;
+#endif
   }
 #elif defined(OTA_SD_STORE)
   stage_handoff = GPREGRET2_OTA_STAGE_SD;
@@ -541,7 +545,9 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
 
 void ota_reboot_to_bootloader_update() {
   uint8_t source = GPREGRET2_OTA_STAGE_QSPI;
-#if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+#if defined(OTA_SD_DUAL_STORE)
+  source = g_nrf52_apply_store ? GPREGRET2_OTA_STAGE_EXPANDED : GPREGRET2_OTA_STAGE_SD;
+#elif defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
   source = GPREGRET2_OTA_STAGE_EXPANDED;
 #elif defined(OTA_SD_BOOTLOADER_UPDATE)
   source = GPREGRET2_OTA_STAGE_SD;
@@ -1114,10 +1120,21 @@ static bool ota_prepare_bootloader_update_external(Store& store,
   OtaBootloaderCapsMarker candidate_caps;
   if (!ota_bootloader_external_image_metadata(
           store, payload_off, ota_bootloader_update_storage_flags(),
-          candidate, candidate_caps) ||
+          candidate, candidate_caps,
+#if defined(OTA_SD_DUAL_STORE)
+          current_caps.optional_app_storage
+#else
+          0
+#endif
+          ) ||
       !ota_bootloader_identity_matches(installed, candidate)) {
     strcpy(msg, "candidate bootloader identity/capability/CRC mismatch"); return false;
   }
+#if defined(OTA_SD_DUAL_STORE)
+  if (current_caps.optional_app_storage && ota_boot_rd32(vectors) > MOTA_NRF52_HYBRID_RAM_START) {
+    strcpy(msg, "candidate must retain the combined bootloader RAM arena"); return false;
+  }
+#endif
   const OtaBootloaderContinuityGate continuity = ota_bootloader_continuity_gate(
       installed, candidate, m.fw_version, OTA_BOOT_CONTINUITY_FAMILY_S140,
       ota_runtime_softdevice_fwid(), mota_nrf52_app_base(),
@@ -1140,6 +1157,9 @@ static bool ota_prepare_bootloader_update_external(Store& store,
 #if defined(OTA_SD_STORE)
 bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
                           ApplyState& st, char* msg) {
+#if defined(OTA_SD_DUAL_STORE)
+  g_nrf52_apply_store = nullptr;
+#endif
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
   OtaBootloaderIdentity installed;
   if (!ota_installed_bootloader_identity(installed) ||
@@ -1163,6 +1183,9 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreSdNrf52& store,
                                          const uint8_t operator_mid[4],
                                          const uint8_t operator_hash8[8],
                                          ApplyState& st, char* msg) {
+#if defined(OTA_SD_DUAL_STORE)
+  g_nrf52_apply_store = nullptr;
+#endif
   if (!ota_bootloader_sd_retained_auth_ready(
           installed, OTA_BOOT_CONTINUITY_FAMILY_S140,
           ota_runtime_softdevice_fwid(), mota_nrf52_app_base(),
@@ -1260,6 +1283,11 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
   if (!ota_bootloader_self_update_caps_valid(current_caps)) {
     strcpy(msg, "installed bootloader cannot safely self-update from internal flash"); return false;
   }
+#if defined(OTA_SD_DUAL_STORE)
+  if (current_caps.optional_app_storage != OTA_BL_STORAGE_STAGE_CEILING) {
+    strcpy(msg, "install the combined SD bootloader before using internal boot updates"); return false;
+  }
+#endif
 
   const uint64_t payload_off64 = 8u + MOTA_MFL + (uint64_t)m.block_count * 4u;
   SelfFwInfo fi;
@@ -1305,17 +1333,21 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
           candidate_caps)) {
     strcpy(msg, "candidate bootloader identity/capability/CRC mismatch"); return false;
   }
-  if (current_caps.storage_flags == OTA_BL_PROFILE_RAK_AUTO_BOOT_UPDATE &&
+  if ((current_caps.storage_flags == OTA_BL_PROFILE_RAK_AUTO_BOOT_UPDATE
+#if defined(OTA_SD_DUAL_STORE)
+       || current_caps.optional_app_storage == OTA_BL_STORAGE_STAGE_CEILING
+#endif
+      ) &&
       (!ota_bootloader_supports_hybrid(ota_ram_caps_scan_aligned(image, OTA_BOOT_IMAGE_SIZE)) ||
        ota_boot_rd32(image) > MOTA_NRF52_HYBRID_RAM_START)) {
     strcpy(msg, "candidate adaptive bootloader must retain the hybrid RAM arena"); return false;
   }
-#if defined(OTA_RAK_AUTO_STORE)
+#if defined(OTA_RAK_AUTO_STORE) || defined(OTA_SD_DUAL_STORE)
   const uint8_t optional_storage = ota_bl_optional_app_storage(
       (const uint8_t*)(uintptr_t)MOTA_NRF52_BL_START, OTA_BOOT_IMAGE_SIZE);
   if (optional_storage != 0 &&
       ota_bl_optional_app_storage(image, OTA_BOOT_IMAGE_SIZE) != optional_storage) {
-    strcpy(msg, "candidate must retain optional RAK application storage"); return false;
+    strcpy(msg, "candidate must retain optional application storage"); return false;
   }
 #endif
   const OtaBootloaderContinuityGate continuity = ota_bootloader_continuity_gate(
@@ -1332,6 +1364,9 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
     snprintf(msg, CAP, "internal bootloader handoff failed: %s", store.last_error()); return false;
   }
   strcpy(msg, "trusted bootloader verified in internal flash; rebooting after this reply");
+#if defined(OTA_SD_DUAL_STORE)
+  g_nrf52_apply_store = &store;
+#endif
   return true;
 }
 #endif

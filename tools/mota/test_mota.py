@@ -133,6 +133,17 @@ def test_nrf52_hybrid_endf_profile_fails_closed():
     # Ordinary profiles do not need a linker proof.
     validate(ml.NRF52_APP_BASE_S140_V6, ml.NRF52_EXTRAFS_START,
              False, False, "", "", root)
+    sd_linker = root / "boards/nrf52840_s140_v6_sd_ota.ld"
+    validate(ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+             False, True, sd_linker, sd_linker, root, tower_dual=True)
+    for hybrid, internal, linker in ((True, True, sd_linker), (False, False, sd_linker),
+                                      (False, True, correct)):
+        try:
+            validate(ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_END,
+                     hybrid, internal, linker, sd_linker, root, tower_dual=True)
+            assert False, "invalid combined MeshTower profile accepted"
+        except RuntimeError as exc:
+            assert "combined MeshTower" in str(exc)
 
     def rejected(*args):
         try:

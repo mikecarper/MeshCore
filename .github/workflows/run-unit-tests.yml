@@ -149,6 +149,7 @@ jobs:
           python3 -B test/test_ota_store_resume.py -v
           python3 -B test/test_ota_catalog_lifetime.py -v
           python3 -B test/test_ota_store_flash_nrf52_hybrid.py -v
+          python3 -B test/test_tower_dual_storage.py -v
           python3 -B test/test_ota_dev_staging.py -v
           python3 -B test/test_ota_dev_reboot_guard.py -v
 

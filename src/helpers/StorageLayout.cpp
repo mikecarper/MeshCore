@@ -106,7 +106,14 @@ void formatStorageLayout(MainBoard& board, char* reply, size_t reply_size) {
 #elif defined(ENABLE_OTA) && defined(OTA_SD_STORE)
   uint64_t used_bytes = 0;
   uint64_t free_bytes = 0;
-  mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().fetch_store;
+  auto& store = mesh::ota::ota_ctx().fetch_store;
+#if defined(OTA_SD_DUAL_STORE)
+  if (store.usesInternal()) {
+    appendStorageLayout(reply, reply_size, "; ext:sd=disabled ota:internal=%luK",
+                        (unsigned long)(store.capacity() / 1024UL));
+    return;
+  }
+#endif
   if (store.getSpace(board, used_bytes, free_bytes)) {
     char total[24];
     char used[24];

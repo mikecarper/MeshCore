@@ -10,6 +10,11 @@
 #include "OtaBlInfo.h"
 #include "OtaByteIO.h"
 
+#if defined(OTA_SD_DUAL_STORE) && (!defined(HELTEC_TOWER_V2_SDCARD) || \
+    !defined(OTA_SD_BOOTLOADER_UPDATE) || !defined(OTA_INTERNAL_BOOTLOADER_UPDATE))
+  #error "Combined storage requires the qualified MeshTower SD and internal boot-update profile"
+#endif
+
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
   #if !defined(NRF52_PLATFORM) || !defined(OTA_QSPI_STORE)
     #error "OTA_QSPI_BOOTLOADER_UPDATE requires nRF52 raw-QSPI staging"
@@ -27,7 +32,7 @@
     #error "OTA_INTERNAL_BOOTLOADER_UPDATE requires nRF52 internal-flash staging"
   #endif
   #if (defined(OTA_QSPI_STORE) && !defined(OTA_RAK_AUTO_STORE)) || \
-      defined(OTA_SD_STORE) || defined(QSPIFLASH)
+      (defined(OTA_SD_STORE) && !defined(OTA_SD_DUAL_STORE)) || defined(QSPIFLASH)
     #error "internal bootloader staging cannot share an external OTA/filesystem store"
   #endif
 #endif
@@ -39,7 +44,7 @@
   #if !defined(HELTEC_TOWER_V2_SDCARD)
     #error "OTA_SD_BOOTLOADER_UPDATE is restricted to the qualified MeshTower V2 SD target"
   #endif
-  #if defined(OTA_FLASH_STORE) || defined(OTA_QSPI_STORE) || defined(QSPIFLASH)
+  #if (defined(OTA_FLASH_STORE) && !defined(OTA_SD_DUAL_STORE)) || defined(OTA_QSPI_STORE) || defined(QSPIFLASH)
     #error "SD bootloader staging cannot share another OTA/filesystem store"
   #endif
 #endif
@@ -556,7 +561,8 @@ inline bool ota_bootloader_external_crc_ok(
 template <typename Store>
 inline bool ota_bootloader_external_image_metadata(
     Store& store, uint32_t payload_off, uint8_t exact_storage_flags,
-    OtaBootloaderIdentity& candidate, OtaBootloaderCapsMarker& caps) {
+    OtaBootloaderIdentity& candidate, OtaBootloaderCapsMarker& caps,
+    uint8_t required_optional_storage = 0) {
   candidate = OtaBootloaderIdentity();
   caps = OtaBootloaderCapsMarker();
   if (exact_storage_flags == 0u) return false;
@@ -565,6 +571,7 @@ inline bool ota_bootloader_external_image_metadata(
   uint8_t buf[STEP + OTA_BOOT_ENVELOPE_SIZE - 1u];
   uint8_t valid_identities = 0;
   uint8_t valid_caps = 0;
+  uint8_t valid_ram = 0;
   for (uint32_t base = 0; base < OTA_BOOT_IMAGE_SIZE; base += STEP) {
     uint32_t len = OTA_BOOT_IMAGE_SIZE - base;
     if (len > sizeof(buf)) len = sizeof(buf);
@@ -574,6 +581,11 @@ inline bool ota_bootloader_external_image_metadata(
     for (uint32_t local = 0; local < starts; ++local) {
       const uint32_t absolute = base + local;
       if ((absolute & 3u) == 0u && local + 16u <= len) {
+        OtaRamCaps ram;
+        if (required_optional_storage && ota_ram_caps_marker_parse(buf + local, ram)) {
+          if (++valid_ram != 1u || local + 32u > len ||
+              ota_bl_optional_app_storage(buf + local, 32u) != required_optional_storage) return false;
+        }
         OtaBootloaderCapsMarker parsed;
         if (ota_bootloader_caps_marker_parse(buf + local, parsed) &&
             parsed.apply_abi >= MOTA_BOOT_FORMAT_VER &&
@@ -596,7 +608,8 @@ inline bool ota_bootloader_external_image_metadata(
       }
     }
   }
-  if (valid_identities != 1u || valid_caps != 1u || !caps.present ||
+  if ((required_optional_storage && valid_ram != 1u) ||
+      valid_identities != 1u || valid_caps != 1u || !caps.present ||
       candidate.manifest_offset > OTA_BOOT_IMAGE_SIZE - OTA_BOOT_MANIFEST_SIZE)
     return false;
   const uint32_t available = OTA_BOOT_IMAGE_SIZE - candidate.manifest_offset;

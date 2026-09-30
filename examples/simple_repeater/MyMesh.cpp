@@ -1,5 +1,6 @@
 #include "MyMesh.h"
 #include <helpers/UsbLogging.h>
+#include <helpers/ota/OtaTowerStorageConfig.h>
 #include <helpers/FileRead.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
@@ -3661,6 +3662,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 // OTA mesh-integration (receive/begin/loop) is centralized in mesh::Mesh - no per-example wiring.
 
 void MyMesh::begin(FILESYSTEM *fs) {
+#if defined(OTA_SD_DUAL_STORE)
+  // Load before Mesh::begin creates the OTA context and pins its backend.
+  mesh::ota::beginTowerStorageConfig(fs);
+#endif
   mesh::Mesh::begin();   // also starts OTA (ota_ctx().begin) for all roles
   _fs = fs;
   // load persisted prefs

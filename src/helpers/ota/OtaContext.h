@@ -26,7 +26,10 @@
   #define OTA_DYNAMIC_CONTEXT 0
 #endif
 
-#if defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_DUAL_STORE)
+  #include "OtaStoreTowerNrf52.h"
+  #include "OtaCacheSdNrf52.h"
+#elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
   #include "OtaStoreAdaptiveNrf52.h"
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
   #include "OtaStoreQspiNrf52.h"
@@ -109,6 +112,9 @@ struct OtaContext {
   // store object for OtaManager, while folder captures replace it with the
   // host-backed FolderMotaStore for the duration of the pull.
   OtaStoreRam<1> fetch_store;
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_DUAL_STORE)
+  OtaStoreTowerNrf52 fetch_store;
+  OtaCacheSdNrf52 sd_cache;
 #elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
   OtaStoreAdaptiveNrf52 fetch_store;
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
@@ -309,7 +315,7 @@ struct OtaContext {
       }
     }
     bool ok;
-#if defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+#if defined(NRF52_PLATFORM) && (defined(OTA_RAK_AUTO_STORE) || defined(OTA_SD_DUAL_STORE))
     ok = fetch_store.usesExternal()
         ? ota_apply_mota_nrf52(fetch_store.externalStore(), allow, apply_st, msg)
         : fetch_store.usesInternal()
@@ -358,7 +364,13 @@ struct OtaContext {
       msg[95] = 0; return false;
     }
     const OtaBootloaderIdentity& installed = bootloaderIdentity();
-#if defined(OTA_RAK_AUTO_STORE)
+#if defined(OTA_SD_DUAL_STORE)
+    bool ok = fetch_store.usesExternal()
+        ? ota_prepare_bootloader_update_nrf52(fetch_store.externalStore(), allow, installed,
+            manager.fetchManifestId(), operator_mid, operator_hash8, apply_st, msg)
+        : ota_prepare_bootloader_update_nrf52(fetch_store.internalStore(), allow, installed,
+            manager.fetchManifestId(), operator_mid, operator_hash8, apply_st, msg);
+#elif defined(OTA_RAK_AUTO_STORE)
     if (!fetch_store.usesInternal()) {
       strncpy(msg, "bootloader package must be staged in internal flash", 96);
       msg[95] = 0; return false;
@@ -405,6 +417,13 @@ struct OtaContext {
       _bl_update_caps_read = true;
     }
     return _bl_update_caps;
+  }
+  bool bootloaderUpdateSupported() {
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_DUAL_STORE)
+    return ota_bootloader_self_update_source_valid(bootloaderUpdateCaps(), fetch_store.usesInternal());
+#else
+    return ota_bootloader_self_update_caps_valid(bootloaderUpdateCaps());
+#endif
   }
   OtaBootloaderIdentity _bl_identity;
   bool _bl_identity_read = false;
@@ -540,7 +559,12 @@ struct OtaContext {
   // Initialize and attach the persistent source lazily. This lets Mesh::begin finish quickly when no card
   // is inserted, while archive interest is already enabled so early OTA advertisements still get queried.
   bool ensureSdCache() {
+#if defined(OTA_SD_DUAL_STORE)
+    if (!fetch_store.usesExternal()) return false;
+    sd_cache.attach(fetch_store.externalStore());
+#else
     sd_cache.attach(fetch_store);
+#endif
     if (!sd_cache.initialize()) return false;
     if (!_sd_cache_source_attached) {
       if (!manager.add_source(&sd_cache)) return false;
@@ -579,6 +603,9 @@ struct OtaContext {
 
   // Close every archive handle before card-wide format/erase, then rebuild the source view afterwards.
   void prepareSdCardReset() {
+#if defined(OTA_SD_DUAL_STORE)
+    if (!fetch_store.usesExternal()) return;
+#endif
     stopSdCacheFetch();
     if (_sd_cache_source_attached) manager.remove_source(&sd_cache);
     _sd_cache_source_attached = false;
@@ -595,6 +622,9 @@ struct OtaContext {
   }
 
   void serviceSdCache(uint32_t now) {
+#if defined(OTA_SD_DUAL_STORE)
+    if (!fetch_store.usesExternal()) return;
+#endif
     if (!_sd_cache_source_attached) {
       if (_sd_cache_init_retry_at && (int32_t)(now - _sd_cache_init_retry_at) < 0) return;
       if (!ensureSdCache()) {
@@ -686,7 +716,7 @@ struct OtaContext {
     manager.set_accept_full(true);
     manager.set_autofetch(OtaManager::AUTOFETCH_OFF);
     autoinstall = AUTOINSTALL_OFF;
-#elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
+#elif defined(NRF52_PLATFORM) && (defined(OTA_RAK_AUTO_STORE) || defined(OTA_SD_DUAL_STORE))
     manager.set_accept_full(fetch_store.usesExternal());
     manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
 #elif defined(NRF52_PLATFORM) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
@@ -703,7 +733,9 @@ struct OtaContext {
 #if defined(NRF52_PLATFORM) && \
     (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
      defined(OTA_SD_BOOTLOADER_UPDATE))
-#if defined(OTA_RAK_AUTO_STORE)
+#if defined(OTA_SD_DUAL_STORE)
+    manager.set_accept_bootloader(bootloaderUpdateSupported());
+#elif defined(OTA_RAK_AUTO_STORE)
     manager.set_accept_bootloader(
         ota_bootloader_self_update_caps_valid(ota_bootloader_update_caps()));
 #else
@@ -714,8 +746,13 @@ struct OtaContext {
 #endif
     manager.set_fetch_store(&fetch_store);
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+#if defined(OTA_SD_DUAL_STORE)
+    if (fetch_store.usesExternal()) sd_cache.attach(fetch_store.externalStore());
+    manager.set_archive_interest(fetch_store.usesExternal());
+#else
     sd_cache.attach(fetch_store);
     manager.set_archive_interest(true);        // default on; the SD marker can turn it off at first mount
+#endif
 #endif
   }
 

@@ -211,6 +211,28 @@ Ordinary messages, node adverts, and local staged-image verification keep their
 timing. Available in OTA-enabled builds for all roles, including Companions.
 See the [OTA guide](ota_user_guide.md#adjust-lora-ota-speed).
 
+### MeshTower SD/internal OTA storage (development combined build)
+
+```text
+get sdcard
+get sdcard status
+set sdcard on
+set sdcard off
+ota sd [on|off]
+ota storage [on|off]
+```
+
+On the combined MeshTower SD target, SD defaults on. The selection is saved in
+internal flash and takes effect after reboot; status shows both active and saved
+values. Off disables card access and the SD archive, and uses internal-flash
+application deltas and signed bootloader updates. Install the matching combined
+bootloader through the existing SD path before selecting off. An old SD-only
+bootloader cannot apply an internal-staged update.
+
+`ota cache off` only stops new archive capture; it does not disable SD access.
+These controls are not present in older released SD-only firmware. See the
+[MeshTower storage and migration guide](ota_meshtower_v2_sdcard.md).
+
 ### Start or stop an Over-The-Air (OTA) firmware update
 
 **Search terms:** WiFi OTA, wireless firmware update, OTA uploader, update firmware.
