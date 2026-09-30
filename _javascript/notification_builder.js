@@ -1,6 +1,7 @@
 (function (global) {
   "use strict";
   const OUTPUTS = { vibration: 1, sound: 2, led: 4, screen: 8, gpio: 16 };
+  const PREVIEW_WARMUP_MS = 1000;
   const EXAMPLES = {
     find: { label: "Find my node", kind: "all", id: "", when: "disconnected", vibration: "200,200,200", led: "100,100,100,700", sound: "find:d=8,o=6,b=180:c,e,g,p", screen: "on", gpio: "off", repeat: "forever", gap: "1000", stop: "connected" },
     food: { label: "Your food truck order is ready", kind: "channel", id: "3", when: "any", vibration: "50,300,40,20,500", led: "100,100,100,500", sound: "order:d=8,o=5,b=180:c,e,g,4c6", screen: "on", gpio: "off", repeat: "forever", gap: "2000", stop: "button" },
@@ -33,16 +34,18 @@
       return { ms, hz: match[2] === "p" ? 0 : 440 * Math.pow(2, (midi - 69) / 12) };
     });
   }
-  function melodyWav(text) {
+  function melodyWav(text, leadInMs = 0) {
+    if (!Number.isInteger(leadInMs) || leadInMs < 0 || leadInMs > 2000) throw new Error("Audio lead-in must be 0-2000 ms.");
     const notes = melody(text), rate = 22050;
-    const frames = Math.round(notes.reduce((total, note) => total + note.ms, 0) * rate / 1000);
+    if (!notes.length) leadInMs = 0;
+    const frames = Math.round((leadInMs + notes.reduce((total, note) => total + note.ms, 0)) * rate / 1000);
     const bytes = new Uint8Array(44 + frames * 2), view = new DataView(bytes.buffer);
     const label = (offset, value) => { for (let i = 0; i < value.length; i++) bytes[offset + i] = value.charCodeAt(i); };
     label(0, "RIFF"); view.setUint32(4, bytes.length - 8, true); label(8, "WAVE");
     label(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
     view.setUint16(22, 1, true); view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
     view.setUint16(32, 2, true); view.setUint16(34, 16, true); label(36, "data"); view.setUint32(40, frames * 2, true);
-    let elapsed = 0, start = 0;
+    let elapsed = leadInMs, start = Math.round(leadInMs * rate / 1000);
     for (const note of notes) {
       elapsed += note.ms;
       const end = Math.round(elapsed * rate / 1000), count = end - start;
@@ -211,7 +214,9 @@
       // Preview one cycle. Never creates an unbounded oscillator or vibration loop.
       if (notes.length) {
         // Use media playback rather than Web Audio's ambient/ringer channel on iOS.
-        previewUrl = global.URL.createObjectURL(new Blob([melodyWav(c.sound)], { type: "audio/wav" }));
+        // play() can resolve before the output is audible. Put warmup and melody
+        // in one stream so no opening notes are spent starting a cold audio route.
+        previewUrl = global.URL.createObjectURL(new Blob([melodyWav(c.sound, PREVIEW_WARMUP_MS)], { type: "audio/wav" }));
         audio.src = previewUrl; audio.loop = false; audio.muted = false; audio.volume = 1;
         find("preview-sound").textContent = "Starting melody...";
         find("preview-time").textContent = "0 / " + duration + " ms";
@@ -226,26 +231,40 @@
           stopPreview("Sound unavailable"); throw new Error("Sound preview could not start: " + e.message);
         }
         if (version !== previewVersion) return;
-        find("preview-sound").textContent = "Playing melody";
+        find("preview-sound").textContent = "Warming up audio...";
       } else {
         find("preview-sound").textContent = c.sound === "inherit" ? "Choose a melody to preview inherited sound." : "Sound is off for this preview.";
       }
       let finishedAt = null;
-      const started = performance.now() - (notes.length ? audio.currentTime * 1000 : 0);
+      const started = performance.now();
       previewTimer = setInterval(() => {
         if (!root.isConnected) { stopPreview(); return; }
         let elapsed = performance.now() - started;
         if (notes.length) {
-          if (!audio.ended) elapsed = audio.currentTime * 1000;
+          let mediaElapsed;
+          if (!audio.ended) {
+            mediaElapsed = audio.currentTime * 1000 - PREVIEW_WARMUP_MS;
+          }
           else {
             if (finishedAt === null) finishedAt = performance.now();
-            elapsed = tuneMs + performance.now() - finishedAt;
+            mediaElapsed = tuneMs + performance.now() - finishedAt;
           }
+          // Some media clocks run ahead during preroll. Keep the display from
+          // spending the warmup or the first notes before real time has passed.
+          elapsed = Math.min(mediaElapsed, elapsed - PREVIEW_WARMUP_MS);
+          if (elapsed < 0) return;
+          find("preview-sound").textContent = "Playing melody";
         }
         for (const name of Object.keys(pulses)) root.querySelector('[data-indicator="' + name + '"]').dataset.on = String(level(pulses[name], elapsed));
         root.querySelector('[data-indicator="screen"]').dataset.on = String(c.screen === "on");
         find("preview-time").textContent = Math.min(Math.round(elapsed), duration) + " / " + duration + " ms";
-        if (elapsed >= duration && (!notes.length || audio.ended)) stopPreview("Cycle finished");
+        if (elapsed >= duration && (!notes.length || audio.ended)) {
+          clearInterval(previewTimer); previewTimer = null;
+          for (const item of root.querySelectorAll("[data-indicator]")) item.dataset.on = "false";
+          find("preview-sound").textContent = "Cycle finished";
+          // Do not load/reset an ended source: output may still have buffered
+          // notes. Explicit Stop, the next preview, or pagehide releases it.
+        }
       }, 10);
     }
     const append = text => { log.textContent += text + "\n"; log.scrollTop = log.scrollHeight; };
