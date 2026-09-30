@@ -50,6 +50,8 @@
       
     
     
+      <link rel="stylesheet" href="../_stylesheets/notification_builder.css">
+    
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
@@ -3740,6 +3742,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../notifications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion notification builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../nrf52-usb-ready-fix/" class="md-nav__link">
         
   
@@ -4963,10 +4992,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_95" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_96" >
         
           
-          <label class="md-nav__link" for="__nav_95" id="__nav_95_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_96" id="__nav_96_label" tabindex="0">
             
   
   
@@ -4984,8 +5013,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_95_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_95">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_96_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_96">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -8163,6 +8192,10 @@ builds report <code>Error: touchscreen diagnostics unsupported</code>. No Indica
 build flag is needed.</p>
 <hr />
 <h2 id="set-display-modes-and-timeouts">Set display modes and timeouts</h2>
+<p>Companion message sound, vibration, LED, screen and GPIO rules have separate
+CLI controls. See the <a href="../notifications/">notification builder and CLI reference</a>,
+including per-contact/channel rules, trusted-contact/room <code>!notify</code> permission,
+and USB test controls.</p>
 <p>Display-equipped Companions, repeaters, room servers, and sensors have four
 saved settings. The WebConfig <strong>Display</strong> card exposes the same controls:</p>
 <table>
@@ -11710,6 +11743,8 @@ to charge above it or have USB power restored before it wakes.</p>
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/notification_builder.js"></script>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       

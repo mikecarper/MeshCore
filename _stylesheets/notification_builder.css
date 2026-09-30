@@ -1,0 +1,19 @@
+.notification-builder { max-width: 960px; margin: 1.5rem auto; }
+.notification-card { border: 1px solid var(--md-default-fg-color--lightest); border-radius: 12px; padding: 1.1rem; margin: 1rem 0; background: var(--md-default-bg-color); }
+.notification-card h2 { margin: 0 0 1rem; font-size: 1.15rem; font-weight: 650; }
+.notification-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.notification-wide { grid-column: 1 / -1; }
+.notification-builder label { display: flex; flex-direction: column; gap: .4rem; font-weight: 600; }
+.notification-builder small { font-size: .7rem; font-weight: 400; color: var(--md-default-fg-color--light); }
+.notification-builder input, .notification-builder select { width: 100%; min-width: 0; border: 1px solid var(--md-default-fg-color--lighter); border-radius: 6px; padding: .6rem; background: var(--md-default-bg-color); color: var(--md-default-fg-color); font: inherit; font-weight: 400; }
+.notification-builder input:focus, .notification-builder select:focus { outline: 2px solid var(--md-primary-fg-color); outline-offset: 2px; }
+.notification-builder button { border: 1px solid var(--md-primary-fg-color); border-radius: 6px; padding: .5rem .75rem; margin: .2rem; cursor: pointer; color: var(--md-primary-fg-color); font: inherit; }
+.notification-builder button:hover { background: var(--md-primary-fg-color); color: var(--md-primary-bg-color); }
+.notification-builder button:disabled { opacity: .5; cursor: wait; }
+.notification-examples, .notification-buttons, .notification-indicators { display: flex; gap: .4rem; flex-wrap: wrap; }
+.notification-indicators span { padding: .6rem 1rem; border-radius: 20px; border: 2px solid var(--md-default-fg-color--lighter); }
+.notification-indicators [data-on="true"] { background: #166534; color: #fff; border-color: #22c55e; }
+.notification-error { color: #c62828; min-height: 1.2rem; font-weight: 600; }
+.notification-log { max-height: 280px; overflow: auto; white-space: pre-wrap; }
+.notification-builder pre code { white-space: pre; }
+@media (max-width: 600px) { .notification-grid { grid-template-columns: 1fr; } .notification-wide { grid-column: auto; } .notification-card { padding: .8rem; } }
