@@ -152,7 +152,21 @@
       });
       return Object.assign({}, profile, { files: files });
     }).filter(function (profile) { return Object.keys(profile.files).length === 3; });
-    return { tag: tag, version: tag.split("OTAFIX")[1], releaseUrl: releaseUrl, profiles: profiles };
+    const unavailableProfiles = (manifest.unavailableProfiles || []).map(function (profile) {
+      if (!/^[a-z0-9_]+$/.test(profile.id) || ids.has(profile.id) ||
+          !Array.isArray(profile.meshcoreHardware) || !profile.meshcoreHardware.length ||
+          typeof profile.reason !== "string" || !profile.reason.trim()) {
+        throw new Error("Invalid unavailable bootloader profile");
+      }
+      ids.add(profile.id);
+      profile.meshcoreHardware.forEach(function (hardware) {
+        if (!hardware || aliases.has(hardware)) throw new Error("Ambiguous bootloader hardware mapping");
+        aliases.add(hardware);
+      });
+      return profile;
+    });
+    return { tag: tag, version: tag.split("OTAFIX")[1], releaseUrl: releaseUrl,
+      profiles: profiles, unavailableProfiles: unavailableProfiles };
   }
 
   function bootloaderForHardware(catalog, hardware, chipFamily) {
@@ -161,6 +175,13 @@
       return profile.meshcoreHardware.includes(hardware);
     });
     return matches.length === 1 ? matches[0] : null;
+  }
+
+  function unavailableBootloaderForHardware(catalog, hardware, chipFamily) {
+    if (!catalog || chipFamily !== "nrf52" || !hardware) return null;
+    return catalog.unavailableProfiles.find(function (profile) {
+      return profile.meshcoreHardware.includes(hardware);
+    }) || null;
   }
 
   const HARDWARE_ALIASES = Object.freeze({
@@ -1995,7 +2016,10 @@
         content.appendChild(actions);
         content.appendChild(createElement("p", "UF2 updates an existing compatible bootloader. The DFU ZIP includes SoftDevice and bootloader; HEX is for SWD installation or recovery. Application firmware files do not install a bootloader. Follow the release's migration instructions if your installed identity needs a recovery bridge."));
       } else if (bootloaderCatalog) {
-        content.appendChild(createElement("p", "No verified bootloader download matches this exact hardware in the current catalog. Check the release notes for board support."));
+        const unavailable = unavailableBootloaderForHardware(bootloaderCatalog, hardware, chip);
+        content.appendChild(createElement("p", unavailable ?
+          "No OTAFIX " + bootloaderCatalog.version + " bootloader has been published for this board. " + unavailable.reason :
+          "No verified bootloader download matches this exact hardware in the current catalog. Check the release notes for board support."));
       }
       if (bootloaderNotice) content.appendChild(createElement("p", bootloaderNotice));
       const notes = createElement("a", "Bootloader release notes and migration instructions");
@@ -2159,6 +2183,7 @@
   const api = Object.freeze({
     buildBootloaderCatalog: buildBootloaderCatalog,
     bootloaderForHardware: bootloaderForHardware,
+    unavailableBootloaderForHardware: unavailableBootloaderForHardware,
     FILTER_FIELDS: FILTER_FIELDS,
     FACET_FIELDS: FACET_FIELDS,
     PROFILE_FIELDS: PROFILE_FIELDS,

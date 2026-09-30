@@ -536,7 +536,9 @@
       "id": "wio_tracker_l1",
       "label": "Seeed Wio Tracker L1",
       "meshcoreHardware": [
-        "WioTrackerL1"
+        "WioTrackerL1",
+        "WioTrackerL1-1W",
+        "WioTrackerL1Eink"
       ],
       "deviceName": "WTL1_DFU",
       "storage": "qspi",
@@ -653,7 +655,17 @@
       "id": "xiao_nrf52840_ble",
       "label": "Seeed XIAO nRF52840 BLE",
       "meshcoreHardware": [
-        "Xiao_nrf52"
+        "Xiao_nrf52",
+        "ikoka_handheld_nrf_e22_30dbm",
+        "ikoka_handheld_nrf_e22_30dbm_096",
+        "ikoka_nano_nrf_22dbm",
+        "ikoka_nano_nrf_30dbm",
+        "ikoka_nano_nrf_33dbm",
+        "ikoka_stick_nrf_22dbm",
+        "ikoka_stick_nrf_30dbm",
+        "ikoka_stick_nrf_33dbm",
+        "solarxiao_30S",
+        "solarxiao_33S"
       ],
       "deviceName": "XIAO_DFU",
       "storage": "qspi",
@@ -706,6 +718,99 @@
           "sha256": "cf43bffaa2ba751b0bd773bd50d2e9c8f9c99741de950e6166ea416f1585f5fb"
         }
       }
+    }
+  ],
+  "unavailableProfiles": [
+    {
+      "id": "gat562_mesh_watch13",
+      "label": "GAT562 Mesh Watch13",
+      "meshcoreHardware": [
+        "GAT562_Mesh_Watch13"
+      ],
+      "reason": "The watch routes a GAT562 bootloader LED output to its vibration motor and has onboard flash. It needs a watch-specific profile."
+    },
+    {
+      "id": "heltec_mesh_solar",
+      "label": "Heltec Mesh Solar",
+      "meshcoreHardware": [
+        "Heltec_mesh_solar"
+      ],
+      "reason": "Mesh Solar has different LED and peripheral pins from the supported Heltec boards. It needs its own profile."
+    },
+    {
+      "id": "lilygo_t_impulse_plus",
+      "label": "LilyGo T-Impulse Plus",
+      "meshcoreHardware": [
+        "LilyGo_T_Impulse_Plus"
+      ],
+      "reason": "T-Impulse Plus has different flash data pins and LED wiring from T-Echo Lite. It needs its own profile."
+    },
+    {
+      "id": "lilygo_techo_card",
+      "label": "LilyGo T-Echo Card",
+      "meshcoreHardware": [
+        "LilyGo_T-Echo_Card"
+      ],
+      "reason": "T-Echo Card has its own NFC configuration, buttons and LED hardware. It needs a Card-specific profile."
+    },
+    {
+      "id": "meshtiny",
+      "label": "Meshtiny",
+      "meshcoreHardware": [
+        "Meshtiny"
+      ],
+      "reason": "Meshtiny has its own factory bootloader identity and controls. A dedicated Meshtiny profile has not been qualified."
+    },
+    {
+      "id": "meshtracker_x1",
+      "label": "MeshTracker X1",
+      "meshcoreHardware": [
+        "MeshTracker_X1"
+      ],
+      "reason": "MeshTracker X1 has different flash wiring, power control and button polarity from Wio Tracker L1. It needs its own profile."
+    },
+    {
+      "id": "muzi_base",
+      "label": "Muzi Base",
+      "meshcoreHardware": [
+        "muzi_base_duo",
+        "muzi_base_duo_superIO",
+        "muzi_base_uno",
+        "muzi_base_uno_superIO"
+      ],
+      "reason": "These four variants share Muzi Base hardware, which needs its own bootloader identity, LED polarity and flash configuration."
+    },
+    {
+      "id": "nano_g2_ultra",
+      "label": "Nano G2 Ultra",
+      "meshcoreHardware": [
+        "Nano_G2_Ultra"
+      ],
+      "reason": "Nano G2 Ultra has its own flash and button wiring. It needs a dedicated profile."
+    },
+    {
+      "id": "thinknode_m4",
+      "label": "ThinkNode M4",
+      "meshcoreHardware": [
+        "ThinkNode_M4"
+      ],
+      "reason": "ThinkNode M4 has different LED, button and power-control pins from the supported ThinkNodes. It needs its own profile."
+    },
+    {
+      "id": "thinknode_m8",
+      "label": "ThinkNode M8",
+      "meshcoreHardware": [
+        "ThinkNode_M8"
+      ],
+      "reason": "ThinkNode M8 shares some flash wiring with M1 but has different buttons and peripheral controls. It needs an M8-specific profile."
+    },
+    {
+      "id": "wio_wm1110",
+      "label": "Seeed Wio WM1110",
+      "meshcoreHardware": [
+        "wio_wm1110"
+      ],
+      "reason": "Wio WM1110 is a separate tracker board with different LED and peripheral pins. Its XIAO build setting does not make it XIAO hardware."
     }
   ]
 }
