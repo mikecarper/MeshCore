@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/companion_contact_cache/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/rak3401_1.17.1.7_legacy24/">
       
       
-        <link rel="prev" href="../cli_settings_audit/">
+        <link rel="prev" href="../radio_receive_calibration/">
       
       
-        <link rel="next" href="../companion_contact_cache_results/">
+        <link rel="next" href="../rak3401_mota_chain/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Companion contact caches - MeshCore Docs</title>
+        <title>RAK3401: 1.16.07 to 1.17.1.7 without a bootloader update - MeshCore Docs</title>
       
     
     
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#companion-contact-caches" class="md-skip">
+        <a href="#rak3401-11607-to-11717-without-a-bootloader-update" class="md-skip">
           Skip to content
         </a>
       
@@ -119,7 +119,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Companion contact caches
+              RAK3401: 1.16.07 to 1.17.1.7 without a bootloader update
             
           </span>
         </div>
@@ -507,37 +507,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Companion contact caches
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../companion_contact_cache/" class="md-nav__link">
         
   
   
@@ -553,92 +526,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#paths-and-persistence" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Paths and persistence
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shared-secrets-and-power" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shared secrets and power
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#inspect-the-cache" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Inspect the cache
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#offline-messages-during-mota" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Offline messages during mOTA
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#build-the-six-capacity-trials" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Build the six capacity trials
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#regression-checks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Regression checks
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2348,10 +2235,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../rak3401_1.17.1.7_legacy24/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAK3401: 1.16.07 to 1.17.1.7 without a bootloader update
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -2367,6 +2281,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#exact-compatibility-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exact compatibility boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-smallest-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "smallest" means
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selected-route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selected route
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#measured-mercerwoodmesh-replay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measured MercerWoodMesh replay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-preparation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field preparation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#applying-a-qualified-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Applying a qualified bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evidence-and-reproducibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evidence and reproducibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -3131,10 +3142,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#paths-and-persistence" class="md-nav__link">
+  <a href="#exact-compatibility-boundary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Paths and persistence
+        Exact compatibility boundary
       
     </span>
   </a>
@@ -3142,10 +3153,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#shared-secrets-and-power" class="md-nav__link">
+  <a href="#what-smallest-means" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Shared secrets and power
+        What "smallest" means
       
     </span>
   </a>
@@ -3153,10 +3164,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#inspect-the-cache" class="md-nav__link">
+  <a href="#selected-route" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Inspect the cache
+        Selected route
       
     </span>
   </a>
@@ -3164,10 +3175,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#offline-messages-during-mota" class="md-nav__link">
+  <a href="#measured-mercerwoodmesh-replay" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Offline messages during mOTA
+        Measured MercerWoodMesh replay
       
     </span>
   </a>
@@ -3175,10 +3186,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-the-six-capacity-trials" class="md-nav__link">
+  <a href="#field-preparation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build the six capacity trials
+        Field preparation
       
     </span>
   </a>
@@ -3186,10 +3197,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#regression-checks" class="md-nav__link">
+  <a href="#applying-a-qualified-bundle" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Regression checks
+        Applying a qualified bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evidence-and-reproducibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evidence and reproducibility
       
     </span>
   </a>
@@ -3213,7 +3235,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/companion_contact_cache.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/rak3401_1.17.1.7_legacy24.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -3221,215 +3243,338 @@
   
 
 
-<h1 id="companion-contact-caches">Companion contact caches</h1>
-<p>Full Companions on ESP32 and nRF52 without PSRAM, plus the high-contact RAK4631
-USB/BLE profiles, keep 16 outgoing paths
-and 16 shared secrets in RAM. Every contact remains in the contact table;
-selecting a different contact loads its saved path as needed. This recovers
-about 25.4 KiB of internal RAM in the 350-contact ESP32 qualification builds.</p>
-<p>See the <a href="../companion_contact_cache_results/">qualification results</a> for the
-six-board RAM comparison, physical tests, and shared-secret timings.</p>
-<p>PSRAM boards retain their existing complete contact table in external RAM.
-Most legacy USB/BLE/WiFi Companion profiles retain inline paths and secrets.
-The high-contact RAK4631 USB/BLE profiles also enable the same cache,
-keeping all 350 contacts while making room for the shared 256-frame offline/DM
-pool. The build flag <code>MESH_CONTACT_CACHE=0</code> or <code>1</code> overrides this policy for
-qualification; it is not a runtime feature switch.</p>
-<h2 id="paths-and-persistence">Paths and persistence</h2>
-<p>The 16 resident paths use least-recently-used replacement. Contact records
-keep small handles to their saved paths, including 1-, 2-, and 3-byte hop
-hashes. The existing 152-byte contact record and Companion app frame formats
-are unchanged. ESP32 uses <code>/contacts3</code>; nRF52 also supports its paged contact
-store and migration from <code>/contacts3</code>. An erase is not required.</p>
-<p>A hot path needs no flash read. A cold path is read from its existing contact
-record. ESP32 reuses one open contact-file reader to avoid repeated SPIFFS
-metadata scans during synchronization and saving. It closes that reader
-before replacing the file or recovering a saved transaction.</p>
-<p>Changing a copied contact preserves the old path for a pending app response
-or rollback. Dirty entries are saved before eviction. If storage cannot be
-read, written, or represented completely, the operation fails instead of
-silently losing a contact or sending along a different route. Reboot retries
-an incomplete load from the preserved files. The path checksum also rejects
-a cold path changed underneath a live handle; it does not add a new checksum
-to the legacy ESP32 on-disk format.</p>
-<h2 id="shared-secrets-and-power">Shared secrets and power</h2>
-<p>Both platforms reuse the 16 most recent secrets from RAM. Cache misses use a
-platform-specific policy:</p>
+<h1 id="rak3401-11607-to-11717-without-a-bootloader-update">RAK3401: 1.16.07 to 1.17.1.7 without a bootloader update</h1>
+<p>Qualified on MercerWoodMesh on 27 September 2026: all 15 application updates
+passed over LoRa, from the exact supplied 1.16.07 image, without a bootloader
+update. Use <code>RAK3401-1.16.07-to-1.17.1.7-legacy24-mOTA.zip</code> and verify it against
+the accompanying <code>.zip.sha256</code> file before extracting. Follow the exact
+before/after hashes in its <code>CHAIN.csv</code>; this is not a single-step stock update.</p>
+<h2 id="exact-compatibility-boundary">Exact compatibility boundary</h2>
+<p>This is an application-only migration for target <code>2FA509C1</code>, hardware
+<code>RAK_3401_repeater_lora_ota_no_external_sensors</code>. It is not a generic RAK4631
+package. The installed application must have body hash <code>71F4026CBE4B8B74</code>
+(<code>1.16.07</code>, full image SHA-256
+<code>4301fc63ebd661c70f9bc40e7eca44d3cb8a358cb3c0075e700d9676a57478cb</code>).</p>
+<p>The bootloader remains <code>0.9.2-OTAFIX2.4</code>, with ABI 2 and codec mask <code>0x4</code>.
+Its application staging ceiling is <code>0xD4000</code>. Every package is a codec-2
+CRLE in-place delta. DEFLATE is used only for transport by compatible
+intermediate applications; the old bootloader still applies CRLE.</p>
+<p>The destination is built from source commit
+<code>2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1</code> with the explicit
+<code>MESHCORE_NRF52_LEGACY_FLASH_OTA=1</code> build selection. This preserves the
+ordinary S140 linker and disables hybrid flash/RAM staging and bootloader
+self-update. It is deliberately different from the stock hybrid 1.17.1.7
+release. The endpoint has:</p>
+<ul>
+<li>Version: <code>v1.17.1.7-halo-keymind-cascade-legacy24-2d03e098</code></li>
+<li>Image: 521,496 bytes</li>
+<li>Body hash: <code>D437D1F17AF5B9F3</code></li>
+<li>SHA-256: <code>c9e63a94f58f881b1853fc5d9d348cd75a6cdd454c5b572341d652a6141e3157</code></li>
+</ul>
+<p>Do not replace this endpoint with the stock ZIP. Do not send a bootloader or
+SoftDevice update. The ZIP/UF2 files used to construct and qualify the chain
+are not themselves LoRa update containers.</p>
+<p>Future application updates for this node must also be qualified against the
+unchanged OTAFIX2.4 contract. Keep the legacy build selection; do not assume
+that a later stock release is an interchangeable target for this chain.</p>
+<h2 id="what-smallest-means">What "smallest" means</h2>
+<p>The search compares an explicit, hash-pinned set of application images and
+every allowed page-aligned in-place workspace for each increasing-version
+transition. The starting bootstrap is fixed: its 89,844-byte package is the
+only admitted first edge. Synthetic bridge version numbers are real compiled
+versions below 1.17.1.7; their binaries are not relabeled after compilation.</p>
+<p>The <code>bytes</code> objective minimizes ideal serialized MeshCore traffic first,
+then install count. The <code>packets</code> objective minimizes ideal originated
+packets first, then serialized traffic. The older <code>transport</code> objective
+minimizes install count before traffic and is not equivalent to either.</p>
+<p>Accounting includes manifests, block requests, proof requests/responses,
+DATA fragments, and MeshCore framing. It uses the actual pinned encoder for
+compressed blocks. It excludes discovery, retries, admin/control commands,
+other mesh traffic, flood fan-out, and LoRa preamble/coding overhead. A fixed linear relay path
+can be accounted for separately. These are finite-search minima, not a proof
+that no possible custom firmware or protocol could ever use fewer bytes.
+The ideal compressed counts also assume negotiation remains in that mode.
+An older receiver can fall back to raw DATA after stalls; the physical-test
+transmission totals include that extra traffic.</p>
+<p>Best lossless byte count is not a guarantee of the fastest real radio link.
+Use the fastest preset that remains reliable over the actual route. SF5 /
+500 kHz is a direct bench measurement, not a recommendation to switch an
+unreachable field node or unconfigured relay chain to that preset.</p>
+<h2 id="selected-route">Selected route</h2>
+<p>The completed search covers 52 images and 47,920 flash geometries. The
+packet-first route has 15 packages, totaling 2,340,160 container bytes. Its
+ideal direct-link traffic is <strong>12,621 packets / 1,808,961 serialized MeshCore
+bytes</strong>. These totals include traffic in both directions, not just DATA.
+Fifteen is also the fewest installs among the searched candidates.</p>
+<p>The byte-first route uses the same sequence of application images, with
+four different patch workspaces: 12,625 packets / 1,808,787 bytes. Saving
+174 bytes costs four packets. The delivered packages use the packet-first
+choice; do not substitute packages from the comparison route.</p>
 <table>
 <thead>
 <tr>
-<th>Platform</th>
-<th>Miss behavior</th>
+<th style="text-align: right;">Step</th>
+<th>Resulting version</th>
+<th style="text-align: right;">Container bytes</th>
+<th style="text-align: right;">Ideal packets</th>
+<th style="text-align: right;">Ideal MeshCore bytes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>ESP32</td>
-<td>Recalculate the secret without reading or writing a secret file.</td>
+<td style="text-align: right;">1</td>
+<td>1.16.7.9</td>
+<td style="text-align: right;">89,844</td>
+<td style="text-align: right;">878</td>
+<td style="text-align: right;">101,203</td>
 </tr>
 <tr>
-<td>nRF52</td>
-<td>Try a saved LittleFS entry, then recalculate if it is unavailable.</td>
+<td style="text-align: right;">2</td>
+<td>1.16.7.10</td>
+<td style="text-align: right;">62,838</td>
+<td style="text-align: right;">551</td>
+<td style="text-align: right;">70,031</td>
+</tr>
+<tr>
+<td style="text-align: right;">3</td>
+<td>1.16.8.7</td>
+<td style="text-align: right;">106,125</td>
+<td style="text-align: right;">496</td>
+<td style="text-align: right;">70,134</td>
+</tr>
+<tr>
+<td style="text-align: right;">4</td>
+<td>1.16.9.105</td>
+<td style="text-align: right;">149,542</td>
+<td style="text-align: right;">728</td>
+<td style="text-align: right;">104,992</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td>1.16.9.110</td>
+<td style="text-align: right;">112,540</td>
+<td style="text-align: right;">489</td>
+<td style="text-align: right;">67,887</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td>1.16.9.111</td>
+<td style="text-align: right;">71,070</td>
+<td style="text-align: right;">268</td>
+<td style="text-align: right;">35,453</td>
+</tr>
+<tr>
+<td style="text-align: right;">7</td>
+<td>1.16.9.116</td>
+<td style="text-align: right;">138,545</td>
+<td style="text-align: right;">692</td>
+<td style="text-align: right;">101,308</td>
+</tr>
+<tr>
+<td style="text-align: right;">8</td>
+<td>1.16.9.122</td>
+<td style="text-align: right;">177,536</td>
+<td style="text-align: right;">995</td>
+<td style="text-align: right;">148,671</td>
+</tr>
+<tr>
+<td style="text-align: right;">9</td>
+<td>1.16.10.1</td>
+<td style="text-align: right;">258,398</td>
+<td style="text-align: right;">1,477</td>
+<td style="text-align: right;">223,042</td>
+</tr>
+<tr>
+<td style="text-align: right;">10</td>
+<td>1.16.11.0</td>
+<td style="text-align: right;">245,426</td>
+<td style="text-align: right;">1,450</td>
+<td style="text-align: right;">219,953</td>
+</tr>
+<tr>
+<td style="text-align: right;">11</td>
+<td>1.16.12.1</td>
+<td style="text-align: right;">217,608</td>
+<td style="text-align: right;">1,167</td>
+<td style="text-align: right;">172,794</td>
+</tr>
+<tr>
+<td style="text-align: right;">12</td>
+<td>1.16.13.1</td>
+<td style="text-align: right;">199,395</td>
+<td style="text-align: right;">1,024</td>
+<td style="text-align: right;">150,005</td>
+</tr>
+<tr>
+<td style="text-align: right;">13</td>
+<td>1.16.14.0</td>
+<td style="text-align: right;">199,527</td>
+<td style="text-align: right;">989</td>
+<td style="text-align: right;">143,160</td>
+</tr>
+<tr>
+<td style="text-align: right;">14</td>
+<td>1.16.15.0</td>
+<td style="text-align: right;">139,188</td>
+<td style="text-align: right;">618</td>
+<td style="text-align: right;">86,721</td>
+</tr>
+<tr>
+<td style="text-align: right;">15</td>
+<td>1.17.1.7</td>
+<td style="text-align: right;">172,578</td>
+<td style="text-align: right;">799</td>
+<td style="text-align: right;">113,607</td>
 </tr>
 </tbody>
 </table>
-<p>On the V4, a measured SPIFFS secret lookup took 132,427 microseconds while
-key exchange took 21,932 microseconds. ESP32 therefore uses recalculation on
-a RAM-cache miss. It avoids secret-file writes and reduces time awake for
-this measured workload. These are elapsed times, not measurements of energy
-in joules; other ESP32 hardware has not been physically benchmarked.</p>
-<p>On a RAK3401, a LittleFS lookup took 7,812 microseconds versus 31,250
-microseconds for key exchange. The nRF52 backend therefore uses saved flash
-entries to avoid repeat key exchange when a usable entry exists, including
-after reboot. Saved entries match the full
-peer public key and a fingerprint of the local key pair, and have a record
-checksum. Importing a different private or public key invalidates old results.
-A corrupt or missing saved entry is recalculated. The native tests use the
-firmware's actual Ed25519 key-exchange library and verify agreement with the
-peer's independently calculated secret.</p>
-<p>Derived secrets are expendable. Their storage keeps a reserve for contacts,
-preferences and filesystem metadata; a full filesystem leaves the calculated
-secret usable in RAM. nRF52 packs 56 entries into a 3,844-byte page to use its
-4 KiB flash blocks efficiently. Small filesystems may not have space to persist
-secrets for all 350 contacts. A miss without a usable saved entry still
-performs key exchange.</p>
-<p><code>MESH_CONTACT_SECRET_FLASH_CACHE=0</code> or <code>1</code> overrides the miss policy for
-qualification builds. The optional ESP32 flash backend groups eight entries
-per file. The normal ESP32 policy does not create or use those files.</p>
-<h2 id="inspect-the-cache">Inspect the cache</h2>
-<p>From the Full Companion's ASCII USB terminal or authenticated local CLI:</p>
-<pre><code class="language-text">get contact.cache
-</code></pre>
-<p>Cached builds report <code>paths=16 secrets=16</code>, <code>miss=calculate</code> or <code>miss=flash</code>,
-plus these boot-session counters:</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ram_hits</code></td>
-<td>Shared secret reused from RAM.</td>
-</tr>
-<tr>
-<td><code>flash_hits</code></td>
-<td>Shared secret loaded from flash without recalculation.</td>
-</tr>
-<tr>
-<td><code>calculations</code></td>
-<td>Shared-secret key exchanges performed.</td>
-</tr>
-<tr>
-<td><code>save_skips</code></td>
-<td>Calculated secrets that could not be persisted, including storage reserve/backoff.</td>
-</tr>
-</tbody>
-</table>
-<p>Uncached builds report <code>paths=inline secrets=inline</code>. The normal <code>memory</code>
-command on supported ESP32 Full Companions shows live heap and queue capacity.</p>
-<p><code>get contact.cache.timing</code> reports the last successful flash lookup and last
-key calculation in microseconds. Zero means no such operation has completed
-since boot. These timings exclude secret writes and are useful for comparing
-the work avoided on a valid flash hit.</p>
-<h2 id="offline-messages-during-mota">Offline messages during mOTA</h2>
-<p>Contact caches are independent of the offline message queue. Builds using
-the shared mOTA queue retain <strong>256 frames normally and 128 while mOTA owns
-its workspace</strong>, then restore 256. No unread frames are discarded to start
-mOTA: synchronize the queue and retry if it exceeds the retained capacity.
-PSRAM-backed queues keep their existing capacity and allocation policy.</p>
-<p>Each queue frame occupies 177 bytes. Retaining 32 instead of 128 would make
-another 16,992 bytes (16.6 KiB) available inside the shared storage. It would
-not increase free heap by itself: the normal 256-frame storage is statically
-reserved, and the current mOTA context already fits in the loaned half. More
-mOTA scratch data would have to share that space to obtain an additional RAM
-saving. These changes keep the existing 128-frame mOTA limit.</p>
-<h2 id="build-the-six-capacity-trials">Build the six capacity trials</h2>
-<p>The optional environments in <code>platformio.nimble.ini</code> combine NimBLE, these
-contact caches, and the shared mOTA queue at <strong>350 contacts, 40 channels and
-256 normal offline frames</strong>. They remain outside the ordinary release matrix.
-The ordinary six constrained release recipes still use their established
-150-contact limits pending wider hardware qualification.</p>
-<p>Enable <code>platformio.nimble.ini</code> as described in the
-<a href="../nimble_companion_trial/">NimBLE trial guide</a>, then build one environment at
-a time. For example:</p>
-<pre><code class="language-sh">OUTPUT_DIR=.releases/contact-cache-v3 bash build.sh build-firmware \
-  Heltec_v3_ram_trial_companion_radio_full_nimble \
-  --firmware-version v1.17.1.5-halo-keymind-cascade-cache-trial \
-  --radio-preset usa-cascadia --profile cascade --standard --require-ota
-</code></pre>
-<table>
-<thead>
-<tr>
-<th>Hardware</th>
-<th>Trial environment</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Heltec V3</td>
-<td><code>Heltec_v3_ram_trial_companion_radio_full_nimble</code></td>
-</tr>
-<tr>
-<td>Wireless Tracker</td>
-<td><code>Heltec_Wireless_Tracker_ram_trial_companion_radio_full_nimble</code></td>
-</tr>
-<tr>
-<td>Tracker V2, FEM on</td>
-<td><code>heltec_tracker_v2_ram_trial_companion_radio_full_femon_nimble</code></td>
-</tr>
-<tr>
-<td>Heltec CT62</td>
-<td><code>Heltec_ct62_ram_trial_companion_radio_full_nimble</code></td>
-</tr>
-<tr>
-<td>XIAO ESP32-C3</td>
-<td><code>Xiao_C3_ram_trial_companion_radio_full_nimble</code></td>
-</tr>
-<tr>
-<td>Generic ESP-NOW</td>
-<td><code>Generic_ESPNOW_ram_trial_companion_radio_full_nimble</code></td>
-</tr>
-</tbody>
-</table>
-<p>The firmware RAM guard remains enabled. A successful linked budget is distinct
-from live free heap and physical Bluetooth/LoRa qualification on each board.</p>
-<p>The smaller NimBLE applications let the CT62, XIAO C3 and Generic ESP-NOW
-trials use two 1.5 MiB WiFi OTA slots on 4 MiB flash. Their 896 KiB SPIFFS and
-coredump stay at the same addresses as the ordinary <code>huge_app.csv</code> Full
-layout. Install the trial's merged image over USB first to install its
-partition table. Subsequent WiFi updates must fit the new slots. An
-application-only update from the ordinary single-slot Full layout cannot
-change that layout or enable WiFi OTA.</p>
-<h2 id="regression-checks">Regression checks</h2>
-<pre><code class="language-sh">python3 -B test/test_contact_cache.py
-python3 -B test/test_companion_contact_persistence_contract.py
-python3 -B test/test_companion_contact_stream_contract.py
-python3 -B test/test_nrf52_extrafs_contract.py
-python3 -B test/test_shared_mota_queue.py
-python3 -B test/test_t096_full_memory.py
-python3 -B test/test_firmware_ram.py
-</code></pre>
-<p>The cache tests compile the production path/secret cache code and extracted
-production persistence, routing and request functions with filesystem/radio
-adapters. They exercise 350 routes, eviction, snapshot rollback, page
-migration, identity changes, read/write/rename faults, handle exhaustion,
-packet release on a failed path read, and recovery after a simulated reset
-between file renames. They do not simulate a physical flash power cut.</p>
-<p><code>tools/hil/contact_cache_serial_stress.py</code> checks all 350 paths over USB,
-replaces them with a different generation, and optionally exercises secret
-eviction. Use an otherwise empty test node and exclusive access to its
-Companion data port. <code>--populate</code> writes test contacts; <code>--secrets</code> transmits
-23 directed LoRa datagrams to synthetic peers. For an ESP32 cache trial:</p>
-<pre><code class="language-sh">python3 tools/hil/contact_cache_serial_stress.py --port /dev/ttyACM0 \
-  --populate --generation 1 --secrets --expect-calculate --reboot
-python3 tools/hil/contact_cache_serial_stress.py --port /dev/ttyACM0 \
-  --generation 1 --secrets --expect-calculate
-</code></pre>
-<p>Use the actual device path. Omit <code>--expect-calculate</code> for the nRF52 flash
-policy. The second invocation verifies the persisted paths after reboot.</p>
+<p>Some bridge versions also exist as different binaries. <code>CHAIN.csv</code>'s exact
+body hashes and package checksums, not this version-only table, determine
+which package is valid at each step. The first two transfers use legacy
+1 KiB blocks; subsequent transfers use negotiated 2 KiB blocks with
+transport DEFLATE and the unchanged CRLE bootloader format.
+The second transfer also omits explicit proof requests: that historical
+receiver waits for the current sender's proactive Merkle proofs. The original
+1.16.07 receiver does not have this optimization.</p>
+<h2 id="measured-mercerwoodmesh-replay">Measured MercerWoodMesh replay</h2>
+<p>All 15 selected packages passed in order on the Pi's debug-wired RAK3401,
+starting with the exact 1.16.07 image and OTAFIX2.4. Every application payload
+crossed LoRa from the Heltec T096. There were no debug writes, application
+substitutions, failed installs, or resumed downloads between the 15 steps.</p>
+<p>The direct bench used 909.950 MHz, BW 500 kHz, SF5, CR5, continuous receive,
+and a 128-symbol source preamble. Observations for both radios totaled:</p>
+<ul>
+<li>14,069 transmitted frames, including discovery and retries.</li>
+<li>22 minutes 31 seconds of measured download time.</li>
+<li>47 minutes 35 seconds summed active test-step time, including configuration,
+  checks, installs, and reboots; deliberate gaps between runs are excluded.</li>
+</ul>
+<p>These are bench measurements, not a field-link completion-time promise. The
+control commands were sent over USB; a remote field console adds LoRa control
+traffic. <code>BENCHMARK.csv</code> separates each step's ideal cost from its observed
+frame count and timing. Actual serialized radio bytes were not measured.</p>
+<p>Independent debug-port readback matched the complete final application,
+unchanged bootloader, and unchanged MBR/SoftDevice. UICR matched the normal
+post-startup baseline throughout this replay. The initial pre-first-boot
+UICR dump differs because normal Nordic/RAK startup configures the reset pins
+and 3.3 V regulator; this is documented in the evidence, not a bootloader
+upgrade.</p>
+<p>After a fresh reboot, the watchdog reported <code>on</code>. Both radios returned to
+910.525 MHz / BW 62.5 kHz / SF7 / CR5, and a nonce-matched normal-channel trace
+through the exact target key prefix completed in 423 ms. The inaccessible
+field node has not been touched. The lab RAK remains on this repeater image;
+the Pi's <code>mctomqtt.service</code> remains stopped because it previously owned that
+serial port. Radios other than the RAK3401 and sending Heltec T096 were left
+untouched.</p>
+<h2 id="field-preparation">Field preparation</h2>
+<p>All destination commands below can be sent through the authenticated remote
+repeater console; USB/Bluetooth at the destination is not required. Keep a
+separate control connection available while the sender owns its companion's
+serial port. A local
+Full Companion radio attached to the sender runs the bundled <code>motatool</code>
+seeder. Resolve ports by device identity, not a remembered <code>ttyACM</code> number.</p>
+<p>The qualified source is the Pi's Heltec T096, USB serial
+<code>651F8E496197F882</code>, running Full Companion
+<code>v1.17.1.8-halo-keymind-cascade-dev-d4b3bb56</code>. It supports the extended
+2 KiB transport and host-backed DEFLATE. The destination is RAK3401 USB
+serial <code>0B81C9C68D8D01B4</code>. Older companion firmware or an older <code>motatool</code>
+is not an interchangeable sender for this bundle.</p>
+<p>Before any change, record <code>ver</code>, <code>ota self</code>, <code>ota status</code>,
+<code>get bootloader.ver</code>, <code>get system.watchdog</code>, <code>get radio.rxps</code>,
+<code>get powersaving</code>, <code>get rxdelay</code>, <code>get af</code>, and <code>ota config</code>. Match the exact
+starting body, hardware, bootloader, and signing-key policy. An unsigned
+bundle is not suitable for a node requiring signed packages.
+Choose a stable-power maintenance window long enough for all 15 installs;
+do not begin an install while the destination is at risk of losing power.</p>
+<p>Disable the destination system watchdog with <code>set system.watchdog off</code>.
+Allow its one-time hardware reset and wait at least 90 seconds; reconnect
+and prove that it reports <code>off</code>. A quick software reboot is not a substitute.</p>
+<p>Use continuous receive on the destination and sender throughout the bridge
+chain (<code>set radio.rxps off</code>). Record and disable a second scanning radio
+profile on the sender if it would take the radio away from the OTA channel.
+Record <code>rxdelay</code>, <code>af</code>, power-saving, reach, and relay settings before changing
+them. Use <code>hops 0</code> only when there are no intermediate relays. Obey applicable
+airtime/duty restrictions and restore all saved settings when finished.</p>
+<p>The direct bench also uses <code>set rxdelay 0</code> and <code>set af 0</code> on both radios,
+<code>ota speed 1</code> on the sender, and <code>set powersaving off</code> where supported.
+The earliest applications do not recognize the last command; continuous
+receive is still selected through <code>set radio.rxps off</code>. The source has
+<code>set radio2 off</code> throughout the transfer. Wait for configuration replies to
+finish before handing its serial connection to the seeder.</p>
+<p>For the qualified direct bench configuration only, the destination uses
+<code>tempradio 909.950,500,5,5,120</code>; the tested current Full Companion accepts
+<code>tempradio 909.950,500,5,5,120,128</code> for an explicit 128-symbol preamble.
+Historical destination parsers do not accept the sixth argument. The sender
+and destination must be on the same live radio preset. Do not assume the
+temporary preset survives a bridge reboot.</p>
+<p>The newer historical receivers performed poorly with a 16-symbol source
+preamble in this test. Use the qualified longer setting. Also avoid frequent
+<code>ota status</code> or <code>ota stats</code> polling: these versions rehash the complete running
+application while answering, which can interrupt receive processing. The lab
+runner observes the sender's local log and checks the receiver near completion
+or at a 60-second interval. Set a field maintenance lease appropriate to the
+actual preset and route; the 120-minute value above is a bench setting.</p>
+<h2 id="applying-a-qualified-bundle">Applying a qualified bundle</h2>
+<p>Verify the outer archive hash and every entry in <code>SHA256SUMS.txt</code>. Verify
+each <code>.mota</code> using the included, hash-pinned <code>motatool</code>. <code>CHAIN.csv</code> is the
+authoritative ordered list of packages, manifest IDs, and before/after hashes.
+On the Pi, use <code>tools/motatool-linux-aarch64</code> (make it executable after
+extracting if necessary). The x86-64 binary is for Linux/WSL, not native
+Windows. The provenance images, tools, and evidence are not sent over LoRa;
+only the selected <code>.mota</code> in the current step's serving directory is sent.</p>
+<p>For every row, including after an interrupted run:</p>
+<ol>
+<li>Prove that <code>ota self</code> matches that row's exact before hash and that the
+   bootloader reports <code>apply OK</code>. Do not select a row by version alone.</li>
+<li>Reconcile <code>ota status</code>. Resume only that row's known partial MID. If it is
+   already ready, do not redownload it. Stop on an unrelated or ambiguous
+   session. Never send a blind <code>ota cancel</code>.</li>
+<li>Reapply the agreed radio/receive guardrails after reboot. Start the sender
+   with only this row's package in its serving directory:
+   <code>motatool serve --dir STEP_DIRECTORY --serial COMPANION_PORT --baud 115200 -v</code>.</li>
+<li>Run <code>ota ls</code> until the expected version is advertised. The old listing
+   shows a version, not a MID. Use <code>ota pull EXPECTED_MID flash</code> and poll
+   <code>ota status</code> at a restrained interval.</li>
+<li>Require <code>ready to install</code> with the exact MID. Stop the seeder gracefully
+   with Ctrl-C. Recheck watchdog <code>off</code>, then send <code>ota install</code>.</li>
+<li>Allow up to five minutes for the application to return. Require the exact
+   after hash, expected version, and <code>bootloader: apply OK</code> before continuing.
+   Stop if any check fails; do not try the next package against another base.</li>
+</ol>
+<p>A retained previous container may be re-discovered after boot. If the exact
+previous MID is verifying, wait for it to become ready or idle. Only after
+re-proving the current running hash may that attached, completed previous
+MID be cancelled. An idle <code>ota cancel</code> does not prove that flash was erased.</p>
+<p>After the final hash is proved, restore the destination, sender, and relays
+to their recorded normal settings and confirm normal-channel reachability.
+Re-enable the system watchdog and require it to report <code>on</code>. The current
+endpoint supports <code>normalradio</code>; coordinate channel restoration so that the
+remote node does not become unreachable during the handoff.
+The endpoint requires a temporary radio channel for OTA operations, so a
+normal-channel <code>ota ls</code> is not a reachability test. Use an ordinary mesh trace
+or authenticated remote command after restoring normal radio.</p>
+<p>The existing <code>rak3401_mota_chain.py</code> pins older release archives. It must not
+be pointed at this new bundle or have its safety checks bypassed.</p>
+<h2 id="evidence-and-reproducibility">Evidence and reproducibility</h2>
+<p><code>build_rak3401_legacy24_bundle.py</code> checks every base/target hash, hardware
+identity, increasing version, block capability, flash workspace, and staging
+margin. It reconstructs every target with both zero- and erased-flash-filled
+scratch space, and applies every package with the actual OTAFIX2.4 release
+implementation compiled as a flash simulator. It remeasures transport with
+the pinned encoder. Its output remains explicitly offline-only until a
+separate physical qualification record is attached.</p>
+<p><code>ACCOUNTING-CORRECTION.json</code> records the proactive-proof accounting correction.
+It changed the ideal totals only; all package checksums and the selected
+hardware-test sequence remained unchanged.</p>
+<p>The archive includes the 52 frozen search images, all 47,920 measured
+geometries, encoder binaries, per-step simulator logs, and raw hardware-test
+records. Only the selected <code>.mota</code> containers are served over LoRa. Lab
+scripts in <code>evidence/</code> are tied to the Pi's USB/debug fixture and are not a
+remote field deployment controller.</p>
+<p>Regression checks: 534 LoRa OTA tests ran successfully with one opt-in
+dependency-install test skipped; all 11 linker-selection tests passed.</p>
+<p>All PlatformIO builds must be serialized, including builds in separate
+checkout directories that share the same PlatformIO package installation.</p>
 
 
 

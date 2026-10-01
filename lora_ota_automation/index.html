@@ -2473,6 +2473,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../rak3401_1.17.1.7_legacy24/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAK3401: 1.16.07 to 1.17.1.7 without a bootloader update
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../rak3401_mota_chain/" class="md-nav__link">
         
   
@@ -3048,10 +3075,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_96" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_97" >
         
           
-          <label class="md-nav__link" for="__nav_96" id="__nav_96_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_97" id="__nav_97_label" tabindex="0">
             
   
   
@@ -3069,8 +3096,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_96_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_96">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_97_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_97">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -4312,6 +4339,24 @@ It never reboots a relay, cancels a partial image, changes package bytes, or
 bypasses signature/install checks. It does <strong>not</strong> fix later block-retry
 stalls on old firmware or relays beyond the controller's direct radio reach;
 the firmware update is the permanent fix.</p>
+<p>For a short path, <code>--legacy-relay-reboot-recovery</code> offers a lower-airtime
+alternative after that same exact <code>0/0</code> timeout. It requires one managed relay
+whose saved normal-channel and active temporary-channel routes are each <strong>zero
+or one hop</strong>, plus <code>--source-shares-controller</code>. Before any reboot, the runner
+checks the relay and destination identities, the exact failed manifest, and
+at least eight minutes of remaining transfer and target TempRadio time. It
+asks for a separate confirmation at the failure (or requires both this flag
+and <code>--yes</code> in unattended use). The relay's <code>reboot</code> CLI intentionally sends
+no reply: the runner returns the shared source/controller to normal radio,
+authenticates the relay's exact key there, re-arms only the remaining portion
+of the target's TempRadio lease, then proves the relay, destination and same
+manifest on the temporary channel before one pull retry. If the normal path
+cannot be proved after reboot, it stops instead of assuming the reboot worked;
+the other temporary leases still expire. A reboot also clears the relay's
+temporary radio setting, so manually rebooting it during a transfer without
+this re-arming sequence will break the temporary path. When both legacy
+recovery options are enabled, the reboot choice is offered first; declining
+it leaves the direct-cache workaround available on a zero-hop route.</p>
 <p>Read-only and replay-safe transmissions retry up to three times. Three retries
 or 90 seconds, whichever comes first, opens a 10-second stop-or-continue
 prompt when stdin is an interactive terminal. Continue remains the default on
