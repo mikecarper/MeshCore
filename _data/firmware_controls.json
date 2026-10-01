@@ -1,5 +1,5 @@
 {
-  "familyTag": "v1.17.1.7-halo-keymind-cascade-dev-2d03e098",
+  "familyTag": "v1.17.1.8-halo-keymind-cascade-dev-9053038f",
   "partitionMigrations": {
     "Ebyte_EoRa-S3_Repeater": "ebyte-eora-s3-repeater",
     "Ebyte_EoRa-S3_room_server": "ebyte-eora-s3-room-server",
@@ -127,7 +127,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -157,8 +157,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -173,7 +173,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -215,7 +215,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -245,8 +245,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -262,9 +262,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -514,9 +514,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -654,9 +654,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -700,7 +700,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -745,9 +745,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -792,9 +792,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -820,9 +820,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
-      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
+      "memoryNote": "Full Companion capacity: 100 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 100; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -864,7 +864,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -894,8 +894,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -929,7 +929,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -959,8 +959,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -975,7 +975,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -1000,7 +1000,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1026,7 +1026,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1056,8 +1056,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1072,7 +1072,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -1097,7 +1097,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1123,7 +1123,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1153,8 +1153,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1169,7 +1169,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -1196,7 +1196,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1224,7 +1224,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1254,8 +1254,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1270,7 +1270,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -1297,7 +1297,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1327,8 +1327,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1345,7 +1345,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1375,8 +1375,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1391,7 +1391,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1417,9 +1417,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Wireless Paper Full capacity: 350 contacts and 40 channels. Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -1444,7 +1444,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1474,8 +1474,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1490,7 +1490,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1520,8 +1520,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1536,9 +1536,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -1563,7 +1563,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1589,7 +1589,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1619,8 +1619,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -1635,9 +1635,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
-      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
+      "memoryNote": "Full Companion capacity: 100 contacts and 224 queued messages; all Full transports are retained. Export contacts before updating if you have more than 100; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -1679,7 +1679,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1724,7 +1724,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -1751,9 +1751,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -1891,9 +1891,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -1933,7 +1933,7 @@
       "femTx": false,
       "gps": true,
       "memoryNote": "Neighbor table: 50 entries. Flood rules: 16 entries; the complete rule engine is retained.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -2089,9 +2089,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -2285,9 +2285,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -2425,9 +2425,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -2467,7 +2467,7 @@
       "femTx": false,
       "gps": true,
       "memoryNote": "Neighbor table: 50 entries. Flood rules: 16 entries; the complete rule engine is retained.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -2567,9 +2567,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -2744,9 +2744,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion capacity: 100 contacts, 8 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -2771,9 +2771,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -2799,7 +2799,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -2829,8 +2829,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -2847,9 +2847,9 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
-      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
+      "memoryNote": "Full Companion capacity: 100 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 100; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -2876,7 +2876,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -2904,7 +2904,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -2934,8 +2934,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -2950,7 +2950,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -2977,9 +2977,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -3117,9 +3117,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -3145,9 +3145,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -3285,9 +3285,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -3425,9 +3425,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -3584,7 +3584,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -3628,7 +3628,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -3658,8 +3658,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -3695,7 +3695,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -3725,8 +3725,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -3741,7 +3741,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -3783,7 +3783,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -3813,8 +3813,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -3848,7 +3848,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -3878,8 +3878,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -3894,7 +3894,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -3919,7 +3919,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -3947,7 +3947,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -3977,8 +3977,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -3993,7 +3993,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -4018,7 +4018,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4044,7 +4044,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -4069,7 +4069,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4099,8 +4099,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4115,7 +4115,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4145,8 +4145,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4161,9 +4161,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion capacity: 100 contacts, 8 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -4207,9 +4207,9 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4257,8 +4257,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4275,7 +4275,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4301,9 +4301,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -4384,7 +4384,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -4407,7 +4407,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4437,8 +4437,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4453,7 +4453,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4483,8 +4483,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4499,7 +4499,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -4522,7 +4522,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4551,8 +4551,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4567,7 +4567,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4596,8 +4596,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4612,7 +4612,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -4637,7 +4637,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4663,7 +4663,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4693,8 +4693,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4709,7 +4709,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4739,8 +4739,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -4755,7 +4755,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -4782,9 +4782,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -4922,9 +4922,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -5061,9 +5061,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion capacity: 100 contacts, 30 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -5105,9 +5105,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -5152,7 +5152,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -5182,8 +5182,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -5198,9 +5198,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion capacity: 100 contacts, 30 channels and 16 queued messages. Export contacts and channels before updating if they exceed these limits; extra entries may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -5242,9 +5242,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Flood rules: 47 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -5289,7 +5289,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -5319,8 +5319,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -5335,7 +5335,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -5358,7 +5358,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -5387,8 +5387,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -5404,9 +5404,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -5432,9 +5432,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -5572,9 +5572,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -5780,9 +5780,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -5976,9 +5976,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -6188,7 +6188,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -6215,7 +6215,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -6245,8 +6245,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -6263,7 +6263,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -6293,8 +6293,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -6309,7 +6309,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -6336,9 +6336,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -6453,7 +6453,7 @@
       "femTx": false,
       "gps": true,
       "memoryNote": "Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -6629,9 +6629,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -6839,7 +6839,7 @@
       "femTx": false,
       "gps": true,
       "memoryNote": "Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -7092,9 +7092,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -7287,7 +7287,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -7312,7 +7312,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
+      "memoryNote": "Display renders at 320x320 and scales to the 480x480 panel to preserve internal RAM. All Full transports, 350 contacts, 512 queued messages and full-length message previews are retained.",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -7337,7 +7339,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
+      "memoryNote": "Display renders at 320x320 and scales to the 480x480 panel to preserve internal RAM. All Full transports, 350 contacts, 512 queued messages and full-length message previews are retained.",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -7363,9 +7367,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -7522,7 +7526,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -7568,7 +7572,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7617,8 +7621,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -7635,7 +7639,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7661,7 +7665,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -7688,7 +7692,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7737,8 +7741,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -7755,7 +7759,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7783,7 +7787,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7811,7 +7815,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7841,8 +7845,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -7857,7 +7861,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -7884,7 +7888,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7912,7 +7916,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -7942,8 +7946,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -7958,7 +7962,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -8002,9 +8006,9 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Flood rules: 31 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8053,8 +8057,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -8071,7 +8075,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8097,7 +8101,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -8141,9 +8145,9 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Flood rules: 31 entries; the complete rule engine is retained. Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8192,8 +8196,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -8210,7 +8214,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8255,7 +8259,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8300,7 +8304,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8327,9 +8331,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -8505,7 +8509,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8535,8 +8539,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -8551,7 +8555,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -8593,7 +8597,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8623,8 +8627,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -8640,9 +8644,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -8780,9 +8784,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -8938,7 +8942,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -8964,7 +8968,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -9006,7 +9010,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -9036,8 +9040,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -9053,9 +9057,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -9212,7 +9216,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -9239,7 +9243,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -9269,8 +9273,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -9287,7 +9291,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -9317,8 +9321,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -9334,9 +9338,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -9473,7 +9477,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -9498,7 +9502,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -9524,7 +9528,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -9554,8 +9558,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -9587,7 +9591,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -9612,7 +9616,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -9642,8 +9646,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -9659,9 +9663,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -9799,9 +9803,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -9827,9 +9831,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -9986,9 +9990,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
-      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
+      "memoryNote": "Full Companion capacity: 100 contacts and 224 queued messages; all Full transports are retained. Export contacts before updating if you have more than 100; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -10030,7 +10034,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10075,7 +10079,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10105,8 +10109,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10121,7 +10125,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -10144,7 +10148,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10174,8 +10178,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10190,7 +10194,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -10217,7 +10221,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10247,8 +10251,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10265,7 +10269,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10295,8 +10299,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10311,7 +10315,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10337,7 +10341,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -10362,7 +10366,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10392,8 +10396,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10408,7 +10412,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10438,8 +10442,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10454,7 +10458,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10481,9 +10485,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -10508,7 +10512,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -10644,7 +10648,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -10669,7 +10673,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10699,8 +10703,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10715,7 +10719,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10745,8 +10749,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10761,7 +10765,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10787,7 +10791,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -10812,7 +10816,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10842,8 +10846,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10858,7 +10862,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10888,8 +10892,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -10904,7 +10908,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10932,9 +10936,9 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Neighbor table: 50 entries.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10962,7 +10966,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -10988,9 +10992,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
-      "memoryNote": "Full Companion capacity: 150 contacts and 256 queued messages; all Full transports are retained. Export contacts before updating if you have more than 150; entries beyond this limit may be unavailable or omitted by a later save.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
+      "memoryNote": "Full Companion capacity: 100 contacts and 224 queued messages; all Full transports are retained. Export contacts before updating if you have more than 100; entries beyond this limit may be unavailable or omitted by a later save.",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -11017,7 +11021,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11045,7 +11049,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11075,8 +11079,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11091,7 +11095,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11119,7 +11123,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -11146,7 +11150,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11176,8 +11180,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11194,7 +11198,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11220,7 +11224,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -11245,7 +11249,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -11272,7 +11276,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11300,7 +11304,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11330,8 +11334,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11346,7 +11350,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11372,7 +11376,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -11399,7 +11403,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11427,7 +11431,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11455,7 +11459,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11483,7 +11487,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11513,8 +11517,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11529,7 +11533,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11557,7 +11561,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11587,8 +11591,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11605,7 +11609,7 @@
         "wifi",
         "both"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": true,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11635,8 +11639,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11651,7 +11655,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11677,7 +11681,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -11702,7 +11706,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11732,8 +11736,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11748,7 +11752,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11778,8 +11782,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -11794,7 +11798,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -11821,9 +11825,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -11848,7 +11852,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -11949,9 +11953,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -11976,7 +11980,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -12077,9 +12081,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -12104,7 +12108,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -12205,9 +12209,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -12232,7 +12236,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -12333,9 +12337,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -12360,7 +12364,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -12461,9 +12465,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -12488,7 +12492,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -12589,9 +12593,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -12616,7 +12620,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -12716,7 +12720,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -12741,7 +12745,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -12767,7 +12771,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -12797,8 +12801,8 @@
       "rxps": false,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -12813,7 +12817,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -12840,9 +12844,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -12999,9 +13003,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -13157,7 +13161,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -13199,7 +13203,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -13229,8 +13233,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -13264,7 +13268,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -13294,8 +13298,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -13310,7 +13314,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "ESP32_PLATFORM",
@@ -13352,7 +13356,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -13382,8 +13386,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -13417,7 +13421,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "ESP32_PLATFORM",
@@ -13447,8 +13451,8 @@
       "rxps": true,
       "snmp": false,
       "updateMethods": [
-        "wifi",
-        "lora"
+        "lora",
+        "wifi"
       ],
       "webconfig": false
     },
@@ -13464,9 +13468,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -13491,7 +13495,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -13593,9 +13597,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -13620,7 +13624,7 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-receiver",
       "platform": "NRF52_PLATFORM",
@@ -13721,9 +13725,9 @@
         "none",
         "usb"
       ],
-      "loggingSource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "loggingSource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "memoryNote": "Full Companion queue: 256 offline messages normally; 128 while mOTA borrows queue storage. Sync unread messages with a Companion app before starting mOTA if more than 128 are pending. Stopping or disconnecting the source restores all 256 slots.",
-      "memorySource": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1",
+      "memorySource": "9053038ffa7f481e4b0af2bb8382210683a2c317",
       "mqtt": false,
       "otaRole": "lora-source",
       "platform": "NRF52_PLATFORM",
@@ -14088,5 +14092,5 @@
       "webconfig": false
     }
   },
-  "source": "2d03e098cf75d58adcf35fe3d4dbbeaf0af114e1"
+  "source": "9053038ffa7f481e4b0af2bb8382210683a2c317"
 }
