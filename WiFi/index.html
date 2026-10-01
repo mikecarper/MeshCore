@@ -3487,6 +3487,14 @@ slots.</p>
 list, custom broker configuration, topic formats, authentication, diagnostics,
 and memory limits.</p>
 <h2 id="mqtt-observer-setup">MQTT observer setup</h2>
+<p>WebConfig serves gzip only, including its bootstrap and captive-portal success
+pages. Static WiFi setup and browser OTA pages use the same format. Builds use
+Google Zopfli 0.4.3 with 1,000 iterations; validated results are cached under
+<code>.pio/gzip-html</code>. There is no Brotli dependency or second WebConfig page copy.
+Browsers decompress the pages automatically over ordinary HTTP. WebConfig
+returns HTTP 406 when a client explicitly excludes gzip. Its large page closes
+the TCP connection gracefully after the final acknowledged bytes so browsers
+do not report a completed download as aborted.</p>
 <p>Most full-size ESP32 MQTT observer builds have the shared WebConfig portal. On a
 fresh device with no saved SSID:</p>
 <ol>
