@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "target": "heltec_v4_sensor",
+  "platform": "ESP32_PLATFORM",
+  "mcu": "esp32s3",
+  "elf_sha256": "bb9f260e5d757f43ac1d71192999b5d24cac674fc23f17b29a49f53a3036aa0d",
+  "passed": true,
+  "available_internal_bytes": 277256,
+  "largest_internal_region_bytes": 244488,
+  "required_heap_bytes": 127592,
+  "required_contiguous_bytes": 10256,
+  "components": {
+    "core_tasks_usb_filesystems": 24576,
+    "wireless_stacks": 49152,
+    "ota_source_scratch": 8192,
+    "browser_terminal_session": 2048,
+    "neighbor_history": 600,
+    "radio_packet_pool": 10240,
+    "client_table": 10256,
+    "display_pixels_and_driver": 4096,
+    "screen_objects_and_history": 2048,
+    "allocation_and_transient_margin": 16384
+  },
+  "display": "SSD1306Display",
+  "full_companion": false,
+  "regions": [
+    {
+      "start": 1070259208,
+      "end": 1070503696
+    },
+    {
+      "start": 1070530560,
+      "end": 1070563328
+    }
+  ],
+  "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+  "artifact_target": "heltec_v4_sensor",
+  "pio_environment": "heltec_v4_sensor",
+  "files": {
+    "heltec_v4_sensor-full-logging-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.bin": "af430ddb17974966e6c3f10e67515e0e29526b0c1ea339f017923b17362f4b68",
+    "heltec_v4_sensor-full-logging-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a-merged.bin": "82bc1735d9aeb2a5d660db982ab9822056e55419654e819f226460de8127b976",
+    "heltec_v4_sensor-full-logging-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.capabilities.json": "6ebb9ee0401cb7c011a6aa1ff4c41b2e569c6fbabcd307ee344de3c5e3a0fa60"
+  }
+}

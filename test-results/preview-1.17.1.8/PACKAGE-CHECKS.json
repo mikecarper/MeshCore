@@ -1,0 +1,28 @@
+[
+  {
+    "variant": "no-lora-ota",
+    "application_bytes": 542056,
+    "uf2_start": "0x26000",
+    "uf2_end": "0xaa600",
+    "dfu_crc16_verified": true,
+    "uf2_dfu_application_identical": true,
+    "capabilities_verified": true,
+    "ram_available": 162740,
+    "ram_required": 66904,
+    "uf2": "RAK_3401_repeater-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.uf2",
+    "dfu_zip": "RAK_3401_repeater-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.zip"
+  },
+  {
+    "variant": "lora-ota",
+    "application_bytes": 531348,
+    "uf2_start": "0x26000",
+    "uf2_end": "0xa7c00",
+    "dfu_crc16_verified": true,
+    "uf2_dfu_application_identical": true,
+    "capabilities_verified": true,
+    "ram_available": 67660,
+    "ram_required": 66904,
+    "uf2": "RAK_3401_repeater_lora_ota_no_external_sensors-ota-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.uf2",
+    "dfu_zip": "RAK_3401_repeater_lora_ota_no_external_sensors-ota-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.zip"
+  }
+]

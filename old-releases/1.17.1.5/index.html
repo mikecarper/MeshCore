@@ -1,0 +1,4014 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/old-releases/1.17.1.5/">
+      
+      
+        <link rel="prev" href="../1.17.1.5-doc-audit/">
+      
+      
+        <link rel="next" href="../1.17.1.6/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>MeshCore 1.17.1.5 Dev - USA Cascade - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../_stylesheets/notification_builder.css">
+    
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/firmware_picker.css?v=20260929-1">
+    
+      <link rel="stylesheet" href="../../_stylesheets/telemetry_decoder.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/management_decoder.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/filter_tool.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/preset_test.css?v=20260923-2">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#meshcore-11715-dev-usa-cascade" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MeshCore 1.17.1.5 Dev - USA Cascade
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../carrier_wave/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Carrier-wave RF checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../companion_contact_cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion contact caches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../companion_offline_queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Offline Message Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../companion_radio_full/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../esp32_memory_budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classic ESP32 image memory budget
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../esp32_partition_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32 release partition lookup table
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../esp32_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../espnow_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP-NOW bridge: simple setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../filter_tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filter policy playground
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../firmware_memory_budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware memory checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../firmware_picker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware picker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../full_companion_features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion: turn features on and off
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hardware_validation_bluetooth_stealth_2026-09-07/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XIAO Bluetooth stealth hardware validation - 2026-09-07
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Heltec V4 legacy-partition migration over Wi-Fi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../lora_ota_automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scripted LoRa OTA from start to finish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../management_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management report decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../management_reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management reports (MGR1)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../notifications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion notification builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nrf52_bluetooth_debug/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Companion Bluetooth diagnostic firmware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 repeater LoRa OTA with external QSPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../preset_test/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Temporary radio test builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../radio_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Two LoRa profiles on one radio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../rak3401_1.17.1.7_legacy24/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAK3401: 1.16.07 to 1.17.1.7 without a bootloader update
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../rak3401_mota_chain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RAK3401 1W repeater compact LoRa update chain
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_53" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_53" id="__nav_53_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Old releases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_53_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_53">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Old releases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Old Releases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../1.17.1.5-doc-audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Markdown audit — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore 1.17.1.5 Dev - USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore 1.17.1.5 Dev - USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#memory-corrections-in-aa20e927" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory corrections in aa20e927
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#g3-usb-disappearance-with-power-saving-enabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G3 USB disappearance with power saving enabled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#t096-full-companion-bluetooth-and-menu-freeze-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        T096 Full Companion Bluetooth and menu freeze report
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#firmware-roles-and-update-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Firmware roles and update support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-using-option-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build using option 3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-release-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local release staging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#published-release-set-and-small-slot-heltec-v4-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published release set and small-slot Heltec V4 updates
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../1.17.1.6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore 1.17.1.6 Dev - USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../1.17.1.7/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore 1.17.1.7 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_54" >
+        
+          
+          <label class="md-nav__link" for="__nav_54" id="__nav_54_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_54_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_54">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Releases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releases/1.17.1.8/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore 1.17.1.8 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_55" >
+        
+          
+          <label class="md-nav__link" for="__nav_55" id="__nav_55_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test results
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_55_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_55">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Test results
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/bootloader_version_stock_audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stock nRF52 bootloader version audit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/cad_scan_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SX1262 channel-scanning hardware results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/carrier_wave_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CW and CW2 validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/cli_settings_audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI setting dispatch audit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/companion_contact_cache_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contact-cache and NimBLE RAM qualification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/companion_usb_ascii_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Companion ASCII default validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/companion_usb_client_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    USB Companion client compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/double_frequency_v4_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Double center-frequency write: V4 transmitter / XIAO receiver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/four_fixed_tx_dwell_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Four fixed transmitters: longer dwell repeats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/four_fixed_tx_single_pass_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Four fixed transmitters / fast single-pass receiver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/full_usb_logging_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full USB logging repair — 1.17.1.6
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/hardware_validation_checklist/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware validation checklist
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/home_text_spacing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home-screen text spacing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/mbedtls-tls-footprint/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shrinking the per-connection TLS footprint on non-PSRAM observers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/mixed_scan_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mixed-bandwidth two-channel reception test
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/mixed_sf_bw_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Equal-symbol-time mixed SF/BW, four-channel test
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/nimble_companion_trial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-S3 NimBLE Full Companion trial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/nimble_companion_trial_results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-S3 NimBLE trial results, 2026-09-08
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/nrf52-usb-ready-fix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 USB READY hang
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/nrf52_companion_storage_recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Companion automatic ExtraFS recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/pair_4p6_300us_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF7/62.5 + SF8/500: 4.6 slow chirps, 0.3 ms reserve
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/pair_preamble32_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF7/62.5 + SF8/500, fast switching and preamble 32
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/pr7_review_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PR #7 review and validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/preamble_detection_investigation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Off-channel preamble investigation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/radio_chirp_math_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shared radio/radio2 chirp timing and preamble warnings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/radio_dwell_policy_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automatic dwell policy: 4.6 chirps on both profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/radio_profile_switch_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SX1262 profile-switch validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/radio_profiles_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dual-profile receive validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/radio_receive_calibration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio receive calibration and recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/s3_memory_soak_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-S3 OTA memory experiment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/separated_radio_modulation_cache_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Separated radios, normal XIAO RX gain, and unchanged-modulation timing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf10_10_vs_100hz_full_sample_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF10/125 full samples: 10 Hz versus 100 Hz first-pass detour
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf10_10hz_cr_detour_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF10/125: tiny first-pass frequency offset and coding-rate detour
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf10_full_retune_twice_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF10/125: apply the full radio settings twice per hop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf10_nrf52_double_write_settling_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF10 / 125 kHz, XIAO nRF52 TX, double write, 1 ms delay grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf10_rollback_failure_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF10/125 rollback and wider-spacing failure isolation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf125_settling_limits_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Descending SF10..SF5 / 125 kHz settling limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf5_250_dwell_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF5 / 250 kHz: four-channel dwell sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf6_125_settling_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF6/125 four-channel post-switch settling sweep
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf6_5p1_trace_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF6 / 125 kHz: four channels at 5.1 chirps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf6_channel_scan_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF6 / 125 kHz channel-count test
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/sf8_5p1_trace_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SF8 / 125 kHz: four-channel comparison at 5.1 chirps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/spiffs_regular_file_reads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SPIFFS regular-file reads and login replay state
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/usb_serial_backpressure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Native USB backpressure and radio liveness
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/v4_pixel5_font_trial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Small-screen message fonts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_55_47" >
+        
+          
+          <label class="md-nav__link" for="__nav_55_47" id="__nav_55_47_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preview 1.17.1.8
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_55_47_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_55_47">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Preview 1.17.1.8
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/preview-1.17.1.8/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1.17.1.8 Preview 1 test results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#memory-corrections-in-aa20e927" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory corrections in aa20e927
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#g3-usb-disappearance-with-power-saving-enabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        G3 USB disappearance with power saving enabled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#t096-full-companion-bluetooth-and-menu-freeze-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        T096 Full Companion Bluetooth and menu freeze report
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#firmware-roles-and-update-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Firmware roles and update support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-using-option-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build using option 3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-release-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local release staging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#published-release-set-and-small-slot-heltec-v4-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published release set and small-slot Heltec V4 updates
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/old-releases/1.17.1.5.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="meshcore-11715-dev-usa-cascade">MeshCore 1.17.1.5 Dev - USA Cascade</h1>
+<p>Use <a href="../../role_feature_switches/">feature switches by role</a> for exact on/off
+commands for Companion, Repeater, Room Server, and Sensor, including MQTT,
+logging, power saving, GPS, and board exceptions. Open the
+<a href="https://flasher.meshcore.io/console">USB web console</a> for the default ASCII
+terminal on Full Companion and infrastructure images.</p>
+<p>The firmware identifier and main release tag follow
+<code>v1.17.1.5-halo-keymind-cascade-dev-&lt;commit&gt;</code>, matching the 1.17.1.4 naming
+convention. Supplemental pages retain the <code>repeater-room-</code>, <code>utility-</code>,
+<code>logging-</code>, <code>lora-ota-</code>, and <code>full-profiles-</code> prefixes where those outputs
+exist. The Companion page is marked Latest; the supplemental pages remain
+development prereleases.</p>
+<p>This release uses the USA/Canada radio preset and Cascade runtime defaults.
+The release build records the resolved frequency, bandwidth, spreading factor,
+and coding rate. The offline USA Cascadia fallback is 910.525 MHz, BW62.5,
+SF7, CR5. Saved node settings survive ordinary firmware updates.</p>
+<h2 id="memory-corrections-in-aa20e927">Memory corrections in <code>aa20e927</code></h2>
+<p>All 583 published profiles (the 540-profile matrix plus 43 supplemental Full
+repeaters) were checked against the new
+<a href="../../firmware_memory_budget/">runtime RAM policy</a>. <strong>All 11 failing profiles
+have replacements</strong>, and the same queue sharing has been applied to the other
+41 nRF52 Full profiles: <strong>52 corrected profiles in total</strong>, initially built from
+<a href="https://github.com/mikecarper/MeshCore/tree/aa20e9278ebdd574c4769fdb58d46fd9d4face68"><code>aa20e927</code></a>.
+The existing release tags stay in place; corrected filenames end in <code>aa20e927</code>,
+except Wireless Paper Full's capacity-restoring follow-up, <code>1e4d1e16</code>.
+Companion remains Latest. Both Mesh America catalogs and the firmware picker
+point to the replacement files.</p>
+<p>All 43 nRF52 Full Companions keep 256 offline frames normally and lend 128
+slots to mOTA while needed. Wireless Paper Full now also shares its queue and
+keeps <strong>350 contacts and 40 channels</strong>. The other six corrected ESP32 Full
+profiles below use <strong>150 contacts</strong>, preserving their 256-frame queue and Full transports.
+<strong>Export contacts before upgrading if you have more than 150</strong>; entries beyond
+that limit may be unavailable and a later save may omit them. This warning
+applies to those six profiles and the superseded <code>aa20e927</code> Wireless Paper image.</p>
+<p>Wireless Paper Full's
+<a href="https://github.com/mikecarper/MeshCore/tree/1e4d1e167a984abee34e92288b44d55f3d0e15a6"><code>1e4d1e16</code> update</a>
+has 256 message slots normally and 128 while an mOTA session borrows its
+workspace. Idle WiFi listening leaves all 256 slots available. If more than
+128 unread messages are queued, sync them with an app before starting mOTA.
+Source stop/disconnect restores all 256 slots and frees ESP32 scratch buffers.
+USB, Bluetooth, WiFi, the display and the partition layout are retained.
+The application is 1,869,976 bytes; use its app-only <code>.bin</code> for a compatible
+WiFi update, or its merged image for USB installation.</p>
+<p>The T096 and T1 LoRa OTA repeater corrections allocate the diagnostic manual
+staging buffer only when requested, recovering about 4 KiB at startup.
+Ordinary mOTA uses its existing staging store. <code>ota dev clear</code> releases a manual
+stage; allocation failure reports an error before writing. These same-version
+repairs require an explicit exact-target manual LoRa installation or USB;
+forward-only trusted autoinstall does not select an equal-version repair.</p>
+<p>Available RAM below means capacity <strong>before startup allocations</strong>, not free
+heap after boot. The Wireless Paper row includes its latest <code>1e4d1e16</code> update:</p>
+<table>
+<thead>
+<tr>
+<th>Failing original profile</th>
+<th style="text-align: right;">Original bytes</th>
+<th style="text-align: right;">Replacement bytes</th>
+<th style="text-align: right;">Required bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Generic_ESPNOW_companion_radio_full</code></td>
+<td style="text-align: right;">101,920</td>
+<td style="text-align: right;">139,456</td>
+<td style="text-align: right;">136,192</td>
+</tr>
+<tr>
+<td><code>Heltec_Wireless_Paper_companion_radio_full</code></td>
+<td style="text-align: right;">150,144</td>
+<td style="text-align: right;">161,336</td>
+<td style="text-align: right;">152,576</td>
+</tr>
+<tr>
+<td><code>Heltec_Wireless_Tracker_companion_radio_full</code></td>
+<td style="text-align: right;">148,496</td>
+<td style="text-align: right;">186,032</td>
+<td style="text-align: right;">169,986</td>
+</tr>
+<tr>
+<td><code>Heltec_ct62_companion_radio_full</code></td>
+<td style="text-align: right;">99,104</td>
+<td style="text-align: right;">136,640</td>
+<td style="text-align: right;">136,192</td>
+</tr>
+<tr>
+<td><code>Heltec_t096_companion_radio_full_femon</code></td>
+<td style="text-align: right;">54,724</td>
+<td style="text-align: right;">74,060</td>
+<td style="text-align: right;">73,728</td>
+</tr>
+<tr>
+<td><code>Heltec_t1_companion_radio_full</code></td>
+<td style="text-align: right;">55,044</td>
+<td style="text-align: right;">74,380</td>
+<td style="text-align: right;">73,728</td>
+</tr>
+<tr>
+<td><code>Heltec_v3_companion_radio_full</code></td>
+<td style="text-align: right;">143,840</td>
+<td style="text-align: right;">181,376</td>
+<td style="text-align: right;">173,056</td>
+</tr>
+<tr>
+<td><code>Xiao_C3_companion_radio_full</code></td>
+<td style="text-align: right;">98,880</td>
+<td style="text-align: right;">136,416</td>
+<td style="text-align: right;">136,192</td>
+</tr>
+<tr>
+<td><code>heltec_tracker_v2_companion_radio_full_femon</code></td>
+<td style="text-align: right;">133,136</td>
+<td style="text-align: right;">170,672</td>
+<td style="text-align: right;">169,986</td>
+</tr>
+<tr>
+<td><code>Heltec_t096_repeater_lora_ota_no_external_sensors</code></td>
+<td style="text-align: right;">61,588</td>
+<td style="text-align: right;">65,676</td>
+<td style="text-align: right;">65,538</td>
+</tr>
+<tr>
+<td><code>Heltec_t1_repeater_lora_ota_no_external_sensors</code></td>
+<td style="text-align: right;">61,964</td>
+<td style="text-align: right;">66,052</td>
+<td style="text-align: right;">65,538</td>
+</tr>
+</tbody>
+</table>
+<p>Each replacement has a matching <code>.memory.json</code> with its ELF hash, RAM budget
+and firmware-file hashes. The
+<a href="https://github.com/mikecarper/MeshCore/releases/download/v1.17.1.5-halo-keymind-cascade-dev-26303793/MEMORY-AUDIT-1.17.1.5.json">complete audit</a>
+distinguishes original binary/log calculations from new ELF checks.
+All 52 exact firmware builds, their native file pairs, and 150 native mOTA
+tests passed, alongside memory, allocation-failure, shared-queue and picker
+regressions. Wireless Paper's follow-up also passed complete TCP mOTA transfers
+with address/leak sanitizers, repeated disconnects, queue-full refusal, idle
+listening and USB/TCP ownership changes. Physical boot/load/soak validation
+remains pending.</p>
+<h2 id="g3-usb-disappearance-with-power-saving-enabled">G3 USB disappearance with power saving enabled</h2>
+<p>The published <code>26303793</code> firmware has an ESP32 native-USB sleep bug that
+matches a Station G3 report: USB disappears from the connected Pi after a
+few minutes, the display button stops responding, but the repeater still
+answers over LoRa. Hardware confirmation of this report is pending.</p>
+<p>Cascade enables device power saving by default on fresh settings. After
+two minutes, the repeater can enter light sleep when no serial terminal is
+open, even though the Pi has enumerated the USB device. Light sleep stops
+USB service; the radio GPIO can still wake the CPU, while the G3 display
+button is only polled. Closing a terminal must not be treated as unplugging
+the USB host. Espressif documents the underlying
+<a href="https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32s3/api-guides/usb-otg-console.html#limitations">native USB sleep limitation</a>.</p>
+<p>To enable <strong>USB logging on an ESP32 1.17.1.5 image with logging support</strong>,
+disable power saving first. Use the role's text terminal, or the repeater's
+remote admin CLI if USB has already disappeared:</p>
+<pre><code class="language-text">set powersaving off
+set usb.logging on
+get powersaving
+get usb.logging
+</code></pre>
+<p>The read-back commands should report power saving <code>off</code> and USB logging <code>on</code>.
+For an image without USB logging, use just <code>set powersaving off</code> and <code>get powersaving</code>
+to apply/check the sleep workaround. Disabling power saving saves the setting and takes
+effect immediately; it does not erase the node or change LoRa RX power
+saving (<code>radio.rxps</code>). If USB does not reappear after disabling sleep
+remotely, power-cycle once and check that the port and display button remain
+usable beyond the two-minute mark. Ordinary reflashing can retain the
+saved power-saving setting, so check it during comparisons with another
+firmware build too.</p>
+<p>On unified Full infrastructure, also run <code>set powersaving off</code> before enabling
+USB through <code>set logging.output usb</code> or <code>set logging.output both</code>. These are
+separate commands. Turning logging off does not automatically restore the
+saved power-saving setting. nRF52 logging does not need this ESP32 workaround.</p>
+<p><strong>WiFi/MQTT-only logging does not need <code>set powersaving off</code> while the
+Repeater/Room Server MQTT bridge is running.</strong> The original <code>26303793</code> code
+already prevents device sleep in that state. Select <code>set logging.output wifi</code>
+where supported and check <code>get mqtt.running</code>; <code>get mqtt.enabled</code> alone
+only checks the saved preference. MQTT-capable Full Companion now uses the
+same <code>mqtt.enabled</code> and <code>logging.output</code> commands as infrastructure. Disabling
+MQTT preserves broker settings; the MQTT tab exposes the same master switch.</p>
+<p>The source correction keeps native USB serviced while a host is enumerated,
+including when its terminal is closed. Enabled live USB logging also blocks
+ESP32 light sleep, even without a host. FreeRTOS can still idle/yield; this
+does not disable the saved power-saving setting or Companion CPU scaling.
+With logging off, USB power from a charger still permits sleep.</p>
+<p>The corrected G3 uses its user button as a light-sleep wake source alongside
+LoRa. Button activity keeps the CPU and display awake for at least two minutes;
+holding or pressing the button again extends the interval. The usual display
+timeout can keep the screen on longer. An intentional long-press power-off
+retains its existing action. After the wake interval, sleep is allowed when
+power saving is enabled, logging is off, no native USB host is attached, and
+no running bridge or pending work needs service.</p>
+<p>Host simulations cover both native USB modes, terminal close/reconnect,
+logging toggles, OTA inhibition, simultaneous button/LoRa wake configuration,
+and the two-minute interval across timer rollover. The Station G3 repeater
+download remains the original <code>26303793</code> build; continue to use the logging
+workaround above on that image.</p>
+<h2 id="t096-full-companion-bluetooth-and-menu-freeze-report">T096 Full Companion Bluetooth and menu freeze report</h2>
+<p>A report against <code>Heltec_t096_companion_radio_full_femon</code> describes no usable
+Bluetooth despite a displayed PIN, followed by a freeze while stepping through
+the device menu. Reflashing both with and without a full wipe gave the same
+result. The exact freeze and Bluetooth behavior still need confirmation on a
+physical T096 with the source correction below.</p>
+<p>The published <code>26303793</code> Full image leaves only <strong>54,724 bytes (53.4 KiB)</strong>
+between the linked heap boundaries. Its static RAM check did not account for
+the allocations made at startup: the 160x80 color framebuffer alone needs
+25,602 bytes, followed by task stacks, the packet pool, filesystem buffers,
+and message previews. This leaves inadequate runtime headroom. The pinned
+Bluefruit library also ignores failure to create its BLE/SOC worker tasks,
+and the sensor menu could write through a failed CayenneLPP allocation. Those
+are code paths consistent with this report; a PIN is not proof of a working
+Bluetooth radio.</p>
+<p>The correction applies to <strong>every nRF52 Full Companion</strong>, keeping its offline
+queue at <strong>256 frames
+during normal use</strong>. mOTA borrows the upper 128 slots for its roughly 19 KiB
+session state only when needed, leaving 128 message slots during mOTA use.
+Starting a source or a TempRadio discovery session acquires this workspace.
+Stopping or disconnecting the USB/Bluetooth source restores all 256 slots,
+even if the temporary radio window is still open. A discovery-only session
+returns the slots when its TempRadio window ends. No heap resizing is involved.</p>
+<p>Unread messages keep their order across both transitions. If more than 128
+frames are pending, mOTA refuses to start and asks you to <strong>sync unread
+messages with a Companion app first</strong>; it does not discard them to make room.
+OTA configuration and signer keys survive reuse of the workspace. While mOTA
+owns it, the normal queue overflow policy applies to the remaining 128 slots.</p>
+<p>The T096 profile requires at least 72 KiB of heap space at link time. It retains
+350 contacts, 40 channels, the color display, sensors, USB, Bluetooth,
+Bluetooth DFU, and USB/Bluetooth mOTA sending. This reserve is space for
+runtime allocations, not a measurement of free heap after boot.
+Bluetooth startup now checks both worker tasks and all registered services;
+a failed partial initialization does not repeat every five seconds. The
+sensor page reports low memory if its buffer could not be allocated.</p>
+<p>Regression tests transfer complete mOTA containers through the actual shared
+context, check queue wraparound and message order, and cover source stop,
+disconnect, conflicting USB/Bluetooth ownership and repeated sessions. They
+also inject worker-task and GATT-service failures, verify that retries do not
+initialize the stack again, open the sensor path with a failed allocation,
+and use the real linker assertion to reject the old heap budget.
+The original T096 Full download has been replaced by the corrected <code>aa20e927</code>
+image on the same release page. Another wipe is not a fix for the old compiled
+memory budget.</p>
+<p>For the corrected T096 build, use its matching application
+UF2 through the existing USB bootloader. Preserve the bootloader and node data.
+Check Bluetooth discovery, pairing and message exchange on battery power and
+with USB attached; then step through every menu page, return from screen-off,
+and check USB and Bluetooth mOTA sending. Hardware validation is pending.</p>
+<h2 id="firmware-roles-and-update-support">Firmware roles and update support</h2>
+<p>Use the exact board's Full Companion image when available. Every Full
+Companion must pass linked-firmware checks for MOTA sending, its text terminal,
+and the platform's source transports. ESP32 supplies USB and WiFi sources;
+nRF52 supplies USB and encrypted Bluetooth sources. Full Companions remain
+USB-updateable and do not require LoRa self-installation. Optional ESP32
+WiFi self-update uses port 8080 where the existing partition layout has two
+application slots; nRF52 retains Bluetooth DFU with a compatible bootloader.</p>
+<p>Read <a href="../../full_companion_features/">Full Companion feature switches</a> for
+on/off commands, USB logging, power saving, WiFi/Bluetooth selection, GPS,
+MQTT, MOTA sending, and update directions.</p>
+<p>Infrastructure artifacts must have a verified wireless self-update path.
+Option 3 reports and omits infrastructure on platforms without a wireless
+updater. The report is <code>ota-excluded-targets.txt</code>. Source/seeder capability
+alone does not count as self-update support. ESP32 qualification checks both
+application slots and OTA metadata; nRF52 Bluetooth qualification checks the
+linked DFU service and its application ZIP. LoRa installation on nRF52 still
+requires the exact matching OTAFIX bootloader and storage arrangement.</p>
+<p>Classic ESP32 capacity limits are recorded in each artifact's capability
+manifest. Generic E22, Heltec V2, Meshadventurer, and T-Beam OTA repeaters,
+plus the TLora MQTT repeater, use 50 neighbors where needed to preserve the
+required internal RAM reserve.
+T-Beam MQTT repeater profiles retain the full rule engine with 31 flood rules;
+constrained classic ESP32 ESP-NOW bridges with logging use 47.
+Meshadventurer Full uses 100 contacts, 30 group channels, and a 16-frame
+offline queue while retaining its MOTA and transport features.</p>
+<p>Since 1.17.1.4, this branch also includes USB session and contact-persistence
+fixes, automatic nRF52 ExtraFS recovery, improved Indicator setup/display
+handling, compressed MOTA transport, and measured ESP32 memory limits.
+Qualified internal-flash nRF52840 receivers now reserve 64 KiB of retained
+RAM to extend application MOTA staging beyond the available flash prefix.
+This handoff requires the exact board's
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6 bootloader</a>.
+Install that bootloader before relying on LoRa updates from these new hybrid
+receiver images: they reject application containers larger than one flash
+page when the installed bootloader lacks the retained-RAM capability.
+QSPI/microSD roles and Full Companions retain their existing storage layouts.
+An interrupted hybrid download must be fetched again after an application
+restart or power cycle. See the <a href="../../ota_protocol/">protocol</a> for the exact
+admission and reset checks.</p>
+<h2 id="build-using-option-3">Build using option 3</h2>
+<p>The equivalent reproducible command is:</p>
+<pre><code class="language-bash">OUTPUT_DIR=.releases/1.17.1.5-halo-keymind-cascade-dev \
+bash build.sh build-firmwares-logging-matrix \
+  --firmware-version v1.17.1.5-halo-keymind-cascade-dev \
+  --radio-preset usa-cascadia --profile cascade \
+  --require-ota --skip-kiss --resume --background
+</code></pre>
+<p>Or run <code>bash build.sh</code>, select option 3, set version
+<code>v1.17.1.5-halo-keymind-cascade-dev</code>, and retain USA Cascadia/Cascade.
+Option 3 enables the infrastructure OTA requirement by
+default. It merges supported runtime USB logging into canonical artifacts and
+builds the expanded ESP32 profiles. It runs one PlatformIO process at a time.</p>
+<p>The background launcher prints its persistent log and status paths. Each
+target also gets a log in <code>OUTPUT_DIR/build-logs/</code>. Resume accepts only
+artifacts with the current capability schema and a successful qualification;
+infrastructure also needs a verified update method. Any failed target leaves
+the matrix unsuccessful and must be resolved before publication.</p>
+<p><code>--allow-no-ota</code> is an explicit development override for cable-only
+infrastructure. Those outputs do not belong in this OTA-required release.
+Use a separate output directory when changing the radio or settings profile.
+Use a fresh release output directory after changing the source revision or
+firmware version so packaging cannot mix old and new binaries.</p>
+<h2 id="local-release-staging">Local release staging</h2>
+<p>After the matrix completes successfully, <code>scripts/package_cascade_release.py</code>
+groups the qualified images using the previous GitHub release naming. Each
+group includes the firmware files, capability manifests, TSV/JSON inventory,
+checksums, build notes, and Full Companion directions. The staging directory's
+root <code>FIRMWARE-PICKER-1.17.1.5.html</code> opens the local downloads; the copies inside
+each release group use the planned GitHub download URLs. Staging does not
+push commits, create remote tags, or publish a GitHub release.</p>
+<h2 id="published-release-set-and-small-slot-heltec-v4-updates">Published release set and small-slot Heltec V4 updates</h2>
+<p>The capability JSON and target inventories now report both Bluetooth DFU and
+LoRa mOTA for all 60 nRF52 receiver profiles. The original report omitted the
+nRF52 LoRa method. Each affected manifest includes <code>ota_update_requirements.lora</code>
+with its storage type, accepted package types, exact-base requirement for deltas,
+and the matching OTAFIX bootloader link. Internal-flash receivers accept in-place
+deltas; supported QSPI/SD receivers also accept full application packages. The
+20 retained-RAM receivers require OTAFIX 2.4.6's matching handoff support.
+These reports verify the released application bytes and storage layout; they
+do not certify the bootloader installed on a physical device. Firmware binaries
+and tags are unchanged. Full Companion mOTA sending remains separate from
+self-update capability.</p>
+<p>Published firmware tags remain at source commit <code>26303793</code>. Documentation can
+advance independently. The original matrix qualified 540 profiles (1,080
+firmware files) from 551 attempts; 11 oversized portable attempts have expanded
+Full replacements. The <a href="../1.17.1.5-variant-map.tsv">variant map</a> maps all 1,361
+previous-release choices to 1,325 covered choices and 36 excluded entries.
+Multiple old choices map to the same current artifact.</p>
+<p>For Heltec V4 with an existing compatible <strong>1.25 MiB OTA application slot</strong>, the
+standard <code>heltec_v4_repeater</code> application is <strong>1,179,200 bytes</strong> and the lean
+<code>heltec_v4_repeater_lora_ota_no_external_sensors</code> application is <strong>1,232,024 bytes</strong>.
+Both fit that slot. Start the WiFi uploader with <code>start ota ap</code>, join
+<code>MeshCore-OTA</code>, and open <code>http://192.168.4.1/update</code>. Upload the application
+<code>.bin</code>; use <code>stop ota</code> to close an unused uploader. Their merged USB installers
+write two 6.25 MiB application slots. Expanded Full V4 applications require
+the larger layout and do not fit a 1.25 MiB slot.</p>
+<ul>
+<li><a href="https://github.com/mikecarper/MeshCore/releases/tag/v1.17.1.5-halo-keymind-cascade-dev-26303793">Companion firmware</a></li>
+<li><a href="https://github.com/mikecarper/MeshCore/releases/tag/repeater-room-v1.17.1.5-halo-keymind-cascade-dev-26303793">Repeater and Room Server firmware</a></li>
+<li><a href="https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.17.1.5-halo-keymind-cascade-dev-26303793">Sensor firmware</a></li>
+<li><a href="https://github.com/mikecarper/MeshCore/releases/tag/lora-ota-v1.17.1.5-halo-keymind-cascade-dev-26303793">LoRa OTA repeater firmware</a></li>
+<li><a href="https://github.com/mikecarper/MeshCore/releases/tag/full-profiles-v1.17.1.5-halo-keymind-cascade-dev-26303793">Expanded Full infrastructure</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../_javascript/notification_builder.js?v=20260930-audio-start"></script>
+      
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      
+        <script src="../../_javascript/firmware_picker.js?v=20260929-4"></script>
+      
+        <script src="../../_javascript/telemetry_decoder.js"></script>
+      
+        <script src="../../_javascript/management_decoder.js"></script>
+      
+        <script src="../../_javascript/filter_tool.js"></script>
+      
+        <script src="../../_javascript/preset_test.js?v=20260923-2"></script>
+      
+    
+  </body>
+</html>

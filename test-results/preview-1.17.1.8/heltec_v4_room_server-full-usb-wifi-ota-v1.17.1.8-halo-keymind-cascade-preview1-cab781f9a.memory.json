@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "target": "heltec_v4_room_server",
+  "platform": "ESP32_PLATFORM",
+  "mcu": "esp32s3",
+  "elf_sha256": "3eb37eb59c76023d08b6b4240390adda686272d90acce81679f9a7f8188e0d94",
+  "passed": true,
+  "available_internal_bytes": 203800,
+  "largest_internal_region_bytes": 171032,
+  "required_heap_bytes": 158384,
+  "required_contiguous_bytes": 10256,
+  "components": {
+    "core_tasks_usb_filesystems": 24576,
+    "wireless_stacks": 49152,
+    "mqtt_connections_buffers": 24576,
+    "ota_source_scratch": 8192,
+    "browser_terminal_session": 2048,
+    "neighbor_history": 600,
+    "radio_packet_pool": 10240,
+    "client_table": 10256,
+    "room_flood_rule_table": 6216,
+    "display_pixels_and_driver": 4096,
+    "screen_objects_and_history": 2048,
+    "allocation_and_transient_margin": 16384
+  },
+  "display": "SSD1306Display",
+  "full_companion": false,
+  "regions": [
+    {
+      "start": 1070332664,
+      "end": 1070503696
+    },
+    {
+      "start": 1070530560,
+      "end": 1070563328
+    }
+  ],
+  "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+  "artifact_target": "heltec_v4_room_server",
+  "pio_environment": "heltec_v4_room_server_observer_mqtt",
+  "files": {
+    "heltec_v4_room_server-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.bin": "8e3b1ba0233101446d30c716cba368cccebd7ae431ab97e51de4b8813fcd7b3b",
+    "heltec_v4_room_server-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a-merged.bin": "070c7eeaa58f9fa8cbceea96fa4a2439d8e87fb20113a1c9409dfadba092d1f3",
+    "heltec_v4_room_server-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.capabilities.json": "98cc0e73739c8fd45fd0be2a4f744d029aebaa0bc33068f864bd63d711005ad3"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "artifact_target": "heltec_v4_repeater",
+  "build_profile": "full",
+  "capabilities": [
+    "bridge.espnow",
+    "profile.full",
+    "release.full.same_partition_successor",
+    "ota.update.wifi",
+    "ota.update.lora",
+    "cli.retry_preset",
+    "telemetry.history",
+    "ota.cli",
+    "web.webconfig",
+    "logging.usb.packets",
+    "logging.usb.control",
+    "logging.usb.output"
+  ],
+  "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+  "ota_update_methods": [
+    "wifi",
+    "lora"
+  ],
+  "ota_update_verified": true,
+  "platform": "ESP32_PLATFORM",
+  "platformio_env": "heltec_v4_repeater_observer_mqtt",
+  "reductions": [],
+  "schema_version": 2,
+  "target": "heltec_v4_repeater",
+  "verification": [
+    {
+      "capability": "ota.update.wifi",
+      "evidence": "Started: http://%s/update",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "ota.update.lora",
+      "evidence": "image_hash MISMATCH after decode",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "cli.retry_preset",
+      "evidence": "retry.preset",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "telemetry.history",
+      "evidence": "telemetry.volt.i2c",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "ota.cli",
+      "evidence": "OTA: status",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "web.webconfig",
+      "evidence": "start webconfig",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "logging.usb.packets",
+      "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "logging.usb.control",
+      "evidence": "OK - USB logging %s (saved)",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "logging.usb.output",
+      "evidence": "OK - logging.output %s (saved)",
+      "present": true,
+      "source": "packaged application"
+    }
+  ],
+  "verified": true
+}

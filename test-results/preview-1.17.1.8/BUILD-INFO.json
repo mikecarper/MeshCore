@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "version": "v1.17.1.8-halo-keymind-cascade-dev-d5853b9c",
+  "source_commit": "d5853b9ca2f8172622918088fe980d97095ba734",
+  "source_branch": "keymindCascade",
+  "source_worktree_clean": true,
+  "radio": {
+    "preset": "USA Cascade",
+    "frequency_mhz": 910.525,
+    "bandwidth_khz": 62.5,
+    "spreading_factor": 7,
+    "coding_rate": 5
+  },
+  "feature_profile": "cascade",
+  "preview": true,
+  "physical_hardware_testing_performed": false,
+  "build_commands": [
+    "OUTPUT_DIR=out/rak3401-preview-1.17.1.8/no-lora-ota bash build.sh build-firmware RAK_3401_repeater --build-profile standard --firmware-version v1.17.1.8-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade",
+    "OUTPUT_DIR=out/rak3401-preview-1.17.1.8/lora-ota bash build.sh build-firmware RAK_3401_repeater_lora_ota_no_external_sensors --build-profile standard --firmware-version v1.17.1.8-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "target": "RAK_3401_repeater",
+  "platform": "NRF52_PLATFORM",
+  "mcu": "nrf52840",
+  "elf_sha256": "e535ff473122d5c8bfb8398114232de4a0ebec85b3afa97bd661e8fb904b2b98",
+  "passed": true,
+  "available_internal_bytes": 162740,
+  "largest_internal_region_bytes": 162740,
+  "required_heap_bytes": 66904,
+  "required_contiguous_bytes": 12616,
+  "components": {
+    "loop_and_callback_stacks": 11264,
+    "core_usb_filesystems_sensors": 12288,
+    "radio_packet_pool": 10240,
+    "client_table": 10256,
+    "flood_filter_table": 12616,
+    "display_pixels_and_driver": 4096,
+    "screen_objects_and_history": 2048,
+    "allocation_and_transient_margin": 4096
+  },
+  "display": "SSD1306Display",
+  "full_companion": false,
+  "regions": [
+    {
+      "start": 536968268,
+      "end": 537131008
+    }
+  ],
+  "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+  "artifact_target": "RAK_3401_repeater",
+  "pio_environment": "RAK_3401_repeater",
+  "files": {
+    "RAK_3401_repeater-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.uf2": "ee5ace87301281715a0eaa47820750e6bae79f1286e6811766de0052f4b88f63",
+    "RAK_3401_repeater-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.zip": "db2a14d93cca17a079040a2ab8b9c9561f2b9e59fd13bed09e8d1a41a6a75dcb",
+    "RAK_3401_repeater-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.capabilities.json": "f401a87dd80f32386989126b471fe7ae3facecbb4c23ddbe64d56138bd58b796"
+  }
+}

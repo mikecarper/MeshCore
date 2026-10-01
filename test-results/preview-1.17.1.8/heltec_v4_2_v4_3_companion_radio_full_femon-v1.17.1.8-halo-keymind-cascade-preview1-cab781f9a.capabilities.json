@@ -1,0 +1,181 @@
+{
+  "artifact_target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "build_profile": "full",
+  "capabilities": [
+    "profile.full",
+    "companion.temp_radio",
+    "companion.ota_cli",
+    "companion.usb",
+    "companion.bluetooth",
+    "companion.usb_logging",
+    "companion.usb_mota_source",
+    "companion.mota_sender",
+    "companion.network_terminal",
+    "companion.wifi_ota_seeder",
+    "web.webconfig",
+    "web.unconfigured_setup_cutoff",
+    "companion.direct_mqtt",
+    "logging.usb.packets",
+    "logging.usb.control",
+    "companion.app_wifi.get_enabled",
+    "companion.app_wifi.set_enabled",
+    "companion.app_wifi.get_ssid",
+    "companion.app_wifi.set_ssid",
+    "companion.app_wifi.get_password",
+    "companion.app_wifi.set_password",
+    "companion.app_wifi.get_status",
+    "companion.app_wifi.get_ip",
+    "ota.update.wifi"
+  ],
+  "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+  "ota_update_methods": [
+    "wifi"
+  ],
+  "ota_update_verified": true,
+  "platform": "ESP32_PLATFORM",
+  "platformio_env": "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "reductions": [],
+  "schema_version": 2,
+  "target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "verification": [
+    {
+      "capability": "companion.temp_radio",
+      "evidence": "tempradio",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.ota_cli",
+      "evidence": "ota folder",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.usb",
+      "evidence": "+++MESHCORE-TERM-START",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.bluetooth",
+      "evidence": "Companion: starting Bluetooth",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.usb_logging",
+      "evidence": "get usb.logging",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.usb_mota_source",
+      "evidence": "ota folder on",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.mota_sender",
+      "evidence": "_ZN4mesh3ota16SerialMotaSource4read",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.network_terminal",
+      "evidence": "USB currently owns the Full Companion terminal",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.wifi_ota_seeder",
+      "evidence": "OTA seeder listening on :",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "web.webconfig",
+      "evidence": "start webconfig",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "web.unconfigured_setup_cutoff",
+      "evidence": "WiFi still unconfigured after",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "companion.direct_mqtt",
+      "evidence": "mqtt.status",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "logging.usb.packets",
+      "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "logging.usb.control",
+      "evidence": "get usb.logging",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.get_enabled",
+      "evidence": "get wifi.enabled",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.set_enabled",
+      "evidence": "set wifi.enabled ",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.get_ssid",
+      "evidence": "> (not set)",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.set_ssid",
+      "evidence": "OK - WiFi SSID saved",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.get_password",
+      "evidence": "get wifi.pwd",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.set_password",
+      "evidence": "OK - WiFi password saved",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.get_status",
+      "evidence": "wifi.status",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "companion.app_wifi.get_ip",
+      "evidence": "get wifi.ip",
+      "present": true,
+      "source": "packaged application"
+    },
+    {
+      "capability": "ota.update.wifi",
+      "evidence": "MeshCore firmware update",
+      "present": true,
+      "source": "linked gzip asset"
+    }
+  ],
+  "verified": true
+}

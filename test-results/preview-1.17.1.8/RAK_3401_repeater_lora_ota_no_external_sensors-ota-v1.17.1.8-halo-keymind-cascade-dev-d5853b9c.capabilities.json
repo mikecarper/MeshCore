@@ -1,0 +1,110 @@
+{
+  "artifact_target": "RAK_3401_repeater_lora_ota_no_external_sensors",
+  "build_profile": "standard",
+  "capabilities": [
+    "profile.standard",
+    "ota.update.bluetooth",
+    "ota.update.lora",
+    "cli.retry_preset",
+    "telemetry.history",
+    "ota.cli",
+    "sensor.gps",
+    "sensor.ina219",
+    "sensor.ina226",
+    "sensor.ina260",
+    "sensor.ina3221"
+  ],
+  "ota_update_evidence": "application DFU ZIP verified; matching BLE DFU bootloader required; LoRa mOTA receiver/apply code and EndF storage layout verified: internal_flash_and_retained_ram; matching board/storage OTAFIX bootloader and compatible destination package required",
+  "ota_update_methods": [
+    "bluetooth",
+    "lora"
+  ],
+  "ota_update_requirements": {
+    "lora": {
+      "bootloader": "Matching board/storage OTAFIX bootloader",
+      "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6",
+      "notes": [
+        "Use a destination-specific .mota package matching the board, target, and storage layout.",
+        "An in-place delta requires the exact firmware currently running as its base.",
+        "The package must fit the receiver's staging and apply workspace.",
+        "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+        "Requires OTAFIX 2.4.6 retained-RAM handoff support; a transfer cannot resume after the receiver restarts."
+      ],
+      "package_types": [
+        "in_place_delta"
+      ],
+      "storage": "internal_flash_and_retained_ram"
+    }
+  },
+  "ota_update_verified": true,
+  "platform": "NRF52_PLATFORM",
+  "platformio_env": "RAK_3401_repeater_lora_ota_no_external_sensors",
+  "reductions": [
+    "selected optional environmental/ranging drivers omitted; INA219/INA226/INA260/INA3221 and board display/RTC/GPS retained; RAK12500 and INA3221 require distinct configured I2C addresses"
+  ],
+  "schema_version": 2,
+  "target": "RAK_3401_repeater_lora_ota_no_external_sensors",
+  "verification": [
+    {
+      "capability": "ota.update.bluetooth",
+      "evidence": "_ZN6BLEDfu5beginEv",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "ota.update.lora",
+      "evidence": "invalid in-place patch geometry",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "cli.retry_preset",
+      "evidence": "retry.preset",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "telemetry.history",
+      "evidence": "telemetry.volt.i2c",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "ota.cli",
+      "evidence": "OTA: status",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "sensor.gps",
+      "evidence": "meshcore.capability.rak_wisblock_gps.v1",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "sensor.ina219",
+      "evidence": "INA219",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "sensor.ina226",
+      "evidence": "INA226",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "sensor.ina260",
+      "evidence": "INA260",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "sensor.ina3221",
+      "evidence": "INA3221",
+      "present": true,
+      "source": "linked image"
+    }
+  ],
+  "verified": true
+}

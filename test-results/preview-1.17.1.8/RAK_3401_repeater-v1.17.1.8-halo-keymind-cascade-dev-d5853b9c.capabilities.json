@@ -1,0 +1,41 @@
+{
+  "artifact_target": "RAK_3401_repeater",
+  "build_profile": "standard",
+  "capabilities": [
+    "profile.standard",
+    "ota.update.bluetooth",
+    "cli.retry_preset",
+    "telemetry.history"
+  ],
+  "ota_update_evidence": "application DFU ZIP verified; matching BLE DFU bootloader required",
+  "ota_update_methods": [
+    "bluetooth"
+  ],
+  "ota_update_verified": true,
+  "platform": "NRF52_PLATFORM",
+  "platformio_env": "RAK_3401_repeater",
+  "reductions": [],
+  "schema_version": 2,
+  "target": "RAK_3401_repeater",
+  "verification": [
+    {
+      "capability": "ota.update.bluetooth",
+      "evidence": "_ZN6BLEDfu5beginEv",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "cli.retry_preset",
+      "evidence": "retry.preset",
+      "present": true,
+      "source": "linked image"
+    },
+    {
+      "capability": "telemetry.history",
+      "evidence": "telemetry.volt.i2c",
+      "present": true,
+      "source": "linked image"
+    }
+  ],
+  "verified": true
+}

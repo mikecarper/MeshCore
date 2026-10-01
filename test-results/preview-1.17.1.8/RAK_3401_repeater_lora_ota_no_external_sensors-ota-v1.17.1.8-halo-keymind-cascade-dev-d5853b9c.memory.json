@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "target": "RAK_3401_repeater_lora_ota_no_external_sensors",
+  "platform": "NRF52_PLATFORM",
+  "mcu": "nrf52840",
+  "elf_sha256": "98297b740f52e278c9533400de7434e33487adae943c1c58434c833248285450",
+  "passed": true,
+  "available_internal_bytes": 67660,
+  "largest_internal_region_bytes": 67660,
+  "required_heap_bytes": 66904,
+  "required_contiguous_bytes": 12616,
+  "components": {
+    "loop_and_callback_stacks": 11264,
+    "core_usb_filesystems_sensors": 12288,
+    "radio_packet_pool": 10240,
+    "client_table": 10256,
+    "flood_filter_table": 12616,
+    "display_pixels_and_driver": 4096,
+    "screen_objects_and_history": 2048,
+    "allocation_and_transient_margin": 4096
+  },
+  "display": "SSD1306Display",
+  "full_companion": false,
+  "regions": [
+    {
+      "start": 536997812,
+      "end": 537065472
+    }
+  ],
+  "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+  "artifact_target": "RAK_3401_repeater_lora_ota_no_external_sensors",
+  "pio_environment": "RAK_3401_repeater_lora_ota_no_external_sensors",
+  "files": {
+    "RAK_3401_repeater_lora_ota_no_external_sensors-ota-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.uf2": "4725fb48c382d8da834f26a51b8b574167fd8da23ec78352d1dfb35f2265d8b5",
+    "RAK_3401_repeater_lora_ota_no_external_sensors-ota-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.zip": "824d9601cefdbf66f948a38eb89e1a29fc6e23ec8ce5025a24293d0c036bea29",
+    "RAK_3401_repeater_lora_ota_no_external_sensors-ota-v1.17.1.8-halo-keymind-cascade-dev-d5853b9c.capabilities.json": "4c8fa6183af5ff9ad1fe49cbb9cd0289f708bd9c97fe0acd2b764c0a6cb26e4f"
+  }
+}

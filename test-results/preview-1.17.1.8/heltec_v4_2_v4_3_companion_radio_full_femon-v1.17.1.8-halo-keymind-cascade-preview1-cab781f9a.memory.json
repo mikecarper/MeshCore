@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "platform": "ESP32_PLATFORM",
+  "mcu": "esp32s3",
+  "elf_sha256": "225a3d11b2be308a3a8730f6d5e2599f8a31d9f653b6fca866a3b7e2c79719c7",
+  "passed": true,
+  "available_internal_bytes": 237048,
+  "largest_internal_region_bytes": 204280,
+  "required_heap_bytes": 177920,
+  "required_contiguous_bytes": 11008,
+  "components": {
+    "core_tasks_usb_filesystems": 24576,
+    "wireless_stacks": 81920,
+    "mqtt_connections_buffers": 24576,
+    "ota_source_scratch": 8192,
+    "browser_terminal_session": 2048,
+    "radio_packet_pool": 5120,
+    "display_pixels_and_driver": 4096,
+    "screen_objects_and_history": 8192,
+    "expanded_message_previews": 2816,
+    "allocation_and_transient_margin": 16384
+  },
+  "display": "SSD1306Display",
+  "full_companion": true,
+  "regions": [
+    {
+      "start": 1070299416,
+      "end": 1070503696
+    },
+    {
+      "start": 1070530560,
+      "end": 1070563328
+    }
+  ],
+  "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+  "artifact_target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "pio_environment": "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "files": {
+    "heltec_v4_2_v4_3_companion_radio_full_femon-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.bin": "dcbdbeec7b369c8eabaaadb6072851d04cf30417ffe1ead5f4bea5e57c1ba950",
+    "heltec_v4_2_v4_3_companion_radio_full_femon-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a-merged.bin": "877884505324e32f5ac732c1cc346c5a4139204962560b9b413963e5402ee85c",
+    "heltec_v4_2_v4_3_companion_radio_full_femon-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.capabilities.json": "d3cfdb5c8a98364e874354401ecfc3ec0a3900566c78051a24ab1e38e74d4cba"
+  }
+}
