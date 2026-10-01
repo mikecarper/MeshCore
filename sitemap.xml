@@ -429,6 +429,34 @@
          <lastmod>2026-10-01</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/companion_contact_cache/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/esp32_memory_budget/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/firmware_memory_budget/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/nrf52_bluetooth_debug/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/rak3401_1.17.1.7_legacy24/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/rak3401_mota_chain/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/</loc>
          <lastmod>2026-10-01</lastmod>
     </url>
@@ -474,6 +502,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/full_usb_logging_validation/</loc>
+         <lastmod>2026-10-01</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/hardware_validation_bluetooth_stealth_2026-09-07/</loc>
          <lastmod>2026-10-01</lastmod>
     </url>
     <url>

@@ -1,0 +1,3132 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/research/rak3401_mota_chain/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>RAK3401 1W repeater compact LoRa update chain - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../_stylesheets/notification_builder.css">
+    
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/firmware_picker.css?v=20260929-1">
+    
+      <link rel="stylesheet" href="../../_stylesheets/telemetry_decoder.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/management_decoder.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/filter_tool.css">
+    
+      <link rel="stylesheet" href="../../_stylesheets/preset_test.css?v=20260923-2">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rak3401-1w-repeater-compact-lora-update-chain" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              RAK3401 1W repeater compact LoRa update chain
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware and tools
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Firmware and tools
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../firmware_picker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware picker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../notifications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion notification builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../preset_test/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Temporary radio test builder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../filter_tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filter policy playground
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../management_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management report decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Documentation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started and features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started and features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature switches by role — 1.17.1.5 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../full_companion_features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion: turn features on and off
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../companion_radio_full/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full Companion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion USB CLI and binary switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../companion_offline_queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Offline Message Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo and Keymind Branch Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates and partitions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Firmware updates and partitions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Updating your node over the air (OTA) - user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Easy firmware updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../lora_ota_automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scripted LoRa OTA from start to finish
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 bootloader updates over LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 repeater LoRa OTA with external QSPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshTower V2 microSD LoRa OTA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../esp32_partition_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32 release partition lookup table
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../esp32_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32 legacy-partition migration over Wi-Fi or LoRa
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Heltec V4 legacy-partition migration over Wi-Fi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LoRa CLI Host Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio, networking, and power
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Radio, networking, and power
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../radio_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Two LoRa profiles on one radio
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../carrier_wave/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Carrier-wave RF checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../espnow_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP-NOW bridge: simple setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi and MQTT by Firmware Type
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flood Filtering and Moderation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GPS Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    nRF52 Power Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI and protocol reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI and protocol reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Availability by Firmware Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Command Availability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Chat CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore KISS Modem Protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payload Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeshCore OTA - .mota container &amp; LoRa protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../management_reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management reports (MGR1)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats Binary Frame Structures
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number Allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QR Codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local Documentation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Releases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releases/1.17.1.8/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Current release
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../old-releases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Old Releases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#exact-destination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exact destination
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Exact destination">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#retained-and-omitted-hardware-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retained and omitted hardware support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-the-deployed-otafix24-and-old-staging-ceiling-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why the deployed OTAFIX2.4 and old staging ceiling work
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verify-offline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify offline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guarded-prerelease-lab-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guarded prerelease lab command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#superseded-b40d2e6c-prerelease" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Superseded b40d2e6c prerelease
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#legacy-fd98bc90-physical-and-swd-qualification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Legacy fd98bc90 physical and SWD qualification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Legacy fd98bc90 physical and SWD qualification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured-direct-link-timing-for-fd98bc90" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measured direct-link timing for fd98bc90
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#live-progress-and-speed-sanity-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live progress and speed sanity checks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-operation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual operation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Manual operation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-verify-and-extract-the-asset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Verify and extract the asset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-record-and-prepare-the-destination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Record and prepare the destination
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-install-all-ten-packages-in-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Install all ten packages in order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-intermediate-relays-and-restoration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Intermediate relays and restoration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-relay-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-relay deployment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rescue-and-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rescue and completion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-radio-startup-and-manual-usb-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External-radio startup and manual USB recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/research/rak3401_mota_chain.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="rak3401-1w-repeater-compact-lora-update-chain">RAK3401 1W repeater compact LoRa update chain</h1>
+<blockquote>
+<p>Status: <strong>published prerelease for controlled, recoverable lab use.</strong> On
+29-Aug-2026 steps 1-9 completed on the target RAK3401 and are byte-for-byte
+identical to the corresponding transitions in the physically passed
+<code>fd98bc90</code> chain. The replacement step 10 installs the current <code>3f6eddd5</code>
+endpoint. That replacement package and the hardened current runner have
+passed offline reconstruction plus the exact deployed bootloader simulator, but
+have not had a new physical end-to-end run. Use the lab gate and keep local
+DFU/SWD recovery available. Multi-hop and alternate-bandwidth estimates
+remain planning data, not physical qualification.</p>
+</blockquote>
+<p>The prerelease is
+<a href="https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.6-3f6eddd5"><code>rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.6-3f6eddd5</code></a>.
+Use this asset:</p>
+<pre><code class="language-text">RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip
+</code></pre>
+<ul>
+<li>prerelease ZIP SHA-256: <code>135783dd8777490db2422a7543f7d80e3cf03f621d5ac362da930abbc1850dc4</code></li>
+<li>inner <code>SHA256SUMS.txt</code> SHA-256: <code>93835ed497c579be0a2322292e7f15ab095e7c8ab7892833fe7df3130dbdaba4</code></li>
+<li>endpoint image SHA-256: <code>cd1e9b819f9e918f9f2ceaf37b8a74bf242e2be78f319af2cf02a42d7729d0f4</code></li>
+<li>endpoint EndF body hash: <code>9BD7CF682EE065AE</code></li>
+</ul>
+<p><code>--verify-only</code> remains the safe default. Live preflight and installation of
+this prerelease require <code>--accept-test-candidate</code>. That switch bypasses only
+the prerelease-status gate; it does not bypass the archive, identity,
+bootloader, route, watchdog, reachability, or post-boot checks.</p>
+<h2 id="exact-destination">Exact destination</h2>
+<p>This chain is intentionally specific to one firmware lineage and hardware
+target:</p>
+<ul>
+<li>target ID: <code>2FA509C1</code></li>
+<li>hardware: <code>RAK_3401</code></li>
+<li>role: <code>RAK_3401_repeater_lora_ota_no_external_sensors</code></li>
+<li>start: <code>v1.16.7.0-c1caa5ad</code>, EndF <code>71F4026CBE4B8B74</code></li>
+<li>endpoint source: MeshCore <code>3f6eddd5c20f1fa3df6ba1cc208efbe3e2fffb43</code></li>
+<li>endpoint label: <code>v1.17.1.6-halo-keymind-cascade-dev-3f6eddd5</code></li>
+<li>endpoint packed version: <code>0x01110106</code></li>
+<li>deployment target key: <code>63d8df6387eaffd2e25db7d2a8ad967a65202182a48d681d7e7a9260f917280d</code></li>
+</ul>
+<p>The exact starting application is the
+<a href="https://github.com/mikecarper/MeshCore/releases/tag/lora-ota-v1.16.07-halo-keymind-cascade-dev-3a6af3bf"><code>lora-ota-v1.16.07-halo-keymind-cascade-dev-3a6af3bf</code></a>
+RAK3401 asset. Its outer ZIP SHA-256 is
+<code>58ead2ea18efafda186bc9d983fe08cdf65f69b0e5a3a1c72c18fe35948a254c</code>;
+its 566,912-byte <code>firmware.bin</code> SHA-256 is
+<code>4301fc63ebd661c70f9bc40e7eca44d3cb8a358cb3c0075e700d9676a57478cb</code>.
+The endpoint build ZIP SHA-256 is
+<code>a9fca9be145a96feb650b57c43b5ed173d74d2f3194da12e31b1c54352635b56</code>.</p>
+<h3 id="retained-and-omitted-hardware-support">Retained and omitted hardware support</h3>
+<p>Despite the legacy <code>no_external_sensors</code> target name, the endpoint retains the
+RAK12501 GPS provider and the common INA3221, INA219, INA226, and INA260 I2C
+voltage/current monitors. Install RAK12501 in sensor slot A. Do not use slot D
+with the RAK13302 1 W radio because the GPS reset/PPS signals overlap the
+radio's BUSY/DIO1 wiring.</p>
+<p>The reduced profile omits optional external environmental and ranging devices:
+AHTX0, BME280, BMP280, SHTC3, SHT4x, LPS22HB, MLX90614, VL53L0X, BME680,
+BMP085, RAK12035, and BME680 BSEC. Board radio, display, buttons, battery
+telemetry, GPS, and the INA monitor family remain. No additional “remove I2C
+temperature” image is needed: the optional I2C temperature/environment drivers
+are already in the omitted set, while removing the remaining I2C/INA support
+would discard desired voltage/current monitoring and create another firmware
+identity without helping this route.</p>
+<p>Do not use the chain on another target ID, hardware family, starting image, or
+firmware body hash. The runner checks all four.</p>
+<h2 id="why-the-deployed-otafix24-and-old-staging-ceiling-work">Why the deployed OTAFIX2.4 and old staging ceiling work</h2>
+<p>The deployed bootloader is not changed and no package uses the newer expanded
+<code>0xED000</code> ceiling. Each package remains bottom-aligned below the old
+bootloader's <code>0xD4000</code> scan ceiling. Its detools workspace is page-aligned and
+must satisfy:</p>
+<pre><code class="language-text">0x26000 + inplace_memory &lt;= staged_package_start &lt; 0xD4000
+</code></pre>
+<p>The old bootloader already reads and validates that encoded detools geometry
+before its first destructive write. The previous application receiver was the
+limiting part: it reserved a fixed <code>0x98000</code> workspace before accepting a
+download. Step 1 therefore remains byte-for-byte identical to the physically
+passed 89,844-byte package. Step 2 is a 46,364-byte fixed-workspace package
+that installs the compatibility receiver. Later receivers stage above the
+real EndF image extent and let the bootloader enforce each package's selected
+workspace.</p>
+<p>Every package in this candidate is an ordinary application container using
+format ABI 2 and in-place codec 2. The historical bridge applications scan the
+bootloader capability marker byte-by-byte, so they recognize the released
+<code>0.9.2-OTAFIX2.4</code> marker at absolute address <code>0xFCD16</code>. That immutable marker
+advertises ABI 2, codec mask <code>0x0004</code>, and internal storage profile 0. The
+<code>3f6eddd5</code> endpoint retains the matching legacy application-update fallback.
+Its separately compiled internal bootloader-update feature remains unavailable
+because privileged self-update requires a current ABI 3 marker with the exact
+storage profile.
+Installing this chain therefore does not replace the bootloader, and the final
+application can still accept a future valid ABI-2/codec-2 application update.</p>
+<p>The exact installed bootloader is the
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.9.2-OTAFIX2.4/wiscore_rak4631_board_bootloader-0.9.2-OTAFIX2.4_s140_6.1.1.zip"><code>0.9.2-OTAFIX2.4</code> RAK4631 asset</a>.
+Its outer ZIP SHA-256 is
+<code>5e29e7a8982cc2ed5f8868435556eb09387250fe5b9a7e8443bac325247dfed1</code>;
+its 191,040-byte <code>sd_bl.bin</code> SHA-256 is
+<code>a97f834388db0f1da6c29f6d8f458ff6d3e6a26034709044566384838919bb23</code>.
+The exact simulator was compiled from release commit
+<code>d73de8372e89b8ef352747c8bc7a1aaeab80fbfe</code>; its executable SHA-256 is
+<code>9dacf24b1023fe2f4c620419417649ccc9538dd4a611b47bc19b7fedb97ceba6</code>.</p>
+<p>The schema-2 exhaustive search checked 1,799 candidate geometries and found 12
+feasible forward edges in the declared exact 12-node inventory. It found one
+shortest ten-package route and selected the smallest total container bytes as
+the secondary objective. This minimum applies only to that declared inventory
+and geometry table, not every conceivable new bridge image. The selected route
+is:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Step</th>
+<th>From</th>
+<th>To</th>
+<th style="text-align: right;">Workspace</th>
+<th style="text-align: right;">Package</th>
+<th style="text-align: right;">Margin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">1</td>
+<td>1.16.7.0</td>
+<td>1.16.7.9</td>
+<td style="text-align: right;"><code>0x98000</code></td>
+<td style="text-align: right;">89,844</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: right;">2</td>
+<td>1.16.7.9</td>
+<td>1.16.7.10</td>
+<td style="text-align: right;"><code>0x98000</code></td>
+<td style="text-align: right;">46,364</td>
+<td style="text-align: right;">40,960</td>
+</tr>
+<tr>
+<td style="text-align: right;">3</td>
+<td>1.16.7.10</td>
+<td>1.16.8.7</td>
+<td style="text-align: right;"><code>0x91000</code></td>
+<td style="text-align: right;">106,029</td>
+<td style="text-align: right;">12,288</td>
+</tr>
+<tr>
+<td style="text-align: right;">4</td>
+<td>1.16.8.7</td>
+<td>1.16.9.105</td>
+<td style="text-align: right;"><code>0x89000</code></td>
+<td style="text-align: right;">149,927</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td>1.16.9.105</td>
+<td>1.16.9.110</td>
+<td style="text-align: right;"><code>0x8E000</code></td>
+<td style="text-align: right;">111,312</td>
+<td style="text-align: right;">16,384</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td>1.16.9.110</td>
+<td>1.16.9.113</td>
+<td style="text-align: right;"><code>0x8F000</code></td>
+<td style="text-align: right;">120,624</td>
+<td style="text-align: right;">4,096</td>
+</tr>
+<tr>
+<td style="text-align: right;">7</td>
+<td>1.16.9.113</td>
+<td>1.16.9.117</td>
+<td style="text-align: right;"><code>0x8B000</code></td>
+<td style="text-align: right;">139,637</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: right;">8</td>
+<td>1.16.9.117</td>
+<td>1.16.10.0</td>
+<td style="text-align: right;"><code>0x7E000</code></td>
+<td style="text-align: right;">174,202</td>
+<td style="text-align: right;">20,480</td>
+</tr>
+<tr>
+<td style="text-align: right;">9</td>
+<td>1.16.10.0</td>
+<td>1.17.1.3</td>
+<td style="text-align: right;"><code>0x6B000</code></td>
+<td style="text-align: right;">271,569</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: right;">10</td>
+<td>1.17.1.3</td>
+<td>1.17.1.6</td>
+<td style="text-align: right;"><code>0x76000</code></td>
+<td style="text-align: right;">197,825</td>
+<td style="text-align: right;">28,672</td>
+</tr>
+</tbody>
+</table>
+<p>Total mOTA transfer data is 1,407,333 bytes. <code>ROUTE.json</code>, <code>CHAIN.csv</code>, and
+<code>validation-results.json</code> in the bundle pin the exact geometry and image hash
+for every transition.</p>
+<p>Steps 1-9 are byte-for-byte identical to the transitions that passed on the
+physical RAK3401. The replacement step 10, from the physically reached
+<code>FE65A6135A1E7B3F</code> v1.17.1.3 body to <code>9BD7CF682EE065AE</code>, has offline
+qualification only. All ten packages passed independent container checks,
+zero-filled and erased-workspace reconstruction, and the exact deployed
+<code>0.9.2-OTAFIX2.4</code> simulator. Those results prove the package bytes and apply
+geometry; they are not a physical claim for the replacement step 10 or the
+hardened runner.</p>
+<p>The 171-byte transport DEFLATE support lands only in the final <code>3f6eddd5</code>
+application. The starting receiver and every receiver that accepts steps 1-10
+lack that inflate path, so all ten legacy-chain transfers remain raw and the
+1,407,333-byte total above is not automatically reduced over LoRa. A later
+update can negotiate transport compression after this endpoint is running;
+the application inflates before staging, and the immutable bootloader still
+applies an ordinary ABI-2/codec-2 container.</p>
+<h2 id="host-requirements">Host requirements</h2>
+<p>Install Python 3.9 or newer, <code>meshcli</code> 1.6.0 or newer, the current <code>motatool</code>,
+and an OTA-enabled Full Companion or repeater that can seed mOTA files.</p>
+<h2 id="verify-offline">Verify offline</h2>
+<p>No password or device is needed:</p>
+<pre><code class="language-bash">python3 tools/lora_ota/rak3401_mota_chain.py \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip \
+  --work-dir ./rak3401-mota-chain-work \
+  --motatool /path/to/motatool \
+  --verify-only
+</code></pre>
+<p>When given the ZIP, the runner checks its pinned outer hash and binds the
+extraction cache to that exact archive. An explicitly supplied extracted root
+starts at the pinned inner checksum list. In either case it checks complete
+inner coverage, all ten manifests, continuity, image anchors, both recovery
+images, and every container with <code>motatool</code>. Passing this command means offline
+and simulator qualification only; it does not unlock live use.</p>
+<h2 id="guarded-prerelease-lab-command">Guarded prerelease lab command</h2>
+<p>These direct-link arguments match the physical transition setup, but the
+current package replaces step 10 and the current host runner contains later
+cleanup and recovery fixes. Neither has been cleanly rerun through the whole
+chain. Keep local USB/SWD recovery available. The candidate switch bypasses
+only the prerelease-status block; all identity, checksum, bootloader, route,
+watchdog, reachability, and post-boot gates still run.</p>
+<p>Restore the test start locally with
+<code>recovery/test-start/RAK3401-test-start-v1.16.7-c1caa5ad.uf2</code>, then run:</p>
+<pre><code class="language-bash">export MESHCORE_ADMIN_PASSWORD='password'
+
+python3 tools/lora_ota/rak3401_mota_chain.py \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip \
+  --work-dir ./rak3401-mota-chain-work \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp 192.168.1.51:5001 \
+  --source-cli-tcp 192.168.1.51:5002 \
+  --source-shares-controller \
+  --target-key 63d8df63 \
+  --temp-radio 909.950,500,5,5,120 \
+  --ota-hops 0 \
+  --legacy-full-airtime \
+  --motatool /path/to/motatool \
+  --accept-test-candidate \
+  --yes
+</code></pre>
+<p><code>--target-key</code> accepts a full contact public key or a unique hexadecimal prefix
+of at least eight characters, such as the 12-character prefix shown by
+<code>meshcli lc</code>. The chain resolves it against the controller's saved contacts
+and uses the full key for every remote command and transfer step. Emoji or a
+later change in the repeater's display name does not affect selection. Each
+<code>--relay</code> can likewise use a full key or unique prefix instead of a name.
+The target still must be a repeater contact with the exact hardware, firmware,
+and bootloader required by this chain.</p>
+<p>Keep the work directory. Rerunning the same command resumes only when the live
+EndF body hash matches an exact chain node. Never manually skip a package.
+<code>--legacy-full-airtime</code> temporarily sets the destination airtime factor to
+zero and restores it at the endpoint. Use that option only where the selected
+frequency and local duty-cycle rules permit a full transmit budget; omit it
+otherwise.</p>
+<h2 id="superseded-b40d2e6c-prerelease">Superseded <code>b40d2e6c</code> prerelease</h2>
+<p>The immediately preceding prerelease remains pinned for offline provenance:</p>
+<ul>
+<li>release: <a href="https://github.com/mikecarper/MeshCore/releases/tag/rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c"><code>rak3401-mota-v1.16.07-c1caa5ad-to-v1.17.1.5-b40d2e6c</code></a></li>
+<li>asset: <code>RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip</code></li>
+<li>outer ZIP SHA-256: <code>8e7f0c2565f37d4372fa51dc3ba72b591e7f38b74be09303e48641623f99bce4</code></li>
+<li>inner <code>SHA256SUMS.txt</code> SHA-256: <code>29a02a6c4c83eafa80168a80562b0ded5d8432e6cc02cfaca289cb2ed426681a</code></li>
+<li>endpoint image SHA-256: <code>a7761da8af1f2447d7f01d72e2b1456b99c0e874a165d6483f48ab1f58e8d905</code></li>
+<li>endpoint EndF body hash: <code>1FA6AAA3C28D8BD8</code></li>
+</ul>
+<p>Its first nine packages are byte-for-byte identical to the current release and
+the physical <code>fd98bc90</code> evidence. Its different step 10 had offline
+qualification only. The runner recognizes this exact archive separately and
+keeps live use gated; it is not interchangeable with the current <code>3f6eddd5</code>
+asset.</p>
+<h2 id="legacy-fd98bc90-physical-and-swd-qualification">Legacy <code>fd98bc90</code> physical and SWD qualification</h2>
+<p>The earlier local candidate remains the exact physical evidence source for
+this route:</p>
+<pre><code class="language-text">RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-fd98bc90.zip
+</code></pre>
+<ul>
+<li>candidate ZIP SHA-256: <code>c0b33f4568985e8b2b8dc99411295907212cf2bad21764b6333d5e0ba298fd61</code></li>
+<li>inner <code>SHA256SUMS.txt</code> SHA-256: <code>3f8c4af8096b96a4aa6506825c387cc8a06f74d5213a29c9387bd11689546881</code></li>
+<li>endpoint image SHA-256: <code>31c182c888ceb1135e5afb2376610d93cee2e807b556c838e07fd4486c79d095</code></li>
+<li>endpoint EndF body hash: <code>9179B98432895924</code></li>
+</ul>
+<p>All ten exact <code>fd98bc90</code> transitions completed on the RAK3401 with its
+deployed <code>0.9.2-OTAFIX2.4</code> bootloader and a Heltec V4 source at 909.950 MHz /
+500 kHz / SF5 / CR5. Every intermediate EndF hash matched. Independent SWD
+readback then matched the endpoint application, original bootloader,
+SoftDevice/MBR, and UICR byte-for-byte. Steps 1-9 are also the exact first nine
+packages in the <code>b40d2e6c</code> and <code>3f6eddd5</code> prereleases. All three candidates
+have different step 10 packages or endpoints, so the physical result and
+step-10 timing must not be attributed to either later prerelease.</p>
+<h3 id="measured-direct-link-timing-for-fd98bc90">Measured direct-link timing for <code>fd98bc90</code></h3>
+<p>The first <code>ready to install</code> transfer ages were:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Step</th>
+<th style="text-align: right;">Blocks</th>
+<th style="text-align: right;">Transfer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">88</td>
+<td style="text-align: right;">598 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">45</td>
+<td style="text-align: right;">42 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">103</td>
+<td style="text-align: right;">81 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">146</td>
+<td style="text-align: right;">105 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">109</td>
+<td style="text-align: right;">76 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">118</td>
+<td style="text-align: right;">94 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">136</td>
+<td style="text-align: right;">102 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">170</td>
+<td style="text-align: right;">127 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">264</td>
+<td style="text-align: right;">187 s</td>
+</tr>
+<tr>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">169</td>
+<td style="text-align: right;">193 s</td>
+</tr>
+</tbody>
+</table>
+<p>The physically observed bulk-transfer total for those exact legacy packages is
+1,605 seconds (26m45s). The log came from the pre-cleanup-fix runner revision.
+Step 1 was measured before the host began forcing source RXPS off and is
+therefore a conservative outlier. A new complete run with that fix is projected
+at roughly 18–19 minutes of bulk transfer, but that projection is not a
+substitute for the measured total. Allow about 70–75 minutes direct at BW500
+for validation, ten transfers, installs/reboots, retained-store checks, and
+final restoration.</p>
+<p>The legacy step 10's longer per-block time was not a V4 TempRadio delay: the
+source RXPS readback was off. Its v1.17.1.3 requester uses non-overlapping
+adaptive flights and a five-second recovery floor and logged more block reloads
+than step 8. The V4 itself intentionally schedules its local radio handoff
+after 1.5 seconds so the normal-channel command reply can drain; the host waits
+three seconds and then checks the live TempRadio state.</p>
+<h3 id="live-progress-and-speed-sanity-checks">Live progress and speed sanity checks</h3>
+<p>The runner watches <code>motatool serve -v</code> locally, so its quarter-progress reports
+do not consume LoRa airtime. At BW500 direct, physically measured steps 2–9
+averaged about 1.1–1.4 newly requested payload blocks per second; the legacy
+step 10 averaged about 0.88 blocks/s, and step 1's 0.15 blocks/s was the known
+pre-RXPS-fix outlier. Use those only as bench sanity ranges, not guarantees.
+Relays, narrower bandwidths, interference, and recovery reads lower the rate.</p>
+<p>Healthy output keeps advancing from <code>[download] passive source progress x/y</code>
+to <code>source read all y payload blocks</code>, followed by destination status <code>ready to
+install y/y (100%)</code> for the same manifest ID. Aggregate reads above the unique
+block count indicate recovery/retry traffic. A radio-scaled no-progress window
+causes one destination status check; the transfer timeout leaves the partial
+download staged for an exact-package resume. Stop and diagnose instead of
+installing if the manifest changes, progress remains flat through those checks,
+the final receiver count is not <code>y/y</code>, or the measured rate is far below the
+matching bandwidth/hop estimate without an understood RF cause.</p>
+<p>For planning only, scale the conservative measured <code>fd98bc90</code> 26m45s bulk
+baseline by the qualified adaptive-preamble airtime and by each additional
+relay transmission:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Bandwidth, SF5/CR5</th>
+<th style="text-align: right;">Direct / 0 relays</th>
+<th style="text-align: right;">1 relay</th>
+<th style="text-align: right;">2 relays</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">500 kHz</td>
+<td style="text-align: right;">26m45s</td>
+<td style="text-align: right;">53m30s</td>
+<td style="text-align: right;">1h20m15s</td>
+</tr>
+<tr>
+<td style="text-align: right;">250 kHz</td>
+<td style="text-align: right;">46m51s</td>
+<td style="text-align: right;">1h33m42s</td>
+<td style="text-align: right;">2h20m33s</td>
+</tr>
+<tr>
+<td style="text-align: right;">125 kHz</td>
+<td style="text-align: right;">1h27m03s</td>
+<td style="text-align: right;">2h54m07s</td>
+<td style="text-align: right;">4h21m11s</td>
+</tr>
+<tr>
+<td style="text-align: right;">62.5 kHz</td>
+<td style="text-align: right;">2h54m07s</td>
+<td style="text-align: right;">5h48m15s</td>
+<td style="text-align: right;">8h42m23s</td>
+</tr>
+</tbody>
+</table>
+<p>These are transfer-only estimates, not measured alternate-bandwidth or relay
+results. Packet loss, relay contention, discovery, administrative commands,
+staged verification, and ten reboot cycles add time. The bandwidth factors are
+not simple powers of two because the adaptive wire preamble is 128 symbols at
+500 kHz, 64 at 250 kHz, and 32 at 125/62.5 kHz.</p>
+<h2 id="manual-operation">Manual operation</h2>
+<p>The automated runner is preferred because it binds every transition to the
+expected MID and body hash. The manual details below document the checks used
+during qualification and recovery; they are not permission to skip the
+runner's candidate gate. Keep a written copy of each original setting and
+never skip a step even when a later package appears in <code>ota ls</code>.</p>
+<h3 id="1-verify-and-extract-the-asset">1. Verify and extract the asset</h3>
+<pre><code class="language-bash">sha256sum RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip
+unzip RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5.zip
+cd RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.6-3f6eddd5
+sha256sum -c SHA256SUMS.txt
+for package in motas/*.mota; do motatool verify &quot;$package&quot; || exit 1; done
+</code></pre>
+<p>The outer hash must be
+<code>135783dd8777490db2422a7543f7d80e3cf03f621d5ac362da930abbc1850dc4</code>,
+and the SHA-256 of the extracted <code>SHA256SUMS.txt</code> must be
+<code>93835ed497c579be0a2322292e7f15ab095e7c8ab7892833fe7df3130dbdaba4</code>.
+Do not continue after any checksum or verification error.</p>
+<h3 id="2-record-and-prepare-the-destination">2. Record and prepare the destination</h3>
+<p>Before changing anything, save the complete replies from:</p>
+<pre><code class="language-text">ver
+ota self
+get bootloader.ver
+get system.watchdog
+get radio.rxps
+get powersaving
+get rxdelay
+get af
+ota config
+</code></pre>
+<p>The starting <code>ota self</code> hash must be <code>71F4026CBE4B8B74</code>, the target must be
+<code>2FA509C1</code>, and the hardware must be <code>RAK_3401</code>. Disable the nRF52 system
+watchdog before the chain:</p>
+<pre><code class="language-text">set system.watchdog off
+</code></pre>
+<p>The hardware watchdog cannot stop immediately. The RAK will reset once within
+about 60 seconds. Reconnect, wait at least 90 seconds from the command, and
+require <code>get system.watchdog</code> to report <code>&gt; off</code> before continuing.</p>
+<p>For a direct bench link, apply these temporary transfer guardrails to the RAK
+after every bridge reboot:</p>
+<pre><code class="language-text">set powersaving off
+set radio.rxps off
+set rxdelay 0
+ota config hops 0
+tempradio 909.950,500,5,5,120
+</code></pre>
+<p>Where local duty-cycle rules permit it, <code>set af 0</code> can also remove the legacy
+firmware's saved airtime wait during this bounded maintenance window. Record
+<code>get af</code> first and restore that exact value after the final step. Current
+firmware grants the bounded TempRadio transfer budget without overwriting the
+saved airtime factor.</p>
+<p><code>set powersaving off</code> is an isolation guardrail, not the fix for the observed
+failure. The actual source failure was an oversized USB CDC reply; current
+firmware splits those reads. Some historical bridge builds may report RXPS as
+unsupported while already operating continuously. Verify the reported state
+and do not substitute a normal reboot for the one-time watchdog reset. Direct
+tests use <code>hops 0</code>: <code>hops 1</code> makes the target echo each source response despite
+there being no intermediate relay, increasing half-duplex loss and legacy
+three-second retries.</p>
+<p>The exact candidate cannot use fast RXPS throughout because its historical
+bridge applications predate the v1.17.1.5 adaptive-preamble contract. Keep
+RXPS off for all ten steps whether using SF5/BW250 or the faster direct-bench
+SF5/BW500 tuple. After the final endpoint is proven, a later update whose
+target, controller, source, and relays are all v1.17.1.5 or newer can use the
+generic LoRa OTA runner and its qualified adaptive-preamble boundaries.</p>
+<p>Put the source on the identical TempRadio tuple. A current ASCII-first Full
+Companion recognizes <code>motatool</code>'s initial <code>ota folder on</code> line directly:</p>
+<pre><code class="language-bash">motatool serve \
+  --dir ./motas \
+  --serial /dev/ttyACM1 \
+  --baud 115200 \
+  -v
+</code></pre>
+<p>The same command also works with older Full Companion firmware in binary mode,
+where the idle parser recognizes the identical preamble. Restart <code>motatool</code> for
+every step so the source emits a fresh catalog advert. Leave it running during
+the download and stop it with Ctrl-C only after the destination reports <code>ready
+to install</code>.</p>
+<h3 id="3-install-all-ten-packages-in-order">3. Install all ten packages in order</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: right;">Step</th>
+<th>Manifest ID</th>
+<th>Before hash</th>
+<th>Expected version</th>
+<th>After hash</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">1</td>
+<td><code>C147BCEF</code></td>
+<td><code>71F4026CBE4B8B74</code></td>
+<td><code>1.16.7.9</code></td>
+<td><code>42BC53A64288E845</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">2</td>
+<td><code>BEB578FC</code></td>
+<td><code>42BC53A64288E845</code></td>
+<td><code>1.16.7.10</code></td>
+<td><code>1AD2AA8B6C478DA6</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">3</td>
+<td><code>6D8EF814</code></td>
+<td><code>1AD2AA8B6C478DA6</code></td>
+<td><code>1.16.8.7</code></td>
+<td><code>D709A25308BC1831</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">4</td>
+<td><code>40AC4CEB</code></td>
+<td><code>D709A25308BC1831</code></td>
+<td><code>1.16.9.105</code></td>
+<td><code>457BEDA5E6406C81</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">5</td>
+<td><code>F6C8890B</code></td>
+<td><code>457BEDA5E6406C81</code></td>
+<td><code>1.16.9.110</code></td>
+<td><code>E76BFA205634CAB8</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">6</td>
+<td><code>82405E89</code></td>
+<td><code>E76BFA205634CAB8</code></td>
+<td><code>1.16.9.113</code></td>
+<td><code>65328FC8A1FBED2D</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">7</td>
+<td><code>80F40DB6</code></td>
+<td><code>65328FC8A1FBED2D</code></td>
+<td><code>1.16.9.117</code></td>
+<td><code>AF7532E13337FADD</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">8</td>
+<td><code>DBF6310D</code></td>
+<td><code>AF7532E13337FADD</code></td>
+<td><code>1.16.10.0</code></td>
+<td><code>22002359BBDFA76E</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">9</td>
+<td><code>C2979E08</code></td>
+<td><code>22002359BBDFA76E</code></td>
+<td><code>1.17.1.3</code></td>
+<td><code>FE65A6135A1E7B3F</code></td>
+</tr>
+<tr>
+<td style="text-align: right;">10</td>
+<td><code>B5011420</code></td>
+<td><code>FE65A6135A1E7B3F</code></td>
+<td><code>1.17.1.5</code></td>
+<td><code>1FA6AAA3C28D8BD8</code></td>
+</tr>
+</tbody>
+</table>
+<p>For each row, first prove that <code>ota self</code> exactly matches its <strong>Before hash</strong>,
+then inspect the manager before changing it:</p>
+<pre><code class="language-text">ota status
+</code></pre>
+<p>Proceed to discovery only after that status is reconciled. When the manager is
+idle, run:</p>
+<pre><code class="language-text">ota ls
+ota pull MANIFEST_ID flash
+ota status
+</code></pre>
+<p>If the first status reports this row's MID as partial, use <code>ota pull</code> with that
+same MID to resume it. If this row's MID is already ready, do not pull or
+cancel it; continue with the install checks below. If status reports the
+immediately previous row's MID as <code>verifying staged blocks</code>, wait through the
+bounded discovery window; require either that exact MID to become <code>ready to
+install</code> or the manager to become <code>no download</code>, and re-prove the current
+<strong>Before hash</strong>. Cancel only the same previous MID while it is visibly
+attached and ready. If it has become idle, send no cancel. Stop on any other
+MID, failed or incomplete state, ambiguous reply, or timeout. Never issue a
+blind <code>ota cancel</code>: it can discard a resumable or unrelated session.</p>
+<p>Repeat <code>ota status</code> at a restrained interval until it says <code>ready to install</code>.
+If the manifest is initially absent, wait for a fresh source advert, run
+<code>ota ls</code> again, or restart <code>motatool</code>; do not pull a different ID. Stop the
+seeder and install:</p>
+<pre><code class="language-text">get system.watchdog
+ota install
+</code></pre>
+<p>The watchdog reply must still be <code>&gt; off</code>. Allow the current default five-minute
+readiness window for the USB/LoRa identity to return; automation probes every
+10 seconds and returns early as soon as the exact body is visible. Then run
+<code>ver</code>, <code>ota self</code>, and <code>ota help</code>.
+Require the row's exact <strong>After hash</strong>, require <code>bootloader: apply OK</code>, and
+require <code>rescue install &lt;hash16&gt;</code> in the help before exposing that bridge to
+the next package. This rescue-help gate applies to steps 1-9; step 10 is the
+endpoint and is not exposed to another package in this chain. A normal-radio
+<code>ota status</code> response of <code>no download</code> proves only that the manager is idle;
+legacy internal-flash firmware does not durably erase a retained container by
+accepting an IDLE <code>ota cancel</code>. Do not claim otherwise. When the same expected
+manifest reports <code>verifying staged blocks</code> after the next TempRadio starts,
+wait only for the bounded discovery window and require that it become <code>ready
+to install</code> or <code>no download</code>; stop on a changed ID, failed/incomplete state, or
+timeout. Prove the exact running body before cancelling an attached completed
+session. OTAFIX consumes the approval word during a successful install, so a
+retained endpoint container is inert and a later valid pull replaces it.
+Reapply the transfer
+guardrails and TempRadio tuple, restart <code>motatool</code>, and continue with the next
+row.</p>
+<p>If the board boots but <code>ota self</code> says the EndF is invalid, stop. Only when
+<code>ota status</code> still identifies that row's complete staged package may the
+guarded <code>ota rescue install BEFORE_HASH</code> command be used. It is not a force
+option and must use that row's exact Before hash. If the board does not boot,
+recover the documented start/recovery UF2 locally over USB. Step 10 is the
+endpoint and has no successor package in this chain. If its EndF is invalid,
+use local DFU/SWD rather than attempting an unqualified LoRa package.</p>
+<h3 id="4-intermediate-relays-and-restoration">4. Intermediate relays and restoration</h3>
+<p>On every managed intermediate relay, save <code>get rxdelay</code> and <code>get txdelay</code>, then
+use the airtime-scaled collision window during the maintenance session:</p>
+<pre><code class="language-text">set rxdelay 0
+set txdelay 0.3
+</code></pre>
+<p>Current OTA transfer packets honor that configured relay <code>txdelay</code>; setting
+<code>0.3</code> gives competing relays a small randomized, airtime-scaled forwarding
+window. The source's manifest-fragment gap independently follows active packet
+airtime and duty spacing, clamped to 100-1000 ms. These two delays solve
+different problems.</p>
+<p>After step 10 is proven, restore each saved destination and relay value exactly,
+including <code>rxdelay</code>, RXPS, CPU power saving, <code>af</code>, <code>ota config hops</code>, and relay
+timing. Current full-parser repeater firmware accepts <code>normalradio</code> and restores
+the saved tuple after replying on the temporary channel:</p>
+<pre><code class="language-text">normalradio
+</code></pre>
+<p>The <code>b40d2e6c</code> endpoint supports that command. If a recovery build unexpectedly
+replies <code>Unknown command</code>, shorten its lease to one minute with the same tuple:</p>
+<pre><code class="language-text">tempradio 909.950,500,5,5,1
+</code></pre>
+<p>Wait for the lease to expire, return the controller and ordinary source to
+their saved normal channels, and then re-enable the RAK system watchdog:</p>
+<pre><code class="language-text">set system.watchdog on
+get system.watchdog
+</code></pre>
+<p>A Full Companion source is the exception: its local TCP console supports
+<code>normalradio</code> and the automated runner uses it before restoring the shared
+Binary API radio tuple.</p>
+<p>Final lab success requires version
+<code>v1.17.1.5-halo-keymind-cascade-dev-b40d2e6c</code>, body hash
+<code>1FA6AAA3C28D8BD8</code>, target <code>2FA509C1</code>, hardware <code>RAK_3401</code>, and
+<code>get system.watchdog</code> reporting <code>&gt; on</code>. If a relay cannot be restored before
+its TempRadio lease ends, wait for it to return to the normal channel and
+restore its saved <code>rxdelay</code> and <code>txdelay</code> there.</p>
+<h2 id="two-relay-deployment">Two-relay deployment</h2>
+<p>The first nine direct package transitions above were physically observed as
+the byte-identical first nine transitions of the legacy chain. Replacement
+step 10, this hardened host-runner revision, and multi-hop operation are not
+cleanly end-to-end physically qualified. A controlled, recoverable multi-hop
+lab can exercise two intermediate relays by
+listing them farthest-to-nearest and using three OTA hops. Run a non-mutating
+preflight first; even preflight requires the prerelease candidate override
+because the command connects to live devices:</p>
+<pre><code class="language-bash">python3 tools/lora_ota/rak3401_mota_chain.py \
+  --bundle /path/to/RAK3401-update-chain-v1.16.7-c1caa5ad-to-v1.17.1.5-b40d2e6c.zip \
+  --work-dir ./rak3401-mota-chain-work \
+  --controller-serial /dev/ttyACM0 \
+  --source-tcp SOURCE_IP:5001 \
+  --source-cli-tcp SOURCE_IP:5002 \
+  --source-shares-controller \
+  --target-key 63d8df63 \
+  --relay 'Far Repeater' \
+  --relay 'Near Repeater' \
+  --temp-radio 909.950,250,5,5,120 \
+  --ota-hops 3 \
+  --motatool /path/to/motatool \
+  --accept-test-candidate \
+  --preflight-only
+</code></pre>
+<p>After preflight succeeds, rerun with <code>--yes</code> in place of
+<code>--preflight-only</code>. Confirm that the selected frequency and bandwidth are
+legal at the deployment location.</p>
+<h2 id="rescue-and-completion">Rescue and completion</h2>
+<p>The guarded <code>ota rescue install &lt;base_body_hash&gt;</code> command is present after
+step 1 and remains available through the step-9 bridge. It is not a force
+command: it refuses a valid normal EndF, a base mismatch, wrong
+target/hardware, or invalid payload. A failure before step 1 completes still
+requires local USB recovery because the deployed start image predates the
+rescue command. The final <code>b40d2e6c</code> endpoint uses the stricter shared-slot
+profile; its invalid-EndF recovery is local DFU/SWD, not the rescue command.</p>
+<p>Before the first mutation, the runner saves the destination's RXPS periods,
+CPU power-saving state, RX flood delay, airtime factor, and OTA hop reach in
+the persistent work directory, flushing both the file and its directory entry
+before changing a guardrail. It also saves the managed source's exact RXPS
+preference in the chain-root <code>source-rxps-settings.json</code> before disabling it.
+Every step reuses that protected record, so a rerun after a killed host process
+restores the chain-start preference instead of treating the temporary off state
+as original. The record is accepted only for the same CLI endpoint. The runner
+retires that chain-root record only after it has proved the source is back on
+its normal radio and restored the exact preference at the verified endpoint.
+The runner
+reads the destination, controller, source, and relay versions before applying
+the same RXPS policy as the generic runner.
+The mixed historical chain therefore verifies <code>radio.rxps off</code> after every
+bridge reboot; a future all-v1.17.1.5-or-newer SF5/BW250 chain would instead
+keep RXPS on under the qualified level-8/preamble-64 boundary. It also verifies
+<code>set powersaving off</code> and <code>rxdelay 0</code>, plus <code>af 0</code> when
+<code>--legacy-full-airtime</code> was explicitly selected. It restores every original
+value only after the exact endpoint is proven. An interrupted run deliberately
+leaves those transfer guardrails active; rerun the same command with the same
+work directory to resume and restore them.
+CPU power saving was not the cause of the observed folder-source failure: that
+was a USB CDC receive-ring overrun fixed by bounded serial reads. The runtime
+settings remain conservative isolation and fast-link reliability guardrails.</p>
+<p>For every named <code>--relay</code>, the per-step runner also captures <code>rxdelay</code> and
+<code>txdelay</code>, writes them to <code>relay-timing-settings.json</code>, applies <code>rxdelay 0</code> and
+<code>txdelay 0.3</code> during transfer, verifies the readback, and restores both before
+the relay leaves TempRadio.</p>
+<p>The runner also keeps the watchdog off across the chain, rechecks identity and
+OTA reach before every package, requires the exact post-boot EndF hash, and
+only re-enables the watchdog after step 10. Lab success requires endpoint body
+hash <code>1FA6AAA3C28D8BD8</code>, target <code>2FA509C1</code>, hardware <code>RAK_3401</code>, normal radio
+<code>910.525 MHz / 62.5 kHz / SF7 / CR5</code>, and the watchdog verified on.</p>
+<h2 id="external-radio-startup-and-manual-usb-recovery">External-radio startup and manual USB recovery</h2>
+<p>RAK3401 is a distinct target from RAK4631. Its RAK13300/RAK13302 radio is on
+the WisBlock SPI bus (<code>SPI1</code> in the Adafruit nRF52 core), with BUSY and DIO1 on
+P0.09/P0.10. Current builds explicitly enable those NFC-capable pads as GPIO
+and do not advertise the radio bus as an on-board QSPI flash device.</p>
+<p>The RAK13302's FEM and boost supply use switched <code>3V3_S</code>, but the SX1262 core
+uses unswitched 3V3. An MCU reset, a 1200-baud DFU touch, or disconnecting only
+USB may therefore leave a battery-powered SX1262 in its previous state. At
+startup, current firmware quiesces the FEM, reinitializes the dedicated SPI
+instance, asserts NRESET, and, if BUSY remains high, sends the Semtech
+NSS/GET_STATUS wake sequence without waiting on RadioLib first. The one-time
+board startup cold-starts <code>3V3_S</code>; later radio retries leave that shared rail
+enabled so they do not reset GPS or sensor modules.</p>
+<p>If BUSY still cannot be released, firmware must not enter a reset loop:</p>
+<ul>
+<li>Companion starts its USB/BLE management services after three bounded probes,
+  uses nRF52 hardware entropy if it needs a first-boot identity, and retries the
+  radio every 60 seconds. Radio statistics remain zero until recovery.</li>
+<li>Repeater keeps the same USB CDC session open and prints
+  <code>Radio unavailable; retrying in 60 seconds</code>. It repeats the board-level probe
+  in place. The normal repeater CLI and mesh transport cannot start until the
+  radio responds.</li>
+</ul>
+<p>A permanently high BUSY after NRESET and the direct wake transaction indicates
+an electrically unavailable radio, loose module, or power-domain fault; an MCU
+reboot cannot manufacture a response. If local access is possible, disconnect
+the battery as well as USB and reseat the WisBlock module. Remote firmware will
+continue retrying without requiring that physical intervention or churning the
+USB device.</p>
+<p>For an existing deployed tower using Preview 5, do not change the bootloader
+as part of this application chain. Its exact local recovery package is the
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.9.2-OTAFIX2.4.1-preview.5/wiscore_rak4631_board_bootloader-0.9.2-OTAFIX2.4.1-preview.5_s140_6.1.1.zip">Preview 5 RAK4631 ZIP</a>.
+For a new RAK3401 installation or local recovery, use the
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.11.0-OTAFIX2.4.3/wiscore_rak3401_bootloader-0.11.0-OTAFIX2.4.3_s140_6.1.1.zip">OTAFIX 2.4.3 RAK3401 ZIP</a>
+from the
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.3">OTAFIX 2.4.3 release</a>.
+These are local DFU/SWD recovery assets, not mOTA chain steps.</p>
+<p>For a local Serial DFU recovery with the repository helper:</p>
+<pre><code class="language-bash">cd /path/to/meshfirmware
+MCFIRMWARE_NO_SUDO=1 ./mcfirmware.sh
+</code></pre>
+<p>Select the serial entry whose USB identity is <code>WisCore RAK3401 Board</code>, then
+choose <strong>Custom</strong>, <strong>nrf52</strong>, and the exact RAK3401 <code>.zip</code>. Use <strong>flash-update</strong>
+to preserve InternalFS preferences and identity. Use <strong>flash-wipe + flash</strong> only
+when erasing application data is intentional. The helper follows the same USB
+device into bootloader mode, so do not substitute another <code>/dev/ttyACM*</code> merely
+because its number appears first.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../_javascript/notification_builder.js?v=20260930-audio-start"></script>
+      
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      
+        <script src="../../_javascript/firmware_picker.js?v=20260929-4"></script>
+      
+        <script src="../../_javascript/telemetry_decoder.js"></script>
+      
+        <script src="../../_javascript/management_decoder.js"></script>
+      
+        <script src="../../_javascript/filter_tool.js"></script>
+      
+        <script src="../../_javascript/preset_test.js?v=20260923-2"></script>
+      
+    
+  </body>
+</html>
