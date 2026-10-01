@@ -13,10 +13,10 @@
         <link rel="canonical" href="https://mikecarper.github.io/MeshCore/releases/1.17.1.8/">
       
       
-        <link rel="prev" href="../../test-results/">
+        <link rel="prev" href="../../research/">
       
       
-        <link rel="next" href="../../old-releases/">
+        <link rel="next" href="../../test-results/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Current release - MeshCore Docs</title>
+        <title>1.17.1.8 USA Cascade - MeshCore Docs</title>
       
     
     
@@ -119,7 +119,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Current release
+              1.17.1.8 USA Cascade
             
           </span>
         </div>
@@ -1851,33 +1851,6 @@
       
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../../test-results/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Test Results
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -1891,10 +1864,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -1912,12 +1885,61 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
     Releases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Current release
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Current release
   
 
           </label>
@@ -1946,7 +1968,7 @@
   <span class="md-ellipsis">
     
   
-    Current release
+    1.17.1.8 USA Cascade
   
 
     
@@ -1964,7 +1986,7 @@
   <span class="md-ellipsis">
     
   
-    Current release
+    1.17.1.8 USA Cascade
   
 
     
@@ -2025,6 +2047,42 @@
     </ul>
   
 </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../test-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
       
     </li>
   
@@ -2177,6 +2235,7 @@
 <h2 id="verification-and-known-limits">Verification and known limits</h2>
 <p>The original matrix passed 526 targets and failed ten. The 526 passing packages were preserved byte-for-byte; only the ten failures were rebuilt using corrected build configurations. Five ESP32 Full Companions use 100 contacts. Generic ESP-NOW and Heltec V3 retain 256-frame queues; CT62, Tracker V2 and XIAO C3 use 224-frame queues. Their Full transports remain enabled. Two Indicator LoRa Full images retain 350 contacts and 512 queued messages, with a 320x320 internal render canvas scaled to the 480x480 panel. Three STM32 USB Companions use branch-based switch code generation to fit the existing app boundary. The downloadable REPAIR-PROVENANCE.json records each repair and its tooling commit.</p>
 <p>All published firmware passed capability, flash size and runtime memory qualification. nRF52 UF2 files passed address/format checks. All 94 ESP32 migration archives passed package integrity checks. Each release page includes target manifests and SHA-256 checksums. The <a href="https://github.com/mikecarper/MeshCore/actions/runs/36843178065">unit-test workflow for this source</a> passed.</p>
+<p>The <a href="../../test-results/">Test Results archive</a> includes measured reports and 1.17.1.8 Preview 1 qualification evidence. Reports for older firmware remain historical and do not qualify this release.</p>
 <p>Qualification does not establish physical compatibility on every supported board. Review the exact image's capability and memory manifests, especially sensor and contact-capacity reductions. Reduced nRF52 LoRa OTA profiles retain only their documented sensor set.</p>
 <p>The reported T1000-E/iPhone Bluetooth state where iOS shows a connection but the app keeps waiting has not been conclusively reproduced or resolved. This release includes the verified Bluetooth fixes above; it does not claim that report is fully fixed.</p>
 
