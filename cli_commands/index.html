@@ -6703,6 +6703,15 @@ new address; USB password input is masked. Binary Companion clients can use
 USB, BLE, or TCP port 5000 without the terminal-start token: send command
 <code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>) followed by the same CLI text, such as
 <code>get wifi.powersave</code>, <code>get wifi.pwd</code>, <code>stats-core</code>, or <code>set wifi.powersave min</code>.
+Full and Bluetooth/wired-capable Companions default to infrastructure WiFi off
+and Bluetooth on where supported. Legacy WiFi-only builds without another CLI
+transport retain WiFi on so they are not left unreachable.
+Use <code>get wifi.enabled</code> and <code>set wifi.enabled 1</code> to inspect or persistently enable
+WiFi; <code>set wifi.enabled 0</code> disables it. Saved enablement survives upgrades, and
+credentials alone do not turn it on. ESP32 simultaneous-transport builds apply
+the change from the main loop; exclusive-transport builds and Pico W apply it
+after reboot. This does not disable a primary ESP-NOW mesh radio or add Bluetooth
+to a WiFi-only build.
 See <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>
 for the complete access rules. WiFi-only Companions accept
 all three modes. A Full Companion that runs BLE and infrastructure WiFi
@@ -7311,6 +7320,12 @@ saved settings. The WebConfig <strong>Display</strong> card exposes the same con
 </table>
 <p>Modes are <code>off</code>, <code>on</code>, <code>button</code>, <code>pairing</code>, <code>button-pairing</code>, and <code>automatic</code>.
 Pairing modes are available only on builds supporting BLE pairing.</p>
+<p>All display-equipped Companion builds show the screen at boot in the default
+<code>button</code> or <code>button-pairing</code> mode, on battery or USB power. It stays on for the
+selected profile's timeout (15 seconds by default); button input restarts that
+timer. This also applies to previously saved button modes. Saved <code>off</code> and
+pairing-only modes still suppress the boot screen. Repeaters, room servers,
+and sensors do not gain this Companion-only boot wake.</p>
 <ul>
 <li><code>off</code>: stays dark, including boot and pairing.</li>
 <li><code>on</code>: stays on while the device is awake.</li>

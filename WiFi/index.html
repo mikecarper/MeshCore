@@ -2647,6 +2647,19 @@ set mqtt.enabled on
 WebConfig and the complete role CLI are retained. Install the matching merged
 image over USB once when moving a device from the legacy partition layout.</p>
 <h2 id="wifi-companion-setup">WiFi companion setup</h2>
+<p>Full and Bluetooth/wired-capable Companions default to infrastructure WiFi off.
+Bluetooth starts where the build supports it, and saved WiFi enablement is
+preserved across upgrades. Before using the setup AP or station, enable WiFi
+through the USB or Bluetooth CLI:</p>
+<pre><code class="language-text">get wifi.enabled
+set wifi.enabled 1
+</code></pre>
+<p>ESP32 simultaneous-transport builds apply the change without a reboot. SenseCAP
+Indicator exclusive-transport builds and Pico W require a reboot. WiFi-only
+compatibility builds without any other CLI transport retain WiFi on so they are
+not left unreachable. Saving an SSID/password alone does not enable WiFi on an
+opt-in build. Use <code>set wifi.enabled 0</code> to save it off again. This controls
+infrastructure WiFi, not a primary ESP-NOW mesh radio.</p>
 <p>A <code>*_companion_radio_wifi</code> build replaces the BLE or USB companion link with
 the MeshCore companion protocol over TCP port 5000. The phone or computer must
 be able to reach the device on the same LAN.</p>
