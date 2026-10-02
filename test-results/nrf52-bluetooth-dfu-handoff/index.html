@@ -2189,6 +2189,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#published-recovery-correction-verification-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Published recovery correction verification: PASS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Published recovery correction verification: PASS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#final-test-node-restoration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final test-node restoration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2421,6 +2449,41 @@ confirmed the normal 2.4.10 bootloader, fixed application, saved radio tuple
 <code>869.6179809,62.5,8,5</code>, and all seven unchanged settings digests. USB data
 was restored. This checks the restored node's Bluetooth entry and exit;
 it is not an Open transfer.</p>
+<h2 id="published-recovery-correction-verification-pass">Published recovery correction verification: PASS</h2>
+<p>On 2026-10-02, <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/actions/runs/36997468388">bootloader recovery workflow run 36997468388</a>
+completed all 37 jobs: preparation, 35 board builds, and release
+packaging/publication. The corrected production source is tag
+<code>R_v0.11.0-OTAFIX2.4.11</code>, commit
+<code>de88c5fcae72bb00992ac9db7fd144fec150835e</code>.</p>
+<p>The <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/R_0.11.0-OTAFIX2.4.11">existing recovery 2.4.11 prerelease</a>
+retains all 110 filenames and its original distribution tag object
+<code>b3784854e72b1d3d68e6bef04c1890f251256f59</code>, which still points to
+<code>d6b3edf7d8b58c15187ccae54ea212cfa806d01c</code>. The release remains non-latest;
+normal latest remains OTAFIX 2.4.10. All downloaded digests, archive checksums,
+provenance, 35 profile manifest CRCs, and HEX/DFU ZIP/UF2 reconstructions passed.
+Six included profiles remain explicitly pending hardware qualification, and
+<code>thinknode_m8</code> remains excluded. The published recovery bundle SHA-256 is
+<code>803dffcfed20331205d1fbe581593865785a4e53988efd20d777e5fe19b05b3d</code>.</p>
+<p>The physical Open and Nordic tests used RAK4631 <code>board</code> qualification CRC
+<code>C2A4B64B</code>, raw SHA-256
+<code>239c23fabcee8478475b3bc3e1c2fc94daa79f386c5fd7ccf980c689220eda7a</code>.
+The published RAK4631 <code>board</code> production image has CRC <code>AA30573D</code>, raw SHA-256
+<code>13188cc150682a23bdee1ed7d2340a4ff0e6701b6d18dc347b75803c9ae53ae2</code>.
+Both have packed version <code>0x02040BFF</code>; their complete raw binaries differ.</p>
+<p>The production/qualification comparison found exactly eight differing data
+bytes out of 40,960: four in the <code>CURRENT.UF2</code> FAT create/update time fields
+and four in the resulting whole-image manifest CRC. All remaining 40,952
+bytes match, including executable instructions, vectors, CF2, version, and
+policy guards. The production timestamp matches the clean source commit,
+and the production DFU ZIP, published HEX, and workflow artifact agree.
+This verifies the published implementation against the tested one while
+keeping the physical test tied to its actual qualification artifact.</p>
+<h3 id="final-test-node-restoration">Final test-node restoration</h3>
+<p>After both corrected 2.4.11 phone tests and publication verification, the
+RAK4631 was restored to the published normal 2.4.10 bootloader and the fixed
+<code>v1.17.1.8-ble-dfu-test</code> application. Final CLI verification confirmed those
+versions, the saved radio tuple <code>869.6179809,62.5,8,5</code>, and all seven unchanged
+settings digests. USB data was re-enabled. No erase firmware was used.</p>
 
 
 
