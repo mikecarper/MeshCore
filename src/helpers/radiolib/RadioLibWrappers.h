@@ -4,6 +4,7 @@
 
 #include <Mesh.h>
 #include <RadioLib.h>
+#include <helpers/IdentityGeneration.h>
 #include "CadTiming.h"
 #include "RadioAirtime.h"
 #include "RXPowerSaving.h"
@@ -389,6 +390,7 @@ public:
     // hardware entropy is mixed in without becoming the sole source.
     for (size_t i = 0; i < sz; i++) {
       dest[i] = _radio->randomByte() ^ (::random(0, 256) & 0xFF);
+      mesh::serviceIdentityGenerationProgress();
     }
 #ifdef USE_CC310_HW_CRYPTO
     mesh::mixCC310Random(dest, sz);

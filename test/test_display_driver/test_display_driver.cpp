@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <helpers/ui/DisplayDriver.h>
+#include <helpers/ui/StartupScreen.h>
+#include <helpers/IdentityGeneration.h>
 #include <helpers/ui/CompanionHomeLayout.h>
 #include <helpers/ui/DisplayTextLayout.h>
 #include <helpers/ui/SmallMessageText.h>
@@ -126,7 +128,142 @@ public:
   }
 };
 
+class StartupTestDisplay : public TestDisplay {
+public:
+  bool on = false;
+  bool eink = false;
+  int frames = 0;
+  using TestDisplay::TestDisplay;
+  bool isOn() override { return on; }
+  bool isEink() override { return eink; }
+  void turnOn() override { on = true; }
+  void turnOff() override { on = false; }
+  void startFrame(ColorVal) override { rows.clear(); fills.clear(); }
+  void endFrame() override { ++frames; }
+};
+
 }  // namespace
+
+TEST(StartupScreen, StartsImmediatelyAndAnimatesInsideOneGeneratorCall) {
+  g_mock_millis = 100;
+  mesh::ui::displayPowerPrefs() = mesh::ui::DisplayPowerPrefs();
+  StartupTestDisplay display(128, 64, 6);
+  mesh::ui::StartupScreen screen;
+  screen.begin(&display, false);
+  EXPECT_TRUE(display.on);
+  ASSERT_EQ(1, display.frames);
+  ASSERT_EQ(1U, display.rows.size());
+  EXPECT_EQ("Starting...", display.rows[0].text);
+  screen.generatingKey();
+  const auto first = display.fills;
+  mesh::LocalIdentity identity;
+  {
+    mesh::ScopedIdentityGenerationProgress progress(
+        mesh::ui::StartupScreen::progress, &screen);
+    EXPECT_TRUE(mesh::generateUsableLocalIdentity(identity, [&]() {
+      // Simulate entropy collection: the key generator has not returned yet.
+      g_mock_millis += 149;
+      mesh::serviceIdentityGenerationProgress();
+      EXPECT_EQ(2, display.frames);
+      g_mock_millis += 1;
+      mesh::serviceIdentityGenerationProgress();
+      EXPECT_EQ(3, display.frames);
+      EXPECT_NE(first[0].x, display.fills[0].x);
+      g_mock_millis += 150;
+      mesh::serviceIdentityGenerationProgress();
+      EXPECT_EQ(4, display.frames);
+      mesh::LocalIdentity key;
+      key.pub_key[0] = 0x42;
+      return key;
+    }));
+  }
+  EXPECT_EQ(nullptr, mesh::identityGenerationProgress().callback);
+  screen.starting();
+  const int frames = display.frames;
+  g_mock_millis += 15000;
+  screen.service();
+  EXPECT_EQ(frames, display.frames);
+  // The normal policy starts only after the startup UI hands over.
+  mesh::ui::displayPowerPrefs().wake_on_boot = true;
+  mesh::ui::DisplayPowerPolicy policy;
+  policy.update(mesh::ui::displayPowerPrefs(), false, false, false, g_mock_millis);
+  EXPECT_TRUE(policy.on());
+  policy.update(mesh::ui::displayPowerPrefs(), false, false, false, g_mock_millis + 14999);
+  EXPECT_TRUE(policy.on());
+  policy.update(mesh::ui::displayPowerPrefs(), false, false, false, g_mock_millis + 15000);
+  EXPECT_FALSE(policy.on());
+}
+
+TEST(StartupScreen, SavedModesAndSelectedPowerSourceAreRespected) {
+  for (bool usb : {false, true}) for (auto mode : {
+      mesh::ui::DisplayMode::Off, mesh::ui::DisplayMode::On,
+      mesh::ui::DisplayMode::Button, mesh::ui::DisplayMode::Pairing,
+      mesh::ui::DisplayMode::ButtonPairing, mesh::ui::DisplayMode::Automatic}) {
+    mesh::ui::displayPowerPrefs() = mesh::ui::DisplayPowerPrefs();
+    auto& prefs = mesh::ui::displayPowerPrefs();
+    prefs.battery.mode = prefs.usb.mode = mesh::ui::DisplayMode::Off;
+    (usb ? prefs.usb : prefs.battery).mode = mode;
+    StartupTestDisplay display(128, 64, 6);
+    display.on = true; // Some drivers power the panel as part of begin().
+    mesh::ui::StartupScreen screen;
+    screen.begin(&display, usb);
+    screen.generatingKey();
+    const bool visible = mode != mesh::ui::DisplayMode::Off
+        && mode != mesh::ui::DisplayMode::Pairing;
+    EXPECT_EQ(visible, display.on);
+    EXPECT_EQ(visible ? 2 : 0, display.frames);
+  }
+  mesh::ui::StartupScreen missing;
+  missing.begin(nullptr, true);
+  missing.generatingKey();
+  missing.service();
+  missing.starting();
+  mesh::ui::StartupScreen::progress(nullptr);
+}
+
+TEST(StartupScreen, FitsSmallRotatedOledTftAndEpaperPanels) {
+  const int sizes[][3] = {
+      {128, 64, 6}, {128, 32, 6}, {72, 40, 6}, {40, 72, 6},
+      {64, 48, 6}, {48, 64, 6}, {64, 128, 6}, {32, 128, 6},
+      {160, 80, 6}, {80, 160, 6}, {240, 135, 6}, {250, 122, 12},
+      {320, 240, 12}, {240, 320, 12}, {480, 480, 12}};
+  mesh::ui::displayPowerPrefs() = mesh::ui::DisplayPowerPrefs();
+  for (const auto& size : sizes) {
+    StartupTestDisplay display(size[0], size[1], size[2]);
+    mesh::ui::StartupScreen screen;
+    screen.begin(&display, true);
+    screen.generatingKey();
+    ASSERT_FALSE(display.rows.empty());
+    EXPECT_EQ(2U, display.fills.size()); // Spinner must fit, too.
+    for (const auto& row : display.rows) {
+      EXPECT_GE(row.x, 0);
+      EXPECT_LE(row.x + display.getTextWidth(row.text.c_str()), display.width());
+      EXPECT_GE(row.y, 0);
+      EXPECT_LE(row.y + display.textLineHeight(), display.height());
+    }
+    for (const auto& dot : display.fills) {
+      EXPECT_GE(dot.x, 0); EXPECT_GE(dot.y, 0);
+      EXPECT_LE(dot.x + dot.width, display.width());
+      EXPECT_LE(dot.y + dot.height, display.height());
+    }
+  }
+}
+
+TEST(StartupScreen, EpaperIsThrottledAndMillisWrapIsSafe) {
+  mesh::ui::displayPowerPrefs() = mesh::ui::DisplayPowerPrefs();
+  g_mock_millis = UINT32_MAX - 100;
+  StartupTestDisplay display(250, 122, 12);
+  display.eink = true;
+  mesh::ui::StartupScreen screen;
+  screen.begin(&display, true);
+  screen.generatingKey();
+  g_mock_millis += 999;
+  screen.service();
+  EXPECT_EQ(2, display.frames);
+  ++g_mock_millis;
+  screen.service();
+  EXPECT_EQ(3, display.frames);
+}
 
 TEST(DisplayDriver, EllipsizesOnlyAtUTF8CodepointBoundaries) {
   TestDisplay display;

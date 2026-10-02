@@ -161,6 +161,8 @@ struct DiscoveredNode {
 };
 #endif
 
+namespace mesh { namespace ui { class StartupScreen; } }
+
 class MyMesh : public BaseChatMesh, public DataStoreHost, public UIShutdownGuard
 #if COMPANION_FEATURE_NOTIFICATIONS
              , public mesh::notify::Sink, public mesh::notify::Store
@@ -179,7 +181,8 @@ public:
     return handleCommand(command, 0, reply);
   }
 
-  void begin(bool has_display, bool radio_available = true);
+  void begin(bool has_display, bool radio_available = true,
+             mesh::ui::StartupScreen* startup_screen = nullptr);
   void activateRadio();
   bool isRadioReady() const { return _radio_available; }
   void startInterface(BaseSerialInterface &serial);

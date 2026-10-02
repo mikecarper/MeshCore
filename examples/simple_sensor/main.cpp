@@ -1,5 +1,7 @@
 #include "SensorMesh.h"
 #include <helpers/IdentityGeneration.h>
+#include <helpers/ui/StartupScreen.h>
+#include <helpers/ui/DisplayPowerSettings.h>
 #if defined(NRF52_PLATFORM)
   #include <helpers/nrf52/InternalPrimaryFsBoot.h>
   #include <helpers/nrf52/RamFallbackFileSystem.h>
@@ -13,6 +15,7 @@
 #ifdef DISPLAY_CLASS
   #include "UITask.h"
   static UITask ui_task(display);
+  static bool display_ready = false;
 #endif
 
 class MyMesh : public SensorMesh {
@@ -73,38 +76,11 @@ void setup() {
 #if MESH_ESP32_USB_CONSOLE_COOPERATIVE
   mesh::beginUsbLoggingPort();
 #endif
-  delay(1000);
-
   board.begin();
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();
 #endif
-
-#if defined(MESH_DEBUG) && defined(NRF52_PLATFORM)
-  // Allow the USB console to settle before printing boot diagnostics.
-  delay(5000);
-#endif
-
-#ifdef DISPLAY_CLASS
-  if (display.begin()) {
-    display.turnOff();
-    // Saved display policy is applied by UITask::begin().
-  }
-#endif
-
-  int radioinit_attempts = 0;
-  while (!radio_init()) {
-    ++radioinit_attempts;
-    MESH_DEBUG_PRINTLN("Radio init failed! (attempt %d)", radioinit_attempts);
-    if (radioinit_attempts >= 3) {
-      MESH_DEBUG_PRINTLN("Radio init failed 3x - rebooting");
-      board.reboot();
-    }
-    delay(500);
-  }
-
-  fast_rng.begin(radio_driver.getRngSeed());
 
   FILESYSTEM* fs;
 #if defined(NRF52_PLATFORM)
@@ -141,6 +117,37 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
+#ifdef DISPLAY_CLASS
+  mesh::ui::loadDisplayPowerSettings(fs, false);
+  mesh::ui::StartupScreen startup_screen;
+  display_ready = display.begin();
+  if (display_ready) {
+    startup_screen.begin(&display,
+        board.isExternalPowered() || board.isUsbHostConnected());
+  }
+#endif
+
+  // Let serial settle after the display is already showing startup.
+  delay(1000);
+
+#if defined(MESH_DEBUG) && defined(NRF52_PLATFORM)
+  // Allow the USB console to settle before printing boot diagnostics.
+  delay(5000);
+#endif
+
+  int radioinit_attempts = 0;
+  while (!radio_init()) {
+    ++radioinit_attempts;
+    MESH_DEBUG_PRINTLN("Radio init failed! (attempt %d)", radioinit_attempts);
+    if (radioinit_attempts >= 3) {
+      MESH_DEBUG_PRINTLN("Radio init failed 3x - rebooting");
+      board.reboot();
+    }
+    delay(500);
+  }
+
+  fast_rng.begin(radio_driver.getRngSeed());
+
 #if defined(NRF52_PLATFORM)
   IdentityLoadResult identity_load = volatile_primary_fs
       ? store.loadResult("_main", the_mesh.self_id)
@@ -165,9 +172,17 @@ void setup() {
           && mesh::hasReservedIdentityPrefix(the_mesh.self_id));
   bool identity_ready = identity_load != IdentityLoadResult::Unreadable;
   if (needs_identity) {
+#ifdef DISPLAY_CLASS
+    startup_screen.generatingKey();
+    mesh::ScopedIdentityGenerationProgress progress(
+        mesh::ui::StartupScreen::progress, &startup_screen);
+#endif
     MESH_DEBUG_PRINTLN("Generating new keypair");
     identity_ready = mesh::generateUsableLocalIdentity(the_mesh.self_id, radio_new_identity);
     if (identity_ready) identity_ready = store.saveWithRetry("_main", the_mesh.self_id);
+#ifdef DISPLAY_CLASS
+    startup_screen.starting();
+#endif
   }
 
 #if defined(ESP32_PLATFORM)
@@ -201,7 +216,9 @@ void setup() {
 #endif
 
 #ifdef DISPLAY_CLASS
-  ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
+  if (display_ready) {
+    ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
+  }
 #endif
 
   // send out initial zero hop Advertisement to the mesh
@@ -264,7 +281,7 @@ void loop() {
   the_mesh.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
-  ui_task.loop();
+  if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
 #if MESH_ESP32_USB_CONSOLE_COOPERATIVE

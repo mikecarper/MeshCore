@@ -74,6 +74,30 @@ TEST(IdentityGeneration, FailsClosedAfterProvisionedAttempts) {
   EXPECT_TRUE(mesh::hasReservedIdentityPrefix(identity));
 }
 
+TEST(IdentityGeneration, ProgressScopesRestoreHooksAfterSuccessAndFailure) {
+  unsigned outer = 0, inner = 0;
+  const auto increment = [](void* context) { ++*static_cast<unsigned*>(context); };
+  mesh::LocalIdentity identity;
+  {
+    mesh::ScopedIdentityGenerationProgress progress(increment, &outer);
+    EXPECT_TRUE(mesh::generateUsableLocalIdentity(
+        identity, []() { return identityWithPrefix(0x42); }));
+    EXPECT_EQ(2U, outer);
+    {
+      mesh::ScopedIdentityGenerationProgress nested(increment, &inner);
+      EXPECT_FALSE(mesh::generateUsableLocalIdentity(
+          identity, []() { return identityWithPrefix(0x00); }));
+      EXPECT_EQ(2 * mesh::MAX_LOCAL_IDENTITY_GENERATION_ATTEMPTS, inner);
+    }
+    mesh::serviceIdentityGenerationProgress();
+    EXPECT_EQ(3U, outer);
+  }
+  EXPECT_EQ(nullptr, mesh::identityGenerationProgress().callback);
+  EXPECT_EQ(nullptr, mesh::identityGenerationProgress().context);
+  mesh::serviceIdentityGenerationProgress();
+  EXPECT_EQ(3U, outer);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

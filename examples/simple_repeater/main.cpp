@@ -1,6 +1,8 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/IdentityGeneration.h>
+#include <helpers/ui/StartupScreen.h>
+#include <helpers/ui/DisplayPowerSettings.h>
 #if MESH_PACKET_LOGGING
   #include <helpers/SerialPacketLog.h>
 #endif
@@ -101,25 +103,64 @@ void setup() {
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
-  delay(1000);
-
   board.begin();
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();
 #endif
 
+  FILESYSTEM* fs;
+#if defined(NRF52_PLATFORM)
+  bool volatile_primary_fs = false;
+  mesh::storage::RamFallbackFileSystem* ram_primary_fs = nullptr;
+  const auto primary_fs_boot =
+      mesh::storage::beginInternalPrimaryFilesystemSafely(InternalFS);
+  if (mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)) {
+    fs = &InternalFS;
+  } else {
+    ram_primary_fs = mesh::storage::createRamFallbackFileSystem();
+    if (ram_primary_fs == nullptr) {
+      MESH_DEBUG_PRINTLN("InternalFS and RAM fallback initialization failed; rebooting");
+      board.reboot();
+      return;
+    }
+    fs = &ram_primary_fs->filesystem();
+    volatile_primary_fs = true;
+  }
+  IdentityStore store(*fs, "");
+#elif defined(STM32_PLATFORM)
+  InternalFS.begin();
+  fs = &InternalFS;
+  IdentityStore store(InternalFS, "");
+#elif defined(ESP32)
+  SPIFFS.begin(true);
+  fs = &SPIFFS;
+  IdentityStore store(SPIFFS, "/identity");
+#elif defined(RP2040_PLATFORM)
+  LittleFS.begin();
+  fs = &LittleFS;
+  IdentityStore store(LittleFS, "/identity");
+  store.begin();
+#else
+  #error "need to define filesystem"
+#endif
+#ifdef DISPLAY_CLASS
+  mesh::ui::loadDisplayPowerSettings(fs, false);
+  mesh::ui::StartupScreen startup_screen;
+  display_ready = display.begin();
+  if (display_ready) {
+    startup_screen.begin(&display,
+        board.isExternalPowered() || board.isUsbHostConnected());
+  }
+#endif
+
+  // Let serial settle after the display is already showing startup.
+  delay(1000);
+
 #if defined(MESH_DEBUG) && defined(NRF52_PLATFORM)
   // give some extra time for serial to settle so
   // boot debug messages can be seen on terminal
   delay(5000);
-#endif
-
-#ifdef DISPLAY_CLASS
-  display_ready = display.begin();
-  if (display_ready) {
-    display.turnOff();  // Stay dark until the saved display policy is loaded.
-  }
 #endif
 
   int radioinit_attempts = 0;
@@ -158,41 +199,6 @@ void setup() {
 
   fast_rng.begin(radio_driver.getRngSeed());
 
-  FILESYSTEM* fs;
-#if defined(NRF52_PLATFORM)
-  bool volatile_primary_fs = false;
-  mesh::storage::RamFallbackFileSystem* ram_primary_fs = nullptr;
-  const auto primary_fs_boot =
-      mesh::storage::beginInternalPrimaryFilesystemSafely(InternalFS);
-  if (mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)) {
-    fs = &InternalFS;
-  } else {
-    ram_primary_fs = mesh::storage::createRamFallbackFileSystem();
-    if (ram_primary_fs == nullptr) {
-      MESH_DEBUG_PRINTLN("InternalFS and RAM fallback initialization failed; rebooting");
-      board.reboot();
-      return;
-    }
-    fs = &ram_primary_fs->filesystem();
-    volatile_primary_fs = true;
-  }
-  IdentityStore store(*fs, "");
-#elif defined(STM32_PLATFORM)
-  InternalFS.begin();
-  fs = &InternalFS;
-  IdentityStore store(InternalFS, "");
-#elif defined(ESP32)
-  SPIFFS.begin(true);
-  fs = &SPIFFS;
-  IdentityStore store(SPIFFS, "/identity");
-#elif defined(RP2040_PLATFORM)
-  LittleFS.begin();
-  fs = &LittleFS;
-  IdentityStore store(LittleFS, "/identity");
-  store.begin();
-#else
-  #error "need to define filesystem"
-#endif
 #if defined(NRF52_PLATFORM)
   IdentityLoadResult identity_load = volatile_primary_fs
       ? store.loadResult("_main", the_mesh.self_id)
@@ -217,9 +223,17 @@ void setup() {
           && mesh::hasReservedIdentityPrefix(the_mesh.self_id));
   bool identity_ready = identity_load != IdentityLoadResult::Unreadable;
   if (needs_identity) {
+#ifdef DISPLAY_CLASS
+    startup_screen.generatingKey();
+    mesh::ScopedIdentityGenerationProgress progress(
+        mesh::ui::StartupScreen::progress, &startup_screen);
+#endif
     MESH_DEBUG_PRINTLN("Generating new keypair");
     identity_ready = mesh::generateUsableLocalIdentity(the_mesh.self_id, radio_new_identity);
     if (identity_ready) identity_ready = store.saveWithRetry("_main", the_mesh.self_id);
+#ifdef DISPLAY_CLASS
+    startup_screen.starting();
+#endif
   }
 
 #if defined(ESP32_PLATFORM)

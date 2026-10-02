@@ -914,7 +914,18 @@ All display-equipped Companion builds show the screen at boot in the default
 selected profile's timeout (15 seconds by default); button input restarts that
 timer. This also applies to previously saved button modes. Saved `off` and
 pairing-only modes still suppress the boot screen. Repeaters, room servers,
-and sensors do not gain this Companion-only boot wake.
+and sensors do not gain this Companion-only normal-UI boot wake.
+
+On display-equipped Companions, repeaters, room servers, and sensors, a small
+`Starting...` screen appears as soon as the board, primary filesystem, and
+display are initialized, before radio initialization and serial-settle delays.
+If a new identity is needed, it changes to `Generating key` with an animated
+spinner during radio entropy collection. OLED/TFT updates are paced at 150 ms;
+e-paper uses a slower one-second cadence. Saved `off` and pairing-only modes
+still suppress this startup screen. The normal UI's boot timeout starts only
+when that UI is ready, so key generation does not consume it. Filesystem
+recovery and the display driver's own initialization can still delay the first
+visible frame; the firmware cannot draw before those operations finish.
 
 - `off`: stays dark, including boot and pairing.
 - `on`: stays on while the device is awake.
