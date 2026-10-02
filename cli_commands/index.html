@@ -9049,9 +9049,9 @@ worked moderation examples, see <a href="../flood_filtering/">Flood Filtering an
 <li><code>get flood.rule</code></li>
 <li><code>get flood.rule.&lt;n&gt;</code></li>
 <li><code>get fr[.&lt;n&gt;]</code> (numbered form returns a complete short setter for copying)</li>
-<li><code>set fr[.&lt;n&gt;] &lt;type&gt; [h=&lt;range&gt;] [m=r|b|c|bc] [c=&lt;channel&gt;] [pb=any|1|2|3] &lt;d|s=&lt;scope&gt;|r=&lt;region&gt;|q=&lt;N&gt;|r|s&gt; [...]</code></li>
+<li><code>set fr[.&lt;n&gt;] &lt;type&gt; [h=&lt;range&gt;] [m=r|b|c|bc] [c=&lt;channel&gt;] [pb=any|1|2|2+|3] &lt;d|s=&lt;scope&gt;|r=&lt;region&gt;|q=&lt;N&gt;|r|s&gt; [...]</code></li>
 <li><code>del fr.&lt;n&gt;</code> or <code>del fr all</code></li>
-<li><code>set flood.rule[.&lt;n&gt;] type=&lt;type&gt; [mode=radio|bridge|cross|bridge,cross] [hops=&lt;range&gt;] [channel=&lt;channel&gt;] [hashbytes=any|1|2|3] [prefix=&lt;path-prefix&gt;] [in=&lt;input-scope&gt;] &lt;drop|scope=&lt;name&gt;|region=&lt;name&gt;|rate=&lt;N&gt;/min|retry|stop&gt; [priority=&lt;0-255&gt;] [tx=slow] [suspend=tempradio]</code></li>
+<li><code>set flood.rule[.&lt;n&gt;] type=&lt;type&gt; [mode=radio|bridge|cross|bridge,cross] [hops=&lt;range&gt;] [channel=&lt;channel&gt;] [hashbytes=any|1|2|2+|3] [prefix=&lt;path-prefix&gt;] [in=&lt;input-scope&gt;] &lt;drop|scope=&lt;name&gt;|region=&lt;name&gt;|rate=&lt;N&gt;/min|retry|stop&gt; [priority=&lt;0-255&gt;] [tx=slow] [suspend=tempradio]</code></li>
 <li><code>del flood.rule.&lt;n&gt;</code></li>
 <li><code>del flood.rule all</code></li>
 <li><code>get flood.filter</code></li>
@@ -9106,10 +9106,12 @@ compile this table.</p>
   MAC/decrypt check with the Public channel key. That distinguishes an ordinary
   <code>0x11</code> collision, but it is channel authentication rather than sender
   authentication: the group MAC is two bytes and the Public key is shared.</li>
-<li><code>hashbytes=any|1|2|3</code>: Optional encoded path-hash width, independent of hop
+<li><code>hashbytes=any|1|2|2+|3</code>: Optional encoded path-hash width, independent of hop
   count and hash value. Omitted, <code>any</code>, or <code>*</code> matches every supported width.
   Width-specific rules also match zero-hop packets. Four-byte hashes are
-  reserved and unsupported. A simultaneous <code>prefix=</code> must use the same width.
+  reserved and unsupported. <code>2+</code> selects both 2- and 3-byte paths in one row,
+  sharing any rate limit across both. A simultaneous <code>prefix=</code> must satisfy the
+  selector; a 2- or 3-byte prefix narrows <code>2+</code> to its own exact width.
   Example: <code>set fr any pb=1 d</code> drops all 1-byte floods from forwarding, including
   relayed login/admin traffic, but not direct packets or local delivery.</li>
 <li><code>prefix=&lt;ID[,ID...]&gt;</code>: Optional ordered source-path prefix of one to three
@@ -9422,8 +9424,8 @@ have the same behavior as their long forms.</p>
 <td><code>c=...</code>, <code>p=...</code></td>
 </tr>
 <tr>
-<td><code>hashbytes=any/1/2/3</code></td>
-<td><code>pb=*/1/2/3</code> (choose one value)</td>
+<td><code>hashbytes=any/1/2/2+/3</code></td>
+<td><code>pb=*/1/2/2+/3</code> (choose one value)</td>
 </tr>
 <tr>
 <td><code>path=blacklist</code></td>
@@ -10859,7 +10861,7 @@ to charge above it or have USB power restored before it wakes.</p>
       
         <script src="../_javascript/management_decoder.js"></script>
       
-        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes"></script>
+        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
       
         <script src="../_javascript/preset_test.js?v=20260923-2"></script>
       

@@ -257,7 +257,8 @@
       channel: normalizeChannel(input.channel, true),
       incoming: normalizeIncoming(input.incoming),
       hashBytes: ["", "0", "any", "*"].includes(clean(input.hashBytes).toLowerCase())
-        ? 0 : requiredInteger(input.hashBytes, 1, 3, "Path hash bytes"),
+        ? 0 : clean(input.hashBytes) === "2+" ? "2+"
+          : requiredInteger(input.hashBytes, 1, 3, "Path hash bytes"),
       pathKind: enumValue(input.pathKind, PATH_KINDS, "Path matcher", "none"),
       pathPrefix: "",
       sender: clean(input.sender),
@@ -280,7 +281,8 @@
     if (rule.pathKind === "prefix") rule.pathPrefix = normalizePathPrefix(input.pathPrefix, 3);
     if (rule.pathKind === "prefix" && !rule.pathPrefix) throw new FilterToolError("Prefix path matcher requires at least one pbyte ID.");
     if (rule.pathKind === "prefix" && rule.hashBytes
-      && rule.pathPrefix.split(",")[0].length / 2 !== rule.hashBytes) {
+      && (rule.hashBytes === "2+" ? rule.pathPrefix.split(",")[0].length / 2 < 2
+        : rule.pathPrefix.split(",")[0].length / 2 !== rule.hashBytes)) {
       throw new FilterToolError("Path hash bytes conflicts with prefix width.");
     }
     if (rule.sender) {
@@ -577,7 +579,9 @@
     else if (rule.pathKind === "blacklist") conditions.push("a path matching the passive blacklist");
     else if (rule.pathKind.startsWith("bucket:")) conditions.push(`a path matching ${rule.pathKind}`);
     else if (rule.pathKind.startsWith("loop:")) conditions.push(`the ${rule.pathKind.slice(5)} own-ID loop threshold`);
-    if (rule.hashBytes) conditions.push(`${rule.hashBytes}-byte encoded path hashes, including zero hops`);
+    if (rule.hashBytes) conditions.push(rule.hashBytes === "2+"
+      ? "2- or 3-byte encoded path hashes, including zero hops"
+      : `${rule.hashBytes}-byte encoded path hashes, including zero hops`);
     if (rule.sender) conditions.push(`decrypted sender "${rule.sender}"`);
     conditions.push(`traffic path ${rule.via}`);
     if (rule.tempRadio !== "any") conditions.push(`temporary radio ${rule.tempRadio}`);
@@ -607,7 +611,7 @@
         && rule.hops === "all" && !rule.channel && rule.incoming === "any"
         && rule.pathKind === "none" && rule.tempRadio === "any") {
       warnings.push(rule.hashBytes
-        ? `This drops all ${rule.hashBytes}-byte path-hash packets across both flood route types.`
+        ? `This drops all ${rule.hashBytes === "2+" ? "2- or 3" : rule.hashBytes}-byte path-hash packets across both flood route types.`
         : "This is a global drop rule across both flood route types.");
     }
     if (limitsRemoteManagement(rule)) {
@@ -1038,7 +1042,8 @@
     if (packet.hops < minimum || packet.hops > maximum) misses.push(`hop ${packet.hops} is outside ${rule.hops}`);
     if (rule.channel && rule.channel !== packet.channel) misses.push("channel differs or is unavailable");
     if (!incomingMatches(rule.incoming, packet)) misses.push(`original scope does not satisfy ${rule.incoming}`);
-    if (rule.hashBytes && rule.hashBytes !== packet.hashBytes) misses.push(`path hash width is ${packet.hashBytes} bytes`);
+    if (rule.hashBytes && (rule.hashBytes === "2+" ? packet.hashBytes < 2
+      : rule.hashBytes !== packet.hashBytes)) misses.push(`path hash width is ${packet.hashBytes} bytes`);
     if (rule.pathKind === "prefix") {
       const wanted = rule.pathPrefix.split(",");
       const actual = packet.path ? packet.path.split(",") : [];
@@ -1163,6 +1168,9 @@
   const EXAMPLES = Object.freeze({
     hash_width: Object.freeze([
       { ...documentedDropRule("drop-one-byte-paths", "any", "all"), hashBytes: 1 },
+    ]),
+    hash_width_two_plus: Object.freeze([
+      { ...documentedDropRule("drop-two-plus-byte-paths", "any", "all"), hashBytes: "2+" },
     ]),
     channel_scope: Object.freeze([
       {
