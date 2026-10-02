@@ -1479,6 +1479,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#filter-every-1-byte-flood-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter every 1-byte flood path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#scope-actions-and-legacy-rules" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2529,6 +2540,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#filter-every-1-byte-flood-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filter every 1-byte flood path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#scope-actions-and-legacy-rules" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3105,7 +3127,7 @@ does not match and a target-region rewrite is skipped. Re-adding the same name
 reactivates the rule.</p>
 <p>The extended form is:</p>
 <pre><code class="language-text">set flood.rule[.&lt;slot&gt;] type=&lt;type&gt; [mode=radio|bridge|cross|bridge,cross]
-    [hops=&lt;range&gt;] [channel=&lt;channel&gt;]
+    [hops=&lt;range&gt;] [channel=&lt;channel&gt;] [hashbytes=any|1|2|3]
     [prefix=&lt;ID[,ID...]&gt;] [in=&lt;input-scope&gt;] &lt;action&gt; [rate=&lt;N&gt;/min]
     [priority=&lt;0-255&gt;] [stop] [tx=fast|slow] [suspend=tempradio]
 get flood.rule
@@ -3151,6 +3173,12 @@ independent and the highest-order matching scope or region rewrite wins.</p>
   collision, while <code>public</code> verifies and decrypts with the Public key. This is
   channel authentication, not sender authentication: the group MAC is two
   bytes and the Public key is shared.</li>
+<li><code>hashbytes=any|1|2|3</code> matches the encoded width of each path hash, independent
+  of its value or the hop count. Omitted or <code>any</code> means any width; <code>*</code> is an
+  alias for <code>any</code>. It includes zero-hop packets carrying the selected width.
+  Four-byte path hashes are reserved and unsupported. Combine this with other
+  match fields as needed; a <code>prefix=</code> must have the same width when both are
+  specified. The compact alias is <code>pb=</code>.</li>
 <li><code>prefix=</code> is a source-path prefix containing one to three comma-separated
   pbyte IDs. Every ID must use the packet's pbyte width: 2, 4, or 6 hex
   characters for 1-, 2-, or 3-byte paths. Order matters and matching begins at
@@ -3346,6 +3374,11 @@ set fr.3 any c=#wardriving m=bc d
 <td>Ordered path prefix.</td>
 </tr>
 <tr>
+<td><code>hashbytes=any</code>, <code>1</code>, <code>2</code>, or <code>3</code></td>
+<td><code>pb=*</code>, <code>1</code>, <code>2</code>, or <code>3</code></td>
+<td>Encoded path-hash width, even with zero hops.</td>
+</tr>
+<tr>
 <td><code>path=blacklist</code></td>
 <td><code>p=bl</code></td>
 <td>Shared unordered blacklist; repeater only.</td>
@@ -3395,6 +3428,19 @@ set fr.3 any c=#wardriving m=bc d
 <p>The <code>=</code> distinguishes <code>s=name</code> (scope) from <code>s</code> (stop), and <code>r=name</code>
 (region) from <code>r</code> (retry). Short forms keep the same action restrictions;
 for example, <code>m=bc r</code> is rejected because transport rules cannot enable retries.</p>
+<h3 id="filter-every-1-byte-flood-path">Filter every 1-byte flood path</h3>
+<pre><code class="language-text">set flood.rule type=any hashbytes=1 drop
+</code></pre>
+<p>The equivalent short command is <code>set fr any pb=1 d</code>. This adds a rule in a free
+slot without replacing the default rules. It stops this node forwarding all
+1-byte flood packets, including advertisements and relayed login/admin traffic;
+direct routes and local delivery are unchanged. Use a narrower <code>type=</code> or
+<code>channel=</code> if those floods must remain reachable. Use <code>hashbytes=2</code> or <code>3</code> for
+the other supported widths, and <code>get fr.&lt;slot&gt;</code> to copy the saved command.</p>
+<p>Width-only rules require updated firmware. Existing rules remain unchanged and
+the table uses no additional RAM or storage. Before downgrading to firmware
+without this selector, remove width-only rules: its older reader considers them
+invalid and can reset the rule table to defaults.</p>
 <pre><code class="language-text">get fr.3
 </code></pre>
 <p>Returns a complete command ready to copy:</p>
@@ -3953,7 +3999,7 @@ inspect or reset those separately when troubleshooting.</p>
       
         <script src="../_javascript/management_decoder.js"></script>
       
-        <script src="../_javascript/filter_tool.js"></script>
+        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes"></script>
       
         <script src="../_javascript/preset_test.js?v=20260923-2"></script>
       

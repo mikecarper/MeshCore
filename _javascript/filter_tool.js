@@ -210,6 +210,7 @@
       hops: "all",
       channel: "#rgdata",
       incoming: "none",
+      hashBytes: 0,
       pathKind: "none",
       pathPrefix: "",
       sender: "",
@@ -255,6 +256,8 @@
       hops: normalizeHops(input.hops),
       channel: normalizeChannel(input.channel, true),
       incoming: normalizeIncoming(input.incoming),
+      hashBytes: ["", "0", "any", "*"].includes(clean(input.hashBytes).toLowerCase())
+        ? 0 : requiredInteger(input.hashBytes, 1, 3, "Path hash bytes"),
       pathKind: enumValue(input.pathKind, PATH_KINDS, "Path matcher", "none"),
       pathPrefix: "",
       sender: clean(input.sender),
@@ -276,6 +279,10 @@
 
     if (rule.pathKind === "prefix") rule.pathPrefix = normalizePathPrefix(input.pathPrefix, 3);
     if (rule.pathKind === "prefix" && !rule.pathPrefix) throw new FilterToolError("Prefix path matcher requires at least one pbyte ID.");
+    if (rule.pathKind === "prefix" && rule.hashBytes
+      && rule.pathPrefix.split(",")[0].length / 2 !== rule.hashBytes) {
+      throw new FilterToolError("Path hash bytes conflicts with prefix width.");
+    }
     if (rule.sender) {
       rule.sender = requiredText(rule.sender, "Sender", 31);
       if (rule.sender.includes(":")) throw new FilterToolError("Sender matcher cannot contain a colon.");
@@ -356,6 +363,7 @@
     ];
     if (rule.channel) matches.push(`channel=${quoteDsl(rule.channel)}`);
     if (rule.incoming !== "any") matches.push(`rx.scope=${quoteDsl(rule.incoming)}`);
+    if (rule.hashBytes) matches.push(`hashbytes=${rule.hashBytes}`);
     if (rule.pathKind === "prefix") matches.push(`path=prefix:${rule.pathPrefix}`);
     else if (rule.pathKind !== "none") matches.push(`path=${rule.pathKind}`);
     if (rule.sender) matches.push(`sender=${quoteDsl(rule.sender)}`);
@@ -462,6 +470,7 @@
       else if (name === "hops") rule.hops = value;
       else if (name === "channel") rule.channel = value;
       else if (name === "rx.scope") rule.incoming = value;
+      else if (name === "hashbytes") rule.hashBytes = value;
       else if (name === "path") {
         if (value.toLowerCase().startsWith("prefix:")) {
           rule.pathKind = "prefix";
@@ -568,6 +577,7 @@
     else if (rule.pathKind === "blacklist") conditions.push("a path matching the passive blacklist");
     else if (rule.pathKind.startsWith("bucket:")) conditions.push(`a path matching ${rule.pathKind}`);
     else if (rule.pathKind.startsWith("loop:")) conditions.push(`the ${rule.pathKind.slice(5)} own-ID loop threshold`);
+    if (rule.hashBytes) conditions.push(`${rule.hashBytes}-byte encoded path hashes, including zero hops`);
     if (rule.sender) conditions.push(`decrypted sender "${rule.sender}"`);
     conditions.push(`traffic path ${rule.via}`);
     if (rule.tempRadio !== "any") conditions.push(`temporary radio ${rule.tempRadio}`);
@@ -596,7 +606,9 @@
     if (rule.verdict === "drop" && rule.route === "flood" && rule.type === "any"
         && rule.hops === "all" && !rule.channel && rule.incoming === "any"
         && rule.pathKind === "none" && rule.tempRadio === "any") {
-      warnings.push("This is a global drop rule across both flood route types.");
+      warnings.push(rule.hashBytes
+        ? `This drops all ${rule.hashBytes}-byte path-hash packets across both flood route types.`
+        : "This is a global drop rule across both flood route types.");
     }
     if (limitsRemoteManagement(rule)) {
       const zeroHop = minimumHops === 0 && rule.pathKind === "none";
@@ -622,6 +634,7 @@
     bytes += 3 + 3 + 3;
     if (rule.channel) bytes += 3 + (rule.channel.startsWith("hash:") ? 1 : rule.channel.length === 32 || rule.channel.length === 64 ? rule.channel.length / 2 : rule.channel.length);
     if (rule.incoming !== "any") bytes += 3 + rule.incoming.length;
+    if (rule.hashBytes) bytes += 3;
     if (rule.pathKind === "prefix") bytes += 4 + rule.pathPrefix.replace(/,/g, "").length / 2;
     else if (rule.pathKind !== "none") bytes += 3;
     if (rule.sender) bytes += 3 + rule.sender.length;
@@ -965,12 +978,20 @@
     const buckets = clean(input.buckets)
       ? clean(input.buckets).split(",").map((value) => requiredInteger(value, 1, 6, "Path bucket"))
       : [];
+    const path = normalizePacketPath(input.path);
+    const inferredWidth = path ? path.split(",")[0].length / 2 : 1;
+    const hashBytes = ["", "auto"].includes(clean(input.hashBytes).toLowerCase())
+      ? inferredWidth : requiredInteger(input.hashBytes, 1, 3, "Packet path hash bytes");
+    if (path && hashBytes !== inferredWidth) {
+      throw new FilterToolError("Packet path hash bytes conflicts with received path width.");
+    }
     return {
       route: enumValue(input.route, ["unscoped_flood", "scoped_flood"], "Packet route", "unscoped_flood"),
       type,
       hops: requiredInteger(input.hops, 0, 63, "Packet hops"),
       channel,
-      path: normalizePacketPath(input.path),
+      path,
+      hashBytes,
       scopeStatus,
       scopeName: clean(input.scopeName).replace(/^#/, ""),
       regionName: clean(input.regionName),
@@ -1017,6 +1038,7 @@
     if (packet.hops < minimum || packet.hops > maximum) misses.push(`hop ${packet.hops} is outside ${rule.hops}`);
     if (rule.channel && rule.channel !== packet.channel) misses.push("channel differs or is unavailable");
     if (!incomingMatches(rule.incoming, packet)) misses.push(`original scope does not satisfy ${rule.incoming}`);
+    if (rule.hashBytes && rule.hashBytes !== packet.hashBytes) misses.push(`path hash width is ${packet.hashBytes} bytes`);
     if (rule.pathKind === "prefix") {
       const wanted = rule.pathPrefix.split(",");
       const actual = packet.path ? packet.path.split(",") : [];
@@ -1139,6 +1161,9 @@
   }
 
   const EXAMPLES = Object.freeze({
+    hash_width: Object.freeze([
+      { ...documentedDropRule("drop-one-byte-paths", "any", "all"), hashBytes: 1 },
+    ]),
     channel_scope: Object.freeze([
       {
         ...defaultRule("rgdata-scope"),
@@ -1312,6 +1337,7 @@
         hops: field("hops").value,
         channel: field("channel").value,
         incoming: field("incoming").value,
+        hashBytes: field("hash-bytes").value,
         pathKind: field("path-kind").value,
         pathPrefix: field("path-prefix").value,
         sender: field("sender").value,
@@ -1346,6 +1372,7 @@
         hops: rule.hops,
         channel: rule.channel,
         incoming: rule.incoming,
+        "hash-bytes": rule.hashBytes,
         "path-kind": rule.pathKind,
         "path-prefix": rule.pathPrefix,
         sender: rule.sender,
@@ -1575,6 +1602,7 @@
         hops: packetField("hops").value,
         channel: packetField("channel").value,
         path: packetField("path").value,
+        hashBytes: packetField("hash-bytes").value,
         scopeStatus: packetField("scope-status").value,
         scopeName: packetField("scope-name").value,
         regionName: packetField("region-name").value,
@@ -1593,6 +1621,7 @@
       packetField("type").value = decoded.type;
       packetField("hops").value = String(decoded.hops);
       packetField("path").value = decoded.pathIds.join(",");
+      packetField("hash-bytes").value = String(decoded.pathHashBytes);
       packetField("channel").value = decoded.channelHash;
       packetField("scope-status").value = decoded.routeCode === 0 ? "unknown" : "none";
       packetField("scope-name").value = "";
