@@ -7,12 +7,10 @@
   // which Web Crypto exposes directly.  AES-CBC with a zero IV supplies the
   // required AES block primitive; only its first ciphertext block is used.
   const HEADER = 83;
-  const MGR2_HEADER = 98;
   const CURRENT_HEADER = 111;
   const TAG = 16;
   const ENTRY = 13;
   const PER_PAGE = 6;
-  const MGR2_PER_PAGE = 5;
   const CURRENT_PER_PAGE = 4;
   const MAX_KEYS = 36;
   const ZERO_BLOCK = new Uint8Array(16);
@@ -221,17 +219,16 @@
   function layout(payload) {
     const magic = bytesToAscii(payload, 0, 4);
     if (magic === "MGR1") return { header: HEADER, perPage: PER_PAGE };
-    if (magic === "MGR2") return { header: MGR2_HEADER, perPage: MGR2_PER_PAGE };
-    if (magic === "MGR3") return { header: CURRENT_HEADER, perPage: CURRENT_PER_PAGE };
+    if (magic === "MGR2") return { header: CURRENT_HEADER, perPage: CURRENT_PER_PAGE };
     return null;
   }
 
   function canonicalLength(payload) {
     const format = layout(payload);
     if (!format || payload.length < format.header + TAG) {
-      managementError("This data does not begin with a complete MGR1/MGR2/MGR3 management page.");
+      managementError("This data does not begin with a complete MGR1/MGR2 management page.");
     }
-    if (format.header >= MGR2_HEADER && ((uint16LE(payload, 83) & 0xf800) || (payload[85] & 0xc0))) {
+    if (format.header === CURRENT_HEADER && ((uint16LE(payload, 83) & 0xf800) || (payload[85] & 0xc0))) {
       managementError("Reserved USB status bits must be zero.");
     }
     if (format.header === CURRENT_HEADER) usbWatchdogEvent(payload);
@@ -306,7 +303,7 @@
 
   function inputByteStreams(input) {
     if (typeof input !== "string" || input.trim() === "") {
-      managementError("Paste one or more MGR1/MGR2/MGR3 payloads or GroupData packet hex values first.");
+      managementError("Paste one or more MGR1/MGR2 payloads or GroupData packet hex values first.");
     }
     if (input.length > 32768) managementError("The pasted value is too large to be management-report data.");
     // A wrapped single page is one candidate, not an invalid first-line
@@ -359,7 +356,7 @@
       }
     }
     if (!found.length) {
-      managementError("No complete management page was found. Paste canonical MGR1/MGR2/MGR3 payload hex or an entire GroupData packet.");
+      managementError("No complete management page was found. Paste canonical MGR1/MGR2 payload hex or an entire GroupData packet.");
     }
     return found;
   }
@@ -393,7 +390,7 @@
   }
 
   function usbStatus(payload) {
-    if (!["MGR2", "MGR3"].includes(bytesToAscii(payload, 0, 4))) return null;
+    if (bytesToAscii(payload, 0, 4) !== "MGR2") return null;
     const flags = uint16LE(payload, 83);
     const names = ["supported", "loggingEnabled", "watchdogEnabled", "hostConnected",
       "readerConnected", "stalled", "recovering", "recoveryDeferred", "persistenceReady", "watchdogAuto", "loggerActive"];
@@ -408,7 +405,7 @@
   }
 
   function usbWatchdogEvent(payload) {
-    if (bytesToAscii(payload, 0, 4) !== "MGR3") return null;
+    if (bytesToAscii(payload, 0, 4) !== "MGR2") return null;
     const code = payload[98];
     const sequence = uint32LE(payload, 107);
     if (!sequence) {
@@ -626,8 +623,8 @@
             : event.actionCode === 4 ? "Reboot request was cancelled; no physical reset is claimed."
             : "Recovery attempt was recorded; this does not prove successful recovery."]);
       } else {
-        values.push(["Last USB watchdog event", model.public.protocol === "MGR3"
-          ? "none recorded" : "unavailable in MGR1/MGR2"]);
+        values.push(["Last USB watchdog event", model.public.protocol === "MGR2"
+          ? "none recorded" : "unavailable in MGR1"]);
       }
       summary.replaceChildren();
       values.forEach(([term, description]) => {

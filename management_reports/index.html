@@ -27,7 +27,7 @@
     
     
       
-        <title>Management reports (MGR1/MGR2/MGR3) - MeshCore Docs</title>
+        <title>Management reports (MGR1/MGR2) - MeshCore Docs</title>
       
     
     
@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#management-reports-mgr1mgr2mgr3" class="md-skip">
+        <a href="#management-reports-mgr1mgr2" class="md-skip">
           Skip to content
         </a>
       
@@ -121,7 +121,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Management reports (MGR1/MGR2/MGR3)
+              Management reports (MGR1/MGR2)
             
           </span>
         </div>
@@ -1694,7 +1694,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1/MGR2/MGR3)
+    Management reports (MGR1/MGR2)
   
 
     
@@ -1712,7 +1712,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1/MGR2/MGR3)
+    Management reports (MGR1/MGR2)
   
 
     
@@ -1760,10 +1760,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#canonical-mgr3-payload-little-endian" class="md-nav__link">
+  <a href="#canonical-mgr2-payload-little-endian" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Canonical MGR3 payload (little endian)
+        Canonical MGR2 payload (little endian)
       
     </span>
   </a>
@@ -2186,10 +2186,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#canonical-mgr3-payload-little-endian" class="md-nav__link">
+  <a href="#canonical-mgr2-payload-little-endian" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Canonical MGR3 payload (little endian)
+        Canonical MGR2 payload (little endian)
       
     </span>
   </a>
@@ -2232,16 +2232,17 @@
   
 
 
-<h1 id="management-reports-mgr1mgr2mgr3">Management reports (MGR1/MGR2/MGR3)</h1>
+<h1 id="management-reports-mgr1mgr2">Management reports (MGR1/MGR2)</h1>
 <p>Available on repeater (including observer), room-server and sensor firmware.
 Companions/terminal-chat nodes and KISS modems do not originate these reports.
 Off by default. A management password and explicit enable are both required.
 No radio settings, existing preferences layout, or OTA authorization policy is
 changed by enabling reporting. This protocol does <strong>not</strong> authorize updates.</p>
-<p>Current firmware emits <code>MGR3</code>, including a public USB logging/recovery snapshot
-and its latest watchdog event. Updated decoders still accept legacy <code>MGR1</code> and
-<code>MGR2</code>; older decoder copies need an update to read MGR3. Reporting USB status
-does not enable logging or change retry policy.</p>
+<p>Current firmware emits <code>MGR2</code>, including a public USB logging/recovery snapshot
+and its latest watchdog event. Updated decoders still accept released <code>MGR1</code>;
+older decoder copies need an update to read MGR2. The earlier USB-only MGR2
+development layout was never released and was replaced before release.
+Reporting USB status does not enable logging or change retry policy.</p>
 <h2 id="cli">CLI</h2>
 <p>Run through the existing local CLI or an authenticated administrator session:</p>
 <pre><code>get data.tx
@@ -2315,7 +2316,7 @@ History/snapshot working memory is allocated only when reporting is enabled and
 is bounded to 1.5 KiB, plus a small configuration object and temporary stack use.</p>
 <h2 id="routing-and-mqtt">Routing and MQTT</h2>
 <p>Both direct/path and flood reports use <strong><code>PAYLOAD_TYPE_GRP_DATA</code> (<code>0x06</code>)</strong>.
-The route bits independently select direct or flood. <code>MGR1</code>/<code>MGR2</code>/<code>MGR3</code> are application
+The route bits independently select direct or flood. <code>MGR1</code>/<code>MGR2</code> are application
 extensions with <strong>literally plaintext public fields</strong>, not a call to the ordinary
 encrypted <code>createGroupDatagram()</code> builder. A fixed public marker is not an owner
 or password-derived channel ID. There is no outer channel encryption.</p>
@@ -2343,7 +2344,7 @@ This is an offline capture decoder, not a broker subscriber or downlink service.
 <p>For a browser-local decoder that also decrypts and authenticates ACL entries,
 use the <a href="../management_decoder/">Management report decoder</a>. It does not upload
 the captured packet or password.</p>
-<h2 id="canonical-mgr3-payload-little-endian">Canonical MGR3 payload (little endian)</h2>
+<h2 id="canonical-mgr2-payload-little-endian">Canonical MGR2 payload (little endian)</h2>
 <table>
 <thead>
 <tr>
@@ -2356,7 +2357,7 @@ the captured packet or password.</p>
 <tr>
 <td style="text-align: right;">0</td>
 <td style="text-align: right;">4</td>
-<td><code>MGR3</code></td>
+<td><code>MGR2</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">4</td>
@@ -2545,7 +2546,7 @@ the captured packet or password.</p>
 </tr>
 </tbody>
 </table>
-<p>MGR3 retains all 36 ACL entries, using four per page and up to nine pages. The
+<p>MGR2 retains all 36 ACL entries, using four per page and up to nine pages. The
 largest canonical page is 179 bytes and already group-compatible;
 the radio payload budget is unchanged. The USB snapshot is frozen with the
 other public fields at report start and repeated on each page. It is not a
@@ -2594,10 +2595,6 @@ request is intent, not proof of a completed reset. The latest event survives
 normal reboot and mode changes, but is not a log of hardware hangs or sudden
 power failures. See <a href="../usb_logging_watchdog/">USB logging watchdog</a> for storage
 failure, cancellation, and review limitations.</p>
-<p>Legacy MGR2 retains the same offsets through byte 97, followed by encrypted ACL
-entries at byte 98 and the authentication tag. It carries five entries per page
-and up to eight pages. Its USB status is available, but watchdog event history
-is unavailable rather than an empty modern record.</p>
 <p>Legacy MGR1 retains the same offsets through byte 82, followed immediately
 by encrypted ACL entries at byte 83 and the authentication tag. It carries
 six entries per page and up to six pages, with no USB block. Its absent USB
@@ -2630,8 +2627,8 @@ The same owner has different fingerprints on different radios. A collector
 needs a candidate administrator's full key to identify a fingerprint.</p>
 <p>Encryption is <a href="https://www.rfc-editor.org/rfc/rfc5297">RFC 5297 AES-SIV-CMAC-256</a>,
 using the existing rweather AES primitive. The single associated-data string is
-the complete clear header: 111 bytes for MGR3, including USB status and its event,
-98 bytes for MGR2, or 83 bytes for MGR1. All retain the existing derivation domains; the authenticated
+the complete clear header: 111 bytes for MGR2, including USB status and its event,
+or 83 bytes for MGR1. Both retain the existing derivation domains; the authenticated
 magic and layout distinguish their wire versions. Ciphertext is exactly the ACL byte length.
 Full 16-byte tag, no truncation. This deterministic misuse-resistant mode avoids
 reliance on the firmware's noncryptographic general-purpose RNG or RTC nonces.
