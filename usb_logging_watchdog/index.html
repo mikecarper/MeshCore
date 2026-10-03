@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/test-results/separated_radio_modulation_cache_validation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/usb_logging_watchdog/">
       
       
       
@@ -18,16 +18,16 @@
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Separated radios, normal XIAO RX gain, and unchanged-modulation timing - MeshCore Docs</title>
+        <title>USB logging watchdog - MeshCore Docs</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -46,25 +46,25 @@
       
     
     
-      <link rel="stylesheet" href="../../_stylesheets/notification_builder.css">
+      <link rel="stylesheet" href="../_stylesheets/notification_builder.css">
     
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/extra.css">
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
     
-      <link rel="stylesheet" href="../../_stylesheets/telemetry_decoder.css">
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/management_decoder.css">
+      <link rel="stylesheet" href="../_stylesheets/management_decoder.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/filter_tool.css">
+      <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/preset_test.css?v=20260923-2">
+      <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
     
-      <link rel="stylesheet" href="../../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
+      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#separated-radios-normal-xiao-rx-gain-and-unchanged-modulation-timing" class="md-skip">
+        <a href="#usb-logging-watchdog" class="md-skip">
           Skip to content
         </a>
       
@@ -98,9 +98,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
       
-  <img src="../../_assets/meshcore.svg" alt="logo">
+  <img src="../_assets/meshcore.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Separated radios, normal XIAO RX gain, and unchanged-modulation timing
+              USB logging watchdog
             
           </span>
         </div>
@@ -209,9 +209,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
       
-  <img src="../../_assets/meshcore.svg" alt="logo">
+  <img src="../_assets/meshcore.svg" alt="logo">
 
     </a>
     MeshCore Docs
@@ -238,7 +238,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -312,7 +312,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../firmware_picker/" class="md-nav__link">
+      <a href="../firmware_picker/" class="md-nav__link">
         
   
   
@@ -340,7 +340,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../notifications/" class="md-nav__link">
+      <a href="../notifications/" class="md-nav__link">
         
   
   
@@ -368,7 +368,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../preset_test/" class="md-nav__link">
+      <a href="../preset_test/" class="md-nav__link">
         
   
   
@@ -396,7 +396,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../filter_tool/" class="md-nav__link">
+      <a href="../filter_tool/" class="md-nav__link">
         
   
   
@@ -424,7 +424,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../telemetry_decoder/" class="md-nav__link">
+      <a href="../telemetry_decoder/" class="md-nav__link">
         
   
   
@@ -452,7 +452,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../management_decoder/" class="md-nav__link">
+      <a href="../management_decoder/" class="md-nav__link">
         
   
   
@@ -581,7 +581,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../faq/" class="md-nav__link">
+      <a href="../faq/" class="md-nav__link">
         
   
   
@@ -609,7 +609,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../role_feature_switches/" class="md-nav__link">
+      <a href="../role_feature_switches/" class="md-nav__link">
         
   
   
@@ -637,7 +637,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../full_companion_features/" class="md-nav__link">
+      <a href="../full_companion_features/" class="md-nav__link">
         
   
   
@@ -665,7 +665,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../companion_radio_full/" class="md-nav__link">
+      <a href="../companion_radio_full/" class="md-nav__link">
         
   
   
@@ -693,7 +693,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../full_companion_usb_switcher/" class="md-nav__link">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
         
   
   
@@ -721,7 +721,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../companion_offline_queue/" class="md-nav__link">
+      <a href="../companion_offline_queue/" class="md-nav__link">
         
   
   
@@ -749,7 +749,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../halo_keymind_settings/" class="md-nav__link">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
         
   
   
@@ -832,7 +832,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_user_guide/" class="md-nav__link">
+      <a href="../ota_user_guide/" class="md-nav__link">
         
   
   
@@ -860,7 +860,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_easy/" class="md-nav__link">
+      <a href="../ota_easy/" class="md-nav__link">
         
   
   
@@ -888,7 +888,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../lora_ota_automation/" class="md-nav__link">
+      <a href="../lora_ota_automation/" class="md-nav__link">
         
   
   
@@ -916,7 +916,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_nrf52_bootloader_update/" class="md-nav__link">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
         
   
   
@@ -944,7 +944,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_nrf52_qspi/" class="md-nav__link">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
         
   
   
@@ -972,7 +972,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_meshtower_v2_sdcard/" class="md-nav__link">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
         
   
   
@@ -1000,7 +1000,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../esp32_partition_catalog/" class="md-nav__link">
+      <a href="../esp32_partition_catalog/" class="md-nav__link">
         
   
   
@@ -1028,7 +1028,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../esp32_wifi_partition_migration/" class="md-nav__link">
+      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
         
   
   
@@ -1056,7 +1056,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+      <a href="../heltec_v4_wifi_partition_migration/" class="md-nav__link">
         
   
   
@@ -1084,7 +1084,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../host_cli_service/" class="md-nav__link">
+      <a href="../host_cli_service/" class="md-nav__link">
         
   
   
@@ -1167,7 +1167,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../radio_profiles/" class="md-nav__link">
+      <a href="../radio_profiles/" class="md-nav__link">
         
   
   
@@ -1195,7 +1195,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../carrier_wave/" class="md-nav__link">
+      <a href="../carrier_wave/" class="md-nav__link">
         
   
   
@@ -1223,7 +1223,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../espnow_bridge_setup/" class="md-nav__link">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
         
   
   
@@ -1251,7 +1251,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../WiFi/" class="md-nav__link">
+      <a href="../WiFi/" class="md-nav__link">
         
   
   
@@ -1279,7 +1279,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../flood_filtering/" class="md-nav__link">
+      <a href="../flood_filtering/" class="md-nav__link">
         
   
   
@@ -1307,7 +1307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../gps_tracking/" class="md-nav__link">
+      <a href="../gps_tracking/" class="md-nav__link">
         
   
   
@@ -1335,7 +1335,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../nrf52_power_management/" class="md-nav__link">
+      <a href="../nrf52_power_management/" class="md-nav__link">
         
   
   
@@ -1418,7 +1418,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli_commands/" class="md-nav__link">
+      <a href="../cli_commands/" class="md-nav__link">
         
   
   
@@ -1446,7 +1446,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli_build_matrix/" class="md-nav__link">
+      <a href="../cli_build_matrix/" class="md-nav__link">
         
   
   
@@ -1474,7 +1474,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli_command_availability/" class="md-nav__link">
+      <a href="../cli_command_availability/" class="md-nav__link">
         
   
   
@@ -1502,7 +1502,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../terminal_chat_cli/" class="md-nav__link">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
         
   
   
@@ -1530,7 +1530,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../companion_protocol/" class="md-nav__link">
+      <a href="../companion_protocol/" class="md-nav__link">
         
   
   
@@ -1558,7 +1558,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../kiss_modem_protocol/" class="md-nav__link">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
   
@@ -1586,7 +1586,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../packet_format/" class="md-nav__link">
+      <a href="../packet_format/" class="md-nav__link">
         
   
   
@@ -1614,7 +1614,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../payloads/" class="md-nav__link">
+      <a href="../payloads/" class="md-nav__link">
         
   
   
@@ -1642,7 +1642,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_protocol/" class="md-nav__link">
+      <a href="../ota_protocol/" class="md-nav__link">
         
   
   
@@ -1670,7 +1670,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../management_reports/" class="md-nav__link">
+      <a href="../management_reports/" class="md-nav__link">
         
   
   
@@ -1698,7 +1698,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../stats_binary_frames/" class="md-nav__link">
+      <a href="../stats_binary_frames/" class="md-nav__link">
         
   
   
@@ -1726,7 +1726,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../number_allocations/" class="md-nav__link">
+      <a href="../number_allocations/" class="md-nav__link">
         
   
   
@@ -1754,7 +1754,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../qr_codes/" class="md-nav__link">
+      <a href="../qr_codes/" class="md-nav__link">
         
   
   
@@ -1790,7 +1790,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../docs/" class="md-nav__link">
+      <a href="../docs/" class="md-nav__link">
         
   
   
@@ -1825,7 +1825,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../research/" class="md-nav__link">
+      <a href="../research/" class="md-nav__link">
         
   
   
@@ -1946,7 +1946,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../releases/1.17.1.8/" class="md-nav__link">
+      <a href="../releases/1.17.1.8/" class="md-nav__link">
         
   
   
@@ -1974,7 +1974,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+      <a href="../test-results/" class="md-nav__link">
         
   
   
@@ -2010,7 +2010,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../old-releases/" class="md-nav__link">
+      <a href="../old-releases/" class="md-nav__link">
         
   
   
@@ -2065,10 +2065,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#settings-and-controls" class="md-nav__link">
+  <a href="#commands-and-defaults" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Settings and controls
+        Commands and defaults
       
     </span>
   </a>
@@ -2076,10 +2076,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#same-image-receive-only-timing-ab" class="md-nav__link">
+  <a href="#confirming-a-logging-client" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Same-image, receive-only timing A/B
+        Confirming a logging client
       
     </span>
   </a>
@@ -2087,10 +2087,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#stationary-rf-controls" class="md-nav__link">
+  <a href="#recovery-timing-and-safety" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stationary RF controls
+        Recovery timing and safety
       
     </span>
   </a>
@@ -2098,21 +2098,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#four-channel-sf6125-51-symbol-visits" class="md-nav__link">
+  <a href="#persistence-and-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Four-channel SF6/125, 5.1-symbol visits
+        Persistence and status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Persistence and status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#last-event-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Last-event review
       
     </span>
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#provenance" class="md-nav__link">
+  <a href="#verification" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Provenance
+        Verification
       
     </span>
   </a>
@@ -2136,7 +2153,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/test-results/separated_radio_modulation_cache_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/usb_logging_watchdog.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2144,249 +2161,228 @@
   
 
 
-<h1 id="separated-radios-normal-xiao-rx-gain-and-unchanged-modulation-timing">Separated radios, normal XIAO RX gain, and unchanged-modulation timing</h1>
-<p>Measured 2026-09-14 on <code>keymindCascade</code>, base commit
-<code>0e5955f889788a4317863e731b38ffe09e3d5441</code> plus local changes.</p>
-<p>The unchanged-modulation optimization reduces XIAO frequency-only retunes
-from <strong>548.880 to 451.897 us (17.7%)</strong> in a same-image control. The separated
-four-channel SF6 test still misses packets. Separation and disabling XIAO
-boosted gain were changed together; their RF effects are not isolated.</p>
-<h2 id="settings-and-controls">Settings and controls</h2>
-<ul>
-<li>XIAO ESP32-S3/WIO SX1262 COM31 receiver; SenseCAP Indicator ESP32-S3 COM28
-  reference transmitter. The user moved the radios apart; distance and
-  attenuation were not measured. RAK4631 and Indicator RP2040 untouched.</li>
-<li>XIAO HIL build has <code>SX126X_RX_BOOSTED_GAIN=0</code>; actual RX gain register
-  readback was <strong>0x94</strong> in initial info, every stationary arm, and every scan
-  status. Indicator remains 0x96. Normal XIAO production default is unchanged.</li>
-<li>32-symbol preamble, CR4/5, 16-byte synthetic packets, -9 dBm, buffered 8 MHz
-  SPI. Four scan centers 909.500/909.750/910.000/910.250 MHz.</li>
-<li>No guard shortening, forced retunes through packets, RF retransmissions,
-  new public N-channel protocol, or additional oscillator-delay bypass.</li>
-</ul>
-<h2 id="same-image-receive-only-timing-ab">Same-image, receive-only timing A/B</h2>
-<p>Each board ran four three-second windows in off/on/on/off order, rebooting
-between windows. SF6/125 kHz, four channels, 2,612 us nominal dwell, no extra
-IRQ tracing, no TX. A HIL-only hook invalidates just the acknowledged
-modulation tuple before each baseline hop. Optimized windows use production
-cache behavior. The binary and all other settings remain identical per board.</p>
-<p>Time is entry to the production retune through BUSY-low observation. It does
-not include the listening dwell or full application scheduling, and is not an
-independent RF settling measurement. Unlike the older mixed-bandwidth tests,
-this frequency-only workload can skip 0x8B.</p>
+<h1 id="usb-logging-watchdog">USB logging watchdog</h1>
+<p>Current source includes a saved USB logging watchdog in Companion, Repeater,
+Room Server, and Sensor. It repairs the radio's USB connection; it cannot
+restart a Pi, restore SSH, or prove MQTT or disk delivery. Supported backends
+are ESP32 native TinyUSB/HWCDC and nRF52 TinyUSB. An external USB-to-UART
+adapter is not an observable native-USB backend.
+Unsupported targets compile out recovery timers and statefile transactions;
+their watchdog commands report unsupported rather than saving an unusable mode.
+Management still reports the logging master with USB support false.</p>
+<h2 id="commands-and-defaults">Commands and defaults</h2>
+<pre><code class="language-text">get usb.watchdog
+get usb.watchdog.last
+set usb.watchdog auto
+set usb.watchdog on
+set usb.watchdog off
+</code></pre>
+<p>Setters accept exactly one lowercase mode, save it before applying, and do not
+reboot immediately. They do not enable <code>usb.logging</code> or <code>usb.debug</code>.</p>
 <table>
 <thead>
 <tr>
-<th>Board / policy</th>
-<th style="text-align: right;">Hops</th>
-<th style="text-align: right;">Mean</th>
-<th style="text-align: right;">Min–max</th>
-<th style="text-align: right;">Actual 0x86 / 0x8B writes</th>
+<th>Mode</th>
+<th>Behavior</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>XIAO, always write</td>
-<td style="text-align: right;">1,898</td>
-<td style="text-align: right;">548.880 us</td>
-<td style="text-align: right;">535–663 us</td>
-<td style="text-align: right;">1,898 / 1,898</td>
+<td><code>auto</code></td>
+<td>Default for missing watchdog state, including upgrades. Requires 14 continuous healthy logging-client days before saving <code>on</code>, with the retry tier reset to one hour. A previously confirmed client can receive USB-only recovery before promotion, but Auto never reboots the MCU.</td>
 </tr>
 <tr>
-<td>XIAO, reuse unchanged tuple</td>
-<td style="text-align: right;">1,957</td>
-<td style="text-align: right;">451.897 us</td>
-<td style="text-align: right;">441–580 us</td>
-<td style="text-align: right;">1,957 / 0</td>
+<td><code>on</code></td>
+<td>Explicitly arms physical USB recovery and eventual MCU reboot. A confirmed stats client also gets USB-only recovery if its stats polls stop; missing polls alone cannot authorize MCU reboot.</td>
 </tr>
 <tr>
-<td>Indicator, always write</td>
-<td style="text-align: right;">564</td>
-<td style="text-align: right;">8,263.438 us</td>
-<td style="text-align: right;">8,228–8,428 us</td>
-<td style="text-align: right;">564 / 564</td>
-</tr>
-<tr>
-<td>Indicator, reuse unchanged tuple</td>
-<td style="text-align: right;">602</td>
-<td style="text-align: right;">7,601.193 us</td>
-<td style="text-align: right;">7,583–7,762 us</td>
-<td style="text-align: right;">602 / 0</td>
+<td><code>off</code></td>
+<td>No watchdog probes, automatic USB recovery, qualification, or MCU reset. Packet logging remains independent.</td>
 </tr>
 </tbody>
 </table>
-<p>Pooled means are sample-weighted from reported per-window means. Savings are
-96.983 us (17.7%) for XIAO and 662.246 us (8.0%) for Indicator. All 5,021 hops
-passed RX-mode/software-cache checks with zero retune errors or deferrals.
-Counters observe outgoing SPI opcodes, not merely which software branch ran.
-Initial setup before counter snapshots is excluded. The Indicator remains
-above the common 6 ms switching allowance; no common timing budget changed.</p>
-<h2 id="stationary-rf-controls">Stationary RF controls</h2>
-<p>Full initialization before every case, fixed RX at 910 MHz, ordinary RX with
-fast reuse disabled, shuffled offsets, 450 ms capture windows. Method matches
-the <a href="../preamble_detection_investigation/">earlier investigation</a>.</p>
+<p>Existing valid saved On/Off choices win. Auto qualification is RAM-only and
+restarts on reboot, USB disconnect, observed stall, expired client lease,
+logging master Off, or an explicit mode change. A node that has never confirmed
+a logging client does not cycle USB in Auto merely because no cable is attached.</p>
+<h2 id="confirming-a-logging-client">Confirming a logging client</h2>
+<p>The existing <code>meshcoretomqtt</code> five-minute <code>stats-core</code>, <code>stats-radio</code>, and
+<code>stats-packets</code> polls renew a 15-minute lease. Only complete, exact stats
+commands received on the actual USB logging endpoint count; BLE, network,
+LoRa, management reports, and ordinary framed Companion traffic do not.
+No new heartbeat command is required. A cable, open TTY, DTR, or kernel USB
+ACK alone cannot qualify Auto.</p>
+<p><code>logger=1</code> requires the USB logging master, an observed host and reader, a fresh
+stats lease, and no physical TX stall. Any program polling those commands can
+qualify: this is not application identification or proof that packets were
+parsed, published to MQTT, or written to disk. A one-time manual stats query
+can also establish the lease; use watchdog Off when later USB-only reconnection
+would be unwanted.</p>
+<p>On nRF52 Full Companion, only the dedicated logging CDC (<code>*-if02</code>) establishes
+the lease. That endpoint accepts bounded stats-poll markers without replying
+with statistics or exposing arbitrary CLI/configuration commands. Queries and
+configuration still use primary CDC (<code>*-if00</code>), whose stats queries do not
+prove a logging reader. Existing single-port bridges needing identity/CLI
+replies still require separate control-port support.</p>
+<h2 id="recovery-timing-and-safety">Recovery timing and safety</h2>
+<p>For a physical host/reader outage, or pending TX with no real completion,
+software USB recovery is requested after five minutes. Re-enumeration follows
+after another 60 seconds if health is not restored. These are one staged
+attempt per outage, not a repeated five-minute reboot loop. Busy backends retry
+at most once every five seconds without consuming an attempted stage.</p>
+<p>After a confirmed client's stats lease expires, USB-only repair is due five
+minutes later: normally 20 minutes after its last stats poll. This applies in
+Auto and, once a client is confirmed during that boot, On. On with no stats
+client observed remains compatible with non-stats log readers. A gap in stats
+polls does not by itself reboot a healthy USB transport.</p>
+<p>MCU reboot requires On, a physical USB fault lasting the entire saved tier,
+and the USB recovery grace periods. Tiers grow after reset authorization:
+1, 2, 4, 8, 16, 32, 64, 128, then 168 hours (one week). An older app-only
+stats outage cannot shorten a later physical fault's interval. Ten minutes
+of healthy monitored operation resets a raised tier to one hour.</p>
+<p>Native TX-completion events are the progress evidence. Queueing, purging,
+reinitializing, or accepting the optional bounded minute probe is not proof
+of recovery. The watchdog never waits for a host. USB connection reports,
+especially HWCDC's host/reader flags, are SDK approximations and do not reliably
+identify an open TTY process.</p>
+<p>Recovery waits for active Binary USB clients, mOTA/update owners, unsaved
+contacts, radio tests/calibration/temporary-radio operations, functional CLI
+work, and selected/in-flight radio transmissions to clear. Stale ASCII output
+from a disconnected or stalled host does not indefinitely prevent recovery.
+Before MCU reset, the next tier must commit and pass readback; the firmware
+then rechecks transport health and ownership. Re-enumeration preserves the
+configured USB descriptors, but can disconnect host applications and lose
+best-effort packet records.</p>
+<h2 id="persistence-and-status">Persistence and status</h2>
+<p>The independent, versioned, CRC-protected <code>/usb_wdg</code> statefile does not
+change existing role preference offsets. Unreadable/corrupt state or a volatile
+fallback filesystem disables automatic recovery/promotion. Failed commits
+remain fail-closed; an explicit setter can retry or repair this statefile on
+durable storage, applying only after complete verification. It cannot make
+volatile storage durable. A verified backup repairs a conclusively missing
+primary after an interrupted rename; unreadable live state is not replaced
+automatically.</p>
+<p>Current writes use the 33-byte UW2 format, including the latest watchdog event.
+Valid 20-byte UW1 files still load with their saved mode, tier, and counters;
+they upgrade on the next legitimate event/configuration save, not merely on
+boot. Each attempted software recovery or re-enumeration saves its event and
+counters once. Probes, idle ticks, ownership/backend deferrals, and status
+reads do not write flash. A failed save leaves the live event marked unsaved
+and automatic actions fail closed until explicit repair.</p>
+<h3 id="last-event-review">Last-event review</h3>
+<pre><code class="language-text">get usb.watchdog.last
+</code></pre>
+<p>This returns the latest event only, not an unbounded history. New events replace
+older ones; exporting periodic management reports can retain observations
+off-node. Mode changes preserve the record. Erasing the filesystem or restoring
+a backup can remove or roll back it.</p>
+<p>The event includes an advisory Unix epoch from the node's RTC, uptime seconds
+at that recorded boot, a saturating event sequence, action, reason bitmask, and
+durability status. Uptime extends the millisecond clock across rollover.
+RTC time is not verified UTC: default clocks can start at a plausible fixed
+date, and a later time correction does not rewrite old events. Epoch zero
+is allowed and can mean no usable timestamp source. Use a synchronized node
+clock for meaningful calendar times; sequence and recorded uptime remain useful when
+clock time is wrong.</p>
+<p>Reason bits are <code>1</code> host absent, <code>2</code> reader absent, <code>4</code> physical TX stalled,
+and <code>8</code> previously confirmed stats client inactive. Physical failures can set
+multiple bits; a stats-only expiry uses bit 8 and cannot authorize an MCU reset.
+Actions are <code>soft-recovery</code>, <code>reenumerate</code>, <code>reboot-requested</code>, and
+<code>reboot-cancelled</code>. Software actions mean the backend reported an attempt, not
+that USB was successfully repaired. A reboot request is persisted with the
+next backoff tier before authorization; health/ownership are rechecked after
+the commit. A subsequent veto records cancellation immediately in RAM. If OTA
+or another owner makes storage unsafe, its durable save waits for a safe
+application tick; power loss before that save can leave the earlier reboot
+intent on disk. Neither the intent record
+nor the existing reboot counter proves a completed physical reset. Power loss
+or a hardware main-loop watchdog can occur without any opportunity to save
+an exact trigger time; this record covers the staged USB logging watchdog.</p>
+<p><code>get usb.watchdog</code> includes these compact fields:</p>
 <table>
 <thead>
 <tr>
-<th>TX offset</th>
-<th style="text-align: right;">SF6 preamble windows</th>
-<th style="text-align: right;">SF8 preamble windows</th>
+<th>Field</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Silent</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">0/8</td>
+<td><code>usb</code>, <code>log</code>, <code>host</code>, <code>reader</code>, <code>logger</code></td>
+<td>Backend supported; logging master; observed physical USB host/reader; confirmed healthy stats client.</td>
 </tr>
 <tr>
-<td>On frequency</td>
-<td style="text-align: right;">4/4</td>
-<td style="text-align: right;">8/8</td>
+<td><code>stall</code>, <code>stage</code>, <code>step</code></td>
+<td>Physical TX stall; stage 0 idle, 1 software wait, 2 re-enumeration wait, 3 reset pending; saved tier index 0-8.</td>
 </tr>
 <tr>
-<td>-250 kHz</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">1/8</td>
+<td><code>retry</code>, <code>idle</code>, <code>auto</code></td>
+<td>Saved MCU interval, current monitored fault age, and continuous Auto qualification age, in seconds. Retry is not an action countdown.</td>
 </tr>
 <tr>
-<td>+250 kHz</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">1/8</td>
+<td><code>defer</code>, <code>fs</code></td>
+<td>Ownership/backend deferral and verified durable persistence readiness.</td>
 </tr>
 <tr>
-<td>-500 kHz</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">2/8</td>
-</tr>
-<tr>
-<td>+500 kHz</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">0/8</td>
-</tr>
-<tr>
-<td>-1,000 kHz</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">0/8</td>
-</tr>
-<tr>
-<td>+1,000 kHz</td>
-<td style="text-align: right;">0/4</td>
-<td style="text-align: right;">0/8</td>
+<td><code>rec</code>, <code>boot</code></td>
+<td>Attempted USB recoveries and durable reset authorizations. Attempts save the event and recovery count together; a failed save can leave the live recovery count unsaved. The reset count can include a later safety/health veto; it is not a count of completed physical reboots.</td>
 </tr>
 </tbody>
 </table>
-<p>All 12 on-frequency probes delivered valid payloads. No off-frequency header
-or valid payload, silent preamble, device/read error, foreign valid payload,
-or trace overflow occurred. SF6 off-channel detections changed from 1/24 to
-0/24; SF8 from 32/48 to 4/48. These are small bounded samples, not sensitivity
-or packet-error-rate estimates. Signal strength (RSSI) sampled on-frequency
-was -41 to -40 dBm at SF6 and -42 dBm at SF8: the signal remains strong, but
-these are not calibrated attenuation measurements. Improvement cannot be
-attributed solely to separation or solely to normal gain.</p>
-<h2 id="four-channel-sf6125-51-symbol-visits">Four-channel SF6/125, 5.1-symbol visits</h2>
-<p>Same image, baseline then optimized, reboot both boards between runs. Each
-requested 100 packets/channel with varied unsynchronized arrival timing and
-stopped at its first miss. Extra nominal 64 us IRQ polling was enabled here,
-unlike the receive-only timing windows. No higher channel count was tested.</p>
-<table>
-<thead>
-<tr>
-<th>Policy</th>
-<th style="text-align: right;">Received before first miss</th>
-<th>Failed channel</th>
-<th style="text-align: right;">Timed hops</th>
-<th style="text-align: right;">Mean retune</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Always write 0x8B</td>
-<td style="text-align: right;">24, then probe 25 missed</td>
-<td>1 / 909.750 MHz</td>
-<td style="text-align: right;">4,746</td>
-<td style="text-align: right;">551.253 us</td>
-</tr>
-<tr>
-<td>Reuse unchanged tuple</td>
-<td style="text-align: right;">51, then probe 52 missed</td>
-<td>1 / 909.750 MHz</td>
-<td style="text-align: right;">7,748</td>
-<td style="text-align: right;">455.157 us</td>
-</tr>
-</tbody>
-</table>
-<p>Optimized RF run: 7,697 hops omitted 0x8B, averaging 453.081 us; 51 hops
-reapplied it after received packets, averaging 768.529 us. These are different
-RX lifecycle paths, not a pure 315 us command-cost comparison. Both runs had
-one frequency write per hop and no RX-mode/cache/retune errors. Successful
-packets read -42 to -40 dBm with SNR 10.0–11.5 dB. Neither met 100/100 on every
-channel. More packets before the first miss does not establish a reliable
-improvement in packet-error rate.</p>
-<p>The baseline miss captured a target-channel preamble at 176,194 us after
-arming, 1,830 us after a hop onto that channel. A guard held it there; no
-header or packet followed. An IRQ clear was observed at 195,025 us and the
-next hop completed at 195,240 us. This is <strong>not</strong> the earlier SF8 wrong-channel
-hold: the preamble was observed on the intended channel. Its RF source and
-reason for failing to progress remain unproven.</p>
-<p>The optimized miss captured 3,256 hops over ten seconds with <strong>no observed
-nonzero IRQ and no guard hold</strong>, reproducing the pre-acquisition symptom of
-the earlier SF6 miss. Target-channel revisit intervals were 12.249–12.324 ms
-(mean 12.286 ms), shorter than the 16.384 ms programmed preamble, yet no packet
-was acquired during those short individual visits. This does not establish
-that additional post-retune settling is needed. Trace buffers did not overflow.
-TX returned success for both failed probes; the MCU clocks are not synchronized
-and there was no independent RF capture.</p>
-<h2 id="provenance">Provenance</h2>
-<p>RadioLib 7.7.1 at <code>187ef24791c3d844939b2be13a68bd890bd04e4c</code>, Espressif32
-6.11.0 / Arduino ESP32 2.0.17. Both targets built and uploads were verified.
-These captures precede the subsequent SF5/250 bandwidth-selector addition.</p>
-<p>Tested firmware SHA-256:</p>
-<ul>
-<li>XIAO: <code>8aa79da891409c9e600ce14c1d83a8d73c3198225a2aaf799fc884247e882fab</code></li>
-<li>Indicator: <code>868946d0beca882d8f215c1556c0c19bf41908baac6620dc5632c3fca85b5feb</code></li>
-</ul>
-<p>Raw files in <code>tools/hil</code>, preserved byte-for-byte:</p>
-<table>
-<thead>
-<tr>
-<th>File</th>
-<th>SHA-256</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/profile_switch_same_modulation_xiao_results.json">XIAO timing</a></td>
-<td><code>45e7a640323a3c9028b6c92a5128e51307db1bd94a4846e8744d3c3ec098adfd</code></td>
-</tr>
-<tr>
-<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/profile_switch_same_modulation_indicator_results.json">Indicator timing</a></td>
-<td><code>f0a85826f500b3a9173bf22c6207fbfba3b6cb17f3d70b849a9fe7621ae3dfc5</code></td>
-</tr>
-<tr>
-<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/preamble_stationary_sf6_separated_normal_results.json">Stationary SF6</a></td>
-<td><code>1d981e5af41eabbc43f92641813bf8f7c5e7015439f5ba53ce0467fe6477d3f3</code></td>
-</tr>
-<tr>
-<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/preamble_stationary_sf8_separated_normal_results.json">Stationary SF8</a></td>
-<td><code>36e63da7435d0a16f61db7db7730893de392d028feca7a96960fd17ae1fa624b</code></td>
-</tr>
-<tr>
-<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/sf6_125_5p1_separated_normal_baseline_results.json">SF6 baseline scan</a></td>
-<td><code>cbfd200170891b334ef3958479694c6e318146993b94073eb9aee981f97fde97</code></td>
-</tr>
-<tr>
-<td><a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/sf6_125_5p1_separated_normal_optimized_results.json">SF6 optimized scan</a></td>
-<td><code>d88a621ef9aa358ce52bb3efb6aa9c4bcb77c681af20b2c66e4aebf3721e17ca</code></td>
-</tr>
-</tbody>
-</table>
-<p>Fresh complete 8 MiB backups were saved and separately verified in the private
-current-user backup directory before testing. Restores had already started
-when the user requested leaving HIL firmware installed; those in-flight writes
-and verification finished safely. Both boards were subsequently loaded with
-the newer SF5/250 HIL build for the user's next sweep. Do not restore them
-again unless requested. No private backup contents were added to Git.</p>
+<p>The <a href="../management_reports/">MGR3 management report</a> exports the USB status and
+the same latest-event record as a frozen, authenticated public snapshot. Updated
+Python and browser decoders retain MGR1/MGR2 support; older decoder copies must
+be updated to read MGR3. Events appear on the normal management schedule, not
+as immediate alerts. Reading status does not renew the logging-client lease.</p>
+<h2 id="verification">Verification</h2>
+<p>The two qualification stages below precede the subsequent upstream USB/GPS
+and repeater trace merge. Their firmware byte margins describe those earlier
+images, not the current merged source.</p>
+<p>Initial watchdog qualification on 2026-10-03, before the latest-event extension,
+passed 109 USB regression tests, 143 native test cases, 11 management protocol
+tests, and the browser decoder checks.
+Tests execute the production policy, runtime, marker parser, role ownership
+guards, and native USB boundaries with simulated clock, filesystem, and FIFO
+faults. The 14-day qualification uses an advanced test clock, not a hardware
+soak. Bounded console output, unread hosts, session races, and exact stats
+markers are covered.</p>
+<p>Those initial compiled checks passed Station G2 Full Companion, Repeater, and Room Server;
+XIAO nRF52 Full Companion and Repeater (full and reduced OTA qualifications);
+and ordinary RAK 3x72 STM32 USB Companion. The STM32 image retains all CLI
+features and its 32 KiB filesystem, but has only 368 bytes of app flash margin;
+its unsupported USB watchdog machinery is compiled out.</p>
+<p>Latest-event/MGR3 verification on the same date passed 116 USB regression tests,
+15 management tests with fatal AddressSanitizer/UndefinedBehaviorSanitizer
+checks, and the browser decoder tests. Coverage includes timestamp callbacks,
+clock corrections and rollover, legacy-state migration, commit failures,
+reboot-intent cancellation, deferred cancellation saves, and authenticated
+cross-language MGR1/MGR2/MGR3 decoding. The full native suite passed 1,713 cases
+during implementation; the final packet validator also passed a fresh 116-case
+routing suite and 5,855,168 previous/current validator comparisons under fatal
+sanitizers.</p>
+<p>The extension compiled in standard Station G2 Full Companion and Repeater,
+XIAO nRF52 Repeater, and RAK 3x72 USB Companion. The normal <code>build.sh</code> STM32
+recipe at version <code>1.17.1.9</code> retains all CLI features and the 32 KiB filesystem,
+with 372 bytes of app flash margin; longer version strings or future changes
+can still exceed that tight budget. No features or filesystem space were cut
+to fit this extension. This is not an all-board release qualification or a
+physical USB recovery test. No hardware was flashed, and verification artifacts
+stayed outside <code>out</code>.</p>
+<p>The subsequent USB/GPS/repeater-trace merge passed all 1,718 native cases,
+133 USB regression methods, 25 management/event/watchdog methods plus the
+browser decoder, and 10 GPS/trace/persistence methods. Companion preference
+tests exercise six platform/layout variants under fatal sanitizers. The
+compact final preference writer also matches the previous full image for
+256 tail-value sets per variant and preserves committed files through every
+partial-tail write/readback boundary and rename failure.</p>
+<p>Compile checks for that merge passed standard XIAO S3 Full Companion, Station
+G2 Repeater and Room Server, native-USB XIAO S3 USB Companion with all five
+session/progress hooks linked, and XIAO nRF52 Repeater. The final compact writer
+passed both the bare STM32 CI recipe and the normal <code>1.17.1.9</code> recipe; the
+latter uses 229,020 of 229,376 app flash bytes (356 bytes of margin), retaining
+all features and the 32 KiB filesystem. The bare recipe is tighter still.
+These checks do not qualify every board or physical USB recovery. No device
+was flashed and existing <code>out</code> artifacts were not changed.</p>
 
 
 
@@ -2436,26 +2432,26 @@ again unless requested. No private backup contents were added to Git.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
-        <script src="../../_javascript/notification_builder.js?v=20260930-audio-start"></script>
+        <script src="../_javascript/notification_builder.js?v=20260930-audio-start"></script>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../../_javascript/firmware_picker.js?v=20261001-feedback-1"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261001-feedback-1"></script>
       
-        <script src="../../_javascript/telemetry_decoder.js"></script>
+        <script src="../_javascript/telemetry_decoder.js"></script>
       
-        <script src="../../_javascript/management_decoder.js"></script>
+        <script src="../_javascript/management_decoder.js"></script>
       
-        <script src="../../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
+        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
       
-        <script src="../../_javascript/preset_test.js?v=20260923-2"></script>
+        <script src="../_javascript/preset_test.js?v=20260923-2"></script>
       
-        <script src="../../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
+        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
       
     
   </body>

@@ -27,7 +27,7 @@
     
     
       
-        <title>Feature switches by role — 1.17.1.5 USA Cascade - MeshCore Docs</title>
+        <title>Feature switches by role - 1.17.1.5 USA Cascade - MeshCore Docs</title>
       
     
     
@@ -121,7 +121,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Feature switches by role — 1.17.1.5 USA Cascade
+              Feature switches by role - 1.17.1.5 USA Cascade
             
           </span>
         </div>
@@ -633,7 +633,7 @@
   <span class="md-ellipsis">
     
   
-    Feature switches by role — 1.17.1.5 USA Cascade
+    Feature switches by role - 1.17.1.5 USA Cascade
   
 
     
@@ -651,7 +651,7 @@
   <span class="md-ellipsis">
     
   
-    Feature switches by role — 1.17.1.5 USA Cascade
+    Feature switches by role - 1.17.1.5 USA Cascade
   
 
     
@@ -1843,7 +1843,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1)
+    Management reports (MGR1/MGR2/MGR3)
   
 
     
@@ -2366,7 +2366,7 @@
   
 
 
-<h1 id="feature-switches-by-role-11715-usa-cascade">Feature switches by role — 1.17.1.5 USA Cascade</h1>
+<h1 id="feature-switches-by-role-11715-usa-cascade">Feature switches by role - 1.17.1.5 USA Cascade</h1>
 <p>Use these settings with the exact board's canonical release image. Former
 logging, power-saving, FEM-gain, and rotated-display variants are now runtime
 choices where the hardware supports them. A setting cannot add missing radio
@@ -2464,7 +2464,16 @@ shared settings. Use <code>get &lt;setting&gt;</code> to check and <code>set &lt
 change them. A command requires its feature to be compiled into the build.
 <code>set usb.logging on|off</code> changes only USB logging. On MQTT-capable builds,
 <code>set mqtt.enabled on|off</code> changes only MQTT and keeps broker settings;
-<code>set logging.output off|usb|wifi|both</code> selects both outputs together.</p>
+<code>set logging.output off|usb|wifi|both</code> selects both outputs together.
+<code>set usb.debug on|off</code> separately saves verbose USB diagnostics. Debug output
+requires both USB switches on; RAW/RX/TX packet records need only
+<code>usb.logging</code>. Leave <code>usb.debug off</code> for USB-to-MQTT packet capture.</p>
+<p>Current source also includes a saved <a href="../usb_logging_watchdog/">USB logging watchdog</a>:
+<code>get usb.watchdog</code> and <code>set usb.watchdog off|on|auto</code>. Missing state defaults to
+Auto, qualifying from 14 continuous healthy USB stats-polling days, not a cable
+or open TTY alone. Confirmed client loss can trigger USB-only repair; MCU resets
+require On and an entire physical-fault tier, growing from one hour to one week.
+This repairs the node's USB connection, not the host Pi or MQTT service.</p>
 <h2 id="full-companion-commands">Full Companion commands</h2>
 <table>
 <thead>
@@ -2519,6 +2528,18 @@ change them. A command requires its feature to be compiled into the build.
 <td><code>get usb.logging</code></td>
 </tr>
 <tr>
+<td>Verbose USB diagnostics</td>
+<td><code>set usb.debug on</code> while USB logging is on</td>
+<td><code>set usb.debug off</code></td>
+<td><code>get usb.debug</code> reports saved intent</td>
+</tr>
+<tr>
+<td>USB logging watchdog (current source)</td>
+<td><code>set usb.watchdog auto</code> or <code>on</code></td>
+<td><code>set usb.watchdog off</code></td>
+<td><code>get usb.watchdog</code>; native USB and durable storage required</td>
+</tr>
+<tr>
 <td>MQTT master</td>
 <td><code>set mqtt.enabled on</code></td>
 <td><code>set mqtt.enabled off</code></td>
@@ -2559,11 +2580,19 @@ change them. A command requires its feature to be compiled into the build.
 <p>Saved settings apply immediately unless noted. Rotation and gain controls
 report unsupported hardware instead of creating that feature. Fresh Full
 Companion preferences enable device power saving and leave USB logging off;
-existing saved preferences win after an update.</p>
+existing saved preferences win after an update.
+USB debug defaults off, including on upgrade from preferences without that
+field. Its saved intent survives switching the USB master off. Verbose messages
+still require compiled debug support; changing this preference adds no missing
+code and does not require a reboot.</p>
 <p><strong>ESP32:</strong> logging and binary Companion traffic share one USB port. Turn logging
 off before handing USB to an app/MOTA host. <strong>nRF52:</strong> the optional second CDC
 port is for logs; use the primary port for Companion/MOTA. Adding/removing the
-second port requires a reboot; the optional suffix shown above requests it.</p>
+second port requires a reboot; the optional suffix shown above requests it.
+Full Companion includes complete ASCII RAW packet records and decoded RX/TX
+summaries, independent of verbose debug. The nRF52 log port is output-only;
+CLI/identity queries belong to interface <code>00</code>. A USB-to-MQTT program that expects
+both logs and CLI replies on one port cannot use interface <code>02</code> alone.</p>
 <h3 id="mqtt-controls-shared-by-companion-and-infrastructure">MQTT controls shared by Companion and infrastructure</h3>
 <p><strong>Search terms:</strong> Companion MQTT settings, MQTT on, MQTT off, broker configuration.</p>
 <p>Configure a broker through the MQTT tab or with the same commands on either
@@ -2627,6 +2656,12 @@ from some portable builds. The USB browser console still works without it.</p>
 <td>ESP32 1.17.1.5: <code>set powersaving off</code>, then <code>set usb.logging on</code>; other platforms: <code>set usb.logging on</code></td>
 <td><code>set usb.logging off</code></td>
 <td><code>get powersaving</code>, <code>get usb.logging</code></td>
+</tr>
+<tr>
+<td>Verbose USB diagnostics</td>
+<td><code>set usb.debug on</code> while USB logging is on</td>
+<td><code>set usb.debug off</code></td>
+<td><code>get usb.debug</code> reports saved intent</td>
 </tr>
 <tr>
 <td>Capture RX log to node storage</td>
@@ -2725,6 +2760,12 @@ requests a reboot only when changing the USB interfaces requires it, as on
 nRF52 Full Companion. <code>log start/stop</code> records to storage independently of live
 USB logging. Use
 <code>log erase</code> to delete that capture.</p>
+<p>For quiet packet capture in current firmware, use <code>set usb.debug off</code> and
+<code>set usb.logging on</code>. Verbose diagnostics default off for fresh and upgraded
+preferences without the new field. The debug choice is saved separately;
+turning logging off, or selecting <code>logging.output wifi</code>, does not erase it.
+Debug output is effective only when USB logging is on and the image includes
+the relevant debug code. RAW/RX/TX records remain enabled without debug.</p>
 <p>For <strong>ESP32 1.17.1.5 USB logging</strong>, run these as separate commands in the
 role's text terminal (or remote admin CLI on infrastructure):</p>
 <pre><code class="language-text">set powersaving off
@@ -2783,7 +2824,12 @@ preferences select <code>both</code>; Full Companion starts with USB logging off
 settings override these defaults. To toggle only MQTT while keeping
 USB logging unchanged, use <code>set mqtt.enabled off</code> / <code>on</code>. Neither setting
 turns LoRa repeating off. Repeater forwarding uses <code>set repeat off</code> / <code>on</code>
-and <code>get repeat</code> separately.</p>
+and <code>get repeat</code> separately.
+Repeaters can opt in to routed trace diagnostics with <code>set repeat.trace on</code>
+while <code>repeat</code> stays off; the saved exception defaults off and does not relay
+other payload types. See <a href="../cli_commands/#allow-routed-traces-while-repeating-is-disabled-repeater-only">repeat-off traces</a>.
+The selector changes USB master output, not saved <code>usb.debug</code> intent. Direct
+WiFi MQTT is independent of that USB verbosity preference.</p>
 <p>The <code>set powersaving off</code> step above is the <strong>1.17.1.5 ESP32 USB workaround</strong>.
 <strong>WiFi/MQTT-only logging does not need it while the Repeater/Room Server MQTT
 bridge is running:</strong> that sleep guard already exists in the released firmware.

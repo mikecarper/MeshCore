@@ -23,7 +23,7 @@
     
     
       
-        <title>Full USB logging repair — 1.17.1.6 - MeshCore Docs</title>
+        <title>Full USB logging repair - 1.17.1.6 - MeshCore Docs</title>
       
     
     
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Full USB logging repair — 1.17.1.6
+              Full USB logging repair - 1.17.1.6
             
           </span>
         </div>
@@ -616,7 +616,7 @@
   <span class="md-ellipsis">
     
   
-    Feature switches by role — 1.17.1.5 USA Cascade
+    Feature switches by role - 1.17.1.5 USA Cascade
   
 
     
@@ -1677,7 +1677,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1)
+    Management reports (MGR1/MGR2/MGR3)
   
 
     
@@ -2111,8 +2111,16 @@
   
 
 
-<h1 id="full-usb-logging-repair-11716">Full USB logging repair — 1.17.1.6</h1>
+<h1 id="full-usb-logging-repair-11716">Full USB logging repair - 1.17.1.6</h1>
 <p>Audit date: 2026-09-13. Release firmware source: <code>306feebe6d648a247f925894f876be9d747fc8d2</code>.</p>
+<p>This is historical qualification of the 1.17.1.6 images, not an all-board
+runtime test of later firmware. Current source separates the saved USB output
+master (<code>usb.logging</code>) from opt-in diagnostic verbosity (<code>usb.debug</code>, default
+off), and adds full ASCII RAW records to Full Companion. See
+<a href="../../cli_commands/#control-live-usb-logging">current USB logging controls</a>
+for defaults, legacy preference handling, capture-loss behavior and dedicated
+CDC/control-port restrictions. These source changes do not imply new hardware
+validation of the published images listed below.</p>
 <p>The original Station G2 Full Repeater and Full Room Server images omitted USB
 packet logging. Both inherited <code>-UMESH_PACKET_LOGGING</code> from their ordinary MQTT
 observer recipes. Full added <code>-DMESH_PACKET_LOGGING=1</code>, but PlatformIO's

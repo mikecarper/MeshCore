@@ -622,7 +622,7 @@
   <span class="md-ellipsis">
     
   
-    Feature switches by role — 1.17.1.5 USA Cascade
+    Feature switches by role - 1.17.1.5 USA Cascade
   
 
     
@@ -1787,7 +1787,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1)
+    Management reports (MGR1/MGR2/MGR3)
   
 
     
@@ -2308,6 +2308,10 @@ the corresponding feature:</p>
 <td>Runtime diagnostics</td>
 </tr>
 <tr>
+<td><code>get public.key</code></td>
+<td>Read-only node identity public key; Companion returns <code>&gt;</code> followed by 64 uppercase hex characters</td>
+</tr>
+<tr>
 <td><code>get prv.key</code></td>
 <td>Node identity private key; Companion requires private key export enabled in the build</td>
 </tr>
@@ -2481,17 +2485,39 @@ set powersaving {on|off}
 GPS idle behavior; it does not change LoRa RXPS or WiFi modem sleep.</p>
 <pre><code>get usb.logging
 set usb.logging {on|off} [reboot]
+get usb.debug
+set usb.debug {on|off}
 </code></pre>
-<p>Shows or changes persistent live USB debug and packet output in an ordinary
-USB-loggable Companion or Full Companion. USB Companion and Full start off on
-a fresh install with logging disabled to protect framed traffic.
+<p>Shows or changes persistent USB packet output and a separate verbose-debug
+preference in an ordinary USB-loggable Companion or Full Companion.
+<code>usb.logging</code> is the master; debug output requires the master and <code>usb.debug</code>
+to be on. RAW and RX/TX packet records need only the master. Use
+<code>set usb.debug off</code> with packet logging for USB-to-MQTT capture.
+<code>get usb.debug</code> reports saved intent, even while the master is off. Disabling
+the master does not clear it. Debug defaults off for fresh installs and older
+preferences without the new field; it still needs compiled debug support.
+Changing debug verbosity takes effect without a reboot.</p>
+<p>Current source also accepts <code>get usb.watchdog</code> and saved
+<code>set usb.watchdog off|on|auto</code>. Auto is the default and requires 14 continuous
+healthy logging-client days before saving On. Exact USB stats polls, not merely
+USB attachment, renew the client lease. See
+<a href="../usb_logging_watchdog/">USB logging watchdog</a> for USB-only repair, increasing
+physical-fault reboot intervals, status fields, and ownership/storage safeguards.</p>
+<p>USB Companion and Full start off on a fresh install with the logging master
+disabled to protect framed traffic.
 nRF52 Full changes its interface count after a reboot and keeps Companion on
 interface <code>00</code>. Every ESP32 Full Companion has one TTY and needs no reboot:
 logging uses the active text terminal, disables framed Binary Companion on
 USB, and continues accepting <code>set usb.logging off</code>. Turning logging off leaves
 the port in the normal ASCII terminal, matching fresh firmware. Send
 <code>+++MESHCORE-TERM-STOP</code>, or let a Companion app send a valid framed probe, to
-switch it to Binary Companion afterward.</p>
+switch it to Binary Companion afterward.
+Full Companion emits complete received frames as uppercase ASCII <code>RAW:</code> hex
+followed by decoded RX summaries where possible; TX summaries are separate.
+These are best-effort records, not atomic pairs or a durable capture.
+nRF52 interface <code>02</code> is logging-only: send CLI/control commands on interface
+<code>00</code>. A single-port bridge that queries identity on its logging port needs
+separate control-port support before it can use that dedicated log endpoint.</p>
 <pre><code>reboot
 </code></pre>
 <p>Sends an acknowledgement, then reboots the Companion one second later. The

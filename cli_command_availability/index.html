@@ -622,7 +622,7 @@
   <span class="md-ellipsis">
     
   
-    Feature switches by role — 1.17.1.5 USA Cascade
+    Feature switches by role - 1.17.1.5 USA Cascade
   
 
     
@@ -1914,7 +1914,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1)
+    Management reports (MGR1/MGR2/MGR3)
   
 
     
@@ -2545,6 +2545,13 @@ features, not Companion contact or live USB-logging commands.</p>
   where there is no MQTT sibling. It has the complete parser and a saved
   USB-logging on/off gate. ESP-NOW bridges use this profile.</li>
 </ul>
+<p>USB packet output and verbose diagnostics are separate saved controls in
+current source. Where <code>usb.logging</code> is available, <code>get/set usb.debug on|off</code>
+selects debug intent without changing packet capture or adding a build variant.
+Debug defaults off for fresh and older preference images; effective output
+requires <code>usb.logging</code> and <code>usb.debug</code> on plus compiled diagnostic support.
+See <a href="../cli_commands/#control-live-usb-logging">live USB logging</a> for transport
+restrictions and Full Companion RAW output.</p>
 <p>The firmware-configured INA3221 and RAK12500 addresses are both <code>0x42</code>; they
 cannot coexist on one bus at those addresses. Leave RAK12500 at <code>0x42</code>, strap
 INA3221 A0 to SCL for <code>0x43</code>, and use a build with
@@ -2588,6 +2595,10 @@ over the normal binary USB, BLE, or TCP connection:</p>
 <tr>
 <td><code>set freq &lt;MHz&gt;</code></td>
 <td>Local terminal, binary command <code>0x42</code>, and authorized LoRa CLI; reboot to apply</td>
+</tr>
+<tr>
+<td><a href="../cli_commands/#view-this-nodes-public-key"><code>get public.key</code></a></td>
+<td>Companion text terminal and binary command <code>0x42</code>; read-only, no private-key export feature required</td>
 </tr>
 <tr>
 <td><code>get prv.key</code></td>
@@ -2907,6 +2918,30 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <td>No</td>
 </tr>
 <tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.debug</code></a></td>
+<td>Same USB-control availability; saved intent defaults off; actual diagnostics need compiled support and USB master on</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../usb_logging_watchdog/"><code>get/set usb.watchdog off\|on\|auto</code></a></td>
+<td>Current source; recovery requires native USB, live logging, and durable storage; Auto qualifies from USB stats polling</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../usb_logging_watchdog/#last-event-review"><code>get usb.watchdog.last</code></a></td>
+<td>Current source; latest USB watchdog event with advisory timestamp, uptime, action, reasons, and durability; native USB required</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+</tr>
+<tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-radio-parameters"><code>get radio</code>; <code>set radio ...</code></a></td>
 <td>All text CLI roles</td>
@@ -3134,6 +3169,14 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <td>Routing</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-repeat-flag"><code>get/set repeat</code></a></td>
 <td>Forwarding-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#allow-routed-traces-while-repeating-is-disabled-repeater-only"><code>get/set repeat.trace</code></a></td>
+<td>Repeater only; saved repeat-off trace exception, default off</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -3477,7 +3520,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>GPS</td>
 <td><a href="../cli_commands/#set-the-automatic-gps-clock-sync-interval"><code>get/set gps.sync.interval</code></a></td>
-<td>Compiled GPS and provider; 1–336 hours</td>
+<td>Compiled GPS and provider; 1-336 hours</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>
@@ -4308,6 +4351,36 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <td>Yes</td>
 </tr>
 <tr>
+<td>Logging</td>
+<td><a href="../cli_commands/#control-live-usb-logging"><code>get/set usb.debug</code></a></td>
+<td>Same USB-control availability; saved intent defaults off; actual diagnostics need compiled support and USB master on</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>No</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../usb_logging_watchdog/"><code>get/set usb.watchdog off\|on\|auto</code></a></td>
+<td>Current source; recovery requires native USB, live logging, and durable storage; Auto qualifies from USB stats polling</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Logging</td>
+<td><a href="../usb_logging_watchdog/#last-event-review"><code>get usb.watchdog.last</code></a></td>
+<td>Current source; latest USB watchdog event with advisory timestamp, uptime, action, reasons, and durability; native USB required</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Feature</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
 <td>Radio</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-radio-parameters"><code>get radio</code>; <code>set radio ...</code></a></td>
 <td>All text CLI roles</td>
@@ -4601,6 +4674,16 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <td>Routing</td>
 <td><a href="../cli_commands/#view-or-change-this-nodes-repeat-flag"><code>get/set repeat</code></a></td>
 <td>Forwarding-capable role</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Routing</td>
+<td><a href="../cli_commands/#allow-routed-traces-while-repeating-is-disabled-repeater-only"><code>get/set repeat.trace</code></a></td>
+<td>Repeater only; saved repeat-off trace exception, default off</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -5030,7 +5113,7 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <tr>
 <td>GPS</td>
 <td><a href="../cli_commands/#set-the-automatic-gps-clock-sync-interval"><code>get/set gps.sync.interval</code></a></td>
-<td>Compiled GPS and provider; 1–336 hours</td>
+<td>Compiled GPS and provider; 1-336 hours</td>
 <td>Feature</td>
 <td>Feature</td>
 <td>Feature</td>

@@ -7,9 +7,13 @@
   // which Web Crypto exposes directly.  AES-CBC with a zero IV supplies the
   // required AES block primitive; only its first ciphertext block is used.
   const HEADER = 83;
+  const MGR2_HEADER = 98;
+  const CURRENT_HEADER = 111;
   const TAG = 16;
   const ENTRY = 13;
   const PER_PAGE = 6;
+  const MGR2_PER_PAGE = 5;
+  const CURRENT_PER_PAGE = 4;
   const MAX_KEYS = 36;
   const ZERO_BLOCK = new Uint8Array(16);
   const UTF8 = new TextEncoder();
@@ -214,22 +218,35 @@
     return (await hmacSha256(key, concatBytes(radio, normalized))).slice(0, 12);
   }
 
+  function layout(payload) {
+    const magic = bytesToAscii(payload, 0, 4);
+    if (magic === "MGR1") return { header: HEADER, perPage: PER_PAGE };
+    if (magic === "MGR2") return { header: MGR2_HEADER, perPage: MGR2_PER_PAGE };
+    if (magic === "MGR3") return { header: CURRENT_HEADER, perPage: CURRENT_PER_PAGE };
+    return null;
+  }
+
   function canonicalLength(payload) {
-    if (payload.length < HEADER + TAG || bytesToAscii(payload, 0, 4) !== "MGR1") {
-      managementError("This data does not begin with an MGR1 management page.");
+    const format = layout(payload);
+    if (!format || payload.length < format.header + TAG) {
+      managementError("This data does not begin with a complete MGR1/MGR2/MGR3 management page.");
     }
+    if (format.header >= MGR2_HEADER && ((uint16LE(payload, 83) & 0xf800) || (payload[85] & 0xc0))) {
+      managementError("Reserved USB status bits must be zero.");
+    }
+    if (format.header === CURRENT_HEADER) usbWatchdogEvent(payload);
     const page = payload[78];
     const pages = payload[79];
     const total = payload[80];
     const first = payload[81];
     const count = payload[82];
-    const expectedPages = total ? Math.ceil(total / PER_PAGE) : 1;
+    const expectedPages = total ? Math.ceil(total / format.perPage) : 1;
     if (total > MAX_KEYS || pages !== expectedPages || page >= pages ||
-        first !== page * PER_PAGE || first > total ||
-        count !== Math.min(PER_PAGE, total - first)) {
-      managementError("The MGR1 page index or ACL bounds are invalid.");
+        first !== page * format.perPage || first > total ||
+        count !== Math.min(format.perPage, total - first)) {
+      managementError("The management page index or ACL bounds are invalid.");
     }
-    return HEADER + count * ENTRY + TAG;
+    return format.header + count * ENTRY + TAG;
   }
 
   function paddedFloodLength(canonical) {
@@ -256,13 +273,13 @@
     const hops = pathInfo & 0x3f;
     if (width > 3 || hops * width > 64) return null;
     const payloadOffset = pathOffset + 1 + width * hops;
-    if (payloadOffset >= bytes.length || bytesToAscii(bytes, payloadOffset, 4) !== "MGR1") return null;
+    if (payloadOffset >= bytes.length || !layout(bytes.slice(payloadOffset))) return null;
     const payload = bytes.slice(payloadOffset);
     const canonical = canonicalLength(payload);
     const padded = paddedFloodLength(canonical);
     if (payload.length !== canonical &&
         (payload.length !== padded || !payload.slice(canonical).every((value) => value === 0))) {
-      managementError("MGR1 packet padding or length is invalid.");
+      managementError("Management packet padding or length is invalid.");
     }
     return {
       payload: payload.slice(0, canonical),
@@ -277,26 +294,35 @@
   }
 
   function parseCanonical(bytes) {
-    if (bytesToAscii(bytes, 0, 4) !== "MGR1") return null;
+    if (!layout(bytes)) return null;
     const canonical = canonicalLength(bytes);
     const padded = paddedFloodLength(canonical);
     if (bytes.length !== canonical &&
         (bytes.length !== padded || !bytes.slice(canonical).every((value) => value === 0))) {
-      managementError("MGR1 payload padding or length is invalid.");
+      managementError("Management payload padding or length is invalid.");
     }
     return { payload: bytes.slice(0, canonical), envelope: null };
   }
 
   function inputByteStreams(input) {
     if (typeof input !== "string" || input.trim() === "") {
-      managementError("Paste one or more MGR1 payloads or GroupData packet hex values first.");
+      managementError("Paste one or more MGR1/MGR2/MGR3 payloads or GroupData packet hex values first.");
     }
     if (input.length > 32768) managementError("The pasted value is too large to be management-report data.");
-    const candidates = [input, ...input.split(/\r?\n/)];
+    // A wrapped single page is one candidate, not an invalid first-line
+    // fragment. Conversely, joining complete page lines creates a bogus
+    // oversized canonical page: let each line retain its own bounds.
+    try {
+      const whole = hexToBytes(input);
+      if (parseCanonical(whole) || parsePacket(whole)) return [whole];
+    } catch (_error) {
+      // JSON/log wrappers and multiple complete page lines are handled below.
+    }
+    const candidates = input.split(/\r?\n/);
     const quotedRaw = /["'](?:raw|data)["']\s*:\s*["']([^"']+)["']/gi;
     let match;
     while ((match = quotedRaw.exec(input)) !== null) candidates.push(match[1]);
-    const streams = input.match(/(?:0x)?[0-9a-f]{2}(?:(?:[\s:,_-]*)(?:0x)?[0-9a-f]{2}){15,}/gi);
+    const streams = input.match(/(?:0x)?[0-9a-f]{2}(?:(?:[ \t:,_-]*)(?:0x)?[0-9a-f]{2}){15,}/gi);
     if (streams) candidates.push(...streams);
 
     const unique = new Map();
@@ -319,7 +345,7 @@
       try {
         parsed = parseCanonical(bytes) || parsePacket(bytes);
       } catch (error) {
-        if (error instanceof ManagementDecodeError && bytesToAscii(bytes, 0, 4) !== "MGR1") {
+        if (error instanceof ManagementDecodeError && !layout(bytes)) {
           // It may be an unrelated hex stream alongside a valid packet.
           continue;
         }
@@ -333,7 +359,7 @@
       }
     }
     if (!found.length) {
-      managementError("No complete MGR1 management page was found. Paste canonical MGR1 payload hex or an entire GroupData packet.");
+      managementError("No complete management page was found. Paste canonical MGR1/MGR2/MGR3 payload hex or an entire GroupData packet.");
     }
     return found;
   }
@@ -366,6 +392,45 @@
     return ({ 1: "repeater", 2: "room server", 3: "sensor" })[value] || `unknown (${value})`;
   }
 
+  function usbStatus(payload) {
+    if (!["MGR2", "MGR3"].includes(bytesToAscii(payload, 0, 4))) return null;
+    const flags = uint16LE(payload, 83);
+    const names = ["supported", "loggingEnabled", "watchdogEnabled", "hostConnected",
+      "readerConnected", "stalled", "recovering", "recoveryDeferred", "persistenceReady", "watchdogAuto", "loggerActive"];
+    const result = {};
+    names.forEach((name, bit) => { result[name] = Boolean(flags & (1 << bit)); });
+    result.stage = payload[85] & 3;
+    result.backoffStep = (payload[85] >> 2) & 15;
+    result.retrySeconds = uint32LE(payload, 86);
+    result.inactiveSeconds = uint32LE(payload, 90);
+    result.autoConnectedSeconds = uint32LE(payload, 94);
+    return result;
+  }
+
+  function usbWatchdogEvent(payload) {
+    if (bytesToAscii(payload, 0, 4) !== "MGR3") return null;
+    const code = payload[98];
+    const sequence = uint32LE(payload, 107);
+    if (!sequence) {
+      if (!payload.slice(98, 111).every((value) => value === 0)) {
+        managementError("Invalid empty USB watchdog event.");
+      }
+      return null;
+    }
+    const reasons = code & 15;
+    const actionCode = (code >> 4) & 7;
+    if (!reasons || actionCode < 1 || actionCode > 4) {
+      managementError("Invalid USB watchdog event reason/action.");
+    }
+    const names = ["host-absent", "reader-absent", "tx-stalled", "client-inactive"];
+    return {
+      reasons, reasonNames: names.filter((_name, bit) => reasons & (1 << bit)),
+      actionCode, action: [null, "soft-recovery", "reenumerate", "reboot-requested", "reboot-cancelled"][actionCode],
+      persisted: Boolean(code & 128), epoch: uint32LE(payload, 99),
+      uptimeSeconds: uint32LE(payload, 103), sequence,
+    };
+  }
+
   function publicFields(payload, envelope) {
     const valid = uint16LE(payload, 76);
     const capabilities = payload[73];
@@ -374,6 +439,7 @@
     const knownActive = featureNames(active & known);
     const unknownActive = featureNames(capabilities & ~known);
     return {
+      protocol: bytesToAscii(payload, 0, 4),
       radioId: bytesToHex(payload.slice(4, 20)),
       sequence: uint32LE(payload, 20),
       timestamp: uint32LE(payload, 24),
@@ -396,6 +462,8 @@
       acl: `${payload[80]} total; ${payload[82]} on this page`,
       partialSince: Boolean(valid & 32),
       mcuTemperature: Boolean(valid & 64),
+      usbLogging: usbStatus(payload),
+      usbWatchdogLast: usbWatchdogEvent(payload),
       envelope,
     };
   }
@@ -417,9 +485,11 @@
     });
     const sorted = [...byPage.values()].sort((left, right) => left.payload[78] - right.payload[78]);
     const reference = sorted[0].payload;
+    const header = layout(reference).header;
     if (sorted.some((page) => !equalBytes(page.payload.slice(0, 78), reference.slice(0, 78)) ||
+        !equalBytes(page.payload.slice(HEADER, header), reference.slice(HEADER, header)) ||
         page.payload[79] !== reference[79] || page.payload[80] !== reference[80])) {
-      managementError("MGR1 pages do not belong to the same snapshot.");
+      managementError("Management pages do not belong to the same snapshot.");
     }
     return sorted;
   }
@@ -427,9 +497,10 @@
   async function decryptPage(payload, password, candidate) {
     const root = await passwordKey(password);
     const key = await deriveKey(root, "MeshCore-MGR1-SIV", payload.slice(4, 20));
+    const header = layout(payload).header;
     const privateLength = payload[82] * ENTRY;
-    const plaintext = await openSiv(key, payload.slice(0, HEADER),
-      payload.slice(HEADER, HEADER + privateLength), payload.slice(HEADER + privateLength));
+    const plaintext = await openSiv(key, payload.slice(0, header),
+      payload.slice(header, header + privateLength), payload.slice(header + privateLength));
     try {
       let wanted = null;
       if (candidate) wanted = await aclFingerprint(password, payload.slice(4, 20), candidate);
@@ -517,6 +588,7 @@
 
     function render(model) {
       const values = [
+        ["Protocol", model.public.protocol],
         ["Reporter", model.public.radioId], ["Sequence", model.public.sequence],
         ["Report time", timestampText(model.public.timestamp)], ["Role", model.public.role],
         ["Firmware", model.public.firmware], ["Bootloader", model.public.bootloader],
@@ -528,6 +600,35 @@
         ["Compiled capabilities", model.public.compiled], ["Known active capabilities", model.public.active],
         ["Page", model.public.page], ["ACL", model.public.acl],
       ];
+      const usb = model.public.usbLogging;
+      if (usb) {
+        const stage = ["idle", "soft recovery wait", "re-enumeration wait", "reboot pending"][usb.stage];
+        values.push(["USB logging", usb.supported ? (usb.loggingEnabled ? "enabled" : "disabled") : "unsupported"],
+          ["USB watchdog", usb.watchdogAuto ? "Auto (qualifying)" : usb.watchdogEnabled ? "On" : "Off"],
+          ["USB Auto qualification", `${usb.autoConnectedSeconds}s of 1209600s`],
+          ["USB host / reader", `${usb.hostConnected ? "host connected" : "no host"}; ${usb.readerConnected ? "reader connected" : "no reader"}`],
+          ["USB logging client", usb.loggerActive ? "recent USB stats polling (15-minute lease)" : "inactive (stats lease or healthy USB link missing)"],
+          ["USB recovery", `${usb.stalled ? "stalled; " : ""}${usb.recovering ? "recovering; " : ""}${usb.recoveryDeferred ? "deferred; " : ""}${stage}; backoff=${usb.backoffStep}`],
+          ["USB retry interval / inactive", `${usb.retrySeconds}s / ${usb.inactiveSeconds}s`],
+          ["USB persistence", usb.persistenceReady ? "ready" : "not ready"]);
+      } else {
+        values.push(["USB logging status", "unavailable in MGR1"]);
+      }
+      const event = model.public.usbWatchdogLast;
+      if (event) {
+        values.push(["Last USB watchdog event", `#${event.sequence}: ${event.action}`],
+          ["USB watchdog event reasons", event.reasonNames.join(", ")],
+          ["USB watchdog event time", `${timestampText(event.epoch)} (advisory RTC; raw epoch=${event.epoch})`],
+          ["USB watchdog event uptime", `${event.uptimeSeconds}s at the recorded boot`],
+          ["USB watchdog event persistence", event.persisted ? "saved" : "RAM-only"],
+          ["USB watchdog action meaning", event.actionCode === 3
+            ? "Reboot was requested; this does not prove a physical reset occurred."
+            : event.actionCode === 4 ? "Reboot request was cancelled; no physical reset is claimed."
+            : "Recovery attempt was recorded; this does not prove successful recovery."]);
+      } else {
+        values.push(["Last USB watchdog event", model.public.protocol === "MGR3"
+          ? "none recorded" : "unavailable in MGR1/MGR2"]);
+      }
       summary.replaceChildren();
       values.forEach(([term, description]) => {
         const item = document.createElement("div");
@@ -540,7 +641,7 @@
       });
       status.textContent = model.authenticated
         ? `Password-authenticated ${model.suppliedPages}/${model.pageCount} page${model.pageCount === 1 ? "" : "s"}.`
-        : "Public-only decode — no authenticity claim without the management password.";
+        : "Public-only decode - no authenticity claim without the management password.";
       status.classList.toggle("management-status-authenticated", model.authenticated);
 
       warningList.replaceChildren();

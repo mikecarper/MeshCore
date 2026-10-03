@@ -27,7 +27,7 @@
     
     
       
-        <title>Management reports (MGR1) - MeshCore Docs</title>
+        <title>Management reports (MGR1/MGR2/MGR3) - MeshCore Docs</title>
       
     
     
@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#management-reports-mgr1" class="md-skip">
+        <a href="#management-reports-mgr1mgr2mgr3" class="md-skip">
           Skip to content
         </a>
       
@@ -121,7 +121,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Management reports (MGR1)
+              Management reports (MGR1/MGR2/MGR3)
             
           </span>
         </div>
@@ -622,7 +622,7 @@
   <span class="md-ellipsis">
     
   
-    Feature switches by role — 1.17.1.5 USA Cascade
+    Feature switches by role - 1.17.1.5 USA Cascade
   
 
     
@@ -1694,7 +1694,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1)
+    Management reports (MGR1/MGR2/MGR3)
   
 
     
@@ -1712,7 +1712,7 @@
   <span class="md-ellipsis">
     
   
-    Management reports (MGR1)
+    Management reports (MGR1/MGR2/MGR3)
   
 
     
@@ -1760,10 +1760,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#canonical-payload-little-endian" class="md-nav__link">
+  <a href="#canonical-mgr3-payload-little-endian" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Canonical payload (little endian)
+        Canonical MGR3 payload (little endian)
       
     </span>
   </a>
@@ -2186,10 +2186,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#canonical-payload-little-endian" class="md-nav__link">
+  <a href="#canonical-mgr3-payload-little-endian" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Canonical payload (little endian)
+        Canonical MGR3 payload (little endian)
       
     </span>
   </a>
@@ -2232,12 +2232,16 @@
   
 
 
-<h1 id="management-reports-mgr1">Management reports (MGR1)</h1>
+<h1 id="management-reports-mgr1mgr2mgr3">Management reports (MGR1/MGR2/MGR3)</h1>
 <p>Available on repeater (including observer), room-server and sensor firmware.
 Companions/terminal-chat nodes and KISS modems do not originate these reports.
 Off by default. A management password and explicit enable are both required.
 No radio settings, existing preferences layout, or OTA authorization policy is
 changed by enabling reporting. This protocol does <strong>not</strong> authorize updates.</p>
+<p>Current firmware emits <code>MGR3</code>, including a public USB logging/recovery snapshot
+and its latest watchdog event. Updated decoders still accept legacy <code>MGR1</code> and
+<code>MGR2</code>; older decoder copies need an update to read MGR3. Reporting USB status
+does not enable logging or change retry policy.</p>
 <h2 id="cli">CLI</h2>
 <p>Run through the existing local CLI or an authenticated administrator session:</p>
 <pre><code>get data.tx
@@ -2272,14 +2276,16 @@ datagram has no private destination identity. The radio ID in the payload
 identifies the reporter.</p>
 <p>Direct and flood schedules are independently configurable and may each be
 turned off. Fresh settings are <code>direct=5d</code> and <code>flood=21d</code>; global reporting is
-still off until <code>mgmt.enabled on</code>. Direct accepts 5–90 days and requires the
-shared path. Flood accepts 21–90 days and requires a resolvable shared region.
+still off until <code>mgmt.enabled on</code>. Direct accepts 5-90 days and requires the
+shared path. Flood accepts 21-90 days and requires a resolvable shared region.
 At least one route must remain active while reporting is enabled. The legacy
 <code>set mgmt.interval N</code> shorthand enables both, setting direct to <code>N</code> and flood to
 <code>max(21,N)</code>. No transmission is sent merely by configuring a password. Initial
 reporting waits for the configured schedules. Reports have deterministic
 per-radio/per-sequence jitter of up to an hour; pages are spaced at least a
-minute apart.</p>
+minute apart. Watchdog events appear in the next scheduled snapshot, not as
+immediate radio alerts. Multiple events between snapshots can replace the
+latest-event record; this is not a complete off-node event history.</p>
 <p>The radio cannot know that an observer uploaded a packet to MQTT, so the flood
 schedule is deliberately independent of direct transmission. A region-scoped
 <code>TRANSPORT_FLOOD</code> is sent at its independently configured interval. An
@@ -2309,8 +2315,8 @@ History/snapshot working memory is allocated only when reporting is enabled and
 is bounded to 1.5 KiB, plus a small configuration object and temporary stack use.</p>
 <h2 id="routing-and-mqtt">Routing and MQTT</h2>
 <p>Both direct/path and flood reports use <strong><code>PAYLOAD_TYPE_GRP_DATA</code> (<code>0x06</code>)</strong>.
-The route bits independently select direct or flood. <code>MGR1</code> is an application
-extension with <strong>literally plaintext public fields</strong>, not a call to the ordinary
+The route bits independently select direct or flood. <code>MGR1</code>/<code>MGR2</code>/<code>MGR3</code> are application
+extensions with <strong>literally plaintext public fields</strong>, not a call to the ordinary
 encrypted <code>createGroupDatagram()</code> builder. A fixed public marker is not an owner
 or password-derived channel ID. There is no outer channel encryption.</p>
 <p>The body is padded with zeroes to a group-compatible length <code>3 + 16*n</code> (maximum
@@ -2324,7 +2330,7 @@ not guaranteed. Packet logging/uplinks can capture it without the password.</p>
 not flood-route it.</p>
 <p>The observer's existing MQTT <code>PACKET</code> JSON supplies the complete frame in <code>raw</code>.
 No broker configuration or password changes are necessary to capture a report.
-The decoder understands all four route forms, 1–3-byte hashes, scope transport
+The decoder understands all four route forms, 1-3-byte hashes, scope transport
 codes, and duplicate copies heard by several uplinks:</p>
 <pre><code>python -m pip install -r tools/management/requirements.txt
 python tools/management/report.py --mqtt capture.jsonl
@@ -2337,7 +2343,7 @@ This is an offline capture decoder, not a broker subscriber or downlink service.
 <p>For a browser-local decoder that also decrypts and authenticates ACL entries,
 use the <a href="../management_decoder/">Management report decoder</a>. It does not upload
 the captured packet or password.</p>
-<h2 id="canonical-payload-little-endian">Canonical payload (little endian)</h2>
+<h2 id="canonical-mgr3-payload-little-endian">Canonical MGR3 payload (little endian)</h2>
 <table>
 <thead>
 <tr>
@@ -2350,7 +2356,7 @@ the captured packet or password.</p>
 <tr>
 <td style="text-align: right;">0</td>
 <td style="text-align: right;">4</td>
-<td><code>MGR1</code></td>
+<td><code>MGR3</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">4</td>
@@ -2410,7 +2416,7 @@ the captured packet or password.</p>
 <tr>
 <td style="text-align: right;">62</td>
 <td style="text-align: right;">4</td>
-<td>Weekly minimum mV, minimum °C, maximum °C</td>
+<td>Weekly minimum mV, minimum C, maximum C</td>
 </tr>
 <tr>
 <td style="text-align: right;">66</td>
@@ -2460,12 +2466,12 @@ the captured packet or password.</p>
 <tr>
 <td style="text-align: right;">79</td>
 <td style="text-align: right;">1</td>
-<td>Total pages (1–6)</td>
+<td>Total pages (1-9)</td>
 </tr>
 <tr>
 <td style="text-align: right;">80</td>
 <td style="text-align: right;">1</td>
-<td>Unique ACL count (0–36)</td>
+<td>Unique ACL count (0-36)</td>
 </tr>
 <tr>
 <td style="text-align: right;">81</td>
@@ -2475,11 +2481,56 @@ the captured packet or password.</p>
 <tr>
 <td style="text-align: right;">82</td>
 <td style="text-align: right;">1</td>
-<td>ACL entries on this page (0–6)</td>
+<td>ACL entries on this page (0-4)</td>
 </tr>
 <tr>
 <td style="text-align: right;">83</td>
-<td style="text-align: right;">13 × count</td>
+<td style="text-align: right;">2</td>
+<td>USB status flags</td>
+</tr>
+<tr>
+<td style="text-align: right;">85</td>
+<td style="text-align: right;">1</td>
+<td>Packed USB recovery stage and retry backoff step</td>
+</tr>
+<tr>
+<td style="text-align: right;">86</td>
+<td style="text-align: right;">4</td>
+<td>USB full-reboot retry interval seconds</td>
+</tr>
+<tr>
+<td style="text-align: right;">90</td>
+<td style="text-align: right;">4</td>
+<td>USB inactive seconds</td>
+</tr>
+<tr>
+<td style="text-align: right;">94</td>
+<td style="text-align: right;">4</td>
+<td>USB continuous Auto qualification seconds</td>
+</tr>
+<tr>
+<td style="text-align: right;">98</td>
+<td style="text-align: right;">1</td>
+<td>Latest watchdog reason/action/durability code</td>
+</tr>
+<tr>
+<td style="text-align: right;">99</td>
+<td style="text-align: right;">4</td>
+<td>Latest watchdog event RTC Unix epoch; advisory, zero if unavailable</td>
+</tr>
+<tr>
+<td style="text-align: right;">103</td>
+<td style="text-align: right;">4</td>
+<td>Uptime seconds at that event's boot</td>
+</tr>
+<tr>
+<td style="text-align: right;">107</td>
+<td style="text-align: right;">4</td>
+<td>Latest watchdog event sequence, saturated at 4294967295</td>
+</tr>
+<tr>
+<td style="text-align: right;">111</td>
+<td style="text-align: right;">13 * count</td>
 <td>AES-SIV encrypted ACL entries</td>
 </tr>
 <tr>
@@ -2489,11 +2540,68 @@ the captured packet or password.</p>
 </tr>
 <tr>
 <td style="text-align: right;">after tag</td>
-<td style="text-align: right;">0–15</td>
+<td style="text-align: right;">0-15</td>
 <td>Zero padding to group-compatible length; not part of canonical payload</td>
 </tr>
 </tbody>
 </table>
+<p>MGR3 retains all 36 ACL entries, using four per page and up to nine pages. The
+largest canonical page is 179 bytes and already group-compatible;
+the radio payload budget is unchanged. The USB snapshot is frozen with the
+other public fields at report start and repeated on each page. It is not a
+live host-health monitor.</p>
+<p>USB flag bits 0-10 are, in order: supported, logging enabled, watchdog enabled,
+host connected, reader connected, stalled, recovering, recovery deferred,
+persistence ready, watchdog Auto, and logger active. Bits 11-15 must be zero.
+Byte 85 bits 0-1 hold stage: 0 idle, 1 soft-recovery wait, 2 re-enumeration
+wait, and 3 reboot pending. Bits 2-5 hold the saved backoff step; bits 6-7
+must be zero. Backoff is not a count of successful recoveries. The three
+timers are unsigned seconds; local recovery/reboot counters are not sent.
+The retry field is the saved backoff interval, not a countdown to an action;
+inactive age is reported separately. USB-only cleanup can precede that interval.
+Unsupported USB observation/recovery is explicitly represented by a false
+supported bit, not omitted or mistaken for a connected healthy reader.
+USB status describes the radio's observed transport and policy, not proof
+that the host process, MQTT uplink, SSH service, or Pi is healthy.
+Host/reader connection alone does not mean a logging client is running.
+The logger-active bit means recent USB stats polling within a 15-minute lease
+while logging is enabled and the observed USB host/reader link is not stalled,
+separate from USB attachment or an open reader. The existing five-minute stats
+polls renew this lease; no new client-registration or heartbeat command is
+required. This does not identify the client, prove logs reached MQTT or disk,
+or show that the Pi remains otherwise healthy.</p>
+<p>Missing watchdog state on new or upgraded installations defaults to Auto.
+Auto promotes to saved On after 14 continuous healthy logging-USB days with
+renewed stats polling; its qualification age resets on reboot, detach, stall,
+stats-lease expiry, or USB logging off.
+Explicit On and Off remain available. Nonlogging/no-reader nodes remain
+Auto without watchdog board reboots. The Auto flag and age report this
+qualification separately from an enabled On policy.
+Use the node's <code>get usb.watchdog</code> and <code>set usb.watchdog off|on|auto</code> CLI to
+inspect or change policy; receiving a management snapshot changes nothing.</p>
+<p>The 13-byte latest-event block is all zero when no event is available. Otherwise
+byte 98 bits 0-3 are the reason mask: host absent, reader absent, TX stalled,
+and confirmed stats client inactive. Bits 4-6 hold the action: 1 software
+recovery attempted, 2 re-enumeration attempted, 3 reboot requested, or 4 reboot
+cancelled after a final health/ownership check. Bit 7 means the event was saved
+and verified on durable storage. Sequence is nonzero for a present event.
+Physical faults may combine reason bits; stats-only expiry cannot authorize a
+board reboot. Epoch zero is allowed when the clock source is unavailable.</p>
+<p>Event time is the node's advisory clock, not verified UTC. Default clocks can
+start at a plausible fixed date. Clock corrections do not rewrite old events;
+recorded uptime and sequence help review them independently. A saved reboot
+request is intent, not proof of a completed reset. The latest event survives
+normal reboot and mode changes, but is not a log of hardware hangs or sudden
+power failures. See <a href="../usb_logging_watchdog/">USB logging watchdog</a> for storage
+failure, cancellation, and review limitations.</p>
+<p>Legacy MGR2 retains the same offsets through byte 97, followed by encrypted ACL
+entries at byte 98 and the authentication tag. It carries five entries per page
+and up to eight pages. Its USB status is available, but watchdog event history
+is unavailable rather than an empty modern record.</p>
+<p>Legacy MGR1 retains the same offsets through byte 82, followed immediately
+by encrypted ACL entries at byte 83 and the authentication tag. It carries
+six entries per page and up to six pages, with no USB block. Its absent USB
+status is decoded as unavailable, not as all switches off.</p>
 <p>Each private entry is a per-radio 12-byte keyed fingerprint followed by flags:
 bit 0 administrator, bit 1 trusted OTA signer. Duplicate entries combine flags.
 An oversized ACL fails closed rather than silently truncating. The reported
@@ -2507,9 +2615,9 @@ means compiled support; active means an established usable apply/store path.</p>
 <p>Validity bits: 0 firmware version, 1 bootloader version, 2 EndF/base identity,
 3 staging capacity, 4 partial week, 5 partial since-report period, 6 MCU temperature.
 Voltage is unsigned millivolts, zero missing. Temperatures: zero missing,
-1–251 represent −50…200 °C, 252 below range, 253 above range, 254–255 reserved.
+1-251 represent -50..200 C, 252 below range, 253 above range, 254-255 reserved.
 OTA bits: 0 protocol compiled, 1 transfer DEFLATE, 2 2-KiB app transfer blocks;
-bits 8–23 are apply codec bits (full/sequential/in-place). Transfer DEFLATE is
+bits 8-23 are apply codec bits (full/sequential/in-place). Transfer DEFLATE is
 not compressed bootloader apply. There is <strong>no manifest ID</strong>. Exact old binaries
 are still needed on the computer to generate a differential update; a hash alone
 cannot reconstruct them. Unknown metadata must not be treated as OTA readiness.</p>
@@ -2522,7 +2630,9 @@ The same owner has different fingerprints on different radios. A collector
 needs a candidate administrator's full key to identify a fingerprint.</p>
 <p>Encryption is <a href="https://www.rfc-editor.org/rfc/rfc5297">RFC 5297 AES-SIV-CMAC-256</a>,
 using the existing rweather AES primitive. The single associated-data string is
-the complete 83-byte clear header. Ciphertext is exactly the ACL byte length.
+the complete clear header: 111 bytes for MGR3, including USB status and its event,
+98 bytes for MGR2, or 83 bytes for MGR1. All retain the existing derivation domains; the authenticated
+magic and layout distinguish their wire versions. Ciphertext is exactly the ACL byte length.
 Full 16-byte tag, no truncation. This deterministic misuse-resistant mode avoids
 reliance on the firmware's noncryptographic general-purpose RNG or RTC nonces.
 An identical restored snapshot may repeat ciphertext, but does not expose XORs
