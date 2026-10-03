@@ -3249,6 +3249,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#set-the-automatic-gps-clock-sync-interval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the automatic GPS clock-sync interval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#set-this-nodes-location-based-on-the-gps-coordinates" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6008,6 +6019,17 @@
     <span class="md-ellipsis">
       
         Sync this node's clock with GPS time
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-the-automatic-gps-clock-sync-interval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the automatic GPS clock-sync interval
       
     </span>
   </a>
@@ -10442,7 +10464,34 @@ sleep, this command schedules a sync and wakes it; after <code>set gps off</code
 <p>On repeaters with device power saving enabled, the automatic GPS cycle wakes
 for up to 10 minutes and repeats seven days after GPS sleeps. A valid GPS time
 can correct the RTC either forward or backward. With device power saving off,
-an enabled GPS refreshes the RTC every 30 minutes.</p>
+an enabled GPS refreshes the RTC every 30 minutes.
+These are the legacy defaults; <code>gps.sync.interval</code> below overrides them.</p>
+<hr />
+<h4 id="set-the-automatic-gps-clock-sync-interval">Set the automatic GPS clock-sync interval</h4>
+<pre><code class="language-text">get gps.sync.interval
+set gps.sync.interval 1
+set gps.sync.interval 24
+set gps.sync.interval 336
+</code></pre>
+<p>The interval is a whole number of <strong>hours</strong>, from <strong>1 to 336</strong> (two weeks).
+Larger numbers are capped, not rejected. For example:</p>
+<pre><code class="language-text">set gps.sync.interval 999
+OK - GPS sync interval 336 hours (saved)
+</code></pre>
+<p>Zero, negative numbers, fractional hours, and nonnumeric values are rejected.
+The setting is saved across reboots and supported by GPS-equipped repeater,
+room-server, sensor, and Companion builds. Until it is explicitly configured,
+the getter reports <code>default (board GPS sync policy)</code> and existing board timings
+are retained.</p>
+<p>The selected interval controls periodic clock acquisitions both with GPS power
+saving and with a continuously powered receiver. Changing it reschedules a
+sleeping receiver without immediately powering it on. A GPS fix can take time;
+an unsuccessful acquisition retains the existing bounded awake window, then
+backs off before trying again. Device GPS/power switches still apply.</p>
+<p>This does not change position-update <code>gps_interval</code>, location telemetry/cache
+timings, or mesh/NTP time synchronization. Location requests can still power GPS
+for a fix, but do not bypass the configured clock-sync interval. Explicit
+<code>gps sync</code> remains an immediate acquisition request where that command exists.</p>
 <hr />
 <h4 id="set-this-nodes-location-based-on-the-gps-coordinates">Set this node's location based on the GPS coordinates</h4>
 <p><strong>Usage:</strong> 
