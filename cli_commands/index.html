@@ -8006,7 +8006,16 @@ set bluetooth on
 </code></pre>
 <p><code>get ble</code> and <code>set ble ...</code> are aliases. This controls the running Bluetooth
 service on ESP32 and nRF52 Companions: <code>off</code> stops advertising and disconnects
-Bluetooth clients; <code>on</code> enables it again. The change lasts until reboot.</p>
+Bluetooth clients; <code>on</code> enables it again. Both choices are saved and survive
+reboots. USB remains available when Bluetooth is off. Older saved preferences
+without this setting retain the previous default of Bluetooth on.</p>
+<p>Successful local commands report <code>(saved)</code>. If saving fails, the command reports
+an error and leaves Bluetooth unchanged. When requested over Bluetooth, <code>off</code>
+first reports <code>(save pending)</code> so its reply can drain; the firmware rechecks the
+alternate connection and saves the preference before disconnecting. If that
+connection disappears or the save fails, shutdown is cancelled. <code>get bluetooth</code>
+reports the current runtime state. Broad <code>2.4ghz</code> controls still apply to the
+current boot only and do not change this saved Bluetooth preference.</p>
 <p>Plain <code>off</code> requires another active management connection. A connected USB
 terminal or binary client, TCP client, or browser terminal can provide that
 connection. WiFi association, a listening server, and USB power alone do not.
@@ -8014,7 +8023,8 @@ On USB hardware without an observable open-host session (HWCDC or a UART
 bridge), issue the command through that USB client so the request itself proves
 it is active.</p>
 <p>Append <code>force</code> to <code>off</code> to permit disconnecting the only active connection.
-Use USB, another management transport, or reboot to regain access afterward.
+Use USB or another management transport and <code>set bluetooth on</code> to regain
+access afterward. Reboot alone will not re-enable saved-off Bluetooth.
 <code>force</code> is accepted only as the final argument to <code>off</code>.</p>
 <p>Commands sent through Bluetooth allow its reply to drain before shutdown
 (normally 250 ms, at most two seconds). <code>get bluetooth</code> shows <code>off pending</code>

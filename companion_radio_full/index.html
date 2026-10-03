@@ -731,6 +731,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#screenless-nrf52-spoken-button-confirmations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screenless nRF52 spoken button confirmations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Screenless nRF52 spoken button confirmations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#experimental-g726-speech" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental G.726 speech
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#nrf52-bluetooth-reconnect-qualification" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2273,6 +2301,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#screenless-nrf52-spoken-button-confirmations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Screenless nRF52 spoken button confirmations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Screenless nRF52 spoken button confirmations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#experimental-g726-speech" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental G.726 speech
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#nrf52-bluetooth-reconnect-qualification" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2541,6 +2597,84 @@ a busy radio rollback remains pending for recovery instead of reporting success.
 </tr>
 </tbody>
 </table>
+<h3 id="screenless-nrf52-spoken-button-confirmations">Screenless nRF52 spoken button confirmations</h3>
+<p>Full Companion builds for T1000-E, RAK WisMesh Tag, MeshTracker X1,
+Muziworks R1 Neo and ThinkNode M3 use prerecorded spoken confirmations for
+their shared single-button controls. Other roles, legacy USB/BLE-only builds,
+screened boards and all Wio profiles retain their existing audio behavior.
+Set <code>MESH_GPS_VOICE=0</code> at build time to retain tones on an eligible Full build.</p>
+<table>
+<thead>
+<tr>
+<th>User-button gesture</th>
+<th>Action / spoken confirmation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>One press</td>
+<td>Acknowledge an active notification: "Notification cleared"; otherwise "Ready"</td>
+</tr>
+<tr>
+<td>Two presses</td>
+<td>"Advert queued" or "Advert failed"</td>
+</tr>
+<tr>
+<td>Three presses</td>
+<td>"Sound on" or "Sound off" after the preference is saved</td>
+</tr>
+<tr>
+<td>Four presses</td>
+<td>"GPS on" or "GPS off" when the GPS setting is available</td>
+</tr>
+<tr>
+<td>Hold more than three seconds</td>
+<td>"Shutting down"; shutdown remains nonblocking while audio drains</td>
+</tr>
+<tr>
+<td>Hold during the first eight seconds of UI startup</td>
+<td>"USB setup" for terminal/rescue mode</td>
+</tr>
+</tbody>
+</table>
+<p>MeshTracker X1's three-press gesture instead cycles "Sound and vibration",
+"Sound only", "Vibration only", and "Silent". The new setting must save before
+either live alert output changes. A failed save restores both preferences and
+announces "Action failed". An explicit mute or alert-mode change permits one
+courtesy confirmation without unmuting ordinary notifications. The four
+additional mode clips are compiled only for <code>HAS_DRV2605</code> builds.
+Notification timers cannot cancel control speech, and the committed alert
+mode remains authoritative for vibration even if a notification-mask save fails.</p>
+<p>Power-on and wake wiring remain board-specific. Speech is nonblocking and uses
+the existing nRF52 PWM player; each buzzer still needs a physical listening
+test for intelligibility. All spoken button, alert-mode and GPS recordings use
+Microsoft Zira Desktop with the selected compressed Companion voice profile.
+R1 Neo's buzzer pin aliases its optional QSPI clock, so voice is
+not default-enabled when <code>QSPIFLASH</code> is selected. ThinkNode M4 is deliberately
+excluded: its former
+buzzer definitions incorrectly claimed I2C SDA and a battery-status LED, not
+verified audio hardware. Its Companion recipes no longer drive those pins as
+a buzzer.</p>
+<p>The optional ESP32 RC32-without-display recipe is not part of this nRF52
+extension: its fitted audio hardware needs verification and its <code>ui-new</code>
+controls require an ESP32 playback backend, not the nRF52 PWM player.</p>
+<h4 id="experimental-g726-speech">Experimental G.726 speech</h4>
+<p>Ordinary builds still use the approved Zira IMA recordings. G.726 is a hardware
+test option only: set both <code>MESH_BUTTON_AUDIO_HIL=1</code> and
+<code>MESH_GPS_VOICE_G726_BITRATE=16</code> or <code>24</code>. Invalid bitrates or a missing test gate
+are rejected. The generated catalog selects exactly one bitrate, retains the
+original sample counts, and omits the X1-only mode prompts on other boards.</p>
+<p>The decoder needs 52 bytes of state, no heap or full-clip buffer, and about
+1.2 KiB of Cortex-M4 code/tables. Its packing, resets and PWM lifecycle are
+checked against independently pinned FFmpeg output. At 24 kbps the audio
+payload is 25% smaller; at 16 kbps it is 50% smaller with more waveform error.
+Neither software comparisons nor successful builds qualify physical buzzer
+intelligibility or the refill deadline under Bluetooth/radio load.</p>
+<p><code>scripts/generate_g726_voice.py</code> regenerates both experimental catalogs from
+the approved mono 8 kHz Zira WAVs using FFmpeg's MSB-first <code>g726</code> encoder.
+Production IMA headers cannot be selected as its output. The decoder's Sun
+provenance, attributed FFmpeg MIX interpolation and LGPL license are retained
+in <code>src/helpers/ui/g726</code>; no claim of independent ITU conformance is made.</p>
 <h3 id="nrf52-bluetooth-reconnect-qualification">nRF52 Bluetooth reconnect qualification</h3>
 <p>Full Companions persist the paired client's notification subscriptions (CCCDs)
 alongside its bond keys. A RAM-only subscription cache is insufficient: after
