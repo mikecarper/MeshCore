@@ -1079,6 +1079,49 @@
     });
   }
 
+  // Count compiled builds, not files: merged and app-only downloads can belong
+  // to the same build, but still require different installation instructions.
+  function selectionProgress(profiles, filters) {
+    const count = (profiles || []).filter(function (profile) {
+      return profileMatchesFacets(profile, filters);
+    }).length;
+    return {
+      count: count,
+      state: count === 1 ? "single" : count ? "multiple" : "empty",
+      title: count === 1 ? "1 firmware build left" : count ? count + " firmware builds remain"
+        : "No matching firmware builds",
+      note: count === 1
+        ? filters && filters.install ? "Confirm your board and install choice."
+          : "Choose an install operation."
+        : count ? "Choose options to narrow the results."
+          : "Change or clear choices to see available builds.",
+    };
+  }
+
+  function choicesUseSameFirmware(profiles, filters, field, options) {
+    // Never equate install operations, even when they belong to one build.
+    if (!["hardware", "role", "logging", "mode", "firmwareProfile"].includes(field)) {
+      return false;
+    }
+    const ignored = field === "firmwareProfile" ? PROFILE_FIELDS : field;
+    const compatible = (profiles || []).filter(function (profile) {
+      return profileMatchesFacets(profile, filters, ignored);
+    });
+    const choices = (options || []).filter(function (option) { return option.value; });
+    if (!compatible.length || !choices.length) return false;
+    // Ignore the current choice before comparing alternatives. Having one
+    // result now does not imply that another button would keep the same build.
+    return choices.every(function (option) {
+      const choice = field === "firmwareProfile" ? firmwareProfileFilters(option.value)
+        : { [field]: option.value };
+      if (!choice) return false;
+      const selection = Object.assign({}, filters, choice);
+      return compatible.every(function (profile) {
+        return profileMatchesFacets(profile, selection);
+      });
+    });
+  }
+
   function selectionUrl(url, filters, automaticChipFamily) {
     const result = new URL(url);
     FACET_FIELDS.forEach(function (field) {
@@ -1751,6 +1794,8 @@
     const shareLink = root.querySelector('[data-role="share-link"]');
     const copyLinkButton = root.querySelector('[data-action="copy-link"]');
     const linkStatus = root.querySelector('[data-role="link-status"]');
+    const feedback = root.querySelector('[data-role="filter-feedback"]');
+    const resultLink = root.querySelector('[data-role="view-results"]');
     const controls = {};
     FACET_FIELDS.forEach(function (field) {
       controls[field] = form.querySelector('[data-field="' + field + '"]');
@@ -1762,6 +1807,10 @@
     const filters = {};
     let automaticChipFamily = false;
     const groupPrefix = "firmware-picker-" + (++pickerInstanceCount);
+    if (resultLink) {
+      result.id = result.id || groupPrefix + "-results";
+      resultLink.href = "#" + result.id;
+    }
 
     function updateSelectionUrl() {
       const url = selectionUrl(global.location.href, filters, automaticChipFamily);
@@ -1855,6 +1904,35 @@
       renderRadioChoices(container, options, selected, groupPrefix + "-" + field, field);
       const fieldset = container.closest("fieldset");
       if (fieldset) fieldset.disabled = values.length === 0;
+      setRefinementHint(container, field, options);
+    }
+
+    function setRefinementHint(container, field, options) {
+      const fieldset = container.closest("fieldset");
+      if (!fieldset) return;
+      let badge = fieldset.querySelector('[data-role="same-firmware"]');
+      let hint = fieldset.querySelector('[data-role="refinement-hint"]');
+      if (!badge) {
+        badge = createElement("span", "Same firmware");
+        badge.className = "firmware-picker-same-firmware";
+        badge.dataset.role = "same-firmware";
+        fieldset.querySelector("legend").appendChild(badge);
+        hint = createElement("p");
+        hint.className = "firmware-picker-control-help firmware-picker-refinement-hint";
+        hint.dataset.role = "refinement-hint";
+        hint.id = groupPrefix + "-" + field + "-hint";
+        fieldset.insertBefore(hint, container);
+      }
+      const same = choicesUseSameFirmware(catalog.profiles, filters, field, options);
+      badge.hidden = !same;
+      hint.hidden = !same;
+      hint.textContent = same ? "These choices do not narrow the firmware builds." +
+        (["logging", "mode"].includes(field) ? " They can change setup instructions." : "") : "";
+      const describedBy = (fieldset.getAttribute("aria-describedby") || "")
+        .split(/\s+/).filter(function (id) { return id && id !== hint.id; });
+      if (same) describedBy.push(hint.id);
+      if (describedBy.length) fieldset.setAttribute("aria-describedby", describedBy.join(" "));
+      else fieldset.removeAttribute("aria-describedby");
     }
 
     function setControlOptions(field, values) {
@@ -1931,6 +2009,7 @@
       renderRadioChoices(profileControl, [{ value: "", label: "Any" }].concat(profileChoices),
         firmwareProfileValue(filters), groupPrefix + "-firmwareProfile", "firmwareProfile");
       profileControl.closest("fieldset").disabled = profileChoices.length === 0;
+      setRefinementHint(profileControl, "firmwareProfile", profileChoices);
       const hardwareVariants = valuesForField("hardware");
       const hardwareVariantControl = root.querySelector(
         '[data-role="hardware-variant-control"]'
@@ -1963,9 +2042,20 @@
         return field !== "chipFamily" && !filters[field];
       });
       const matches = matchingProfiles();
+      if (feedback) {
+        const progress = selectionProgress(catalog.profiles, filters);
+        feedback.hidden = false;
+        feedback.dataset.state = progress.state;
+        feedback.querySelector('[data-role="filter-count"]').textContent = progress.title;
+        feedback.querySelector('[data-role="filter-note"]').textContent = progress.note;
+      }
+      if (resultLink) resultLink.hidden = true;
 
       if (missingFields.length) {
-        if (missingFields.length === CHOICE_FIELDS.length - 1 && !filters.chipFamily) {
+        if (matches.length === 1) {
+          status.textContent = "One firmware build remains. Confirm the hardware and install operation. " +
+            "Choices marked 'Same firmware' do not narrow the result further.";
+        } else if (missingFields.length === CHOICE_FIELDS.length - 1 && !filters.chipFamily) {
           status.textContent = "Pick options in any order. " +
             matches.length + " compatible configurations are available.";
         } else {
@@ -1993,6 +2083,7 @@
               );
             });
             result.hidden = false;
+            if (resultLink) resultLink.hidden = false;
           }
         }
         return;
@@ -2024,6 +2115,7 @@
         );
       });
       result.hidden = false;
+      if (resultLink) resultLink.hidden = false;
     }
 
     function renderBootloader() {
@@ -2265,6 +2357,8 @@
     firmwareProfileFilters: firmwareProfileFilters,
     firmwareProfileLabel: firmwareProfileLabel,
     firmwareProfileChoices: firmwareProfileChoices,
+    selectionProgress: selectionProgress,
+    choicesUseSameFirmware: choicesUseSameFirmware,
     selectionUrl: selectionUrl,
     selectionFromUrl: selectionFromUrl,
     canonicalAsset: canonicalAsset,

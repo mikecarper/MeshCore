@@ -38,6 +38,46 @@
   margin: 1.2rem 0;
 }
 
+.firmware-picker [hidden] {
+  display: none !important;
+}
+
+.firmware-picker-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--picker-border);
+  border-left: 0.3rem solid var(--picker-accent);
+  border-radius: 0.4rem;
+  background: var(--md-default-bg-color, white);
+}
+
+.firmware-picker-feedback[data-state="single"] {
+  border-color: var(--picker-accent);
+}
+
+.firmware-picker-feedback p {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.firmware-picker-feedback a {
+  flex-shrink: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--picker-accent);
+  border-radius: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.firmware-picker-feedback a:focus-visible {
+  outline: 0.16rem solid var(--picker-accent);
+  outline-offset: 0.12rem;
+}
+
 .firmware-picker-order-note {
   margin: 1rem 0 0;
   color: var(--md-default-fg-color--light);
@@ -76,8 +116,24 @@
 }
 
 .firmware-picker-radio-control > legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   margin-bottom: 0.35rem;
   padding: 0;
+}
+
+.firmware-picker-same-firmware {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--picker-border);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--picker-accent) 10%, transparent);
+}
+
+.firmware-picker-refinement-hint {
+  font-size: 0.75rem;
 }
 
 .firmware-picker-select-control select,
@@ -190,6 +246,7 @@
 
 .firmware-picker-result {
   border-top: 0.3rem solid var(--picker-accent);
+  scroll-margin-top: 4rem;
 }
 
 .firmware-picker-eyebrow {
@@ -307,6 +364,17 @@
 @media (max-width: 44rem) {
   .firmware-picker-form {
     grid-template-columns: 1fr;
+  }
+
+  .firmware-picker-feedback {
+    position: sticky;
+    top: 0.5rem;
+    z-index: 2;
+    box-shadow: 0 0.2rem 0.5rem rgb(0 0 0 / 10%);
+  }
+
+  .md-typeset .firmware-picker-feedback {
+    top: calc(var(--md-header-height, 2.4rem) + 0.4rem);
   }
 
   .firmware-picker-facts {

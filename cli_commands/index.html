@@ -56,7 +56,7 @@
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20260929-1">
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
     
       <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
@@ -65,6 +65,8 @@
       <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
     
       <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
+    
+      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -7325,7 +7327,17 @@ Pairing modes are available only on builds supporting BLE pairing.</p>
 selected profile's timeout (15 seconds by default); button input restarts that
 timer. This also applies to previously saved button modes. Saved <code>off</code> and
 pairing-only modes still suppress the boot screen. Repeaters, room servers,
-and sensors do not gain this Companion-only boot wake.</p>
+and sensors do not gain this Companion-only normal-UI boot wake.</p>
+<p>On display-equipped Companions, repeaters, room servers, and sensors, a small
+<code>Starting...</code> screen appears as soon as the board, primary filesystem, and
+display are initialized, before radio initialization and serial-settle delays.
+If a new identity is needed, it changes to <code>Generating key</code> with an animated
+spinner during radio entropy collection. OLED/TFT updates are paced at 150 ms;
+e-paper uses a slower one-second cadence. Saved <code>off</code> and pairing-only modes
+still suppress this startup screen. The normal UI's boot timeout starts only
+when that UI is ready, so key generation does not consume it. Filesystem
+recovery and the display driver's own initialization can still delay the first
+visible frame; the firmware cannot draw before those operations finish.</p>
 <p>Startup shows <code>Loading identity</code> while reading a saved identity. <code>Generating key</code>
 and its spinner are used only when creating a replacement/new identity;
 they end before flash persistence, which shows <code>Saving identity</code>. A normal
@@ -10876,7 +10888,7 @@ to charge above it or have USB power restored before it wakes.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20260929-4"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261001-feedback-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       
@@ -10885,6 +10897,8 @@ to charge above it or have USB power restored before it wakes.</p>
         <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
       
         <script src="../_javascript/preset_test.js?v=20260923-2"></script>
+      
+        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
       
     
   </body>

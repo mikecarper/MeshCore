@@ -56,7 +56,7 @@
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20260929-1">
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
     
       <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
@@ -65,6 +65,8 @@
       <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
     
       <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
+    
+      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -2368,8 +2370,11 @@ MQTT and GPS show their app/WebConfig steps instead. See
 <a href="../role_feature_switches/">feature switches by role</a> for the full reference.
 The <a href="https://flasher.meshcore.io/console">USB web console</a> works with the
 default ASCII terminal on USB Companion and infrastructure roles.</p>
-<p>Pick the choices in any order. Every selection narrows all the other controls
-to firmware combinations that were actually built in the current release set.
+<p>Pick the choices in any order. The controls stay limited to compatible
+firmware combinations that were actually built in the current release set.
+The result count stays visible while you scroll through the filters on a phone.
+<strong>Same firmware</strong> marks choices that do not narrow the builds any further;
+they remain usable because they can change the setup instructions.
 The optional chip-family filter (ESP32, nRF52, RP2040, or STM32) can narrow the
 hardware list first. You can skip it: picking hardware fills it in automatically.
 Chip family and hardware are the only dropdowns. All remaining choices use
@@ -2409,6 +2414,14 @@ from the published firmware assets.</p>
   </p>
 
   <form class="firmware-picker-form" data-role="form">
+    <div class="firmware-picker-feedback firmware-picker-wide" data-role="filter-feedback" hidden>
+      <div aria-live="polite" aria-atomic="true">
+        <strong data-role="filter-count"></strong>
+        <p data-role="filter-note"></p>
+      </div>
+      <a data-role="view-results" hidden>View files</a>
+    </div>
+
     <details class="firmware-picker-chip-family firmware-picker-wide">
       <summary data-role="chip-family-summary">Optional: chip family</summary>
       <p id="firmware-picker-chip-help">Skip this if you know your board. Picking hardware selects its chip family automatically. Choose Any to clear this filter.</p>
@@ -2984,7 +2997,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20260929-4"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261001-feedback-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       
@@ -2993,6 +3006,8 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
         <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
       
         <script src="../_javascript/preset_test.js?v=20260923-2"></script>
+      
+        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
       
     
   </body>

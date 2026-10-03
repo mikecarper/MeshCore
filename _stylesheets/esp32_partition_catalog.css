@@ -1,0 +1,101 @@
+.partition-catalog {
+  min-width: 0;
+  margin: 1rem 0;
+}
+
+.partition-catalog-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.partition-catalog-controls label {
+  font-weight: 700;
+}
+
+.partition-catalog-controls select,
+.partition-catalog-controls input {
+  max-width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--md-default-fg-color--light);
+  border-radius: 0.25rem;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  font: inherit;
+}
+
+.partition-catalog-controls select:focus-visible,
+.partition-catalog-controls input:focus-visible,
+.partition-catalog-table:focus-visible,
+.partition-catalog-json:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 2px;
+}
+
+.partition-catalog-table {
+  max-height: 32rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.partition-catalog [hidden] {
+  display: none !important;
+}
+
+.md-typeset .partition-catalog-table table {
+  display: table;
+  width: 100%;
+  margin: 0;
+}
+
+.partition-catalog-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--md-default-bg-color);
+}
+
+.partition-catalog-table tbody th {
+  overflow-wrap: anywhere;
+}
+
+.partition-catalog-table td small {
+  display: block;
+  color: var(--md-default-fg-color--light);
+  white-space: nowrap;
+}
+
+.partition-catalog-raw {
+  margin-top: 1rem;
+}
+
+.partition-catalog-raw summary {
+  cursor: pointer;
+}
+
+.partition-catalog-raw .partition-catalog-controls {
+  margin-top: 1rem;
+}
+
+@media (max-width: 600px) {
+  .md-typeset .partition-catalog-table table th,
+  .md-typeset .partition-catalog-table table td {
+    padding: 0.5rem;
+  }
+}
+
+.md-typeset .partition-catalog-json {
+  max-height: 32rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.25rem;
+}
+
+.md-typeset .partition-catalog-json > code {
+  display: block;
+  padding: 1rem;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}

@@ -56,7 +56,7 @@
     
       <link rel="stylesheet" href="../_stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20260929-1">
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
     
       <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
@@ -65,6 +65,8 @@
       <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
     
       <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
+    
+      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -3221,6 +3223,19 @@ connection in ASCII or Binary mode. Seeder startup is reported only after the
 verbose device log contains its <code>COUNT</code> acknowledgement; an immediate device
 <code>ERR</code> or a missing acknowledgement fails during startup instead of surfacing
 later as a catalog timeout.</p>
+<p>Newer <code>motatool</code> builds prepare raw-DEFLATE blocks with Zopfli before opening
+the source link. This host-only work has a separate 30-minute preparation
+limit (<code>--seeder-prepare-wait SECONDS</code>) and reports progress while waiting.
+The five-second device acknowledgement timer (<code>--seeder-start-wait SECONDS</code>)
+starts after the final <code>compressed N/N blocks</code> message, not when compression
+starts. Neither compression progress nor a host "serving" message proves
+device readiness: the runner still requires the device's <code>COUNT</code> reply.
+Older motatool builds without a preparation phase keep the original device
+startup timeout. Process exits and device errors still fail immediately.
+Preparation happens after TempRadio is armed, so leave enough lease time for
+both compression and transfer, especially on a slow host. The suggested
+TempRadio budget includes the preparation limit; it remains a warning, not a
+hard requirement to select that entire worst-case budget.</p>
 <pre><code class="language-bash">./tools/lora_ota/lora_ota.sh ./release.mota &quot;Remote Target&quot; \
   --controller-serial /dev/ttyACM0 \
   --source-serial /dev/ttyACM1
@@ -3339,7 +3354,8 @@ the destination.</p>
    target, far-to-near relays, and source. A separate controller is moved and
    read back through Binary; a shared Full Companion instead schedules its
    bounded local override while Binary remains the transport. The runner
-   rejects a TempRadio window that cannot cover setup, seeder startup,
+   rejects TempRadio windows under 20 minutes and warns when the selected
+   window does not cover worst-case setup, seeder preparation and startup,
    discovery, the transfer timeout, final polling, and install checks.</li>
 <li>Start <code>motatool serve</code>, discover the exact eight-hex manifest ID, request
    <code>ota pull &lt;id&gt; flash</code>, and poll until that same ID reports ready. A seeder
@@ -3563,7 +3579,7 @@ image: the default active-download guard preserves it until you explicitly use
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20260929-4"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261001-feedback-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       
@@ -3572,6 +3588,8 @@ image: the default active-download guard preserves it until you explicitly use
         <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
       
         <script src="../_javascript/preset_test.js?v=20260923-2"></script>
+      
+        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
       
     
   </body>
