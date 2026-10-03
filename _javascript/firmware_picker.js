@@ -317,9 +317,9 @@
     // Corrected assets can have a new source hash on the existing release
     // page. Keep the complete version/flavor boundary, allowing its commit
     // suffix to differ from the original tag's commit.
-    const familyRoot = familyTag.replace(/-[0-9a-f]{7,8}$/i, "");
+    const familyRoot = familyTag.replace(/-[0-9a-f]{7,40}$/i, "");
     const sourceSuffix = familyRoot === familyTag
-      ? "(?:-[0-9a-f]{7,8})?" : "-[0-9a-f]{7,8}(?:-[0-9a-f]{7,8})?";
+      ? "(?:-[0-9a-f]{7,40})?" : "-[0-9a-f]{7,40}(?:-[0-9a-f]{7,40})?";
     const versionPattern = new RegExp(
       "^(.*?)-(ota-)?" + escapeRegExp(familyRoot) + sourceSuffix + "$",
       "i"
@@ -407,6 +407,12 @@
 
   function variantForProfile(role, tail) {
     let value = String(tail);
+    if (["repeater", "room", "sensor"].includes(role)) {
+      // Publication suffixes distinguish downloads, not physical wiring.
+      // Sensor support itself is read from qualified release controls below.
+      value = value.replace(/-(?:full|reduced)-ota$/i, "")
+        .replace(/-reduced$/i, "");
+    }
     if (role === "companion") {
       value = value.replace(
         /^(?:full|wifi_mqtt|usb_ble|usb_wifi|ble|usb|wifi|serial|ethernet)(?=$|[_-])/i,
@@ -468,7 +474,7 @@
         ? "lora-source"
         : "";
     let variant = variantForProfile(parts.role, parts.tail);
-    if (/^RAK_(?:3401|4631)_repeater_unified_lora_ota$/i.test(target)) {
+    if (/^RAK_(?:3401|4631)_repeater_unified_lora_ota(?:-(?:full|reduced)(?:-ota)?)?$/i.test(target)) {
       variant = "default";
     }
     if (sourceHardware === "Station_G2_logging") {
@@ -718,6 +724,29 @@
     if (typeof controls.dedicatedUsbLogging === "boolean") {
       profile.dedicatedUsbLogging = controls.dedicatedUsbLogging;
     }
+    const sensorSource = controls.sensorProfileSource;
+    const sensorSourceMatches = typeof sensorSource === "string" && /^[0-9a-f]{40}$/i.test(sensorSource) &&
+      profile.files.length > 0 && profile.files.every(function (file) {
+        const suffix = file.name.replace(/\.(bin|hex|uf2|zip)$/i, "").match(/-([0-9a-f]{7,40})$/i);
+        return suffix && sensorSource.toLowerCase().startsWith(suffix[1].toLowerCase());
+      });
+    if (controls.platform === "NRF52_PLATFORM" && ["repeater", "room", "sensor"].includes(profile.role) &&
+        controls.otaRole === "lora-receiver" && Array.isArray(controls.updateMethods) &&
+        controls.updateMethods.includes("lora") && sensorSourceMatches &&
+        ["full", "reduced"].includes(controls.sensorProfile)) {
+      profile.sensorProfile = controls.sensorProfile;
+      profile.feature = controls.sensorProfile === "full" ? "full" : "standard";
+      if (controls.sensorProfile === "full") {
+        // A full publication may retain an old reduced logical OTA identity.
+        // That identity must not mislabel the actual qualified sensor policy.
+        profile.variant = variantWithoutSensorMarker(profile.variant);
+      }
+    }
+  }
+
+  function variantWithoutSensorMarker(value) {
+    return String(value || "default").replace(/(?:^|-)no-external-sensors(?=-|$)/g, "")
+      .replace(/^-+|-+$/g, "").replace(/--+/g, "-") || "default";
   }
 
   function hardwareFamilyFor(hardware, hardwareNames) {
@@ -998,6 +1027,11 @@
   }
 
   function firmwareProfileLabel(profile) {
+    if (profile.sensorProfile) {
+      const label = (profile.sensorProfile === "full" ? "Full supported sensors" : "Reduced sensors") + " + LoRa OTA";
+      const variant = variantWithoutSensorMarker(profile.variant);
+      return label + (variant !== "default" ? " - " + humanizeVariant(variant, profile.hardware) : "");
+    }
     const parts = [];
     if (profile.feature === "full") parts.push("Full");
     else if (profile.feature === "standard" && profile.ota !== "lora-receiver") {
@@ -1342,7 +1376,12 @@
         "Requires the external W25Q16 storage board, its exact documented wiring, and the matching storage-aware OTAFIX bootloader."
       );
     }
-    if (profile.variant.includes("no-external-sensors")) {
+    if (profile.sensorProfile === "full") {
+      extra.push("Includes the complete sensor drivers supported by this board's full recipe, with LoRa OTA retained. Attached sensor hardware and compatible wiring are still required.");
+    } else if (profile.sensorProfile === "reduced") {
+      extra.push("Omits selected optional environmental/ranging sensor drivers to reduce flash use, with LoRa OTA retained. Generic I2C and supported board peripherals remain available.");
+    }
+    if (!profile.sensorProfile && profile.variant.includes("no-external-sensors")) {
       if (/^RAK_(3401|4631)$/i.test(profile.hardware)) {
         extra.push("This profile uses internal storage for LoRa OTA; no external storage board is required.");
       }

@@ -2327,11 +2327,11 @@ and partition policy:</p>
 <tbody>
 <tr>
 <td><code>auto</code></td>
-<td>For one explicit target, pass 1 builds the complete supported LoRa-OTA-capable recipe. ESP32 boards with a qualified expanded profile use it; other standalone repeaters and room servers attempt the complete recipe in their current application region. Other roles keep every capability declared by their resolved PlatformIO recipe, including LoRa OTA, and fail instead of silently removing one that does not fit. A measured repeater or room-server flash/partition overflow starts the standard <code>no_external_sensors</code> LoRa OTA pass. Internal-flash nRF52 repeaters and room servers publish that reduced pass even when the complete image fits, because the smaller running image leaves more room to stage a delta; matched QSPI/SD roles do not need the redundant artifact. Compiler errors and missing-capability checks never trigger or conceal a reduced build. Canonical bulk commands keep their established standard partition contract.</td>
+<td>nRF52 repeater, room-server, and sensor builds publish the required pair: Full supported sensors + LoRa OTA and Reduced sensors + LoRa OTA. Both must pass flash, RAM, packaged-application OTA, and layout checks; a reduced image cannot substitute for a failing full image. The same policy applies to canonical bulk/release builds and external-QSPI/SD recipes. ESP32 boards with a qualified expanded profile use it; other standalone ESP32 repeaters and room servers attempt the complete recipe in their current application region, with a measured flash/partition-overflow fallback to their reduced LoRa OTA recipe. Other roles keep every capability declared by their resolved PlatformIO recipe and fail instead of silently removing one that does not fit. Compiler errors and missing-capability checks never trigger or conceal a reduced build.</td>
 </tr>
 <tr>
 <td><code>standard</code></td>
-<td>Immediately uses the deployed/portable partition contract and its documented reductions. This is useful when the operator already knows the expanded or complete image is unsuitable.</td>
+<td>Preserves the deployed/portable partition contract and documented reductions. nRF52 infrastructure still publishes both OTA sensor profiles in that same exact layout; this is not an override to remove OTA or skip the full profile.</td>
 </tr>
 <tr>
 <td><code>full</code></td>
@@ -2446,8 +2446,8 @@ getters; relaying a command over LoRa keeps its remote restrictions.</p>
 <td>LoRa OTA adds the <code>ota ...</code> commands; it does not otherwise reduce the role CLI. ESP32 <code>no_external_sensors</code> artifacts retain the compact browser WiFi uploader, the complete CLI, and up to 254 neighbors, subject to recorded internal-DRAM reductions.</td>
 </tr>
 <tr>
-<td>Internal-flash nRF52 repeater/room-server auto pair</td>
-<td><code>full-ota</code> retains the board's external-sensor drivers; <code>reduced-ota</code> omits the declared optional sensors to leave additional internal-flash staging room. RAK3401 and RAK4631 reduced builds retain INA219, INA226, INA260, and INA3221 I2C voltage/current monitors at a measured cost below 5 KiB. Both artifacts carry the same stable OTA target identity and are checked for <code>ota ...</code> and <code>retry.preset</code>; RAK artifacts also verify the retained monitor drivers.</td>
+<td>nRF52 repeater/room-server/sensor release pair</td>
+<td><code>full-ota</code> retains the complete supported sensor recipe; <code>reduced-ota</code> omits declared optional sensor drivers. Both include verified LoRa OTA, use the same logical target identity and exact storage/layout contract within the pair, and retain the role's normal commands. Repeaters/room servers also verify <code>retry.preset</code>. RAK3401 and RAK4631 reduced builds retain GPS where compatible and INA219/INA226/INA260/INA3221 I2C voltage/current monitors. External QSPI/SD targets also publish both choices. Companion/Terminal Chat and KISS roles do not enter this policy.</td>
 </tr>
 <tr>
 <td>ESP32 MQTT observer or ESP-NOW bridge</td>
@@ -2491,8 +2491,20 @@ USB logging is runtime controlled.</p>
 <p>Bulk and release-matrix commands omit legacy names whose behavior is already
 available from a canonical image:</p>
 <ul>
-<li>Companion <code>_ps</code> names are replaced by the ordinary Companion image plus the
-  persisted <code>set powersaving on|off</code> setting.</li>
+<li>
+<p>Every canonical nRF52 repeater, room-server, and sensor recipe emits two
+  separately named, qualified OTA artifacts: <code>full-ota</code> and <code>reduced-ota</code>.
+  The capability sidecar records <code>sensor.profile.full</code> or
+  <code>sensor.profile.reduced</code> so the picker can identify the actual profile.
+  Boards without optional sensor drivers still receive the two named choices;
+  the size saving may be small or zero. A missing or unqualified member blocks
+  publication of an incomplete pair. This does not make an unsupported
+  bootloader or a different physical storage layout compatible.</p>
+</li>
+<li>
+<p>Companion <code>_ps</code> names are replaced by the ordinary Companion image plus the
+  persisted <code>set powersaving on|off</code> setting.</p>
+</li>
 <li>Companion <code>_femoff</code> names are replaced by the matching controllable-FEM
   image plus <code>radio.fem.rxgain on|off</code>. The old names remain explicit build
   targets for compatibility.</li>
@@ -2539,6 +2551,14 @@ identity contracts. Companion boards keep transport-specific canonical images
 only when no exact Full recipe has passed the combined flash/RAM qualification.
 ESP32 deliberately uses one TTY: Binary Companion and plaintext USB logging
 are mutually exclusive there. nRF52 retains its optional second CDC port.</p>
+<p>The <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11">OTAFIX 2.4.11 release</a>
+is the current bootloader reference, not an all-board qualification claim.
+Consult its exact-board manifest and unavailable-profile reasons. Internal
+application storage accepts exact-base in-place deltas that fit the workspace;
+full application packages need the matching external NOR or microSD profile.
+The retired internal-only MeshTower V2 bootloader requires one local
+installation of the combined SD/internal profile. Its changed identity/layout
+must not be crossed by an ordinary LoRa application or bootloader update.</p>
 <h2 id="complete-cli-policy">Complete CLI policy</h2>
 <p>The compact ESP32 CLI has been removed. <code>retry.preset</code> is a checked invariant
 for every repeater and room-server artifact, not a FULL-only command. MQTT
