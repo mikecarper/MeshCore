@@ -2447,6 +2447,13 @@ set bluetooth.name {name|default}
 advertisement identity. A custom name may contain spaces and is limited to 31
 valid UTF-8 bytes. <code>default</code> restores <code>MeshCore-&lt;node name&gt;</code>. The saved change
 takes effect after reboot. <code>get ble.name</code> and <code>set ble.name</code> are short aliases.</p>
+<pre><code>set pin {0-999999}
+</code></pre>
+<p>Saves the Bluetooth pairing PIN. For example, run <code>set pin 654321</code>, then
+<code>reboot</code> to activate it. <code>set pin 0</code> removes the saved override and restores the
+build's default/generated PIN policy after reboot; it does not disable Bluetooth.
+Existing bonds can reconnect without PIN entry, so forget the phone's device
+entry and pair again if needed. See <a href="../cli_commands/#set-the-bluetooth-pairing-pin-companion">Bluetooth pairing PIN</a>.</p>
 <pre><code>get bluetooth.mac
 set bluetooth.mac {address|random|random-every-boot|random-after-connect|default}
 get bluetooth.stealth

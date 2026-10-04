@@ -2223,6 +2223,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#set-the-bluetooth-pairing-pin-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the Bluetooth pairing PIN (Companion)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-the-bluetooth-address-ble-companion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5004,6 +5015,17 @@
     <span class="md-ellipsis">
       
         View or change the independent Bluetooth name (Companion)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-the-bluetooth-pairing-pin-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the Bluetooth pairing PIN (Companion)
       
     </span>
   </a>
@@ -8169,6 +8191,29 @@ UTF-8 bytes without control characters and take effect after reboot.</p>
 (<code>CMD_RUN_CLI_COMMAND</code>), which works over USB, BLE, or TCP without entering USB
 terminal mode. See <a href="../companion_protocol/">Companion radio binary protocol</a> for
 the frame and reply format.</p>
+<hr />
+<h4 id="set-the-bluetooth-pairing-pin-companion">Set the Bluetooth pairing PIN (Companion)</h4>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>set pin &lt;0-999999&gt;</code></li>
+</ul>
+<p>Choose a six-digit code for a fixed Bluetooth pairing PIN. For example:</p>
+<pre><code class="language-text">set pin 654321
+reboot
+</code></pre>
+<p>The command saves the PIN across reboots and replies <code>&gt; pin is now 654321</code>.
+Reboot to activate the new code; the current Bluetooth session keeps its
+existing PIN until then. A failed save reports an error and retains the
+previous saved setting.</p>
+<p><code>set pin 0</code> clears the saved override, rather than setting the pairing code to
+<code>000000</code> or disabling Bluetooth. After reboot, the build's default policy
+applies: normally <code>123456</code> without a display, or a generated PIN on eligible
+display-equipped builds.</p>
+<p>This command is available in the Companion text terminal, binary command
+<code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>), and authorized LoRa CLI; a Bluetooth-capable build
+is needed to use the PIN. Existing bonded clients may reconnect without being
+asked for a PIN.
+Forget the device on the phone and pair again if you need to enter the new code.</p>
 <hr />
 <h4 id="view-or-change-the-bluetooth-address-ble-companion">View or change the Bluetooth address (BLE Companion)</h4>
 <p><strong>Usage:</strong></p>

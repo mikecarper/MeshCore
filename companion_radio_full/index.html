@@ -3150,8 +3150,10 @@ switches to the first home page, and keeps the active six-digit PIN visible
 until Bluetooth connects or the two-minute pairing window expires. USB, WiFi,
 Ethernet, and hardware-serial connections do not suppress this screen. With no
 saved BLE PIN, display builds generate a new PIN at boot; builds without a
-physical display use <code>123456</code>. A PIN saved through the Companion protocol takes
-effect after reboot.</p>
+physical display use <code>123456</code>. Use <code>set pin 654321</code> in the Companion CLI to save
+a fixed pairing PIN, then <code>reboot</code> to activate it. <code>set pin 0</code> restores the
+default/generated PIN policy. A PIN saved through the Companion protocol also
+takes effect after reboot. See the <a href="../cli_commands/#set-the-bluetooth-pairing-pin-companion">PIN command reference</a>.</p>
 <p>The Bluetooth device name is independently configurable. In the text terminal,
 use <code>get bluetooth.name</code> and <code>set bluetooth.name &lt;name&gt;</code>; use
 <code>set bluetooth.name default</code> to restore <code>MeshCore-&lt;node name&gt;</code>. The WebConfig
