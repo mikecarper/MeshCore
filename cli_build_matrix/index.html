@@ -2465,7 +2465,7 @@ getters; relaying a command over LoRa keeps its remote restrictions.</p>
 </tr>
 <tr>
 <td>nRF52 dual-CDC Full Companion</td>
-<td>Fresh installs expose only interface <code>00</code>; it starts as an ASCII terminal and automatically hands a complete <code>&lt;</code> frame to framed Companion. The same interface also carries exclusive serial mOTA traffic. Enabling logging and rebooting adds output-only interface <code>02</code> for ASCII RAW/RX/TX records and optional debug. BLE and source-only LoRa OTA remain available. <code>get/set usb.logging</code> persistently controls whether the logging interface is present; <code>get/set usb.debug</code> changes verbosity without a reboot. Send CLI/control queries to interface <code>00</code>, not the log endpoint.</td>
+<td>Fresh installs expose only interface <code>00</code>; it starts as an ASCII terminal and automatically hands a complete <code>&lt;</code> frame to framed Companion. The same interface also carries exclusive serial mOTA traffic. <code>set usb.logging on reboot</code> adds output-only interface <code>02</code> for ASCII RAW/RX/TX records and optional debug. Alternatively, <code>set usb.logging stream reboot</code> keeps CLI replies and packet records on interface <code>00</code> for unmodified one-port serial bridges; Binary Companion and serial mOTA require logging off on that port. BLE and source-only LoRa OTA remain available. <code>get/set usb.logging</code> persistently controls whether the logging interface is present; <code>get/set usb.debug</code> changes verbosity without a reboot. Send CLI/control queries to interface <code>00</code>, not the log endpoint.</td>
 </tr>
 <tr>
 <td>ESP32 single-TTY Full Companion</td>
