@@ -1669,6 +1669,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#switch-the-ota-release-channel-observer-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switch the OTA release channel (observer builds)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#erasefactory-reset" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4468,6 +4479,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#switch-the-ota-release-channel-observer-builds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switch the OTA release channel (observer builds)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#erasefactory-reset" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6828,6 +6850,22 @@ firmware role whose primary mesh radio is LoRa.</p>
 <code>LilyGo_TLora_V2_1_1_6_*_observer_mqtt</code> targets because it does not fit while
 retaining the two app slots required for LoRa OTA. Their normal CLI settings
 remain available.</p>
+<h3 id="switch-the-ota-release-channel-observer-builds">Switch the OTA release channel (observer builds)</h3>
+<ul>
+<li><code>ota branch</code> — shows the selected channel, the channel this build was made for, and the manifest base <code>ota check</code>/<code>ota update</code> will use.</li>
+<li><code>ota branch prod</code> (alias <code>stable</code>) / <code>ota branch beta</code> (alias <code>dev</code>) — pull future <code>ota update</code>s from that channel. The selection is saved; run <code>ota update</code> to switch.</li>
+<li><code>ota branch default</code> — follow the channel this build was made for.</li>
+</ul>
+<p>The selector is saved only after the preferences transaction succeeds. A queued
+<code>ota update</code> keeps the channel it checked, even if <code>ota branch</code> is changed before
+the download starts. Switching channels offers the target image even when its
+commit matches the running image; build numbers are not comparable across channels.</p>
+<p>Before an image is made bootable, its compatibility tag must confirm support for
+this fork's saved-settings format and required transports. Upstream observer
+images without the <code>keymind1</code> capability are refused, including images that use
+the different <code>/mqtt.json</code> format. A refusal leaves the current image running;
+select a compatible channel to continue OTA. Production and beta URLs are supplied
+by the build recipe, not accepted as arbitrary CLI URLs.</p>
 <hr />
 <h3 id="erasefactory-reset">Erase/Factory Reset</h3>
 <p><strong>Search terms:</strong> factory defaults, reset settings, erase configuration.</p>
