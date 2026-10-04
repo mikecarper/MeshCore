@@ -2651,6 +2651,23 @@ mode remains authoritative for vibration even if a notification-mask save fails.
 the existing nRF52 PWM player; each buzzer still needs a physical listening
 test for intelligibility. All spoken button, alert-mode and GPS recordings use
 Microsoft Zira Desktop with the selected compressed Companion voice profile.
+GPS on/off use three stored audio spans: one shared encoded GPS prefix and two
+phrase tails. Advert queued/failed also share an identical encoded prefix;
+Sound off/Sound only share one only on <code>HAS_DRV2605</code> boards. The tails are not
+independently decodable words. Playback treats each prefix and tail as one
+continuous compressed stream, without resetting its codec, bit position,
+interpolation or DMA at the seam. The approved full-phrase PCM and PWM output
+remain bit-for-bit identical, including pronunciation and pauses.</p>
+<p>The IMA audio payload is 3,881 bytes smaller on ordinary voice boards, or
+4,971 bytes smaller on vibration-equipped boards, before the small segmented
+descriptor/decoder overhead. Tiny shared silence prefixes are not split.
+A representative Cortex-M4 GCC 14.2 size-optimized/LTO player-and-catalog
+build saves 3,732 or 4,792 bytes respectively after that overhead; final
+firmware savings can vary with toolchain and surrounding code.
+The existing generators still synthesize the two complete GPS phrases and
+button confirmations, then share byte-identical encoded prefixes; they do not
+try to identify word boundaries or splice independently spoken words. Windows
+Zira synthesis still requires Windows' local <code>System.Speech</code> tooling.
 R1 Neo's buzzer pin aliases its optional QSPI clock, so voice is
 not default-enabled when <code>QSPIFLASH</code> is selected. ThinkNode M4 is deliberately
 excluded: its former
