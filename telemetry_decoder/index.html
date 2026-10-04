@@ -2365,6 +2365,13 @@ full 192-point/four-day channel takes three packets. Channels whose retained
 history is entirely zero are treated as disconnected and are not sent. The
 command requires at least one collected base sample and works even when the
 automatic schedule is off.</p>
+<p>Schedule changes are saved transactionally; a failed write does not truncate
+the previous preferences. A legacy route must be successfully migrated into
+<code>data.tx</code> before its schedule can run. Corrupt, unreadable, or ambiguously
+committed preferences stop automatic and pending sends. <code>get telemetry.tx</code>
+shows <code>fault=prefs</code>, and manual sends return an error instead of acknowledging
+work that cannot run. Such a storage fault must be repaired before settings
+can be changed; the firmware does not overwrite an unmigrated legacy file.</p>
 <h2 id="decode-a-packet">Decode a packet</h2>
 <div class="telemetry-tool" data-telemetry-decoder>
   <div class="telemetry-examples" aria-label="Load an example reply">
