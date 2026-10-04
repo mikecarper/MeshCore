@@ -149,7 +149,7 @@
     for (let index = 0; index < 16; index += 1) d[index] ^= aadMac[index];
 
     if (plaintext.length >= 16) {
-      const adjusted = plaintext.slice();
+      const adjusted = new Uint8Array(plaintext);
       const last = adjusted.length - 16;
       for (let index = 0; index < 16; index += 1) adjusted[last + index] ^= d[index];
       return cmac(encryptBlock, adjusted);
@@ -165,7 +165,7 @@
 
   async function ctrCrypt(keyBytes, tag, input) {
     const subtle = cryptoApi();
-    const counter = tag.slice();
+    const counter = new Uint8Array(tag);
     counter[8] &= 0x7f;
     counter[12] &= 0x7f;
     const key = await subtle.importKey("raw", keyBytes, { name: "AES-CTR" }, false, ["decrypt"]);
@@ -274,8 +274,9 @@
     const payload = bytes.slice(payloadOffset);
     const canonical = canonicalLength(payload);
     const padded = paddedFloodLength(canonical);
-    if (payload.length !== canonical &&
-        (payload.length !== padded || !payload.slice(canonical).every((value) => value === 0))) {
+    // Every GroupData route uses the group cipher-compatible padded length,
+    // even though management pages protect their own ACL with AES-SIV.
+    if (payload.length !== padded || !payload.slice(canonical).every((value) => value === 0)) {
       managementError("Management packet padding or length is invalid.");
     }
     return {
@@ -538,6 +539,9 @@
       return model;
     }
     for (const page of pages) model.acl.push(...await decryptPage(page.payload, password, candidate));
+    if (new Set(model.acl.map((entry) => entry.fingerprint)).size !== model.acl.length) {
+      managementError("Authenticated ACL data contains a duplicate fingerprint.");
+    }
     model.authenticated = true;
     if (!model.complete) {
       model.warnings.push(`Authenticated ${pages.length} of ${first.payload[79]} pages. Paste the remaining pages to view the complete ACL.`);
@@ -576,6 +580,17 @@
     const warnings = root.querySelector("[data-role='warnings']");
     const warningList = root.querySelector("[data-role='warning-list']");
     const aclTable = root.querySelector("[data-role='acl-table']");
+    let activeDecode = null;
+
+    function resetResults() {
+      results.hidden = true;
+      summary.replaceChildren();
+      aclTable.replaceChildren();
+      warningList.replaceChildren();
+      warnings.hidden = true;
+      status.textContent = "";
+      status.classList.toggle("management-status-authenticated", false);
+    }
 
     function showError(value) {
       results.hidden = true;
@@ -677,24 +692,36 @@
     }
 
     async function decodeInput() {
+      const request = {};
+      activeDecode = request;
+      resetResults();
       error.hidden = true;
       decode.disabled = true;
       try {
-        render(await decodeManagement(input.value, password.value, candidate.value.trim()));
+        const model = await decodeManagement(input.value, password.value, candidate.value.trim());
+        if (activeDecode === request) render(model);
       } catch (failure) {
-        showError(failure);
+        if (activeDecode === request) showError(failure);
       } finally {
-        decode.disabled = false;
+        if (activeDecode === request) {
+          activeDecode = null;
+          decode.disabled = false;
+        }
       }
     }
 
     decode.addEventListener("click", decodeInput);
     clear.addEventListener("click", () => {
+      // Web Crypto cannot be cancelled, but an older promise must never
+      // redisplay decrypted ACL entries after Clear or a newer decode.
+      activeDecode = null;
       input.value = "";
       password.value = "";
       candidate.value = "";
-      results.hidden = true;
+      resetResults();
       error.hidden = true;
+      error.textContent = "";
+      decode.disabled = false;
       input.focus();
     });
     input.addEventListener("keydown", (event) => {
