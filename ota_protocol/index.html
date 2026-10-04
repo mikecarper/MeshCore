@@ -3744,6 +3744,32 @@ normally 2 KiB; requesting either in one transaction can overrun common USB
 CDC/UART receive rings even though the host successfully wrote the complete
 reply. Chunking is internal to the transport and does not change <code>OP_READ</code> or
 the <code>MotaSource</code> random-access contract.</p>
+<p>Each response uses one deadline, starting after request transmission, for its
+magic, header, payload and checksum together. The deadline does not restart
+for each received byte. USB folder sessions use 600 ms; BLE/TCP folder sessions
+use 3000 ms. Each chunk of a larger logical read has its own deadline. A slow
+trickle can therefore fail sooner than before; a maximum 197-byte response
+takes about 17.1 ms on a 115200-baud UART, excluding host processing latency.</p>
+<p>A shared USB text/control session explicitly opts into retaining a timed-out
+response's sync/header/payload/checksum position. No subsequent USB request is
+sent until that old response reaches its known checksum boundary, or an actual
+host-session reset clears it. The request supplies the
+payload length: the response itself carries neither a length nor a request ID.
+Late binary bytes therefore cannot become USB <code>ota folder off</code> control text.
+A complete reply followed by that ordinary shutdown line still works. If a
+software handoff or failed attach leaves a response outstanding, USB input is
+quarantined until its boundary; commands typed during that wait are discarded.
+Leaving a log-only USB/network handoff preserves that response for the tracked
+consumer rather than discarding its tail as raw input. A deliberate USB mOTA
+entry cancels startup probe and deferred ASCII timers so they cannot reclaim
+the stream or emit terminal text into an active transfer.
+If the sender abandons a partial reply, reconnect the USB host session to
+recover. Bare shutdown text inside a partial payload is inherently ambiguous
+and is not interpreted as control. This assumes one ordered reply per request;
+unsolicited duplicate or reordered binary replies cannot be unambiguously
+separated by this legacy wire format.</p>
+<p>Dedicated UART, BLE and TCP sources retain their legacy retry/stale-drain
+behavior; their absolute response deadline still applies to every request.</p>
 <p><code>OP_DEFLATE_BLOCK</code> lets a host-folder source perform the optional transport compression without linking an
 encoder into the embedded seeder. <code>len=0, off=0</code> queries the exact encoded length; subsequent chunks are at
 most 190 bytes, keeping the total response payload at 192 bytes. The host independently encodes each manifest
