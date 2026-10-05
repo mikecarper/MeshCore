@@ -254,8 +254,13 @@
     const acceptedTags = new Set(RELEASE_PAGE_PREFIXES.map(function (prefix) {
       return prefix + familyTag;
     }));
+    const chunkGroups = ["companion"].concat(RELEASE_PAGE_PREFIXES.filter(Boolean).map(function (prefix) {
+      return prefix.slice(0, -1);
+    }));
+    const chunkTag = new RegExp("^(?:" + chunkGroups.map(escapeRegExp).join("|") +
+      ")-(?:[2-9]|[1-9][0-9]+)-" + escapeRegExp(familyTag) + "$");
     const familyReleases = publicReleases.filter(function (release) {
-      return acceptedTags.has(release.tag_name);
+      return acceptedTags.has(release.tag_name) || chunkTag.test(release.tag_name);
     }).sort(function (a, b) {
       return releaseDate(b).localeCompare(releaseDate(a));
     });

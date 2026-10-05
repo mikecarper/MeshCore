@@ -2267,10 +2267,22 @@ layout before installing an image.</p>
 <li>nRF52 keeps its 8 KiB loop stack. Crypto, contact CRC and background storage
   work reduce peak stack use and long pauses. OTA metadata is cached after
   verification instead of repeatedly reopening storage for status displays.</li>
-<li>T096 and T1 repeater profiles reserve four flood-rule entries to fit the
+<li>
+<p>T096 and T1 repeater profiles reserve four flood-rule entries to fit the
   complete sensor profile with the existing 8 KiB loop stack, 50 neighbors,
   color framebuffer and OTA arena. Their capability manifests record this
-  capacity limit; heap qualification margins are unchanged.</li>
+  capacity limit; heap qualification margins are unchanged.</p>
+</li>
+<li>
+<p>The RAK3401 unified repeater reserves 47 flood-rule entries so its full
+  sensor profile, 8 KiB loop stack, 50 neighbors and internal/QSPI OTA stores
+  fit the runtime RAM requirement. Full and reduced sensor images use the
+  same table capacity; the capability reports record this limit.</p>
+</li>
+<li>Flood-policy upgrades accept inactive trailing rows from larger tables.
+  If active rules exceed an image's capacity, the stored file is preserved and
+  policy saves are blocked. The CLI reports the capacity mismatch; install
+  firmware with enough rule slots to recover the complete policy.</li>
 </ul>
 <h2 id="installation">Installation</h2>
 <p>An ESP32 merged <code>.bin</code> installs bootloader, partitions and application over
@@ -2279,6 +2291,10 @@ expansion requires the exact board and role migration ZIP from this release
 family's utility page, or the matching merged image over USB. Follow the ZIP's
 README and use its supplied Full application. <code>get storage.layout</code> reports
 the live layout on firmware that supports it.</p>
+<p>Check the image's flood-rule capacity before updating a repeater. Move active
+rules into the supported slots and save them before installing a smaller
+table. An over-capacity policy is retained on storage but remains inactive
+until compatible firmware is installed.</p>
 <p>Native hardware CDC can change the USB product name and Linux <code>/dev/serial/by-id</code>
 path. Update serial consumers to the new device path after the first upgrade.
 Do not identify a radio solely by a changing <code>/dev/ttyACM</code> number.</p>
