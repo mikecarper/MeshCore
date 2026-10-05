@@ -2260,6 +2260,10 @@ layout before installing an image.</p>
 <li>Access Control replies fit the encrypted LoRa route budget and the
   Companion frame envelope. Large ACL listings use bounded pages. ESP32 ACL
   persistence avoids repeated metadata opens while retaining recovery checks.</li>
+<li>Companion requests skip recently used reply tags. A login reply whose
+  server timestamp matches the next client timestamp no longer causes an
+  immediate status or ACL request to fail locally. Stale replies remain
+  blocked, and tag selection does not change the radio's wall clock.</li>
 <li>nRF52 keeps its 8 KiB loop stack. Crypto, contact CRC and background storage
   work reduce peak stack use and long pauses. OTA metadata is cached after
   verification instead of repeatedly reopening storage for status displays.</li>
