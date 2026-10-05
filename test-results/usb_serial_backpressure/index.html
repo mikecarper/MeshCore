@@ -2108,6 +2108,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#esp32-hwcdc-migration-and-upstream-findings-2026-10-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 HWCDC migration and upstream findings (2026-10-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2134,6 +2145,10 @@
 
 
 <h1 id="native-usb-backpressure-and-radio-liveness">Native USB backpressure and radio liveness</h1>
+<p>The native USB defaults for eight ESP32-S3 board families now use hardware
+USB Serial/JTAG (HWCDC). The TinyUSB behavior below remains available to
+explicitly selected TinyUSB builds. UART and non-ESP32 transports retain their
+existing backend.</p>
 <p>ESP32-S2/S3 builds using native TinyUSB CDC (<code>ARDUINO_USB_MODE=0</code> and
 CDC-on-boot) must not wait for a computer to read USB output. In the bundled
 Arduino-ESP32 2.0.17 core, <code>USBCDC::write()</code> can wait indefinitely for transmit
@@ -2271,6 +2286,106 @@ describe those earlier binaries, not the current merged source.</p>
 <p>The two custom qualification builds used the lab profile
 <code>909.5 MHz / 500 kHz / SF5 / CR5</code>. No board was flashed, and no physical
 disconnect/reconnect or hardware endpoint recovery was claimed by these checks.</p>
+<h2 id="esp32-hwcdc-migration-and-upstream-findings-2026-10-04">ESP32 HWCDC migration and upstream findings (2026-10-04)</h2>
+<p>The board defaults change 78 native-TinyUSB recipes across Heltec E213, E290,
+T190, Wireless Tracker V1.1 and V2, Station G2 and G3, and T-Beam 1W. Two G2
+recipes already used HWCDC. All 80 recipes in these families select
+<code>ARDUINO_USB_MODE=1</code> and <code>ARDUINO_USB_CDC_ON_BOOT=1</code>; upload touch and waiting
+for a replacement upload port are explicitly disabled. Their framework stays
+on PlatformIO Espressif32 6.11.0 / Arduino-ESP32 2.0.17. Existing ESP32 UART
+recipes and all non-ESP32 recipes are unchanged.</p>
+<p>HWCDC output uses the existing bounded facade, early RX/TX allocation, shared
+writer exclusion, and fresh capacity check inside that exclusion. The pinned
+SDK receives a build-local TX suffix/interrupt backport from upstream
+<a href="https://github.com/espressif/arduino-esp32/pull/12606">Arduino-ESP32 #12606</a>.
+KISS now prepares buffers before starting the USB driver and uses this facade.
+Its debug/logging gates stay closed so diagnostics cannot split a binary frame.
+A USB bus reset drops partial host commands and old queued frame suffixes while
+preserving radio transmission state and settings. Radio work continues while
+USB cleanup retries.</p>
+<p>On S3, the pinned HWCDC initialization also restores RTC PHY ownership to the
+hardware Serial/JTAG peripheral. A software restart after running TinyUSB can
+otherwise retain ownership by the OTG controller, including an OTA update to an
+HWCDC image. When that retained state is detected, initialization first briefly
+detaches the old OTG pads so the host can enumerate the changed device. Ordinary
+HWCDC startup does not incur that extra interval.</p>
+<p>HWCDC does not expose the same DTR session boundary as TinyUSB. Closing a host
+port while leaving USB connected is not proof of a new firmware session; a
+partial command may survive that close. Bus reset/unplug cleanup and protocol
+client leases must be tested separately. Hosts should rediscover the port after
+the backend change: the USB product and <code>/dev/serial/by-id</code> path can change.</p>
+<p>Upstream reports checked for this transition:</p>
+<table>
+<thead>
+<tr>
+<th>Report</th>
+<th>Documented behavior</th>
+<th>Relevance and mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/espressif/esp-idf/issues/9826">ESP-IDF #9826</a></td>
+<td>S3 retains TinyUSB PHY ownership across software/watchdog restart, preventing USB Serial/JTAG operation.</td>
+<td>Pinned HWCDC initialization now explicitly restores the official S3 hardware PHY route and detaches the former OTG connection first. Executed initialization tests seed the retained RTC state; real OTA transition remains a separate hardware check.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/meshtastic/firmware/issues/10955">Meshtastic #10955</a></td>
+<td>Tracker V2 watchdog reboot after a serial reader closes; raw log writes block while the USB bus remains alive. Reproduced on Arduino 2.x and 3.x.</td>
+<td>Applies to the same hardware/backend combination. Our bounded writer and diagnostic admission prevent waiting for a host to drain output; synthetic negative controls exercise unsafe raw writes.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/meshtastic/firmware/issues/10975">Meshtastic #10975</a></td>
+<td>Tracker V2 binary synchronization corrupted by interleaved diagnostics and abandoned short-write suffixes.</td>
+<td>Companion/KISS tests retain suffixes across short writes; KISS disables diagnostics before board initialization.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/espressif/arduino-esp32/issues/12782">Arduino-ESP32 #12782</a></td>
+<td>Open report of HWCDC failing to reconnect after about two minutes idle on C3/C6/C61/S3, latest master / IDF 5.5.4.</td>
+<td>Reported SDK differs from our pinned Arduino 2.0.17 / IDF 4.4. Synthetic tests cover idle lease expiry and reply admission, not physical enumeration on that SDK.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/espressif/esp-idf/issues/18996">ESP-IDF #18996</a></td>
+<td>Open report of S3 USB Serial/JTAG failing after repeated software resets from macOS, on IDF 6.0.2; includes XIAO S3.</td>
+<td>Not qualified by Linux port reopen tests and not reproduced on our pinned SDK. CPU reset and host-port reopen are distinct cases.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/espressif/esp-idf/issues/13287">ESP-IDF #13287</a></td>
+<td>S3 may remain in ROM after upload when download mode was entered with physical BOOT/RESET.</td>
+<td>Our older esptool does not offer the newer <code>watchdog-reset</code> option. Press RESET after a manual BOOT-mode upload if the application does not start.</td>
+</tr>
+<tr>
+<td><a href="https://github.com/meshtastic/firmware/issues/4206">Meshtastic #4206</a></td>
+<td>Station G2 native USB fails to resume around light sleep.</td>
+<td>Keep USB active while a host is present. Espressif documents USB Serial/JTAG sleep limitations; a port disappearing during sleep does not establish a firmware crash.</td>
+</tr>
+</tbody>
+</table>
+<p>Espressif's <a href="https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/usb-serial-jtag-console.html">USB Serial/JTAG guide</a>
+describes the fixed CDC/JTAG peripheral and its light/deep sleep limitations.
+This migration uses only its serial role; it does not provide TinyUSB composite
+interfaces such as MSC, HID, or a second CDC.</p>
+<p>Additional regression commands (only one PlatformIO process at a time):</p>
+<pre><code class="language-sh">python3 -B test/test_esp32_hwcdc_recipes.py -v
+python3 -B test/test_hwcdc_tx_backport.py -v
+python3 -B test/test_hwcdc_write_capacity.py -v
+python3 -B test/test_hwcdc_role_transport.py -v
+pio test -e native_kiss_modem
+</code></pre>
+<p>The recipe check resolves all 821 tracked environments using PlatformIO's real
+inheritance and SCons flag/unflag processing. It checks all 500 ESP32 selectors,
+including all 78 migrated recipes, and the 321 non-ESP32 recipes. The transport
+test compiles production Companion framing, KISS output methods, setup/loop,
+and the bounded facade with the patched SDK against simulated USB registers and
+RTOS queues under ASan/UBSan. It covers withheld readers, stale capacity,
+partial frames, queue limits, session reset, idle leases, and cleanup retries.
+The role fixture injects a confirmed session boundary; separate SDK tests
+execute the bus-reset callback and the S3 retained-PHY initialization. The
+setup/loop fixture uses stub transport functions to check ordering and continued
+radio service rather than real peripheral recovery.
+Native KISS tests also exercise the full modem's radio lifecycle during reset.
+These tests do not establish physical USB timing or host compatibility for
+boards that were not connected to the lab.</p>
 
 
 
