@@ -2267,22 +2267,27 @@ layout before installing an image.</p>
 <li>nRF52 keeps its 8 KiB loop stack. Crypto, contact CRC and background storage
   work reduce peak stack use and long pauses. OTA metadata is cached after
   verification instead of repeatedly reopening storage for status displays.</li>
-<li>
-<p>T096 and T1 repeater profiles reserve four flood-rule entries to fit the
+<li>T096 and T1 repeater profiles reserve four flood-rule entries to fit the
   complete sensor profile with the existing 8 KiB loop stack, 50 neighbors,
   color framebuffer and OTA arena. Their capability manifests record this
-  capacity limit; heap qualification margins are unchanged.</p>
-</li>
-<li>
-<p>The RAK3401 unified repeater reserves 47 flood-rule entries so its full
+  capacity limit; heap qualification margins are unchanged.</li>
+<li>The RAK3401 unified repeater reserves 47 flood-rule entries so its full
   sensor profile, 8 KiB loop stack, 50 neighbors and internal/QSPI OTA stores
   fit the runtime RAM requirement. Full and reduced sensor images use the
-  same table capacity; the capability reports record this limit.</p>
-</li>
+  same table capacity; the capability reports record this limit.</li>
 <li>Flood-policy upgrades accept inactive trailing rows from larger tables.
   If active rules exceed an image's capacity, the stored file is preserved and
   policy saves are blocked. The CLI reports the capacity mismatch; install
   firmware with enough rule slots to recover the complete policy.</li>
+<li>ESP32 filesystem buffer checks cover the pinned Arduino 3 frameworks used
+  by RC32 and C6 targets and continue rejecting unhonored buffer allocations.</li>
+<li>Generic ESP-NOW Full Companion retains all Full transports and 100 contacts
+  with a 224-frame offline queue to meet the unchanged runtime RAM requirement.</li>
+<li>Wio-E5 Mini Companion uses smaller generated code while preserving its
+  filesystem allocation, contacts, channels and physical-button controls.
+  CI compiles its actual Cascade release profile with the full version string.</li>
+<li>Mesh America preserves download-only installation for hardware cards that
+  require it, including their Full and reduced sensor profiles.</li>
 </ul>
 <h2 id="installation">Installation</h2>
 <p>An ESP32 merged <code>.bin</code> installs bootloader, partitions and application over
