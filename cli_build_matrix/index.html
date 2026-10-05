@@ -2577,12 +2577,34 @@ available from a canonical image:</p>
   releases. Wio-E5 remains separate because its normal image has only 916
   bytes free, while the combined image exceeds the fixed 240 KiB application
   partition by 2,192 bytes.</li>
+<li>MeshTower V2 repeaters use
+  <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code> as the one
+  canonical target. Its SD OTA target <code>0A9DBBF0</code>, hardware ID
+  <code>Heltec_tower_v2</code>, layout, and filenames stay unchanged, with separate
+  required Full and Reduced sensor profiles. Both
+  <code>Heltec_tower_v2_repeater</code> and
+  <code>Heltec_tower_v2_repeater_lora_ota_no_external_sensors</code> resolve to this primary
+  in <code>build-firmware</code> and matching builds. Old internal-only bootloader/OTA
+  identities require one local USB/BLE DFU or SWD migration; the build aliases
+  do not make the new image a same-target LoRa upgrade for those installed nodes.
+  Existing SD users need no configuration change. The application selects SD
+  first and falls back automatically for a missing or unmountable card only
+  when the matching published combined OTAFIX profile declares exact
+  privileged storage <code>09</code> and optional application storage <code>02</code> in its separate
+  <code>MOTASTOR</code> record. Internal fallback accepts flash-staged signed application
+  in-place deltas from trusted signers that fit its smaller workspace;
+  SD-generated large deltas may be rejected. Full images, bootloader updates,
+  and archive capture remain SD-only. Storage stays pinned through a transfer:
+  use <code>ota cancel</code> before
+  selecting a different backend. The application does not use an <code>APPHYBRID</code>
+  retained-RAM staging arena. See <a href="../ota_meshtower_v2_sdcard/">MeshTower SD OTA</a>.</li>
 </ul>
 <p>The old aliases still work with <code>build-firmware</code> and
 <code>build-matching-firmwares</code>. Dedicated LoRa OTA repeater images are not
-collapsed; they retain their exact storage, bootloader, role, and target
-identity contracts. Companion boards keep transport-specific canonical images
-only when no exact Full recipe has passed the combined flash/RAM qualification.
+collapsed outside the MeshTower consolidation above; they retain their exact
+storage, bootloader, role, and target identity contracts. Companion boards
+keep transport-specific canonical images only when no exact Full recipe has
+passed the combined flash/RAM qualification.
 ESP32 deliberately uses one TTY: Binary Companion and plaintext USB logging
 are mutually exclusive there. nRF52 retains its optional second CDC port.</p>
 <p>The <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11">OTAFIX 2.4.11 release</a>
