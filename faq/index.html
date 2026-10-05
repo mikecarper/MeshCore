@@ -4896,13 +4896,13 @@ the matching package from the
    filename).</li>
 <li>From the MeshCore app, log in remotely to the repeater you want to update with admin privileges.</li>
 <li>Go to the Command Line tab, type <code>start ota</code> and hit enter.</li>
-<li>You should see <code>OK</code> to confirm the repeater device is now in OTA mode.</li>
+<li>The reply confirms WiFi is on and gives the OTA upload URL and network to use.</li>
 <li>If the ESP32 is not already joined to Wi-Fi, <code>start ota</code> starts an open hotspot named <code>MeshCore-OTA</code> at <code>192.168.4.1</code>. If it is already joined, the command reports and uses its router-assigned address instead.</li>
 <li>From your phone or computer, connect to the <code>MeshCore-OTA</code> hotspot when one was started.</li>
 <li>Open the URL reported by <code>start ota</code> and upload the non-merged bin from the flasher. When the device started <code>MeshCore-OTA</code>, the URL is <a href="http://192.168.4.1/update">http://192.168.4.1/update</a>.</li>
 </ol>
-<p>On an MQTT observer, stop WebConfig before running <code>start ota</code>; both servers use
-HTTP port 80. Likewise, stop the OTA uploader before running <code>start webconfig</code>.</p>
+<p><code>start ota</code> automatically stops WebConfig and reports the change; both servers
+use HTTP port 80. Stop the OTA uploader before running <code>start webconfig</code> again.</p>
 <h3 id="73-q-is-there-a-way-to-lower-the-chance-of-a-failed-ota-device-firmware-update-dfu">7.3. Q: Is there a way to lower the chance of a failed OTA device firmware update (DFU)?</h3>
 <p><strong>A:</strong> Yes, developer <code>che aporeps</code> has an enhanced OTA DFU bootloader for nRF52 based devices. With this bootloader, if it detects that the application firmware is invalid, it falls back to OTA DFU mode so you can attempt to flash again to recover. This bootloader has other changes to make the OTA DFU process more fault tolerant.</p>
 <p>Refer to <a href="https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX">https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX</a> for the latest information.</p>

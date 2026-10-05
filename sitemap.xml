@@ -521,6 +521,14 @@
          <lastmod>2026-10-05</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/hardware_validation_esp32_web_console_ota_2026-10-05/</loc>
+         <lastmod>2026-10-05</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/hardware_validation_esp32_web_console_startup_2026-10-05/</loc>
+         <lastmod>2026-10-05</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/heltec_v3_preview3_ram/</loc>
          <lastmod>2026-10-05</lastmod>
     </url>
