@@ -2576,7 +2576,26 @@ available from a canonical image:</p>
   Historical bridge names remain directly buildable but are omitted from bulk
   releases. Wio-E5 remains separate because its normal image has only 916
   bytes free, while the combined image exceeds the fixed 240 KiB application
-  partition by 2,192 bytes.</li>
+  partition by 2,192 bytes.
+  <code>MKE_s3_repeater</code> includes the bridge on UART 2, with RX on GPIO16 and TX on
+  GPIO17. Fresh installs leave it disabled at 115200 baud; upgrades from normal
+  repeaters keep it disabled, while existing saved RS-232 settings are retained.
+  Use <code>set bridge.baud 115200</code> and <code>set bridge.enabled on</code> to enable it, or
+  <code>set bridge.enabled off</code> to stop it. <code>set bridge.uart 2</code> selects its fixed
+  UART; other UART numbers are rejected. Successful changes take effect
+  immediately and persist across reboots. The historical
+  <code>MKE_s3_repeater_bridge_rs232</code> name remains directly buildable with its
+  bridge-on default for compatibility but is omitted from bulk releases.
+  The same MKE image includes ESP-NOW, controlled independently with
+  <code>set espnow.enabled on|off</code> and <code>get espnow.running</code>. Both bridges can run
+  together and share <code>bridge.source</code> and <code>bridge.delay</code>; <code>bridge.channel</code>,
+  <code>bridge.secret</code>, and <code>bridge.format</code> apply only to ESP-NOW. Its first boot
+  after an upgrade leaves ESP-NOW off, including upgrades from the dedicated
+  ESP-NOW image: run <code>set espnow.enabled on</code> to enable it. Subsequent reboots
+  retain the saved setting. The historical <code>MKE_s3_repeater_bridge_espnow</code>
+  target remains directly buildable with its bridge-on default but is omitted
+  from bulk releases. Browser OTA pauses ESP-NOW while leaving RS-232 running;
+  <code>stop ota</code> restores ESP-NOW when its saved setting is on.</li>
 <li>MeshTower V2 repeaters use
   <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code> as the one
   canonical target. Its SD OTA target <code>0A9DBBF0</code>, hardware ID
