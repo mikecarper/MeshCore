@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "scope": "Heltec V4 normal Full native Chromium stock config GUI; active-slot app-only flash and quiet USB stability",
+  "source_commit": "c88885a315208908e050c57fc0ec0a71ff10bd6f",
+  "firmware_version": "v1.17.1.9-halo-keymind-cascade-dev-c88885a3 (Build: 06-Oct-2026)",
+  "status": "qualified_historical_c888_USB_stability_operator_restored",
+  "build": {
+    "target": "heltec_v4_repeater",
+    "profile": "full",
+    "platformio_feature_base": "heltec_v4_repeater_observer_mqtt",
+    "normal_update_identity_retained": true,
+    "app_filename": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-c88885a3.bin",
+    "app_sha256": "1f10f44149b3f56edbe0ecb2a2bab9b51da651a6d047e2c2c1555691468d2b4c",
+    "app_bytes": 2097528,
+    "merged_filename": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-c88885a3-merged.bin",
+    "merged_sha256": "3264d7a1a5713755b5dd10ad1c81bb0588e4a072eeaa126b86307a42be77bb5b",
+    "merged_bytes": 2163064,
+    "elf_sha256": "0545eef46da30a86f86531199a91e887167d463c5981f193c0455cd75d633538",
+    "partition_table_4096_sha256": "9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60",
+    "slot_bytes": 6553600,
+    "usb_mode": 1,
+    "cdc_on_boot": 1,
+    "hwcdc_phy_handoff_compiled": true,
+    "ram_gate_passed": true,
+    "heap_margin_bytes": 20880,
+    "capability_gate_passed": true,
+    "verified_capabilities": [
+      "bridge.espnow",
+      "logging.usb.output",
+      "ota.update.lora",
+      "ota.update.wifi",
+      "profile.full"
+    ],
+    "independent_build_audit_sha256": "34d1bed7549f9457063370c1a7703a2c6cd7d75b9f2a8cb3308d000bf33c56f3"
+  },
+  "helpers": {
+    "original_driver_sha256": "460b217824c897daefc377247562330290fb61e67facdf9ed3d9283160c5ca78",
+    "phase_driver_sha256": "20797d40df1b0e2f30abd5779b3c1006173974cf71404b0d6e1932c721492d84",
+    "phase_derivative_adds_no_hardware_operations": true
+  },
+  "host_preparation": {
+    "tty_before": {
+      "VMIN": 0,
+      "VTIME": 0
+    },
+    "tty_after": {
+      "VMIN": 1,
+      "VTIME": 0
+    },
+    "explicit_modem_signal_calls": 0,
+    "scope": "Host TTY VMIN/VTIME only; no firmware or browser JS changes"
+  },
+  "failed_attempts": [
+    {
+      "attempt": 2,
+      "report_sha256": "60640f0bdd6b2f91d278bc3ffdc3a372ec799f8f057674437432ab091b7d302c",
+      "qualified": false,
+      "error_name": "TimeoutError",
+      "duration_seconds": 303.30445313453674,
+      "website_command_sent": false,
+      "website_five_second_deadline_exercised": false,
+      "application_write_not_reached_proven": false,
+      "stock_usb_jtag_reset_entries": null,
+      "initial_sync_failure_cause": "not established"
+    },
+    {
+      "attempt": 4,
+      "report_sha256": "9ab397494c011d1828d46aefbc2b927b36ad81160d92ec11a14dedb3f280f1ae",
+      "qualified": false,
+      "error_name": "TimeoutError",
+      "duration_seconds": 277.81140637397766,
+      "website_command_sent": false,
+      "website_five_second_deadline_exercised": false,
+      "application_write_not_reached_proven": true,
+      "stock_usb_jtag_reset_entries": 674,
+      "initial_sync_failure_cause": "not established"
+    }
+  ],
+  "external_flasher_library": {
+    "sha256": "2a896d5e520ea9b6ea9900223c2460df797c3b2287f441daa4e50168a50b17e6",
+    "default_connection_retry_count": 7,
+    "stock_detectChip_supplies_rom_baudrate_as_retry_count": 115200,
+    "scope": "Excessive failed-reset budget in stock flasher; not a MeshCore firmware fix or root-cause proof for initial sync failure."
+  },
+  "pending_physical_trials": [],
+  "radio_scope": "USB stability qualification records CAD and receive-silence watchdog flags as warnings; requires physical RX errors zero and rejects queue-full/start-RX/unknown flags. No zero-error radio claim.",
+  "limitations": [
+    "Current-source normal Full HWCDC application; not released-stock migration proof.",
+    "Host TTY VMIN/VTIME normalization is part of qualified host setup.",
+    "Failed flasher preparations remain failed and did not exercise the GUI five-second command timer.",
+    "Merged artifact is audited; actual browser tests flashed only the protected active application slot.",
+    "No measured sleep current, factory erase/cold-cycle, heavy logging or RF traffic-soak claim.",
+    "USB-attached CPU sleep guard means no physical light-sleep/button-wake or current-draw qualification; V4 momentary-button wake profile correction needs new-source qualification.",
+    "Original host service states restored; MQTT packet delivery was not measured."
+  ],
+  "qualified_trials": [
+    {
+      "attempt": 5,
+      "logging_output": "off",
+      "power_saving": "on",
+      "report_sha256": "e4d49f17971d980565ad351b9b49a2e19c5ca8a83ac91805b87bf85ada49223e",
+      "independent_review_sha256": "0e60290e3d63b393bf6c8647bb6c966f7a015bdd09067ab0cf7840290201c9ea",
+      "first_plain_time_ms": 1614.4000000003725,
+      "first_plain_time_clock_set_acknowledged": true,
+      "native_command_deadline_ms": 5000,
+      "quiet_intervals": [
+        {
+          "kind": "open",
+          "requested_seconds": 600,
+          "actual_seconds": 600.0930547369935,
+          "native_writes_during_idle": 0,
+          "uptime_before": 18,
+          "serial_open": true,
+          "uptime_after": 619,
+          "uptime_delta": 601,
+          "uptime_continuity_verified": true,
+          "ok": true
+        },
+        {
+          "kind": "closed",
+          "requested_seconds": 600,
+          "actual_seconds": 600.100213859987,
+          "native_writes_during_idle": 0,
+          "uptime_before": 627,
+          "serial_open": false,
+          "uptime_after": 1232,
+          "uptime_delta": 605,
+          "uptime_continuity_verified": true,
+          "ok": true
+        }
+      ],
+      "first_post_open_idle_core_ms": 35.90000000037253,
+      "post_open_idle_DOM_clock_reply_ms": 23.59999999962747,
+      "post_closed_idle_DOM_clock_reply_ms": 33.19999999925494,
+      "post_closed_idle_clock_set_acknowledged": false,
+      "post_closed_idle_clock_response": "recognized framed clock-cannot-go-backwards rejection",
+      "full_GUI_rereads_passed": true,
+      "native_command_errors": 0,
+      "GUI_modem_signal_calls": 0,
+      "original_restoration_verified": true,
+      "checked_preferences_count": 15,
+      "identity_ACL_response_and_checked_preference_hashes_preserved": true,
+      "original_power_saving": "off",
+      "original_logging_output": "usb",
+      "streams_closed": true,
+      "radio": {
+        "initial_core_error_flags": 0,
+        "final_core_error_flags": 8,
+        "all_observations_active_RX": true,
+        "physical_rx_errors_max": 0,
+        "final_recv": 0,
+        "final_sent": 1,
+        "scope": "Receive-silence watchdog8 warning after quiet; not a CPU reset or zero-error/traffic radio qualification."
+      }
+    },
+    {
+      "attempt": 3,
+      "logging_output": "usb",
+      "power_saving": "on",
+      "report_sha256": "13202bf1d378128c2ac0d99404aac2a877b3ef3e9e14cfc0fc7a727d71aeb1ee",
+      "independent_review_sha256": "0ab2d0c2d24e025fb381fedeebe5ee267b805c57f7ad6ec6a173a98201cacc34",
+      "first_plain_time_ms": 696.0999999996275,
+      "first_plain_time_clock_set_acknowledged": true,
+      "native_command_deadline_ms": 5000,
+      "quiet_intervals": [
+        {
+          "kind": "open",
+          "requested_seconds": 600,
+          "actual_seconds": 600.1005607169936,
+          "native_writes_during_idle": 0,
+          "uptime_before": 18,
+          "serial_open": true,
+          "uptime_after": 618,
+          "uptime_delta": 600,
+          "uptime_continuity_verified": true,
+          "ok": true
+        }
+      ],
+      "first_post_open_idle_core_ms": 40.40000000037253,
+      "post_open_idle_DOM_clock_reply_ms": 24.800000000745058,
+      "post_open_idle_DOM_clock_set_acknowledged": true,
+      "full_GUI_rereads_passed": true,
+      "native_command_errors": 0,
+      "GUI_modem_signal_calls": 0,
+      "original_restoration_verified": true,
+      "checked_preferences_count": 15,
+      "identity_ACL_response_and_checked_preference_hashes_preserved": true,
+      "original_power_saving": "off",
+      "original_logging_output": "usb",
+      "streams_closed": true,
+      "radio": {
+        "initial_core_error_flags": 0,
+        "final_core_error_flags": 8,
+        "all_observations_active_RX": true,
+        "physical_rx_errors_max": 0,
+        "final_recv": 0,
+        "final_sent": 1,
+        "scope": "Known CAD/receive-silence flags are warnings; no zero-error RF or traffic-soak claim."
+      }
+    }
+  ],
+  "browser": {
+    "version": "154.0.8037.92",
+    "native_OS_Web_Serial": true,
+    "stock_GUI_command_timeout_ms": 5000,
+    "GUI_sources": {
+      "index.html": "efd64d1b56d57988fc4108f3f84efc943ed4c42ade4e4dbf8139c46fb3c0476d",
+      "src/gui.js": "919034806e903fbc41e29a367a7d854837f6520f47aa34e5d0618f5dd3d29800",
+      "lib/serial-cli.js": "fbfbdcfa8bf1a372a0396d342e018ba8ee83d33b7b98c3a546fd37cd7e8ce870"
+    }
+  },
+  "operator_cleanup": {
+    "ok": true,
+    "exact_runtime_version_verified": true,
+    "checked_preferences_identity_ACL_response_preserved": true,
+    "uptime_seconds": 686,
+    "core_error_flags": 8,
+    "serial_closed_and_no_owner": true,
+    "owned_browser_profile_closed": true,
+    "owned_tunnel_closed": "parent independently verified",
+    "original_services_restored": {
+      "ModemManager": "active",
+      "mctomqtt": "active",
+      "mesh-logger": "inactive"
+    },
+    "network_configuration_changed": false,
+    "operator_report_sha256": "d6d6e03ad5058e1257a6653af70203a3852dace47701220d9fd5c5020c56ae33",
+    "services_report_sha256": "f02ab0773cc35c11c2c9f400d8dffe0e7dd1807a09ebd942ee652ccc82c0f420",
+    "browser_cleanup_report_sha256": "d22a76bffa71dac46ab9514f066369047642e8c0bdeda36c380e133b724ca299"
+  },
+  "sleep_scope": {
+    "USB_cable_remained_attached": true,
+    "native_host_sleep_guard_present": true,
+    "CPU_light_sleep_entry_measured": false,
+    "current_draw_measured": false,
+    "physical_button_wake_tested": false,
+    "c888_V4_momentary_button_wake_profile_flag_present": false,
+    "new_button_fix_qualification": "pending"
+  }
+}
