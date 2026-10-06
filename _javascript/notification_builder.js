@@ -5,7 +5,8 @@
   const EXAMPLES = {
     find: { label: "Find my node", kind: "all", id: "", when: "disconnected", vibration: "200,200,200", led: "100,100,100,700", sound: "find:d=8,o=6,b=180:c,e,g,p", screen: "on", gpio: "off", repeat: "forever", gap: "1000", stop: "connected" },
     food: { label: "Your food truck order is ready", kind: "channel", id: "3", when: "any", vibration: "50,300,40,20,500", led: "100,100,100,500", sound: "order:d=8,o=5,b=180:c,e,g,4c6", screen: "on", gpio: "off", repeat: "forever", gap: "2000", stop: "button" },
-    vip: { label: "VIP chat", kind: "contact", id: "", when: "disconnected", vibration: "100,100,300", led: "50,300,40,20,500", sound: "vip:d=8,o=5,b=180:c,e,g,4g", screen: "on", gpio: "off", repeat: "2", gap: "500", stop: "button" }
+    vip: { label: "VIP chat", kind: "contact", id: "", when: "disconnected", vibration: "100,100,300", led: "50,300,40,20,500", sound: "vip:d=8,o=5,b=180:c,e,g,4g", screen: "on", gpio: "off", repeat: "2", gap: "500", stop: "button" },
+    channel9: { label: "Only channel 9", kind: "channel", id: "9", when: "any", vibration: "off", led: "off", sound: "ch9:d=8,o=5,b=180:c,e,g", screen: "off", gpio: "off", repeat: "1", gap: "500", stop: "button", quietOthers: "on" }
   };
   function pulse(text) {
     if (text === "off" || text === "inherit") return [];
@@ -91,6 +92,14 @@
     if (config.repeat !== "forever" && (!/^\d+$/.test(config.repeat) || Number(config.repeat) < 1 || Number(config.repeat) > 65535)) throw new Error("Repeat must be 1-65535 or forever.");
     if (!/^\d+$/.test(config.gap) || Number(config.gap) < 1 || Number(config.gap) > 60000) throw new Error("Repeat gap must be 1-60000 ms.");
     if (!["button", "connected", "never"].includes(config.stop)) throw new Error("Unknown stop condition.");
+    if (config.quietOthers === "on") {
+      if (config.kind !== "channel") throw new Error("Silencing other message alerts needs a channel exception.");
+      // This is a shared RULE, not master off: the selected channel can still
+      // override it. Copy and USB Save must apply the same two-rule recipe.
+      result.push("set notify.enabled on");
+      for (const name of Object.keys(OUTPUTS)) result.push("set notify." + name + " all off");
+      result.push("set notify.repeat all 1", "set notify.gap all 500", "set notify.stop all button");
+    }
     for (const name of Object.keys(OUTPUTS)) {
       if (!["off", "inherit"].includes(config[name])) result.push("set notify." + name + " on");
       result.push("set notify." + name + " " + target + " " + config[name]);
@@ -104,6 +113,7 @@
     return result;
   }
   function notificationText(config) {
+    if (config.quietOthers === "on") throw new Error("Use CLI commands or USB Save for the silent default and channel exception; a notification DM cannot configure these rules.");
     const parts = [];
     for (const name of ["vibration", "sound", "led", "screen"]) if (config[name] !== "inherit") parts.push(name + "=" + config[name]);
     for (const name of ["repeat", "gap"]) parts.push(name + "=" + config[name]);
@@ -185,6 +195,10 @@
     let client = null, supported = null, previewTimer = null, previewUrl = null, previewVersion = 0;
     const config = () => Object.fromEntries(new FormData(form));
     function render() {
+      const quiet = form.elements.quietOthers;
+      quiet.disabled = form.elements.kind.value !== "channel";
+      if (quiet.disabled) quiet.checked = false;
+      find("quiet-warning").hidden = !quiet.checked;
       try {
         output.textContent = commands(config()).join("\n"); error.textContent = "";
         try { find("dm").textContent = notificationText(config()); }
@@ -193,8 +207,11 @@
       catch (e) { output.textContent = ""; find("dm").textContent = ""; error.textContent = e.message; }
     }
     function preset(name) {
-      const values = { remote: "inherit", ...EXAMPLES[name] };
-      for (const [key, value] of Object.entries(values)) if (form.elements[key]) form.elements[key].value = value;
+      const values = { remote: "inherit", quietOthers: "off", ...EXAMPLES[name] };
+      for (const [key, value] of Object.entries(values)) if (form.elements[key]) {
+        if (key === "quietOthers") form.elements[key].checked = value === "on";
+        else form.elements[key].value = value;
+      }
       render();
     }
     function stopPreview(status = "Stopped") {
@@ -296,6 +313,9 @@
           const c = config(), list = commands(c);
           if (!client || supported === null) throw new Error("Connect updated Companion firmware first.");
           for (const name of Object.keys(OUTPUTS)) if (!["off", "inherit"].includes(c[name]) && !(supported & OUTPUTS[name])) throw new Error(name + " is unavailable on this device. Choose off or inherit.");
+          // Resolve/check numeric channel slots before changing the shared
+          // default: a missing exception channel must not leave all alerts mute.
+          if (c.quietOthers === "on") await run("get notify.sound " + selector(c));
           for (const text of list) await run(text);
           if (action === "apply-test") await run("notify.test " + selector(c));
         }

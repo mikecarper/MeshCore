@@ -7,6 +7,8 @@
 .notification-builder small { font-size: .7rem; font-weight: 400; color: var(--md-default-fg-color--light); }
 .notification-builder input, .notification-builder select { width: 100%; min-width: 0; border: 1px solid var(--md-default-fg-color--lighter); border-radius: 6px; padding: .6rem; background: var(--md-default-bg-color); color: var(--md-default-fg-color); font: inherit; font-weight: 400; }
 .notification-builder input:focus, .notification-builder select:focus { outline: 2px solid var(--md-primary-fg-color); outline-offset: 2px; }
+.notification-builder .notification-checkbox { flex-direction: row; align-items: center; margin-top: 1rem; }
+.notification-builder .notification-checkbox input { width: auto; flex: 0 0 auto; padding: 0; }
 .notification-builder button { border: 1px solid var(--md-primary-fg-color); border-radius: 6px; padding: .5rem .75rem; margin: .2rem; cursor: pointer; color: var(--md-primary-fg-color); font: inherit; }
 .notification-builder button:hover { background: var(--md-primary-fg-color); color: var(--md-primary-bg-color); }
 .notification-builder button:disabled { opacity: .5; cursor: wait; }
