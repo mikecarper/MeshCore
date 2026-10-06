@@ -2489,7 +2489,7 @@ getters; relaying a command over LoRa keeps its remote restrictions.</p>
 </tr>
 <tr>
 <td>FULL ESP32 logging fallback</td>
-<td>Uses the matching non-MQTT target only when no WiFi MQTT sibling exists, with debug and packet support compiled and the complete command surface supported by that role and hardware. USB debug defaults off; <code>get/set usb.debug</code> selects verbose output independently of packet capture. Its persistent USB master also covers output-off operation, avoiding a second FULL ESP-NOW image.</td>
+<td>Uses the matching non-MQTT target when no compatible MQTT sibling exists, preserving its hardware and role CLI. Full LoRa repeaters also include runtime ESP-NOW with <code>set espnow.enabled on\|off</code> and <code>get espnow.running</code>; newly combined modes default off. Dedicated images remain only for measured capacity exceptions. USB debug defaults off; <code>get/set usb.debug</code> selects verbose output independently of packet capture.</td>
 </tr>
 <tr>
 <td>nRF52 dual-CDC Full Companion</td>

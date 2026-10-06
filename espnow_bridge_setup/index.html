@@ -2312,21 +2312,26 @@ peer pairing is needed.</p>
 <pre><code class="language-text">LoRa network A &lt;--&gt; Repeater A &lt;-- ESP-NOW --&gt; Repeater B &lt;--&gt; LoRa network B
 </code></pre>
 <h2 id="1-choose-the-firmware">1. Choose the firmware</h2>
-<p>Install the exact board's <strong>Full ESP-NOW bridge repeater</strong> image on each board.
-The target name ends in <code>_repeater_bridge_espnow</code>; a standard Heltec V4 uses
-<code>heltec_v4_repeater_bridge_espnow</code>. Full/MQTT and Full Companion images are
-different choices. See the <a href="../firmware_picker/">firmware picker guide</a>.</p>
+<p>Install the exact board's <strong>Full repeater</strong> image on each board. ESP-NOW is
+included as a runtime transport on supported ESP32 Full repeaters. Newly
+combined ordinary repeaters leave it off until explicitly enabled; that
+choice is saved across reboot. Boards with measured capacity exceptions keep
+separate <code>_repeater_bridge_espnow</code> images. Historical dedicated target names
+remain available for direct builds with their original bridge-on defaults.
+Full Companion is a different role. See the <a href="../firmware_picker/">firmware picker guide</a>.</p>
 <p>Open each board's <a href="https://flasher.meshcore.io/console">USB console</a> at
 115200 baud and run:</p>
 <pre><code class="language-text">get bridge.type
 </code></pre>
-<p>The answer must be <code>espnow</code>. <code>mqtt</code>, <code>rs232</code>, or <code>none</code> means that image does
-not provide the ESP-NOW bridge described here.</p>
+<p>The answer can be <code>espnow</code>, <code>mqtt+espnow</code>, or <code>rs232+espnow</code>. Confirm the
+independent ESP-NOW control is present with <code>get espnow.enabled</code> and
+<code>get espnow.running</code>. The <code>espnow</code> commands select this transport without
+changing another bridge in a combined image.</p>
 <h2 id="2-set-each-boards-lora-network">2. Set each board's LoRa network</h2>
 <p>Configure one board at a time over USB. Replace the placeholders below with
 the radio settings used by the network on that board's side. Use <code>Bridge-A</code>
 for the first board and <code>Bridge-B</code> for the second, or choose your own names.</p>
-<pre><code class="language-text">set bridge.enabled off
+<pre><code class="language-text">set espnow.enabled off
 set name Bridge-A
 set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;
 reboot
@@ -2369,14 +2374,14 @@ shows the saved settings. Use permanent radio settings for this setup;
 <p>Run this block on <strong>both</strong> boards. Replace <code>YourSharedKey</code> with the same
 case-sensitive secret on each board, using 1-15 characters. Channel <code>6</code> is
 an example; both boards must use the same channel.</p>
-<pre><code class="language-text">set bridge.enabled off
+<pre><code class="language-text">set espnow.enabled off
 set bridge.channel 6
 set bridge.format wrapped
 set bridge.secret YourSharedKey
 set bridge.source tx
 set bridge.delay 500
 set repeat on
-set bridge.enabled on
+set espnow.enabled on
 </code></pre>
 <p>These settings are saved across reboot. Bridge changes apply immediately;
 changing an enabled bridge's channel, format, or secret restarts the bridge.
@@ -2391,8 +2396,8 @@ Stopping it first lets you finish configuring both sides before connecting them.
 </thead>
 <tbody>
 <tr>
-<td><code>bridge.enabled</code></td>
-<td><code>on</code> starts the bridge; <code>off</code> stops it and keeps its saved settings.</td>
+<td><code>espnow.enabled</code></td>
+<td><code>on</code> starts ESP-NOW; <code>off</code> stops it and keeps its saved settings. Independent of MQTT or RS-232.</td>
 </tr>
 <tr>
 <td><code>bridge.channel</code></td>
@@ -2420,11 +2425,11 @@ Stopping it first lets you finish configuring both sides before connecting them.
 </tr>
 <tr>
 <td><code>bridge.type</code></td>
-<td>Read-only firmware capability. It must report <code>espnow</code> for this guide.</td>
+<td>Read-only firmware capability, including combined transports.</td>
 </tr>
 <tr>
-<td><code>bridge.running</code></td>
-<td>Read-only runtime state. <code>on</code> means the local bridge started; it does not prove the other board is reachable.</td>
+<td><code>espnow.running</code></td>
+<td>Read-only ESP-NOW runtime state. <code>on</code> means the local bridge started; it does not prove the other board is reachable.</td>
 </tr>
 </tbody>
 </table>
@@ -2434,8 +2439,8 @@ use <code>logTx</code> and <code>logRx</code>; those are not the command values 
 LoRa repeater, see <a href="../WiFi/#wifi-companion-setup">raw ESP-NOW compatibility</a>.</p>
 <h2 id="4-check-the-link">4. Check the link</h2>
 <p>Run on both boards:</p>
-<pre><code class="language-text">get bridge.enabled
-get bridge.running
+<pre><code class="language-text">get espnow.enabled
+get espnow.running
 get bridge.channel
 get bridge.format
 get bridge.secret
@@ -2459,7 +2464,12 @@ delivery.</p>
   and check the networks' forwarding and scope rules.</li>
 </ul>
 <p>A running bridge keeps the device awake, even with device power saving enabled.
-For every command's full details, see the <a href="../cli_commands/#bridge-when-bridge-support-is-compiled-in">bridge CLI reference</a>.</p>
+ESP-NOW shares the WiFi radio: use the connected WiFi network's channel when
+WiFi is active. Browser OTA pauses ESP-NOW on ordinary non-MQTT repeaters,
+reports that pause, and resumes saved-enabled ESP-NOW when OTA is stopped.
+A failed OTA start restores the bridge. The RS-232 transport remains available
+on combined boards while ESP-NOW is paused.</p>
+<p>For every command's full details, see the <a href="../cli_commands/#bridge-when-bridge-support-is-compiled-in">bridge CLI reference</a>.</p>
 <p>For a broader comparison with a Linux-based bridge, see the
 <a href="https://meshcore.nexus/guides/lora-bridging#method-2-meshcore-esp-now-bridge">MeshCore Nexus bridging guide</a>.</p>
 <h2 id="keep-wardriving-traffic-off-the-bridge">Keep wardriving traffic off the bridge</h2>
