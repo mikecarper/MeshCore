@@ -90,7 +90,7 @@
     "Failed flasher preparations remain failed and did not exercise the GUI five-second command timer.",
     "Merged artifact is audited; actual browser tests flashed only the protected active application slot.",
     "No measured sleep current, factory erase/cold-cycle, heavy logging or RF traffic-soak claim.",
-    "USB-attached CPU sleep guard means no physical light-sleep/button-wake or current-draw qualification; Updated profile host/build and native USB console checks are recorded separately; physical button wake remains untested.",
+    "The controlled operator USB tests included no actual button press or CPU-sleep/current measurement. The user separately confirmed V4 button screen wake without a firmware SHA or CPU sleep state.",
     "Original host service states restored; MQTT packet delivery was not measured."
   ],
   "qualified_trials": [
@@ -233,9 +233,9 @@
     "native_host_sleep_guard_present": true,
     "CPU_light_sleep_entry_measured": false,
     "current_draw_measured": false,
-    "physical_button_wake_tested": false,
     "c888_V4_momentary_button_wake_profile_flag_present": false,
-    "new_button_fix_qualification": "Host/build and updated-source native USB console180s qualified; physical button/CPU sleep/current untested."
+    "new_button_fix_qualification": "Host/build and updated-source native USB console180s qualified. Operator did not press a physical button; user separately confirmed V4 screen wake. CPU sleep/current not measured.",
+    "operator_physical_button_press_tested": false
   },
   "updated_source_checkpoint": {
     "source_commit": "ebf2f0823ef8413987d31ccb2d044a2090e88469",
@@ -367,9 +367,22 @@
     },
     "limitations": [
       "Updated-source180s intervals are separate from historical c888600s trials.",
-      "USB cable remained attached; no physical button wake, measured CPU sleep or current draw.",
+      "Operator USB cable remained attached and no actual button was pressed; CPU sleep/current were not measured. The separate user V4 screen-wake report has no firmware SHA or CPU sleep state.",
       "Host services restored; no MQTT delivery or loaded-RF qualification.",
       "Release held and unpublished."
-    ]
+    ],
+    "user_manual_confirmation_reference": "user_reported_manual_confirmation; firmware revision not specified"
+  },
+  "user_reported_manual_confirmation": {
+    "date": "2026-10-06",
+    "source": "user report",
+    "board_family": "Heltec V4",
+    "outcome": "button press wakes screen",
+    "firmware_SHA_provided": false,
+    "firmware_version_provided": false,
+    "CPU_sleep_state_provided": false,
+    "current_draw_measurement_provided": false,
+    "V4_R8_manual_result_provided": false,
+    "scope": "Separate manual screen-wake confirmation; not assigned to a source SHA or controlled operator sleep/current test."
   }
 }
