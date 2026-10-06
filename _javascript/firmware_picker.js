@@ -917,7 +917,7 @@
         }
         if (profile.controls.espnowBridge &&
             ["repeater", "room"].includes(profile.role) && profile.mode === "standard") {
-          profile.connectionModes = ["standard", "espnow"];
+          profile.connectionModes = (profile.connectionModes || ["standard"]).concat("espnow");
         }
       }
       profile.hardwareFamily = hardwareFamilyFor(
@@ -1609,10 +1609,17 @@
       }), "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.");
     }
     if (info.espnowBridge && infrastructure) {
-      toggle("ESP-NOW bridge", "set bridge.enabled", "get bridge.enabled",
-        info.mqtt
-          ? "Independent of MQTT in this Full image. set espnow.enabled is an alias. get bridge.running (or get espnow.running) checks its live state."
-          : "set bridge.enabled controls the ESP-NOW bridge; get bridge.running checks its live state.");
+      // Combined images need the transport-specific switch: bridge.enabled
+      // controls the UART when RS-232 is compiled alongside ESP-NOW. Older
+      // dedicated ESP-NOW releases retain their original bridge.* commands.
+      const independentEspnow = info.rs232 || info.mqtt;
+      toggle("ESP-NOW bridge", independentEspnow ? "set espnow.enabled" : "set bridge.enabled",
+        independentEspnow ? "get espnow.running" : "get bridge.running",
+        info.rs232
+          ? "Independent of RS-232. Newly merged repeaters start with ESP-NOW off until enabled; saved settings survive reboot. get espnow.enabled checks the saved setting; get espnow.running checks its live state."
+          : info.mqtt
+            ? "Independent of MQTT in this Full image. get espnow.enabled checks the saved setting; get espnow.running checks its live state."
+            : "set bridge.enabled controls the ESP-NOW bridge; get bridge.running checks its live state.");
       section("ESP-NOW bridge framing", ["wrapped", "raw"].map(function (mode) {
         return { label: mode, commands: ["set bridge.format " + mode] };
       }), info.mqtt
