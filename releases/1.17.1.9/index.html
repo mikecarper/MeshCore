@@ -2239,6 +2239,7 @@
 
 
 <h1 id="meshcore-11719-usa-cascade">MeshCore 1.17.1.9 USA Cascade</h1>
+<p>This release remains held and unpublished.</p>
 <p>USA Cascade defaults are 910.525 MHz, 62.5 kHz bandwidth, SF7 and CR5. Saved
 radio settings take precedence. Match the exact board, role and storage
 layout before installing an image.</p>
@@ -2254,6 +2255,14 @@ layout before installing an image.</p>
 <li>The pinned ESP32-S3 framework releases retained TinyUSB PHY ownership when
   starting hardware CDC after a software restart. KISS clears incomplete
   host frames on a USB session reset while preserving active radio work.</li>
+<li>Browser OTA uploads allow 30 seconds of body inactivity after admission.
+  An upload error stays attached to its HTTP request and stops further flash
+  writes. Error callbacks avoid raw USB printing that could block the shared
+  network task when a connected host stops reading.</li>
+<li>Infrastructure WebConfig retries its saved WiFi when MQTT has no running
+  worker. Ownership follows the actual worker state while canonical WiFi
+  credentials and 64-hex password support remain independent of that state.
+  Companion's manual WiFi startup behavior is preserved.</li>
 <li>Companion packet streaming supports stock serial MQTT consumers. Text CLI
   and Binary Companion handoff and reply deadlines are covered against the
   official app's protocol behavior.</li>
@@ -2300,9 +2309,12 @@ the live layout on firmware that supports it.</p>
 rules into the supported slots and save them before installing a smaller
 table. An over-capacity policy is retained on storage but remains inactive
 until compatible firmware is installed.</p>
-<p>Native hardware CDC can change the USB product name and Linux <code>/dev/serial/by-id</code>
-path. Update serial consumers to the new device path after the first upgrade.
-Do not identify a radio solely by a changing <code>/dev/ttyACM</code> number.</p>
+<p>Switching from TinyUSB to native hardware CDC changes the USB product name and
+Linux <code>/dev/serial/by-id</code> path. Update serial consumers to the new device path
+after the first upgrade.
+Hardware CDC descriptors are fixed in silicon; firmware cannot retain a custom
+TinyUSB product name. Do not identify a radio solely by a changing <code>/dev/ttyACM</code>
+number. See <a href="https://github.com/espressif/arduino-esp32/issues/11394#issuecomment-3778833461">Espressif's explanation</a>.</p>
 <p>nRF52 application UF2 and DFU ZIP files do not install a bootloader. Use the
 exact board/storage OTAFIX mapping in the <a href="../../firmware_picker/">firmware picker</a>.
 See the <a href="../../role_feature_switches/">role controls</a>,
@@ -2314,12 +2326,35 @@ tests, sanitizer fixtures and representative builds across all affected board
 families. The G2 passed physical USB command/reconnect tests with its original
 identity and settings preserved. A separate RAK4631 recovery admin was verified
 by passwordless LoRa login, remote status and a remote version reply.</p>
-<p>The attempted old-TinyUSB Wi-Fi OTA transition did not reach an upload: its
-WebConfig/Wi-Fi handoff and a subsequent old-firmware USB timeout prevented
-that path. The G2 was restored over USB and its hardware CDC runtime passed
-444 strict-deadline queries and a 150-second closed-port idle/reconnect test.
-The retained-PHY transition is covered synthetically; this attempt does not
-establish a successful physical TinyUSB-to-hardware-CDC OTA upgrade.</p>
+<p>Earlier old-firmware handoff attempts did not qualify an OTA migration. After
+USB restoration, hardware CDC passed 444 strict-deadline queries and a
+150-second closed-port idle/reconnect test. Those results remain separate from
+the subsequent physical OTA qualification.</p>
+<p>On 2026-10-05, the G2 passed an app-only HTTP OTA upgrade from a real TinyUSB
+build to normal hardware CDC, both built from <code>95913c53</code>. The test drained the
+same TCP socket's outstanding bytes before pausing the upload for 4.510 seconds.
+HTTP returned 200 after 22.559 seconds. Firmware restarted itself, the host
+observed the USB product change, and the first ordinary website <code>time</code> command
+was acknowledged in 2.997 seconds against the unchanged 5-second deadline.
+Identity, saved runtime settings, and the original and recovery Admin ACLs
+were preserved. No cable, power, reset, ROM or rescue action was used during
+the measured upgrade; the Pi's original WiFi connection was restored.</p>
+<p>This is a controlled current-source TinyUSB baseline, not proof of an upgrade
+from released stock 1.17.1. A separate earlier LAN upload reset mid-transfer;
+continuous uptime and a later successful AP retry showed no CPU crash, but
+the LAN failure's cause remains unproven. The synthetic regressions execute
+production upload callbacks, preserve queued errors, and distinguish the old
+3-second body timeout from the bounded 30-second allowance. Local uploader,
+OTA startup, WiFi lifecycle and station ownership tests passed. The latest
+<code>95913c53</code> hardware CDC application passed quiet 180-second power-saving trials
+with the port open and closed, without keepalives or a CPU restart. First
+replies took 18.551 ms and 14.728 ms; original power-saving off and other saved
+settings were restored. A plain <code>start ota</code> then advertised a working LAN
+endpoint, reported the WebConfig handoff, and served its page and exact G2
+identity over HTTP. OTA stopped cleanly and the original WebConfig, settings,
+Admin ACLs, Pi network and host services were restored. The earlier radio CAD
+warning remained unchanged; the earlier LAN upload failure's cause is still
+unproven. The current GitHub unit workflow remains pending for this held release.</p>
 <p>Build qualification does not establish physical compatibility on every board.
 Hardware CDC has finite buffers, and closing a Linux TTY does not necessarily
 produce a hardware session reset. Saturated diagnostic output is not lossless.
