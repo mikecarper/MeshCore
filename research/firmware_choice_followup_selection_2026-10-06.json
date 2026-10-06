@@ -1,0 +1,180 @@
+{
+  "source_commit_current": "08bf174ea30e2e075cdd9fc74111580662b461bb",
+  "cache": "platformio-current-resolved.json",
+  "primary_cache_method": "Exact current resolved cache; remove11 local HIL env sections absent from primary tracked platformio.ini/variants recipes. Local file adds no ordinary overrides.",
+  "planned_current_slots": 174,
+  "current_profiles": {
+    "full": 174
+  },
+  "passes": {
+    "run_logging_matrix_build_targets": 52,
+    "run_full_only_esp32_profile": 122
+  },
+  "duplicate_target_identities": [],
+  "semantically_distinct_resolved_base_recipes": 172,
+  "duplicate_groups": [
+    [
+      {
+        "target": "heltec_v4_repeater",
+        "compiled_env": "heltec_v4_repeater_observer_mqtt"
+      },
+      {
+        "target": "heltec_v4_expansionkit_repeater",
+        "compiled_env": "heltec_v4_expansionkit_repeater_observer_mqtt"
+      }
+    ],
+    [
+      {
+        "target": "heltec_v4_room_server",
+        "compiled_env": "heltec_v4_room_server_observer_mqtt"
+      },
+      {
+        "target": "heltec_v4_expansionkit_room_server_observer_mqtt",
+        "compiled_env": "heltec_v4_expansionkit_room_server_observer_mqtt"
+      }
+    ]
+  ],
+  "caveat": "Two semantically equivalent recipe pairs have distinct mOTA target IDs. This does not authorize relabeling artifacts or app-only OTA across IDs/layouts.",
+  "menu_counts": {
+    "supported_ESP32_logical_targets": 638,
+    "interactive_ESP32_targets_including_KISS": 217,
+    "interactive_ESP32_node_Full_choices": 174,
+    "interactive_KISS_choices": 43,
+    "supported_roles": {
+      "repeater": 196,
+      "Terminal_Chat": 23,
+      "room_server": 121,
+      "legacy_Companion": 162,
+      "KISS": 43,
+      "development_or_auxiliary": 21,
+      "sensor": 17,
+      "Full_Companion": 55
+    },
+    "interactive_roles": {
+      "KISS": 43,
+      "Full_Companion": 52,
+      "repeater": 58,
+      "room_server": 47,
+      "sensor": 17
+    },
+    "ordinary_menu_missing_from_matrix": [],
+    "matrix_missing_from_ordinary_menu": [],
+    "duplicate_menu_targets": [],
+    "ambiguous_board_variant_labels": [],
+    "primary_ESP32_raw_environments": 502,
+    "primary_ESP32_generated_aliases": 136
+  },
+  "source_equivalence_notice": "Software source/configuration equivalence is not binary equivalence: logical target names generate distinct mOTA IDs, image identity records, recipe digests, artifact names, and signed/hashed package contents.",
+  "identity_and_layout": [
+    {
+      "targets": {
+        "heltec_v4_repeater": "0xe792a051",
+        "heltec_v4_expansionkit_repeater": "0xd522a14f"
+      },
+      "storage_equivalence": "Both same board heltec_v4, 16MiB flash, infrastructure Full overlay default_16MB.csv expanded dual OTA. All cached board/storage/sourcefilter options equal.",
+      "migration_gate": "Current get_exact_identity_full_migration_target allows observer suffix to matching plain prefix. It does not map Expansion Kit prefix to base V4. Existing deployed firmware may lack any successor alias.",
+      "safe_next_step": "Consolidate fresh install selection while retaining exact legacy IDs/artifacts and direct links. Retire legacy update feeds only after explicitly reviewed same-layout successor migration. Never relabel an artifact or bypass its EndF target check."
+    },
+    {
+      "targets": {
+        "heltec_v4_room_server": "0xeed78ce4",
+        "heltec_v4_expansionkit_room_server_observer_mqtt": "0x21ee03bd"
+      },
+      "storage_equivalence": "Both same board heltec_v4, 16MiB flash, infrastructure Full overlay default_16MB.csv expanded dual OTA. All cached board/storage/sourcefilter options equal.",
+      "migration_gate": "Current get_exact_identity_full_migration_target allows observer suffix to matching plain prefix. It does not map Expansion Kit prefix to base V4. Existing deployed firmware may lack any successor alias.",
+      "safe_next_step": "Consolidate fresh install selection while retaining exact legacy IDs/artifacts and direct links. Retire legacy update feeds only after explicitly reviewed same-layout successor migration. Never relabel an artifact or bypass its EndF target check."
+    }
+  ],
+  "source_refs": {
+    "equivalent_V4_OLED_hardware": "variants/heltec_v4/platformio.ini:55",
+    "duplicate_repeater": "variants/heltec_v4/platformio.ini:223",
+    "duplicate_room_server": "variants/heltec_v4/platformio.ini:366",
+    "current_interactive_helper": "build_legacy.sh:6548",
+    "Full_source_substitution": "build_legacy.sh:2492",
+    "same_partition_alias_gate": "build_legacy.sh:2516",
+    "Full_partition_layout": "scripts/esp32_full_partition.py:94",
+    "automatic_target_choice": "src/helpers/ota/OtaManager.cpp:1149",
+    "received_manifest_target_check": "src/helpers/ota/OtaManager.cpp:1514",
+    "observer_layout_capacity_split": "build_legacy.sh:6500",
+    "RC32_optional_display_requires_review": "variants/heltec_rc32/platformio.ini:68",
+    "R8_portrait_compile_time_layout": "variants/heltec_v4_r8/platformio.ini:373",
+    "portrait_geometry_driver": "src/helpers/ui/ST7789LCDDisplay.h:25",
+    "portrait_dashboard_layout": "src/helpers/ui/ObserverDashboard.h:113",
+    "fresh_vs_resume_filter_tests": "test/test_local_release_full_selection.py:96"
+  },
+  "further_options": [
+    {
+      "proposal": "HeltecV4 OLED Expansion Kit software-source alias consolidation",
+      "remove_ordinary_choices": 2,
+      "readiness": "UI/fresh-install recommendation safe while exact legacy identities remain available; release artifact retirement awaits explicit reviewed identity migration",
+      "fresh_count_if_only_this_change": 172,
+      "keep_distinct": [
+        "heltec_v4_expansionkit_tft_companion_radio_full_femon (different display/sensor wiring)"
+      ]
+    },
+    {
+      "proposal": "R8 TFT portrait/landscape runtime layout",
+      "remove_ordinary_choices": 2,
+      "readiness": "Requires actual UI/driver changes, qualification and display testing. Existing display.flip rotates180 and preserves geometry; it does not choose portrait vs landscape."
+    },
+    {
+      "proposal": "RC32 display/headless runtime optional peripheral",
+      "remove_ordinary_choices": 4,
+      "readiness": "Requires runtime display-presence/power controls and hardware/heap checks. Existing source filters/driver pin behavior differ; not currently software-source equivalent."
+    }
+  ],
+  "role_distinctions": "52 Full Companion,58 repeater,47 room-server,17 sensor ordinary choices select genuinely different applications/source filters and preference/storage/transport behavior. No existing runtime role switch permits consolidating those application roles without new firmware architecture.",
+  "peer_review": {
+    "interactive_helper": "Uses same canonical release selectors; preserves KISS host-modem role and every174 ordinary Full identity. No duplicate board/variant labels and no source/partition/recipe modifications. All old exact targets remain supported by direct-build APIs.",
+    "tests": "New real-inheritance block tests TLora UART/MQTT split, nRF52 external-storage variants, hiding legacy transports/reduced/utility names while preserving exact-build support, and submenu integration. Existing host suite passed per root; this audit additionally compares complete current menu with174 planned release choices.",
+    "fresh_resume_publication": "Current release filter drops standard/reduced/transport/default/fixture artifacts on resume and requires verified Full. Same-role observer/plain siblings are selected by capability/identity priorities; do not infer that source-equivalent V4 alias pairs are binary-equivalent.",
+    "nRF_pair_dedup": "Groups only through get_nrf52_sensor_ota_pair_target output identity. Alias-first ordering prefers non-LoRa-only ordinary name; tests retain external-storage and distinct deployed IDs. No suffix-only or cross-hardware grouping."
+  },
+  "final_menu_counts_all_platforms": {
+    "supported_target_names": 1082,
+    "final_interactive_choices": 461,
+    "removed_redundant_menu_names": 621,
+    "supported_by_platform": {
+      "ESP32_PLATFORM": 638,
+      "NRF52_PLATFORM": 403,
+      "RP2040_PLATFORM": 25,
+      "STM32_PLATFORM": 16
+    },
+    "menu_by_platform": {
+      "ESP32_PLATFORM": 217,
+      "NRF52_PLATFORM": 209,
+      "RP2040_PLATFORM": 19,
+      "STM32_PLATFORM": 16
+    },
+    "menu_roles_by_platform": {
+      "ESP32_PLATFORM": {
+        "KISS": 43,
+        "Full_Companion": 52,
+        "repeater": 58,
+        "room_server": 47,
+        "sensor": 17
+      },
+      "NRF52_PLATFORM": {
+        "repeater": 59,
+        "room_server": 47,
+        "KISS": 45,
+        "sensor": 8,
+        "legacy_Companion": 3,
+        "Full_Companion": 47
+      },
+      "RP2040_PLATFORM": {
+        "repeater": 4,
+        "room_server": 4,
+        "legacy_Companion": 7,
+        "KISS": 4
+      },
+      "STM32_PLATFORM": {
+        "repeater": 5,
+        "sensor": 3,
+        "legacy_Companion": 4,
+        "KISS": 4
+      }
+    },
+    "duplicate_menu_targets": []
+  }
+}

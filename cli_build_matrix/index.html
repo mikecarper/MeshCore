@@ -2394,17 +2394,22 @@ as explicit alternatives with different routing capacities. Build one with
 <code>bash build.sh build-firmware &lt;target&gt; --full-exact</code>, then deliberately install
 it over LoRa with <code>ota pull &lt;MID8&gt; flash</code> and <code>ota install</code> on compatible
 hardware and partition layouts.</p>
-<p>Standard and reduced OTA images, including images that fit the 1.25 MiB
-portable application slot, remain available and remain in the standard matrix
-pass. Select <code>--build-profile standard</code> to retain the original target and
-partition contract. Moving from a plain target to its MQTT sibling changes the
-LoRa OTA target identity; a partition layout change needs its matching
-migration step.
-For the normal-role partition migrations, the matrix also publishes a
-canonical Full image under the normal target identity. Install its matching
-merged image over USB once; mOTA rejects the incompatible partition signature
-until that migration is complete, then later Full updates use the normal
-target ID. The portable image remains available while deployed nodes move.</p>
+<p>The ordinary ESP32 release publishes Full images. Standard and reduced OTA
+recipes, including those that fit a 1.25 MiB portable application slot, remain
+available through explicit builds for recovery and migration. Select
+<code>--build-profile standard</code> to retain an exact target's original partition
+contract. They are omitted from the ordinary release and interactive board
+menu. That menu also omits transport/default aliases covered by Full and
+development utilities; it retains distinct hardware, roles, storage, and
+measured capacity exceptions. Exact legacy names remain accepted by
+<code>build-firmware</code> and <code>build-matching-firmwares</code>.</p>
+<p>For the normal-role partition migrations, the release publishes a canonical
+Full image under the normal target identity. Use its qualified wireless
+expansion package when one exists, or install its matching merged image over
+USB. mOTA rejects an incompatible partition signature until that migration
+is complete, then later Full updates use the normal target ID. Moving from a
+plain target to a differently named sibling can also change the LoRa OTA
+identity; partition expansion does not by itself authorize that transition.</p>
 <p>Legacy supported ESP32 Wi-Fi repeaters can use the
 <a href="../esp32_wifi_partition_migration/">Wi-Fi partition migration</a> bridge to
 preserve their identity and install an expanded Full image without a USB flash.
@@ -2765,7 +2770,7 @@ does not contain its linked marker is rejected during the build.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20261001-feedback-1"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261006-simplify-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js"></script>
       

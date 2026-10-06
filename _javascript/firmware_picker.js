@@ -1132,6 +1132,67 @@
     });
   }
 
+  function selectionRequirements(profiles, filters) {
+    const chosen = filters || {};
+    const hiddenFields = [];
+    let installKind = chosen.install || "";
+    // Board and role are deliberate choices. Once known, do not ask for
+    // settings that leave every compatible build unchanged.
+    if (chosen.hardware && chosen.role) {
+      const context = Object.assign({}, chosen);
+      // Classify against board/role, not mutually narrowing settings. A real
+      // alternative must stay visible so a selected filter can be cleared.
+      ["logging", "mode"].concat(PROFILE_FIELDS).forEach(function (field) {
+        delete context[field];
+      });
+      const boardContext = Object.assign({}, context);
+      delete boardContext.install;
+      const boardProfiles = (profiles || []).filter(function (profile) {
+        return profileMatchesFacets(profile, boardContext);
+      });
+      function supportsSelection(field) {
+        const selection = field === "firmwareProfile"
+          ? PROFILE_FIELDS.reduce(function (parts, part) {
+            if (chosen[part]) parts[part] = chosen[part];
+            return parts;
+          }, {}) : chosen[field] ? { [field]: chosen[field] } : {};
+        return boardProfiles.some(function (profile) {
+          return profileMatchesFacets(profile, selection);
+        });
+      }
+      // Invalid old links need a visible Any control. Do not conceal their
+      // requested value or replace it with another install format.
+      if (!supportsSelection("install")) delete context.install;
+      ["logging", "firmwareProfile", "mode"].forEach(function (field) {
+        const options = field === "firmwareProfile"
+          ? firmwareProfileChoices(profiles, context)
+          : facetValues(profiles, context, field).map(function (value) {
+            return { value: value };
+          });
+        if (supportsSelection(field) &&
+            choicesUseSameFirmware(profiles, context, field, options)) {
+          hiddenFields.push(field);
+        }
+      });
+      const installs = facetValues(profiles, context, "install");
+      if (installs.length === 1 && supportsSelection("install")) {
+        hiddenFields.push("install");
+        installKind = installs[0];
+      }
+    }
+    return {
+      hiddenFields: hiddenFields,
+      installKind: installKind,
+      missingFields: CHOICE_FIELDS.filter(function (field) {
+        if (field === "chipFamily" || hiddenFields.includes(field)) return false;
+        if (field === "firmwareProfile") return !PROFILE_FIELDS.every(function (part) {
+          return chosen[part];
+        });
+        return !chosen[field];
+      }),
+    };
+  }
+
   function selectionUrl(url, filters, automaticChipFamily) {
     const result = new URL(url);
     FACET_FIELDS.forEach(function (field) {
@@ -1516,6 +1577,7 @@
         }
         return {
           label: LOGGING_LABELS[mode], commands: commands,
+          selection: { logging: mode },
           text: full && info && info.mqtt
             ? (mode === "wifi" || mode === "both"
               ? "In WebConfig, enable the desired MQTT broker presets/settings and save."
@@ -1655,7 +1717,40 @@
     return sections;
   }
 
-  function renderRuntimeDirections(card, profile, selection) {
+  function runtimePanelDirections(profile, selection, runtimeFields) {
+    const chosen = Object.assign({}, selection);
+    const moved = runtimeFields || [];
+    if (moved.includes("logging")) delete chosen.logging;
+    if (moved.includes("mode") && !chosen.mode &&
+        profileFieldValues(profile, "mode").includes("standard")) {
+      chosen.mode = "standard";
+    }
+    const sections = runtimeDirections(profile, chosen);
+    sections.forEach(function (item) {
+      if (moved.includes("logging") && item.actions.some(function (action) {
+        return action.selection && action.selection.logging;
+      })) {
+        const mode = selection && selection.logging || "none";
+        const selected = item.actions.findIndex(function (action) {
+          return action.selection && action.selection.logging === mode;
+        });
+        item.selectedIndex = selected < 0 ? 0 : selected;
+        item.title = "Logging / MQTT output";
+      }
+      if (moved.includes("mode") && (/^RS232 bridge/.test(item.title) ||
+          item.title === "ESP-NOW bridge")) {
+        const on = /^RS232 bridge/.test(item.title)
+          ? chosen.mode === "rs232" : chosen.mode === "espnow";
+        item.selectedIndex = item.actions.findIndex(function (action) {
+          return action.label === (on ? "On" : "Off");
+        });
+      }
+    });
+    return sections;
+  }
+
+  function renderRuntimeDirections(card, profile, selection, options) {
+    const settings = options || {};
     const panel = createElement("section");
     panel.className = "firmware-picker-runtime";
     panel.appendChild(createElement("h4", "Restore your settings after flashing"));
@@ -1675,7 +1770,7 @@
         : "Use board and ver to identify the node.")));
     }
     if (!profile.controls) panel.appendChild(createElement("p", "Additional hardware controls have not been verified for this exact release image. Use the role guide for those settings."));
-    runtimeDirections(profile, selection).forEach(function (item, index) {
+    runtimePanelDirections(profile, selection, settings.runtimeFields).forEach(function (item, index) {
       const details = createElement("details");
       details.open = index === 0;
       details.appendChild(createElement("summary", item.title));
@@ -1685,13 +1780,13 @@
       fieldset.appendChild(createElement("legend", "Show steps for " + item.title));
       const choices = createElement("div");
       choices.className = "firmware-picker-radio-options";
+      let actionIndex = item.selectedIndex >= 0 ? item.selectedIndex : 0;
       renderRadioChoices(choices, item.actions.map(function (action, i) {
         return { value: String(i), label: action.label };
-      }), "0", "firmware-picker-runtime-" + (++runtimeGroupCount));
+      }), String(actionIndex), "firmware-picker-runtime-" + (++runtimeGroupCount));
       fieldset.appendChild(choices);
       details.appendChild(fieldset);
       const output = createElement("div");
-      let actionIndex = 0;
       function show() {
         output.replaceChildren();
         const action = item.actions[actionIndex];
@@ -1717,6 +1812,11 @@
       choices.addEventListener("change", function (event) {
         actionIndex = Number(event.target.value) || 0;
         show();
+        const action = item.actions[actionIndex];
+        if (action.selection && settings.onSelectionChange &&
+            (settings.runtimeFields || []).includes("logging")) {
+          settings.onSelectionChange(action.selection);
+        }
       });
       show();
       details.appendChild(output);
@@ -1733,7 +1833,7 @@
     });
   }
 
-  function renderProfileCard(container, profile, asset, installKind, selection) {
+  function renderProfileCard(container, profile, asset, installKind, selection, options) {
     const card = createElement("article");
     card.className = "firmware-picker-card";
     card.appendChild(createElement(
@@ -1752,7 +1852,8 @@
           return labelFor("mode", mode);
         }).join(" / "),
       ],
-      ["Logging", labelFor("logging", selection && selection.logging || profile.logging)],
+      ["Logging", labelFor("logging", options && (options.runtimeFields || []).includes("logging")
+        ? profile.logging : selection && selection.logging || profile.logging)],
       ["Firmware profile", firmwareProfileLabel(profile)],
       ["Install operation", labelFor("install", installKind)],
       ["File", asset.name],
@@ -1794,7 +1895,7 @@
     });
     steps.appendChild(list);
     card.appendChild(steps);
-    renderRuntimeDirections(card, profile, selection);
+    renderRuntimeDirections(card, profile, selection, options);
     container.appendChild(card);
   }
 
@@ -2031,6 +2132,11 @@
         firmwareProfileValue(filters), groupPrefix + "-firmwareProfile", "firmwareProfile");
       profileControl.closest("fieldset").disabled = profileChoices.length === 0;
       setRefinementHint(profileControl, "firmwareProfile", profileChoices);
+      const requirements = selectionRequirements(catalog.profiles, filters);
+      ["logging", "firmwareProfile", "mode", "install"].forEach(function (field) {
+        const control = controls[field];
+        if (control) control.closest("fieldset").hidden = requirements.hiddenFields.includes(field);
+      });
       const hardwareVariants = valuesForField("hardware");
       const hardwareVariantControl = root.querySelector(
         '[data-role="hardware-variant-control"]'
@@ -2056,26 +2162,32 @@
       result.hidden = true;
       missing.hidden = true;
       resultList.replaceChildren();
-      const missingFields = CHOICE_FIELDS.filter(function (field) {
-        if (field === "firmwareProfile") return !PROFILE_FIELDS.every(function (part) {
-          return filters[part];
-        });
-        return field !== "chipFamily" && !filters[field];
-      });
+      const requirements = selectionRequirements(catalog.profiles, filters);
+      const missingFields = requirements.missingFields;
+      const cardOptions = {
+        runtimeFields: requirements.hiddenFields,
+        onSelectionChange: function (selection) {
+          Object.keys(selection).forEach(function (field) {
+            filters[field] = selection[field];
+          });
+          updateSelectionUrl();
+        },
+      };
       const matches = matchingProfiles();
       if (feedback) {
-        const progress = selectionProgress(catalog.profiles, filters);
+        const progress = selectionProgress(catalog.profiles,
+          Object.assign({}, filters, { install: requirements.installKind }));
         feedback.hidden = false;
         feedback.dataset.state = progress.state;
         feedback.querySelector('[data-role="filter-count"]').textContent = progress.title;
-        feedback.querySelector('[data-role="filter-note"]').textContent = progress.note;
+        feedback.querySelector('[data-role="filter-note"]').textContent = missingFields.length
+          ? progress.note : "Matching files and install instructions are shown below.";
       }
       if (resultLink) resultLink.hidden = true;
 
       if (missingFields.length) {
         if (matches.length === 1) {
-          status.textContent = "One firmware build remains. Confirm the hardware and install operation. " +
-            "Choices marked 'Same firmware' do not narrow the result further.";
+          status.textContent = "One firmware build remains. Confirm the hardware, role and any remaining install choice.";
         } else if (missingFields.length === CHOICE_FIELDS.length - 1 && !filters.chipFamily) {
           status.textContent = "Pick options in any order. " +
             matches.length + " compatible configurations are available.";
@@ -2086,7 +2198,7 @@
             (missingFields.length === 1 ? "" : "s") + " in any order.";
         }
         if (shouldShowCandidateResults(matches)) {
-          const candidates = resolveProfileAssets(matches, filters.install);
+          const candidates = resolveProfileAssets(matches, requirements.installKind);
           if (candidates.length) {
             status.textContent += " Possible files are shown below.";
             resultEyebrow.textContent = "Narrowed firmware candidates";
@@ -2100,7 +2212,8 @@
                 entry.profile,
                 entry.asset,
                 entry.installKind,
-          filters
+                filters,
+                cardOptions
               );
             });
             result.hidden = false;
@@ -2110,7 +2223,7 @@
         return;
       }
 
-      const installKind = filters.install;
+      const installKind = requirements.installKind;
       const resolved = resolveProfileAssets(matches, installKind);
       if (!resolved.length) {
         missing.hidden = false;
@@ -2132,7 +2245,8 @@
           entry.profile,
           entry.asset,
           entry.installKind,
-          filters
+          filters,
+          cardOptions
         );
       });
       result.hidden = false;
@@ -2380,12 +2494,14 @@
     firmwareProfileChoices: firmwareProfileChoices,
     selectionProgress: selectionProgress,
     choicesUseSameFirmware: choicesUseSameFirmware,
+    selectionRequirements: selectionRequirements,
     selectionUrl: selectionUrl,
     selectionFromUrl: selectionFromUrl,
     canonicalAsset: canonicalAsset,
     resolveProfileAssets: resolveProfileAssets,
     shouldShowCandidateResults: shouldShowCandidateResults,
     runtimeDirections: runtimeDirections,
+    runtimePanelDirections: runtimePanelDirections,
     renderRuntimeDirections: renderRuntimeDirections,
     installSteps: installSteps,
     migrationReleaseUrl: migrationReleaseUrl,
