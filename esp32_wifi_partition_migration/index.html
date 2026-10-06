@@ -1096,6 +1096,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#ordinary-full-releases-and-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ordinary Full releases and installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#repeatable-esp32-build-recipe" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1140,10 +1151,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#lora-only-migration-of-a-repeater" class="md-nav__link">
+  <a href="#lora-only-migration-of-a-listed-role" class="md-nav__link">
     <span class="md-ellipsis">
       
-        LoRa-only migration of a repeater
+        LoRa-only migration of a listed role
       
     </span>
   </a>
@@ -2214,6 +2225,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#ordinary-full-releases-and-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ordinary Full releases and installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#repeatable-esp32-build-recipe" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2258,10 +2280,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#lora-only-migration-of-a-repeater" class="md-nav__link">
+  <a href="#lora-only-migration-of-a-listed-role" class="md-nav__link">
     <span class="md-ellipsis">
       
-        LoRa-only migration of a repeater
+        LoRa-only migration of a listed role
       
     </span>
   </a>
@@ -2308,9 +2330,10 @@
 <p>The partition-migration bridge lets a supported ESP32 node move from a small
 dual-OTA layout to a verified larger dual-OTA layout without cable flashing or
 a full-chip erase. It fits a legacy 1.25 MiB slot. The Wi-Fi version exposes an
-updater for the full image after migration. The LoRa version retains the old
-OTA-capable repeater in the other expanded slot and returns to it after
-restoring identity, so it can fetch the full image over LoRa.</p>
+updater for the Full image after migration. The LoRa version preserves a
+verified old OTA receiver so it can fetch the Full image into the expanded
+inactive slot. On 8/16 MiB flash the bridge restores identity before handing
+off; the 4 MiB route keeps identity staged until the Full image's first boot.</p>
 <p>It has explicit, byte-for-byte generated target plans for the 4 MiB MeshCore
 dual-OTA Full table and Arduino ESP32 <code>default_8MB.csv</code> and
 <code>default_16MB.csv</code>. It does not guess a table for other flash sizes. Adding a
@@ -2346,6 +2369,32 @@ table-prefix test; the bridge core is otherwise shared.</p>
 </tr>
 </tbody>
 </table>
+<p>These are the supported migration plans. The 8/16 MiB tables retain more
+filesystem storage and a coredump partition; their application slots are not
+the absolute maximum permitted by the physical flash capacity.</p>
+<h2 id="ordinary-full-releases-and-installation">Ordinary Full releases and installation</h2>
+<p>Ordinary ESP32 node releases use Full for each exact board and firmware role.
+The existing RAM and application-size guards still apply: a failed Full
+qualification fails that release target rather than publishing a smaller
+ordinary image. Direct <code>--standard</code> builds and reduced identities remain
+compatibility/development tools outside the ordinary release selection.</p>
+<p>An app-only update cannot change the installed partition table. If a device
+already has the required layout, use the matching Full application through a
+supported updater. If its layout needs expansion, use a verified migration
+ZIP for its exact entry in <code>--list-boards</code> and an updater supported by the old
+image. Otherwise, install the exact board/role's Full <code>-merged.bin</code> through
+USB/serial using that board's flashing procedure; the merged image contains
+the bootloader, partition table, and application. Never upload a merged image
+through an app-only browser or LoRa updater.</p>
+<p>The new Full defaults outside the migration catalog, including ESP32-C6
+boards and boards introduced with <code>min_spiffs.csv</code>, have no reviewed wireless
+expansion package in this recipe. If their Full app fits the unchanged live
+layout and update identity, an ordinary app update can suffice. A table change
+requires USB/serial until a matching migration package is reviewed. A Full
+image fitting physical flash does not by itself prove it can be installed
+through an old updater. Full Companion images with a single app slot likewise
+need USB/serial for local firmware replacement; their host-backed LoRa sending
+role does not provide a second local update slot.</p>
 <h2 id="repeatable-esp32-build-recipe">Repeatable ESP32 build recipe</h2>
 <p>From a clean commit, run the shell menu in WSL/Linux:</p>
 <pre><code class="language-bash">sh scripts/build_esp32_partition_migration.sh
@@ -2390,22 +2439,25 @@ now built with expanded tables. This includes ESP32-S3, original ESP32, and
 ESP32-C3 boards with an evidenced old default layout. <code>--list-boards</code> is the
 authoritative list of exact targets; specialty ESP-NOW/observer aliases are
 separate identities and are not packaged under their old IDs. With Wi-Fi OTA
-they can migrate to the
-same physical board's canonical role image; their feature settings may need
-to be recreated. The LoRa route still requires an exact old target ID. The
+they can migrate to the same physical board's canonical role image. The Wi-Fi
+bridge verifies and restores its supported saved settings; other settings may
+need to be recreated. The LoRa route still requires an exact old target ID. The
 catalog omits boards with no evidenced legacy default-layout build, such as
 boards introduced with <code>min_spiffs.csv</code> or another non-1.25 MiB layout. Some
 listed boards use larger slots today but had historical default-layout builds.
-A listed package is usable only when the installed old image has a working
-Wi-Fi updater and the bridge verifies its live source table. Menu inclusion
-does <strong>not</strong> override either check. The only LoRa
-bridge packages currently available are the exact-target Heltec V4 and XIAO
-S3 WIO repeater packages. On 4 MiB flash the expanded app1 overlaps old app1,
-so the currently safe LoRa receiver-copy method cannot be offered there. A
-4 MiB Full build offers 1,984 KiB slots, not 4 MiB per slot. A Wi-Fi-only ZIP
-can omit <code>full-application.mota</code> when its application exceeds the current
-2 KiB x 1024-block LoRa serving limit; <code>full-application.bin</code> remains the
-verified Wi-Fi update image.</p>
+A listed package is usable only when the installed old image supports the
+selected updater and the bridge verifies its live source table. Menu
+inclusion does <strong>not</strong> override either check.</p>
+<p>Every listed board/role has Wi-Fi and LoRa bridge recipes. Heltec V4 and XIAO
+S3 WIO repeaters retain their board-specific bridge names; the other entries
+use matching original-ESP32, ESP32-S3, or ESP32-C3 chip-family bridges. LoRa
+still requires a verified same-target old receiver, and 4 MiB boards require
+the slot-B-only sequence below. A 4 MiB Full build offers 1,984 KiB per slot.
+The packager verifies both the Full application's slot fit and its mOTA
+staging overhead. It supports at most 4096 blocks of 2 KiB for the Full
+transfer, and records the seeder proof-scratch requirement in the manifest.
+Older 4 KiB-scratch seeders are limited to 1024 blocks. A package fails if
+its required Full LoRa transfer cannot fit the supported staging/block limits.</p>
 <p>Other ESP32 boards need a reviewed source updater, chip/flash-size bridge,
 verified Full image, and board entry before they can be added. The LoRa route
 also needs an exact old OTA target ID and a non-overlapping receiver handoff.
@@ -2414,14 +2466,21 @@ Matching flash capacity alone is not enough to claim a package is safe.</p>
 <p>Before it touches the partition table, the bridge reads the historical
 <code>/identity/_main.id</code> SPIFFS file. It requires all 96 bytes (32-byte public key
 followed by its 64-byte private key), stages them in an NVS namespace that is
-unchanged by both target layouts, then changes the table. On the first boot
-with the expanded layout it writes the staged value into SPIFFS, reads it back
-byte-for-byte, and only then clears the NVS staging record and offers the final
-uploader.</p>
-<p>The private identity is the guaranteed preservation boundary. The old SPIFFS
-image is deliberately not raw-copied into an expanded partition: SPIFFS is not
-safe to resize that way. Other SPIFFS-backed settings can be recreated after
-the full image boots.</p>
+unchanged by the source and target layouts, then changes the table. The Wi-Fi
+bridge and 8/16 MiB LoRa bridge restore the staged value into expanded SPIFFS,
+read it back byte-for-byte, and only then clear the NVS staging record. On the
+4 MiB LoRa route, the Full application's first boot performs this restoration.</p>
+<p>The Wi-Fi bridge also stages and verifies its supported saved configuration:
+node name and preferences, radio profiles, ACL and login replay state, region
+keys, and selected network/OTA, filtering, display, and telemetry settings.
+It refuses migration if the saved files cannot fit or verify in NVS. The older
+LoRa handoff route preserves only the private identity, so saved settings may
+reset. The two board-specific Partition Expander routes preserve their
+supported configuration and automatically fetch the exact-target Full image;
+follow the package README for those routes.</p>
+<p>The old SPIFFS image is deliberately not raw-copied into an expanded partition:
+SPIFFS is not safe to resize that way. Files outside the supported preservation
+set, including logs and temporary radio sessions, are not preserved.</p>
 <p>Migration does erase the 4 KiB partition-table sector and the destination app
 sectors. Expanded SPIFFS can be reformatted. It never issues a full-chip erase.</p>
 <h2 id="eligible-source-layout">Eligible source layout</h2>
@@ -2437,8 +2496,9 @@ sectors. Expanded SPIFFS can be reformatted. It never issues a full-chip erase.<
 the live geometry instead of carrying board-name rules. It also ensures it is
 running from one source OTA slot. If it arrived in B, it CRC-copies itself to
 the future A address, selects A in OTA metadata, writes the table, and
-restarts. It therefore works whether the browser OTA updater placed the bridge
-in legacy A or B.</p>
+restarts. The Wi-Fi route therefore works whether the browser OTA updater
+placed the bridge in legacy A or B. Single-app source layouts cannot use this
+route.</p>
 <p>Keep power stable while the bridge is replacing the 4 KiB table sector. A loss
 of power before that point leaves the old table and source intact. After that
 small critical write, the selected A copy of the bridge is the recovery path.
@@ -2457,23 +2517,38 @@ Do not upload an <code>-merged.bin</code>: merged images include
 bootloader and table offsets for cable flashing, not browser OTA.</p>
 <p><code>xiao_s3_partition_legacy_seed</code> is a disposable-hardware test image only. It
 models the legacy table and an identity file; it is not a deployable repeater.</p>
-<h2 id="lora-only-migration-of-a-repeater">LoRa-only migration of a repeater</h2>
-<p>The exact old repeater must already support MeshCore LoRa mOTA and have a valid
+<h2 id="lora-only-migration-of-a-listed-role">LoRa-only migration of a listed role</h2>
+<p>The exact old board/role must already support MeshCore LoRa mOTA and have a valid
 EndF image identity. The LoRa bridge checks the old app's target ID and body
 hash before any partition-table write; an unsupported or damaged receiver is
-refused. It works from either legacy A or B. It copies legacy B to the future
-B address, boots the bridge once to restore the private key in expanded
-SPIFFS, then boots the preserved old repeater. That repeater can receive the
-full image into its now-expanded inactive slot.</p>
+refused. Keep a capable seeder on the old receiver's compiled default radio
+profile before starting: this route may reset saved radio settings. Verify
+that the seeder lists the Full image and has the manifest's required proof
+scratch before installing the first-stage bridge.</p>
+<p>On 8/16 MiB flash the bridge can run from either legacy A or B. It copies
+legacy B to the future B address, boots the bridge once to restore the private
+key in expanded SPIFFS, then boots the preserved old receiver. That receiver
+can fetch the Full image into its now-expanded inactive slot.</p>
+<p>On 4 MiB flash the expanded app1 overlaps old app1, so that copy cannot be
+used. A verified old same-target receiver must remain in old A and the bridge
+must be installed in old B; a bridge in A refuses migration. If the old node
+is running B, first install and boot a working same-target old receiver in A,
+then install the bridge in B. After expansion the old receiver in A may use a
+temporary identity. The original key stays staged in NVS until the Full image
+restores it on first boot. Complete the second update before treating that
+device as the migrated node.</p>
 <p>The board-specific LoRa bridges are <code>heltec_v4_partition_migrator_lora_repeater</code>
-and <code>xiao_s3_partition_migrator_lora_repeater</code>. Build the final repeater with
+and <code>xiao_s3_partition_migrator_lora_repeater</code>; the other listed roles use their
+configured chip-family LoRa bridges. Build the final application with
 <code>bash build.sh build-firmware &lt;target&gt; --full-exact</code> so its mOTA target ID
-still matches the old repeater. <code>scripts/package_esp32_partition_migration.py</code>
+still matches the old role. The repeatable recipe already uses this selector.
+<code>scripts/package_esp32_partition_migration.py</code>
 checks the images, partition tables, hashes and mOTA containers and creates
-separate Wi-Fi/LoRa migration ZIPs for those two boards. The ZIP README gives
+one Wi-Fi/LoRa migration ZIP for each selected exact board/role. The ZIP README gives
 the exact <code>ota ls</code>, <code>ota pull &lt;id&gt; flash</code>, <code>ota install</code> sequence.</p>
-<p>A stock repeater without LoRa mOTA cannot use the LoRa-only route. The
-Wi-Fi bridge remains the route for that device.</p>
+<p>An old image without LoRa mOTA cannot use the LoRa-only route. Use its working
+Wi-Fi updater with a listed package, or USB/serial if no supported updater or
+package is available.</p>
 <h2 id="heltec-v4-v43">Heltec V4 / V4.3</h2>
 <p>Build <code>heltec_v4_partition_migrator</code>, upload it through the legacy Wi-Fi
 updater, then upload the Full V4 app-only image after the bridge reports ready.

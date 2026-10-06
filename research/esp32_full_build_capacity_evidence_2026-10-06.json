@@ -1,0 +1,2201 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "source_baseline": "2ee62b981435df7dc4bcd79de39e61a4d5e98652",
+  "scope": "Historical capacity reports and bound artifact hash/size audit. No new ELF qualification is implied by these retained reports.",
+  "limitations": [
+    "No current all-ESP32 Full capacity failure report was found in retained local records.",
+    "Historical repaired failure or portable1.25MiB overflow does not justify current non-Full.",
+    "Default8/16MiB slot overflow is not proof of exceeding theoretical maxsafe slot.",
+    "PSRAM does not satisfy internal8-bit allocator/staticDRAM limits; retained largest-block and total-internal budgets both matter.",
+    "The runtime and8KiB static reserves are engineering policies, distinct from physical address/flash overflow."
+  ],
+  "historical_failures_and_repairs": [
+    {
+      "target": "Generic_ESPNOW_companion_radio_full",
+      "evidence": "docs/old-releases/1.17.1.5.md:62",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 101920,
+      "required_bytes": 136192,
+      "shortfall_bytes": 34272,
+      "replacement_available_bytes": 139456,
+      "replacement_margin_bytes": 3264,
+      "resolution": "Retained Full transports; contact capacity/queue storage tuned. No current non-Full exclusion follows."
+    },
+    {
+      "target": "Heltec_Wireless_Paper_companion_radio_full",
+      "evidence": "docs/old-releases/1.17.1.5.md:62",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 150144,
+      "required_bytes": 152576,
+      "shortfall_bytes": 2432,
+      "replacement_available_bytes": 161336,
+      "replacement_margin_bytes": 8760,
+      "resolution": "Retained Full transports; contact capacity/queue storage tuned. No current non-Full exclusion follows."
+    },
+    {
+      "target": "Heltec_Wireless_Tracker_companion_radio_full",
+      "evidence": "docs/old-releases/1.17.1.5.md:62",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 148496,
+      "required_bytes": 169986,
+      "shortfall_bytes": 21490,
+      "replacement_available_bytes": 186032,
+      "replacement_margin_bytes": 16046,
+      "resolution": "Retained Full transports; contact capacity/queue storage tuned. No current non-Full exclusion follows."
+    },
+    {
+      "target": "Heltec_ct62_companion_radio_full",
+      "evidence": "docs/old-releases/1.17.1.5.md:62",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 99104,
+      "required_bytes": 136192,
+      "shortfall_bytes": 37088,
+      "replacement_available_bytes": 136640,
+      "replacement_margin_bytes": 448,
+      "resolution": "Retained Full transports; contact capacity/queue storage tuned. No current non-Full exclusion follows."
+    },
+    {
+      "target": "Heltec_v3_companion_radio_full",
+      "evidence": "docs/old-releases/1.17.1.5.md:62",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 143840,
+      "required_bytes": 173056,
+      "shortfall_bytes": 29216,
+      "replacement_available_bytes": 181376,
+      "replacement_margin_bytes": 8320,
+      "resolution": "Retained Full transports; contact capacity/queue storage tuned. No current non-Full exclusion follows."
+    },
+    {
+      "target": "Xiao_C3_companion_radio_full",
+      "evidence": "docs/old-releases/1.17.1.5.md:62",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 98880,
+      "required_bytes": 136192,
+      "shortfall_bytes": 37312,
+      "replacement_available_bytes": 136416,
+      "replacement_margin_bytes": 224,
+      "resolution": "Retained Full transports; contact capacity/queue storage tuned. No current non-Full exclusion follows."
+    },
+    {
+      "target": "heltec_tracker_v2_companion_radio_full_femon",
+      "evidence": "docs/old-releases/1.17.1.5.md:62",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 133136,
+      "required_bytes": 169986,
+      "shortfall_bytes": 36850,
+      "replacement_available_bytes": 170672,
+      "replacement_margin_bytes": 686,
+      "resolution": "Retained Full transports; contact capacity/queue storage tuned. No current non-Full exclusion follows."
+    },
+    {
+      "target": "heltec_tracker_v2_repeater_observer_mqtt",
+      "evidence": "docs/old-releases/1.17.1.6.md:127",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 184640,
+      "required_bytes": 190386,
+      "shortfall_bytes": 5746,
+      "replacement_available_bytes": 222992,
+      "resolution": "Keep 50 board-defined neighbors; Full display/MQTT/OTA retained. Tracker v1.1 repaired similarly, exact original numbers not present here."
+    },
+    {
+      "target": "LilyGo_TLora_V2_1_1_6_repeater all-three-transports trial",
+      "evidence": "docs/research/firmware_memory_budget.md:33",
+      "kind": "historical_linked_runtime_budget_failure",
+      "original_available_bytes": 190488,
+      "required_bytes": 196984,
+      "shortfall_bytes": 6496,
+      "resolution": "Separate qualified Full UART+ESP-NOW and MQTT+ESP-NOW siblings; no blanket Full exclusion."
+    },
+    {
+      "target": "Heltec_v2_repeater shared-default scope trial",
+      "evidence": "docs/research/esp32_memory_budget.md:39",
+      "kind": "historical_static_project_reserve_failure",
+      "static_span_bytes": 124020,
+      "static_region_bytes": 124580,
+      "static_free_bytes": 560,
+      "required_static_reserve_bytes": 8192,
+      "reserve_shortfall_bytes": 7632,
+      "resolution": "31 scope slots gives108308B static span/16272B free; normal board already used31. This is below project margin, not hardware address overflow."
+    },
+    {
+      "target": "five constrained ESP32 Full Companions and two PSRAM Indicator LoRa Full images",
+      "evidence": "docs/releases/1.17.1.8.md:30",
+      "kind": "historical_documented_matrix_failure_then_repair",
+      "exact_original_byte_counts": null,
+      "resolution": "100 contacts and224/256 queues; Indicator320x320 internal canvas retains350 contacts/512 PSRAM queue. Full transports retained."
+    },
+    {
+      "target": "Generic_ESPNOW_companion_radio_full 256-frame current-policy trial",
+      "evidence": "build_legacy.sh:4281",
+      "kind": "source_comment_measured_claim_not_rebuilt_by_this_audit",
+      "original_available_bytes": 141376,
+      "required_bytes": 142336,
+      "shortfall_bytes": 960,
+      "resolution": "Current Full recipe uses100 contacts/224 frames. Rebuild exact current recipe before claiming current failure."
+    }
+  ],
+  "documented_selected_passes": [
+    {
+      "source": "docs/test-results/heltec_v3_preview3_ram.md:10",
+      "date": "2026-10-02",
+      "scope": "Thirteen selected ordinary Full profiles all pass linked budget; not a complete matrix rebuild.",
+      "smallest_esp32_margins": {
+        "Generic_ESPNOW": 1536,
+        "TrackerV2_FEMon": 2254,
+        "HeltecV3": 3016,
+        "XiaoC3": 3712,
+        "HeltecCT62": 3904,
+        "WirelessTracker": 5358
+      }
+    },
+    {
+      "source": "docs/test-results/companion_contact_cache_results.md:20",
+      "date": "2026-09-08",
+      "scope": "All six optional350-contact40-channel256-frame NimBLE/cache trials pass; alternatives are experimental and not current default recipes.",
+      "final_margins": {
+        "HeltecV3": 23112,
+        "WirelessTracker": 30838,
+        "TrackerV2_FEMon": 15470,
+        "HeltecCT62": 15152,
+        "XiaoC3": 14960,
+        "GenericESPNOW": 15872
+      }
+    }
+  ],
+  "retained_report_count": 38,
+  "retained_distinct_targets": 14,
+  "historical_linked_memory_reports": [
+    {
+      "report": ".releases/esp32-migration-audit-4mb/builds/Generic_E22_sx1262_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "ae8dec1949a5a7580136737bd791d5629f79bde40a021a2d317aee5f7e8cb470",
+      "target": "Generic_E22_sx1262_repeater",
+      "artifact_target": "Generic_E22_sx1262_repeater",
+      "pio_environment": "Generic_E22_sx1262_repeater",
+      "mcu": "esp32",
+      "elf_sha256": "228febf212b971f48fddbaa33d1d97c584d7af4101c880ca1bb91d00beddcaee",
+      "passed": true,
+      "available_internal_bytes": 202128,
+      "required_heap_bytes": 154560,
+      "largest_internal_region_bytes": 113840,
+      "required_contiguous_bytes": 16400,
+      "heap_budget_margin_bytes": 47568,
+      "contiguous_budget_margin_bytes": 97440,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "Generic_E22_sx1262_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "ee1f64814d1a77f1afd12a9e5cfa3e83a1b8f48ff828f1d65da2edcec0129177",
+          "present": true,
+          "actual_sha256": "ee1f64814d1a77f1afd12a9e5cfa3e83a1b8f48ff828f1d65da2edcec0129177",
+          "sha256_matches": true,
+          "bytes": 1606776
+        },
+        {
+          "name": "Generic_E22_sx1262_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "615afac1c83442dec359bcd15eeaf8f309825fdf3453d6c37e7fb860501e027f",
+          "present": true,
+          "actual_sha256": "615afac1c83442dec359bcd15eeaf8f309825fdf3453d6c37e7fb860501e027f",
+          "sha256_matches": true,
+          "bytes": 1672312
+        },
+        {
+          "name": "Generic_E22_sx1262_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "bb3d4cf8d4987b24a92a5e01b54344a77b45fed447fb16eaf010676b7037a268",
+          "present": true,
+          "actual_sha256": "bb3d4cf8d4987b24a92a5e01b54344a77b45fed447fb16eaf010676b7037a268",
+          "sha256_matches": true,
+          "bytes": 2039
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-migration-audit-4mb/builds/Heltec_ct62_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "156ee75d9dbbeb042c6e820f4a9d19700a92f8996fea7c9e2ebd6ff7ec72b3d7",
+      "target": "Heltec_ct62_sensor",
+      "artifact_target": "Heltec_ct62_sensor",
+      "pio_environment": "Heltec_ct62_sensor",
+      "mcu": "esp32c3",
+      "elf_sha256": "8cb51a2c814c5aaf21eb27f97d4efb8807532bec7c918940897bf0babcbdb13e",
+      "passed": true,
+      "available_internal_bytes": 230816,
+      "required_heap_bytes": 125544,
+      "largest_internal_region_bytes": 230816,
+      "required_contiguous_bytes": 10256,
+      "heap_budget_margin_bytes": 105272,
+      "contiguous_budget_margin_bytes": 220560,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "Heltec_ct62_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "e748e373a3c2bef56d44e4982db4a62ac48e3bcc617a1825309891c55a090e6d",
+          "present": true,
+          "actual_sha256": "e748e373a3c2bef56d44e4982db4a62ac48e3bcc617a1825309891c55a090e6d",
+          "sha256_matches": true,
+          "bytes": 1499240
+        },
+        {
+          "name": "Heltec_ct62_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "96a48c7c09af428490aa05d668f0c2424a78adfe66e6e66d4639e427d62c8a80",
+          "present": true,
+          "actual_sha256": "96a48c7c09af428490aa05d668f0c2424a78adfe66e6e66d4639e427d62c8a80",
+          "sha256_matches": true,
+          "bytes": 1564776
+        },
+        {
+          "name": "Heltec_ct62_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "1d0b3b1aac561474907bd7076ae7cf190cd31a2e153276fc0126a52192c359b0",
+          "present": true,
+          "actual_sha256": "1d0b3b1aac561474907bd7076ae7cf190cd31a2e153276fc0126a52192c359b0",
+          "sha256_matches": true,
+          "bytes": 1605
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-migration-audit-4mb/builds/Station_G2_logging_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "a54cf3a08cc7774becd31335f6d8731f1200152ae2a2292cb02d63f266422f84",
+      "target": "Station_G2_logging_repeater",
+      "artifact_target": "Station_G2_logging_repeater",
+      "pio_environment": "Station_G2_logging_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "6209de425c991a4d1f5af05caad8ce92333d1831ddc97c5d5fbf53a88b787195",
+      "passed": true,
+      "available_internal_bytes": 220400,
+      "required_heap_bytes": 140208,
+      "largest_internal_region_bytes": 187632,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 80192,
+      "contiguous_budget_margin_bytes": 175016,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "Station_G2_logging_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "cf56ffa702dc4dadb786dfa7d374f6b6d8c23ac5783d879c2c7904fb24047431",
+          "present": true,
+          "actual_sha256": "cf56ffa702dc4dadb786dfa7d374f6b6d8c23ac5783d879c2c7904fb24047431",
+          "sha256_matches": true,
+          "bytes": 1557384
+        },
+        {
+          "name": "Station_G2_logging_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "8733885c77ceae35f3c9f0741a0e3588fc96475986eb1bf2ad2bdc6e21aba5b8",
+          "present": true,
+          "actual_sha256": "8733885c77ceae35f3c9f0741a0e3588fc96475986eb1bf2ad2bdc6e21aba5b8",
+          "sha256_matches": true,
+          "bytes": 1622920
+        },
+        {
+          "name": "Station_G2_logging_repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "d117052d3f549b134dd16b00109efd484bf1450454dfaa6f5c6ff5a6a4efbfc5",
+          "present": true,
+          "actual_sha256": "d117052d3f549b134dd16b00109efd484bf1450454dfaa6f5c6ff5a6a4efbfc5",
+          "sha256_matches": true,
+          "bytes": 1970
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-lora-audit/ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-test-9e48f516.memory.json",
+      "report_sha256": "0ed9e60c182c27016e6ed1fbdc9a81ee8aa15cca1e9ee83c7c2a83e7c86dca4c",
+      "target": "ThinkNode_M2_Repeater",
+      "artifact_target": "ThinkNode_M2_Repeater",
+      "pio_environment": "ThinkNode_M2_Repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "fdef2f7d5f4e42284a0692aa069fc9c7c2aef127b9a4a5ca1f41bbcd1eedf26a",
+      "passed": true,
+      "available_internal_bytes": 245208,
+      "required_heap_bytes": 144304,
+      "largest_internal_region_bytes": 212440,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 100904,
+      "contiguous_budget_margin_bytes": 199824,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-test-9e48f516.bin",
+          "expected_sha256": "f5ebb18cfca31bb19cb5d557e69eeadabfaee8fdea740dfe79b2e98c54c4f9bc",
+          "present": true,
+          "actual_sha256": "f5ebb18cfca31bb19cb5d557e69eeadabfaee8fdea740dfe79b2e98c54c4f9bc",
+          "sha256_matches": true,
+          "bytes": 1579720
+        },
+        {
+          "name": "ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-test-9e48f516-merged.bin",
+          "expected_sha256": "e39067e27202ce2ad10833438a91f72a78668f198817bf06084f2b1b1466e023",
+          "present": true,
+          "actual_sha256": "e39067e27202ce2ad10833438a91f72a78668f198817bf06084f2b1b1466e023",
+          "sha256_matches": true,
+          "bytes": 1645256
+        },
+        {
+          "name": "ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-test-9e48f516.capabilities.json",
+          "expected_sha256": "cf5b8834f40c58c893eeb8f66f0ea7c3ce775b4ee96652608400c459d4485b50",
+          "present": true,
+          "actual_sha256": "cf5b8834f40c58c893eeb8f66f0ea7c3ce775b4ee96652608400c459d4485b50",
+          "sha256_matches": true,
+          "bytes": 1952
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-migration-audit-4mb/builds/ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "9082d248292c4541d1d14adc950e4f420117ee938ef1e4e71a3f4ad422159334",
+      "target": "ThinkNode_M2_Repeater",
+      "artifact_target": "ThinkNode_M2_Repeater",
+      "pio_environment": "ThinkNode_M2_Repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "ce967eb1a670165b2ec9e1b24782a3e923354bcc4aefc940d00366e1d858b72c",
+      "passed": true,
+      "available_internal_bytes": 245208,
+      "required_heap_bytes": 144304,
+      "largest_internal_region_bytes": 212440,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 100904,
+      "contiguous_budget_margin_bytes": 199824,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "7e02994e6002ca4e8f635580a1e867e756b01192dce02607d8c0d227c7089b18",
+          "present": true,
+          "actual_sha256": "7e02994e6002ca4e8f635580a1e867e756b01192dce02607d8c0d227c7089b18",
+          "sha256_matches": true,
+          "bytes": 1578248
+        },
+        {
+          "name": "ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "2ba17ea99d62db95b2ee31756cc3fbad1c67906695d5d9616a7a8e32fdce78e5",
+          "present": true,
+          "actual_sha256": "2ba17ea99d62db95b2ee31756cc3fbad1c67906695d5d9616a7a8e32fdce78e5",
+          "sha256_matches": true,
+          "bytes": 1643784
+        },
+        {
+          "name": "ThinkNode_M2_Repeater-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "83f1d85ee7ebeba76da2a12db1675488de2e77830386a91c809daaf5395a01be",
+          "present": true,
+          "actual_sha256": "83f1d85ee7ebeba76da2a12db1675488de2e77830386a91c809daaf5395a01be",
+          "sha256_matches": true,
+          "bytes": 1952
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-migration-audit-4mb/builds/ThinkNode_M2_room_server-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "197bd43bf108464c6eebac249958286a06ca889424dbda59a72c94fc6c1e4381",
+      "target": "ThinkNode_M2_room_server",
+      "artifact_target": "ThinkNode_M2_room_server",
+      "pio_environment": "ThinkNode_M2_room_server",
+      "mcu": "esp32s3",
+      "elf_sha256": "d84887c59af7501d1a2a2ddb41beb6bfdc0f2fae196a966e45cac79ac24cca0e",
+      "passed": true,
+      "available_internal_bytes": 272432,
+      "required_heap_bytes": 137904,
+      "largest_internal_region_bytes": 239664,
+      "required_contiguous_bytes": 10256,
+      "heap_budget_margin_bytes": 134528,
+      "contiguous_budget_margin_bytes": 229408,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "ThinkNode_M2_room_server-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "0ed0b34bc8f5c5e6ffe24b731ee771d8d4421a8ad91f7e1004cddc996c1c43d1",
+          "present": true,
+          "actual_sha256": "0ed0b34bc8f5c5e6ffe24b731ee771d8d4421a8ad91f7e1004cddc996c1c43d1",
+          "sha256_matches": true,
+          "bytes": 1516312
+        },
+        {
+          "name": "ThinkNode_M2_room_server-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "bac9c825d5d49c14ba8f62c4eb11abe9a1e89b92c739561b0da0db8c83a183ee",
+          "present": true,
+          "actual_sha256": "bac9c825d5d49c14ba8f62c4eb11abe9a1e89b92c739561b0da0db8c83a183ee",
+          "sha256_matches": true,
+          "bytes": 1581848
+        },
+        {
+          "name": "ThinkNode_M2_room_server-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "ea8e5276116687b891d41a3b46e790a3a282eafdf9b83cc38ad4fff9a09fcd37",
+          "present": true,
+          "actual_sha256": "ea8e5276116687b891d41a3b46e790a3a282eafdf9b83cc38ad4fff9a09fcd37",
+          "sha256_matches": true,
+          "bytes": 2136
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-6976877f/builds/Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f.memory.json",
+      "report_sha256": "d69e3da2c5ea7825056b3c3c279cc29d1f1fb707aa90e4fe1a81f6b52d72324b",
+      "target": "Xiao_S3_WIO_repeater",
+      "artifact_target": "Xiao_S3_WIO_repeater",
+      "pio_environment": "Xiao_S3_WIO_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "7c3f82f36e0e71d066ff2aca3209f4a217aa677bf4d80fc1c886b086c603eff4",
+      "passed": true,
+      "available_internal_bytes": 189088,
+      "required_heap_bytes": 158640,
+      "largest_internal_region_bytes": 156320,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 30448,
+      "contiguous_budget_margin_bytes": 143704,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f.bin",
+          "expected_sha256": "55f5e27c83fb85d533e641d826772a5d1107d4fae5e2af465f2b90a462991662",
+          "present": true,
+          "actual_sha256": "55f5e27c83fb85d533e641d826772a5d1107d4fae5e2af465f2b90a462991662",
+          "sha256_matches": true,
+          "bytes": 1963256
+        },
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f-merged.bin",
+          "expected_sha256": "5406983c44852e48b8dd7b60211d746cef1c917aa1f65051d191bc89cc69ac43",
+          "present": true,
+          "actual_sha256": "5406983c44852e48b8dd7b60211d746cef1c917aa1f65051d191bc89cc69ac43",
+          "sha256_matches": true,
+          "bytes": 2028792
+        },
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f.capabilities.json",
+          "expected_sha256": "91342f3180dc5c04abc3f36a3227352b9c0e004f23363fe11dc8de1d339943d3",
+          "present": true,
+          "actual_sha256": "91342f3180dc5c04abc3f36a3227352b9c0e004f23363fe11dc8de1d339943d3",
+          "sha256_matches": true,
+          "bytes": 2180
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-9f3977bc/builds/Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc.memory.json",
+      "report_sha256": "9f60d0fb90043dbf6ccb8c6f4cd3551799795821b8eaa41532a512f6e6f25b48",
+      "target": "Xiao_S3_WIO_repeater",
+      "artifact_target": "Xiao_S3_WIO_repeater",
+      "pio_environment": "Xiao_S3_WIO_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "4db271985ebcdc4d41b338cdb2f5255d9fa5d344d6663506d0d2ab91d273f3b2",
+      "passed": true,
+      "available_internal_bytes": 189088,
+      "required_heap_bytes": 158640,
+      "largest_internal_region_bytes": 156320,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 30448,
+      "contiguous_budget_margin_bytes": 143704,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc.bin",
+          "expected_sha256": "0935f7b396ab37ee109ee51afc46106cb4e3f511168c2411355aae2dc2c3f454",
+          "present": true,
+          "actual_sha256": "0935f7b396ab37ee109ee51afc46106cb4e3f511168c2411355aae2dc2c3f454",
+          "sha256_matches": true,
+          "bytes": 1963256
+        },
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc-merged.bin",
+          "expected_sha256": "69b1242e6839f5c620b6ca2ee3361cdf253f9f2e5b0c767e60c113c68e378bf5",
+          "present": true,
+          "actual_sha256": "69b1242e6839f5c620b6ca2ee3361cdf253f9f2e5b0c767e60c113c68e378bf5",
+          "sha256_matches": true,
+          "bytes": 2028792
+        },
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc.capabilities.json",
+          "expected_sha256": "91342f3180dc5c04abc3f36a3227352b9c0e004f23363fe11dc8de1d339943d3",
+          "present": true,
+          "actual_sha256": "91342f3180dc5c04abc3f36a3227352b9c0e004f23363fe11dc8de1d339943d3",
+          "sha256_matches": true,
+          "bytes": 2180
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-af73d05f/builds/Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "1ebf9313706f234929ecc425b7ff9ed7ce75c6c4d2891d8eadd490a08b527705",
+      "target": "Xiao_S3_WIO_repeater",
+      "artifact_target": "Xiao_S3_WIO_repeater",
+      "pio_environment": "Xiao_S3_WIO_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "233d8a7dde371e6a4dc0bfda949dfd8545c4a509794dd8b478d2f88fd284e4ab",
+      "passed": true,
+      "available_internal_bytes": 189088,
+      "required_heap_bytes": 158640,
+      "largest_internal_region_bytes": 156320,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 30448,
+      "contiguous_budget_margin_bytes": 143704,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "ce16a673607bb0b2969775eddea93d25361e40883d112b4b14a35bbc58508e5a",
+          "present": true,
+          "actual_sha256": "ce16a673607bb0b2969775eddea93d25361e40883d112b4b14a35bbc58508e5a",
+          "sha256_matches": true,
+          "bytes": 1963256
+        },
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "596744a77568baf688ad88bf7534ab1409c4a54e3edbd5c0ccbbac62b4b437e4",
+          "present": true,
+          "actual_sha256": "596744a77568baf688ad88bf7534ab1409c4a54e3edbd5c0ccbbac62b4b437e4",
+          "sha256_matches": true,
+          "bytes": 2028792
+        },
+        {
+          "name": "Xiao_S3_WIO_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "91342f3180dc5c04abc3f36a3227352b9c0e004f23363fe11dc8de1d339943d3",
+          "present": true,
+          "actual_sha256": "91342f3180dc5c04abc3f36a3227352b9c0e004f23363fe11dc8de1d339943d3",
+          "sha256_matches": true,
+          "bytes": 2180
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-migration-audit-4mb/builds/Xiao_S3_WIO_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "3ddc47318f3835e9580f2e540163e2d28684cf1359f0de1cb11b6392defb560e",
+      "target": "Xiao_S3_WIO_sensor",
+      "artifact_target": "Xiao_S3_WIO_sensor",
+      "pio_environment": "Xiao_S3_WIO_sensor",
+      "mcu": "esp32s3",
+      "elf_sha256": "7a461320d74e3d39324fa76af4ebd688eba88dda739d0316cb80bb0122d1f397",
+      "passed": true,
+      "available_internal_bytes": 278184,
+      "required_heap_bytes": 121448,
+      "largest_internal_region_bytes": 245416,
+      "required_contiguous_bytes": 10256,
+      "heap_budget_margin_bytes": 156736,
+      "contiguous_budget_margin_bytes": 235160,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "Xiao_S3_WIO_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "1cdb3e467b3a08213a6d6fc8d8467e309c938aac1661bcd42fd2d5a55673c630",
+          "present": true,
+          "actual_sha256": "1cdb3e467b3a08213a6d6fc8d8467e309c938aac1661bcd42fd2d5a55673c630",
+          "sha256_matches": true,
+          "bytes": 1405544
+        },
+        {
+          "name": "Xiao_S3_WIO_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "e2a449ae3ffab393a572119bd3b8d9c4715c10e84548a5a2f3217aaafcc4ed72",
+          "present": true,
+          "actual_sha256": "e2a449ae3ffab393a572119bd3b8d9c4715c10e84548a5a2f3217aaafcc4ed72",
+          "sha256_matches": true,
+          "bytes": 1471080
+        },
+        {
+          "name": "Xiao_S3_WIO_sensor-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "3876ae700febc34890c3bc56587865b259c4bbc094e2704dff0e72072d4a6b89",
+          "present": true,
+          "actual_sha256": "3876ae700febc34890c3bc56587865b259c4bbc094e2704dff0e72072d4a6b89",
+          "sha256_matches": true,
+          "bytes": 1606
+        }
+      ]
+    },
+    {
+      "report": "docs/test-results/preview-1.17.1.8/heltec_v4_2_v4_3_companion_radio_full_femon-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.memory.json",
+      "report_sha256": "b97ded0122941479a46929e5ae14c11c4b3bdda63f1119e3ba6d4c859df38c26",
+      "target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "artifact_target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "pio_environment": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "mcu": "esp32s3",
+      "elf_sha256": "225a3d11b2be308a3a8730f6d5e2599f8a31d9f653b6fca866a3b7e2c79719c7",
+      "passed": true,
+      "available_internal_bytes": 237048,
+      "required_heap_bytes": 177920,
+      "largest_internal_region_bytes": 204280,
+      "required_contiguous_bytes": 11008,
+      "heap_budget_margin_bytes": 59128,
+      "contiguous_budget_margin_bytes": 193272,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_2_v4_3_companion_radio_full_femon-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.bin",
+          "expected_sha256": "dcbdbeec7b369c8eabaaadb6072851d04cf30417ffe1ead5f4bea5e57c1ba950",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_2_v4_3_companion_radio_full_femon-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a-merged.bin",
+          "expected_sha256": "877884505324e32f5ac732c1cc346c5a4139204962560b9b413963e5402ee85c",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_2_v4_3_companion_radio_full_femon-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.capabilities.json",
+          "expected_sha256": "d3cfdb5c8a98364e874354401ecfc3ec0a3900566c78051a24ab1e38e74d4cba",
+          "present": true,
+          "actual_sha256": "d3cfdb5c8a98364e874354401ecfc3ec0a3900566c78051a24ab1e38e74d4cba",
+          "sha256_matches": true,
+          "bytes": 4950
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-6976877f/builds/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f.memory.json",
+      "report_sha256": "1e9586410c2d9833ce26281169ba7ee994f5c6b1a4cc4fd3be53d38763d457cb",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "be7ee977402b0701b78592cae8ab52bede208280e92b04a60b24c049b854fdbc",
+      "passed": true,
+      "available_internal_bytes": 188040,
+      "required_heap_bytes": 164784,
+      "largest_internal_region_bytes": 155272,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 23256,
+      "contiguous_budget_margin_bytes": 142656,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f.bin",
+          "expected_sha256": "006eeab0f73cac73542779de55575252907791e73afc2f2a1278a2e5c1817388",
+          "present": true,
+          "actual_sha256": "006eeab0f73cac73542779de55575252907791e73afc2f2a1278a2e5c1817388",
+          "sha256_matches": true,
+          "bytes": 2049976
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f-merged.bin",
+          "expected_sha256": "19867a53a3f1d4b007c4bba672685487622d041d78d2bea4ff040981d5ae509b",
+          "present": true,
+          "actual_sha256": "19867a53a3f1d4b007c4bba672685487622d041d78d2bea4ff040981d5ae509b",
+          "sha256_matches": true,
+          "bytes": 2115512
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-6976877f.capabilities.json",
+          "expected_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "present": true,
+          "actual_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "sha256_matches": true,
+          "bytes": 2174
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-9f3977bc/builds/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc.memory.json",
+      "report_sha256": "80e8146dd2309c4d3eeb855fe2f40641175fba7176b34ad6b90c6c8592a9fb0f",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "ab5099ccbcfc7c4eefddeb4d9bf665641157df0fab96722deb7ec201880cd408",
+      "passed": true,
+      "available_internal_bytes": 188040,
+      "required_heap_bytes": 164784,
+      "largest_internal_region_bytes": 155272,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 23256,
+      "contiguous_budget_margin_bytes": 142656,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc.bin",
+          "expected_sha256": "9b0d7972eb50d9e27f81237157d6b62438fcd120ef1af78a67a4dd6c693b6c72",
+          "present": true,
+          "actual_sha256": "9b0d7972eb50d9e27f81237157d6b62438fcd120ef1af78a67a4dd6c693b6c72",
+          "sha256_matches": true,
+          "bytes": 2049976
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc-merged.bin",
+          "expected_sha256": "d336dc2293fd9ab601ee9cda6349244de6956e531b9f5ad88839283580dff4e0",
+          "present": true,
+          "actual_sha256": "d336dc2293fd9ab601ee9cda6349244de6956e531b9f5ad88839283580dff4e0",
+          "sha256_matches": true,
+          "bytes": 2115512
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-9f3977bc.capabilities.json",
+          "expected_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "present": true,
+          "actual_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "sha256_matches": true,
+          "bytes": 2174
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-af73d05f/builds/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "52a559df74dc3d74f7b287f41a81e8fd746a31213d1c69e8eb36cfac6790522b",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "908b682beb349ac6582c15d1e394d1bffab84151033ac60d5efd784a43ebc20f",
+      "passed": true,
+      "available_internal_bytes": 188040,
+      "required_heap_bytes": 164784,
+      "largest_internal_region_bytes": 155272,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 23256,
+      "contiguous_budget_margin_bytes": 142656,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "bf30ee8eb694fdd09d3df9e7056c5e9f6ac3706a566323ca83d738dd2266647f",
+          "present": true,
+          "actual_sha256": "bf30ee8eb694fdd09d3df9e7056c5e9f6ac3706a566323ca83d738dd2266647f",
+          "sha256_matches": true,
+          "bytes": 2049976
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "4339e3cab0eb52788212acc414a5dc2964047bf87e8f0726a793927530b3ed57",
+          "present": true,
+          "actual_sha256": "4339e3cab0eb52788212acc414a5dc2964047bf87e8f0726a793927530b3ed57",
+          "sha256_matches": true,
+          "bytes": 2115512
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "present": true,
+          "actual_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "sha256_matches": true,
+          "bytes": 2174
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-f8a1e2ff/builds/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-f8a1e2ff.memory.json",
+      "report_sha256": "eb2156bcdc2e38f62b6c33a876318ec72c6d6a20af3662385190eb73f83a6114",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "b6d0e3400cf87ad006571090ac7bd95262e9245aff17ef2c7be38ef9aed3817f",
+      "passed": true,
+      "available_internal_bytes": 188040,
+      "required_heap_bytes": 164784,
+      "largest_internal_region_bytes": 155272,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 23256,
+      "contiguous_budget_margin_bytes": 142656,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-f8a1e2ff.bin",
+          "expected_sha256": "8961423804be296ed77a9d03a58df95b7d1df6bec72acd285e578fb930072f06",
+          "present": true,
+          "actual_sha256": "8961423804be296ed77a9d03a58df95b7d1df6bec72acd285e578fb930072f06",
+          "sha256_matches": true,
+          "bytes": 2049976
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-f8a1e2ff-merged.bin",
+          "expected_sha256": "c8f5f4149c01630d823d9ec8827b896b9f2dac16e893b9b47fa9174d95d45808",
+          "present": true,
+          "actual_sha256": "c8f5f4149c01630d823d9ec8827b896b9f2dac16e893b9b47fa9174d95d45808",
+          "sha256_matches": true,
+          "bytes": 2115512
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-f8a1e2ff.capabilities.json",
+          "expected_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "present": true,
+          "actual_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "sha256_matches": true,
+          "bytes": 2174
+        }
+      ]
+    },
+    {
+      "report": "docs/test-results/preview-1.17.1.8/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.memory.json",
+      "report_sha256": "f056f551ebbfdc257ce61e58469f975b5eb801ebb6d6c0e243035b5720609c4a",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "1c1b461e95b447d2b00287825618743cc33dd1e44ee332d2d343f9c14fd51697",
+      "passed": true,
+      "available_internal_bytes": 187728,
+      "required_heap_bytes": 164784,
+      "largest_internal_region_bytes": 154960,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 22944,
+      "contiguous_budget_margin_bytes": 142344,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.bin",
+          "expected_sha256": "11ed65664aceaac41086f76b4086ca78d97be96634be3fcdfe37f11ce8d60534",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a-merged.bin",
+          "expected_sha256": "f9b1d9096ba637d06f9dda11dd586934e609b600a85913234e0dcfce406d9993",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.capabilities.json",
+          "expected_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "present": true,
+          "actual_sha256": "113223333763da5a9fef4070680dd1f5ec369776e8559fcedd3ff7802f515740",
+          "sha256_matches": true,
+          "bytes": 2174
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-final-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393.memory.json",
+      "report_sha256": "d17f4ee32cc7cbd4b92eba9f44cfeb2796af1bcd12bed8514f24c6f97089e5a7",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "05923168be7bc18a0595c521250cdc385d2671667491d5c86c1c2d83e9e2e3ab",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393.bin",
+          "expected_sha256": "e490c47cc573dcb60e0c80e314095af94ed834267fd0f20a475f680935cfee75",
+          "present": true,
+          "actual_sha256": "e490c47cc573dcb60e0c80e314095af94ed834267fd0f20a475f680935cfee75",
+          "sha256_matches": true,
+          "bytes": 2098184
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393-merged.bin",
+          "expected_sha256": "e6e2cd149ebe4888aa1f9ec98d7477c29e1f787c48f616a5460879c32499821c",
+          "present": true,
+          "actual_sha256": "e6e2cd149ebe4888aa1f9ec98d7477c29e1f787c48f616a5460879c32499821c",
+          "sha256_matches": true,
+          "bytes": 2163720
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393.capabilities.json",
+          "expected_sha256": "c35a0b5a26ae764ef56710746a6629e3905284b12815172234d91cfec1ab451b",
+          "present": true,
+          "actual_sha256": "c35a0b5a26ae764ef56710746a6629e3905284b12815172234d91cfec1ab451b",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393.memory.json",
+      "report_sha256": "00c04cd48b7a06808083d360cac3253709737b318cb27cc52a61f06b0a0d7f6f",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "4929cfaecacfecb59c3e2b9938a217137dba86ce4b4afbaa629d01b8538a4c94",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393.bin",
+          "expected_sha256": "c305b7bb575b0505d9bf83a636b88ed351b6464dd7abd41ad60999afc7c7ffef",
+          "present": true,
+          "actual_sha256": "c305b7bb575b0505d9bf83a636b88ed351b6464dd7abd41ad60999afc7c7ffef",
+          "sha256_matches": true,
+          "bytes": 2098136
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393-merged.bin",
+          "expected_sha256": "2344bc3befe87a81609ddaa14535e2aeca30aaa160c66749538d2eadd93f62f2",
+          "present": true,
+          "actual_sha256": "2344bc3befe87a81609ddaa14535e2aeca30aaa160c66749538d2eadd93f62f2",
+          "sha256_matches": true,
+          "bytes": 2163672
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393.capabilities.json",
+          "expected_sha256": "473dff28e4e0de80e475d2fc82b91c5f090dd6293fe0855d7166ba4b2b9645cf",
+          "present": true,
+          "actual_sha256": "473dff28e4e0de80e475d2fc82b91c5f090dd6293fe0855d7166ba4b2b9645cf",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-final-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393.memory.json",
+      "report_sha256": "1715957c1da274a86e6a29510c86cac52bfbc4c2aa6f284fc383d82b5214dcbb",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "a7a9676b07092cdc5395bd6d15af44f77be0f8456426a4f91f31bceb938f1151",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393.bin",
+          "expected_sha256": "4f6ef749999863de8fd3016fa9bf5f4f8bf5d9891af9926cc4822a1d38ebd2d2",
+          "present": true,
+          "actual_sha256": "4f6ef749999863de8fd3016fa9bf5f4f8bf5d9891af9926cc4822a1d38ebd2d2",
+          "sha256_matches": true,
+          "bytes": 2098616
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393-merged.bin",
+          "expected_sha256": "868a1f243fafc9db949b1ae4f63ae83c740fefd93dc676ba1a0255896efe2c64",
+          "present": true,
+          "actual_sha256": "868a1f243fafc9db949b1ae4f63ae83c740fefd93dc676ba1a0255896efe2c64",
+          "sha256_matches": true,
+          "bytes": 2164152
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393.capabilities.json",
+          "expected_sha256": "e2e46d16342ba927f1c01bc3b4a8ab547d6c8afb3981175a0279cb26404edb6c",
+          "present": true,
+          "actual_sha256": "e2e46d16342ba927f1c01bc3b4a8ab547d6c8afb3981175a0279cb26404edb6c",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-first-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393.memory.json",
+      "report_sha256": "71530ba06dbf74cc5a4253dffd71c28a3559962e8f603804f9ffa2246f89db8d",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "b702e40f97a682ab9dc81d606d32687b9ff6d673774b059532744e6a05de6b0f",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393.bin",
+          "expected_sha256": "961eaa63d027b90c08a27418af572e7e88e9e4ccadec120d0f053ecc482977e4",
+          "present": true,
+          "actual_sha256": "961eaa63d027b90c08a27418af572e7e88e9e4ccadec120d0f053ecc482977e4",
+          "sha256_matches": true,
+          "bytes": 2098456
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393-merged.bin",
+          "expected_sha256": "fde28850719b6717e95d573c42da92bf9e3adf16bdd3c959fe3d6d4c9ecb968e",
+          "present": true,
+          "actual_sha256": "fde28850719b6717e95d573c42da92bf9e3adf16bdd3c959fe3d6d4c9ecb968e",
+          "sha256_matches": true,
+          "bytes": 2163992
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393.capabilities.json",
+          "expected_sha256": "40973030165a12f8d3469159a199ccc030ab7f1558cc90921a46f984bcce299c",
+          "present": true,
+          "actual_sha256": "40973030165a12f8d3469159a199ccc030ab7f1558cc90921a46f984bcce299c",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-fixed-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393.memory.json",
+      "report_sha256": "acb2e89b22814e10c379e71ba544a064640f63e65783e022a3f4309ba6db3309",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "0d1e76f7d25f4c6eb452dc1c520054e144a5b2c52badbe46895626ef132f0b83",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393.bin",
+          "expected_sha256": "d534c9d79796886fb84690c784ae985bfef6d808d5e7879409f139e9463f126d",
+          "present": true,
+          "actual_sha256": "d534c9d79796886fb84690c784ae985bfef6d808d5e7879409f139e9463f126d",
+          "sha256_matches": true,
+          "bytes": 2098744
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393-merged.bin",
+          "expected_sha256": "67cf1980e8cdba4bf7e8938d13d572e984ab903d100bbef85d0cfc96b35f175b",
+          "present": true,
+          "actual_sha256": "67cf1980e8cdba4bf7e8938d13d572e984ab903d100bbef85d0cfc96b35f175b",
+          "sha256_matches": true,
+          "bytes": 2164280
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393.capabilities.json",
+          "expected_sha256": "755fbe3ba5b4a72d1704f0a4ef4599bb86ff5bd645e53293988537f4aceac701",
+          "present": true,
+          "actual_sha256": "755fbe3ba5b4a72d1704f0a4ef4599bb86ff5bd645e53293988537f4aceac701",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-observed-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393.memory.json",
+      "report_sha256": "c29d9d4fe36f2aa29ec7783119ee9607d60851db0552f240427db226a04e5aab",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "8fbc0dc151216e569a51a33791b32e1a71b56ca258f32fff7edd6f9702bbf525",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393.bin",
+          "expected_sha256": "b049d115fc5c7686d59583d8980a03715bc986b114088f4d9d4e3d88659cb16f",
+          "present": true,
+          "actual_sha256": "b049d115fc5c7686d59583d8980a03715bc986b114088f4d9d4e3d88659cb16f",
+          "sha256_matches": true,
+          "bytes": 2098728
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393-merged.bin",
+          "expected_sha256": "eb74c9c0c079db3b20cb1d3f5eeabf434f2c1ebfad6ff4c6f53b65602919713a",
+          "present": true,
+          "actual_sha256": "eb74c9c0c079db3b20cb1d3f5eeabf434f2c1ebfad6ff4c6f53b65602919713a",
+          "sha256_matches": true,
+          "bytes": 2164264
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393.capabilities.json",
+          "expected_sha256": "eaeb3c9e9a4c15526bf653f8eb6d40a867f174e3de131eec092b2a60dd31d683",
+          "present": true,
+          "actual_sha256": "eaeb3c9e9a4c15526bf653f8eb6d40a867f174e3de131eec092b2a60dd31d683",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-ready-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393.memory.json",
+      "report_sha256": "e6842c230fa6cef9de82d0fbef7a4a4b68dbe45fe0484c675ac9a6061976bea5",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "e8a1332e14eb946c4f9adfaac9eeda2f477d5c4643cfa9bd99d8640cbb0c7c1b",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393.bin",
+          "expected_sha256": "3a46a231ff41c3d515b0f78e5c33271f517729272e135cfd24d0588807d98cdd",
+          "present": true,
+          "actual_sha256": "3a46a231ff41c3d515b0f78e5c33271f517729272e135cfd24d0588807d98cdd",
+          "sha256_matches": true,
+          "bytes": 2098488
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393-merged.bin",
+          "expected_sha256": "fe867829aabae24c1f5cfd75ce3fe301f27d0864b3b027763b7a2c6202a73ed0",
+          "present": true,
+          "actual_sha256": "fe867829aabae24c1f5cfd75ce3fe301f27d0864b3b027763b7a2c6202a73ed0",
+          "sha256_matches": true,
+          "bytes": 2164024
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393.capabilities.json",
+          "expected_sha256": "a96c79b53bd95e8f0c0273df6d81d659123bf7da399562353695e56c445e82fa",
+          "present": true,
+          "actual_sha256": "a96c79b53bd95e8f0c0273df6d81d659123bf7da399562353695e56c445e82fa",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-verified-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393.memory.json",
+      "report_sha256": "e43a497cb9b7f317ed3ffaa44f0b6b043a6b4206a05aa05995d83e1ef1cf5806",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "9c8a3d0728faa4b876fa9cd71e89410b28ae0f0607ef6be17b218f82bc418874",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393.bin",
+          "expected_sha256": "aaa85e049c49373d849f0ef3383e394d545f19badd9c377f2ed0bbec991160a0",
+          "present": true,
+          "actual_sha256": "aaa85e049c49373d849f0ef3383e394d545f19badd9c377f2ed0bbec991160a0",
+          "sha256_matches": true,
+          "bytes": 2098136
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393-merged.bin",
+          "expected_sha256": "d05f2833c4a197f1d82f2205ed9925028fee182c7e1d43ee2f4fe3c67dca0c16",
+          "present": true,
+          "actual_sha256": "d05f2833c4a197f1d82f2205ed9925028fee182c7e1d43ee2f4fe3c67dca0c16",
+          "sha256_matches": true,
+          "bytes": 2163672
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393.capabilities.json",
+          "expected_sha256": "9f091ed32fb88bde2a99fa289499ac9398a39cd78d5e8c7efebc4079c1164983",
+          "present": true,
+          "actual_sha256": "9f091ed32fb88bde2a99fa289499ac9398a39cd78d5e8c7efebc4079c1164983",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-preview5/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-preview5-efed592f.memory.json",
+      "report_sha256": "d8249c3f6fda5d44e709f76fa66f33fd4b1d41c8d58f1f65d6f6c8e266d8430f",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "8349dfa0b4628ad49ea5cedbd3b6b1fcc8e4d87a25e1e55181a30ff7f52ef030",
+      "passed": true,
+      "available_internal_bytes": 186792,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 154024,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20968,
+      "contiguous_budget_margin_bytes": 141408,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-preview5-efed592f.bin",
+          "expected_sha256": "f2ade654867695ce0df30d4c71193ac506b62c202a68f226ce5c17bdafe008e2",
+          "present": true,
+          "actual_sha256": "f2ade654867695ce0df30d4c71193ac506b62c202a68f226ce5c17bdafe008e2",
+          "sha256_matches": true,
+          "bytes": 2090840
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-preview5-efed592f-merged.bin",
+          "expected_sha256": "eb2074428e2f456d40439bd68878bdf8c4970ff2164355792b5df0ae7f6132b2",
+          "present": true,
+          "actual_sha256": "eb2074428e2f456d40439bd68878bdf8c4970ff2164355792b5df0ae7f6132b2",
+          "sha256_matches": true,
+          "bytes": 2156376
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-preview5-efed592f.capabilities.json",
+          "expected_sha256": "247f85f3031b7ab8220bbaf27fcce4a4e9781634deae179b5a8b583c61e0e572",
+          "present": true,
+          "actual_sha256": "247f85f3031b7ab8220bbaf27fcce4a4e9781634deae179b5a8b583c61e0e572",
+          "sha256_matches": true,
+          "bytes": 2305
+        }
+      ]
+    },
+    {
+      "report": "out/v4-regression-2026-10-06-full/heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-8d31b393.memory.json",
+      "report_sha256": "83846fccbf2bb3c36f1622fc9513717e069e1f4b3cf2d34aa5668b488576a6ca",
+      "target": "heltec_v4_repeater",
+      "artifact_target": "heltec_v4_repeater",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "0da1b0450e1acd0f13cb0b68494b459bf7b869ff79cef6861454b65682bf11d1",
+      "passed": true,
+      "available_internal_bytes": 186696,
+      "required_heap_bytes": 165824,
+      "largest_internal_region_bytes": 153928,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 20872,
+      "contiguous_budget_margin_bytes": 141312,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-8d31b393.bin",
+          "expected_sha256": "ad2489805d1390f7bfb7a97fc3408fd41333f84fe0bef14f4abe0e2524d5030d",
+          "present": true,
+          "actual_sha256": "ad2489805d1390f7bfb7a97fc3408fd41333f84fe0bef14f4abe0e2524d5030d",
+          "sha256_matches": true,
+          "bytes": 2097672
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-8d31b393-merged.bin",
+          "expected_sha256": "d8b03b0601d8e1fe941377059b93bec880eb90946936954dd852efae708311e0",
+          "present": true,
+          "actual_sha256": "d8b03b0601d8e1fe941377059b93bec880eb90946936954dd852efae708311e0",
+          "sha256_matches": true,
+          "bytes": 2163208
+        },
+        {
+          "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.17.1.9-halo-keymind-cascade-dev-8d31b393.capabilities.json",
+          "expected_sha256": "22aa6b834e01b091b03522fc844ddfd16b756498e8954a7866005fb4fd96d09d",
+          "present": true,
+          "actual_sha256": "22aa6b834e01b091b03522fc844ddfd16b756498e8954a7866005fb4fd96d09d",
+          "sha256_matches": true,
+          "bytes": 2456
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-final-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393.memory.json",
+      "report_sha256": "a45ca6c67eb4a88a106b24c87224661eeceb9d02351966f2e6b18b038dc7dfd5",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "cd920a89d0f1b8478b073786ca372ef2dea64d1234a4d1dee9423c0682405d51",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393.bin",
+          "expected_sha256": "726f9853208ce99c0c00ee249d573a5b231c8e8d794d55dbd2646b3a69de9f00",
+          "present": true,
+          "actual_sha256": "726f9853208ce99c0c00ee249d573a5b231c8e8d794d55dbd2646b3a69de9f00",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393-merged.bin",
+          "expected_sha256": "9197bf95d5297ff9990ecb3745fea96db66f54bcffbdda27e81b6c7e7215b4d6",
+          "present": true,
+          "actual_sha256": "9197bf95d5297ff9990ecb3745fea96db66f54bcffbdda27e81b6c7e7215b4d6",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix2-8d31b393.capabilities.json",
+          "expected_sha256": "e004e777d486999754a7eecb01f6269fc62398e4b64bfa14eef2caff9f06b530",
+          "present": true,
+          "actual_sha256": "e004e777d486999754a7eecb01f6269fc62398e4b64bfa14eef2caff9f06b530",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393.memory.json",
+      "report_sha256": "2f8d75c05206559fbb95dd2869c2d000a6cd58b9f1649ebc081e9e71ca2e1282",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "1b842bb75411c1e9fac8e0e3ae69579baf5bdb5cfff2bea1b8621018093a31ea",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393.bin",
+          "expected_sha256": "7a388cab4b17bfdd71039ece5f81950b5b0333d75852e33a6f94ea4311103de3",
+          "present": true,
+          "actual_sha256": "7a388cab4b17bfdd71039ece5f81950b5b0333d75852e33a6f94ea4311103de3",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393-merged.bin",
+          "expected_sha256": "10f3e6d7643989983584d25b9f0e5aa2805fcf9e6544a15253b1bd46f20dec16",
+          "present": true,
+          "actual_sha256": "10f3e6d7643989983584d25b9f0e5aa2805fcf9e6544a15253b1bd46f20dec16",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix-8d31b393.capabilities.json",
+          "expected_sha256": "1a01f35f0da1b02c2072ebd1c7a38bf2eb51f5385962d3aa627d351ea495b6b7",
+          "present": true,
+          "actual_sha256": "1a01f35f0da1b02c2072ebd1c7a38bf2eb51f5385962d3aa627d351ea495b6b7",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-final-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393.memory.json",
+      "report_sha256": "d3d1cdaf74d6b9ac7e3199923142ff2568da98fde279455fbf3b26a328c78c5e",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "674799fee074cf11cf5bcdd9cf0040df0473251abfa188bd84461609b12057b2",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393.bin",
+          "expected_sha256": "361a3dcd5e9db3382816844fcbb3d5a029fa6a3825e826858957d15dc484947e",
+          "present": true,
+          "actual_sha256": "361a3dcd5e9db3382816844fcbb3d5a029fa6a3825e826858957d15dc484947e",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393-merged.bin",
+          "expected_sha256": "b52677e2515edeeaafc8379c9e9758ec382f31a5d8f4c59b5995ef5ae4910591",
+          "present": true,
+          "actual_sha256": "b52677e2515edeeaafc8379c9e9758ec382f31a5d8f4c59b5995ef5ae4910591",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix6-8d31b393.capabilities.json",
+          "expected_sha256": "8f325a6fb0d1a661d316df765aac5351e1284d6c4a8ec035aee9445cfec1b739",
+          "present": true,
+          "actual_sha256": "8f325a6fb0d1a661d316df765aac5351e1284d6c4a8ec035aee9445cfec1b739",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-first-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393.memory.json",
+      "report_sha256": "4124eaa1855eae281ab116b297a2a16b49484961d2d3a5ba0d419d71c22e9fda",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "cc218e7a2779743c5e3b863ced889721001fb14261486f0185b5f362a306757f",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393.bin",
+          "expected_sha256": "a5135789506c45fd4edeb858978306c67813e0be5d2445db26fa63907bbecc00",
+          "present": true,
+          "actual_sha256": "a5135789506c45fd4edeb858978306c67813e0be5d2445db26fa63907bbecc00",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393-merged.bin",
+          "expected_sha256": "16a787f21c8bcc1d21b46ab0fdedae1663036ada9e0ae50df5b3b8cec312242e",
+          "present": true,
+          "actual_sha256": "16a787f21c8bcc1d21b46ab0fdedae1663036ada9e0ae50df5b3b8cec312242e",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix4-8d31b393.capabilities.json",
+          "expected_sha256": "e98e93529842f976b8c5f9e2832f11b0963ca346a2f5b1afdd90063b5c1a994d",
+          "present": true,
+          "actual_sha256": "e98e93529842f976b8c5f9e2832f11b0963ca346a2f5b1afdd90063b5c1a994d",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-fixed-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393.memory.json",
+      "report_sha256": "4271e5358ff6b70a0cf49ac9db1fd106aa6c154598e187c4ed0ec3d1b0ac0352",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "2ce957ab8e1fcbbf90a4c077fddcec33436032fa08df8cf3b747a2ff84318388",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393.bin",
+          "expected_sha256": "4f0d55aa3c0c85e76c50a2ba60738294515552dafa5e9496d6a33d73f1072e27",
+          "present": true,
+          "actual_sha256": "4f0d55aa3c0c85e76c50a2ba60738294515552dafa5e9496d6a33d73f1072e27",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393-merged.bin",
+          "expected_sha256": "b284da77bd27d732a4d4514ed4b19644db36137aec797109b59f5ff1b1b5a811",
+          "present": true,
+          "actual_sha256": "b284da77bd27d732a4d4514ed4b19644db36137aec797109b59f5ff1b1b5a811",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393.capabilities.json",
+          "expected_sha256": "059747f5d1a32917fa6deea303119d4fc8a9ba6231184f434d990371e935f1fe",
+          "present": true,
+          "actual_sha256": "059747f5d1a32917fa6deea303119d4fc8a9ba6231184f434d990371e935f1fe",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-observed-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393.memory.json",
+      "report_sha256": "ba01a2124a8395f4f23ac3d4c358ee3ec2f9767fc58d8d4917d02c8f5be86ccd",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "95e0b3fb9d7197c92d39f023ec5b688a9cba73f0f910ad2f50e4ebabf52a78c8",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393.bin",
+          "expected_sha256": "62644e3696887a646f8febe1e33c2d91e069c8b68bdecfd6fb5f39dbe30dd368",
+          "present": true,
+          "actual_sha256": "62644e3696887a646f8febe1e33c2d91e069c8b68bdecfd6fb5f39dbe30dd368",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393-merged.bin",
+          "expected_sha256": "e575779b2d9231635f485320a55fdeb6e4b00494a469c54054d453a18c9fddb6",
+          "present": true,
+          "actual_sha256": "e575779b2d9231635f485320a55fdeb6e4b00494a469c54054d453a18c9fddb6",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393.capabilities.json",
+          "expected_sha256": "6aa6b33ae803dc1267cad3c44b9aeee1c71768e1837d794ac42137e466762600",
+          "present": true,
+          "actual_sha256": "6aa6b33ae803dc1267cad3c44b9aeee1c71768e1837d794ac42137e466762600",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-scan-ready-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393.memory.json",
+      "report_sha256": "d661286a26839310353d37ecb72889d29fe2e1946281bf254616975e2cabc256",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "5923d77af87102d4fbe2fe9bb779a6c71972644c29d0d9d0cea24de2e326e2a7",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393.bin",
+          "expected_sha256": "963c656cd16cee711758b770d11d2216f5cd11321bc2a5fd257c1a733237d97d",
+          "present": true,
+          "actual_sha256": "963c656cd16cee711758b770d11d2216f5cd11321bc2a5fd257c1a733237d97d",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393-merged.bin",
+          "expected_sha256": "5341c0e6915aa6e104965d59cc97112cbeed3f339ee3901eb855dafc32ce1a58",
+          "present": true,
+          "actual_sha256": "5341c0e6915aa6e104965d59cc97112cbeed3f339ee3901eb855dafc32ce1a58",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix5-8d31b393.capabilities.json",
+          "expected_sha256": "b6095fd1b9c6b4d4829bc769ddb9d5ffb73daf7b3e5f0c2243c4f11f64904e25",
+          "present": true,
+          "actual_sha256": "b6095fd1b9c6b4d4829bc769ddb9d5ffb73daf7b3e5f0c2243c4f11f64904e25",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": "out/v4-fix-2026-10-06-verified-minimal/heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393.memory.json",
+      "report_sha256": "4ad5e2e85c2cb54ea5632003cad02fe051d909d69706d5c6b5130fea81ef91ce",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "artifact_target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "pio_environment": "heltec_v4_repeater",
+      "mcu": "esp32s3",
+      "elf_sha256": "7a9340a08e47b9e88e2f7ecccaa9f23efed0775be5cb55ac53a2c65f40ef1bc7",
+      "passed": true,
+      "available_internal_bytes": 241848,
+      "required_heap_bytes": 90048,
+      "largest_internal_region_bytes": 209080,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 151800,
+      "contiguous_budget_margin_bytes": 196464,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393.bin",
+          "expected_sha256": "b404c9264320305e491b19cb6879c0b5dc9161000c18039492af97b4e79ee964",
+          "present": true,
+          "actual_sha256": "b404c9264320305e491b19cb6879c0b5dc9161000c18039492af97b4e79ee964",
+          "sha256_matches": true,
+          "bytes": 1281576
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393-merged.bin",
+          "expected_sha256": "3ceea1b5ba31880317baf89c819a5feae7e4cbe78136fc7d87930a532ecabab4",
+          "present": true,
+          "actual_sha256": "3ceea1b5ba31880317baf89c819a5feae7e4cbe78136fc7d87930a532ecabab4",
+          "sha256_matches": true,
+          "bytes": 1347112
+        },
+        {
+          "name": "heltec_v4_repeater_lora_ota_no_external_sensors-ota-v1.17.1.9-halo-keymind-cascade-dev-v4fix3-8d31b393.capabilities.json",
+          "expected_sha256": "0d4fa1aac99e4677d06cf6411c7a43c6d2d93f67106a97e2d51b984ce4cfbbb6",
+          "present": true,
+          "actual_sha256": "0d4fa1aac99e4677d06cf6411c7a43c6d2d93f67106a97e2d51b984ce4cfbbb6",
+          "sha256_matches": true,
+          "bytes": 1937
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-expanded-352c8aed/builds/heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-352c8aed.memory.json",
+      "report_sha256": "2777c5daddead8e5eb81a3d55eef4b2173737197b40e33cf61a73e0186efb08c",
+      "target": "heltec_v4_repeater_observer_mqtt",
+      "artifact_target": "heltec_v4_repeater_observer_mqtt",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "a170912d6fd39ab4418089b8b863870371f4a76d8e4820a104f692c64c3f3c82",
+      "passed": true,
+      "available_internal_bytes": 188040,
+      "required_heap_bytes": 164784,
+      "largest_internal_region_bytes": 155272,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 23256,
+      "contiguous_budget_margin_bytes": 142656,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-352c8aed.bin",
+          "expected_sha256": "73ffe57dca19b6fcdff92363614fa2ba3de98aeb31b2ae9c9ed2c263ad9e5cdd",
+          "present": true,
+          "actual_sha256": "73ffe57dca19b6fcdff92363614fa2ba3de98aeb31b2ae9c9ed2c263ad9e5cdd",
+          "sha256_matches": true,
+          "bytes": 2050056
+        },
+        {
+          "name": "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-352c8aed-merged.bin",
+          "expected_sha256": "cf02866eda50574c2a46ec288cc9305e69cbd0875cff31e9208ae72250c05260",
+          "present": true,
+          "actual_sha256": "cf02866eda50574c2a46ec288cc9305e69cbd0875cff31e9208ae72250c05260",
+          "sha256_matches": true,
+          "bytes": 2115592
+        },
+        {
+          "name": "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.17.1.7-halo-keymind-cascade-dev-352c8aed.capabilities.json",
+          "expected_sha256": "0d9b6edc592ce2eda0cbca5370b86329de428208244ed52866330b955afffc72",
+          "present": true,
+          "actual_sha256": "0d9b6edc592ce2eda0cbca5370b86329de428208244ed52866330b955afffc72",
+          "sha256_matches": true,
+          "bytes": 2202
+        }
+      ]
+    },
+    {
+      "report": "docs/test-results/preview-1.17.1.8/heltec_v4_room_server-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.memory.json",
+      "report_sha256": "2933ecaf9c688638df13441319270e9395fab1cd2e4ecfc49eed3935d6b2627e",
+      "target": "heltec_v4_room_server",
+      "artifact_target": "heltec_v4_room_server",
+      "pio_environment": "heltec_v4_room_server_observer_mqtt",
+      "mcu": "esp32s3",
+      "elf_sha256": "3eb37eb59c76023d08b6b4240390adda686272d90acce81679f9a7f8188e0d94",
+      "passed": true,
+      "available_internal_bytes": 203800,
+      "required_heap_bytes": 158384,
+      "largest_internal_region_bytes": 171032,
+      "required_contiguous_bytes": 10256,
+      "heap_budget_margin_bytes": 45416,
+      "contiguous_budget_margin_bytes": 160776,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_room_server-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.bin",
+          "expected_sha256": "8e3b1ba0233101446d30c716cba368cccebd7ae431ab97e51de4b8813fcd7b3b",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_room_server-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a-merged.bin",
+          "expected_sha256": "070c7eeaa58f9fa8cbceea96fa4a2439d8e87fb20113a1c9409dfadba092d1f3",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_room_server-full-usb-wifi-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.capabilities.json",
+          "expected_sha256": "98cc0e73739c8fd45fd0be2a4f744d029aebaa0bc33068f864bd63d711005ad3",
+          "present": true,
+          "actual_sha256": "98cc0e73739c8fd45fd0be2a4f744d029aebaa0bc33068f864bd63d711005ad3",
+          "sha256_matches": true,
+          "bytes": 2358
+        }
+      ]
+    },
+    {
+      "report": "docs/test-results/preview-1.17.1.8/heltec_v4_sensor-full-logging-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.memory.json",
+      "report_sha256": "df5f0af7180823d33035d983762110701d3799dad729f7de8eee85628bdac670",
+      "target": "heltec_v4_sensor",
+      "artifact_target": "heltec_v4_sensor",
+      "pio_environment": "heltec_v4_sensor",
+      "mcu": "esp32s3",
+      "elf_sha256": "bb9f260e5d757f43ac1d71192999b5d24cac674fc23f17b29a49f53a3036aa0d",
+      "passed": true,
+      "available_internal_bytes": 277256,
+      "required_heap_bytes": 127592,
+      "largest_internal_region_bytes": 244488,
+      "required_contiguous_bytes": 10256,
+      "heap_budget_margin_bytes": 149664,
+      "contiguous_budget_margin_bytes": 234232,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "heltec_v4_sensor-full-logging-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.bin",
+          "expected_sha256": "af430ddb17974966e6c3f10e67515e0e29526b0c1ea339f017923b17362f4b68",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_sensor-full-logging-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a-merged.bin",
+          "expected_sha256": "82bc1735d9aeb2a5d660db982ab9822056e55419654e819f226460de8127b976",
+          "present": false
+        },
+        {
+          "name": "heltec_v4_sensor-full-logging-ota-v1.17.1.8-halo-keymind-cascade-preview1-cab781f9a.capabilities.json",
+          "expected_sha256": "6ebb9ee0401cb7c011a6aa1ff4c41b2e569c6fbabcd307ee344de3c5e3a0fa60",
+          "present": true,
+          "actual_sha256": "6ebb9ee0401cb7c011a6aa1ff4c41b2e569c6fbabcd307ee344de3c5e3a0fa60",
+          "sha256_matches": true,
+          "bytes": 1600
+        }
+      ]
+    },
+    {
+      "report": ".releases/esp32-migration-audit-4mb/builds/nibble_zero_connect_repeater_-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.memory.json",
+      "report_sha256": "60c7a8a2bb281d249cb676d48aededc586c919c227de34fb602b45a32365c337",
+      "target": "nibble_zero_connect_repeater_",
+      "artifact_target": "nibble_zero_connect_repeater_",
+      "pio_environment": "nibble_zero_connect_repeater_",
+      "mcu": "esp32s3",
+      "elf_sha256": "c8837cad632b972dab3c34efd6a8e18e376a848f1732825c922bc78d14fbb815",
+      "passed": true,
+      "available_internal_bytes": 241712,
+      "required_heap_bytes": 144304,
+      "largest_internal_region_bytes": 208944,
+      "required_contiguous_bytes": 12616,
+      "heap_budget_margin_bytes": 97408,
+      "contiguous_budget_margin_bytes": 196328,
+      "scope_of_audit": "Historical report and available artifact hash/length verification; no current-head rebuild or ELF requalification.",
+      "artifacts": [
+        {
+          "name": "nibble_zero_connect_repeater_-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.bin",
+          "expected_sha256": "ac66f6ecc1e7f2f8e108ce1ea5a3ed65514c1d6244780f32a037e6a539b87f2f",
+          "present": true,
+          "actual_sha256": "ac66f6ecc1e7f2f8e108ce1ea5a3ed65514c1d6244780f32a037e6a539b87f2f",
+          "sha256_matches": true,
+          "bytes": 1576584
+        },
+        {
+          "name": "nibble_zero_connect_repeater_-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f-merged.bin",
+          "expected_sha256": "43e76e96912001c4ff33ed75b1673bb0018a6d4f4a0db3e594de52c6918dc474",
+          "present": true,
+          "actual_sha256": "43e76e96912001c4ff33ed75b1673bb0018a6d4f4a0db3e594de52c6918dc474",
+          "sha256_matches": true,
+          "bytes": 1642120
+        },
+        {
+          "name": "nibble_zero_connect_repeater_-full-logging-ota-v1.17.1.7-halo-keymind-cascade-dev-af73d05f.capabilities.json",
+          "expected_sha256": "4f5d33ec242b9521e436d08dcb8388b96f7c859e4f834251980d0442f9918959",
+          "present": true,
+          "actual_sha256": "4f5d33ec242b9521e436d08dcb8388b96f7c859e4f834251980d0442f9918959",
+          "sha256_matches": true,
+          "bytes": 1976
+        }
+      ]
+    }
+  ],
+  "partition_tables": [
+    {
+      "path": "variants/dual_ota_full_4MB.csv",
+      "sha256": "8d75b223e1f78bfb1a1eae4e8ff2a523868208b93c39ed70eca402db04ee7a13",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 2031616
+        },
+        {
+          "name": "app1",
+          "type": "app",
+          "subtype": "ota_1",
+          "offset": 2097152,
+          "size": 2031616
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 4128768,
+          "size": 65536
+        }
+      ],
+      "dual_ota": true,
+      "minimum_ota_slot_bytes": 2031616,
+      "filesystem_bytes": 65536,
+      "coredump_bytes": 0
+    },
+    {
+      "path": "variants/dual_ota_1536k.csv",
+      "sha256": "87407a5c05426fb349ab05ba1a12636f66a52dd72c34f148a31ee07700ee71fc",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 1572864
+        },
+        {
+          "name": "app1",
+          "type": "app",
+          "subtype": "ota_1",
+          "offset": 1638400,
+          "size": 1572864
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 3211264,
+          "size": 917504
+        },
+        {
+          "name": "coredump",
+          "type": "data",
+          "subtype": "coredump",
+          "offset": 4128768,
+          "size": 65536
+        }
+      ],
+      "dual_ota": true,
+      "minimum_ota_slot_bytes": 1572864,
+      "filesystem_bytes": 917504,
+      "coredump_bytes": 65536
+    },
+    {
+      "path": "variants/sensecap_indicator-espnow/dual_ota_2560k_preserve_spiffs.csv",
+      "sha256": "03ea5f4583b618717d6d4cfd52b8029a297cc3757a2233783dff6d4cecf41bfd",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 2621440
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 2686976,
+          "size": 1441792
+        },
+        {
+          "name": "coredump",
+          "type": "data",
+          "subtype": "coredump",
+          "offset": 4128768,
+          "size": 65536
+        },
+        {
+          "name": "app1",
+          "type": "app",
+          "subtype": "ota_1",
+          "offset": 4194304,
+          "size": 2621440
+        }
+      ],
+      "dual_ota": true,
+      "minimum_ota_slot_bytes": 2621440,
+      "filesystem_bytes": 1441792,
+      "coredump_bytes": 65536
+    },
+    {
+      "path": "variants/sensecap_indicator-espnow/dual_ota_6400k_preserve_spiffs.csv",
+      "sha256": "9482fe1a94aca34bdad08a38e2e6d460d6c2dc2b17a95f1d4074c4be783dd386",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 6553600
+        },
+        {
+          "name": "app1",
+          "type": "app",
+          "subtype": "ota_1",
+          "offset": 6619136,
+          "size": 6553600
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 13172736,
+          "size": 3538944
+        },
+        {
+          "name": "coredump",
+          "type": "data",
+          "subtype": "coredump",
+          "offset": 16711680,
+          "size": 65536
+        }
+      ],
+      "dual_ota": true,
+      "minimum_ota_slot_bytes": 6553600,
+      "filesystem_bytes": 3538944,
+      "coredump_bytes": 65536
+    },
+    {
+      "path": "C:/Users/mikec/.platformio/packages/framework-arduinoespressif32/tools/partitions/default.csv",
+      "sha256": "3057e2f0b65ffb81f250ba592702c1512cea0ade043ed9baf869ec30987c1290",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 1310720
+        },
+        {
+          "name": "app1",
+          "type": "app",
+          "subtype": "ota_1",
+          "offset": 1376256,
+          "size": 1310720
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 2686976,
+          "size": 1441792
+        },
+        {
+          "name": "coredump",
+          "type": "data",
+          "subtype": "coredump",
+          "offset": 4128768,
+          "size": 65536
+        }
+      ],
+      "dual_ota": true,
+      "minimum_ota_slot_bytes": 1310720,
+      "filesystem_bytes": 1441792,
+      "coredump_bytes": 65536
+    },
+    {
+      "path": "C:/Users/mikec/.platformio/packages/framework-arduinoespressif32/tools/partitions/default_8MB.csv",
+      "sha256": "f55f94b245096c15612007eb2fd924e96752e234674aef218d120d4207eb3ba1",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 3342336
+        },
+        {
+          "name": "app1",
+          "type": "app",
+          "subtype": "ota_1",
+          "offset": 3407872,
+          "size": 3342336
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 6750208,
+          "size": 1572864
+        },
+        {
+          "name": "coredump",
+          "type": "data",
+          "subtype": "coredump",
+          "offset": 8323072,
+          "size": 65536
+        }
+      ],
+      "dual_ota": true,
+      "minimum_ota_slot_bytes": 3342336,
+      "filesystem_bytes": 1572864,
+      "coredump_bytes": 65536
+    },
+    {
+      "path": "C:/Users/mikec/.platformio/packages/framework-arduinoespressif32/tools/partitions/default_16MB.csv",
+      "sha256": "4a6aaf11525dab5d49a336aa52ef7e65f8e83d824c9a7a931c72943cbd40d63c",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 6553600
+        },
+        {
+          "name": "app1",
+          "type": "app",
+          "subtype": "ota_1",
+          "offset": 6619136,
+          "size": 6553600
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 13172736,
+          "size": 3538944
+        },
+        {
+          "name": "coredump",
+          "type": "data",
+          "subtype": "coredump",
+          "offset": 16711680,
+          "size": 65536
+        }
+      ],
+      "dual_ota": true,
+      "minimum_ota_slot_bytes": 6553600,
+      "filesystem_bytes": 3538944,
+      "coredump_bytes": 65536
+    },
+    {
+      "path": "C:/Users/mikec/.platformio/packages/framework-arduinoespressif32/tools/partitions/huge_app.csv",
+      "sha256": "ce78a17d73dd138c822722b9f97d1050ce34af1f21289fa43c97503b14cb42bc",
+      "entries": [
+        {
+          "name": "nvs",
+          "type": "data",
+          "subtype": "nvs",
+          "offset": 36864,
+          "size": 20480
+        },
+        {
+          "name": "otadata",
+          "type": "data",
+          "subtype": "ota",
+          "offset": 57344,
+          "size": 8192
+        },
+        {
+          "name": "app0",
+          "type": "app",
+          "subtype": "ota_0",
+          "offset": 65536,
+          "size": 3145728
+        },
+        {
+          "name": "spiffs",
+          "type": "data",
+          "subtype": "spiffs",
+          "offset": 3211264,
+          "size": 917504
+        },
+        {
+          "name": "coredump",
+          "type": "data",
+          "subtype": "coredump",
+          "offset": 4128768,
+          "size": 65536
+        }
+      ],
+      "dual_ota": false,
+      "minimum_ota_slot_bytes": null,
+      "filesystem_bytes": 917504,
+      "coredump_bytes": 65536
+    }
+  ],
+  "theoretical_symmetric_dual_ota_ceiling_with_64k_prefix_and_64k_fs": [
+    {
+      "flash_bytes": 4194304,
+      "ota_slot_bytes": 2031616,
+      "scope": "Arithmetic ceiling with64KiB prefix including metadata and64KiB FS; no coredump or other required data. Not a deployed-data-preserving layout or runtimeFS sufficiency guarantee."
+    },
+    {
+      "flash_bytes": 8388608,
+      "ota_slot_bytes": 4128768,
+      "scope": "Arithmetic ceiling with64KiB prefix including metadata and64KiB FS; no coredump or other required data. Not a deployed-data-preserving layout or runtimeFS sufficiency guarantee."
+    },
+    {
+      "flash_bytes": 16777216,
+      "ota_slot_bytes": 8323072,
+      "scope": "Arithmetic ceiling with64KiB prefix including metadata and64KiB FS; no coredump or other required data. Not a deployed-data-preserving layout or runtimeFS sufficiency guarantee."
+    }
+  ]
+}

@@ -1,0 +1,1510 @@
+{
+  "planned_before_slots": 317,
+  "planned_after_slots": 172,
+  "after_profiles": {
+    "full": 172
+  },
+  "after_passes": {
+    "run_logging_matrix_build_targets": 52,
+    "run_full_only_esp32_profile": 120
+  },
+  "duplicate_identities": [],
+  "reduced_targets": [],
+  "new_Full_targets": [],
+  "dropped_Full_targets": [],
+  "changed_existing_Full_PIO_bases": [],
+  "changed_existing_Full_overlay_flags": [],
+  "target_subset_checks": {
+    "LilyGo_TLora_V2_1_1_6_repeater": {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TLora_V2_1_1_6_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_env": "LilyGo_TLora_V2_1_1_6_repeater",
+      "filename_infix": "full-logging"
+    },
+    "LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_": {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_env": "LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_",
+      "filename_infix": "full-usb-wifi"
+    },
+    "LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_": {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_env": "LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_",
+      "filename_infix": "full-usb-wifi"
+    },
+    "Station_G2_repeater_observer_mqtt": {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G2_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_env": "Station_G2_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    "Station_G2_room_server_observer_mqtt": {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G2_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_env": "Station_G2_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    "Station_G3_ESP32_r2_repeater_observer_mqtt": {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G3_ESP32_r2_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_env": "Station_G3_ESP32_r2_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    "Station_G3_ESP32_r2_room_server_observer_mqtt": {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G3_ESP32_r2_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_env": "Station_G3_ESP32_r2_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    "Heltec_v2_companion_radio_full": {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_v2_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_env": "Heltec_v2_companion_radio_wifi",
+      "filename_infix": ""
+    }
+  },
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "source_baseline": "2ee62b981435df7dc4bcd79de39e61a4d5e98652",
+  "scope": "Static exact selector replay with cached PlatformIO resolution, followed by two sequential embedded builds. Full matrix was not compiled or physically flashed.",
+  "planned_after_selection": [
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_rc32_without_display_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_rc32_without_display_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_rc32_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_rc32_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_tracker_v2_companion_radio_full_femon",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_tracker_v2_companion_radio_full_femon",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_v3_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_v3_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_v4_expansionkit_tft_companion_radio_full_femon",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_v4_expansionkit_tft_companion_radio_full_femon",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_v4_tft_companion_radio_full_femon",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_v4_tft_companion_radio_full_femon",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_v4_r8_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_v4_r8_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "heltec_v4_r8_tft_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "heltec_v4_r8_tft_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "LilyGo_TBeam_1W_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "LilyGo_TBeam_1W_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "meshnology_w12_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "meshnology_w12_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "nibble_screen_connect_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "nibble_screen_connect_companion_radio_full_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "nibble_zero_connect_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "nibble_zero_connect_companion_radio_full_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "RAK_3112_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "RAK_3112_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Station_G2_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Station_G2_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Station_G3_ESP32_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Station_G3_ESP32_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "ThinkNode_M2_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "ThinkNode_M2_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "ThinkNode_M5_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "ThinkNode_M5_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "ThinkNode_M7_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "ThinkNode_M7_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Xiao_S3_WIO_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Xiao_S3_WIO_companion_radio_full",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_v2_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_v2_companion_radio_wifi",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_WSL3_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_WSL3_companion_radio_wifi",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "LilyGo_TLora_V2_1_1_6_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "LilyGo_TLora_V2_1_1_6_companion_radio_wifi",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "MKE_s3_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "MKE_s3_companion_radio_wifi",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "ThinkNode_M9_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "ThinkNode_M9_companion_radio_wifi_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Xiao_C3_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Xiao_C3_companion_radio_wifi",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "M5Stack_Unit_C6L_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "M5Stack_Unit_C6L_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_Wireless_Tracker_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_Wireless_Tracker_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "LilyGo_T3S3_sx1276_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "LilyGo_T3S3_sx1276_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "LilyGo_Tlora_C6_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "LilyGo_Tlora_C6_companion_radio_ble_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_ct62_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_ct62_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Meshadventurer_sx1262_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Meshadventurer_sx1262_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Meshadventurer_sx1268_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Meshadventurer_sx1268_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_Wireless_Paper_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_Wireless_Paper_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_E213_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_E213_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Meshimi_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Meshimi_companion_radio_ble_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "WHY2025_badge_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "WHY2025_badge_companion_radio_ble_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Xiao_C6_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Xiao_C6_companion_radio_ble_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Xiao_S3_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Xiao_S3_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "LilyGo_TETH_Elite_sx1262_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "LilyGo_TETH_Elite_sx1262_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "LilyGo_T3S3_sx1262_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "LilyGo_T3S3_sx1262_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "LilyGo_TDeck_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "LilyGo_TDeck_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Ebyte_EoRa-S3_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Ebyte_EoRa-S3_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Tbeam_SX1262_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Tbeam_SX1262_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Tbeam_SX1276_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Tbeam_SX1276_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "T_Beam_S3_Supreme_SX1262_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "T_Beam_S3_Supreme_SX1262_companion_radio_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Generic_ESPNOW_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Generic_ESPNOW_comp_radio_usb",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_E290_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_E290_companion_usb_ble",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "Heltec_T190_companion_radio_full_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "Heltec_T190_companion_radio_usb_ble_",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "SenseCapIndicator-ESPNow_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "SenseCapIndicator-ESPNow_comp_radio_usb",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "SenseCapIndicator-LoRa_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "SenseCapIndicator-LoRa_comp_radio_usb_wifi",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_logging_matrix_build_targets",
+      "target": "SenseCapIndicator-LoRa-N16R2_companion_radio_full",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "0",
+      "pio_environment": "SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi",
+      "filename_infix": ""
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Ebyte_EoRa-S3_Repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Ebyte_EoRa-S3_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Ebyte_EoRa-S3_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Ebyte_EoRa-S3_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Generic_E22_sx1262_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Generic_E22_sx1262_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Generic_E22_sx1268_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Generic_E22_sx1268_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Generic_ESPNOW_repeatr",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Generic_ESPNOW_repeatr",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Generic_ESPNOW_room_svr",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Generic_ESPNOW_room_svr",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "GEPRC_Linkflow_900_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "GEPRC_Linkflow_900_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_ct62_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_ct62_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_ct62_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_ct62_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_E213_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_E213_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_E213_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_E213_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_E290_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_E290_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_E290_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_E290_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_rc32_without_display_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_rc32_without_display_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_rc32_without_display_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_rc32_without_display_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_rc32_without_display_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_rc32_without_display_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_rc32_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_rc32_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_rc32_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_rc32_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_rc32_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_rc32_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_T190_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_T190_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_T190_room_server_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_T190_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_Wireless_Tracker_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_Wireless_Tracker_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_Wireless_Tracker_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_Wireless_Tracker_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_tracker_v2_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_tracker_v2_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_tracker_v2_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_tracker_v2_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_tracker_v1_1_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_tracker_v1_1_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_tracker_v1_1_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_tracker_v1_1_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_tracker_v2_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_tracker_v2_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_v2_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_v2_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_v2_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_v2_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_v3_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_v3_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_v3_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_v3_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_v3_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_v3_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_WSL3_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_WSL3_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_WSL3_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_WSL3_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_WSL3_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_WSL3_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_expansionkit_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_expansionkit_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_expansionkit_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_expansionkit_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_tft_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_tft_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_tft_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_tft_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_tft_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_tft_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_tft_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_tft_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_tft_portrait_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_tft_portrait_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_tft_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_tft_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_tft_portrait_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_tft_portrait_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "heltec_v4_r8_tft_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "heltec_v4_r8_tft_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_Wireless_Paper_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_Wireless_Paper_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Heltec_Wireless_Paper_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Heltec_Wireless_Paper_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_T3S3_sx1262_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_T3S3_sx1262_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_T3S3_sx1262_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_T3S3_sx1262_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_T3S3_sx1276_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_T3S3_sx1276_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_T3S3_sx1276_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_T3S3_sx1276_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TBeam_1W_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TBeam_1W_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TBeam_1W_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TBeam_1W_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "T_Beam_S3_Supreme_SX1262_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "T_Beam_S3_Supreme_SX1262_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "T_Beam_S3_Supreme_SX1262_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "T_Beam_S3_Supreme_SX1262_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Tbeam_SX1262_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Tbeam_SX1262_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Tbeam_SX1262_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Tbeam_SX1262_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Tbeam_SX1276_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Tbeam_SX1276_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Tbeam_SX1276_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Tbeam_SX1276_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TDeck_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TDeck_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TETH_Elite_sx1262_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TETH_Elite_sx1262_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TETH_Elite_sx1262_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TETH_Elite_sx1262_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_Tlora_C6_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_Tlora_C6_repeater_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_Tlora_C6_room_server_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_Tlora_C6_room_server_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TLora_V2_1_1_6_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TLora_V2_1_1_6_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "M5Stack_Unit_C6L_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "M5Stack_Unit_C6L_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "M5Stack_Unit_C6L_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "M5Stack_Unit_C6L_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Meshadventurer_sx1262_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Meshadventurer_sx1262_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Meshadventurer_sx1268_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Meshadventurer_sx1268_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Meshadventurer_sx1262_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Meshadventurer_sx1262_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Meshadventurer_sx1268_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Meshadventurer_sx1268_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "meshnology_w12_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "meshnology_w12_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "meshnology_w12_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "meshnology_w12_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "meshnology_w12_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "meshnology_w12_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "MKE_s3_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "MKE_s3_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "MKE_s3_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "MKE_s3_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "MKE_s3_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "MKE_s3_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "nibble_screen_connect_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "nibble_screen_connect_repeater_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "nibble_screen_connect_room_server_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "nibble_screen_connect_room_server_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "nibble_zero_connect_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "nibble_zero_connect_repeater_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "nibble_zero_connect_room_server_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "nibble_zero_connect_room_server_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "RAK_3112_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "RAK_3112_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "RAK_3112_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "RAK_3112_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "RAK_3112_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "RAK_3112_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G2_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Station_G2_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G2_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Station_G2_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G3_ESP32_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Station_G3_ESP32_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G3_ESP32_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Station_G3_ESP32_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G3_ESP32_r2_repeater_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Station_G3_ESP32_r2_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Station_G3_ESP32_r2_room_server_observer_mqtt",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Station_G3_ESP32_r2_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Tenstar_C3_sx1262_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Tenstar_C3_sx1262_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Tenstar_C3_sx1268_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Tenstar_C3_sx1268_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M2_Repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M2_Repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M2_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M2_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M5_Repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M5_Repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M5_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M5_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M7_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M7_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M7_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M7_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M9_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M9_repeater_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "ThinkNode_M9_room_server_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "ThinkNode_M9_room_server_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_C3_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_C3_repeater",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_C3_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_C3_room_server",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_C6_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_C6_repeater_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Meshimi_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Meshimi_repeater_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "WHY2025_badge_repeater_",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "WHY2025_badge_repeater_",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_S3_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_S3_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_S3_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_S3_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_S3_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_S3_sensor",
+      "filename_infix": "full-logging"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_S3_WIO_repeater",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_S3_WIO_repeater_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_S3_WIO_room_server",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_S3_WIO_room_server_observer_mqtt",
+      "filename_infix": "full-usb-wifi"
+    },
+    {
+      "pass": "run_full_only_esp32_profile",
+      "target": "Xiao_S3_WIO_sensor",
+      "build_profile": "full",
+      "ESP32_FULL_BUILD": "1",
+      "pio_environment": "Xiao_S3_WIO_sensor",
+      "filename_infix": "full-logging"
+    }
+  ],
+  "fresh_builds": [
+    {
+      "target": "LilyGo_Tlora_C6_repeater_",
+      "pio_environment": "LilyGo_Tlora_C6_repeater_",
+      "elf_sha256": "33e0749bf17f27f4ce750c600438902be424b966b9e1e4f44222be2b088a334f",
+      "passed": true,
+      "available_internal_bytes": 283088,
+      "required_heap_bytes": 139200,
+      "largest_internal_region_bytes": 283088,
+      "required_contiguous_bytes": 12616,
+      "files": {
+        "LilyGo_Tlora_C6_repeater_-full-logging-ota-v1.17.1.9-halo-keymind-cascade-dev-fullaudit-2ee62b98.bin": "19fee1e6622d9507c50c07175719f8a8e91d4f629655e7ba24dd599f59f4f57b",
+        "LilyGo_Tlora_C6_repeater_-full-logging-ota-v1.17.1.9-halo-keymind-cascade-dev-fullaudit-2ee62b98-merged.bin": "256eea0cfbfb0fa045d326fd7fabd0005763e137f2dcc8925c43cbe58bc3cdcc",
+        "LilyGo_Tlora_C6_repeater_-full-logging-ota-v1.17.1.9-halo-keymind-cascade-dev-fullaudit-2ee62b98.capabilities.json": "fcae0b9636f46600b57ae550f429c561910d5fd426795285604862517be9551c"
+      },
+      "app_bytes": 2010024,
+      "app_slot_bytes": 2031616,
+      "app_margin_bytes": 21592
+    },
+    {
+      "target": "Heltec_v2_companion_radio_full",
+      "pio_environment": "Heltec_v2_companion_radio_wifi",
+      "elf_sha256": "48d04ce21281a1183a4738001b3f351e272ef2536b3cea15ef88d9ee569ad398",
+      "passed": true,
+      "available_internal_bytes": 184680,
+      "required_heap_bytes": 173840,
+      "largest_internal_region_bytes": 113840,
+      "required_contiguous_bytes": 16400,
+      "files": {
+        "Heltec_v2_companion_radio_full-v1.17.1.9-halo-keymind-cascade-dev-fullaudit-2ee62b98.bin": "97a0562a6ddcb1af5160dcc9a7cb31f415adf3361dc115d383f4a4efecd63730",
+        "Heltec_v2_companion_radio_full-v1.17.1.9-halo-keymind-cascade-dev-fullaudit-2ee62b98-merged.bin": "f357f65f5d007ae4695a78c14be7734224c901bcc0f8f76f7fecadcbdd67fe81",
+        "Heltec_v2_companion_radio_full-v1.17.1.9-halo-keymind-cascade-dev-fullaudit-2ee62b98.capabilities.json": "ef8971d2f632f21cba29dc245a70fca8bdebe36cce21f8a63487d002bbe7ccd1"
+      },
+      "app_bytes": 2275368,
+      "app_slot_bytes": 3342336,
+      "app_margin_bytes": 1066968
+    }
+  ],
+  "validation": {
+    "build_profile_shell_suite": "passed",
+    "linux_python_selection_partition_and_ram_tests": 58,
+    "windows_python_package_tests": 11,
+    "python_cases_passed": 69,
+    "test_runtime_note": "Packaging tests use Windows Python3.13; Linux Python3.10 lacks the pre-existing hashlib.file_digest API. Other focused suites use native Linux."
+  }
+}
