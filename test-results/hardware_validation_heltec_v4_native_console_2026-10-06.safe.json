@@ -90,7 +90,7 @@
     "Failed flasher preparations remain failed and did not exercise the GUI five-second command timer.",
     "Merged artifact is audited; actual browser tests flashed only the protected active application slot.",
     "No measured sleep current, factory erase/cold-cycle, heavy logging or RF traffic-soak claim.",
-    "USB-attached CPU sleep guard means no physical light-sleep/button-wake or current-draw qualification; V4 momentary-button wake profile correction needs new-source qualification.",
+    "USB-attached CPU sleep guard means no physical light-sleep/button-wake or current-draw qualification; Updated profile host/build and native USB console checks are recorded separately; physical button wake remains untested.",
     "Original host service states restored; MQTT packet delivery was not measured."
   ],
   "qualified_trials": [
@@ -235,6 +235,141 @@
     "current_draw_measured": false,
     "physical_button_wake_tested": false,
     "c888_V4_momentary_button_wake_profile_flag_present": false,
-    "new_button_fix_qualification": "pending"
+    "new_button_fix_qualification": "Host/build and updated-source native USB console180s qualified; physical button/CPU sleep/current untested."
+  },
+  "updated_source_checkpoint": {
+    "source_commit": "ebf2f0823ef8413987d31ccb2d044a2090e88469",
+    "firmware_version": "v1.17.1.9-halo-keymind-cascade-dev-ebf2f082 (Build: 06-Oct-2026)",
+    "status": "host_build_and_native_console_180s_passed_operator_restored",
+    "build": {
+      "target": "heltec_v4_repeater",
+      "profile": "full",
+      "platformio_feature_base": "heltec_v4_repeater_observer_mqtt",
+      "app_sha256": "aebfd06f5e35ad636f52f329bd051deb9dfeb633361dc77396c0ee9d4456e7c1",
+      "app_bytes": 2097560,
+      "merged_sha256": "08750bd38f9f71ea37b8739a8b3c26befa91829df6d5754ad9cffbf61a796a90",
+      "merged_bytes": 2163096,
+      "elf_sha256": "c2ec6d54c32c4b3cb331f9216607480e851933cf4865cc399be9409fdf587467",
+      "partition_table_4096_sha256": "9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60",
+      "slot_bytes": 6553600,
+      "RAM_capability_and_file_hash_gates_passed": true,
+      "heap_margin_bytes": 20880,
+      "linked_HWCDC_PHY_handoff_and_startup_hook": true,
+      "linked_GPIO0_active_low_button_wake_and_pending_press_cleanup": true,
+      "linked_radio_IRQ14_wake_retained": true,
+      "linked_role_gesture_polling_guard": true,
+      "independent_build_audit_sha256": "826089a49402a4cc23f648f4d642c7547f33f05520333877373a2a134af0c2d4"
+    },
+    "host_validation": {
+      "ESP32_USB_sleep_tests_passed": 7,
+      "display_power_tests_passed": 2,
+      "profile_flag_assertions": 71,
+      "standalone_migrator_exclusions": 4,
+      "actual_family_role_CXX_cases": 6,
+      "required_failure_controls": 3,
+      "scope": "Real Board.sleep/USB methods, MomentaryButton, role polling and UITask button fragments with DisplayPowerPolicy; simulated GPIO/sleep."
+    },
+    "native_browser": {
+      "version": "154.0.8037.92",
+      "same_pinned_stock_GUI_and_flasher": true,
+      "native_command_deadline_ms": 5000,
+      "extra_post_flash_reset_replug_settle_retry": false,
+      "report_sha256": "ba7d9f415a1cd27fd5fe4070d47306f2cd67e4ce08baee684f07c83eb364cef3",
+      "independent_report_review_sha256": "be8eed53f8ec012f4c217c52e55fbdab3b29aad972fda933c4fb18fbe75c5f43",
+      "first_plain_time_ms": 2036.3999999985099,
+      "first_plain_time_clock_set_acknowledged": true,
+      "power_saving": "on",
+      "logging_output": "usb",
+      "quiet_intervals": [
+        {
+          "kind": "open",
+          "requested_seconds": 180,
+          "actual_seconds": 180.0605071799946,
+          "native_writes_during_idle": 0,
+          "uptime_before": 17,
+          "serial_open": true,
+          "uptime_after": 198,
+          "uptime_delta": 181,
+          "uptime_continuity_verified": true,
+          "ok": true
+        },
+        {
+          "kind": "closed",
+          "requested_seconds": 180,
+          "actual_seconds": 180.10022866498912,
+          "native_writes_during_idle": 0,
+          "uptime_before": 205,
+          "serial_open": false,
+          "uptime_after": 391,
+          "uptime_delta": 186,
+          "uptime_continuity_verified": true,
+          "ok": true
+        }
+      ],
+      "first_post_open_idle_core_ms": 39.70000000111759,
+      "post_open_idle_DOM_clock_reply_ms": 45,
+      "post_open_idle_DOM_clock_set_acknowledged": true,
+      "post_closed_idle_DOM_clock_reply_ms": 26.700000001117587,
+      "post_closed_idle_DOM_clock_set_acknowledged": false,
+      "post_closed_idle_response": "recognized framed clock-cannot-go-backwards rejection",
+      "full_GUI_rereads_passed": true,
+      "native_command_errors": 0,
+      "GUI_modem_signal_calls": 0,
+      "original_reference_and_final_restoration_verified": true,
+      "checked_preferences_count": 15,
+      "original_power_saving": "off",
+      "original_logging_output": "usb",
+      "streams_closed": true
+    },
+    "host_preparation": {
+      "tty_before": {
+        "VMIN": 0,
+        "VTIME": 0
+      },
+      "tty_after": {
+        "VMIN": 1,
+        "VTIME": 0
+      },
+      "explicit_modem_signal_calls": 0,
+      "safe_start_report_sha256": "7129af121900b598d02ec3e33702bb87dec988ae3a8d3f2eaf9550cb73ddd3d3"
+    },
+    "radio": {
+      "initial_core_error_flags": 0,
+      "final_core_error_flags": 8,
+      "all_observations_active_RX": true,
+      "physical_rx_errors_max": 0,
+      "final_recv": 0,
+      "final_sent": 1,
+      "scope": "Known CAD/receive-silence flags are warnings; no zero-error RF or traffic-soak claim."
+    },
+    "operator_cleanup": {
+      "ok": true,
+      "exact_runtime_version_and_reference_digests_verified": true,
+      "uptime_seconds": 448,
+      "core_error_flags": 8,
+      "serial_closed_and_no_owner": true,
+      "owned_browser_profile_closed": true,
+      "owned_tunnel_closed": "parent independently verified",
+      "original_services_restored": {
+        "ModemManager": "active",
+        "mctomqtt": "active",
+        "mesh-logger": "inactive"
+      },
+      "network_configuration_changed": false,
+      "operator_report_sha256": "c79f570fa7d5b4599d4538527aa9edefeb8d5173a47dc5689c44cfdb632d33fd",
+      "services_report_sha256": "bc98de9e3753d736de35a45d4cfda1c7380a7c2eff66891c3a3f4444e1d74425",
+      "browser_cleanup_report_sha256": "c848c50e4ae1ab73fee92f5381dc60e0b9cd23b04a672ad9a5df60dd0fb3b3dc",
+      "independent_cleanup_audit_sha256": "f96f14695beafba898cb2361b41540614026bda3316764a0421a93158de3ce38"
+    },
+    "CI": {
+      "run_id": 37426156162,
+      "status": "in_progress_at_checkpoint"
+    },
+    "limitations": [
+      "Updated-source180s intervals are separate from historical c888600s trials.",
+      "USB cable remained attached; no physical button wake, measured CPU sleep or current draw.",
+      "Host services restored; no MQTT delivery or loaded-RF qualification.",
+      "Release held and unpublished."
+    ]
   }
 }

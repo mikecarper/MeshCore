@@ -2366,8 +2366,12 @@ off, and 600 seconds open with USB logging. See the <a href="../../test-results/
 qualification</a>
 for deadlines, host preparation and retained failed attempts. USB remained
 attached, so these checks do not measure CPU sleep or button wake. The subsequent
-V4 button-wake correction and its software validation are separate; physical
-button wake was not tested here.</p>
+<code>ebf2f082</code> V4 button-wake profile correction passed host tests and linked-image
+checks, followed by another unchanged native GUI fresh-flash connection and
+180-second open/closed console checks with power saving on and USB logging.
+Original settings, identity and ACL response were restored. Physical button
+wake, CPU sleep and current draw were not tested here; the new source's GitHub
+unit workflow remains in progress.</p>
 <p>Build qualification does not establish physical compatibility on every board.
 Hardware CDC has finite buffers, and closing a Linux TTY does not necessarily
 produce a hardware session reset. Saturated diagnostic output is not lossless.
