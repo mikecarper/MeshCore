@@ -2185,6 +2185,10 @@ MQTT connections, OTA scratch and transient allocations. ESP32 images with
 RS-232 reserve another 8 KiB even when UART defaults off: 4 KiB for the
 source-bounded bridge object and 4 KiB for the UART driver and buffers. This
 keeps runtime UART enablement in the budget beside MQTT and ESP-NOW.
+T-LoRa V2.1-1.6 cannot fit all three transports: the qualified linked triple
+image had 190,488 available internal bytes against 196,984 required bytes.
+Its ordinary release retains separate UART/ESP-NOW and MQTT/ESP-NOW Full
+images; the memory policy and routing capacities remain unchanged.
 A 160x80 ST7735
 framebuffer needs 25,602 bytes; an OLED allowance is 4 KiB. nRF52 Full with that
 color framebuffer must have at least 72 KiB available before startup allocations.

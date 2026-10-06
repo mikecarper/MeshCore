@@ -2323,7 +2323,8 @@ Full Companion is a different role. See the <a href="../firmware_picker/">firmwa
 115200 baud and run:</p>
 <pre><code class="language-text">get bridge.type
 </code></pre>
-<p>The answer can be <code>espnow</code>, <code>mqtt+espnow</code>, or <code>rs232+espnow</code>. Confirm the
+<p>The answer can be <code>espnow</code>, <code>mqtt+espnow</code>, <code>rs232+espnow</code>, or
+<code>mqtt+rs232+espnow</code>, depending on the image. Confirm the
 independent ESP-NOW control is present with <code>get espnow.enabled</code> and
 <code>get espnow.running</code>. The <code>espnow</code> commands select this transport without
 changing another bridge in a combined image.</p>

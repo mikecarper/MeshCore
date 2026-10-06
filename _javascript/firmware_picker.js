@@ -620,6 +620,11 @@
 
     return (profiles || []).filter(function (profile) {
       const target = String(profile && profile.target || "");
+      // TLora cannot fit UART, MQTT and ESP-NOW together. Its normal Full
+      // UART image and Full MQTT observer are both intentional choices.
+      if (/^LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_?-full-usb-wifi$/i.test(target)) {
+        return true;
+      }
       // Same-partition ESP32 migrations publish the ordinary target's Full
       // image with its established mOTA identity. The former observer-named
       // Full image remains in the release for deployed devices that still use

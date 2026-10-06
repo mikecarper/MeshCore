@@ -464,6 +464,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#only-channel-9-alerts-all-other-channels-silent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Only channel 9 alerts; all other channels silent
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2265,6 +2282,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#only-channel-9-alerts-all-other-channels-silent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Only channel 9 alerts; all other channels silent
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2511,6 +2545,47 @@ notification strings. Receiver master switches apply even while connected.</p>
   should handle notifications while attached. Permission to send notification
   strings is separate from a VIP's ordinary message rule.</li>
 </ul>
+<h3 id="only-channel-9-alerts-all-other-channels-silent">Only channel 9 alerts; all other channels silent</h3>
+<p>This example makes message alerts silent by default, then plays one short
+melody for channel 9. It works both with and without a connected companion
+client and requires a device with a buzzer. Messages still arrive normally;
+this changes the node's alerts, not the phone app's notification settings.</p>
+<p><code>channel:9</code> means the firmware's <strong>zero-based slot 9</strong> (the tenth slot), not
+a channel named <code>ch9</code>. Configure that slot before running these commands.
+The rule follows its saved channel key; recreate it if you replace the channel
+in that slot.</p>
+<p>Start with no conflicting custom rules. Use <code>get notify.rules</code>, then
+<code>get notify.rules &lt;rule-slot&gt;</code> to inspect existing selectors. Remove only
+unwanted rules with <code>notify.delete &lt;selector&gt;</code>: existing state-specific and
+contact/channel rules can override the silent default below.</p>
+<pre><code class="language-text">set notify.enabled on
+set notify.vibration all off
+set notify.sound all off
+set notify.led all off
+set notify.screen all off
+set notify.gpio all off
+set notify.repeat all 1
+set notify.gap all 500
+set notify.stop all button
+set notify.sound on
+set notify.sound channel:9 ch9:d=8,o=5,b=180:c,e,g
+</code></pre>
+<p>Keep the sound <strong>master</strong> on: <code>set notify.sound all off</code> silences the default
+rule, while <code>set notify.sound off</code> would also block the channel 9 exception.
+The other outputs remain silent, including screen wake-ups for messages.
+To add vibration for channel 9 on a device with a vibration motor:</p>
+<pre><code class="language-text">set notify.vibration on
+set notify.vibration channel:9 100,100,300
+</code></pre>
+<p>Test the saved exception with <code>notify.test channel:9</code>; stop it with
+<code>notify.stop</code>. Send a message on another configured channel to verify that
+it stays quiet.</p>
+<p><strong>Scope:</strong> there is no channels-only wildcard: <code>all</code> also silences ordinary
+DM and room-message alerts unless a more specific rule enables them.
+Previously authorized contact/room <code>!notify</code> strings can still request alerts.
+If those should stay quiet too, revoke their permission with
+<code>set notify.remote contact:PUBLIC_KEY off</code> or
+<code>set notify.remote room:ROOM_PUBLIC_KEY off</code>, using the full sender/server key.</p>
 
 
 
