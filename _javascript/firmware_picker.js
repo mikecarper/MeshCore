@@ -1600,17 +1600,21 @@
     if (profile.role === "repeater") toggle("Repeat mesh traffic", "set repeat", "get repeat");
     if (info.rs232 && infrastructure) {
       const mode = chosen.mode;
+      // MQTT images keep the historical bridge.enabled ESP-NOW alias.
+      // Their independently saved UART uses the transport-specific controls.
+      const uartSetting = info.mqtt ? "rs232.enabled" : "bridge.enabled";
+      const uartRunning = info.mqtt ? "rs232.running" : "bridge.running";
       section("RS232 bridge" + (mode === "rs232" ? " - selected" : ""), [
-        { label: "On", commands: ["set bridge.enabled on", "get bridge.running"] },
-        { label: "Off", commands: ["set bridge.enabled off"] },
-        { label: "Set baud", commands: ["set bridge.enabled off", "set bridge.baud 115200", "set bridge.enabled on"] },
+        { label: "On", commands: ["set " + uartSetting + " on", "get " + uartRunning] },
+        { label: "Off", commands: ["set " + uartSetting + " off"] },
+        { label: "Set baud", commands: ["set " + uartSetting + " off", "set bridge.baud 115200", "set " + uartSetting + " on"] },
       ].sort(function (a, b) {
         return mode === "standard" ? Number(b.label === "Off") - Number(a.label === "Off") : 0;
       }), "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.");
     }
     if (info.espnowBridge && infrastructure) {
       // Combined images need the transport-specific switch: bridge.enabled
-      // controls the UART when RS-232 is compiled alongside ESP-NOW. Older
+      // keeps its historical meaning for the primary transport. Older
       // dedicated ESP-NOW releases retain their original bridge.* commands.
       const independentEspnow = info.rs232 || info.mqtt;
       toggle("ESP-NOW bridge", independentEspnow ? "set espnow.enabled" : "set bridge.enabled",

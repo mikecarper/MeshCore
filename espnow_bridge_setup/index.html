@@ -2400,6 +2400,10 @@ Stopping it first lets you finish configuring both sides before connecting them.
 <td><code>on</code> starts ESP-NOW; <code>off</code> stops it and keeps its saved settings. Independent of MQTT or RS-232.</td>
 </tr>
 <tr>
+<td><code>rs232.enabled</code></td>
+<td>On combined UART images, starts or stops RS-232 independently of MQTT and ESP-NOW. Use <code>get rs232.running</code> to check the live UART.</td>
+</tr>
+<tr>
 <td><code>bridge.channel</code></td>
 <td>The 2.4 GHz channel, 1-13. Match it on both boards. This is separate from the LoRa frequency in <code>set radio</code>.</td>
 </tr>

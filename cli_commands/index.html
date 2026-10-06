@@ -10794,6 +10794,14 @@ still overrides the first-boot default after an update.</p>
 bridge actually started in this boot; they can differ after a hardware conflict,
 missing credentials, or a transient initialization failure. Normal merged
 repeater images default to <code>off</code>; dedicated bridge images may default to <code>on</code>.</p>
+<p>Full MQTT repeaters with RS-232 expose three independent transports. Use
+<code>set rs232.enabled on|off</code> and <code>get rs232.enabled</code> for saved UART intent;
+<code>get rs232.running</code> reports the actual UART state. <code>mqtt.enabled</code> and
+<code>espnow.enabled</code> select the other two transports. In MQTT images the historical
+<code>bridge.enabled</code> alias controls ESP-NOW; in non-MQTT UART images it controls
+RS-232. <code>bridge.baud</code> and <code>bridge.uart</code> change only UART configuration, without
+restarting MQTT or ESP-NOW. The new UART mode starts off when upgrading old
+MQTT preferences and retains explicit settings across reboots.</p>
 <hr />
 <h4 id="add-a-delay-to-packets-routed-through-this-bridge">Add a delay to packets routed through this bridge</h4>
 <p><strong>Usage:</strong>
@@ -10918,7 +10926,9 @@ non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>.</p>
 <p><strong>Parameters:</strong>
 - <code>rate</code>: Integer baud rate from <code>9600</code> through the board's compiled
   <code>BRIDGE_MAX_BAUD</code> (commonly <code>500000</code>); for example <code>115200</code>. Stop the bridge
-  with <code>set bridge.enabled off</code> before changing it, then enable it again.</p>
+  with <code>set rs232.enabled off</code> in a combined MQTT image, or
+  <code>set bridge.enabled off</code> in a non-MQTT UART image, before changing it.
+  Enable the UART again with the matching switch.</p>
 <p><strong>Default:</strong> <code>115200</code></p>
 <hr />
 <h4 id="view-or-change-the-uart-used-by-the-bridge-rs-232-only">View or change the UART used by the bridge (RS-232 only)</h4>
@@ -10933,7 +10943,8 @@ non-PSRAM variants opt in with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>.</p>
   provider and therefore does not expose either GPS path.</p>
 <p>The setting is persistent and restarts an enabled bridge immediately. Normal
 repeater artifacts start with <code>bridge.enabled off</code>; configure the UART and baud
-rate before running <code>set bridge.enabled on</code>. On the canonical RAK4631 runtime
+rate before running <code>set bridge.enabled on</code>. Combined MQTT images use
+<code>rs232.enabled</code> for that independent UART setting. On the canonical RAK4631 runtime
 image, UART 1 is reserved even if the bounded boot probe hears no RAK12501.
 Silence cannot prove that a cold L76K is physically absent, and that module
 remains powered by the shared WB_IO2/3V3_S rail. Use UART 2. UART 1 requires an
