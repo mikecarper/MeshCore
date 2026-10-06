@@ -1,0 +1,603 @@
+{
+  "reports": {
+    "install": {
+      "source": "8d31b3932de614ac38d238f1a01010bc5f362fe8",
+      "cases": [],
+      "ok": true,
+      "current_measured": false,
+      "flashed": true,
+      "firmware_sha256": "d534c9d79796886fb84690c784ae985bfef6d808d5e7879409f139e9463f126d",
+      "expected_body_hash16": "8C8A7ADBDA25501E",
+      "image_bytes": 2098744,
+      "scan_diagnostics": [],
+      "version_before": "v1.17.1.9-halo-keymind-cascade-dev-v4fix7-8d31b393 (Build: 06-Oct-2026)",
+      "self_before": "self body=2098672 image=2098728 base_hash=655FDD5693EFA830 | maxblk:2048",
+      "slot_before": "inactive slot addr=0x10000 size=6553600",
+      "ota_get_before": {
+        "status": 200,
+        "body_bytes": 53715,
+        "body_sha256": "b59f9e0b4af33f83d3ce47718ae5923c21e97361fb87e6c2e6cc4af4fe7ceb4d"
+      },
+      "upload_http_status": 200,
+      "version_after": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+      "self_after": "self body=2098688 image=2098744 base_hash=8C8A7ADBDA25501E | maxblk:2048",
+      "slot_after": "inactive slot addr=0x650000 size=6553600",
+      "image_verified": true,
+      "preferences_restored": true,
+      "identity_restored": true,
+      "acl_restored": true,
+      "runtime_restored": true,
+      "pi_wifi_restored": true,
+      "cleanup_errors": []
+    },
+    "verify": {
+      "source": "8d31b3932de614ac38d238f1a01010bc5f362fe8",
+      "cases": [
+        {
+          "name": "webconfig_ap_with_espnow_off_fresh_raw_scan",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "scan": {
+            "raw_scan_status": 0,
+            "raw_bss_count": 4,
+            "raw_target_visible": true,
+            "nm_target_visible": true,
+            "target_frequencies_mhz": [
+              "2412"
+            ]
+          },
+          "http": {
+            "status": 200,
+            "body_bytes": 760,
+            "body_sha256": "576a21f3595850f4c511782fceec23333eab9e717e22b1d12d919c7ddb85b177",
+            "scan_first": {
+              "cached_results_ready": true,
+              "cached_network_count": 4,
+              "explicit_rescan_completed": true,
+              "rescan_network_count": 4
+            },
+            "browser_ui": {
+              "status": 200,
+              "decompressed_bytes": 118226,
+              "sha256": "397ba8c996d3d0ab85d753526467e7a78107aad50b437ccd3c8dc598c97cb4cd",
+              "setup_api_verified": true,
+              "gzip_loader_verified": true
+            }
+          },
+          "ap_start_reply_ms": 2704.79
+        },
+        {
+          "name": "webconfig_ap_with_espnow_on_fresh_raw_scan",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "scan": {
+            "raw_scan_status": 0,
+            "raw_bss_count": 5,
+            "raw_target_visible": true,
+            "nm_target_visible": true,
+            "target_frequencies_mhz": [
+              "2412"
+            ]
+          },
+          "http": {
+            "status": 200,
+            "body_bytes": 760,
+            "body_sha256": "576a21f3595850f4c511782fceec23333eab9e717e22b1d12d919c7ddb85b177",
+            "scan_first": {
+              "cached_results_ready": true,
+              "cached_network_count": 3,
+              "explicit_rescan_completed": true,
+              "rescan_network_count": 1
+            },
+            "browser_ui": {
+              "status": 200,
+              "decompressed_bytes": 118226,
+              "sha256": "397ba8c996d3d0ab85d753526467e7a78107aad50b437ccd3c8dc598c97cb4cd",
+              "setup_api_verified": true,
+              "gzip_loader_verified": true
+            }
+          },
+          "ap_start_reply_ms": 443.9
+        },
+        {
+          "name": "group_off_then_on_restores_services",
+          "passed": true,
+          "master_off_rejects_individual_on": true,
+          "services_restarted": true
+        },
+        {
+          "name": "webconfig_ap_after_group_restore_fresh_raw_scan",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "scan": {
+            "raw_scan_status": 0,
+            "raw_bss_count": 5,
+            "raw_target_visible": true,
+            "nm_target_visible": true,
+            "target_frequencies_mhz": [
+              "2412"
+            ]
+          },
+          "http": {
+            "status": 200,
+            "body_bytes": 760,
+            "body_sha256": "576a21f3595850f4c511782fceec23333eab9e717e22b1d12d919c7ddb85b177",
+            "scan_first": {
+              "cached_results_ready": true,
+              "cached_network_count": 2,
+              "explicit_rescan_completed": true,
+              "rescan_network_count": 2
+            },
+            "browser_ui": {
+              "status": 200,
+              "decompressed_bytes": 118226,
+              "sha256": "397ba8c996d3d0ab85d753526467e7a78107aad50b437ccd3c8dc598c97cb4cd",
+              "setup_api_verified": true,
+              "gzip_loader_verified": true
+            }
+          },
+          "ap_start_reply_ms": 444.34
+        },
+        {
+          "name": "ota_ap_after_group_off_fresh_raw_scan",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "scan": {
+            "raw_scan_status": 0,
+            "raw_bss_count": 7,
+            "raw_target_visible": true,
+            "nm_target_visible": true,
+            "target_frequencies_mhz": [
+              "2412"
+            ]
+          },
+          "http": {
+            "status": 200,
+            "body_bytes": 169232,
+            "body_sha256": "2ada609891d6393b54bdcc559bb2f7d2abb564d5cd27593b266706cc8d878ab4"
+          }
+        },
+        {
+          "name": "ota_ap_repeat_start_fresh_raw_scan",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "scan": {
+            "raw_scan_status": 0,
+            "raw_bss_count": 7,
+            "raw_target_visible": true,
+            "nm_target_visible": true,
+            "target_frequencies_mhz": [
+              "2412"
+            ]
+          },
+          "http": {
+            "status": 200,
+            "body_bytes": 169232,
+            "body_sha256": "2ada609891d6393b54bdcc559bb2f7d2abb564d5cd27593b266706cc8d878ab4"
+          }
+        },
+        {
+          "name": "webconfig_ap_after_ota_stop_fresh_raw_scan",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "scan": {
+            "raw_scan_status": 0,
+            "raw_bss_count": 7,
+            "raw_target_visible": true,
+            "nm_target_visible": true,
+            "target_frequencies_mhz": [
+              "2412"
+            ]
+          },
+          "http": {
+            "status": 200,
+            "body_bytes": 760,
+            "body_sha256": "576a21f3595850f4c511782fceec23333eab9e717e22b1d12d919c7ddb85b177",
+            "scan_first": {
+              "cached_results_ready": true,
+              "cached_network_count": 2,
+              "explicit_rescan_completed": true,
+              "rescan_network_count": 2
+            },
+            "browser_ui": {
+              "status": 200,
+              "decompressed_bytes": 118226,
+              "sha256": "397ba8c996d3d0ab85d753526467e7a78107aad50b437ccd3c8dc598c97cb4cd",
+              "setup_api_verified": true,
+              "gzip_loader_verified": true
+            }
+          },
+          "ap_start_reply_ms": 443.88
+        }
+      ],
+      "ok": true,
+      "current_measured": false,
+      "flashed": false,
+      "scan_diagnostics": [
+        {
+          "channel": 0,
+          "start": -1,
+          "result": 4,
+          "elapsed_ms": 2400
+        },
+        {
+          "channel": 0,
+          "start": -1,
+          "result": 4,
+          "elapsed_ms": 2401
+        },
+        {
+          "channel": 1,
+          "start": -1,
+          "result": 3,
+          "elapsed_ms": 221
+        },
+        {
+          "channel": 1,
+          "start": -1,
+          "result": 3,
+          "elapsed_ms": 221
+        },
+        {
+          "channel": 1,
+          "start": -1,
+          "result": 0,
+          "elapsed_ms": 120
+        },
+        {
+          "channel": 1,
+          "start": -1,
+          "result": 3,
+          "elapsed_ms": 221
+        },
+        {
+          "channel": 1,
+          "start": -1,
+          "result": 2,
+          "elapsed_ms": 220
+        },
+        {
+          "channel": 1,
+          "start": -1,
+          "result": 2,
+          "elapsed_ms": 221
+        },
+        {
+          "channel": 1,
+          "start": -1,
+          "result": 2,
+          "elapsed_ms": 220
+        }
+      ],
+      "version": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+      "self": "self body=2098688 image=2098744 base_hash=8C8A7ADBDA25501E | maxblk:2048",
+      "firmware_sha256": "d534c9d79796886fb84690c784ae985bfef6d808d5e7879409f139e9463f126d",
+      "bridge_channel": "> 1",
+      "start_uptime_secs": 28,
+      "preferences_restored": true,
+      "identity_restored": true,
+      "acl_restored": true,
+      "runtime_restored": true,
+      "end_uptime_secs": 71,
+      "no_cpu_reboot": true,
+      "pi_wifi_restored": true,
+      "cleanup_errors": []
+    },
+    "browser": {
+      "source": "8d31b3932de614ac38d238f1a01010bc5f362fe8",
+      "expected_version": "v4fix8",
+      "expected_body_hash16": "8C8A7ADBDA25501E",
+      "browser_ready": true,
+      "browser_completed": true,
+      "browser_evaluated_externally": true,
+      "current_measured": false,
+      "flashed": false,
+      "ok": true,
+      "scan_diagnostics": [
+        {
+          "channel": 0,
+          "start": -1,
+          "result": 4,
+          "elapsed_ms": 2401
+        },
+        {
+          "channel": 0,
+          "start": -1,
+          "result": 4,
+          "elapsed_ms": 2400
+        }
+      ],
+      "version": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+      "image_hash_verified": true,
+      "baseline_saved_ssid_empty": true,
+      "runtime_baseline_off": true,
+      "start_uptime_secs": 101,
+      "ap_start_reply_ms": 2717.07,
+      "ap_discovered": true,
+      "association": true,
+      "raw_target_visible": true,
+      "nm_target_visible": true,
+      "browser_hold_secs": 177.2,
+      "preferences_restored": true,
+      "identity_restored": true,
+      "acl_restored": true,
+      "runtime_restored": true,
+      "version_restored": true,
+      "image_hash_restored": true,
+      "end_uptime_secs": 298,
+      "no_cpu_reboot": true,
+      "pi_wifi_restored": true,
+      "temporary_profiles_removed": true,
+      "wired_route_restored": true,
+      "cleanup_errors": []
+    },
+    "install_minimal": {
+      "source": "8d31b3932de614ac38d238f1a01010bc5f362fe8",
+      "cases": [],
+      "ok": true,
+      "current_measured": false,
+      "flashed": true,
+      "firmware_sha256": "4f0d55aa3c0c85e76c50a2ba60738294515552dafa5e9496d6a33d73f1072e27",
+      "expected_body_hash16": "060106D2CA3CA669",
+      "image_bytes": 1281576,
+      "scan_diagnostics": [],
+      "version_before": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+      "self_before": "self body=2098688 image=2098744 base_hash=8C8A7ADBDA25501E | maxblk:2048",
+      "slot_before": "inactive slot addr=0x650000 size=6553600",
+      "ota_get_before": {
+        "status": 200,
+        "body_bytes": 53715,
+        "body_sha256": "b59f9e0b4af33f83d3ce47718ae5923c21e97361fb87e6c2e6cc4af4fe7ceb4d"
+      },
+      "upload_http_status": 200,
+      "version_after": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+      "self_after": "self body=1281520 image=1281576 base_hash=060106D2CA3CA669 | maxblk:2048",
+      "slot_after": "inactive slot addr=0x10000 size=6553600",
+      "image_verified": true,
+      "compile_dependent_fields": [
+        "get usb.logging",
+        "get logging.output",
+        "get mqtt.enabled",
+        "get webui",
+        "get wifi.ssid",
+        "get wifi.powersave",
+        "get espnow.enabled"
+      ],
+      "preferences_restored": true,
+      "identity_restored": true,
+      "acl_restored": true,
+      "profile_radio_controls": {
+        "get wifi": "wifi unavailable",
+        "get espnow": "espnow unavailable"
+      },
+      "runtime_restored": null,
+      "ota_stop_requested": true,
+      "pi_wifi_restored": true,
+      "cleanup_errors": []
+    },
+    "minimal": {
+      "source": "8d31b3932de614ac38d238f1a01010bc5f362fe8",
+      "profile": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "cases": [
+        {
+          "name": "minimal_start_ota_ap_after_stop_and_master_off_attempt",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "fresh_scan": {
+            "scan_status": 0,
+            "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+            "last_seen_ms": 0,
+            "frequency_mhz": 2412
+          },
+          "http": {
+            "status": 200,
+            "decompressed_bytes": 1078,
+            "body_sha256": "7379d4c0bcc34c9a277c7faac9d97735693ee2a2fc27408ca81054433150a4d2",
+            "lightweight_uploader": true
+          },
+          "start_command": "start ota ap",
+          "master_off_control_supported": false,
+          "precondition": "OTA stopped; minimal group controls unavailable"
+        },
+        {
+          "name": "minimal_repeat_ota_ap_after_stop",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "fresh_scan": {
+            "scan_status": 0,
+            "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+            "last_seen_ms": 0,
+            "frequency_mhz": 2412
+          },
+          "http": {
+            "status": 200,
+            "decompressed_bytes": 1078,
+            "body_sha256": "7379d4c0bcc34c9a277c7faac9d97735693ee2a2fc27408ca81054433150a4d2",
+            "lightweight_uploader": true
+          },
+          "start_command": "start ota ap",
+          "master_off_control_supported": false,
+          "precondition": "OTA stopped; minimal group controls unavailable"
+        },
+        {
+          "name": "minimal_start_ota_implicit_ap_after_stop_and_master_off_attempt",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "fresh_scan": {
+            "scan_status": 0,
+            "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+            "last_seen_ms": 0,
+            "frequency_mhz": 2412
+          },
+          "http": {
+            "status": 200,
+            "decompressed_bytes": 1078,
+            "body_sha256": "7379d4c0bcc34c9a277c7faac9d97735693ee2a2fc27408ca81054433150a4d2",
+            "lightweight_uploader": true
+          },
+          "start_command": "start ota",
+          "master_off_control_supported": false,
+          "precondition": "OTA stopped; minimal group controls unavailable"
+        },
+        {
+          "name": "minimal_uploader_ready_for_full_restore",
+          "passed": true,
+          "ap_discovered": true,
+          "association": true,
+          "fresh_scan": {
+            "scan_status": 0,
+            "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+            "last_seen_ms": 0,
+            "frequency_mhz": 2412
+          },
+          "http": {
+            "status": 200,
+            "decompressed_bytes": 1078,
+            "body_sha256": "7379d4c0bcc34c9a277c7faac9d97735693ee2a2fc27408ca81054433150a4d2",
+            "lightweight_uploader": true
+          }
+        },
+        {
+          "name": "minimal_raw_uploader_installs_full_and_reboots",
+          "passed": true,
+          "upload_http_status": 200,
+          "running_image_hash_verified": true,
+          "application_slot_changed": true
+        }
+      ],
+      "ok": false,
+      "current_measured": false,
+      "full_restored": true,
+      "flashed": true,
+      "restore_sha256": "d534c9d79796886fb84690c784ae985bfef6d808d5e7879409f139e9463f126d",
+      "restore_image": {
+        "body_bytes": 2098688,
+        "image_bytes": 2098744,
+        "body_hash16": "8C8A7ADBDA25501E",
+        "target_id": 3885146193,
+        "hardware_id": "heltec_v4"
+      },
+      "minimal_expected_body_hash16": "060106D2CA3CA669",
+      "minimal_before": {
+        "version": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+        "running": {
+          "body_bytes": 1281520,
+          "image_bytes": 1281576,
+          "body_hash16": "060106D2CA3CA669"
+        },
+        "inactive_slot": {
+          "address": 65536,
+          "size": 6553600
+        }
+      },
+      "common_preferences_preserved_on_minimal": true,
+      "compile_dependent_preference_keys": [
+        "get espnow.enabled",
+        "get logging.output",
+        "get mqtt.enabled",
+        "get usb.logging",
+        "get webui",
+        "get wifi.powersave",
+        "get wifi.ssid"
+      ],
+      "start_uptime_secs": 161,
+      "end_minimal_uptime_secs": 173,
+      "no_cpu_reboot_during_minimal_cycles": true,
+      "restore_upload_attempted": true,
+      "restore_curl_status": 0,
+      "upload_http_status": 200,
+      "full_after": {
+        "version": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+        "running": {
+          "body_bytes": 2098688,
+          "image_bytes": 2098744,
+          "body_hash16": "8C8A7ADBDA25501E"
+        },
+        "inactive_slot": {
+          "address": 6619136,
+          "size": 6553600
+        }
+      },
+      "preferences_restored": true,
+      "identity_restored": true,
+      "acl_restored": true,
+      "runtime_restored": true,
+      "pi_wifi_restored": true,
+      "cleanup_errors": [
+        "Full restore: AssertionError: fresh Full boot did not automatically start setup AP"
+      ]
+    },
+    "fresh_boot": {
+      "source": "8d31b3932de614ac38d238f1a01010bc5f362fe8",
+      "expected_version": "v4fix8",
+      "expected_body_hash16": "8C8A7ADBDA25501E",
+      "browser_ready": false,
+      "browser_completed": false,
+      "browser_evaluated_externally": true,
+      "current_measured": false,
+      "flashed": false,
+      "ok": true,
+      "scan_diagnostics": [
+        {
+          "channel": 0,
+          "start": -1,
+          "result": 4,
+          "elapsed_ms": 2399
+        }
+      ],
+      "version": "v1.17.1.9-halo-keymind-cascade-dev-v4fix8-8d31b393 (Build: 06-Oct-2026)",
+      "image_hash_verified": true,
+      "baseline_saved_ssid_empty": true,
+      "runtime_baseline_off": true,
+      "start_uptime_secs": 178,
+      "reboot_reply_missing": true,
+      "ap_discovered": true,
+      "association": true,
+      "raw_target_visible": true,
+      "nm_target_visible": true,
+      "automatic_boot_ap": true,
+      "setup_api_verified": true,
+      "cached_scan_verified": true,
+      "cached_network_count": 3,
+      "preferences_restored": true,
+      "identity_restored": true,
+      "acl_restored": true,
+      "runtime_restored": true,
+      "version_restored": true,
+      "image_hash_restored": true,
+      "end_uptime_secs": 17,
+      "expected_cpu_reboot": true,
+      "pi_wifi_restored": true,
+      "temporary_profiles_removed": true,
+      "wired_route_restored": true,
+      "cleanup_errors": []
+    },
+    "minimal_assessment": {
+      "ap_and_upload_checks_passed": true,
+      "full_restored": true,
+      "preferences_restored": true,
+      "raw_runner_status": false,
+      "raw_runner_failure": "Automatic AP was asserted with the original WebUI master disabled; separate enabled fresh-boot test supplies the correct qualification.",
+      "original_webui_master_disabled": true
+    }
+  },
+  "final_host": {
+    "serial_port_free": true,
+    "pi_wifi_original_profile_active": true,
+    "temporary_network_profiles_remaining": 0,
+    "services": {
+      "mctomqtt": "active",
+      "ModemManager": "active",
+      "mesh-logger": "inactive"
+    }
+  }
+}
