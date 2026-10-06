@@ -2800,6 +2800,10 @@ requests a reboot only when changing the USB interfaces requires it, as on
 nRF52 Full Companion. <code>log start/stop</code> records to storage independently of live
 USB logging. Use
 <code>log erase</code> to delete that capture.</p>
+<p>Fresh ESP32 Full infrastructure installs default to USB logging off. Upgrades
+retain the saved choice. With device power saving enabled, an idle node can
+sleep after the setup AP closes and all radio services stop; live USB logging,
+an attached native USB host, and active MQTT/ESP-NOW still hold it awake.</p>
 <p>For quiet packet capture in current firmware, use <code>set usb.debug off</code> and
 <code>set usb.logging on</code>. Verbose diagnostics default off for fresh and upgraded
 preferences without the new field. The debug choice is saved separately;

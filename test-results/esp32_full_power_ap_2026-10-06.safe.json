@@ -1,0 +1,473 @@
+{
+  "source": "219e936ef82d16539111f03bc7982dd5654412df",
+  "version": "v1.17.1.9-halo-keymind-cascade-dev-powerap3-219e936e",
+  "builds": [
+    {
+      "kind": "full",
+      "target": "heltec_v4_repeater",
+      "environment": "heltec_v4_repeater_observer_mqtt",
+      "profile": "full",
+      "mcu": "esp32s3",
+      "app_bytes": 2100584,
+      "slot_bytes": 6553600,
+      "app_sha256": "ceb901afaba5f8012c49094122e30612dbf08518ebeffa51d8f92375cb52bc02",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 186696,
+      "internal_required_bytes": 165824
+    },
+    {
+      "kind": "minimal",
+      "target": "heltec_v4_repeater_lora_ota_no_external_sensors",
+      "environment": "heltec_v4_repeater",
+      "profile": "standard",
+      "mcu": "esp32s3",
+      "app_bytes": 1283304,
+      "slot_bytes": 6553600,
+      "app_sha256": "7b00131b795b236ce42cf62a824fb5e30a3f934034a819bf5d7a5d71a55983c9",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 241848,
+      "internal_required_bytes": 90048
+    },
+    {
+      "kind": "room",
+      "target": "heltec_v4_room_server",
+      "environment": "heltec_v4_room_server_observer_mqtt",
+      "profile": "full",
+      "mcu": "esp32s3",
+      "app_bytes": 2035864,
+      "slot_bytes": 6553600,
+      "app_sha256": "2701882bd5f397a22122d7b9556e73e4e1291e782c491ba28059627dc6d98b9a",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 202768,
+      "internal_required_bytes": 159424
+    },
+    {
+      "kind": "companion",
+      "target": "heltec_v4_3_companion_radio_full_femoff",
+      "environment": "heltec_v4_3_companion_radio_full_femoff",
+      "profile": "full",
+      "mcu": "esp32s3",
+      "app_bytes": 2362280,
+      "slot_bytes": 6553600,
+      "app_sha256": "1da05e5df95c8e3745f192a16d66017d2a8c85d27df974ba2dc2ca8122d476fe",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 233888,
+      "internal_required_bytes": 177920
+    },
+    {
+      "kind": "sensor",
+      "target": "heltec_v4_sensor",
+      "environment": "heltec_v4_sensor",
+      "profile": "full",
+      "mcu": "esp32s3",
+      "app_bytes": 1493976,
+      "slot_bytes": 6553600,
+      "app_sha256": "c640639e6e99ae43ba4375a222c078be2e327a8473164fe89d691f22a5f9067c",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 276504,
+      "internal_required_bytes": 128632
+    },
+    {
+      "kind": "classic",
+      "target": "Heltec_v2_repeater",
+      "environment": "Heltec_v2_repeater",
+      "profile": "full",
+      "mcu": "esp32",
+      "app_bytes": 1675432,
+      "slot_bytes": 3342336,
+      "app_sha256": "5ea927f6015aaca9fce2cf68339946118bdc953aab6fe0d3daf52a6fa37970e0",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 192624,
+      "internal_required_bytes": 161744
+    },
+    {
+      "kind": "c3",
+      "target": "Xiao_C3_repeater",
+      "environment": "Xiao_C3_repeater",
+      "profile": "full",
+      "mcu": "esp32c3",
+      "app_bytes": 1826728,
+      "slot_bytes": 2031616,
+      "app_sha256": "20b9694ec8c5a11ad48ca9df8d6dfe67c4501774bfcc7d509af7f9b31c776027",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 181856,
+      "internal_required_bytes": 139200
+    },
+    {
+      "kind": "rc32",
+      "target": "heltec_rc32_without_display_repeater",
+      "environment": "heltec_rc32_without_display_repeater_observer_mqtt",
+      "profile": "full",
+      "mcu": "esp32s3",
+      "app_bytes": 2277304,
+      "slot_bytes": 6553600,
+      "app_sha256": "963a8162848da50ae2a6e2265b8e00ca66ab4c33ca6de1aee151713e717c202a",
+      "capabilities_verified": true,
+      "memory_gate_passed": true,
+      "internal_available_bytes": 177552,
+      "internal_required_bytes": 159680
+    }
+  ],
+  "host_checks": {
+    "source": "219e936ef82d16539111f03bc7982dd5654412df",
+    "passed": true,
+    "test_count": 98,
+    "suites": [
+      {
+        "file": "test/test_esp32_full_sleep.py",
+        "passed": true,
+        "tests": 2
+      },
+      {
+        "file": "test/test_esp32_full_power_lifecycle.py",
+        "passed": true,
+        "tests": 7
+      },
+      {
+        "file": "test/test_esp32_usb_sleep.py",
+        "passed": true,
+        "tests": 7
+      },
+      {
+        "file": "test/test_usb_host_sleep_policy.py",
+        "passed": true,
+        "tests": 1
+      },
+      {
+        "file": "test/test_logging_sleep_contract.py",
+        "passed": true,
+        "tests": 3
+      },
+      {
+        "file": "test/test_wifi_ota_start.py",
+        "passed": true,
+        "tests": 10
+      },
+      {
+        "file": "test/test_wifi_ota_lifecycle.py",
+        "passed": true,
+        "tests": 15
+      },
+      {
+        "file": "test/test_webconfig_ap_start.py",
+        "passed": true,
+        "tests": 1
+      },
+      {
+        "file": "test/test_webconfig_station_ownership.py",
+        "passed": true,
+        "tests": 6
+      },
+      {
+        "file": "test/test_esp32_wifi_scan_fix.py",
+        "passed": true,
+        "tests": 5
+      },
+      {
+        "file": "test/test_esp32_wifi_scan_recipes.py",
+        "passed": true,
+        "tests": 4
+      },
+      {
+        "file": "test/test_wireless_control.py",
+        "passed": true,
+        "tests": 4
+      },
+      {
+        "file": "test/test_espnow_runtime.py",
+        "passed": true,
+        "tests": 1
+      },
+      {
+        "file": "test/test_espnow_radio_lifecycle.py",
+        "passed": true,
+        "tests": 5
+      },
+      {
+        "file": "test/test_rs232_mqtt_runtime.py",
+        "passed": true,
+        "tests": 2
+      },
+      {
+        "file": "test/test_companion_wifi_session.py",
+        "passed": true,
+        "tests": 5
+      },
+      {
+        "file": "test/test_companion_contact_sleep_contract.py",
+        "passed": true,
+        "tests": 12
+      },
+      {
+        "file": "test/test_usb_logging_watchdog_roles.py",
+        "passed": true,
+        "tests": 3
+      },
+      {
+        "file": "test/test_battery_charge_cli.py",
+        "passed": true,
+        "tests": 3
+      },
+      {
+        "file": "test/test_tbeam_charge_target.py",
+        "passed": true,
+        "tests": 2
+      }
+    ]
+  },
+  "hardware": {
+    "cases": [
+      {
+        "name": "upload_verified_8D26967FCC1A4984",
+        "passed": true,
+        "image_hash_verified": true,
+        "application_slot_changed": true,
+        "transport": "multipart"
+      },
+      {
+        "name": "full_automatic_unconfigured_boot_ap",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "setup_api_verified": true,
+        "cached_scan_state": "done",
+        "cached_scan_failed": false,
+        "cached_network_count": 3,
+        "fresh_boot": true,
+        "uptime_secs": 7,
+        "saved_webui_enabled": true,
+        "saved_espnow_enabled": true,
+        "automatic_espnow_suspended": true
+      },
+      {
+        "name": "full_automatic_boot_preferences_restored_before_manual",
+        "passed": true,
+        "saved_flags_restored": true,
+        "baseline_runtime_restored": true
+      },
+      {
+        "name": "full_webconfig_after_wifi_off_on_espnow_off",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "setup_api_verified": true,
+        "cached_scan_state": "done",
+        "cached_scan_failed": false,
+        "cached_network_count": 3
+      },
+      {
+        "name": "full_espnow_off_on",
+        "passed": true,
+        "runtime_on_verified": true
+      },
+      {
+        "name": "full_wifi_on_preserves_operator_espnow",
+        "passed": true,
+        "runtime_on_verified": true
+      },
+      {
+        "name": "full_webconfig_after_espnow_off_on",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "setup_api_verified": true,
+        "cached_scan_state": "done",
+        "cached_scan_failed": false,
+        "cached_network_count": 2,
+        "operator_espnow_preserved": true
+      },
+      {
+        "name": "full_master_off_on",
+        "passed": true,
+        "individual_on_rejected": true,
+        "captured_runtime_restored": true,
+        "independent_requested_owners_restored": true
+      },
+      {
+        "name": "full_webconfig_after_master_restore",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "setup_api_verified": true,
+        "cached_scan_state": "done",
+        "cached_scan_failed": false,
+        "cached_network_count": 2,
+        "operator_espnow_preserved": true
+      },
+      {
+        "name": "full_ota_after_master_off",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "page_sha256": "2ada609891d6393b54bdcc559bb2f7d2abb564d5cd27593b266706cc8d878ab4",
+        "raw_uploader": false
+      },
+      {
+        "name": "full_ota_repeat_after_stop",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "page_sha256": "2ada609891d6393b54bdcc559bb2f7d2abb564d5cd27593b266706cc8d878ab4",
+        "raw_uploader": false
+      },
+      {
+        "name": "full_webconfig_after_ota_stop",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "setup_api_verified": true,
+        "cached_scan_state": "done",
+        "cached_scan_failed": false,
+        "cached_network_count": 2,
+        "operator_espnow_preserved": true
+      },
+      {
+        "name": "upload_verified_EF44A3B4FE567589",
+        "passed": true,
+        "image_hash_verified": true,
+        "application_slot_changed": true,
+        "transport": "multipart",
+        "target_id": "4D015420",
+        "artifact_env": "heltec_v4_repeater_lora_ota_no_external_sensors",
+        "observed_env_display": "?"
+      },
+      {
+        "name": "minimal_explicit_ap",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "page_sha256": "7379d4c0bcc34c9a277c7faac9d97735693ee2a2fc27408ca81054433150a4d2",
+        "raw_uploader": true
+      },
+      {
+        "name": "minimal_repeat_ap",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "page_sha256": "7379d4c0bcc34c9a277c7faac9d97735693ee2a2fc27408ca81054433150a4d2",
+        "raw_uploader": true
+      },
+      {
+        "name": "minimal_implicit_ap",
+        "passed": true,
+        "fresh_beacon": true,
+        "associated": true,
+        "last_seen_ms": 0,
+        "frequency_mhz": 2412,
+        "bssid_sha256": "1287bbb9c9aecd02ff94be170a225216154149c63384369ca9f9023f7a15623b",
+        "http_status": 200,
+        "page_sha256": "7379d4c0bcc34c9a277c7faac9d97735693ee2a2fc27408ca81054433150a4d2",
+        "raw_uploader": true
+      },
+      {
+        "name": "upload_verified_8D26967FCC1A4984",
+        "passed": true,
+        "image_hash_verified": true,
+        "application_slot_changed": true,
+        "transport": "raw"
+      }
+    ],
+    "ok": true,
+    "current_measured": false,
+    "sleep_measured": false,
+    "usb_powered": true,
+    "flashed": true,
+    "source": "219e936ef82d16539111f03bc7982dd5654412df",
+    "cleanup_errors": [],
+    "baseline_image": {
+      "running": {
+        "body_bytes": 2101904,
+        "image_bytes": 2101960,
+        "body_hash16": "9822F1C138EA6D86"
+      },
+      "version": "v1.17.1.9-halo-keymind-cascade-dev-powerap2-bceea7e1 (Build: 06-Oct-2026)",
+      "active_slot": 6619136,
+      "inactive_slot": 65536,
+      "target_id": "E792A051",
+      "artifact_env": "heltec_v4_repeater"
+    },
+    "baseline_powersaving": "off",
+    "baseline_logging_output": "usb",
+    "baseline_saved_ssid_empty": true,
+    "sleep_limit": "USB-powered; baseline powersaving off and USB logging on; no current measurement",
+    "last_upload_attempt": {
+      "expected_hash": "8D26967FCC1A4984",
+      "raw_uploader": true
+    },
+    "temporary_saved_preferences_restored": true,
+    "serial_released": true,
+    "pi_wifi_restored": true,
+    "wired_route_preserved": true,
+    "temporary_profiles_removed": true,
+    "guard_stop_provenance": {
+      "error": "RuntimeError: exact V4 image did not reconnect",
+      "cleanup_errors": [
+        "restore Full/node: AssertionError: running target identity differs"
+      ],
+      "evidence_path": "/home/mikec/hwtest/v4-power-ap-219e936e-20261006/transaction-safe.json"
+    },
+    "resumed_after_optional_target_name_guard_stop": true,
+    "minimal_master_control_supported": false,
+    "full_restored": true,
+    "preferences_restored": true,
+    "identity_restored": true,
+    "acl_restored": true,
+    "runtime_restored": true,
+    "final_image": {
+      "body_hash16": "8D26967FCC1A4984",
+      "body_bytes": 2100528,
+      "image_bytes": 2100584,
+      "version": "v1.17.1.9-halo-keymind-cascade-dev-powerap3-219e936e (Build: 06-Oct-2026)",
+      "board": "Heltec V4.3 OLED",
+      "role": "repeater",
+      "hardware_id": "heltec_v4",
+      "target_id": "E792A051",
+      "artifact_env": "heltec_v4_repeater",
+      "observed_env_display": "heltec_v4_repeater",
+      "application_slot": 65536
+    }
+  }
+}
