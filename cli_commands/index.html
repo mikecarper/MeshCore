@@ -3613,6 +3613,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#configure-battery-charge-voltage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure battery charge voltage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#configure-nrf52-battery-protection" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6451,6 +6462,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#configure-battery-charge-voltage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configure battery charge voltage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#configure-nrf52-battery-protection" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6885,9 +6907,9 @@ retaining the two app slots required for LoRa OTA. Their normal CLI settings
 remain available.</p>
 <h3 id="switch-the-ota-release-channel-observer-builds">Switch the OTA release channel (observer builds)</h3>
 <ul>
-<li><code>ota branch</code> — shows the selected channel, the channel this build was made for, and the manifest base <code>ota check</code>/<code>ota update</code> will use.</li>
-<li><code>ota branch prod</code> (alias <code>stable</code>) / <code>ota branch beta</code> (alias <code>dev</code>) — pull future <code>ota update</code>s from that channel. The selection is saved; run <code>ota update</code> to switch.</li>
-<li><code>ota branch default</code> — follow the channel this build was made for.</li>
+<li><code>ota branch</code> - shows the selected channel, the channel this build was made for, and the manifest base <code>ota check</code>/<code>ota update</code> will use.</li>
+<li><code>ota branch prod</code> (alias <code>stable</code>) / <code>ota branch beta</code> (alias <code>dev</code>) - pull future <code>ota update</code>s from that channel. The selection is saved; run <code>ota update</code> to switch.</li>
+<li><code>ota branch default</code> - follow the channel this build was made for.</li>
 </ul>
 <p>The selector is saved only after the preferences transaction succeeds. A queued
 <code>ota update</code> keeps the channel it checked, even if <code>ota branch</code> is changed before
@@ -11077,6 +11099,17 @@ manufacturer images and the boards still requiring untouched factory dumps.</p>
 <p><strong>Usage:</strong> <code>get pwrmgt.bootmv</code></p>
 <p><strong>Note:</strong> Returns an error on boards without power management support.</p>
 <hr />
+<h4 id="configure-battery-charge-voltage">Configure battery charge voltage</h4>
+<p>T-Beam SX1262/SX1276 and T-Beam S3 Supreme support persistent charger-voltage
+selection through the fitted AXP192 or AXP2101 PMU:</p>
+<pre><code class="language-text">get charge.voltage.options
+get charge.voltage
+set charge.voltage 4.1
+</code></pre>
+<p>Values are exact supported targets in volts. Neither T-Beam PMU supports 3.65 V.
+Heltec Mesh Solar's CN3795 charge voltage is set by its Li-ion or LiFePO4 hardware
+version, so these commands report that limitation without changing BMS settings.
+See <a href="../charge_voltage/">charge-voltage behavior and supported targets</a>.</p>
 <h4 id="configure-nrf52-battery-protection">Configure nRF52 battery protection</h4>
 <p><strong>Usage:</strong> <code>get pwrmgt.bootlock</code>, <code>set pwrmgt.bootlock &lt;2500-4200&gt;</code></p>
 <p><strong>Usage:</strong> <code>get pwrmgt.cutoff</code>, <code>set pwrmgt.cutoff &lt;off|2500-4200&gt;</code></p>
