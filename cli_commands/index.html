@@ -8722,10 +8722,13 @@ whether power saving is allowed; active USB, logging and network services may
 keep the hardware awake. Actual sleep depends on the board.</p>
 <p>On ESP32 infrastructure boards using an external USB-to-UART chip, such as the
 Heltec V3's CP2102, the native USB host guard cannot detect an attached computer.
-With all bridges and USB logging stopped, light sleep can lose a console
-command. Use <code>set powersaving off</code> for reliable USB configuration in that state.
-If the console is already unresponsive, reset the board and send that command
-within the first 120 seconds after boot, before infrastructure sleep is allowed.
+Current source blocks MCU light sleep while the raw UART console driver is
+enabled, preserving the first web-console command after idle even with all
+bridges and USB logging stopped. This guard has no idle timeout and also covers
+a computer's first connection after boot. These builds enable that console at
+startup, so MCU light sleep is unavailable while it remains enabled, including
+on battery. <code>set powersaving on</code> still enables sensor/GPS power-saving policies;
+the CPU continues normal idle yielding while keeping the console available.
 A running MQTT, RS232 or ESP-NOW bridge keeps infrastructure awake even when
 <code>get powersaving</code> reports <code>on</code>; that readback alone does not prove MCU sleep.
 Adding UART wake alone would still discard the characters that trigger wake,
