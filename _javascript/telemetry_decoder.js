@@ -17,6 +17,59 @@
   const METERS_PER_DEGREE = 111320;
   const DEGREES_TO_RADIANS = Math.PI / 180;
 
+  // Keep the browser form out of GitHub's Markdown preview.
+  const DECODER_MARKUP = `
+  <div class="telemetry-examples" aria-label="Load an example reply">
+    <strong>Try an analyzer example:</strong>
+    <button type="button" data-telemetry-example="packetTemperature">Temperature packet</button>
+    <button type="button" data-telemetry-example="packetVoltage">Voltage packet</button>
+    <button type="button" data-telemetry-example="packetExternalVoltage">I2C voltage packet</button>
+    <button type="button" data-telemetry-example="externalVoltage">I2C voltage CLI page</button>
+  </div>
+
+  <label for="telemetry-reply-input">Raw packet or payload hex</label>
+  <textarea
+    id="telemetry-reply-input"
+    data-role="input"
+    spellcheck="false"
+    autocomplete="off"
+    placeholder="Paste hexadecimal Raw Data from the analyzer packet page"
+    aria-describedby="telemetry-input-help"
+  ></textarea>
+  <p class="telemetry-tool-help" id="telemetry-input-help">
+    Spaces, line breaks, colons, dashes, a leading <code>0x</code>, and a quoted
+    JSON field are accepted. CLI Base64 replies are also auto-detected. Paste
+    multiple compatible packet or reply lines together to merge them by
+    timestamp before downloading one CSV. Press Ctrl/Command+Enter to decode.
+  </p>
+
+  <div class="telemetry-actions">
+    <button class="telemetry-primary-action" type="button" data-role="decode">Decode telemetry</button>
+    <button type="button" data-role="clear">Clear</button>
+    <label class="telemetry-local-time">
+      <input type="checkbox" data-role="local-time">
+      Show browser-local time
+    </label>
+  </div>
+
+  <div class="telemetry-error" data-role="error" role="alert" aria-live="polite" hidden></div>
+
+  <section class="telemetry-results" data-role="results" aria-live="polite" hidden>
+    <div class="telemetry-results-header">
+      <h2 data-role="result-title">Decoded telemetry</h2>
+      <button type="button" data-role="download">Download CSV</button>
+    </div>
+    <dl class="telemetry-summary" data-role="summary"></dl>
+    <div class="telemetry-warnings" data-role="warnings" hidden>
+      <strong>Decode notes</strong>
+      <ul data-role="warning-list"></ul>
+    </div>
+    <div class="telemetry-table-wrap">
+      <table class="telemetry-table" data-role="table"></table>
+    </div>
+  </section>
+`;
+
   const EXAMPLES = Object.freeze({
     packetTemperature: Object.freeze({
       label: "Analyzer temperature packet",
@@ -975,6 +1028,9 @@
   function initializeDecoder() {
     const root = document.querySelector("[data-telemetry-decoder]");
     if (!root) return;
+
+    // This is trusted, static markup; pasted telemetry is rendered as text below.
+    root.innerHTML = DECODER_MARKUP;
 
     const input = root.querySelector("[data-role='input']");
     const decodeButton = root.querySelector("[data-role='decode']");
