@@ -617,6 +617,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../full_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full firmware profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../role_feature_switches/" class="md-nav__link">
         
   
@@ -2432,9 +2460,15 @@ MOTA services can remain available.</p>
 <code>set wifi.powersave min</code> for normal BLE/WiFi coexistence; inspect the effective
 state with <code>get wifi.powersave</code>. <code>max</code> is available only where the firmware's
 radio coexistence policy permits it.</p>
-<p>Most Full Companions provide BLE alongside their other transports. There is
-no universal <code>set bluetooth off</code> command. SenseCAP Indicator selects one
-secondary wireless transport per boot:</p>
+<p>Most Full Companions provide BLE alongside their other transports. On
+Bluetooth-capable ESP32 and nRF52 Companions, <code>get bluetooth</code> reports the
+running state and <code>set bluetooth on|off</code> saves the service preference.
+Plain <code>off</code> requires another active management connection;
+<code>set bluetooth off force</code> explicitly permits disconnecting the only client.
+Reboot does not undo a saved-off preference. See
+<a href="../cli_commands/#turn-bluetooth-on-or-off-companion">Bluetooth controls</a> for
+reply draining, connection checks, and unavailable boot modes.</p>
+<p>SenseCAP Indicator selects one secondary wireless transport per boot:</p>
 <pre><code class="language-text">set companion.transport wifi
 reboot
 </code></pre>

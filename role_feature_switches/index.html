@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://mikecarper.github.io/MeshCore/role_feature_switches/">
       
       
-        <link rel="prev" href="../faq/">
+        <link rel="prev" href="../full_profiles/">
       
       
         <link rel="next" href="../full_companion_features/">
@@ -597,6 +597,34 @@
     
   
     Frequently Asked Questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full firmware profiles
   
 
     
@@ -2656,7 +2684,13 @@ is accepted only where the BLE/WiFi coexistence policy allows it. Read back
 with <code>get wifi.powersave</code>. This is separate from device power saving and RXPS.
 The assigned WiFi button/display switch controls WiFi services on supported
 boards. <code>stop webconfig</code> closes only the portal; it is not a WiFi master switch.
-There is no universal Bluetooth-off or Ethernet-off text command.</p>
+On Bluetooth-capable ESP32 and nRF52 Companions, <code>get bluetooth</code> reports the
+running state and <code>set bluetooth on|off</code> saves the service preference.
+Plain <code>off</code> requires another active management connection;
+<code>set bluetooth off force</code> explicitly permits disconnecting the only client.
+See <a href="../cli_commands/#turn-bluetooth-on-or-off-companion">Bluetooth controls</a>
+for reply draining and boot-transport restrictions. Ethernet controls remain
+specific to the board's recipe; there is no universal Ethernet-off command.</p>
 <p><strong>SenseCAP Indicator Full only:</strong> <code>set companion.transport wifi</code> followed by
 <code>reboot</code> selects WiFi; <code>set companion.transport ble</code> followed by <code>reboot</code>
 selects Bluetooth. Check <code>get companion.transport</code>. USB remains available.
