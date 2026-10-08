@@ -28,10 +28,13 @@ or storage differences when a choice between different images is needed.
 RAK3401 and RAK4631 repeaters use one unified image per sensor policy for
 supported internal and external OTA storage. **Full** and **Reduced** choose
 optional sensor drivers; they do not select a storage module. The unified
-RAK4631 image also includes RS-232 on UART2. A GPS-free Serial1 image remains
-separate because the unified image reserves UART1 for potentially powered
-GPS hardware. Header-connected W25 flash also occupies UART1 pins. Ethernet
-remains a separate RAK4631 hardware image. LoRa OTA still requires the matching
+RAK4631 image also includes RS-232 on UART2, which is recommended for new
+installations. The unified image reserves UART1 for potentially powered GPS
+hardware; header-connected W25 flash also occupies UART1 pins. Legacy GPS-free
+Serial1 downloads remain available through exact-filename search for existing
+wiring, but are omitted from normal choices when the matching unified sensor
+profile is available. Ethernet remains a separate RAK4631 hardware image.
+LoRa OTA still requires the matching
 OTAFIX bootloader and a package compatible with the installed target.
 
 The picker reads public release metadata from GitHub. It does not upload device
@@ -253,8 +256,9 @@ while leaving other choices open. **Clear all choices** removes the picker
 parameters from the URL. Changes update the current browser-history entry
 without reloading the page or adding a Back-button entry for every click.
 
-For example, [RAK3401 repeater with internal storage](?hardware=RAK_3401&role=repeater&ota=lora-receiver&variant=no-external-sensors)
-preselects that board, role, OTA capability, and storage profile.
+For example, [RAK3401 unified Full repeater](?hardware=RAK_3401&role=repeater&ota=lora-receiver&feature=full&variant=default)
+preselects that board, role, OTA capability, and Full sensor policy. Supported
+internal or external storage is detected by the unified image.
 
 The query parameters are `chipFamily`, `hardwareFamily`, `hardware`, `role`,
 `logging`, `ota`, `mode`, `feature`, `variant`, and `install`. Values use the

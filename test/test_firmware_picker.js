@@ -1177,15 +1177,14 @@ const currentCatalog = picker.buildCatalog([
 assert.strictEqual(currentCatalog.rows.length, currentAssets.length);
 assert(currentCatalog.profiles.every(profile => profile.controls && profile.chipFamily !== 'unknown'));
 for (const [hardware, bases] of [
-  ['RAK_4631', ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet',
-    'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors']],
+  ['RAK_4631', ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet']],
   ['RAK_3401', ['RAK_3401_repeater_unified_lora_ota']],
 ]) {
   const context = {hardware, role: 'repeater'};
   const expected = bases.flatMap(base => ['full', 'reduced'].map(policy => base + '-' + policy));
   const visible = currentCatalog.profiles.filter(profile => picker.profileMatchesFacets(profile, context));
   assert.deepStrictEqual(visible.map(profile => profile.target).sort(), expected.sort(),
-    hardware + ' must retain only combined storage/UART2 images, GPS-free UART1 and Ethernet variants');
+    hardware + ' must recommend only combined storage/UART2 images and genuine Ethernet variants');
   const choices = picker.firmwareProfileChoices(currentCatalog.profiles, context);
   assert.strictEqual(choices.length, expected.length, hardware + ' must have one choice per real image');
   assert.strictEqual(new Set(choices.map(choice => choice.label)).size, choices.length,
@@ -1203,11 +1202,12 @@ for (const [hardware, bases] of [
   }
 }
 for (const policy of ['full', 'reduced']) {
-  const serial1 = currentCatalog.profiles.find(profile => profile.target ===
-    'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors-' + policy);
-  assert(serial1 && serial1.controls.gps === false,
-    'The UART1 image must remain usable without the combined image\'s GPS reservation');
-  assert(!picker.runtimeDirections(serial1, {mode: 'rs232'}).some(section => section.title === 'GPS'));
+  const target = 'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors-' + policy;
+  assert(!currentCatalog.profiles.some(profile => profile.target === target),
+    'Normal recommendations must prefer UART2 over legacy Serial1');
+  assert(currentCatalog.rows.some(row => row.target === target && row.name.startsWith(target + '-')),
+    'Existing Serial1 installations must retain exact compatibility downloads');
+  assert.strictEqual(currentControls.profiles[target].gps, false);
 }
 const rakBridgeBase = 'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors';
 const rakPartialAssets = currentAssets.filter(file =>
@@ -1218,6 +1218,13 @@ const rakPartialCatalog = picker.buildCatalog([
 ], currentControls);
 assert(rakPartialCatalog.profiles.some(profile => profile.target === rakBridgeBase + '-reduced'),
   'A Full combined image must not hide the only available Reduced bridge image');
+const rakInversePartialCatalog = picker.buildCatalog([
+  release(currentControls.familyTag, '2026-10-08T00:00:00Z', currentAssets.filter(file =>
+    file.name.startsWith('RAK_4631_repeater_unified_lora_ota-reduced-') ||
+    file.name.startsWith(rakBridgeBase + '-full-'))),
+], currentControls);
+assert(rakInversePartialCatalog.profiles.some(profile => profile.target === rakBridgeBase + '-full'),
+  'A Reduced combined image must not hide the only available Full bridge image');
 const expandedEsp32 = currentCatalog.profiles.find(profile =>
   profile.target === 'Ebyte_EoRa-S3_Repeater-full-usb-wifi');
 assert(expandedEsp32);
