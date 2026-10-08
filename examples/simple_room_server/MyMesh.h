@@ -409,6 +409,12 @@ protected:
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len) override;
   void onGroupPacketRecv(mesh::Packet* packet) override;
+#if MESH_ENABLE_FLEET_CONTROL
+  void onSendComplete(mesh::Packet* packet) override;
+  void onSendFail(mesh::Packet* packet) override;
+  void onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* original,
+                                uint8_t priority) override;
+#endif
 #if defined(WITH_MQTT_NEIGHBORS)
   void onControlDataRecv(mesh::Packet* packet) override;
 #endif
@@ -431,6 +437,7 @@ protected:
 #endif
 
 public:
+  bool supportsFleetControl() const override { return true; }
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
 
   void begin(FILESYSTEM* fs);

@@ -1166,8 +1166,34 @@ void MyMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
 }
 
 void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_cli.fleetChannel()) {
+    TransportKey scope;
+    const bool known = mesh::captureFleetReplyScope(region_map, recv_pkt_region, packet, scope);
+    _cli.fleetChannel()->receive(packet, *this, known ? &scope : nullptr);
+  }
+#endif
   _clock_sync.observeGroupPacket(packet);
 }
+
+#if MESH_ENABLE_FLEET_CONTROL
+void MyMesh::onSendComplete(mesh::Packet* packet) {
+  mesh::Mesh::onSendComplete(packet);
+  if (_cli.fleetChannel()) _cli.fleetChannel()->complete(packet, _cli.radioProfiles());
+}
+
+void MyMesh::onSendFail(mesh::Packet* packet) {
+  mesh::Mesh::onSendFail(packet);
+  if (_cli.fleetChannel()) _cli.fleetChannel()->fail(packet, _cli.radioProfiles());
+}
+
+void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet,
+                                     const mesh::Packet* original,
+                                     uint8_t priority) {
+  mesh::Mesh::onRadioProfileCopyQueued(packet, original, priority);
+  if (_cli.fleetChannel()) _cli.fleetChannel()->copy(packet, original);
+}
+#endif
 
 #if defined(WITH_MQTT_NEIGHBORS)
 
@@ -2679,6 +2705,18 @@ void MyMesh::loop() {
   servicePendingSerialOutput();
 #endif
   _cli.loop();
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_cli.fleetChannel()) {
+    _cli.fleetChannel()->service(*this, _cli.radioProfiles(), _prefs.node_name,
+        [this](uint32_t sequence, char* command, char* reply) {
+          if (region_load_active) {
+            strcpy(reply, "Err - region load active; retry later");
+            return;
+          }
+          handleCommand(sequence, command, reply);
+        });
+  }
+#endif
   _clock_sync.loop();
 #if MESH_ENABLE_TELEMETRY_HISTORY
   sampleTelemetryHistory();

@@ -245,6 +245,12 @@ static bool resolveDataScope(DataRouteState& route, TransportKey& scope,
 void CommonCLI::beginManagement(mesh::Mesh& mesh, FILESYSTEM* fs) {
   _management_mesh = &mesh; _management_fs = fs;
   _management_last_ms = millis(); _management_uptime_ms = _management_last_ms;
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_callbacks->supportsFleetControl()
+      && (fs->exists("/fleet_channel") || fs->exists("/fleet_channel.bak"))) {
+    _fleet_channel = new (std::nothrow) mesh::FleetChannel(fs);
+  }
+#endif
   if (!_data_route) {
     mesh::hilStartupTrace("management_route_begin");
     _data_route = new (std::nothrow) mesh::DataRouteState;
@@ -264,6 +270,25 @@ void CommonCLI::beginManagement(mesh::Mesh& mesh, FILESYSTEM* fs) {
   }
   mesh::hilStartupTrace("management_probe_ready");
 }
+
+#if MESH_ENABLE_FLEET_CONTROL
+bool CommonCLI::handleFleetCommand(const char* command, char* reply) {
+  const bool fleet_command = !strncmp(command, "get fleet.", 10)
+      || !strncmp(command, "set fleet.", 10);
+  if (!fleet_command) return false;
+  if (!_callbacks->supportsFleetControl()) {
+    strcpy(reply, "Err - fleet control is available on infrastructure roles"); return true;
+  }
+  if (!_fleet_channel) _fleet_channel = new (std::nothrow) mesh::FleetChannel(_management_fs);
+  if (!_fleet_channel) {
+    strcpy(reply, "Err - fleet control memory unavailable"); return true;
+  }
+  if (!_fleet_channel->handleConfig(command, reply, 160)) {
+    strcpy(reply, "Err - use fleet.channel, fleet.controller, or fleet.stats");
+  }
+  return true;
+}
+#endif
 
 void CommonCLI::loopManagement() {
   const uint32_t now = millis();

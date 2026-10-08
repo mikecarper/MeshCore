@@ -4,6 +4,7 @@
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
 #include <helpers/CompanionTxRoutingCLI.h>
+#include <helpers/FleetCommand.h>
 #include "CompanionBluetooth.h"
 #include "CompanionWireless.h"
 #include "CompanionRetry.h"
@@ -9704,6 +9705,107 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       && meshBleTraceCommand(command, reply, reply_capacity)) return true;
 #endif
 
+#if MESH_ENABLE_FLEET_CONTROL
+  if (!strncmp(command, "fleet", 5)
+      && (command[5] == 0 || command[5] == ' ' || command[5] == '\t')) {
+    // Only the attached Companion client can originate multicast management.
+    // A remote CLI peer must not borrow this Companion's signing identity.
+    if (sender_timestamp != 0) {
+      snprintf(reply, reply_capacity, "Error: fleet send requires local Companion access");
+      return true;
+    }
+    const char* text = command + 5;
+    while (*text == ' ' || *text == '\t') ++text;
+    if (strncmp(text, "send", 4)
+        || (text[4] != ' ' && text[4] != '\t')) {
+      snprintf(reply, reply_capacity,
+               "Error: use fleet send <channel-index> <all|64-hex-key> <command>");
+      return true;
+    }
+    text += 4;
+    while (*text == ' ' || *text == '\t') ++text;
+    uint32_t channel_index = 0;
+    bool have_index = false;
+    while (*text >= '0' && *text <= '9') {
+      have_index = true;
+      const uint8_t digit = *text++ - '0';
+      if (channel_index > (0xFFFFFFFFUL - digit) / 10UL) {
+        snprintf(reply, reply_capacity, "Error: invalid fleet channel index");
+        return true;
+      }
+      channel_index = channel_index * 10UL + digit;
+    }
+    if (!have_index || channel_index >= MAX_GROUP_CHANNELS
+        || (*text != ' ' && *text != '\t')) {
+      snprintf(reply, reply_capacity, "Error: invalid fleet channel index");
+      return true;
+    }
+    while (*text == ' ' || *text == '\t') ++text;
+    // Reuse the wire buffer for the temporary target token. Encoding happens
+    // only after the target has been parsed into its separate binary buffer.
+    uint8_t payload[mesh::FleetCommand::MaxPayloadLength];
+    const size_t target_length = strcspn(text, " \t");
+    if (target_length > PUB_KEY_SIZE * 2U
+        || text[target_length] == 0) {
+      snprintf(reply, reply_capacity, "Error: fleet target must be all or a full public key");
+      return true;
+    }
+    memcpy(payload, text, target_length);
+    payload[target_length] = 0;
+    uint8_t target[mesh::FleetCommand::TargetSize];
+    if (!mesh::FleetCommand::parseTarget((const char*)payload, target)) {
+      snprintf(reply, reply_capacity, "Error: fleet target must be all or a full public key");
+      return true;
+    }
+    text += target_length;
+    while (*text == ' ' || *text == '\t') ++text;
+    if (!mesh::FleetCommand::commandAllowed(text)) {
+      snprintf(reply, reply_capacity, "Error: command is not permitted for fleet management");
+      return true;
+    }
+    ChannelDetails channel;
+    if (!getChannel((int)channel_index, channel) || !channel.name[0]) {
+      snprintf(reply, reply_capacity, "Error: fleet channel is not configured");
+      return true;
+    }
+    bool padded_key = true;
+    for (size_t i = mesh::FleetCommand::KeySize;
+         i < sizeof(channel.channel.secret); ++i)
+      padded_key = padded_key && channel.channel.secret[i] == 0;
+    if (!padded_key || !mesh::FleetCommand::privateKeyAllowed(channel.channel.secret)) {
+      snprintf(reply, reply_capacity, "Error: fleet requires a private 128-bit channel key");
+      return true;
+    }
+    const uint32_t sequence = getRTCClock()->getCurrentTime();
+    static uint32_t last_fleet_sequence = 0;
+    if (sequence < mesh::FleetCommand::MinEpoch
+        || sequence > 0xFFFFFFFFUL - mesh::FleetCommand::MaxLifetime) {
+      snprintf(reply, reply_capacity, "Error: set the Companion clock before fleet send");
+      return true;
+    }
+    if (sequence <= last_fleet_sequence) {
+      snprintf(reply, reply_capacity, "Error: wait for the next clock second before fleet send");
+      return true;
+    }
+    const size_t length = mesh::FleetCommand::encode(
+        self_id, channel.channel.secret, sequence,
+        sequence + mesh::FleetCommand::MaxLifetime, target, text,
+        payload, sizeof(payload));
+    if (!length) {
+      snprintf(reply, reply_capacity, "Error: fleet command is too long or invalid");
+    } else if (!sendGroupData(channel.channel, nullptr, OUT_PATH_UNKNOWN,
+                              mesh::FleetCommand::DataType, payload, (int)length)) {
+      snprintf(reply, reply_capacity, "Error: could not queue fleet command");
+    } else {
+      last_fleet_sequence = sequence;
+      snprintf(reply, reply_capacity, "OK - fleet command queued; seq=%lu",
+               (unsigned long)sequence);
+    }
+    memset(payload, 0, sizeof(payload));
+    return true;
+  }
+
+#endif
   if (_radio_profiles.handle(command, reply, reply_capacity, sender_timestamp != 0)) return true;
   if (!strncmp(command, "set tempradio ", 14)) command += 4;
   if (!strcmp(command, "get tempradio")) command += 4;

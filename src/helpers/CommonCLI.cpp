@@ -2856,6 +2856,9 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
+#if MESH_ENABLE_FLEET_CONTROL
+    if (handleFleetCommand(command, reply)) return;
+#endif
 #if MESH_BATTERY_CHARGE_CONTROL
     if (mesh::power::handleBatteryChargeCommand(*_board, command, reply, 160)) return;
 #endif

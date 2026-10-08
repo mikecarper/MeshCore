@@ -2816,6 +2816,13 @@ void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32
 }
 
 void MyMesh::onGroupPacketRecv(mesh::Packet* packet) {
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_cli.fleetChannel()) {
+    TransportKey scope;
+    const bool known = mesh::captureFleetReplyScope(region_map, recv_pkt_region, packet, scope);
+    _cli.fleetChannel()->receive(packet, *this, known ? &scope : nullptr);
+  }
+#endif
 #if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_CLOCK_SYNC
   // The base Mesh calls this for every unseen, structurally valid group packet
   // before the forwarding decision. Public-channel decryption below also
@@ -4156,6 +4163,9 @@ bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope,
 
 void MyMesh::onSendComplete(mesh::Packet* packet) {
   mesh::Mesh::onSendComplete(packet);
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_cli.fleetChannel()) _cli.fleetChannel()->complete(packet, _cli.radioProfiles());
+#endif
   if (temp_radio_reply_barrier.complete(packet) && !temp_radio_reply_barrier.waiting()) finishRadioReply(true);
   if (packet == pending_battery_alert_packet) {
     pending_battery_alert_packet = NULL;
@@ -4166,12 +4176,18 @@ void MyMesh::onSendComplete(mesh::Packet* packet) {
 
 void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* original,
                                      uint8_t priority) {
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_cli.fleetChannel()) _cli.fleetChannel()->copy(packet, original);
+#endif
   temp_radio_reply_barrier.trackCopy(original, packet);
   mesh::Mesh::onRadioProfileCopyQueued(packet, original, priority);
 }
 
 void MyMesh::onSendFail(mesh::Packet* packet) {
   mesh::Mesh::onSendFail(packet);
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_cli.fleetChannel()) _cli.fleetChannel()->fail(packet, _cli.radioProfiles());
+#endif
   if (temp_radio_reply_barrier.fail(packet)) {
     // Failure of every acknowledgement copy cancels the unconfirmed
     // handoff. A later cached-command retry may replay the reply, but it does
@@ -12585,6 +12601,19 @@ void MyMesh::loop() {
   _cli.loop();
   serviceRadioReplyDeadline();
   processDeferredCliCommand();
+#if MESH_ENABLE_FLEET_CONTROL
+  if (_cli.fleetChannel()) {
+    _cli.fleetChannel()->service(*this, _cli.radioProfiles(), _prefs.node_name,
+        [this](uint32_t sequence, char* command, char* reply) {
+          if (region_load_active) {
+            strcpy(reply, "Err - region load active; retry later"); return;
+          }
+          // Signature and a strict command allowlist are checked before this
+          // dispatch. Fleet capability never grants unrestricted admin CLI.
+          handleCommand(sequence, nullptr, command, reply);
+        });
+  }
+#endif
   servicePostMeshLoop();
 #if defined(ENABLE_OTA) && OTA_DYNAMIC_CONTEXT
   mesh::ota::ota_service_temp_radio_context(isAnyTempRadioActive());

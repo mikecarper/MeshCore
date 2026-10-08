@@ -18,6 +18,7 @@ HARNESS = r'''
 #include <helpers/RadioProfileCLI.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/radiolib/RXPowerSaving.h>
+#include "companion_fleet_dispatch.h"
 #include <sys/stat.h>
 #include <limits>
 #define constrain(value,low,high) ((value)<(low)?(low):((value)>(high)?(high):(value)))
@@ -57,7 +58,8 @@ struct Radio : mesh::Radio {
 };
 struct Sensors { double node_lat=0,node_lon=0; } sensors;
 @COMMAND_FILTER@
-struct MyMesh {
+struct MyMesh : CompanionFleetFixture {
+  uint8_t self_id = 0; // Signing is unreachable in this radio-only fixture.
   CompanionNodePrefs _prefs;
   DataStore store;
   DataStore* _store=&store;
@@ -293,6 +295,7 @@ public:
             build = subprocess.run([compiler,'-std=c++17','-Wall','-Wextra',
                 '-Wno-unused-parameter','-Wno-sign-compare','-Wno-reorder',
                 '-DESP32_PLATFORM=1',*flags,'-I',str(work),
+                '-I',str(ROOT/'test/fixtures'),
                 '-I',str(ROOT/'test/fixtures/radio_profiles/mocks'),
                 '-I',str(ROOT/'test/mocks'),'-I',str(ROOT/'src'),
                 '-I',str(ROOT/'src/helpers'),'-I',str(ROOT),str(work/'test.cpp'),

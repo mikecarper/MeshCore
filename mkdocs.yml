@@ -74,6 +74,7 @@ nav:
           - host_cli_service.md
       - Radio, networking, and power:
           - radio_profiles.md
+          - fleet_management.md
           - carrier_wave.md
           - espnow_bridge_setup.md
           - WiFi.md

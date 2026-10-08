@@ -296,6 +296,7 @@ typedef uint32_t  DispatcherAction;
  *      and scheduling of outbound Packets.
 */
 class Dispatcher {
+  friend class FleetChannel;  // bounded deferred receiver and exact reply retirement
   enum class OutboundCancellation : uint8_t { None, Cancelled, Delivered };
   Packet* outbound;  // current outbound packet
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;

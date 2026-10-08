@@ -16,6 +16,7 @@ Choose firmware with the [firmware picker](firmware_picker.md). For help with a 
 - [Feature switches by role](role_feature_switches.md) and [Full Companion features](full_companion_features.md)
 - [Firmware update guide](ota_user_guide.md), [easy LoRa OTA](ota_easy.md), and [scripted LoRa OTA](lora_ota_automation.md)
 - [CLI commands](cli_commands.md), [availability by build](cli_build_matrix.md), and [radio profiles](radio_profiles.md)
+- [Private fleet management](fleet_management.md): signed filtering and secondary-radio commands for a fleet or one node
 - [Companion protocol](companion_protocol.md), [packet format](packet_format.md), and [QR codes](qr_codes.md)
 
 The navigation groups the remaining guides under Documentation, including board-specific updates, networking, power, and protocol references.

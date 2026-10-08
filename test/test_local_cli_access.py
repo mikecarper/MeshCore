@@ -20,6 +20,7 @@ PREAMBLE = r'''
 #include <helpers/CLICommandUtils.h>
 #include <helpers/RadioProfileCommandUtils.h>
 #include <helpers/BatteryChargeCLI.h>
+#include "companion_fleet_dispatch.h"
 #define ESP32 1
 #define WIFI_SSID "test"
 #define WITH_MQTT_BRIDGE 1
@@ -113,7 +114,7 @@ struct WebConfigServer {
 };
 const char* FIRMWARE_VERSION="test";
 const char* FIRMWARE_BUILD_DATE="test";
-struct MyMesh {
+struct MyMesh : CompanionFleetFixture {
   mesh::RadioProfileCLI _radio_profiles;
   Identity self_id;
   Store store; Store* _store=&store;
@@ -163,6 +164,11 @@ SCENARIOS = r'''
 int main() {
   MyMesh node;
   char reply[160] = {};
+  for (uint32_t timestamp : {0u, 100u}) {
+    node.onCLICommandRecv(ContactInfo{}, nullptr, timestamp,
+                          "fleet send 1 all set radio2 off", reply);
+    assert(strstr(reply, "requires local Companion access"));
+  }
   assert(node.handleCommand("set charge.voltage 4.1",0,reply));
   assert(board.charge_target==4100 && strstr(reply,"saved"));
   for(uint32_t stamp:{0u,100u}) {
@@ -365,6 +371,7 @@ int main() {
                 binary = Path(temp) / "test"
                 result = subprocess.run([
                     "c++", "-std=c++17", "-x", "c++", "-", "-I"+str(ROOT / "src"),
+                    "-I"+str(ROOT / "test/fixtures"),
                     "-DENABLE_PRIVATE_KEY_EXPORT="+str(export),
                     *(["-DWITH_WEBCONFIG=1"] if webconfig else []),
                     *SANITIZER_FLAGS, "-o", str(binary),

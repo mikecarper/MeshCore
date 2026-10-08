@@ -15,6 +15,10 @@
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/RadioProfileCLI.h>
 #include <helpers/WirelessControl.h>
+#include <helpers/FleetCommand.h>
+#if MESH_ENABLE_FLEET_CONTROL
+#include <helpers/FleetChannel.h>
+#endif
 
 #ifndef DEFAULT_CAD_ENABLED
   #define DEFAULT_CAD_ENABLED 0
@@ -478,6 +482,7 @@ struct LegacyObserverTail {
 
 class CommonCLICallbacks {
 public:
+  virtual bool supportsFleetControl() const { return false; }
   // True only after an actual NTP response this boot, not a plausible RTC.
   virtual bool managementNtpSynced() const { return false; }
   virtual mesh::Radio* getProfileRadio() { return nullptr; }
@@ -831,6 +836,10 @@ class CommonCLI {
   bool _common_save_succeeded = false;
   uint32_t _prefs_save_failures = 0;
   mesh::RadioProfileCLI _radio_profiles;
+#if MESH_ENABLE_FLEET_CONTROL
+  mesh::FleetChannel* _fleet_channel = nullptr;  // allocate only when enrolled
+  bool handleFleetCommand(const char* command, char* reply);
+#endif
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
   void savePrefs(
@@ -887,6 +896,9 @@ public:
                               uint16_t preamble);
   mesh::RadioProfileCLI& radioProfiles() { return _radio_profiles; }
   const mesh::RadioProfileCLI& radioProfiles() const { return _radio_profiles; }
+#if MESH_ENABLE_FLEET_CONTROL
+  mesh::FleetChannel* fleetChannel() { return _fleet_channel; }
+#endif
   static bool calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw, uint32_t preamble,
                                           uint32_t* rx_us, uint32_t* sleep_us);
   static bool recalculateRxPowerSavingFromLevel(NodePrefs* prefs);
