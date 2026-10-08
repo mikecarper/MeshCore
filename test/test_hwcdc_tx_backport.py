@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from cpp_source import body
 
 ROOT=Path(__file__).resolve().parents[1]
 CORE=ROOT/'test/fixtures/hwcdc_tx_backport'
@@ -15,15 +16,6 @@ module=importlib.util.module_from_spec(spec)
 exec(compile(Path(spec.origin).read_text(),spec.origin,'exec'),module.__dict__)
 RAW=(CORE/'HWCDC.cpp').read_text()
 PATCHED=module.patched_hwcdc_source(RAW)
-
-def body(text,signature):
-    start=text.index(signature);open_=text.index('{',start);depth=0
-    for end in range(open_,len(text)):
-        if text[end]=='{':depth+=1
-        elif text[end]=='}':
-            depth-=1
-            if not depth:return text[start:end+1]
-    raise AssertionError('unclosed function')
 
 HARNESS=r'''
 #include <algorithm>

@@ -276,6 +276,7 @@ jobs:
 
       - name: Verify official web console framing and power-saving idle sessions
         run: |
+          python3 -B test/test_cpp_source.py -v
           python3 -B test/test_official_web_console.py -v
           python3 -B test/test_hil_linux_web_serial.py -v
           python3 -B test/test_hil_slowfi_guard.py -v
