@@ -1177,14 +1177,15 @@ const currentCatalog = picker.buildCatalog([
 assert.strictEqual(currentCatalog.rows.length, currentAssets.length);
 assert(currentCatalog.profiles.every(profile => profile.controls && profile.chipFamily !== 'unknown'));
 for (const [hardware, bases] of [
-  ['RAK_4631', ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet']],
+  ['RAK_4631', ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet',
+    'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors']],
   ['RAK_3401', ['RAK_3401_repeater_unified_lora_ota']],
 ]) {
   const context = {hardware, role: 'repeater'};
   const expected = bases.flatMap(base => ['full', 'reduced'].map(policy => base + '-' + policy));
   const visible = currentCatalog.profiles.filter(profile => picker.profileMatchesFacets(profile, context));
   assert.deepStrictEqual(visible.map(profile => profile.target).sort(), expected.sort(),
-    hardware + ' must recommend only combined storage/bridge images and genuine Ethernet variants');
+    hardware + ' must retain only combined storage/UART2 images, GPS-free UART1 and Ethernet variants');
   const choices = picker.firmwareProfileChoices(currentCatalog.profiles, context);
   assert.strictEqual(choices.length, expected.length, hardware + ' must have one choice per real image');
   assert.strictEqual(new Set(choices.map(choice => choice.label)).size, choices.length,
@@ -1195,11 +1196,18 @@ for (const [hardware, bases] of [
     if (hardware === 'RAK_4631') {
       const bridge = picker.runtimeDirections(profile, {mode: 'rs232'})
         .find(section => section.title.startsWith('RS232 bridge'));
-      assert(bridge && bridge.note.includes('set bridge.uart 1') && bridge.note.includes('pauses UART GPS'),
-        'Both combined sensor policies must explain runtime UART selection and GPS sharing');
-      assert(!bridge.note.includes('GPS-free image'));
+      assert(bridge && bridge.note.includes('set bridge.uart 2') && bridge.note.includes('reserve UART1'),
+        'Both combined sensor policies must explain the powered-GPS UART1 restriction');
+      assert(!bridge.note.includes('pauses UART GPS'));
     }
   }
+}
+for (const policy of ['full', 'reduced']) {
+  const serial1 = currentCatalog.profiles.find(profile => profile.target ===
+    'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors-' + policy);
+  assert(serial1 && serial1.controls.gps === false,
+    'The UART1 image must remain usable without the combined image\'s GPS reservation');
+  assert(!picker.runtimeDirections(serial1, {mode: 'rs232'}).some(section => section.title === 'GPS'));
 }
 const rakBridgeBase = 'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors';
 const rakPartialAssets = currentAssets.filter(file =>
