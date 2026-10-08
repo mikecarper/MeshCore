@@ -426,6 +426,37 @@ TEST_F(TransportFilter, ShorthandAddReusesLongRuleAndDeletePersists) {
     EXPECT_FALSE(rules.handleCommand(text, reply));
 }
 
+TEST_F(TransportFilter, UnnumberedRulesKeepDistinctConfigurations) {
+  command("del fr all");
+  command("set fr any pb=1 d");
+  ASSERT_EQ(0, strncmp(reply, "OK", 2)) << reply;
+  command("set fr any pb=2 d");
+  ASSERT_EQ(0, strncmp(reply, "OK", 2)) << reply;
+  command("get fr.1"); EXPECT_STREQ("set fr.1 any pb=1 d", reply);
+  command("get fr.2"); EXPECT_STREQ("set fr.2 any pb=2 d", reply);
+  rules.begin(&fs, nullptr);
+  command("get fr.1"); EXPECT_STREQ("set fr.1 any pb=1 d", reply);
+  command("get fr.2"); EXPECT_STREQ("set fr.2 any pb=2 d", reply);
+}
+
+TEST_F(TransportFilter, UnnumberedDuplicateReusesRuleWithLiveRateWindow) {
+  command("del fr all");
+  command("set fr any pb=2 q=1");
+  ASSERT_EQ(0, strncmp(reply, "OK", 2)) << reply;
+  auto p = packet();p.setPathHashSizeAndCount(2, 0);
+  const auto mask = rules.evaluate(&p, false, true, nullptr, RULE_MODE_RADIO);
+  ASSERT_NE(0U, mask);
+  EXPECT_FALSE(rules.shouldBlock(&p, mask, 100));
+  rules.commitRates(&p, mask, 100);
+  EXPECT_TRUE(rules.shouldBlock(&p, mask, 100));
+  const auto saved = fs.files["/flood_filter"];
+  command("set fr any pb=2 q=1");
+  ASSERT_EQ(0, strncmp(reply, "OK", 2)) << reply;
+  EXPECT_EQ(saved, fs.files["/flood_filter"]);
+  command("get fr.1"); EXPECT_STREQ("set fr.1 any pb=2 q=1", reply);
+  command("get fr.2"); EXPECT_EQ(0, strncmp(reply, "Err", 3));
+}
+
 TEST_F(TransportFilter, OversizedCompactReplyNeverReturnsPartialSetter) {
   // A valid short input can fit in 192 command bytes but exceed a 160-byte reply.
   const std::string channel = "#" + std::string(30, 'b'), name(30, 'a');

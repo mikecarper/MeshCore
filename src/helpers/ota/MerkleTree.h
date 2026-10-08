@@ -55,7 +55,9 @@ bool merkle_verify_from_leaf(const uint8_t leaf[4], uint32_t index,
                              const uint8_t root[4], uint32_t count);
 
 // Generate the proof (ordered sibling digests) for block `index`, for a server holding leaves[].
-// `scratch` must be >= count*4 bytes (working buffer); `out_siblings` >= 32*4 bytes.
+// Sibling subtrees are reduced with O(log count) storage. `scratch` is retained
+// for source compatibility but is unused and may be nullptr; `out_siblings`
+// must hold 32*4 bytes. Input leaves are never modified.
 // Returns the number of 4-byte siblings written. Output matches the wire form merkle_verify expects.
 uint8_t merkle_gen_proof(const uint8_t* leaves, uint32_t count, uint32_t index,
                          uint8_t* scratch, uint8_t* out_siblings);

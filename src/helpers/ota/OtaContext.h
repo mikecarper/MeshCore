@@ -160,8 +160,8 @@ struct OtaContext {
   bool     self_serve_supported = false;
   // flash-backed self-serve: cached merkle leaves (heap, freed on re-serve) + assembled manifest of our
   // own running firmware. The payload is read from flash per block; only the metadata is held in RAM.
-  // serve_self_proof is the proof-gen working buffer (>= block_count*4) - sized to OUR image's block
-  // count (the manager's fixed 4 KiB scratch covers <=1024 blocks, about 2 MiB at the new default).
+  // serve_self_proof is the encoded-DATA output buffer on encoder-enabled
+  // builds. Streaming Merkle proofs need no full copy of the leaf table.
   uint8_t* serve_self_leaves = nullptr;
   uint8_t* serve_self_proof  = nullptr;
 

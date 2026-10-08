@@ -2474,7 +2474,9 @@ void MyMesh::formatRecentRepeatersReply(char *reply, int page,
     if (info == NULL) break;
     char prefix[MAX_ROUTE_HASH_BYTES * 2 + 1];
     char snr[12];
-    mesh::Utils::toHex(prefix, info->prefix, info->prefix_len);
+    alignas(uint32_t) uint8_t recorded_prefix[MAX_ROUTE_HASH_BYTES];
+    SimpleMeshTables::copyRecentRepeaterPrefix(recorded_prefix, *info);
+    mesh::Utils::toHex(prefix, recorded_prefix, info->prefix_len);
     prefix[info->prefix_len * 2] = 0;
     formatLocalSnrX4(snr, sizeof(snr), info->snr_x4);
     if (is_search) {
@@ -2506,7 +2508,9 @@ void MyMesh::printRecentRepeatersSerial() {
           const auto* info = tables ? tables->getRecentRepeaterBySortedIdx(row++) : nullptr;
           if (!info) return 0;
           char prefix[MAX_ROUTE_HASH_BYTES * 2 + 1], snr[12];
-          mesh::Utils::toHex(prefix, info->prefix, info->prefix_len);
+          alignas(uint32_t) uint8_t recorded_prefix[MAX_ROUTE_HASH_BYTES];
+          SimpleMeshTables::copyRecentRepeaterPrefix(recorded_prefix, *info);
+          mesh::Utils::toHex(prefix, recorded_prefix, info->prefix_len);
           formatLocalSnrX4(snr, sizeof(snr), info->snr_x4);
           return snprintf(out, capacity, "%s,%s%s\r\n", prefix, snr[0] == '-' ? "" : " ", snr);
         }, this, "Recent repeaters:\r\n");
@@ -2542,7 +2546,9 @@ void MyMesh::printRecentRepeatersSerial() {
     if (info == NULL) break;
     char prefix[MAX_ROUTE_HASH_BYTES * 2 + 1];
     char snr[12];
-    mesh::Utils::toHex(prefix, info->prefix, info->prefix_len);
+    alignas(uint32_t) uint8_t recorded_prefix[MAX_ROUTE_HASH_BYTES];
+    SimpleMeshTables::copyRecentRepeaterPrefix(recorded_prefix, *info);
+    mesh::Utils::toHex(prefix, recorded_prefix, info->prefix_len);
     prefix[info->prefix_len * 2] = 0;
     formatLocalSnrX4(snr, sizeof(snr), info->snr_x4);
     mesh::usbConsolePort().printf("%s,%s%s\n", prefix, snr[0] == '-' ? "" : " ", snr);
@@ -5329,13 +5335,15 @@ void MyMesh::servicePendingSerialOutput() {
         }
         char prefix[MAX_ROUTE_HASH_BYTES * 2 + 1];
         char snr[12];
-        mesh::Utils::toHex(prefix, info->prefix, info->prefix_len);
+        alignas(uint32_t) uint8_t recorded_prefix[MAX_ROUTE_HASH_BYTES];
+        SimpleMeshTables::copyRecentRepeaterPrefix(recorded_prefix, *info);
+        mesh::Utils::toHex(prefix, recorded_prefix, info->prefix_len);
         formatLocalSnrX4(snr, sizeof(snr), info->snr_x4);
         length = snprintf(record, sizeof(record), "%s,%s%s\n", prefix,
                           snr[0] == '-' ? "" : " ", snr);
         // Snapshot the row before a short write. Its next pass must retry only
         // the retained suffix, even if the live recent-repeater table changes.
-        serial_recent_cursor = *info;
+        SimpleMeshTables::copyRecentRepeaterInfo(serial_recent_cursor, *info);
         serial_recent_cursor_index = next_index;
         serial_recent_has_cursor = true;
       } else {
@@ -8291,9 +8299,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
       if (i == flood_channel_data_rule_slot) continue;
       const auto& entry = flood_packet_filters[i];
       if (entry.active
-          && memcmp(&entry, &candidate,
-                    offsetof(FloodPacketFilterEntry,
-                             rate_window_started)) == 0) {
+          && FloodFilterPolicy::sameRuleConfiguration(entry, candidate)) {
         slot = i;
         break;
       }

@@ -90,9 +90,11 @@ class FirmwareRamTest(unittest.TestCase):
                 self.assertEqual("ota_encoder_workspace" in components, enabled)
                 if enabled:
                     self.assertEqual(components["ota_encoder_workspace"], 1024 + 16)
-                self.assertEqual("ota_self_source_scratch" in components,
-                                 enabled and platform == "NRF52_PLATFORM")
-                if enabled and platform == "NRF52_PLATFORM":
+                self_source = (platform == "NRF52_PLATFORM" and "ENABLE_OTA" in defines
+                               and "OTA_SEEDER_ONLY" not in defines and any(key in defines for key in (
+                                   "OTA_QSPI_STORE", "OTA_SD_STORE", "OTA_RAK_AUTO_STORE", "OTA_TOWER_AUTO_STORE")))
+                self.assertEqual("ota_self_source_scratch" in components, self_source)
+                if self_source:
                     self.assertEqual(components["ota_self_source_scratch"], 4096 + 32)
 
     def test_device_encoder_hash_override_is_budgeted_and_bounded(self):
@@ -123,7 +125,7 @@ class FirmwareRamTest(unittest.TestCase):
             "ENABLE_OTA": 1, "OTA_HEAP_CONTEXT": 1,
         }, "GEPRC_Linkflow_900_repeater")
         self.assertEqual(policy["components"]["client_table"], 32 * 320 + 16)
-        self.assertEqual(policy["components"]["flood_filter_table"], 63 * 200 + 16)
+        self.assertEqual(policy["components"]["flood_filter_table"], 63 * 192 + 16)
         self.assertEqual(policy["components"]["ota_context"], 16384 + 16)
         self.assertGreaterEqual(policy["required_contiguous_bytes"], 16384 + 16)
         reduced = ram.requirements("STM32_PLATFORM", {
@@ -201,13 +203,13 @@ class FirmwareRamTest(unittest.TestCase):
         }, "RAK_4631_repeater_unified_lora_ota")
         components = combined["components"]
         self.assertEqual(components["uart_bridge_and_driver"], 2560)
-        self.assertEqual(components["ethernet_or_external_ota_workspaces"], 5168)
+        self.assertEqual(components["ethernet_or_external_ota_workspaces"], 11344)
         self.assertNotIn("ota_encoder_workspace", components)
         self.assertNotIn("ota_self_source_scratch", components)
         self.assertEqual(components["display_pixels_and_driver"], 2048)
         self.assertEqual(combined["required_heap_bytes"] - legacy["required_heap_bytes"], 2560 - 2048)
         self.assertEqual(components["loop_and_callback_stacks"], 8192 + 3072)
-        self.assertEqual(components["flood_filter_table"], 63 * 200 + 16)
+        self.assertEqual(components["flood_filter_table"], 63 * 192 + 16)
         # An alternate port selects the same bridge instead of allocating two.
         alternate = ram.requirements("NRF52_PLATFORM", {
             **defines, "RAK4631_COMBINED_ETHERNET": 1,
@@ -221,7 +223,7 @@ class FirmwareRamTest(unittest.TestCase):
             "RAK4631_COMBINED_ETHERNET": 1, "ENABLE_OTA": 1,
             "MESHCORE_OTA_DEVICE_DEFLATE": 1,
         }
-        for words, expected in ((1024, 5168), (1536, 6976), (2048, 9024)):
+        for words, expected in ((1024, 11344), (1536, 11344), (2048, 11344), (3072, 13120)):
             with self.subTest(words=words):
                 policy = ram.requirements("NRF52_PLATFORM", {
                     **defines, "RAK4631_ETHERNET_TASK_STACK_WORDS": words,
@@ -231,20 +233,58 @@ class FirmwareRamTest(unittest.TestCase):
         no_encoder = ram.requirements("NRF52_PLATFORM", {
             **defines, "MESHCORE_OTA_DEVICE_DEFLATE": 0,
         }, "RAK_4631_sensor")
-        self.assertEqual(no_encoder["components"]["ethernet_or_external_ota_workspaces"], 4928)
+        self.assertEqual(no_encoder["components"]["ethernet_or_external_ota_workspaces"], 10304)
         for bits in (7, 8, 9, 10):
             with self.subTest(bits=bits):
                 policy = ram.requirements("NRF52_PLATFORM", {
                     **defines, "MESHCORE_OTA_DEFLATE_HASH_BITS": bits,
                 }, "RAK_4631_sensor")
                 self.assertEqual(policy["components"]["ethernet_or_external_ota_workspaces"],
-                                 max(4928, (1 << bits) * 2 + 16 + 4096 + 32))
-        for capacity, expected in ((512, 5168), (1024, 5440), (2048, 6464)):
+                                 max(4928, (1 << bits) * 2 + 16 + 4096 + 32 + 6176))
+        for capacity, expected in ((512, 11344), (1024, 11344), (2048, 11344)):
             with self.subTest(tx_capacity=capacity):
                 policy = ram.requirements("NRF52_PLATFORM", {
                     **defines, "ETHERNET_CLI_TX_BUFFER_BYTES": capacity,
                 }, "RAK_4631_sensor")
                 self.assertEqual(policy["components"]["ethernet_or_external_ota_workspaces"], expected)
+
+    def test_compact_tables_keep_capacity_and_reserve_active_ota_allocations(self):
+        for platform, leaf_limit in (("NRF52_PLATFORM", 4096), ("ESP32_PLATFORM", 16384),
+                                     ("RP2040_PLATFORM", 4096), ("STM32_PLATFORM", 4096)):
+            with self.subTest(platform=platform):
+                flags = {"ENABLE_OTA": 1, "MESH_CLIENT_REPEATER_ONLY": 1,
+                         "MAX_RECENT_REPEATERS": 512}
+                compact = ram.requirements(platform, flags, "board_repeater")["components"]
+                self.assertEqual(compact["client_table"], 32 * 284 + 16)
+                self.assertEqual(compact["ota_generic_source_buffers"], leaf_limit + 2048 + 32)
+                full = ram.requirements(platform, {**flags, "MESH_CLIENT_REPEATER_ONLY": 0},
+                                        "board_repeater")["components"]
+                self.assertEqual(full["client_table"] - compact["client_table"], 36 * 32)
+                if platform == "ESP32_PLATFORM":
+                    self.assertEqual(compact["neighbor_history"], 512 * 9 + 16)
+        sd = ram.requirements("NRF52_PLATFORM", {"ENABLE_OTA": 1, "OTA_SD_STORE": 1},
+                              "board_repeater")["components"]
+        self.assertEqual(sd["ota_generic_source_buffers"], 8192 + 2048 + 32)
+        custom = ram.requirements("NRF52_PLATFORM", {
+            "ENABLE_OTA": 1, "OTA_PROOFGEN_SCRATCH": 12000, "OTA_MAX_BLOCK": 1024,
+        }, "board_repeater")["components"]
+        self.assertEqual(custom["ota_generic_source_buffers"], 12000 + 1024 + 32)
+        for default, expected in ((256, 256), (2048, 2048)):
+            parts = ram.requirements("ESP32_PLATFORM", {
+                "MESH_RAM_DEFAULT_RECENT_REPEATERS": default,
+            }, "board_repeater")["components"]
+            self.assertEqual(parts["neighbor_history"], expected * 9 + 16)
+        disabled = ram.requirements("ESP32_PLATFORM", {"MESH_ENABLE_RECENT_REPEATERS": 0},
+                                    "board_repeater")["components"]
+        self.assertEqual(disabled["neighbor_history"], 0)
+        s3 = ram.requirements("ESP32_PLATFORM", {}, "board_repeater")
+        self.assertGreaterEqual(s3["required_contiguous_bytes"], 2048 * 9 + 16)
+        alias = ram.requirements("ESP32_PLATFORM", {"MESH_CLIENT_REPEATER_ONLY": 1},
+                                 "custom_companion_alias")
+        self.assertEqual(alias["components"]["client_table"], 32 * 284 + 16)
+        self.assertEqual(alias["components"]["flood_filter_table"], 63 * 192 + 16)
+        self.assertEqual(alias["components"]["neighbor_history"], 2048 * 9 + 16)
+        self.assertEqual(alias["components"]["radio_packet_pool"], 10240)
 
     def test_combined_rak_oled_bound_does_not_change_other_display_budgets(self):
         defines = {

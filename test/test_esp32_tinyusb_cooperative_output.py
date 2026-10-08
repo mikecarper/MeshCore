@@ -99,6 +99,12 @@ struct SimpleMeshTables {
     int8_t snr_x4;
   };
   std::vector<RecentRepeaterInfo> rows;
+  static void copyRecentRepeaterInfo(RecentRepeaterInfo& out,
+                                     const RecentRepeaterInfo& in) { out = in; }
+  static void copyRecentRepeaterPrefix(uint8_t* out,
+                                       const RecentRepeaterInfo& in) {
+    memcpy(out, in.prefix, sizeof(in.prefix));
+  }
   int getRecentRepeaterCount() const { return static_cast<int>(rows.size()); }
   const RecentRepeaterInfo* getNextRecentRepeaterBySortKey(
       const RecentRepeaterInfo*, int previous, int& result) const {

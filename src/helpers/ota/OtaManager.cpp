@@ -13,12 +13,8 @@ namespace ota {
 OtaManager::~OtaManager() {
   free(_catalog_heap);
   free(_leaves_buf);
-#if defined(ESP32_PLATFORM)
-  // A shared Companion workspace is destroyed between mOTA sessions. Return
-  // the lazy source/proof buffers before its queue slots are reused.
   free(_src_leaves);
   free(_scratch);
-#endif
 }
 
 bool OtaManager::set_speed(float speed) {
@@ -61,22 +57,54 @@ bool OtaManager::expandCatalog() {
   return true;
 }
 
-uint8_t* OtaManager::ensureSourceLeaves() {
-#if defined(ESP32_PLATFORM)
-  if (!_src_leaves) {
-    _src_leaves = static_cast<uint8_t*>(malloc(OTA_PROOFGEN_SCRATCH));
+uint8_t* OtaManager::ensureSourceLeaves(uint32_t bytes) {
+  if (!bytes || bytes > OTA_PROOFGEN_SCRATCH) return nullptr;
+  if (_src_leaves_capacity < bytes) {
+    // loadSource revoked the cached view first. Free before growing, so even
+    // an allocation failure cannot overlap two images' maximum leaf caches.
+    free(_src_leaves);
+    _src_leaves = nullptr;
+    _src_leaves_capacity = 0;
+    _src_leaves = static_cast<uint8_t*>(malloc(bytes));
+    if (_src_leaves) _src_leaves_capacity = bytes;
   }
-#endif
   return _src_leaves;
 }
 
 uint8_t* OtaManager::ensureScratch() {
-#if defined(ESP32_PLATFORM)
   if (!_scratch) {
-    _scratch = static_cast<uint8_t*>(malloc(OTA_PROOFGEN_SCRATCH));
+    _scratch = static_cast<uint8_t*>(malloc(OTA_MAX_BLOCK));
   }
-#endif
   return _scratch;
+}
+
+void OtaManager::releaseColdBuffers() {
+  // Both queues pin their selected source and any encoded DATA behind radio
+  // backpressure. No cached view or wire pointer may outlive its allocation.
+  if (_n_serve_jobs || _n_manifest_jobs) return;
+  _srcv.valid = false;
+  _srcv.m.leaves = nullptr;
+  _srcv.scratch = nullptr;
+  _srcv.scratch_sz = 0;
+  if (_view0.scratch == _scratch) {
+    _view0.scratch = nullptr;
+    _view0.scratch_sz = 0;
+  }
+  _serve_block_loaded = false;
+  _serve_wire_block = nullptr;
+  _serve_wire_len = 0;
+  free(_src_leaves);
+  _src_leaves = nullptr;
+  _src_leaves_capacity = 0;
+  free(_scratch);
+  _scratch = nullptr;
+}
+
+void OtaManager::releaseIdleColdBuffers() {
+  if ((_src_leaves || _scratch) &&
+      (uint32_t)(_now_ms - _source_buffer_used_at) >= OTA_SOURCE_BUFFER_IDLE_MS) {
+    releaseColdBuffers();
+  }
 }
 
 void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
@@ -94,6 +122,7 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   memset(_src_advertised, 0, sizeof(_src_advertised));
   _n_src = 0; _n_cat = 0;
   clearPendingEgress();
+  releaseColdBuffers();
   _adaptive_packet_speed = 1.0f;
   _pace_clean_blocks = 0;
   _pace_has_mid = false;
@@ -112,17 +141,16 @@ bool OtaManager::serve(const uint8_t* mota, uint32_t len) {
   if (!mota || !mota_parse(mota, len, parsed)) return false;
   if (parsed.block_size() == 0 || parsed.block_size() > OTA_MAX_BLOCK ||
       (uint64_t)parsed.block_count * 4 > OTA_PROOFGEN_SCRATCH) return false;
-  uint8_t* scratch = ensureScratch();
-  if (!scratch) return false;
   // Parsing can fail after writing fields and pointers. Publish the replacement
   // only after all checks pass, preserving the old image and its queued replies.
   _view0.m = parsed;
   _view0.mfl = (uint16_t)(_view0.m.leaves - _view0.m.manifest_start);  // contiguous container
   _view0.read = nullptr; _view0.read_ctx = nullptr;                    // payload is contiguous _view0.m.payload
   _view0.read_deflated = nullptr; _view0.deflate_ctx = nullptr;
-  _view0.scratch = scratch; _view0.scratch_sz = OTA_PROOFGEN_SCRATCH;  // <=1024 leaves/blocks
+  _view0.scratch = nullptr; _view0.scratch_sz = 0; // allocate only if compressed DATA is requested
   _view0.valid = true;
   clearPendingEgress();
+  releaseColdBuffers();
   if (_n_src_obj) refresh_sources(); else registerSelfEntry();
   return true;
 }
@@ -131,7 +159,7 @@ bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t
                             uint32_t block_count, uint8_t* proof_scratch, uint32_t proof_scratch_sz,
                             ServeReadFn read, void* ctx) {
   if (!manifest || mfl != MOTA_MFL || !leaves || !proof_scratch || !read) return false;
-  if (proof_scratch_sz < (uint64_t)block_count * 4) return false;   // proof-gen needs count*4 working bytes
+  if (proof_scratch_sz == 0) return false;
   MotaManifest parsed;
   if (!mota_parse_manifest(manifest, mfl, parsed)) return false;  // fixed fields: root, image_hash, sizes
   if (parsed.block_size() == 0 || parsed.block_size() > OTA_MAX_BLOCK ||
@@ -143,9 +171,10 @@ bool OtaManager::serve_self(const uint8_t* manifest, uint16_t mfl, const uint8_t
   _view0.m.block_count = block_count;
   _view0.mfl = mfl; _view0.read = read; _view0.read_ctx = ctx;
   _view0.read_deflated = nullptr; _view0.deflate_ctx = nullptr;
-  _view0.scratch = proof_scratch; _view0.scratch_sz = proof_scratch_sz;   // sized for our (large) image
+  _view0.scratch = proof_scratch; _view0.scratch_sz = proof_scratch_sz; // optional compression output
   _view0.valid = true;
   clearPendingEgress();
+  releaseColdBuffers();
   if (_n_src_obj) refresh_sources(); else registerSelfEntry();
   return true;
 }
@@ -203,6 +232,7 @@ bool OtaManager::remove_source(MotaSource* src) {
 
 void OtaManager::refresh_sources() {
   clearPendingEgress();
+  releaseColdBuffers();
   _n_serve = 0;
   if (_view0.valid) registerSelfEntry();
   for (uint8_t s = 0; s < _n_src_obj; s++) {
@@ -258,6 +288,7 @@ bool OtaManager::sourceStats(const MotaSource* src, uint16_t& offered, uint16_t&
 
 void OtaManager::clear_sources() {
   clearPendingEgress();
+  releaseColdBuffers();
   _n_src_obj = 0; _srcv.valid = false;
   memset(_src_list, 0, sizeof(_src_list));
   memset(_src_offered, 0, sizeof(_src_offered));
@@ -269,6 +300,7 @@ void OtaManager::clear_sources() {
 void OtaManager::clear_primary() {
   clearPendingEgress();
   _view0.valid = false;
+  releaseColdBuffers();
   if (_n_src_obj) refresh_sources();
   else _n_serve = 0;
 }
@@ -281,7 +313,10 @@ int OtaManager::serveEntryIndex(const uint8_t* mid) const {
 
 OtaManager::ServeView* OtaManager::resolve(const uint8_t* mid) {
   if (_view0.valid && memcmp(mid, _view0.m.merkle_root, 4) == 0) return &_view0;
-  if (_srcv.valid  && memcmp(mid, _srcv_mid, 4) == 0)             return &_srcv;
+  if (_srcv.valid  && memcmp(mid, _srcv_mid, 4) == 0) {
+    _source_buffer_used_at = _now_ms;
+    return &_srcv;
+  }
   int i = serveEntryIndex(mid);
   if (i < 0) return nullptr;
   if (_serve[i].is_self) return _view0.valid ? &_view0 : nullptr;
@@ -299,12 +334,12 @@ bool OtaManager::loadSource(const ServeEntry& e) {
   uint16_t mfl = (uint16_t)(d.leaves_off - 8);
   if (mfl == 0 || mfl > sizeof(_src_manifest)) return false;
   if (d.block_count == 0 || (uint64_t)d.block_count * 4 > OTA_PROOFGEN_SCRATCH) return false;
-  uint8_t* src_leaves = ensureSourceLeaves();
-  uint8_t* scratch = ensureScratch();
-  if (!src_leaves || !scratch) return false;
   // Both images share these buffers. Even a failed read can overwrite part of
   // the old manifest/leaves, so its cached MID must stop resolving immediately.
   _srcv.valid = false;
+  uint8_t* src_leaves = ensureSourceLeaves(d.block_count * 4u);
+  if (!src_leaves) return false;
+  _source_buffer_used_at = _now_ms;
   bool ok = e.src->read(e.src_idx, 8, _src_manifest, mfl);
   if (!ok || !mota_parse_manifest(_src_manifest, mfl, _srcv.m)) return false;
   if (_srcv.m.block_size() == 0 || _srcv.m.block_size() > OTA_MAX_BLOCK) return false;
@@ -322,7 +357,7 @@ bool OtaManager::loadSource(const ServeEntry& e) {
   _srcv.read_deflated = (d.source_caps & MOTA_SOURCE_CAP_DEFLATE_BLOCK)
       ? srcDeflateReadTramp : nullptr;
   _srcv.deflate_ctx = _srcv.read_deflated ? &_srcv_rdctx : nullptr;
-  _srcv.scratch = scratch; _srcv.scratch_sz = OTA_PROOFGEN_SCRATCH;
+  _srcv.scratch = nullptr; _srcv.scratch_sz = 0;
   memcpy(_srcv_mid, d.mid, 4);
   _srcv.valid = true;
   return true;
@@ -562,6 +597,10 @@ void OtaManager::clearPendingEgress() {
   _serve_wire_len = 0;
   _serve_wire_deflated = false;
   memset(_serve_wire_id, 0, sizeof(_serve_wire_id));
+  // Explicit cancellation also runs when the temporary OTA radio ends, when
+  // loop() is no longer called. Keep source descriptors advertised, but drop
+  // their reloadable working cache rather than pinning heap until next use.
+  releaseColdBuffers();
 }
 
 void OtaManager::popManifestJob() {
@@ -663,8 +702,13 @@ bool OtaManager::loadActiveServeBlock() {
   _serve_wire_deflated = false;
 
   // A host-backed MotaSource can provide a pre-compressed block without putting an encoder in firmware.
-  // Other sources may opt into a caller-supplied encoder. Both write into the proof scratch, which is safe
-  // until every DATA fragment has left; proof generation reuses it only after that point.
+  // Other sources may opt into a caller-supplied encoder. Encoded DATA remains
+  // pinned until every fragment has left. Streaming proofs need no output buffer.
+  if (job.wire_v2 && job.allow_deflate && (v->read_deflated || _deflate_encode) && !v->scratch) {
+    v->scratch = ensureScratch();
+    v->scratch_sz = v->scratch ? OTA_MAX_BLOCK : 0;
+  }
+  _source_buffer_used_at = _now_ms;
   if (job.wire_v2 && job.allow_deflate && v->scratch && v->scratch_sz >= blen) {
     uint16_t encoded_len = 0;
     bool encoded = false;
@@ -765,7 +809,6 @@ bool OtaManager::handleReqProof(const uint8_t* m, uint16_t n) {
   if (!decode_req_proof(m, n, rp)) return false;
   ServeView* v = resolve(rp.manifest_id);
   if (!v || rp.block_idx >= v->m.block_count) return false;
-  if ((uint64_t)v->m.block_count * 4 > v->scratch_sz) return false;
   return queueServeJob(v->m.merkle_root, rp.block_idx, 0); // proof-only, or merge with queued DATA
 }
 
@@ -796,8 +839,7 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
     return;
   }
   ServeView* v = resolve(job.mid);
-  if (!v || job.block >= v->m.block_count
-      || (uint64_t)v->m.block_count * 4 > v->scratch_sz) {
+  if (!v || job.block >= v->m.block_count) {
     popServeJob();
     return;
   }
@@ -2179,6 +2221,7 @@ uint32_t OtaManager::pickMissingBlock() {
 }
 
 void OtaManager::loop() {
+  releaseIdleColdBuffers();
   // Each source owns its own pending/retry state, so a burst of advertisements cannot overwrite another
   // seeder's query. Initial requests ask for all; recovery asks only for missing HAVE fragments.
   for (uint8_t i = 0; i < _n_src; i++) {

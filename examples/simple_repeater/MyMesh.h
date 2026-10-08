@@ -408,18 +408,27 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint32_t last_heard_millis;
   };
   struct FloodPacketFilterEntry {
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+    // Keep multibyte counters naturally aligned. These seven independent
+    // flags share a byte; their bit order is never persisted (FPF7 serializes
+    // each field explicitly). active/retry remain addressable for the stored
+    // rule decoders. Rule mutations run on the mesh loop.
+    uint32_t rate_window_started;
+    uint16_t rate_per_minute;
+    uint16_t rate_window_count;
+    bool suspend_on_temp_radio : 1;
+    bool match_blacklisted_path : 1;
+    bool scope_uses_slow_timing : 1;
+    bool drop_on_match : 1;
+    bool rate_limit_enabled : 1;
+    bool stop_on_match : 1;
+    bool rate_window_active : 1;
     bool active;
+    bool retry_on_match;
     uint8_t payload_type;
     uint8_t min_hops;
     uint8_t max_hops;
-    bool suspend_on_temp_radio;
     char scope_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
-    bool match_blacklisted_path;
-#if !MESH_ENABLE_FLOOD_RULE_ENGINE
-    bool scope_requires_region_match;
-#endif
-    bool scope_uses_slow_timing;
-#if MESH_ENABLE_FLOOD_RULE_ENGINE
     uint8_t incoming_scope_kind;
     char incoming_scope_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
     uint8_t channel_key_len;
@@ -430,16 +439,18 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     uint8_t path_hops;
     uint8_t path[FLOOD_PACKET_FILTER_PATH_PREFIX_BYTES_MAX];
     char target_region_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
-    bool drop_on_match;
-    bool rate_limit_enabled;
-    uint16_t rate_per_minute;
     uint8_t priority;
-    bool stop_on_match;
-    bool retry_on_match;
     uint8_t transport_modes;
-    uint32_t rate_window_started;
-    uint16_t rate_window_count;
-    bool rate_window_active;
+#else
+    bool active;
+    uint8_t payload_type;
+    uint8_t min_hops;
+    uint8_t max_hops;
+    bool suspend_on_temp_radio;
+    char scope_name[FLOOD_PACKET_FILTER_SCOPE_NAME_LEN];
+    bool match_blacklisted_path;
+    bool scope_requires_region_match;
+    bool scope_uses_slow_timing;
 #endif
   };
   struct FloodChannelScopeEntry {
@@ -483,7 +494,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   };
   mutable FloodRetryBridgeState flood_retry_bridge_states[TOTAL_FLOOD_RETRY_SLOTS];
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
-  static_assert(sizeof(FloodPacketFilterEntry) <= (MESH_ENABLE_FLOOD_RULE_ENGINE ? 200 : 40),
+  static_assert(sizeof(FloodPacketFilterEntry) <= (MESH_ENABLE_FLOOD_RULE_ENGINE ? 192 : 40),
                 "Update the flood-table runtime RAM budget in check_firmware_ram.py");
   // The rule table is the single largest member of this object. It is heap
   // allocated in the constructor (before setup(), while the heap is still

@@ -1732,8 +1732,7 @@ void FloodRuleEngine::set(const char* args, char* reply,
   if (slot < 0) {
     for (int i = 0; i < RULE_SLOTS; i++) {
       if (_entries[i].active
-          && memcmp(&_entries[i], &candidate,
-                    offsetof(Entry, rate_window_started)) == 0) {
+          && FloodFilterPolicy::sameRuleConfiguration(_entries[i], candidate)) {
         slot = i;
         break;
       }

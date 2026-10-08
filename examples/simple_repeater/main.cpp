@@ -52,6 +52,8 @@ extern "C" bool btInUse() { return false; }
 
 StdRNG fast_rng;
 #if MAX_RECENT_REPEATERS > 0
+// Compact rows retain the complete prefix/SNR/32-bit age at every capacity.
+// All accesses are owned by this loop, including deferred network commands.
   #if defined(ESP32)
 // Classic ESP32 has a much smaller link-time DRAM window than its runtime heap
 // map. Allocate this large, fixed-capacity history at startup so enabling WiFi

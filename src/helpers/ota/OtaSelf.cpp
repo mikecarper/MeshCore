@@ -228,11 +228,10 @@ bool ota_serve_self(OtaContext& c, uint32_t fw_version) {
   c.serve_self_leaves = (uint8_t*)malloc((size_t)bc * 4);
   size_t proof_size = (size_t)bc * 4;
 #if MESHCORE_OTA_DEVICE_DEFLATE
-  // Proof generation and transport encoding use this buffer at different
-  // times. Small nRF52 images can have <2 KiB of leaves: keep enough room for
-  // a whole encoded block without allocating a second input/output buffer.
-  // Receiver-only/Companion diagnostic raw exports retain the old allocation.
-  if (proof_size < BS) proof_size = BS;
+  // Streaming proofs no longer need a copy of the leaf table. This buffer
+  // holds only one encoded DATA block, regardless of the firmware's size.
+  // Receiver-only/Companion diagnostic raw exports retain their allocation.
+  proof_size = BS;
 #endif
   c.serve_self_proof  = (uint8_t*)malloc(proof_size);
   if (!c.serve_self_leaves || !c.serve_self_proof) {

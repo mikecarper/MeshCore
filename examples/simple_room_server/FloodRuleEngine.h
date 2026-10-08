@@ -42,14 +42,25 @@ public:
 
 private:
   struct Entry {
+    // Native alignment for counters; explicit FPF7 serialization does not
+    // expose the in-memory flag bit order. Keep active/retry addressable for
+    // the stored rule decoders, and mutate rules only on the mesh loop.
+    uint32_t rate_window_started;
+    uint16_t rate_per_minute;
+    uint16_t rate_window_count;
+    bool suspend_on_temp_radio : 1;
+    bool match_blacklisted_path : 1;
+    bool scope_uses_slow_timing : 1;
+    bool drop_on_match : 1;
+    bool rate_limit_enabled : 1;
+    bool stop_on_match : 1;
+    bool rate_window_active : 1;
     bool active;
+    bool retry_on_match;
     uint8_t payload_type;
     uint8_t min_hops;
     uint8_t max_hops;
-    bool suspend_on_temp_radio;
     char scope_name[NAME_LEN];
-    bool match_blacklisted_path;
-    bool scope_uses_slow_timing;
     uint8_t incoming_scope_kind;
     char incoming_scope_name[NAME_LEN];
     uint8_t channel_key_len;
@@ -60,24 +71,16 @@ private:
     uint8_t path_hops;
     uint8_t path[PATH_PREFIX_BYTES_MAX];
     char target_region_name[NAME_LEN];
-    bool drop_on_match;
-    bool rate_limit_enabled;
-    uint16_t rate_per_minute;
     uint8_t priority;
-    bool stop_on_match;
-    bool retry_on_match;
     uint8_t transport_modes;
-    uint32_t rate_window_started;
-    uint16_t rate_window_count;
-    bool rate_window_active;
   };
 
-  // This table is 6,200 bytes.  Keep it in the constructor-time heap rather
+  // This table is at most 5,952 bytes. Keep it in the constructor-time heap rather
   // than inside the global MyMesh object: classic ESP32 has a small static
   // DRAM window but substantially more internal heap at this point in boot.
   // Allocation is deliberately all-or-nothing.  A node must never fall back
   // to silently running without its configured flood rules.
-  static_assert(sizeof(Entry) == 200,
+  static_assert(sizeof(Entry) <= 192,
                 "Update the flood-rule runtime RAM budget in check_firmware_ram.py");
   FILESYSTEM* _fs;
   RegionMap* _regions;

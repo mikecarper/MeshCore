@@ -585,4 +585,5 @@ int main() {
     std::printf("PASS: %s\n", test.name);
   }
   std::puts("27 ClientACL SPIFFS checks passed");
+  return 0;
 }

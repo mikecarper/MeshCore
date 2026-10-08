@@ -49,6 +49,41 @@ enum ChannelScopeGate {
   CHANNEL_SCOPE_REQUIRED_REJECTED,
 };
 
+// Rules can be reordered/compacted in RAM without changing their identity.
+// Compare configured fields explicitly: padding and live rate-window state
+// must never decide whether an unnumbered setter reuses an existing slot.
+template<typename Entry>
+bool sameRuleConfiguration(const Entry& left, const Entry& right) {
+  return left.active == right.active
+      && left.payload_type == right.payload_type
+      && left.min_hops == right.min_hops
+      && left.max_hops == right.max_hops
+      && left.suspend_on_temp_radio == right.suspend_on_temp_radio
+      && memcmp(left.scope_name, right.scope_name, sizeof(left.scope_name)) == 0
+      && left.match_blacklisted_path == right.match_blacklisted_path
+      && left.scope_uses_slow_timing == right.scope_uses_slow_timing
+      && left.incoming_scope_kind == right.incoming_scope_kind
+      && memcmp(left.incoming_scope_name, right.incoming_scope_name,
+                sizeof(left.incoming_scope_name)) == 0
+      && left.channel_key_len == right.channel_key_len
+      && left.channel_hash == right.channel_hash
+      && memcmp(left.channel_secret, right.channel_secret,
+                sizeof(left.channel_secret)) == 0
+      && memcmp(left.channel_name, right.channel_name, sizeof(left.channel_name)) == 0
+      && left.path_hash_size == right.path_hash_size
+      && left.path_hops == right.path_hops
+      && memcmp(left.path, right.path, sizeof(left.path)) == 0
+      && memcmp(left.target_region_name, right.target_region_name,
+                sizeof(left.target_region_name)) == 0
+      && left.drop_on_match == right.drop_on_match
+      && left.rate_limit_enabled == right.rate_limit_enabled
+      && left.rate_per_minute == right.rate_per_minute
+      && left.priority == right.priority
+      && left.stop_on_match == right.stop_on_match
+      && left.retry_on_match == right.retry_on_match
+      && left.transport_modes == right.transport_modes;
+}
+
 inline bool channelKeyLengthSupported(uint8_t key_len) {
   return key_len == 0 || key_len == CHANNEL_HASH_ONLY_LEN
       || key_len == CHANNEL_KEY_128_LEN

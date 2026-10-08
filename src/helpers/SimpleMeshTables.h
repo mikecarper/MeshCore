@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Mesh.h>
+#include <type_traits>
 #if ARDUINO
   #include <Arduino.h>
 #endif
@@ -29,6 +30,17 @@
 #define ACK_VALID_BYTES  ((MAX_PACKET_ACKS + 7) / 8)
 #define MAX_ROUTE_HASH_BYTES   3
 
+inline int routeHashPrefixBytesCompare(const uint8_t* a, const uint8_t* b,
+                                       uint8_t length) {
+  const volatile uint8_t* left = a;
+  const volatile uint8_t* right = b;
+  for (uint8_t i = 0; i < length; ++i) {
+    const uint8_t av = left[i], bv = right[i];
+    if (av != bv) return (int)av - (int)bv;
+  }
+  return 0;
+}
+
 inline bool routeHashPrefixesOverlap(const uint8_t* a, uint8_t a_len,
                                      const uint8_t* b, uint8_t b_len) {
   if (a == NULL || b == NULL || a_len == 0 || b_len == 0
@@ -36,18 +48,72 @@ inline bool routeHashPrefixesOverlap(const uint8_t* a, uint8_t a_len,
     return false;
   }
   uint8_t compare_len = a_len < b_len ? a_len : b_len;
-  return memcmp(a, b, compare_len) == 0;
+  return routeHashPrefixBytesCompare(a, b, compare_len) == 0;
 }
 
 class SimpleMeshTables : public mesh::MeshTables {
 public:
+  // Recent rows belong to the mesh loop, including CLI requests marshaled from
+  // network tasks. They must not be read or changed concurrently by an ISR or
+  // worker. Byte access avoids unaligned uint32_t loads in the compact rows;
+  // volatile here constrains access width, not synchronization or atomicity.
+  struct RecentRepeaterMillis {
+    uint8_t bytes[4];
+
+    operator uint32_t() const {
+      const volatile uint8_t* value = bytes;
+      return (uint32_t)value[0]
+          | ((uint32_t)value[1] << 8)
+          | ((uint32_t)value[2] << 16)
+          | ((uint32_t)value[3] << 24);
+    }
+
+    RecentRepeaterMillis& operator=(uint32_t millis) {
+      volatile uint8_t* value = bytes;
+      value[0] = (uint8_t)millis;
+      value[1] = (uint8_t)(millis >> 8);
+      value[2] = (uint8_t)(millis >> 16);
+      value[3] = (uint8_t)(millis >> 24);
+      return *this;
+    }
+  };
+
   struct RecentRepeaterInfo {
     // Identity and link quality for a next-hop path prefix.
     uint8_t prefix[MAX_ROUTE_HASH_BYTES];
-    uint8_t prefix_len;
-    int8_t snr_x4;
-    uint32_t last_heard_millis;
+    volatile uint8_t prefix_len;
+    volatile int8_t snr_x4;
+    RecentRepeaterMillis last_heard_millis;
   };
+  static_assert(sizeof(RecentRepeaterMillis) == 4 && alignof(RecentRepeaterMillis) == 1,
+                "Recent timestamps must retain all 32 bits without alignment padding");
+  static_assert(sizeof(RecentRepeaterInfo) == 9 && alignof(RecentRepeaterInfo) == 1,
+                "Recent rows must not add padding to the externally allocated table");
+  static_assert(std::is_trivially_copyable<RecentRepeaterInfo>::value,
+                "Recent rows must support memset, compaction, and cursor copies");
+
+  // Use these helpers instead of implicit row copies or memcpy/memset. M4
+  // compilers may otherwise widen byte-aligned aggregate operations, which
+  // faults when unaligned accesses trap. Keep every compact-row access a byte,
+  // even when LTO can see the length or a concrete source/destination address.
+  static void copyRecentRepeaterInfo(RecentRepeaterInfo& destination,
+                                     const RecentRepeaterInfo& source) {
+    volatile uint8_t* out = reinterpret_cast<volatile uint8_t*>(&destination);
+    const volatile uint8_t* in = reinterpret_cast<const volatile uint8_t*>(&source);
+    for (size_t i = 0; i < sizeof(RecentRepeaterInfo); ++i) out[i] = in[i];
+  }
+
+  static void clearRecentRepeaterInfo(RecentRepeaterInfo& row) {
+    volatile uint8_t* out = reinterpret_cast<volatile uint8_t*>(&row);
+    for (size_t i = 0; i < sizeof(RecentRepeaterInfo); ++i) out[i] = 0;
+  }
+
+  static void copyRecentRepeaterPrefix(uint8_t* destination,
+                                       const RecentRepeaterInfo& source) {
+    volatile uint8_t* out = destination;
+    const volatile uint8_t* in = source.prefix;
+    for (size_t i = 0; i < MAX_ROUTE_HASH_BYTES; ++i) out[i] = in[i];
+  }
 
 private:
   uint8_t _hashes[MAX_PACKET_HASHES*MAX_HASH_SIZE];
@@ -182,7 +248,7 @@ private:
     if (a.snr_x4 != b.snr_x4) {
       return a.snr_x4 > b.snr_x4;  // Highest SNR first within each prefix length.
     }
-    int cmp = memcmp(a.prefix, b.prefix, a.prefix_len);
+    int cmp = routeHashPrefixBytesCompare(a.prefix, b.prefix, a.prefix_len);
     if (cmp != 0) {
       return cmp < 0;
     }
@@ -261,9 +327,7 @@ public:
     memset(_ack_valid, 0, sizeof(_ack_valid));
     _next_ack_idx = 0;
     _direct_dups = _flood_dups = 0;
-    if (_max_recent_repeaters > 0) {
-      memset(_recent_repeaters, 0, _max_recent_repeaters * sizeof(RecentRepeaterInfo));
-    }
+    clearRecentRepeaters();
   }
 
 #ifdef ESP32
@@ -398,7 +462,8 @@ public:
     // path prefix does not collapse 2/3-byte repeaters sharing its first byte.
     for (int i = 0; i < _recent_repeater_count; i++) {
       RecentRepeaterInfo& existing = _recent_repeaters[i];
-      if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
+      if (existing.prefix_len != prefix_len
+          || routeHashPrefixBytesCompare(existing.prefix, prefix, prefix_len) != 0) {
   #if ARDUINO
         uint32_t age = (uint32_t)(now - existing.last_heard_millis);
         if (!have_oldest || age > oldest_age) {
@@ -428,8 +493,11 @@ public:
     }
 
     RecentRepeaterInfo& slot = _recent_repeaters[slot_idx];
-    memset(slot.prefix, 0, sizeof(slot.prefix));
-    memcpy(slot.prefix, prefix, prefix_len);
+    volatile uint8_t* out_prefix = slot.prefix;
+    const volatile uint8_t* in_prefix = prefix;
+    for (uint8_t i = 0; i < MAX_ROUTE_HASH_BYTES; ++i) {
+      out_prefix[i] = i < prefix_len ? in_prefix[i] : 0;
+    }
     slot.prefix_len = prefix_len;
     slot.snr_x4 = snr_x4;
 #if ARDUINO
@@ -467,9 +535,10 @@ public:
   }
   // Advance a cooperative live view in one bounded table scan. Unlike a
   // rank lookup, this never replays every earlier rank as the list grows.
-  // The caller copies the last accepted row: intervening RX may change the
-  // live ordering, but cannot invalidate that saved sort key or force a
-  // snapshot allocation. The existing paginated/rank APIs are unchanged.
+  // The caller uses copyRecentRepeaterInfo for the last accepted row:
+  // intervening RX may change the live ordering, but cannot invalidate that
+  // saved sort key or force a snapshot allocation. The existing paginated/rank
+  // APIs are unchanged.
   const RecentRepeaterInfo* getNextRecentRepeaterBySortKey(
       const RecentRepeaterInfo* after, int after_index, int& result_index) const {
     const RecentRepeaterInfo* best = NULL;
@@ -523,7 +592,8 @@ public:
     const RecentRepeaterInfo* best = NULL;
     for (int i = 0; i < _recent_repeater_count; i++) {
       const RecentRepeaterInfo* info = &_recent_repeaters[i];
-      if (info->prefix_len == hash_len && memcmp(info->prefix, hash, hash_len) == 0) {
+      if (info->prefix_len == hash_len
+          && routeHashPrefixBytesCompare(info->prefix, hash, hash_len) == 0) {
         return info;
       }
       if (routeHashPrefixesOverlap(info->prefix, info->prefix_len, hash, hash_len)) {
@@ -536,9 +606,7 @@ public:
     return best;
   }
   void clearRecentRepeaters() {
-    if (_max_recent_repeaters > 0) {
-      memset(_recent_repeaters, 0, _max_recent_repeaters * sizeof(RecentRepeaterInfo));
-    }
+    for (int i = 0; i < _max_recent_repeaters; ++i) clearRecentRepeaterInfo(_recent_repeaters[i]);
     _recent_repeater_count = 0;
   }
   int expireRecentRepeaters(uint32_t now_millis, uint32_t max_age_millis) {
@@ -552,9 +620,9 @@ public:
       if ((uint32_t)(now_millis - info.last_heard_millis) > max_age_millis) {
         _recent_repeater_count--;
         if (i != _recent_repeater_count) {
-          info = _recent_repeaters[_recent_repeater_count];
+          copyRecentRepeaterInfo(info, _recent_repeaters[_recent_repeater_count]);
         }
-        memset(&_recent_repeaters[_recent_repeater_count], 0, sizeof(RecentRepeaterInfo));
+        clearRecentRepeaterInfo(_recent_repeaters[_recent_repeater_count]);
         expired++;
       } else {
         i++;

@@ -63,13 +63,19 @@ typedef bool (*ServeDeflateReadFn)(void* ctx, uint16_t block, uint8_t* dst,
 
 #ifndef OTA_PROOFGEN_SCRATCH
   #if defined(ESP32_PLATFORM)
-    #define OTA_PROOFGEN_SCRATCH 16384  // heap-backed; can seed <=4096 blocks (8 MiB at 2 KiB/block)
+    #define OTA_PROOFGEN_SCRATCH 16384  // maximum source leaves; <=4096 blocks (8 MiB at 2 KiB/block)
   #elif defined(OTA_SD_STORE)
     #define OTA_PROOFGEN_SCRATCH 8192  // SD archive can seed <=2048 blocks (about 4 MiB at 2 KiB/block)
   #else
-    #define OTA_PROOFGEN_SCRATCH 4096  // server proof-gen working buffer (supports up to 1024 blocks)
+    #define OTA_PROOFGEN_SCRATCH 4096  // maximum source leaves (supports up to 1024 blocks)
   #endif
 #endif
+
+#ifndef OTA_SOURCE_BUFFER_IDLE_MS
+#define OTA_SOURCE_BUFFER_IDLE_MS 30000u // retain an unpinned source cache briefly between requests
+#endif
+static_assert(OTA_SOURCE_BUFFER_IDLE_MS > 0u && OTA_SOURCE_BUFFER_IDLE_MS < 0x80000000u,
+              "OTA source-buffer idle interval must support wrap-safe elapsed time");
 
 #ifndef OTA_MAX_BLOCK
 #define OTA_MAX_BLOCK 2048          // largest logical block (Merkle leaf / independent DEFLATE unit)
@@ -291,7 +297,7 @@ public:
     void*         read_ctx = nullptr;
     ServeDeflateReadFn read_deflated = nullptr; // optional host/source-generated raw-DEFLATE block
     void*         deflate_ctx = nullptr;
-    uint8_t*      scratch = nullptr;       // proof-gen working buffer (>= block_count*4)
+    uint8_t*      scratch = nullptr;       // optional encoded DATA output, not Merkle proof storage
     uint32_t      scratch_sz = 0;
   };
   // A lightweight catalog entry: what we advertise per mota + how to load its ServeView on demand.
@@ -686,15 +692,13 @@ private:
   uint16_t    _src_advertised[OTA_MAX_SOURCE_OBJ] = {0};
   uint8_t     _n_src_obj = 0;
   uint8_t     _src_manifest[OTA_SRC_MANIFEST_MAX];   // manifest-minus-leaves of the loaded source mota
-#if defined(ESP32_PLATFORM)
-  // Folder-source leaves and proof scratch are cold-path working storage. Keep
-  // them off classic ESP32 .bss and allocate them on first use.
+  // Cold source leaves are sized to the selected image, within the unchanged
+  // capacity limit. Encoded DATA needs at most one logical block. These buffers
+  // remain pinned until queued egress drains, then return to the heap at idle.
   uint8_t*    _src_leaves = nullptr;
+  uint32_t    _src_leaves_capacity = 0;
   uint8_t*    _scratch = nullptr;
-#else
-  uint8_t     _src_leaves[OTA_PROOFGEN_SCRATCH];     // leaves[] of the loaded source mota (<=1024 blocks)
-  uint8_t     _scratch[OTA_PROOFGEN_SCRATCH];        // proof-gen / fetch root-check working buffer
-#endif
+  uint32_t    _source_buffer_used_at = 0;
 
   // Server-side response descriptors are tiny. The active logical block has its own buffer so proof generation
   // or a simultaneous fetch cannot overwrite DATA retained behind radio-queue backpressure.
@@ -827,8 +831,10 @@ private:
   bool       _diffing = false;                 // leaves are in; diffing the seed a batch per tick
   uint32_t   _diff_idx = 0;                    // next block index to diff against the seed
 
-  uint8_t* ensureSourceLeaves();
+  uint8_t* ensureSourceLeaves(uint32_t bytes);
   uint8_t* ensureScratch();
+  void releaseColdBuffers();
+  void releaseIdleColdBuffers();
 
   // discovery: heard sources (beacon senders) + the catalog assembled from their OTA_HAVE replies
   struct Source {

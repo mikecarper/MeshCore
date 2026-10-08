@@ -105,26 +105,29 @@ bool merkle_verify_from_leaf(const uint8_t leaf[4], uint32_t index,
 
 uint8_t merkle_gen_proof(const uint8_t* leaves, uint32_t count, uint32_t index,
                          uint8_t* scratch, uint8_t* out_siblings) {
-  if (count == 0 || index >= count) return 0;
-  memcpy(scratch, leaves, (size_t)count * 4);
+  (void)scratch;
+  if (!leaves || !out_siblings || count == 0 || index >= count) return 0;
   uint32_t n = count, idx = index;
+  uint64_t width = 1;
   uint8_t p = 0;
+  MerkleAccumulator accumulator;
   while (n > 1) {
     bool is_last_odd = (n & 1u) && (idx == n - 1);
     if (!is_last_odd) {
       uint32_t s = (idx & 1u) ? idx - 1 : idx + 1;
-      memcpy(out_siblings + (size_t)p * 4, scratch + (size_t)s * 4, 4);
+      const uint64_t first = (uint64_t)s * width;
+      uint64_t end = first + width;
+      if (end > count) end = count;
+      accumulator.reset();
+      for (uint64_t leaf = first; leaf < end; ++leaf) {
+        if (!accumulator.add(leaves + (size_t)leaf * 4)) return 0;
+      }
+      if (!accumulator.finish(out_siblings + (size_t)p * 4)) return 0;
       p++;
     }
-    // reduce one level in place (parent m written from children 2m,2m+1; m <= i so it's safe)
-    uint32_t m = 0;
-    for (uint32_t i = 0; i < n; i += 2) {
-      if (i + 1 < n) merkle_combine(scratch + (size_t)m * 4, scratch + (size_t)i * 4, scratch + (size_t)(i + 1) * 4);
-      else           memmove(scratch + (size_t)m * 4, scratch + (size_t)i * 4, 4);
-      m++;
-    }
     idx >>= 1;
-    n = (n + 1) >> 1;
+    n = (n >> 1) + (n & 1u);
+    width <<= 1;
   }
   return p;
 }

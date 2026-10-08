@@ -60,9 +60,18 @@ while Ethernet owns SPI. Disabling Ethernet parks the worker after socket/SPI
 cleanup; the main loop deletes that parked task synchronously and frees its
 TX queue before releasing ownership. The worker stack therefore cannot remain queued for idle-task
 reclamation while OTA allocates again. The budget counts the larger of the
-4,928-byte Ethernet worker/queue or 5,168-byte external OTA workspaces, with the UART
+4,928-byte Ethernet worker/queue or 11,344-byte external OTA workspaces, with the UART
 allowance alongside either mode. It keeps the 8 KiB loop stack, 63 flood rules,
 and reserved 64 KiB OTA handoff arena.
+
+The shared RAM changes now reserve the lazy folder-source buffers as well:
+up to 4,096 bytes of source leaves and one 2,048-byte encoded output block,
+plus allocation overhead, for the RAK4631. These can coexist with own-image
+metadata and the encoder. The combined budget therefore reserves 11,344 bytes
+for external OTA, or 10,304 with the device encoder disabled, against the
+4,928-byte Ethernet worker/queue. Ethernet and external OTA remain exclusive.
+Freeing static buffers increases available heap; their active allocation cost
+still appears in the memory check.
 
 This combined config uses a source-bounded 2 KiB SSD1306 allowance. Its named
 128x64 geometry needs one 1,024-byte framebuffer, reused on later starts;
@@ -74,6 +83,91 @@ covers framebuffer, complete driver object and allocator overhead within that
 bound. This corrects a padded allocation estimate; it does not free actual RAM.
 Other images retain their existing display budgets. These are local
 test configs, not a qualification of a published or physically tested image.
+
+## Shared RAM reductions
+
+These changes apply to every board that compiles the corresponding feature.
+They retain stack sizes, radio packet pools, USB buffering, table capacities,
+stored settings, OTA block sizes and source-image limits.
+
+| Change | Scope | RAM reduction |
+| --- | --- | --- |
+| Repeater ACL session state | Pure repeater builds on all platforms | 36 bytes per client on 32-bit targets; 1,152 bytes for 32 clients |
+| Compact recent-repeater records | Repeaters with recent history enabled | 12 to 9 bytes per record; 1,536 bytes for 512 records |
+| Compact flood-rule flags and aligned counters | Generalized repeater and room rule engines | 200 to 192 bytes per rule; 504 bytes for 63 repeater rules or 248 bytes for 31 room rules |
+| Streaming Merkle proof generation | All OTA roles and platforms | Removes full-leaf-table proof scratch; compressed output needs only one logical block |
+| Source buffers allocated on demand | All OTA roles and platforms | Leaves allocate only the selected image's digest count; unused leaves/output return to the heap |
+
+The ACL source-role pre-script contributes one common compiler definition for
+the entire build. Room/sensor and unknown roles keep the complete session
+layout. The persisted four-byte room synchronization field stays in repeater
+records, so existing ACL files and their checksums remain compatible.
+
+Recent-history timestamps retain all 32 bits using explicit byte operations,
+avoiding unaligned multi-byte accesses on ARM. The table belongs to the mesh
+loop; network command handlers marshal their work to that loop. These byte
+operations do not provide synchronization for hypothetical concurrent users.
+Flood flags remain internal; FPF files serialize each field explicitly and
+never expose compiler bitfield layout. Multibyte counters remain aligned.
+Rule deduplication compares configured fields explicitly, so neither live
+rate-window counters nor struct padding can make different rules share a slot.
+
+OTA leaf capacity remains controlled by `OTA_PROOFGEN_SCRATCH`, independently
+of output-buffer size. The maximum source buffers are 4 KiB plus one block on
+ordinary nRF52, 8 KiB plus one block with SD storage, and 16 KiB plus one block
+on ESP32. Generic folder sources need no output allocation for raw DATA or
+proofs; own-image raw serving retains its caller-owned compatibility buffer.
+Its nRF52 allowance remains in the budget even when the device encoder is off.
+Queued DATA, PROOF and MANIFEST responses pin their buffers through radio
+backpressure.
+Explicit cancellation or source detach releases the reloadable cache; an
+unpinned cache also expires after 30 seconds. Attached source descriptors
+remain advertised and reload on the next request. Allocation failure refuses
+source loading safely, or falls back to raw DATA if only compression output
+is unavailable. Receive reassembly and serving/inflate buffers remain separate.
+
+On RAK4631, the OTA context's permanent allocation falls from 28,816 to 20,640
+bytes, an 8,176-byte reduction before table savings. This is idle heap capacity,
+not an additional 8 KiB saving on top of the active-operation savings. The RAM
+policy reserves lazy buffers when active and separately checks the largest
+contiguous allocation. ESP32 history uses its actual default capacities:
+256 records on classic ESP32 and 2,048 on S2/S3/C-series, unless overridden.
+
+The matched RAK4631 Full combined trial on 8 October 2026 retained all sensor
+drivers, 32 ACL clients, 63 flood rules, 512 recent repeater records, the 8 KiB loop
+stack and the reserved 64 KiB OTA arena:
+
+| Linked measurement | Before shared RAM changes | After all five changes |
+| --- | ---: | ---: |
+| Available heap capacity before startup | 73,580 bytes | 83,300 bytes |
+| Reserved startup/active allocations | 72,584 bytes | 77,104 bytes |
+| Capacity beyond those reservations | 996 bytes | 6,196 bytes |
+| Application flash | 585,700 bytes | 586,260 bytes |
+
+The permanent allocations shrink by 9,720 bytes. The smaller ACL and flood
+tables reduce startup allowances by another 1,656 bytes, while the new
+6,176-byte folder-source allowance counts buffers when active. The resulting
+capacity beyond reservations improves by 5,200 bytes; flash grows by 560 bytes.
+The reports are bound to ELF hashes
+`a16c02e43c12d7dadd94b92b9b80cdd22eced7f67e085b1fffb62ea39f09fcce`
+and `f78110d1609334621098cb6db2039227c2f8fc9ac7f9e6ef7dc3cc63eb8d502f`,
+respectively. These are linked capacity checks, not measured free heap after
+boot or physical Ethernet/OTA soak results.
+
+The five changes pass representative repeater builds for RAK4631 combined
+Full, Heltec V4 (ESP32-S3), Heltec V2 (classic ESP32), and Seeed XIAO RP2040.
+RAK4631 room-server and Heltec V4 sensor builds also pass while retaining
+their complete ACL session layouts. Wio E5 Mini repeater compilation passes,
+but linking exceeds flash capacity: the baseline already overflowed by
+27,200 bytes, and these changes add 224 bytes for a 27,424-byte overflow.
+That STM32 image is unqualified and is not release-ready.
+
+Regression coverage includes unchanged ACL/FPF file bytes, full capacities,
+timestamp rollover, flag combinations, ARM access widths/alignment, streamed
+proofs against the existing reference algorithm, allocation failures, source
+reload, queued-response lifetimes, and concurrent compressed serving/receiving.
+Synthetic and representative build results are distinct from physical soak
+qualification of every board.
 
 Generate matched Full/Reduced baseline and combined configs outside the
 repository without starting PlatformIO:

@@ -48,7 +48,9 @@ def integer(defines, name, default):
 def requirements(platform, defines, target):
     if platform not in SUPPORTED:
         raise ValueError(f"no memory policy for {platform}")
-    companion = bool(re.search(r"companion|comp_radio|comp_.*radio", target, re.I))
+    qualified_repeater = integer(defines, "MESH_CLIENT_REPEATER_ONLY", 0) != 0
+    repeater = qualified_repeater or "repeater" in target.lower()
+    companion = not qualified_repeater and bool(re.search(r"companion|comp_radio|comp_.*radio", target, re.I))
     full = "COMPANION_RADIO_FULL" in defines or "companion_radio_full" in target.lower()
     display = str(defines.get("DISPLAY_CLASS", "")).strip('"')
     if display == "SCIndicatorDisplay":
@@ -97,6 +99,8 @@ def requirements(platform, defines, target):
             # 4 KiB for the SDK UART task, buffers and allocator overhead.
             parts["uart_bridge_and_driver"] = 8192
         if "ENABLE_OTA" in defines:
+            # Existing own-image/manual-source allowance is independent of
+            # the generic folder leaf/output buffers counted below.
             parts["ota_source_scratch"] = 8192
         if ("WEBCONFIG_DISABLED" not in defines
                 and ((companion and "WIFI_SSID" in defines)
@@ -106,8 +110,15 @@ def requirements(platform, defines, target):
                 # Larger replies grow on demand only while preserving 32 KiB
                 # of free internal heap, and shrink after the browser reads.
                 parts["browser_terminal_scrollback"] = 4096
-        if not companion:
-            parts["neighbor_history"] = integer(defines, "MAX_RECENT_REPEATERS", 50) * 12
+        if repeater:
+            # Match MyMesh's platform defaults. The post-hook supplies the
+            # MCU-specific classic ESP32 default before sdkconfig is included.
+            default_recent = integer(defines, "MESH_RAM_DEFAULT_RECENT_REPEATERS",
+                                     256 if "CONFIG_IDF_TARGET_ESP32" in defines else 2048)
+            count = integer(defines, "MAX_RECENT_REPEATERS", default_recent)
+            if not integer(defines, "MESH_ENABLE_RECENT_REPEATERS", 1):
+                count = integer(defines, "MAX_RECENT_REPEATERS", 0)
+            parts["neighbor_history"] = count * 9 + (16 if count else 0)
     else:
         parts["core_filesystems_sensors"] = 8192
     # Packet bytes plus all three queue tables and allocation overhead.
@@ -115,19 +126,30 @@ def requirements(platform, defines, target):
     # These tables moved out of .bss, so linker heap bounds now include their
     # space. Count it as startup allocation instead; C++ assertions bind the
     # per-entry bounds to the production structures.
-    if re.search(r"repeater|room_server|sensor", target, re.I) or "COMPANION_MESH_CLOCK_SYNC" in defines:
-        parts["client_table"] = integer(defines, "MAX_CLIENTS", 32) * 320 + 16
-    if "repeater" in target.lower():
+    if qualified_repeater or re.search(r"repeater|room_server|sensor", target, re.I) or "COMPANION_MESH_CLOCK_SYNC" in defines:
+        client_bytes = 284 if integer(defines, "MESH_CLIENT_REPEATER_ONLY", 0) else 320
+        parts["client_table"] = integer(defines, "MAX_CLIENTS", 32) * client_bytes + 16
+    if repeater:
         engine = integer(defines, "MESH_ENABLE_FLOOD_RULE_ENGINE", int(platform != "STM32_PLATFORM"))
         slots = integer(defines, "FLOOD_PACKET_FILTER_SLOTS", 63 if engine else 16)
-        parts["flood_filter_table"] = slots * (200 if engine else 40) + 16
+        parts["flood_filter_table"] = slots * (192 if engine else 40) + 16
     if "room_server" in target.lower() and integer(
             defines, "MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE", 0):
         # FloodRuleEngine keeps all 31 persisted rules in one startup heap
-        # allocation.  Its C++ assertion pins Entry to the budgeted 200 bytes.
-        parts["room_flood_rule_table"] = 31 * 200 + 16
+        # allocation. Its C++ assertion pins Entry to the budgeted 192 bytes.
+        parts["room_flood_rule_table"] = 31 * 192 + 16
     if "ENABLE_OTA" in defines and "OTA_HEAP_CONTEXT" in defines:
         parts["ota_context"] = 16384 + 16
+    if "ENABLE_OTA" in defines:
+        # These are lazy on every platform. Freeing static arrays increases
+        # linked heap capacity but cannot erase their active-operation cost.
+        # Leaves are sized to the selected source, up to the unchanged limit;
+        # output holds only one block. They can overlap self-serving/fetching.
+        leaf_limit = integer(defines, "OTA_PROOFGEN_SCRATCH",
+                             16384 if platform == "ESP32_PLATFORM" else
+                             8192 if "OTA_SD_STORE" in defines else 4096)
+        block_size = integer(defines, "OTA_MAX_BLOCK", 2048)
+        parts["ota_generic_source_buffers"] = leaf_limit + block_size + 32
     # Match OtaDeflateConfig.h's compile eligibility and build-role override.
     # Adaptive RAK may qualify only at runtime; reserve its worst eligible case.
     # The shared role hook qualifies sources, not environment names. An
@@ -144,12 +166,13 @@ def requirements(platform, defines, target):
         # The encoder uses input offsets, not pointers: sizeof(uint16_t) per
         # bucket on every platform. This allocation is freed before radio TX.
         parts["ota_encoder_workspace"] = (1 << hash_bits) * 2 + 16
-        if platform == "NRF52_PLATFORM":
-            # The running nRF52840 app is <1 MiB: <=512 2-KiB leaves. Self-serve
-            # holds its leaf cache plus max(leaves,2048) proof/output scratch.
-            # Unlike ESP32's existing source scratch reserve these allocations
-            # were formerly covered only by the general transient margin.
-            parts["ota_self_source_scratch"] = 2 * 2048 + 2 * 16
+    if ("ENABLE_OTA" in defines and platform == "NRF52_PLATFORM"
+            and "OTA_SEEDER_ONLY" not in defines and any(name in defines for name in (
+                "OTA_QSPI_STORE", "OTA_SD_STORE", "OTA_RAK_AUTO_STORE", "OTA_TOWER_AUTO_STORE"))):
+        # Own-image leaves/output also exist without a device encoder. The
+        # running nRF52840 app is <1 MiB: <=512 2-KiB leaves. Compression needs
+        # one block; raw diagnostic serving retains a leaf-sized output.
+        parts["ota_self_source_scratch"] = 2 * 2048 + 2 * 16
     if combined_rak_ethernet:
         words = integer(defines, "RAK4631_ETHERNET_TASK_STACK_WORDS", 1024)
         if words < 1024:
@@ -170,7 +193,7 @@ def requirements(platform, defines, target):
         # allocated only while Ethernet is enabled; reserve its capacity plus
         # 64 bytes for allocator overhead alongside the worker stack and TCB.
         external_ota = sum(parts.pop(name, 0) for name in (
-            "ota_encoder_workspace", "ota_self_source_scratch"))
+            "ota_encoder_workspace", "ota_self_source_scratch", "ota_generic_source_buffers"))
         parts["ethernet_or_external_ota_workspaces"] = max(words * 4 + 256 + tx_capacity + 64,
                                                         external_ota)
     if display and display != "NullDisplayDriver":
@@ -203,9 +226,9 @@ def requirements(platform, defines, target):
     largest = max(display_heap, parts["radio_packet_pool"], 8192 if platform == "ESP32_PLATFORM" else 0)
     if "expanded_message_previews" in parts:
         largest = max(largest, 8192 + parts["expanded_message_previews"])
-    for name in ("client_table", "flood_filter_table", "room_flood_rule_table",
+    for name in ("client_table", "flood_filter_table", "room_flood_rule_table", "neighbor_history",
                  "ota_context", "screen_objects_and_history", "ota_encoder_workspace",
-                 "ethernet_or_external_ota_workspaces"):
+                 "ota_generic_source_buffers", "ethernet_or_external_ota_workspaces"):
         largest = max(largest, parts.get(name, 0))
     return {"required_heap_bytes": required, "required_contiguous_bytes": largest,
             "components": parts, "display": display, "full_companion": full}
@@ -304,6 +327,8 @@ def heap_regions(elf, platform, mcu):
 
 def check_firmware(elf_path, platform, mcu, defines, target, output=None):
     elf = FirmwareElf(elf_path)
+    if platform == "ESP32_PLATFORM":
+        defines = {**defines, "MESH_RAM_DEFAULT_RECENT_REPEATERS": 256 if str(mcu).lower() == "esp32" else 2048}
     policy = requirements(platform, defines, target)
     regions = heap_regions(elf, platform, mcu)
     available = sum(end - start for start, end, _ in regions)

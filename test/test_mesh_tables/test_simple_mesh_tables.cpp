@@ -1,8 +1,87 @@
 #include <gtest/gtest.h>
+#include <cstring>
+#include <new>
+#include <type_traits>
 #define MAX_RECENT_REPEATERS 8
 #include "helpers/SimpleMeshTables.h"
 
 using namespace mesh;
+
+TEST(SimpleMeshTables, CompactRecentRowsPreserveFullMillisAtEveryByteAlignment) {
+    using Info = SimpleMeshTables::RecentRepeaterInfo;
+    static_assert(sizeof(Info) == 9 && alignof(Info) == 1, "compact row layout");
+    static_assert(std::is_trivially_copyable<Info>::value, "memset/cursor copy support");
+    constexpr uint32_t values[] = {0, 1, 0x0000ffff, 0x12345678, 0x80000000,
+                                   0xfffffffe, 0xffffffff};
+    for (size_t offset = 0; offset < alignof(uint32_t); ++offset) {
+        alignas(uint32_t) unsigned char bytes[sizeof(Info) + alignof(uint32_t)] = {};
+        Info* info = new (bytes + offset) Info{};
+        info->prefix[0] = 0x86;
+        info->prefix[1] = 0x0c;
+        info->prefix[2] = 0xca;
+        info->prefix_len = 3;
+        info->snr_x4 = -128;
+        for (uint32_t value : values) {
+            info->last_heard_millis = value;
+            EXPECT_EQ(value, uint32_t(info->last_heard_millis));
+            Info cursor;
+            SimpleMeshTables::copyRecentRepeaterInfo(cursor, *info);
+            EXPECT_EQ(value, uint32_t(cursor.last_heard_millis));
+            EXPECT_EQ(0x86, info->prefix[0]);
+            EXPECT_EQ(0x0c, info->prefix[1]);
+            EXPECT_EQ(0xca, info->prefix[2]);
+            EXPECT_EQ(3, info->prefix_len);
+            EXPECT_EQ(-128, info->snr_x4);
+        }
+        SimpleMeshTables::clearRecentRepeaterInfo(*info);
+        EXPECT_EQ(0u, uint32_t(info->last_heard_millis));
+    }
+}
+
+TEST(SimpleMeshTables, CompactRecentPrefixCopiesStayWithinThreeBytes) {
+    using Info = SimpleMeshTables::RecentRepeaterInfo;
+    alignas(uint32_t) unsigned char bytes[sizeof(Info) + alignof(uint32_t)] = {};
+    for (size_t offset = 0; offset < alignof(uint32_t); ++offset) {
+        Info* info = new (bytes + offset) Info{};
+        info->prefix[0] = 0x86;
+        info->prefix[1] = 0x0c;
+        info->prefix[2] = 0xca;
+        info->prefix_len = 3;
+        unsigned char out[] = {0xa5, 0xa5, 0xa5, 0xa5, 0xa5};
+        SimpleMeshTables::copyRecentRepeaterPrefix(out + 1, *info);
+        EXPECT_EQ(0xa5, out[0]);
+        EXPECT_EQ(0x86, out[1]);
+        EXPECT_EQ(0x0c, out[2]);
+        EXPECT_EQ(0xca, out[3]);
+        EXPECT_EQ(0xa5, out[4]);
+        EXPECT_EQ(0, routeHashPrefixBytesCompare(info->prefix, out + 1, 3));
+        out[3] = 0xc9;
+        EXPECT_GT(routeHashPrefixBytesCompare(info->prefix, out + 1, 3), 0);
+        EXPECT_LT(routeHashPrefixBytesCompare(out + 1, info->prefix, 3), 0);
+    }
+}
+
+TEST(SimpleMeshTables, CompactRecentExpiryPreservesUnsignedMillisRollover) {
+    SimpleMeshTables::RecentRepeaterInfo storage[3];
+    SimpleMeshTables table(storage, 3);
+    const uint8_t older[] = {0x10, 0x20, 0x30};
+    const uint8_t boundary[] = {0x11, 0x21, 0x31};
+    const uint8_t fresh[] = {0x12, 0x22, 0x32};
+    ASSERT_TRUE(table.setRecentRepeater(older, 3, 12));
+    ASSERT_TRUE(table.setRecentRepeater(boundary, 3, 8));
+    ASSERT_TRUE(table.setRecentRepeater(fresh, 3, 4));
+    storage[0].last_heard_millis = 0xffffffe0;
+    storage[1].last_heard_millis = 0xfffffff0;
+    storage[2].last_heard_millis = 8;
+    EXPECT_EQ(1, table.expireRecentRepeaters(16, 32));
+    EXPECT_EQ(nullptr, table.findRecentRepeaterByHash(older, 3));
+    ASSERT_NE(nullptr, table.findRecentRepeaterByHash(boundary, 3));
+    ASSERT_NE(nullptr, table.findRecentRepeaterByHash(fresh, 3));
+    EXPECT_EQ(0xfffffff0u, uint32_t(table.findRecentRepeaterByHash(boundary, 3)->last_heard_millis));
+    EXPECT_EQ(8u, uint32_t(table.findRecentRepeaterByHash(fresh, 3)->last_heard_millis));
+    EXPECT_EQ(2, table.getRecentRepeaterCount());
+    EXPECT_EQ(0u, uint32_t(storage[2].last_heard_millis));
+}
 
 // Build a packet that calculatePacketHash() distinguishes by payload content.
 // header selects ROUTE_TYPE_FLOOD so isRouteDirect() returns false.
@@ -362,7 +441,7 @@ TEST(SimpleMeshTables, CooperativeRecentCursorMatchesUnchangedRankOrder) {
             rank == 0 ? nullptr : &cursor, cursor_index, found_index);
         ASSERT_NE(nullptr, found);
         EXPECT_EQ(t.getRecentRepeaterBySortedIdx(rank), found);
-        cursor = *found;
+        SimpleMeshTables::copyRecentRepeaterInfo(cursor, *found);
         cursor_index = found_index;
     }
     int found_index = 123;
@@ -382,7 +461,8 @@ TEST(SimpleMeshTables, CooperativeRecentCursorSurvivesLiveStorageCompaction) {
     int cursor_index = -1;
     const auto* first_row = t.getNextRecentRepeaterBySortKey(nullptr, -1, cursor_index);
     ASSERT_NE(nullptr, first_row);
-    const auto cursor = *first_row;
+    SimpleMeshTables::RecentRepeaterInfo cursor;
+    SimpleMeshTables::copyRecentRepeaterInfo(cursor, *first_row);
     storage[0].last_heard_millis = 0;
     storage[1].last_heard_millis = 100;
     storage[2].last_heard_millis = 100;
@@ -411,7 +491,7 @@ TEST(SimpleMeshTables, CooperativeRecentCursorTraverses2048Rows) {
         ASSERT_NE(nullptr, found);
         EXPECT_EQ(static_cast<uint8_t>(i >> 8), found->prefix[1]);
         EXPECT_EQ(static_cast<uint8_t>(i), found->prefix[2]);
-        cursor = *found;
+        SimpleMeshTables::copyRecentRepeaterInfo(cursor, *found);
         cursor_index = found_index;
     }
     EXPECT_EQ(nullptr, t.getNextRecentRepeaterBySortKey(&cursor, cursor_index, cursor_index));
