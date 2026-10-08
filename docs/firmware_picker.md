@@ -25,6 +25,13 @@ Chip family and hardware are the only dropdowns. All remaining choices use
 buttons. **Firmware profile** combines OTA support, Full/standard, and sensor
 or storage differences when a choice between different images is needed.
 
+RAK3401 and RAK4631 repeaters use one unified image per sensor policy for
+supported internal and external OTA storage. **Full** and **Reduced** choose
+optional sensor drivers; they do not select a storage module. The unified
+RAK4631 image also includes runtime RS-232 UART selection. Ethernet remains
+a separate RAK4631 hardware image. LoRa OTA still requires the matching
+OTAFIX bootloader and a package compatible with the installed target.
+
 The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.

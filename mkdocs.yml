@@ -127,7 +127,7 @@ extra_javascript:
   - _javascript/hosted_doc_links.js?v=20261007-1
   - _javascript/notification_builder.js?v=20261006-channel9
   - https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
-  - _javascript/firmware_picker.js?v=20261006-simplify-1
+  - _javascript/firmware_picker.js?v=20261008-rak-combined-1
   - _javascript/telemetry_decoder.js?v=20261007-hosted-form
   - _javascript/management_decoder.js
   - _javascript/filter_tool.js?v=20261002-hashbytes-2plus

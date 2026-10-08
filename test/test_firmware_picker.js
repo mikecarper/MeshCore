@@ -1014,6 +1014,27 @@ const rakLegacyCatalog = picker.buildCatalog([
   release(family, "2026-09-25T00:00:00Z", rakStorageAssets.slice(1, 4).concat(rakStorageAssets.slice(5))),
 ]);
 assert.strictEqual(rakLegacyCatalog.profiles.length, 5);
+// Sensor-policy suffixes must not resurrect the storage-specific compatibility
+// images. A Full successor cannot replace a missing Reduced successor.
+const rakPolicyTargets = rakStorageTargets.flatMap(target =>
+  ['full', 'reduced'].map(policy => target + '-' + policy));
+const rakPolicyAssets = rakPolicyTargets.map(target =>
+  asset(target + '-ota-' + family + '.uf2'));
+const rakPolicyCatalog = picker.buildCatalog([
+  release(family, '2026-10-08T00:00:00Z', rakPolicyAssets),
+]);
+assert.deepStrictEqual(rakPolicyCatalog.profiles.map(item => item.target).sort(),
+  ['RAK_3401', 'RAK_4631'].flatMap(board =>
+    ['full', 'reduced'].map(policy => board + '_repeater_unified_lora_ota-' + policy)).sort());
+assert.deepStrictEqual(rakPolicyCatalog.rows.map(item => item.target).sort(), rakPolicyTargets.sort(),
+  'All exact legacy OTA identities must remain in the raw catalog');
+const rakMissingReducedCatalog = picker.buildCatalog([
+  release(family, '2026-10-08T00:00:00Z', rakPolicyAssets.filter(file =>
+    !file.name.includes('_unified_lora_ota-reduced-'))),
+]);
+assert.deepStrictEqual(rakMissingReducedCatalog.profiles.map(item => item.target).sort(),
+  rakPolicyTargets.filter(target => target.endsWith('_unified_lora_ota-full') ||
+    (target.endsWith('-reduced') && !target.includes('_unified_lora_ota-'))).sort());
 assert.strictEqual(picker.formatBytes(2097152), "2.00 MiB");
 assert.strictEqual(
   picker.parseFirmwareAsset(
@@ -1155,6 +1176,40 @@ const currentCatalog = picker.buildCatalog([
 ], currentControls);
 assert.strictEqual(currentCatalog.rows.length, currentAssets.length);
 assert(currentCatalog.profiles.every(profile => profile.controls && profile.chipFamily !== 'unknown'));
+for (const [hardware, bases] of [
+  ['RAK_4631', ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet']],
+  ['RAK_3401', ['RAK_3401_repeater_unified_lora_ota']],
+]) {
+  const context = {hardware, role: 'repeater'};
+  const expected = bases.flatMap(base => ['full', 'reduced'].map(policy => base + '-' + policy));
+  const visible = currentCatalog.profiles.filter(profile => picker.profileMatchesFacets(profile, context));
+  assert.deepStrictEqual(visible.map(profile => profile.target).sort(), expected.sort(),
+    hardware + ' must recommend only combined storage/bridge images and genuine Ethernet variants');
+  const choices = picker.firmwareProfileChoices(currentCatalog.profiles, context);
+  assert.strictEqual(choices.length, expected.length, hardware + ' must have one choice per real image');
+  assert.strictEqual(new Set(choices.map(choice => choice.label)).size, choices.length,
+    hardware + ' must not show duplicate profile labels');
+  for (const profile of visible.filter(item => item.target.includes('_unified_lora_ota-'))) {
+    assert.deepStrictEqual(picker.profileFieldValues(profile, 'mode'),
+      hardware === 'RAK_4631' ? ['standard', 'rs232'] : ['standard']);
+    if (hardware === 'RAK_4631') {
+      const bridge = picker.runtimeDirections(profile, {mode: 'rs232'})
+        .find(section => section.title.startsWith('RS232 bridge'));
+      assert(bridge && bridge.note.includes('set bridge.uart 1') && bridge.note.includes('pauses UART GPS'),
+        'Both combined sensor policies must explain runtime UART selection and GPS sharing');
+      assert(!bridge.note.includes('GPS-free image'));
+    }
+  }
+}
+const rakBridgeBase = 'RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors';
+const rakPartialAssets = currentAssets.filter(file =>
+  file.name.startsWith('RAK_4631_repeater_unified_lora_ota-full-') ||
+  file.name.startsWith(rakBridgeBase + '-reduced-'));
+const rakPartialCatalog = picker.buildCatalog([
+  release(currentControls.familyTag, '2026-10-08T00:00:00Z', rakPartialAssets),
+], currentControls);
+assert(rakPartialCatalog.profiles.some(profile => profile.target === rakBridgeBase + '-reduced'),
+  'A Full combined image must not hide the only available Reduced bridge image');
 const expandedEsp32 = currentCatalog.profiles.find(profile =>
   profile.target === 'Ebyte_EoRa-S3_Repeater-full-usb-wifi');
 assert(expandedEsp32);
