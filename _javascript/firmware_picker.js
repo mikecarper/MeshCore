@@ -482,6 +482,11 @@
     if (/^RAK_(?:3401|4631)_repeater_unified_lora_ota(?:-(?:full|reduced)(?:-ota)?)?$/i.test(target)) {
       variant = "default";
     }
+    if (/^RAK_4631_repeater_ethernet(?:-(?:full|reduced)(?:-ota)?)?$/i.test(target)) {
+      // The RAK13800 Ethernet image is a real hardware choice, separate from
+      // adaptive storage. Label it consistently for both sensor policies.
+      variant = "ethernet";
+    }
     if (sourceHardware === "Station_G2_logging") {
       variant = variant === "default"
         ? "rx-boosted"
@@ -571,11 +576,13 @@
       heltec_t096_repeater_bridge_rs232_lora_ota_no_external_sensors:
         "heltec_t096_repeater_lora_ota_no_external_sensors",
       rak_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors:
-        "rak_4631_repeater_lora_ota_no_external_sensors",
+        ["rak_4631_repeater_unified_lora_ota", "rak_4631_repeater_lora_ota_no_external_sensors"],
       rak_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors:
-        "rak_4631_repeater_lora_ota_no_external_sensors",
-      rak_4631_repeater_bridge_rs232_serial1: "rak_4631_repeater",
-      rak_4631_repeater_bridge_rs232_serial2: "rak_4631_repeater",
+        ["rak_4631_repeater_unified_lora_ota", "rak_4631_repeater_lora_ota_no_external_sensors"],
+      rak_4631_repeater_bridge_rs232_serial1:
+        ["rak_4631_repeater_unified_lora_ota", "rak_4631_repeater"],
+      rak_4631_repeater_bridge_rs232_serial2:
+        ["rak_4631_repeater_unified_lora_ota", "rak_4631_repeater"],
       promicro_repeater_bridge_rs232_serial1: "promicro_repeater",
       heltec_t114_without_display_repeater_bridge_rs232:
         "heltec_t114_without_display_repeater",
@@ -603,11 +610,16 @@
         combinedUsbBleKeys.has(key);
       const replacedTerminal = profile.role === "terminal" &&
         terminalReplacementKeys.has(key);
-      const rs232Replacement = mergedRs232Targets[
-        String(profile.target || "").toLowerCase()
-      ];
+      const target = String(profile.target || "").toLowerCase();
+      const sensorSuffix = (target.match(/-(?:full|reduced)$/) || [""])[0];
+      const baseTarget = sensorSuffix ? target.slice(0, -sensorSuffix.length) : target;
+      const rs232Replacement = mergedRs232Targets[baseTarget];
+      // Preserve the exact sensor policy: a Full image does not replace a
+      // missing Reduced image, or an older unsuffixed compatibility image.
       const replacedRs232 = Boolean(rs232Replacement &&
-        targets.has(rs232Replacement));
+        [].concat(rs232Replacement).some(function (replacement) {
+          return targets.has(replacement + sensorSuffix);
+        }));
       return !(replacedAttachedTransport && fullKeys.has(key)) &&
         !replacedByUsbBle && !replacedTerminal && !replacedRs232;
     });
@@ -644,8 +656,8 @@
     }));
     return (profiles || []).filter(function (profile) {
       const target = String(profile && profile.target || "").toLowerCase();
-      const match = /^rak_(3401|4631)_repeater_(?:lora_ota_no_external_sensors|w25q16_lora_ota|rak15001_slot_c_lora_ota|rak13302_w25q16_lora_ota)$/.exec(target);
-      return !match || !targets.has("rak_" + match[1] + "_repeater_unified_lora_ota");
+      const match = /^rak_(3401|4631)_repeater_(?:lora_ota_no_external_sensors|w25q16_lora_ota|rak15001_slot_c_lora_ota|rak13302_w25q16_lora_ota)(-(?:full|reduced))?$/.exec(target);
+      return !match || !targets.has("rak_" + match[1] + "_repeater_unified_lora_ota" + (match[2] || ""));
     });
   }
 
@@ -668,10 +680,7 @@
   function applyMergedRak4631RepeaterCapabilities(profiles) {
     return (profiles || []).map(function (profile) {
       const target = String(profile && profile.target || "").toLowerCase();
-      if (
-        target !== "rak_4631_repeater" &&
-        target !== "rak_4631_repeater_lora_ota_no_external_sensors"
-      ) {
+      if (!/^rak_4631_repeater(?:_lora_ota_no_external_sensors|_unified_lora_ota)?(?:-(?:full|reduced))?$/.test(target)) {
         return profile;
       }
 
@@ -1667,6 +1676,9 @@
     if (profile.role === "repeater") toggle("Repeat mesh traffic", "set repeat", "get repeat");
     if (info.rs232 && infrastructure) {
       const mode = chosen.mode;
+      const uartNote = /^RAK_4631_repeater_unified_lora_ota-(?:full|reduced)$/i.test(profile.target) && profile.sensorProfile
+        ? "Use the UART and pin map for this exact board. Unified RAK4631 supports set bridge.uart 1 or set bridge.uart 2 while the bridge is stopped. UART1 pauses UART GPS while the bridge runs and restores it when stopped."
+        : "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.";
       // MQTT images keep the historical bridge.enabled ESP-NOW alias.
       // Their independently saved UART uses the transport-specific controls.
       const uartSetting = info.mqtt ? "rs232.enabled" : "bridge.enabled";
@@ -1677,7 +1689,7 @@
         { label: "Set baud", commands: ["set " + uartSetting + " off", "set bridge.baud 115200", "set " + uartSetting + " on"] },
       ].sort(function (a, b) {
         return mode === "standard" ? Number(b.label === "Off") - Number(a.label === "Off") : 0;
-      }), "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.");
+      }), uartNote);
     }
     if (info.espnowBridge && infrastructure) {
       // Combined images need the transport-specific switch: bridge.enabled
