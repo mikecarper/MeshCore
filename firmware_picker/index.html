@@ -2473,10 +2473,13 @@ or storage differences when a choice between different images is needed.</p>
 <p>RAK3401 and RAK4631 repeaters use one unified image per sensor policy for
 supported internal and external OTA storage. <strong>Full</strong> and <strong>Reduced</strong> choose
 optional sensor drivers; they do not select a storage module. The unified
-RAK4631 image also includes RS-232 on UART2. A GPS-free Serial1 image remains
-separate because the unified image reserves UART1 for potentially powered
-GPS hardware. Header-connected W25 flash also occupies UART1 pins. Ethernet
-remains a separate RAK4631 hardware image. LoRa OTA still requires the matching
+RAK4631 image also includes RS-232 on UART2, which is recommended for new
+installations. The unified image reserves UART1 for potentially powered GPS
+hardware; header-connected W25 flash also occupies UART1 pins. Legacy GPS-free
+Serial1 downloads remain available through exact-filename search for existing
+wiring, but are omitted from normal choices when the matching unified sensor
+profile is available. Ethernet remains a separate RAK4631 hardware image.
+LoRa OTA still requires the matching
 OTAFIX bootloader and a package compatible with the installed target.</p>
 <p>The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
@@ -2739,8 +2742,9 @@ catalog loads. Partial selections work too, so you can share a board and role
 while leaving other choices open. <strong>Clear all choices</strong> removes the picker
 parameters from the URL. Changes update the current browser-history entry
 without reloading the page or adding a Back-button entry for every click.</p>
-<p>For example, <a href="?hardware=RAK_3401&amp;role=repeater&amp;ota=lora-receiver&amp;variant=no-external-sensors">RAK3401 repeater with internal storage</a>
-preselects that board, role, OTA capability, and storage profile.</p>
+<p>For example, <a href="?hardware=RAK_3401&amp;role=repeater&amp;ota=lora-receiver&amp;feature=full&amp;variant=default">RAK3401 unified Full repeater</a>
+preselects that board, role, OTA capability, and Full sensor policy. Supported
+internal or external storage is detected by the unified image.</p>
 <p>The query parameters are <code>chipFamily</code>, <code>hardwareFamily</code>, <code>hardware</code>, <code>role</code>,
 <code>logging</code>, <code>ota</code>, <code>mode</code>, <code>feature</code>, <code>variant</code>, and <code>install</code>. Values use the
 picker's internal identifiers rather than the displayed labels. One Firmware
@@ -3121,7 +3125,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20261008-rak-combined-2"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261008-rak-uart2-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
       
