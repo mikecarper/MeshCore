@@ -614,9 +614,14 @@
       const sensorSuffix = (target.match(/-(?:full|reduced)$/) || [""])[0];
       const baseTarget = sensorSuffix ? target.slice(0, -sensorSuffix.length) : target;
       const rs232Replacement = mergedRs232Targets[baseTarget];
+      // Qualified RAK Full/Reduced images retain powered WisBlock GPS and
+      // reserve UART1 even when its bounded probe saw no receiver. The exact
+      // GPS-free Serial1 image remains a distinct, usable hardware choice.
+      const reservedRakUart1 = sensorSuffix &&
+        /^rak_4631_repeater_bridge_rs232_serial1(?:_lora_ota_no_external_sensors)?$/.test(baseTarget);
       // Preserve the exact sensor policy: a Full image does not replace a
       // missing Reduced image, or an older unsuffixed compatibility image.
-      const replacedRs232 = Boolean(rs232Replacement &&
+      const replacedRs232 = Boolean(!reservedRakUart1 && rs232Replacement &&
         [].concat(rs232Replacement).some(function (replacement) {
           return targets.has(replacement + sensorSuffix);
         }));
@@ -1677,7 +1682,9 @@
     if (info.rs232 && infrastructure) {
       const mode = chosen.mode;
       const uartNote = /^RAK_4631_repeater_unified_lora_ota-(?:full|reduced)$/i.test(profile.target) && profile.sensorProfile
-        ? "Use the UART and pin map for this exact board. Unified RAK4631 supports set bridge.uart 1 or set bridge.uart 2 while the bridge is stopped. UART1 pauses UART GPS while the bridge runs and restores it when stopped."
+        ? "Unified RAK4631 uses UART2 for the RS-232 bridge; select it with set bridge.uart 2 while the bridge is stopped. GPS safety guards reserve UART1 even when no GPS was detected. Use the separate GPS-free Serial1 image for UART1, with no powered UART GPS or header-connected W25 flash on those pins."
+        : /^RAK_4631_repeater_bridge_rs232_serial1(?:_lora_ota_no_external_sensors)?-(?:full|reduced)$/i.test(profile.target)
+          ? "This GPS-free Serial1 image uses UART1. Do not fit a powered UART GPS or header-connected W25 flash on the same UART1 pins. Use the unified UART2 image when those pins are occupied."
         : "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.";
       // MQTT images keep the historical bridge.enabled ESP-NOW alias.
       // Their independently saved UART uses the transport-specific controls.
