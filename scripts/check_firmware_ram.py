@@ -62,11 +62,28 @@ def requirements(platform, defines, target):
     else:
         raise ValueError(f"add a runtime allocation budget for display {display!r}")
     parts = {}
+    combined_rak_ethernet = "RAK4631_COMBINED_ETHERNET" in defines
+    if combined_rak_ethernet and (platform != "NRF52_PLATFORM"
+                                 or not {"RAK_4631", "ETHERNET_ENABLED", "OTA_RAK_AUTO_STORE"}.issubset(defines)):
+        raise ValueError("combined RAK Ethernet budget requires RAK4631 adaptive nRF52 storage")
+    if combined_rak_ethernet and display == "SSD1306Display":
+        # The fixed 128x64 driver allocates one 1024-byte framebuffer and
+        # reuses it after power cycling. Its linked source assertion binds
+        # framebuffer + complete driver object + allocator overhead to 2 KiB.
+        # The actual linked ARM driver is 156 bytes; it is already static,
+        # so including it here again retains a conservative allocation bound.
+        display_heap = 2048
     if platform == "NRF52_PLATFORM":
         parts["loop_and_callback_stacks"] = integer(defines, "MESH_NRF52_LOOP_STACK_WORDS", 2048) * 4 + 3072
         parts["core_usb_filesystems_sensors"] = 12288
         if "BLE_PIN_CODE" in defines:
             parts["bluetooth_worker_stacks"] = 5920
+        if combined_rak_ethernet and "WITH_RS232_BRIDGE" in defines:
+            # The bridge owns a packet/ACK duplicate table as well as its RX
+            # frame. Its source assertion bounds the object to 2304 bytes;
+            # retain room for allocation metadata and the UART TX semaphore.
+            # UART RX/TX arrays are embedded in the already-linked globals.
+            parts["uart_bridge_and_driver"] = 2560
     elif platform == "ESP32_PLATFORM":
         parts["core_tasks_usb_filesystems"] = 24576
         wifi = 49152 if "WIFI_SSID" in defines or "WIFI_OTA_SEEDER" in defines else 0
@@ -133,6 +150,29 @@ def requirements(platform, defines, target):
             # Unlike ESP32's existing source scratch reserve these allocations
             # were formerly covered only by the general transient margin.
             parts["ota_self_source_scratch"] = 2 * 2048 + 2 * 16
+    if combined_rak_ethernet:
+        words = integer(defines, "RAK4631_ETHERNET_TASK_STACK_WORDS", 1024)
+        if words < 1024:
+            raise ValueError("combined RAK Ethernet task requires at least 1024 stack words")
+        tx_capacity = integer(defines, "ETHERNET_CLI_TX_BUFFER_BYTES", 512)
+        if not 512 <= tx_capacity <= 2048:
+            raise ValueError("combined RAK Ethernet TX queue requires 512..2048 bytes")
+        # Ethernet owns the shared bus only after rejecting live/pinned OTA
+        # sessions and freeing the external self-source buffers. While it owns
+        # that bus, OTA encoder/self-source entry points refuse allocation.
+        # On shutdown the main loop deletes the parked worker synchronously
+        # and frees its TX queue before releasing ownership, so its stack
+        # cannot await idle cleanup
+        # while external OTA workspaces are allocated again.
+        # UART can remain enabled in either mode, so its budget stays above.
+        # The library's function-static DHCP object and SPI/socket globals are
+        # already present in the linked image. The bounded TCP TX queue is
+        # allocated only while Ethernet is enabled; reserve its capacity plus
+        # 64 bytes for allocator overhead alongside the worker stack and TCB.
+        external_ota = sum(parts.pop(name, 0) for name in (
+            "ota_encoder_workspace", "ota_self_source_scratch"))
+        parts["ethernet_or_external_ota_workspaces"] = max(words * 4 + 256 + tx_capacity + 64,
+                                                        external_ota)
     if display and display != "NullDisplayDriver":
         parts["display_pixels_and_driver"] = display_heap
         screen_budget = integer(defines, "MESH_COMPANION_SCREEN_STARTUP_BYTES", 0)
@@ -164,7 +204,8 @@ def requirements(platform, defines, target):
     if "expanded_message_previews" in parts:
         largest = max(largest, 8192 + parts["expanded_message_previews"])
     for name in ("client_table", "flood_filter_table", "room_flood_rule_table",
-                 "ota_context", "screen_objects_and_history", "ota_encoder_workspace"):
+                 "ota_context", "screen_objects_and_history", "ota_encoder_workspace",
+                 "ethernet_or_external_ota_workspaces"):
         largest = max(largest, parts.get(name, 0))
     return {"required_heap_bytes": required, "required_contiguous_bytes": largest,
             "components": parts, "display": display, "full_companion": full}

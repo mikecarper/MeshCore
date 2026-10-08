@@ -188,6 +188,103 @@ class FirmwareRamTest(unittest.TestCase):
         }, "v3_repeater")
         self.assertEqual(alternate, combined)
 
+    def test_combined_rak_budgets_uart_beside_exclusive_ethernet_and_ota(self):
+        defines = {
+            "RAK_4631": 1, "ETHERNET_ENABLED": 1, "OTA_RAK_AUTO_STORE": 1,
+            "ENABLE_OTA": 1, "MESHCORE_OTA_DEVICE_DEFLATE": 1,
+            "WITH_RS232_BRIDGE": "Serial2", "DISPLAY_CLASS": "SSD1306Display",
+        }
+        legacy = ram.requirements("NRF52_PLATFORM", defines,
+                                  "RAK_4631_repeater_unified_lora_ota")
+        combined = ram.requirements("NRF52_PLATFORM", {
+            **defines, "RAK4631_COMBINED_ETHERNET": 1,
+        }, "RAK_4631_repeater_unified_lora_ota")
+        components = combined["components"]
+        self.assertEqual(components["uart_bridge_and_driver"], 2560)
+        self.assertEqual(components["ethernet_or_external_ota_workspaces"], 5168)
+        self.assertNotIn("ota_encoder_workspace", components)
+        self.assertNotIn("ota_self_source_scratch", components)
+        self.assertEqual(components["display_pixels_and_driver"], 2048)
+        self.assertEqual(combined["required_heap_bytes"] - legacy["required_heap_bytes"], 2560 - 2048)
+        self.assertEqual(components["loop_and_callback_stacks"], 8192 + 3072)
+        self.assertEqual(components["flood_filter_table"], 63 * 200 + 16)
+        # An alternate port selects the same bridge instead of allocating two.
+        alternate = ram.requirements("NRF52_PLATFORM", {
+            **defines, "RAK4631_COMBINED_ETHERNET": 1,
+            "WITH_RS232_BRIDGE_ALT": "Serial1",
+        }, "RAK_4631_repeater_unified_lora_ota")
+        self.assertEqual(alternate, combined)
+
+    def test_combined_rak_worker_budget_tracks_stack_and_encoder_overrides(self):
+        defines = {
+            "RAK_4631": 1, "ETHERNET_ENABLED": 1, "OTA_RAK_AUTO_STORE": 1,
+            "RAK4631_COMBINED_ETHERNET": 1, "ENABLE_OTA": 1,
+            "MESHCORE_OTA_DEVICE_DEFLATE": 1,
+        }
+        for words, expected in ((1024, 5168), (1536, 6976), (2048, 9024)):
+            with self.subTest(words=words):
+                policy = ram.requirements("NRF52_PLATFORM", {
+                    **defines, "RAK4631_ETHERNET_TASK_STACK_WORDS": words,
+                }, "RAK_4631_sensor")
+                self.assertEqual(policy["components"]["ethernet_or_external_ota_workspaces"], expected)
+                self.assertGreaterEqual(policy["required_contiguous_bytes"], expected)
+        no_encoder = ram.requirements("NRF52_PLATFORM", {
+            **defines, "MESHCORE_OTA_DEVICE_DEFLATE": 0,
+        }, "RAK_4631_sensor")
+        self.assertEqual(no_encoder["components"]["ethernet_or_external_ota_workspaces"], 4928)
+        for bits in (7, 8, 9, 10):
+            with self.subTest(bits=bits):
+                policy = ram.requirements("NRF52_PLATFORM", {
+                    **defines, "MESHCORE_OTA_DEFLATE_HASH_BITS": bits,
+                }, "RAK_4631_sensor")
+                self.assertEqual(policy["components"]["ethernet_or_external_ota_workspaces"],
+                                 max(4928, (1 << bits) * 2 + 16 + 4096 + 32))
+        for capacity, expected in ((512, 5168), (1024, 5440), (2048, 6464)):
+            with self.subTest(tx_capacity=capacity):
+                policy = ram.requirements("NRF52_PLATFORM", {
+                    **defines, "ETHERNET_CLI_TX_BUFFER_BYTES": capacity,
+                }, "RAK_4631_sensor")
+                self.assertEqual(policy["components"]["ethernet_or_external_ota_workspaces"], expected)
+
+    def test_combined_rak_oled_bound_does_not_change_other_display_budgets(self):
+        defines = {
+            "RAK_4631": 1, "ETHERNET_ENABLED": 1, "OTA_RAK_AUTO_STORE": 1,
+            "RAK4631_COMBINED_ETHERNET": 1,
+        }
+        for driver, expected in (("SSD1306Display", 2048), ("SH1106Display", 4096),
+                                 ("SH1107Display", 4096), ("ST7735Display", 25602)):
+            with self.subTest(driver=driver):
+                combined = ram.requirements("NRF52_PLATFORM", {
+                    **defines, "DISPLAY_CLASS": driver,
+                }, "RAK_4631_repeater")
+                self.assertEqual(combined["components"]["display_pixels_and_driver"], expected)
+        ordinary = ram.requirements("NRF52_PLATFORM", {
+            "DISPLAY_CLASS": "SSD1306Display",
+        }, "RAK_4631_repeater")
+        self.assertEqual(ordinary["components"]["display_pixels_and_driver"], 4096)
+
+    def test_combined_rak_budget_rejects_unmatched_hardware_or_short_task_stack(self):
+        defines = {
+            "RAK_4631": 1, "ETHERNET_ENABLED": 1, "OTA_RAK_AUTO_STORE": 1,
+            "RAK4631_COMBINED_ETHERNET": 1,
+        }
+        for missing in ("RAK_4631", "ETHERNET_ENABLED", "OTA_RAK_AUTO_STORE"):
+            invalid = {name: value for name, value in defines.items() if name != missing}
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, "adaptive nRF52 storage"):
+                ram.requirements("NRF52_PLATFORM", invalid, "RAK_4631_repeater")
+        with self.assertRaisesRegex(ValueError, "adaptive nRF52 storage"):
+            ram.requirements("ESP32_PLATFORM", defines, "esp_repeater")
+        for words in (0, 512, 1023):
+            with self.subTest(words=words), self.assertRaisesRegex(ValueError, "1024 stack words"):
+                ram.requirements("NRF52_PLATFORM", {
+                    **defines, "RAK4631_ETHERNET_TASK_STACK_WORDS": words,
+                }, "RAK_4631_repeater")
+        for capacity in (0, 256, 511, 2049):
+            with self.subTest(tx_capacity=capacity), self.assertRaisesRegex(ValueError, "512..2048 bytes"):
+                ram.requirements("NRF52_PLATFORM", {
+                    **defines, "ETHERNET_CLI_TX_BUFFER_BYTES": capacity,
+                }, "RAK_4631_repeater")
+
     def test_published_image_tables_match_elf_and_use_its_own_reservations(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "reference.elf"
@@ -225,7 +322,20 @@ class FirmwareRamTest(unittest.TestCase):
     def test_lazy_manual_stage_allocation_failure_and_clear(self):
         source = (ROOT / "src/helpers/ota/OtaContext.h").read_text()
         begin = source.index("#if defined(ESP32_PLATFORM) || (defined(NRF52_PLATFORM) && !defined(OTA_SEEDER_ONLY))")
-        end = source.index("#endif", begin) + len("#endif")
+        # The actual buffer methods contain their own platform/owner guards.
+        # Compile the complete outer branch rather than its first nested #if.
+        end, depth = begin, 0
+        for line in source[begin:].splitlines(keepends=True):
+            directive = line.lstrip()
+            if directive.startswith("#if"):
+                depth += 1
+            elif directive.startswith("#endif"):
+                depth -= 1
+            end += len(line)
+            if depth == 0:
+                break
+        else:
+            self.fail("unterminated manual-stage buffer platform branch")
         branch = source[begin:end]
         code = r'''
 #include <cstdlib>

@@ -1,5 +1,16 @@
 #include "SSD1306Display.h"
 
+#if defined(NRF52_PLATFORM) && defined(RAK4631_COMBINED_ETHERNET)
+// Adafruit_SSD1306::begin allocates WIDTH * ((HEIGHT + 7) / 8) once and
+// reuses that framebuffer on later begin calls. The driver itself is embedded
+// in the linked global display, not allocated on the heap. Even including
+// that object again plus allocator overhead fits the combined 2 KiB bound.
+static_assert(SSD1306Display::FRAMEBUFFER_BYTES == 1024,
+              "Update the combined RAK OLED framebuffer budget");
+static_assert(sizeof(SSD1306Display) + SSD1306Display::FRAMEBUFFER_BYTES + 32 <= 2048,
+              "Update the combined RAK OLED runtime budget");
+#endif
+
 bool SSD1306Display::i2c_probe(TwoWire& wire, uint8_t addr) {
   wire.beginTransmission(addr);
   uint8_t error = wire.endTransmission();

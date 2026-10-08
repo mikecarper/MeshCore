@@ -6,8 +6,15 @@
 #error "OTA_QSPI_STORE raw staging cannot share a QSPI chip with QSPIFLASH"
 #endif
 
-#if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(ETHERNET_ENABLED)
+#if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(ETHERNET_ENABLED) && \
+    !defined(RAK4631_COMBINED_ETHERNET)
 #error "WisBlock SPI OTA staging cannot share the bus/chip-select with Ethernet"
+#endif
+
+#if defined(RAK4631_COMBINED_ETHERNET) && \
+    (!defined(NRF52_PLATFORM) || !defined(RAK_4631) || !defined(OTA_RAK_AUTO_STORE) || \
+     !defined(OTA_QSPI_SHARED_WISBLOCK_SPI) || !defined(ETHERNET_ENABLED))
+#error "Combined RAK4631 Ethernet requires its adaptive OTA and shared-SPI ownership contract"
 #endif
 
 #if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(OTA_SD_STORE)

@@ -444,6 +444,13 @@ jobs:
           python3 -B test/test_nrf52_usb_power.py
           python3 -B test/test_shared_mota_queue.py
 
+      - name: Verify opt-in RAK4631 combined Ethernet and OTA modes
+        run: |
+          python3 -B test/test_rak_combined_build_config.py -v
+          python3 -B test/test_rak_combined_ota.py -v
+          python3 -B test/test_rak_ethernet_transmit.py -v
+          python3 -B test/test_rak4631_ethernet_runtime.py -v
+
       - name: Verify nRF52 infrastructure trims and unchanged Companion scope
         run: |
           python3 -B test/test_nrf52_flash_trim.py -v

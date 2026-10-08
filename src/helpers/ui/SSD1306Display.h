@@ -16,6 +16,11 @@
 #endif
 
 class SSD1306Display : public DisplayDriver {
+public:
+  static constexpr int16_t PANEL_WIDTH = 128;
+  static constexpr int16_t PANEL_HEIGHT = 64;
+  static constexpr size_t FRAMEBUFFER_BYTES = PANEL_WIDTH * ((PANEL_HEIGHT + 7) / 8);
+private:
   Adafruit_SSD1306 display;
   bool _isOn;
   bool _panel_ready = false;
@@ -32,8 +37,8 @@ class SSD1306Display : public DisplayDriver {
   bool i2c_probe(TwoWire& wire, uint8_t addr);
   void applyRotation();
 public:
-  SSD1306Display(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(128, 64), 
-      display(128, 64, &Wire, PIN_OLED_RESET),
+  SSD1306Display(RefCountedDigitalPin* peripher_power=NULL) : DisplayDriver(PANEL_WIDTH, PANEL_HEIGHT),
+      display(PANEL_WIDTH, PANEL_HEIGHT, &Wire, PIN_OLED_RESET),
       _peripher_power(peripher_power)
   {
     _isOn = false; 

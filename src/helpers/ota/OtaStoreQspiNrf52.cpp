@@ -13,6 +13,9 @@
   #include <SPI.h>
 #endif
 #include <string.h>
+#if defined(RAK4631_COMBINED_ETHERNET)
+  #include "../nrf52/Rak4631SharedSpi.h"
+#endif
 
 namespace mesh {
 namespace ota {
@@ -324,6 +327,11 @@ static uint32_t probe_nor(uint8_t cs) {
 
 #if defined(OTA_RAK_AUTO_STORE)
 uint8_t OtaStoreQspiNrf52::autoDetect() {
+#if defined(RAK4631_COMBINED_ETHERNET)
+  // Do not even bit-bang a JEDEC probe while the Ethernet task owns SPI.
+  // Leave the cached physical discovery unchanged for the next idle handoff.
+  if (rak4631_ethernet_owns_spi()) return 0u;
+#endif
   if (auto_detection != 0xFFu) return auto_detection;
 
   const uint8_t w25_cs = arduino_to_physical(31);
@@ -479,6 +487,12 @@ bool OtaStoreQspiNrf52::waitMemoryReady(uint32_t timeout_ms) {
 }
 
 bool OtaStoreQspiNrf52::ensureFlash() {
+#if defined(RAK4631_COMBINED_ETHERNET)
+  if (rak4631_ethernet_owns_spi()) {
+    fail("Ethernet owns WisBlock SPI; external OTA unavailable");
+    return false;
+  }
+#endif
   if (_qspi_ready) return true;
 
 #if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
@@ -613,7 +627,11 @@ bool OtaStoreQspiNrf52::ensureFlash() {
 }
 
 void OtaStoreQspiNrf52::releaseFlash() {
-  if (_qspi_awake && !_memory_operation_pending) {
+  bool send_power_down = _qspi_awake && !_memory_operation_pending;
+#if defined(RAK4631_COMBINED_ETHERNET)
+  send_power_down = send_power_down && !rak4631_ethernet_owns_spi();
+#endif
+  if (send_power_down) {
     // The repeater can remain idle for hours after a capacity/status probe or
     // a completed checkpoint. Put the NOR into deep power-down before
     // releasing the nRF QSPI peripheral instead of leaving both active for
@@ -632,7 +650,14 @@ void OtaStoreQspiNrf52::releaseFlash() {
   // disabling the peripheral. Trigger it after every successful ENABLE, even
   // when wake or JEDEC identification failed before _qspi_ready was set.
   if (_qspi_active) {
-    if (_memory_operation_pending) {
+#if defined(RAK4631_COMBINED_ETHERNET)
+    // Also release the QSPI pin assignments after a successful operation so
+    // the Ethernet SPIM can safely acquire the same pads at an idle handoff.
+    const bool disconnect_pins = true;
+#else
+    const bool disconnect_pins = _memory_operation_pending;
+#endif
+    if (disconnect_pins) {
       // QSPI owns pin direction while enabled. Preload and configure CS# high
       // before releasing the peripheral so an unresolved NOR operation cannot
       // see a floating or asserted chip select during the handoff.
@@ -645,7 +670,7 @@ void OtaStoreQspiNrf52::releaseFlash() {
     nrf_qspi_task_trigger(NRF_QSPI, NRF_QSPI_TASK_DEACTIVATE);
     nrf_qspi_disable(NRF_QSPI);
     nrf_qspi_event_clear(NRF_QSPI, NRF_QSPI_EVENT_READY);
-    if (_memory_operation_pending) {
+    if (disconnect_pins) {
 #if defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
       disconnect_qspi_pins();
 #else

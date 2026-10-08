@@ -73,6 +73,30 @@ SimpleMeshTables tables;
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
 #include "../InfrastructureWireless.h"
 
+#if defined(RAK4631_COMBINED_ETHERNET)
+// Storage selection and OTA policy belong to the mesh loop. The Ethernet
+// worker only handles its own controller and asks these hooks to hand the
+// shared WisBlock pins over before/after it runs.
+static bool prepareCombinedEthernet(void*, char* error, size_t capacity) {
+  auto* context = mesh::ota::ota_context_if_active();
+  if (!context) {
+    snprintf(error, capacity, "Error: OTA storage is not ready");
+    return false;
+  }
+  return context->prepareRakEthernet(error, capacity);
+}
+
+static bool canReleaseCombinedEthernet(void*) {
+  auto* context = mesh::ota::ota_context_if_active();
+  return context && context->canReleaseRakEthernet();
+}
+
+static bool releaseCombinedEthernet(void*) {
+  auto* context = mesh::ota::ota_context_if_active();
+  return context && context->releaseRakEthernet();
+}
+#endif
+
 void halt() {
   while (1) ;
 }
@@ -340,6 +364,13 @@ void setup() {
 #endif
 
 #ifdef ETHERNET_ENABLED
+#if defined(RAK4631_COMBINED_ETHERNET)
+  EthernetCliHooks hooks;
+  hooks.prepare = prepareCombinedEthernet;
+  hooks.can_release = canReleaseCombinedEthernet;
+  hooks.released = releaseCombinedEthernet;
+  ethernet_configure(hooks);  // First prototype defaults OFF on every restart.
+#endif
   ethernet_start_task();
 #endif
 
@@ -481,7 +512,13 @@ static void __attribute__((noinline)) serviceCommandInterfaces() {
 
 #ifdef ETHERNET_ENABLED
   ethernet_loop_maintain();
+#if defined(RAK4631_COMBINED_ETHERNET)
+  // The facade never accesses SPI while startup, renewal, or shutdown owns
+  // the controller. Keep pending output during a temporary renewal pause.
+  if (ethernet_take_session_reset() || !ethernet_get_enabled()) {
+#else
   if (ethernet_take_session_reset() || !ethernet_client.connected()) {
+#endif
     the_mesh.cancelLocalOutput(ethernet_client);
     ethernet_command[0] = 0;
   }

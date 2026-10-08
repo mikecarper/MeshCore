@@ -10,6 +10,11 @@
 // allocation even when a combined Full image starts with the UART disabled.
 static_assert(sizeof(RS232Bridge) <= 4096, "Update the ESP32 UART heap budget");
 #endif
+#if defined(NRF52_PLATFORM) && defined(RAK4631_COMBINED_ETHERNET)
+// The combined RAK RAM policy reserves this object plus allocator metadata
+// and the UART driver's TX semaphore. Its RX/TX arrays are linked globals.
+static_assert(sizeof(RS232Bridge) <= 2304, "Update the combined RAK UART heap budget");
+#endif
 
 RS232Bridge::RS232Bridge(NodePrefs *prefs, Stream &serial, int16_t rx_pin,
                          int16_t tx_pin, mesh::PacketManager *mgr,

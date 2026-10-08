@@ -137,6 +137,9 @@ struct OtaContext {
   // store. A failed allocation is reported by the CLI before any write.
   uint8_t* serve_buf = nullptr;
   bool ensureServeBuffer() {
+#if defined(RAK4631_COMBINED_ETHERNET)
+    if (rak4631_ethernet_owns_spi()) return false;
+#endif
     if (!serve_buf) serve_buf = static_cast<uint8_t*>(malloc(OTA_SERVE_BUF_SIZE));
     return serve_buf != nullptr;
   }
@@ -470,6 +473,12 @@ struct OtaContext {
   bool attach_folder_source(MotaSource* source, FolderLink link, const char* label,
                             char* msg, size_t cap) {
     if (!msg || cap == 0) return false;
+#if defined(RAK4631_COMBINED_ETHERNET)
+    if (rak4631_ethernet_owns_spi()) {
+      snprintf(msg, cap, "ERR turn Ethernet off before attaching an OTA folder");
+      return false;
+    }
+#endif
     if (!source || link == FOLDER_LINK_NONE) {
       strncpy(msg, "ERR invalid folder source", cap);
       msg[cap - 1] = 0;
@@ -563,6 +572,111 @@ struct OtaContext {
       disconnected_folder_link = link;
     }
   }
+
+#if defined(RAK4631_COMBINED_ETHERNET)
+  // Only the main thread may change ownership. No allocation or SPI access in
+  // the DHCP worker is allowed until prepareRakEthernet() has finished.
+  bool canReleaseRakEthernet() const {
+    const bool own_image = manager.servingPrimaryManifest(serve_self_manifest);
+    return manager.fetchState() == OtaManager::IDLE &&
+        fetch_store.staged_size() == 0u && !apply_pending && !bootloader_apply_pending &&
+        !manager.pendingServeJobs() && !manager.pendingManifestJobs() &&
+        (!serving || own_image) && manager.servedCount() <= (own_image ? 1u : 0u) &&
+        serve_expected == 0u && !folder_active && !_folder_source && !folder_dest &&
+        !disconnected_folder_dest && !fetch_to_folder;
+  }
+
+  void refreshRakStorageCapabilities() {
+    const bool external = !rak4631_ethernet_owns_spi() && fetch_store.usesExternal();
+    manager.set_accept_full(external);
+    manager.set_accept_bootloader(
+        ota_bootloader_self_update_caps_valid(bootloaderUpdateCaps()));
+    manager.set_apply_codec(CODEC_DETOOLS_INPLACE);
+    manager.set_fetch_store(&fetch_store);
+    manager.set_archive_interest(false);
+    self_serve_supported = ota_self_serve_supported(external);
+#if MESHCORE_OTA_DEVICE_DEFLATE
+    manager.set_transport_deflate_encoder(self_serve_supported ? ota_transport_deflate : nullptr);
+#endif
+  }
+
+  void releaseRakIdleServingBuffers() {
+    // The idle preflight admits only our automatic own-image view, never a
+    // manual or folder source. Revoke it before freeing the caller-owned RAM.
+    manager.clear_primary();
+    serving = false;
+    free(serve_self_leaves); free(serve_self_proof);
+    serve_self_leaves = serve_self_proof = nullptr;
+    releaseServeBuffer();
+    serve_expected = 0u;
+  }
+
+  bool prepareRakEthernet(char* error, size_t cap) {
+    if (!error || !cap) return false;
+    error[0] = 0;
+    if (rak4631_ethernet_owns_spi()) {
+      snprintf(error, cap, "ERR Ethernet already owns WisBlock SPI");
+      return false;
+    }
+    if (!canReleaseRakEthernet()) {
+      snprintf(error, cap, "ERR OTA busy; cancel transfer, clear manual serve and detach folder first");
+      return false;
+    }
+    const uint8_t detected = OtaStoreQspiNrf52::autoDetect();
+    uint32_t rak_id = 0, w25_id = 0;
+    OtaStoreQspiNrf52::autoProbeIds(rak_id, w25_id);
+    (void)w25_id;
+    if (detected == 1u || detected == 3u) {
+      snprintf(error, cap, "ERR RAK15001 and Ethernet share chip-select 26; remove RAK15001 first");
+      return false;
+    }
+    if (rak_id != 0u && rak_id != 0xFFFFFFu) {
+      snprintf(error, cap, "ERR unknown SPI device on Ethernet chip-select 26 (%06lX)",
+               (unsigned long)rak_id);
+      return false;
+    }
+    const OtaBlCaps& caps = bootloaderAppCaps();
+    const bool qspi_bootloader = caps.present && (caps.storage_flags & OTA_BL_STORAGE_QSPI);
+    const OtaBootloaderIdentity& identity = bootloaderIdentity();
+    if (rak_storage_choice(0u, qspi_bootloader, identity.present && identity.crc_ok,
+                           identity.device_name, false,
+                           caps.optional_app_storage ==
+                               (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_HEADER_W25)) !=
+        RakStorageChoice::Internal) {
+      snprintf(error, cap, "ERR installed bootloader cannot use internal OTA with Ethernet");
+      return false;
+    }
+    if (!fetch_store.resetSelection()) {
+      snprintf(error, cap, "ERR staged OTA data must be cancelled before enabling Ethernet");
+      return false;
+    }
+    releaseRakIdleServingBuffers();
+    rak4631_set_ethernet_spi_owner(true);
+    refreshRakStorageCapabilities();
+    // The policy check above and the adaptive store must agree before the
+    // caller allocates a worker or lets the Ethernet library touch hardware.
+    if (!fetch_store.usesInternal()) {
+      rak4631_set_ethernet_spi_owner(false);
+      fetch_store.resetSelection();
+      refreshRakStorageCapabilities();
+      snprintf(error, cap, "ERR internal OTA selection failed; Ethernet remains off");
+      return false;
+    }
+    return true;
+  }
+
+  bool releaseRakEthernet() {
+    if (!rak4631_ethernet_owns_spi()) return true;
+    // OFF is cooperative. A transfer can start after its first preflight;
+    // keep the safe internal backend pinned and let the main loop retry after
+    // cancellation/completion. The Ethernet worker and SPI are already gone.
+    if (!canReleaseRakEthernet() || !fetch_store.resetSelection()) return false;
+    releaseRakIdleServingBuffers();
+    rak4631_set_ethernet_spi_owner(false);
+    refreshRakStorageCapabilities();
+    return true;
+  }
+#endif
 
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   OtaStoreSdNrf52& sdStagingStore() {

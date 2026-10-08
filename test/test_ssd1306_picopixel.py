@@ -57,6 +57,7 @@ class SSD1306SmallMessageFontTest(unittest.TestCase):
                     result = subprocess.run([
                         "c++", "-std=c++17", "-g",
                         "-fsanitize=address,undefined", "-DARDUINO=10819",
+                        "-DNRF52_PLATFORM=1", "-DRAK4631_COMBINED_ETHERNET=1",
                         f"-DUI_SMALL_MESSAGE_FONT={enabled}",
                         "-I", str(FIXTURE / "mocks"),
                         "-I", str(ROOT / "src"), "-I", str(library),

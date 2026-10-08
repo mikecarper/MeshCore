@@ -8,6 +8,9 @@
 #include "OtaStoreFlashNrf52.h"
 #include "OtaStoreQspiNrf52.h"
 #include "OtaRakStoragePolicy.h"
+#if defined(RAK4631_COMBINED_ETHERNET)
+  #include "../nrf52/Rak4631SharedSpi.h"
+#endif
 #include <new>
 
 namespace mesh {
@@ -63,7 +66,12 @@ class OtaStoreAdaptiveNrf52 : public OtaStore {
 
   void select() const {
     if (_mode != UNSELECTED) return;
+#if defined(RAK4631_COMBINED_ETHERNET)
+    const bool ethernet = rak4631_ethernet_owns_spi();
+    const uint8_t detected = ethernet ? 0u : OtaStoreQspiNrf52::autoDetect();
+#else
     const uint8_t detected = OtaStoreQspiNrf52::autoDetect();
+#endif
     const OtaBlCaps caps = ota_bootloader_app_caps();
     if (detected == 3u) {
       _mode = UNSAFE;
@@ -92,6 +100,12 @@ class OtaStoreAdaptiveNrf52 : public OtaStore {
         caps.optional_app_storage == (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_HEADER_W25));
     if (choice == RakStorageChoice::Internal) {
       activateInternal();
+#if defined(RAK4631_COMBINED_ETHERNET)
+      if (ethernet) {
+        _reason = "Ethernet active; internal application deltas only";
+        return;
+      }
+#endif
       _reason = detected == 0u ? "no external NOR" :
                 "external NOR fitted; internal bootloader";
       return;
@@ -103,6 +117,12 @@ class OtaStoreAdaptiveNrf52 : public OtaStore {
       return;
     }
     _mode = UNSAFE;
+#if defined(RAK4631_COMBINED_ETHERNET)
+    if (ethernet) {
+      _reason = "Ethernet active; bootloader lacks internal OTA";
+      return;
+    }
+#endif
     if (detected == 0u) {
       _reason = "QSPI bootloader but no matched external NOR";
     } else if (!identity_valid) {
@@ -114,16 +134,40 @@ class OtaStoreAdaptiveNrf52 : public OtaStore {
 
   OtaStore* active() {
     select();
+#if defined(RAK4631_COMBINED_ETHERNET)
+    if (_mode == QSPI_MODE && rak4631_ethernet_owns_spi()) return nullptr;
+#endif
     return _mode == QSPI_MODE ? static_cast<OtaStore*>(&_storage.external) :
            _mode == INTERNAL_MODE ? static_cast<OtaStore*>(&_storage.internal) : nullptr;
   }
   const OtaStore* active() const {
     select();
+#if defined(RAK4631_COMBINED_ETHERNET)
+    if (_mode == QSPI_MODE && rak4631_ethernet_owns_spi()) return nullptr;
+#endif
     return _mode == QSPI_MODE ? static_cast<const OtaStore*>(&_storage.external) :
            _mode == INTERNAL_MODE ? static_cast<const OtaStore*>(&_storage.internal) : nullptr;
   }
 
 public:
+#if defined(RAK4631_COMBINED_ETHERNET)
+  // Only the main-loop handoff may reset the selection, after OtaContext has
+  // proved that no receive/apply session is active. Never discard staged data
+  // as a side effect of changing a network setting.
+  bool resetSelection() {
+    if (_mode == QSPI_MODE) {
+      if (_storage.external.staged_size() != 0u) return false;
+      _storage.external.~OtaStoreQspiNrf52();
+    } else if (_mode == INTERNAL_MODE) {
+      if (_storage.internal.staged_size() != 0u) return false;
+      _storage.internal.~OtaStoreFlashNrf52();
+    }
+    _mode = UNSELECTED;
+    _reason = "not probed";
+    _bootloader_store = false;
+    return true;
+  }
+#endif
   ~OtaStoreAdaptiveNrf52() override {
     if (_mode == QSPI_MODE) _storage.external.~OtaStoreQspiNrf52();
     else if (_mode == INTERNAL_MODE) _storage.internal.~OtaStoreFlashNrf52();

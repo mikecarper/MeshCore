@@ -21,6 +21,9 @@ int main(int argc, char** argv) {
   TestSSD1306Display d;
   assert(d.begin());
   auto& c=*Adafruit_SSD1306::last;
+  assert(d.width()==128 && d.height()==64);
+  assert(c.width()==128 && c.height()==64);
+  static_assert(SSD1306Display::FRAMEBUFFER_BYTES==1024);
   const char* message="GIANT KILLER: Out on the Mercerwood mesh today, just the V4 and a small battery Checking the smaller font so the rest of this message is visible. 0123456789 END";
   assert(std::string(message).size()==160);
   d.startFrame();

@@ -45,6 +45,64 @@ Headless and OLED devices use their own smaller totals. The JSON lists each
 component and checks the largest available region against the largest planned
 single allocation.
 
+The experimental RAK4631 combined Ethernet/UART2/adaptive-storage config adds
+an explicit 2,560-byte allowance for the UART bridge and its TX semaphore.
+Its Ethernet worker reserves 1,024 stack words (4,096 bytes) plus 256 bytes for
+task metadata and allocator overhead. Its bounded TCP transmit queue allocates
+512 bytes only while Ethernet is enabled; another 64 bytes cover allocator
+overhead. The DHCP object, socket state, queue indices and SPI objects are
+static and already reduce the linked heap capacity.
+
+Ethernet and external OTA share an exclusive ownership contract. Enabling
+Ethernet rejects a live or pinned transfer, releases idle external OTA buffers,
+and blocks encoder, self-source, manual-staging and folder-source allocation
+while Ethernet owns SPI. Disabling Ethernet parks the worker after socket/SPI
+cleanup; the main loop deletes that parked task synchronously and frees its
+TX queue before releasing ownership. The worker stack therefore cannot remain queued for idle-task
+reclamation while OTA allocates again. The budget counts the larger of the
+4,928-byte Ethernet worker/queue or 5,168-byte external OTA workspaces, with the UART
+allowance alongside either mode. It keeps the 8 KiB loop stack, 63 flood rules,
+and reserved 64 KiB OTA handoff arena.
+
+This combined config uses a source-bounded 2 KiB SSD1306 allowance. Its named
+128x64 geometry needs one 1,024-byte framebuffer, reused on later starts;
+the driver itself is embedded in a linked global, measured at 156 bytes in
+the ARM test ELF. Including that already-counted object again plus 32 bytes
+for allocation overhead still leaves 836 bytes within the allowance.
+A compile-time assertion
+covers framebuffer, complete driver object and allocator overhead within that
+bound. This corrects a padded allocation estimate; it does not free actual RAM.
+Other images retain their existing display budgets. These are local
+test configs, not a qualification of a published or physically tested image.
+
+Generate matched Full/Reduced baseline and combined configs outside the
+repository without starting PlatformIO:
+
+```sh
+python3 scripts/generate_rak4631_combined_test.py
+```
+
+Run its printed commands one at a time and preserve each ELF and memory report
+before the next build reuses the environment directory.
+
+The combined prototype starts with Ethernet off after every restart. Use the
+USB CLI commands `eth on`, `eth.status`, and `eth off`; `get eth` reports the
+requested mode. UART2 remains independently controlled by
+`set bridge.uart 2` and `set rs232.enabled on|off`. Full retains every sensor
+driver; absent sensors do not require a different image.
+
+With Ethernet on, OTA uses eligible internal-flash deltas. External full-image
+staging, self-serving, manual serving buffers and OTA folders are unavailable
+until Ethernet is off. Active or staged OTA work prevents a mode change.
+RAK15001 and Ethernet share chip-select 26 and cannot be used together; the
+prototype refuses that combination. External storage also needs a matching
+bootloader that permits internal OTA while Ethernet is enabled.
+
+TCP sends and receives use bounded register operations; a stalled peer cannot
+hold the mesh loop waiting for an acknowledgement. DHCP and listener management
+run in the Ethernet worker. This is synthetic coverage and a build experiment,
+not a physical Ethernet/PoE soak qualification or a replacement release image.
+
 The [small-screen message layout](../test-results/v4_pixel5_font_trial.md) retains complete
 160-byte messages. Its expanded preview records add 2,816 bytes to the
 startup allowance and increase the contiguous history allocation budget.
