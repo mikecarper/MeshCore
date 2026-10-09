@@ -57,9 +57,9 @@ public:
                        const uint8_t* target, const char* command,
                        uint8_t* output, size_t capacity);
 
-  // Prefix/list requests use FMC2. "all" and a single complete key retain
-  // FMC1 compatibility. Targets and command share the packet budget, so valid
-  // lists can still be too large for a given command.
+  // Broadcast and prefix/list requests use FMC2. Zero records imply all;
+  // a single complete key retains FMC1 encoding. Targets and command share
+  // the packet budget, so valid lists can still be too large for a command.
   static size_t encode(const LocalIdentity& publisher, const uint8_t* key,
                        uint32_t sequence, uint32_t expires,
                        const Targets& targets, const char* command,

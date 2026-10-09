@@ -457,10 +457,59 @@ TEST_F(FleetCommandTest, TargetRecordAndPayloadBudgetsAreSeparateAndBounded) {
   EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
 }
 
-TEST_F(FleetCommandTest, AllAndSingleCompleteKeyKeepLegacyFmc1Encoding) {
+TEST_F(FleetCommandTest, ZeroTargetsUsesCompactBroadcastWhileLegacyAllStillDecodes) {
   Fleet::Targets targets{};
+  const auto implicit = encodeTargets(targets);
   ASSERT_TRUE(Fleet::parseTargets("all", 3, targets));
-  EXPECT_EQ(encode(), encodeTargets(targets));
+  const auto explicit_all = encodeTargets(targets);
+  ASSERT_EQ(implicit, explicit_all);
+  ASSERT_EQ(Fleet::MinHeaderSize + strlen("get radio2") + Fleet::SignatureSize,
+            implicit.size());
+  EXPECT_EQ(15U, encode().size() - implicit.size());
+  EXPECT_EQ(std::string("FMC2"), std::string(implicit.begin(), implicit.begin() + 4));
+  EXPECT_EQ(0, implicit[12]);
+  ASSERT_TRUE(decode(implicit));
+  EXPECT_TRUE(decoded.broadcast);
+  EXPECT_STREQ("get radio2", decoded.command);
+  std::array<uint8_t, PUB_KEY_SIZE> unrelated;
+  unrelated.fill(0xAA);
+  ASSERT_TRUE(Fleet::decode(publisher, ChannelKey, implicit.data(), implicit.size(),
+                           Now, unrelated.data(), decoded));
+  EXPECT_TRUE(decoded.broadcast);
+  ASSERT_TRUE(decode(encode()));
+  EXPECT_TRUE(decoded.broadcast);
+}
+
+TEST_F(FleetCommandTest, CompactBroadcastCapacityAndCommandLimitRemainBounded) {
+  Fleet::Targets targets{};
+  const std::string prefix = "set flood.rule.1 ";
+  const std::string maximum = prefix + std::string(Fleet::MaxCommandLength - prefix.size(), 'a');
+  const auto bytes = encodeTargets(targets, maximum.c_str());
+  ASSERT_EQ(150U, bytes.size());
+  EXPECT_EQ(15U, encode(maximum.c_str()).size() - bytes.size());
+  EXPECT_TRUE(decode(bytes));
+  EXPECT_TRUE(decoded.broadcast);
+  std::array<uint8_t, Fleet::MaxPayloadLength> output;
+  output.fill(0xA5);
+  EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120, targets,
+                            maximum.c_str(), output.data(), bytes.size() - 1));
+  for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+  const std::string oversized = maximum + 'a';
+  EXPECT_TRUE(encodeTargets(targets, oversized.c_str()).empty());
+  for (size_t length = 0; length < bytes.size(); ++length) {
+    const std::vector<uint8_t> truncated(bytes.begin(), bytes.begin() + length);
+    EXPECT_FALSE(decode(truncated));
+  }
+  auto trailing = bytes;
+  trailing.push_back(0);
+  EXPECT_FALSE(decode(trailing));
+  g_mock_ed25519_verify_result = false;
+  EXPECT_FALSE(decode(bytes));
+  EXPECT_FALSE(decoded.broadcast);
+}
+
+TEST_F(FleetCommandTest, SingleCompleteKeyKeepsLegacyFmc1Encoding) {
+  Fleet::Targets targets{};
   char full[PUB_KEY_SIZE * 2 + 1];
   mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
   uint8_t hash[Fleet::TargetSize];

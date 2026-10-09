@@ -565,6 +565,29 @@ int main(int argc,char** argv){
   assert(plaintext[2]<FleetCommand::HeaderSize+FleetCommand::SignatureSize);
   assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
   assert(apply(fleet,fs,mesh,profiles,packet)==0);
+ }else if(scenario=="fmc2_encoded_all"){
+  enroll(fleet,publisher);Packet packet=targetsCommand(publisher,mesh.clock.now,"all");
+  uint8_t plaintext[184]={};
+  assert(Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1)>0);
+  assert(!memcmp(plaintext+3,"FMC2",4)&&plaintext[3+12]==0);
+  assert(plaintext[2]==FleetCommand::MinHeaderSize+strlen("get radio2")+FleetCommand::SignatureSize);
+  assert(plaintext[2]<FleetCommand::HeaderSize+FleetCommand::SignatureSize);
+  Packet legacy=command(publisher,mesh.clock.now,"get radio2");
+  assert(packet.payload_len+16==legacy.payload_len);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1&&mesh.queued==1&&last_jitter_max==60500);
+  assert(apply(fleet,fs,mesh,profiles,packet)==0);
+  mesh.releasePacket(mesh.manager.removeOutboundByIdx(0));
+  ++mesh.clock.now;fake_ms+=1000;mesh.fanout=true;
+  Packet mutation=targetsCommand(publisher,mesh.clock.now,"all","set radio2 off");
+  assert(apply(fleet,fs,mesh,profiles,mutation,true)==1);
+  assert(fleet.waiting()&&profiles.mutation&&last_jitter_max==15500);
+  fleet.complete(mesh.manager.removeOutboundByIdx(0),profiles);
+  assert(fleet.waiting()&&profiles.mutation&&profiles.commits==0);
+  fleet.complete(mesh.manager.removeOutboundByIdx(0),profiles);
+  assert(!fleet.waiting()&&!profiles.mutation&&profiles.commits==1);
+  assert(apply(fleet,fs,mesh,profiles,mutation)==0);
+  FleetChannel rebooted(&fs);
+  assert(apply(rebooted,fs,mesh,profiles,packet)==0&&apply(rebooted,fs,mesh,profiles,mutation)==0);
  }else if(scenario=="fmc2_short_prefix"){
   enroll(fleet,publisher);Packet packet=targetsCommand(publisher,mesh.clock.now,publicHex(mesh.self_id).substr(0,8));
   uint8_t plaintext[184]={};assert(Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1)>0);
@@ -743,6 +766,9 @@ class SHA256 : public SHA256Base {{ public:
 
     def test_new_short_broadcast_envelope_dispatches_and_preserves_replay_protection(self):
         self.scenario("fmc2_short_all")
+
+    def test_actual_zero_target_sender_reaches_receiver_and_keeps_ack_and_reboot_replay_safety(self):
+        self.scenario("fmc2_encoded_all")
 
     def test_new_public_key_prefix_envelope_dispatches_and_staggers_possible_multiple_acks(self):
         self.scenario("fmc2_short_prefix")

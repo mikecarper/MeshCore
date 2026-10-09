@@ -9719,7 +9719,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     if (strncmp(text, "send", 4)
         || (text[4] != ' ' && text[4] != '\t')) {
       snprintf(reply, reply_capacity,
-               "Error: use fleet send <channel-index> <all|key[,key...]> <command>");
+               "Error: use fleet send <channel-index> [all|key[,key...]] <command>");
       return true;
     }
     text += 4;
@@ -9741,18 +9741,21 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       return true;
     }
     while (*text == ' ' || *text == '\t') ++text;
-    const size_t target_length = strcspn(text, " \t");
-    mesh::FleetCommand::Targets targets;
-    // Parse the complete comma-separated target token before signing anything.
-    // A list is one atomic packet; it must never become partial fan-out.
-    if (text[target_length] == 0
-        || !mesh::FleetCommand::parseTargets(text, target_length, targets)) {
-      snprintf(reply, reply_capacity,
-               "Error: fleet targets must be all or comma-separated 8/12/64-hex keys");
-      return true;
+    mesh::FleetCommand::Targets targets{};  // No target means the whole fleet.
+    // Only a complete permitted command can omit its target. An invalid key
+    // or list must never silently broaden a request to the whole fleet.
+    if (!mesh::FleetCommand::commandAllowed(text)) {
+      const size_t target_length = strcspn(text, " \t");
+      // A list is one atomic packet; it must never become partial fan-out.
+      if (text[target_length] == 0
+          || !mesh::FleetCommand::parseTargets(text, target_length, targets)) {
+        snprintf(reply, reply_capacity,
+                 "Error: fleet targets must be all or comma-separated 8/12/64-hex keys");
+        return true;
+      }
+      text += target_length;
+      while (*text == ' ' || *text == '\t') ++text;
     }
-    text += target_length;
-    while (*text == ' ' || *text == '\t') ++text;
     if (!mesh::FleetCommand::commandAllowed(text)) {
       snprintf(reply, reply_capacity, "Error: command is not permitted for fleet management");
       return true;

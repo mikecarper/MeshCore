@@ -367,13 +367,67 @@ class FleetCommandCryptoTests(unittest.TestCase):
                 self.assertEqual(self.decode(envelope(channel=channel), channel=channel), "reject")
                 self.assertEqual(self.run_tool("encode", channel.hex(), "all", NOW, NOW + 120, "get radio2"), "reject")
 
-    def test_new_sender_preserves_fmc1_for_all_and_single_complete_key(self):
-        for token, target in [("all", b"\0" * 16), (PUBLIC.hex(), hashlib.sha256(PUBLIC).digest()[:16])]:
-            with self.subTest(token=token):
-                actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
-                self.assertEqual(actual, envelope(target=target).hex())
-                expected_broadcast = "1" if token == "all" else "0"
-                self.assertTrue(self.decode(bytes.fromhex(actual), metadata=True).endswith("\n" + expected_broadcast))
+    def test_compact_broadcast_is_signed_without_target_bytes_and_legacy_all_still_decodes(self):
+        expected = envelope2()
+        actual = self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120, "get radio2")
+        self.assertEqual(actual, expected.hex())
+        self.assertEqual(expected[:4], b"FMC2")
+        self.assertEqual(expected[12], 0)
+        self.assertEqual(len(expected), 14 + 10 + 64)
+        self.assertEqual(len(envelope()) - len(expected), 15)
+        PUBLISHER.public_key().verify(expected[-64:], DOMAIN + CHANNEL + expected[:-64])
+        for node in [PUBLIC, OTHER_PUBLIC, hashlib.sha256(b"unrelated broadcast receiver").digest()]:
+            with self.subTest(node=node.hex()):
+                self.assertEqual(self.decode(expected, self_key=node, metadata=True),
+                                 f"{NOW}\n{NOW + 120}\nget radio2\n1")
+                self.assertEqual(self.decode(envelope(), self_key=node, metadata=True),
+                                 f"{NOW}\n{NOW + 120}\nget radio2\n1")
+
+    def test_new_sender_preserves_fmc1_for_single_complete_key(self):
+        expected = envelope(target=hashlib.sha256(PUBLIC).digest()[:16])
+        actual = self.run_tool("encode2", CHANNEL.hex(), PUBLIC.hex(), NOW, NOW + 120, "get radio2")
+        self.assertEqual(actual, expected.hex())
+        self.assertTrue(self.decode(bytes.fromhex(actual), metadata=True).endswith("\n0"))
+
+    def test_compact_broadcast_signature_binds_no_target_count_command_and_times(self):
+        original = envelope2()
+        # All of these are valid, matching requests on their own. Attaching
+        # the old zero-target signature must not authorize the changed data.
+        for changed in [
+                envelope2([(4, PUBLIC[:4])]),
+                envelope2([(16, hashlib.sha256(PUBLIC).digest()[:16])]),
+                envelope2(command="get tempradio2"),
+                envelope2(sequence=NOW + 1), envelope2(expires=NOW + 121)]:
+            with self.subTest(changed=changed.hex()):
+                self.assertNotEqual(self.decode(changed), "reject")
+                self.assertEqual(self.decode(changed[:-64] + original[-64:]), "reject")
+        for offset in range(len(original) - 64, len(original)):
+            with self.subTest(signature_byte=offset):
+                changed = bytearray(original)
+                changed[offset] ^= 1
+                self.assertEqual(self.decode(changed), "reject")
+        changed = bytearray(original)
+        changed[12] = 1
+        self.assertEqual(self.decode(changed), "reject")
+        self.assertEqual(self.decode(original, publisher=OTHER_PUBLIC), "reject")
+        self.assertEqual(self.decode(original, channel=bytes(range(17, 33))), "reject")
+
+    def test_compact_broadcast_keeps_72_byte_command_and_packet_framing_limits(self):
+        prefix = "set flood.rule.1 "
+        maximum = prefix + "a" * (72 - len(prefix))
+        expected = envelope2(command=maximum)
+        actual = self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120, maximum)
+        self.assertEqual(actual, expected.hex())
+        self.assertEqual(len(expected), 150)
+        self.assertEqual(len(envelope(maximum)) - len(expected), 15)
+        self.assertNotEqual(self.decode(expected), "reject")
+        oversized = maximum + "a"
+        self.assertEqual(self.decode(envelope2(command=oversized)), "reject")
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120, oversized), "reject")
+        for length in [0, 12, 13, 14, len(expected) - 64, len(expected) - 1]:
+            with self.subTest(length=length):
+                self.assertEqual(self.decode(expected[:length]), "reject")
+        self.assertEqual(self.decode(expected + b"\0"), "reject")
 
     def test_real_signature_round_trip_for_mixed_prefixes_and_full_keys(self):
         entries = [(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6]), (16, hashlib.sha256(PUBLIC).digest()[:16])]

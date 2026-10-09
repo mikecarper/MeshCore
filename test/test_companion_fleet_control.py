@@ -107,7 +107,8 @@ static void rejected(MyMesh& node, const char* text, uint32_t remote = 0) {
   char reply[160] = {};
   const unsigned before = node.queued;
   assert(node.handleCommand(text, remote, reply));
-  assert(!strncmp(reply, "Error:", 6));
+  const char* result = strlen(reply) > 3 && reply[2] == '|' ? reply + 3 : reply;
+  assert(!strncmp(result, "Error:", 6));
   assert(before == node.queued);
 }
 
@@ -115,6 +116,24 @@ static std::string fullKey(uint8_t value) {
   char hex[65];
   for (unsigned i = 0; i < 32; ++i) sprintf(hex + i * 2, "%02x", value);
   return hex;
+}
+
+static void compactBroadcast(MyMesh& node, const char* command) {
+  assert(!memcmp(node.sent, "FMC2", 4));
+  assert(node.sent[12] == 0); // No target records means every authorized receiver.
+  assert(node.sent[13] == strlen(command));
+  assert(mesh::FleetCommand::MinHeaderSize == 14);
+  assert(node.sent_length == 14 + strlen(command) + mesh::FleetCommand::SignatureSize);
+  assert(!memcmp(node.sent + 14, command, strlen(command)));
+  for (uint8_t value : {0x42, 0x77}) {
+    uint8_t recipient[32]; memset(recipient, value, sizeof(recipient));
+    mesh::FleetCommand::Decoded decoded;
+    assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+        node.sent, node.sent_length, node.clock.now, recipient, decoded));
+    assert(decoded.broadcast && !strcmp(decoded.command, command));
+    assert(decoded.sequence == node.clock.now);
+    assert(decoded.expires == node.clock.now + mesh::FleetCommand::MaxLifetime);
+  }
 }
 
 int main(int argc, char** argv) {
@@ -135,7 +154,102 @@ int main(int argc, char** argv) {
     assert(!strncmp(reply, "AB|OK - fleet command queued; seq=", 32));
     assert(node.queued == 1 && node.sent_type == mesh::FleetCommand::DataType);
     assert(node.sent_policy == 2); // The configured radio2 channel route survives.
-    assert(!memcmp(node.sent, "FMC1", 4)); // Broadcasts remain compatible with earlier receivers.
+    compactBroadcast(node, "set radio2 off");
+  } else if (scenario == "implicit_broadcast") {
+    for (const char* command : {"set radio2 off", "get radio2.status", "del flood.filter all",
+        "clock", "clock sync", "time 1800000000",
+        "set tempradioat2 910.5,500,5,5,rxtx,+1,+2,auto"}) {
+      const std::string implicit = std::string("fleet send 1 ") + command;
+      assert(node.handleCommand(implicit.c_str(), 0, reply));
+      assert(!strncmp(reply, "OK - fleet command queued", 25));
+      assert(node.sent_policy == 2 && node.sent_type == mesh::FleetCommand::DataType);
+      compactBroadcast(node, command);
+      ++node.clock.now;
+      const std::string explicit_all = std::string("fleet send 1 all ") + command;
+      assert(node.handleCommand(explicit_all.c_str(), 0, reply));
+      compactBroadcast(node, command);
+      ++node.clock.now;
+    }
+    assert(node.queued == 14);
+  } else if (scenario == "implicit_local_prefix_tabs") {
+    rejected(node, "fleet send 1 set radio2 off", 1);
+    rejected(node, "AB|fleet send 1 set radio2 off", 100);
+    rejected(node, "AB|fleet\tsend\t1\tset radio2 off", 1);
+    assert(node.handleCommand(" \tAB| fleet\tsend\t1\tset radio2 off", 0, reply));
+    assert(!strncmp(reply, "AB|OK - fleet command queued; seq=", 32));
+    compactBroadcast(node, "set radio2 off");
+    assert(node.queued == 1 && node.sent_policy == 2);
+    ++node.clock.now;
+    assert(node.handleCommand("CD|fleet\tsend\t1\tall\tclock sync", 0, reply));
+    assert(!strncmp(reply, "CD|OK - fleet command queued; seq=", 32));
+    compactBroadcast(node, "clock sync");
+    assert(node.queued == 2);
+  } else if (scenario == "implicit_retry_sequence") {
+    node.queue_ok = false;
+    rejected(node, "fleet send 1 set radio2 off");
+    node.queue_ok = true;
+    assert(node.handleCommand("fleet send 1 all set radio2 off", 0, reply));
+    compactBroadcast(node, "set radio2 off");
+    rejected(node, "fleet send 1 set radio2 off");
+    ++node.clock.now;
+    assert(node.handleCommand("EF|fleet send 1 set radio2 off", 0, reply));
+    assert(!strncmp(reply, "EF|OK - fleet command queued; seq=", 32));
+    compactBroadcast(node, "set radio2 off");
+    rejected(node, "fleet send 1 all set radio2 off");
+    --node.clock.now;
+    rejected(node, "fleet send 1 clock sync");
+    node.clock.now += 2;
+    rejected(node, "fleet send 1 nonsense set radio2 off");
+    assert(node.handleCommand("fleet send 1 clock sync", 0, reply));
+    compactBroadcast(node, "clock sync");
+    assert(node.queued == 3);
+  } else if (scenario == "implicit_target_ambiguity") {
+    for (const char* targets : {"nonsense", "All", "ALL", "all,42424242", "42424242,all",
+        "allall", "4242424", "424242424", "4242424242424", "GG424242",
+        "42424242,,51515151", "42424242,", ",42424242", "set", "get", "clock"}) {
+      rejected(node, (std::string("fleet send 1 ") + targets + " set radio2 off").c_str());
+    }
+    rejected(node, ("fleet send 1 " + fullKey(0) + " set radio2 off").c_str());
+    rejected(node, ("fleet send 1 " + std::string(65, '4') + " set radio2 off").c_str());
+    assert(node.handleCommand("fleet send 1 get radio2", 0, reply));
+    compactBroadcast(node, "get radio2");
+    assert(node.queued == 1); // No typo became a broadcast or consumed a sequence.
+  } else if (scenario == "implicit_command_controls") {
+    for (const char* command : {"reboot", "get prv.key", "get password", "get clock",
+        "set radio2 of", "clock sync extra", "set radio2 off\nreboot", "clock\r",
+        "set\tradio2 off", "set radio2  off", "clock sync ", "clock\x7f",
+        "set radio2 off;reboot", "set radio2 off|reboot", "set radio2 off&reboot",
+        "set flood.filter `reboot`", "set flood.filter \\reboot"}) {
+      rejected(node, (std::string("fleet send 1 ") + command).c_str());
+      rejected(node, (std::string("fleet send 1 all ") + command).c_str());
+    }
+    const std::string prefix = "set flood.filter ";
+    const std::string maximum = prefix + std::string(mesh::FleetCommand::MaxCommandLength - prefix.size(), '1');
+    assert(maximum.size() == 72 && mesh::FleetCommand::commandAllowed(maximum.c_str()));
+    rejected(node, ("fleet send 1 " + maximum + "1").c_str());
+    rejected(node, ("fleet send 1 all " + maximum + "1").c_str());
+    assert(node.handleCommand(("fleet send 1 " + maximum).c_str(), 0, reply));
+    compactBroadcast(node, maximum.c_str());
+    assert(node.sent_length == 150 && node.queued == 1); // Compact header keeps the 72-byte cap.
+  } else if (scenario == "explicit_target_forms") {
+    for (const std::string& targets : {std::string("42424242"), std::string("424242424242"),
+        fullKey(0x42), std::string("42424242,515151515151,") + fullKey(0x63)}) {
+      assert(node.handleCommand(("fleet send 1 " + targets + " set radio2 off").c_str(), 0, reply));
+      uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+      mesh::FleetCommand::Decoded decoded;
+      assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      assert(!strcmp(decoded.command, "set radio2 off"));
+      // Prefixes and lists spread replies like broadcasts because they may
+      // select several receivers, but a nonmatching node still cannot act.
+      assert(decoded.broadcast == (targets.size() != 64));
+      memset(recipient, 0x77, sizeof(recipient));
+      assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      assert(node.sent_policy == 2);
+      ++node.clock.now;
+    }
+    assert(node.queued == 4);
   } else if (scenario == "syntax") {
     for (const char* command : {"fleet", "fleet send", "fleet sender 1 all set radio2 off",
         "fleet send -1 all set radio2 off", "fleet send 4 all set radio2 off",
@@ -419,6 +533,24 @@ class CompanionFleetControlTests(unittest.TestCase):
 
     def test_local_client_boundary_and_channel_tx_route(self):
         self.scenario("local_boundary")
+
+    def test_omitted_target_and_explicit_all_emit_compact_signed_broadcasts(self):
+        self.scenario("implicit_broadcast")
+
+    def test_implicit_broadcast_requires_local_client_and_preserves_prefix_and_tabs(self):
+        self.scenario("implicit_local_prefix_tabs")
+
+    def test_implicit_and_explicit_all_share_queue_retry_and_same_second_replay_guard(self):
+        self.scenario("implicit_retry_sequence")
+
+    def test_unknown_or_malformed_explicit_targets_never_fall_back_to_broadcast(self):
+        self.scenario("implicit_target_ambiguity")
+
+    def test_omitted_target_still_requires_canonical_allowlisted_command_and_72_byte_cap(self):
+        self.scenario("implicit_command_controls")
+
+    def test_explicit_8_12_64_hex_and_list_targets_remain_restricted(self):
+        self.scenario("explicit_target_forms")
 
     def test_invalid_syntax_targets_and_forbidden_commands(self):
         self.scenario("syntax")

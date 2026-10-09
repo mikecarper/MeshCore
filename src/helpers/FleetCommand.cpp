@@ -380,12 +380,8 @@ size_t FleetCommand::encode(const LocalIdentity& publisher, const uint8_t* key,
   bool matched, broadcast;
   if (!targetRecords(targets.data, targets.length, targets.count, nullptr,
                      consumed, matched, broadcast) || consumed != targets.length) return 0;
-  // Preserve compatibility with receivers implementing the original format
-  // whenever the request can be represented without prefixes or a list.
-  if (!targets.count) {
-    const uint8_t all[TargetSize] = {};
-    return encode(publisher, key, sequence, expires, all, command, output, capacity);
-  }
+  // Broadcast has no target record in FMC2. A single complete key retains
+  // its original encoding, which is smaller than a one-record FMC2 envelope.
   if (targets.count == 1 && targets.data[0] == TargetSize
       && !zero(targets.data + 1, TargetSize)) {
     return encode(publisher, key, sequence, expires, targets.data + 1, command, output, capacity);

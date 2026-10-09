@@ -9,7 +9,8 @@ title: Private fleet management
 
 # Private fleet management
 
-Fleet control lets one publisher send filtering and secondary-radio commands to
+Fleet control lets one publisher send filtering, radio schedules, secondary-radio
+changes, and clock commands to
 all enrolled infrastructure nodes, one node, or a list of nodes over a private
 LoRa channel.
 It is disabled until configured. It is supported on repeaters and room servers;
@@ -74,16 +75,21 @@ repeater, and no app protocol change is required.
 Examples use private channel index `3`:
 
 ```text
-fleet send 3 all get radio2
-fleet send 3 all set tempradio2 910.5,500,8,5,rxtx,120
-fleet send 3 all set radio2.cross auto
-fleet send 3 all set flood.rule.4 type=grp_txt hops=6+ drop
-fleet send 3 all del flood.rule.4
+fleet send 3 get radio2
+fleet send 3 set tempradio2 910.5,500,8,5,rxtx,120
+fleet send 3 set radio2.cross auto
+fleet send 3 set flood.rule.4 type=grp_txt hops=6+ drop
+fleet send 3 del flood.rule.4
 ```
 
-Replace `all` with **8 or 12 hexadecimal characters from the start of a node's
-public key**, or its **complete 64-character public key**. Separate multiple
-targets with commas, without spaces. Lengths can be mixed:
+Targets are optional: omitting the target sends to **all enrolled nodes** on the
+private fleet channel. Explicit `all` still works, for example
+`fleet send 3 all get radio2`.
+
+To address particular nodes, insert **8 or 12 hexadecimal characters from the
+start of a node's public key**, or its **complete 64-character public key**, before
+the command. Separate multiple targets with commas, without spaces. Lengths can
+be mixed:
 
 ```text
 fleet send 3 1257aee5 get radio2
@@ -99,10 +105,12 @@ fleet. Names and short LoRa path IDs are not accepted as target identities.
 command only once, and the signature protects the entire list.
 
 On air, full keys use a 128-bit SHA-256 digest; prefixes use their original
-public-key bytes. Multiple-target commands and prefix targets require updated
-publisher and receiver firmware. `all` and a single complete key retain the
-previous wire format, which updated receivers also accept. Separate fleets use
-separate channel keys; named subgroups are not part of this first version.
+public-key bytes. Whole-fleet commands use the compact FMC2 format with no target
+records, whether the CLI target is omitted or explicitly `all`. This reduces the
+header from 29 to 14 bytes. Whole-fleet, multiple-target, and prefix commands
+require receivers that support FMC2. A single complete key keeps the legacy FMC1
+format, and updated receivers also accept legacy whole-fleet packets. Separate
+fleets use separate channel keys; named subgroups are not part of this first version.
 
 Only local commands on the publishing Companion can originate fleet sends. A
 remote CLI command cannot turn that Companion into a multicast signing proxy.
@@ -121,8 +129,9 @@ fit one signed **165-byte envelope**. An 8-character target uses 5 bytes, a
 12-character target uses 7, and a complete key uses 17. The fixed envelope and
 signature use 78 bytes, leaving 87 bytes for the target list and command together.
 For example, two complete keys leave 53 bytes for the command. Lists are capped
-at 17 entries; packet-size limits usually allow fewer. `all` and a single complete
-key retain the previous format's full 72-byte command allowance.
+at 17 entries; packet-size limits usually allow fewer. Omitting targets or using
+`all` saves 15 header bytes; the command limit remains 72 bytes. A single complete
+key uses the legacy 29-byte header and also allows a full 72-byte command.
 The local app/console's command-length limit also applies. Oversized or invalid
 lists are rejected as a whole, without sending or truncating any targets.
 The short legacy USB rescue console cannot fit a full-key command; use the app
@@ -156,12 +165,12 @@ replies that the command is unsupported. Second-profile schedules use `rx` or
 `rxtx` after the coding rate:
 
 ```text
-fleet send 3 all clock
-fleet send 3 all clock sync
-fleet send 3 all set radioat 910.5,500,8,5,+5
-fleet send 3 all set tempradioat 910.5,500,8,5,+5,+15
-fleet send 3 all set radioat2 910.5,500,8,5,rxtx,+5
-fleet send 3 all set tempradioat2 910.5,500,8,5,rxtx,+5,+15
+fleet send 3 clock
+fleet send 3 clock sync
+fleet send 3 set radioat 910.5,500,8,5,+5
+fleet send 3 set tempradioat 910.5,500,8,5,+5,+15
+fleet send 3 set radioat2 910.5,500,8,5,rxtx,+5
+fleet send 3 set tempradioat2 910.5,500,8,5,rxtx,+5,+15
 fleet send 3 1257aee5 get tempradioat2 1
 fleet send 3 1257aee5 del tempradioat2 all
 ```
