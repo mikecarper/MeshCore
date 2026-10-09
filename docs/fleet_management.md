@@ -331,10 +331,10 @@ failed transmissions, or an acknowledgement timeout cancels the staged mutation.
 Temporary-radio leases and scheduled windows retain their original monotonic end time; waiting for an
 acknowledgement does not lengthen them.
 
-Exact single-node acknowledgements wait 0.5–1.5 seconds; prefix, multiple-target,
-and whole-fleet replies are spread over 0.5–60.5 seconds (0.5–15.5 seconds for
-radio mutations, to preserve short
-temporary leases). This reduces simultaneous responses but is not a reliable
+Exact single-node acknowledgements use 0.5–1.5 seconds of random delay; prefix,
+multiple-target, region, GPS and whole-fleet replies use 0.5–10 seconds, including
+radio mutations. Queuing, airtime and forwarding can add delivery time.
+This reduces simultaneous responses but is not a reliable
 delivery protocol for an arbitrarily large fleet. Use individual requests for
 confirmation and divide very large fleets into separately keyed channels.
 

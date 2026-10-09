@@ -250,7 +250,7 @@ bool FleetChannel::acknowledge(Mesh& mesh, const char* name, uint32_t sequence,
   if (radio_mutation) barrier_.prepare(packet);
   // Keep short temporary leases useful: their clock started at admission and
   // may not be extended by waiting for a fleet acknowledgement.
-  const uint32_t maximum_delay = broadcast_ ? (radio_mutation ? 15500 : 60500) : 1500;
+  const uint32_t maximum_delay = broadcast_ ? 10000 : 1500;
   const uint32_t delay = mesh.getRNG()->nextInt(500, maximum_delay);
   bool queued = false;
   if (reply_scoped_) {

@@ -36,9 +36,11 @@ UTILS = r'''
 #define CIPHER_MAC_SIZE 2
 #define CIPHER_BLOCK_SIZE 16
 inline unsigned hash_calls = 0, decrypt_calls = 0, verify_calls = 0, last_jitter_max = 0;
+inline int jitter_pick_boundary = 0;
 namespace mesh {
 class RNG { public: uint32_t nextInt(uint32_t low, uint32_t high) {
-  assert(low == 500 && (high == 60500 || high == 15500 || high == 1500)); last_jitter_max=high; return 1000;
+  assert(low == 500 && (high == 10000 || high == 1500)); last_jitter_max=high;
+  return jitter_pick_boundary < 0 ? low : jitter_pick_boundary > 0 ? high : 1000;
 }};
 class Utils { public:
  static void sha256(uint8_t* out, size_t count, const uint8_t* data, int length) {
@@ -464,7 +466,7 @@ static int fragmentScenario(const std::string& scenario){
    assert(x.feed(first)==0);x.partial();assert(x.disk.files.at(Path)==old&&x.disk.writes==writes);
    assert(verify_calls==verifies&&x.stats().find("rejected=0")!=std::string::npos);
    assert(x.feed(second)==1&&verify_calls==verifies+1&&x.reserved()==seq&&x.mesh.queued==1);
-   assert(x.stats().find("parts=0")!=std::string::npos&&last_jitter_max==60500);
+   assert(x.stats().find("parts=0")!=std::string::npos&&last_jitter_max==10000);
    assert(x.feed(first)==0&&x.feed(second)==0&&x.calls==1);
    FleetChannel rebooted(&x.disk);unsigned calls=0;
    for(Packet* packet:{&first,&second}){fake_ms+=1000;rebooted.receive(packet,x.mesh);
@@ -576,7 +578,7 @@ static int fragmentScenario(const std::string& scenario){
   assert(f.feed(a)==0);f.partial();assert(f.feed(b,&scope)==1&&f.fleet.waiting()&&f.profiles.mutation);
   assert(f.mesh.manager.outbound.size()==2&&f.mesh.ack_scoped&&f.mesh.ack_path_size==3);
   assert(f.mesh.ack_codes[0]==scope.calcTransportCode(f.mesh.manager.outbound[0]));
-  assert(f.mesh.ack_codes[0]!=b.transport_codes[0]&&last_jitter_max==15500);
+  assert(f.mesh.ack_codes[0]!=b.transport_codes[0]&&last_jitter_max==10000);
   f.fleet.complete(f.mesh.manager.removeOutboundByIdx(0),f.profiles);
   assert(f.fleet.waiting()&&f.profiles.mutation&&f.profiles.commits==0);
   f.fleet.fail(f.mesh.manager.removeOutboundByIdx(0),f.profiles);
@@ -672,7 +674,7 @@ static int regionScenario(const std::string& scenario){
   assert(f.send("home:pdx")==0&&f.send("home:seaside")==0);
   assert(f.send("SEA")==0&&f.send("region:se")==0&&f.send("home:NORTH")==0);
   assert(f.send("#sea")==1&&f.send("region:#pdx")==1&&f.send("home:#sea")==1);
-  assert(last_jitter_max==60500); // Region requests may have multiple matching radios.
+  assert(last_jitter_max==10000); // Region requests may have multiple matching radios.
  }else if(scenario=="regions_private_names"){
   assert(f.send("region:$private")==1&&f.send("private")==0);
   RegionEntry* private_row=f.regions.findById(6);f.regions.setHomeRegion(private_row);
@@ -715,7 +717,7 @@ static int regionScenario(const std::string& scenario){
  }else if(scenario=="regions_overlap_once"){
   const std::string key=publicHex(f.mesh.self_id);
   assert(f.send("sea;home:sea;"+key.substr(0,8)+";"+key)==1);
-  assert(f.calls==1&&f.mesh.queued==1&&last_jitter_max==60500);
+  assert(f.calls==1&&f.mesh.queued==1&&last_jitter_max==10000);
   assert(config(f.fleet,"get fleet.stats").find("accepted=1")!=std::string::npos);
   LocalIdentity another;const auto before=f.disk.files.at(Path);
   assert(f.send("home:pdx;"+publicHex(another))==0&&f.disk.files.at(Path)==before);
@@ -778,7 +780,7 @@ static constexpr const char* Seattle="gps:47.6062,-122.3321:25";
 static int gpsScenario(const std::string& scenario){
  RegionFixture f;f.location.valid=true;f.location.latitude=47606200;f.location.longitude=-122332100;
  if(scenario=="gps_inside_outside"){
-  assert(f.send(Seattle)==1&&f.location.reads==1&&last_jitter_max==60500);
+  assert(f.send(Seattle)==1&&f.location.reads==1&&last_jitter_max==10000);
   f.location.latitude=47700000;f.location.longitude=-122300000;assert(f.send(Seattle)==1);
   f.location.latitude=45515200;f.location.longitude=-122678400;
   const auto saved=f.disk.files.at(Path);assert(f.send(Seattle)==0&&f.disk.files.at(Path)==saved);
@@ -813,7 +815,7 @@ static int gpsScenario(const std::string& scenario){
  }else if(scenario=="gps_mixed_targets_once"){
   const std::string key=publicHex(f.mesh.self_id);
   assert(f.send(std::string(Seattle)+";sea;home:sea;"+key)==1);
-  assert(f.calls==1&&f.mesh.queued==1&&last_jitter_max==60500);
+  assert(f.calls==1&&f.mesh.queued==1&&last_jitter_max==10000);
   assert(f.send(std::string("gps:0,0:1;")+Seattle+";home:pdx")==1);
   assert(f.send(key+";"+Seattle)==1); // Internal GPS comma remains distinct from target-list separators.
   f.location.valid=false;assert(f.send(std::string(Seattle)+";sea")==1); // OR semantics retain valid region matches.
@@ -876,8 +878,46 @@ static int gpsScenario(const std::string& scenario){
  printf("fleet runtime %s passed\n",scenario.c_str());return 0;
 }
 
+
+static int ackDelayScenario(){
+ for(int boundary:{-1,1}){
+  jitter_pick_boundary=boundary;
+  for(const std::string mode:{"all","radio","prefix","list","region","home","gps","individual"}){
+   RegionFixture f;f.location.valid=true;f.location.latitude=47606200;f.location.longitude=-122332100;
+   LocalIdentity other;std::string target="all";
+   if(mode=="prefix")target=publicHex(f.mesh.self_id).substr(0,8);
+   else if(mode=="list")target=publicHex(other)+";"+publicHex(f.mesh.self_id);
+   else if(mode=="region")target="sea";
+   else if(mode=="home")target="home:sea";
+   else if(mode=="gps")target=Seattle;
+   else if(mode=="individual")target=publicHex(f.mesh.self_id);
+   const bool mutation=mode=="radio";f.mesh.fanout=mutation;
+   const char* text=mutation?"set radio2 off":"get radio2";
+   Packet packet=targetsCommand(f.publisher,f.mesh.clock.now,target,text);unsigned calls=0;
+   fake_ms+=1000;f.fleet.receive(&packet,f.mesh);
+   f.fleet.service(f.mesh,f.profiles,"bounded-delay",[&](uint32_t sequence,const char* command,char* reply){
+    ++calls;assert(sequence==f.reserved()&&!strcmp(command,text));
+    if(mutation)f.profiles.stage();strcpy(reply,"OK");
+   });
+   const uint32_t upper=mode=="individual"?1500:10000;
+   const uint32_t expected=boundary<0?500:upper;
+   assert(calls==1&&last_jitter_max==upper&&f.mesh.ack_delay==expected&&f.mesh.ack_delay<=10000);
+   assert(f.mesh.queued==1&&f.mesh.manager.outbound.size()==(mutation?2U:1U));
+   if(mutation){
+    assert(f.fleet.waiting()&&f.profiles.mutation&&f.profiles.commits==0);
+    f.fleet.complete(f.mesh.manager.removeOutboundByIdx(0),f.profiles);
+    assert(f.fleet.waiting()&&f.profiles.mutation&&f.profiles.commits==0);
+    f.fleet.complete(f.mesh.manager.removeOutboundByIdx(0),f.profiles);
+    assert(!f.fleet.waiting()&&!f.profiles.mutation&&f.profiles.commits==1);
+   }
+  }
+ }
+ jitter_pick_boundary=0;puts("fleet runtime ack_delay_ceiling passed");return 0;
+}
+
 int main(int argc,char** argv){
  assert(argc==2);const std::string scenario=argv[1];
+ if(scenario=="ack_delay_ceiling")return ackDelayScenario();
  if(scenario.rfind("gps_",0)==0)return gpsScenario(scenario);
  if(scenario.rfind("regions_",0)==0)return regionScenario(scenario);
  if(scenario.rfind("fragments_",0)==0)return fragmentScenario(scenario);
@@ -957,7 +997,7 @@ int main(int argc,char** argv){
   assert(mesh.manager.outbound.size()==2);assert(mesh.ack_scoped&&mesh.ack_codes[1]==0);
   assert(mesh.ack_codes[0]==scope.calcTransportCode(mesh.manager.outbound[0]));
   assert(mesh.ack_codes[0]!=packet.transport_codes[0]);
-  assert(mesh.ack_delay==1000&&mesh.ack_path_size==2&&last_jitter_max==15500);
+  assert(mesh.ack_delay==1000&&mesh.ack_path_size==2&&last_jitter_max==10000);
   assert(mesh.manager.outbound[0]->radio_reply&&!mesh.manager.outbound[0]->radio_bound);
   assert(mesh.manager.outbound[0]->flood_retry_policy==FLOOD_RETRY_POLICY_DENY);
   fleet.receive(&packet,mesh);assert(config(fleet,"get fleet.stats").find("busy=1")!=std::string::npos);
@@ -1092,7 +1132,7 @@ int main(int argc,char** argv){
   enroll(fleet,publisher);Packet packet=shortNewAll(publisher,mesh.clock.now);
   uint8_t plaintext[184]={};assert(Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1)>0);
   assert(plaintext[2]<FleetCommand::HeaderSize+FleetCommand::SignatureSize);
-  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==10000);
   assert(apply(fleet,fs,mesh,profiles,packet)==0);
  }else if(scenario=="fmc2_encoded_all"){
   enroll(fleet,publisher);Packet packet=targetsCommand(publisher,mesh.clock.now,"all");
@@ -1103,13 +1143,13 @@ int main(int argc,char** argv){
   assert(plaintext[2]<FleetCommand::HeaderSize+FleetCommand::SignatureSize);
   Packet legacy=command(publisher,mesh.clock.now,"get radio2");
   assert(packet.payload_len+16==legacy.payload_len);
-  assert(apply(fleet,fs,mesh,profiles,packet)==1&&mesh.queued==1&&last_jitter_max==60500);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1&&mesh.queued==1&&last_jitter_max==10000);
   assert(apply(fleet,fs,mesh,profiles,packet)==0);
   mesh.releasePacket(mesh.manager.removeOutboundByIdx(0));
   ++mesh.clock.now;fake_ms+=1000;mesh.fanout=true;
   Packet mutation=targetsCommand(publisher,mesh.clock.now,"all","set radio2 off");
   assert(apply(fleet,fs,mesh,profiles,mutation,true)==1);
-  assert(fleet.waiting()&&profiles.mutation&&last_jitter_max==15500);
+  assert(fleet.waiting()&&profiles.mutation&&last_jitter_max==10000);
   fleet.complete(mesh.manager.removeOutboundByIdx(0),profiles);
   assert(fleet.waiting()&&profiles.mutation&&profiles.commits==0);
   fleet.complete(mesh.manager.removeOutboundByIdx(0),profiles);
@@ -1151,7 +1191,7 @@ int main(int argc,char** argv){
   assert(dispatch(fleet,changed)==0&&fs.files.at(Path)==previous&&mesh.queued==0);
   Packet too_long=compactUnchecked(publisher,mesh.clock.now,oversized.c_str());
   assert(too_long.payload_len==179&&dispatch(fleet,too_long)==0&&fs.files.at(Path)==previous);
-  assert(dispatch(fleet,packet)==1&&last_jitter_max==60500&&mesh.queued==1);
+  assert(dispatch(fleet,packet)==1&&last_jitter_max==10000&&mesh.queued==1);
   assert(!strcmp(capture.text,text.c_str())&&capture.guard=='!');
   assert(dispatch(fleet,packet)==0);FleetChannel rebooted(&fs);assert(dispatch(rebooted,packet)==0);
  }else if(scenario=="fmc2_short_prefix"){
@@ -1159,12 +1199,12 @@ int main(int argc,char** argv){
   uint8_t plaintext[184]={};assert(Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1)>0);
   assert(plaintext[2]==FleetCommand::HeaderSize+FleetCommand::SignatureSize);
   assert(!memcmp(plaintext+3,"FMC2",4));
-  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==10000);
   FleetChannel rebooted(&fs);assert(apply(rebooted,fs,mesh,profiles,packet)==0);
  }else if(scenario=="fmc2_overlap_matches_once"){
   enroll(fleet,publisher);const std::string mine=publicHex(mesh.self_id);
   Packet packet=targetsCommand(publisher,mesh.clock.now,mine.substr(0,8)+";"+mine);
-  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(mesh.queued==1&&last_jitter_max==60500);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(mesh.queued==1&&last_jitter_max==10000);
   assert(config(fleet,"get fleet.stats").find("accepted=1")!=std::string::npos);
  }else if(scenario=="fmc2_nonmatching_no_reserve"){
   enroll(fleet,publisher);const auto previous=fs.files.at(Path);LocalIdentity stranger;
@@ -1173,7 +1213,7 @@ int main(int argc,char** argv){
   Packet packet=targetsCommand(publisher,mesh.clock.now,std::string(different_prefix)+";"+publicHex(stranger));
   assert(apply(fleet,fs,mesh,profiles,packet)==0);assert(mesh.queued==0&&fs.files.at(Path)==previous);
   packet=targetsCommand(publisher,mesh.clock.now,publicHex(stranger)+";"+publicHex(mesh.self_id));
-  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==10000);
  }else if(scenario=="fmc2_target_tamper"){
   enroll(fleet,publisher);const auto previous=fs.files.at(Path);
   Packet good=targetsCommand(publisher,mesh.clock.now,publicHex(mesh.self_id).substr(0,12));
@@ -1294,6 +1334,9 @@ class SHA256 : public SHA256Base {{ public:
 
     def test_two_packet_gps_rejects_invalid_final_fix_tampering_and_reboot_replays(self):
         self.scenario("gps_fragments_invalid_final_fix")
+
+    def test_every_group_ack_uses_at_most_ten_seconds_and_single_identity_retains_1500ms(self):
+        self.scenario("ack_delay_ceiling")
 
     def test_semicolon_is_the_only_target_separator_with_comma_reserved_for_gps_coordinates(self):
         self.scenario("regions_target_delimiter")
