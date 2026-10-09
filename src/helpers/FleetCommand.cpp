@@ -7,11 +7,16 @@ namespace {
 
 constexpr char Domain[] = "MeshCoreFleet1";
 constexpr size_t SignedMessageCapacity = sizeof(Domain) - 1
-    + FleetCommand::KeySize + FleetCommand::MaxPayloadLength
+    + FleetCommand::KeySize + FleetCommand::MaxEnvelopeLength
     - FleetCommand::SignatureSize;
-static_assert(FleetCommand::HeaderSize + FleetCommand::MaxCommandLength
-              + FleetCommand::SignatureSize <= FleetCommand::MaxPayloadLength,
-              "Legacy fleet envelope must fit the shared packet budget");
+static_assert(FleetCommand::HeaderSize + FleetCommand::FixedTargetMaxCommandLength
+              + FleetCommand::SignatureSize <= FleetCommand::MaxEnvelopeLength,
+              "Fixed-target fleet envelope must fit the two-packet budget");
+static_assert(FleetCommand::MinHeaderSize + FleetCommand::MaxCommandLength
+              + FleetCommand::SignatureSize <= FleetCommand::MaxEnvelopeLength,
+              "Compact fleet envelope must fit the two-packet budget");
+static_assert(FleetCommand::MaxCommandLength <= UINT8_MAX,
+              "Fleet command length must fit the signed length byte");
 constexpr uint8_t PublicKey[FleetCommand::KeySize] = {
   0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
   0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
@@ -355,7 +360,7 @@ size_t FleetCommand::encode(const LocalIdentity& publisher, const uint8_t* key,
   const size_t command_length = strlen(command);
   const size_t unsigned_length = HeaderSize + command_length;
   const size_t length = unsigned_length + SignatureSize;
-  if (capacity < length) return 0;
+  if (length > MaxEnvelopeLength || capacity < length) return 0;
   memcpy(output, "FMC1", 4);
   write32(output + 4, sequence);
   write32(output + 8, expires);
@@ -389,7 +394,7 @@ size_t FleetCommand::encode(const LocalIdentity& publisher, const uint8_t* key,
   const size_t command_length = strlen(command);
   const size_t unsigned_length = MinHeaderSize + targets.length + command_length;
   const size_t length = unsigned_length + SignatureSize;
-  if (length > MaxPayloadLength || capacity < length) return 0;
+  if (length > MaxEnvelopeLength || capacity < length) return 0;
   memcpy(output, "FMC2", 4);
   write32(output + 4, sequence);
   write32(output + 8, expires);
@@ -411,7 +416,7 @@ bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
   if (!privateKeyAllowed(key) || !payload || !self_public_key
       || zero(publisher.pub_key, PUB_KEY_SIZE) || zero(self_public_key, PUB_KEY_SIZE)
       || now < MinEpoch || length < MinHeaderSize + SignatureSize
-      || length > MaxPayloadLength) return false;
+      || length > MaxEnvelopeLength) return false;
   const size_t unsigned_length = length - SignatureSize;
   size_t command_offset;
   bool broadcast;
@@ -455,6 +460,41 @@ bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
   output.expires = expires;
   output.broadcast = broadcast;
   memcpy(output.command, command, command_length + 1);
+  return true;
+}
+
+size_t FleetCommand::fragment(const uint8_t* envelope, size_t length, uint8_t index,
+                              uint8_t* output, size_t capacity) {
+  if (!envelope || !output || length <= MaxPayloadLength
+      || length > MaxEnvelopeLength || index > 1
+      || (memcmp(envelope, "FMC1", 4) && memcmp(envelope, "FMC2", 4))) return 0;
+  const size_t offset = size_t(index) * FragmentDataLength;
+  const size_t chunk_length = index ? length - offset : FragmentDataLength;
+  const size_t fragment_length = FragmentHeaderSize + chunk_length;
+  if (capacity < fragment_length) return 0;
+  memcpy(output, "FMP1", 4);
+  memcpy(output + 4, envelope + 4, 4); // The receiver checks this against signed UTC sequence.
+  output[8] = uint8_t(length);
+  output[9] = uint8_t(length >> 8);
+  output[10] = index;
+  memcpy(output + FragmentHeaderSize, envelope + offset, chunk_length);
+  return fragment_length;
+}
+
+bool FleetCommand::parseFragment(const uint8_t* payload, size_t length, Fragment& output) {
+  output = {};
+  if (!payload || length < FragmentHeaderSize || length > MaxPayloadLength
+      || memcmp(payload, "FMP1", 4)) return false;
+  const uint16_t total = uint16_t(payload[8]) | (uint16_t(payload[9]) << 8);
+  const uint8_t index = payload[10];
+  if (total <= MaxPayloadLength || total > MaxEnvelopeLength || index > 1) return false;
+  const size_t chunk_length = index ? total - FragmentDataLength : FragmentDataLength;
+  if (length != FragmentHeaderSize + chunk_length) return false;
+  output.sequence = read32(payload + 4);
+  output.total_length = total;
+  output.index = index;
+  output.data = payload + FragmentHeaderSize;
+  output.length = chunk_length;
   return true;
 }
 

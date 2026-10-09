@@ -2,8 +2,10 @@
 #include <Ed25519.h>
 #include <helpers/FleetCommand.h>
 #include <SHA256.h>
+#include <algorithm>
 #include <array>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -36,7 +38,7 @@ protected:
                               uint32_t sequence = Now,
                               uint32_t expires = Now + 120,
                               const uint8_t* target = nullptr) {
-    std::vector<uint8_t> bytes(Fleet::MaxPayloadLength);
+    std::vector<uint8_t> bytes(Fleet::MaxEnvelopeLength);
     const size_t size = Fleet::encode(publisher, ChannelKey, sequence, expires,
         target ? target : all.data(), command, bytes.data(), bytes.size());
     bytes.resize(size);
@@ -50,7 +52,7 @@ protected:
 
   std::vector<uint8_t> encodeTargets(const Fleet::Targets& targets,
                                     const char* command = "get radio2") {
-    std::vector<uint8_t> bytes(Fleet::MaxPayloadLength);
+    std::vector<uint8_t> bytes(Fleet::MaxEnvelopeLength);
     const size_t size = Fleet::encode(publisher, ChannelKey, Now, Now + 120,
                                      targets, command, bytes.data(), bytes.size());
     bytes.resize(size);
@@ -153,7 +155,7 @@ TEST_F(FleetCommandTest, ScheduledCommandsRejectMalformedTimesFieldsAndSelectors
       + std::string(Fleet::MaxCommandLength - prefix.size() - suffix.size(), '0') + suffix;
   ASSERT_EQ(Fleet::MaxCommandLength, maximum.size());
   EXPECT_TRUE(Fleet::commandAllowed(maximum.c_str()));
-  EXPECT_TRUE(decode(encode(maximum.c_str())));
+  EXPECT_TRUE(decode(encodeTargets(Fleet::Targets{}, maximum.c_str())));
   const std::string oversized = prefix + '0' + maximum.substr(prefix.size());
   EXPECT_FALSE(Fleet::commandAllowed(oversized.c_str()));
 }
@@ -289,21 +291,28 @@ TEST_F(FleetCommandTest, FailedSignatureVerificationNeverReturnsCommand) {
   EXPECT_STREQ("", decoded.command);
 }
 
-TEST_F(FleetCommandTest, FullPayloadLimitFitsWithoutOverflow) {
+TEST_F(FleetCommandTest, LegacyPayloadLimitFitsAndCannotBeRaisedByDestinationCapacity) {
   const std::string prefix = "set flood.rule.1 ";
-  const std::string maximum = prefix + std::string(Fleet::MaxCommandLength - prefix.size(), 'a');
+  const std::string maximum = prefix + std::string(Fleet::FixedTargetMaxCommandLength - prefix.size(), 'a');
   ASSERT_TRUE(Fleet::commandAllowed(maximum.c_str()));
   const auto bytes = encode(maximum.c_str());
-  ASSERT_EQ(Fleet::MaxPayloadLength, bytes.size());
+  ASSERT_EQ(Fleet::MaxEnvelopeLength, bytes.size());
   EXPECT_TRUE(decode(bytes));
   EXPECT_STREQ(maximum.c_str(), decoded.command);
-  EXPECT_FALSE(Fleet::commandAllowed((maximum + "a").c_str()));
+  EXPECT_TRUE(Fleet::commandAllowed((maximum + "a").c_str()));
   EXPECT_TRUE(encode((maximum + "a").c_str()).empty());
-  std::array<uint8_t, Fleet::MaxPayloadLength + 2> output;
+  std::array<uint8_t, Fleet::MaxEnvelopeLength + 64> output;
   output.fill(0xA5);
   EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 10, all.data(),
-                            maximum.c_str(), output.data() + 1, 164));
+                            maximum.c_str(), output.data() + 1, Fleet::MaxEnvelopeLength - 1));
   for (uint8_t value : output) EXPECT_EQ(0xA5, value);
+  for (size_t command_length : {Fleet::FixedTargetMaxCommandLength + 1, Fleet::MaxCommandLength}) {
+    const std::string oversized = prefix + std::string(command_length - prefix.size(), 'a');
+    ASSERT_TRUE(Fleet::commandAllowed(oversized.c_str()));
+    EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 10, all.data(),
+                              oversized.c_str(), output.data(), output.size()));
+    for (uint8_t value : output) EXPECT_EQ(0xA5, value);
+  }
 }
 
 TEST_F(FleetCommandTest, RejectsTruncationTrailingPaddingAndWrongMagic) {
@@ -439,7 +448,7 @@ TEST_F(FleetCommandTest, TargetRecordAndPayloadBudgetsAreSeparateAndBounded) {
     ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
     EXPECT_EQ(count, targets.count);
     EXPECT_EQ(count * 5, targets.length);
-    EXPECT_EQ(count <= 15, !encodeTargets(targets).empty()) << count;
+    EXPECT_FALSE(encodeTargets(targets).empty()) << count;
   }
   Fleet::Targets targets{};
   list += ",01020304";
@@ -452,7 +461,7 @@ TEST_F(FleetCommandTest, TargetRecordAndPayloadBudgetsAreSeparateAndBounded) {
     ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
     EXPECT_EQ(count * 17, targets.length);
   }
-  EXPECT_TRUE(encodeTargets(targets).empty());
+  EXPECT_FALSE(encodeTargets(targets).empty());
   list += ',' + full;
   EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
 }
@@ -485,17 +494,25 @@ TEST_F(FleetCommandTest, CompactBroadcastCapacityAndCommandLimitRemainBounded) {
   const std::string prefix = "set flood.rule.1 ";
   const std::string maximum = prefix + std::string(Fleet::MaxCommandLength - prefix.size(), 'a');
   const auto bytes = encodeTargets(targets, maximum.c_str());
-  ASSERT_EQ(150U, bytes.size());
-  EXPECT_EQ(15U, encode(maximum.c_str()).size() - bytes.size());
+  ASSERT_EQ(230U, maximum.size());
+  ASSERT_EQ(Fleet::MaxEnvelopeLength, bytes.size());
+  ASSERT_TRUE(Fleet::commandAllowed(maximum.c_str()));
   EXPECT_TRUE(decode(bytes));
+  EXPECT_STREQ(maximum.c_str(), decoded.command);
   EXPECT_TRUE(decoded.broadcast);
-  std::array<uint8_t, Fleet::MaxPayloadLength> output;
+  std::array<uint8_t, Fleet::MaxEnvelopeLength> output;
   output.fill(0xA5);
   EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120, targets,
                             maximum.c_str(), output.data(), bytes.size() - 1));
   for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
   const std::string oversized = maximum + 'a';
+  EXPECT_FALSE(Fleet::commandAllowed(oversized.c_str()));
   EXPECT_TRUE(encodeTargets(targets, oversized.c_str()).empty());
+  for (const char invalid : {'\n', ';', char(0x80)}) {
+    const std::string malformed = maximum.substr(0, maximum.size() - 1) + invalid;
+    EXPECT_FALSE(Fleet::commandAllowed(malformed.c_str()));
+    EXPECT_TRUE(encodeTargets(targets, malformed.c_str()).empty());
+  }
   for (size_t length = 0; length < bytes.size(); ++length) {
     const std::vector<uint8_t> truncated(bytes.begin(), bytes.begin() + length);
     EXPECT_FALSE(decode(truncated));
@@ -565,7 +582,7 @@ TEST_F(FleetCommandTest, AnyMatchingEntryIsAcceptedButMalformedLaterEntryIsRejec
   bytes[13 + targets.length] = 0;
   EXPECT_FALSE(decode(bytes));
   bytes = encodeTargets(targets);
-  bytes[13 + targets.length] = 73;
+  bytes[13 + targets.length] = Fleet::MaxCommandLength + 1;
   EXPECT_FALSE(decode(bytes));
   for (size_t length = 0; length < bytes.size(); ++length) {
     const std::vector<uint8_t> truncated(bytes.begin(), bytes.begin() + length);
@@ -615,19 +632,50 @@ TEST_F(FleetCommandTest, InvalidExternalTargetStructuresNeverWriteOutput) {
 }
 
 TEST_F(FleetCommandTest, LargestFmc2EnvelopeFitsAndOversizedCombinationWritesNothing) {
-  const std::string prefix = "set flood.rule.1 ";
-  const std::string maximum = prefix + std::string(Fleet::MaxCommandLength - prefix.size(), 'a');
   Fleet::Targets targets{};
   const char* three = "01020304,05060708,090A0B0C";
   ASSERT_TRUE(Fleet::parseTargets(three, strlen(three), targets));
-  EXPECT_EQ(Fleet::MaxPayloadLength, encodeTargets(targets, maximum.c_str()).size());
+  const std::string prefix = "set flood.rule.1 ";
+  const std::string maximum = prefix + std::string(
+      Fleet::MaxCommandLength - targets.length - prefix.size(), 'a');
+  EXPECT_EQ(Fleet::MaxEnvelopeLength, encodeTargets(targets, maximum.c_str()).size());
   const char* four = "01020304,05060708,090A0B0C,01020304";
   ASSERT_TRUE(Fleet::parseTargets(four, strlen(four), targets));
-  std::array<uint8_t, Fleet::MaxPayloadLength> output;
+  std::array<uint8_t, Fleet::MaxEnvelopeLength> output;
   output.fill(0xA5);
   EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120,
                             targets, maximum.c_str(), output.data(), output.size()));
   for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+}
+
+TEST_F(FleetCommandTest, EveryTargetFormUsesItsExactCommandBudgetWithoutPartialWrites) {
+  char full[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
+  const std::string short_key(full, 8), long_key(full, 12);
+  const std::string prefix = "set flood.rule.1 ";
+  const std::vector<std::pair<std::string, size_t>> cases = {
+    {"all", 230}, {short_key, 225}, {long_key, 223}, {full, 215},
+    {short_key + ',' + short_key, 220}, {short_key + ',' + long_key, 218},
+    {std::string(full) + ',' + short_key, 208}, {std::string(full) + ',' + full, 196}
+  };
+  for (const auto& item : cases) {
+    SCOPED_TRACE(item.first);
+    Fleet::Targets targets{};
+    ASSERT_TRUE(Fleet::parseTargets(item.first.data(), item.first.size(), targets));
+    const std::string maximum = prefix + std::string(item.second - prefix.size(), 'a');
+    ASSERT_TRUE(Fleet::commandAllowed(maximum.c_str()));
+    const auto bytes = encodeTargets(targets, maximum.c_str());
+    ASSERT_EQ(Fleet::MaxEnvelopeLength, bytes.size());
+    ASSERT_TRUE(decode(bytes));
+    EXPECT_STREQ(maximum.c_str(), decoded.command);
+    const std::string oversized = maximum + 'a';
+    EXPECT_TRUE(encodeTargets(targets, oversized.c_str()).empty());
+    std::array<uint8_t, Fleet::MaxEnvelopeLength + 64> output;
+    output.fill(0xA5);
+    EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120, targets,
+                              oversized.c_str(), output.data(), output.size()));
+    for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+  }
 }
 
 TEST_F(FleetCommandTest, UnrepresentableZeroDigestNeverBecomesAllDuringLegacyEncoding) {
@@ -639,6 +687,129 @@ TEST_F(FleetCommandTest, UnrepresentableZeroDigestNeverBecomesAllDuringLegacyEnc
   ASSERT_FALSE(bytes.empty());
   EXPECT_EQ(std::string("FMC2"), std::string(bytes.begin(), bytes.begin() + 4));
   EXPECT_FALSE(decode(bytes));
+}
+
+TEST_F(FleetCommandTest, SinglePacketBoundariesRemainExactBeforeFragmentation) {
+  char full[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
+  const std::string prefix = "set flood.rule.1 ";
+  for (const auto& item : std::vector<std::pair<std::string, size_t>>{
+      {"all", 87}, {std::string(full, 8), 82}, {std::string(full, 12), 80}, {full, 72}}) {
+    Fleet::Targets targets{};
+    ASSERT_TRUE(Fleet::parseTargets(item.first.data(), item.first.size(), targets));
+    const std::string command = prefix + std::string(item.second - prefix.size(), 'a');
+    const auto single = encodeTargets(targets, command.c_str());
+    ASSERT_EQ(Fleet::MaxPayloadLength, single.size());
+    std::array<uint8_t, Fleet::MaxPayloadLength> output;
+    output.fill(0xA5);
+    EXPECT_EQ(0U, Fleet::fragment(single.data(), single.size(), 0, output.data(), output.size()));
+    for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+    const auto longer = encodeTargets(targets, (command + 'a').c_str());
+    ASSERT_EQ(Fleet::MaxPayloadLength + 1, longer.size());
+    EXPECT_EQ(Fleet::MaxPayloadLength,
+              Fleet::fragment(longer.data(), longer.size(), 0, output.data(), output.size()));
+    EXPECT_EQ(Fleet::FragmentHeaderSize + longer.size() - Fleet::FragmentDataLength,
+              Fleet::fragment(longer.data(), longer.size(), 1, output.data(), output.size()));
+  }
+}
+
+TEST_F(FleetCommandTest, TwoExactFragmentsReassembleInEitherOrderAndVerifyOnlyWholeEnvelope) {
+  const std::string prefix = "set flood.rule.1 ";
+  for (size_t command_length : {88U, 89U, 229U, 230U}) {
+    const std::string command = prefix + std::string(command_length - prefix.size(), 'a');
+    const auto envelope = encodeTargets(Fleet::Targets{}, command.c_str());
+    ASSERT_EQ(Fleet::MinHeaderSize + command_length + Fleet::SignatureSize, envelope.size());
+    std::array<std::vector<uint8_t>, 2> fragments;
+    for (uint8_t index = 0; index < 2; ++index) {
+      fragments[index].resize(Fleet::MaxPayloadLength);
+      const size_t size = Fleet::fragment(envelope.data(), envelope.size(), index,
+                                         fragments[index].data(), fragments[index].size());
+      ASSERT_GT(size, 0U);
+      ASSERT_LE(size, Fleet::MaxPayloadLength);
+      fragments[index].resize(size);
+    }
+    for (bool reverse : {false, true}) {
+      std::vector<uint8_t> assembled(envelope.size());
+      const unsigned before = g_mock_ed25519_verify_calls;
+      for (unsigned step = 0; step < 2; ++step) {
+        const uint8_t index = reverse ? 1 - step : step;
+        Fleet::Fragment part;
+        ASSERT_TRUE(Fleet::parseFragment(fragments[index].data(), fragments[index].size(), part));
+        EXPECT_EQ(Now, part.sequence);
+        EXPECT_EQ(envelope.size(), part.total_length);
+        EXPECT_EQ(index, part.index);
+        EXPECT_EQ(index ? envelope.size() - Fleet::FragmentDataLength : Fleet::FragmentDataLength,
+                  part.length);
+        EXPECT_EQ(0, memcmp(part.data, envelope.data() + index * Fleet::FragmentDataLength, part.length));
+        std::copy_n(part.data, part.length, assembled.begin() + index * Fleet::FragmentDataLength);
+        EXPECT_FALSE(decode(fragments[index])); // A fragment cannot authorize a command.
+        EXPECT_EQ(before, g_mock_ed25519_verify_calls);
+        Fleet::Fragment duplicate;
+        ASSERT_TRUE(Fleet::parseFragment(fragments[index].data(), fragments[index].size(), duplicate));
+        EXPECT_EQ(part.data, duplicate.data);
+        EXPECT_EQ(part.length, duplicate.length);
+      }
+      EXPECT_EQ(envelope, assembled);
+      ASSERT_TRUE(decode(assembled));
+      EXPECT_EQ(before + 1, g_mock_ed25519_verify_calls);
+      EXPECT_STREQ(command.c_str(), decoded.command);
+      EXPECT_TRUE(decoded.broadcast);
+    }
+  }
+}
+
+TEST_F(FleetCommandTest, FragmentEncoderRejectsInvalidInputBeforeWriting) {
+  const std::string command = "set flood.rule.1 " + std::string(72, 'a');
+  auto envelope = encodeTargets(Fleet::Targets{}, command.c_str());
+  ASSERT_GT(envelope.size(), Fleet::MaxPayloadLength);
+  std::array<uint8_t, Fleet::MaxPayloadLength + 64> output;
+  output.fill(0xA5);
+  for (size_t length : {size_t(0), Fleet::MaxPayloadLength, Fleet::MaxEnvelopeLength + 1})
+    EXPECT_EQ(0U, Fleet::fragment(envelope.data(), length, 0, output.data(), output.size()));
+  EXPECT_EQ(0U, Fleet::fragment(nullptr, envelope.size(), 0, output.data(), output.size()));
+  EXPECT_EQ(0U, Fleet::fragment(envelope.data(), envelope.size(), 0, nullptr, output.size()));
+  for (uint8_t index : {uint8_t(2), uint8_t(255)})
+    EXPECT_EQ(0U, Fleet::fragment(envelope.data(), envelope.size(), index, output.data(), output.size()));
+  EXPECT_EQ(0U, Fleet::fragment(envelope.data(), envelope.size(), 0, output.data(), 164));
+  EXPECT_EQ(0U, Fleet::fragment(envelope.data(), envelope.size(), 1, output.data(),
+                               Fleet::FragmentHeaderSize + envelope.size() - Fleet::FragmentDataLength - 1));
+  envelope[0] = 'X';
+  EXPECT_EQ(0U, Fleet::fragment(envelope.data(), envelope.size(), 0, output.data(), output.size()));
+  for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+}
+
+TEST_F(FleetCommandTest, FragmentParserRejectsMalformedLengthIndexAndMagicAndClearsOutput) {
+  const std::string command = "set flood.rule.1 " + std::string(72, 'a');
+  const auto envelope = encodeTargets(Fleet::Targets{}, command.c_str());
+  std::vector<uint8_t> valid(Fleet::MaxPayloadLength);
+  ASSERT_EQ(valid.size(), Fleet::fragment(envelope.data(), envelope.size(), 0, valid.data(), valid.size()));
+  const auto reject = [&](const uint8_t* bytes, size_t length) {
+    Fleet::Fragment part{123, 300, 1, valid.data(), 100};
+    EXPECT_FALSE(Fleet::parseFragment(bytes, length, part));
+    EXPECT_EQ(0U, part.sequence); EXPECT_EQ(0, part.total_length); EXPECT_EQ(0, part.index);
+    EXPECT_EQ(nullptr, part.data); EXPECT_EQ(0U, part.length);
+  };
+  reject(nullptr, valid.size());
+  for (size_t length = 0; length < valid.size(); ++length) reject(valid.data(), length);
+  auto malformed = valid;
+  malformed.push_back(0);
+  reject(malformed.data(), malformed.size());
+  malformed = valid; malformed[0] = 'X'; reject(malformed.data(), malformed.size());
+  for (uint16_t total : {uint16_t(0), uint16_t(165), uint16_t(309), uint16_t(65535)}) {
+    malformed = valid; malformed[8] = uint8_t(total); malformed[9] = uint8_t(total >> 8);
+    reject(malformed.data(), malformed.size());
+  }
+  for (uint8_t index : {uint8_t(1), uint8_t(2), uint8_t(255)}) {
+    malformed = valid; malformed[10] = index; reject(malformed.data(), malformed.size());
+  }
+  valid.resize(Fleet::MaxPayloadLength);
+  valid.resize(Fleet::fragment(envelope.data(), envelope.size(), 1, valid.data(), valid.size()));
+  ASSERT_FALSE(valid.empty());
+  malformed = valid; malformed.pop_back(); reject(malformed.data(), malformed.size());
+  malformed = valid; malformed.push_back(0); reject(malformed.data(), malformed.size());
+  Fleet::Fragment part;
+  ASSERT_TRUE(Fleet::parseFragment(valid.data(), valid.size(), part));
+  EXPECT_EQ(envelope.size() - Fleet::FragmentDataLength, part.length);
 }
 
 } // namespace

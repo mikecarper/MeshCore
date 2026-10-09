@@ -355,6 +355,10 @@ protected:
   bool sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis);
   bool sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis=0) override;
   bool sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis=0) override;
+#if MESH_ENABLE_FLEET_CONTROL
+  bool sendFleetCommandData(mesh::GroupChannel& channel, const uint8_t* envelope, size_t length);
+  void onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* original, uint8_t priority) override;
+#endif
 
   void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) override;
 #if MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT
@@ -466,6 +470,11 @@ public:
   bool canRecoverUsbLogging() const;
 
 private:
+#if MESH_ENABLE_FLEET_CONTROL
+  // Exact ownership of the optional radio copy during two-part admission.
+  mesh::Packet* _fleet_admission_original = nullptr;
+  mesh::Packet* _fleet_admission_copy = nullptr;
+#endif
   // Only snapshot the changed value: CompanionNodePrefs owns self-referencing
   // runtime adapters and must not be copied as a transaction snapshot.
   template <typename T> bool savePreference(T& preference, T value) {
@@ -723,6 +732,7 @@ private:
 #endif
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
+  bool _cli_line_overflow = false;
   char reply_buf[166];
   uint8_t app_target_ver;
   uint8_t *sign_data;

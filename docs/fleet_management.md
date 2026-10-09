@@ -61,6 +61,8 @@ last accepted sequence. It does not reveal the channel key. `set fleet.channel
 off` disables reception; `set fleet.controller off` revokes the publisher. Key
 changes use the existing individually authenticated admin path, never fleet
 commands.
+`get fleet.stats` includes `parts`, the number of fragments currently buffered
+for an incomplete two-packet command.
 
 Nodes need a clock set to current UTC. Commands expire after ten minutes and may
 be at most one minute ahead of a receiver's clock. A bad clock fails closed;
@@ -107,10 +109,9 @@ command only once, and the signature protects the entire list.
 On air, full keys use a 128-bit SHA-256 digest; prefixes use their original
 public-key bytes. Whole-fleet commands use the compact FMC2 format with no target
 records, whether the CLI target is omitted or explicitly `all`. This reduces the
-header from 29 to 14 bytes. Whole-fleet, multiple-target, and prefix commands
-require receivers that support FMC2. A single complete key keeps the legacy FMC1
-format, and updated receivers also accept legacy whole-fleet packets. Separate
-fleets use separate channel keys; named subgroups are not part of this first version.
+header from 29 to 14 bytes. A single complete key uses the smaller fixed-target
+FMC1 format. Separate fleets use separate channel keys; named subgroups are not
+part of this first version.
 
 Only local commands on the publishing Companion can originate fleet sends. A
 remote CLI command cannot turn that Companion into a multicast signing proxy.
@@ -124,18 +125,53 @@ sequence; the operation should be chosen to be idempotent.
 
 ## Supported controls
 
-The command body is limited to **72 ASCII bytes**. Targets and command must also
-fit one signed **165-byte envelope**. An 8-character target uses 5 bytes, a
-12-character target uses 7, and a complete key uses 17. The fixed envelope and
-signature use 78 bytes, leaving 87 bytes for the target list and command together.
-For example, two complete keys leave 53 bytes for the command. Lists are capped
-at 17 entries; packet-size limits usually allow fewer. Omitting targets or using
-`all` saves 15 header bytes; the command limit remains 72 bytes. A single complete
-key uses the legacy 29-byte header and also allows a full 72-byte command.
-The local app/console's command-length limit also applies. Oversized or invalid
-lists are rejected as a whole, without sending or truncating any targets.
-The short legacy USB rescue console cannot fit a full-key command; use the app
-or normal terminal for longer lists.
+The Companion automatically uses **one or two LoRa packets**, depending on the
+signed command's size. Whole-fleet commands fit **87 ASCII bytes** in one packet
+or **230 bytes** across two. Targets consume some of that allowance:
+
+| Targets | One packet: command bytes | Two packets: command bytes |
+| --- | ---: | ---: |
+| Omitted or `all` | 87 | 230 |
+| One 8-character public-key prefix | 82 | 225 |
+| One 12-character public-key prefix | 80 | 223 |
+| One complete 64-character public key | 72 | 215 |
+| Two 8-character public-key prefixes | 77 | 220 |
+| Two complete public keys | 53 | 196 |
+
+Each prefix in a list uses 5 or 7 bytes; each complete key in a list uses 17.
+A single complete key uses the smaller fixed-target format with a 29-byte header,
+so its limits come from packet space. Lists are capped at 17 entries. Requests
+exceeding their target-specific budget are rejected before signing or sending,
+with no partial target list.
+
+The existing app/console input limit also applies. The app's normal 176-byte
+command frame fits **161 command bytes** after `fleet send 3 `; a correlated
+request uses three more bytes, and explicit targets reduce the space further.
+The shorter USB rescue console has an 80-byte input buffer. The 230-byte limit
+is the fleet protocol's capacity, rather than a promise that every console can
+enter that much text. Oversized or invalid lists are rejected as a whole,
+without sending or truncating any targets.
+
+### Two-packet delivery
+
+Longer commands keep **one 64-byte signature over the entire command**, including
+its channel, targets, sequence and expiry. The signed envelope is split into two
+`FMP1` fragments. Each fragment has an 11-byte collection header and up to 154
+envelope bytes, within the existing 165-byte group-data limit. Together they can
+carry a 308-byte signed envelope. No third packet is used.
+
+The Companion reserves both packets before sending. If either cannot be queued,
+it cancels the queued part and any radio copy, reports an error, and leaves the
+sequence available for a retry. Successful queueing still does not guarantee
+delivery over LoRa.
+
+A receiver accepts either arrival order and identical duplicates. It executes
+and acknowledges **only after both parts arrive and the complete signature,
+target, clock and replay checks pass**. Missing or altered parts cannot execute
+a partial command. One bounded assembly is kept for up to five minutes from the
+first part; duplicates do not extend that deadline. A fresh command with a newer
+eligible sequence replaces an incomplete older transfer, so a lost part does
+not block retries. Reboot or changing enrollment discards the partial transfer.
 
 | Control | Fleet commands |
 | --- | --- |
@@ -212,7 +248,7 @@ move nodes off the normal network; use a temporary window or a planned recovery
 path for experiments. A forwarding policy can also partition the fleet.
 
 The receiver is allocated lazily when fleet settings are present or queried, with
-one bounded mailbox. Cryptographic work and storage writes occur after the receive
+one bounded mailbox and one 308-byte fragment assembly. Cryptographic work and storage writes occur after the receive
 stack unwinds. Signature-validation
 attempts are bounded to protect the radio loop from matching-hash junk. A corrupt
 or unreadable fleet store denies commands rather than discarding its replay state.

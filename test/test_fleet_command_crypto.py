@@ -34,6 +34,8 @@ FIXTURE = r'''
 #include <string>
 #include <vector>
 
+inline unsigned fleet_sign_calls = 0;
+
 // The production Identity interface is retained. OpenSSL implements its
 // signatures here so these tests cannot inherit native's always-true mock.
 namespace mesh {
@@ -46,6 +48,7 @@ LocalIdentity::LocalIdentity(RNG* rng) {
   EVP_PKEY_free(key);
 }
 void LocalIdentity::sign(uint8_t* signature, const uint8_t* message, int length) const {
+  ++fleet_sign_calls;
   EVP_PKEY* key = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, nullptr, prv_key, 32);
   EVP_MD_CTX* context = EVP_MD_CTX_new(); assert(key && context);
   assert(EVP_DigestSignInit(context, nullptr, nullptr, nullptr, key) == 1);
@@ -84,26 +87,83 @@ void hex(const uint8_t* bytes, size_t size) {
 
 int main(int argc, char** argv) {
   using Fleet = mesh::FleetCommand;
-  if (argc == 7 && std::string(argv[1]) == "encode") {
+  const std::string operation = argc > 1 ? argv[1] : "";
+  if (argc == 7 && (operation == "encode" || operation == "encode-wide")) {
     FixedRng rng; mesh::LocalIdentity publisher(&rng);
     const auto key = unhex(argv[2]); assert(key.size() == Fleet::KeySize);
     std::array<uint8_t, Fleet::TargetSize> target;
     if (!Fleet::parseTarget(argv[3], target.data())) { std::cout << "reject\n"; return 0; }
-    std::array<uint8_t, Fleet::MaxPayloadLength> output;
+    std::array<uint8_t, Fleet::MaxEnvelopeLength + 64> output;
+    output.fill(0xA5);
+    const unsigned signed_before = fleet_sign_calls;
+    const size_t capacity = operation == "encode-wide" ? output.size() : Fleet::MaxEnvelopeLength;
     const size_t size = Fleet::encode(publisher, key.data(), uint32_t(std::stoul(argv[4])),
-        uint32_t(std::stoul(argv[5])), target.data(), argv[6], output.data(), output.size());
-    if (!size) std::cout << "reject\n"; else hex(output.data(), size);
+        uint32_t(std::stoul(argv[5])), target.data(), argv[6], output.data(), capacity);
+    assert(size <= Fleet::MaxEnvelopeLength);
+    if (!size) {
+      assert(fleet_sign_calls == signed_before);
+      for (uint8_t byte : output) assert(byte == 0xA5);
+      std::cout << "reject\n";
+    } else {
+      assert(fleet_sign_calls == signed_before + 1);
+      for (size_t i = size; i < output.size(); ++i) assert(output[i] == 0xA5);
+      hex(output.data(), size);
+    }
     return 0;
   }
-  if (argc == 7 && std::string(argv[1]) == "encode2") {
+  if (argc == 7 && (operation == "encode2" || operation == "encode2-wide")) {
     FixedRng rng; mesh::LocalIdentity publisher(&rng);
     const auto key = unhex(argv[2]); assert(key.size() == Fleet::KeySize);
     Fleet::Targets targets;
     if (!Fleet::parseTargets(argv[3], strlen(argv[3]), targets)) { std::cout << "reject\n"; return 0; }
-    std::array<uint8_t, Fleet::MaxPayloadLength> output;
+    std::array<uint8_t, Fleet::MaxEnvelopeLength + 64> output;
+    output.fill(0xA5);
+    const unsigned signed_before = fleet_sign_calls;
+    const size_t capacity = operation == "encode2-wide" ? output.size() : Fleet::MaxEnvelopeLength;
     const size_t size = Fleet::encode(publisher, key.data(), uint32_t(std::stoul(argv[4])),
-        uint32_t(std::stoul(argv[5])), targets, argv[6], output.data(), output.size());
-    if (!size) std::cout << "reject\n"; else hex(output.data(), size);
+        uint32_t(std::stoul(argv[5])), targets, argv[6], output.data(), capacity);
+    assert(size <= Fleet::MaxEnvelopeLength);
+    if (!size) {
+      assert(fleet_sign_calls == signed_before);
+      for (uint8_t byte : output) assert(byte == 0xA5);
+      std::cout << "reject\n";
+    } else {
+      assert(fleet_sign_calls == signed_before + 1);
+      for (size_t i = size; i < output.size(); ++i) assert(output[i] == 0xA5);
+      hex(output.data(), size);
+    }
+    return 0;
+  }
+  if (argc == 5 && operation == "fragment") {
+    const auto envelope = unhex(argv[2]);
+    const unsigned index = unsigned(std::stoul(argv[3]));
+    assert(index <= 255);
+    const size_t capacity = std::stoul(argv[4]);
+    std::array<uint8_t, Fleet::MaxPayloadLength + 64> output;
+    assert(capacity <= output.size()); output.fill(0xA5);
+    const unsigned signed_before = fleet_sign_calls;
+    const size_t size = Fleet::fragment(envelope.data(), envelope.size(), uint8_t(index),
+                                        output.data(), capacity);
+    assert(fleet_sign_calls == signed_before && size <= Fleet::MaxPayloadLength);
+    if (!size) {
+      for (uint8_t byte : output) assert(byte == 0xA5);
+      std::cout << "reject\n";
+    } else {
+      for (size_t i = size; i < output.size(); ++i) assert(output[i] == 0xA5);
+      hex(output.data(), size);
+    }
+    return 0;
+  }
+  if (argc == 3 && operation == "parse-fragment") {
+    const auto payload = unhex(argv[2]);
+    Fleet::Fragment output{123, 300, 1, payload.data(), 100};
+    if (!Fleet::parseFragment(payload.data(), payload.size(), output)) {
+      assert(!output.sequence && !output.total_length && !output.index && !output.data && !output.length);
+      std::cout << "reject\n";
+    } else {
+      std::cout << output.sequence << '\n' << output.total_length << '\n' << unsigned(output.index) << '\n';
+      hex(output.data, output.length);
+    }
     return 0;
   }
   if (argc == 7 && (std::string(argv[1]) == "decode" || std::string(argv[1]) == "decode2")) {
@@ -140,6 +200,13 @@ def envelope2(entries=(), command="get radio2", sequence=NOW, expires=NOW + 120,
     unsigned = (b"FMC2" + struct.pack("<II", sequence, expires) + bytes([count])
                 + records + bytes([len(command)]) + command)
     return unsigned + publisher.sign(DOMAIN + channel + unsigned)
+
+
+def fragment_frame(payload, index):
+    """Independent wire framing; the signature stays in the whole envelope."""
+    sequence = struct.unpack("<I", payload[4:8])[0]
+    return (b"FMP1" + struct.pack("<IHB", sequence, len(payload), index)
+            + payload[index * 154:(index + 1) * 154])
 
 
 class FleetCommandCryptoTests(unittest.TestCase):
@@ -299,8 +366,18 @@ class FleetCommandCryptoTests(unittest.TestCase):
         self.assertEqual(len(maximum), 72)
         self.assertNotEqual(self.decode(envelope(maximum)), "reject")
         self.assertNotEqual(self.decode(envelope2(entries, maximum)), "reject")
-        oversized = prefix + "0" + maximum[len(prefix):]
-        self.assertEqual(self.decode(envelope(oversized)), "reject")
+        larger = prefix + "0" + maximum[len(prefix):]
+        self.assertNotEqual(self.decode(envelope(larger)), "reject")
+        self.assertNotEqual(self.decode(envelope2(entries, larger)), "reject")
+        target_maximum = prefix + "0" * (218 - len(prefix) - len(suffix)) + suffix
+        self.assertNotEqual(self.decode(envelope2(entries, target_maximum)), "reject")
+        too_large = prefix + "0" + target_maximum[len(prefix):]
+        self.assertEqual(self.decode(envelope2(entries, too_large)), "reject")
+        broadcast_maximum = prefix + "0" * (230 - len(prefix) - len(suffix)) + suffix
+        expected = envelope2(command=broadcast_maximum)
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120,
+                                       broadcast_maximum), expected.hex())
+        self.assertNotEqual(self.decode(expected), "reject")
 
     def test_clock_management_has_real_signatures_and_no_prefix_aliases(self):
         for command in ["clock", "clock sync", "time 1735689600", "time 1800000000", "time 4294967295"]:
@@ -333,12 +410,18 @@ class FleetCommandCryptoTests(unittest.TestCase):
                 self.assertEqual(self.decode(forged), "reject")
                 self.assertNotEqual(self.decode(original, now=NOW + 120), "reject")
 
-    def test_exact_and_oversized_command_boundaries(self):
-        maximum = "set flood.rule.1 " + "a" * (72 - len("set flood.rule.1 "))
+    def test_fixed_target_exact_limit_cannot_be_raised_by_destination_capacity(self):
+        maximum = "set flood.rule.1 " + "a" * (215 - len("set flood.rule.1 "))
         accepted = envelope(maximum)
-        self.assertEqual(len(accepted), 165)
+        self.assertEqual(len(accepted), 308)
         self.assertNotEqual(self.decode(accepted), "reject")
         self.assertEqual(self.decode(envelope(maximum + "a")), "reject")
+        for operation in ["encode", "encode-wide"]:
+            self.assertEqual(self.run_tool(operation, CHANNEL.hex(), "all", NOW, NOW + 120, maximum),
+                             accepted.hex())
+            for length in [216, 230, 231]:
+                command = "set flood.rule.1 " + "a" * (length - len("set flood.rule.1 "))
+                self.assertEqual(self.run_tool(operation, CHANNEL.hex(), "all", NOW, NOW + 120, command), "reject")
 
     def test_valid_signature_does_not_override_clock_policy(self):
         for sequence, expires, now in [
@@ -412,22 +495,192 @@ class FleetCommandCryptoTests(unittest.TestCase):
         self.assertEqual(self.decode(original, publisher=OTHER_PUBLIC), "reject")
         self.assertEqual(self.decode(original, channel=bytes(range(17, 33))), "reject")
 
-    def test_compact_broadcast_keeps_72_byte_command_and_packet_framing_limits(self):
+    def test_compact_broadcast_fits_230_byte_signed_command_and_framing_limits(self):
         prefix = "set flood.rule.1 "
-        maximum = prefix + "a" * (72 - len(prefix))
+        maximum = prefix + "a" * (230 - len(prefix))
         expected = envelope2(command=maximum)
         actual = self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120, maximum)
         self.assertEqual(actual, expected.hex())
-        self.assertEqual(len(expected), 150)
-        self.assertEqual(len(envelope(maximum)) - len(expected), 15)
-        self.assertNotEqual(self.decode(expected), "reject")
+        self.assertEqual(len(expected), 308)
+        PUBLISHER.public_key().verify(expected[-64:], DOMAIN + CHANNEL + expected[:-64])
+        for node in [PUBLIC, OTHER_PUBLIC]:
+            self.assertEqual(self.decode(expected, self_key=node, metadata=True),
+                             f"{NOW}\n{NOW + 120}\n{maximum}\n1")
         oversized = maximum + "a"
         self.assertEqual(self.decode(envelope2(command=oversized)), "reject")
         self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120, oversized), "reject")
+        self.assertEqual(self.run_tool("encode2-wide", CHANNEL.hex(), "all", NOW, NOW + 120, oversized), "reject")
+        for invalid in [b"\n", b";", b"\x80", b"\0"]:
+            malformed = maximum[:-1].encode("ascii") + invalid
+            self.assertEqual(self.decode(envelope2(command=malformed)), "reject")
         for length in [0, 12, 13, 14, len(expected) - 64, len(expected) - 1]:
             with self.subTest(length=length):
                 self.assertEqual(self.decode(expected[:length]), "reject")
         self.assertEqual(self.decode(expected + b"\0"), "reject")
+
+    def test_each_target_form_has_exact_packet_budget_and_atomic_oversize_rejection(self):
+        short, long = PUBLIC[:4].hex(), PUBLIC[:6].hex()
+        digest = hashlib.sha256(PUBLIC).digest()[:16]
+        for token, entries, maximum_length in [
+                ("all", [], 230), (short, [(4, PUBLIC[:4])], 225),
+                (long, [(6, PUBLIC[:6])], 223), (PUBLIC.hex(), None, 215),
+                (f"{short},{short}", [(4, PUBLIC[:4])] * 2, 220),
+                (f"{short},{long}", [(4, PUBLIC[:4]), (6, PUBLIC[:6])], 218),
+                (f"{PUBLIC.hex()},{short}", [(16, digest), (4, PUBLIC[:4])], 208),
+                (f"{PUBLIC.hex()},{PUBLIC.hex()}", [(16, digest)] * 2, 196)]:
+            with self.subTest(token=token, maximum=maximum_length):
+                prefix = "set flood.rule.1 "
+                maximum = prefix + "a" * (maximum_length - len(prefix))
+                expected = (envelope(maximum, target=digest) if entries is None
+                            else envelope2(entries, maximum))
+                self.assertEqual(len(expected), 308)
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, maximum),
+                                 expected.hex())
+                self.assertNotEqual(self.decode(expected), "reject")
+                # The fixture verifies no writes and no signature calls on
+                # rejection, even when its output buffer exceeds packet size.
+                oversized = maximum + "a"
+                for operation in ["encode2", "encode2-wide"]:
+                    self.assertEqual(self.run_tool(operation, CHANNEL.hex(), token, NOW, NOW + 120,
+                                                   oversized), "reject")
+                signed_oversized = (envelope(oversized, target=digest) if entries is None
+                                    else envelope2(entries, oversized))
+                self.assertEqual(self.decode(signed_oversized), "reject")
+                altered = bytearray(expected)
+                altered[-65] = ord("b")
+                self.assertEqual(self.decode(altered), "reject")
+
+    def test_maximum_broadcast_signature_covers_final_byte_and_230_byte_length(self):
+        prefix = "set flood.rule.1 "
+        maximum = prefix + "a" * (230 - len(prefix))
+        original = envelope2(command=maximum)
+        self.assertNotEqual(self.decode(original), "reject")
+        for command in [maximum[:-1] + "b", maximum[:-1]]:
+            changed = envelope2(command=command)
+            self.assertNotEqual(self.decode(changed), "reject")
+            self.assertEqual(self.decode(changed[:-64] + original[-64:]), "reject")
+        for length_byte in [0, 87, 229, 231, 255]:
+            changed = bytearray(original)
+            changed[13] = length_byte
+            self.assertEqual(self.decode(changed), "reject")
+        for offset in range(len(original) - 64, len(original)):
+            with self.subTest(signature_byte=offset):
+                changed = bytearray(original)
+                changed[offset] ^= 1
+                self.assertEqual(self.decode(changed), "reject")
+
+    def test_single_packet_boundaries_and_first_two_fragment_command(self):
+        digest = hashlib.sha256(PUBLIC).digest()[:16]
+        for token, entries, maximum in [
+                ("all", [], 87), (PUBLIC[:4].hex(), [(4, PUBLIC[:4])], 82),
+                (PUBLIC[:6].hex(), [(6, PUBLIC[:6])], 80),
+                (PUBLIC.hex(), None, 72)]:
+            with self.subTest(token=token):
+                prefix = "set flood.rule.1 "
+                command = prefix + "a" * (maximum - len(prefix))
+                single = (envelope(command, target=digest) if entries is None
+                          else envelope2(entries, command))
+                self.assertEqual(len(single), 165)
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               command), single.hex())
+                self.assertNotEqual(self.decode(single), "reject")
+                for index in [0, 1]:
+                    self.assertEqual(self.run_tool("fragment", single.hex(), index, 165), "reject")
+                longer = (envelope(command + "a", target=digest) if entries is None
+                          else envelope2(entries, command + "a"))
+                self.assertEqual(len(longer), 166)
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               command + "a"), longer.hex())
+                self.assertNotEqual(self.decode(longer), "reject")
+                for index, size in [(0, 165), (1, 23)]:
+                    actual = bytes.fromhex(self.run_tool("fragment", longer.hex(), index, 165))
+                    self.assertEqual(actual, fragment_frame(longer, index))
+                    self.assertEqual(len(actual), size)
+
+    def test_two_fragments_reassemble_out_of_order_with_one_real_signature(self):
+        for size in [166, 167, 307, 308]:
+            with self.subTest(size=size):
+                prefix = "set flood.rule.1 "
+                command = prefix + "a" * (size - 78 - len(prefix))
+                original = envelope2(command=command)
+                self.assertEqual(len(original), size)
+                # The fixture requires exactly one signature call for encode
+                # and no signature calls while cutting either fragment.
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120,
+                                               command), original.hex())
+                parts = [bytes.fromhex(self.run_tool("fragment", original.hex(), index, 165))
+                         for index in [0, 1]]
+                for index, part in enumerate(parts):
+                    self.assertEqual(part, fragment_frame(original, index))
+                    self.assertLessEqual(len(part), 165)
+                    self.assertEqual(self.run_tool("parse-fragment", part.hex()),
+                                     f"{NOW}\n{size}\n{index}\n{part[11:].hex()}")
+                    self.assertEqual(self.decode(part), "reject")
+                for order in [(0, 1), (1, 0), (0, 0, 1), (1, 1, 0)]:
+                    with self.subTest(order=order):
+                        assembly = bytearray(size)
+                        for index in order:
+                            part = parts[index]
+                            assembly[index * 154:index * 154 + len(part) - 11] = part[11:]
+                        assembly = bytes(assembly)
+                        self.assertEqual(assembly, original)
+                        PUBLISHER.public_key().verify(assembly[-64:], DOMAIN + CHANNEL + assembly[:-64])
+                        for node in [PUBLIC, OTHER_PUBLIC]:
+                            self.assertEqual(self.decode(assembly, self_key=node, metadata=True),
+                                             f"{NOW}\n{NOW + 120}\n{command}\n1")
+
+    def test_fragment_codec_bounds_and_exact_shapes_reject_without_output_writes(self):
+        prefix = "set flood.rule.1 "
+        original = envelope2(command=prefix + "a" * (88 - len(prefix)))
+        parts = [fragment_frame(original, index) for index in [0, 1]]
+        for source in [b"", original[:165], original + b"a" * (309 - len(original)),
+                       b"FMX1" + original[4:], b"FMP1" + original[4:]]:
+            with self.subTest(source_length=len(source), magic=source[:4]):
+                self.assertEqual(self.run_tool("fragment", source.hex(), 0, 229), "reject")
+        for index in [2, 255]:
+            self.assertEqual(self.run_tool("fragment", original.hex(), index, 229), "reject")
+        for index, required in [(0, 165), (1, 23)]:
+            for capacity in [0, 10, required - 1]:
+                self.assertEqual(self.run_tool("fragment", original.hex(), index, capacity), "reject")
+            self.assertEqual(self.run_tool("fragment", original.hex(), index, 229), parts[index].hex())
+        malformed = [b"", b"FMP1", parts[0][:10], parts[0][:11],
+                     parts[0][:-1], parts[0] + b"\0", parts[1][:-1], parts[1] + b"\0",
+                     b"FMX1" + parts[0][4:]]
+        for total in [0, 154, 165, 309, 65535]:
+            malformed.append(parts[0][:8] + struct.pack("<H", total) + parts[0][10:])
+        for index in [1, 2, 255]:
+            malformed.append(parts[0][:10] + bytes([index]) + parts[0][11:])
+        malformed.append(parts[1][:10] + b"\0" + parts[1][11:])
+        for part in malformed:
+            with self.subTest(part=part.hex()):
+                self.assertEqual(self.run_tool("parse-fragment", part.hex()), "reject")
+
+    def test_fragment_tampering_and_mixed_commands_cannot_forge_complete_signature(self):
+        prefix = "set flood.rule.1 "
+        command = prefix + "a" * (230 - len(prefix))
+        original = envelope2(command=command)
+        parts = [fragment_frame(original, index) for index in [0, 1]]
+        self.assertNotEqual(self.decode(original), "reject")
+        # Every chunk contains signed data. Matching frame metadata and an
+        # allowed changed command cannot substitute for the full signature.
+        for index, data_offset in [(0, 14 + len(prefix)), (1, 0), (1, 153)]:
+            changed = bytearray(parts[index])
+            changed[11 + data_offset] ^= 1
+            self.assertNotEqual(self.run_tool("parse-fragment", changed.hex()), "reject")
+            chunks = [parts[0][11:], parts[1][11:]]
+            chunks[index] = changed[11:]
+            self.assertEqual(self.decode(b"".join(chunks)), "reject")
+        different = envelope2(command=prefix + "b" * (230 - len(prefix)))
+        self.assertNotEqual(self.decode(different), "reject")
+        different_parts = [fragment_frame(different, index) for index in [0, 1]]
+        for combined in [parts[0][11:] + different_parts[1][11:],
+                         different_parts[0][11:] + parts[1][11:]]:
+            self.assertEqual(self.decode(combined), "reject")
+        # Frame metadata is deliberately unauthenticated and only admits a
+        # bounded assembly. Runtime must compare it to the signed sequence.
+        changed_sequence = parts[0][:4] + struct.pack("<I", NOW + 1) + parts[0][8:]
+        self.assertTrue(self.run_tool("parse-fragment", changed_sequence.hex()).startswith(f"{NOW + 1}\n"))
+        self.assertEqual(self.decode(changed_sequence), "reject")
 
     def test_real_signature_round_trip_for_mixed_prefixes_and_full_keys(self):
         entries = [(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6]), (16, hashlib.sha256(PUBLIC).digest()[:16])]
@@ -502,10 +755,10 @@ class FleetCommandCryptoTests(unittest.TestCase):
                 self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2"), "reject")
 
     def test_fmc2_packet_capacity_is_checked_before_signing_or_sending(self):
-        maximum = "set flood.rule.1 " + "a" * (72 - len("set flood.rule.1 "))
+        maximum = "set flood.rule.1 " + "a" * (215 - len("set flood.rule.1 "))
         entries = [(4, PUBLIC[:4])] * 3
         expected = envelope2(entries, maximum)
-        self.assertEqual(len(expected), 165)
+        self.assertEqual(len(expected), 308)
         token = ",".join([PUBLIC[:4].hex()] * 3)
         actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, maximum)
         self.assertEqual(actual, expected.hex())
@@ -516,7 +769,7 @@ class FleetCommandCryptoTests(unittest.TestCase):
         for count in [15, 16, 17]:
             token = ",".join([PUBLIC[:4].hex()] * count)
             result = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
-            self.assertEqual(result == "reject", count > 15)
+            self.assertNotEqual(result, "reject")
 
     def test_fmc2_rejects_short_trailing_and_signed_forbidden_commands(self):
         original = envelope2([(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6])])

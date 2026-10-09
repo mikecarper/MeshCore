@@ -7,6 +7,7 @@ supplies real Ed25519 signing and verification through the Identity interface.
 """
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
@@ -24,10 +25,23 @@ HARNESS = r'''
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 #include <helpers/FleetCommand.h>
+#include <helpers/CompanionFrameLimits.h>
 #include <openssl/evp.h>
 
+struct RescueStream : Stream {
+  std::string input, output;
+  size_t position = 0, reads = 0;
+  int available() override { return position < input.size(); }
+  int read() override { ++reads; return input[position++]; }
+  size_t write(uint8_t value) override { output += char(value); return 1; }
+};
+static RescueStream rescue_input, rescue_output;
+
 namespace mesh {
+Stream& usbTerminalPort() { return rescue_output; }
+Stream& usbCompanionPort() { return rescue_input; }
 Identity::Identity() { memset(pub_key, 0, sizeof(pub_key)); }
 LocalIdentity::LocalIdentity() : Identity() {
   memset(prv_key, 0xAA, 32);
@@ -62,23 +76,78 @@ bool Identity::verify(const uint8_t* signature, const uint8_t* data, int length)
 
 #define MAX_GROUP_CHANNELS 4
 #define OUT_PATH_UNKNOWN 255
+namespace mesh {
 struct GroupChannel {
   uint8_t secret[32] = {};
   uint8_t tx_radio = 0;
 };
+struct Packet {
+  uint8_t payload[168] = {};
+  size_t payload_len = 0;
+  uint8_t tx_radio = 0;
+  uint16_t scope = 0;
+  bool isRouteDirect() const { return false; }
+  uint8_t getPayloadType() const { return 6; }
+};
+struct Mesh {
+  unsigned base_copy_hooks = 0;
+  void onRadioProfileCopyQueued(Packet*, const Packet*, uint8_t) { ++base_copy_hooks; }
+};
+}
+using GroupChannel = mesh::GroupChannel;
+#define PAYLOAD_TYPE_GRP_DATA 6
+#define PAYLOAD_TYPE_TRACE 9
+
+struct PacketManager {
+  mesh::Packet pool[64];
+  bool used[64] = {};
+  std::vector<mesh::Packet*> outbound;
+  unsigned total = 0, allocations = 0, released = 0;
+  unsigned fail_allocation = 0;
+  mesh::Packet* allocNew() {
+    if (++allocations == fail_allocation) return nullptr;
+    for (unsigned i = 0; i < 64; ++i) if (!used[i]) {
+      used[i] = true; pool[i] = {}; return &pool[i];
+    }
+    return nullptr;
+  }
+  void free(mesh::Packet* packet) {
+    const ptrdiff_t index = packet - pool;
+    assert(index >= 0 && index < 64 && used[index]);
+    used[index] = false; ++released;
+  }
+  unsigned freeCount() const { unsigned count = 0; for (bool value : used) count += !value; return count; }
+  int getOutboundTotal() const { return int(total); }
+  mesh::Packet* getOutboundByIdx(int index) { return outbound.at(index); }
+  mesh::Packet* removeOutboundByIdx(int index) {
+    auto* packet = outbound.at(index); outbound.erase(outbound.begin() + index); --total;
+    return packet;
+  }
+  void queue(mesh::Packet* packet) { outbound.push_back(packet); ++total; }
+};
 struct ChannelDetails { GroupChannel channel; char name[32] = {}; };
 struct Clock { uint32_t now = mesh::FleetCommand::MinEpoch + 1000;
   uint32_t getCurrentTime() const { return now; } };
-class MyMesh {
+class MyMesh : public mesh::Mesh {
  public:
   mesh::LocalIdentity self_id;
   Clock clock;
   ChannelDetails channels[MAX_GROUP_CHANNELS];
   bool queue_ok = true;
-  unsigned queued = 0;
+  PacketManager manager;
+  PacketManager* _mgr = &manager;
+  unsigned& queued = manager.total;
+  unsigned queue_calls = 0, fail_queue = 0, failed_hooks = 0, radio_cancellations = 0;
+  bool radio_copy = false;
+  mesh::Packet* _fleet_admission_original = nullptr;
+  mesh::Packet* _fleet_admission_copy = nullptr;
+  char cli_command[80] = {};
+  bool _cli_line_overflow = false;
+  bool _cli_rescue = false;
+  std::vector<std::string> rescue_commands;
   uint8_t sent_policy = 0;
   uint16_t sent_type = 0;
-  uint8_t sent[mesh::FleetCommand::MaxPayloadLength] = {};
+  uint8_t sent[mesh::FleetCommand::MaxEnvelopeLength] = {};
   size_t sent_length = 0;
   MyMesh() {
     strcpy(channels[1].name, "private fleet");
@@ -90,18 +159,64 @@ class MyMesh {
     out = channels[index]; return true;
   }
   Clock* getRTCClock() { return &clock; }
+  mesh::Packet* createGroupDatagram(uint8_t type, const GroupChannel& channel,
+                                  const uint8_t* data, size_t length) {
+    assert(type == PAYLOAD_TYPE_GRP_DATA && length <= sizeof(mesh::Packet::payload));
+    auto* packet = manager.allocNew();
+    if (!packet) return nullptr;
+    packet->tx_radio = channel.tx_radio; packet->payload_len = length;
+    memcpy(packet->payload, data, length); return packet;
+  }
+  void releasePacket(mesh::Packet* packet) { manager.free(packet); }
+  void onSendFail(mesh::Packet*) { ++failed_hooks; }
+  void cancelOutboundRadioRetry(const mesh::Packet*) { ++radio_cancellations; }
+  void onTracePacketQueuedForSend(mesh::Packet*) { assert(false); }
+  bool queueOutboundPacket(mesh::Packet* packet, uint8_t, uint32_t) {
+    if (++queue_calls == fail_queue || !queue_ok) return false;
+    manager.queue(packet);
+    sent_policy = packet->tx_radio;
+    sent_type = uint16_t(packet->payload[0]) | uint16_t(packet->payload[1]) << 8;
+    const uint8_t* blob = packet->payload + 3;
+    const size_t length = packet->payload[2];
+    assert(length + 3 == packet->payload_len && length <= mesh::FleetCommand::MaxPayloadLength);
+    mesh::FleetCommand::Fragment part;
+    if (mesh::FleetCommand::parseFragment(blob, length, part)) {
+      memcpy(sent + part.index * mesh::FleetCommand::FragmentDataLength, part.data, part.length);
+      sent_length = part.total_length;
+    } else {
+      memcpy(sent, blob, length); sent_length = length;
+    }
+    if (radio_copy) {
+      auto* copy = manager.allocNew(); assert(copy); *copy = *packet;
+      manager.queue(copy); onRadioProfileCopyQueued(copy, packet, 1);
+    }
+    return true;
+  }
+  bool sendPacket(mesh::Packet*, uint8_t, uint32_t = 0);
+  bool sendFloodScoped(const GroupChannel& channel, mesh::Packet* packet, uint32_t = 0) {
+    assert(packet->tx_radio == channel.tx_radio);
+    packet->scope = 0x4321; // Scope adapter; production helper preserves this channel route.
+    return sendPacket(packet, 1);
+  }
   bool sendGroupData(GroupChannel& channel, uint8_t* path, uint8_t path_length,
                      uint16_t type, const uint8_t* data, int length) {
     assert(path == nullptr && path_length == OUT_PATH_UNKNOWN);
-    assert(length > 0 && size_t(length) <= sizeof(sent));
-    if (!queue_ok) return false;
-    sent_policy = channel.tx_radio; sent_type = type;
-    memcpy(sent, data, length); sent_length = length; ++queued;
-    return true;
+    assert(length > 0 && size_t(length) <= mesh::FleetCommand::MaxPayloadLength);
+    uint8_t group[168] = {uint8_t(type), uint8_t(type >> 8), uint8_t(length)};
+    memcpy(group + 3, data, length);
+    auto* packet = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, channel, group, 3 + length);
+    return packet && sendFloodScoped(channel, packet);
   }
+  bool sendFleetCommandData(GroupChannel&, const uint8_t*, size_t);
+  void onRadioProfileCopyQueued(mesh::Packet*, const mesh::Packet*, uint8_t);
   bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply);
+  void checkCLIRescueCmd();
+  void enterCLIRescue();
+  void resetUsbHostSessionInput();
 };
 @METHOD@
+@SEND_HELPERS@
+@RESCUE_READER@
 
 static void rejected(MyMesh& node, const char* text, uint32_t remote = 0) {
   char reply[160] = {};
@@ -118,6 +233,37 @@ static std::string fullKey(uint8_t value) {
   return hex;
 }
 
+static void checkedFragments(MyMesh& node, size_t first_index) {
+  assert(node.sent_length > mesh::FleetCommand::MaxPayloadLength);
+  uint8_t assembled[mesh::FleetCommand::MaxEnvelopeLength] = {};
+  // Read in reverse order; the immutable part index determines placement.
+  for (uint8_t index : {1, 0}) {
+    auto* packet = node.manager.outbound.at(first_index + index);
+    assert(packet->scope == 0x4321 && packet->tx_radio == 2);
+    assert(packet->payload[0] == 1 && packet->payload[1] == 0xff);
+    const size_t bytes = packet->payload[2];
+    mesh::FleetCommand::Fragment part;
+    assert(mesh::FleetCommand::parseFragment(packet->payload + 3, bytes, part));
+    assert(part.index == index && part.total_length == node.sent_length);
+    assert(part.sequence == node.clock.now && bytes <= mesh::FleetCommand::MaxPayloadLength);
+    assert(part.length == (index == 0 ? 154 : node.sent_length - 154));
+    assert(bytes == mesh::FleetCommand::FragmentHeaderSize + part.length);
+    memcpy(assembled + index * 154, part.data, part.length);
+    uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+    mesh::FleetCommand::Decoded decoded;
+    assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+        packet->payload + 3, bytes, node.clock.now, recipient, decoded));
+  }
+  assert(!memcmp(assembled, node.sent, node.sent_length));
+  uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+  mesh::FleetCommand::Decoded decoded;
+  assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+      assembled, node.sent_length, node.clock.now, recipient, decoded));
+  assembled[node.sent_length - 1] ^= 1;
+  assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+      assembled, node.sent_length, node.clock.now, recipient, decoded));
+}
+
 static void compactBroadcast(MyMesh& node, const char* command) {
   assert(!memcmp(node.sent, "FMC2", 4));
   assert(node.sent[12] == 0); // No target records means every authorized receiver.
@@ -125,6 +271,8 @@ static void compactBroadcast(MyMesh& node, const char* command) {
   assert(mesh::FleetCommand::MinHeaderSize == 14);
   assert(node.sent_length == 14 + strlen(command) + mesh::FleetCommand::SignatureSize);
   assert(!memcmp(node.sent + 14, command, strlen(command)));
+  if (node.sent_length > mesh::FleetCommand::MaxPayloadLength)
+    checkedFragments(node, node.manager.outbound.size() - 2);
   for (uint8_t value : {0x42, 0x77}) {
     uint8_t recipient[32]; memset(recipient, value, sizeof(recipient));
     mesh::FleetCommand::Decoded decoded;
@@ -225,12 +373,210 @@ int main(int argc, char** argv) {
     }
     const std::string prefix = "set flood.filter ";
     const std::string maximum = prefix + std::string(mesh::FleetCommand::MaxCommandLength - prefix.size(), '1');
-    assert(maximum.size() == 72 && mesh::FleetCommand::commandAllowed(maximum.c_str()));
+    assert(maximum.size() == 230 && mesh::FleetCommand::commandAllowed(maximum.c_str()));
     rejected(node, ("fleet send 1 " + maximum + "1").c_str());
     rejected(node, ("fleet send 1 all " + maximum + "1").c_str());
     assert(node.handleCommand(("fleet send 1 " + maximum).c_str(), 0, reply));
     compactBroadcast(node, maximum.c_str());
-    assert(node.sent_length == 150 && node.queued == 1); // Compact header keeps the 72-byte cap.
+    assert(node.sent_length == 308 && node.queued == 2);
+    ++node.clock.now;
+    assert(node.handleCommand(("fleet send 1 all " + maximum).c_str(), 0, reply));
+    compactBroadcast(node, maximum.c_str());
+    assert(node.sent_length == 308 && node.queued == 4);
+  } else if (scenario == "target_command_capacity") {
+    struct Boundary { std::string targets; size_t command_length; };
+    const Boundary boundaries[] = {
+      {"42424242", 225}, {"424242424242", 223}, {fullKey(0x42), 215},
+      {"42424242,51515151", 220}, {"42424242,515151515151", 218},
+      {fullKey(0x42) + "," + fullKey(0x51), 196},
+    };
+    const std::string prefix = "set flood.filter ";
+    for (const Boundary& boundary : boundaries) {
+      const std::string fitting = prefix + std::string(boundary.command_length - prefix.size(), '1');
+      const std::string oversize = fitting + '1';
+      assert(mesh::FleetCommand::commandAllowed(oversize.c_str()));
+      const std::string cli_prefix = "fleet send 1 " + boundary.targets + " ";
+      const unsigned before = node.queued;
+      rejected(node, (cli_prefix + oversize).c_str());
+      // A valid target plus a long command must not become a broadcast, a
+      // partial send, or a consumed sequence. A queue refusal is retryable too.
+      assert(node.handleCommand((cli_prefix + oversize).c_str(), 0, reply));
+      assert(strstr(reply, "exceed two packets") && node.queued == before);
+      node.queue_ok = false;
+      rejected(node, (cli_prefix + fitting).c_str());
+      node.queue_ok = true;
+      assert(node.handleCommand((cli_prefix + fitting).c_str(), 0, reply));
+      assert(node.queued == before + 2 && node.sent_length == 308);
+      assert(node.sent_policy == 2);
+      uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+      mesh::FleetCommand::Decoded decoded;
+      assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      assert(decoded.sequence == node.clock.now && !strcmp(decoded.command, fitting.c_str()));
+      assert(!memcmp(node.sent, boundary.targets.size() == 64 ? "FMC1" : "FMC2", 4));
+      memset(recipient, 0x77, sizeof(recipient));
+      assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      rejected(node, (cli_prefix + fitting).c_str()); // Successful send consumes its second.
+      ++node.clock.now;
+    }
+    assert(node.queued == 12);
+  } else if (scenario == "maximum_correlated_app_command") {
+    const std::string prefix = "set flood.filter ";
+    const std::string maximum = prefix + std::string(158 - prefix.size(), '1');
+    const std::string local_cli = "AB|fleet send 1 " + maximum;
+    // The app's local CLI frame adds opcode 66 and a trailing NUL. Its request
+    // correlation prefix is already inside local_cli; all are ASCII bytes.
+    assert(local_cli.size() + 2 == MAX_FRAME_SIZE);
+    assert((local_cli + '1').size() + 2 > MAX_FRAME_SIZE);
+    rejected(node, local_cli.c_str(), 1);
+    node.queue_ok = false;
+    rejected(node, local_cli.c_str());
+    node.queue_ok = true;
+    assert(node.handleCommand(local_cli.c_str(), 0, reply));
+    assert(!strncmp(reply, "AB|OK - fleet command queued; seq=", 32));
+    compactBroadcast(node, maximum.c_str());
+    assert(node.sent_length == 236 && node.queued == 2);
+    assert(node.sent_policy == 2);
+    rejected(node, local_cli.c_str());
+    ++node.clock.now;
+    const std::string unprefixed = prefix + std::string(161 - prefix.size(), '1');
+    const std::string implicit = "fleet send 1 " + unprefixed;
+    assert(implicit.size() + 2 == MAX_FRAME_SIZE);
+    assert((implicit + '1').size() + 2 > MAX_FRAME_SIZE);
+    assert(node.handleCommand(implicit.c_str(), 0, reply));
+    compactBroadcast(node, unprefixed.c_str());
+    assert(node.sent_length == 239 && node.queued == 4);
+  } else if (scenario == "fragment_boundaries") {
+    struct Boundary { std::string targets; size_t single_length; };
+    const Boundary boundaries[] = {
+      {"", 87}, {"42424242 ", 82}, {"424242424242 ", 80}, {fullKey(0x42) + " ", 72},
+    };
+    const std::string prefix = "set flood.filter ";
+    for (const Boundary& boundary : boundaries) {
+      std::string command = prefix + std::string(boundary.single_length - prefix.size(), '1');
+      const std::string cli_prefix = "fleet send 1 " + boundary.targets;
+      const size_t before = node.manager.outbound.size();
+      assert(node.handleCommand((cli_prefix + command).c_str(), 0, reply));
+      assert(node.queued == before + 1 && node.sent_length == 165);
+      assert(!memcmp(node.manager.outbound.back()->payload + 3,
+          boundary.targets.size() == 65 ? "FMC1" : "FMC2", 4));
+      ++node.clock.now; command += '1';
+      assert(node.handleCommand((cli_prefix + command).c_str(), 0, reply));
+      assert(node.queued == before + 3 && node.sent_length == 166);
+      checkedFragments(node, before + 1);
+      ++node.clock.now;
+    }
+    assert(node.queued == 12);
+  } else if (scenario == "fragment_atomic_admission") {
+    unsigned scenario_index = 0;
+    for (const char* failure : {"pool_first", "pool_second", "queue_first", "queue_second", "queue_second_copy"}) {
+      MyMesh trial; trial.clock.now += ++scenario_index * 10;
+      const std::string prefix = "set flood.filter ";
+      const std::string command = prefix + std::string(161 - prefix.size(), '1');
+      const std::string cli = "fleet send 1 " + command;
+      auto* unrelated = trial.manager.allocNew(); assert(unrelated);
+      unrelated->payload[0] = 99; trial.manager.queue(unrelated);
+      const unsigned free_before = trial.manager.freeCount();
+      if (!strcmp(failure, "pool_first")) trial.manager.fail_allocation = trial.manager.allocations + 1;
+      if (!strcmp(failure, "pool_second")) trial.manager.fail_allocation = trial.manager.allocations + 2;
+      if (!strcmp(failure, "queue_first")) trial.fail_queue = trial.queue_calls + 1;
+      if (!strcmp(failure, "queue_second")) trial.fail_queue = trial.queue_calls + 2;
+      if (!strcmp(failure, "queue_second_copy")) {
+        trial.fail_queue = trial.queue_calls + 2; trial.radio_copy = true;
+      }
+      rejected(trial, cli.c_str());
+      assert(trial.queued == 1 && trial.manager.outbound[0] == unrelated);
+      assert(trial.manager.freeCount() == free_before);
+      assert(!trial._fleet_admission_original && !trial._fleet_admission_copy);
+      if (!strcmp(failure, "queue_first")) assert(trial.failed_hooks == 1);
+      if (!strcmp(failure, "queue_second"))
+        assert(trial.failed_hooks == 2 && trial.radio_cancellations == 1);
+      if (!strcmp(failure, "queue_second_copy")) {
+        assert(trial.failed_hooks == 3 && trial.radio_cancellations == 2);
+        assert(trial.base_copy_hooks == 1); // The production override chains Mesh.
+      }
+      trial.manager.fail_allocation = 0; trial.fail_queue = 0; trial.radio_copy = false;
+      assert(trial.handleCommand(cli.c_str(), 0, reply));
+      assert(trial.queued == 3 && trial.manager.outbound[0] == unrelated);
+      compactBroadcast(trial, command.c_str());
+      assert(trial.manager.freeCount() == free_before - 2);
+    }
+  } else if (scenario == "rescue_overflow") {
+    const std::string unsafe = "fleet send 1 set flood.rule.1 type=grp_txt drop hops=all in=any priority=00001 suspend=tempradio";
+    assert(unsafe.size() > sizeof(node.cli_command));
+    // The old forced-completion behavior would execute this valid prefix,
+    // silently omitting the requested suspend=tempradio condition.
+    const std::string truncated = unsafe.substr(0, 78);
+    assert(mesh::FleetCommand::commandAllowed(truncated.c_str() + 13));
+    rescue_input.input = unsafe + "\r\nfleet send 1 clock\r\n";
+    while (rescue_input.available()) {
+      const size_t before = rescue_input.reads;
+      node.checkCLIRescueCmd();
+      assert(rescue_input.reads - before <= sizeof(node.cli_command));
+    }
+    assert(node.rescue_commands.size() == 1 && node.rescue_commands[0] == "fleet send 1 clock");
+    assert(node.queued == 1 && !node._cli_line_overflow && node.cli_command[0] == 0);
+    assert(rescue_output.output.find("ERR: too long") != std::string::npos);
+    compactBroadcast(node, "clock");
+  } else if (scenario == "rescue_split_overflow") {
+    rescue_input.input = std::string(400, 'x');
+    node.checkCLIRescueCmd();
+    assert(rescue_input.reads == sizeof(node.cli_command) && node._cli_line_overflow);
+    assert(node.rescue_commands.empty() && node.queued == 0);
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    assert(node._cli_line_overflow && node.rescue_commands.empty());
+    // Even a valid fleet suffix is discarded until the actual line ending.
+    rescue_input.input += "fleet send 1 set radio2 off\nfleet send 1 clock\n";
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    assert(node.rescue_commands.size() == 1 && node.rescue_commands[0] == "fleet send 1 clock");
+    assert(node.queued == 1 && !node._cli_line_overflow);
+  } else if (scenario == "rescue_boundaries") {
+    const std::string exact(79, 'x');
+    rescue_input.input = exact;
+    node.checkCLIRescueCmd();
+    assert(node.rescue_commands.empty() && strlen(node.cli_command) == 79);
+    rescue_input.input += "\r\nfirst\r\nsecond\nthird\r";
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    const std::vector<std::string> expected = {exact, "first", "second", "third"};
+    assert(node.rescue_commands == expected && !node._cli_line_overflow);
+    assert(node.cli_command[0] == 0);
+  } else if (scenario == "rescue_unterminated") {
+    memset(node.cli_command, 'x', sizeof(node.cli_command));
+    rescue_input.input = "fleet send 1 set radio2 off\r\nfleet send 1 clock\r";
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    assert(node.rescue_commands.size() == 1 && node.rescue_commands[0] == "fleet send 1 clock");
+    assert(node.queued == 1 && !node._cli_line_overflow);
+  } else if (scenario == "rescue_session_reset") {
+    node._cli_line_overflow = true; strcpy(node.cli_command, "old host prefix");
+    node.enterCLIRescue();
+    assert(node._cli_rescue && !node._cli_line_overflow && node.cli_command[0] == 0);
+    rescue_input.input = "fleet send 1 clock\r";
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    assert(node.queued == 1);
+    ++node.clock.now;
+    node._cli_line_overflow = true; strcpy(node.cli_command, "old host prefix");
+    node.resetUsbHostSessionInput();
+    assert(!node._cli_line_overflow);
+    for (char value : node.cli_command) assert(value == 0);
+    rescue_input.input += "fleet send 1 clock\n";
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    assert(node.queued == 2 && node.rescue_commands.size() == 2);
+  } else if (scenario == "stm32_rescue") {
+    rescue_input.input = std::string(400, 'x') + "fleet send 1 clock\r\nnext\r\n";
+    while (rescue_input.available()) {
+      const size_t before = rescue_input.reads;
+      node.checkCLIRescueCmd();
+      assert(rescue_input.reads - before <= sizeof(node.cli_command));
+    }
+    assert(node.rescue_commands == std::vector<std::string>{"next"});
+    assert(rescue_output.output.find("  Error: unknown command") != std::string::npos);
+    assert(rescue_output.output.find("ERR: too long") == std::string::npos);
+    assert(node.queued == 0 && !node._cli_line_overflow);
+    memset(node.cli_command, 'x', sizeof(node.cli_command));
+    rescue_input.input += "suffix\nlast\n";
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    assert(node.rescue_commands == (std::vector<std::string>{"next", "last"}));
   } else if (scenario == "explicit_target_forms") {
     for (const std::string& targets : {std::string("42424242"), std::string("424242424242"),
         fullKey(0x42), std::string("42424242,515151515151,") + fullKey(0x63)}) {
@@ -258,7 +604,7 @@ int main(int argc, char** argv) {
         "fleet send 1 11111111111111 set radio2 off", "fleet send 1 all get password",
         "fleet send 1 all set radio2 off\nreboot"}) rejected(node, command);
     rejected(node, ("fleet send 1 " + std::string(65, '1') + " set radio2 off").c_str());
-    rejected(node, ("fleet send 1 all set flood.filter " + std::string(150, '1')).c_str());
+    rejected(node, ("fleet send 1 all set flood.filter " + std::string(mesh::FleetCommand::MaxCommandLength, '1')).c_str());
     assert(node.handleCommand("fleet\tsend\t1\tall\tset radio2 off", 0, reply));
     assert(!strncmp(reply, "OK - fleet command queued", 25));
   } else if (scenario == "private_channel") {
@@ -378,14 +724,16 @@ int main(int argc, char** argv) {
     }
     mesh::FleetCommand::Targets parsed;
     assert(mesh::FleetCommand::parseTargets(targets.c_str(), targets.size(), parsed));
+    const std::string prefix = "set flood.filter ";
+    const std::string too_long = prefix + std::string(mesh::FleetCommand::MaxCommandLength - prefix.size(), '1');
+    assert(node.handleCommand(("fleet send 1 " + targets + " " + too_long).c_str(), 0, reply));
+    assert(strstr(reply, "exceed two packets") && node.queued == 0);
     assert(node.handleCommand(("fleet send 1 " + targets + " set radio2 off").c_str(), 0, reply));
-    assert(strstr(reply, "exceed one packet") && node.queued == 0);
-    assert(node.handleCommand("fleet send 1 00112233 set radio2 off", 0, reply));
-    assert(node.queued == 1);
+    assert(node.queued == 2); // The valid list now fits one atomic two-packet envelope.
     ++node.clock.now;
     targets += ",44556677"; // More than the entire target-record capacity.
     rejected(node, ("fleet send 1 " + targets + " set radio2 off").c_str());
-    assert(node.queued == 1);
+    assert(node.queued == 2);
   } else if (scenario == "scheduled_sets") {
     const char* relative[] = {
       "set radioat 910.5,500,5,5,+1,auto",
@@ -462,9 +810,15 @@ int main(int argc, char** argv) {
     assert(mesh::FleetCommand::parseTargets(targets.c_str(), targets.size(), parsed));
     assert(mesh::FleetCommand::commandAllowed(scheduled.c_str()));
     assert(node.handleCommand(("fleet send 1 " + targets + " " + scheduled).c_str(), 0, reply));
-    assert(strstr(reply, "exceed one packet") && node.queued == 0);
+    assert(!strncmp(reply, "OK - fleet command queued", 25) && node.queued == 2);
+    uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+    mesh::FleetCommand::Decoded decoded;
+    assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+        node.sent, node.sent_length, node.clock.now, recipient, decoded));
+    assert(!strcmp(decoded.command, scheduled.c_str()));
+    ++node.clock.now;
     assert(node.handleCommand(("fleet send 1 42424242 " + scheduled).c_str(), 0, reply));
-    assert(node.queued == 1 && node.sent_policy == 2);
+    assert(node.queued == 3 && node.sent_policy == 2);
   } else if (scenario == "clock_controls") {
     uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
     for (const char* clock_command : {"clock", "clock sync", "time 1800000000"}) {
@@ -510,10 +864,45 @@ class CompanionFleetControlTests(unittest.TestCase):
         work = Path(cls.work.name)
         cls.binary = work / "companion-fleet"
         fixture = work / "fixture.cpp"
-        fixture.write_text(HARNESS.replace("@METHOD@", cls.production))
+        helpers = "\n".join(body(source, signature) for signature in (
+            "void MyMesh::onRadioProfileCopyQueued(", "bool MyMesh::sendFleetCommandData(",
+        ))
+        send_packet = body((ROOT / "src/Dispatcher.cpp").read_text(), "bool Dispatcher::sendPacket(")
+        send_packet = send_packet.replace("bool Dispatcher::sendPacket(Packet*", "bool MyMesh::sendPacket(mesh::Packet*", 1)
+        rescue = body(source, "void MyMesh::checkCLIRescueCmd()")
+        # Keep the entire production reader/line-admission logic. Replace only
+        # downstream rescue commands (filesystem/UI peripherals) with a record
+        # and the real Companion fleet dispatcher used throughout this suite.
+        rescue = rescue[:rescue.index("    reply_buf[0] = 0;")]
+        # Print::println(text) is absent from the shared host Stream adapter.
+        # Preserve STM32's actual shared error text and adapt only printing.
+        rescue = rescue.replace('output.println("  Error: unknown command");',
+                                'output.print("  Error: unknown command"); output.println();')
+        rescue += '''
+    rescue_commands.emplace_back(cli_command);
+    char reply[160] = {};
+    handleCommand(cli_command, 0, reply);
+    cli_command[0] = 0;
+  }
+}
+'''
+        reset = body(source, "void MyMesh::resetUsbHostSessionInput()")
+        enter = body(source, "void MyMesh::enterCLIRescue()")
+        # The shared Stream mock lacks Print::println(text); preserve the
+        # actual entry-state reset and adapt only this banner's formatting.
+        banner = 'mesh::usbTerminalPort().println("========= CLI Rescue =========");'
+        assert enter.count(banner) == 1
+        enter = enter.replace(banner, 'mesh::usbTerminalPort().print("========= CLI Rescue =========\\n");')
+        cls.fixture = fixture
+        fixture.write_text(HARNESS.replace("@METHOD@", cls.production)
+                           .replace("@SEND_HELPERS@", send_packet + "\n" + helpers)
+                           .replace("@RESCUE_READER@", rescue + "\n" + reset + "\n" + enter))
+        sanitizer_flags = (["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie"]
+                           if os.environ.get("MESHCORE_FLEET_SANITIZERS") == "1" else [])
+        cls.sanitizer_flags = sanitizer_flags
         result = subprocess.run([
             compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-            "-Wno-unused-parameter", "-O2",
+            "-Wno-unused-parameter", "-O2", *sanitizer_flags,
             "-fstack-usage", "-isystem", str(ROOT / "test/mocks"),
             "-I", str(ROOT / "src"), str(fixture),
             str(ROOT / "src/helpers/FleetCommand.cpp"), "-lcrypto", "-o", str(cls.binary),
@@ -546,8 +935,49 @@ class CompanionFleetControlTests(unittest.TestCase):
     def test_unknown_or_malformed_explicit_targets_never_fall_back_to_broadcast(self):
         self.scenario("implicit_target_ambiguity")
 
-    def test_omitted_target_still_requires_canonical_allowlisted_command_and_72_byte_cap(self):
+    def test_omitted_target_requires_canonical_allowlisted_command_and_230_byte_cap(self):
         self.scenario("implicit_command_controls")
+
+    def test_target_specific_exact_packet_limits_reject_atomically_and_allow_retry(self):
+        self.scenario("target_command_capacity")
+
+    def test_maximum_correlated_implicit_command_fits_app_frame_and_remains_local_only(self):
+        self.scenario("maximum_correlated_app_command")
+
+    def test_one_packet_boundary_automatically_becomes_two_signed_fragments(self):
+        self.scenario("fragment_boundaries")
+
+    def test_two_part_admission_reserves_pool_and_rolls_back_exact_packets_and_radio_copy(self):
+        self.scenario("fragment_atomic_admission")
+
+    def test_rescue_overflow_discards_full_fleet_rule_and_preserves_next_crlf_command(self):
+        self.scenario("rescue_overflow")
+
+    def test_rescue_overflow_drains_bounded_chunks_and_never_executes_valid_suffix(self):
+        self.scenario("rescue_split_overflow")
+
+    def test_rescue_exact_capacity_waits_for_real_terminator_and_keeps_lines_separate(self):
+        self.scenario("rescue_boundaries")
+
+    def test_rescue_unterminated_buffer_is_bounded_and_discards_remainder(self):
+        self.scenario("rescue_unterminated")
+
+    def test_rescue_entry_and_usb_host_recovery_reset_discard_state(self):
+        self.scenario("rescue_session_reset")
+
+    def test_stm32_rescue_shared_error_still_drains_and_rejects_entire_overflow(self):
+        binary = Path(self.work.name) / "companion-stm32-rescue"
+        built = subprocess.run([
+            self.compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+            "-Wno-unused-parameter", "-DSTM32_PLATFORM=1", "-O2", *self.sanitizer_flags,
+            "-isystem", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
+            str(self.fixture), str(ROOT / "src/helpers/FleetCommand.cpp"),
+            "-lcrypto", "-o", str(binary),
+        ], capture_output=True, text=True, timeout=60)
+        self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+        result = subprocess.run([str(binary), "stm32_rescue"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_explicit_8_12_64_hex_and_list_targets_remain_restricted(self):
         self.scenario("explicit_target_forms")
@@ -576,7 +1006,7 @@ class CompanionFleetControlTests(unittest.TestCase):
     def test_invalid_lists_reject_atomically_without_consuming_sequence(self):
         self.scenario("invalid_target_lists")
 
-    def test_valid_list_exceeding_packet_capacity_never_partially_sends(self):
+    def test_valid_list_exceeding_two_packet_capacity_never_partially_sends(self):
         self.scenario("target_capacity")
 
     def test_four_schedule_set_forms_are_signed_without_rewriting(self):

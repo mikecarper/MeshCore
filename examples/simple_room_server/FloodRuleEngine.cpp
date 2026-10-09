@@ -1275,12 +1275,12 @@ void FloodRuleEngine::set(const char* args, char* reply,
     }
   }
   cursor = skipSpaces(cursor);
-  if (strlen(cursor) >= 192) {
+  char params[256];
+  if (strlen(cursor) >= sizeof(params)) {
     copyString(reply, "Err - rule parameters too long", 160);
     return;
   }
 
-  char params[192];
   copyString(params, cursor, sizeof(params));
   char* tokens[18];
   int token_count = 0;
@@ -1564,9 +1564,12 @@ void FloodRuleEngine::set(const char* args, char* reply,
       }
       bool compact = asciiStartsWith(tokens[i], "q=");
       char rate_text[24];
-      copyString(rate_text,
-                 tokens[i] + (compact ? 2 : strlen("rate=")),
-                 sizeof(rate_text));
+      const char* value = tokens[i] + (compact ? 2 : strlen("rate="));
+      if (strlen(value) >= sizeof(rate_text)) {
+        copyString(reply, "Err - rate value too long", 160);
+        return;
+      }
+      copyString(rate_text, value, sizeof(rate_text));
       char* slash = strchr(rate_text, '/');
       if ((!compact && slash == NULL)
           || (slash != NULL && !(strcmp(slash, "/min") == 0

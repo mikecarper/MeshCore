@@ -220,8 +220,8 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         next_at = handler.index("cmd_frame[0] == CMD_SET_ADVERT_NAME", get_at)
         get_contacts = handler[get_at:next_at]
         incomplete_at = get_contacts.index("hasIncompleteContactLoad()")
-        lock_at = get_contacts.index("_serial->lockReplyRoute()")
-        self.assertLess(incomplete_at, lock_at)
+        route_at = get_contacts.index("_iter_reply_route = _serial->captureReplyRoute()")
+        self.assertLess(incomplete_at, route_at)
         self.assertIn("ERR_CODE_FILE_IO_ERROR", get_contacts)
 
         base = (ROOT / "src" / "helpers" / "BaseChatMesh.cpp").read_text(

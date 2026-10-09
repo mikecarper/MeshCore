@@ -279,13 +279,16 @@ static void enroll(FleetChannel& fleet,const LocalIdentity& publisher){
  assert(config(fleet,std::string("set fleet.controller ")+hex).rfind("OK",0)==0);
 }
 static Packet raw(const uint8_t* bytes,size_t length){
- Packet packet;Utils::sha256(packet.payload,1,channel_key,16);
+ Packet packet;
+ assert(1+CIPHER_MAC_SIZE+(length+15)/16*16<=sizeof(packet.payload));
+ Utils::sha256(packet.payload,1,channel_key,16);
  packet.payload_len=1+Utils::encryptThenMAC(channel_key,packet.payload+1,bytes,int(length));
  packet.radio_profile=1;packet.radio_generation=17;packet.path_hash_size=2;
  return packet;
 }
 static Packet command(const LocalIdentity& publisher,uint32_t sequence,const char* text="set radio2 off",
                       const char* target="all"){
+ assert(strlen(text)<=FleetCommand::MaxPayloadLength-FleetCommand::HeaderSize-FleetCommand::SignatureSize);
  uint8_t payload[184]={},destination[16];assert(FleetCommand::parseTarget(target,destination));
  size_t length=FleetCommand::encode(publisher,channel_key,sequence,sequence+300,destination,text,payload+3,sizeof(payload)-3);
  assert(length);payload[0]=uint8_t(FleetCommand::DataType);payload[1]=uint8_t(FleetCommand::DataType>>8);payload[2]=uint8_t(length);
@@ -321,7 +324,7 @@ static std::string publicHex(const Identity& identity){
 static Packet signedUnchecked(const LocalIdentity& publisher,uint32_t sequence,uint32_t expires,
                               const char* text){
  uint8_t data[184]={},message[160]={};size_t text_size=strlen(text);
- assert(text_size<=FleetCommand::MaxCommandLength);
+ assert(text_size<=FleetCommand::MaxPayloadLength-FleetCommand::HeaderSize-FleetCommand::SignatureSize);
  uint8_t* payload=data+3;memcpy(payload,"FMC1",4);
  storage::writeLE32(payload+4,sequence);storage::writeLE32(payload+8,expires);
  payload[28]=uint8_t(text_size);memcpy(payload+29,text,text_size);
@@ -331,6 +334,20 @@ static Packet signedUnchecked(const LocalIdentity& publisher,uint32_t sequence,u
  publisher.sign(payload+29+text_size,message,int(domain_size+16+29+text_size));
  data[0]=uint8_t(FleetCommand::DataType);data[1]=uint8_t(FleetCommand::DataType>>8);
  data[2]=uint8_t(29+text_size+64);return raw(data,3+data[2]);
+}
+static Packet compactUnchecked(const LocalIdentity& publisher,uint32_t sequence,const char* text){
+ uint8_t data[184]={},message[160]={};const size_t text_size=strlen(text);
+ // One byte over the valid limit still fits the cipher's final padded block.
+ assert(text_size<=FleetCommand::SinglePacketMaxCommandLength+1);
+ uint8_t* payload=data+3;memcpy(payload,"FMC2",4);
+ storage::writeLE32(payload+4,sequence);storage::writeLE32(payload+8,sequence+300);
+ payload[12]=0;payload[13]=uint8_t(text_size);memcpy(payload+14,text,text_size);
+ constexpr const char* domain="MeshCoreFleet1";const size_t domain_size=strlen(domain);
+ memcpy(message,domain,domain_size);memcpy(message+domain_size,channel_key,16);
+ memcpy(message+domain_size+16,payload,14+text_size);
+ publisher.sign(payload+14+text_size,message,int(domain_size+16+14+text_size));
+ data[0]=uint8_t(FleetCommand::DataType);data[1]=uint8_t(FleetCommand::DataType>>8);
+ data[2]=uint8_t(14+text_size+64);return raw(data,3+data[2]);
 }
 
 static void bind(FleetChannel& fleet,Mesh& mesh,RadioProfileCLI& profiles){
@@ -351,8 +368,213 @@ static unsigned apply(FleetChannel& fleet,fs::FS& fs,Mesh& mesh,RadioProfileCLI&
 static void reseal(std::vector<uint8_t>& image){
  storage::writeLE32(image.data()+60,storage::updateCRC32(0xffffffff,image.data(),60));
 }
+static std::string longRule(){
+ const std::string prefix="set flood.rule.1 type=grp_txt channel="+std::string(64,'1')
+  +" prefix=AABBCC,DDEEFF,112233 hops=6+ priority=255 suspend=tempradio mode=radio hashbytes=3 in=any";
+ const std::string action=" action=drop";
+ assert(prefix.size()+action.size()<=FleetCommand::MaxCommandLength);
+ return prefix+std::string(FleetCommand::MaxCommandLength-prefix.size()-action.size(),' ')+action;
+}
+static std::vector<uint8_t> envelope(const LocalIdentity& publisher,uint32_t sequence,
+                                   const std::string& text,const std::string& target="all"){
+ FleetCommand::Targets targets;assert(FleetCommand::parseTargets(target.c_str(),target.size(),targets));
+ std::vector<uint8_t> bytes(FleetCommand::MaxEnvelopeLength);
+ size_t length=FleetCommand::encode(publisher,channel_key,sequence,sequence+300,targets,
+                                  text.c_str(),bytes.data(),bytes.size());
+ assert(length);bytes.resize(length);return bytes;
+}
+static Packet part(const std::vector<uint8_t>& bytes,uint8_t index){
+ uint8_t data[168]={};size_t length=FleetCommand::fragment(bytes.data(),bytes.size(),index,
+                                                     data+3,sizeof(data)-3);
+ assert(length&&length<=FleetCommand::MaxPayloadLength);data[0]=uint8_t(FleetCommand::DataType);
+ data[1]=uint8_t(FleetCommand::DataType>>8);data[2]=uint8_t(length);
+ Packet result=raw(data,3+length);assert(result.payload_len<=MAX_PACKET_PAYLOAD);return result;
+}
+template<typename Change> static Packet changePart(const Packet& packet,Change change){
+ uint8_t data[184]={};int length=Utils::MACThenDecrypt(channel_key,data,packet.payload+1,packet.payload_len-1);
+ assert(length>0);change(data+3);return raw(data,size_t(length));
+}
+struct FragmentFixture {
+ fs::FS disk;Mesh mesh;RadioProfileCLI profiles;FleetChannel fleet{&disk};LocalIdentity publisher;
+ std::string expected=longRule();unsigned calls=0;bool mutation=false;
+ FragmentFixture(){enroll(fleet,publisher);bind(fleet,mesh,profiles);}
+ uint32_t reserved()const{return storage::readLE32(disk.files.at(Path).data()+56);}
+ std::string stats(){return config(fleet,"get fleet.stats");}
+ unsigned feed(Packet& packet,const TransportKey* scope=nullptr,uint32_t advance_ms=1000){
+  fake_ms+=advance_ms;const unsigned before=calls;
+  const auto image=disk.files.at(Path);const unsigned writes=disk.writes,verifies=verify_calls;
+  fleet.receive(&packet,mesh,scope);
+  assert(disk.files.at(Path)==image&&disk.writes==writes&&verify_calls==verifies);
+  fleet.service(mesh,profiles,"long:rule",[&](uint32_t seq,const char* text,char* reply){
+   ++calls;assert(reserved()==seq&&profiles.command);
+   assert(mesh.scoped_profile==packet.radio_profile&&mesh.scoped_generation==packet.radio_generation);
+   assert(strlen(text)==expected.size()&&!strcmp(text,expected.c_str()));
+   assert(text[expected.size()]==0);if(mutation)profiles.stage();strcpy(reply,"OK");
+  });
+  assert(!profiles.command&&mesh.scoped_profile==0&&mesh.scoped_generation==0);return calls-before;
+ }
+ void tick(uint32_t advance_ms){
+  fake_ms+=advance_ms;fleet.service(mesh,profiles,"node",[](uint32_t,const char*,char*){assert(false);});
+ }
+ void partial(){assert(calls==0&&reserved()==0&&mesh.queued==0&&!profiles.mutation);
+  assert(stats().find("accepted=0")!=std::string::npos&&stats().find("parts=1")!=std::string::npos);}
+};
+static int fragmentScenario(const std::string& scenario){
+ FragmentFixture f;const uint32_t seq=f.mesh.clock.now;
+ auto bytes=envelope(f.publisher,seq,f.expected);assert(bytes.size()==308&&f.expected.size()==230);
+ Packet a=part(bytes,0),b=part(bytes,1);assert(a.payload_len==179&&b.payload_len==179);
+ if(scenario=="fragments_orders"){
+  for(unsigned reverse=0;reverse<2;++reverse){
+   FragmentFixture x;auto encoded=envelope(x.publisher,seq,x.expected);
+   Packet first=part(encoded,reverse?1:0),second=part(encoded,reverse?0:1);
+   const auto old=x.disk.files.at(Path);const unsigned verifies=verify_calls,writes=x.disk.writes;
+   assert(x.feed(first)==0);x.partial();assert(x.disk.files.at(Path)==old&&x.disk.writes==writes);
+   assert(verify_calls==verifies&&x.stats().find("rejected=0")!=std::string::npos);
+   assert(x.feed(second)==1&&verify_calls==verifies+1&&x.reserved()==seq&&x.mesh.queued==1);
+   assert(x.stats().find("parts=0")!=std::string::npos&&last_jitter_max==60500);
+   assert(x.feed(first)==0&&x.feed(second)==0&&x.calls==1);
+   FleetChannel rebooted(&x.disk);unsigned calls=0;
+   for(Packet* packet:{&first,&second}){fake_ms+=1000;rebooted.receive(packet,x.mesh);
+    rebooted.service(x.mesh,x.profiles,"node",[&](uint32_t,const char*,char*){++calls;});}
+   assert(calls==0&&x.reserved()==seq);
+  }
+ }else if(scenario=="fragments_duplicates"){
+  const unsigned verifies=verify_calls,writes=f.disk.writes;
+  assert(f.feed(b)==0&&f.feed(b)==0&&f.feed(b)==0);f.partial();
+  assert(verify_calls==verifies&&f.disk.writes==writes&&f.stats().find("rejected=0")!=std::string::npos);
+  assert(f.feed(a)==1&&f.feed(a)==0&&f.feed(b)==0&&f.calls==1&&f.mesh.queued==1);
+ }else if(scenario=="fragments_minimum_size"){
+  f.expected="set flood.rule.1 05 c="+std::string(64,'1')+" d";
+  assert(f.expected.size()==88);auto small=envelope(f.publisher,seq,f.expected);
+  assert(small.size()==166);Packet first=part(small,0),second=part(small,1);
+  assert(first.payload_len==179&&second.payload_len==35);
+  assert(f.feed(second)==0);f.partial();assert(f.feed(first)==1&&f.reserved()==seq);
+  FleetCommand::Targets all;assert(FleetCommand::parseTargets("all",3,all));
+  uint8_t output[308];memset(output,0xA5,sizeof(output));
+  const std::string too_long=longRule()+" ";assert(too_long.size()==231);
+  assert(!FleetCommand::encode(f.publisher,channel_key,seq+1,seq+301,all,too_long.c_str(),output,sizeof(output)));
+  for(uint8_t byte:output)assert(byte==0xA5);
+ }else if(scenario=="fragments_expired_during_collection"){
+  assert(f.feed(a)==0);f.partial();f.mesh.clock.now+=301;
+  assert(f.feed(b)==0&&f.reserved()==0&&f.mesh.queued==0&&f.calls==0);
+  assert(f.stats().find("parts=0")!=std::string::npos);
+  auto retry=envelope(f.publisher,f.mesh.clock.now,f.expected);
+  Packet first=part(retry,0),second=part(retry,1);
+  assert(f.feed(first)==0&&f.feed(second)==1&&f.reserved()==f.mesh.clock.now);
+ }else if(scenario=="fragments_conflicts"){
+  assert(f.feed(a)==0);f.partial();
+  Packet changed=changePart(a,[](uint8_t* frame){frame[11+90]^=1;});
+  assert(f.feed(changed)==0);f.partial();
+  Packet length=changePart(a,[](uint8_t* frame){storage::writeLE16(frame+8,307);});
+  assert(f.feed(length)==0);f.partial();
+  Packet index=changePart(a,[](uint8_t* frame){frame[10]=2;});
+  assert(f.feed(index)==0);f.partial();
+  assert(f.feed(b)==1&&f.calls==1&&f.reserved()==seq);
+ }else if(scenario=="fragments_fresh_retry"){
+  assert(f.feed(a)==0);f.partial();auto newer=envelope(f.publisher,seq+1,f.expected);
+  Packet fresh_first=part(newer,1),fresh_second=part(newer,0);
+  assert(f.feed(fresh_first)==0);f.partial();
+  assert(f.feed(b)==0);f.partial();assert(f.feed(fresh_second)==1&&f.reserved()==seq+1);
+  assert(f.feed(a)==0&&f.feed(b)==0&&f.calls==1&&f.mesh.queued==1);
+ }else if(scenario=="fragments_tamper"){
+  Packet mac=a;mac.payload[1]^=1;assert(f.feed(mac)==0&&f.stats().find("parts=0")!=std::string::npos);
+  assert(f.feed(a)==0);f.partial();const auto saved=f.disk.files.at(Path);
+  Packet signature=changePart(b,[](uint8_t* frame){frame[11+153]^=1;});
+  assert(f.feed(signature)==0&&f.calls==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0);
+  assert(f.stats().find("parts=0")!=std::string::npos);
+  assert(f.feed(b)==0&&f.feed(a)==1&&f.calls==1);
+ }else if(scenario=="fragments_wrong_signer"){
+  LocalIdentity stranger;auto forged=envelope(stranger,seq,f.expected);
+  Packet first=part(forged,0),second=part(forged,1);
+  assert(f.feed(first)==0);f.partial();assert(f.feed(second)==0&&f.reserved()==0&&f.mesh.queued==0);
+  assert(f.stats().find("parts=0")!=std::string::npos&&f.feed(a)==0&&f.feed(b)==1);
+ }else if(scenario=="fragments_fixed_timeout"){
+  assert(f.feed(a)==0);f.partial();assert(f.feed(a,nullptr,299999)==0);f.partial();
+  f.tick(1);assert(f.stats().find("parts=0")!=std::string::npos&&f.reserved()==0&&f.mesh.queued==0);
+  assert(f.feed(b)==0);f.partial();assert(f.feed(a)==1);
+ }else if(scenario=="fragments_timeout_wrap"){
+  fake_ms=UINT32_MAX-200000;assert(f.feed(b,nullptr,0)==0);f.partial();f.tick(299999);f.partial();
+  f.tick(1);assert(f.stats().find("parts=0")!=std::string::npos&&f.reserved()==0);
+  assert(f.feed(a)==0&&f.feed(b)==1);
+ }else if(scenario=="fragments_sequence_bounds"){
+  for(uint32_t invalid:{FleetCommand::MinEpoch-1,seq+61,seq-601}){
+   Packet changed=changePart(a,[&](uint8_t* frame){storage::writeLE32(frame+4,invalid);});
+   assert(f.feed(changed)==0&&f.stats().find("parts=0")!=std::string::npos&&f.reserved()==0);
+  }
+  Packet mismatch_a=changePart(a,[&](uint8_t* frame){storage::writeLE32(frame+4,seq+1);});
+  Packet mismatch_b=changePart(b,[&](uint8_t* frame){storage::writeLE32(frame+4,seq+1);});
+  const unsigned verifies=verify_calls;assert(f.feed(mismatch_a)==0&&f.feed(mismatch_b)==0);
+  assert(f.reserved()==0&&verify_calls==verifies&&f.stats().find("parts=0")!=std::string::npos);
+  assert(f.feed(a)==0&&f.feed(b)==1);
+ }else if(scenario=="fragments_target"){
+  LocalIdentity stranger;f.expected="set flood.rule.1 any "+std::string(150,' ')+"drop";
+  auto other=envelope(f.publisher,seq,f.expected,publicHex(stranger));
+  Packet other_a=part(other,0),other_b=part(other,1);assert(f.feed(other_a)==0);f.partial();
+  assert(f.feed(other_b)==0&&f.reserved()==0&&f.mesh.queued==0);
+  auto mine=envelope(f.publisher,seq,f.expected,publicHex(f.mesh.self_id));
+  Packet mine_a=part(mine,0),mine_b=part(mine,1);
+  assert(f.feed(mine_b)==0&&f.feed(mine_a)==1&&last_jitter_max==1500);
+ }else if(scenario=="fragments_config_reboot"){
+  assert(f.feed(a)==0);f.partial();assert(config(f.fleet,std::string("set fleet.channel ")+Key).rfind("OK",0)==0);
+  assert(f.stats().find("parts=0")!=std::string::npos&&f.feed(b)==0);f.partial();
+  assert(config(f.fleet,"set fleet.controller "+publicHex(f.publisher)).rfind("OK",0)==0);
+  assert(f.stats().find("parts=0")!=std::string::npos&&f.feed(a)==0);f.partial();
+  FleetChannel rebooted(&f.disk);unsigned calls=0;fake_ms+=1000;rebooted.receive(&b,f.mesh);
+  rebooted.service(f.mesh,f.profiles,"node",[&](uint32_t,const char*,char*){++calls;});
+  assert(calls==0&&f.reserved()==0&&f.mesh.queued==0);
+  fake_ms+=1000;rebooted.receive(&a,f.mesh);
+  rebooted.service(f.mesh,f.profiles,"node",[&](uint32_t sequence,const char* text,char* reply){
+   ++calls;assert(sequence==seq&&!strcmp(text,f.expected.c_str()));strcpy(reply,"OK");});
+  assert(calls==1&&f.reserved()==seq);
+ }else if(scenario=="fragments_reserve_failure"){
+  const auto saved=f.disk.files.at(Path);f.disk.fail_write=true;const unsigned writes=f.disk.writes;
+  assert(f.feed(b)==0);f.partial();assert(f.disk.writes==writes&&f.disk.files.at(Path)==saved);
+  assert(f.feed(a)==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0&&f.calls==0);
+  assert(config(f.fleet,"get fleet.channel").find("store=error")!=std::string::npos);
+  f.disk.fail_write=false;assert(f.feed(a)==0&&f.feed(b)==0);
+  FleetChannel rebooted(&f.disk);unsigned calls=0;
+  for(Packet* packet:{&a,&b}){fake_ms+=1000;rebooted.receive(packet,f.mesh);
+   rebooted.service(f.mesh,f.profiles,"node",[&](uint32_t,const char*,char* reply){++calls;strcpy(reply,"OK");});}
+  assert(calls==1&&f.reserved()==seq);
+ }else if(scenario=="fragments_scoped_radio_ack"){
+  f.mutation=true;f.mesh.fanout=true;TransportKey scope;memset(scope.key,0x12,sizeof(scope.key));
+  a.radio_profile=0;a.radio_generation=9;b.radio_profile=1;b.radio_generation=27;b.path_hash_size=3;
+  b.scoped=true;b.transport_codes[0]=scope.calcTransportCode(&b);
+  assert(f.feed(a)==0);f.partial();assert(f.feed(b,&scope)==1&&f.fleet.waiting()&&f.profiles.mutation);
+  assert(f.mesh.manager.outbound.size()==2&&f.mesh.ack_scoped&&f.mesh.ack_path_size==3);
+  assert(f.mesh.ack_codes[0]==scope.calcTransportCode(f.mesh.manager.outbound[0]));
+  assert(f.mesh.ack_codes[0]!=b.transport_codes[0]&&last_jitter_max==15500);
+  f.fleet.complete(f.mesh.manager.removeOutboundByIdx(0),f.profiles);
+  assert(f.fleet.waiting()&&f.profiles.mutation&&f.profiles.commits==0);
+  f.fleet.fail(f.mesh.manager.removeOutboundByIdx(0),f.profiles);
+  assert(!f.fleet.waiting()&&!f.profiles.mutation&&f.profiles.commits==1);
+  assert(f.feed(a)==0&&f.feed(b,&scope)==0&&f.calls==1);
+ }else if(scenario=="fragments_unknown_scope"){
+  f.mutation=true;a.scoped=true;a.transport_codes[0]=123;
+  assert(f.feed(b)==0&&f.feed(a)==1&&f.mesh.queued==0&&f.profiles.rollbacks==1);
+  assert(f.reserved()==seq&&!f.fleet.waiting()&&!f.profiles.mutation);
+ }else if(scenario=="fragments_single_interrupt"){
+  assert(f.feed(a)==0);f.partial();f.expected="get radio2";
+  Packet single=targetsCommand(f.publisher,seq+1,"all",f.expected.c_str());
+  assert(f.feed(single)==1&&f.reserved()==seq+1&&f.stats().find("parts=0")!=std::string::npos);
+  assert(f.feed(b)==0&&f.feed(a)==0&&f.calls==1&&f.mesh.queued==1);
+ }else if(scenario=="fragments_malformed_frame"){
+  for(unsigned damage=0;damage<4;++damage){
+   Packet malformed=changePart(a,[&](uint8_t* frame){
+    if(damage==0)storage::writeLE16(frame+8,309);
+    else if(damage==1)storage::writeLE16(frame+8,165);
+    else if(damage==2)frame[10]=2;
+    else frame[-1]=uint8_t(FleetCommand::MaxPayloadLength-1);
+   });assert(f.feed(malformed)==0&&f.stats().find("parts=0")!=std::string::npos);
+  }
+  assert(f.reserved()==0&&f.mesh.queued==0&&f.feed(a)==0&&f.feed(b)==1);
+ }else assert(false);
+ printf("fleet runtime %s passed\n",scenario.c_str());return 0;
+}
 int main(int argc,char** argv){
- assert(argc==2);const std::string scenario=argv[1];fs::FS fs;Mesh mesh;RadioProfileCLI profiles;
+ assert(argc==2);const std::string scenario=argv[1];
+ if(scenario.rfind("fragments_",0)==0)return fragmentScenario(scenario);
+ fs::FS fs;Mesh mesh;RadioProfileCLI profiles;
  FleetChannel fleet(&fs);LocalIdentity publisher;bind(fleet,mesh,profiles);
  if(scenario=="enrollment"){
   Packet packet=command(publisher,mesh.clock.now);assert(apply(fleet,fs,mesh,profiles,packet)==0);
@@ -588,6 +810,43 @@ int main(int argc,char** argv){
   assert(apply(fleet,fs,mesh,profiles,mutation)==0);
   FleetChannel rebooted(&fs);
   assert(apply(rebooted,fs,mesh,profiles,packet)==0&&apply(rebooted,fs,mesh,profiles,mutation)==0);
+ }else if(scenario=="fmc2_maximum_command"){
+  enroll(fleet,publisher);
+  const std::string secret(64,'1');
+  const std::string text="set flood.rule.1 5 c="+secret+" d";
+  const std::string oversized="set flood.rule.1 05 c="+secret+" d";
+  assert(text.size()==87&&text.size()==FleetCommand::SinglePacketMaxCommandLength);
+  assert(oversized.size()==88&&FleetCommand::commandAllowed(oversized.c_str()));
+  FleetCommand::Targets all;assert(FleetCommand::parseTargets("all",3,all));
+  uint8_t output[184];memset(output,0xA5,sizeof(output));
+  assert(FleetCommand::encode(publisher,channel_key,mesh.clock.now,mesh.clock.now+300,all,
+                             oversized.c_str(),output,sizeof(output))==166);
+  assert(output[166]==0xA5);
+  Packet packet=targetsCommand(publisher,mesh.clock.now,"all",text.c_str());
+  uint8_t plaintext[184]={};
+  const int size=Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1);
+  assert(size==176&&packet.payload_len==179&&packet.payload_len<=MAX_PACKET_PAYLOAD);
+  assert(plaintext[2]==FleetCommand::MaxPayloadLength&&plaintext[3+13]==87);
+  assert(!memcmp(plaintext+3,"FMC2",4)&&plaintext[3+12]==0);
+  assert(!memcmp(plaintext+3+14,text.data(),text.size()));
+  for(unsigned i=3+plaintext[2];i<unsigned(size);++i)assert(plaintext[i]==0);
+  const auto previous=fs.files.at(Path);unsigned calls=0;
+  struct Capture {char text[88]{};char guard='!';} capture;
+  const auto dispatch=[&](FleetChannel& receiver,Packet& request){
+   const unsigned before=calls;receiver.receive(&request,mesh);
+   receiver.service(mesh,profiles,"long-rule",[&](uint32_t seq,const char* command,char* reply){
+    ++calls;assert(storage::readLE32(fs.files.at(Path).data()+56)==seq);
+    assert(strlen(command)==text.size()&&!strcmp(command,text.c_str())&&command[86]=='d'&&command[87]==0);
+    memcpy(capture.text,command,text.size()+1);assert(capture.guard=='!');strcpy(reply,"OK");
+   });return calls-before;
+  };
+  plaintext[3+14+86]='s';Packet changed=raw(plaintext,size);
+  assert(dispatch(fleet,changed)==0&&fs.files.at(Path)==previous&&mesh.queued==0);
+  Packet too_long=compactUnchecked(publisher,mesh.clock.now,oversized.c_str());
+  assert(too_long.payload_len==179&&dispatch(fleet,too_long)==0&&fs.files.at(Path)==previous);
+  assert(dispatch(fleet,packet)==1&&last_jitter_max==60500&&mesh.queued==1);
+  assert(!strcmp(capture.text,text.c_str())&&capture.guard=='!');
+  assert(dispatch(fleet,packet)==0);FleetChannel rebooted(&fs);assert(dispatch(rebooted,packet)==0);
  }else if(scenario=="fmc2_short_prefix"){
   enroll(fleet,publisher);Packet packet=targetsCommand(publisher,mesh.clock.now,publicHex(mesh.self_id).substr(0,8));
   uint8_t plaintext[184]={};assert(Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1)>0);
@@ -770,6 +1029,9 @@ class SHA256 : public SHA256Base {{ public:
     def test_actual_zero_target_sender_reaches_receiver_and_keeps_ack_and_reboot_replay_safety(self):
         self.scenario("fmc2_encoded_all")
 
+    def test_single_packet_87_byte_body_is_intact_signed_and_88_bytes_require_fragmentation(self):
+        self.scenario("fmc2_maximum_command")
+
     def test_new_public_key_prefix_envelope_dispatches_and_staggers_possible_multiple_acks(self):
         self.scenario("fmc2_short_prefix")
 
@@ -784,6 +1046,60 @@ class SHA256 : public SHA256Base {{ public:
 
     def test_existing_remote_radio_mutation_blocks_fleet_without_reserving_sequence(self):
         self.scenario("existing_mutation")
+
+    def test_two_packets_deliver_exact_230_byte_command_in_either_order_once_across_reboot(self):
+        self.scenario("fragments_orders")
+
+    def test_identical_fragments_never_repeat_execution_or_reserve_partial_requests(self):
+        self.scenario("fragments_duplicates")
+
+    def test_smallest_fragmented_command_uses_a_short_second_packet_and_231_bytes_are_rejected(self):
+        self.scenario("fragments_minimum_size")
+
+    def test_command_expiring_between_parts_never_dispatches_and_fresh_retry_can_succeed(self):
+        self.scenario("fragments_expired_during_collection")
+
+    def test_conflicting_parts_cannot_destroy_a_valid_incomplete_transfer(self):
+        self.scenario("fragments_conflicts")
+
+    def test_fresh_retry_preempts_missing_part_and_delayed_old_parts_cannot_pollute_it(self):
+        self.scenario("fragments_fresh_retry")
+
+    def test_mac_and_last_signature_byte_tampering_never_authorize_partial_commands(self):
+        self.scenario("fragments_tamper")
+
+    def test_fragmented_request_from_another_real_signing_identity_is_rejected(self):
+        self.scenario("fragments_wrong_signer")
+
+    def test_fragment_deadline_is_fixed_despite_duplicates_and_missing_part(self):
+        self.scenario("fragments_fixed_timeout")
+
+    def test_fragment_deadline_handles_millisecond_timer_wrap(self):
+        self.scenario("fragments_timeout_wrap")
+
+    def test_fragment_sequence_plausibility_and_signed_sequence_match_precede_reservation(self):
+        self.scenario("fragments_sequence_bounds")
+
+    def test_fragmented_nonmatching_target_preserves_sequence_for_matching_retry(self):
+        self.scenario("fragments_target")
+
+    def test_channel_controller_changes_and_reboot_clear_partial_transfers(self):
+        self.scenario("fragments_config_reboot")
+
+    def test_fragment_completion_storage_failure_has_no_dispatch_or_reply(self):
+        self.scenario("fragments_reserve_failure")
+
+    def test_final_fragment_scope_and_radio_profile_feed_both_ack_copy_commit_barrier(self):
+        self.scenario("fragments_scoped_radio_ack")
+
+    def test_fragmented_radio_mutation_with_unknown_final_scope_rolls_back(self):
+        self.scenario("fragments_unknown_scope")
+
+    def test_new_valid_single_packet_can_interrupt_an_incomplete_two_packet_transfer(self):
+        self.scenario("fragments_single_interrupt")
+
+    def test_malformed_fragment_size_index_and_padding_never_allocate_partial_intent(self):
+        self.scenario("fragments_malformed_frame")
 
 
 if __name__ == "__main__":

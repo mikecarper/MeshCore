@@ -23,7 +23,7 @@
 namespace mesh {
 struct FleetCommand {
   static constexpr uint16_t DataType = 0xFF01;
-  static constexpr size_t KeySize = 16, TargetSize = 16, MaxPayloadLength = 165;
+  static constexpr size_t KeySize = 16, TargetSize = 16, MaxPayloadLength = 165, MaxEnvelopeLength = 308;
   static constexpr uint32_t MinEpoch = 1735689600UL, MaxLifetime = 600;
   struct Targets { uint8_t length = 0, count = 0, data[86] = {}; };
   static bool parseTargets(const char*, size_t, Targets&) { return false; }
@@ -49,6 +49,10 @@ struct CompanionFleetFixture {
   }
   bool sendGroupData(FleetFixtureChannel&, uint8_t*, uint8_t, uint16_t,
                      const uint8_t*, int) {
+    assert(false && "fleet packet admission belongs in its dedicated suite");
+    return false;
+  }
+  bool sendFleetCommandData(FleetFixtureChannel&, const uint8_t*, size_t) {
     assert(false && "fleet packet admission belongs in its dedicated suite");
     return false;
   }

@@ -78,9 +78,10 @@ bool FleetChannel::handleConfig(const char* command, char* reply, size_t capacit
       snprintf(reply, capacity, "> %s", key);
     } else snprintf(reply, capacity, "> unset");
   } else if (!strcmp(command, "get fleet.stats")) {
-    snprintf(reply, capacity, "> accepted=%lu rejected=%lu busy=%lu pending=%u ack=%u",
+    snprintf(reply, capacity, "> accepted=%lu rejected=%lu busy=%lu pending=%u ack=%u parts=%u",
              (unsigned long)accepted_, (unsigned long)rejected_, (unsigned long)busy_,
-             unsigned(pending_), unsigned(barrier_.waiting()));
+             unsigned(pending_), unsigned(barrier_.waiting()),
+             unsigned(bool(assembly_parts_ & 1)) + unsigned(bool(assembly_parts_ & 2)));
   } else if (!strncmp(command, "set fleet.channel ", 18)) {
     if (pending_ || barrier_.waiting()) {
       snprintf(reply, capacity, "Err - fleet command pending; retry later"); return true;
@@ -96,6 +97,7 @@ bool FleetChannel::handleConfig(const char* command, char* reply, size_t capacit
       snprintf(reply, capacity, "Err - fleet settings not saved; store unavailable"); return true;
     }
     configured_ = enabled;
+    clearAssembly();
     memset(channel_.secret, 0, sizeof(channel_.secret));
     memcpy(channel_.secret, key, sizeof(key));
     Utils::sha256(channel_.hash, sizeof(channel_.hash), key, sizeof(key));
@@ -115,6 +117,7 @@ bool FleetChannel::handleConfig(const char* command, char* reply, size_t capacit
     }
     memcpy(controller_.pub_key, key, 32);
     controller_set_ = !zero(key, 32);
+    clearAssembly();
     snprintf(reply, capacity, "OK - fleet publisher %s", controller_set_ ? "set" : "off");
   } else return false;
   return true;
@@ -139,29 +142,82 @@ void FleetChannel::receive(Packet* packet, Mesh& mesh, const TransportKey* scope
   (void)mesh;
 }
 
-bool FleetChannel::decode(Mesh& mesh, FleetCommand::Decoded& command) {
+void FleetChannel::clearAssembly() {
+  memset(assembly_, 0, sizeof(assembly_));
+  assembly_sequence_ = assembly_deadline_ = 0;
+  assembly_length_ = 0;
+  assembly_parts_ = 0;
+}
+
+void FleetChannel::serviceAssemblyDeadline() {
+  if (assembly_parts_ && int32_t(uint32_t(millis()) - assembly_deadline_) >= 0)
+    clearAssembly();
+}
+
+FleetChannel::DecodeResult FleetChannel::decode(Mesh& mesh, FleetCommand::Decoded& command) {
   const uint32_t now_ms = millis();
   if (uint32_t(now_ms - verify_window_) >= 1000) {
     verify_window_ = now_ms; verify_attempts_ = 0;
   }
   // A forged matching channel hash must not monopolize the radio loop with
   // Ed25519 work. Legitimate publishers can retry with a fresh sequence.
-  if (verify_attempts_ >= 4) return false;
+  if (verify_attempts_ >= 4) return DecodeResult::Rejected;
   ++verify_attempts_;
   uint8_t data[MAX_PACKET_PAYLOAD];
   const int length = Utils::MACThenDecrypt(channel_.secret, data, incoming_ + 1, incoming_len_ - 1);
   if (length < 3 || data[0] != uint8_t(FleetCommand::DataType)
-      || data[1] != uint8_t(FleetCommand::DataType >> 8)) return false;
+      || data[1] != uint8_t(FleetCommand::DataType >> 8)) return DecodeResult::Rejected;
   const size_t payload_length = data[2];
   const size_t unpadded = 3 + payload_length;
-  if (unpadded > (size_t)length || (unpadded + 15) / 16 * 16 != (size_t)length
-      || !zero(data + unpadded, length - unpadded)) return false;
-  if (payload_length < FleetCommand::MinHeaderSize + FleetCommand::SignatureSize
-      || storage::readLE32(data + 7) <= last_sequence_) return false;
-  if (!FleetCommand::decode(controller_, channel_.secret, data + 3, payload_length,
-                            mesh.getRTCClock()->getCurrentTime(), mesh.self_id.pub_key, command)) return false;
+  if (payload_length > FleetCommand::MaxPayloadLength || unpadded > (size_t)length
+      || (unpadded + 15) / 16 * 16 != (size_t)length
+      || !zero(data + unpadded, length - unpadded)) return DecodeResult::Rejected;
+  const uint8_t* envelope = data + 3;
+  size_t envelope_length = payload_length;
+  bool assembled = false;
+  if (payload_length >= 4 && !memcmp(envelope, "FMP1", 4)) {
+    FleetCommand::Fragment fragment;
+    if (!FleetCommand::parseFragment(envelope, payload_length, fragment)
+        || fragment.sequence <= last_sequence_) return DecodeResult::Rejected;
+    const uint32_t now = mesh.getRTCClock()->getCurrentTime();
+    if (fragment.sequence < FleetCommand::MinEpoch
+        || (fragment.sequence > now && fragment.sequence - now > FleetCommand::MaxClockLead)
+        || (now > fragment.sequence && now - fragment.sequence > FleetCommand::MaxLifetime))
+      return DecodeResult::Rejected;
+    // A fresh retry must not wait five minutes for a lost second fragment.
+    // Older transfers and conflicting fragments cannot disturb newer intent.
+    if (assembly_parts_ && fragment.sequence > assembly_sequence_) clearAssembly();
+    if (assembly_parts_ && (assembly_sequence_ != fragment.sequence
+                            || assembly_length_ != fragment.total_length))
+      return DecodeResult::Rejected;
+    if (!assembly_parts_) {
+      assembly_sequence_ = fragment.sequence;
+      assembly_length_ = fragment.total_length;
+      // A duplicate cannot extend this fixed five-minute collection window.
+      assembly_deadline_ = now_ms + 300000UL;
+    }
+    const size_t offset = fragment.index * FleetCommand::FragmentDataLength;
+    const uint8_t mask = uint8_t(1U << fragment.index);
+    if (assembly_parts_ & mask) {
+      return !memcmp(assembly_ + offset, fragment.data, fragment.length)
+          ? DecodeResult::Partial : DecodeResult::Rejected;
+    }
+    memcpy(assembly_ + offset, fragment.data, fragment.length);
+    assembly_parts_ |= mask;
+    if (assembly_parts_ != 3) return DecodeResult::Partial;
+    envelope = assembly_;
+    envelope_length = assembly_length_;
+    assembled = true;
+  }
+  const bool valid = envelope_length >= FleetCommand::MinHeaderSize + FleetCommand::SignatureSize
+      && storage::readLE32(envelope + 4) > last_sequence_
+      && (!assembled || storage::readLE32(envelope + 4) == assembly_sequence_)
+      && FleetCommand::decode(controller_, channel_.secret, envelope, envelope_length,
+                             mesh.getRTCClock()->getCurrentTime(), mesh.self_id.pub_key, command);
+  if (assembled || (valid && assembly_parts_ && command.sequence >= assembly_sequence_)) clearAssembly();
+  if (!valid) return DecodeResult::Rejected;
   broadcast_ = command.broadcast;
-  return true;
+  return DecodeResult::Accepted;
 }
 
 bool FleetChannel::acknowledge(Mesh& mesh, const char* name, uint32_t sequence,

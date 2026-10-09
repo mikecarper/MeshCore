@@ -1691,6 +1691,64 @@ bool MyMesh::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pk
   }
 }
 
+#if MESH_ENABLE_FLEET_CONTROL
+void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* original, uint8_t priority) {
+  mesh::Mesh::onRadioProfileCopyQueued(packet, original, priority);
+  if (original && original == _fleet_admission_original) _fleet_admission_copy = packet;
+}
+
+bool MyMesh::sendFleetCommandData(mesh::GroupChannel& channel, const uint8_t* envelope, size_t length) {
+  if (!envelope || !length || length > mesh::FleetCommand::MaxEnvelopeLength) return false;
+  if (length <= mesh::FleetCommand::MaxPayloadLength) {
+    return sendGroupData(channel, nullptr, OUT_PATH_UNKNOWN,
+                         mesh::FleetCommand::DataType, envelope, (int)length);
+  }
+  mesh::Packet* reserved[2] = {};
+  uint8_t group[3 + mesh::FleetCommand::MaxPayloadLength];
+  group[0] = (uint8_t)mesh::FleetCommand::DataType;
+  group[1] = (uint8_t)(mesh::FleetCommand::DataType >> 8);
+  // Reserve both encrypted packets before handing either to the dispatcher.
+  for (uint8_t part = 0; part < 2; ++part) {
+    const size_t bytes = mesh::FleetCommand::fragment(envelope, length, part,
+                                                     group + 3, sizeof(group) - 3);
+    if (bytes) {
+      group[2] = (uint8_t)bytes;
+      reserved[part] = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, channel, group, 3 + bytes);
+    }
+    if (!reserved[part]) {
+      if (reserved[0]) releasePacket(reserved[0]);
+      memset(group, 0, sizeof(group));
+      return false;
+    }
+  }
+  memset(group, 0, sizeof(group));
+  _fleet_admission_original = reserved[0];
+  _fleet_admission_copy = nullptr;
+  const bool first_queued = sendFloodScoped(channel, reserved[0]);
+  mesh::Packet* first_copy = _fleet_admission_copy;
+  _fleet_admission_original = nullptr;
+  _fleet_admission_copy = nullptr;
+  if (!first_queued) {
+    // sendFloodScoped/sendPacket owns and releases the failed first packet.
+    releasePacket(reserved[1]);
+    return false;
+  }
+  if (sendFloodScoped(channel, reserved[1])) return true;
+  // A failed second send has already been released. No dispatcher loop runs
+  // inside admission, so the first packet and its optional copy are still
+  // queued and can be retired by exact pointer without touching other work.
+  for (int i = _mgr->getOutboundTotal() - 1; i >= 0; --i) {
+    const mesh::Packet* queued = _mgr->getOutboundByIdx(i);
+    if (queued != reserved[0] && queued != first_copy) continue;
+    mesh::Packet* cancelled = _mgr->removeOutboundByIdx(i);
+    cancelOutboundRadioRetry(cancelled);
+    onSendFail(cancelled); // Clear its pending flood retry metadata too.
+    releasePacket(cancelled);
+  }
+  return false;
+}
+#endif
+
 void MyMesh::onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                            const char *text) {
 #if MESH_ENABLE_ONE_KEY_DM
@@ -5264,7 +5322,10 @@ void MyMesh::resetUsbHostSessionInput() {
   // CLI rescue deliberately remains active across reconnects, but no bytes
   // typed by the old host may complete a command for the new one. This is
   // especially important for the rescue shell's erase/rm commands.
-  if (_cli_rescue) memset(cli_command, 0, sizeof(cli_command));
+  if (_cli_rescue) {
+    memset(cli_command, 0, sizeof(cli_command));
+    _cli_line_overflow = false;
+  }
 }
 
 void MyMesh::handleCmdFrame(size_t len) {
@@ -9520,6 +9581,7 @@ void MyMesh::handleTerminalCommand(char* command) {
 void MyMesh::enterCLIRescue() {
   _cli_rescue = true;
   cli_command[0] = 0;
+  _cli_line_overflow = false;
   mesh::usbTerminalPort().println("========= CLI Rescue =========");
 }
 
@@ -9784,16 +9846,15 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       snprintf(reply, reply_capacity, "Error: wait for the next clock second before fleet send");
       return true;
     }
-    uint8_t payload[mesh::FleetCommand::MaxPayloadLength];
+    uint8_t payload[mesh::FleetCommand::MaxEnvelopeLength];
     const size_t length = mesh::FleetCommand::encode(
         self_id, channel.channel.secret, sequence,
         sequence + mesh::FleetCommand::MaxLifetime, targets, text,
         payload, sizeof(payload));
     if (!length) {
       snprintf(reply, reply_capacity,
-               "Error: fleet targets and command exceed one packet; use fewer targets");
-    } else if (!sendGroupData(channel.channel, nullptr, OUT_PATH_UNKNOWN,
-                              mesh::FleetCommand::DataType, payload, (int)length)) {
+               "Error: fleet targets and command exceed two packets; use fewer targets");
+    } else if (!sendFleetCommandData(channel.channel, payload, length)) {
       snprintf(reply, reply_capacity, "Error: could not queue fleet command");
     } else {
       last_fleet_sequence = sequence;
@@ -10076,30 +10137,42 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
 void MyMesh::checkCLIRescueCmd() {
   Stream& output = mesh::usbTerminalPort();
   Stream& input = mesh::usbCompanionPort();
-  int len = strlen(cli_command);
-  // `cli_command` must stay NUL-terminated within its bounds. If it ever isn't,
-  // strlen() above can return >= sizeof(cli_command) and the loop below would
-  // then index past the buffer, so clamp defensively.
-  if (len >= (int)sizeof(cli_command)) {
+  size_t len = strnlen(cli_command, sizeof(cli_command));
+  if (len == sizeof(cli_command)) {
     cli_command[0] = 0;
     len = 0;
+    _cli_line_overflow = true;
   }
-  while (input.available() && len < sizeof(cli_command)-1) {
+  unsigned budget = sizeof(cli_command);
+  while (budget-- && input.available()) {
     char c = input.read();
-    if (c != '\n') {
-      cli_command[len++] = c;
-      cli_command[len] = 0;
-    }
     output.print(c);  // echo
-  }
-  if (len == sizeof(cli_command)-1) {  // buffer full: treat as a completed line
-    cli_command[sizeof(cli_command)-2] = '\r';  // place end-of-line marker inside the buffer
-    cli_command[sizeof(cli_command)-1] = 0;     // keep the buffer NUL-terminated
+    if (c == '\r' || c == '\n') {
+      if (_cli_line_overflow) {
+        _cli_line_overflow = false;
+#if defined(STM32_PLATFORM)
+        output.println("  Error: unknown command");
+#else
+        output.print("ERR: too long\r\n");
+#endif
+      } else if (len) goto complete_line;
+      return;
+    }
+    if (_cli_line_overflow) continue;
+    if (len == sizeof(cli_command)-1) {
+      _cli_line_overflow = true;
+      cli_command[0] = 0;
+      len = 0;
+      continue;
+    }
+    cli_command[len++] = c;
+    cli_command[len] = 0;
   }
 
-  if (len > 0 && cli_command[len - 1] == '\r') {  // received complete line
-    cli_command[len - 1] = 0;  // replace newline with C string null terminator
+  return;
 
+complete_line:
+  {
     reply_buf[0] = 0;
 #if COMPANION_FEATURE_READER
     if (mesh::handleReaderCommand(cli_command, output)) {

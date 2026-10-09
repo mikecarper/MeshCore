@@ -155,7 +155,7 @@ class CompanionExtraFsHilGuardTest(unittest.TestCase):
         self.assertNotIn("handleExtraFsHilCommand", generic)
         self.assertNotIn("hil extrafs", generic)
         self.assertNotIn("handleExtraFsHilCommand", on_air)
-        self.assertIn("handleCommand(text, sender_timestamp, reply)", on_air)
+        self.assertIn("handleCommand(text, sender_timestamp ? sender_timestamp : 1, reply)", on_air)
 
     def test_filler_reports_only_read_verified_durable_bytes(self):
         body = function_body(

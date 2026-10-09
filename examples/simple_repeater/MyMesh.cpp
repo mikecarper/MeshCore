@@ -7956,12 +7956,12 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
     }
   }
   cursor = skipFloodFilterSpaces(cursor);
-  if (strlen(cursor) >= 192) {
+  char params[256];
+  if (strlen(cursor) >= sizeof(params)) {
     strcpy(reply, "Err - rule parameters too long");
     return;
   }
 
-  char params[192];
   strcpy(params, cursor);
   char* tokens[18];
   int token_count = 0;
@@ -8244,9 +8244,12 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
       }
       char rate_text[24];
       const bool compact = floodFilterAsciiStartsWith(tokens[i], "q=");
-      StrHelper::strncpy(rate_text,
-                         tokens[i] + (compact ? 2 : strlen("rate=")),
-                         sizeof(rate_text));
+      const char* value = tokens[i] + (compact ? 2 : strlen("rate="));
+      if (strlen(value) >= sizeof(rate_text)) {
+        strcpy(reply, "Err - rate value too long");
+        return;
+      }
+      StrHelper::strncpy(rate_text, value, sizeof(rate_text));
       char* slash = strchr(rate_text, '/');
       if ((!compact && slash == NULL)
           || (slash != NULL && !(strcmp(slash, "/min") == 0
@@ -8574,12 +8577,16 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
     }
   }
   cursor = skipFloodFilterSpaces(cursor);
-  if (strlen(cursor) >= 140) {
+#if MESH_ENABLE_FLEET_CONTROL
+  char params[256];
+#else
+  char params[140];
+#endif
+  if (strlen(cursor) >= sizeof(params)) {
     strcpy(reply, "Err - filter parameters too long");
     return;
   }
 
-  char params[140];
   strcpy(params, cursor);
   char* tokens[7];
   int token_count = 0;
@@ -10175,6 +10182,10 @@ void MyMesh::setFloodGroupModeration(const char* args, char* reply) {
         return;
       }
       char rate_text[24];
+      if (strlen(option + 5) >= sizeof(rate_text)) {
+        strcpy(reply, "Err - rate value too long");
+        return;
+      }
       StrHelper::strncpy(rate_text, option + 5, sizeof(rate_text));
       char* slash = strchr(rate_text, '/');
       if (slash == NULL || !(strcmp(slash, "/min") == 0 || strcmp(slash, "/m") == 0)) {
