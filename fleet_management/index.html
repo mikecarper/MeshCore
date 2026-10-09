@@ -1363,6 +1363,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#schedule-radio-changes-and-set-clocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule radio changes and set clocks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#filtering-and-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2342,6 +2353,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#schedule-radio-changes-and-set-clocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Schedule radio changes and set clocks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#filtering-and-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2504,6 +2526,18 @@ or normal terminal for longer lists.</p>
 <td><code>get tempradio2</code>, <code>set tempradio2 &lt;tuple|off&gt;</code></td>
 </tr>
 <tr>
+<td>Scheduled primary profile</td>
+<td><code>get/set/del radioat</code>, <code>get/set/del tempradioat</code></td>
+</tr>
+<tr>
+<td>Scheduled second profile</td>
+<td><code>get/set/del radioat2</code>, <code>get/set/del tempradioat2</code></td>
+</tr>
+<tr>
+<td>UTC clock</td>
+<td><code>clock</code>, <code>clock sync</code>, <code>time &lt;epoch-seconds&gt;</code></td>
+</tr>
+<tr>
 <td>Profile diagnostics</td>
 <td><code>get radio2.status</code>, <code>get radio2.timing</code></td>
 </tr>
@@ -2537,13 +2571,37 @@ or normal terminal for longer lists.</p>
 </tr>
 </tbody>
 </table>
-<p>Each role still checks whether it supports the requested setting. Primary radio
-changes, identity export, passwords, ACL edits, filesystem operations, firmware
+<p>Each role still checks whether it supports the requested setting. Immediate
+primary radio changes, identity export, passwords, ACL edits, filesystem operations, firmware
 installation, reboot, and unrestricted CLI are outside fleet capability.</p>
-<p>Secondary-radio mutations keep the old profile until their exact acknowledgement
+<h2 id="schedule-radio-changes-and-set-clocks">Schedule radio changes and set clocks</h2>
+<p>Use the normal schedule syntax, with UTC epoch seconds or <code>+N</code> whole minutes.
+Primary schedules are supported by repeaters; a role without a primary scheduler
+replies that the command is unsupported. Second-profile schedules use <code>rx</code> or
+<code>rxtx</code> after the coding rate:</p>
+<pre><code class="language-text">fleet send 3 all clock
+fleet send 3 all clock sync
+fleet send 3 all set radioat 910.5,500,8,5,+5
+fleet send 3 all set tempradioat 910.5,500,8,5,+5,+15
+fleet send 3 all set radioat2 910.5,500,8,5,rxtx,+5
+fleet send 3 all set tempradioat2 910.5,500,8,5,rxtx,+5,+15
+fleet send 3 1257aee5 get tempradioat2 1
+fleet send 3 1257aee5 del tempradioat2 all
+</code></pre>
+<p>Both relative endpoints use the receiver's clock at command acceptance. For a
+coordinated fleet switch, use the same absolute UTC start/end timestamps on all
+nodes. An optional final preamble value or <code>auto</code> uses the existing radio syntax.
+Schedule capacity, radio-range validation, and overlap checks remain unchanged;
+pending schedules still do not survive reboot.</p>
+<p><code>clock sync</code> advances a receiver to the publishing Companion's signed timestamp
+plus one second. <code>time &lt;epoch-seconds&gt;</code> sets an explicit UTC timestamp. Both use
+the existing forward-only clock rule. Initial setup or a clock far out of sync
+still requires local or individually authenticated clock correction: fleet clock
+commands retain the signature, expiry, replay, and maximum-clock-lead checks.</p>
+<p>Radio mutations and schedule edits keep the old state until their exact acknowledgement
 packets drain, with at least one successful physical transmission. Queue failure,
 failed transmissions, or an acknowledgement timeout cancels the staged mutation.
-Temporary-radio leases retain their original monotonic end time; waiting for an
+Temporary-radio leases and scheduled windows retain their original monotonic end time; waiting for an
 acknowledgement does not lengthen them.</p>
 <p>Exact single-node acknowledgements wait 0.5–1.5 seconds; prefix, multiple-target,
 and whole-fleet replies are spread over 0.5–60.5 seconds (0.5–15.5 seconds for
@@ -2557,8 +2615,9 @@ can still process an authenticated command when a filter or <code>repeat off</co
 forwarding. <strong>Intermediate nodes can still block delivery to downstream nodes.</strong>
 Management traffic has no automatic exemption from forwarding filters. Preserve
 an appropriate group-data/channel forwarding rule and an existing direct-admin
-recovery path before changing network-wide filters. The primary radio is retained
-by this capability, but a forwarding policy can still partition the fleet.</p>
+recovery path before changing network-wide filters. Primary-radio schedules can
+move nodes off the normal network; use a temporary window or a planned recovery
+path for experiments. A forwarding policy can also partition the fleet.</p>
 <p>The receiver is allocated lazily when fleet settings are present or queried, with
 one bounded mailbox. Cryptographic work and storage writes occur after the receive
 stack unwinds. Signature-validation
