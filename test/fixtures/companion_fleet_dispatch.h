@@ -25,12 +25,13 @@ struct FleetCommand {
   static constexpr uint16_t DataType = 0xFF01;
   static constexpr size_t KeySize = 16, TargetSize = 16, MaxPayloadLength = 165;
   static constexpr uint32_t MinEpoch = 1735689600UL, MaxLifetime = 600;
-  static bool parseTarget(const char*, uint8_t*) { return false; }
+  struct Targets { uint8_t length = 0, count = 0, data[86] = {}; };
+  static bool parseTargets(const char*, size_t, Targets&) { return false; }
   static bool commandAllowed(const char*) { return false; }
   static bool privateKeyAllowed(const uint8_t*) { return false; }
   template<class Signer>
   static size_t encode(const Signer&, const uint8_t*, uint32_t, uint32_t,
-                       const uint8_t*, const char*, uint8_t*, size_t) {
+                       const Targets&, const char*, uint8_t*, size_t) {
     assert(false && "fleet encoding belongs in the dedicated real-codec suite");
     return 0;
   }

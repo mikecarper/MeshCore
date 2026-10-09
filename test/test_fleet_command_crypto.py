@@ -95,15 +95,29 @@ int main(int argc, char** argv) {
     if (!size) std::cout << "reject\n"; else hex(output.data(), size);
     return 0;
   }
-  if (argc == 7 && std::string(argv[1]) == "decode") {
+  if (argc == 7 && std::string(argv[1]) == "encode2") {
+    FixedRng rng; mesh::LocalIdentity publisher(&rng);
+    const auto key = unhex(argv[2]); assert(key.size() == Fleet::KeySize);
+    Fleet::Targets targets;
+    if (!Fleet::parseTargets(argv[3], strlen(argv[3]), targets)) { std::cout << "reject\n"; return 0; }
+    std::array<uint8_t, Fleet::MaxPayloadLength> output;
+    const size_t size = Fleet::encode(publisher, key.data(), uint32_t(std::stoul(argv[4])),
+        uint32_t(std::stoul(argv[5])), targets, argv[6], output.data(), output.size());
+    if (!size) std::cout << "reject\n"; else hex(output.data(), size);
+    return 0;
+  }
+  if (argc == 7 && (std::string(argv[1]) == "decode" || std::string(argv[1]) == "decode2")) {
     const auto public_key = unhex(argv[2]), key = unhex(argv[3]), self = unhex(argv[4]), bytes = unhex(argv[6]);
     assert(public_key.size() == PUB_KEY_SIZE && self.size() == PUB_KEY_SIZE && key.size() == Fleet::KeySize);
     mesh::Identity publisher(public_key.data()); Fleet::Decoded output;
     if (!Fleet::decode(publisher, key.data(), bytes.data(), bytes.size(),
                        uint32_t(std::stoul(argv[5])), self.data(), output)) {
-      assert(output.sequence == 0 && output.expires == 0 && output.command[0] == 0);
+      assert(output.sequence == 0 && output.expires == 0 && !output.broadcast && output.command[0] == 0);
       std::cout << "reject\n";
-    } else std::cout << output.sequence << '\n' << output.expires << '\n' << output.command << '\n';
+    } else {
+      std::cout << output.sequence << '\n' << output.expires << '\n' << output.command << '\n';
+      if (std::string(argv[1]) == "decode2") std::cout << int(output.broadcast) << '\n';
+    }
     return 0;
   }
   return 2;
@@ -115,6 +129,16 @@ def envelope(command="get radio2", sequence=NOW, expires=NOW + 120,
              target=b"\0" * 16, channel=CHANNEL, publisher=PUBLISHER):
     command = command.encode("ascii") if isinstance(command, str) else command
     unsigned = b"FMC1" + struct.pack("<II", sequence, expires) + target + bytes([len(command)]) + command
+    return unsigned + publisher.sign(DOMAIN + channel + unsigned)
+
+
+def envelope2(entries=(), command="get radio2", sequence=NOW, expires=NOW + 120,
+              channel=CHANNEL, publisher=PUBLISHER, count=None):
+    command = command.encode("ascii") if isinstance(command, str) else command
+    records = b"".join(bytes([kind]) + value for kind, value in entries)
+    count = len(entries) if count is None else count
+    unsigned = (b"FMC2" + struct.pack("<II", sequence, expires) + bytes([count])
+                + records + bytes([len(command)]) + command)
     return unsigned + publisher.sign(DOMAIN + channel + unsigned)
 
 
@@ -145,8 +169,9 @@ class FleetCommandCryptoTests(unittest.TestCase):
         self.assertNotIn("AddressSanitizer", result.stderr)
         return result.stdout.strip()
 
-    def decode(self, payload, channel=CHANNEL, publisher=PUBLIC, self_key=PUBLIC, now=NOW):
-        return self.run_tool("decode", publisher.hex(), channel.hex(), self_key.hex(), now, payload.hex())
+    def decode(self, payload, channel=CHANNEL, publisher=PUBLIC, self_key=PUBLIC, now=NOW, metadata=False):
+        return self.run_tool("decode2" if metadata else "decode",
+                             publisher.hex(), channel.hex(), self_key.hex(), now, payload.hex())
 
     def test_cpp_and_python_signatures_match_exactly(self):
         expected = envelope()
@@ -243,6 +268,127 @@ class FleetCommandCryptoTests(unittest.TestCase):
             with self.subTest(channel=channel.hex()):
                 self.assertEqual(self.decode(envelope(channel=channel), channel=channel), "reject")
                 self.assertEqual(self.run_tool("encode", channel.hex(), "all", NOW, NOW + 120, "get radio2"), "reject")
+
+    def test_new_sender_preserves_fmc1_for_all_and_single_complete_key(self):
+        for token, target in [("all", b"\0" * 16), (PUBLIC.hex(), hashlib.sha256(PUBLIC).digest()[:16])]:
+            with self.subTest(token=token):
+                actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
+                self.assertEqual(actual, envelope(target=target).hex())
+                expected_broadcast = "1" if token == "all" else "0"
+                self.assertTrue(self.decode(bytes.fromhex(actual), metadata=True).endswith("\n" + expected_broadcast))
+
+    def test_real_signature_round_trip_for_mixed_prefixes_and_full_keys(self):
+        entries = [(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6]), (16, hashlib.sha256(PUBLIC).digest()[:16])]
+        token = f"{PUBLIC[:4].hex()},{OTHER_PUBLIC[:6].hex()},{PUBLIC.hex()}"
+        expected = envelope2(entries)
+        actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
+        self.assertEqual(actual, expected.hex())
+        self.assertTrue(self.decode(expected, metadata=True).endswith("\n1"))
+        self.assertTrue(self.decode(expected, self_key=OTHER_PUBLIC, metadata=True).endswith("\n1"))
+        unrelated = hashlib.sha256(b"unrelated fleet node").digest()
+        self.assertEqual(self.decode(expected, self_key=unrelated), "reject")
+
+    def test_single_raw_prefix_is_a_broadcast_capability_for_matching_collisions(self):
+        first = PUBLIC
+        second = PUBLIC[:4] + bytes([PUBLIC[4] ^ 1]) + PUBLIC[5:]
+        broad = envelope2([(4, PUBLIC[:4])])
+        self.assertTrue(self.decode(broad, self_key=first, metadata=True).endswith("\n1"))
+        self.assertTrue(self.decode(broad, self_key=second, metadata=True).endswith("\n1"))
+        narrow = envelope2([(6, PUBLIC[:6])])
+        self.assertNotEqual(self.decode(narrow, self_key=first), "reject")
+        self.assertEqual(self.decode(narrow, self_key=second), "reject")
+        full = envelope2([(16, hashlib.sha256(first).digest()[:16])])
+        self.assertTrue(self.decode(full, self_key=first, metadata=True).endswith("\n0"))
+        self.assertEqual(self.decode(full, self_key=second), "reject")
+
+    def test_fmc2_all_is_accepted_and_duplicate_matches_decode_once(self):
+        self.assertTrue(self.decode(envelope2(), metadata=True).endswith("\n1"))
+        duplicates = envelope2([(16, hashlib.sha256(PUBLIC).digest()[:16])] * 2)
+        result = self.decode(duplicates, metadata=True)
+        self.assertEqual(result, f"{NOW}\n{NOW + 120}\nget radio2\n1")
+
+    def test_legitimate_zero_prefixes_are_accepted_but_zero_complete_identity_is_not(self):
+        node = b"\0" * 6 + b"\1" * 26
+        for width in [4, 6]:
+            with self.subTest(width=width):
+                self.assertNotEqual(self.decode(envelope2([(width, b"\0" * width)]), self_key=node), "reject")
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), "0" * 64, NOW, NOW + 120, "get radio2"), "reject")
+
+    def test_multitarget_signature_binds_every_target_entry_and_count(self):
+        original = envelope2([(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6]),
+                              (16, hashlib.sha256(PUBLIC).digest()[:16])])
+        # The first prefix still matches. Every later record byte nevertheless
+        # remains signed, so modifying a nonmatching or duplicate target fails.
+        for offset in range(18, 13 + 5 + 7 + 17):
+            with self.subTest(target_byte=offset):
+                changed = bytearray(original)
+                changed[offset] ^= 1
+                self.assertEqual(self.decode(changed), "reject")
+        changed = bytearray(original)
+        changed[12] = 2
+        self.assertEqual(self.decode(changed), "reject")
+
+    def test_malformed_target_after_matching_record_is_rejected_even_when_signed(self):
+        matching = (4, PUBLIC[:4])
+        malformed = [
+            [(3, b"abc")], [(0, b"")], [(5, b"abcde")], [(32, PUBLIC)],
+            [(16, b"x" * 15)], [(6, b"x" * 5)], [(255, b"")]]
+        for suffix in malformed:
+            with self.subTest(suffix=suffix):
+                self.assertEqual(self.decode(envelope2([matching] + suffix)), "reject")
+        self.assertEqual(self.decode(envelope2([matching], count=18)), "reject")
+        self.assertEqual(self.decode(envelope2([matching], count=0)), "reject")
+        self.assertEqual(self.decode(envelope2([matching], count=2)), "reject")
+
+    def test_new_target_parser_refuses_partial_or_mixed_all_lists(self):
+        for token in ["", "all," + PUBLIC[:4].hex(), PUBLIC[:4].hex() + ",all",
+                      PUBLIC[:4].hex() + ",", "," + PUBLIC[:4].hex(),
+                      PUBLIC[:4].hex() + ",," + OTHER_PUBLIC[:4].hex(),
+                      PUBLIC[:4].hex() + ",zzzzzzzz", "1" * 10, "1" * 16,
+                      ",".join([PUBLIC.hex()] * 6), ",".join([PUBLIC[:4].hex()] * 18)]:
+            with self.subTest(token=token):
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2"), "reject")
+
+    def test_fmc2_packet_capacity_is_checked_before_signing_or_sending(self):
+        maximum = "set flood.rule.1 " + "a" * (72 - len("set flood.rule.1 "))
+        entries = [(4, PUBLIC[:4])] * 3
+        expected = envelope2(entries, maximum)
+        self.assertEqual(len(expected), 165)
+        token = ",".join([PUBLIC[:4].hex()] * 3)
+        actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, maximum)
+        self.assertEqual(actual, expected.hex())
+        self.assertNotEqual(self.decode(expected), "reject")
+        token += "," + PUBLIC[:4].hex()
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, maximum), "reject")
+        self.assertEqual(self.decode(envelope2(entries * 2, maximum)), "reject")
+        for count in [15, 16, 17]:
+            token = ",".join([PUBLIC[:4].hex()] * count)
+            result = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
+            self.assertEqual(result == "reject", count > 15)
+
+    def test_fmc2_rejects_short_trailing_and_signed_forbidden_commands(self):
+        original = envelope2([(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6])])
+        for length in [0, 12, 13, 14, 18, 19, len(original) - 1]:
+            self.assertEqual(self.decode(original[:length]), "reject")
+        self.assertEqual(self.decode(original + b"\0"), "reject")
+        for command in ["get prv.key", "set fleet.controller off", "get radio2\nreboot", b"get radio2\0"]:
+            self.assertEqual(self.decode(envelope2([(4, PUBLIC[:4])], command)), "reject")
+
+    def test_fmc2_uses_same_signed_sequence_and_clock_rules(self):
+        entries = [(4, PUBLIC[:4])]
+        original = envelope2(entries)
+        self.assertEqual(struct.unpack("<I", original[4:8])[0], NOW)
+        forged = envelope2(entries, sequence=NOW + 1)[:-64] + original[-64:]
+        self.assertEqual(self.decode(forged), "reject")
+        for sequence, expires, now in [(NOW + 61, NOW + 120, NOW),
+                                       (NOW, NOW + 601, NOW), (NOW, NOW + 120, NOW + 121)]:
+            self.assertEqual(self.decode(envelope2(entries, sequence=sequence, expires=expires), now=now), "reject")
+
+    def test_fmc2_signature_cannot_move_between_channels_or_publishers(self):
+        original = envelope2([(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6])])
+        self.assertEqual(self.decode(original, publisher=OTHER_PUBLIC), "reject")
+        self.assertEqual(self.decode(original, channel=bytes(range(17, 33))), "reject")
+        self.assertEqual(self.decode(envelope2([(4, PUBLIC[:4])], publisher=OTHER)), "reject")
 
 
 if __name__ == "__main__":

@@ -251,7 +251,8 @@ public:
     checked([compiler, "-std=c++17", "-Wall", "-Wextra", "-Wno-unused-function",
              "-Wno-unused-parameter", "-Wno-sign-compare", "-Wno-reorder",
              "-DESP32_PLATFORM=1", *SANITIZERS,
-             f"-I{work}", f"-I{ROOT / 'test/fixtures/radio_profiles/mocks'}",
+             f"-I{work}", f"-I{ROOT / 'test/fixtures'}",
+             f"-I{ROOT / 'test/fixtures/radio_profiles/mocks'}",
              f"-I{ROOT / 'test/mocks'}", f"-I{ROOT / 'src'}", f"-I{ROOT / 'src/helpers'}", f"-I{ROOT}",
              str(work / "radio.cpp"), *[str(ROOT / "src/helpers" / name) for name in (
                  "ConfigSerializer.cpp", "DynamicConfigSerializer.cpp", "CommonRadioPrefs.cpp",

@@ -10,7 +10,8 @@ title: Private fleet management
 # Private fleet management
 
 Fleet control lets one publisher send filtering and secondary-radio commands to
-all enrolled infrastructure nodes, or to one node, over a private LoRa channel.
+all enrolled infrastructure nodes, one node, or a list of nodes over a private
+LoRa channel.
 It is disabled until configured. It is supported on repeaters and room servers;
 fixed-size STM32 images omit it because of their flash limit.
 Both the publishing Companion and receivers need firmware built with fleet-control
@@ -80,10 +81,28 @@ fleet send 3 all set flood.rule.4 type=grp_txt hops=6+ drop
 fleet send 3 all del flood.rule.4
 ```
 
-To address one node, replace `all` with that node's complete 64-character public
-key. Names and short path IDs are not target identities. On air, the target is a
-128-bit SHA-256 digest of the full key. Separate fleets use separate channel keys;
-named subgroups are not part of this first version.
+Replace `all` with **8 or 12 hexadecimal characters from the start of a node's
+public key**, or its **complete 64-character public key**. Separate multiple
+targets with commas, without spaces. Lengths can be mixed:
+
+```text
+fleet send 3 1257aee5 get radio2
+fleet send 3 1257aee5a754,9abc0123 get radio2
+fleet send 3 1257aee5,9abc01234567 set radio2.cross auto
+```
+
+These are example public-key prefixes; substitute your nodes' actual keys.
+**A prefix addresses every enrolled node whose public key starts with it.**
+Use all 64 characters when you need one exact identity, especially in a large
+fleet. Names and short LoRa path IDs are not accepted as target identities.
+`all` must appear alone. A node that matches several entries still executes the
+command only once, and the signature protects the entire list.
+
+On air, full keys use a 128-bit SHA-256 digest; prefixes use their original
+public-key bytes. Multiple-target commands and prefix targets require updated
+publisher and receiver firmware. `all` and a single complete key retain the
+previous wire format, which updated receivers also accept. Separate fleets use
+separate channel keys; named subgroups are not part of this first version.
 
 Only local commands on the publishing Companion can originate fleet sends. A
 remote CLI command cannot turn that Companion into a multicast signing proxy.
@@ -97,8 +116,17 @@ sequence; the operation should be chosen to be idempotent.
 
 ## Supported controls
 
-The command body is limited to **72 ASCII bytes**, independently of the target's
-full key in the local send command. Longer commands are rejected, not truncated.
+The command body is limited to **72 ASCII bytes**. Targets and command must also
+fit one signed **165-byte envelope**. An 8-character target uses 5 bytes, a
+12-character target uses 7, and a complete key uses 17. The fixed envelope and
+signature use 78 bytes, leaving 87 bytes for the target list and command together.
+For example, two complete keys leave 53 bytes for the command. Lists are capped
+at 17 entries; packet-size limits usually allow fewer. `all` and a single complete
+key retain the previous format's full 72-byte command allowance.
+The local app/console's command-length limit also applies. Oversized or invalid
+lists are rejected as a whole, without sending or truncating any targets.
+The short legacy USB rescue console cannot fit a full-key command; use the app
+or normal terminal for longer lists.
 
 | Control | Fleet commands |
 | --- | --- |
@@ -123,8 +151,9 @@ failed transmissions, or an acknowledgement timeout cancels the staged mutation.
 Temporary-radio leases retain their original monotonic end time; waiting for an
 acknowledgement does not lengthen them.
 
-Individual acknowledgements wait 0.5–1.5 seconds; whole-fleet replies are spread
-over 0.5–60.5 seconds (0.5–15.5 seconds for radio mutations, to preserve short
+Exact single-node acknowledgements wait 0.5–1.5 seconds; prefix, multiple-target,
+and whole-fleet replies are spread over 0.5–60.5 seconds (0.5–15.5 seconds for
+radio mutations, to preserve short
 temporary leases). This reduces simultaneous responses but is not a reliable
 delivery protocol for an arbitrarily large fleet. Use individual requests for
 confirmation and divide very large fleets into separately keyed channels.

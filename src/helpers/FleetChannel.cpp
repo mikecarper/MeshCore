@@ -156,11 +156,11 @@ bool FleetChannel::decode(Mesh& mesh, FleetCommand::Decoded& command) {
   const size_t unpadded = 3 + payload_length;
   if (unpadded > (size_t)length || (unpadded + 15) / 16 * 16 != (size_t)length
       || !zero(data + unpadded, length - unpadded)) return false;
-  if (payload_length < FleetCommand::HeaderSize + FleetCommand::SignatureSize
+  if (payload_length < FleetCommand::MinHeaderSize + FleetCommand::SignatureSize
       || storage::readLE32(data + 7) <= last_sequence_) return false;
   if (!FleetCommand::decode(controller_, channel_.secret, data + 3, payload_length,
                             mesh.getRTCClock()->getCurrentTime(), mesh.self_id.pub_key, command)) return false;
-  broadcast_ = zero(data + 3 + 12, FleetCommand::TargetSize);
+  broadcast_ = command.broadcast;
   return true;
 }
 

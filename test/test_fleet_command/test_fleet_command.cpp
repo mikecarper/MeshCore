@@ -47,6 +47,15 @@ protected:
     return Fleet::decode(publisher, ChannelKey, bytes.data(), bytes.size(),
                          now, publisher.pub_key, decoded);
   }
+
+  std::vector<uint8_t> encodeTargets(const Fleet::Targets& targets,
+                                    const char* command = "get radio2") {
+    std::vector<uint8_t> bytes(Fleet::MaxPayloadLength);
+    const size_t size = Fleet::encode(publisher, ChannelKey, Now, Now + 120,
+                                     targets, command, bytes.data(), bytes.size());
+    bytes.resize(size);
+    return bytes;
+  }
 };
 
 TEST_F(FleetCommandTest, ExplicitRadioAndFilterFamiliesAreAllowed) {
@@ -156,6 +165,7 @@ TEST_F(FleetCommandTest, ExactEnvelopeRoundTripsThroughVerifierBoundary) {
   EXPECT_EQ(calls + 1, g_mock_ed25519_verify_calls);
   EXPECT_EQ(Now, decoded.sequence);
   EXPECT_EQ(Now + 120, decoded.expires);
+  EXPECT_TRUE(decoded.broadcast);
   EXPECT_STREQ("get radio2", decoded.command);
 }
 
@@ -226,6 +236,7 @@ TEST_F(FleetCommandTest, MatchesHashedCompleteSelfIdentityOrAll) {
   hash.update(publisher.pub_key, PUB_KEY_SIZE);
   hash.finalize(target.data(), target.size());
   ASSERT_TRUE(decode(encode("get radio2", Now, Now + 120, target.data())));
+  EXPECT_FALSE(decoded.broadcast);
   target[15] ^= 1;
   EXPECT_FALSE(decode(encode("get radio2", Now, Now + 120, target.data())));
   EXPECT_TRUE(decode(encode()));
@@ -263,6 +274,215 @@ TEST_F(FleetCommandTest, UnixRangeBoundaryDoesNotWrap) {
   EXPECT_TRUE(decode(encode("get radio2", maximum, maximum), maximum - 60));
   EXPECT_FALSE(decode(encode("get radio2", maximum, maximum), maximum - 61));
   EXPECT_TRUE(encode("get radio2", maximum - 50, 1).empty());
+}
+
+TEST_F(FleetCommandTest, BoundedTargetTokenParsesMixedPrefixWidthsAndCompleteKeys) {
+  Fleet::Targets targets{};
+  const std::string full = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+  const std::string token = "A1B2C3D4,010203040506," + full;
+  const std::string joined = token + " get radio2";
+  ASSERT_TRUE(Fleet::parseTargets(joined.data(), token.size(), targets));
+  EXPECT_EQ(3, targets.count);
+  EXPECT_EQ(5 + 7 + 17, targets.length);
+  EXPECT_EQ(4, targets.data[0]);
+  EXPECT_EQ(0xA1, targets.data[1]);
+  EXPECT_EQ(0xD4, targets.data[4]);
+  EXPECT_EQ(6, targets.data[5]);
+  EXPECT_EQ(6, targets.data[11]);
+  EXPECT_EQ(16, targets.data[12]);
+  EXPECT_EQ(0xAE, targets.data[13]);
+  EXPECT_EQ(0xE4, targets.data[28]);
+  const char nonterminated[8] = {'0','1','0','2','0','3','0','4'};
+  EXPECT_TRUE(Fleet::parseTargets(nonterminated, sizeof(nonterminated), targets));
+  EXPECT_EQ(1, targets.count);
+  EXPECT_EQ(5, targets.length);
+  EXPECT_TRUE(Fleet::parseTargets("all plus other text", 3, targets));
+  EXPECT_EQ(0, targets.count);
+  EXPECT_EQ(0, targets.length);
+}
+
+TEST_F(FleetCommandTest, RejectsMalformedWholeTargetListsWithoutPartialResults) {
+  for (const std::string& token : {
+      std::string(""), std::string("all,01020304"), std::string("01020304,all"),
+      std::string("all,all"), std::string("ALL"), std::string(",01020304"),
+      std::string("01020304,"), std::string("01020304,,05060708"),
+      std::string("01020304,0506070g"), std::string("01020304 05060708"),
+      std::string("01020304, 05060708"), std::string("01020304\n"),
+      std::string("01"), std::string(10, '1'), std::string(16, '1'),
+      std::string(32, '1'), std::string(63, '1'), std::string(65, '1'),
+      std::string(64, '0'), std::string("01020304,") + std::string(64, '0')}) {
+    Fleet::Targets targets;
+    memset(&targets, 0xA5, sizeof(targets));
+    EXPECT_FALSE(Fleet::parseTargets(token.data(), token.size(), targets)) << token;
+    EXPECT_EQ(0, targets.length);
+    EXPECT_EQ(0, targets.count);
+  }
+  Fleet::Targets targets{};
+  EXPECT_FALSE(Fleet::parseTargets(nullptr, 8, targets));
+  EXPECT_FALSE(Fleet::parseTargets("01020304", SIZE_MAX, targets));
+  EXPECT_FALSE(Fleet::parseTargets("01020304", 0, targets));
+}
+
+TEST_F(FleetCommandTest, TargetRecordAndPayloadBudgetsAreSeparateAndBounded) {
+  std::string list;
+  for (unsigned count = 1; count <= 17; ++count) {
+    if (!list.empty()) list += ',';
+    list += "01020304";
+    Fleet::Targets targets{};
+    ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+    EXPECT_EQ(count, targets.count);
+    EXPECT_EQ(count * 5, targets.length);
+    EXPECT_EQ(count <= 15, !encodeTargets(targets).empty()) << count;
+  }
+  Fleet::Targets targets{};
+  list += ",01020304";
+  EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
+  list.clear();
+  const std::string full = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+  for (unsigned count = 1; count <= 5; ++count) {
+    if (!list.empty()) list += ',';
+    list += full;
+    ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+    EXPECT_EQ(count * 17, targets.length);
+  }
+  EXPECT_TRUE(encodeTargets(targets).empty());
+  list += ',' + full;
+  EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
+}
+
+TEST_F(FleetCommandTest, AllAndSingleCompleteKeyKeepLegacyFmc1Encoding) {
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets("all", 3, targets));
+  EXPECT_EQ(encode(), encodeTargets(targets));
+  char full[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
+  uint8_t hash[Fleet::TargetSize];
+  ASSERT_TRUE(Fleet::parseTarget(full, hash));
+  ASSERT_TRUE(Fleet::parseTargets(full, 64, targets));
+  EXPECT_EQ(encode("get radio2", Now, Now + 120, hash), encodeTargets(targets));
+  EXPECT_TRUE(decode(encodeTargets(targets)));
+  EXPECT_FALSE(decoded.broadcast);
+}
+
+TEST_F(FleetCommandTest, PrefixesAndListsUseFmc2WithSignedFraming) {
+  char full[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
+  for (size_t width : {8U, 12U}) {
+    Fleet::Targets targets{};
+    ASSERT_TRUE(Fleet::parseTargets(full, width, targets));
+    const auto bytes = encodeTargets(targets);
+    ASSERT_FALSE(bytes.empty());
+    EXPECT_EQ(std::string("FMC2"), std::string(bytes.begin(), bytes.begin() + 4));
+    EXPECT_EQ(1, bytes[12]);
+    EXPECT_EQ(width / 2, bytes[13]);
+    EXPECT_TRUE(decode(bytes));
+    EXPECT_TRUE(decoded.broadcast);
+  }
+  const std::string list = std::string(full) + ',' + full;
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+  const auto bytes = encodeTargets(targets);
+  EXPECT_TRUE(decode(bytes));
+  EXPECT_TRUE(decoded.broadcast);
+  EXPECT_EQ(2, bytes[12]);
+}
+
+TEST_F(FleetCommandTest, AnyMatchingEntryIsAcceptedButMalformedLaterEntryIsRejected) {
+  char full[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
+  const std::string prefix(full, 8);
+  Fleet::Targets targets{};
+  const std::string list = prefix + ",01020304," + full;
+  ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+  auto bytes = encodeTargets(targets);
+  ASSERT_TRUE(decode(bytes));
+  bytes[18] = 7; // Unknown type after the first matching four-byte prefix.
+  EXPECT_FALSE(decode(bytes));
+  EXPECT_FALSE(decoded.broadcast);
+  bytes = encodeTargets(targets);
+  bytes[12] = 18;
+  EXPECT_FALSE(decode(bytes));
+  bytes = encodeTargets(targets);
+  bytes[12] = 4;
+  EXPECT_FALSE(decode(bytes));
+  bytes = encodeTargets(targets);
+  bytes[13 + targets.length] = 0;
+  EXPECT_FALSE(decode(bytes));
+  bytes = encodeTargets(targets);
+  bytes[13 + targets.length] = 73;
+  EXPECT_FALSE(decode(bytes));
+  for (size_t length = 0; length < bytes.size(); ++length) {
+    const std::vector<uint8_t> truncated(bytes.begin(), bytes.begin() + length);
+    EXPECT_FALSE(decode(truncated));
+  }
+}
+
+TEST_F(FleetCommandTest, RawPrefixesIncludeLegitimateZeroPrefixesAndCollisions) {
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets("00000000", 8, targets));
+  const auto bytes = encodeTargets(targets);
+  uint8_t first[PUB_KEY_SIZE] = {}, second[PUB_KEY_SIZE] = {};
+  first[4] = 1;
+  second[4] = 2;
+  ASSERT_TRUE(Fleet::decode(publisher, ChannelKey, bytes.data(), bytes.size(),
+                           Now, first, decoded));
+  EXPECT_TRUE(decoded.broadcast);
+  ASSERT_TRUE(Fleet::decode(publisher, ChannelKey, bytes.data(), bytes.size(),
+                           Now, second, decoded));
+  ASSERT_TRUE(Fleet::parseTargets("000000000100", 12, targets));
+  const auto narrow = encodeTargets(targets);
+  EXPECT_TRUE(Fleet::decode(publisher, ChannelKey, narrow.data(), narrow.size(),
+                           Now, first, decoded));
+  EXPECT_FALSE(Fleet::decode(publisher, ChannelKey, narrow.data(), narrow.size(),
+                            Now, second, decoded));
+  first[0] = 1;
+  EXPECT_FALSE(Fleet::decode(publisher, ChannelKey, bytes.data(), bytes.size(),
+                            Now, first, decoded));
+}
+
+TEST_F(FleetCommandTest, InvalidExternalTargetStructuresNeverWriteOutput) {
+  std::array<uint8_t, Fleet::MaxPayloadLength> output;
+  output.fill(0xA5);
+  for (unsigned invalid = 0; invalid < 7; ++invalid) {
+    Fleet::Targets targets{};
+    if (invalid == 0) targets.length = 1;
+    if (invalid == 1) targets.count = 1;
+    if (invalid == 2) targets.count = 18;
+    if (invalid == 3) targets.length = 87;
+    if (invalid == 4) { targets.count = 1; targets.length = 5; targets.data[0] = 3; }
+    if (invalid == 5) { targets.count = 2; targets.length = 5; targets.data[0] = 4; }
+    if (invalid == 6) { targets.count = 1; targets.length = 4; targets.data[0] = 4; }
+    EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120,
+                               targets, "get radio2", output.data(), output.size()));
+    for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+  }
+}
+
+TEST_F(FleetCommandTest, LargestFmc2EnvelopeFitsAndOversizedCombinationWritesNothing) {
+  const std::string prefix = "set flood.rule.1 ";
+  const std::string maximum = prefix + std::string(Fleet::MaxCommandLength - prefix.size(), 'a');
+  Fleet::Targets targets{};
+  const char* three = "01020304,05060708,090A0B0C";
+  ASSERT_TRUE(Fleet::parseTargets(three, strlen(three), targets));
+  EXPECT_EQ(Fleet::MaxPayloadLength, encodeTargets(targets, maximum.c_str()).size());
+  const char* four = "01020304,05060708,090A0B0C,01020304";
+  ASSERT_TRUE(Fleet::parseTargets(four, strlen(four), targets));
+  std::array<uint8_t, Fleet::MaxPayloadLength> output;
+  output.fill(0xA5);
+  EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120,
+                            targets, maximum.c_str(), output.data(), output.size()));
+  for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+}
+
+TEST_F(FleetCommandTest, UnrepresentableZeroDigestNeverBecomesAllDuringLegacyEncoding) {
+  Fleet::Targets targets{};
+  targets.count = 1;
+  targets.length = 17;
+  targets.data[0] = 16;
+  const auto bytes = encodeTargets(targets);
+  ASSERT_FALSE(bytes.empty());
+  EXPECT_EQ(std::string("FMC2"), std::string(bytes.begin(), bytes.begin() + 4));
+  EXPECT_FALSE(decode(bytes));
 }
 
 } // namespace

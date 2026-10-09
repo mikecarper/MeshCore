@@ -9719,7 +9719,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     if (strncmp(text, "send", 4)
         || (text[4] != ' ' && text[4] != '\t')) {
       snprintf(reply, reply_capacity,
-               "Error: use fleet send <channel-index> <all|64-hex-key> <command>");
+               "Error: use fleet send <channel-index> <all|key[,key...]> <command>");
       return true;
     }
     text += 4;
@@ -9741,20 +9741,14 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       return true;
     }
     while (*text == ' ' || *text == '\t') ++text;
-    // Reuse the wire buffer for the temporary target token. Encoding happens
-    // only after the target has been parsed into its separate binary buffer.
-    uint8_t payload[mesh::FleetCommand::MaxPayloadLength];
     const size_t target_length = strcspn(text, " \t");
-    if (target_length > PUB_KEY_SIZE * 2U
-        || text[target_length] == 0) {
-      snprintf(reply, reply_capacity, "Error: fleet target must be all or a full public key");
-      return true;
-    }
-    memcpy(payload, text, target_length);
-    payload[target_length] = 0;
-    uint8_t target[mesh::FleetCommand::TargetSize];
-    if (!mesh::FleetCommand::parseTarget((const char*)payload, target)) {
-      snprintf(reply, reply_capacity, "Error: fleet target must be all or a full public key");
+    mesh::FleetCommand::Targets targets;
+    // Parse the complete comma-separated target token before signing anything.
+    // A list is one atomic packet; it must never become partial fan-out.
+    if (text[target_length] == 0
+        || !mesh::FleetCommand::parseTargets(text, target_length, targets)) {
+      snprintf(reply, reply_capacity,
+               "Error: fleet targets must be all or comma-separated 8/12/64-hex keys");
       return true;
     }
     text += target_length;
@@ -9787,12 +9781,14 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       snprintf(reply, reply_capacity, "Error: wait for the next clock second before fleet send");
       return true;
     }
+    uint8_t payload[mesh::FleetCommand::MaxPayloadLength];
     const size_t length = mesh::FleetCommand::encode(
         self_id, channel.channel.secret, sequence,
-        sequence + mesh::FleetCommand::MaxLifetime, target, text,
+        sequence + mesh::FleetCommand::MaxLifetime, targets, text,
         payload, sizeof(payload));
     if (!length) {
-      snprintf(reply, reply_capacity, "Error: fleet command is too long or invalid");
+      snprintf(reply, reply_capacity,
+               "Error: fleet targets and command exceed one packet; use fewer targets");
     } else if (!sendGroupData(channel.channel, nullptr, OUT_PATH_UNKNOWN,
                               mesh::FleetCommand::DataType, payload, (int)length)) {
       snprintf(reply, reply_capacity, "Error: could not queue fleet command");

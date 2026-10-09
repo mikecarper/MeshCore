@@ -126,6 +126,7 @@ int main(int argc, char** argv) {
     assert(!node.handleCommand("fleet send 1 all set radio2 off", 0, nullptr));
     assert(!node.handleCommand("fleetish", 0, reply));
     rejected(node, "fleet send 1 all set radio2 off", 1);
+    rejected(node, "fleet send 1 00112233,445566778899 set radio2 off", 1);
     rejected(node, "fleet", 1);
     rejected(node, "fleet send 1 all reboot");
     rejected(node, "fleet send 1 all get prv.key");
@@ -134,12 +135,13 @@ int main(int argc, char** argv) {
     assert(!strncmp(reply, "AB|OK - fleet command queued; seq=", 32));
     assert(node.queued == 1 && node.sent_type == mesh::FleetCommand::DataType);
     assert(node.sent_policy == 2); // The configured radio2 channel route survives.
+    assert(!memcmp(node.sent, "FMC1", 4)); // Broadcasts remain compatible with earlier receivers.
   } else if (scenario == "syntax") {
     for (const char* command : {"fleet", "fleet send", "fleet sender 1 all set radio2 off",
         "fleet send -1 all set radio2 off", "fleet send 4 all set radio2 off",
         "fleet send 4294967296 all set radio2 off", "fleet send 1x all set radio2 off",
         "fleet send 1 all", "fleet send 1 a set radio2 off",
-        "fleet send 1 111111111111 set radio2 off", "fleet send 1 all get password",
+        "fleet send 1 11111111111111 set radio2 off", "fleet send 1 all get password",
         "fleet send 1 all set radio2 off\nreboot"}) rejected(node, command);
     rejected(node, ("fleet send 1 " + std::string(65, '1') + " set radio2 off").c_str());
     rejected(node, ("fleet send 1 all set flood.filter " + std::string(150, '1')).c_str());
@@ -187,6 +189,7 @@ int main(int argc, char** argv) {
         + " set tempradio2 910.5,500,5,5,rxtx,1";
     assert(node.handleCommand(command.c_str(), 0, reply));
     assert(node.queued == 1);
+    assert(!memcmp(node.sent, "FMC1", 4)); // One full key keeps the original envelope.
     uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
     mesh::FleetCommand::Decoded decoded;
     assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
@@ -197,6 +200,78 @@ int main(int argc, char** argv) {
     recipient[31] ^= 1;
     assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
         node.sent, node.sent_length, node.clock.now, recipient, decoded));
+  } else if (scenario == "mixed_targets") {
+    const std::string command = "fleet send 1 42424242,515151515151," + fullKey(0x63)
+        + " set radio2 off";
+    assert(node.handleCommand(command.c_str(), 0, reply));
+    assert(node.queued == 1 && node.sent_policy == 2);
+    assert(!memcmp(node.sent, "FMC2", 4));
+    mesh::FleetCommand::Decoded decoded;
+    uint8_t recipient[32];
+    auto matched = [&]() {
+      return mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded);
+    };
+    memset(recipient, 0x42, sizeof(recipient));
+    assert(matched());
+    assert(!strcmp(decoded.command, "set radio2 off"));
+    recipient[31] ^= 1;
+    assert(matched()); // An eight-hex target selects the four-byte prefix.
+    recipient[3] ^= 1;
+    assert(!matched());
+    memset(recipient, 0x51, sizeof(recipient));
+    assert(matched());
+    recipient[31] ^= 1;
+    assert(matched()); // Twelve hex selects all six specified prefix bytes.
+    recipient[5] ^= 1;
+    assert(!matched());
+    memset(recipient, 0x63, sizeof(recipient));
+    assert(matched());
+    recipient[31] ^= 1;
+    assert(!matched()); // Full keys retain the complete-key fingerprint.
+    memset(recipient, 0x77, sizeof(recipient));
+    assert(!matched());
+  } else if (scenario == "multiple_full_targets") {
+    const std::string command = "fleet send 1 " + fullKey(0x42) + "," + fullKey(0x63)
+        + " set radio2 off";
+    assert(node.handleCommand(command.c_str(), 0, reply));
+    assert(node.queued == 1);
+    assert(!memcmp(node.sent, "FMC2", 4));
+    mesh::FleetCommand::Decoded decoded;
+    uint8_t recipient[32];
+    for (uint8_t value : {0x42, 0x63}) {
+      memset(recipient, value, sizeof(recipient));
+      assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      recipient[31] ^= 1;
+      assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+    }
+  } else if (scenario == "invalid_target_lists") {
+    for (const char* targets : {"all,00112233", "00112233,all", "00112233,,44556677",
+        ",00112233", "00112233,", "0011223", "001122334", "0011223344556",
+        "GG112233", "00112233,44556677889Z"}) {
+      rejected(node, (std::string("fleet send 1 ") + targets + " set radio2 off").c_str());
+    }
+    assert(node.handleCommand("fleet send 1 00112233 set radio2 off", 0, reply));
+    assert(node.queued == 1); // Invalid lists consumed no sequence or partial send.
+  } else if (scenario == "target_capacity") {
+    std::string targets;
+    for (unsigned i = 1; i <= 17; ++i) {
+      char prefix[9]; snprintf(prefix, sizeof(prefix), "%08x", i);
+      if (!targets.empty()) targets += ',';
+      targets += prefix;
+    }
+    mesh::FleetCommand::Targets parsed;
+    assert(mesh::FleetCommand::parseTargets(targets.c_str(), targets.size(), parsed));
+    assert(node.handleCommand(("fleet send 1 " + targets + " set radio2 off").c_str(), 0, reply));
+    assert(strstr(reply, "exceed one packet") && node.queued == 0);
+    assert(node.handleCommand("fleet send 1 00112233 set radio2 off", 0, reply));
+    assert(node.queued == 1);
+    ++node.clock.now;
+    targets += ",44556677"; // More than the entire target-record capacity.
+    rejected(node, ("fleet send 1 " + targets + " set radio2 off").c_str());
+    assert(node.queued == 1);
   } else assert(false);
   printf("Companion fleet scenario %s passed\n", argv[1]);
 }
@@ -262,6 +337,18 @@ class CompanionFleetControlTests(unittest.TestCase):
 
     def test_production_encode_targets_full_key_and_sets_bounded_expiry(self):
         self.scenario("signed_target")
+
+    def test_mixed_prefix_and_full_key_list_matches_only_selected_nodes(self):
+        self.scenario("mixed_targets")
+
+    def test_multiple_full_keys_share_one_signed_packet(self):
+        self.scenario("multiple_full_targets")
+
+    def test_invalid_lists_reject_atomically_without_consuming_sequence(self):
+        self.scenario("invalid_target_lists")
+
+    def test_valid_list_exceeding_packet_capacity_never_partially_sends(self):
+        self.scenario("target_capacity")
 
     def test_disabled_profiles_require_no_sender_peripherals_or_crypto_link(self):
         harness = r'''

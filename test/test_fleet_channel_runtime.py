@@ -292,6 +292,32 @@ static Packet command(const LocalIdentity& publisher,uint32_t sequence,const cha
  return raw(payload,3+length);
 }
 
+static Packet targetsCommand(const LocalIdentity& publisher,uint32_t sequence,const std::string& list,
+                             const char* text="get radio2"){
+ FleetCommand::Targets targets;assert(FleetCommand::parseTargets(list.c_str(),list.size(),targets));
+ uint8_t payload[184]={};
+ const size_t length=FleetCommand::encode(publisher,channel_key,sequence,sequence+300,targets,text,
+                                       payload+3,sizeof(payload)-3);
+ assert(length);payload[0]=uint8_t(FleetCommand::DataType);payload[1]=uint8_t(FleetCommand::DataType>>8);
+ payload[2]=uint8_t(length);
+ return raw(payload,3+length);
+}
+static Packet shortNewAll(const LocalIdentity& publisher,uint32_t sequence){
+ constexpr const char* text="get radio2";
+ uint8_t data[184]={},message[160]={};uint8_t* payload=data+3;
+ memcpy(payload,"FMC2",4);storage::writeLE32(payload+4,sequence);
+ storage::writeLE32(payload+8,sequence+300);payload[12]=0;
+ const size_t text_size=strlen(text);payload[13]=uint8_t(text_size);memcpy(payload+14,text,text_size);
+ constexpr const char* domain="MeshCoreFleet1";const size_t domain_size=strlen(domain);
+ memcpy(message,domain,domain_size);memcpy(message+domain_size,channel_key,16);
+ memcpy(message+domain_size+16,payload,14+text_size);
+ publisher.sign(payload+14+text_size,message,int(domain_size+16+14+text_size));
+ data[0]=uint8_t(FleetCommand::DataType);data[1]=uint8_t(FleetCommand::DataType>>8);
+ data[2]=uint8_t(14+text_size+64);return raw(data,3+data[2]);
+}
+static std::string publicHex(const Identity& identity){
+ char text[65];Utils::toHex(text,identity.pub_key,32);return text;
+}
 static Packet signedUnchecked(const LocalIdentity& publisher,uint32_t sequence,uint32_t expires,
                               const char* text){
  uint8_t data[184]={},message[160]={};size_t text_size=strlen(text);
@@ -317,7 +343,7 @@ static unsigned apply(FleetChannel& fleet,fs::FS& fs,Mesh& mesh,RadioProfileCLI&
  fleet.service(mesh,profiles,"test:node",[&](uint32_t seq,const char* text,char* reply){
   ++calls;assert(storage::readLE32(fs.files.at(Path).data()+56)==seq);
   assert(mesh.scoped_profile==1&&mesh.scoped_generation==17);assert(profiles.command);
-  assert(!strcmp(text,"set radio2 off")||!strcmp(text,"get radio2.status"));
+  assert(!strcmp(text,"set radio2 off")||!strcmp(text,"get radio2.status")||!strcmp(text,"get radio2"));
   if(mutation)profiles.stage();strcpy(reply,fail_handler?"Err - rejected":"OK");
  });
  assert(mesh.scoped_profile==0&&mesh.scoped_generation==0);assert(!profiles.command);return calls;
@@ -532,6 +558,40 @@ int main(int argc,char** argv){
   assert(!captureFleetReplyScope(regions,static_cast<Region*>(nullptr),&packet,captured));
   region.wildcard=false;packet.transport_codes[0]^=1;
   assert(!captureFleetReplyScope(regions,&region,&packet,captured));
+
+ }else if(scenario=="fmc2_short_all"){
+  enroll(fleet,publisher);Packet packet=shortNewAll(publisher,mesh.clock.now);
+  uint8_t plaintext[184]={};assert(Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1)>0);
+  assert(plaintext[2]<FleetCommand::HeaderSize+FleetCommand::SignatureSize);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
+  assert(apply(fleet,fs,mesh,profiles,packet)==0);
+ }else if(scenario=="fmc2_short_prefix"){
+  enroll(fleet,publisher);Packet packet=targetsCommand(publisher,mesh.clock.now,publicHex(mesh.self_id).substr(0,8));
+  uint8_t plaintext[184]={};assert(Utils::MACThenDecrypt(channel_key,plaintext,packet.payload+1,packet.payload_len-1)>0);
+  assert(plaintext[2]==FleetCommand::HeaderSize+FleetCommand::SignatureSize);
+  assert(!memcmp(plaintext+3,"FMC2",4));
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
+  FleetChannel rebooted(&fs);assert(apply(rebooted,fs,mesh,profiles,packet)==0);
+ }else if(scenario=="fmc2_overlap_matches_once"){
+  enroll(fleet,publisher);const std::string mine=publicHex(mesh.self_id);
+  Packet packet=targetsCommand(publisher,mesh.clock.now,mine.substr(0,8)+","+mine);
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(mesh.queued==1&&last_jitter_max==60500);
+  assert(config(fleet,"get fleet.stats").find("accepted=1")!=std::string::npos);
+ }else if(scenario=="fmc2_nonmatching_no_reserve"){
+  enroll(fleet,publisher);const auto previous=fs.files.at(Path);LocalIdentity stranger;
+  char different_prefix[9];uint8_t changed[4];memcpy(changed,mesh.self_id.pub_key,4);changed[0]^=1;
+  Utils::toHex(different_prefix,changed,4);
+  Packet packet=targetsCommand(publisher,mesh.clock.now,std::string(different_prefix)+","+publicHex(stranger));
+  assert(apply(fleet,fs,mesh,profiles,packet)==0);assert(mesh.queued==0&&fs.files.at(Path)==previous);
+  packet=targetsCommand(publisher,mesh.clock.now,publicHex(stranger)+","+publicHex(mesh.self_id));
+  assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
+ }else if(scenario=="fmc2_target_tamper"){
+  enroll(fleet,publisher);const auto previous=fs.files.at(Path);
+  Packet good=targetsCommand(publisher,mesh.clock.now,publicHex(mesh.self_id).substr(0,12));
+  uint8_t plaintext[184]={};const int length=Utils::MACThenDecrypt(channel_key,plaintext,good.payload+1,good.payload_len-1);
+  assert(length>0);plaintext[3+13]^=1;Packet changed=raw(plaintext,length);
+  assert(apply(fleet,fs,mesh,profiles,changed)==0);assert(fs.files.at(Path)==previous);
+  assert(apply(fleet,fs,mesh,profiles,good)==1);
  }else if(scenario=="existing_mutation"){
   enroll(fleet,publisher);Packet packet=command(publisher,mesh.clock.now);
   profiles.mutation=true;assert(apply(fleet,fs,mesh,profiles,packet)==0);
@@ -680,6 +740,21 @@ class SHA256 : public SHA256Base {{ public:
 
     def test_scope_selects_matching_rotated_region_key_and_authenticates_new_ack_payload(self):
         self.scenario("rotated_scope")
+
+    def test_new_short_broadcast_envelope_dispatches_and_preserves_replay_protection(self):
+        self.scenario("fmc2_short_all")
+
+    def test_new_public_key_prefix_envelope_dispatches_and_staggers_possible_multiple_acks(self):
+        self.scenario("fmc2_short_prefix")
+
+    def test_overlapping_prefix_and_full_key_matches_execute_once(self):
+        self.scenario("fmc2_overlap_matches_once")
+
+    def test_nonmatching_target_list_never_reserves_sequence_and_matching_list_can_reuse_it(self):
+        self.scenario("fmc2_nonmatching_no_reserve")
+
+    def test_modified_new_target_header_never_dispatches_without_valid_signature(self):
+        self.scenario("fmc2_target_tamper")
 
     def test_existing_remote_radio_mutation_blocks_fleet_without_reserving_sequence(self):
         self.scenario("existing_mutation")

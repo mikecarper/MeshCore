@@ -7,8 +7,11 @@ namespace {
 
 constexpr char Domain[] = "MeshCoreFleet1";
 constexpr size_t SignedMessageCapacity = sizeof(Domain) - 1
-    + FleetCommand::KeySize + FleetCommand::HeaderSize
-    + FleetCommand::MaxCommandLength;
+    + FleetCommand::KeySize + FleetCommand::MaxPayloadLength
+    - FleetCommand::SignatureSize;
+static_assert(FleetCommand::HeaderSize + FleetCommand::MaxCommandLength
+              + FleetCommand::SignatureSize <= FleetCommand::MaxPayloadLength,
+              "Legacy fleet envelope must fit the shared packet budget");
 constexpr uint8_t PublicKey[FleetCommand::KeySize] = {
   0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
   0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
@@ -39,6 +42,37 @@ void targetHash(const uint8_t* full_key, uint8_t* target) {
   SHA256 hash;
   hash.update(full_key, PUB_KEY_SIZE);
   hash.finalize(target, FleetCommand::TargetSize);
+}
+
+// Validate every record, including records after one that matches this node.
+// An absent self key is used by encode to validate externally supplied lists.
+bool targetRecords(const uint8_t* data, size_t available, uint8_t count,
+                   const uint8_t* self, size_t& consumed, bool& matched,
+                   bool& broadcast) {
+  consumed = 0;
+  matched = count == 0;
+  broadcast = count == 0 || count > 1;
+  if (count > FleetCommand::MaxTargetCount) return false;
+  uint8_t hash[FleetCommand::TargetSize];
+  bool hashed = false;
+  for (unsigned i = 0; i < count; ++i) {
+    if (consumed >= available) return false;
+    const uint8_t type = data[consumed++];
+    if (type != 4 && type != 6 && type != FleetCommand::TargetSize) return false;
+    if (type > available - consumed
+        || consumed + type > FleetCommand::MaxTargetBytes) return false;
+    if (type != FleetCommand::TargetSize) broadcast = true;
+    if (self) {
+      if (type == FleetCommand::TargetSize && !hashed) {
+        targetHash(self, hash);
+        hashed = true;
+      }
+      const uint8_t* expected = type == FleetCommand::TargetSize ? hash : self;
+      if (!memcmp(data + consumed, expected, type)) matched = true;
+    }
+    consumed += type;
+  }
+  return true;
 }
 
 int hexDigit(char digit) {
@@ -150,6 +184,43 @@ bool FleetCommand::parseTarget(const char* text, uint8_t* target) {
   return !zero(target, TargetSize);
 }
 
+bool FleetCommand::parseTargets(const char* text, size_t length, Targets& targets) {
+  memset(&targets, 0, sizeof(targets));
+  if (!text || !length || length > MaxTargetCount * (PUB_KEY_SIZE * 2 + 1)) return false;
+  if (length == 3 && !memcmp(text, "all", 3)) return true;
+  // Clear partial output on failure without retaining another 88-byte list
+  // on the command parser's stack.
+  const auto fail = [&targets]() {
+    memset(&targets, 0, sizeof(targets));
+    return false;
+  };
+  size_t cursor = 0;
+  while (cursor < length) {
+    const size_t start = cursor;
+    while (cursor < length && text[cursor] != ',') ++cursor;
+    const size_t token_length = cursor - start;
+    if (token_length != 8 && token_length != 12 && token_length != PUB_KEY_SIZE * 2) return fail();
+    const size_t type = token_length == PUB_KEY_SIZE * 2 ? TargetSize : token_length / 2;
+    if (targets.count == MaxTargetCount || targets.length + 1 + type > MaxTargetBytes) return fail();
+    uint8_t full_key[PUB_KEY_SIZE];
+    const size_t byte_length = token_length / 2;
+    for (size_t i = 0; i < byte_length; ++i) {
+      const int upper = hexDigit(text[start + i * 2]);
+      const int lower = hexDigit(text[start + i * 2 + 1]);
+      if (upper < 0 || lower < 0) return fail();
+      full_key[i] = uint8_t((upper << 4) | lower);
+    }
+    if (type == TargetSize && zero(full_key, PUB_KEY_SIZE)) return fail();
+    targets.data[targets.length++] = uint8_t(type);
+    if (type == TargetSize) targetHash(full_key, targets.data + targets.length);
+    else memcpy(targets.data + targets.length, full_key, type);
+    targets.length += uint8_t(type);
+    ++targets.count;
+    if (cursor < length && ++cursor == length) return fail();
+  }
+  return true;
+}
+
 bool FleetCommand::commandAllowed(const char* command) {
   if (!command) return false;
   size_t length = 0;
@@ -221,33 +292,87 @@ size_t FleetCommand::encode(const LocalIdentity& publisher, const uint8_t* key,
   return length;
 }
 
+size_t FleetCommand::encode(const LocalIdentity& publisher, const uint8_t* key,
+                           uint32_t sequence, uint32_t expires,
+                           const Targets& targets, const char* command,
+                           uint8_t* output, size_t capacity) {
+  if (!privateKeyAllowed(key) || !output || targets.length > MaxTargetBytes
+      || !lifetimeAllowed(sequence, expires) || !commandAllowed(command)
+      || zero(publisher.pub_key, PUB_KEY_SIZE)) return 0;
+  size_t consumed;
+  bool matched, broadcast;
+  if (!targetRecords(targets.data, targets.length, targets.count, nullptr,
+                     consumed, matched, broadcast) || consumed != targets.length) return 0;
+  // Preserve compatibility with receivers implementing the original format
+  // whenever the request can be represented without prefixes or a list.
+  if (!targets.count) {
+    const uint8_t all[TargetSize] = {};
+    return encode(publisher, key, sequence, expires, all, command, output, capacity);
+  }
+  if (targets.count == 1 && targets.data[0] == TargetSize
+      && !zero(targets.data + 1, TargetSize)) {
+    return encode(publisher, key, sequence, expires, targets.data + 1, command, output, capacity);
+  }
+  const size_t command_length = strlen(command);
+  const size_t unsigned_length = MinHeaderSize + targets.length + command_length;
+  const size_t length = unsigned_length + SignatureSize;
+  if (length > MaxPayloadLength || capacity < length) return 0;
+  memcpy(output, "FMC2", 4);
+  write32(output + 4, sequence);
+  write32(output + 8, expires);
+  output[12] = targets.count;
+  memcpy(output + 13, targets.data, targets.length);
+  output[13 + targets.length] = uint8_t(command_length);
+  memcpy(output + MinHeaderSize + targets.length, command, command_length);
+  uint8_t message[SignedMessageCapacity];
+  const size_t message_length = signedMessage(key, output, unsigned_length, message);
+  publisher.sign(output + unsigned_length, message, int(message_length));
+  erase(message, sizeof(message));
+  return length;
+}
+
 bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
                          const uint8_t* payload, size_t length, uint32_t now,
                          const uint8_t* self_public_key, Decoded& output) {
   memset(&output, 0, sizeof(output));
   if (!privateKeyAllowed(key) || !payload || !self_public_key
       || zero(publisher.pub_key, PUB_KEY_SIZE) || zero(self_public_key, PUB_KEY_SIZE)
-      || now < MinEpoch || length < HeaderSize + SignatureSize
-      || length > MaxPayloadLength || memcmp(payload, "FMC1", 4)) return false;
-  const size_t command_length = payload[28];
+      || now < MinEpoch || length < MinHeaderSize + SignatureSize
+      || length > MaxPayloadLength) return false;
+  const size_t unsigned_length = length - SignatureSize;
+  size_t command_offset;
+  bool broadcast;
+  if (!memcmp(payload, "FMC1", 4)) {
+    if (length < HeaderSize + SignatureSize) return false;
+    broadcast = zero(payload + 12, TargetSize);
+    if (!broadcast) {
+      uint8_t target[TargetSize];
+      targetHash(self_public_key, target);
+      if (memcmp(target, payload + 12, TargetSize)) return false;
+    }
+    command_offset = HeaderSize;
+  } else if (!memcmp(payload, "FMC2", 4)) {
+    size_t consumed;
+    bool matched;
+    if (!targetRecords(payload + 13, unsigned_length - 13, payload[12],
+                       self_public_key, consumed, matched, broadcast)
+        || !matched) return false;
+    command_offset = MinHeaderSize + consumed;
+    if (command_offset > unsigned_length) return false;
+  } else return false;
+  const size_t command_length = payload[command_offset - 1];
   if (!command_length || command_length > MaxCommandLength
-      || length != HeaderSize + command_length + SignatureSize) return false;
+      || unsigned_length != command_offset + command_length) return false;
   const uint32_t sequence = read32(payload + 4), expires = read32(payload + 8);
   if (!lifetimeAllowed(sequence, expires) || expires < now
       || (sequence > now && sequence - now > MaxClockLead)) return false;
-  if (!zero(payload + 12, TargetSize)) {
-    uint8_t target[TargetSize];
-    targetHash(self_public_key, target);
-    if (memcmp(target, payload + 12, TargetSize)) return false;
-  }
   // Reject embedded NUL bytes, which would authorize a different text from
   // the signed byte string when passed to the CLI parser.
-  if (memchr(payload + HeaderSize, 0, command_length)) return false;
+  if (memchr(payload + command_offset, 0, command_length)) return false;
   char command[MaxCommandLength + 1];
-  memcpy(command, payload + HeaderSize, command_length);
+  memcpy(command, payload + command_offset, command_length);
   command[command_length] = 0;
   if (!commandAllowed(command)) return false;
-  const size_t unsigned_length = HeaderSize + command_length;
   uint8_t message[SignedMessageCapacity];
   const size_t message_length = signedMessage(key, payload, unsigned_length, message);
   const bool valid = publisher.verify(payload + unsigned_length, message, int(message_length));
@@ -255,6 +380,7 @@ bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
   if (!valid) return false;
   output.sequence = sequence;
   output.expires = expires;
+  output.broadcast = broadcast;
   memcpy(output.command, command, command_length + 1);
   return true;
 }
