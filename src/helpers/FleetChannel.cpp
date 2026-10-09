@@ -213,7 +213,8 @@ FleetChannel::DecodeResult FleetChannel::decode(Mesh& mesh, FleetCommand::Decode
       && storage::readLE32(envelope + 4) > last_sequence_
       && (!assembled || storage::readLE32(envelope + 4) == assembly_sequence_)
       && FleetCommand::decode(controller_, channel_.secret, envelope, envelope_length,
-                             mesh.getRTCClock()->getCurrentTime(), mesh.self_id.pub_key, command);
+                             mesh.getRTCClock()->getCurrentTime(), mesh.self_id.pub_key, command,
+                             matchesFleetRegion, regions_, matchesFleetLocation, hooks_);
   if (assembled || (valid && assembly_parts_ && command.sequence >= assembly_sequence_)) clearAssembly();
   if (!valid) return DecodeResult::Rejected;
   broadcast_ = command.broadcast;

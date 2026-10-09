@@ -1103,6 +1103,7 @@ public:
   // CommonCLICallbacks
   bool supportsFleetControl() const override { return true; }
 #if MESH_ENABLE_FLEET_CONTROL
+  bool getFleetLocation(int32_t& latitude_e6, int32_t& longitude_e6) const override;
   void beginFleetCommand() override { fleet_command_ = true; }
   void endFleetCommand() override { fleet_command_ = false; }
   bool hasFleetReplyMutation() const override { return fleet_schedule_pending_; }

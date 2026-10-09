@@ -109,6 +109,9 @@ public:
   }
   virtual void loop() { }
   virtual void setTelemetryLocationAccessAvailable(bool available);
+  // Read the existing fresh cache without acquiring GPS, changing power, or
+  // taking a UART. Sleeping/off receivers may retain a recent valid fix.
+  bool getCachedGpsPosition(double& latitude, double& longitude) const;
   bool requestGpsTelemetryTimeSync(uint64_t min_interval_secs) {
 #if ENV_INCLUDE_GPS
     // A denied request must not consume the provider's throttle or reclaim a

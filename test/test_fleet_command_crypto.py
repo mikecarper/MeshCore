@@ -2,6 +2,7 @@
 """Exercise the production fleet envelope with real Ed25519, never native mocks."""
 
 import hashlib
+import math
 from pathlib import Path
 import struct
 import subprocess
@@ -85,6 +86,31 @@ void hex(const uint8_t* bytes, size_t size) {
   std::cout << '\n';
 }
 
+struct RegionNames {
+  std::vector<std::string> configured, home;
+  static bool match(void* context, mesh::FleetCommand::RegionTarget kind,
+                    const char* name, size_t length) {
+    const auto& regions = *static_cast<RegionNames*>(context);
+    const auto& names = kind == mesh::FleetCommand::RegionTarget::Configured
+        ? regions.configured : regions.home;
+    for (const auto& candidate : names) {
+      const char* canonical = candidate.c_str() + (!candidate.empty() && candidate[0] == '#');
+      if (strlen(canonical) == length && !memcmp(canonical, name, length)) return true;
+    }
+    return false;
+  }
+};
+
+struct GeoLocation {
+  bool known = false;
+  int32_t latitude = 0, longitude = 0;
+  static bool match(void* context, int32_t latitude, int32_t longitude, uint32_t radius) {
+    const auto& location = *static_cast<GeoLocation*>(context);
+    return location.known && mesh::FleetCommand::withinRadius(latitude, longitude, radius,
+                                                            location.latitude, location.longitude);
+  }
+};
+
 int main(int argc, char** argv) {
   using Fleet = mesh::FleetCommand;
   const std::string operation = argc > 1 ? argv[1] : "";
@@ -115,7 +141,13 @@ int main(int argc, char** argv) {
     FixedRng rng; mesh::LocalIdentity publisher(&rng);
     const auto key = unhex(argv[2]); assert(key.size() == Fleet::KeySize);
     Fleet::Targets targets;
-    if (!Fleet::parseTargets(argv[3], strlen(argv[3]), targets)) { std::cout << "reject\n"; return 0; }
+    memset(&targets, 0xA5, sizeof(targets));
+    if (!Fleet::parseTargets(argv[3], strlen(argv[3]), targets)) {
+      assert(!targets.count && !targets.length);
+      for (uint8_t byte : targets.data) assert(byte == 0);
+      assert(fleet_sign_calls == 0);
+      std::cout << "reject\n"; return 0;
+    }
     std::array<uint8_t, Fleet::MaxEnvelopeLength + 64> output;
     output.fill(0xA5);
     const unsigned signed_before = fleet_sign_calls;
@@ -166,17 +198,47 @@ int main(int argc, char** argv) {
     }
     return 0;
   }
-  if (argc == 7 && (std::string(argv[1]) == "decode" || std::string(argv[1]) == "decode2")) {
+  if (argc == 7 && operation == "within-radius") {
+    std::cout << int(Fleet::withinRadius(int32_t(std::stol(argv[2])), int32_t(std::stol(argv[3])),
+        uint32_t(std::stoul(argv[4])), int32_t(std::stol(argv[5])), int32_t(std::stol(argv[6])))) << '\n';
+    return 0;
+  }
+  if ((argc == 7 && (operation == "decode" || operation == "decode2"))
+      || (argc == 8 && operation == "decode-regions")
+      || (argc == 11 && operation == "decode-targets")) {
     const auto public_key = unhex(argv[2]), key = unhex(argv[3]), self = unhex(argv[4]), bytes = unhex(argv[6]);
     assert(public_key.size() == PUB_KEY_SIZE && self.size() == PUB_KEY_SIZE && key.size() == Fleet::KeySize);
     mesh::Identity publisher(public_key.data()); Fleet::Decoded output;
+    RegionNames regions;
+    if (operation == "decode-regions" || operation == "decode-targets") {
+      const std::string selected(argv[7]);
+      size_t cursor = 0;
+      while (cursor < selected.size()) {
+        const size_t end = selected.find(',', cursor);
+        const std::string name = selected.substr(cursor, end == std::string::npos ? end : end - cursor);
+        if (!name.compare(0, 7, "region:")) regions.configured.push_back(name.substr(7));
+        else { assert(!name.compare(0, 5, "home:")); regions.home.push_back(name.substr(5)); }
+        if (end == std::string::npos) break;
+        cursor = end + 1;
+      }
+    }
+    GeoLocation location;
+    if (operation == "decode-targets") {
+      assert(!strcmp(argv[8], "0") || !strcmp(argv[8], "1"));
+      location.known = !strcmp(argv[8], "1");
+      location.latitude = int32_t(std::stol(argv[9]));
+      location.longitude = int32_t(std::stol(argv[10]));
+    }
     if (!Fleet::decode(publisher, key.data(), bytes.data(), bytes.size(),
-                       uint32_t(std::stoul(argv[5])), self.data(), output)) {
+                       uint32_t(std::stoul(argv[5])), self.data(), output,
+                       operation == "decode-regions" || operation == "decode-targets"
+                           ? RegionNames::match : nullptr, &regions,
+                       operation == "decode-targets" ? GeoLocation::match : nullptr, &location)) {
       assert(output.sequence == 0 && output.expires == 0 && !output.broadcast && output.command[0] == 0);
       std::cout << "reject\n";
     } else {
       std::cout << output.sequence << '\n' << output.expires << '\n' << output.command << '\n';
-      if (std::string(argv[1]) == "decode2") std::cout << int(output.broadcast) << '\n';
+      if (operation != "decode") std::cout << int(output.broadcast) << '\n';
     }
     return 0;
   }
@@ -195,7 +257,8 @@ def envelope(command="get radio2", sequence=NOW, expires=NOW + 120,
 def envelope2(entries=(), command="get radio2", sequence=NOW, expires=NOW + 120,
               channel=CHANNEL, publisher=PUBLISHER, count=None):
     command = command.encode("ascii") if isinstance(command, str) else command
-    records = b"".join(bytes([kind]) + value for kind, value in entries)
+    records = b"".join(bytes([kind]) + (bytes([len(value)]) if kind in (0x20, 0x21) else b"")
+                       + value for kind, value in entries)
     count = len(entries) if count is None else count
     unsigned = (b"FMC2" + struct.pack("<II", sequence, expires) + bytes([count])
                 + records + bytes([len(command)]) + command)
@@ -239,6 +302,18 @@ class FleetCommandCryptoTests(unittest.TestCase):
     def decode(self, payload, channel=CHANNEL, publisher=PUBLIC, self_key=PUBLIC, now=NOW, metadata=False):
         return self.run_tool("decode2" if metadata else "decode",
                              publisher.hex(), channel.hex(), self_key.hex(), now, payload.hex())
+
+    def decode_regions(self, payload, configured=(), home=(), channel=CHANNEL,
+                       publisher=PUBLIC, self_key=PUBLIC, now=NOW):
+        names = ["region:" + name for name in configured] + ["home:" + name for name in home]
+        return self.run_tool("decode-regions", publisher.hex(), channel.hex(), self_key.hex(),
+                             now, payload.hex(), ",".join(names))
+
+    def decode_geo(self, payload, latitude_e6=47606200, longitude_e6=-122332100, known=True,
+                   configured=(), home=(), channel=CHANNEL, publisher=PUBLIC, self_key=PUBLIC, now=NOW):
+        names = ["region:" + name for name in configured] + ["home:" + name for name in home]
+        return self.run_tool("decode-targets", publisher.hex(), channel.hex(), self_key.hex(),
+                             now, payload.hex(), ",".join(names), int(known), latitude_e6, longitude_e6)
 
     def test_cpp_and_python_signatures_match_exactly(self):
         expected = envelope()
@@ -353,7 +428,7 @@ class FleetCommandCryptoTests(unittest.TestCase):
     def test_multitarget_scheduled_request_is_signed_and_body_bounded(self):
         command = "set tempradioat2 910.5,500,5,5,rxtx,+1,+2,auto"
         entries = [(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6])]
-        token = f"{PUBLIC[:4].hex()},{OTHER_PUBLIC[:6].hex()}"
+        token = f"{PUBLIC[:4].hex()};{OTHER_PUBLIC[:6].hex()}"
         expected = envelope2(entries, command)
         actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, command)
         self.assertEqual(actual, expected.hex())
@@ -524,10 +599,10 @@ class FleetCommandCryptoTests(unittest.TestCase):
         for token, entries, maximum_length in [
                 ("all", [], 230), (short, [(4, PUBLIC[:4])], 225),
                 (long, [(6, PUBLIC[:6])], 223), (PUBLIC.hex(), None, 215),
-                (f"{short},{short}", [(4, PUBLIC[:4])] * 2, 220),
-                (f"{short},{long}", [(4, PUBLIC[:4]), (6, PUBLIC[:6])], 218),
-                (f"{PUBLIC.hex()},{short}", [(16, digest), (4, PUBLIC[:4])], 208),
-                (f"{PUBLIC.hex()},{PUBLIC.hex()}", [(16, digest)] * 2, 196)]:
+                (f"{short};{short}", [(4, PUBLIC[:4])] * 2, 220),
+                (f"{short};{long}", [(4, PUBLIC[:4]), (6, PUBLIC[:6])], 218),
+                (f"{PUBLIC.hex()};{short}", [(16, digest), (4, PUBLIC[:4])], 208),
+                (f"{PUBLIC.hex()};{PUBLIC.hex()}", [(16, digest)] * 2, 196)]:
             with self.subTest(token=token, maximum=maximum_length):
                 prefix = "set flood.rule.1 "
                 maximum = prefix + "a" * (maximum_length - len(prefix))
@@ -684,7 +759,7 @@ class FleetCommandCryptoTests(unittest.TestCase):
 
     def test_real_signature_round_trip_for_mixed_prefixes_and_full_keys(self):
         entries = [(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6]), (16, hashlib.sha256(PUBLIC).digest()[:16])]
-        token = f"{PUBLIC[:4].hex()},{OTHER_PUBLIC[:6].hex()},{PUBLIC.hex()}"
+        token = f"{PUBLIC[:4].hex()};{OTHER_PUBLIC[:6].hex()};{PUBLIC.hex()}"
         expected = envelope2(entries)
         actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
         self.assertEqual(actual, expected.hex())
@@ -692,6 +767,335 @@ class FleetCommandCryptoTests(unittest.TestCase):
         self.assertTrue(self.decode(expected, self_key=OTHER_PUBLIC, metadata=True).endswith("\n1"))
         unrelated = hashlib.sha256(b"unrelated fleet node").digest()
         self.assertEqual(self.decode(expected, self_key=unrelated), "reject")
+
+    def test_region_and_home_targets_have_distinct_cross_language_signed_records(self):
+        entries = [(0x20, b"sea"), (0x20, b"pdx"), (0x21, b"Sea"),
+                   (0x20, b"$Private"), (4, PUBLIC[:4])]
+        token = f"sea;pdx;home:#Sea;region:$Private;{PUBLIC[:4].hex()}"
+        expected = envelope2(entries)
+        actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
+        self.assertEqual(actual, expected.hex())
+        PUBLISHER.public_key().verify(expected[-64:], DOMAIN + CHANNEL + expected[:-64])
+        self.assertTrue(self.decode(expected, metadata=True).endswith("\n1"))
+        # Each target is OR: configured and home matches select the intended
+        # callback domain independently of whether the public-key prefix fits.
+        for configured, home in [(["sea"], []), (["#pdx"], []), ([], ["#Sea"]),
+                                 (["$Private"], [])]:
+            with self.subTest(configured=configured, home=home):
+                self.assertEqual(self.decode_regions(expected, configured, home, self_key=OTHER_PUBLIC),
+                                 f"{NOW}\n{NOW + 120}\nget radio2\n1")
+        self.assertEqual(self.decode(expected, self_key=OTHER_PUBLIC), "reject")
+        self.assertEqual(self.decode_regions(expected, ["Sea"], ["sea"], self_key=OTHER_PUBLIC), "reject")
+
+    def test_region_exact_matching_preserves_case_private_names_and_hash_aliases(self):
+        for token, kind, canonical in [
+                ("sea", 0x20, "sea"), ("#Sea", 0x20, "Sea"),
+                ("region:#sea", 0x20, "sea"), ("home:#Sea", 0x21, "Sea"),
+                ("region:$Private", 0x20, "$Private"), ("home:$Private", 0x21, "$Private")]:
+            with self.subTest(token=token):
+                expected = envelope2([(kind, canonical.encode("ascii"))])
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), expected.hex())
+                self.assertEqual(self.decode(expected), "reject")
+                configured, home = ([canonical], []) if kind == 0x20 else ([], [canonical])
+                self.assertTrue(self.decode_regions(expected, configured, home).endswith("\n1"))
+                configured, home = ([], [canonical]) if kind == 0x20 else ([canonical], [])
+                self.assertEqual(self.decode_regions(expected, configured, home), "reject")
+                for wrong in [canonical.swapcase(), canonical + "-other", canonical[:-1]]:
+                    configured, home = ([wrong], []) if kind == 0x20 else ([], [wrong])
+                    self.assertEqual(self.decode_regions(expected, configured, home), "reject")
+        canonical = self.run_tool("encode2", CHANNEL.hex(), "home:sea", NOW, NOW + 120, "get radio2")
+        alias = self.run_tool("encode2", CHANNEL.hex(), "home:#sea", NOW, NOW + 120, "get radio2")
+        self.assertEqual(canonical, alias)
+
+    def test_named_target_parser_never_reinterprets_malformed_keys_or_command_verbs(self):
+        for token in ["zzzzzzzz", "z" * 12, "g" * 64, "a", "dead", "a" * 16,
+                      "all;sea", "sea;all", "region:", "home:", "#", "region:#", "home:#",
+                      "region:*", "home:*", "region:bad.name", "home:bad:name", "sea;pdx;",
+                      "region:bad space", "region:bad\n", "region:bad\x7f", "region:badé",
+                      "region:" + "z" * 31, "home:" + "z" * 31,
+                      "get", "set", "del", "time", "clock"]:
+            with self.subTest(token=token):
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), "reject")
+        # Explicit selectors remove any ambiguity with public-key formats and
+        # CLI verbs. Uppercase names retain the RegionMap's case sensitivity.
+        for token, kind, name in [
+                ("region:all", 0x20, "all"), ("region:dead", 0x20, "dead"),
+                ("region:zzzzzzzz", 0x20, "zzzzzzzz"), ("home:a", 0x21, "a"),
+                ("region:get", 0x20, "get"), ("home:get", 0x21, "get"),
+                ("#get", 0x20, "get"), ("region:clock", 0x20, "clock"),
+                ("home:time", 0x21, "time"), ("ALL", 0x20, "ALL")]:
+            with self.subTest(token=token):
+                expected = envelope2([(kind, name.encode("ascii"))])
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), expected.hex())
+                self.assertEqual(self.decode(expected), "reject")
+                configured, home = ([name], []) if kind == 0x20 else ([], [name])
+                self.assertNotEqual(self.decode_regions(expected, configured, home), "reject")
+
+    def test_region_record_schema_is_validated_after_an_earlier_matching_key(self):
+        matching = (4, PUBLIC[:4])
+        for kind in [0x20, 0x21]:
+            for name in [b"", b"z" * 31, b"*", b"bad.name", b"bad:name", b"bad/name",
+                         b"bad\0", b"bad\n", b"bad\x7f", b"bad\x80", b"bad;name", b"bad name"]:
+                with self.subTest(kind=kind, name=name):
+                    signed = envelope2([matching, (kind, name)])
+                    self.assertEqual(self.decode_regions(signed, ["sea"], ["pdx"]), "reject")
+        expected = envelope2([matching, (0x20, b"sea"), (0x21, b"pdx")])
+        self.assertNotEqual(self.decode_regions(expected, ["sea"], ["pdx"]), "reject")
+        # The declared length is signed as part of the record, and it must
+        # still frame every later entry and the command exactly.
+        for value in [0, 1, 4, 30, 31, 255]:
+            changed = bytearray(expected)
+            changed[19] = value
+            self.assertEqual(self.decode_regions(changed, ["sea"], ["pdx"]), "reject")
+        unknown = envelope2([matching, (0x22, b"\3sea")])
+        self.assertEqual(self.decode_regions(unknown, ["sea"], ["pdx"]), "reject")
+
+    def test_signature_binds_region_name_and_configured_versus_home_selector(self):
+        original = envelope2([(0x20, b"sea")])
+        for changed in [envelope2([(0x20, b"pdx")]), envelope2([(0x21, b"sea")]),
+                        envelope2([(0x20, b"Sea")]), envelope2([(0x20, b"sea"), (0x21, b"sea")])]:
+            with self.subTest(changed=changed.hex()):
+                self.assertNotEqual(self.decode_regions(changed, ["sea", "pdx", "Sea"], ["sea"]), "reject")
+                self.assertEqual(self.decode_regions(changed[:-64] + original[-64:],
+                                                     ["sea", "pdx", "Sea"], ["sea"]), "reject")
+        self.assertEqual(self.decode_regions(original, ["sea"], publisher=OTHER_PUBLIC), "reject")
+        self.assertEqual(self.decode_regions(original, ["sea"], channel=bytes(range(17, 33))), "reject")
+        self.assertEqual(self.decode_regions(original, ["sea"], now=0), "reject")
+        self.assertEqual(self.decode_regions(original, ["sea"], now=NOW + 121), "reject")
+
+    def test_named_targets_share_byte_count_and_fragment_budgets_without_partial_output(self):
+        for count in [1, 16, 17]:
+            token = ";".join(["sea"] * count)
+            expected = envelope2([(0x20, b"sea")] * count)
+            self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                           "get radio2"), expected.hex())
+            self.assertTrue(self.decode_regions(expected, ["sea"]).endswith("\n1"))
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), ";".join(["sea"] * 18), NOW,
+                                       NOW + 120, "get radio2"), "reject")
+        records = [(0x20, b"z" * 30), (0x21, b"Y" * 30), (0x20, b"x" * 20)]
+        token = "region:" + "z" * 30 + ";home:" + "Y" * 30 + ";region:" + "x" * 20
+        prefix = "set flood.rule.1 "
+        maximum = prefix + "a" * (144 - len(prefix))
+        expected = envelope2(records, maximum)
+        self.assertEqual(len(expected), 308)  # Exactly86 bytes of target records.
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                       maximum), expected.hex())
+        self.assertTrue(self.decode_regions(expected, ["z" * 30]).endswith("\n1"))
+        for operation in ["encode2", "encode2-wide"]:
+            self.assertEqual(self.run_tool(operation, CHANNEL.hex(), token, NOW, NOW + 120,
+                                           maximum + "a"), "reject")
+            self.assertEqual(self.run_tool(operation, CHANNEL.hex(), token + "x", NOW, NOW + 120,
+                                           "get radio2"), "reject")
+        parts = [bytes.fromhex(self.run_tool("fragment", expected.hex(), index, 165)) for index in [0, 1]]
+        for index, part in enumerate(parts):
+            self.assertEqual(part, fragment_frame(expected, index))
+            self.assertEqual(len(part), 165)
+            self.assertEqual(self.decode_regions(part, ["z" * 30]), "reject")
+        assembled = parts[0][11:] + parts[1][11:]
+        PUBLISHER.public_key().verify(assembled[-64:], DOMAIN + CHANNEL + assembled[:-64])
+        self.assertTrue(self.decode_regions(assembled, ["z" * 30]).endswith("\n1"))
+        # Tamper with a later home name while the first configured name still
+        # matches. The full reconstructed signature must reject this change.
+        changed = bytearray(parts[0])
+        changed[11 + 13 + 32 + 2] = ord("Z")
+        self.assertEqual(self.decode_regions(changed[11:] + parts[1][11:], ["z" * 30]), "reject")
+
+    def test_gps_cross_language_signatures_use_microdegrees_and_metres_exactly(self):
+        for token, latitude, longitude, radius in [
+                ("gps:47.6062,-122.3321:10", 47606200, -122332100, 10000),
+                ("gps:+90,-180:0.001", 90000000, -180000000, 1),
+                ("gps:-90,+180:20050.000", -90000000, 180000000, 20050000),
+                ("gps:0.000001,-0.000001:1.001", 1, -1, 1001),
+                ("gps:0,0:1", 0, 0, 1000)]:
+            with self.subTest(token=token):
+                record = struct.pack("<iiI", latitude, longitude, radius)
+                expected = envelope2([(0x22, record)])
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), expected.hex())
+                self.assertEqual(expected[13:26], b"\x22" + record)
+                self.assertEqual(len(expected), 101)
+                PUBLISHER.public_key().verify(expected[-64:], DOMAIN + CHANNEL + expected[:-64])
+                self.assertEqual(self.decode(expected), "reject")
+                self.assertEqual(self.decode_geo(expected, latitude, longitude),
+                                 f"{NOW}\n{NOW + 120}\nget radio2\n1")
+                self.assertEqual(self.decode_geo(expected, latitude, longitude, known=False), "reject")
+
+    def test_semicolon_target_lists_preserve_gps_at_first_middle_and_last(self):
+        gps = (0x22, struct.pack("<iiI", 47606200, -122332100, 25000))
+        circle = "gps:47.6062,-122.3321:25"
+        for token, entries in [
+                (f"{circle};sea;home:pdx", [gps, (0x20, b"sea"), (0x21, b"pdx")]),
+                (f"sea;{circle};home:pdx", [(0x20, b"sea"), gps, (0x21, b"pdx")]),
+                (f"sea;home:pdx;{circle}", [(0x20, b"sea"), (0x21, b"pdx"), gps]),
+                (f"{circle};{circle}", [gps, gps])]:
+            with self.subTest(token=token):
+                expected = envelope2(entries)
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), expected.hex())
+                PUBLISHER.public_key().verify(expected[-64:], DOMAIN + CHANNEL + expected[:-64])
+                self.assertTrue(self.decode_geo(expected, self_key=OTHER_PUBLIC).endswith("\n1"))
+                if len(entries) == 3:
+                    self.assertTrue(self.decode_geo(expected, known=False, configured=["sea"],
+                                                   home=["pdx"], self_key=OTHER_PUBLIC).endswith("\n1"))
+                else:
+                    self.assertEqual(self.decode_geo(expected, known=False), "reject")
+
+    def test_truncated_gps_tokens_only_accept_a_complete_nonempty_radius(self):
+        token = "gps:47.6062,-122.3321:25"
+        for length in range(4, len(token) + 1):
+            with self.subTest(length=length):
+                actual = self.run_tool("encode2", CHANNEL.hex(), token[:length], NOW, NOW + 120,
+                                       "get radio2")
+                if length in (len(token) - 1, len(token)):
+                    radius = int(token[:length].rsplit(":", 1)[1]) * 1000
+                    expected = envelope2([(0x22, struct.pack("<iiI", 47606200, -122332100, radius))])
+                    self.assertEqual(actual, expected.hex())
+                else:
+                    self.assertEqual(actual, "reject")
+
+    def test_comma_lists_and_malformed_gps_delimiters_cannot_send_partial_commands(self):
+        for token in [
+                "sea,pdx", f"{PUBLIC[:4].hex()},{OTHER_PUBLIC[:4].hex()}",
+                "region:sea,home:pdx", "sea;home:pdx,sea", "gps:47.6062:-122.3321:25",
+                "gps:47.6062;-122.3321:25", "gps:47.6062,-122.3321,25",
+                "gps:47.6062,,-122.3321:25", "gps:47.6062,-122.3321,:25",
+                "gps:47.6062,-122.3321:25,sea", ";gps:47.6062,-122.3321:25",
+                "gps:47.6062,-122.3321:25;", "sea;;gps:47.6062,-122.3321:25",
+                "sea;gps:47.6062,-122.3321:25;;home:pdx", "sea;gps:47.6062;home:pdx",
+                "sea;gps:47.6062,-122.3321;home:pdx", "sea;gps:47.6062,-122.3321:;home:pdx",
+                "sea;gps:47.6062,-122.3321:25;home:pdx,sea"]:
+            with self.subTest(token=token):
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), "reject")
+
+    def test_semicolon_mixed_geographic_lists_keep_record_and_byte_limits(self):
+        circle = "gps:47.6062,-122.3321:25"
+        gps = (0x22, struct.pack("<iiI", 47606200, -122332100, 25000))
+        for token, entries in [
+                (";".join([circle] + ["z"] * 16), [gps] + [(0x20, b"z")] * 16),
+                (";".join([circle] + ["sea"] * 14), [gps] + [(0x20, b"sea")] * 14)]:
+            with self.subTest(token=token):
+                expected = envelope2(entries)
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), expected.hex())
+                self.assertTrue(self.decode_geo(expected).endswith("\n1"))
+        for names in [["z"] * 17, ["sea"] * 15]:
+            token = ";".join([circle] + names)
+            self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                           "get radio2"), "reject")
+
+    def test_malformed_gps_decimal_tokens_never_fall_back_to_region_names(self):
+        for token in [
+                "gps:", "gps:0", "gps:0:0", "gps:0,0:", "gps:,0:1", "gps:0,:1", "gps:0,0:1:2",
+                "gps:0,0:0", "gps:0,0:0.000", "gps:0,0:0.0001", "gps:0,0:20050.001",
+                "gps:90.000001,0:1", "gps:-90.000001,0:1", "gps:0,180.000001:1",
+                "gps:0,-180.000001:1", "gps:0.0000001,0:1", "gps:0,0.0000001:1",
+                "gps:0,0:1.0001", "gps:0,0:+1", "gps:0,0:-1", "gps:NaN,0:1", "gps:0,Inf:1",
+                "gps:0,0:1e3", "gps:1e1,0:1", "gps:.1,0:1", "gps:1.,0:1", "gps:0,0:.1",
+                "gps:0,0:1.", "gps:01,0:1", "gps:0,00:1", "gps:0,0:01", "gps:--1,0:1",
+                "gps:++1,0:1", "gps:+,0:1", "gps:0,0:4294967296", "gps:999999999999999999,0:1",
+                "gps:0,0:1m", "gps:0,0:1\n", "gps: 0:0:1", "gps:0,0:1;all"]:
+            with self.subTest(token=token):
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                               "get radio2"), "reject")
+
+    def test_geographic_math_matches_independent_distance_at_boundaries(self):
+        cases = [
+            (0, 0, 0, 0), (0, 0, 0, 1000000),
+            (0, 179999999, 0, -179999999), (90000000, 0, 90000000, 180000000),
+            (0, 0, 0, 180000000), (47606200, -122332100, 47610000, -122330000),
+            (47606200, -122332100, 45515200, -122678400),
+            (-89999999, -180000000, -89999999, 180000000)]
+        for latitude, longitude, local_latitude, local_longitude in cases:
+            center = math.radians(latitude / 1000000)
+            local = math.radians(local_latitude / 1000000)
+            half_latitude = math.radians((local_latitude - latitude) / 1000000) / 2
+            half_longitude = math.radians((local_longitude - longitude) / 1000000) / 2
+            value = (math.sin(half_latitude) ** 2 + math.cos(center) * math.cos(local)
+                     * math.sin(half_longitude) ** 2)
+            value = max(0, min(1, value))
+            distance = 2 * 6371008.8 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
+            radii = {1, max(1, int(math.floor(distance))), max(1, int(math.floor(distance)) + 1), 20050000}
+            for radius in radii:
+                with self.subTest(center=(latitude, longitude), local=(local_latitude, local_longitude), radius=radius):
+                    actual = self.run_tool("within-radius", latitude, longitude, radius,
+                                           local_latitude, local_longitude)
+                    self.assertEqual(actual, str(int(distance <= radius)))
+        for latitude, longitude, radius, local_latitude, local_longitude in [
+                (90000001, 0, 1, 0, 0), (0, 180000001, 1, 0, 0),
+                (0, 0, 1, -90000001, 0), (0, 0, 1, 0, -180000001),
+                (0, 0, 0, 0, 0), (0, 0, 20050001, 0, 0),
+                (2147483647, -2147483648, 4294967295, 0, 0)]:
+            self.assertEqual(self.run_tool("within-radius", latitude, longitude, radius,
+                                           local_latitude, local_longitude), "0")
+
+    def test_geographic_region_home_and_key_records_are_independent_signed_or_matches(self):
+        record = struct.pack("<iiI", 47606200, -122332100, 1000)
+        entries = [(0x22, record), (0x20, b"sea"), (0x21, b"pdx"), (4, PUBLIC[:4])]
+        token = f"gps:47.6062,-122.3321:1;sea;home:pdx;{PUBLIC[:4].hex()}"
+        expected = envelope2(entries)
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                       "get radio2"), expected.hex())
+        self.assertTrue(self.decode(expected, metadata=True).endswith("\n1"))
+        self.assertTrue(self.decode_geo(expected, self_key=OTHER_PUBLIC).endswith("\n1"))
+        self.assertTrue(self.decode_geo(expected, known=False, configured=["sea"], self_key=OTHER_PUBLIC).endswith("\n1"))
+        self.assertTrue(self.decode_geo(expected, known=False, home=["pdx"], self_key=OTHER_PUBLIC).endswith("\n1"))
+        self.assertEqual(self.decode_geo(expected, known=False, self_key=OTHER_PUBLIC), "reject")
+        self.assertEqual(self.decode_geo(expected, 45515200, -122678400, self_key=OTHER_PUBLIC), "reject")
+        self.assertEqual(self.decode_geo(expected, 90000001, 0, self_key=OTHER_PUBLIC), "reject")
+        # Invalid later geographic records reject even after a matching key.
+        for latitude, longitude, radius in [
+                (90000001, 0, 1000), (-90000001, 0, 1000), (0, 180000001, 1000),
+                (0, -180000001, 1000), (0, 0, 0), (0, 0, 20050001), (0, 0, 4294967295)]:
+            invalid = envelope2([(4, PUBLIC[:4]), (0x22, struct.pack("<iiI", latitude, longitude, radius))])
+            self.assertEqual(self.decode_geo(invalid), "reject")
+        for missing in range(12):
+            invalid = envelope2([(4, PUBLIC[:4]), (0x22, record[:missing])])
+            self.assertEqual(self.decode_geo(invalid), "reject")
+
+    def test_signature_binds_every_geographic_field_and_fragmented_circle_command(self):
+        record = struct.pack("<iiI", 47606200, -122332100, 10000)
+        original = envelope2([(0x22, record)])
+        for changed in [
+                envelope2([(0x22, struct.pack("<iiI", 47606201, -122332100, 10000))]),
+                envelope2([(0x22, struct.pack("<iiI", 47606200, -122332101, 10000))]),
+                envelope2([(0x22, struct.pack("<iiI", 47606200, -122332100, 10001))]),
+                envelope2([(0x22, record), (0x20, b"sea")])]:
+            with self.subTest(changed=changed.hex()):
+                self.assertNotEqual(self.decode_geo(changed), "reject")
+                self.assertEqual(self.decode_geo(changed[:-64] + original[-64:]), "reject")
+        self.assertEqual(self.decode_geo(original, publisher=OTHER_PUBLIC), "reject")
+        self.assertEqual(self.decode_geo(original, channel=bytes(range(17, 33))), "reject")
+        self.assertEqual(self.decode_geo(original, now=0), "reject")
+        self.assertEqual(self.decode_geo(original, now=NOW + 121), "reject")
+        token = "gps:47.6062,-122.3321:10"
+        prefix = "set flood.rule.1 "
+        maximum = prefix + "a" * (217 - len(prefix))
+        expected = envelope2([(0x22, record)], maximum)
+        self.assertEqual(len(expected), 308)
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120,
+                                       maximum), expected.hex())
+        self.assertTrue(self.decode_geo(expected).endswith("\n1"))
+        for operation in ["encode2", "encode2-wide"]:
+            self.assertEqual(self.run_tool(operation, CHANNEL.hex(), token, NOW, NOW + 120,
+                                           maximum + "a"), "reject")
+        parts = [bytes.fromhex(self.run_tool("fragment", expected.hex(), index, 165)) for index in [0, 1]]
+        assembled = parts[0][11:] + parts[1][11:]
+        self.assertEqual(assembled, expected)
+        PUBLISHER.public_key().verify(assembled[-64:], DOMAIN + CHANNEL + assembled[:-64])
+        self.assertNotEqual(self.decode_geo(assembled), "reject")
+        for part in parts:
+            self.assertEqual(self.decode_geo(part), "reject")
+        for count in [1, 6]:
+            token_list = ";".join([token] * count)
+            signed = envelope2([(0x22, record)] * count)
+            self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token_list, NOW, NOW + 120,
+                                           "get radio2"), signed.hex())
+        self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), ";".join([token] * 7), NOW,
+                                       NOW + 120, "get radio2"), "reject")
 
     def test_single_raw_prefix_is_a_broadcast_capability_for_matching_collisions(self):
         first = PUBLIC
@@ -746,11 +1150,11 @@ class FleetCommandCryptoTests(unittest.TestCase):
         self.assertEqual(self.decode(envelope2([matching], count=2)), "reject")
 
     def test_new_target_parser_refuses_partial_or_mixed_all_lists(self):
-        for token in ["", "all," + PUBLIC[:4].hex(), PUBLIC[:4].hex() + ",all",
-                      PUBLIC[:4].hex() + ",", "," + PUBLIC[:4].hex(),
-                      PUBLIC[:4].hex() + ",," + OTHER_PUBLIC[:4].hex(),
-                      PUBLIC[:4].hex() + ",zzzzzzzz", "1" * 10, "1" * 16,
-                      ",".join([PUBLIC.hex()] * 6), ",".join([PUBLIC[:4].hex()] * 18)]:
+        for token in ["", "all;" + PUBLIC[:4].hex(), PUBLIC[:4].hex() + ";all",
+                      PUBLIC[:4].hex() + ";", ";" + PUBLIC[:4].hex(),
+                      PUBLIC[:4].hex() + ";;" + OTHER_PUBLIC[:4].hex(),
+                      PUBLIC[:4].hex() + ";zzzzzzzz", "1" * 10, "1" * 16,
+                      ";".join([PUBLIC.hex()] * 6), ";".join([PUBLIC[:4].hex()] * 18)]:
             with self.subTest(token=token):
                 self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2"), "reject")
 
@@ -759,15 +1163,15 @@ class FleetCommandCryptoTests(unittest.TestCase):
         entries = [(4, PUBLIC[:4])] * 3
         expected = envelope2(entries, maximum)
         self.assertEqual(len(expected), 308)
-        token = ",".join([PUBLIC[:4].hex()] * 3)
+        token = ";".join([PUBLIC[:4].hex()] * 3)
         actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, maximum)
         self.assertEqual(actual, expected.hex())
         self.assertNotEqual(self.decode(expected), "reject")
-        token += "," + PUBLIC[:4].hex()
+        token += ";" + PUBLIC[:4].hex()
         self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, maximum), "reject")
         self.assertEqual(self.decode(envelope2(entries * 2, maximum)), "reject")
         for count in [15, 16, 17]:
-            token = ",".join([PUBLIC[:4].hex()] * count)
+            token = ";".join([PUBLIC[:4].hex()] * count)
             result = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, "get radio2")
             self.assertNotEqual(result, "reject")
 

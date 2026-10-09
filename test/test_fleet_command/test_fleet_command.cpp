@@ -23,6 +23,38 @@ public:
   }
 };
 
+struct RegionContext {
+  std::vector<std::string> configured;
+  std::vector<std::string> home;
+  std::vector<std::pair<Fleet::RegionTarget, std::string>> seen;
+
+  static bool match(void* context, Fleet::RegionTarget kind, const char* name, size_t length) {
+    auto& regions = *static_cast<RegionContext*>(context);
+    const std::string label(name, length);
+    regions.seen.emplace_back(kind, label);
+    const auto& names = kind == Fleet::RegionTarget::Configured ? regions.configured : regions.home;
+    return std::find(names.begin(), names.end(), label) != names.end();
+  }
+};
+
+struct GeoContext {
+  bool known = true;
+  int32_t latitude_e6 = 47606200, longitude_e6 = -122332100;
+  unsigned calls = 0;
+  int32_t received_latitude = 0, received_longitude = 0;
+  uint32_t received_radius = 0;
+
+  static bool match(void* context, int32_t latitude, int32_t longitude, uint32_t radius) {
+    auto& location = *static_cast<GeoContext*>(context);
+    ++location.calls;
+    location.received_latitude = latitude;
+    location.received_longitude = longitude;
+    location.received_radius = radius;
+    return location.known && Fleet::withinRadius(latitude, longitude, radius,
+                                                location.latitude_e6, location.longitude_e6);
+  }
+};
+
 class FleetCommandTest : public ::testing::Test {
 protected:
   FixedRng rng;
@@ -48,6 +80,18 @@ protected:
   bool decode(const std::vector<uint8_t>& bytes, uint32_t now = Now) {
     return Fleet::decode(publisher, ChannelKey, bytes.data(), bytes.size(),
                          now, publisher.pub_key, decoded);
+  }
+
+  bool decodeRegions(const std::vector<uint8_t>& bytes, RegionContext& regions) {
+    return Fleet::decode(publisher, ChannelKey, bytes.data(), bytes.size(), Now,
+                         publisher.pub_key, decoded, RegionContext::match, &regions);
+  }
+
+  bool decodeGeo(const std::vector<uint8_t>& bytes, GeoContext& location,
+                 RegionContext* regions = nullptr) {
+    return Fleet::decode(publisher, ChannelKey, bytes.data(), bytes.size(), Now,
+                         publisher.pub_key, decoded, regions ? RegionContext::match : nullptr,
+                         regions, GeoContext::match, &location);
   }
 
   std::vector<uint8_t> encodeTargets(const Fleet::Targets& targets,
@@ -395,7 +439,7 @@ TEST_F(FleetCommandTest, UnixRangeBoundaryDoesNotWrap) {
 TEST_F(FleetCommandTest, BoundedTargetTokenParsesMixedPrefixWidthsAndCompleteKeys) {
   Fleet::Targets targets{};
   const std::string full = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
-  const std::string token = "A1B2C3D4,010203040506," + full;
+  const std::string token = "A1B2C3D4;010203040506;" + full;
   const std::string joined = token + " get radio2";
   ASSERT_TRUE(Fleet::parseTargets(joined.data(), token.size(), targets));
   EXPECT_EQ(3, targets.count);
@@ -419,14 +463,14 @@ TEST_F(FleetCommandTest, BoundedTargetTokenParsesMixedPrefixWidthsAndCompleteKey
 
 TEST_F(FleetCommandTest, RejectsMalformedWholeTargetListsWithoutPartialResults) {
   for (const std::string& token : {
-      std::string(""), std::string("all,01020304"), std::string("01020304,all"),
-      std::string("all,all"), std::string("ALL"), std::string(",01020304"),
-      std::string("01020304,"), std::string("01020304,,05060708"),
-      std::string("01020304,0506070g"), std::string("01020304 05060708"),
-      std::string("01020304, 05060708"), std::string("01020304\n"),
+      std::string(""), std::string("all;01020304"), std::string("01020304;all"),
+      std::string("all;all"), std::string(";01020304"),
+      std::string("01020304;"), std::string("01020304;;05060708"),
+      std::string("01020304;0506070g"), std::string("01020304 05060708"),
+      std::string("01020304; 05060708"), std::string("01020304\n"),
       std::string("01"), std::string(10, '1'), std::string(16, '1'),
       std::string(32, '1'), std::string(63, '1'), std::string(65, '1'),
-      std::string(64, '0'), std::string("01020304,") + std::string(64, '0')}) {
+      std::string(64, '0'), std::string("01020304;") + std::string(64, '0')}) {
     Fleet::Targets targets;
     memset(&targets, 0xA5, sizeof(targets));
     EXPECT_FALSE(Fleet::parseTargets(token.data(), token.size(), targets)) << token;
@@ -442,7 +486,7 @@ TEST_F(FleetCommandTest, RejectsMalformedWholeTargetListsWithoutPartialResults) 
 TEST_F(FleetCommandTest, TargetRecordAndPayloadBudgetsAreSeparateAndBounded) {
   std::string list;
   for (unsigned count = 1; count <= 17; ++count) {
-    if (!list.empty()) list += ',';
+    if (!list.empty()) list += ';';
     list += "01020304";
     Fleet::Targets targets{};
     ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
@@ -451,18 +495,18 @@ TEST_F(FleetCommandTest, TargetRecordAndPayloadBudgetsAreSeparateAndBounded) {
     EXPECT_FALSE(encodeTargets(targets).empty()) << count;
   }
   Fleet::Targets targets{};
-  list += ",01020304";
+  list += ";01020304";
   EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
   list.clear();
   const std::string full = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
   for (unsigned count = 1; count <= 5; ++count) {
-    if (!list.empty()) list += ',';
+    if (!list.empty()) list += ';';
     list += full;
     ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
     EXPECT_EQ(count * 17, targets.length);
   }
   EXPECT_FALSE(encodeTargets(targets).empty());
-  list += ',' + full;
+  list += ';' + full;
   EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
 }
 
@@ -551,7 +595,7 @@ TEST_F(FleetCommandTest, PrefixesAndListsUseFmc2WithSignedFraming) {
     EXPECT_TRUE(decode(bytes));
     EXPECT_TRUE(decoded.broadcast);
   }
-  const std::string list = std::string(full) + ',' + full;
+  const std::string list = std::string(full) + ';' + full;
   Fleet::Targets targets{};
   ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
   const auto bytes = encodeTargets(targets);
@@ -565,7 +609,7 @@ TEST_F(FleetCommandTest, AnyMatchingEntryIsAcceptedButMalformedLaterEntryIsRejec
   mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
   const std::string prefix(full, 8);
   Fleet::Targets targets{};
-  const std::string list = prefix + ",01020304," + full;
+  const std::string list = prefix + ";01020304;" + full;
   ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
   auto bytes = encodeTargets(targets);
   ASSERT_TRUE(decode(bytes));
@@ -613,6 +657,387 @@ TEST_F(FleetCommandTest, RawPrefixesIncludeLegitimateZeroPrefixesAndCollisions) 
                             Now, first, decoded));
 }
 
+TEST_F(FleetCommandTest, NamedRegionAndHomeRecordsPreserveCaseAndCanonicalHashAlias) {
+  const std::string list = "sea;pdx;#Sea;region:all;region:dead;region:zzzzzzzz;home:$Private";
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+  ASSERT_EQ(7, targets.count);
+  size_t cursor = 0;
+  for (const auto& item : std::vector<std::pair<uint8_t, std::string>>{
+      {Fleet::RegionRecordType, "sea"}, {Fleet::RegionRecordType, "pdx"},
+      {Fleet::RegionRecordType, "Sea"}, {Fleet::RegionRecordType, "all"},
+      {Fleet::RegionRecordType, "dead"}, {Fleet::RegionRecordType, "zzzzzzzz"},
+      {Fleet::HomeRecordType, "$Private"}}) {
+    EXPECT_EQ(item.first, targets.data[cursor++]);
+    EXPECT_EQ(item.second.size(), targets.data[cursor++]);
+    EXPECT_EQ(item.second, std::string(reinterpret_cast<char*>(targets.data + cursor), item.second.size()));
+    cursor += item.second.size();
+  }
+  EXPECT_EQ(cursor, targets.length);
+  Fleet::Targets canonical{}, alias{};
+  ASSERT_TRUE(Fleet::parseTargets("home:#sea", 9, alias));
+  ASSERT_TRUE(Fleet::parseTargets("home:sea", 8, canonical));
+  EXPECT_EQ(encodeTargets(canonical), encodeTargets(alias));
+  ASSERT_TRUE(Fleet::parseTargets("ALL", 3, targets));
+  EXPECT_EQ(Fleet::RegionRecordType, targets.data[0]);
+  EXPECT_EQ("ALL", std::string(reinterpret_cast<char*>(targets.data + 2), 3));
+}
+
+TEST_F(FleetCommandTest, MalformedKeysNeverFallBackToNamedRegionTargets) {
+  for (const std::string& token : {
+      std::string("zzzzzzzz"), std::string("not-a-key-id"), std::string(12, 'z'),
+      std::string(64, 'g'), std::string("a"), std::string("dead"), std::string(16, 'a'),
+      std::string("region:"), std::string("home:"), std::string("#"), std::string("region:#"),
+      std::string("region:*"), std::string("home:*"), std::string("region:with.space"),
+      std::string("region:with space"), std::string("region:with:colon"),
+      std::string("region:bad\x7f"), std::string("region:bad\x80"),
+      std::string("region:bad\n"), std::string("sea;all"), std::string("all;sea"),
+      std::string("get"), std::string("set"), std::string("del"), std::string("time"), std::string("clock"),
+      std::string("region:") + std::string(31, 'z'), std::string("home:") + std::string(31, 'z')}) {
+    Fleet::Targets targets;
+    memset(&targets, 0xA5, sizeof(targets));
+    EXPECT_FALSE(Fleet::parseTargets(token.data(), token.size(), targets)) << token;
+    EXPECT_EQ(0, targets.length);
+    EXPECT_EQ(0, targets.count);
+  }
+  for (const char* token : {"region:a", "region:dead", "region:zzzzzzzz", "region:all",
+                            "home:a", "home:zzzzzzzz", "home:all", "region:get", "home:get", "#get",
+                            "region:set", "home:del", "region:time", "home:clock"}) {
+    Fleet::Targets targets{};
+    EXPECT_TRUE(Fleet::parseTargets(token, strlen(token), targets)) << token;
+  }
+}
+
+TEST_F(FleetCommandTest, NamedTargetsRequireExactReadOnlyMatchingAndRemainBroadcast) {
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets("sea", 3, targets));
+  const auto bytes = encodeTargets(targets);
+  ASSERT_FALSE(bytes.empty());
+  EXPECT_FALSE(decode(bytes)); // A role without RegionMap matching grants no named capability.
+  for (const char* label : {"sea", "Sea", "se", "seattle", "$sea", "pdx"}) {
+    RegionContext regions{{label}, {"sea"}, {}};
+    EXPECT_EQ(!strcmp(label, "sea"), decodeRegions(bytes, regions)) << label;
+    if (!strcmp(label, "sea")) EXPECT_TRUE(decoded.broadcast);
+    else EXPECT_FALSE(decoded.broadcast);
+    ASSERT_EQ(1U, regions.seen.size());
+    EXPECT_EQ(Fleet::RegionTarget::Configured, regions.seen[0].first);
+    EXPECT_EQ("sea", regions.seen[0].second);
+  }
+  ASSERT_TRUE(Fleet::parseTargets("home:#sea", 9, targets));
+  const auto home = encodeTargets(targets);
+  RegionContext configured_only{{"sea"}, {}, {}};
+  EXPECT_FALSE(decodeRegions(home, configured_only));
+  RegionContext home_only{{}, {"sea"}, {}};
+  EXPECT_TRUE(decodeRegions(home, home_only));
+  EXPECT_TRUE(decoded.broadcast);
+  EXPECT_EQ(Fleet::RegionTarget::Home, home_only.seen[0].first);
+  EXPECT_FALSE(Fleet::parseTargets("$Private", 8, targets)); // Raw key-length tokens are never labels.
+  ASSERT_TRUE(Fleet::parseTargets("region:$Private", 15, targets));
+  RegionContext private_name{{"$Private"}, {}, {}};
+  EXPECT_TRUE(decodeRegions(encodeTargets(targets), private_name));
+}
+
+TEST_F(FleetCommandTest, MixedHomeRegionsAndPublicKeysMatchOnceButValidateAllRecords) {
+  char full[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
+  const std::string list = "sea;home:pdx;" + std::string(full, 8) + ";region:$fleet";
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+  const auto bytes = encodeTargets(targets);
+  EXPECT_TRUE(decode(bytes)); // The exact key prefix remains sufficient without a region matcher.
+  EXPECT_TRUE(decoded.broadcast);
+  RegionContext regions{{"sea", "$fleet"}, {"pdx"}, {}};
+  ASSERT_TRUE(decodeRegions(bytes, regions));
+  EXPECT_EQ(3U, regions.seen.size());
+  EXPECT_STREQ("get radio2", decoded.command);
+  auto malformed = bytes;
+  const size_t final_name = 13 + 5 + 5 + 5 + 2;
+  malformed[final_name] = '*'; // Invalid final label after a matching region and key.
+  EXPECT_FALSE(decodeRegions(malformed, regions));
+  EXPECT_FALSE(decoded.broadcast);
+  g_mock_ed25519_verify_result = false;
+  EXPECT_FALSE(decodeRegions(bytes, regions));
+  EXPECT_FALSE(decoded.broadcast);
+}
+
+TEST_F(FleetCommandTest, NamedTargetCountsAndBytesConsumeTheSameBoundedBudget) {
+  std::string list;
+  Fleet::Targets targets{};
+  for (unsigned count = 1; count <= 17; ++count) {
+    if (!list.empty()) list += ';';
+    list += "sea";
+    ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+    EXPECT_EQ(count * 5, targets.length);
+  }
+  list += ";sea";
+  EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
+  list = "region:" + std::string(30, 'z') + ";home:" + std::string(30, 'Y')
+      + ";region:" + std::string(20, 'x');
+  ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+  EXPECT_EQ(Fleet::MaxTargetBytes, targets.length);
+  const std::string prefix = "set flood.rule.1 ";
+  const std::string command = prefix + std::string(Fleet::MaxCommandLength - targets.length - prefix.size(), 'a');
+  const auto bytes = encodeTargets(targets, command.c_str());
+  ASSERT_EQ(Fleet::MaxEnvelopeLength, bytes.size());
+  RegionContext regions{{std::string(30, 'z')}, {}, {}};
+  EXPECT_TRUE(decodeRegions(bytes, regions));
+  EXPECT_TRUE(decoded.broadcast);
+  EXPECT_TRUE(encodeTargets(targets, (command + 'a').c_str()).empty());
+  std::array<uint8_t, Fleet::MaxPayloadLength> first{}, second{};
+  ASSERT_EQ(first.size(), Fleet::fragment(bytes.data(), bytes.size(), 0, first.data(), first.size()));
+  ASSERT_EQ(second.size(), Fleet::fragment(bytes.data(), bytes.size(), 1, second.data(), second.size()));
+  Fleet::Fragment part{};
+  ASSERT_TRUE(Fleet::parseFragment(second.data(), second.size(), part));
+  EXPECT_EQ(154U, part.length);
+  list += 'x';
+  EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
+  EXPECT_EQ(0, targets.length);
+}
+
+TEST_F(FleetCommandTest, InvalidExternalNamedRecordsNeverWriteOutput) {
+  std::array<uint8_t, Fleet::MaxEnvelopeLength> output;
+  output.fill(0xA5);
+  for (unsigned invalid = 0; invalid < 8; ++invalid) {
+    Fleet::Targets targets{};
+    targets.count = 1;
+    targets.length = 5;
+    targets.data[0] = Fleet::RegionRecordType;
+    targets.data[1] = 3;
+    memcpy(targets.data + 2, "sea", 3);
+    if (invalid == 0) targets.data[1] = 0;
+    if (invalid == 1) targets.data[1] = 31;
+    if (invalid == 2) targets.data[2] = '*';
+    if (invalid == 3) targets.data[2] = 0;
+    if (invalid == 4) targets.data[2] = 0x80;
+    if (invalid == 5) targets.data[2] = ';';
+    if (invalid == 6) targets.length = 1;
+    if (invalid == 7) targets.data[0] = 0x22;
+    EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120,
+                               targets, "get radio2", output.data(), output.size()));
+    for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+  }
+}
+
+TEST_F(FleetCommandTest, GpsTargetsUseExactSignedMicrodegreesAndMetres) {
+  struct Case { const char* token; int32_t latitude, longitude; uint32_t radius; };
+  for (const auto& item : std::vector<Case>{
+      {"gps:47.6062,-122.3321:10", 47606200, -122332100, 10000},
+      {"gps:+90,-180:0.001", 90000000, -180000000, 1},
+      {"gps:-90,+180:20050.000", -90000000, 180000000, 20050000},
+      {"gps:0.000001,-0.000001:1.001", 1, -1, 1001},
+      {"gps:0,0:1", 0, 0, 1000}}) {
+    SCOPED_TRACE(item.token);
+    Fleet::Targets targets{};
+    ASSERT_TRUE(Fleet::parseTargets(item.token, strlen(item.token), targets));
+    ASSERT_EQ(1, targets.count);
+    ASSERT_EQ(Fleet::GeoRecordLength, targets.length);
+    EXPECT_EQ(Fleet::GeoRecordType, targets.data[0]);
+    const uint32_t values[] = {uint32_t(item.latitude), uint32_t(item.longitude), item.radius};
+    for (unsigned field = 0; field < 3; ++field)
+      for (unsigned byte = 0; byte < 4; ++byte)
+        EXPECT_EQ(uint8_t(values[field] >> (byte * 8)), targets.data[1 + field * 4 + byte]);
+    EXPECT_FALSE(decode(encodeTargets(targets))); // No location provider means no geographic match.
+    GeoContext location;
+    location.latitude_e6 = item.latitude; location.longitude_e6 = item.longitude;
+    ASSERT_TRUE(decodeGeo(encodeTargets(targets), location));
+    EXPECT_TRUE(decoded.broadcast);
+    EXPECT_EQ(item.latitude, location.received_latitude);
+    EXPECT_EQ(item.longitude, location.received_longitude);
+    EXPECT_EQ(item.radius, location.received_radius);
+  }
+}
+
+TEST_F(FleetCommandTest, SemicolonsSeparateTargetsAndGpsOwnsOnlyItsCoordinateComma) {
+  const std::string gps = "gps:47.6062,-122.3321:25";
+  for (const std::string& token : {gps + ";sea;home:pdx", "sea;" + gps + ";home:pdx",
+                                  "sea;home:pdx;" + gps}) {
+    SCOPED_TRACE(token);
+    Fleet::Targets targets{};
+    const std::string input = token + " get radio2";
+    ASSERT_TRUE(Fleet::parseTargets(input.data(), token.size(), targets));
+    EXPECT_EQ(3, targets.count);
+    EXPECT_EQ(23, targets.length);
+    GeoContext location;
+    RegionContext regions{{"sea"}, {"pdx"}, {}};
+    ASSERT_TRUE(decodeGeo(encodeTargets(targets), location, &regions));
+    EXPECT_EQ(1U, location.calls);
+    EXPECT_EQ(25000U, location.received_radius);
+    EXPECT_EQ(2U, regions.seen.size());
+    EXPECT_TRUE(decoded.broadcast);
+  }
+  // The explicit substring bound must hold even without a terminating NUL.
+  const std::vector<char> nonterminated(gps.begin(), gps.end());
+  for (size_t length = 4; length <= nonterminated.size(); ++length) {
+    Fleet::Targets targets;
+    memset(&targets, 0xA5, sizeof(targets));
+    const bool complete_radius = length == gps.size() || length == gps.size() - 1;
+    EXPECT_EQ(complete_radius,
+              Fleet::parseTargets(nonterminated.data(), length, targets)) << length;
+    if (!complete_radius) {
+      EXPECT_EQ(0, targets.count);
+      EXPECT_EQ(0, targets.length);
+    }
+  }
+}
+
+TEST_F(FleetCommandTest, OldCommaListsAndMalformedGpsSeparatorsRejectTheEntireList) {
+  for (const char* token : {
+      "sea,pdx", "01020304,05060708", "region:sea,home:pdx", "sea;home:pdx,sea",
+      "gps:47.6062:-122.3321:25", "gps:47.6062;-122.3321:25",
+      "gps:47.6062,-122.3321,25", "gps:47.6062,,-122.3321:25",
+      "gps:47.6062,-122.3321,:25", "gps:47.6062,-122.3321:25,sea",
+      ";gps:47.6062,-122.3321:25", "gps:47.6062,-122.3321:25;",
+      "sea;;gps:47.6062,-122.3321:25", "sea;gps:47.6062,-122.3321:25;;home:pdx",
+      "sea;gps:47.6062;home:pdx", "sea;gps:47.6062,-122.3321;home:pdx",
+      "sea;gps:47.6062,-122.3321:;home:pdx", "sea;gps:47.6062,-122.3321:25;home:pdx,sea"}) {
+    SCOPED_TRACE(token);
+    Fleet::Targets targets;
+    memset(&targets, 0xA5, sizeof(targets));
+    EXPECT_FALSE(Fleet::parseTargets(token, strlen(token), targets));
+    EXPECT_EQ(0, targets.count);
+    EXPECT_EQ(0, targets.length);
+    for (uint8_t byte : targets.data) EXPECT_EQ(0, byte);
+  }
+}
+
+TEST_F(FleetCommandTest, SemicolonMixedGpsListsEnforceRecordAndByteBudgets) {
+  std::string list = "gps:47.6062,-122.3321:25";
+  Fleet::Targets targets{};
+  for (unsigned count = 2; count <= 17; ++count) {
+    list += ";z";
+    ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+    EXPECT_EQ(count, targets.count);
+    EXPECT_EQ(13 + (count - 1) * 3, targets.length);
+  }
+  list += ";z";
+  EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
+  EXPECT_EQ(0, targets.count);
+  list = "gps:47.6062,-122.3321:25";
+  for (unsigned count = 0; count < 14; ++count) list += ";sea";
+  ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+  EXPECT_EQ(83, targets.length);
+  list += ";sea";
+  EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
+  EXPECT_EQ(0, targets.length);
+}
+
+TEST_F(FleetCommandTest, GpsDecimalGrammarAndBoundsRejectWithoutPartialTargets) {
+  for (const char* token : {
+      "gps:", "gps:0", "gps:0:0", "gps:0,0:", "gps:,0:1", "gps:0,:1",
+      "gps:0,0:1:2", "gps:0,0:0", "gps:0,0:0.000", "gps:0,0:0.0001",
+      "gps:0,0:20050.001", "gps:90.000001,0:1", "gps:-90.000001,0:1",
+      "gps:0,180.000001:1", "gps:0,-180.000001:1", "gps:0.0000001,0:1",
+      "gps:0,0.0000001:1", "gps:0,0:1.0001", "gps:0,0:+1", "gps:0,0:-1",
+      "gps:NaN,0:1", "gps:0,Inf:1", "gps:0,0:1e3", "gps:1e1,0:1",
+      "gps:.1,0:1", "gps:1.,0:1", "gps:0,0:.1", "gps:0,0:1.",
+      "gps:01,0:1", "gps:0,00:1", "gps:0,0:01", "gps:--1,0:1",
+      "gps:++1,0:1", "gps:+,0:1", "gps:0,0:4294967296", "gps:999999999999999999,0:1",
+      "gps:0,0:1m", "gps:0,0:1\n", "gps: 0:0:1", "gps:0,0:1;all"}) {
+    Fleet::Targets targets;
+    memset(&targets, 0xA5, sizeof(targets));
+    EXPECT_FALSE(Fleet::parseTargets(token, strlen(token), targets)) << token;
+    EXPECT_EQ(0, targets.count);
+    EXPECT_EQ(0, targets.length);
+  }
+}
+
+TEST_F(FleetCommandTest, GeographicCircleIsDefensiveAtPolesDatelineAndAntipodes) {
+  EXPECT_TRUE(Fleet::withinRadius(0, 0, 1, 0, 0));
+  EXPECT_FALSE(Fleet::withinRadius(0, 0, 0, 0, 0));
+  EXPECT_FALSE(Fleet::withinRadius(0, 0, Fleet::MaxRadiusMeters + 1, 0, 0));
+  EXPECT_FALSE(Fleet::withinRadius(90000001, 0, 1, 0, 0));
+  EXPECT_FALSE(Fleet::withinRadius(0, 180000001, 1, 0, 0));
+  EXPECT_FALSE(Fleet::withinRadius(0, 0, 1, -90000001, 0));
+  EXPECT_FALSE(Fleet::withinRadius(0, 0, 1, 0, -180000001));
+  EXPECT_FALSE(Fleet::withinRadius(0, 0, 111195, 0, 1000000));
+  EXPECT_TRUE(Fleet::withinRadius(0, 0, 111196, 0, 1000000));
+  EXPECT_TRUE(Fleet::withinRadius(0, 179999999, 1, 0, -179999999));
+  EXPECT_TRUE(Fleet::withinRadius(90000000, 0, 1, 90000000, 180000000));
+  EXPECT_FALSE(Fleet::withinRadius(0, 0, 20015114, 0, 180000000));
+  EXPECT_TRUE(Fleet::withinRadius(0, 0, 20015115, 0, 180000000));
+  EXPECT_TRUE(Fleet::withinRadius(47606200, -122332100, 10000, 47610000, -122330000));
+  EXPECT_FALSE(Fleet::withinRadius(47606200, -122332100, 10000, 45515200, -122678400));
+}
+
+TEST_F(FleetCommandTest, MixedGeographicRegionHomeAndKeyTargetsAreBoundedOrMatches) {
+  char full[PUB_KEY_SIZE * 2 + 1];
+  mesh::Utils::toHex(full, publisher.pub_key, PUB_KEY_SIZE);
+  const std::string token = "gps:47.6062,-122.3321:1;sea;home:pdx;" + std::string(full, 8);
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets(token.data(), token.size(), targets));
+  ASSERT_EQ(4, targets.count);
+  EXPECT_EQ(13 + 5 + 5 + 5, targets.length);
+  const auto bytes = encodeTargets(targets);
+  EXPECT_TRUE(decode(bytes)); // Public-key prefix can match without either callback.
+  GeoContext location;
+  EXPECT_TRUE(decodeGeo(bytes, location));
+  EXPECT_TRUE(decoded.broadcast);
+  RegionContext regions{{"sea"}, {"pdx"}, {}};
+  EXPECT_TRUE(decodeGeo(bytes, location, &regions));
+  EXPECT_EQ(2U, regions.seen.size());
+  EXPECT_STREQ("get radio2", decoded.command);
+  const char* geo_only = "gps:47.6062,-122.3321:1";
+  ASSERT_TRUE(Fleet::parseTargets(geo_only, strlen(geo_only), targets));
+  const auto geo_bytes = encodeTargets(targets);
+  location.known = false;
+  EXPECT_FALSE(decodeGeo(geo_bytes, location));
+  location.known = true; location.latitude_e6 = 45515200; location.longitude_e6 = -122678400;
+  EXPECT_FALSE(decodeGeo(geo_bytes, location));
+  // Invalid geometry after a matching key still rejects the complete request.
+  const std::string reversed = std::string(full, 8) + ';' + geo_only;
+  ASSERT_TRUE(Fleet::parseTargets(reversed.data(), reversed.size(), targets));
+  auto malformed = encodeTargets(targets);
+  memset(malformed.data() + 13 + 5 + 1 + 8, 0, 4); // Zero-radius final record.
+  EXPECT_FALSE(decode(malformed));
+  EXPECT_FALSE(decoded.broadcast);
+}
+
+TEST_F(FleetCommandTest, GeographicRecordUsesThirteenBytesAndTwoFragmentCommandBudget) {
+  const char* token = "gps:47.6062,-122.3321:1";
+  Fleet::Targets targets{};
+  ASSERT_TRUE(Fleet::parseTargets(token, strlen(token), targets));
+  const std::string prefix = "set flood.rule.1 ";
+  const std::string maximum = prefix + std::string(217 - prefix.size(), 'a');
+  auto bytes = encodeTargets(targets, maximum.c_str());
+  ASSERT_EQ(Fleet::MaxEnvelopeLength, bytes.size());
+  GeoContext location;
+  EXPECT_TRUE(decodeGeo(bytes, location));
+  EXPECT_TRUE(encodeTargets(targets, (maximum + 'a').c_str()).empty());
+  std::string list;
+  for (unsigned count = 1; count <= 6; ++count) {
+    if (!list.empty()) list += ';';
+    list += token;
+    ASSERT_TRUE(Fleet::parseTargets(list.data(), list.size(), targets));
+    EXPECT_EQ(count * 13, targets.length);
+  }
+  list += ';' + std::string(token);
+  EXPECT_FALSE(Fleet::parseTargets(list.data(), list.size(), targets));
+  EXPECT_EQ(0, targets.count);
+  std::array<uint8_t, Fleet::MaxPayloadLength> part{};
+  ASSERT_EQ(part.size(), Fleet::fragment(bytes.data(), bytes.size(), 0, part.data(), part.size()));
+  Fleet::Fragment parsed{};
+  ASSERT_TRUE(Fleet::parseFragment(part.data(), part.size(), parsed));
+  EXPECT_FALSE(decodeGeo(std::vector<uint8_t>(part.begin(), part.end()), location));
+}
+
+TEST_F(FleetCommandTest, ExternalGeographicRecordBoundsRejectBeforeAnyOutputWrite) {
+  std::array<uint8_t, Fleet::MaxEnvelopeLength> output;
+  output.fill(0xA5);
+  for (unsigned invalid = 0; invalid < 5; ++invalid) {
+    Fleet::Targets targets{};
+    const char* token = "gps:0,0:1";
+    ASSERT_TRUE(Fleet::parseTargets(token, strlen(token), targets));
+    if (invalid == 0) targets.length = 12;
+    if (invalid == 1) memset(targets.data + 9, 0, 4);
+    if (invalid == 2) memset(targets.data + 1, 0x7f, 4);
+    if (invalid == 3) memset(targets.data + 5, 0x7f, 4);
+    if (invalid == 4) memset(targets.data + 9, 0xff, 4);
+    EXPECT_EQ(0U, Fleet::encode(publisher, ChannelKey, Now, Now + 120,
+                               targets, "get radio2", output.data(), output.size()));
+    for (uint8_t byte : output) EXPECT_EQ(0xA5, byte);
+  }
+}
+
 TEST_F(FleetCommandTest, InvalidExternalTargetStructuresNeverWriteOutput) {
   std::array<uint8_t, Fleet::MaxPayloadLength> output;
   output.fill(0xA5);
@@ -633,13 +1058,13 @@ TEST_F(FleetCommandTest, InvalidExternalTargetStructuresNeverWriteOutput) {
 
 TEST_F(FleetCommandTest, LargestFmc2EnvelopeFitsAndOversizedCombinationWritesNothing) {
   Fleet::Targets targets{};
-  const char* three = "01020304,05060708,090A0B0C";
+  const char* three = "01020304;05060708;090A0B0C";
   ASSERT_TRUE(Fleet::parseTargets(three, strlen(three), targets));
   const std::string prefix = "set flood.rule.1 ";
   const std::string maximum = prefix + std::string(
       Fleet::MaxCommandLength - targets.length - prefix.size(), 'a');
   EXPECT_EQ(Fleet::MaxEnvelopeLength, encodeTargets(targets, maximum.c_str()).size());
-  const char* four = "01020304,05060708,090A0B0C,01020304";
+  const char* four = "01020304;05060708;090A0B0C;01020304";
   ASSERT_TRUE(Fleet::parseTargets(four, strlen(four), targets));
   std::array<uint8_t, Fleet::MaxEnvelopeLength> output;
   output.fill(0xA5);
@@ -655,8 +1080,8 @@ TEST_F(FleetCommandTest, EveryTargetFormUsesItsExactCommandBudgetWithoutPartialW
   const std::string prefix = "set flood.rule.1 ";
   const std::vector<std::pair<std::string, size_t>> cases = {
     {"all", 230}, {short_key, 225}, {long_key, 223}, {full, 215},
-    {short_key + ',' + short_key, 220}, {short_key + ',' + long_key, 218},
-    {std::string(full) + ',' + short_key, 208}, {std::string(full) + ',' + full, 196}
+    {short_key + ';' + short_key, 220}, {short_key + ';' + long_key, 218},
+    {std::string(full) + ';' + short_key, 208}, {std::string(full) + ';' + full, 196}
   };
   for (const auto& item : cases) {
     SCOPED_TRACE(item.first);

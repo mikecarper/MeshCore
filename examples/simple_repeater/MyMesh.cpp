@@ -10,6 +10,9 @@
 #include <helpers/UsbLogging.h>
 #include <helpers/HilStartupTrace.h>
 #include <helpers/FileRead.h>
+#if MESH_ENABLE_FLEET_CONTROL
+#include <helpers/FleetLocation.h>
+#endif
 #if MESH_ENABLE_TELEMETRY_HISTORY
 #include <helpers/FilePresence.h>
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -4862,6 +4865,10 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
 }
 
 #if MESH_ENABLE_FLEET_CONTROL
+bool MyMesh::getFleetLocation(int32_t& latitude_e6, int32_t& longitude_e6) const {
+  return mesh::readFleetLocation(_prefs, sensors, latitude_e6, longitude_e6);
+}
+
 void MyMesh::finishFleetReplyMutation(bool delivered) {
   if (!fleet_schedule_pending_) return;
   fleet_schedule_delivered_ = delivered;

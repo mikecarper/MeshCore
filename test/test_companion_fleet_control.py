@@ -233,7 +233,64 @@ static std::string fullKey(uint8_t value) {
   return hex;
 }
 
-static void checkedFragments(MyMesh& node, size_t first_index) {
+struct RegionMembership {
+  std::vector<std::string> configured;
+  std::vector<std::string> home_ancestors;
+};
+
+// Receiver membership is a role-owned read-only callback. These explicit
+// memberships isolate sender serialization from actual RegionMap behavior.
+static bool regionMatches(void* context, mesh::FleetCommand::RegionTarget target,
+                          const char* name, size_t length) {
+  assert(context && length > 0 && length <= mesh::FleetCommand::MaxRegionNameLength);
+  const auto& membership = *static_cast<const RegionMembership*>(context);
+  const auto& names = target == mesh::FleetCommand::RegionTarget::Configured
+      ? membership.configured : membership.home_ancestors;
+  for (const auto& candidate : names)
+    if (candidate.size() == length && !memcmp(candidate.data(), name, length)) return true;
+  return false;
+}
+
+static bool decodedRegion(MyMesh& node, RegionMembership& membership,
+                          mesh::FleetCommand::Decoded& decoded, uint8_t node_prefix = 0x77) {
+  uint8_t recipient[32]; memset(recipient, node_prefix, sizeof(recipient));
+  return mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+      node.sent, node.sent_length, node.clock.now, recipient, decoded,
+      regionMatches, &membership);
+}
+
+struct GeoPosition {
+  int32_t latitude_e6 = 47606200, longitude_e6 = -122332100;
+  bool available = true;
+};
+
+static bool geoMatches(void* context, int32_t latitude_e6, int32_t longitude_e6,
+                       uint32_t radius_meters) {
+  assert(context);
+  const auto& position = *static_cast<const GeoPosition*>(context);
+  return position.available && mesh::FleetCommand::withinRadius(
+      latitude_e6, longitude_e6, radius_meters, position.latitude_e6, position.longitude_e6);
+}
+
+static bool decodedGeo(MyMesh& node, GeoPosition& position,
+                       mesh::FleetCommand::Decoded& decoded,
+                       RegionMembership* regions = nullptr, uint8_t node_prefix = 0x77) {
+  uint8_t recipient[32]; memset(recipient, node_prefix, sizeof(recipient));
+  return mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+      node.sent, node.sent_length, node.clock.now, recipient, decoded,
+      regions ? regionMatches : nullptr, regions, geoMatches, &position);
+}
+
+static uint32_t encoded32(const uint8_t* bytes) {
+  return uint32_t(bytes[0]) | uint32_t(bytes[1]) << 8
+      | uint32_t(bytes[2]) << 16 | uint32_t(bytes[3]) << 24;
+}
+
+static void checkedFragments(MyMesh& node, size_t first_index,
+                             mesh::FleetCommand::RegionMatcher matcher = nullptr,
+                             void* context = nullptr,
+                             mesh::FleetCommand::GeoMatcher geo_matcher = nullptr,
+                             void* geo_context = nullptr) {
   assert(node.sent_length > mesh::FleetCommand::MaxPayloadLength);
   uint8_t assembled[mesh::FleetCommand::MaxEnvelopeLength] = {};
   // Read in reverse order; the immutable part index determines placement.
@@ -258,10 +315,12 @@ static void checkedFragments(MyMesh& node, size_t first_index) {
   uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
   mesh::FleetCommand::Decoded decoded;
   assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
-      assembled, node.sent_length, node.clock.now, recipient, decoded));
+      assembled, node.sent_length, node.clock.now, recipient, decoded,
+      matcher, context, geo_matcher, geo_context));
   assembled[node.sent_length - 1] ^= 1;
   assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
-      assembled, node.sent_length, node.clock.now, recipient, decoded));
+      assembled, node.sent_length, node.clock.now, recipient, decoded,
+      matcher, context, geo_matcher, geo_context));
 }
 
 static void compactBroadcast(MyMesh& node, const char* command) {
@@ -293,7 +352,7 @@ int main(int argc, char** argv) {
     assert(!node.handleCommand("fleet send 1 all set radio2 off", 0, nullptr));
     assert(!node.handleCommand("fleetish", 0, reply));
     rejected(node, "fleet send 1 all set radio2 off", 1);
-    rejected(node, "fleet send 1 00112233,445566778899 set radio2 off", 1);
+    rejected(node, "fleet send 1 00112233;445566778899 set radio2 off", 1);
     rejected(node, "fleet", 1);
     rejected(node, "fleet send 1 all reboot");
     rejected(node, "fleet send 1 all get prv.key");
@@ -352,9 +411,10 @@ int main(int argc, char** argv) {
     compactBroadcast(node, "clock sync");
     assert(node.queued == 3);
   } else if (scenario == "implicit_target_ambiguity") {
-    for (const char* targets : {"nonsense", "All", "ALL", "all,42424242", "42424242,all",
-        "allall", "4242424", "424242424", "4242424242424", "GG424242",
-        "42424242,,51515151", "42424242,", ",42424242", "set", "get", "clock"}) {
+    for (const char* targets : {"nonsense", "all;42424242", "42424242;all",
+        "4242424", "424242424", "4242424242424", "GG424242",
+        "42424242;;51515151", "42424242;", ";42424242", "region:", "home:",
+        "get", "set", "del", "time", "clock"}) {
       rejected(node, (std::string("fleet send 1 ") + targets + " set radio2 off").c_str());
     }
     rejected(node, ("fleet send 1 " + fullKey(0) + " set radio2 off").c_str());
@@ -387,8 +447,8 @@ int main(int argc, char** argv) {
     struct Boundary { std::string targets; size_t command_length; };
     const Boundary boundaries[] = {
       {"42424242", 225}, {"424242424242", 223}, {fullKey(0x42), 215},
-      {"42424242,51515151", 220}, {"42424242,515151515151", 218},
-      {fullKey(0x42) + "," + fullKey(0x51), 196},
+      {"42424242;51515151", 220}, {"42424242;515151515151", 218},
+      {fullKey(0x42) + ";" + fullKey(0x51), 196},
     };
     const std::string prefix = "set flood.filter ";
     for (const Boundary& boundary : boundaries) {
@@ -577,9 +637,330 @@ int main(int argc, char** argv) {
     rescue_input.input += "suffix\nlast\n";
     while (rescue_input.available()) node.checkCLIRescueCmd();
     assert(node.rescue_commands == (std::vector<std::string>{"next", "last"}));
+  } else if (scenario == "region_target_modes") {
+    struct Selection { const char* token; const char* name; uint8_t type; };
+    const Selection selections[] = {
+      {"sea", "sea", 0x20}, {"pdx", "pdx", 0x20}, {"region:sea", "sea", 0x20},
+      {"#sea", "sea", 0x20}, {"region:#sea", "sea", 0x20},
+      {"home:sea", "sea", 0x21}, {"home:#sea", "sea", 0x21},
+      {"$sea", "$sea", 0x20}, {"home:$sea", "$sea", 0x21},
+      // Bare command verbs are reserved. Explicit selectors and # aliases
+      // can still select identically named regions without command ambiguity.
+      {"region:get", "get", 0x20}, {"home:get", "get", 0x21}, {"#get", "get", 0x20},
+      {"region:clock", "clock", 0x20}, {"home:time", "time", 0x21}, {"ALL", "ALL", 0x20},
+      {"region:00112233", "00112233", 0x20},
+    };
+    for (const auto& selection : selections) {
+      const std::string cli = std::string("fleet send 1 ") + selection.token + " get radio2";
+      rejected(node, cli.c_str(), 1);
+      const unsigned before = node.queued;
+      assert(node.handleCommand(cli.c_str(), 0, reply));
+      assert(node.queued == before + 1 && node.sent_policy == 2);
+      assert(!memcmp(node.sent, "FMC2", 4) && node.sent[12] == 1);
+      assert(node.sent[13] == selection.type && node.sent[14] == strlen(selection.name));
+      assert(!memcmp(node.sent + 15, selection.name, strlen(selection.name)));
+      assert(node.sent_length == 78 + 2 + strlen(selection.name) + strlen("get radio2"));
+      RegionMembership selected, wrong;
+      auto& names = selection.type == 0x20 ? selected.configured : selected.home_ancestors;
+      names.push_back(selection.name);
+      mesh::FleetCommand::Decoded decoded;
+      assert(decodedRegion(node, selected, decoded));
+      assert(decoded.broadcast && !strcmp(decoded.command, "get radio2"));
+      assert(!decodedRegion(node, wrong, decoded));
+      // Configured-list and home modes cannot borrow each other's membership.
+      auto& opposite = selection.type == 0x20 ? wrong.home_ancestors : wrong.configured;
+      opposite.push_back(selection.name);
+      assert(!decodedRegion(node, wrong, decoded));
+      uint8_t recipient[32]; memset(recipient, 0x77, sizeof(recipient));
+      assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      rejected(node, cli.c_str()); // A successful target consumes this second.
+      ++node.clock.now;
+    }
+    // Omitting a target still depends on a complete allowlisted command.
+    assert(node.handleCommand("fleet send 1 get radio2", 0, reply));
+    compactBroadcast(node, "get radio2");
+    ++node.clock.now;
+    rejected(node, "fleet send 1 get clock");
+    assert(node.handleCommand("fleet send 1 region:get clock", 0, reply));
+    RegionMembership membership{{"get"}, {}};
+    mesh::FleetCommand::Decoded decoded;
+    assert(decodedRegion(node, membership, decoded) && !strcmp(decoded.command, "clock"));
+    membership.configured.clear();
+    assert(!decodedRegion(node, membership, decoded)); // An explicitly named verb remains targeted.
+    rejected(node, "fleet send 1 all get clock"); // It never becomes a new command alias.
+  } else if (scenario == "region_mixed_targets") {
+    const std::string cli = "AB|fleet\tsend\t1\tsea;pdx;home:sea;42424242\tset radio2 off";
+    rejected(node, cli.c_str(), 123);
+    node.queue_ok = false;
+    rejected(node, cli.c_str());
+    node.queue_ok = true;
+    assert(node.handleCommand(cli.c_str(), 0, reply));
+    assert(!strncmp(reply, "AB|OK - fleet command queued; seq=", 32));
+    assert(node.queued == 1 && node.sent_policy == 2 && node.sent[12] == 4);
+    assert(node.sent_length == 78 + 20 + strlen("set radio2 off"));
+    mesh::FleetCommand::Decoded decoded;
+    for (auto membership : {RegionMembership{{"sea"}, {}}, RegionMembership{{"pdx"}, {}},
+        RegionMembership{{}, {"bel", "sea", "w-wa"}}}) {
+      assert(decodedRegion(node, membership, decoded));
+      assert(decoded.broadcast && !strcmp(decoded.command, "set radio2 off"));
+    }
+    RegionMembership none{{"Sea", "seattle"}, {"pdx"}};
+    assert(!decodedRegion(node, none, decoded));
+    assert(decodedRegion(node, none, decoded, 0x42)); // Selected node prefix is independent.
+    rejected(node, cli.c_str());
+    ++node.clock.now;
+    assert(node.handleCommand("fleet send 1 unknown-place clock", 0, reply));
+    assert(!decodedRegion(node, none, decoded)); // Unknown names never mean all.
+  } else if (scenario == "region_packet_budgets") {
+    const std::string name30(30, 'z');
+    struct Boundary { std::string token; size_t records; RegionMembership membership; };
+    const Boundary boundaries[] = {
+      {"sea", 5, {{"sea"}, {}}}, {"home:sea", 5, {{}, {"bel", "sea"}}},
+      {"region:" + name30, 32, {{name30}, {}}},
+      {"home:" + name30, 32, {{}, {name30}}},
+      {"sea;pdx;home:sea;42424242", 20, {{"pdx"}, {}}},
+    };
+    const std::string prefix = "set flood.filter ";
+    for (const auto& boundary : boundaries) {
+      const size_t maximum = mesh::FleetCommand::MaxCommandLength - boundary.records;
+      std::string command = prefix + std::string(maximum - prefix.size(), '1');
+      const std::string cli = "fleet send 1 " + boundary.token + " ";
+      const size_t before = node.manager.outbound.size();
+      rejected(node, (cli + command + '1').c_str());
+      assert(node.handleCommand((cli + command + '1').c_str(), 0, reply));
+      assert(strstr(reply, "exceed two packets") && node.queued == before);
+      node.queue_ok = false;
+      rejected(node, (cli + command).c_str());
+      node.queue_ok = true;
+      assert(node.handleCommand((cli + command).c_str(), 0, reply));
+      assert(node.sent_length == 308 && node.queued == before + 2 && node.sent_policy == 2);
+      auto membership = boundary.membership;
+      checkedFragments(node, before, regionMatches, &membership);
+      mesh::FleetCommand::Decoded decoded;
+      assert(decodedRegion(node, membership, decoded));
+      assert(!strcmp(decoded.command, command.c_str()));
+      ++node.clock.now;
+      // The exact single-packet boundary changes admission to two packets
+      // when one additional command byte is supplied.
+      const size_t single = mesh::FleetCommand::SinglePacketMaxCommandLength - boundary.records;
+      command = prefix + std::string(single - prefix.size(), '1');
+      const size_t single_before = node.manager.outbound.size();
+      assert(node.handleCommand((cli + command).c_str(), 0, reply));
+      assert(node.sent_length == 165 && node.queued == single_before + 1);
+      assert(decodedRegion(node, membership, decoded));
+      ++node.clock.now;
+      command += '1';
+      assert(node.handleCommand((cli + command).c_str(), 0, reply));
+      assert(node.sent_length == 166 && node.queued == single_before + 3);
+      checkedFragments(node, single_before + 1, regionMatches, &membership);
+      ++node.clock.now;
+    }
+  } else if (scenario == "region_signature_binding") {
+    const std::string prefix = "set flood.filter ";
+    for (size_t length : {size_t(20), size_t(83)}) {
+      const std::string command = prefix + std::string(length - prefix.size(), '1');
+      const size_t before = node.manager.outbound.size();
+      assert(node.handleCommand(("fleet send 1 sea " + command).c_str(), 0, reply));
+      RegionMembership membership{{"sea", "tea"}, {"sea", "tea"}};
+      mesh::FleetCommand::Decoded decoded;
+      assert(decodedRegion(node, membership, decoded));
+      if (length == 83) checkedFragments(node, before, regionMatches, &membership);
+      // Both the readable name and its configured-vs-home selector are signed.
+      node.sent[15] = 't';
+      assert(!decodedRegion(node, membership, decoded));
+      node.sent[15] = 's';
+      node.sent[13] = mesh::FleetCommand::HomeRecordType;
+      assert(!decodedRegion(node, membership, decoded));
+      node.sent[13] = mesh::FleetCommand::RegionRecordType;
+      assert(decodedRegion(node, membership, decoded));
+      ++node.clock.now;
+    }
+  } else if (scenario == "region_invalid_targets") {
+    for (const std::string& targets : {std::string("all;sea"), std::string("sea;all"),
+        std::string("sea;;pdx"), std::string("sea;"), std::string(",sea"),
+        std::string("region:"), std::string("home:"), std::string("region:#"),
+        std::string("home:*"), std::string("region:sea:pdx"), std::string("unknown:sea"),
+        std::string("region:") + std::string(31, 'z'), std::string("home:") + std::string(31, 'z'),
+        std::string("sea;GG112233"), std::string("sea;0011223"), std::string("sea;001122334"),
+        std::string("home:sea;0011223344556"), std::string("sea;00112233;44556677889Z"),
+        std::string("sea;region:\x7f"), std::string("sea;region:\xc3\xa9"),
+        std::string("sea;") + fullKey(0), std::string("sea;") + std::string(65, '1')}) {
+      rejected(node, ("fleet send 1 " + targets + " set radio2 off").c_str());
+      assert(node.queued == 0);
+    }
+    assert(node.handleCommand("fleet send 1 sea clock", 0, reply));
+    assert(node.queued == 1); // No malformed target consumed the successful second.
+    RegionMembership membership{{"sea"}, {}};
+    mesh::FleetCommand::Decoded decoded;
+    assert(decodedRegion(node, membership, decoded) && !strcmp(decoded.command, "clock"));
+  } else if (scenario == "rescue_region_overflow") {
+    const std::string oversized = "fleet send 1 sea;pdx;home:sea;" + fullKey(0x42)
+        + " set radio2 off";
+    assert(oversized.size() > sizeof(node.cli_command));
+    rescue_input.input = oversized + "\r\nfleet send 1 sea clock\r\n";
+    while (rescue_input.available()) node.checkCLIRescueCmd();
+    assert(node.rescue_commands == std::vector<std::string>{"fleet send 1 sea clock"});
+    assert(node.queued == 1 && !node._cli_line_overflow);
+    assert(rescue_output.output.find("ERR: too long") != std::string::npos);
+    RegionMembership membership{{"sea"}, {}};
+    mesh::FleetCommand::Decoded decoded;
+    assert(decodedRegion(node, membership, decoded));
+    assert(!strcmp(decoded.command, "clock") && node.sent[12] == 1);
+  } else if (scenario == "gps_target") {
+    struct Circle { const char* text; int32_t lat, lon; uint32_t radius; };
+    const Circle circles[] = {
+      {"gps:47.6062,-122.3321:25", 47606200, -122332100, 25000},
+      {"gps:+47.606200,-122.332100:25.125", 47606200, -122332100, 25125},
+      {"gps:47.6062,-122.3321:0.001", 47606200, -122332100, 1},
+    };
+    GeoPosition position;
+    for (const auto& circle : circles) {
+      const std::string cli = std::string("fleet send 1 ") + circle.text + " get radio2";
+      rejected(node, cli.c_str(), 1);
+      assert(node.handleCommand(cli.c_str(), 0, reply));
+      assert(node.sent_policy == 2 && node.sent[12] == 1 && node.sent[13] == 0x22);
+      assert(int32_t(encoded32(node.sent + 14)) == circle.lat);
+      assert(int32_t(encoded32(node.sent + 18)) == circle.lon);
+      assert(encoded32(node.sent + 22) == circle.radius);
+      assert(node.sent_length == 78 + 13 + strlen("get radio2"));
+      mesh::FleetCommand::Decoded decoded;
+      assert(decodedGeo(node, position, decoded));
+      assert(decoded.broadcast && !strcmp(decoded.command, "get radio2"));
+      position.available = false;
+      assert(!decodedGeo(node, position, decoded));
+      position.available = true;
+      uint8_t recipient[32]; memset(recipient, 0x77, sizeof(recipient));
+      assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      rejected(node, cli.c_str());
+      ++node.clock.now;
+    }
+  } else if (scenario == "gps_mixed_targets") {
+    const std::string cli = "CD|fleet\tsend\t1\tsea;gps:47.6062,-122.3321:25;home:pdx;42424242\tclock sync";
+    rejected(node, cli.c_str(), 99);
+    assert(node.handleCommand(cli.c_str(), 0, reply));
+    assert(!strncmp(reply, "CD|OK - fleet command queued; seq=", 32));
+    assert(node.sent_policy == 2 && node.queued == 1 && node.sent[12] == 4);
+    assert(node.sent_length == 78 + 28 + strlen("clock sync"));
+    GeoPosition position; RegionMembership regions;
+    mesh::FleetCommand::Decoded decoded;
+    assert(decodedGeo(node, position, decoded, &regions)); // Seattle circle.
+    position.latitude_e6 = 47610100; position.longitude_e6 = -122201500;
+    assert(decodedGeo(node, position, decoded, &regions)); // Bellevue is inside25km.
+    position.latitude_e6 = 45523000; position.longitude_e6 = -122676000;
+    assert(!decodedGeo(node, position, decoded, &regions)); // Portland is outside.
+    regions.configured = {"sea"};
+    assert(decodedGeo(node, position, decoded, &regions)); // Configured-region OR.
+    regions.configured.clear(); regions.home_ancestors = {"suburb", "pdx"};
+    assert(decodedGeo(node, position, decoded, &regions)); // Home-ancestor OR.
+    regions.home_ancestors.clear(); position.available = false;
+    assert(decodedGeo(node, position, decoded, &regions, 0x42)); // Node-prefix OR.
+    assert(!decodedGeo(node, position, decoded, &regions));
+    rejected(node, cli.c_str());
+  } else if (scenario == "gps_packet_budgets") {
+    struct Boundary { const char* targets; size_t records; };
+    const Boundary boundaries[] = {
+      {"gps:47.6062,-122.3321:25", 13},
+      {"sea;gps:47.6062,-122.3321:25;home:pdx;42424242", 28},
+    };
+    const std::string prefix = "set flood.filter ";
+    GeoPosition position;
+    for (const auto& boundary : boundaries) {
+      const std::string cli = std::string("fleet send 1 ") + boundary.targets + " ";
+      const size_t maximum = mesh::FleetCommand::MaxCommandLength - boundary.records;
+      std::string command = prefix + std::string(maximum - prefix.size(), '1');
+      const size_t before = node.manager.outbound.size();
+      rejected(node, (cli + command + '1').c_str());
+      assert(node.handleCommand((cli + command + '1').c_str(), 0, reply));
+      assert(strstr(reply, "exceed two packets") && node.queued == before);
+      node.fail_queue = node.queue_calls + 2;
+      rejected(node, (cli + command).c_str());
+      assert(node.queued == before); // Neither half remains after second admission fails.
+      node.fail_queue = 0;
+      assert(node.handleCommand((cli + command).c_str(), 0, reply));
+      assert(node.sent_length == 308 && node.queued == before + 2 && node.sent_policy == 2);
+      checkedFragments(node, before, nullptr, nullptr, geoMatches, &position);
+      mesh::FleetCommand::Decoded decoded;
+      assert(decodedGeo(node, position, decoded) && !strcmp(decoded.command, command.c_str()));
+      ++node.clock.now;
+      const size_t single = mesh::FleetCommand::SinglePacketMaxCommandLength - boundary.records;
+      command = prefix + std::string(single - prefix.size(), '1');
+      const size_t single_before = node.manager.outbound.size();
+      assert(node.handleCommand((cli + command).c_str(), 0, reply));
+      assert(node.sent_length == 165 && node.queued == single_before + 1);
+      assert(decodedGeo(node, position, decoded));
+      ++node.clock.now; command += '1';
+      assert(node.handleCommand((cli + command).c_str(), 0, reply));
+      assert(node.sent_length == 166 && node.queued == single_before + 3);
+      checkedFragments(node, single_before + 1, nullptr, nullptr, geoMatches, &position);
+      ++node.clock.now;
+    }
+  } else if (scenario == "gps_signature_binding") {
+    const std::string prefix = "set flood.filter "; GeoPosition position;
+    for (size_t length : {size_t(20), size_t(75)}) {
+      const std::string command = prefix + std::string(length - prefix.size(), '1');
+      const size_t before = node.manager.outbound.size();
+      assert(node.handleCommand(("fleet send 1 gps:47.6062,-122.3321:25 " + command).c_str(), 0, reply));
+      mesh::FleetCommand::Decoded decoded;
+      assert(decodedGeo(node, position, decoded));
+      if (length == 75) checkedFragments(node, before, nullptr, nullptr, geoMatches, &position);
+      for (size_t field : {size_t(14), size_t(18), size_t(22)}) {
+        node.sent[field] ^= 1; // Still valid and near the selected receiver.
+        assert(!decodedGeo(node, position, decoded));
+        node.sent[field] ^= 1;
+        assert(decodedGeo(node, position, decoded));
+      }
+      ++node.clock.now;
+    }
+  } else if (scenario == "gps_invalid_targets") {
+    for (const char* target : {"gps:", "gps:47,-122", "gps:47,-122:", "gps:::-1",
+        "gps:47:-122:25", "gps:47,,122:25", "gps:47,-122:25;", ";gps:47,-122:25",
+        "sea;;gps:47,-122:25", "gps:47,-122:25;all", "all;gps:47,-122:25",
+        "gps:47,-122:25;clock", "gps:47,-122:25;sea;", "sea;gps:47;-122:25",
+        "gps:47,-122:25:1", "gps:91,-122:25", "gps:-91,-122:25", "gps:47,181:25",
+        "gps:47,-181:25", "gps:47,-122:0", "gps:47,-122:-1", "gps:47,-122:+1",
+        "gps:47,-122:0.0001", "gps:47,-122:20050.001", "gps:NaN,-122:25",
+        "gps:47,inf:25", "gps:47,-122:1e3", "gps:.5,-122:25", "gps:47.,-122:25",
+        "gps:47.6062001,-122:25", "gps:47,-122.3321001:25", "gps:047,-122:25",
+        "gps:47,-122:025", "gps:47,-122:429496729600000000000", "gps:47,-122:25,,sea",
+        "all,gps:47,-122:25", "gps:47,-122:25,all", "gps:47,-122:25,GG112233"}) {
+      rejected(node, (std::string("fleet send 1 ") + target + " clock").c_str());
+      assert(node.queued == 0);
+    }
+    std::string circles;
+    for (unsigned i = 0; i < 6; ++i) {
+      if (i) circles += ';';
+      circles += "gps:47.6062,-122.3321:25";
+    }
+    mesh::FleetCommand::Targets parsed;
+    assert(mesh::FleetCommand::parseTargets(circles.c_str(), circles.size(), parsed));
+    assert(parsed.count == 6 && parsed.length == 78);
+    rejected(node, ("fleet send 1 " + circles + ";gps:47,-122:25 clock").c_str());
+    assert(node.queued == 0); // Target-record overflow never signs a partial list.
+    assert(node.handleCommand(("fleet send 1 " + circles + " clock").c_str(), 0, reply));
+    assert(node.sent_length == 161 && node.queued == 1);
+    GeoPosition position; mesh::FleetCommand::Decoded decoded;
+    assert(decodedGeo(node, position, decoded) && !strcmp(decoded.command, "clock"));
+  } else if (scenario == "comma_target_lists_rejected") {
+    const std::string comma_lists[] = {
+      "42424242,515151515151", fullKey(0x42) + "," + fullKey(0x63),
+      "sea,pdx", "home:sea,home:pdx", "sea;home:pdx,region:sea",
+      "sea,gps:47.6062,-122.3321:25", "gps:47.6062,-122.3321:25,sea",
+      "gps:47.6062,-122.3321:25;sea,pdx",
+      "gps:47.6062,-122.3321:25,gps:45.5,-122.6:25",
+    };
+    for (const auto& targets : comma_lists) {
+      rejected(node, ("fleet send 1 " + targets + " clock").c_str());
+      assert(node.queued == 0);
+    }
+    assert(node.handleCommand("fleet send 1 sea;gps:47.6062,-122.3321:25;home:pdx;42424242 clock", 0, reply));
+    assert(node.queued == 1 && node.sent[12] == 4);
+    GeoPosition position; mesh::FleetCommand::Decoded decoded;
+    assert(decodedGeo(node, position, decoded) && !strcmp(decoded.command, "clock"));
   } else if (scenario == "explicit_target_forms") {
     for (const std::string& targets : {std::string("42424242"), std::string("424242424242"),
-        fullKey(0x42), std::string("42424242,515151515151,") + fullKey(0x63)}) {
+        fullKey(0x42), std::string("42424242;515151515151;") + fullKey(0x63)}) {
       assert(node.handleCommand(("fleet send 1 " + targets + " set radio2 off").c_str(), 0, reply));
       uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
       mesh::FleetCommand::Decoded decoded;
@@ -661,7 +1042,7 @@ int main(int argc, char** argv) {
     assert(!mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
         node.sent, node.sent_length, node.clock.now, recipient, decoded));
   } else if (scenario == "mixed_targets") {
-    const std::string command = "fleet send 1 42424242,515151515151," + fullKey(0x63)
+    const std::string command = "fleet send 1 42424242;515151515151;" + fullKey(0x63)
         + " set radio2 off";
     assert(node.handleCommand(command.c_str(), 0, reply));
     assert(node.queued == 1 && node.sent_policy == 2);
@@ -692,7 +1073,7 @@ int main(int argc, char** argv) {
     memset(recipient, 0x77, sizeof(recipient));
     assert(!matched());
   } else if (scenario == "multiple_full_targets") {
-    const std::string command = "fleet send 1 " + fullKey(0x42) + "," + fullKey(0x63)
+    const std::string command = "fleet send 1 " + fullKey(0x42) + ";" + fullKey(0x63)
         + " set radio2 off";
     assert(node.handleCommand(command.c_str(), 0, reply));
     assert(node.queued == 1);
@@ -708,9 +1089,9 @@ int main(int argc, char** argv) {
           node.sent, node.sent_length, node.clock.now, recipient, decoded));
     }
   } else if (scenario == "invalid_target_lists") {
-    for (const char* targets : {"all,00112233", "00112233,all", "00112233,,44556677",
-        ",00112233", "00112233,", "0011223", "001122334", "0011223344556",
-        "GG112233", "00112233,44556677889Z"}) {
+    for (const char* targets : {"all;00112233", "00112233;all", "00112233;;44556677",
+        ";00112233", "00112233;", "0011223", "001122334", "0011223344556",
+        "GG112233", "00112233;44556677889Z"}) {
       rejected(node, (std::string("fleet send 1 ") + targets + " set radio2 off").c_str());
     }
     assert(node.handleCommand("fleet send 1 00112233 set radio2 off", 0, reply));
@@ -719,7 +1100,7 @@ int main(int argc, char** argv) {
     std::string targets;
     for (unsigned i = 1; i <= 17; ++i) {
       char prefix[9]; snprintf(prefix, sizeof(prefix), "%08x", i);
-      if (!targets.empty()) targets += ',';
+      if (!targets.empty()) targets += ';';
       targets += prefix;
     }
     mesh::FleetCommand::Targets parsed;
@@ -731,7 +1112,7 @@ int main(int argc, char** argv) {
     assert(node.handleCommand(("fleet send 1 " + targets + " set radio2 off").c_str(), 0, reply));
     assert(node.queued == 2); // The valid list now fits one atomic two-packet envelope.
     ++node.clock.now;
-    targets += ",44556677"; // More than the entire target-record capacity.
+    targets += ";44556677"; // More than the entire target-record capacity.
     rejected(node, ("fleet send 1 " + targets + " set radio2 off").c_str());
     assert(node.queued == 2);
   } else if (scenario == "scheduled_sets") {
@@ -804,8 +1185,8 @@ int main(int argc, char** argv) {
     assert(node.queued == 1);
   } else if (scenario == "schedule_packet_budget") {
     const std::string scheduled = "set tempradioat2 910.5,500,5,5,rxtx,+1,+2,auto";
-    std::string targets = fullKey(0x42) + "," + fullKey(0x51) + ","
-        + fullKey(0x63) + "," + fullKey(0x74);
+    std::string targets = fullKey(0x42) + ";" + fullKey(0x51) + ";"
+        + fullKey(0x63) + ";" + fullKey(0x74);
     mesh::FleetCommand::Targets parsed;
     assert(mesh::FleetCommand::parseTargets(targets.c_str(), targets.size(), parsed));
     assert(mesh::FleetCommand::commandAllowed(scheduled.c_str()));
@@ -978,6 +1359,42 @@ class CompanionFleetControlTests(unittest.TestCase):
         result = subprocess.run([str(binary), "stm32_rescue"],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_bare_and_explicit_region_targets_preserve_distinct_configured_and_home_modes(self):
+        self.scenario("region_target_modes")
+
+    def test_mixed_regions_home_and_node_prefix_are_signed_without_broadcast_fallback(self):
+        self.scenario("region_mixed_targets")
+
+    def test_region_records_share_exact_one_and_two_packet_budgets_and_allow_safe_retry(self):
+        self.scenario("region_packet_budgets")
+
+    def test_region_name_and_configured_or_home_selector_are_signature_bound(self):
+        self.scenario("region_signature_binding")
+
+    def test_invalid_region_and_keylike_lists_reject_atomically_without_consuming_sequence(self):
+        self.scenario("region_invalid_targets")
+
+    def test_rescue_overflow_never_executes_truncated_region_target_list(self):
+        self.scenario("rescue_region_overflow")
+
+    def test_signed_gps_circle_uses_exact_fixed_point_coordinates_and_requires_location(self):
+        self.scenario("gps_target")
+
+    def test_gps_region_home_and_node_targets_form_one_authorized_or_list(self):
+        self.scenario("gps_mixed_targets")
+
+    def test_gps_exact_packet_budgets_reject_and_roll_back_without_consuming_sequence(self):
+        self.scenario("gps_packet_budgets")
+
+    def test_gps_latitude_longitude_and_radius_are_bound_by_real_signature(self):
+        self.scenario("gps_signature_binding")
+
+    def test_malformed_gps_and_overcapacity_lists_never_sign_or_queue_partial_requests(self):
+        self.scenario("gps_invalid_targets")
+
+    def test_only_semicolons_separate_targets_and_gps_coordinate_comma_is_not_a_list(self):
+        self.scenario("comma_target_lists_rejected")
 
     def test_explicit_8_12_64_hex_and_list_targets_remain_restricted(self):
         self.scenario("explicit_target_forms")

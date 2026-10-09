@@ -12,6 +12,9 @@
 #include <helpers/ota/OtaContext.h>
 #endif
 #include <helpers/FileRead.h>
+#if MESH_ENABLE_FLEET_CONTROL
+#include <helpers/FleetLocation.h>
+#endif
 #include <helpers/radiolib/RxBoostedGainDefaults.h>
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ClientACLCLI.h>
@@ -1914,6 +1917,12 @@ void MyMesh::startRegionsLoad() {
   load_stack[0] = &temp_map.getWildcard();
   region_load_active = true;
 }
+
+#if MESH_ENABLE_FLEET_CONTROL
+bool MyMesh::getFleetLocation(int32_t& latitude_e6, int32_t& longitude_e6) const {
+  return mesh::readFleetLocation(_prefs, sensors, latitude_e6, longitude_e6);
+}
+#endif
 
 bool MyMesh::saveRegions() {
   return region_map.save(_fs);

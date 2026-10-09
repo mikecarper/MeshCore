@@ -1,5 +1,6 @@
 #include "FleetCommand.h"
 #include <SHA256.h>
+#include <math.h>
 #include <string.h>
 
 namespace mesh {
@@ -49,11 +50,93 @@ void targetHash(const uint8_t* full_key, uint8_t* target) {
   hash.finalize(target, FleetCommand::TargetSize);
 }
 
+bool regionNameAllowed(const char* name, size_t length) {
+  if (!length || length > FleetCommand::MaxRegionNameLength) return false;
+  for (size_t i = 0; i < length; ++i) {
+    const unsigned char value = name[i];
+    // Match RegionMap's name characters within printable ASCII only.
+    if (value != '-' && value != '$' && value != '#'
+        && !(value >= '0' && value <= '9')
+        && !(value >= 'A' && value <= '~')) return false;
+  }
+  return true;
+}
+
+bool coordinatesAllowed(int32_t latitude_e6, int32_t longitude_e6) {
+  return latitude_e6 >= -90000000 && latitude_e6 <= 90000000
+      && longitude_e6 >= -180000000 && longitude_e6 <= 180000000;
+}
+
+bool geoAllowed(int32_t latitude_e6, int32_t longitude_e6, uint32_t radius) {
+  return coordinatesAllowed(latitude_e6, longitude_e6)
+      && radius >= FleetCommand::MinRadiusMeters && radius <= FleetCommand::MaxRadiusMeters;
+}
+
+// Convert bounded decimal text to fixed point without floating-point rounding,
+// exponent aliases, silently dropped precision, or intermediate overflow.
+bool scaledDecimal(const char* text, size_t length, unsigned precision,
+                   uint32_t maximum, bool signed_value, int32_t& result) {
+  if (!length) return false;
+  size_t cursor = 0;
+  bool negative = false;
+  if (text[cursor] == '+' || text[cursor] == '-') {
+    if (!signed_value || ++cursor == length) return false;
+    negative = text[0] == '-';
+  }
+  if (text[cursor] < '0' || text[cursor] > '9') return false;
+  if (text[cursor] == '0' && cursor + 1 < length
+      && text[cursor + 1] >= '0' && text[cursor + 1] <= '9') return false;
+  uint32_t scale = 1;
+  for (unsigned i = 0; i < precision; ++i) scale *= 10;
+  const uint32_t maximum_whole = maximum / scale;
+  uint32_t whole = 0;
+  while (cursor < length && text[cursor] >= '0' && text[cursor] <= '9') {
+    const uint32_t digit = unsigned(text[cursor++] - '0');
+    if (digit > maximum_whole || whole > (maximum_whole - digit) / 10) return false;
+    whole = whole * 10 + digit;
+  }
+  uint32_t fraction = 0;
+  unsigned digits = 0;
+  if (cursor < length) {
+    if (text[cursor++] != '.' || cursor == length) return false;
+    while (cursor < length) {
+      if (text[cursor] < '0' || text[cursor] > '9' || digits == precision) return false;
+      fraction = fraction * 10 + unsigned(text[cursor++] - '0');
+      ++digits;
+    }
+  }
+  while (digits++ < precision) fraction *= 10;
+  const uint32_t magnitude = whole * scale + fraction;
+  if (magnitude > maximum) return false;
+  result = negative ? -int32_t(magnitude) : int32_t(magnitude);
+  return true;
+}
+
+bool parseGeo(const char* token, size_t length, int32_t& latitude_e6,
+              int32_t& longitude_e6, uint32_t& radius) {
+  size_t cursor = 4; // gps:
+  int32_t values[3];
+  for (unsigned i = 0; i < 3; ++i) {
+    const size_t start = cursor;
+    const char separator = i == 0 ? ',' : ':';
+    while (cursor < length && token[cursor] != separator) ++cursor;
+    if ((i < 2 && cursor == length) || (i == 2 && cursor != length)
+        || !scaledDecimal(token + start, cursor - start, i == 2 ? 3 : 6,
+                         i == 0 ? 90000000 : i == 1 ? 180000000 : FleetCommand::MaxRadiusMeters,
+                         i != 2, values[i])) return false;
+    if (cursor < length) ++cursor;
+  }
+  latitude_e6 = values[0]; longitude_e6 = values[1]; radius = uint32_t(values[2]);
+  return geoAllowed(latitude_e6, longitude_e6, radius);
+}
+
 // Validate every record, including records after one that matches this node.
 // An absent self key is used by encode to validate externally supplied lists.
 bool targetRecords(const uint8_t* data, size_t available, uint8_t count,
                    const uint8_t* self, size_t& consumed, bool& matched,
-                   bool& broadcast) {
+                   bool& broadcast, FleetCommand::RegionMatcher matcher = nullptr,
+                   void* context = nullptr, FleetCommand::GeoMatcher geo_matcher = nullptr,
+                   void* geo_context = nullptr) {
   consumed = 0;
   matched = count == 0;
   broadcast = count == 0 || count > 1;
@@ -63,6 +146,30 @@ bool targetRecords(const uint8_t* data, size_t available, uint8_t count,
   for (unsigned i = 0; i < count; ++i) {
     if (consumed >= available) return false;
     const uint8_t type = data[consumed++];
+    if (type == FleetCommand::GeoRecordType) {
+      constexpr size_t fields = FleetCommand::GeoRecordLength - 1;
+      if (fields > available - consumed || consumed + fields > FleetCommand::MaxTargetBytes) return false;
+      const int32_t latitude_e6 = int32_t(read32(data + consumed));
+      const int32_t longitude_e6 = int32_t(read32(data + consumed + 4));
+      const uint32_t radius = read32(data + consumed + 8);
+      if (!geoAllowed(latitude_e6, longitude_e6, radius)) return false;
+      broadcast = true;
+      if (self && geo_matcher && geo_matcher(geo_context, latitude_e6, longitude_e6, radius)) matched = true;
+      consumed += fields;
+      continue;
+    }
+    if (type == FleetCommand::RegionRecordType || type == FleetCommand::HomeRecordType) {
+      if (consumed >= available) return false;
+      const uint8_t length = data[consumed++];
+      if (length > available - consumed || consumed + length > FleetCommand::MaxTargetBytes
+          || !regionNameAllowed(reinterpret_cast<const char*>(data + consumed), length)) return false;
+      broadcast = true;
+      if (self && matcher && matcher(context, type == FleetCommand::RegionRecordType
+              ? FleetCommand::RegionTarget::Configured : FleetCommand::RegionTarget::Home,
+              reinterpret_cast<const char*>(data + consumed), length)) matched = true;
+      consumed += length;
+      continue;
+    }
     if (type != 4 && type != 6 && type != FleetCommand::TargetSize) return false;
     if (type > available - consumed
         || consumed + type > FleetCommand::MaxTargetBytes) return false;
@@ -265,28 +372,87 @@ bool FleetCommand::parseTargets(const char* text, size_t length, Targets& target
   size_t cursor = 0;
   while (cursor < length) {
     const size_t start = cursor;
-    while (cursor < length && text[cursor] != ',') ++cursor;
+    // A semicolon always terminates a target. GPS owns its one coordinate
+    // comma, so malformed coordinates cannot consume another target.
+    while (cursor < length && text[cursor] != ';') ++cursor;
     const size_t token_length = cursor - start;
-    if (token_length != 8 && token_length != 12 && token_length != PUB_KEY_SIZE * 2) return fail();
-    const size_t type = token_length == PUB_KEY_SIZE * 2 ? TargetSize : token_length / 2;
-    if (targets.count == MaxTargetCount || targets.length + 1 + type > MaxTargetBytes) return fail();
-    uint8_t full_key[PUB_KEY_SIZE];
-    const size_t byte_length = token_length / 2;
-    for (size_t i = 0; i < byte_length; ++i) {
-      const int upper = hexDigit(text[start + i * 2]);
-      const int lower = hexDigit(text[start + i * 2 + 1]);
-      if (upper < 0 || lower < 0) return fail();
-      full_key[i] = uint8_t((upper << 4) | lower);
+    if (!token_length || targets.count == MaxTargetCount) return fail();
+    const char* token = text + start;
+    const bool gps = token_length >= 4 && !memcmp(token, "gps:", 4);
+    const bool region = token_length >= 7 && !memcmp(token, "region:", 7);
+    const bool home = token_length >= 5 && !memcmp(token, "home:", 5);
+    const bool explicit_name = region || home;
+    const bool key = !explicit_name && !gps
+        && (token_length == 8 || token_length == 12 || token_length == PUB_KEY_SIZE * 2);
+    if (gps) {
+      int32_t latitude_e6, longitude_e6;
+      uint32_t radius;
+      if (targets.length + GeoRecordLength > MaxTargetBytes
+          || !parseGeo(token, token_length, latitude_e6, longitude_e6, radius)) return fail();
+      targets.data[targets.length++] = GeoRecordType;
+      write32(targets.data + targets.length, uint32_t(latitude_e6));
+      write32(targets.data + targets.length + 4, uint32_t(longitude_e6));
+      write32(targets.data + targets.length + 8, radius);
+      targets.length += GeoRecordLength - 1;
+    } else if (key) {
+      const size_t type = token_length == PUB_KEY_SIZE * 2 ? TargetSize : token_length / 2;
+      if (targets.length + 1 + type > MaxTargetBytes) return fail();
+      uint8_t full_key[PUB_KEY_SIZE];
+      const size_t byte_length = token_length / 2;
+      for (size_t i = 0; i < byte_length; ++i) {
+        const int upper = hexDigit(token[i * 2]);
+        const int lower = hexDigit(token[i * 2 + 1]);
+        if (upper < 0 || lower < 0) return fail();
+        full_key[i] = uint8_t((upper << 4) | lower);
+      }
+      if (type == TargetSize && zero(full_key, PUB_KEY_SIZE)) return fail();
+      targets.data[targets.length++] = uint8_t(type);
+      if (type == TargetSize) targetHash(full_key, targets.data + targets.length);
+      else memcpy(targets.data + targets.length, full_key, type);
+      targets.length += uint8_t(type);
+    } else {
+      if (!explicit_name) {
+        if (keyEquals(token, token_length, "all") || keyEquals(token, token_length, "get")
+            || keyEquals(token, token_length, "set") || keyEquals(token, token_length, "del")
+            || keyEquals(token, token_length, "time") || keyEquals(token, token_length, "clock")) return fail();
+        bool all_hex = true;
+        for (size_t i = 0; i < token_length; ++i) all_hex = all_hex && hexDigit(token[i]) >= 0;
+        if (all_hex) return fail();
+      }
+      const size_t prefix = region ? 7 : home ? 5 : 0;
+      const char* name = token + prefix;
+      size_t name_length = token_length - prefix;
+      if (name_length && *name == '#') { ++name; --name_length; }
+      if (!regionNameAllowed(name, name_length)
+          || targets.length + 2 + name_length > MaxTargetBytes) return fail();
+      targets.data[targets.length++] = home ? HomeRecordType : RegionRecordType;
+      targets.data[targets.length++] = uint8_t(name_length);
+      memcpy(targets.data + targets.length, name, name_length);
+      targets.length += uint8_t(name_length);
     }
-    if (type == TargetSize && zero(full_key, PUB_KEY_SIZE)) return fail();
-    targets.data[targets.length++] = uint8_t(type);
-    if (type == TargetSize) targetHash(full_key, targets.data + targets.length);
-    else memcpy(targets.data + targets.length, full_key, type);
-    targets.length += uint8_t(type);
     ++targets.count;
     if (cursor < length && ++cursor == length) return fail();
   }
   return true;
+}
+
+bool FleetCommand::withinRadius(int32_t center_latitude_e6, int32_t center_longitude_e6,
+                                uint32_t radius_meters, int32_t local_latitude_e6,
+                                int32_t local_longitude_e6) {
+  if (!geoAllowed(center_latitude_e6, center_longitude_e6, radius_meters)
+      || !coordinatesAllowed(local_latitude_e6, local_longitude_e6)) return false;
+  constexpr double radians_per_e6_degree = 0.000001 * 0.017453292519943295769;
+  const double center_latitude = double(center_latitude_e6) * radians_per_e6_degree;
+  const double local_latitude = double(local_latitude_e6) * radians_per_e6_degree;
+  const double latitude_half = (double(local_latitude_e6) - center_latitude_e6) * radians_per_e6_degree / 2;
+  const double longitude_half = (double(local_longitude_e6) - center_longitude_e6) * radians_per_e6_degree / 2;
+  const double latitude_sine = sin(latitude_half), longitude_sine = sin(longitude_half);
+  double haversine = latitude_sine * latitude_sine
+      + cos(center_latitude) * cos(local_latitude) * longitude_sine * longitude_sine;
+  if (haversine < 0) haversine = 0;
+  else if (haversine > 1) haversine = 1;
+  const double distance = 2 * 6371008.8 * atan2(sqrt(haversine), sqrt(1 - haversine));
+  return distance <= double(radius_meters);
 }
 
 bool FleetCommand::commandAllowed(const char* command) {
@@ -411,7 +577,9 @@ size_t FleetCommand::encode(const LocalIdentity& publisher, const uint8_t* key,
 
 bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
                          const uint8_t* payload, size_t length, uint32_t now,
-                         const uint8_t* self_public_key, Decoded& output) {
+                         const uint8_t* self_public_key, Decoded& output,
+                         RegionMatcher matcher, void* context,
+                         GeoMatcher geo_matcher, void* geo_context) {
   memset(&output, 0, sizeof(output));
   if (!privateKeyAllowed(key) || !payload || !self_public_key
       || zero(publisher.pub_key, PUB_KEY_SIZE) || zero(self_public_key, PUB_KEY_SIZE)
@@ -433,7 +601,8 @@ bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
     size_t consumed;
     bool matched;
     if (!targetRecords(payload + 13, unsigned_length - 13, payload[12],
-                       self_public_key, consumed, matched, broadcast)
+                       self_public_key, consumed, matched, broadcast, matcher, context,
+                       geo_matcher, geo_context)
         || !matched) return false;
     command_offset = MinHeaderSize + consumed;
     if (command_offset > unsigned_length) return false;

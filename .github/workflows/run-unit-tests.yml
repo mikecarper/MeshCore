@@ -107,6 +107,7 @@ jobs:
           python3 -B test/test_companion_fleet_control.py -v
           python3 -B test/test_fleet_channel_runtime.py -v
           python3 -B test/test_fleet_role_wiring.py -v
+          python3 -B test/test_fleet_location.py -v
           python3 -B test/test_fleet_radio_schedules.py -v
           python3 -B test/test_fleet_clock_control.py -v
 

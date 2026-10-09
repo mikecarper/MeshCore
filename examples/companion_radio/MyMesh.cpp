@@ -9781,7 +9781,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     if (strncmp(text, "send", 4)
         || (text[4] != ' ' && text[4] != '\t')) {
       snprintf(reply, reply_capacity,
-               "Error: use fleet send <channel-index> [all|key[,key...]] <command>");
+               "Error: use fleet send <channel> [all|key|region:name|home:name|gps:lat,lon:km[;target...]] <command>");
       return true;
     }
     text += 4;
@@ -9808,11 +9808,11 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     // or list must never silently broaden a request to the whole fleet.
     if (!mesh::FleetCommand::commandAllowed(text)) {
       const size_t target_length = strcspn(text, " \t");
-      // A list is one atomic packet; it must never become partial fan-out.
+      // A target list is one signed request; never admit a partial list.
       if (text[target_length] == 0
           || !mesh::FleetCommand::parseTargets(text, target_length, targets)) {
         snprintf(reply, reply_capacity,
-                 "Error: fleet targets must be all or comma-separated 8/12/64-hex keys");
+                 "Error: targets: all, 8/12/64-hex keys, region names, home:name or gps:lat,lon:km; semicolon-separated");
         return true;
       }
       text += target_length;

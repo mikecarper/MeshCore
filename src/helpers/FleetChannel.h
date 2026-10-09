@@ -6,6 +6,8 @@
 #include <helpers/TempRadioReplyBarrier.h>
 #include <helpers/FleetCommand.h>
 #include <helpers/TransportKeyStore.h>
+#include <helpers/RegionMap.h>
+#include <helpers/RegionNameUtils.h>
 
 namespace mesh {
 
@@ -16,7 +18,18 @@ struct FleetReplyHooks {
   virtual void endFleetCommand() {}
   virtual bool hasFleetReplyMutation() const { return false; }
   virtual void finishFleetReplyMutation(bool) {}
+  virtual bool getFleetLocation(int32_t&, int32_t&) const { return false; }
 };
+
+inline bool matchesFleetLocation(void* context, int32_t latitude_e6,
+                                 int32_t longitude_e6, uint32_t radius_meters) {
+  auto* hooks = static_cast<FleetReplyHooks*>(context);
+  int32_t local_latitude_e6 = 0, local_longitude_e6 = 0;
+  if (!hooks || !hooks->getFleetLocation(local_latitude_e6, local_longitude_e6)
+      || (!local_latitude_e6 && !local_longitude_e6)) return false;
+  return FleetCommand::withinRadius(latitude_e6, longitude_e6, radius_meters,
+                                    local_latitude_e6, local_longitude_e6);
+}
 
 // Scope codes authenticate the original packet's payload. A new reply needs
 // fresh codes from the exact matching region key, including rotated keys.
@@ -35,12 +48,44 @@ bool captureFleetReplyScope(Regions& regions, const Region* region,
   return false;
 }
 
+// Fleet selectors read the current region map without changing routing.
+// A configured-list selector includes denied regions too; home selectors
+// follow only the selected home's parent chain, never the default TX scope.
+inline bool matchesFleetRegion(void* context, FleetCommand::RegionTarget kind,
+                               const char* name, size_t length) {
+  auto* regions = static_cast<RegionMap*>(context);
+  if (!regions || !name || !length || length > FleetCommand::MaxRegionNameLength) return false;
+  const auto matches = [name, length](const RegionEntry* entry) {
+    if (!entry || entry->isWildcard()) return false;
+    const char* canonical = RegionNameUtils::canonical(entry->name);
+    const size_t available = sizeof(entry->name) - size_t(canonical - entry->name);
+    const size_t actual = strnlen(canonical, available);
+    return actual < available && actual == length && !memcmp(canonical, name, length);
+  };
+  const int count = regions->getCount();
+  if (count < 0 || count > MAX_REGION_ENTRIES) return false;
+  if (kind == FleetCommand::RegionTarget::Configured) {
+    for (int i = 0; i < count; ++i) {
+      if (matches(regions->getByIdx(i))) return true;
+    }
+  } else if (kind == FleetCommand::RegionTarget::Home) {
+    const RegionEntry* entry = regions->getHomeRegion();
+    // Bound traversal even if a damaged in-memory map has a parent cycle.
+    for (int depth = 0; entry && !entry->isWildcard() && depth < count; ++depth) {
+      if (matches(entry)) return true;
+      entry = regions->findById(entry->parent);
+    }
+  }
+  return false;
+}
+
 // Optional infrastructure-only receiver. The publisher's private key is never
 // enrolled here. The ordinary channel key provides privacy; signatures grant
 // the deliberately narrower fleet capability.
 class FleetChannel {
   FILESYSTEM* fs_;
   FleetReplyHooks* hooks_;
+  RegionMap* regions_;
   GroupChannel channel_{};
   Identity controller_;
   uint32_t last_sequence_ = 0;
@@ -77,8 +122,9 @@ class FleetChannel {
   void serviceDeadline(Mesh& mesh, RadioProfileCLI& profiles);
 
  public:
-  explicit FleetChannel(FILESYSTEM* fs, FleetReplyHooks* hooks = nullptr)
-      : fs_(fs), hooks_(hooks) { healthy_ = load(); }
+  explicit FleetChannel(FILESYSTEM* fs, FleetReplyHooks* hooks = nullptr,
+                        RegionMap* regions = nullptr)
+      : fs_(fs), hooks_(hooks), regions_(regions) { healthy_ = load(); }
   bool handleConfig(const char* command, char* reply, size_t capacity);
   void receive(Packet* packet, Mesh& mesh, const TransportKey* scope = nullptr);
   void complete(Packet* packet, RadioProfileCLI& profiles);

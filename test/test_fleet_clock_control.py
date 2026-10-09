@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 from cpp_source import body
-from test_fleet_channel_runtime import FILESYSTEM, HARNESS as RUNTIME, MESH, PROFILE, UTILS
+from test_fleet_channel_runtime import FILESYSTEM, HARNESS as RUNTIME, MESH, PROFILE, REGION_MAP, UTILS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -243,6 +243,7 @@ class FleetClockControlTests(unittest.TestCase):
         for name, content in {
             "Utils.h": UTILS, "FS.h": FILESYSTEM, "Mesh.h": mesh,
             "helpers/RadioProfileCLI.h": PROFILE,
+            "helpers/RegionMap.h": REGION_MAP,
             "Packet.h": '#pragma once\n#include <Mesh.h>\n',
             "Arduino.h": '#pragma once\n#include <Mesh.h>\n',
             "Adafruit_LittleFS.h": r'''

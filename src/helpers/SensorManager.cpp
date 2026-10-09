@@ -1,4 +1,21 @@
 #include "SensorManager.h"
+#include <math.h>
+
+bool SensorManager::getCachedGpsPosition(double& latitude, double& longitude) const {
+  latitude = longitude = 0;
+#if ENV_INCLUDE_GPS
+  if (!gpsTelemetryCacheFresh(millis())
+      || !isfinite(gps_cache_lat) || !isfinite(gps_cache_lon)
+      || gps_cache_lat < -90.0f || gps_cache_lat > 90.0f
+      || gps_cache_lon < -180.0f || gps_cache_lon > 180.0f
+      || (gps_cache_lat == 0 && gps_cache_lon == 0)) return false;
+  latitude = gps_cache_lat;
+  longitude = gps_cache_lon;
+  return true;
+#else
+  return false;
+#endif
+}
 
 #if ENV_INCLUDE_GPS
 #ifndef GPS_TELEMETRY_CACHE_INTERVAL_SEC
@@ -37,7 +54,7 @@ bool SensorManager::gpsTelemetryHoldActive(unsigned long now) const {
 
 bool SensorManager::gpsTelemetryCacheFresh(unsigned long now) const {
   return gps_cache_valid &&
-      (unsigned long)(now - gps_cache_updated_at) <= GPS_TELEMETRY_MAX_STALE_SEC * 1000UL;
+      static_cast<uint32_t>(now - gps_cache_updated_at) <= GPS_TELEMETRY_MAX_STALE_SEC * 1000UL;
 }
 
 void SensorManager::updateGpsTelemetryCache(float lat, float lon, float altitude, unsigned long now) {
@@ -176,6 +193,9 @@ void SensorManager::processGpsTelemetryFix(float lat, float lon, float altitude,
 }
 
 void SensorManager::loopGpsTelemetry(unsigned long now) {
+  // Expire the validity bit even while a bridge owns the UART. A stale fix
+  // must not become fresh again when the 32-bit millis counter cycles.
+  if (gps_cache_valid && !gpsTelemetryCacheFresh(now)) gps_cache_valid = false;
   if (!gps_transport_available) return;
   if (!gps_user_enabled && !gpsTelemetryHoldActive(now) && !gps_acquiring) {
     maybeStopGpsForTelemetry(now);

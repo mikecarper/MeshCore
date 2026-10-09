@@ -20,6 +20,7 @@ HARNESS = r'''
 #include <vector>
 #include <algorithm>
 #include <SHA256.h>
+#include <helpers/FleetLocation.h>
 #define MESH_ENABLE_CLOCK_SYNC 0
 #define MAX_TKS_ENTRIES 16
 static std::vector<int> events;
@@ -34,6 +35,7 @@ struct Packet {
 struct Mesh {
   virtual ~Mesh() = default;
   virtual bool supportsFleetControl() const { return false; }
+  virtual bool getFleetLocation(int32_t&, int32_t&) const { return false; }
   virtual void onSendComplete(Packet*) { events.push_back(1); }
   virtual void onSendFail(Packet*) { events.push_back(3); }
   virtual void onRadioProfileCopyQueued(Packet*, const Packet*, uint8_t) { events.push_back(5); }
@@ -55,6 +57,14 @@ struct Regions {
   }
 };
 @SCOPE_HELPERS@
+struct CachedSensors {
+  bool valid = false;
+  double latitude = 45.5152, longitude = -122.6784;
+  mutable unsigned reads = 0;
+  bool getCachedGpsPosition(double& lat, double& lon) const {
+    ++reads; lat = latitude; lon = longitude; return valid;
+  }
+};
 struct Profiles {};
 struct Fleet {
   unsigned received = 0, serviced = 0;
@@ -93,7 +103,11 @@ class Repeater : public mesh::Mesh {
   Regions region_map;
   Region region;
   Region* recv_pkt_region = &region;
-  struct { const char* node_name = "fleet node"; } _prefs;
+  struct { const char* node_name = "fleet node"; double node_lat = 0, node_lon = 0; } _prefs;
+  CachedSensors sensors;
+#if MESH_ENABLE_FLEET_CONTROL
+  bool getFleetLocation(int32_t&, int32_t&) const override;
+#endif
   unsigned commands = 0;
   uint32_t timestamp = 0;
   @REPEATER_CAPABILITY@
@@ -112,7 +126,11 @@ class Room : public mesh::Mesh {
   Regions region_map;
   Region region;
   Region* recv_pkt_region = &region;
-  struct { const char* node_name = "fleet node"; } _prefs;
+  struct { const char* node_name = "fleet node"; double node_lat = 0, node_lon = 0; } _prefs;
+  CachedSensors sensors;
+#if MESH_ENABLE_FLEET_CONTROL
+  bool getFleetLocation(int32_t&, int32_t&) const override;
+#endif
   unsigned commands = 0;
   uint32_t timestamp = 0;
   @ROOM_CAPABILITY@
@@ -133,6 +151,20 @@ class Room : public mesh::Mesh {
 template<typename Role>
 void checkRole() {
   Role role;
+  int32_t latitude = 0, longitude = 0;
+  assert(!role.getFleetLocation(latitude, longitude));
+#if MESH_ENABLE_FLEET_CONTROL
+  assert(latitude == 0 && longitude == 0 && role.sensors.reads == 1);
+  role.sensors.valid = true;
+  role._prefs.node_lat = 47.6062; role._prefs.node_lon = -122.3321;
+  assert(role.getFleetLocation(latitude, longitude));
+  assert(latitude == 47606200 && longitude == -122332100 && role.sensors.reads == 1);
+  role._prefs.node_lat = role._prefs.node_lon = 0;
+  assert(role.getFleetLocation(latitude, longitude));
+  assert(latitude == 45515200 && longitude == -122678400 && role.sensors.reads == 2);
+#else
+  assert(role.sensors.reads == 0);
+#endif
   mesh::Packet packet;
   TransportKey original, rotated;
   memset(original.key, 0x11, sizeof(original.key));
@@ -220,9 +252,14 @@ AUTHORIZATION = r'''
 #include <new>
 #include <initializer_list>
 static unsigned configurations = 0, allocations = 0;
+struct RegionMap {};
+static RegionMap* enrolled_regions = nullptr;
+struct FS { bool present = false; bool exists(const char*) const { return present; } };
 namespace mesh {
 struct FleetChannel {
-  explicit FleetChannel(void*, void* = nullptr) { ++allocations; }
+  explicit FleetChannel(void*, void* = nullptr, RegionMap* regions = nullptr) {
+    assert(regions); enrolled_regions = regions; ++allocations;
+  }
   bool handleConfig(const char*, char* reply, size_t capacity) {
     assert(capacity == 160); ++configurations; strcpy(reply, "OK"); return true;
   }
@@ -237,9 +274,12 @@ class CommonCLI {
   Callbacks callbacks;
   Callbacks* _callbacks = &callbacks;
   void* _management_fs = nullptr;
+  RegionMap regions;
+  RegionMap* _region_map = &regions;
   mesh::FleetChannel* _fleet_channel = nullptr;
   ~CommonCLI() { delete _fleet_channel; }
   bool handleFleetCommand(const char*, char*);
+  void loadExisting(FS* fs) { @BOOT_FLEET@ }
 };
 struct ClientInfo {
   enum Role { Guest, Admin, RegionManager, FilterManager } role;
@@ -272,7 +312,7 @@ int main() {
     dispatch(cli, nullptr, command, reply);
     assert(!strcmp(reply, "OK"));
   }
-  assert(allocations == 1 && configurations == 10);
+  assert(allocations == 1 && configurations == 10 && enrolled_regions == cli._region_map);
   assert(isFilterMgrAllowed("set flood.filter.1 group-text 4"));
   assert(isRegionMgrAllowed("set flood.channel.scope public #local"));
   assert(!isFilterMgrAllowed("set radio2 off"));
@@ -283,6 +323,18 @@ int main() {
   assert(strstr(reply, "infrastructure roles"));
   assert(allocations == 1 && configurations == 10);
   assert(!cli.handleFleetCommand("set fleeter.channel off", reply));
+  FS disk;
+  CommonCLI no_existing;
+  no_existing.loadExisting(&disk);
+  assert(allocations == 1 && no_existing._fleet_channel == nullptr);
+  disk.present = true;
+  CommonCLI existing;
+  existing.loadExisting(&disk);
+  assert(allocations == 2 && existing._fleet_channel && enrolled_regions == existing._region_map);
+  CommonCLI disabled;
+  disabled.callbacks.supported = false;
+  disabled.loadExisting(&disk);
+  assert(allocations == 2 && disabled._fleet_channel == nullptr);
   puts("Fleet enrollment remains restricted to local/admin infrastructure dispatch");
 }
 '''
@@ -301,10 +353,13 @@ class FleetRoleWiringTests(unittest.TestCase):
         guard_start = handler.rindex("if (sender && !sender->isAdmin())", 0,
                                     handler.index("mesh::cli::handleACLGet("))
         guard = body(handler[guard_start:], "if (sender && !sender->isAdmin())")
-        common = body((ROOT / "src/helpers/CommonCLI_Management.cpp").read_text(),
-                      "bool CommonCLI::handleFleetCommand(")
+        management = (ROOT / "src/helpers/CommonCLI_Management.cpp").read_text()
+        common = body(management, "bool CommonCLI::handleFleetCommand(")
+        boot = body(body(management, "void CommonCLI::beginManagement("),
+                    "if (_callbacks->supportsFleetControl()")
         harness = AUTHORIZATION.replace("@MANAGER_HELPERS@", helpers)
         harness = harness.replace("@COMMON_FLEET@", common).replace("@MANAGER_GUARD@", guard)
+        harness = harness.replace("@BOOT_FLEET@", boot)
         with tempfile.TemporaryDirectory(prefix="meshcore-fleet-authorization-") as directory:
             work = Path(directory)
             source = work / "fixture.cpp"
@@ -332,6 +387,9 @@ class FleetRoleWiringTests(unittest.TestCase):
             header = (ROOT / "examples" / folder / "MyMesh.h").read_text()
             capabilities[role] = body(header, "bool supportsFleetControl() const override")
             methods.append(body(source, "void MyMesh::onGroupPacketRecv(").replace("MyMesh::", role + "::", 1))
+            methods.append("#if MESH_ENABLE_FLEET_CONTROL\n"
+                           + body(source, "bool MyMesh::getFleetLocation(").replace("MyMesh::", role + "::", 1)
+                           + "\n#endif\n")
             loop = body(source, "void MyMesh::loop()")
             fleet = body(loop, "if (_cli.fleetChannel())")
             methods.append("void " + role + "::serviceFleet() {\n#if MESH_ENABLE_FLEET_CONTROL\n"
@@ -362,7 +420,7 @@ class FleetRoleWiringTests(unittest.TestCase):
                     executable = work / str(enabled)
                     built = subprocess.run([
                         compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                        "-isystem", str(ROOT / "test/mocks"),
+                        "-isystem", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
                         "-DMESH_ENABLE_FLEET_CONTROL=" + str(enabled),
                         str(fixture), "-o", str(executable),
                     ], capture_output=True, text=True, timeout=60)

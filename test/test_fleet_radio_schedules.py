@@ -14,7 +14,7 @@ import tempfile
 import unittest
 
 from cpp_source import body
-from test_fleet_channel_runtime import UTILS, FILESYSTEM, MESH, HARNESS as RUNTIME_HARNESS
+from test_fleet_channel_runtime import UTILS, FILESYSTEM, MESH, REGION_MAP, HARNESS as RUNTIME_HARNESS
 from test_repeater_radio_timing_integration import HARNESS as PRIMARY_HARNESS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -313,10 +313,12 @@ class FleetRadioSchedulesTests(unittest.TestCase):
   compiler=shutil.which("g++") or shutil.which("clang++")
   if not compiler:raise unittest.SkipTest("host C++ compiler required")
   cls.work=tempfile.TemporaryDirectory(prefix="fleet-radio-schedules-");work=Path(cls.work.name)
+  (work/"helpers").mkdir()
   mesh=MESH.replace('#include <Identity.h>','#include <Hardware.h>\n#include <Identity.h>')
   mesh=mesh.replace('struct Clock {','struct Clock :RTCClock {').replace('uint32_t getCurrentTime() const{return now;}','uint32_t getCurrentTime()override{return now;}')
   utils=UTILS.replace('class Utils { public:', 'class Utils { public:\n static int parseTextParts(char*,const char*[],int,char);')
   for name,content in {"Utils.h":utils,"FS.h":FILESYSTEM,"Mesh.h":mesh,"Hardware.h":HARDWARE,
+                       "helpers/RegionMap.h":REGION_MAP,
                        "Dispatcher.h":'#pragma once\n#include <Mesh.h>\n',
                        "Packet.h":'#pragma once\n#include <Mesh.h>\n',
                        "Arduino.h":'#pragma once\n#include <Mesh.h>\n#include <cstdlib>\n'}.items():

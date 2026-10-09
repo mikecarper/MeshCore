@@ -438,6 +438,9 @@ protected:
 
 public:
   bool supportsFleetControl() const override { return true; }
+#if MESH_ENABLE_FLEET_CONTROL
+  bool getFleetLocation(int32_t& latitude_e6, int32_t& longitude_e6) const override;
+#endif
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
 
   void begin(FILESYSTEM* fs);

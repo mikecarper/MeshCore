@@ -220,6 +220,39 @@ inline Dispatcher::ReceiveProfileScope::~ReceiveProfileScope(){mesh_.scoped_prof
 }
 '''
 
+REGION_MAP = r'''
+#pragma once
+#include <cstdint>
+#include <cstring>
+#include <cassert>
+#define MAX_REGION_ENTRIES 32
+#define REGION_DENY_FLOOD 0x01
+struct RegionEntry {
+ uint16_t id=0,parent=0;uint8_t flags=0;char name[31]={};
+ bool isWildcard()const{return id==0;}
+};
+class RegionMap {public:
+ RegionEntry entries[MAX_REGION_ENTRIES]{},wildcard{};
+ unsigned count=0;uint16_t home_id=0,default_id=0;
+ RegionEntry* put(const char* name,uint16_t parent=0){
+  assert(count<MAX_REGION_ENTRIES&&strlen(name)<sizeof(entries[0].name));
+  RegionEntry& row=entries[count++];row.id=uint16_t(count);row.parent=parent;
+  strcpy(row.name,name);return &row;
+ }
+ int getCount()const{return int(count);}
+ const RegionEntry* getByIdx(int index)const{return &entries[index];}
+ RegionEntry* findById(uint16_t id){
+  if(!id)return &wildcard;for(unsigned i=0;i<count;++i)if(entries[i].id==id)return &entries[i];
+  return nullptr;
+ }
+ RegionEntry* getHomeRegion(){return home_id?findById(home_id):nullptr;}
+ RegionEntry* getDefaultRegion(){return default_id?findById(default_id):nullptr;}
+ RegionEntry& getWildcard(){return wildcard;}
+ void setHomeRegion(const RegionEntry* row){home_id=row?row->id:0;}
+ void setDefaultRegion(const RegionEntry* row){default_id=row?row->id:0;}
+};
+'''
+
 PROFILE = r'''
 #pragma once
 namespace mesh {
@@ -571,8 +604,282 @@ static int fragmentScenario(const std::string& scenario){
  }else assert(false);
  printf("fleet runtime %s passed\n",scenario.c_str());return 0;
 }
+
+static Packet whole(const std::vector<uint8_t>& bytes){
+ assert(bytes.size()<=FleetCommand::MaxPayloadLength);uint8_t data[168]={};
+ data[0]=uint8_t(FleetCommand::DataType);data[1]=uint8_t(FleetCommand::DataType>>8);
+ data[2]=uint8_t(bytes.size());memcpy(data+3,bytes.data(),bytes.size());return raw(data,3+bytes.size());
+}
+static void resign(const LocalIdentity& publisher,std::vector<uint8_t>& bytes){
+ constexpr const char* domain="MeshCoreFleet1";const size_t domain_size=strlen(domain);
+ assert(bytes.size()>=FleetCommand::SignatureSize);
+ std::vector<uint8_t> message(domain_size+16+bytes.size()-FleetCommand::SignatureSize);
+ memcpy(message.data(),domain,domain_size);memcpy(message.data()+domain_size,channel_key,16);
+ memcpy(message.data()+domain_size+16,bytes.data(),bytes.size()-FleetCommand::SignatureSize);
+ publisher.sign(bytes.data()+bytes.size()-FleetCommand::SignatureSize,message.data(),int(message.size()));
+}
+struct LocationHooks :FleetReplyHooks {
+ bool valid=false;int32_t latitude=0,longitude=0;mutable unsigned reads=0;
+ bool getFleetLocation(int32_t& lat_e6,int32_t& lon_e6)const override {
+  ++reads;if(!valid)return false;lat_e6=latitude;lon_e6=longitude;return true;
+ }
+};
+struct RegionFixture {
+ fs::FS disk;Mesh mesh;RadioProfileCLI profiles;RegionMap regions;LocationHooks location;
+ FleetChannel fleet{&disk,&location,&regions};LocalIdentity publisher;
+ std::string expected="get radio2";unsigned calls=0,issued=0;
+ RegionEntry* usa=nullptr;RegionEntry* sea=nullptr;RegionEntry* pdx=nullptr;RegionEntry* north=nullptr;
+ RegionFixture(){
+  usa=regions.put("#usa");sea=regions.put("#sea",usa->id);pdx=regions.put("#pdx",usa->id);
+  north=regions.put("#north",sea->id);regions.put("seaside");regions.put("$private",usa->id);
+  regions.setHomeRegion(north);regions.setDefaultRegion(pdx);
+  enroll(fleet,publisher);bind(fleet,mesh,profiles);
+ }
+ uint32_t reserved()const{return storage::readLE32(disk.files.at(Path).data()+56);}
+ unsigned feed(FleetChannel& receiver,Packet& packet,const TransportKey* scope=nullptr){
+  fake_ms+=1000;const unsigned before=calls,verifies=verify_calls,writes=disk.writes,reads=location.reads;
+  const auto saved=disk.files.at(Path);receiver.receive(&packet,mesh,scope);
+  assert(location.reads==reads);
+  assert(verify_calls==verifies&&disk.writes==writes&&disk.files.at(Path)==saved);
+  receiver.service(mesh,profiles,"region:node",[&](uint32_t sequence,const char* text,char* reply){
+   ++calls;assert(reserved()==sequence&&!strcmp(text,expected.c_str()));
+   assert(mesh.scoped_profile==packet.radio_profile&&mesh.scoped_generation==packet.radio_generation);
+   assert(profiles.command);strcpy(reply,"OK");
+  });
+  assert(!profiles.command&&mesh.scoped_profile==0&&mesh.scoped_generation==0);return calls-before;
+ }
+ unsigned feed(Packet& packet,const TransportKey* scope=nullptr){return feed(fleet,packet,scope);}
+ unsigned send(const std::string& target){
+  Packet packet=targetsCommand(publisher,mesh.clock.now+issued++,target,expected.c_str());return feed(packet);
+ }
+};
+static int regionScenario(const std::string& scenario){
+ RegionFixture f;
+ if(scenario=="regions_target_delimiter"){
+  FleetCommand::Targets parsed;
+  const auto saved=f.disk.files.at(Path);
+  for(const char* invalid:{"sea,pdx","sea,,pdx","sea;",";sea","sea;;pdx",
+       "gps:47.6062:-122.3321:25","gps:47.6062,-122.3321:25,sea"}){
+   assert(!FleetCommand::parseTargets(invalid,strlen(invalid),parsed));
+   assert(parsed.count==0&&parsed.length==0);
+  }
+  assert(f.disk.files.at(Path)==saved&&f.calls==0&&f.mesh.queued==0);
+  assert(f.send("sea;pdx;home:sea")==1&&f.calls==1);
+ }else if(scenario=="regions_list_home"){
+  f.sea->flags=REGION_DENY_FLOOD;f.pdx->flags=REGION_DENY_FLOOD;
+  assert(f.send("sea")==1&&f.send("region:pdx")==1); // Configured membership ignores routing flags.
+  assert(f.send("home:sea")==1&&f.send("home:north")==1&&f.send("home:usa")==1);
+  assert(f.send("home:pdx")==0&&f.send("home:seaside")==0);
+  assert(f.send("SEA")==0&&f.send("region:se")==0&&f.send("home:NORTH")==0);
+  assert(f.send("#sea")==1&&f.send("region:#pdx")==1&&f.send("home:#sea")==1);
+  assert(last_jitter_max==60500); // Region requests may have multiple matching radios.
+ }else if(scenario=="regions_private_names"){
+  assert(f.send("region:$private")==1&&f.send("private")==0);
+  RegionEntry* private_row=f.regions.findById(6);f.regions.setHomeRegion(private_row);
+  assert(f.send("home:$private")==1&&f.send("home:private")==0&&f.send("home:usa")==1);
+ }else if(scenario=="regions_home_not_default_or_scope"){
+  f.regions.setHomeRegion(f.pdx);f.regions.setDefaultRegion(f.sea);
+  Packet packet=targetsCommand(f.publisher,f.mesh.clock.now,"home:sea");
+  TransportKey incoming;memset(incoming.key,0x12,sizeof(incoming.key));
+  packet.scoped=true;packet.transport_codes[0]=incoming.calcTransportCode(&packet);
+  const auto before=f.disk.files.at(Path);assert(f.feed(packet,&incoming)==0&&f.disk.files.at(Path)==before);
+  assert(f.send("home:pdx")==1); // Only home and ancestors qualify, not the default.
+  f.regions.setHomeRegion(nullptr);f.regions.setDefaultRegion(f.sea);
+  assert(f.send("home:sea")==0&&f.send("sea")==1);
+  f.regions.setHomeRegion(&f.regions.getWildcard());strcpy(f.regions.wildcard.name,"#sea");
+  assert(f.send("home:sea")==0);
+  f.regions.home_id=99;assert(f.send("home:sea")==0); // Missing home IDs fail closed.
+ }else if(scenario=="regions_wildcard_and_cycles"){
+  RegionEntry* wildcard=f.regions.put("wildcard");wildcard->id=0;
+  assert(f.send("region:wildcard")==0&&f.send("home:wildcard")==0);
+  f.north->parent=f.sea->id;f.sea->parent=f.north->id;
+  assert(f.send("home:pdx")==0); // Bounded parent walk cannot hang on a damaged cycle.
+ }else if(scenario=="regions_damaged_map_bounds"){
+  const unsigned count=f.regions.count;const auto saved=f.disk.files.at(Path);
+  f.regions.count=MAX_REGION_ENTRIES+1;
+  assert(f.send("sea")==0&&f.send("home:sea")==0&&f.disk.files.at(Path)==saved);
+  f.regions.count=UINT32_MAX;
+  assert(f.send("sea")==0&&f.send("home:sea")==0&&f.disk.files.at(Path)==saved);
+  f.regions.count=count;memset(f.sea->name,'G',sizeof(f.sea->name));
+  assert(f.send(std::string(30,'G'))==0); // An unterminated row cannot alias a truncated name.
+  f.regions.setHomeRegion(f.sea);assert(f.send("home:"+std::string(30,'G'))==0);
+  f.sea->parent=99;assert(f.send("home:usa")==0&&f.disk.files.at(Path)==saved);
+ }else if(scenario=="regions_missing_map"){
+  FleetChannel no_map(&f.disk);const auto before=f.disk.files.at(Path);
+  Packet list=targetsCommand(f.publisher,f.mesh.clock.now,"sea");
+  assert(f.feed(no_map,list)==0&&f.disk.files.at(Path)==before);
+  Packet home=targetsCommand(f.publisher,f.mesh.clock.now,"home:sea");
+  assert(f.feed(no_map,home)==0&&f.disk.files.at(Path)==before);
+  Packet individual=targetsCommand(f.publisher,f.mesh.clock.now,"sea;"+publicHex(f.mesh.self_id));
+  assert(f.feed(no_map,individual)==1&&f.reserved()==f.mesh.clock.now);
+ }else if(scenario=="regions_overlap_once"){
+  const std::string key=publicHex(f.mesh.self_id);
+  assert(f.send("sea;home:sea;"+key.substr(0,8)+";"+key)==1);
+  assert(f.calls==1&&f.mesh.queued==1&&last_jitter_max==60500);
+  assert(config(f.fleet,"get fleet.stats").find("accepted=1")!=std::string::npos);
+  LocalIdentity another;const auto before=f.disk.files.at(Path);
+  assert(f.send("home:pdx;"+publicHex(another))==0&&f.disk.files.at(Path)==before);
+ }else if(scenario=="regions_signature_tamper"){
+  auto good=envelope(f.publisher,f.mesh.clock.now,"get radio2","sea");
+  assert(!memcmp(good.data(),"FMC2",4)&&good[12]==1&&good[13]==0x20&&good[14]==3);
+  const auto saved=f.disk.files.at(Path);auto changed=good;changed[13]=0x21; // Also matches, but signature differs.
+  Packet bad_type=whole(changed);assert(f.feed(bad_type)==0&&f.disk.files.at(Path)==saved);
+  changed=good;changed[17]='x';Packet bad_name=whole(changed);
+  assert(f.feed(bad_name)==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0);
+  Packet valid=whole(good);assert(f.feed(valid)==1&&f.calls==1);
+ }else if(scenario=="regions_malformed_after_match"){
+  auto good=envelope(f.publisher,f.mesh.clock.now,"get radio2","sea;pdx");
+  assert(good[12]==2&&good[13]==0x20&&good[18]==0x20&&good[19]==3);
+  const auto saved=f.disk.files.at(Path);
+  for(unsigned damage=0;damage<4;++damage){
+   auto broken=good;
+   if(damage==0)broken[18]=0x23; // Unknown type after an already-matching record.
+   else if(damage==1)broken[19]=0;
+   else if(damage==2)broken[19]=31;
+   else broken[20]=',';
+   resign(f.publisher,broken);Packet packet=whole(broken);
+   assert(f.feed(packet)==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0);
+  }
+  Packet valid=whole(good);assert(f.feed(valid)==1&&f.calls==1);
+ }else if(scenario=="regions_durable_replay"){
+  Packet packet=targetsCommand(f.publisher,f.mesh.clock.now,"home:sea");
+  assert(f.feed(packet)==1);const auto persisted=f.disk.files.at(Path);
+  assert(persisted.size()==64&&!memcmp(persisted.data(),"FCS1",4));
+  assert(f.feed(packet)==0&&f.disk.files.at(Path)==persisted);
+  FleetChannel rebooted(&f.disk,nullptr,&f.regions);assert(f.feed(rebooted,packet)==0);
+  assert(f.disk.files.at(Path)==persisted&&f.calls==1&&f.mesh.queued==1);
+ }else if(scenario=="regions_fragments_membership_changes"){
+  f.expected="set flood.rule.1 any "+std::string(150,' ')+"drop";
+  auto bytes=envelope(f.publisher,f.mesh.clock.now,f.expected,"home:sea");
+  assert(bytes.size()>FleetCommand::MaxPayloadLength);Packet first=part(bytes,0),second=part(bytes,1);
+  const auto saved=f.disk.files.at(Path);unsigned verifies=verify_calls;
+  assert(f.feed(first)==0&&f.disk.files.at(Path)==saved&&verify_calls==verifies&&f.mesh.queued==0);
+  f.regions.setHomeRegion(f.pdx);
+  assert(f.feed(second)==0&&f.disk.files.at(Path)==saved&&f.calls==0&&f.mesh.queued==0);
+  f.regions.setHomeRegion(f.north); // Rejected nonmember command did not consume its sequence.
+  assert(f.feed(second)==0&&f.feed(first)==1&&f.reserved()==f.mesh.clock.now);
+  assert(f.feed(first)==0&&f.feed(second)==0&&f.calls==1);
+ }else if(scenario=="regions_fragments_tamper"){
+  f.expected="set flood.rule.1 any "+std::string(150,' ')+"drop";
+  auto bytes=envelope(f.publisher,f.mesh.clock.now,f.expected,"sea");
+  Packet first=part(bytes,0),second=part(bytes,1);
+  const auto saved=f.disk.files.at(Path);assert(f.feed(first)==0);
+  Packet tampered=changePart(second,[](uint8_t* frame){frame[11+1]^=1;});
+  assert(f.feed(tampered)==0&&f.calls==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0);
+  assert(f.feed(second)==0&&f.feed(first)==1&&f.calls==1);
+  FleetChannel rebooted(&f.disk,nullptr,&f.regions);
+  assert(f.feed(rebooted,first)==0&&f.feed(rebooted,second)==0&&f.calls==1);
+ }else assert(false);
+ printf("fleet runtime %s passed\n",scenario.c_str());return 0;
+}
+
+
+static constexpr const char* Seattle="gps:47.6062,-122.3321:25";
+static int gpsScenario(const std::string& scenario){
+ RegionFixture f;f.location.valid=true;f.location.latitude=47606200;f.location.longitude=-122332100;
+ if(scenario=="gps_inside_outside"){
+  assert(f.send(Seattle)==1&&f.location.reads==1&&last_jitter_max==60500);
+  f.location.latitude=47700000;f.location.longitude=-122300000;assert(f.send(Seattle)==1);
+  f.location.latitude=45515200;f.location.longitude=-122678400;
+  const auto saved=f.disk.files.at(Path);assert(f.send(Seattle)==0&&f.disk.files.at(Path)==saved);
+  assert(f.send("gps:45.5152,-122.6784:1")==1);
+ }else if(scenario=="gps_unknown_and_bad_fixes"){
+  f.location.valid=false;f.location.latitude=0;f.location.longitude=0;
+  const auto saved=f.disk.files.at(Path);assert(f.send("gps:0,0:10")==0&&f.disk.files.at(Path)==saved);
+  f.location.valid=true;assert(f.send("gps:0,0:10")==0&&f.disk.files.at(Path)==saved);
+  f.location.valid=false;
+  f.location.latitude=47606200;f.location.longitude=-122332100;
+  assert(f.send(Seattle)==0); // A stale/invalid provider value is never substituted for a known fix.
+  f.location.valid=true;
+  for(const auto& coords:{std::pair<int32_t,int32_t>{90000001,0},{-90000001,0},
+                         {0,180000001},{0,-180000001},{INT32_MIN,INT32_MAX}}){
+   f.location.latitude=coords.first;f.location.longitude=coords.second;
+   assert(f.send(Seattle)==0&&f.disk.files.at(Path)==saved);
+  }
+  FleetChannel no_provider(&f.disk,nullptr,&f.regions);Packet packet=targetsCommand(f.publisher,f.mesh.clock.now,Seattle);
+  assert(f.feed(no_provider,packet)==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0);
+ }else if(scenario=="gps_boundaries_and_globe"){
+  assert(FleetCommand::withinRadius(0,0,1,0,8));
+  assert(!FleetCommand::withinRadius(0,0,1,0,10));
+  assert(FleetCommand::withinRadius(0,0,1000,0,8990));
+  assert(!FleetCommand::withinRadius(0,0,1000,0,9000));
+  assert(FleetCommand::withinRadius(90000000,0,1,90000000,180000000));
+  f.location.latitude=0;f.location.longitude=-179900000;
+  assert(f.send("gps:0,179.9:25")==1&&f.send("gps:0,179.9:22")==0);
+  f.location.latitude=89900000;f.location.longitude=180000000;
+  assert(f.send("gps:89.9,0:25")==1&&f.send("gps:89.9,0:22")==0);
+  f.location.latitude=90000000;f.location.longitude=180000000;
+  assert(f.send("gps:90,0:0.001")==1);
+ }else if(scenario=="gps_mixed_targets_once"){
+  const std::string key=publicHex(f.mesh.self_id);
+  assert(f.send(std::string(Seattle)+";sea;home:sea;"+key)==1);
+  assert(f.calls==1&&f.mesh.queued==1&&last_jitter_max==60500);
+  assert(f.send(std::string("gps:0,0:1;")+Seattle+";home:pdx")==1);
+  assert(f.send(key+";"+Seattle)==1); // Internal GPS comma remains distinct from target-list separators.
+  f.location.valid=false;assert(f.send(std::string(Seattle)+";sea")==1); // OR semantics retain valid region matches.
+  const auto saved=f.disk.files.at(Path);LocalIdentity stranger;
+  assert(f.send(std::string(Seattle)+";home:pdx;"+publicHex(stranger))==0&&f.disk.files.at(Path)==saved);
+ }else if(scenario=="gps_signed_metadata_tamper"){
+  auto good=envelope(f.publisher,f.mesh.clock.now,f.expected,Seattle);
+  assert(good[12]==1&&good[13]==FleetCommand::GeoRecordType);
+  const auto saved=f.disk.files.at(Path);
+  for(unsigned field:{14U,18U,22U,13U}){
+   auto altered=good;altered[field]^=1;Packet changed=whole(altered);
+   assert(f.feed(changed)==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0);
+  }
+  Packet valid=whole(good);assert(f.feed(valid)==1&&f.calls==1);
+ }else if(scenario=="gps_malformed_after_matching_region"){
+  auto good=envelope(f.publisher,f.mesh.clock.now,f.expected,std::string("sea;")+Seattle);
+  assert(good[12]==2&&good[13]==0x20&&good[18]==FleetCommand::GeoRecordType);
+  const auto saved=f.disk.files.at(Path);
+  for(unsigned damage=0;damage<5;++damage){
+   auto broken=good;
+   if(damage==0)storage::writeLE32(broken.data()+19,90000001);
+   else if(damage==1)storage::writeLE32(broken.data()+23,180000001);
+   else if(damage==2)storage::writeLE32(broken.data()+27,0);
+   else if(damage==3)storage::writeLE32(broken.data()+27,FleetCommand::MaxRadiusMeters+1);
+   else broken[18]=0x23;
+   resign(f.publisher,broken);Packet packet=whole(broken);
+   assert(f.feed(packet)==0&&f.disk.files.at(Path)==saved&&f.mesh.queued==0);
+  }
+  Packet valid=whole(good);assert(f.feed(valid)==1&&f.calls==1);
+ }else if(scenario=="gps_durable_replay"){
+  Packet packet=targetsCommand(f.publisher,f.mesh.clock.now,Seattle);
+  assert(f.feed(packet)==1);const auto persisted=f.disk.files.at(Path);
+  assert(persisted.size()==64&&!memcmp(persisted.data(),"FCS1",4)&&f.reserved()==f.mesh.clock.now);
+  assert(f.feed(packet)==0&&f.disk.files.at(Path)==persisted);
+  FleetChannel rebooted(&f.disk,&f.location,&f.regions);
+  assert(f.feed(rebooted,packet)==0&&f.disk.files.at(Path)==persisted&&f.calls==1&&f.mesh.queued==1);
+ }else if(scenario=="gps_fragments_fix_changes"){
+  f.expected="set flood.rule.1 any "+std::string(150,' ')+"drop";
+  auto bytes=envelope(f.publisher,f.mesh.clock.now,f.expected,Seattle);
+  assert(bytes.size()>FleetCommand::MaxPayloadLength);Packet first=part(bytes,0),second=part(bytes,1);
+  const auto saved=f.disk.files.at(Path);const unsigned reads=f.location.reads;
+  assert(f.feed(first)==0&&f.disk.files.at(Path)==saved&&f.location.reads==reads&&f.mesh.queued==0);
+  f.location.latitude=45515200;f.location.longitude=-122678400;
+  assert(f.feed(second)==0&&f.disk.files.at(Path)==saved&&f.calls==0&&f.mesh.queued==0);
+  f.location.latitude=47606200;f.location.longitude=-122332100;
+  assert(f.feed(second)==0&&f.feed(first)==1&&f.reserved()==f.mesh.clock.now);
+  assert(f.feed(first)==0&&f.feed(second)==0&&f.calls==1);
+ }else if(scenario=="gps_fragments_invalid_final_fix"){
+  f.expected="set flood.rule.1 any "+std::string(150,' ')+"drop";
+  auto bytes=envelope(f.publisher,f.mesh.clock.now,f.expected,Seattle);Packet first=part(bytes,0),second=part(bytes,1);
+  const auto saved=f.disk.files.at(Path);assert(f.feed(second)==0);f.location.valid=false;
+  assert(f.feed(first)==0&&f.disk.files.at(Path)==saved&&f.calls==0&&f.mesh.queued==0);
+  f.location.valid=true;
+  Packet tampered=changePart(second,[](uint8_t* frame){frame[11+1]^=1;});
+  assert(f.feed(first)==0&&f.feed(tampered)==0&&f.calls==0&&f.disk.files.at(Path)==saved);
+  assert(f.feed(second)==0&&f.feed(first)==1&&f.calls==1);
+  FleetChannel rebooted(&f.disk,&f.location,&f.regions);
+  assert(f.feed(rebooted,first)==0&&f.feed(rebooted,second)==0&&f.calls==1);
+ }else assert(false);
+ printf("fleet runtime %s passed\n",scenario.c_str());return 0;
+}
+
 int main(int argc,char** argv){
  assert(argc==2);const std::string scenario=argv[1];
+ if(scenario.rfind("gps_",0)==0)return gpsScenario(scenario);
+ if(scenario.rfind("regions_",0)==0)return regionScenario(scenario);
  if(scenario.rfind("fragments_",0)==0)return fragmentScenario(scenario);
  fs::FS fs;Mesh mesh;RadioProfileCLI profiles;
  FleetChannel fleet(&fs);LocalIdentity publisher;bind(fleet,mesh,profiles);
@@ -856,16 +1163,16 @@ int main(int argc,char** argv){
   FleetChannel rebooted(&fs);assert(apply(rebooted,fs,mesh,profiles,packet)==0);
  }else if(scenario=="fmc2_overlap_matches_once"){
   enroll(fleet,publisher);const std::string mine=publicHex(mesh.self_id);
-  Packet packet=targetsCommand(publisher,mesh.clock.now,mine.substr(0,8)+","+mine);
+  Packet packet=targetsCommand(publisher,mesh.clock.now,mine.substr(0,8)+";"+mine);
   assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(mesh.queued==1&&last_jitter_max==60500);
   assert(config(fleet,"get fleet.stats").find("accepted=1")!=std::string::npos);
  }else if(scenario=="fmc2_nonmatching_no_reserve"){
   enroll(fleet,publisher);const auto previous=fs.files.at(Path);LocalIdentity stranger;
   char different_prefix[9];uint8_t changed[4];memcpy(changed,mesh.self_id.pub_key,4);changed[0]^=1;
   Utils::toHex(different_prefix,changed,4);
-  Packet packet=targetsCommand(publisher,mesh.clock.now,std::string(different_prefix)+","+publicHex(stranger));
+  Packet packet=targetsCommand(publisher,mesh.clock.now,std::string(different_prefix)+";"+publicHex(stranger));
   assert(apply(fleet,fs,mesh,profiles,packet)==0);assert(mesh.queued==0&&fs.files.at(Path)==previous);
-  packet=targetsCommand(publisher,mesh.clock.now,publicHex(stranger)+","+publicHex(mesh.self_id));
+  packet=targetsCommand(publisher,mesh.clock.now,publicHex(stranger)+";"+publicHex(mesh.self_id));
   assert(apply(fleet,fs,mesh,profiles,packet)==1);assert(last_jitter_max==60500);
  }else if(scenario=="fmc2_target_tamper"){
   enroll(fleet,publisher);const auto previous=fs.files.at(Path);
@@ -896,6 +1203,7 @@ class FleetChannelRuntimeTests(unittest.TestCase):
         (work / "helpers").mkdir()
         for name, content in {"Utils.h": UTILS, "FS.h": FILESYSTEM, "Mesh.h": MESH,
                               "helpers/RadioProfileCLI.h": PROFILE,
+                              "helpers/RegionMap.h": REGION_MAP,
                               "Packet.h": '#pragma once\n#include <Mesh.h>\n',
                               "Adafruit_LittleFS.h": '''
 #pragma once
@@ -959,6 +1267,72 @@ class SHA256 : public SHA256Base {{ public:
             with self.subTest(backend=backend):
                 result = subprocess.run([str(binary), name], capture_output=True, text=True, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_gps_center_radius_targets_inside_seattle_and_excludes_portland(self):
+        self.scenario("gps_inside_outside")
+
+    def test_gps_unknown_invalid_out_of_range_and_absent_location_providers_fail_closed(self):
+        self.scenario("gps_unknown_and_bad_fixes")
+
+    def test_gps_small_distance_boundary_antimeridian_and_poles_use_spherical_distance(self):
+        self.scenario("gps_boundaries_and_globe")
+
+    def test_gps_region_home_and_node_target_matches_use_or_semantics_and_execute_once(self):
+        self.scenario("gps_mixed_targets_once")
+
+    def test_gps_latitude_longitude_radius_and_record_type_are_signed(self):
+        self.scenario("gps_signed_metadata_tamper")
+
+    def test_signed_malformed_gps_record_after_matching_region_cannot_authorize_execution(self):
+        self.scenario("gps_malformed_after_matching_region")
+
+    def test_gps_command_replay_survives_reboot_with_the_existing_64_byte_storage_format(self):
+        self.scenario("gps_durable_replay")
+
+    def test_two_packet_gps_target_uses_location_at_completion_before_reserving_sequence(self):
+        self.scenario("gps_fragments_fix_changes")
+
+    def test_two_packet_gps_rejects_invalid_final_fix_tampering_and_reboot_replays(self):
+        self.scenario("gps_fragments_invalid_final_fix")
+
+    def test_semicolon_is_the_only_target_separator_with_comma_reserved_for_gps_coordinates(self):
+        self.scenario("regions_target_delimiter")
+
+    def test_existing_configured_regions_and_home_ancestors_are_distinct_exact_targets(self):
+        self.scenario("regions_list_home")
+
+    def test_private_region_dollar_identity_is_preserved_in_list_and_home_targets(self):
+        self.scenario("regions_private_names")
+
+    def test_default_received_scope_and_missing_or_wildcard_home_never_grant_membership(self):
+        self.scenario("regions_home_not_default_or_scope")
+
+    def test_wildcard_rows_and_damaged_parent_cycles_fail_closed_without_hanging(self):
+        self.scenario("regions_wildcard_and_cycles")
+
+    def test_invalid_map_counts_unterminated_names_and_missing_parent_ids_fail_closed(self):
+        self.scenario("regions_damaged_map_bounds")
+
+    def test_receiver_without_region_map_refuses_regions_but_can_still_match_node_keys(self):
+        self.scenario("regions_missing_map")
+
+    def test_mixed_list_home_and_node_targets_execute_once_with_nonmembers_unreserved(self):
+        self.scenario("regions_overlap_once")
+
+    def test_region_name_and_mode_are_bound_to_the_real_publisher_signature(self):
+        self.scenario("regions_signature_tamper")
+
+    def test_signed_malformed_trailing_region_record_rejects_despite_prior_matching_region(self):
+        self.scenario("regions_malformed_after_match")
+
+    def test_region_target_replay_survives_reboot_without_changing_existing_storage_format(self):
+        self.scenario("regions_durable_replay")
+
+    def test_region_membership_is_rechecked_when_second_fragment_arrives_before_reservation(self):
+        self.scenario("regions_fragments_membership_changes")
+
+    def test_region_fragment_tampering_and_reboot_replay_never_repeat_execution(self):
+        self.scenario("regions_fragments_tamper")
 
     def test_private_channel_and_public_only_publisher_enrollment(self):
         self.scenario("enrollment")
