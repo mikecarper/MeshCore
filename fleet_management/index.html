@@ -1349,6 +1349,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Send commands from the app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#target-existing-regions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target existing regions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#target-a-gps-center-and-radius" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target a GPS center and radius
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2356,6 +2384,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Send commands from the app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#target-existing-regions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target existing regions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#target-a-gps-center-and-radius" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target a GPS center and radius
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2451,8 +2507,8 @@
 <h1 id="private-fleet-management">Private fleet management</h1>
 <p>Fleet control lets one publisher send filtering, radio schedules, secondary-radio
 changes, and clock commands to
-all enrolled infrastructure nodes, one node, or a list of nodes over a private
-LoRa channel.
+all enrolled infrastructure nodes, regions, a geographic radius, one node, or a list of targets over a
+private LoRa channel.
 It is disabled until configured. It is supported on repeaters and room servers;
 fixed-size STM32 images omit it because of their flash limit.
 Both the publishing Companion and receivers need firmware built with fleet-control
@@ -2513,11 +2569,11 @@ private fleet channel. Explicit <code>all</code> still works, for example
 <code>fleet send 3 all get radio2</code>.</p>
 <p>To address particular nodes, insert <strong>8 or 12 hexadecimal characters from the
 start of a node's public key</strong>, or its <strong>complete 64-character public key</strong>, before
-the command. Separate multiple targets with commas, without spaces. Lengths can
+the command. Separate multiple targets with semicolons, without spaces. Lengths can
 be mixed:</p>
 <pre><code class="language-text">fleet send 3 1257aee5 get radio2
-fleet send 3 1257aee5a754,9abc0123 get radio2
-fleet send 3 1257aee5,9abc01234567 set radio2.cross auto
+fleet send 3 1257aee5a754;9abc0123 get radio2
+fleet send 3 1257aee5;9abc01234567 set radio2.cross auto
 </code></pre>
 <p>These are example public-key prefixes; substitute your nodes' actual keys.
 <strong>A prefix addresses every enrolled node whose public key starts with it.</strong>
@@ -2525,12 +2581,99 @@ Use all 64 characters when you need one exact identity, especially in a large
 fleet. Names and short LoRa path IDs are not accepted as target identities.
 <code>all</code> must appear alone. A node that matches several entries still executes the
 command only once, and the signature protects the entire list.</p>
+<h3 id="target-existing-regions">Target existing regions</h3>
+<p>Fleet commands read each receiver's <strong>existing region map</strong>. Two selectors are
+available, and they can be mixed with public-key targets:</p>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Which receivers execute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sea</code> or <code>region:sea</code></td>
+<td>Receivers with an exact <code>sea</code> entry in their configured region list</td>
+</tr>
+<tr>
+<td><code>home:sea</code></td>
+<td>Receivers whose home region is <code>sea</code>, or whose home has <code>sea</code> as a parent or ancestor</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-text">fleet send 3 sea get radio2
+fleet send 3 sea;pdx clock sync
+fleet send 3 region:sea set radio2.cross auto
+fleet send 3 home:sea get tempradio2
+fleet send 3 home:sea;home:pdx clock sync
+fleet send 3 sea;home:pdx;1257aee5 get radio2
+</code></pre>
+<p>The semicolon-separated list is an <strong>OR</strong>: a receiver that matches any entry executes
+once, even if it matches several entries. Names match exactly and are case
+sensitive; <code>sea</code> does not match <code>seattle</code>. One leading <code>#</code> is an alias, as in the
+existing region commands. <code>$</code> remains significant for private region names.
+Names may contain up to 30 printable ASCII bytes using region-name characters.
+Use <code>region:</code> or <code>home:</code> explicitly for names with 8 or 12 characters, names
+made entirely of hexadecimal characters, or reserved command words such as
+<code>get</code>, <code>set</code>, <code>del</code>, <code>time</code> and <code>clock</code>. Bare <code>all</code> still means the entire fleet;
+<code>region:all</code> selects a region actually named <code>all</code>.</p>
+<p>Inspect the existing configuration with <code>region</code> and <code>region home</code>. To choose a
+home from regions already defined on that receiver, use:</p>
+<pre><code class="language-text">region home sea
+region save
+</code></pre>
+<p>List matching includes a configured region even when forwarding for it is
+denied. Home matching follows the selected home's ancestry; a wildcard or unset
+home matches no named home target. The default transmit scope and the incoming
+packet's scope do not determine target membership. Region selection is checked
+against the live map when the complete command is received.</p>
+<p>Targets select which nodes execute. Delivery still follows the Companion's
+channel scope and the intervening forwarding rules. Unknown names match no
+receivers and never become a whole-fleet request.</p>
+<h3 id="target-a-gps-center-and-radius">Target a GPS center and radius</h3>
+<p>Use <code>gps:latitude,longitude:radius-km</code> to select receivers within a circle. For
+example, this selects nodes within <strong>25 km</strong> of the given Seattle coordinates:</p>
+<pre><code class="language-text">fleet send 3 gps:47.6062,-122.3321:25 get radio2
+fleet send 3 gps:47.6062,-122.3321:25 set radio2.cross auto
+fleet send 3 sea;home:pdx;gps:47.6062,-122.3321:25;1257aee5 clock sync
+</code></pre>
+<p>GPS, region, home and key selectors can share the same semicolon-separated list.
+They use the same OR rule: any matching entry selects the node, and the command
+executes once. The center, radius and complete target list are signed.
+The comma is only for the coordinate pair; <code>;</code> is the only target-list separator.</p>
+<p>Coordinates use ordinary decimal degrees, with latitude from -90 to 90 and
+longitude from -180 to 180, and at most six decimal places. Radius is in
+kilometers, from <strong>0.001 to 20050</strong>, with at most three decimal places. For
+example, <code>0.5</code> means 500 meters. Scientific notation, excess decimal places,
+missing fields and out-of-range values are rejected without sending. Distance
+uses the great-circle calculation, including across the date line and near the
+poles; a node on the radius boundary is included.</p>
+<p>Each receiver prefers its configured <code>lat</code> and <code>lon</code>. A stationary radio can
+have a fixed position even without GPS hardware; configure it through its
+normal administration connection:</p>
+<pre><code class="language-text">set lat 47.6062
+set lon -122.3321
+get lat
+get lon
+</code></pre>
+<p>When both configured coordinates are zero, the receiver can use an existing
+valid GPS cache no older than 12 hours. Matching never wakes GPS, takes a UART
+or requests telemetry. A missing, expired, invalid or default <code>(0,0)</code> position
+matches no GPS selector; it can still match another entry in the list. Invalid
+nonzero configured coordinates are rejected rather than falling back to GPS.
+For a stationary radio that lets GPS sleep for longer than 12 hours, configure
+its fixed coordinates.</p>
+<p>Private fleet matching uses this position even when location is hidden from
+public adverts. It reads the position when the complete command arrives,
+including after the second fragment of a two-packet command, so a moving node
+is selected using its position at completion.</p>
 <p>On air, full keys use a 128-bit SHA-256 digest; prefixes use their original
 public-key bytes. Whole-fleet commands use the compact FMC2 format with no target
 records, whether the CLI target is omitted or explicitly <code>all</code>. This reduces the
 header from 29 to 14 bytes. A single complete key uses the smaller fixed-target
-FMC1 format. Separate fleets use separate channel keys; named subgroups are not
-part of this first version.</p>
+FMC1 format. Region, home and GPS selectors use separate signed record types in FMC2.
+Separate fleets use separate channel keys.</p>
 <p>Only local commands on the publishing Companion can originate fleet sends. A
 remote CLI command cannot turn that Companion into a multicast signing proxy.
 An <code>OK</code> means the Companion queued the command, not that every receiver applied
@@ -2573,6 +2716,21 @@ or <strong>230 bytes</strong> across two. Targets consume some of that allowance
 <td style="text-align: right;">215</td>
 </tr>
 <tr>
+<td>One three-character region or home name, such as <code>sea</code></td>
+<td style="text-align: right;">82</td>
+<td style="text-align: right;">225</td>
+</tr>
+<tr>
+<td>Two three-character region or home names, such as <code>sea;pdx</code></td>
+<td style="text-align: right;">77</td>
+<td style="text-align: right;">220</td>
+</tr>
+<tr>
+<td>One GPS center and radius</td>
+<td style="text-align: right;">74</td>
+<td style="text-align: right;">217</td>
+</tr>
+<tr>
 <td>Two 8-character public-key prefixes</td>
 <td style="text-align: right;">77</td>
 <td style="text-align: right;">220</td>
@@ -2585,8 +2743,12 @@ or <strong>230 bytes</strong> across two. Targets consume some of that allowance
 </tbody>
 </table>
 <p>Each prefix in a list uses 5 or 7 bytes; each complete key in a list uses 17.
+Each region or home selector uses two bytes plus its canonical name length.
+Each GPS selector uses 13 bytes: its type, latitude and longitude in millionths
+of a degree, and radius in meters.
 A single complete key uses the smaller fixed-target format with a 29-byte header,
-so its limits come from packet space. Lists are capped at 17 entries. Requests
+so its limits come from packet space. Lists are capped at 17 entries and 86 bytes
+of encoded target records; for example, at most six GPS selectors fit. Requests
 exceeding their target-specific budget are rejected before signing or sending,
 with no partial target list.</p>
 <p>The existing app/console input limit also applies. The app's normal 176-byte
