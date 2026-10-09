@@ -222,7 +222,7 @@ AUTHORIZATION = r'''
 static unsigned configurations = 0, allocations = 0;
 namespace mesh {
 struct FleetChannel {
-  explicit FleetChannel(void*) { ++allocations; }
+  explicit FleetChannel(void*, void* = nullptr) { ++allocations; }
   bool handleConfig(const char*, char* reply, size_t capacity) {
     assert(capacity == 160); ++configurations; strcpy(reply, "OK"); return true;
   }

@@ -272,6 +272,103 @@ int main(int argc, char** argv) {
     targets += ",44556677"; // More than the entire target-record capacity.
     rejected(node, ("fleet send 1 " + targets + " set radio2 off").c_str());
     assert(node.queued == 1);
+  } else if (scenario == "scheduled_sets") {
+    const char* relative[] = {
+      "set radioat 910.5,500,5,5,+1,auto",
+      "set tempradioat 910.5,500,5,5,+1,+2,32",
+      "set radioat2 910.5,500,5,5,rxtx,+1,auto",
+      "set tempradioat2 910.5,500,5,5,rx,+1,+2,32",
+    };
+    uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+    auto sendAndDecode = [&](const std::string& scheduled) {
+      const std::string command = "fleet send 1 all " + scheduled;
+      rejected(node, command.c_str(), 1);
+      const unsigned before = node.queued;
+      assert(node.handleCommand(command.c_str(), 0, reply));
+      assert(!strncmp(reply, "OK - fleet command queued", 25));
+      assert(node.queued == before + 1 && node.sent_policy == 2);
+      mesh::FleetCommand::Decoded decoded;
+      assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      assert(!strcmp(decoded.command, scheduled.c_str()));
+      assert(decoded.sequence == node.clock.now);
+      ++node.clock.now;
+    };
+    for (const char* scheduled : relative) sendAndDecode(scheduled);
+    const std::string start = std::to_string(node.clock.now + 60);
+    const std::string end = std::to_string(node.clock.now + 120);
+    sendAndDecode("set radioat 910.5,500,5,5," + start);
+    sendAndDecode("set tempradioat 910.5,500,5,5," + start + "," + end);
+    sendAndDecode("set radioat2 910.5,500,5,5,rx," + start);
+    sendAndDecode("set tempradioat2 910.5,500,5,5,rxtx," + start + "," + end);
+    assert(node.queued == 8);
+  } else if (scenario == "schedule_get_delete") {
+    uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+    for (const char* scheduled : {
+        "get radioat", "get radioat 1", "get radioat 255", "get radioat all",
+        "get tempradioat", "get tempradioat 2", "get tempradioat all",
+        "get radioat2", "get radioat2 4", "get radioat2 all",
+        "get tempradioat2", "get tempradioat2 1", "get tempradioat2 all",
+        "del radioat", "del radioat 1", "del radioat all",
+        "del tempradioat", "del tempradioat 2", "del tempradioat all",
+        "del radioat2", "del radioat2 4", "del radioat2 all",
+        "del tempradioat2", "del tempradioat2 1", "del tempradioat2 all"}) {
+      const std::string command = "fleet send 1 42424242 " + std::string(scheduled);
+      rejected(node, command.c_str(), 100);
+      const unsigned before = node.queued;
+      assert(node.handleCommand(command.c_str(), 0, reply));
+      assert(node.queued == before + 1 && node.sent_policy == 2);
+      mesh::FleetCommand::Decoded decoded;
+      assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      assert(!strcmp(decoded.command, scheduled));
+      ++node.clock.now;
+    }
+  } else if (scenario == "malformed_schedules") {
+    for (const char* scheduled : {
+        "set radioat 910.5,500,5,5", "set tempradioat 910.5,500,5,5,+1",
+        "set radioat2 910.5,500,5,5,rx", "set tempradioat2 910.5,500,5,5,rxtx,+1",
+        "set radioat 910.5,500,5,5,+0", "set radioat 910.5,500,5,5,-1",
+        "set radioat 910.5,500,5,5,+1.5", "set radioat 910.5,500,5,5,4294967296",
+        "set radioat2 910.5,500,5,5,bogus,+1",
+        "set tempradioat2 910.5,500,5,5,rx,+1,+2,auto,extra",
+        "set tempradioat 910.5,500,5,5,+1,+2,7",
+        "set radioat 910.5,500,5,5,+1,65529",
+        "get radioat 256", "get radioat2 5", "get radioat 01", "get radioat 1x",
+        "del tempradioat2 0", "del radioat2 all extra", "radioat 910.5,500,5,5,+1"}) {
+      rejected(node, ("fleet send 1 all " + std::string(scheduled)).c_str());
+    }
+    assert(node.handleCommand("fleet send 1 all set radioat 910.5,500,5,5,+1", 0, reply));
+    assert(node.queued == 1);
+  } else if (scenario == "schedule_packet_budget") {
+    const std::string scheduled = "set tempradioat2 910.5,500,5,5,rxtx,+1,+2,auto";
+    std::string targets = fullKey(0x42) + "," + fullKey(0x51) + ","
+        + fullKey(0x63) + "," + fullKey(0x74);
+    mesh::FleetCommand::Targets parsed;
+    assert(mesh::FleetCommand::parseTargets(targets.c_str(), targets.size(), parsed));
+    assert(mesh::FleetCommand::commandAllowed(scheduled.c_str()));
+    assert(node.handleCommand(("fleet send 1 " + targets + " " + scheduled).c_str(), 0, reply));
+    assert(strstr(reply, "exceed one packet") && node.queued == 0);
+    assert(node.handleCommand(("fleet send 1 42424242 " + scheduled).c_str(), 0, reply));
+    assert(node.queued == 1 && node.sent_policy == 2);
+  } else if (scenario == "clock_controls") {
+    uint8_t recipient[32]; memset(recipient, 0x42, sizeof(recipient));
+    for (const char* clock_command : {"clock", "clock sync", "time 1800000000"}) {
+      const std::string command = "fleet send 1 all " + std::string(clock_command);
+      rejected(node, command.c_str(), 1);
+      const unsigned before = node.queued;
+      assert(node.handleCommand(command.c_str(), 0, reply));
+      assert(node.queued == before + 1 && node.sent_policy == 2);
+      mesh::FleetCommand::Decoded decoded;
+      assert(mesh::FleetCommand::decode(node.self_id, node.channels[1].channel.secret,
+          node.sent, node.sent_length, node.clock.now, recipient, decoded));
+      assert(!strcmp(decoded.command, clock_command));
+      ++node.clock.now;
+    }
+    for (const char* clock_command : {"get clock", "set clock", "clock synctime",
+        "clock sync extra", "time", "time -1", "time +1800000000", "time NaN",
+        "time 4294967296", "time 1735689599", "time 1800000000 extra"})
+      rejected(node, ("fleet send 1 all " + std::string(clock_command)).c_str());
   } else assert(false);
   printf("Companion fleet scenario %s passed\n", argv[1]);
 }
@@ -349,6 +446,21 @@ class CompanionFleetControlTests(unittest.TestCase):
 
     def test_valid_list_exceeding_packet_capacity_never_partially_sends(self):
         self.scenario("target_capacity")
+
+    def test_four_schedule_set_forms_are_signed_without_rewriting(self):
+        self.scenario("scheduled_sets")
+
+    def test_schedule_get_and_delete_forms_preserve_access_and_tx_route(self):
+        self.scenario("schedule_get_delete")
+
+    def test_malformed_and_truncated_schedules_never_queue_or_consume_sequence(self):
+        self.scenario("malformed_schedules")
+
+    def test_schedule_and_target_list_share_one_packet_budget(self):
+        self.scenario("schedule_packet_budget")
+
+    def test_exact_clock_controls_are_signed_and_remote_origin_is_denied(self):
+        self.scenario("clock_controls")
 
     def test_disabled_profiles_require_no_sender_peripherals_or_crypto_link(self):
         harness = r'''

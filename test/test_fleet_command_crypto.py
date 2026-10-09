@@ -235,6 +235,104 @@ class FleetCommandCryptoTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(self.decode(envelope(command)), "reject")
 
+    def test_scheduled_radio_commands_have_cross_language_real_signatures(self):
+        for command in [
+                "set radioat 910.5,500,5,5,+1,auto",
+                "set radioat 910.5,500,5,5,1800000000,65528",
+                "set tempradioat 910.5,500,5,5,+1,+2,32",
+                "set tempradioat 910.5,500,5,5,+1,1800000600,auto",
+                "set radioat2 910.5,500,5,5,rx,+1,0",
+                "set tempradioat2 910.5,500,5,5,rxtx,1800000000,1800000600,auto"]:
+            with self.subTest(command=command):
+                expected = envelope(command)
+                actual = self.run_tool("encode", CHANNEL.hex(), "all", NOW, NOW + 120, command)
+                self.assertEqual(actual, expected.hex())
+                PUBLISHER.public_key().verify(expected[-64:], DOMAIN + CHANNEL + expected[:-64])
+                self.assertEqual(self.decode(expected), f"{NOW}\n{NOW + 120}\n{command}")
+
+    def test_schedule_inspection_and_deletion_are_bounded_and_exact(self):
+        for family in ["radioat", "tempradioat", "radioat2", "tempradioat2"]:
+            for verb in ["get", "del"]:
+                maximum = 4 if family.endswith("2") else 255
+                for selector in ["", " all", " 1", f" {maximum}"]:
+                    command = f"{verb} {family}{selector}"
+                    with self.subTest(command=command):
+                        self.assertEqual(self.decode(envelope(command)), f"{NOW}\n{NOW + 120}\n{command}")
+                for selector in [" 0", " 01", " +1", " -1", " ALL", " 1 all", f" {maximum + 1}"]:
+                    command = f"{verb} {family}{selector}"
+                    with self.subTest(command=command):
+                        self.assertEqual(self.decode(envelope(command)), "reject")
+
+    def test_signed_malformed_schedule_and_alias_commands_are_rejected(self):
+        for command in [
+                "set radioat off", "set tempradioat off", "set radioat2 off", "set tempradioat2 off",
+                "set radioat 910.5,500,5,5", "set tempradioat 910.5,500,5,5,+1",
+                "set radioat2 910.5,500,5,5,+1", "set tempradioat2 910.5,500,5,5,rx,+1",
+                "set radioat 910.5,500,5,5,rx,+1", "set radioat2 910.5,500,5,5,rx&tx,+1",
+                "set radioat 910.5,500,5,5,+0", "set radioat 910.5,500,5,5,++1",
+                "set radioat 910.5,500,5,5,+1m", "set radioat 910.5,500,5,5,+1.5",
+                "set radioat 910.5,500,5,5,-1", "set radioat 910.5,500,5,5,1e9",
+                "set radioat 910.5,500,5,5,4294967296", "set radioat 910.5,500,5,5,+71582789",
+                "set radioat 910.5,500,256,5,+1", "set radioat 910.5,500,5,5,+1,7",
+                "set radioat 910.5,500,5,5,+1,65529", "set radioat 910.5,500,5,5,+1,AUTO",
+                "set radioat 910.5,500,5,5,+1,+8", "set radioat 910.5,500,5,5,+1,auto,8",
+                "set radioat.extra 910.5,500,5,5,+1", "get radioat.all", "set radioat 910.5,500,5,5, +1",
+                "set tempradioat2 910.5,500,5,5,rx,+1,+2;reboot",
+                "set tempradioat2 910.5,500,5,5,rx,+1,+2\nreboot",
+                "set radio 910.5,500,5,5", "set tempradio 910.5,500,5,5,10"]:
+            with self.subTest(command=command):
+                self.assertEqual(self.decode(envelope(command)), "reject")
+
+    def test_multitarget_scheduled_request_is_signed_and_body_bounded(self):
+        command = "set tempradioat2 910.5,500,5,5,rxtx,+1,+2,auto"
+        entries = [(4, PUBLIC[:4]), (6, OTHER_PUBLIC[:6])]
+        token = f"{PUBLIC[:4].hex()},{OTHER_PUBLIC[:6].hex()}"
+        expected = envelope2(entries, command)
+        actual = self.run_tool("encode2", CHANNEL.hex(), token, NOW, NOW + 120, command)
+        self.assertEqual(actual, expected.hex())
+        self.assertEqual(self.decode(expected, metadata=True), f"{NOW}\n{NOW + 120}\n{command}\n1")
+        self.assertNotEqual(self.decode(expected, self_key=OTHER_PUBLIC), "reject")
+        changed_command = command.replace("+2", "+3")
+        self.assertEqual(self.decode(envelope2(entries, changed_command)[:-64] + expected[-64:]), "reject")
+        prefix, suffix = "set tempradioat2 910.5,500,5,5,rxtx,+", "1,+2,auto"
+        maximum = prefix + "0" * (72 - len(prefix) - len(suffix)) + suffix
+        self.assertEqual(len(maximum), 72)
+        self.assertNotEqual(self.decode(envelope(maximum)), "reject")
+        self.assertNotEqual(self.decode(envelope2(entries, maximum)), "reject")
+        oversized = prefix + "0" + maximum[len(prefix):]
+        self.assertEqual(self.decode(envelope(oversized)), "reject")
+
+    def test_clock_management_has_real_signatures_and_no_prefix_aliases(self):
+        for command in ["clock", "clock sync", "time 1735689600", "time 1800000000", "time 4294967295"]:
+            with self.subTest(command=command):
+                expected = envelope(command)
+                actual = self.run_tool("encode", CHANNEL.hex(), "all", NOW, NOW + 120, command)
+                self.assertEqual(actual, expected.hex())
+                self.assertEqual(self.decode(expected), f"{NOW}\n{NOW + 120}\n{command}")
+                self.assertEqual(self.decode(expected, publisher=OTHER_PUBLIC), "reject")
+                self.assertEqual(self.decode(expected, channel=bytes(range(17, 33))), "reject")
+        for command in [
+                "get clock", "set clock 1800000000", "clock now", "clock sync now", "clock.sync",
+                "clkreboot", "clock sync;reboot", "clock sync\nreboot", "clock  sync", "time",
+                "time  1800000000", "time +1800000000", "time -1800000000", "time 1735689599",
+                "time 0", "time 4294967296", "time 9999999999999999999", "time 1800000000.0",
+                "time 1e9", "time 1800000000 now", "time 1800000000;reboot", "TIME 1800000000"]:
+            with self.subTest(command=command):
+                self.assertEqual(self.decode(envelope(command)), "reject")
+
+    def test_signed_clock_requests_cannot_bootstrap_or_bypass_replay_time_boundaries(self):
+        for command in ["clock", "clock sync", "time 1800000000"]:
+            with self.subTest(command=command):
+                for sequence, expires, now in [
+                        (NOW, NOW + 120, 0), (NOW, NOW + 120, 1735689599),
+                        (NOW, NOW + 120, NOW - 61), (NOW, NOW + 120, NOW + 121),
+                        (NOW, NOW + 601, NOW), (1735689599, 1735689600, 1735689600)]:
+                    self.assertEqual(self.decode(envelope(command, sequence, expires), now=now), "reject")
+                original = envelope(command)
+                forged = envelope(command, sequence=NOW + 1)[:-64] + original[-64:]
+                self.assertEqual(self.decode(forged), "reject")
+                self.assertNotEqual(self.decode(original, now=NOW + 120), "reject")
+
     def test_exact_and_oversized_command_boundaries(self):
         maximum = "set flood.rule.1 " + "a" * (72 - len("set flood.rule.1 "))
         accepted = envelope(maximum)

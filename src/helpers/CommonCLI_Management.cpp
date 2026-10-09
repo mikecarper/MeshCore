@@ -248,7 +248,7 @@ void CommonCLI::beginManagement(mesh::Mesh& mesh, FILESYSTEM* fs) {
 #if MESH_ENABLE_FLEET_CONTROL
   if (_callbacks->supportsFleetControl()
       && (fs->exists("/fleet_channel") || fs->exists("/fleet_channel.bak"))) {
-    _fleet_channel = new (std::nothrow) mesh::FleetChannel(fs);
+    _fleet_channel = new (std::nothrow) mesh::FleetChannel(fs, _callbacks);
   }
 #endif
   if (!_data_route) {
@@ -279,7 +279,7 @@ bool CommonCLI::handleFleetCommand(const char* command, char* reply) {
   if (!_callbacks->supportsFleetControl()) {
     strcpy(reply, "Err - fleet control is available on infrastructure roles"); return true;
   }
-  if (!_fleet_channel) _fleet_channel = new (std::nothrow) mesh::FleetChannel(_management_fs);
+  if (!_fleet_channel) _fleet_channel = new (std::nothrow) mesh::FleetChannel(_management_fs, _callbacks);
   if (!_fleet_channel) {
     strcpy(reply, "Err - fleet control memory unavailable"); return true;
   }

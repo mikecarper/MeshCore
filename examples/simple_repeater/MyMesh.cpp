@@ -4641,6 +4641,11 @@ void MyMesh::formatScheduledRadioSetting(char* reply, int setting_idx, int displ
 
 void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8_t sf, uint8_t cr,
                                      uint32_t start_time, uint32_t end_time, char* reply, uint16_t preamble) {
+#if MESH_ENABLE_FLEET_CONTROL
+  if (fleet_schedule_pending_) {
+    strcpy(reply, "Error: fleet schedule acknowledgement pending"); return;
+  }
+#endif
   uint32_t now = getRTCClock()->getCurrentTime();
   if (!isValidScheduledRadioParams(freq, bw, sf, cr)) {
     strcpy(reply, "Error, invalid radio params");
@@ -4673,19 +4678,23 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
     return;
   }
 
-  scheduled_radio_settings[slot].active = true;
-  scheduled_radio_settings[slot].temporary = temporary;
-  scheduled_radio_settings[slot].started = false;
-  scheduled_radio_settings[slot].freq = freq;
-  scheduled_radio_settings[slot].bw = bw;
-  scheduled_radio_settings[slot].sf = sf;
-  scheduled_radio_settings[slot].cr = cr;
-  scheduled_radio_settings[slot].preamble = preamble;
-  scheduled_radio_settings[slot].start_time = start_time;
-  scheduled_radio_settings[slot].end_time = temporary ? end_time : 0;
+  ScheduledRadioSetting* accepted = &scheduled_radio_settings[slot];
+#if MESH_ENABLE_FLEET_CONTROL
+  if (fleet_command_) accepted = &fleet_schedule_setting_;
+#endif
+  accepted->active = true;
+  accepted->temporary = temporary;
+  accepted->started = false;
+  accepted->freq = freq;
+  accepted->bw = bw;
+  accepted->sf = sf;
+  accepted->cr = cr;
+  accepted->preamble = preamble;
+  accepted->start_time = start_time;
+  accepted->end_time = temporary ? end_time : 0;
   const uint64_t current_uptime_millis =
       uptime_millis + (uint32_t)(millis() - last_millis);
-  scheduled_radio_settings[slot].hard_end_uptime_millis = temporary
+  accepted->hard_end_uptime_millis = temporary
       ? mesh::TempRadioLeaseDeadline::fromEpochEnd(
             current_uptime_millis, now, end_time)
       : 0;
@@ -4693,13 +4702,32 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
   // apply failure, especially when its deadline is sooner than that retry.
   scheduled_radio_retry_at = 0;
   scheduled_radio_retry_failures = 0;
+#if MESH_ENABLE_FLEET_CONTROL
+  if (fleet_command_) {
+    fleet_schedule_slot_ = slot;
+    fleet_schedule_pending_ = true;
+    fleet_schedule_delivered_ = false;
+    fleet_schedule_delete_all_temp_ = false;
+    memset(fleet_schedule_delete_mask_, 0, sizeof(fleet_schedule_delete_mask_));
+  }
+#endif
   refreshScheduledRadioState();
 
   char delay[16];
   formatScheduledRadioDuration(delay, sizeof(delay), start_time);
+  int accepted_index = getScheduledRadioSettingIndex(temporary, slot);
+  if (accepted != &scheduled_radio_settings[slot]) {
+    accepted_index = 1;
+    for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; ++i) {
+      const auto& previous = scheduled_radio_settings[i];
+      if (previous.active && previous.temporary == temporary
+          && (previous.start_time < start_time || (previous.start_time == start_time && i < slot)))
+        ++accepted_index;
+    }
+  }
   snprintf(reply, 160, "OK - %s %d in %s",
            temporary ? "tempradioat" : "radioat",
-           getScheduledRadioSettingIndex(temporary, slot),
+           accepted_index,
            delay);
   if (temporary) {
     char duration[64];
@@ -4765,6 +4793,34 @@ void MyMesh::formatScheduledRadioParams(bool temporary, const char* selector, ch
 }
 
 void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, char* reply) {
+#if MESH_ENABLE_FLEET_CONTROL
+  if (fleet_schedule_pending_) {
+    strcpy(reply, "Error: fleet schedule acknowledgement pending"); return;
+  }
+  if (fleet_command_) {
+    const bool all = selectorIsEmpty(selector) || selectorIsAll(selector);
+    int idx = -1;
+    if (!all) {
+      int wanted = 0;
+      if (!parsePositiveSelector(selector, wanted)) {
+        strcpy(reply, temporary ? "Error, use: del tempradioat [n]" : "Error, use: del radioat [n]"); return;
+      }
+      idx = findScheduledRadioSettingByIndex(temporary, wanted);
+      if (idx < 0) { strcpy(reply, "Error: not found"); return; }
+    }
+    memset(fleet_schedule_delete_mask_, 0, sizeof(fleet_schedule_delete_mask_));
+    for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; ++i) {
+      if (scheduled_radio_settings[i].active && scheduled_radio_settings[i].temporary == temporary
+          && (all || idx == i)) fleet_schedule_delete_mask_[i / 8] |= uint8_t(1U << (i % 8));
+    }
+    fleet_schedule_slot_ = -1;
+    fleet_schedule_delete_all_temp_ = all && temporary;
+    fleet_schedule_pending_ = true;
+    fleet_schedule_delivered_ = false;
+    strcpy(reply, "OK - schedule deletion after reply");
+    return;
+  }
+#endif
   if (selectorIsEmpty(selector) || selectorIsAll(selector)) {
     int deleted = 0;
     bool restore_radio = false;
@@ -4805,7 +4861,52 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
   strcpy(reply, "OK");
 }
 
+#if MESH_ENABLE_FLEET_CONTROL
+void MyMesh::finishFleetReplyMutation(bool delivered) {
+  if (!fleet_schedule_pending_) return;
+  fleet_schedule_delivered_ = delivered;
+  if (!delivered) {
+    fleet_schedule_pending_ = false;
+    fleet_schedule_setting_ = {};
+    memset(fleet_schedule_delete_mask_, 0, sizeof(fleet_schedule_delete_mask_));
+  }
+}
+
+void MyMesh::serviceFleetScheduleReply() {
+  if (!fleet_schedule_pending_ || !fleet_schedule_delivered_) return;
+  // Dispatcher completion hooks only mark delivery. All schedule/radio work
+  // runs here, with the original UTC endpoints and monotonic lease bound.
+  fleet_schedule_pending_ = fleet_schedule_delivered_ = false;
+  if (fleet_schedule_slot_ >= 0) {
+    const uint64_t uptime = uptime_millis + (uint32_t)(millis() - last_millis);
+    const bool expired = fleet_schedule_setting_.temporary
+        && (getRTCClock()->getCurrentTime() >= fleet_schedule_setting_.end_time
+            || mesh::TempRadioLeaseDeadline::expired(uptime, fleet_schedule_setting_.hard_end_uptime_millis));
+    // A local recovery may have reused the slot while this reply was pending.
+    if (!expired && !scheduled_radio_settings[fleet_schedule_slot_].active)
+      scheduled_radio_settings[fleet_schedule_slot_] = fleet_schedule_setting_;
+  } else {
+    for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; ++i) {
+      if (fleet_schedule_delete_mask_[i / 8] & uint8_t(1U << (i % 8)))
+        clearScheduledRadioSetting(i, true);
+    }
+    if (fleet_schedule_delete_all_temp_ && temp_radio_handoff_pending) {
+      temp_radio_handoff_pending = false;
+      queueSavedRadioApply();
+    }
+  }
+  fleet_schedule_setting_ = {};
+  memset(fleet_schedule_delete_mask_, 0, sizeof(fleet_schedule_delete_mask_));
+  scheduled_radio_retry_at = 0;
+  scheduled_radio_retry_failures = 0;
+  refreshScheduledRadioState();
+}
+#endif
+
 void MyMesh::processScheduledRadioSettings() {
+#if MESH_ENABLE_FLEET_CONTROL
+  serviceFleetScheduleReply();
+#endif
   const uint64_t current_uptime_millis =
       uptime_millis + (uint32_t)(millis() - last_millis);
   bool hard_temp_end_due = false;
@@ -4819,7 +4920,11 @@ void MyMesh::processScheduledRadioSettings() {
     }
   }
 
-  if (temp_radio_reply_barrier.waiting() && !hard_temp_end_due) {
+  if ((temp_radio_reply_barrier.waiting()
+#if MESH_ENABLE_FLEET_CONTROL
+       || fleet_schedule_pending_
+#endif
+      ) && !hard_temp_end_due) {
     // A parameterized-TempRadio reply copy is queued or on air. Unlike a
     // fixed RTC delay, this remains correct under CAD, duty throttling, and
     // unrelated queue pressure.  TX completion/failure releases the barrier.
@@ -5068,6 +5173,10 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {
+#if MESH_ENABLE_FLEET_CONTROL
+  // Direct administration supersedes an earlier unconfirmed fleet intent.
+  finishFleetReplyMutation(false);
+#endif
   ++primary_radio_mutation_generation;
   primary_radio_mutation_starts_temp = true;
   if (_cli.radioProfiles().hasReplyMutation()) {
@@ -5127,6 +5236,9 @@ void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, 
 }
 
 bool MyMesh::scheduleNormalRadio() {
+#if MESH_ENABLE_FLEET_CONTROL
+  finishFleetReplyMutation(false);
+#endif
   ++primary_radio_mutation_generation;
   if (_cli.radioProfiles().hasReplyMutation()) {
     _cli.radioProfiles().finishReplyMutation(false);

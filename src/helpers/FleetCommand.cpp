@@ -136,6 +136,69 @@ bool integerToken(const char* text, size_t length) {
   return true;
 }
 
+bool boundedIntegerToken(const char* text, size_t length, uint32_t maximum,
+                         uint32_t& value) {
+  if (!length) return false;
+  value = 0;
+  for (size_t i = 0; i < length; ++i) {
+    if (text[i] < '0' || text[i] > '9') return false;
+    const uint32_t digit = uint32_t(text[i] - '0');
+    if (digit > maximum || value > (maximum - digit) / 10U) return false;
+    value = value * 10U + digit;
+  }
+  return true;
+}
+
+bool scheduleTimeToken(const char* text, size_t length) {
+  if (!length) return false;
+  const bool relative = text[0] == '+';
+  uint32_t value;
+  // The scheduler resolves +N whole minutes against its current RTC and
+  // performs future/overflow/endpoint-order checks using that one snapshot.
+  return boundedIntegerToken(text + relative, length - relative,
+                             relative ? UINT32_MAX / 60U : UINT32_MAX, value)
+      && value != 0;
+}
+
+bool preambleToken(const char* text, size_t length) {
+  if (keyEquals(text, length, "auto")) return true;
+  uint32_t value;
+  return boundedIntegerToken(text, length, 65528U, value)
+      && (value == 0 || value >= 8);
+}
+
+bool scheduleSelector(const char* arguments, bool secondary) {
+  if (!*arguments || !strcmp(arguments, "all")) return true;
+  if (*arguments < '1' || *arguments > '9') return false;
+  uint32_t value;
+  // Primary capacity is role/build configurable. Match the bounded row
+  // authorization policy and let the role reject nonexistent slots.
+  return boundedIntegerToken(arguments, strlen(arguments), secondary ? 4U : 255U, value);
+}
+
+bool scheduledRadioTuple(const char* arguments, bool temporary, bool secondary) {
+  unsigned fields = 0;
+  const unsigned time_index = secondary ? 5 : 4;
+  const unsigned expected = time_index + (temporary ? 2 : 1);
+  const char* cursor = arguments;
+  for (;;) {
+    const char* end = strchr(cursor, ',');
+    const size_t length = end ? size_t(end - cursor) : strlen(cursor);
+    bool valid = false;
+    if (fields < 2) valid = decimalToken(cursor, length);
+    else if (fields < 4) {
+      uint32_t value;
+      valid = boundedIntegerToken(cursor, length, 255U, value);
+    } else if (secondary && fields == 4) {
+      valid = keyEquals(cursor, length, "rx") || keyEquals(cursor, length, "rxtx");
+    } else if (fields < expected) valid = scheduleTimeToken(cursor, length);
+    else if (fields == expected) valid = preambleToken(cursor, length);
+    if (!valid || ++fields > expected + 1) return false;
+    if (!end) return fields == expected || fields == expected + 1;
+    cursor = end + 1;
+  }
+}
+
 bool radioTuple(const char* arguments, bool temporary) {
   if (!strcmp(arguments, "off")) return true;
   unsigned fields = 0;
@@ -231,6 +294,12 @@ bool FleetCommand::commandAllowed(const char* command) {
         || byte == '\\') return false;
   }
   if (!length || command[0] == ' ' || command[length - 1] == ' ') return false;
+  if (!strcmp(command, "clock") || !strcmp(command, "clock sync")) return true;
+  if (!strncmp(command, "time ", 5)) {
+    uint32_t value;
+    return boundedIntegerToken(command + 5, length - 5, UINT32_MAX, value)
+        && value >= MinEpoch;
+  }
   bool get = false, set = false, del = false;
   if (!strncmp(command, "get ", 4)) get = true;
   else if (!strncmp(command, "set ", 4)) set = true;
@@ -242,6 +311,14 @@ bool FleetCommand::commandAllowed(const char* command) {
   const char* arguments = separator ? separator + 1 : "";
   if (!key_length || (separator && (!*arguments || *arguments == ' '))) return false;
 
+  const bool scheduled_primary = keyEquals(key, key_length, "radioat")
+      || keyEquals(key, key_length, "tempradioat");
+  const bool scheduled_secondary = keyEquals(key, key_length, "radioat2")
+      || keyEquals(key, key_length, "tempradioat2");
+  if (scheduled_primary || scheduled_secondary) {
+    return set ? scheduledRadioTuple(arguments, key[0] == 't', scheduled_secondary)
+        : (get || del) && scheduleSelector(arguments, scheduled_secondary);
+  }
   if (keyEquals(key, key_length, "radio2")
       || keyEquals(key, key_length, "tempradio2")) {
     return get ? !*arguments : set && radioTuple(arguments, key_length == 10);

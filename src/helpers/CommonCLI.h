@@ -480,7 +480,11 @@ struct LegacyObserverTail {
 };
 #endif
 
-class CommonCLICallbacks {
+class CommonCLICallbacks
+#if MESH_ENABLE_FLEET_CONTROL
+  : public mesh::FleetReplyHooks
+#endif
+{
 public:
   virtual bool supportsFleetControl() const { return false; }
   // True only after an actual NTP response this boot, not a plausible RTC.

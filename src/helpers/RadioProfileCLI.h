@@ -3,6 +3,7 @@
 #include <Dispatcher.h>
 #include <helpers/IdentityStore.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/FleetControlConfig.h>
 
 namespace mesh {
 
@@ -41,16 +42,27 @@ class RadioProfileCLI {
   bool recoverable_corrupt_store_ = false;
   bool publish_pending_ = false;
   enum class ImageReadResult : uint8_t { Missing, Valid, Invalid, Unreadable };
-  enum class RemoteMutation : uint8_t { None, Saved, Temporary, Off, TempOff, DeleteTemp };
+  enum class RemoteMutation : uint8_t {
+    None, Saved, Temporary, Off, TempOff, DeleteTemp
+#if MESH_ENABLE_FLEET_CONTROL
+    , DeleteSavedSchedule, AddSavedSchedule, AddTemporarySchedule
+#endif
+  };
   RemoteMutation remote_mutation_ = RemoteMutation::None;
   RadioProfileConfig remote_config_;
   uint32_t remote_duration_ms_ = 0, remote_start_ms_ = 0;
   uint32_t remote_commit_retry_ms_ = 0;
+#if MESH_ENABLE_FLEET_CONTROL
+  uint32_t remote_schedule_end_ms_ = 0;
+#endif
   uint32_t remote_generation_ = 0;
   uint8_t remote_delete_mask_ = 0;
   bool remote_command_ = false, remote_delivered_ = false;
   bool stageRemoteMutation(RemoteMutation kind, const RadioProfileConfig& config = {},
                            uint32_t duration_ms = 0, uint8_t delete_mask = 0);
+#if MESH_ENABLE_FLEET_CONTROL
+  bool stageRemoteSchedule(unsigned slot, const Schedule& schedule);
+#endif
   bool save(const RadioProfileConfig& config, uint16_t preamble, RadioCrossMode cross);
   bool prepareSavedImage(const char* path, const RadioProfileConfig& config,
                          uint16_t preamble, RadioCrossMode cross);

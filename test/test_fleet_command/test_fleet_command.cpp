@@ -84,13 +84,120 @@ TEST_F(FleetCommandTest, ExplicitRadioAndFilterFamiliesAreAllowed) {
   }
 }
 
+TEST_F(FleetCommandTest, ScheduledPrimaryAndSecondaryFamiliesAcceptCanonicalForms) {
+  for (const char* family : {"radioat", "tempradioat", "radioat2", "tempradioat2"}) {
+    for (const char* verb : {"get", "del"}) {
+      for (const char* selector : {"", " all", " 1", " 3"}) {
+        const std::string command = std::string(verb) + ' ' + family + selector;
+        EXPECT_TRUE(Fleet::commandAllowed(command.c_str())) << command;
+      }
+    }
+  }
+  for (const char* command : {
+      "get radioat 255", "del tempradioat 255", "get radioat2 4", "del tempradioat2 4",
+      "set radioat 910.5,500,5,5,+1",
+      "set radioat 910.5,500,5,5,1800000000,auto",
+      "set radioat 910.5,500,5,5,+1,0",
+      "set radioat 910.5,500,5,5,+1,8",
+      "set radioat 910.5,500,5,5,4294967295,65528",
+      "set tempradioat 910.5,500,5,5,+1,+2",
+      "set tempradioat 910.5,500,5,5,1800000000,1800000600,32",
+      "set tempradioat 910.5,500,5,5,+1,1800000600,auto",
+      "set tempradioat 910.5,500,5,5,1800000000,+2,auto",
+      "set radioat2 910.5,500,5,5,rx,+1",
+      "set radioat2 910.5,500,5,5,rxtx,1800000000,0",
+      "set radioat2 910.5,500,5,5,rxtx,+1,auto",
+      "set tempradioat2 910.5,500,5,5,rx,+1,+2",
+      "set tempradioat2 910.5,500,5,5,rxtx,1800000000,1800000600,65528",
+      "set tempradioat2 910.5,500,5,5,rxtx,+1,1800000600,auto"}) {
+    EXPECT_TRUE(Fleet::commandAllowed(command)) << command;
+    const auto bytes = encode(command);
+    ASSERT_FALSE(bytes.empty()) << command;
+    ASSERT_TRUE(decode(bytes)) << command;
+    EXPECT_STREQ(command, decoded.command);
+  }
+}
+
+TEST_F(FleetCommandTest, ScheduledCommandsRejectMalformedTimesFieldsAndSelectors) {
+  for (const char* command : {
+      "get radioat 0", "get radioat 01", "get radioat +1", "get radioat -1",
+      "get radioat 256", "del tempradioat 4294967295", "del radioat 1 all",
+      "get radioat2 5", "del tempradioat2 5", "get radioat2 01", "get radioat2 ALL",
+      "get radioat.all", "del tempradioat2.extra all", "get radioat  all",
+      "set radioat off", "set tempradioat off", "set radioat2 off", "set tempradioat2 off",
+      "set radioat 910.5,500,5,5", "set tempradioat 910.5,500,5,5,+1",
+      "set radioat2 910.5,500,5,5,+1", "set tempradioat2 910.5,500,5,5,rx,+1",
+      "set radioat 910.5,500,5,5,rx,+1",
+      "set radioat2 910.5,500,5,5,rx&tx,+1", "set radioat2 910.5,500,5,5,RX,+1",
+      "set radioat 910.5,500,5,5,+0", "set radioat 910.5,500,5,5,0",
+      "set radioat 910.5,500,5,5,+", "set radioat 910.5,500,5,5,++1",
+      "set radioat 910.5,500,5,5,+1m", "set radioat 910.5,500,5,5,+1h",
+      "set radioat 910.5,500,5,5,+1.5", "set radioat 910.5,500,5,5,-1",
+      "set radioat 910.5,500,5,5,1e9", "set radioat 910.5,500,5,5,4294967296",
+      "set radioat 910.5,500,5,5,+71582789",
+      "set tempradioat 910.5,500,5,5,+1,+0",
+      "set tempradioat2 910.5,500,5,5,rx,+1,4294967296",
+      "set radioat 910.5,500,256,5,+1", "set radioat 910.5,500,5,256,+1",
+      "set radioat 910.5,500,+5,5,+1", "set radioat 910.5,500,5,5,+1,7",
+      "set radioat 910.5,500,5,5,+1,65529", "set radioat 910.5,500,5,5,+1,AUTO",
+      "set radioat 910.5,500,5,5,+1,+8", "set radioat 910.5,500,5,5,+1,auto,8",
+      "set radioat 910.5,500,5,5,+1,", "set radioat 910.5,500,5,5, +1",
+      "set tempradioat2 910.5,500,5,5,rx,+1,+2;reboot",
+      "set tempradioat2 910.5,500,5,5,rx,+1,+2\nreboot"}) {
+    EXPECT_FALSE(Fleet::commandAllowed(command)) << command;
+    EXPECT_TRUE(encode(command).empty()) << command;
+  }
+  const std::string prefix = "set tempradioat2 910.5,500,5,5,rxtx,+";
+  const std::string suffix = "1,+2,auto";
+  const std::string maximum = prefix
+      + std::string(Fleet::MaxCommandLength - prefix.size() - suffix.size(), '0') + suffix;
+  ASSERT_EQ(Fleet::MaxCommandLength, maximum.size());
+  EXPECT_TRUE(Fleet::commandAllowed(maximum.c_str()));
+  EXPECT_TRUE(decode(encode(maximum.c_str())));
+  const std::string oversized = prefix + '0' + maximum.substr(prefix.size());
+  EXPECT_FALSE(Fleet::commandAllowed(oversized.c_str()));
+}
+
+TEST_F(FleetCommandTest, ClockManagementOnlyAdmitsExactBoundedCommands) {
+  for (const char* command : {"clock", "clock sync", "time 1735689600",
+                              "time 1800000000", "time 4294967295"}) {
+    EXPECT_TRUE(Fleet::commandAllowed(command)) << command;
+    ASSERT_TRUE(decode(encode(command))) << command;
+    EXPECT_STREQ(command, decoded.command);
+  }
+  for (const char* command : {
+      "get clock", "set clock 1800000000", "clock now", "clock sync now", "clock.sync",
+      "clkreboot", "clock sync;reboot", "clock sync\nreboot", "clock  sync",
+      "time", "time ", "time  1800000000", "time +1800000000", "time -1800000000",
+      "time 1735689599", "time 0", "time 4294967296", "time 9999999999999999999",
+      "time 1800000000.0", "time 1e9", "time 1800000000 now", "time 1800000000;reboot",
+      "time 1800000000\nreboot", "time\t1800000000", "TIME 1800000000"}) {
+    EXPECT_FALSE(Fleet::commandAllowed(command)) << command;
+    EXPECT_TRUE(encode(command).empty()) << command;
+  }
+}
+
+TEST_F(FleetCommandTest, ClockManagementDoesNotBypassEnvelopeClockAndExpiryPolicy) {
+  for (const char* command : {"clock", "clock sync", "time 1800000000"}) {
+    const auto bytes = encode(command);
+    ASSERT_TRUE(decode(bytes)) << command;
+    EXPECT_EQ(Now, decoded.sequence);
+    EXPECT_FALSE(decode(bytes, 0)) << command;
+    EXPECT_FALSE(decode(bytes, Fleet::MinEpoch - 1)) << command;
+    EXPECT_FALSE(decode(bytes, Now - 61)) << command;
+    EXPECT_FALSE(decode(bytes, Now + 121)) << command;
+    EXPECT_TRUE(encode(command, Now, Now + 601).empty()) << command;
+    EXPECT_TRUE(encode(command, Fleet::MinEpoch - 1, Fleet::MinEpoch).empty()) << command;
+  }
+}
+
 TEST_F(FleetCommandTest, NoGenericAdminNamespaceOrPrefixEscapes) {
   for (const char* command : {
       "get prv.key", "backup prv.key 1234567890ABCDEF", "get wifi.password",
       "set wifi.password abc", "setperm abc 3", "reboot", "start ota",
       "get fleet", "set fleet.channel abc", "region add usa", "get radio",
       "set radio 910.5,500,5,5", "get radio2.reply", "get radio2.scan",
-      "set tx.reply both", "set radioat2 910.5,500,5,5,rxtx,+5",
+      "set tx.reply both", "get tempradio", "set tempradio 910.5,500,5,5,10",
       "get flood.filter.secret", "get flood.filtering", "get flood.rulebook",
       "get flood.rule.1.secret", "get flood.filter.blacklistx",
       "get flood.channel.scope.required", "get flood.channel.data.secret",

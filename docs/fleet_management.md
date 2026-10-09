@@ -132,6 +132,9 @@ or normal terminal for longer lists.
 | --- | --- |
 | Saved second profile | `get radio2`, `set radio2 <tuple|off>` |
 | Temporary second profile | `get tempradio2`, `set tempradio2 <tuple|off>` |
+| Scheduled primary profile | `get/set/del radioat`, `get/set/del tempradioat` |
+| Scheduled second profile | `get/set/del radioat2`, `get/set/del tempradioat2` |
+| UTC clock | `clock`, `clock sync`, `time <epoch-seconds>` |
 | Profile diagnostics | `get radio2.status`, `get radio2.timing` |
 | Crossover | `get radio2.cross`, `set radio2.cross <auto|on|off>` |
 | Filter rules | `get/set/del flood.filter[.n]`, `flood.rule[.n]` |
@@ -141,14 +144,44 @@ or normal terminal for longer lists.
 | Group-data forwarding | `get/set flood.channel.data`, `flood.channel.data.hops` |
 | Flood hop limits | `get/set flood.max`, `flood.max.unscoped`, `flood.max.advert` |
 
-Each role still checks whether it supports the requested setting. Primary radio
-changes, identity export, passwords, ACL edits, filesystem operations, firmware
+Each role still checks whether it supports the requested setting. Immediate
+primary radio changes, identity export, passwords, ACL edits, filesystem operations, firmware
 installation, reboot, and unrestricted CLI are outside fleet capability.
 
-Secondary-radio mutations keep the old profile until their exact acknowledgement
+## Schedule radio changes and set clocks
+
+Use the normal schedule syntax, with UTC epoch seconds or `+N` whole minutes.
+Primary schedules are supported by repeaters; a role without a primary scheduler
+replies that the command is unsupported. Second-profile schedules use `rx` or
+`rxtx` after the coding rate:
+
+```text
+fleet send 3 all clock
+fleet send 3 all clock sync
+fleet send 3 all set radioat 910.5,500,8,5,+5
+fleet send 3 all set tempradioat 910.5,500,8,5,+5,+15
+fleet send 3 all set radioat2 910.5,500,8,5,rxtx,+5
+fleet send 3 all set tempradioat2 910.5,500,8,5,rxtx,+5,+15
+fleet send 3 1257aee5 get tempradioat2 1
+fleet send 3 1257aee5 del tempradioat2 all
+```
+
+Both relative endpoints use the receiver's clock at command acceptance. For a
+coordinated fleet switch, use the same absolute UTC start/end timestamps on all
+nodes. An optional final preamble value or `auto` uses the existing radio syntax.
+Schedule capacity, radio-range validation, and overlap checks remain unchanged;
+pending schedules still do not survive reboot.
+
+`clock sync` advances a receiver to the publishing Companion's signed timestamp
+plus one second. `time <epoch-seconds>` sets an explicit UTC timestamp. Both use
+the existing forward-only clock rule. Initial setup or a clock far out of sync
+still requires local or individually authenticated clock correction: fleet clock
+commands retain the signature, expiry, replay, and maximum-clock-lead checks.
+
+Radio mutations and schedule edits keep the old state until their exact acknowledgement
 packets drain, with at least one successful physical transmission. Queue failure,
 failed transmissions, or an acknowledgement timeout cancels the staged mutation.
-Temporary-radio leases retain their original monotonic end time; waiting for an
+Temporary-radio leases and scheduled windows retain their original monotonic end time; waiting for an
 acknowledgement does not lengthen them.
 
 Exact single-node acknowledgements wait 0.5–1.5 seconds; prefix, multiple-target,
@@ -165,8 +198,9 @@ can still process an authenticated command when a filter or `repeat off` blocks
 forwarding. **Intermediate nodes can still block delivery to downstream nodes.**
 Management traffic has no automatic exemption from forwarding filters. Preserve
 an appropriate group-data/channel forwarding rule and an existing direct-admin
-recovery path before changing network-wide filters. The primary radio is retained
-by this capability, but a forwarding policy can still partition the fleet.
+recovery path before changing network-wide filters. Primary-radio schedules can
+move nodes off the normal network; use a temporary window or a planned recovery
+path for experiments. A forwarding policy can also partition the fleet.
 
 The receiver is allocated lazily when fleet settings are present or queried, with
 one bounded mailbox. Cryptographic work and storage writes occur after the receive

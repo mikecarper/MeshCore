@@ -2916,7 +2916,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       strcpy(reply, "OK - Advert sent");
     } else if (memcmp(command, "clock sync", 10) == 0) {
       uint32_t curr = getRTCClock()->getCurrentTime();
-      if (sender_timestamp > curr) {
+      if (sender_timestamp != UINT32_MAX && sender_timestamp > curr) {
         getRTCClock()->setCurrentTime(sender_timestamp + 1);
         _callbacks->onManualClockSet();
         uint32_t now = getRTCClock()->getCurrentTime();

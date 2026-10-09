@@ -584,6 +584,15 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   unsigned long scheduled_radio_save_retry_at;
   uint8_t scheduled_radio_retry_failures;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
+#if MESH_ENABLE_FLEET_CONTROL
+  // One verified fleet schedule waits for its own physical acknowledgement.
+  ScheduledRadioSetting fleet_schedule_setting_{};
+  uint8_t fleet_schedule_delete_mask_[(MAX_SCHEDULED_RADIO_SETTINGS + 7) / 8]{};
+  int fleet_schedule_slot_ = -1;
+  bool fleet_command_ = false, fleet_schedule_pending_ = false;
+  bool fleet_schedule_delivered_ = false, fleet_schedule_delete_all_temp_ = false;
+  void serviceFleetScheduleReply();
+#endif
   uint8_t _ota_update_channel = 0;  // Snapshot: later ota branch commands cannot retarget a queued update
   int  matching_peer_indexes[MAX_CLIENTS];
 #if defined(WITH_MQTT_BRIDGE)
@@ -1093,6 +1102,12 @@ public:
 
   // CommonCLICallbacks
   bool supportsFleetControl() const override { return true; }
+#if MESH_ENABLE_FLEET_CONTROL
+  void beginFleetCommand() override { fleet_command_ = true; }
+  void endFleetCommand() override { fleet_command_ = false; }
+  bool hasFleetReplyMutation() const override { return fleet_schedule_pending_; }
+  void finishFleetReplyMutation(bool delivered) override;
+#endif
   mesh::Radio* getProfileRadio() override { return _radio; }
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) override;
   bool scheduleNormalRadio() override;

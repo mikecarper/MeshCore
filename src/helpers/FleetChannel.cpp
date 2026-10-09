@@ -215,7 +215,11 @@ bool FleetChannel::acknowledge(Mesh& mesh, const char* name, uint32_t sequence,
 
 void FleetChannel::finish(RadioProfileCLI& profiles, bool delivered) {
   barrier_.clear(); ack_deadline_ = 0;
-  profiles.finishReplyMutation(delivered);
+  if (ack_profile_mutation_
+      && profiles.replyMutationGeneration() == ack_profile_generation_)
+    profiles.finishReplyMutation(delivered);
+  ack_profile_mutation_ = false;
+  if (hooks_) hooks_->finishFleetReplyMutation(delivered);
 }
 void FleetChannel::complete(Packet* packet, RadioProfileCLI& profiles) {
   if (barrier_.complete(packet) && !barrier_.waiting()) finish(profiles, true);

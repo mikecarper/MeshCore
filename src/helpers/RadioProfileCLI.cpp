@@ -287,6 +287,20 @@ bool RadioProfileCLI::finishReplyMutation(bool delivered) {
       || !fs_ || !fs_->exists(ReplyPath) || fs_->remove(ReplyPath);
 }
 
+#if MESH_ENABLE_FLEET_CONTROL
+bool RadioProfileCLI::stageRemoteSchedule(unsigned slot, const Schedule& schedule) {
+  if (slot >= 4 || !stageRemoteMutation(schedule.temporary
+          ? RemoteMutation::AddTemporarySchedule : RemoteMutation::AddSavedSchedule,
+          schedule.config, schedule.end, uint8_t(1U << slot))) return false;
+  // Reuse the pending mutation's two time fields for the accepted UTC start
+  // and end. Keep the separate monotonic end anchored at command admission;
+  // neither a late reply nor a wall-clock correction may extend the lease.
+  remote_start_ms_ = schedule.start;
+  remote_schedule_end_ms_ = schedule.end_ms;
+  return true;
+}
+#endif
+
 bool RadioProfileCLI::applyReplyMutation() {
   const auto kind = remote_mutation_;
   if ((kind == RemoteMutation::Saved || kind == RemoteMutation::Off)
@@ -302,11 +316,37 @@ bool RadioProfileCLI::applyReplyMutation() {
   } else if (kind == RemoteMutation::Saved) {
     saved_ = remote_config_;
     publish_pending_ = true; publish_after_ms_ = millis();
+#if MESH_ENABLE_FLEET_CONTROL
+  } else if (kind == RemoteMutation::AddSavedSchedule
+             || kind == RemoteMutation::AddTemporarySchedule) {
+    const bool temporary = kind == RemoteMutation::AddTemporarySchedule;
+    const uint32_t now = millis(), epoch = rtc_ ? rtc_->getCurrentTime() : 0;
+    if (temporary && (!remainingMillis(remote_schedule_end_ms_, now)
+                      || epoch >= remote_duration_ms_)) return true;
+    for (unsigned i = 0; i < 4; ++i) if (remote_delete_mask_ & (1U << i)) {
+      Schedule& scheduled = schedules_[(temporary ? 4 : 0) + i];
+      scheduled = {};
+      scheduled.config = remote_config_;
+      scheduled.start = remote_start_ms_;
+      scheduled.end = remote_duration_ms_;
+      scheduled.end_ms = remote_schedule_end_ms_;
+      scheduled.temporary = temporary;
+      scheduled.active = true;
+      break;
+    }
+#endif
   } else if (kind == RemoteMutation::DeleteTemp) {
     for (unsigned i = 0; i < 4; ++i) if (remote_delete_mask_ & (1U << i)) {
       if (schedules_[4+i].started) { temp_active_ = false; temp_remaining_ms_ = 0; }
       schedules_[4+i] = {};
     }
+#if MESH_ENABLE_FLEET_CONTROL
+  } else if (kind == RemoteMutation::DeleteSavedSchedule) {
+    for (unsigned i = 0; i < 4; ++i) if (remote_delete_mask_ & (1U << i)) {
+      schedules_[i] = {};
+    }
+    schedule_retry_ms_ = 0;
+#endif
   } else {
     if (kind == RemoteMutation::Off) { saved_ = {}; schedule_retry_ms_ = 0; }
     temp_pending_ = temp_active_ = false; temp_remaining_ms_ = 0;
@@ -633,8 +673,14 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     }
     const unsigned first = scheduled_temp ? 4 : 0;
     if (verb == Delete) {
-      if (remote_command_ && scheduled_temp) {
+      if (remote_command_ && (scheduled_temp || MESH_ENABLE_FLEET_CONTROL)) {
+#if MESH_ENABLE_FLEET_CONTROL
+        stageRemoteMutation(scheduled_temp ? RemoteMutation::DeleteTemp
+                                          : RemoteMutation::DeleteSavedSchedule,
+                            {}, 0, index ? 1U << (index - 1) : 15);
+#else
         stageRemoteMutation(RemoteMutation::DeleteTemp, {}, 0, index ? 1U << (index - 1) : 15);
+#endif
         snprintf(reply, capacity, "OK - schedule cleared after reply"); return true;
       }
       if (!scheduled_temp) schedule_retry_ms_ = 0;
@@ -709,9 +755,20 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     }
     const unsigned first = scheduled_temp ? 4 : 0;
     for (unsigned i = 0; i < 4; ++i) if (!schedules_[first+i].active) {
+#if MESH_ENABLE_FLEET_CONTROL
+      Schedule s;
+#else
       auto& s = schedules_[first+i]; s = {};
+#endif
       s.config = config; s.start = start; s.end = end; s.temporary = scheduled_temp;
       s.end_ms = scheduled_temp ? millis() + (end-epoch)*1000UL : 0; s.active = true;
+#if MESH_ENABLE_FLEET_CONTROL
+      if (remote_command_) {
+        if (!stageRemoteSchedule(i, s)) {
+          snprintf(reply, capacity, "Error: radio acknowledgement pending"); return true;
+        }
+      } else schedules_[first+i] = s;
+#endif
       snprintf(reply, capacity, "OK - %s %u queued, preamble=%u", key, i+1, preview.preamble(1, 32));
       appendChirpWarning(reply, capacity, preview); return true;
     }
