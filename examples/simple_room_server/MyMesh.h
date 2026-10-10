@@ -466,7 +466,7 @@ protected:
   }
 #endif
 
-  void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
+  bool sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
 #if MESH_ENABLE_TELEMETRY_HISTORY
   bool handleTelemetryHistoryCommand(const char* command, char* reply);
   void sampleTelemetryHistory();
@@ -598,6 +598,9 @@ public:
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply,
                      int gpio_client_index = -1,
                      uint8_t gpio_path_hash_size = 1);
+  bool handleClientPathCommand(ClientInfo* client, char* command, char* reply);
+  bool sendClientReply(ClientInfo* client, mesh::Packet* packet,
+                       unsigned long delay_millis, uint8_t path_hash_size);
   bool _wireless_usb_command = false;
   void handleUsbCommand(char* command, char* reply) {
     _wireless_usb_command = true;

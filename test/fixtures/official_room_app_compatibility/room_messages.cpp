@@ -33,6 +33,16 @@ static void emit(MyMesh& room, const char* group, unsigned index, int version, b
   WirePresentation app{version};
   app.queueMessage(from, TXT_TYPE_SIGNED_PLAIN, &packet, sent.timestamp,
                    sent.author, 4, sent.text.c_str(), false, 0);
+  if (strcmp(group, "ordered") == 0) {
+    assert(room.sent.size() == 2 * (index + 1));
+    const auto& primary = room.sent[room.sent.size() - 2];
+    assert(primary.path[0] == 0xA1 && sent.path[0] == 0xB2);
+    assert(primary.retry_enabled && !sent.retry_enabled);
+    WirePresentation primary_app{version};
+    primary_app.queueMessage(from, TXT_TYPE_SIGNED_PLAIN, &packet, primary.timestamp,
+        primary.author, 4, primary.text.c_str(), false, 0);
+    assert(primary_app.frame == app.frame);
+  }
   assert(app.frame.size() == sent.text.size() + (version >= 3 ? 20 : 17));
   printf("POST:%s:%u:%d:%d:%u:", group, index, version, int(flood), sent.timestamp);
   hex(sent.author, 4); printf(":");
@@ -44,6 +54,8 @@ int main() {
   {
     MyMesh room; room.topic("Welcome");
     auto& client = room.acl.clients[0]; client.extra.room.sync_since = 50;
+    client.out_path_len = client.alt_path_len = 1;
+    client.out_path[0] = 0xA1; client.alt_path[0] = 0xB2;
     room.post(0, 100, "old-one"); room.post(1, 200, "old-two");
     room.post(2, 1100, "newer"); room.clock.now = 1200;
     room.tick(6000); assert(room.sent.back().text == "old-one");

@@ -203,6 +203,10 @@ rows; an unpaged local serial query prints the full table.
 `outpath` and `altpath` apply to the current remote client ACL entry. They need
 remote client context, so they are not useful from the local serial CLI.
 
+Room Server also supports these commands for readers and writers, restricted
+to the caller's own routes. See [room return routes](room_services.md#your-own-return-routes)
+for session persistence, alternate chat delivery and client requirements.
+
 Set paths with comma-separated hop hashes. Each hop must be `2`, `4`, or `6`
 hex characters, and all hops in one path must use the same width. Hex input is
 case-insensitive. Replies use uppercase hex and retain the commas, so the value

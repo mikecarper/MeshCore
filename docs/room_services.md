@@ -101,6 +101,65 @@ Rejected posts do not enter the retry cache.
 Changing to a different identity creates a different user. These controls
 complement forwarding and airtime policies.
 
+## Your own return routes
+
+Room readers, writers and administrators can use a private CLI request to
+inspect or change the room's route back to their own radio:
+
+~~~text
+get outpath
+get outpath path
+set outpath A1B2C3,D4E5F6
+set outpath path
+set outpath direct
+set outpath clear
+set outpath flood
+get altpath
+set altpath 71CE82,BA09F0
+set altpath direct
+set altpath clear
+~~~
+
+Each hop is 2, 4 or 6 hexadecimal characters; all hops in a path use the same
+width. `direct` means zero repeaters. `clear` enables normal discovery again.
+`outpath flood` forces flood replies until you change that selection. The
+first command word is case-insensitive, and an optional Companion CLI prefix
+is preserved in the reply.
+
+These commands always affect the authenticated requesting identity. They
+cannot select another user's public key, change room settings, grant roles,
+read passwords or run other administrative commands. Active public read-only
+sessions can manage their own routes too. Bans still block access, and management
+roles alone do not grant room-user command access.
+
+Commands require encrypted CLI message framing. Typing them as ordinary room
+chat posts sends chat text instead. Use a CLI-capable client; this feature does
+not grant administrator status or add a non-admin command screen to the mobile
+app. No new protocol message type is required.
+
+`get outpath path` reports the reciprocal route observed after the most recent
+flood login. It can return `> path pending` during its one-minute observation
+window. The read does not change the selected route; ordinary room discovery
+still learns a live route automatically. A route explicitly selected while
+waiting is protected from the delayed login PATH. `set outpath path` selects
+the observed route, or leaves the selection unchanged if none is available.
+
+When the primary and alternate routes are valid and different, chat, topic
+updates and CLI/data replies send one encrypted copy along each route. The
+primary owns ACK tracking, catch-up and retries; the alternate has no separate
+retry loop. Identical routes send one copy. A missing packet for the alternate
+does not prevent primary delivery. A flood primary does not send an alternate
+copy; `altpath flood` also disables that secondary copy, so prefer
+`set altpath clear` when removing it. Keep-alive and post ACKs retain their
+existing primary-route behavior.
+
+Routes are saved for already-retained ACL entries, including explicit readers
+and writers and password-created administrators. Ordinary guest-password and
+public-reader sessions keep route selections only for the current session;
+changing a route never makes their permissions permanent. Failed saves restore
+the previous route and report an error. Repeating an unchanged selection or an
+exact request retry does not cause another settings write.
+
 ## Local Wi-Fi chat on ESP32
 
 ESP32 Room Server images with WebConfig have an offline browser room page.

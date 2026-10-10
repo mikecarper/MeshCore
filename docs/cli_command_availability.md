@@ -193,8 +193,8 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Routing | [`get/set/del flood.channel.scope.require*`](cli_commands.md#require-valid-incoming-scopes-only-on-selected-channels) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.rule*`; `get/set/del flood.filter*`; `get/set/del flood.filter.blacklist*`](cli_commands.md#change-persistent-flood-rules-in-the-field) | Repeater; `flood.rule`/`flood.filter` also on FULL ESP32 room server (no blacklist) | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.moderation*`](cli_commands.md#moderate-flood-group-text-by-channel-sender-and-source-path) | Repeater | Yes | Yes | Yes |
-| Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes |
-| Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes |
+| Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater or [room user](room_services.md#your-own-return-routes), own remote-client context | Yes | Yes | Yes |
+| Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater or [room user](room_services.md#your-own-return-routes), own remote-client context | Yes | Yes | Yes |
 | ACL | [`setperm <pubkey> <permissions>`](cli_commands.md#add-update-or-remove-permissions-for-a-companion) | Repeater, room server, or sensor | Yes | Yes | Yes |
 | ACL | [`get acl [page]`](cli_commands.md#view-the-current-acl) | Repeater, room server, or sensor; admin over LoRa | Yes | Yes | Yes |
 | ACL | [`get/set allow.read.only`](cli_commands.md#view-or-change-this-room-servers-read-only-flag) | Room server | Yes | Yes | No |
@@ -369,8 +369,8 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Routing | [`get/set/del flood.channel.scope.require*`](cli_commands.md#require-valid-incoming-scopes-only-on-selected-channels) | Repeater role handler | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.rule*`; `get/set/del flood.filter*`; `get/set/del flood.filter.blacklist*`](cli_commands.md#change-persistent-flood-rules-in-the-field) | Repeater role handler; `flood.rule`/`flood.filter` also on FULL ESP32 room server (no blacklist) | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.moderation*`](cli_commands.md#moderate-flood-group-text-by-channel-sender-and-source-path) | Repeater role handler | Yes | Yes | Yes | Yes | Yes |
-| Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes | Yes | Yes |
-| Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater remote-client context | Yes | Yes | Yes | Yes | Yes |
+| Routing | [`get/set outpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater or [room user](room_services.md#your-own-return-routes), own remote-client context | Yes | Yes | Yes | Yes | Yes |
+| Routing | [`get/set altpath`](halo_keymind_settings.md#direct-path-overrides) | Repeater or [room user](room_services.md#your-own-return-routes), own remote-client context | Yes | Yes | Yes | Yes | Yes |
 | ACL | [`setperm <pubkey> <permissions>`](cli_commands.md#add-update-or-remove-permissions-for-a-companion) | Repeater, room server, or sensor | Yes | Yes | Yes | Yes | Yes |
 | ACL | [`get acl [page]`](cli_commands.md#view-the-current-acl) | Repeater, room server, or sensor; admin over LoRa | Yes | Yes | Yes | Yes | Yes |
 | ACL | [`get/set allow.read.only`](cli_commands.md#view-or-change-this-room-servers-read-only-flag) | Room server | Yes | Yes | No | Yes | Yes |

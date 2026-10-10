@@ -2452,6 +2452,9 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 
 **Notes:**
 - These commands require remote client context and update the caller's ACL entry.
+- Room Server readers and writers may manage their own `outpath` and `altpath`
+  without administrator permission. See [room return routes](room_services.md#your-own-return-routes)
+  for the command list, session persistence and alternate delivery behavior.
 - `get outpath path` reports the reciprocal `PAYLOAD_TYPE_PATH` received after
   the caller's latest flood login without changing the selected output route.
   Because that packet is asynchronous, an immediate query can report

@@ -27,9 +27,13 @@ class RoomTopicDeliveryTests(unittest.TestCase):
         clock = (ROOT / "src/MeshCore.h").read_text()
         generated += "namespace mesh {\n" + extract_braced(clock, "class RTCClock") + ";\n}\n"
         definitions = "\n".join(extract_braced(source, signature) for signature in (
+            "bool MyMesh::sendClientReply(",
             "bool MyMesh::pushPostToClient(", "bool MyMesh::pushRoomTextToClient(",
             "bool MyMesh::processAck(", "void MyMesh::activateRoomTopic(",
             "bool MyMesh::handleRoomTopicCommand(", "void MyMesh::serviceRoomPush("))
+        packet = (ROOT / "src/Packet.cpp").read_text()
+        definitions = "namespace mesh {\n" + extract_braced(
+            packet, "bool Packet::isValidPathLen(") + "\n}\n" + definitions
         with tempfile.TemporaryDirectory(prefix="room-topic-delivery-") as directory:
             work = Path(directory)
             (work / "state.inc").write_text(generated)

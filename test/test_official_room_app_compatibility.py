@@ -33,9 +33,13 @@ def room_outputs(work, compiler):
     state += "namespace mesh {\n" + extract_braced(clock, "class RTCClock") + ";\n}\n"
     (work / "state.inc").write_text(state, encoding="ascii")
     definitions = "\n".join(extract_braced(source, signature) for signature in (
+        "bool MyMesh::sendClientReply(",
         "bool MyMesh::pushPostToClient(", "bool MyMesh::pushRoomTextToClient(",
         "bool MyMesh::processAck(", "void MyMesh::activateRoomTopic(",
         "bool MyMesh::handleRoomTopicCommand(", "void MyMesh::serviceRoomPush("))
+    packet = (ROOT / "src/Packet.cpp").read_text()
+    definitions = "namespace mesh {\n" + extract_braced(
+        packet, "bool Packet::isValidPathLen(") + "\n}\n" + definitions
     (work / "production.inc").write_text(definitions, encoding="ascii")
     fixture = (ROOT / "test/fixtures/room_topic_delivery/test.cpp").read_text()
     fixture = fixture[:fixture.index("int main()")]

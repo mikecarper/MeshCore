@@ -6,6 +6,7 @@
 #include <vector>
 #include "../room_history_store/filesystem.h"
 #include <helpers/RoomAccessPolicy.h>
+#include <helpers/ClientPathPersistence.h>
 
 #define PUB_KEY_SIZE 32
 #define MAX_PATH_SIZE 64
@@ -37,7 +38,9 @@ struct Identity {
 };
 struct Packet {
   bool radio_reply = false;
-  static bool isValidPathLen(uint8_t path) { return (path & 63) <= 20 && path < 0xc0; }
+  uint8_t payload[MAX_PACKET_PAYLOAD] = {};
+  size_t payload_len = 0;
+  static bool isValidPathLen(uint8_t path);
 };
 struct Utils {
   static void sha256(uint8_t* out, size_t n, const uint8_t* a, size_t na,
@@ -78,6 +81,9 @@ struct Sent {
   uint32_t timestamp;
   std::string text;
   uint8_t author[4];
+  uint8_t path[MAX_PATH_SIZE] = {};
+  uint8_t path_len = 0;
+  bool direct = false, retry_enabled = false;
 };
 struct MyMesh {
   ACL acl;
@@ -89,8 +95,10 @@ struct MyMesh {
   mesh::Store store;
   mesh::Store* _fs = &store;
   mesh::Packet packet;
+  mesh::Packet alternate_packet;
   std::vector<Sent> sent;
-  bool pool_available = true, queue_available = true;
+  bool pool_available = true, queue_available = true, alternate_available = true;
+  unsigned releases = 0;
   uint8_t reply_data[MAX_PACKET_PAYLOAD] = {};
   unsigned long next_push = 0, room_topic_ready_at = 0;
   bool room_topic_ready = true;
@@ -101,7 +109,7 @@ struct MyMesh {
   PostInfo posts[MAX_UNSYNCED_POSTS] = {};
   uint32_t post_ready_at[MAX_UNSYNCED_POSTS] = {};
   uint32_t post_ready_mask = UINT32_MAX;
-  struct { uint8_t path_hash_mode = 0; } _prefs;
+  struct { uint8_t path_hash_mode = 0, direct_retry_enabled = 1; } _prefs;
   int default_scope = 0;
   MyMesh() {
     metadata_filesystem = &policy_fs;
@@ -109,6 +117,7 @@ struct MyMesh {
     self_id.pub_key[0] = 77;
     acl.clients[0].id.pub_key[0] = 1;
     acl.clients[0].last_activity = 1000;
+    for (auto& client : acl.clients) client.alt_path_len = OUT_PATH_UNKNOWN;
   }
   Clock* getRTCClock() { return &clock; }
   Random* getRNG() { return &rng; }
@@ -117,24 +126,37 @@ struct MyMesh {
     assert(type == PAYLOAD_TYPE_TXT_MSG && len >= 9 && len <= 160);
     if (!pool_available) return nullptr;
     assert((data[4] >> 2) == TXT_TYPE_SIGNED_PLAIN);
+    memcpy(packet.payload, data, len);
+    packet.payload_len = len;
     return &packet;
   }
+  mesh::Packet* obtainNewPacket() { return alternate_available ? &alternate_packet : nullptr; }
+  void releasePacket(mesh::Packet* out) { assert(out == &alternate_packet); ++releases; }
   bool queue(mesh::Packet* out) {
     assert(out->radio_reply);
     if (!queue_available) return false;
     Sent entry;
-    memcpy(&entry.timestamp, reply_data, 4);
-    memcpy(entry.author, reply_data + 5, 4);
-    entry.text = std::string(reinterpret_cast<char*>(reply_data + 9));
-    // The production payload isn't terminated; test messages below are fixed
-    // lengths or the whole buffer is cleared before each send by tick().
+    memcpy(&entry.timestamp, out->payload, 4);
+    memcpy(entry.author, out->payload + 5, 4);
+    entry.text = std::string(reinterpret_cast<char*>(out->payload + 9), out->payload_len - 9);
     sent.push_back(entry);
     return true;
   }
   bool sendFloodScoped(int, mesh::Packet* out, unsigned long, uint8_t) { return queue(out); }
-  bool sendDirect(mesh::Packet* out, const uint8_t*, uint8_t) { return queue(out); }
+  bool sendFloodReply(mesh::Packet* out, unsigned long delay, uint8_t width) {
+    return sendFloodScoped(default_scope, out, delay, width);
+  }
+  bool sendDirect(mesh::Packet* out, const uint8_t* path, uint8_t length, unsigned long = 0) {
+    if (!queue(out)) return false;
+    auto& entry = sent.back();
+    entry.direct = true; entry.path_len = length;
+    entry.retry_enabled = _prefs.direct_retry_enabled != 0;
+    memcpy(entry.path, path, mesh::encodedClientPathByteLength(length));
+    return true;
+  }
   void replaceActiveMessageRetries(mesh::Packet*, const uint8_t*, uint32_t) {}
   bool pushPostToClient(ClientInfo*, PostInfo&);
+  bool sendClientReply(ClientInfo*, mesh::Packet*, unsigned long, uint8_t);
   bool pushRoomTextToClient(ClientInfo*, uint32_t, const mesh::Identity&, const char*, uint32_t = 0);
   bool processAck(const uint8_t*);
   void activateRoomTopic();
@@ -298,6 +320,43 @@ int main() {
     assert(m.processAck(reinterpret_cast<const uint8_t*>(&ack)));
     assert(memcmp(&ban_before, &banned, sizeof(banned)) == 0);
     assert(allowed.extra.room.pending_ack == 0 && allowed.extra.room.sync_since == 300);
+  }
+  {
+    MyMesh m; auto& client = m.acl.clients[0];
+    client.out_path_len = client.alt_path_len = 1;
+    client.out_path[0] = 0xA1; client.alt_path[0] = 0xB2;
+    m.topic("two-route topic"); m.post(0, 900, "two-route post");
+    m.tick(6000);
+    assert(m.sent.size() == 2 && m.sent[0].text == "two-route post");
+    assert(m.sent[1].text == m.sent[0].text && m.sent[0].timestamp == m.sent[1].timestamp);
+    assert(m.sent[0].path[0] == 0xA1 && m.sent[1].path[0] == 0xB2);
+    assert(m.sent[0].retry_enabled && !m.sent[1].retry_enabled);
+    assert(m._prefs.direct_retry_enabled == 1 && m._num_post_pushes == 1);
+    assert(client.extra.room.ack_timeout == futureMillis(PUSH_TIMEOUT_BASE + 2 * PUSH_ACK_TIMEOUT_FACTOR));
+    const uint32_t post_ack = client.extra.room.pending_ack;
+    m.ack(); assert(client.extra.room.sync_since == 900);
+    assert(!m.processAck(reinterpret_cast<const uint8_t*>(&post_ack)));
+    m.tick(); assert(m.sent.size() == 4 && m.sent[2].text == "two-route topic");
+    assert(m.sent[3].text == m.sent[2].text && m.sent[2].timestamp == m.sent[3].timestamp);
+    assert(m._num_post_pushes == 2 && client.extra.room.sync_since == 900);
+    m.ack(); assert(client.extra.room.sync_since == 900);
+    assert(client.extra.room.topic_seen_revision == m.room_topic_revision);
+  }
+  for (bool alternate_available : {false, true}) {
+    MyMesh m; auto& client = m.acl.clients[0];
+    client.out_path_len = client.alt_path_len = 1;
+    client.out_path[0] = 0xA1; client.alt_path[0] = 0xB2;
+    m.alternate_available = alternate_available;
+    m.queue_available = !alternate_available;
+    m.topic("admission"); m.tick(6000);
+    if (alternate_available) {
+      assert(m.sent.empty() && m.releases == 1 && m._num_post_pushes == 0);
+      assert(client.extra.room.pending_ack == 0);
+    } else {
+      assert(m.sent.size() == 1 && m.sent[0].retry_enabled && m._num_post_pushes == 1);
+      m.ack();
+    }
+    assert(m._prefs.direct_retry_enabled == 1);
   }
   puts("room topic delivery regressions passed");
 }

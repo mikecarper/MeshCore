@@ -25,6 +25,8 @@
 #include <helpers/RoomTopicStore.h>
 #include <helpers/RoomBoardProtocol.h>
 #include <helpers/ClientPathPersistence.h>
+#include <helpers/ClientPathObservation.h>
+#include <helpers/RoomClientPathCommand.h>
 #include <helpers/LazyPersistence.h>
 #if MESH_PACKET_LOGGING
 #include <helpers/SerialPacketLog.h>
@@ -452,6 +454,134 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
 }
 #endif
 
+bool MyMesh::sendClientReply(ClientInfo* client, mesh::Packet* packet,
+                              unsigned long delay_millis, uint8_t path_hash_size) {
+  if (packet == NULL) return false;
+  if (client == NULL || !mesh::Packet::isValidPathLen(client->out_path_len)) {
+    return sendFloodReply(packet, delay_millis, path_hash_size);
+  }
+
+  mesh::Packet* alternate = NULL;
+  if (mesh::Packet::isValidPathLen(client->alt_path_len)
+      && (client->alt_path_len != client->out_path_len
+          || memcmp(client->alt_path, client->out_path,
+                    mesh::encodedClientPathByteLength(client->out_path_len)) != 0)) {
+    alternate = obtainNewPacket();
+    if (alternate != NULL) *alternate = *packet;
+  }
+  const bool sent = sendDirect(packet, client->out_path, client->out_path_len,
+                               delay_millis);
+  if (alternate != NULL) {
+    if (sent) {
+      // The primary owns retry and delivery state; the extra route is one copy.
+      const uint8_t retries = _prefs.direct_retry_enabled;
+      _prefs.direct_retry_enabled = 0;
+      sendDirect(alternate, client->alt_path, client->alt_path_len, delay_millis);
+      _prefs.direct_retry_enabled = retries;
+    } else {
+      releasePacket(alternate);
+    }
+  }
+  return sent;
+}
+
+bool MyMesh::handleClientPathCommand(ClientInfo* client, char* command, char* reply) {
+  char* body = mesh::normalizeRoomClientPathCommand(command, reply);
+  const mesh::RoomClientPathCommand operation = mesh::classifyRoomClientPathCommand(body);
+  if (operation == mesh::RoomClientPathCommand::None) return false;
+  if (strlen(command) > 4 && command[2] == '|') reply += 3;
+  // Leading whitespace can precede the same single Companion prefix.
+  else {
+    const char* start = command;
+    while (*start == ' ' || *start == '\t') start++;
+    if (strlen(start) > 4 && start[2] == '|') reply += 3;
+  }
+  if (client == NULL) {
+    strcpy(reply, "Err - command needs remote client context");
+    return true;
+  }
+  const uint8_t role = client->permissions & PERM_ACL_ROLE_MASK;
+  if (!(role == PERM_ACL_READ_ONLY || role == PERM_ACL_READ_WRITE
+      || role == PERM_ACL_ADMIN
+      || (role == PERM_ACL_GUEST && client->last_activity != 0))) {
+    strcpy(reply, "Err - room user permission required");
+    return true;
+  }
+  const bool alternate = operation == mesh::RoomClientPathCommand::GetAlt
+      || operation == mesh::RoomClientPathCommand::SetAlt;
+  const bool observed = operation == mesh::RoomClientPathCommand::GetObserved
+      || operation == mesh::RoomClientPathCommand::SetObserved;
+  const bool setting = operation == mesh::RoomClientPathCommand::SetOut
+      || operation == mesh::RoomClientPathCommand::SetObserved
+      || operation == mesh::RoomClientPathCommand::SetAlt;
+  uint8_t* selected = alternate ? client->alt_path : client->out_path;
+  uint8_t* selected_length = alternate ? &client->alt_path_len : &client->out_path_len;
+  if (observed && mesh::isObservedClientPathPending(*client, futureMillis(0))) {
+    strcpy(reply, setting ? "Err - path pending" : "> path pending");
+    return true;
+  }
+  if (!setting) {
+    mesh::formatRoomClientPathReply(observed ? client->observed_path : selected,
+        observed ? client->observed_path_len : *selected_length, reply, 157);
+    return true;
+  }
+
+  uint8_t path[MAX_PATH_SIZE] = {};
+  uint8_t length = OUT_PATH_UNKNOWN;
+  if (observed) {
+    length = client->observed_path_len;
+    if (!mesh::isValidObservedClientPathLength(length, sizeof(path))) {
+      strcpy(reply, "Err - no path received");
+      return true;
+    }
+    memcpy(path, client->observed_path, mesh::observedClientPathByteLength(length));
+  } else {
+    const char* spec = mesh::cli::skipRecentRepeaterSpaces(body + 11);
+    if (mesh::cli::terminalPathKeywordMatches(spec, "flood")) length = OUT_PATH_FORCE_FLOOD;
+    else if (mesh::cli::terminalPathKeywordMatches(spec, "none")
+        || mesh::cli::terminalPathKeywordMatches(spec, "-")) length = OUT_PATH_UNKNOWN;
+    else {
+      mesh::cli::TerminalPath parsed;
+      if (mesh::cli::parseTerminalPath(spec, path, sizeof(path), 63, parsed)
+          != mesh::cli::TerminalPathParseResult::Valid) {
+        strcpy(reply, "Err - invalid path");
+        return true;
+      }
+      length = parsed.mode == mesh::cli::TerminalPathMode::Clear
+          ? OUT_PATH_UNKNOWN : parsed.encoded_len;
+    }
+  }
+  const size_t path_bytes = mesh::Packet::isValidPathLen(length)
+      ? mesh::encodedClientPathByteLength(length) : 0;
+  const bool same = length == *selected_length
+      && (path_bytes == 0 || memcmp(path, selected, path_bytes) == 0)
+      && (alternate || client->out_path_is_persistable);
+  if (!same) {
+    const uint8_t previous_length = *selected_length;
+    uint8_t previous[MAX_PATH_SIZE];
+    memcpy(previous, selected, sizeof(previous));
+    const bool was_persistable = client->out_path_is_persistable;
+    memcpy(selected, path, sizeof(path));
+    *selected_length = length;
+    if (!alternate) client->out_path_is_persistable = true;
+    // A route never promotes a password-derived session into a saved ACL role.
+    // Only already-retained entries write through the room's existing filter.
+    if (saveFilter(client)) {
+      if (!acl.save(_fs, MyMesh::saveFilter)) {
+        memcpy(selected, previous, sizeof(previous));
+        *selected_length = previous_length;
+        client->out_path_is_persistable = was_persistable;
+        strcpy(reply, "Err - path save failed");
+        return true;
+      }
+      mesh::resetLazyPersistenceAfterSuccess(dirty_contacts_expiry, contacts_save_failures);
+    }
+  }
+  if (!alternate && length == OUT_PATH_UNKNOWN) strcpy(reply, "> outpath cleared");
+  else mesh::formatRoomClientPathReply(selected, *selected_length, reply, 157);
+  return true;
+}
+
 bool MyMesh::pushRoomTextToClient(ClientInfo *client, uint32_t timestamp,
                                  const mesh::Identity& author, const char* text,
                                  uint32_t topic_revision) {
@@ -495,7 +625,7 @@ bool MyMesh::pushRoomTextToClient(ClientInfo *client, uint32_t timestamp,
         client->extra.room.ack_timeout = futureMillis(PUSH_ACK_TIMEOUT_FLOOD);
       }
     } else {
-      sent = sendDirect(reply, client->out_path, client->out_path_len);
+      sent = sendClientReply(client, reply, 0, _prefs.path_hash_mode + 1);
 
       if (sent) {
         uint8_t path_hash_count = client->out_path_len & 63;
@@ -1217,6 +1347,7 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
         *client, client_existed, perm, PERM_ACL_ROLE_MASK,
         secret, sender_timestamp, getRTCClock()->getCurrentTime(),
         reset_out_path, OUT_PATH_UNKNOWN);
+    mesh::clearObservedClientPath(*client, OUT_PATH_UNKNOWN);
     client->extra.room.sync_since = sender_sync_since;
     client->extra.room.pending_ack = 0;
     client->extra.room.push_failures = 0;
@@ -1252,7 +1383,9 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
       // let this sender know path TO here, so they can use sendDirect(), and ALSO encode the response
       mesh::Packet *path = createPathReturn(sender, client->shared_secret, packet->path, packet->path_len,
                                             PAYLOAD_TYPE_RESPONSE, reply_data, 13);
-      if (path) sendFloodReply(path, SERVER_RESPONSE_DELAY, packet->getPathHashSize());
+      if (path && sendFloodReply(path, SERVER_RESPONSE_DELAY, packet->getPathHashSize())) {
+        mesh::beginObservedClientPath(*client, OUT_PATH_UNKNOWN, futureMillis(60000));
+      }
     } else {
       mesh::Packet *reply = createDatagram(PAYLOAD_TYPE_RESPONSE, sender, client->shared_secret, reply_data, 13);
       if (reply) {
@@ -1344,6 +1477,10 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
   }
 #endif
   if (type == PAYLOAD_TYPE_TXT_MSG && len > 5) { // a CLI command or new Post
+    // An inactive unassigned entry cannot create a reader session by sending
+    // rejected commands that would otherwise refresh last_activity below.
+    if ((client->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST
+        && client->last_activity == 0) return;
     uint32_t sender_timestamp;
     memcpy(&sender_timestamp, data, 4); // timestamp (by sender's RTC clock - which could be wrong)
     uint8_t flags = (data[4] >> 2);        // message attempt number, and other flags
@@ -1406,7 +1543,22 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         client->last_timestamp = sender_timestamp;
       }
 
-      if (cached_retry) {
+      // Cached results must obey current permissions too. A former admin may
+      // recover an own-route reply, but cannot replay cached privileged output.
+      char normalized[mesh::RemoteCliReplyCache::MAX_REPLY_TEXT + 1];
+      StrHelper::strncpy(normalized, text, sizeof(normalized));
+      char prefix[4] = {};
+      const char* body = mesh::normalizeRoomClientPathCommand(normalized, prefix);
+      const uint8_t role = client->permissions & PERM_ACL_ROLE_MASK;
+      const bool own_path_allowed =
+          mesh::classifyRoomClientPathCommand(body) != mesh::RoomClientPathCommand::None
+          && (role == PERM_ACL_READ_ONLY || role == PERM_ACL_READ_WRITE
+              || role == PERM_ACL_ADMIN
+              || (role == PERM_ACL_GUEST && client->last_activity != 0));
+      if (cached_retry && !client->isAdmin() && !own_path_allowed) {
+        strcpy((char*)&temp[5], "Err - admin permission required");
+        temp[4] = (TXT_TYPE_CLI_DATA << 2);
+      } else if (cached_retry) {
         MESH_DEBUG_PRINTLN("onPeerDataRecv: replaying cached remote CLI reply");
         size_t cached_len = strlen(cached_response);
         if (cached_len > mesh::RemoteCliReplyCache::MAX_REPLY_TEXT) {
@@ -1418,20 +1570,20 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
       } else if (repeated_timestamp) {
         MESH_DEBUG_PRINTLN("onPeerDataRecv: duplicate remote CLI request has no cached reply");
         return;
-      } else if (client->isAdmin()) {
-        handleCommand(sender_timestamp, (char*)text, (char*)&temp[5],
-                      i, packet->getPathHashSize());
+      } else {
+        if (!handleClientPathCommand(client, (char*)text, (char*)&temp[5])) {
+          if (client->isAdmin()) {
+            handleCommand(sender_timestamp, (char*)text, (char*)&temp[5],
+                          i, packet->getPathHashSize());
+          } else {
+            strcpy((char*)&temp[5], "Err - admin permission required");
+          }
+        }
         temp[5 + mesh::RemoteCliReplyCache::MAX_REPLY_TEXT] = 0;
         if (temp[5] == 0) strcpy((char*)&temp[5], "OK");
         remote_cli_reply_cache.remember(client->id.pub_key, request_id,
                                         command_fingerprint,
                                         (char*)&temp[5]);
-        temp[4] = (TXT_TYPE_CLI_DATA << 2);
-      } else {
-        const char* error = "Err - admin permission required";
-        strcpy((char*)&temp[5], error);
-        remote_cli_reply_cache.remember(client->id.pub_key, request_id,
-                                        command_fingerprint, error);
         temp[4] = (TXT_TYPE_CLI_DATA << 2);
       }
       // CLI_DATA replies are the result signal; no separate ACK is expected.
@@ -1482,13 +1634,8 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
       auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret,
                                   temp, 5 + reply_text_len);
       if (reply) {
-        if (!mesh::Packet::isValidPathLen(client->out_path_len)) {
-          sendFloodReply(reply, delay_millis + SERVER_RESPONSE_DELAY,
+        sendClientReply(client, reply, delay_millis + SERVER_RESPONSE_DELAY,
                          packet->getPathHashSize());
-        } else {
-          sendDirect(reply, client->out_path, client->out_path_len,
-                     delay_millis + SERVER_RESPONSE_DELAY);
-        }
       }
     }
   } else if (type == PAYLOAD_TYPE_REQ && len >= 5) {
@@ -1576,11 +1723,8 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
           } else {
             mesh::Packet *reply = createDatagram(PAYLOAD_TYPE_RESPONSE, client->id, secret, reply_data, reply_len);
             if (reply) {
-              if (mesh::Packet::isValidPathLen(client->out_path_len)) { // we have an out_path, so send DIRECT
-                sendDirect(reply, client->out_path, client->out_path_len, SERVER_RESPONSE_DELAY);
-              } else {
-                sendFloodReply(reply, SERVER_RESPONSE_DELAY, packet->getPathHashSize());
-              }
+              sendClientReply(client, reply, SERVER_RESPONSE_DELAY,
+                               packet->getPathHashSize());
             }
           }
         }
@@ -1598,15 +1742,22 @@ bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t 
     MESH_DEBUG_PRINTLN("PATH to client, path_len=%d", (uint32_t)path_len);
     auto client = acl.getClientByIdx(i);
     if (!room_access.allowsIdentity(client->id.pub_key)) return false;
+    const bool captured_login_path = packet->isRouteDirect() && extra_type == 0x0F
+        && mesh::captureObservedClientPath(*client, path, path_len, futureMillis(0));
     // PATH has no durable replay freshness signal. Keep it RAM-only and do not
     // let a replay replace an operator-selected force-flood route.
-    const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
-        MyMesh::saveFilter(client), false /* no durable replay proof */);
-    const mesh::ClientPathUpdateResult path_update =
-        mesh::applyReceivedClientPath(
-            *client, path, path_len, persistence_allowed,
-            OUT_PATH_FORCE_FLOOD);
-    (void)path_update;
+    // Preserve normal room-app discovery, but do not let the delayed login
+    // PATH overwrite a route the user explicitly selected in the meantime.
+    if (!captured_login_path || !client->out_path_is_persistable
+        || !mesh::Packet::isValidPathLen(client->out_path_len)) {
+      const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
+          MyMesh::saveFilter(client), false /* no durable replay proof */);
+      const mesh::ClientPathUpdateResult path_update =
+          mesh::applyReceivedClientPath(
+              *client, path, path_len, persistence_allowed,
+              OUT_PATH_FORCE_FLOOD);
+      (void)path_update;
+    }
     client->last_activity = getRTCClock()->getCurrentTime();
   } else {
     MESH_DEBUG_PRINTLN("onPeerPathRecv: invalid peer idx: %d", i);
@@ -2100,7 +2251,7 @@ bool MyMesh::resolveAlertScope(TransportKey& dest) {
   return false;
 }
 
-void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
+bool MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size) {
   TransportKey req_scope;
   bool is_wildcard = recv_pkt_region != NULL && recv_pkt_region->isWildcard();
   bool req_scope_known = recv_pkt_region != NULL && !is_wildcard
@@ -2108,17 +2259,15 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
 
   switch (mesh::chooseReplyScope(req_scope_known, is_wildcard, !default_scope.isNull())) {
     case mesh::REPLY_SCOPE_REQUEST:
-      sendFloodScoped(req_scope, packet, delay_millis, path_hash_size);   // reply with same scope as request
-      break;
+      return sendFloodScoped(req_scope, packet, delay_millis, path_hash_size);   // reply with same scope as request
     case mesh::REPLY_SCOPE_DEFAULT:
       // requester's scope is unknown: DIRECT request (no transport codes), or code matched no Region.
       // un-scoped would be dropped at hop 0 by repeaters running flood.max.unscoped=0
-      sendFloodScoped(default_scope, packet, delay_millis, path_hash_size);
-      break;
+      return sendFloodScoped(default_scope, packet, delay_millis, path_hash_size);
     case mesh::REPLY_SCOPE_NONE:
-      sendFlood(packet, delay_millis, path_hash_size);   // send un-scoped
-      break;
+      return sendFlood(packet, delay_millis, path_hash_size);   // send un-scoped
   }
+  return false;
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {

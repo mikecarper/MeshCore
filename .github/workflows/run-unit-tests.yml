@@ -121,6 +121,7 @@ jobs:
           python3 -B test/test_room_post_permissions.py -v
           python3 -B test/test_room_login_authorization.py -v
           python3 -B test/test_room_login_integration.py -v
+          python3 -B test/test_room_client_paths.py -v
           python3 -B test/test_room_topic_store.py -v
           python3 -B test/test_room_topic_delivery.py -v
           python3 -B test/test_room_acl_persistence.py -v

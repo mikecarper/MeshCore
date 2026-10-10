@@ -25,12 +25,16 @@ HARNESS = r'''
 #include <helpers/RemoteCliRequest.h>
 #include <helpers/ClientACLResponse.h>
 #include <helpers/ClientPathPersistence.h>
+#include <helpers/ClientPathObservation.h>
+#include <helpers/RoomClientPathCommand.h>
+#include <helpers/TxtDataHelpers.h>
 #include <Packet.h>
 #include <helpers/RoomLoginAuthorization.h>
 #include <helpers/ClientLoginPersistence.h>
 #include <helpers/LazyPersistence.h>
 #include <helpers/LogicalMessageCache.h>
 @CONSTANTS@
+@STR_HELPER@
 #define MESH_CLIENT_REPEATER_ONLY 0
 namespace mesh {
 struct Identity { uint8_t pub_key[PUB_KEY_SIZE]; };
@@ -86,6 +90,10 @@ struct FakeACL : ClientACL {
   bool known = false, allocate_ok = true;
   unsigned lookups = 0, authorizations = 0, allocations = 0;
   uint8_t authorized_role = 255;
+  bool save(MemoryFS* fs, bool (*filter)(ClientInfo*)) {
+    assert(fs != nullptr && filter != nullptr);
+    return true;
+  }
   int getNumClients() const { return known ? 1 : 0; }
   ClientInfo* getClientByIdx(int i) { assert(i == 0 && known); return &client; }
   ClientInfo* getClient(const uint8_t* key, size_t length) {
@@ -107,6 +115,7 @@ struct FakeACL : ClientACL {
     client.id = sender;
     client.permissions = permissions;
     client.out_path_len = OUT_PATH_UNKNOWN;
+    client.alt_path_len = OUT_PATH_UNKNOWN;
     client.out_path_is_persistable = true;
     known = true;
     return &client;
@@ -130,6 +139,7 @@ static uint32_t millis() { return ticks; }
 struct MyMesh {
   FakeACL acl;
   MemoryFS policy_fs;
+  MemoryFS* _fs = &policy_fs;
   mesh::RoomAccessPolicy room_access;
   MyMesh() { metadata_filesystem = &policy_fs; assert(room_access.load(&policy_fs)); }
   int matching_peer_indexes[1] = {0};
@@ -137,6 +147,8 @@ struct MyMesh {
   mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_polls;
   void serviceRoomQuotas();
   static bool saveFilter(ClientInfo*);
+  bool handleClientPathCommand(ClientInfo*, char*, char*);
+  bool sendClientReply(ClientInfo*, mesh::Packet*, unsigned long, uint8_t);
   unsigned path_acks = 0;
   bool processAck(const uint8_t*) { ++path_acks; return true; }
   uint8_t getUnsyncedCount(ClientInfo*) { return 2; }
@@ -151,13 +163,14 @@ struct MyMesh {
     char password[32] = "admin";
     char guest_password[32] = "guest";
     bool allow_read_only = false;
+    uint8_t direct_retry_enabled = 1;
   } _prefs;
   FakeClock clock;
   FakeRng rng;
   unsigned long millis_now = 20000, dirty_contacts_expiry = 0, next_push = 0;
   uint8_t contacts_save_failures = 0, reply_data[32] = {};
   unsigned creations = 0, direct_sends = 0, flood_sends = 0, path_returns = 0;
-  bool create_ok = true;
+  bool create_ok = true, queue_ok = true;
   mesh::Packet response;
   uint8_t response_secret[PUB_KEY_SIZE] = {}, response_key[PUB_KEY_SIZE] = {};
   uint8_t returned_path[MAX_PATH_SIZE] = {}, direct_path[MAX_PATH_SIZE] = {};
@@ -169,6 +182,8 @@ struct MyMesh {
 
   FakeClock* getRTCClock() { return &clock; }
   FakeRng* getRNG() { return &rng; }
+  mesh::Packet* obtainNewPacket() { return nullptr; }
+  void releasePacket(mesh::Packet*) { assert(false); }
   unsigned long futureMillis(unsigned long delay) { return millis_now + delay; }
   mesh::Packet* createDatagram(uint8_t type, const mesh::Identity& sender,
                                const uint8_t* secret, const uint8_t* data, size_t len) {
@@ -188,18 +203,20 @@ struct MyMesh {
     memcpy(returned_path, path, (path_len & 63) * ((path_len >> 6) + 1));
     return createDatagram(type, sender, secret, data, len);
   }
-  void sendDirect(mesh::Packet* packet, const uint8_t* path, uint8_t path_len,
+  bool sendDirect(mesh::Packet* packet, const uint8_t* path, uint8_t path_len,
                   unsigned long delay) {
     assert(packet == &response && (delay == SERVER_RESPONSE_DELAY || delay == TXT_ACK_DELAY));
     assert(mesh::Packet::isValidPathLen(path_len));
     ++direct_sends;
     direct_path_len = path_len;
     memcpy(direct_path, path, (path_len & 63) * ((path_len >> 6) + 1));
+    return queue_ok;
   }
-  void sendFloodReply(mesh::Packet* packet, unsigned long delay, uint8_t hash_size) {
+  bool sendFloodReply(mesh::Packet* packet, unsigned long delay, uint8_t hash_size) {
     assert(packet == &response && (delay == SERVER_RESPONSE_DELAY || delay == TXT_ACK_DELAY));
     ++flood_sends;
     reply_hash_size = hash_size;
+    return queue_ok;
   }
   bool store_ok = true;
   bool addPost(ClientInfo*, const char*) { if (!store_ok) return false; ++posts; return true; }
@@ -232,6 +249,8 @@ struct MyMesh {
 @PATH_HANDLER@
 @QUOTA_SERVICE@
 @SAVE_FILTER@
+@CLIENT_PATH_HANDLER@
+@SEND_CLIENT_REPLY@
 
 static mesh::Identity identity(uint8_t n = 1) {
   mesh::Identity sender{};
@@ -247,6 +266,7 @@ static void seedKnown(MyMesh& mesh, uint8_t permissions = PERM_ACL_ADMIN) {
   client.last_timestamp = 99;
   client.last_activity = 777;
   client.out_path_len = 2;
+  client.alt_path_len = OUT_PATH_UNKNOWN;
   client.out_path[0] = 0xA1;
   client.out_path[1] = 0xB2;
   client.out_path_is_persistable = false;
@@ -486,6 +506,9 @@ static void sessionRefresh() {
       mesh.acl.client.out_path_len = route;
       login(mesh, "guest", 100, 81, flood);
       const auto& client = mesh.acl.client;
+      assert(client.observed_path_len == OUT_PATH_UNKNOWN);
+      assert(client.observed_path_pending == flood);
+      assert(client.observed_path_expiry == (flood ? mesh.millis_now + 60000 : 0));
       assert(client.permissions == (PERM_ACL_REGION_MGR | 0x80));
       assert(client.last_timestamp == 100 && client.last_activity == mesh.clock.now);
       assert(client.extra.room.sync_since == 81 && client.extra.room.last_post_timestamp == 800);
@@ -535,6 +558,64 @@ static void sessionRefresh() {
   assert(response_failure.acl.client.last_timestamp == 100);
   assert(response_failure.creations == 1 && response_failure.direct_sends == 0 && response_failure.flood_sends == 0);
   puts("real-handler successful reconnect refreshes cursor, activity, secret, topic state, and route passed");
+}
+
+static void observedLoginPath() {
+  MyMesh mesh;
+  seedKnown(mesh);
+  mesh.acl.client.out_path_len = OUT_PATH_FORCE_FLOOD;
+  login(mesh, "guest", 100, 80, true);
+  auto& client = mesh.acl.client;
+  assert(client.observed_path_pending && client.out_path_len == OUT_PATH_FORCE_FLOOD);
+  uint8_t route[] = {0x12, 0x34, 0x56, 0x78}, ack[4]{};
+  auto packet = incoming();
+  // ACK and flood packets are not the reciprocal empty-custom login PATH.
+  mesh.onPeerPathRecv(&packet, 0, client.shared_secret, route, 0x42,
+                      PAYLOAD_TYPE_ACK, ack, sizeof(ack));
+  assert(client.observed_path_pending && mesh.path_acks == 1);
+  auto flood_packet = incoming(true);
+  mesh.onPeerPathRecv(&flood_packet, 0, client.shared_secret, route, 0x42, 0x0F, ack, 0);
+  assert(client.observed_path_pending);
+  assert(!mesh.onPeerPathRecv(&packet, 0, client.shared_secret, route, 0x42, 0x0F, ack, 0));
+  assert(!client.observed_path_pending && client.observed_path_len == 0x42);
+  assert(memcmp(client.observed_path, route, sizeof(route)) == 0);
+  assert(client.out_path_len == OUT_PATH_FORCE_FLOOD); // An observed PATH is not an override.
+  char get_command[] = "get outpath path", reply[180]{};
+  assert(mesh.handleClientPathCommand(&client, get_command, reply));
+  assert(strcmp(reply, "> 1234,5678") == 0);
+  char set_command[] = "set outpath path";
+  assert(mesh.handleClientPathCommand(&client, set_command, reply));
+  assert(client.out_path_len == 0x42 && client.out_path_is_persistable);
+  assert(memcmp(client.out_path, route, sizeof(route)) == 0);
+  login(mesh, "guest", 101, 80, false);
+  assert(!client.observed_path_pending && client.observed_path_len == OUT_PATH_UNKNOWN);
+  login(mesh, "guest", 102, 80, true);
+  mesh.onPeerPathRecv(&packet, 0, client.shared_secret, route, 0, 0x0F, ack, 0);
+  assert(client.observed_path_len == 0 && !client.observed_path_pending);
+  char zero_hop[] = "set outpath path";
+  assert(mesh.handleClientPathCommand(&client, zero_hop, reply));
+  assert(client.out_path_len == 0 && strcmp(reply, "> direct") == 0);
+  // Timeout and an unrelated PATH cannot create an observed-route result.
+  login(mesh, "guest", 103, 80, true);
+  mesh.millis_now += 60000;
+  mesh.onPeerPathRecv(&packet, 0, client.shared_secret, route, 0x42, 0x0F, ack, 0);
+  assert(!client.observed_path_pending && client.observed_path_len == OUT_PATH_UNKNOWN);
+  login(mesh, "guest", 104, 80, true);
+  char explicitly_selected[] = "set outpath B1";
+  assert(mesh.handleClientPathCommand(&client, explicitly_selected, reply));
+  mesh.onPeerPathRecv(&packet, 0, client.shared_secret, route, 0x42, 0x0F, ack, 0);
+  assert(client.observed_path_len == 0x42 && client.out_path_len == 1 && client.out_path[0] == 0xB1);
+  // No reciprocal PATH is requested unless the login response was queued.
+  for (bool allocation_fault : {false, true}) {
+    MyMesh failed;
+    failed.create_ok = !allocation_fault;
+    failed.queue_ok = allocation_fault;
+    login(failed, "guest", 100, 80, true);
+    assert(failed.acl.known && failed.acl.client.last_timestamp == 100);
+    assert(!failed.acl.client.observed_path_pending
+           && failed.acl.client.observed_path_len == OUT_PATH_UNKNOWN);
+  }
+  puts("actual flood login opens observed window, PATH captures, direct login clears, and expiry rejects passed");
 }
 
 static void readOnlyPosting() {
@@ -692,6 +773,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "moderation")) moderationCases();
   else if (!strcmp(argv[1], "quotas")) quotaCases();
   else if (!strcmp(argv[1], "requests")) allRequestQuotaCases();
+  else if (!strcmp(argv[1], "observed")) observedLoginPath();
   else assert(false);
 }
 '''
@@ -737,6 +819,8 @@ class RoomLoginIntegrationTests(unittest.TestCase):
         constants += "\n" + delay.group()
         replacements = {
             "@CONSTANTS@": constants,
+            "@STR_HELPER@": extract_braced((ROOT / "src/helpers/TxtDataHelpers.cpp").read_text(),
+                                            "void StrHelper::strncpy("),
             "@PACKET_CONSTRUCTOR@": extract_braced(packet, "Packet::Packet()"),
             "@PACKET_PATH_CHECK@": extract_braced(packet, "bool Packet::isValidPathLen("),
             "@CLIENT_INFO@": extract_braced(acl_header, "struct ClientInfo {"),
@@ -745,6 +829,8 @@ class RoomLoginIntegrationTests(unittest.TestCase):
             "@PATH_HANDLER@": extract_braced(room, "bool MyMesh::onPeerPathRecv("),
             "@QUOTA_SERVICE@": extract_braced(room, "void MyMesh::serviceRoomQuotas("),
             "@SAVE_FILTER@": extract_braced(room, "bool MyMesh::saveFilter("),
+            "@CLIENT_PATH_HANDLER@": extract_braced(room, "bool MyMesh::handleClientPathCommand("),
+            "@SEND_CLIENT_REPLY@": extract_braced(room, "bool MyMesh::sendClientReply("),
             "@LOGIN_HANDLER@": extract_braced(room, "void MyMesh::onAnonDataRecv("),
         }
         generated = HARNESS
@@ -782,6 +868,9 @@ class RoomLoginIntegrationTests(unittest.TestCase):
 
     def test_successful_relogin_refreshes_session_and_routes_without_resetting_post_floor(self):
         self.run_case("refresh", "real-handler successful reconnect refreshes cursor, activity, secret, topic state, and route passed")
+
+    def test_observed_route_uses_actual_login_and_path_handlers_with_timeout(self):
+        self.run_case("observed", "actual flood login opens observed window, PATH captures, direct login clears, and expiry rejects passed")
 
     def test_all_room_request_types_consume_poll_budget_and_preserve_exact_retries(self):
         self.run_case("requests", "actual request quota covers status, telemetry, ACL, board, and exact payload retries passed")
