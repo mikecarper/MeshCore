@@ -2934,6 +2934,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-room-topic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the room topic
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -5777,6 +5788,17 @@
     <span class="md-ellipsis">
       
         View or change this room server's 'read-only' flag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-the-room-topic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change the room topic
       
     </span>
   </a>
@@ -10119,12 +10141,47 @@ Setting a clock alone never automatically resets this table.</p>
 setperm &lt;PUBKEY_USER_1&gt; 2
 </code></pre>
 <p>With read-only mode on, a client without a valid room password can join as a
-read-only guest. Permission <code>2</code> gives the specified public key read-write
+read-only guest, including with a blank password. Empty configured admin and
+room passwords disable those password credentials; they never grant Admin or
+Read-Write access. Permission <code>2</code> gives the specified public key read-write
 access. Replace <code>&lt;PUBKEY_USER_1&gt;</code> with the user's full public key and repeat
 <code>setperm</code> for every approved writer.</p>
+<p>An existing ACL identity keeps its assigned role when logging in with a blank,
+stale, or room password. A valid nonempty admin password can explicitly upgrade
+it to Admin. This prevents a guest-password login from demoting an admin, and
+prevents a room password from overriding an explicit read-only assignment.
+Only Read-Write (<code>2</code>) and Admin (<code>3</code>) clients can post.</p>
 <p>This does not remove write access from clients that already know the room
 password. Keep that password private, or replace it, if write access should be
 limited to the explicitly permitted users.</p>
+<hr />
+<h4 id="view-or-change-the-room-topic">View or change the room topic</h4>
+<p><strong>Availability:</strong> Room Server firmware. Local consoles and authenticated remote
+admins can use these commands.</p>
+<pre><code class="language-text">set topic Welcome to the Bellevue room. Please keep posts local.
+get topic
+set topic
+</code></pre>
+<p><code>set topic &lt;text&gt;</code> saves an announcement of up to 151 UTF-8 bytes. Individual
+command transports can impose a smaller input limit. <code>get topic</code> returns the
+current text prefixed with <code>&gt;</code>. <code>set topic</code> with no text clears it.</p>
+<p>The topic survives reboot and appears as a normal room post authored by the
+server, using the existing app message format. It does not require an app
+update or provide a separate pinned-header display. Older unread retained posts
+are delivered before the topic, so the companion's automatic catch-up cursor
+cannot jump past them. A topic ACK updates only topic delivery state, leaving
+the server's message-history cursor unchanged.</p>
+<p>The server waits six seconds before delivering a new topic and attempts an
+unacknowledged announcement up to three times per client. It then continues
+ordinary post delivery; reconnecting or changing the topic renews that budget.
+Changing a topic while its predecessor is awaiting an ACK does not mark the
+replacement as received. Clearing the topic stops further announcement pushes;
+a packet already queued for transmission can still arrive.</p>
+<p>Topic saves are verified before publication. A failed save reports an error
+and retains the previous live topic. Corrupt, unreadable, or unsupported stored
+topic files are preserved and block replacement until their storage issue is
+repaired. Topics do not make ordinary room history persistent: retained posts
+still use the existing bounded RAM ring and are lost on reboot.</p>
 <hr />
 <h3 id="region-management-v110">Region Management (v1.10.+)</h3>
 <h4 id="bulk-load-region-lists">Bulk-load region lists</h4>
