@@ -6909,6 +6909,12 @@ URL. MQTT builds also show the MQTT tab and wizard step; non-MQTT builds remove
 them entirely. Sign in with the node's admin password. If the node has no saved
 WiFi SSID, the command starts the open <code>MeshCore-Setup-XXXX</code> captive AP at
 <a href="http://192.168.4.1/">http://192.168.4.1/</a> instead.</p>
+<p>If a saved WiFi network is unavailable and the node falls back to its setup
+AP, sign in with the existing admin password before changing settings. Joining
+that AP does not grant permission to replace the password. First-time setup
+without a saved SSID keeps its AP provisioning flow. Images deliberately
+configured without an admin password, including passwordless Companions,
+retain their local no-password policy; use them only on a trusted network.</p>
 <p><code>start webconfig ap</code> forces captive-AP mode. It will not interrupt an active
 MQTT bridge, so run <code>set mqtt.enabled off</code> first. Use <code>stop webconfig</code> to
 close either mode for the current boot. (<code>stop webconfig</code> does not change a
@@ -11066,6 +11072,12 @@ MQTT while keeping broker presets and credentials. Turning it on allows those
 brokers to reconnect. <code>get mqtt.running</code> checks the service's runtime state;
 <code>get mqtt.status</code> reports individual broker connections. Enabling MQTT does
 not imply that a broker is connected.</p>
+<p>Custom <code>mqtts://</code> and <code>wss://</code> brokers require an image with the embedded CA
+bundle. Without it, the slot stays disconnected and sends no credentials;
+use a build with the bundle or a supported preset with its pinned CA.
+Portable MQTT images retain those presets but do not include the general
+bundle for custom TLS brokers. Explicit <code>mqtt://</code> and <code>ws://</code> configurations
+remain available for trusted networks and use plaintext transport.</p>
 <p>On ESP32 Repeater and Room Server images, <code>set mqtt.enabled off</code> acknowledges
 the stop request while the MQTT task disconnects and destroys its clients.
 <code>get mqtt.stopping</code> stays <code>on</code> until that cleanup completes; <code>mqtt.running</code>

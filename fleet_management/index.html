@@ -2577,7 +2577,7 @@ off</code> disables reception; <code>set fleet.controller off</code> revokes the
 changes use the existing individually authenticated admin path, never fleet
 commands.
 <code>get fleet.stats</code> includes <code>parts</code>, the number of fragments currently buffered
-for an incomplete two-packet command.</p>
+across the two bounded, incomplete two-packet command slots.</p>
 <p>Nodes need a clock set to current UTC. Commands expire after ten minutes and may
 be at most one minute ahead of a receiver's clock. A bad clock fails closed;
 correct it through the normal administration path.</p>
@@ -2706,8 +2706,10 @@ Separate fleets use separate channel keys.</p>
 remote CLI command cannot turn that Companion into a multicast signing proxy.
 An <code>OK</code> means the Companion queued the command, not that every receiver applied
 it. Wait for acknowledgements and confirm the result on important nodes.</p>
-<p>Use at most one new command per second. The Unix-second sequence is reserved in
-durable storage <strong>before</strong> dispatch. The same sequence is never executed twice,
+<p>Use at most one new command per second. The publishing Companion remembers its
+last queued sequence for the current boot; its clock supplies the next sequence.
+Each receiving node reserves the Unix-second sequence in durable storage
+<strong>before</strong> dispatch. That receiver never executes the same sequence twice,
 including after reboot or a lost reply. Retry an uncertain command with a fresh
 sequence; the operation should be chosen to be idempotent.</p>
 <h2 id="supported-controls">Supported controls</h2>
@@ -2799,10 +2801,12 @@ delivery over LoRa.</p>
 <p>A receiver accepts either arrival order and identical duplicates. It executes
 and acknowledges <strong>only after both parts arrive and the complete signature,
 target, clock and replay checks pass</strong>. Missing or altered parts cannot execute
-a partial command. One bounded assembly is kept for up to five minutes from the
-first part; duplicates do not extend that deadline. A fresh command with a newer
-eligible sequence replaces an incomplete older transfer, so a lost part does
-not block retries. Reboot or changing enrollment discards the partial transfer.</p>
+a partial command. Two bounded assemblies are kept for up to five minutes
+from their respective first parts; duplicates do not extend those deadlines.
+Unverified fragment sequences cannot grant priority over another transfer. A
+third transfer replaces the oldest collection. A complete, valid signed command
+clears the partial collections, and durable replay checks remain authoritative.
+Reboot or changing enrollment discards the partial transfers.</p>
 <table>
 <thead>
 <tr>
@@ -2897,8 +2901,8 @@ packets drain, with at least one successful physical transmission. Queue failure
 failed transmissions, or an acknowledgement timeout cancels the staged mutation.
 Temporary-radio leases and scheduled windows retain their original monotonic end time; waiting for an
 acknowledgement does not lengthen them.</p>
-<p>Exact single-node acknowledgements use 0.5–1.5 seconds of random delay; prefix,
-multiple-target, region, GPS and whole-fleet replies use 0.5–10 seconds, including
+<p>Exact single-node acknowledgements use 0.5-1.5 seconds of random delay; prefix,
+multiple-target, region, GPS and whole-fleet replies use 0.5-10 seconds, including
 radio mutations. Queuing, airtime and forwarding can add delivery time.
 This reduces simultaneous responses but is not a reliable
 delivery protocol for an arbitrarily large fleet. Use individual requests for
@@ -2913,10 +2917,13 @@ recovery path before changing network-wide filters. Primary-radio schedules can
 move nodes off the normal network; use a temporary window or a planned recovery
 path for experiments. A forwarding policy can also partition the fleet.</p>
 <p>The receiver is allocated lazily when fleet settings are present or queried, with
-one bounded mailbox and one 308-byte fragment assembly. Cryptographic work and storage writes occur after the receive
-stack unwinds. Signature-validation
-attempts are bounded to protect the radio loop from matching-hash junk. A corrupt
-or unreadable fleet store denies commands rather than discarding its replay state.</p>
+one bounded mailbox and two 308-byte fragment assemblies, plus bounded metadata.
+Cryptographic work and storage writes occur after the receive stack unwinds.
+Signature-validation attempts are bounded after private-channel MAC verification,
+complete framing, replay, target, time and command checks. Keyless matching-hash
+junk, already-used requests, other nodes' requests and incomplete fragments do not
+spend that signature budget. A corrupt or unreadable fleet store denies commands
+rather than discarding its replay state.</p>
 <h2 id="ideas-for-packet-abuse-containment">Ideas for packet-abuse containment</h2>
 <p>A packet-count chart can show a burst, but cannot establish intent, an authenticated
 source, or the airtime consumed. A large Trace spike deserves investigation;

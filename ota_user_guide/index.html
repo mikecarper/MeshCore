@@ -3076,6 +3076,10 @@ speed also depends on packet airtime, the configured airtime budget, relays,
 and packet loss; <code>3</code> does not guarantee three times the throughput.</p>
 <p>The factor covers OTA requests and responses (catalog, manifest, leaves, DATA,
 and proofs), OTA relay delays, discovery jitter, and automatic OTA adverts.
+Sources queue manifest and leaf replies and admit their fragments one at a
+time through the paced transmit queue. Repeated requests merge pending
+fragments; a full response queue leaves the request available for another
+source or a later retry. This preserves packet space for other mesh traffic.
 Below <code>1</code>, the transmit queue also spaces out <strong>every OTA packet</strong>, including
 both profile copies, while letting ordinary messages run. Recovery waits grow
 for slower transfers; faster settings retain the existing retry allowance so
@@ -3115,7 +3119,7 @@ existing preference layouts and does not need an active OTA workspace.</p>
 <p>By default your node only <em>discovers</em> updates - it won't download or install on its own. If you want more
 automation (e.g. for a remote node you can't easily reach), you can opt in. These settings are saved.</p>
 <pre><code>ota config autofetch any        # auto-DOWNLOAD any compatible update for this node (still won't install)
-ota config autofetch signed     # auto-download only signed updates
+ota config autofetch signed     # auto-download verified updates from allowlisted signers
 ota config autofetch off        # back to manual (default)
 
 ota config autoinstall trusted  # auto-INSTALL only a trusted signed version newer than the running EndF
@@ -3129,9 +3133,17 @@ ota config hops 0               # only exchange OTA with directly-connected node
 
 ota config                      # show the current settings
 </code></pre>
-<p>These policies also govern automatic adoption of an interrupted staged download after reboot. <code>off</code> leaves
-it untouched, <code>signed</code> requires the stored manifest's signed flag, and automatic resume requires the stored
-target to match this node and its version to be newer than the running valid EndF. Reissuing an explicit
+<p>With <code>autofetch signed</code>, add the author's public key using <code>ota key add</code> before
+expecting an automatic download. The node verifies the manifest's signature
+against that allowlist before planning, erasing, or writing staging storage.
+<code>autofetch any</code> remains the deliberate option for automatically downloading
+unsigned compatible packages; it does not authorize installation.</p>
+<p>These policies also govern automatic adoption of an interrupted staged
+download after reboot. <code>off</code> leaves it untouched; <code>signed</code> requires the same
+allowlisted signature verification. Automatic resume also requires the stored
+target to match this node and its version to be newer than the running valid
+EndF. The signature check applies when an automatic download resumes after
+discovering a source or reconnecting its storage. Reissuing an explicit
 <code>ota pull &lt;MID8&gt;</code> remains the deliberate override for an older or unsigned partial.
 For bring-up/debugging, <code>ota dev resume &lt;MID8&gt;</code> performs the same explicit MID-bound re-adoption without
 starting a new network fetch. After reboot it requires the MID; bare <code>ota dev resume</code> is accepted only while
@@ -3140,6 +3152,12 @@ If raw flash contains multiple valid staged headers, automatic resume leaves the
 guessing which is newest. Specify the intended MID to select its unique checkpoint; ambiguous matches are
 rejected. Temporary storage read failures no longer consume a download slot indefinitely: host storage
 pauses for reconnection, while non-reconnectable storage reports a storage error and can be retried.</p>
+<p>A failed automatic download starts a cooldown before other automatic candidates
+are considered: one minute initially, doubling after further failures up to
+15 minutes. Changing the offered image or source does not skip this wait.
+The timer uses elapsed uptime, and a completed download clears it. Manual
+<code>ota pull</code>, explicit resume, and archive captures keep their existing operator
+controls and are not restricted by this automatic-download cooldown.</p>
 <p>Recommended for most people: leave both <strong>off</strong> and update by hand. Use <code>autoinstall trusted</code> only once
 you've added the signer's key (next section) and you trust them to push updates unattended. Automatic
 admission and final apply both reject zero, equal, or older signed versions; a dishonest catalog version
@@ -3153,8 +3171,9 @@ See <a href="../ota_meshtower_v2_sdcard/#preload-many-motas-from-a-computer">Pre
 for the required <code>/mota/&lt;manifest-id&gt;.mota</code> filenames and the complete TempRadio seeding workflow.</p>
 <hr />
 <h2 id="optional-only-trust-updates-from-specific-people">Optional: only trust updates from specific people</h2>
-<p>If you'll use auto-install, tell your node which signing keys to trust. The firmware author shares their
-<strong>public</strong> key (a hex string); you add it:</p>
+<p>If you'll use signed auto-download or auto-install, tell your node which
+signing keys to trust. The firmware author shares their <strong>public</strong> key (a hex
+string); you add it:</p>
 <pre><code>ota key add &lt;public-key-hex&gt;    # trust this signer
 ota key list                    # show trusted signers
 ota key rm &lt;public-key-hex&gt;     # stop trusting one
