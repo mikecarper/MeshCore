@@ -16,6 +16,7 @@ POLICY_PREAMBLE = r'''
 #include <cstdint>
 #include "helpers/MQTTConnectionAdmission.h"
 namespace Admission = MQTTConnectionAdmission;
+using MemoryState = Admission::ClientMemoryState;
 '''
 
 HEAP_PREAMBLE = POLICY_PREAMBLE + r'''
@@ -54,7 +55,8 @@ constexpr int RUNTIME_MQTT_SLOTS = 6;
 struct { size_t size = 0; size_t getPsramSize() const { return size; } } ESP;
 struct Preset { const char* server_url; };
 struct Client {
-  bool started = false;
+  bool initialized = false, started = false;
+  bool isInitialized() const { return initialized; }
   bool isStarted() const { return started; }
 };
 struct MQTTBridge {
@@ -92,20 +94,23 @@ class MqttConnectionAdmissionTest(unittest.TestCase):
         self.compile_run(POLICY_PREAMBLE + r'''
 int main() {
   // A large aggregate heap cannot compensate for a fragmented DMA region.
-  assert(!Admission::canStart(true, true, false, 100000, 4095));
-  assert(!Admission::canStart(true, true, false, 16383, 20000));
-  assert(Admission::canStart(true, true, false, 16384, 4096));
-  assert(Admission::canStart(false, false, false, 16384, 4096));
-  assert(!Admission::canStart(false, false, false, 16383, 4096));
-  assert(!Admission::canStart(false, false, false, 16384, 4095));
+  assert(!Admission::canStart(true, true, MemoryState::Started, 100000, 4095));
+  assert(!Admission::canStart(true, true, MemoryState::Started, 16383, 20000));
+  assert(Admission::canStart(true, true, MemoryState::Started, 16384, 4096));
+  assert(Admission::canStart(false, false, MemoryState::Started, 16384, 4096));
+  assert(!Admission::canStart(false, false, MemoryState::Started, 16383, 4096));
+  assert(!Admission::canStart(false, false, MemoryState::Started, 16384, 4095));
 
   // Without PSRAM, TLS also needs a full record allocation and session budget.
-  for (int cold = 0; cold <= 1; ++cold) {
-    assert(!Admission::canStart(false, true, cold, 61439, 20000));
-    assert(!Admission::canStart(false, true, cold, 100000, 17407));
-    assert(Admission::canStart(false, true, cold, 61440, 17408));
+  const MemoryState states[] = {MemoryState::Uninitialized, MemoryState::Stopped,
+                                MemoryState::Started};
+  for (MemoryState state : states) {
+    assert(!Admission::canStart(false, true, state, 61439, 20000));
+    assert(!Admission::canStart(false, true, state, 100000, 17407));
+    assert(Admission::canStart(false, true, state, 61440, 17408));
   }
-  assert(Admission::canStart(true, false, false, 16384, 4096));
+  assert(Admission::canStart(true, false, MemoryState::Started, 16384, 4096));
+  assert(!Admission::canStart(true, false, static_cast<MemoryState>(255), SIZE_MAX, SIZE_MAX));
 
   // A new SDK task needs its stack and ordinary startup allocations in
   // addition to the DMA reserve, including plaintext and PSRAM-backed TLS.
@@ -113,12 +118,19 @@ int main() {
   assert(Admission::kClientTaskPriority == 5);
   assert(Admission::kColdStartAllowanceBytes == 16384);
   assert(Admission::kColdStartLargestBytes == 8192);
+  assert(Admission::kRestartAllowanceBytes == 8192);
+  assert(Admission::kRestartLargestBytes == 8192);
   for (int psram = 0; psram <= 1; ++psram) {
     for (int tls = 0; tls <= 1; ++tls) {
       if (!psram && tls) continue;  // Larger TLS thresholds checked above.
-      assert(!Admission::canStart(psram, tls, true, 32767, 20000));
-      assert(!Admission::canStart(psram, tls, true, 100000, 8191));
-      assert(Admission::canStart(psram, tls, true, 32768, 8192));
+      assert(!Admission::canStart(psram, tls, MemoryState::Uninitialized, 32767, 20000));
+      assert(!Admission::canStart(psram, tls, MemoryState::Uninitialized, 100000, 8191));
+      assert(Admission::canStart(psram, tls, MemoryState::Uninitialized, 32768, 8192));
+      // An initialized handle retains its ordinary SDK buffers across a stop.
+      // Only the replacement task/TCB is charged beside the DMA reserve.
+      assert(!Admission::canStart(psram, tls, MemoryState::Stopped, 24575, 20000));
+      assert(!Admission::canStart(psram, tls, MemoryState::Stopped, 100000, 8191));
+      assert(Admission::canStart(psram, tls, MemoryState::Stopped, 24576, 8192));
     }
   }
 }
@@ -281,10 +293,18 @@ int main() {
   assert(!bridge.canStartSlotConnection(0));
   Client client;
   bridge._slots[0].client = &client;
-  assert(!bridge.canStartSlotConnection(0));  // Allocated, but task not started.
+  assert(!bridge.canStartSlotConnection(0));  // Wrapper allocated; SDK not initialized.
   dma_free = 32767; dma_largest = 20000;
   assert(!bridge.canStartSlotConnection(0));
   dma_free = 32768; dma_largest = 8191;
+  assert(!bridge.canStartSlotConnection(0));
+  dma_largest = 8192;
+  assert(bridge.canStartSlotConnection(0));
+
+  // An initialized but stopped handle needs its task again, not new SDK buffers.
+  client.initialized = true; dma_free = 24575; dma_largest = 20000;
+  assert(!bridge.canStartSlotConnection(0));
+  dma_free = 24576; dma_largest = 8191;
   assert(!bridge.canStartSlotConnection(0));
   dma_largest = 8192;
   assert(bridge.canStartSlotConnection(0));

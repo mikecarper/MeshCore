@@ -91,7 +91,24 @@ and an 8 KiB contiguous DMA block. This includes a separate 16 KiB allowance
 for its SDK task stack/TCB, receive/transmit/reassembly buffers and transport
 or configuration objects, alongside the 16 KiB AES reserve. Those ordinary
 SDK allocations occur after admission and do not use the TLS allocation guard.
-A retained SDK handle with a stopped task receives the same cold allowance.
+A retained initialized SDK handle with a stopped task requires 24 KiB free and
+an 8 KiB contiguous DMA block. Its separate 8 KiB restart allowance covers the
+pinned 6 KiB task stack plus TCB and allocator overhead. SDK stop retains its
+receive/transmit buffers, configuration, transport objects and wrapper
+reassembly buffer, so restarting that handle does not need to reserve their
+first-initialization allocation again. A wrapper whose SDK initialization has
+not completed still receives the full cold allowance. This distinction also
+applies after WiFi loss stops the SDK tasks but keeps their handles.
+
+All ESP32 clients use 896-byte receive, transmit and wrapper reassembly buffers
+from first initialization. Applying configuration cannot grow the retained SDK
+buffers or wrapper reassembly capacity, so uniform sizing permits later JWT
+reconfiguration without replacing the client. This adds 1,152 bytes to a
+non-JWT client's three buffers on an internal-only board compared with 512-byte
+buffers. The startup allowance already uses 896-byte receive/transmit buffers,
+and cold admission covers the ordinary allocations. WiFi recovery and explicit
+reconfiguration continue to retain clients.
+
 A warm reconnect keeps its running task and buffers; it requires at least
 16 KiB free and a 4 KiB contiguous DMA block. The per-client SDK stack is
 independent of `MQTT_TASK_STACK_SIZE`, which sizes the existing bridge worker.

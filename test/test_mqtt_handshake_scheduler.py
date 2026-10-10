@@ -20,24 +20,43 @@ PREAMBLE = r'''
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <vector>
+#include "helpers/AlertFaultPolicy.h"
 #include "helpers/MQTTConnectionAdmission.h"
 #include "helpers/MQTTConnectionHealth.h"
 #include "helpers/MQTTConnectionPolicy.h"
+#include "helpers/WiFiPowerSave.h"
 #define ESP_PLATFORM 1
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
 using esp_err_t = int;
 constexpr int ESP_OK = 0, ESP_ERR_INVALID_ARG = 1, ESP_ERR_INVALID_STATE = 2;
 constexpr int ESP_ERR_NO_MEM = 3, RUNTIME_MQTT_SLOTS = 6, WL_CONNECTED = 1;
+constexpr int WL_DISCONNECTED = 0, WIFI_POWER_11dBm = 11;
+using wl_status_t = int;
+using wifi_ps_type_t = int;
+constexpr int WIFI_PS_NONE = 0, WIFI_PS_MAX_MODEM = 1, WIFI_PS_MIN_MODEM = 2;
+namespace mesh { namespace wifi {
+constexpr bool kPrimaryEspNowRadio = false;
+bool enforceStationChannel() { return true; }
+} }
+bool mqttStationWiFiMutationAllowed() { return true; }
+void esp_wifi_set_ps(wifi_ps_type_t) {}
 constexpr int MQTT_AUTH_JWT = 1;
 constexpr uint32_t MALLOC_CAP_INTERNAL = 1, MALLOC_CAP_DMA = 2;
 static uint32_t clock_ms = 1000;
 static unsigned long wall_seconds = 1800000000;
 static size_t dma_free = 100000, dma_largest = 20000;
+static unsigned long s_wifi_connected_at = 0;
 uint32_t millis() { return clock_ms; }
 unsigned long fake_time(void*) { return wall_seconds; }
 #define time fake_time
-struct { int status() const { return WL_CONNECTED; } } WiFi;
+struct {
+  int state = WL_CONNECTED;
+  int status() const { return state; }
+  void setTxPower(int) {}
+  void disconnect() { state = WL_DISCONNECTED; }
+} WiFi;
 struct { size_t size = 2097152; size_t getPsramSize() const { return size; } } ESP;
 size_t heap_caps_get_free_size(uint32_t caps) {
   assert(caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)); return dma_free;
@@ -56,12 +75,28 @@ bool mqttPresetEnforcesTokenExp(const Preset* preset) {
   return preset && preset->enforce_exp;
 }
 struct PsychicMqttClient {
-  bool started = false, live = false;
-  int starts = 0, reconnects = 0, bounces = 0, credentials = 0;
+  bool initialized = false, started = false, live = false, model_task_heap = false;
+  int starts = 0, reconnects = 0, bounces = 0, credentials = 0, stops = 0;
+  std::function<void()> disconnected;
+  bool isInitialized() const { return initialized; }
   bool isStarted() const { return started; }
   bool connected() const { return live; }
-  int connect() { ++starts; started = true; return ESP_OK; }
+  int connect() {
+    ++starts;
+    if (model_task_heap) {
+      assert(initialized && !started && dma_free >= 6536);
+      dma_free -= 6536;
+    }
+    initialized = started = true;
+    return ESP_OK;
+  }
   int reconnect() { ++reconnects; return ESP_OK; }
+  void disconnect() {
+    ++stops;
+    if (model_task_heap && started) dma_free += 6536;
+    started = live = false;
+    if (disconnected) disconnected();
+  }
   void softDisconnect() {
     ++bounces; live = false;
     // Releasing the old internal TLS session creates room for its replacement.
@@ -92,8 +127,19 @@ struct MQTTBridge {
   bool _slot_force_jwt_mint[RUNTIME_MQTT_SLOTS] = {};
   void* _identity = this;
   bool _slots_setup_done = true;
+  bool _wifi_status_initialized = true, _manage_wifi = false;
+  wl_status_t _last_wifi_status = WL_CONNECTED;
+  unsigned long _last_wifi_check = 0, _last_wifi_reconnect_attempt = 0;
+  uint8_t _wifi_reconnect_backoff_attempt = 0, _wifi_power_save = 1;
+  struct { bool canonical_wifi = false; } _node_info;
+  struct Observer { uint8_t wifi_power_save = 1; } observer;
+  Observer* _obs = &observer;
+  AlertFaultPolicy::OutageSnapshot _wifi_outage{};
   unsigned long _last_slot_reconnect_ms = 0;
   int _max_active_slots = 5, mints = 0;
+  AlertFaultPolicy::OutageSnapshot wifiOutage() const { return _wifi_outage; }
+  void setWifiOutage(AlertFaultPolicy::OutageSnapshot snapshot) { _wifi_outage = snapshot; }
+  void beginWiFiStation() {}
   const char* _jwt_username = "jwt";
   static const unsigned long SLOT_SETUP_RETRY_INTERVAL = 60000;
   std::vector<int> setups;
@@ -127,6 +173,7 @@ struct MQTTBridge {
   esp_err_t reconnectSlotClient(int index);
   unsigned long slotTokenLifetime(int index) const;
   void maintainSlotConnections();
+  bool handleWiFiConnection(unsigned long);
   void maintainSlotConnection(int, unsigned long, unsigned long, bool, bool&, bool&);
 };
 '''
@@ -142,6 +189,7 @@ class MqttHandshakeSchedulerTest(unittest.TestCase):
             "bool MQTTBridge::canStartSlotConnection(int index) const",
             "esp_err_t MQTTBridge::reconnectSlotClient(int index)",
             "unsigned long MQTTBridge::slotTokenLifetime(int index) const",
+            "bool MQTTBridge::handleWiFiConnection(unsigned long now)",
             "void MQTTBridge::maintainSlotConnections()",
             "void MQTTBridge::maintainSlotConnection("))
 
@@ -268,9 +316,10 @@ int main() {
   stopped.client = &bridge.clients[0];
   retained.client = &bridge.clients[1];
   stopped.initial_connect_done = retained.initial_connect_done = true;
+  stopped.client->initialized = retained.client->initialized = true;
   retained.client->started = true;
 
-  // An existing handle with a stopped task needs the cold-start allowance.
+  // An existing handle with a stopped task needs the task-restart allowance.
   // Its deferral must leave this cycle available for the retained SDK task.
   assert(!bridge.canStartSlotConnection(0));
   assert(bridge.canStartSlotConnection(1));
@@ -281,11 +330,11 @@ int main() {
   assert(retained.client->starts == 0 && retained.client->reconnects == 1);
   assert(bridge._slot_attempt_pending[1]);
 
-  // Completion and newly available cold-start headroom allow a real SDK start,
+  // Completion and newly available task-restart headroom allow an SDK start,
   // with no extra delay introduced by the earlier memory-only deferral.
   bridge.complete(1);
   clock_ms += 15000;
-  dma_free = 32768; dma_largest = 8192;
+  dma_free = 24576; dma_largest = 8192;
   bridge.maintainSlotConnections();
   assert(stopped.client->starts == 1 && stopped.client->reconnects == 0);
   assert(stopped.client->isStarted() && bridge._slot_attempt_pending[0]);
@@ -303,7 +352,7 @@ int main() {
   auto& slot = bridge._slots[0];
   slot.preset = &jwt; slot.client = &bridge.clients[0];
   slot.initial_connect_done = slot.connected = true;
-  slot.client->started = slot.client->live = true;
+  slot.client->initialized = slot.client->started = slot.client->live = true;
   slot.token_expires_at = wall_seconds + 120;
   // Before releasing the current TLS session, the full admission check fails.
   dma_free = 20000; dma_largest = 10000;
@@ -318,6 +367,86 @@ int main() {
   slot.token_expires_at = wall_seconds + 120; clock_ms += 60000;
   bridge.maintainSlotConnections();
   assert(bridge.mints == 1 && slot.client->bounces == 1);
+}
+''')
+
+    def test_wifi_loss_restarts_three_retained_clients_without_cold_buffer_double_charge(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  clock_ms = 70000;
+  // The live V4's three-broker measurement left about 22.7 KiB DMA heap.
+  // The SDK seam uses the pinned 6144-byte stack and 344-byte TCB, plus a
+  // simulated 48-byte allocator allowance. Transport/config buffers remain
+  // owned by initialized handles after stop; SDK heap calls are not executed.
+  dma_free = 22768; dma_largest = 22516;
+  for (int i = 0; i < 3; ++i) {
+    auto& slot = bridge._slots[i];
+    slot.client = &bridge.clients[i];
+    slot.initial_connect_done = slot.connected = true;
+    slot.client->initialized = slot.client->started = slot.client->live = true;
+    slot.client->model_task_heap = true;
+    slot.client->disconnected = [&bridge, i] { bridge._slots[i].connected = false; };
+  }
+  bridge._slots[5].enabled = false;
+  WiFi.state = WL_DISCONNECTED;
+  assert(!bridge.handleWiFiConnection(clock_ms));
+  assert(bridge.wifiOutage().down && dma_free == 42376);
+  for (int i = 0; i < 3; ++i) {
+    assert(bridge.clients[i].isInitialized() && !bridge.clients[i].isStarted());
+    assert(bridge.clients[i].stops == 1 && !bridge._slots[i].connected);
+    assert(!bridge._slot_attempt_pending[i]);
+  }
+  bridge.maintainSlotConnections();
+  for (int i = 0; i < 3; ++i) assert(bridge.clients[i].starts == 0);
+
+  clock_ms += 11000;
+  WiFi.state = WL_CONNECTED;
+  assert(bridge.handleWiFiConnection(clock_ms));
+  assert(!bridge.wifiOutage().down);
+  // Restart admission still fails safely if either aggregate or contiguous
+  // headroom is inadequate. Neither failure consumes retry/backoff state.
+  dma_free = 24575;
+  bridge.maintainSlotConnections();
+  dma_free = 24576; dma_largest = 8191;
+  bridge.maintainSlotConnections();
+  for (int i = 0; i < 3; ++i) {
+    assert(bridge.clients[i].starts == 0 && bridge._slots[i].last_reconnect_attempt == 0);
+    assert(bridge._slots[i].reconnect_backoff == 0 && bridge._slots[i].start_failures == 0);
+  }
+
+  dma_free = 42376; dma_largest = 22516;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[0].starts == 1 && dma_free == 35840);
+  assert(bridge.hasPendingSlotConnection());
+  clock_ms += 3600000;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[1].starts == 0 && bridge.clients[2].starts == 0);
+  bridge.complete(0);
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[1].starts == 1 && dma_free == 29304);
+  clock_ms += 15000;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[2].starts == 0);  // Callback, not time, ends a pending attempt.
+  bridge.complete(1);
+  assert(!MQTTConnectionAdmission::canStart(
+      true, true, MQTTConnectionAdmission::ClientMemoryState::Uninitialized,
+      dma_free, dma_largest));
+  assert(bridge.canStartSlotConnection(2));
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[2].starts == 1 && dma_free == 22768);
+  bridge.complete(2);
+  clock_ms += 15000;
+  bridge.maintainSlotConnections();
+  for (int i = 0; i < 3; ++i) {
+    assert(bridge._slots[i].connected && bridge.clients[i].isStarted());
+    assert(bridge.clients[i].starts == 1 && bridge.clients[i].reconnects == 0);
+    assert(bridge._slots[i].start_failures == 0);
+  }
+  // Additional clients still need the full first-start allowance and wait.
+  assert(bridge.setups.empty());
+  assert(!bridge.canStartSlotConnection(3) && !bridge.canStartSlotConnection(4));
+  assert(!bridge.hasPendingSlotConnection());
 }
 ''')
 

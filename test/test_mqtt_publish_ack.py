@@ -50,9 +50,13 @@ enum {
 };
 struct esp_mqtt_client_config_t {
   const char* uri;
-  int buffer_size;
+  int buffer_size, keepalive, message_retransmit_timeout, network_timeout_ms;
+  int task_stack, task_prio;
   struct { struct { const char* uri; } address; } broker;
-  struct { int size; } buffer;
+  struct { int size, out_size; } buffer;
+  struct { int keepalive, message_retransmit_timeout; } session;
+  struct { int timeout_ms; } network;
+  struct { int stack_size, priority; } task;
 };
 struct esp_mqtt_error_codes_t { int unused; };
 struct esp_mqtt_event_t { int event_id, msg_id; bool session_present; };
@@ -68,6 +72,7 @@ PREAMBLE = r'''
 #include <cstring>
 #include <functional>
 #include <utility>
+#include <vector>
 // Preinclude the standard headers so this seam only opens adapter visibility.
 #define private public
 #include "PsychicMqttClient.h"
@@ -90,25 +95,35 @@ const char* esp_err_to_name(int) { return "mock"; }
 static int publish_result = 0, enqueue_result = 41, outbox_size = 0;
 static int publish_calls = 0, enqueue_calls = 0, config_calls = 0;
 static int start_calls = 0, reconnect_calls = 0, receive_events = 0, error_events = 0;
+static int init_calls = 0, destroy_calls = 0, stop_calls = 0;
+static int start_result = ESP_OK, register_result = ESP_OK;
+static bool fail_init = false;
+static std::vector<int> initialized_buffer_sizes;
 using EventHandler = void(*)(void*, esp_event_base_t, int32_t, void*);
 static EventHandler sdk_event_handler = nullptr;
 static void* sdk_handler_args = nullptr;
-void* esp_mqtt_client_init(esp_mqtt_client_config_t*) {
-  return reinterpret_cast<void*>(1);
+void* esp_mqtt_client_init(esp_mqtt_client_config_t* config) {
+  ++init_calls;
+#if ESP_IDF_VERSION_MAJOR == 5
+  initialized_buffer_sizes.push_back(config->buffer.size);
+#else
+  initialized_buffer_sizes.push_back(config->buffer_size);
+#endif
+  return fail_init ? nullptr : reinterpret_cast<void*>(1);
 }
 int esp_mqtt_client_register_event(void*, int, EventHandler handler, void* args) {
   sdk_event_handler = handler;
   sdk_handler_args = args;
-  return ESP_OK;
+  return register_result;
 }
-int esp_mqtt_client_destroy(void*) { return ESP_OK; }
+int esp_mqtt_client_destroy(void*) { ++destroy_calls; return ESP_OK; }
 int esp_mqtt_set_config(void*, esp_mqtt_client_config_t*) {
   ++config_calls;
   return ESP_OK;
 }
-int esp_mqtt_client_start(void*) { ++start_calls; return ESP_OK; }
+int esp_mqtt_client_start(void*) { ++start_calls; return start_result; }
 int esp_mqtt_client_reconnect(void*) { ++reconnect_calls; return ESP_OK; }
-int esp_mqtt_client_stop(void*) { return ESP_OK; }
+int esp_mqtt_client_stop(void*) { ++stop_calls; return ESP_OK; }
 int esp_mqtt_client_disconnect(void*) {
   assert(sdk_event_handler != nullptr);
   esp_mqtt_event_t event{MQTT_EVENT_DISCONNECTED, 0, false};
@@ -318,7 +333,7 @@ int main() {
 
 
 class MqttPublishAckTests(unittest.TestCase):
-    def test_production_publish_events_and_slot_diagnostics(self):
+    def compile_run(self, main):
         compiler = shutil.which("g++")
         if not compiler:
             self.skipTest("g++ is unavailable")
@@ -331,6 +346,7 @@ class MqttPublishAckTests(unittest.TestCase):
             "esp_err_t PsychicMqttClient::connect()",
             "esp_err_t PsychicMqttClient::reconnect()",
             "void PsychicMqttClient::disconnect()",
+            "void PsychicMqttClient::softDisconnect(",
             "void PsychicMqttClient::forceStop()",
             "int PsychicMqttClient::subscribe(",
             "int PsychicMqttClient::publish(",
@@ -349,7 +365,7 @@ class MqttPublishAckTests(unittest.TestCase):
         )) + "\n".join(method(BRIDGE, signature) for signature in (
             "const char* MQTTBridge::tlsErrorStr(",
             "void MQTTBridge::formatSlotDiagReply(",
-        )) + MAIN
+        )) + main
         with tempfile.TemporaryDirectory(prefix="meshcore-mqtt-publish-ack-") as directory:
             fixture = Path(directory)
             (fixture / "Arduino.h").write_text(ARDUINO_HEADER, encoding="ascii")
@@ -372,6 +388,54 @@ class MqttPublishAckTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     result = subprocess.run([str(executable)], capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_production_publish_events_and_slot_diagnostics(self):
+        self.compile_run(MAIN)
+
+    def test_production_initialized_getter_tracks_sdk_creation_and_retained_stops(self):
+        self.compile_run(r'''
+int main() {
+  {
+    PsychicMqttClient client;
+    assert(!client.isInitialized() && !client.isStarted());
+    assert(client.connect() == ESP_ERR_INVALID_STATE);
+    assert(!client.isInitialized() && !client.isStarted());
+    client._mqtt_cfg.uri = "mqtt://broker";
+    client._mqtt_cfg.broker.address.uri = "mqtt://broker";
+    fail_init = true;
+    assert(client.connect() == ESP_ERR_NO_MEM);
+    assert(!client.isInitialized() && !client.isStarted());
+    fail_init = false;
+    register_result = ESP_ERR_INVALID_STATE;
+    assert(client.connect() == ESP_ERR_INVALID_STATE);
+    assert(!client.isInitialized() && !client.isStarted() && destroy_calls == 1);
+    register_result = ESP_OK;
+    start_result = ESP_ERR_NO_MEM;
+    assert(client.connect() == ESP_ERR_NO_MEM);
+    assert(client.isInitialized() && !client.isStarted());
+    const int retained_init_calls = init_calls;
+    start_result = ESP_OK;
+    assert(client.connect() == ESP_OK);
+    assert(client.isInitialized() && client.isStarted());
+    esp_mqtt_event_t connected{MQTT_EVENT_CONNECTED, 0, false};
+    sdk_event_handler(sdk_handler_args, "MQTT", connected.event_id, &connected);
+    client.disconnect();
+    assert(client.isInitialized() && !client.isStarted() && !client.connected());
+    assert(stop_calls == 1 && init_calls == retained_init_calls);
+    assert(client.connect() == ESP_OK);
+    assert(client.isInitialized() && client.isStarted() && init_calls == retained_init_calls);
+    sdk_event_handler(sdk_handler_args, "MQTT", connected.event_id, &connected);
+    client.softDisconnect();
+    assert(client.isInitialized() && client.isStarted() && !client.connected());
+    client.forceStop();
+    assert(client.isInitialized() && !client.isStarted());
+    assert(init_calls == retained_init_calls && destroy_calls == 1);
+  }
+  assert(destroy_calls == 2);
+  PsychicMqttClient fresh;
+  assert(!fresh.isInitialized() && !fresh.isStarted());
+}
+''')
 
 
 if __name__ == "__main__":

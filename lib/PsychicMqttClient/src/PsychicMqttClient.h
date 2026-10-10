@@ -376,6 +376,10 @@ public:
     /** True after a successful start and before a stop. */
     bool isStarted() const { return _started; }
 
+    /** True while SDK buffers/configuration remain allocated, including after
+     * stop. Read on the same owner task as connect/reconnect/disconnect. */
+    bool isInitialized() const { return _client != nullptr; }
+
     /**
      * @brief Forcefully stops the MQTT client and disconnects from the server.
      * This does not trigger the onDisconnect callbacks.

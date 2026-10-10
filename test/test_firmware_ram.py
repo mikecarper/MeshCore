@@ -225,6 +225,9 @@ class FirmwareRamTest(unittest.TestCase):
                 self.assertEqual(profile["cold_start_allocation_allowance_bytes"], 16384)
                 self.assertEqual(profile["cold_start_dma_admission_free_bytes"], 32768)
                 self.assertEqual(profile["cold_start_dma_admission_contiguous_bytes"], 8192)
+                self.assertEqual(profile["restart_allocation_allowance_bytes"], 8192)
+                self.assertEqual(profile["restart_dma_admission_free_bytes"], 24576)
+                self.assertEqual(profile["restart_dma_admission_contiguous_bytes"], 8192)
                 self.assertFalse(profile["maximum_runtime_load_qualified"])
                 self.assertFalse(profile["physical_validation_performed"])
         ordinary = ram.requirements("ESP32_PLATFORM", {"BOARD_HAS_PSRAM": 1}, "v4_companion")
@@ -280,6 +283,8 @@ class FirmwareRamTest(unittest.TestCase):
             ("client_task_priority", "kClientTaskPriority"),
             ("cold_start_allocation_allowance_bytes", "kColdStartAllowanceBytes"),
             ("cold_start_dma_admission_contiguous_bytes", "kColdStartLargestBytes"),
+            ("restart_allocation_allowance_bytes", "kRestartAllowanceBytes"),
+            ("restart_dma_admission_contiguous_bytes", "kRestartLargestBytes"),
             ("dma_admission_free_bytes", "kDmaReserveBytes"),
             ("dma_admission_contiguous_bytes", "kDmaLargestBytes"),
             ("tls_internal_admission_free_bytes", "kTlsInternalFreeBytes"),
@@ -289,6 +294,8 @@ class FirmwareRamTest(unittest.TestCase):
                 self.assertIn(f"{name} = {profile[key]};", source)
         self.assertEqual(profile["cold_start_dma_admission_free_bytes"],
                          profile["dma_admission_free_bytes"] + profile["cold_start_allocation_allowance_bytes"])
+        self.assertEqual(profile["restart_dma_admission_free_bytes"],
+                         profile["dma_admission_free_bytes"] + profile["restart_allocation_allowance_bytes"])
 
     def test_combined_rak_budgets_uart_beside_exclusive_ethernet_and_ota(self):
         defines = {

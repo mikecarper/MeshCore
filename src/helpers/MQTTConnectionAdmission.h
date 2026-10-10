@@ -20,14 +20,40 @@ static const size_t kClientTaskStackBytes = 6144;
 static const int kClientTaskPriority = 5;
 static const size_t kColdStartAllowanceBytes = 16384;
 static const size_t kColdStartLargestBytes = 8192;
+// SDK stop retains buffers/configuration but releases its task. Restart only
+// needs the pinned 6 KiB stack plus TCB/allocator headroom, not another SDK init.
+static const size_t kRestartAllowanceBytes = 8192;
+static const size_t kRestartLargestBytes = 8192;
 static const size_t kTlsInternalFreeBytes = 61440;
 static const size_t kTlsRecordAllocationBytes = 17408;
 
-static inline bool canStart(bool psram, bool tls, bool cold_start,
+enum class ClientMemoryState : uint8_t {
+  Uninitialized,
+  Stopped,
+  Started,
+};
+
+static inline bool canStart(bool psram, bool tls, ClientMemoryState state,
                             size_t dma_free, size_t dma_largest) {
-  const size_t free_required = kDmaReserveBytes +
-      (cold_start ? kColdStartAllowanceBytes : 0);
-  const size_t largest_required = cold_start ? kColdStartLargestBytes : kDmaLargestBytes;
+  size_t allocation_allowance;
+  size_t largest_required;
+  switch (state) {
+    case ClientMemoryState::Uninitialized:
+      allocation_allowance = kColdStartAllowanceBytes;
+      largest_required = kColdStartLargestBytes;
+      break;
+    case ClientMemoryState::Stopped:
+      allocation_allowance = kRestartAllowanceBytes;
+      largest_required = kRestartLargestBytes;
+      break;
+    case ClientMemoryState::Started:
+      allocation_allowance = 0;
+      largest_required = kDmaLargestBytes;
+      break;
+    default:
+      return false;
+  }
+  const size_t free_required = kDmaReserveBytes + allocation_allowance;
   if (dma_free < free_required || dma_largest < largest_required) {
     return false;
   }

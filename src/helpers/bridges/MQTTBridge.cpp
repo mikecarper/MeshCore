@@ -2088,14 +2088,16 @@ bool MQTTBridge::canStartSlotConnection(int index) const {
   const char* uri = slot.preset ? slot.preset->server_url
       : (slot.broker_uri[0] ? slot.broker_uri : slot.host);
   const bool tls = MQTTConnectionAdmission::requiresTls(uri, slot.port);
-  // A never-created or stopped SDK client still allocates a task and ordinary
-  // SDK buffers after this check. Retained handles with a stopped task are
-  // conservatively charged the same allowance as first starts. A started
-  // reconnect keeps that task/buffer memory and needs only handshake headroom.
-  const bool cold_start = slot.client == nullptr || !slot.client->isStarted();
+  // SDK stop retains its buffers/configuration, so a retained stopped client
+  // only needs a new task. First initialization also allocates SDK objects and
+  // buffers; a started reconnect keeps both. These getters run on their owner.
+  using MQTTConnectionAdmission::ClientMemoryState;
+  const ClientMemoryState memory_state = slot.client == nullptr || !slot.client->isInitialized()
+      ? ClientMemoryState::Uninitialized
+      : (slot.client->isStarted() ? ClientMemoryState::Started : ClientMemoryState::Stopped);
   const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
   return MQTTConnectionAdmission::canStart(
-      ESP.getPsramSize() > 0, tls, cold_start, heap_caps_get_free_size(caps),
+      ESP.getPsramSize() > 0, tls, memory_state, heap_caps_get_free_size(caps),
       heap_caps_get_largest_free_block(caps));
 #else
   return true;
@@ -2833,7 +2835,7 @@ bool MQTTBridge::publishToSlot(int index, const char* topic, const char* payload
   //    even light packet load the outbox pins at its cap and drops ~20-30%. A synchronous
   //    write bypasses that drain ceiling entirely and does not store in the outbox. It can
   //    block the (Core-0, prio-1) MQTT task on a stalled socket, but only up to
-  //    network_timeout_ms (lowered in optimizeMqttClientConfig); mesh RX (Core 1) and the
+  //    network_timeout_ms (configured in optimizeMqttClientConfig); mesh RX (Core 1) and the
   //    WiFi/TCP stack (higher-prio system tasks) are unaffected, and a failed write flips
   //    the slot to disconnected so subsequent packets skip it.
   //  - QoS 1 (low-rate retained status): async, so it keeps the durable outbox + retransmit.
@@ -5108,15 +5110,12 @@ void MQTTBridge::optimizeMqttClientConfig(PsychicMqttClient* client, bool needs_
   // preserving at-least-once delivery while capping duplicates at one.
   client->setMessageRetransmitTimeout(15000);
 
-  // Buffer sizing: 896 is the minimum safe size for JWT clients (CONNECT + 768-byte JWT).
-  // On PSRAM boards, use a uniform size to reduce fragmentation from mixed allocations.
-  // On non-PSRAM boards, use smaller buffers for non-JWT slots to reduce heap usage and
-  // leave smaller holes during teardown/recreate cycles.
-#if defined(BOARD_HAS_PSRAM)
+  // SDK buffers and wrapper reassembly are sized at first initialization; changing
+  // configuration cannot grow them on a retained client. Use the JWT-safe size
+  // from the first start so explicit non-JWT -> JWT reconfiguration stays valid
+  // without destroying a client that another core may be reading for diagnostics.
+  (void)needs_large_buffer;
   static const int MQTT_CLIENT_BUFFER_SIZE = 896;
-#else
-  const int MQTT_CLIENT_BUFFER_SIZE = needs_large_buffer ? 896 : 512;
-#endif
 
   client->setBufferSize(MQTT_CLIENT_BUFFER_SIZE);
 
@@ -5140,13 +5139,10 @@ void MQTTBridge::optimizeMqttClientConfig(PsychicMqttClient* client, bool needs_
   esp_mqtt_client_config_t* config = client->getMqttConfig();
   if (config) {
     #if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION_MAJOR >= 5
-      // Keep the output buffer (used to build the CONNECT/PUBLISH frames) in lockstep
-      // with the input buffer. setBufferSize() above only sets buffer.size, so out_size
-      // must be set here. The previous conditional only ever shrank out_size or set it
-      // from 0 - when a slot was reconfigured from a small non-JWT buffer (512) up to
-      // the JWT buffer (896), out_size stayed at 512 and the JWT CONNECT frame (username
-      // + ~537-768B token) overflowed it, producing esp-mqtt "Connect message cannot be
-      // created". Always matching MQTT_CLIENT_BUFFER_SIZE fixes the grow case.
+      // Match CONNECT/PUBLISH output capacity to input capacity at initialization.
+      // setBufferSize() only sets buffer.size on IDF5; set out_size explicitly.
+      // Updating config alone cannot resize an initialized SDK output buffer,
+      // so the uniform JWT-safe size above must be used from the first start.
       config->buffer.out_size = MQTT_CLIENT_BUFFER_SIZE;
     #endif
   }

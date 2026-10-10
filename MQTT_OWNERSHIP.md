@@ -144,6 +144,30 @@ max(8 s, 10 s) * enabled_slots` (35 seconds for two slots). A clean
 acknowledgment still returns immediately. This deadline change is covered by
 synthetic tests; no new physical teardown measurement is claimed.
 
+Connection admission reads SDK initialization and task-start state on the
+bridge owner task. `PsychicMqttClient::isInitialized()` reports whether its SDK
+handle still owns configuration, transport objects and MQTT buffers;
+`isStarted()` separately reports whether its SDK task is running. Callbacks
+change connection state but do not assign or clear the SDK handle.
+`MQTTConnectionAdmission::ClientMemoryState` uses those distinct lifetimes:
+uninitialized clients require 32 KiB free DMA heap and an 8 KiB block,
+initialized stopped clients require 24 KiB and an 8 KiB block, and started
+clients require 16 KiB and a 4 KiB block. The stopped-client allowance reserves
+8 KiB for recreating the explicit 6,144-byte SDK task stack plus TCB and
+allocator overhead while retaining the 16 KiB AES reserve. WiFi-loss shutdown
+still stops the SDK task and retains its handle; this admission distinction
+permits its restart without charging initialization buffers twice. A failed
+initialization that discards the SDK handle continues to use the full cold
+allowance. Internal-only TLS keeps its additional 60 KiB/17,408-byte thresholds.
+
+All ESP32 clients use 896-byte MQTT buffers from their first initialization,
+including non-JWT slots on internal-only boards. The SDK does not resize those
+buffers when applying configuration, and the wrapper reassembly buffer also
+keeps its initial capacity. Uniform sizing therefore permits later JWT
+reconfiguration while retaining the client, its callbacks and the slot's token
+storage. Explicit reconfiguration and WiFi recovery keep the existing client
+lifetime; neither introduces deletion while Core 1 diagnostics may read it.
+
 ## Remaining target primitives
 
 - **Task notifications or a command queue** for one-way lifecycle / reconfigure
@@ -181,7 +205,9 @@ Phase 5 as a pure state machine plus a narrow injected `Ops` seam
 ### Hardware characterization result
 
 WSS teardown was measured as roughly 5-6 seconds per slot and is sequential.
-Production now sets the coordinator timeout to `5 s + 8 s * enabled_slots`.
+That characterization used the coordinator timeout `5 s + 8 s * enabled_slots`.
+The current deadline also includes the SDK network and blocked-publish budgets
+described above.
 Representative non-PSRAM and PSRAM start/stop matrices found no downward heap
 or largest-block trend; multi-day soak, task-stack high-water, and exhaustive
 callback ordering remain outside that run.
