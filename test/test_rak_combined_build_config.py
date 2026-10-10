@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import tempfile
@@ -30,6 +31,11 @@ class RakCombinedBuildConfigTest(unittest.TestCase):
     def test_matching_profiles_preserve_identity_and_never_run_platformio(self):
         original = (ROOT / "platformio.ini").read_bytes()
         variant = (ROOT / "variants/rak4631/platformio.ini").read_bytes()
+        base_flags = shlex.split(ini(ROOT / "platformio.ini")["nrf52_base"]["build_flags"])
+        base_optimizers = [flag for flag in base_flags
+                           if re.fullmatch(r"-O(?:[0-3sgz]|fast)", flag)]
+        self.assertTrue(base_optimizers)
+        self.assertEqual(base_optimizers[-1], "-Oz")
         with tempfile.TemporaryDirectory(prefix="meshcore-rak-config-") as temp:
             directory = Path(temp)
             marker = directory / "unexpected-platformio"
@@ -58,7 +64,9 @@ class RakCombinedBuildConfigTest(unittest.TestCase):
                 self.assertIn("-D MAX_NEIGHBOURS=50", flags)
                 self.assertNotIn("FLOOD_PACKET_FILTER_SLOTS", flags)
                 self.assertIn("-Ofast", overlay["build_unflags"])
-                self.assertIn("-Os", flags)
+                self.assertEqual([flag for flag in shlex.split(flags)
+                                  if re.fullmatch(r"-O(?:[0-3sgz]|fast)", flag)], [],
+                                 "trial overlays must inherit canonical -Oz without overriding it")
                 self.assertIn("-DLORA_FREQ=910.525", flags)
                 self.assertIn(str(overlay_path), config["platformio"]["extra_configs"])
                 self.assertEqual(hashlib.sha256(config_path.read_bytes()).hexdigest(), item["config_sha256"])

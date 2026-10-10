@@ -98,6 +98,12 @@ jobs:
           python3 -B scripts/check_arduinojson_pin.py --self-test
           python3 -B scripts/check_arduinojson_pin.py
 
+      - name: Verify build-size diagnostics and nRF52 optimizer recipes
+        run: |
+          bash test/test_build_size_detection.sh
+          python3 -B test/test_nrf52_size_profile.py -v
+          python3 -B test/test_rak_combined_build_config.py -v
+
       - name: Run Unit Tests
         run: pio test -e native -e native_kiss_modem -e native_ota_channel -vv
 
@@ -455,7 +461,6 @@ jobs:
         env:
           MESHCORE_REQUIRE_ARM_COMPILER: '1'
         run: |
-          bash test/test_build_size_detection.sh
           python3 -B test/test_firmware_ram.py
           python3 -B test/test_recent_repeater_storage.py -v
           python3 -B test/test_ota_cold_buffers.py -v
@@ -474,7 +479,6 @@ jobs:
 
       - name: Verify opt-in RAK4631 combined Ethernet and OTA modes
         run: |
-          python3 -B test/test_rak_combined_build_config.py -v
           python3 -B test/test_rak_combined_ota.py -v
           python3 -B test/test_rak_ethernet_transmit.py -v
           python3 -B test/test_rak4631_ethernet_runtime.py -v
@@ -482,7 +486,6 @@ jobs:
       - name: Verify nRF52 infrastructure trims and unchanged Companion scope
         run: |
           python3 -B test/test_nrf52_flash_trim.py -v
-          python3 -B test/test_nrf52_size_profile.py -v
           python3 -B test/test_nrf52_tft_font_trim.py -v
           python3 -B test/test_ota_target_names.py -v
           python3 -B test/test_ota_cli_listing.py -v

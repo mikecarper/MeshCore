@@ -62,16 +62,16 @@ if run_pio_with_size_detection run -e test > /dev/null 2>&1; then
 fi
 [ ! -e "$test_root/pio-called" ] || fail "PIO ran without diagnostic storage"
 
-# Keep sensors and protocol features while shrinking nRF52 repeater code.
+# Keep sensors and protocol features while inheriting nrf52_base's -Oz.
 PIO_ENV_PLATFORM_BY_NAME[ikoka_nano_nrf_22dbm_repeater]=NRF52_PLATFORM
 PLATFORMIO_BUILD_FLAGS=''
 PLATFORMIO_BUILD_UNFLAGS=''
 apply_nrf52_size_profile ikoka_nano_nrf_22dbm_repeater
-[[ "$PLATFORMIO_BUILD_FLAGS" == *' -Os'* ]] || fail "full-sensor repeater omitted size optimization"
+[ -z "$PLATFORMIO_BUILD_FLAGS" ] || fail "full-sensor repeater added an optimizer override or changed features"
 [[ "$PLATFORMIO_BUILD_UNFLAGS" == *'-Ofast'* ]] || fail "aggressive optimization was not removed"
 [[ "$PLATFORMIO_BUILD_FLAGS" != *'-UENV_INCLUDE_'* ]] || fail "sensor support was reduced"
 
-# The legacy RAK4631 Ethernet image uses the same optimizer without inheriting
+# The legacy RAK4631 Ethernet image inherits the same optimizer without inheriting
 # Full Companion's transport/source-only OTA overlay or reducing its sensors.
 (
   PIO_ENV_PLATFORM_BY_NAME[RAK_4631_companion_radio_ethernet]=NRF52_PLATFORM
@@ -84,8 +84,8 @@ apply_nrf52_size_profile ikoka_nano_nrf_22dbm_repeater
     PLATFORMIO_BOARD_UPLOAD_MAXIMUM_SIZE=712704
     PLATFORMIO_BOARD_BUILD_LDSCRIPT=boards/nrf52840_s140_v6.ld
     apply_nrf52_size_profile RAK_4631_companion_radio_ethernet
-    [ "$PLATFORMIO_BUILD_FLAGS" = "$expected_flags -Os" ] \
-      || fail "Ethernet Companion changed features instead of only optimization ($profile)"
+    [ "$PLATFORMIO_BUILD_FLAGS" = "$expected_flags" ] \
+      || fail "Ethernet Companion added an optimizer override or changed features ($profile)"
     [ "$PLATFORMIO_BUILD_UNFLAGS" = $'-D EXTRAFS=1\n-Ofast' ] \
       || fail "Ethernet Companion removed flags other than aggressive optimization ($profile)"
     [ "$PLATFORMIO_BOARD_UPLOAD_MAXIMUM_SIZE" = 712704 ] \
