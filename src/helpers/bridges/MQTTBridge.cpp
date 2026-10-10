@@ -1,9 +1,11 @@
 #define MQTT_PRESETS_IMPLEMENTATION
 #include "MQTTBridge.h"
+#include "MQTTErrorLabels.h"
 #ifdef ESP_PLATFORM
 #include <helpers/esp32/WiFiCredentials.h>
 #endif
 #include "../MQTTConnectionPolicy.h"
+#include "../MQTTConnectionAdmission.h"
 #include "../MQTTMessageBuilder.h"
 #include "../MQTTPacketQueuePolicy.h"
 #include "../MQTTReplyFormat.h"
@@ -30,6 +32,7 @@
 #include <esp_wifi.h>
 #include <esp_sntp.h>
 #include <esp_heap_caps.h>
+#include <esp_tls_errors.h>
 #include <helpers/esp32/SntpOperationCoordinator.h>
 #include <helpers/esp32/WiFiStationPolicy.h>
 #include <freertos/FreeRTOS.h>
@@ -37,6 +40,22 @@
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
 #include <mbedtls/platform.h>
+
+// Keep the host-tested labels tied to the SDK used by the firmware. In
+// particular, 0x8008 is a clean TCP close and 0x8018 is an SSL write failure.
+static_assert(MQTTErrorLabels::kTlsCannotResolveHostname == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME, "TLS DNS code changed");
+static_assert(MQTTErrorLabels::kTlsCannotCreateSocket == ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET, "TLS socket code changed");
+static_assert(MQTTErrorLabels::kTlsUnsupportedProtoFamily == ESP_ERR_ESP_TLS_UNSUPPORTED_PROTOCOL_FAMILY, "TLS protocol code changed");
+static_assert(MQTTErrorLabels::kTlsFailedConnectToHost == ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST, "TLS connect code changed");
+static_assert(MQTTErrorLabels::kTlsSocketSetoptFailed == ESP_ERR_ESP_TLS_SOCKET_SETOPT_FAILED, "TLS socket option code changed");
+static_assert(MQTTErrorLabels::kTlsConnectionTimeout == ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT, "TLS timeout code changed");
+static_assert(MQTTErrorLabels::kTlsTcpClosedFin == ESP_ERR_ESP_TLS_TCP_CLOSED_FIN, "TLS close code changed");
+static_assert(MQTTErrorLabels::kTlsMbedtlsCertPartlyOk == ESP_ERR_MBEDTLS_CERT_PARTLY_OK, "TLS partial certificate code changed");
+static_assert(MQTTErrorLabels::kTlsMbedtlsSetHostname == ESP_ERR_MBEDTLS_SSL_SET_HOSTNAME_FAILED, "TLS hostname code changed");
+static_assert(MQTTErrorLabels::kTlsMbedtlsX509ParseFailed == ESP_ERR_MBEDTLS_X509_CRT_PARSE_FAILED, "TLS certificate parse code changed");
+static_assert(MQTTErrorLabels::kTlsMbedtlsSslSetupFailed == ESP_ERR_MBEDTLS_SSL_SETUP_FAILED, "TLS setup code changed");
+static_assert(MQTTErrorLabels::kTlsMbedtlsSslWriteFailed == ESP_ERR_MBEDTLS_SSL_WRITE_FAILED, "TLS write code changed");
+static_assert(MQTTErrorLabels::kTlsMbedtlsHandshakeFailed == ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED, "TLS handshake code changed");
 #endif
 
 // Effective MQTT origin: empty mqtt_origin follows node_name; otherwise mqtt_origin override (quotes stripped).
@@ -248,7 +267,7 @@ static void* psram_malloc(size_t size) {
 #if defined(ESP_PLATFORM) && defined(BOARD_HAS_PSRAM)
   void* p = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
   if (p != nullptr) return p;
-  p = heap_caps_malloc(size, MALLOC_CAP_INTERNAL);
+  p = heap_caps_malloc(size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   return p;
 #else
   return malloc(size);
@@ -256,11 +275,20 @@ static void* psram_malloc(size_t size) {
 }
 
 static void* psram_calloc(size_t n, size_t size) {
-  if (n == 0 || size == 0) return nullptr;
+  size_t bytes = 0;
+  if (!MQTTConnectionAdmission::checkedCallocSize(n, size, bytes)) return nullptr;
 #if defined(ESP_PLATFORM) && defined(BOARD_HAS_PSRAM)
   void* p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM);
   if (p != nullptr) return p;
-  return heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL);
+  // TLS can recover after an allocation failure; starving WiFi or the AES DMA
+  // buffers can instead break every connected broker. Preserve that reserve
+  // when PSRAM is unavailable or full, rather than silently draining DRAM.
+  const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+  if (!MQTTConnectionAdmission::canFallback(bytes,
+          heap_caps_get_free_size(caps), heap_caps_get_largest_free_block(caps))) {
+    return nullptr;
+  }
+  return heap_caps_calloc(n, size, caps);
 #else
   return calloc(n, size);
 #endif
@@ -285,7 +313,7 @@ static void* psram_realloc(void* ptr, size_t new_size) {
   if (p != nullptr) return p;
   // A block that fell back to internal DRAM on allocation (PSRAM exhausted) cannot
   // be grown in PSRAM; retry there rather than reporting failure.
-  return heap_caps_realloc(ptr, new_size, MALLOC_CAP_INTERNAL);
+  return heap_caps_realloc(ptr, new_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 #else
   return realloc(ptr, new_size);
 #endif
@@ -460,8 +488,16 @@ void MQTTBridge::formatMqttStatsReply(char* buf, size_t bufsize) {
 
   // drops=<outbox>/<skipped>: outbox-cap drops vs. memory-pressure skips.
   int pos = 0;
-  replyAppendf(buf, bufsize, &pos, "> Free=%d Max=%d q:%d/%d Outbox=%u drops=%lu/%d",
-               (int)ESP.getFreeHeap(), (int)ESP.getMaxAllocHeap(),
+  replyAppendf(buf, bufsize, &pos, "> Free=%d Max=%d",
+               (int)ESP.getFreeHeap(), (int)ESP.getMaxAllocHeap());
+#ifdef ESP_PLATFORM
+  // Internal heap can include regions that hardware AES cannot use. Its
+  // unaligned PSRAM records need a DMA bounce buffer even with ample PSRAM.
+  replyAppendf(buf, bufsize, &pos, " DMA=%u/%u",
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+               (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+#endif
+  replyAppendf(buf, bufsize, &pos, " q:%d/%d Outbox=%u drops=%lu/%d",
                q, MAX_QUEUE_SIZE, (unsigned)outbox_total,
                outbox_drops, b->_skipped_publishes);
   // filt=<n>: packets the per-slot type filters rejected before the queue.
@@ -580,17 +616,7 @@ const char* MQTTBridge::wifiReasonStr(uint8_t reason) {
 }
 
 const char* MQTTBridge::tlsErrorStr(int32_t err) {
-  switch (err) {
-    case 0x8001: return "DNS failed";
-    case 0x8002: return "socket error";
-    case 0x8004: return "connect refused";
-    case 0x8006: return "TLS timeout";
-    case 0x8008: return "connection timeout";
-    case 0x800B: return "cert verify failed";
-    case 0x8010: return "mbedTLS error";
-    case 0x801A: return "TLS handshake failed";
-    default:     return nullptr;
-  }
+  return MQTTErrorLabels::tlsError(err);
 }
 
 void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) {
@@ -739,7 +765,14 @@ static const uint32_t MQTT_STOP_TIMEOUT_PER_SLOT_MS = 8000;   // ~5-6 s measured
 // still budgets for the base teardown.
 static inline uint32_t mqttStopTimeoutForSlots(int slots) {
   if (slots < 1) slots = 1;
-  return MQTT_STOP_TIMEOUT_BASE_MS + MQTT_STOP_TIMEOUT_PER_SLOT_MS * (uint32_t)slots;
+  // The owner may first finish one blocked publish, and stopping an SDK task
+  // may wait for its current network operation. Include the connection budget
+  // as well as the measured teardown allowance so restoring slow-link support
+  // cannot force-delete a client that is still within its valid timeout.
+  const uint32_t per_slot = MQTT_STOP_TIMEOUT_PER_SLOT_MS > MQTTConnectionPolicy::kNetworkTimeoutMs
+      ? MQTT_STOP_TIMEOUT_PER_SLOT_MS : MQTTConnectionPolicy::kNetworkTimeoutMs;
+  return MQTT_STOP_TIMEOUT_BASE_MS + MQTTConnectionPolicy::kNetworkTimeoutMs +
+      per_slot * static_cast<uint32_t>(slots);
 }
 
 // ---------------------------------------------------------------------------
@@ -1213,8 +1246,8 @@ void MQTTBridge::begin() {
   // MQTT client objects are NOT allocated here. setupSlot() creates one on a slot's
   // first setup, so unconfigured and capped-off slots never cost their ~1.3 KB of
   // internal DRAM. Once created a client lives for the bridge's lifetime, so the
-  // reconfigure/reconnect paths still reuse the same mbedTLS context instead of
-  // churning ~40 KB of internal heap per cycle.
+  // reconfigure/reconnect paths reuse its MQTT buffers, transport handles and
+  // callbacks. ESP-IDF still destroys and recreates the TLS session on a close.
 
   // Sync the lifecycle Coordinator to Running now that all resources exist and
   // the task is created. Driven only on the success path: the failure rollbacks
@@ -1662,34 +1695,13 @@ void MQTTBridge::mqttTaskLoop() {
       MQTT_DEBUG_PRINTLN("mbedTLS allocator redirected to PSRAM");
       #endif
 
-      MQTT_DEBUG_PRINTLN("NTP synced, setting up MQTT slots (max %d active)...", _max_active_slots);
-      for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
-        if (_stop_requested) break;
-        if (_slots[i].enabled) {
-          if (!canActivateSlot(i)) {
-            MQTT_DEBUG_PRINTLN("MQTT%d skipped: max active slots (%d) reached", i + 1, _max_active_slots);
-            _slots[i].enabled = false;  // Disable so other loops skip it
-            continue;
-          }
-          char reason[80];
-          if (!isSlotReady(i, reason, sizeof(reason))) {
-            MQTT_DEBUG_PRINTLN("MQTT%d not ready - run '%s' to connect", i + 1, reason);
-            continue;
-          }
-          // A slot that fails to activate consumes no position and stays enabled, so
-          // maintainSlotConnections() retries it and a later healthy broker is not
-          // starved by it on a capped board.
-          if (!setupSlot(i)) continue;
-          // Stagger connections: 5s between slots to avoid simultaneous TLS handshakes
-          // which compete for ~40KB internal heap each
-          if (i < RUNTIME_MQTT_SLOTS - 1) {
-            if (!waitUnlessStopping(5000)) break;
-          }
-        }
-      }
+      // Connection maintenance starts each ready slot without blocking packet
+      // processing. A fixed five-second sleep did not serialize the async SDK
+      // handshakes: slow TLS/WSS sessions could still overlap the next slot.
+      MQTT_DEBUG_PRINTLN("NTP synced, scheduling MQTT slots (max %d active)...", _max_active_slots);
     }
 
-    // A stop during a stagger must not fall through into reconfiguration,
+    // A stop during deferred setup must not fall through into reconfiguration,
     // publication, or connection maintenance before the next loop iteration.
     if (_stop_requested) continue;
 
@@ -1865,10 +1877,10 @@ void MQTTBridge::mqttTaskLoop() {
 // initial_connect_done), so slots that are unconfigured or capped off never get one.
 //
 // Once created the object lives until destroySlotClients(): reconfiguring a slot
-// (preset change, JWT renewal, reconnect) reuses it, so the mbedTLS context and its
-// ~40 KB of internal-heap buffers are allocated once instead of every reconfigure.
-// That context is created by connect(), not by this constructor, so deferring the
-// allocation to first use costs nothing beyond the object itself.
+// (preset change, JWT renewal, reconnect) reuses its MQTT buffers, transport handles
+// and callbacks. ESP-IDF's transport still frees the TLS session on disconnect and
+// creates a new one for reconnect. Deferring client creation avoids reserving
+// wrapper and MQTT storage for slots that cannot run.
 bool MQTTBridge::ensureSlotClient(int index) {
   if (index < 0 || index >= RUNTIME_MQTT_SLOTS) return false;
   MQTTSlot& slot = _slots[index];
@@ -1954,6 +1966,14 @@ bool MQTTBridge::ensureSlotClient(int index) {
       MQTT_DEBUG_PRINTLN("MQTT%d error: tls=%d, tls_stack=%d, sock=%d, type=%d",
         index + 1, error.esp_tls_last_esp_err, error.esp_tls_stack_err,
         error.esp_transport_sock_errno, error.error_type);
+#ifdef ESP_PLATFORM
+      MQTT_DEBUG_PRINTLN("MQTT%d error heap: internal=%u/%u DMA=%u/%u",
+        index + 1,
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+#endif
     } else {
       MQTT_DEBUG_PRINTLN("MQTT%d error: type=%d", index + 1, error.error_type);
     }
@@ -2039,12 +2059,40 @@ bool MQTTBridge::canActivateSlot(int index) const {
   return activatedSlotCount() < _max_active_slots;
 }
 
+bool MQTTBridge::hasPendingSlotConnection() const {
+  // Callbacks run on esp-mqtt tasks. Time spacing alone cannot establish that
+  // an earlier handshake has finished, particularly on a slow WiFi link.
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+    if (_slot_attempt_pending[i].load(std::memory_order_acquire)) return true;
+  }
+  return false;
+}
+
+bool MQTTBridge::canStartSlotConnection(int index) const {
+  if (index < 0 || index >= RUNTIME_MQTT_SLOTS || hasPendingSlotConnection()) return false;
+#ifdef ESP_PLATFORM
+  const MQTTSlot& slot = _slots[index];
+  const char* uri = slot.preset ? slot.preset->server_url
+      : (slot.broker_uri[0] ? slot.broker_uri : slot.host);
+  const bool tls = MQTTConnectionAdmission::requiresTls(uri, slot.port);
+  const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+  return MQTTConnectionAdmission::canStart(
+      ESP.getPsramSize() > 0, tls, heap_caps_get_free_size(caps),
+      heap_caps_get_largest_free_block(caps));
+#else
+  return true;
+#endif
+}
+
 // Returns true only when the slot reached connect(). A false result leaves the slot
 // enabled but not activated, so it holds no active-slot position and
 // maintainSlotConnections() will retry it -- the allocation failures below are transient
 // memory conditions, not permanent misconfiguration.
 bool MQTTBridge::setupSlot(int index) {
   if (_stop_requested.load(std::memory_order_acquire)) return false;
+  // A CLI reconfigure can arrive before the deferred startup pass. Wait for
+  // that pass to install the TLS allocator and establish usable clock state.
+  if (!_slots_setup_done) return false;
   if (index < 0 || index >= RUNTIME_MQTT_SLOTS) return false;
   MQTTSlot& slot = _slots[index];
 
@@ -2052,6 +2100,7 @@ bool MQTTBridge::setupSlot(int index) {
     teardownSlot(index);
     return false;
   }
+  if (!canStartSlotConnection(index)) return false;
 
   // Every failure below is a real attempt, so stamp it: the retry interval in
   // maintainSlotConnections() measures from last_reconnect_attempt, which starts at 0
@@ -2069,8 +2118,8 @@ bool MQTTBridge::setupSlot(int index) {
   }
 
   // Reconfigure path: if we're re-applying (e.g. after a preset change), stop
-  // the existing connection cleanly first. The client object (and its mbedTLS
-  // context) is reused; setCredentials / setServer below overwrite the config
+  // the existing connection cleanly first. The client object and its
+  // transport handles are reused; setCredentials / setServer overwrite the config
   // fields in place before connect() restarts the ESP-IDF client.
   if (slot.initial_connect_done) {
     if (slot.client->connected()) {
@@ -2285,15 +2334,16 @@ bool MQTTBridge::setupSlot(int index) {
 }
 
 // Disconnect the slot's MQTT client and clear per-connection state, but leave
-// the client object alive so a subsequent setupSlot() can reuse its mbedTLS
-// context. This is called both on reconfigure (preset change) and at shutdown;
+// the client object alive so a subsequent setupSlot() can reuse its MQTT storage
+// and transport handles. TLS session storage is freed by the transport close.
+// This is called both on reconfigure (preset change) and at shutdown;
 // destruction of the underlying client happens once in destroySlotClients().
 void MQTTBridge::teardownSlot(int index, bool force) {
   if (index < 0 || index >= RUNTIME_MQTT_SLOTS) return;
   MQTTSlot& slot = _slots[index];
 
   _slot_attempt_pending[index] = false;
-  if (slot.client && (force || slot.client->connected())) {
+  if (slot.client && (force || slot.client->isStarted())) {
     if (force) {
       slot.client->forceStop();
     } else {
@@ -2328,6 +2378,7 @@ esp_err_t MQTTBridge::reconnectSlotClient(int index) {
   if (_stop_requested.load(std::memory_order_acquire)) return ESP_ERR_INVALID_STATE;
   MQTTSlot& slot = _slots[index];
   if (slot.client == nullptr) return ESP_ERR_INVALID_STATE;
+  if (!canStartSlotConnection(index)) return ESP_ERR_NO_MEM;
 
   const bool was_pending = _slot_attempt_pending[index];
   const bool starting = !slot.client->isStarted();
@@ -2375,11 +2426,12 @@ void MQTTBridge::maintainSlotConnections() {
 
   // Only allow one reconnect attempt per maintenance cycle to avoid
   // multiple simultaneous TLS handshakes blocking the network stack.
-  // Time-based guard: block reconnects if any slot reconnected within the last 15 s,
-  // ensuring the previous TLS handshake (and its Core-0-expensive completion events)
-  // finish before the next slot begins its own handshake.
-  bool reconnect_attempted_this_cycle = MQTTConnectionPolicy::reconnectGuardActive(
-      static_cast<uint32_t>(now_millis), static_cast<uint32_t>(_last_slot_reconnect_ms));
+  // Keep a 15-second gap, and also wait for the pending attempt's callback.
+  // The gap alone cannot ensure a slow TLS/WSS handshake has completed.
+  bool reconnect_attempted_this_cycle = _last_slot_reconnect_ms != 0 &&
+      MQTTConnectionPolicy::reconnectGuardActive(
+          static_cast<uint32_t>(now_millis), static_cast<uint32_t>(_last_slot_reconnect_ms));
+  reconnect_attempted_this_cycle |= hasPendingSlotConnection();
   // Only allow one full teardown+setup per cycle to limit heap fragmentation
   // when multiple slots fail simultaneously
   bool teardown_attempted_this_cycle = false;
@@ -2405,11 +2457,18 @@ void MQTTBridge::maintainSlotConnections() {
     // without this the slot stayed dead until a reconfigure or reboot. Only retried
     // after the initial pass has run, so the NTP-deferred setup order is preserved.
     if (!_slots[i].initial_connect_done) {
+      if (_slots_setup_done && !canActivateSlot(i)) {
+        // Preserve the inactive classification for the spare slot after all
+        // supported active positions have been assigned.
+        _slots[i].enabled = false;
+        continue;
+      }
       if (_slots_setup_done && !setup_retry_this_cycle && !reconnect_attempted_this_cycle &&
-          isSlotReady(i) && canActivateSlot(i) &&
-          MQTTConnectionPolicy::elapsedMs(static_cast<uint32_t>(now_millis),
+          isSlotReady(i) && canActivateSlot(i) && canStartSlotConnection(i) &&
+          (_slots[i].last_reconnect_attempt == 0 ||
+           MQTTConnectionPolicy::elapsedMs(static_cast<uint32_t>(now_millis),
                                          static_cast<uint32_t>(_slots[i].last_reconnect_attempt))
-              >= SLOT_SETUP_RETRY_INTERVAL) {
+              >= SLOT_SETUP_RETRY_INTERVAL)) {
         _slots[i].last_reconnect_attempt = now_millis;
         setup_retry_this_cycle = true;
         MQTT_DEBUG_PRINTLN("MQTT%d retrying deferred setup (int_heap=%d)", i + 1,
@@ -2473,7 +2532,8 @@ void MQTTBridge::maintainSlotConnection(int index, unsigned long now_millis, uns
     bool can_attempt_renewal = MQTTConnectionPolicy::renewalAttemptAllowed(
         static_cast<uint32_t>(now_millis), static_cast<uint32_t>(slot.last_token_renewal));
 
-    if (token_needs_renewal && can_attempt_renewal) {
+    if (token_needs_renewal && can_attempt_renewal && !reconnect_attempted &&
+        !hasPendingSlotConnection()) {
       slot.last_token_renewal = now_millis;
 
       unsigned long old_token_expires_at = slot.token_expires_at;
@@ -2529,10 +2589,8 @@ void MQTTBridge::maintainSlotConnection(int index, unsigned long now_millis, uns
     }
   }
 
-  // Phase 4 (MQTT memory-defrag): the MIN_TLS_HEAP preflight was a workaround
-  // for the fragmentation caused by per-reconnect mbedTLS allocations. With
-  // persistent clients (Phase 1), the mbedTLS context is allocated once at
-  // startup and the preflight is no longer necessary.
+  // Admission now checks DMA-capable memory, rather than the former aggregate
+  // MIN_TLS_HEAP check. ESP-IDF reallocates TLS sessions on each reconnect.
 
   const auto prepareJwtReconnect = [&](bool force_mint, int backoff_level) {
     const bool has_token = slot.auth_token && slot.auth_token[0] != '\0';
@@ -2594,7 +2652,8 @@ void MQTTBridge::maintainSlotConnection(int index, unsigned long now_millis, uns
 
   // Periodic probe for circuit-breaker-tripped slots (recovery from transient outages)
   // Attempts a single reconnect every 30 minutes to see if the server has come back
-  if (slot.circuit_breaker_tripped && !reconnect_attempted) {
+  if (slot.circuit_breaker_tripped && !reconnect_attempted &&
+      canStartSlotConnection(index)) {
     unsigned long probe_elapsed = MQTTConnectionPolicy::elapsedMs(
         static_cast<uint32_t>(now_millis), static_cast<uint32_t>(slot.last_reconnect_attempt));
     if (MQTTConnectionPolicy::circuitBreakerProbeDue(
@@ -2618,7 +2677,8 @@ void MQTTBridge::maintainSlotConnection(int index, unsigned long now_millis, uns
 
   // Reconnect with exponential backoff (for disconnected slots that already have valid config)
   // Only one reconnect per maintenance cycle to prevent TLS handshakes from blocking other slots
-  if (!slot.connected && slot.initial_connect_done && !slot.circuit_breaker_tripped && !reconnect_attempted) {
+  if (!slot.connected && slot.initial_connect_done && !slot.circuit_breaker_tripped &&
+      !reconnect_attempted && canStartSlotConnection(index)) {
     if (MQTTConnectionPolicy::reconnectDue(
             static_cast<uint32_t>(now_millis), static_cast<uint32_t>(slot.last_reconnect_attempt),
             slot.reconnect_backoff, static_cast<uint8_t>(index))) {
@@ -3943,11 +4003,10 @@ bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
 
   // Memory pressure check: Skip publishes when there's not enough contiguous
   // heap for the publish itself (JSON buffer + esp-mqtt outbox frame + WiFi TX
-  // path). Headroom only - NOT an mbedTLS preflight: persistent clients keep
-  // their TLS contexts allocated for the bridge lifetime, so the old ~52 KB
-  // "reserve space for reconnect" guard is obsolete post Phase 1. Publish
-  // payload is capped at PUBLISH_JSON_BUFFER_SIZE (2 KB); 8 KB is a safe
-  // ceiling including esp-mqtt frame overhead and transient TCP buffers.
+  // path). This guard covers publish headroom, not the separate TLS session
+  // allocations on reconnect or AES DMA allocations. Publish payload is capped
+  // at PUBLISH_JSON_BUFFER_SIZE (2 KB); the threshold includes frame overhead
+  // and transient TCP buffers.
   #ifdef ESP32
   #if defined(BOARD_HAS_PSRAM)
   static const size_t PUBLISH_SKIP_MAX_ALLOC_THRESHOLD = 16000;
@@ -4638,6 +4697,9 @@ bool MQTTBridge::syncTimeWithNTP(bool force, bool primary_only) {
                         (!_slots[i].preset && _slots[i].audience[0] != '\0');
         if (_slots[i].enabled && slot_jwt && _slots[i].client) {
           if (_slots[i].token_expires_at > 0 && current_time > _slots[i].token_expires_at) {
+            // Leave the expiry stale while another connection owns admission;
+            // maintenance will renew/bounce it after that attempt completes.
+            if (hasPendingSlotConnection()) continue;
             MQTT_DEBUG_PRINTLN("MQTT%d token stale after time correction, re-creating", i + 1);
             const MQTTConnectionPolicy::StaleTokenAction action =
                 MQTTConnectionPolicy::classifyStaleToken(
@@ -5034,12 +5096,11 @@ void MQTTBridge::optimizeMqttClientConfig(PsychicMqttClient* client, bool needs_
 
   client->setBufferSize(MQTT_CLIENT_BUFFER_SIZE);
 
-  // Bound how long a synchronous QoS0 publish (see publishToSlot) can block the MQTT
-  // task on a stalled/half-open socket before esp-mqtt aborts the write. Default is 10s;
-  // 2.5s lets a first stall resolve fast (write fails -> slot flips to disconnected ->
-  // subsequent packets skip it) without holding up publishing to the other slots. Mesh
-  // RX (Core 1) and the WiFi/TCP stack are unaffected by this block regardless.
-  client->setNetworkTimeout(2500);
+  // esp-mqtt shares this timeout across TLS/WebSocket setup, CONNACK, and writes.
+  // Retain the SDK's ten-second budget so a slow WSS handshake can complete when
+  // other slots are active. A stalled synchronous QoS0 publish may also wait up to
+  // this budget; mesh RX runs independently on Core 1.
+  client->setNetworkTimeout(MQTTConnectionPolicy::kNetworkTimeoutMs);
 
   // Dormant safety net: cap the esp-mqtt outbox for any residual async QoS0 path. QoS0
   // packets now publish synchronously (store=false, no outbox), so this normally never
@@ -5090,9 +5151,17 @@ void MQTTBridge::logMemoryStatus() {
       }
     }
   }
+#ifdef ESP_PLATFORM
+  MQTT_DEBUG_PRINTLN("Memory: Free=%d, Max=%d, DMA=%u/%u, Queue=%d/%d, Outbox=%u | pub(ok/err) %s",
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap(),
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                     (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
+                     _queue_count, MAX_QUEUE_SIZE, (unsigned)outbox_total, pub_detail);
+#else
   MQTT_DEBUG_PRINTLN("Memory: Free=%d, Max=%d, Queue=%d/%d, Outbox=%u | pub(ok/err) %s",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap(), _queue_count, MAX_QUEUE_SIZE,
                      (unsigned)outbox_total, pub_detail);
+#endif
 }
 
 // ---------------------------------------------------------------------------

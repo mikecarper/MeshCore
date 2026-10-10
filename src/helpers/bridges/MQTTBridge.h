@@ -258,7 +258,7 @@ private:
 
   // Set before starting/reconnecting, cleared by connect/failed-attempt/stop.
   // Must be set before the SDK call because its event task can callback at once.
-  volatile bool _slot_attempt_pending[RUNTIME_MQTT_SLOTS];
+  std::atomic<bool> _slot_attempt_pending[RUNTIME_MQTT_SLOTS];
 
   // Pending on-connect status publish: set from the onConnect callback (which
   // runs on the esp-mqtt event task, NOT this bridge task), consumed by the MQTT
@@ -401,8 +401,8 @@ private:
 
   // Memory pressure monitoring (per-publish skip; see publishPacket()).
   // The broader fragmentation-recovery machinery was removed in Phase 4 of
-  // the MQTT memory-defrag work - persistent MQTT clients no longer churn
-  // the heap, so gray-zone / critical-restart trackers are unnecessary.
+  // the MQTT memory-defrag work. Persistent clients reduce MQTT storage churn;
+  // ESP-IDF still reallocates TLS sessions when a connection closes.
   unsigned long _last_memory_check;
   bool _memory_pressure = false;  // Cached max-alloc verdict; re-sampled at most once per interval in publishPacket() so the heap walk isn't paid per-packet under pressure
   int _skipped_publishes;  // Exposed via SNMP; count of publishes skipped when max_alloc is too low
@@ -479,9 +479,9 @@ private:
   // - setupSlot() ensures the client exists, then configures it (server,
   //   credentials, CA) and calls connect(). Safe to call again to reconfigure.
   // - teardownSlot() only disconnects - it never deletes the client. Leaves
-  //   the mbedTLS/transport state ready for a subsequent setupSlot().
-  // This avoids delete/new cycles that shed ~40 KB of mbedTLS buffers per
-  // reconfigure and fragment the internal heap on non-PSRAM boards.
+  //   MQTT storage and transport handles ready for a subsequent setupSlot().
+  // This avoids wrapper/configuration allocation cycles. TLS sessions and their
+  // record buffers are still freed and recreated by ESP-IDF on reconnect.
   bool ensureSlotClient(int index);    // Allocate this slot's persistent client + callbacks on first use
   bool ensureSlotAuthToken(int index); // Allocate this slot's JWT token buffer on first token creation
   void releaseSlotAuthToken(int index);// Free the token buffer (only with the client -- see MQTTSlot)
@@ -493,6 +493,8 @@ private:
   // exceeded by one route while another enforces it.
   int activatedSlotCount() const;
   bool canActivateSlot(int index) const;
+  bool hasPendingSlotConnection() const;
+  bool canStartSlotConnection(int index) const;
   void teardownSlot(int index, bool force = false);
   esp_err_t reconnectSlotClient(int index);
   void maintainSlotConnections();      // Maintain all slot connections (token renewal, reconnect)

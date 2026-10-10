@@ -42,14 +42,15 @@ def elf32(path, symbols, data=b"", address=0x3F400000):
     return FirmwareElf(path)
 
 
-def esp_fixture(path, modern=False, fragmented=False):
+def esp_fixture(path, modern=False, fragmented=False, internal_length=0x10000):
     address = 0x3F400000
     caps = [0x804, 0x804, 0x404, 0x803, 0x8804]
     data = bytearray(struct.pack("<I", len(caps)))
     symbols = {"soc_memory_region_count": (address, 4)}
     symbols["soc_memory_regions"] = (address + len(data), len(caps) * (20 if modern else 16))
     for index in range(len(caps)):
-        data += struct.pack("<4I", 0x3FFB0000 + index * 0x10000, 0x10000, index, 0)
+        length = internal_length if index == 0 else 0x10000
+        data += struct.pack("<4I", 0x3FFB0000 + index * 0x10000, length, index, 0)
         if modern:
             data += bytes([int(index == 1), 0, 0, 0])
     symbols["soc_memory_types"] = (address + len(data), len(caps) * (16 if modern else 20))
@@ -203,6 +204,83 @@ class FirmwareRamTest(unittest.TestCase):
         }, "v3_repeater")
         self.assertEqual(alternate, combined)
 
+    def test_mqtt_startup_gate_distinguishes_maximum_slot_stack_buffer_capacity(self):
+        flags = {"WITH_MQTT_BRIDGE": 1}
+        plain = ram.requirements("ESP32_PLATFORM", flags, "v4_companion")
+        psram = ram.requirements("ESP32_PLATFORM", {**flags, "BOARD_HAS_PSRAM": 1},
+                                 "v4_companion")
+        # The potential five-slot allowance is reported separately: additional
+        # clients allocate lazily and must pass the production runtime gate.
+        self.assertEqual(plain["required_heap_bytes"], psram["required_heap_bytes"])
+        self.assertEqual(plain["components"]["mqtt_startup_allowance"], 24576)
+        self.assertEqual(psram["components"]["mqtt_startup_allowance"], 24576)
+        for policy, slots, active, potential in ((plain, 3, 2, 24576), (psram, 6, 5, 48384)):
+            with self.subTest(active=active):
+                profile = policy["mqtt"]
+                self.assertEqual(profile["runtime_slot_count"], slots)
+                self.assertEqual(profile["maximum_active_slots"], active)
+                self.assertEqual(profile["startup_active_slot_allowance"], 2)
+                self.assertEqual(profile["maximum_active_slots_without_psram"], 2)
+                self.assertEqual(profile["maximum_slot_stack_buffer_allowance_bytes"], potential)
+                self.assertFalse(profile["maximum_runtime_load_qualified"])
+                self.assertFalse(profile["physical_validation_performed"])
+        ordinary = ram.requirements("ESP32_PLATFORM", {"BOARD_HAS_PSRAM": 1}, "v4_companion")
+        self.assertNotIn("mqtt", ordinary)
+
+    def test_mqtt_worker_stack_growth_raises_gate_and_contiguous_requirement(self):
+        flags = {"WITH_MQTT_BRIDGE": 1, "BOARD_HAS_PSRAM": 1}
+        base = ram.requirements("ESP32_PLATFORM", flags, "v4_companion")
+        large = ram.requirements("ESP32_PLATFORM", {
+            **flags, "MQTT_TASK_STACK_SIZE": 32768,
+        }, "v4_companion")
+        self.assertEqual(large["required_heap_bytes"] - base["required_heap_bytes"], 24576)
+        self.assertEqual(large["required_contiguous_bytes"], 32768)
+        self.assertEqual(large["mqtt"]["maximum_slot_stack_buffer_allowance_bytes"], 72960)
+        small = ram.requirements("ESP32_PLATFORM", {
+            **flags, "MQTT_TASK_STACK_SIZE": 4096, "MQTT_RUNTIME_SLOT_COUNT": 1,
+        }, "v4_companion")
+        self.assertEqual(small["required_heap_bytes"], base["required_heap_bytes"])
+        self.assertEqual(small["mqtt"]["maximum_active_slots"], 1)
+        for slots in (0, 7):
+            with self.subTest(slots=slots), self.assertRaisesRegex(ValueError, "between 1 and 6"):
+                ram.requirements("ESP32_PLATFORM", {
+                    **flags, "MQTT_RUNTIME_SLOT_COUNT": slots,
+                }, "v4_companion")
+        with self.assertRaisesRegex(ValueError, "positive"):
+            ram.requirements("ESP32_PLATFORM", {**flags, "MQTT_TASK_STACK_SIZE": 0}, "v4_companion")
+
+    def test_mqtt_report_at_startup_boundary_does_not_qualify_maximum_load(self):
+        flags = {"WITH_MQTT_BRIDGE": 1, "BOARD_HAS_PSRAM": 1}
+        policy = ram.requirements("ESP32_PLATFORM", flags, "v4_companion")
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "firmware.elf"
+            report = Path(temp) / "firmware.memory.json"
+            for delta, expected in ((-1, False), (0, True)):
+                with self.subTest(delta=delta), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    capacity = policy["required_heap_bytes"] + delta
+                    esp_fixture(path, modern=True, internal_length=capacity + 0x4000)
+                    status = ram.check_firmware(path, "ESP32_PLATFORM", "esp32s3", flags,
+                                                "v4_companion", report)
+                    result = json.loads(report.read_text())
+                    self.assertEqual(status == 0, expected)
+                    self.assertEqual(result["passed"], expected)
+                    self.assertEqual(result["available_internal_bytes"], capacity)
+                    self.assertEqual(result["mqtt"]["maximum_slot_stack_buffer_allowance_bytes"], 48384)
+                    self.assertFalse(result["mqtt"]["maximum_runtime_load_qualified"])
+                    self.assertFalse(result["mqtt"]["physical_validation_performed"])
+
+    def test_mqtt_report_admission_thresholds_match_production_guard(self):
+        source = (ROOT / "src/helpers/MQTTConnectionAdmission.h").read_text()
+        profile = ram.requirements("ESP32_PLATFORM", {"WITH_MQTT_BRIDGE": 1}, "v4_companion")["mqtt"]
+        for key, name in (
+            ("dma_admission_free_bytes", "kDmaReserveBytes"),
+            ("dma_admission_contiguous_bytes", "kDmaLargestBytes"),
+            ("tls_internal_admission_free_bytes", "kTlsInternalFreeBytes"),
+            ("tls_internal_admission_contiguous_bytes", "kTlsRecordAllocationBytes"),
+        ):
+            with self.subTest(key=key):
+                self.assertIn(f"{name} = {profile[key]};", source)
+
     def test_combined_rak_budgets_uart_beside_exclusive_ethernet_and_ota(self):
         defines = {
             "RAK_4631": 1, "ETHERNET_ENABLED": 1, "OTA_RAK_AUTO_STORE": 1,
@@ -331,7 +409,7 @@ class FirmwareRamTest(unittest.TestCase):
         self.assertEqual(parts["display_pixels_and_driver"], 2048)
         self.assertEqual(parts["uart_bridge_and_driver"], 2560 + 4096)
         self.assertEqual(parts["wireless_stacks"], 49152)
-        self.assertEqual(parts["mqtt_connections_buffers"], 24576)
+        self.assertEqual(parts["mqtt_startup_allowance"], 24576)
         self.assertEqual(parts["allocation_and_transient_margin"], 16384)
         self.assertEqual(full["required_contiguous_bytes"], 18464)
         for driver, expected in (("SH1106Display", 4096), ("SH1107Display", 4096),

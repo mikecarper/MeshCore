@@ -137,6 +137,13 @@ acknowledged cleanly in about 11.7 seconds within its 21-second budget. The
 residual Section 1/Section 2 instance-pointer reads remain deferred, so those
 consumers can still touch live or torn-down bridge state as tracked above.
 
+The 2026-10-10 connection-timeout fix restores the SDK network budget to
+10 seconds. The stop deadline now also allows the owner to finish one blocked
+publish and each client to finish a network operation: `5 s + 10 s +
+max(8 s, 10 s) * enabled_slots` (35 seconds for two slots). A clean
+acknowledgment still returns immediately. This deadline change is covered by
+synthetic tests; no new physical teardown measurement is claimed.
+
 ## Remaining target primitives
 
 - **Task notifications or a command queue** for one-way lifecycle / reconfigure

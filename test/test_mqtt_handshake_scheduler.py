@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""Exercise production MQTT scheduling with delayed callbacks and bounded heaps.
+
+The actual maintenance/admission/reconnect methods run with a deterministic
+clock. Hardware, SDK task starts, and token generation are controllable seams.
+"""
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+from test_mqtt_transport_results import method
+
+ROOT = Path(__file__).resolve().parents[1]
+
+PREAMBLE = r'''
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <vector>
+#include "helpers/MQTTConnectionAdmission.h"
+#include "helpers/MQTTConnectionHealth.h"
+#include "helpers/MQTTConnectionPolicy.h"
+#define ESP_PLATFORM 1
+#define MQTT_DEBUG_PRINTLN(...) ((void)0)
+using esp_err_t = int;
+constexpr int ESP_OK = 0, ESP_ERR_INVALID_ARG = 1, ESP_ERR_INVALID_STATE = 2;
+constexpr int ESP_ERR_NO_MEM = 3, RUNTIME_MQTT_SLOTS = 6, WL_CONNECTED = 1;
+constexpr int MQTT_AUTH_JWT = 1;
+constexpr uint32_t MALLOC_CAP_INTERNAL = 1, MALLOC_CAP_DMA = 2;
+static uint32_t clock_ms = 1000;
+static unsigned long wall_seconds = 1800000000;
+static size_t dma_free = 100000, dma_largest = 20000;
+uint32_t millis() { return clock_ms; }
+unsigned long fake_time(void*) { return wall_seconds; }
+#define time fake_time
+struct { int status() const { return WL_CONNECTED; } } WiFi;
+struct { size_t size = 2097152; size_t getPsramSize() const { return size; } } ESP;
+size_t heap_caps_get_free_size(uint32_t caps) {
+  assert(caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)); return dma_free;
+}
+size_t heap_caps_get_largest_free_block(uint32_t caps) {
+  assert(caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)); return dma_largest;
+}
+const char* esp_err_to_name(int) { return "mock"; }
+struct Preset {
+  const char* server_url = "wss://broker/mqtt";
+  int auth_type = 0;
+  unsigned long token_lifetime = 3300;
+  bool enforce_exp = false;
+};
+bool mqttPresetEnforcesTokenExp(const Preset* preset) {
+  return preset && preset->enforce_exp;
+}
+struct PsychicMqttClient {
+  bool started = false, live = false;
+  int starts = 0, reconnects = 0, bounces = 0, credentials = 0;
+  bool isStarted() const { return started; }
+  bool connected() const { return live; }
+  int connect() { ++starts; started = true; return ESP_OK; }
+  int reconnect() { ++reconnects; return ESP_OK; }
+  void softDisconnect() {
+    ++bounces; live = false;
+    // Releasing the old internal TLS session creates room for its replacement.
+    dma_free += 44000; dma_largest = 20000;
+  }
+  void setCredentials(const char*, const char*) { ++credentials; }
+};
+struct MQTTBridge {
+  struct MQTTSlot {
+    bool enabled = true, connected = false, initial_connect_done = false;
+    const Preset* preset = nullptr;
+    PsychicMqttClient* client = nullptr;
+    char host[64] = "broker", broker_uri[128] = {}, audience[64] = {};
+    uint16_t port = 8883;
+    char* auth_token = nullptr;
+    unsigned long token_expires_at = 0, last_token_renewal = 0;
+    unsigned long last_reconnect_attempt = 0, connected_at_ms = 0;
+    uint8_t reconnect_backoff = 0, max_backoff_failures = 0;
+    bool circuit_breaker_tripped = false;
+    uint32_t start_failures = 0;
+  } _slots[RUNTIME_MQTT_SLOTS];
+  PsychicMqttClient clients[RUNTIME_MQTT_SLOTS];
+  char tokens[RUNTIME_MQTT_SLOTS][16] = {};
+  bool setup_succeeds[RUNTIME_MQTT_SLOTS] = {true, true, true, true, true, true};
+  bool ready[RUNTIME_MQTT_SLOTS] = {true, true, true, true, true, true};
+  std::atomic<bool> _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _stop_requested{false}, _ntp_synced{true};
+  bool _slot_force_jwt_mint[RUNTIME_MQTT_SLOTS] = {};
+  void* _identity = this;
+  bool _slots_setup_done = true;
+  unsigned long _last_slot_reconnect_ms = 0;
+  int _max_active_slots = 5, mints = 0;
+  const char* _jwt_username = "jwt";
+  static const unsigned long SLOT_SETUP_RETRY_INTERVAL = 60000;
+  std::vector<int> setups;
+  bool isSlotReady(int index) { return ready[index]; }
+  bool setupSlot(int index) {
+    setups.push_back(index);
+    _slots[index].client = &clients[index];
+    if (!setup_succeeds[index]) return false;
+    if (reconnectSlotClient(index) != ESP_OK) return false;
+    _slots[index].initial_connect_done = true;
+    return true;
+  }
+  bool createSlotAuthToken(int index) {
+    ++mints;
+    strcpy(tokens[index], "fresh");
+    _slots[index].auth_token = tokens[index];
+    _slots[index].token_expires_at = wall_seconds + 3300;
+    return true;
+  }
+  void complete(int index) {
+    _slot_attempt_pending[index].store(false, std::memory_order_release);
+    _slots[index].connected = clients[index].live = true;
+  }
+  void only(int index) {
+    for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) _slots[i].enabled = i == index;
+  }
+  int activatedSlotCount() const;
+  bool canActivateSlot(int index) const;
+  bool hasPendingSlotConnection() const;
+  bool canStartSlotConnection(int index) const;
+  esp_err_t reconnectSlotClient(int index);
+  unsigned long slotTokenLifetime(int index) const;
+  void maintainSlotConnections();
+  void maintainSlotConnection(int, unsigned long, unsigned long, bool, bool&, bool&);
+};
+'''
+
+
+class MqttHandshakeSchedulerTest(unittest.TestCase):
+    def fixture(self):
+        bridge = "src/helpers/bridges/MQTTBridge.cpp"
+        return PREAMBLE + "\n".join(method(bridge, signature) for signature in (
+            "int MQTTBridge::activatedSlotCount() const",
+            "bool MQTTBridge::canActivateSlot(int index) const",
+            "bool MQTTBridge::hasPendingSlotConnection() const",
+            "bool MQTTBridge::canStartSlotConnection(int index) const",
+            "esp_err_t MQTTBridge::reconnectSlotClient(int index)",
+            "unsigned long MQTTBridge::slotTokenLifetime(int index) const",
+            "void MQTTBridge::maintainSlotConnections()",
+            "void MQTTBridge::maintainSlotConnection("))
+
+    def compile_run(self, main):
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        self.assertIsNotNone(compiler, "a host C++ compiler is required")
+        with tempfile.TemporaryDirectory(prefix="meshcore-mqtt-scheduler-") as temporary:
+            work = Path(temporary)
+            source, binary = work / "scheduler.cpp", work / "scheduler"
+            source.write_text(self.fixture() + main, encoding="utf-8")
+            result = subprocess.run(
+                [compiler, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT / "src"),
+                 str(source), "-o", str(binary)], capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(binary)], cwd=work, capture_output=True,
+                                    text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_first_start_is_immediate_and_delayed_callback_serializes_following_slots(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  clock_ms = 1000;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>{0});
+  assert(bridge._slot_attempt_pending[0]);
+  // The time guard has expired, but the earlier asynchronous handshake is
+  // still pending. Ordinary maintenance must not launch another SDK request.
+  clock_ms = 16000;
+  bridge.maintainSlotConnections();
+  clock_ms = 3600000;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>{0});
+  assert(bridge.clients[0].starts == 1 && bridge.clients[0].reconnects == 0);
+  bridge.complete(0);
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>({0, 1}));
+  assert(bridge._slot_attempt_pending[1]);
+  bridge.complete(1);
+  clock_ms += 14999;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups.size() == 2);
+  ++clock_ms;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>({0, 1, 2}));
+  bridge._stop_requested = true;
+  bridge.complete(2);
+  clock_ms += 60000;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups.size() == 3);
+}
+''')
+
+    def test_setup_failure_waits_full_minute_even_when_client_was_allocated(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0); bridge.setup_succeeds[0] = false;
+  clock_ms = 1000;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups.size() == 1 && bridge._slots[0].client);
+  assert(!bridge._slots[0].initial_connect_done && bridge._slots[0].enabled);
+  assert(!bridge.hasPendingSlotConnection());
+  clock_ms = 1050;
+  bridge.maintainSlotConnections();
+  clock_ms = 60999;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups.size() == 1);
+  clock_ms = 61000; bridge.setup_succeeds[0] = true;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>({0, 0}));
+  assert(bridge._slots[0].initial_connect_done && bridge.hasPendingSlotConnection());
+}
+''')
+
+    def test_failed_slot_does_not_starve_healthy_slot_or_consume_active_cap(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge._max_active_slots = 1; bridge.setup_succeeds[0] = false;
+  clock_ms = 1000;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>{0});
+  assert(bridge.activatedSlotCount() == 0);
+  clock_ms = 1050;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>({0, 1}));
+  assert(bridge.activatedSlotCount() == 1);
+  for (int i = 2; i < RUNTIME_MQTT_SLOTS; ++i) assert(!bridge._slots[i].enabled);
+  bridge.complete(1); clock_ms += 60000;
+  bridge.maintainSlotConnections();
+  assert(!bridge._slots[0].enabled && bridge.setups.size() == 2);
+}
+''')
+
+    def test_low_dma_memory_defers_setup_without_consuming_retry_or_capacity(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0); clock_ms = 1000; dma_free = 16383;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups.empty() && bridge._slots[0].last_reconnect_attempt == 0);
+  assert(bridge._slots[0].enabled && bridge.activatedSlotCount() == 0);
+  dma_free = 100000; dma_largest = 4095;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups.empty());
+  dma_largest = 4096;
+  bridge.maintainSlotConnections();
+  assert(bridge.setups == std::vector<int>{0} && bridge.activatedSlotCount() == 1);
+}
+''')
+
+    def test_internal_tls_renewal_releases_old_session_before_new_memory_admission(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0); clock_ms = 70000; ESP.size = 0;
+  const Preset jwt{"wss://broker/mqtt", MQTT_AUTH_JWT, 3300, true};
+  auto& slot = bridge._slots[0];
+  slot.preset = &jwt; slot.client = &bridge.clients[0];
+  slot.initial_connect_done = slot.connected = true;
+  slot.client->started = slot.client->live = true;
+  slot.token_expires_at = wall_seconds + 120;
+  // Before releasing the current TLS session, the full admission check fails.
+  dma_free = 20000; dma_largest = 10000;
+  assert(!bridge.canStartSlotConnection(0));
+  bridge.maintainSlotConnections();
+  assert(bridge.mints == 1 && slot.client->bounces == 1);
+  assert(slot.client->reconnects == 1 && bridge._slot_attempt_pending[0]);
+  assert(slot.client->credentials == 1 && dma_free == 64000);
+
+  // Another pending slot still prevents renewal from tearing down a live link.
+  bridge.complete(0); bridge._slot_attempt_pending[1] = true;
+  slot.token_expires_at = wall_seconds + 120; clock_ms += 60000;
+  bridge.maintainSlotConnections();
+  assert(bridge.mints == 1 && slot.client->bounces == 1);
+}
+''')
+
+
+if __name__ == "__main__":
+    unittest.main()

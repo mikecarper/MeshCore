@@ -29,6 +29,12 @@ TEST(MQTTErrorLabels, TlsErrorsMatchTheSdkMeaning) {
   EXPECT_TRUE(labelIs(tlsError(0x8010), "cert chain partly parsed"));   // was "mbedTLS error"
   EXPECT_TRUE(labelIs(tlsError(0x8006), "connection timeout"));
   EXPECT_TRUE(labelIs(tlsError(0x8001), "DNS failed"));
+  EXPECT_TRUE(labelIs(tlsError(0x8012), "SNI hostname rejected"));
+  EXPECT_TRUE(labelIs(tlsError(0x8015), "cert parse failed"));
+  EXPECT_TRUE(labelIs(tlsError(0x8017), "TLS setup failed"));
+  // A hardware AES allocation failure returns -1 through the TLS write path,
+  // which the SDK records as 0x8018 rather than a handshake or auth failure.
+  EXPECT_TRUE(labelIs(tlsError(0x8018), "TLS write failed"));
   EXPECT_TRUE(labelIs(tlsError(0x801A), "TLS handshake failed"));
 }
 

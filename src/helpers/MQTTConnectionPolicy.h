@@ -9,6 +9,10 @@
 // deterministic clock.
 namespace MQTTConnectionPolicy {
 
+// esp-mqtt uses one timeout for TLS/WebSocket connection setup, CONNACK, and
+// network reads/writes. Keep the SDK's ten-second connection budget; shortening
+// it to bound synchronous publishes also cuts off slow TLS handshakes.
+static const uint32_t kNetworkTimeoutMs = 10000UL;
 static const uint32_t kReconnectGuardMs = 15000UL;
 static const uint32_t kStableResetMs = 120000UL;
 static const uint32_t kCircuitBreakerProbeMs = 1800000UL;

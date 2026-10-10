@@ -128,6 +128,7 @@ public:
 
     /**
      * @brief Sets the network operation timeout in milliseconds. esp-mqtt aborts a
+     * connection attempt (including TLS/WebSocket setup) or a
      * network read/write (including a synchronous publish's socket write) if it does
      * not complete within this window. A lower value bounds how long a synchronous
      * QoS0 publish can block on a stalled/half-open socket before failing and letting

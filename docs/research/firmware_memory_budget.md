@@ -13,6 +13,8 @@ The check reserves room for enabled runtime allocations as well as static
 data. A firmware image fitting its board's reported RAM total is insufficient:
 the display, packet pool, USB, Bluetooth workers and WiFi can allocate after
 startup. The T096 Full 1.17.1.5 report exposed this distinction.
+MQTT uses an explicit startup minimum plus runtime connection admission. A
+passing build report does not qualify its maximum TLS/WSS/outbox workload.
 
 ## What is counted
 
@@ -38,7 +40,9 @@ keeps runtime UART enablement in the budget beside MQTT and ESP-NOW.
 T-LoRa V2.1-1.6 cannot fit all three transports: the qualified linked triple
 image had 190,488 available internal bytes against 196,984 required bytes
 under the earlier allocation estimates. The corrected equivalent requirement
-is 193,400 bytes, still 2,912 bytes above capacity.
+was 193,400 bytes with the earlier flat MQTT allowance, still 2,912 bytes above
+capacity. Its configured 16 KiB MQTT worker stack adds another 8 KiB under the
+current startup policy; these figures describe historical linked checks.
 Its ordinary release retains separate UART/ESP-NOW and MQTT/ESP-NOW Full
 images; routing capacities remain unchanged.
 A 160x80 ST7735
@@ -49,6 +53,53 @@ color framebuffer must have at least 72 KiB available before startup allocations
 Headless and OLED devices use their own smaller totals. The JSON lists each
 component and checks the largest available region against the largest planned
 single allocation.
+
+### MQTT startup minimum and runtime qualification
+
+The `mqtt_startup_allowance` component keeps a 24,576-byte internal startup
+minimum for the default 8,192-byte MQTTBridge worker stack and two active
+clients. Each SDK client task defaults to 6,144 bytes and its maximum configured
+receive/transmit buffers total 1,792 bytes. These stacks and buffers total
+24,064 bytes for two clients, leaving 512 bytes within the existing allowance.
+This is a minimum allowance, not a complete allocation bound for the clients,
+transport objects, TLS records, certificate processing, WebSockets or outboxes.
+The independent 16 KiB transient margin remains in the policy.
+
+`MQTT_TASK_STACK_SIZE` above 8,192 bytes raises the startup requirement by its
+actual increase and raises the required contiguous allocation when needed.
+Smaller stacks and fewer runtime slots do not lower the existing allowance.
+The default runtime slot array has six entries on PSRAM builds and three on
+internal-only builds. The bridge can expose five active connections when PSRAM
+is present and two otherwise; `MQTT_RUNTIME_SLOT_COUNT` can restrict that
+capacity. A PSRAM board with unavailable PSRAM uses the two-connection cap.
+
+The report's separate `mqtt.maximum_slot_stack_buffer_allowance_bytes` records
+48,384 bytes for five exposed slots or 24,576 bytes for two, with larger worker
+stacks added to either. The five-slot figure extends the minimum by 7,936 bytes
+for each additional client task and buffer pair. It is not added to the startup
+gate: extra clients allocate lazily, and every connection attempt must pass
+runtime admission. It still excludes the maximum TLS/WSS/outbox workload.
+`maximum_runtime_load_qualified` and `physical_validation_performed` are false
+in these build reports. A `passed` startup check must not be presented as
+qualification of five simultaneous PSRAM connections or two internal TLS
+connections.
+
+The `mqtt` report also names the production runtime admission thresholds.
+Each attempt requires at least 16 KiB of DMA-capable internal free heap and a
+4 KiB contiguous DMA block. A TLS attempt without PSRAM requires at least
+60 KiB free and a 17,408-byte contiguous block. PSRAM allocation fallback must
+leave the 16 KiB DMA reserve available. These thresholds describe free heap at
+the time of admission; they are not additional linked capacity and the TLS
+contiguous threshold is not a startup allocation requirement. Available linked
+internal heap cannot establish how much DMA-capable heap remains or how it is
+fragmented after boot. Only runtime observations can establish that.
+
+Maximum-load qualification still needs physical boot and sustained reconnect,
+publish and configuration-change tests with the selected number of brokers,
+transport schemes, certificates and enabled UART/browser/OTA features. Record
+DMA free heap, largest DMA block and allocation failures throughout that
+workload. Host admission tests and passing ELF checks provide engineering
+evidence without claiming that hardware validation has been performed.
 
 The W12 Full MQTT profile remains unqualified: the current linked image has
 182,768 internal bytes available against 198,432 required, including the

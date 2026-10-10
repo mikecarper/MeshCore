@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Gate firmware builds on internal runtime RAM, including enabled startup features.
+"""Gate firmware builds on internal RAM capacity and startup allowances.
 
 Uses real linker heap bounds on ARM and the linked ESP-IDF allocator tables on
 ESP32. These are capacity checks before dynamic allocation, not hardware soak
-results. PSRAM, instruction-only RAM and reserved bootloader arenas never count
-as internal heap. See docs/research/firmware_memory_budget.md for the budget policy.
+results. MQTT uses a startup minimum with separate runtime admission; a passing
+build does not qualify its maximum TLS/WSS/outbox load. PSRAM, instruction-only
+RAM and reserved bootloader arenas never count as internal heap. See
+docs/research/firmware_memory_budget.md for the budget policy.
 """
 
 from __future__ import annotations
@@ -32,6 +34,14 @@ DISPLAY_HEAP = {
     "GxEPDDisplay": 0, "E213Display": 8192, "E290Display": 8192,
 }
 
+# Match MQTTBridge's default worker and the pinned ESP-MQTT client task/buffers.
+# The legacy 24 KiB allowance covers two clients with 512 bytes beyond the known
+# stacks/buffers. It is a startup minimum, not a bound on TLS/WSS/outbox memory.
+MQTT_STARTUP_ALLOWANCE = 24576
+MQTT_WORKER_STACK_BYTES = 8192
+MQTT_CLIENT_STACK_BYTES = 6144
+MQTT_CLIENT_BUFFER_BYTES = 2 * 896
+
 
 def integer(defines, name, default):
     value = str(defines.get(name, default)).strip().strip("()")
@@ -43,6 +53,41 @@ def integer(defines, name, default):
     if result < 0:
         raise ValueError(f"negative memory budget input {name}")
     return result
+
+
+def mqtt_requirements(defines):
+    psram = "BOARD_HAS_PSRAM" in defines
+    slots = integer(defines, "MQTT_RUNTIME_SLOT_COUNT", 6 if psram else 3)
+    if not 1 <= slots <= 6:
+        raise ValueError("MQTT_RUNTIME_SLOT_COUNT must be between 1 and 6")
+    worker_stack = integer(defines, "MQTT_TASK_STACK_SIZE", MQTT_WORKER_STACK_BYTES)
+    if worker_stack == 0:
+        raise ValueError("MQTT_TASK_STACK_SIZE must be positive")
+    # Reducing slots or stack size cannot lower the existing allowance. Extra
+    # slots are lazy and each attempt must pass the production admission guard.
+    startup = MQTT_STARTUP_ALLOWANCE + max(0, worker_stack - MQTT_WORKER_STACK_BYTES)
+    active = min(slots, 5 if psram else 2)
+    potential = startup + max(0, active - 2) * (MQTT_CLIENT_STACK_BYTES + MQTT_CLIENT_BUFFER_BYTES)
+    return {
+        "budget_scope": "startup minimum with runtime connection admission",
+        "startup_allowance_bytes": startup,
+        "startup_active_slot_allowance": min(slots, 2),
+        "runtime_slot_count": slots,
+        "maximum_active_slots": active,
+        "maximum_active_slots_without_psram": min(slots, 2),
+        "worker_stack_bytes": worker_stack,
+        "client_task_stack_bytes": MQTT_CLIENT_STACK_BYTES,
+        "client_rx_tx_buffer_bytes": MQTT_CLIENT_BUFFER_BYTES,
+        "maximum_slot_stack_buffer_allowance_bytes": potential,
+        "dma_admission_free_bytes": 16384,
+        "dma_admission_contiguous_bytes": 4096,
+        "tls_internal_admission_free_bytes": 61440,
+        "tls_internal_admission_contiguous_bytes": 17408,
+        "maximum_runtime_load_qualified": False,
+        "physical_validation_performed": False,
+        "limitations": "Maximum TLS/WSS/outbox workload is not covered by the startup allowance; "
+                       "runtime free DMA heap and fragmentation must satisfy connection admission.",
+    }
 
 
 def requirements(platform, defines, target):
@@ -64,6 +109,7 @@ def requirements(platform, defines, target):
     else:
         raise ValueError(f"add a runtime allocation budget for display {display!r}")
     parts = {}
+    mqtt = None
     combined_rak_ethernet = "RAK4631_COMBINED_ETHERNET" in defines
     if combined_rak_ethernet and (platform != "NRF52_PLATFORM"
                                  or not {"RAK_4631", "ETHERNET_ENABLED", "OTA_RAK_AUTO_STORE"}.issubset(defines)):
@@ -93,7 +139,8 @@ def requirements(platform, defines, target):
         ble = 32768 if "BLE_PIN_CODE" in defines else 0
         parts["wireless_stacks"] = max(wifi, ble) if "COMPANION_EXCLUSIVE_WIFI_BLE" in defines else wifi + ble
         if "WITH_MQTT_BRIDGE" in defines:
-            parts["mqtt_connections_buffers"] = 24576
+            mqtt = mqtt_requirements(defines)
+            parts["mqtt_startup_allowance"] = mqtt["startup_allowance_bytes"]
         if "WITH_RS232_BRIDGE" in defines:
             # The UART bridge is allocated on enable, alongside WiFi/MQTT.
             # RS232Bridge.cpp bounds its object to 2304 bytes. Reserve 2560
@@ -240,8 +287,13 @@ def requirements(platform, defines, target):
         largest = max(largest, parts.get(name, 0))
     if "room_browser_mailbox" in parts:
         largest = max(largest, 8192, parts["room_browser_mailbox"])
-    return {"required_heap_bytes": required, "required_contiguous_bytes": largest,
-            "components": parts, "display": display, "full_companion": full}
+    if mqtt:
+        largest = max(largest, mqtt["worker_stack_bytes"], mqtt["client_task_stack_bytes"])
+    result = {"required_heap_bytes": required, "required_contiguous_bytes": largest,
+              "components": parts, "display": display, "full_companion": full}
+    if mqtt:
+        result["mqtt"] = mqtt
+    return result
 
 
 def subtract_regions(regions, reserved):
@@ -353,6 +405,9 @@ def check_firmware(elf_path, platform, mcu, defines, target, output=None):
         Path(output).write_text(json.dumps(report, indent=2) + "\n")
     print(f"Runtime RAM: {available:,} internal bytes available; {policy['required_heap_bytes']:,} required; "
           f"largest region {largest:,}; {'PASS' if passed else 'FAIL'}")
+    if "mqtt" in policy:
+        print("MQTT RAM scope: startup minimum with runtime admission; "
+              "maximum TLS/WSS/outbox load is not qualified by this build check.")
     if not passed:
         print("Runtime RAM check failed: insufficient heap for enabled features. "
               "Share cold buffers or reduce allocations before publishing this build.", file=sys.stderr)
