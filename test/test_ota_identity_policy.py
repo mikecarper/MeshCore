@@ -272,7 +272,9 @@ class OtaIdentityPolicyTest(unittest.TestCase):
                             "-I", str(ROOT / "src"), "-I", str(ROOT / "test/mocks"),
                             str(source),
                             *[str(ROOT / "src/helpers/ota" / name) for name in sources],
-                            str(ROOT / "src/Utils.cpp"), str(tinf), "-o", str(binary),
+                            str(ROOT / "src/Utils.cpp"), str(tinf),
+                            str(ROOT / "test/fixtures/ota_security/identity_verify.cpp"),
+                            "-lcrypto", "-o", str(binary),
                         ], capture_output=True, text=True)
                         self.assertEqual(result.returncode, 0, result.stderr)
                         subprocess.run([str(binary)], check=True)

@@ -62,7 +62,7 @@ off` disables reception; `set fleet.controller off` revokes the publisher. Key
 changes use the existing individually authenticated admin path, never fleet
 commands.
 `get fleet.stats` includes `parts`, the number of fragments currently buffered
-for an incomplete two-packet command.
+across the two bounded, incomplete two-packet command slots.
 
 Nodes need a clock set to current UTC. Commands expire after ten minutes and may
 be at most one minute ahead of a receiver's clock. A bad clock fails closed;
@@ -213,8 +213,10 @@ remote CLI command cannot turn that Companion into a multicast signing proxy.
 An `OK` means the Companion queued the command, not that every receiver applied
 it. Wait for acknowledgements and confirm the result on important nodes.
 
-Use at most one new command per second. The Unix-second sequence is reserved in
-durable storage **before** dispatch. The same sequence is never executed twice,
+Use at most one new command per second. The publishing Companion remembers its
+last queued sequence for the current boot; its clock supplies the next sequence.
+Each receiving node reserves the Unix-second sequence in durable storage
+**before** dispatch. That receiver never executes the same sequence twice,
 including after reboot or a lost reply. Retry an uncertain command with a fresh
 sequence; the operation should be chosen to be idempotent.
 
@@ -270,10 +272,12 @@ delivery over LoRa.
 A receiver accepts either arrival order and identical duplicates. It executes
 and acknowledges **only after both parts arrive and the complete signature,
 target, clock and replay checks pass**. Missing or altered parts cannot execute
-a partial command. One bounded assembly is kept for up to five minutes from the
-first part; duplicates do not extend that deadline. A fresh command with a newer
-eligible sequence replaces an incomplete older transfer, so a lost part does
-not block retries. Reboot or changing enrollment discards the partial transfer.
+a partial command. Two bounded assemblies are kept for up to five minutes
+from their respective first parts; duplicates do not extend those deadlines.
+Unverified fragment sequences cannot grant priority over another transfer. A
+third transfer replaces the oldest collection. A complete, valid signed command
+clears the partial collections, and durable replay checks remain authoritative.
+Reboot or changing enrollment discards the partial transfers.
 
 | Control | Fleet commands |
 | --- | --- |
@@ -331,8 +335,8 @@ failed transmissions, or an acknowledgement timeout cancels the staged mutation.
 Temporary-radio leases and scheduled windows retain their original monotonic end time; waiting for an
 acknowledgement does not lengthen them.
 
-Exact single-node acknowledgements use 0.5–1.5 seconds of random delay; prefix,
-multiple-target, region, GPS and whole-fleet replies use 0.5–10 seconds, including
+Exact single-node acknowledgements use 0.5-1.5 seconds of random delay; prefix,
+multiple-target, region, GPS and whole-fleet replies use 0.5-10 seconds, including
 radio mutations. Queuing, airtime and forwarding can add delivery time.
 This reduces simultaneous responses but is not a reliable
 delivery protocol for an arbitrarily large fleet. Use individual requests for
@@ -350,10 +354,13 @@ move nodes off the normal network; use a temporary window or a planned recovery
 path for experiments. A forwarding policy can also partition the fleet.
 
 The receiver is allocated lazily when fleet settings are present or queried, with
-one bounded mailbox and one 308-byte fragment assembly. Cryptographic work and storage writes occur after the receive
-stack unwinds. Signature-validation
-attempts are bounded to protect the radio loop from matching-hash junk. A corrupt
-or unreadable fleet store denies commands rather than discarding its replay state.
+one bounded mailbox and two 308-byte fragment assemblies, plus bounded metadata.
+Cryptographic work and storage writes occur after the receive stack unwinds.
+Signature-validation attempts are bounded after private-channel MAC verification,
+complete framing, replay, target, time and command checks. Keyless matching-hash
+junk, already-used requests, other nodes' requests and incomplete fragments do not
+spend that signature budget. A corrupt or unreadable fleet store denies commands
+rather than discarding its replay state.
 
 ## Ideas for packet-abuse containment
 

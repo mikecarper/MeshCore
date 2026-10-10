@@ -63,6 +63,9 @@ public:
                                 const char* name, size_t length);
   using GeoMatcher = bool (*)(void* context, int32_t latitude_e6,
                              int32_t longitude_e6, uint32_t radius_meters);
+  // Optional runtime work gate. Called only after all cheap envelope,
+  // targeting and time checks, immediately before Ed25519 verification.
+  using SignatureGate = bool (*)(void* context);
 
   struct Fragment {
     uint32_t sequence;
@@ -108,7 +111,8 @@ public:
                      const uint8_t* payload, size_t length, uint32_t now,
                      const uint8_t* self_public_key, Decoded& output,
                      RegionMatcher matcher = nullptr, void* context = nullptr,
-                     GeoMatcher geo_matcher = nullptr, void* geo_context = nullptr);
+                     GeoMatcher geo_matcher = nullptr, void* geo_context = nullptr,
+                     SignatureGate signature_gate = nullptr, void* signature_context = nullptr);
 
   // Envelopes <= MaxPayloadLength travel unchanged. Longer envelopes use
   // exactly two FMP1 frames, each bounded by the group payload limit.

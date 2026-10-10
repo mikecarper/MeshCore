@@ -177,18 +177,27 @@ int main() {
   assert(node.packet.radio_generation==primary.generation);
   node.ota_manager.clearPendingEgress();
 
-  // LEAVES remains an immediate response and inherits the live receive scope.
-  // Deferred affinity cannot bleed into that callback or a later local send.
+  // LEAVES is paced and retains its request scope after the receive stack
+  // unwinds. Backpressure must not consume the pending descriptor.
   node.masks.clear();
   mesh::ota::GetLeavesMsg leaves{};
   memcpy(leaves.manifest_id,EXP_MERKLE_ROOT,4); leaves.want_mask=1;
   uint8_t leaves_wire[MAX_PACKET_PAYLOAD];
   const auto leaves_len=mesh::ota::encode_get_leaves(leaves_wire,sizeof(leaves_wire),leaves);
   node.receiving=true; node.receive_profile=1;
-  node.ota_manager.on_message(leaves_wire,leaves_len,replacement);
+  assert(node.ota_manager.on_message(leaves_wire,leaves_len,replacement));
+  assert(node.masks.empty() && node.ota_manager.pendingManifestJobs()==1);
+  node.receiving=false; node.receive_profile=0;
+  node.manager.free=4;
+  node.ota_manager.set_clock(2000000);
+  node.service();
+  assert(node.masks.empty() && node.ota_manager.pendingManifestJobs()==1);
+  node.manager.free=40;
+  node.service();
   assert(node.masks.size()==1 && node.masks[0]==2);
   assert(node.packet.radio_reply && !node.packet.radio_local);
-  node.receiving=false; node.receive_profile=0;
+  assert(node.ota_manager.pendingManifestJobs()==0);
+  // Deferred affinity cannot bleed into a later local send.
   const uint8_t data=mesh::ota::OTA_DATA;
   assert(node.otaSendAdapter(&node,&data,1,false));
   assert(node.masks.size()==2 && node.masks[1]==1 && node.packet.radio_local);
@@ -286,7 +295,8 @@ int main() {
     assert(node.was_reply==reply);
   }
   const uint8_t data=mesh::ota::OTA_DATA, proof=mesh::ota::OTA_PROOF;
-  for (const uint8_t type : {data,proof}) {
+  const uint8_t manifest=mesh::ota::OTA_MANIFEST, leaves=mesh::ota::OTA_LEAVES;
+  for (const uint8_t type : {data,proof,manifest,leaves}) {
     for (uint8_t mask : {1,2,3}) {
       for (int queued=0;queued<=mesh::OTA_EGRESS_QUEUE_CREDIT+1;++queued) {
         for (int free=0;free<=mesh::OTA_EGRESS_MIN_FREE+3;++free) {

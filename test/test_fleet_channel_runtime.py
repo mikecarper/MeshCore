@@ -508,9 +508,47 @@ static int fragmentScenario(const std::string& scenario){
  }else if(scenario=="fragments_fresh_retry"){
   assert(f.feed(a)==0);f.partial();auto newer=envelope(f.publisher,seq+1,f.expected);
   Packet fresh_first=part(newer,1),fresh_second=part(newer,0);
-  assert(f.feed(fresh_first)==0);f.partial();
-  assert(f.feed(b)==0);f.partial();assert(f.feed(fresh_second)==1&&f.reserved()==seq+1);
-  assert(f.feed(a)==0&&f.feed(b)==0&&f.calls==1&&f.mesh.queued==1);
+  assert(f.feed(fresh_first)==0&&f.stats().find("parts=2")!=std::string::npos);
+  // The unsigned newer metadata does not invalidate an authentic older
+  // envelope. Its signed sequence still passes the durable monotonic gate.
+  assert(f.feed(b)==1&&f.reserved()==seq&&f.stats().find("parts=0")!=std::string::npos);
+  assert(f.feed(fresh_second)==0&&f.feed(fresh_first)==1&&f.reserved()==seq+1);
+  assert(f.feed(a)==0&&f.feed(b)==0&&f.calls==2&&f.mesh.queued==2);
+ }else if(scenario=="fragments_future_poison"){
+  for(unsigned reverse=0;reverse<2;++reverse){
+   FragmentFixture x;auto encoded=envelope(x.publisher,seq,x.expected);
+   Packet first=part(encoded,reverse?1:0),second=part(encoded,reverse?0:1);
+   Packet poison=changePart(first,[&](uint8_t* frame){storage::writeLE32(frame+4,seq+60);});
+   const auto saved=x.disk.files.at(Path);const unsigned verifies=verify_calls;
+   assert(x.feed(poison,nullptr,0)==0&&x.feed(first,nullptr,0)==0);
+   assert(x.stats().find("parts=2")!=std::string::npos&&x.disk.files.at(Path)==saved);
+   assert(x.feed(poison,nullptr,0)==0&&verify_calls==verifies);
+   assert(x.feed(second,nullptr,0)==1&&x.reserved()==seq&&verify_calls==verifies+1);
+   assert(x.stats().find("parts=0")!=std::string::npos&&x.feed(poison)==0);
+   assert(x.feed(first)==0&&x.feed(second)==0&&x.calls==1);
+   FleetChannel rebooted(&x.disk);unsigned calls=0;
+   for(Packet* packet:{&first,&second}){rebooted.receive(packet,x.mesh);
+    rebooted.service(x.mesh,x.profiles,"node",[&](uint32_t,const char*,char*){++calls;});}
+   assert(calls==0&&x.reserved()==seq);
+  }
+ }else if(scenario=="fragments_oldest_eviction"){
+  Packet poison_a=changePart(a,[&](uint8_t* frame){storage::writeLE32(frame+4,seq+60);});
+  Packet poison_b=changePart(a,[&](uint8_t* frame){storage::writeLE32(frame+4,seq+59);});
+  assert(f.feed(poison_a)==0&&f.feed(poison_b)==0);
+  assert(f.stats().find("parts=2")!=std::string::npos);
+  // A third transfer replaces the oldest slot despite its higher sequence.
+  assert(f.feed(a)==0&&f.feed(b)==1&&f.reserved()==seq&&f.calls==1);
+  assert(f.stats().find("parts=0")!=std::string::npos);
+ }else if(scenario=="fragments_independent_failure"){
+  Packet poison_a=changePart(a,[&](uint8_t* frame){storage::writeLE32(frame+4,seq+60);});
+  Packet poison_b=changePart(b,[&](uint8_t* frame){storage::writeLE32(frame+4,seq+60);});
+  assert(f.feed(a)==0&&f.feed(poison_a)==0&&f.feed(poison_b)==0);
+  f.partial();assert(f.feed(b)==1&&f.reserved()==seq&&f.calls==1);
+ }else if(scenario=="fragments_budget_partial"){
+  const unsigned verifies=verify_calls;
+  for(unsigned i=0;i<20;++i)assert(f.feed(a,nullptr,0)==0);
+  assert(verify_calls==verifies&&f.feed(b,nullptr,0)==1);
+  assert(verify_calls==verifies+1&&f.reserved()==seq);
  }else if(scenario=="fragments_tamper"){
   Packet mac=a;mac.payload[1]^=1;assert(f.feed(mac)==0&&f.stats().find("parts=0")!=std::string::npos);
   assert(f.feed(a)==0);f.partial();const auto saved=f.disk.files.at(Path);
@@ -1037,11 +1075,38 @@ int main(int argc,char** argv){
   Packet mine=command(publisher,mesh.clock.now,"set radio2 off",target);assert(apply(fleet,fs,mesh,profiles,mine)==1);
   assert(last_jitter_max==1500);
  }else if(scenario=="verify_budget"){
-  enroll(fleet,publisher);Packet packet=command(publisher,mesh.clock.now);
-  packet.payload[1]^=1;unsigned before=decrypt_calls;
-  for(unsigned i=0;i<20;++i)assert(apply(fleet,fs,mesh,profiles,packet)==0);
-  assert(decrypt_calls-before==4);fake_ms+=1000;packet=command(publisher,mesh.clock.now);
-  assert(apply(fleet,fs,mesh,profiles,packet)==1);
+  enroll(fleet,publisher);LocalIdentity stranger;
+  Packet forged=command(stranger,mesh.clock.now);
+  const unsigned before=verify_calls;
+  for(unsigned i=0;i<20;++i)assert(apply(fleet,fs,mesh,profiles,forged)==0);
+  assert(verify_calls-before==4);fake_ms+=1000;
+  Packet valid=command(publisher,mesh.clock.now);
+  assert(apply(fleet,fs,mesh,profiles,valid)==1);
+ }else if(scenario=="invalid_mac_cannot_starve"){
+  enroll(fleet,publisher);Packet valid=command(publisher,mesh.clock.now);
+  Packet garbage=valid;garbage.payload[1]^=1;
+  const unsigned before=verify_calls;
+  for(unsigned i=0;i<20;++i)assert(apply(fleet,fs,mesh,profiles,garbage)==0);
+  assert(verify_calls==before);
+  assert(apply(fleet,fs,mesh,profiles,valid)==1);
+  assert(verify_calls==before+1&&mesh.queued==1);
+ }else if(scenario=="replay_cannot_starve"){
+  enroll(fleet,publisher);const uint32_t seq=mesh.clock.now;
+  Packet previous=command(publisher,seq);
+  assert(apply(fleet,fs,mesh,profiles,previous)==1);
+  fake_ms+=1000;const unsigned before=verify_calls;
+  for(unsigned i=0;i<20;++i)assert(apply(fleet,fs,mesh,profiles,previous)==0);
+  assert(verify_calls==before);
+  Packet next=command(publisher,seq+1);
+  assert(apply(fleet,fs,mesh,profiles,next)==1&&verify_calls==before+1);
+ }else if(scenario=="wrong_target_cannot_starve"){
+  enroll(fleet,publisher);LocalIdentity other;
+  Packet not_mine=command(publisher,mesh.clock.now,"get radio2",publicHex(other).c_str());
+  const unsigned before=verify_calls;
+  for(unsigned i=0;i<20;++i)assert(apply(fleet,fs,mesh,profiles,not_mine)==0);
+  assert(verify_calls==before);
+  Packet valid=command(publisher,mesh.clock.now);
+  assert(apply(fleet,fs,mesh,profiles,valid)==1&&verify_calls==before+1);
  }else if(scenario=="primary_denied"){
   assert(!FleetCommand::commandAllowed("set radio 915,500,5,5"));
   assert(!FleetCommand::commandAllowed("set tempradio 915,500,5,5,10"));
@@ -1410,8 +1475,17 @@ class SHA256 : public SHA256Base {{ public:
     def test_real_signature_mac_padding_and_full_identity_target_checks(self):
         self.scenario("tamper_padding_target")
 
-    def test_forged_packets_have_bounded_verification_cost(self):
+    def test_forged_mac_authenticated_packets_have_bounded_signature_verification_cost(self):
         self.scenario("verify_budget")
+
+    def test_invalid_mac_packets_cannot_exhaust_the_signature_verification_budget(self):
+        self.scenario("invalid_mac_cannot_starve")
+
+    def test_recorded_used_command_replays_cannot_spend_signature_budget_before_next_command(self):
+        self.scenario("replay_cannot_starve")
+
+    def test_recorded_commands_for_another_target_cannot_spend_signature_budget(self):
+        self.scenario("wrong_target_cannot_starve")
 
     def test_fleet_permission_never_allows_primary_radio_or_administrator_changes(self):
         self.scenario("primary_denied")
@@ -1479,8 +1553,20 @@ class SHA256 : public SHA256Base {{ public:
     def test_conflicting_parts_cannot_destroy_a_valid_incomplete_transfer(self):
         self.scenario("fragments_conflicts")
 
-    def test_fresh_retry_preempts_missing_part_and_delayed_old_parts_cannot_pollute_it(self):
+    def test_unsigned_newer_fragment_cannot_invalidate_an_older_authenticated_envelope(self):
         self.scenario("fragments_fresh_retry")
+
+    def test_forged_future_sequence_interleaved_with_both_legitimate_fragment_orders_cannot_lock_out(self):
+        self.scenario("fragments_future_poison")
+
+    def test_third_transfer_evicts_oldest_slot_instead_of_highest_unsigned_sequence(self):
+        self.scenario("fragments_oldest_eviction")
+
+    def test_failed_complete_poisoned_assembly_preserves_the_other_legitimate_slot(self):
+        self.scenario("fragments_independent_failure")
+
+    def test_duplicate_partial_fragments_cannot_spend_signature_verification_budget(self):
+        self.scenario("fragments_budget_partial")
 
     def test_mac_and_last_signature_byte_tampering_never_authorize_partial_commands(self):
         self.scenario("fragments_tamper")

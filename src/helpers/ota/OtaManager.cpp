@@ -50,11 +50,22 @@ bool OtaManager::set_speed(float speed) {
 
 bool OtaManager::expandCatalog() {
   if (_catalog_heap || OTA_INLINE_CATALOG >= OTA_MAX_CATALOG) return false;
+  // Passive on-air discovery never claims a 255-row heap. Large catalogs are
+  // an explicit browse/archive/automatic-fetch resource choice.
+  if (!_catalog_browse_requested && !_archive_interest && _autofetch == AUTOFETCH_OFF &&
+      !_have_desired_mid && _desired_target == 0) return false;
   CatRow* expanded = static_cast<CatRow*>(malloc(sizeof(CatRow) * OTA_MAX_CATALOG));
   if (!expanded) return false;
   memcpy(expanded, _catalog_inline, sizeof(CatRow) * _n_cat);
   _catalog_heap = expanded;
   return true;
+}
+
+void OtaManager::releaseSmallCatalog() {
+  if (!_catalog_heap || _n_cat > OTA_INLINE_CATALOG) return;
+  memcpy(_catalog_inline, _catalog_heap, sizeof(CatRow) * _n_cat);
+  free(_catalog_heap);
+  _catalog_heap = nullptr;
 }
 
 uint8_t* OtaManager::ensureSourceLeaves(uint32_t bytes) {
@@ -121,6 +132,9 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   memset(_src_offered, 0, sizeof(_src_offered));
   memset(_src_advertised, 0, sizeof(_src_advertised));
   _n_src = 0; _n_cat = 0;
+  releaseSmallCatalog();
+  _catalog_browse_requested = false;
+  _auto_failure_at = 0; _auto_failure_delay = 0;
   clearPendingEgress();
   releaseColdBuffers();
   _adaptive_packet_speed = 1.0f;
@@ -489,24 +503,17 @@ bool OtaManager::handleGetManifest(const uint8_t* m, uint16_t n) {
 // Serve the target's merkle leaves[] in fragments (for a motatool folder-capture warm-start). Only the
 // fragments set in want_mask are emitted, so a want_mask retry re-sends just the holes - never a full burst
 // (same anti-deadlock rationale as OTA_MANIFEST). This is the only leaf-diff piece that runs on every node.
-void OtaManager::handleGetLeaves(const uint8_t* m, uint16_t n) {
+bool OtaManager::handleGetLeaves(const uint8_t* m, uint16_t n) {
   GetLeavesMsg gl;
-  if (!decode_get_leaves(m, n, gl)) return;
+  if (!decode_get_leaves(m, n, gl) || gl.want_mask == 0) return false;
   ServeView* v = resolve(gl.manifest_id);
-  if (!v || !v->m.leaves) return;
-  uint32_t leaves_len = v->m.block_count * 4;
-  uint8_t ftotal = (uint8_t)((leaves_len + OTA_LEAVES_FRAG - 1) / OTA_LEAVES_FRAG); if (ftotal == 0) ftotal = 1;
-  for (uint8_t fi = 0; fi < ftotal; fi++) {
-    if (!(gl.want_mask & (1u << fi))) continue;      // fetcher didn't ask for this leaves fragment
-    uint32_t off = (uint32_t)fi * OTA_LEAVES_FRAG;
-    uint32_t fl = leaves_len - off; if (fl > OTA_LEAVES_FRAG) fl = OTA_LEAVES_FRAG;
-    LeavesMsg lm;
-    memcpy(lm.manifest_id, v->m.merkle_root, 4);
-    lm.frag_idx = fi; lm.frag_total = ftotal;
-    lm.bytes = v->m.leaves + off; lm.len = (uint16_t)fl;
-    uint8_t b[MAX_PACKET_PAYLOAD];
-    emit(b, encode_leaves(b, sizeof(b), lm), false);
-  }
+  if (!v || !v->m.leaves || v->m.block_count == 0 ||
+      v->m.block_count > OTA_DIFF_MAX_BLOCKS) return false;
+  const uint32_t total = (v->m.block_count * 4 + OTA_LEAVES_FRAG - 1) / OTA_LEAVES_FRAG;
+  if (total == 0 || total > OTA_LEAVES_MAXFRAG) return false;
+  const uint16_t valid_mask = total == 16 ? 0xFFFFu : (uint16_t)((1u << total) - 1u);
+  const uint16_t wanted = (uint16_t)(gl.want_mask & valid_mask);
+  return wanted && queueManifestJob(v->m.merkle_root, wanted, true);
 }
 
 // Smallest mask covering `nf` fragments: bit k set for k in [0, nf). Caps at 16 (matches each pipeline
@@ -548,10 +555,11 @@ bool OtaManager::queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want
   return true;
 }
 
-bool OtaManager::queueManifestJob(const uint8_t* mid, uint16_t want_mask) {
+bool OtaManager::queueManifestJob(const uint8_t* mid, uint16_t want_mask, bool leaves) {
   for (uint8_t i = 0; i < _n_manifest_jobs; i++) {
     ManifestServeJob& job = _manifest_jobs[i];
-    if (memcmp(job.mid, mid, 4) != 0 || !(job.route == _request_route)) continue;
+    if (memcmp(job.mid, mid, 4) != 0 || !(job.route == _request_route) ||
+        job.leaves != leaves) continue;
     job.pending_mask |= (uint16_t)(want_mask & ~job.emitted_mask);
     return true;
   }
@@ -562,6 +570,7 @@ bool OtaManager::queueManifestJob(const uint8_t* mid, uint16_t want_mask) {
   job.pending_mask = want_mask;
   job.emitted_mask = 0;
   job.ready_at = _now_ms + manifestEgressGapMs();
+  job.leaves = leaves;
   return true;
 }
 
@@ -625,8 +634,14 @@ bool OtaManager::serviceManifestEgress(OtaReplyRouteValid route_valid, void* rou
     return true;
   }
 
-  const uint32_t mfl = v->mfl;
-  uint8_t ftotal = (uint8_t)((mfl + OTA_MF_FRAG - 1) / OTA_MF_FRAG);
+  const uint32_t mfl = job.leaves ? v->m.block_count * 4u : v->mfl;
+  const uint16_t fragment_size = job.leaves ? OTA_LEAVES_FRAG : OTA_MF_FRAG;
+  const uint32_t total = (mfl + fragment_size - 1u) / fragment_size;
+  if ((job.leaves && (!v->m.leaves || total > OTA_LEAVES_MAXFRAG)) || total > 16u) {
+    popManifestJob();
+    return true;
+  }
+  uint8_t ftotal = (uint8_t)total;
   if (ftotal == 0) ftotal = 1;
   const uint16_t valid_mask = frag_full_mask(ftotal);
   job.pending_mask &= valid_mask;
@@ -642,19 +657,26 @@ bool OtaManager::serviceManifestEgress(OtaReplyRouteValid route_valid, void* rou
     return true;
   }
 
-  const uint32_t off = (uint32_t)fragment * OTA_MF_FRAG;
+  const uint32_t off = (uint32_t)fragment * fragment_size;
   uint32_t len = mfl - off;
-  if (len > OTA_MF_FRAG) len = OTA_MF_FRAG;
-  ManifestMsg message;
-  memcpy(message.manifest_id, v->m.merkle_root, 4);
-  message.frag_idx = fragment;
-  message.frag_total = ftotal;
-  message.bytes = v->m.manifest_start + off;
-  message.len = (uint16_t)len;
+  if (len > fragment_size) len = fragment_size;
   uint8_t wire[MAX_PACKET_PAYLOAD];
-  const uint16_t wire_len = encode_manifest(wire, sizeof(wire), message);
+  uint16_t wire_len = 0;
+  if (job.leaves) {
+    LeavesMsg message;
+    memcpy(message.manifest_id, v->m.merkle_root, 4);
+    message.frag_idx = fragment; message.frag_total = ftotal;
+    message.bytes = v->m.leaves + off; message.len = (uint16_t)len;
+    wire_len = encode_leaves(wire, sizeof(wire), message);
+  } else {
+    ManifestMsg message;
+    memcpy(message.manifest_id, v->m.merkle_root, 4);
+    message.frag_idx = fragment; message.frag_total = ftotal;
+    message.bytes = v->m.manifest_start + off; message.len = (uint16_t)len;
+    wire_len = encode_manifest(wire, sizeof(wire), message);
+  }
   if (emit(wire, wire_len, false, &job.route)) {
-    OTA_DBG("OTA: MANIFEST tx frag=%u/%u len=%u\n",
+    OTA_DBG("OTA: %s tx frag=%u/%u len=%u\n", job.leaves ? "LEAVES" : "MANIFEST",
             (unsigned)fragment, (unsigned)ftotal, (unsigned)len);
     const uint16_t bit = (uint16_t)(1u << fragment);
     job.pending_mask &= (uint16_t)~bit;
@@ -955,6 +977,7 @@ void OtaManager::invalidateCatalogSeeder(const uint8_t* seeder) {
     }
     i++;
   }
+  releaseSmallCatalog();
 }
 
 // A tiny per-node BEACON: record the source; ask it for its catalog (OTA_QUERY) only when we're
@@ -1051,6 +1074,7 @@ bool OtaManager::sendQuery(const uint8_t* seeder, const uint8_t* digest, uint32_
 // User-initiated browse (`ota neighbors`): immediately ask every incomplete/changed source. A complete
 // digest-tagged catalog is already current, so paging through a 255-row list must not re-flood it each time.
 void OtaManager::queryAll() {
+  _catalog_browse_requested = true;
   for (uint8_t i = 0; i < _n_src; i++) {
     Source& s = _sources[i];
     if (s.have_catalog) continue;
@@ -1120,6 +1144,7 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
     const uint8_t* mid = row;
     uint32_t target = rd_u32le(row + 4), fwver = rd_u32le(row + 8);
     uint8_t codec = row[12], flags = row[13];
+    if (flags & ~MFLAG_KNOWN) continue;
     uint32_t have_count = rd_u16le(row + 14);   // this source's progress
     CatRow* catalog = catalogData();
     int slot = -1, lru = 0;                                           // upsert into the catalog (dedup by mid)
@@ -1130,7 +1155,23 @@ void OtaManager::handleHave(const uint8_t* m, uint16_t n) {
     }
     if (slot < 0) {
       if (_n_cat >= catalogCapacity() && expandCatalog()) catalog = catalogData();
-      slot = (_n_cat < catalogCapacity()) ? _n_cat++ : lru;
+      if (_n_cat < catalogCapacity()) slot = _n_cat++;
+      else {
+        slot = lru;
+        // A page is no longer complete when an LRU replacement loses any of
+        // its rows. An eventual explicit browse must request those pages too,
+        // instead of expanding a cache whose old holes remain suppressed.
+        const CatRow& evicted = catalog[slot];
+        for (uint8_t source = 0; source < _n_src; ++source) {
+          for (uint8_t seeder = 0; seeder < evicted.n_seeders; ++seeder) {
+            if (memcmp(_sources[source].seeder, evicted.seeders[seeder], 4) == 0) {
+              _sources[source].have_mask = 0;
+              _sources[source].have_catalog = false;
+              break;
+            }
+          }
+        }
+      }
       catalog[slot] = CatRow{};
       memcpy(catalog[slot].mid, mid, 4);
       memcpy(catalog[slot].seeders[0], hv.seeder_id, 4);
@@ -1188,6 +1229,8 @@ bool OtaManager::wantRow(const uint8_t* mid, uint32_t target, uint32_t fw_versio
     return memcmp(mid, _desired_mid, 4) == 0 && (_desired_target == 0 || target == _desired_target);
   if (_desired_target) return target == _desired_target;                          // cross-target want (role switch)
   if (_autofetch == AUTOFETCH_OFF) return false;                                  // discover only
+  if (_auto_failure_delay &&
+      (uint32_t)(_now_ms - _auto_failure_at) < _auto_failure_delay) return false;
   const uint32_t auto_target = _migration_target ? _migration_target : _target;
   if (target != auto_target) return false;                                        // own target or one-way successor
   if (_autofetch == AUTOFETCH_SIGNED && !(flags & MFLAG_SIGNED)) return false;    // signed-only policy
@@ -1202,6 +1245,7 @@ void OtaManager::clearReassemblySlot(uint8_t slot) {
   _reasm[slot].mask = 0;
   _reasm[slot].need = 0;
   _reasm[slot].awaiting_proof = false;
+  _reasm[slot].proof_failed = false;
   _reasm[slot].proof_request_at = 0;
   _reasm[slot].encoded_len = 0;
   _reasm[slot].wire_v2 = false;
@@ -1387,6 +1431,15 @@ void OtaManager::clearFetchIntent() {
 void OtaManager::failFetch(FetchError error) {
   if (error == FETCH_ERROR_STORAGE && _fetch && _fetch->canReconnect()
       && pauseFetchForDisconnect()) return;
+  if (!_have_desired_mid && _desired_target == 0 && !_archive_fetch) {
+    // Global as well as per-image: changing a forged MID must not bypass the
+    // cooldown. Explicit operator pulls retain their intentional override.
+    _auto_failure_at = _now_ms;
+    if (_auto_failure_delay == 0) _auto_failure_delay = OTA_AUTOFETCH_FAILURE_BACKOFF_MS;
+    else if (_auto_failure_delay > OTA_AUTOFETCH_FAILURE_MAX_BACKOFF_MS / 2u)
+      _auto_failure_delay = OTA_AUTOFETCH_FAILURE_MAX_BACKOFF_MS;
+    else _auto_failure_delay *= 2u;
+  }
   _fetch_error = error;
   _fstate = FAILED;
   _paused_from = IDLE;
@@ -1398,6 +1451,7 @@ void OtaManager::failFetch(FetchError error) {
 }
 
 void OtaManager::completeFetch() {
+  _auto_failure_delay = 0;
   _fetch_error = FETCH_ERROR_NONE;
   _fstate = COMPLETE;
   _paused_from = IDLE;
@@ -1451,7 +1505,8 @@ OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t targe
   _validate = validate;                          // motatool folder-capture warm-start (seed leaf-diff)
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
   // real partial), so never adopt it via resumeStaged - always re-begin and run the manifest->leaves->diff.
-  if (!validate && resumeStaged(mid)) return PULL_RESUMED; // adopt a partial container left in the store
+  const bool automatic = !_have_desired_mid && _desired_target == 0 && !_archive_fetch;
+  if (!validate && resumeStagedFor(mid, automatic)) return PULL_RESUMED; // adopt a partial container left in the store
   memcpy(_fid, mid, 4);
   _have = 0; _fbc = 0; _ftotal = 0; _fflags = 0;
   _observed_path_transmissions = 0;              // learn the actual source/relay path from this fetch's replies
@@ -1508,7 +1563,8 @@ bool OtaManager::resumeFetchAfterReconnect() {
   } else {
     // Reopening is bound to the original MID/target and verifies payload bytes;
     // a replacement host file must not silently become the selected capture.
-    if (!resumeStaged(_fid)) return false;
+    const bool automatic = !_have_desired_mid && _desired_target == 0 && !_archive_fetch;
+    if (!resumeStagedFor(_fid, automatic)) return false;
   }
   _paused_from = IDLE;
   _fetch_error = FETCH_ERROR_NONE;
@@ -1563,7 +1619,9 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
       !ota_trusted_auto_version_allows(_running_fw_version, parsed.fw_version)) {
     failFetch(FETCH_ERROR_VERSION); return;
   }
-  if (automatic_fetch && _autofetch == AUTOFETCH_SIGNED && !parsed.is_signed()) {
+  if (automatic_fetch && _autofetch == AUTOFETCH_SIGNED &&
+      (!parsed.is_signed() || !_admit_manifest ||
+       !_admit_manifest(_admit_manifest_ctx, parsed))) {
     failFetch(FETCH_ERROR_MANIFEST); return;
   }
   if (parsed.hash_algo != HASH_ALGO_SHA256) { failFetch(FETCH_ERROR_HASH_ALGO); return; }
@@ -1604,6 +1662,9 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   uint8_t hdr[8];
   memcpy(hdr, MOTA_MAGIC, 4);
   wr_u32le(hdr + 4, total);
+  // Approval is local authorization, not part of the signed peer manifest.
+  // A sender must never be able to arm an install by supplying these bytes.
+  memcpy(_mf_buf + MOTA_SIGNED_LEN + 64u, APPROVAL_NOT, sizeof(APPROVAL_NOT));
   if (!_fetch->write(0, hdr, 8) ||
       !_fetch->write(8, mf, mfl) ||
       !_fetch->write(total - 5, MOTA_TRAILER, 5)) { failFetch(FETCH_ERROR_STORAGE); return; }
@@ -1708,11 +1769,14 @@ void OtaManager::diffStep() {
 }
 
 bool OtaManager::resumeStaged(const uint8_t* want_mid) {
+  return resumeStagedFor(want_mid, want_mid == nullptr);
+}
+
+bool OtaManager::resumeStagedFor(const uint8_t* want_mid, bool automatic_resume) {
   if (!_fetch || _fstate == FETCHING || _fstate == WANT_MANIFEST
       || _fstate == WANT_LEAVES || _fstate == VERIFYING_STAGED) {
     return false;
   }
-  const bool automatic_resume = want_mid == nullptr;
   const uint32_t expected_target = automatic_resume
       ? (_migration_target ? _migration_target : _target)
       : _fexpected_target;
@@ -1732,7 +1796,9 @@ bool OtaManager::resumeStaged(const uint8_t* want_mid) {
   if (expected_target != 0 && m.target_id != expected_target) return false;
   if (automatic_resume) {
     if (_autofetch == AUTOFETCH_OFF) return false;
-    if (_autofetch == AUTOFETCH_SIGNED && !m.is_signed()) return false;
+    if (_autofetch == AUTOFETCH_SIGNED &&
+        (!m.is_signed() || !_admit_manifest ||
+         !_admit_manifest(_admit_manifest_ctx, m))) return false;
     if (_enforce_auto_version &&
         !ota_trusted_auto_version_allows(_running_fw_version, m.fw_version)) return false;
   }
@@ -2014,13 +2080,14 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   ReassemblySlot& slot = _reasm[slot_index];
   uint32_t block = slot.block;
   uint32_t blen = blockLen(block);
-  noteFetchActivity();
   if (!merkle_verify(slot.buf, blen, block, pm.proof, pm.n_proof, _froot, _fbc)) {
-    notePipelineStall();
-    clearReassemblySlot((uint8_t)slot_index);                   // bad -> drop and re-fetch only this block
-    if (activePipelineSlots() == 0) { finishFlight(); requestMissing(); }
+    // A forged proof must not discard valid in-flight DATA or cause an
+    // immediate request burst. Accept a later valid proof; repair a genuinely
+    // damaged block only at the ordinary airtime-aware recovery deadline.
+    slot.proof_failed = true;
     return true;
   }
+  noteFetchActivity();
   // Commit payload before its present marker. Preserve the selected store and
   // checkpoint on failure: reconnectable stores pause, while local storage
   // reports a retryable failure instead of waiting for a nonexistent link.
@@ -2184,6 +2251,13 @@ void OtaManager::requestMissing() {
     uint8_t slot = (uint8_t)((_retry_slot + offset) % OTA_FETCH_PIPELINE);
     if (_reasm[slot].block == NO_BLOCK) continue;
     ReassemblySlot& reassembly = _reasm[slot];
+    if (reassembly.proof_failed) {
+      const uint32_t block = reassembly.block;
+      clearReassemblySlot(slot);
+      reassembly.block = block;
+      const uint16_t fragment_data = _wire_v2_session ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+      reassembly.need = frag_full_mask((blockLen(block) + fragment_data - 1u) / fragment_data);
+    }
     const bool partial_v2 = _wire_v2_session && reassembly.wire_v2 && reassembly.mask != 0 &&
         !reassembly.awaiting_proof;
     if (partial_v2 && reassembly.wire_stalls >= 1) {
@@ -2316,7 +2390,7 @@ bool OtaManager::dispatchMessage(const uint8_t* msg, uint16_t len) {
     case OTA_HAVE:         handleHave(msg, len); return false;
     case OTA_GET_MANIFEST: return handleGetManifest(msg, len);
     case OTA_MANIFEST:     handleManifest(msg, len); return false;
-    case OTA_GET_LEAVES:   handleGetLeaves(msg, len); return false;
+    case OTA_GET_LEAVES:   return handleGetLeaves(msg, len);
     case OTA_LEAVES:       handleLeaves(msg, len); return false;
     case OTA_REQ:          return handleReq(msg, len);
     case OTA_DATA:         return handleData(msg, len);

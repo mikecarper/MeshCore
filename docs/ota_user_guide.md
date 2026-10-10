@@ -424,6 +424,10 @@ and packet loss; `3` does not guarantee three times the throughput.
 
 The factor covers OTA requests and responses (catalog, manifest, leaves, DATA,
 and proofs), OTA relay delays, discovery jitter, and automatic OTA adverts.
+Sources queue manifest and leaf replies and admit their fragments one at a
+time through the paced transmit queue. Repeated requests merge pending
+fragments; a full response queue leaves the request available for another
+source or a later retry. This preserves packet space for other mesh traffic.
 Below `1`, the transmit queue also spaces out **every OTA packet**, including
 both profile copies, while letting ordinary messages run. Recovery waits grow
 for slower transfers; faster settings retain the existing retry allowance so
@@ -469,7 +473,7 @@ automation (e.g. for a remote node you can't easily reach), you can opt in. Thes
 
 ```
 ota config autofetch any        # auto-DOWNLOAD any compatible update for this node (still won't install)
-ota config autofetch signed     # auto-download only signed updates
+ota config autofetch signed     # auto-download verified updates from allowlisted signers
 ota config autofetch off        # back to manual (default)
 
 ota config autoinstall trusted  # auto-INSTALL only a trusted signed version newer than the running EndF
@@ -484,9 +488,18 @@ ota config hops 0               # only exchange OTA with directly-connected node
 ota config                      # show the current settings
 ```
 
-These policies also govern automatic adoption of an interrupted staged download after reboot. `off` leaves
-it untouched, `signed` requires the stored manifest's signed flag, and automatic resume requires the stored
-target to match this node and its version to be newer than the running valid EndF. Reissuing an explicit
+With `autofetch signed`, add the author's public key using `ota key add` before
+expecting an automatic download. The node verifies the manifest's signature
+against that allowlist before planning, erasing, or writing staging storage.
+`autofetch any` remains the deliberate option for automatically downloading
+unsigned compatible packages; it does not authorize installation.
+
+These policies also govern automatic adoption of an interrupted staged
+download after reboot. `off` leaves it untouched; `signed` requires the same
+allowlisted signature verification. Automatic resume also requires the stored
+target to match this node and its version to be newer than the running valid
+EndF. The signature check applies when an automatic download resumes after
+discovering a source or reconnecting its storage. Reissuing an explicit
 `ota pull <MID8>` remains the deliberate override for an older or unsigned partial.
 For bring-up/debugging, `ota dev resume <MID8>` performs the same explicit MID-bound re-adoption without
 starting a new network fetch. After reboot it requires the MID; bare `ota dev resume` is accepted only while
@@ -495,6 +508,13 @@ If raw flash contains multiple valid staged headers, automatic resume leaves the
 guessing which is newest. Specify the intended MID to select its unique checkpoint; ambiguous matches are
 rejected. Temporary storage read failures no longer consume a download slot indefinitely: host storage
 pauses for reconnection, while non-reconnectable storage reports a storage error and can be retried.
+
+A failed automatic download starts a cooldown before other automatic candidates
+are considered: one minute initially, doubling after further failures up to
+15 minutes. Changing the offered image or source does not skip this wait.
+The timer uses elapsed uptime, and a completed download clears it. Manual
+`ota pull`, explicit resume, and archive captures keep their existing operator
+controls and are not restricted by this automatic-download cooldown.
 
 Recommended for most people: leave both **off** and update by hand. Use `autoinstall trusted` only once
 you've added the signer's key (next section) and you trust them to push updates unattended. Automatic
@@ -513,8 +533,9 @@ for the required `/mota/<manifest-id>.mota` filenames and the complete TempRadio
 
 ## Optional: only trust updates from specific people
 
-If you'll use auto-install, tell your node which signing keys to trust. The firmware author shares their
-**public** key (a hex string); you add it:
+If you'll use signed auto-download or auto-install, tell your node which
+signing keys to trust. The firmware author shares their **public** key (a hex
+string); you add it:
 
 ```
 ota key add <public-key-hex>    # trust this signer

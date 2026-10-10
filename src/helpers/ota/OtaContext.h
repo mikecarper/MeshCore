@@ -7,6 +7,7 @@
 #include "OtaDeflate.h"
 #include "OtaStore.h"
 #include "SignerAllowlist.h"
+#include "OtaManifestPolicy.h"
 #include "OtaConfigState.h"
 #include "OtaApply.h"
 #include "OtaFormat.h"
@@ -856,6 +857,11 @@ struct OtaContext {
     target_id = 0;
 #endif
     manager.begin(target_id, send, ctx);
+#if !defined(OTA_SEEDER_ONLY)
+    manager.set_manifest_admission([](void* context, const MotaManifest& manifest) {
+      return ota_manifest_trusted(manifest, static_cast<OtaContext*>(context)->allow);
+    }, this);
+#endif
 #if defined(MOTA_MIGRATION_TARGET_ID)
     // Legacy observer images keep their deployed target identity for serving
     // and diagnostics, but automatically accept one canonical successor image.

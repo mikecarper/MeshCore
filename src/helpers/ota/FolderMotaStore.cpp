@@ -6,18 +6,21 @@
 namespace mesh {
 namespace ota {
 
-bool FolderMotaStore::readByteT(uint8_t& b) const {
-  uint32_t t0 = millis();
-  while ((millis() - t0) < _to) {
+bool FolderMotaStore::readByteT(uint8_t& b, uint32_t started) const {
+  while ((uint32_t)(millis() - started) < _to) {
     int c = _io.read();
-    if (c >= 0) { b = (uint8_t)c; return true; }
+    if (c >= 0) {
+      if ((uint32_t)(millis() - started) >= _to) return false;
+      b = (uint8_t)c;
+      return true;
+    }
     delay(1);  // let BLE/WiFi callbacks deliver the response
   }
   return false;
 }
 
-bool FolderMotaStore::readExact(uint8_t* b, uint16_t n) const {
-  for (uint16_t i = 0; i < n; i++) if (!readByteT(b[i])) return false;
+bool FolderMotaStore::readExact(uint8_t* b, uint16_t n, uint32_t started) const {
+  for (uint16_t i = 0; i < n; i++) if (!readByteT(b[i], started)) return false;
   return true;
 }
 
@@ -25,7 +28,10 @@ bool FolderMotaStore::readExact(uint8_t* b, uint16_t n) const {
 // XOR checksum, scan for the response magic, validate op+status+checksum, deliver payload.
 bool FolderMotaStore::txn(uint8_t op, const uint8_t* args, uint16_t arglen,
                           uint8_t* payload, uint16_t payload_len) const {
-  while (_io.read() >= 0) {}                        // drop any stale/partial bytes before a fresh request
+  // Snapshot the currently queued stale bytes. A continuously sending TCP
+  // client must not trap the mesh loop before a request has even been sent.
+  int pending = _io.available();
+  while (pending-- > 0) if (_io.read() < 0) break;
   uint8_t xs = op;
   for (uint16_t i = 0; i < arglen; i++) xs ^= args[i];
   // Keep one contiguous write for TCP (and fewer calls on UART). The largest
@@ -51,16 +57,16 @@ bool FolderMotaStore::txn(uint8_t op, const uint8_t* args, uint16_t arglen,
   if (!got) return false;
 
   uint8_t hdr[2];
-  if (!readExact(hdr, 2)) return false;             // op, status
+  if (!readExact(hdr, 2, t0)) return false;         // op, status
   if (hdr[0] != op) return false;
   uint8_t rxs = (uint8_t)(MOTA_SEEDER_RSP_MAGIC0 ^ MOTA_SEEDER_RSP_MAGIC1) ^ hdr[0] ^ hdr[1];
   bool ok = (hdr[1] == MS_STATUS_OK);
   if (ok && payload_len) {
-    if (!readExact(payload, payload_len)) return false;
+    if (!readExact(payload, payload_len, t0)) return false;
     for (uint16_t i = 0; i < payload_len; i++) rxs ^= payload[i];
   }
   uint8_t xsum;
-  if (!readByteT(xsum)) return false;
+  if (!readByteT(xsum, t0)) return false;
   if (xsum != rxs) return false;                    // corrupt frame -> caller retries
   return ok;
 }

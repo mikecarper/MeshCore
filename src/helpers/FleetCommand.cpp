@@ -579,7 +579,8 @@ bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
                          const uint8_t* payload, size_t length, uint32_t now,
                          const uint8_t* self_public_key, Decoded& output,
                          RegionMatcher matcher, void* context,
-                         GeoMatcher geo_matcher, void* geo_context) {
+                         GeoMatcher geo_matcher, void* geo_context,
+                         SignatureGate signature_gate, void* signature_context) {
   memset(&output, 0, sizeof(output));
   if (!privateKeyAllowed(key) || !payload || !self_public_key
       || zero(publisher.pub_key, PUB_KEY_SIZE) || zero(self_public_key, PUB_KEY_SIZE)
@@ -620,6 +621,7 @@ bool FleetCommand::decode(const Identity& publisher, const uint8_t* key,
   memcpy(command, payload + command_offset, command_length);
   command[command_length] = 0;
   if (!commandAllowed(command)) return false;
+  if (signature_gate && !signature_gate(signature_context)) return false;
   uint8_t message[SignedMessageCapacity];
   const size_t message_length = signedMessage(key, payload, unsigned_length, message);
   const bool valid = publisher.verify(payload + unsigned_length, message, int(message_length));

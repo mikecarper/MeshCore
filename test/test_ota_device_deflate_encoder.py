@@ -475,7 +475,9 @@ class DeviceDeflateManagerTest(unittest.TestCase):
                 "c++", "-std=c++17", "-Os", *flags, *defines,
                 "-I", str(ROOT / "src"), "-I", str(ROOT / "test/mocks"),
                 str(source), *[str(ROOT / "src/helpers/ota" / name) for name in sources],
-                str(ROOT / "src/Utils.cpp"), str(tinf), "-o", str(binary),
+                str(ROOT / "src/Utils.cpp"), str(tinf),
+                            str(ROOT / "test/fixtures/ota_security/identity_verify.cpp"),
+                            "-lcrypto", "-o", str(binary),
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             for scenario in scenarios:

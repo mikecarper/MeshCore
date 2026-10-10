@@ -654,7 +654,7 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
         }
       }
     } else {
-      sprintf(reply, "unknown config: %s", config);
+      strcpy(reply, "unknown config");
     }
   } else if (memcmp(config, "mqtt.analyzer.us ", 17) == 0) {
     const int slot = 0;

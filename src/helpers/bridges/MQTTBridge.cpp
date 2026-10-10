@@ -2214,7 +2214,12 @@ bool MQTTBridge::setupSlot(int index) {
 #if defined(PORTABLE_MQTT_OBSERVER)
     // Portable images keep pinned roots for built-in presets. The general CA
     // bundle is intentionally left unreferenced so the linker can discard it.
-    (void)needs_tls;
+    if (needs_tls) {
+      MQTT_DEBUG_PRINTLN("MQTT%d TLS refused: custom brokers require a CA bundle", index + 1);
+      slot.initial_connect_done = false;
+      slot.last_reconnect_attempt = millis();
+      return false;
+    }
 #else
     if (needs_tls) {
       if (!s_ca_bundle_loaded) {
@@ -2233,7 +2238,12 @@ bool MQTTBridge::setupSlot(int index) {
           slot.client->setCACertBundle(rootca_crt_bundle_start, bundle_len);
           s_ca_bundle_loaded = true;
         } else {
-          MQTT_DEBUG_PRINTLN("MQTT%d TLS: no embedded cert bundle available", index + 1);
+          // Never let ESP-IDF fall back to VERIFY_NONE for a TLS URI. In
+          // particular, do not mint/send credentials or start the client.
+          MQTT_DEBUG_PRINTLN("MQTT%d TLS refused: no embedded cert bundle available", index + 1);
+          slot.initial_connect_done = false;
+          slot.last_reconnect_attempt = millis();
+          return false;
         }
       } else {
         // Global bundle already loaded - just attach the callback for this client.

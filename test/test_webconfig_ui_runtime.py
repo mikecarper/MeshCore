@@ -77,6 +77,51 @@ def embedded_page():
 
 
 class WebConfigUiRuntimeTest(unittest.TestCase):
+    def test_saved_network_recovery_requires_login_before_setup_wizard(self):
+        status, config = self.setup_values()
+        status.update(auth=False, mode="setup", needs_setup=False,
+                      needs_password=False, password_supported=True)
+        prelude = r'''<script>
+(function(){
+  var status=%s,config=%s,configReads=0,logins=0;
+  window.fetch=function(path,options){
+    var value=config;
+    if(path==="/api/status")value=status;
+    else if(path==="/api/config")configReads++;
+    else if(path==="/api/login"){
+      logins++;
+      if(JSON.parse(options.body).password!=="existing-secret")throw new Error("wrong password submitted");
+      value={ok:true};
+    }else if(path.indexOf("/api/scan")===0)value={networks:[]};
+    return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(value)}});
+  };
+  window.addEventListener("load",function(){
+    setTimeout(function(){
+      var body=document.body;
+      body.setAttribute("data-test-recovery-login-visible",!document.getElementById("v-login").classList.contains("hide"));
+      body.setAttribute("data-test-recovery-wizard-before",!document.getElementById("v-wizard").classList.contains("hide"));
+      body.setAttribute("data-test-recovery-config-before",configReads);
+      document.getElementById("login-pwd").value="existing-secret";
+      document.getElementById("login-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));
+    },200);
+    setTimeout(function(){
+      var body=document.body;
+      body.setAttribute("data-test-recovery-wizard-after",!document.getElementById("v-wizard").classList.contains("hide"));
+      body.setAttribute("data-test-recovery-app-after",!document.getElementById("v-app").classList.contains("hide"));
+      body.setAttribute("data-test-recovery-logins",logins);
+      body.setAttribute("data-test-recovery-config-after",configReads);
+      body.setAttribute("data-test-recovery-password-cleared",document.getElementById("login-pwd").value==="");
+    },800);
+  });
+})();
+</script>''' % (json.dumps(status), json.dumps(config))
+        dom = self.run_page(prelude)
+        for attribute, value in (("login-visible", "true"), ("wizard-before", "false"),
+                                 ("config-before", "0"), ("wizard-after", "true"),
+                                 ("app-after", "false"), ("logins", "1"),
+                                 ("config-after", "1"), ("password-cleared", "true")):
+            self.assertIn('data-test-recovery-%s="%s"' % (attribute, value), dom)
+
     def test_four_display_controls_and_pairing_capability(self):
         status, config = self.setup_values()
         config["display"] = {

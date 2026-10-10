@@ -4598,6 +4598,7 @@ TEST(OtaCatalog, IncompleteCatalogRetriesOnlyMissingFragment) {
 TEST(OtaCatalog, RetainsProtocolMaximumRows) {
   OtaManager client;
   client.begin(SIM_TARGET_ID, nullptr, nullptr);
+  client.queryAll(); // operator-requested browse opts into the bounded large cache
   const uint8_t per = (uint8_t)((MAX_PACKET_PAYLOAD - 12) / OTA_HAVE_ROW_BYTES);
   const uint8_t total = (uint8_t)((255 + per - 1) / per);
   uint8_t sid[4] = {1, 2, 3, 4}, digest[4] = {5, 6, 7, 8};
@@ -4763,6 +4764,7 @@ TEST(OtaTransfer, BootResumeHonorsCurrentAutofetchTargetAndVersionPolicy) {
   newer.begin(manifest.target_id, nullptr, nullptr);
   newer.set_fetch_store(&newer_store);
   newer.set_autofetch(OtaManager::AUTOFETCH_SIGNED);
+  newer.set_manifest_admission([](void*, const MotaManifest&) { return true; }, nullptr);
   newer.set_auto_version_floor(manifest.fw_version - 1u, true);
   EXPECT_TRUE(newer.resumeStaged(nullptr));
   EXPECT_EQ(newer.fetchState(), OtaManager::VERIFYING_STAGED);

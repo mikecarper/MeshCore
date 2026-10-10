@@ -17,6 +17,8 @@
 // If the link drops, every op returns false: the OtaManager PAUSES and keeps its progress (it does NOT fall
 // back to RAM/flash). On reconnect the host still has the partial, and the manager re-reopen()s so only the
 // missing blocks are refetched. All ops are keyed by `mid` (set via set_mid() before the fetch begins).
+// Each framed response has one timeout_ms deadline, including sync, header,
+// payload and checksum. A host cannot extend it by sending one byte at a time.
 
 namespace mesh {
 namespace ota {
@@ -48,8 +50,8 @@ private:
   // One request/response transaction over the seeder link (mirrors SerialMotaSource). `arglen` is uint16 so
   // OP_WRITE can carry its data inline. Returns true iff a well-formed OK response for `op` arrived in time.
   bool txn(uint8_t op, const uint8_t* args, uint16_t arglen, uint8_t* payload, uint16_t payload_len) const;
-  bool readByteT(uint8_t& b) const;
-  bool readExact(uint8_t* b, uint16_t n) const;
+  bool readByteT(uint8_t& b, uint32_t started) const;
+  bool readExact(uint8_t* b, uint16_t n, uint32_t started) const;
 
   Stream&  _io;
   uint32_t _to;

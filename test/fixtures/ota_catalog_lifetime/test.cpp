@@ -98,7 +98,8 @@ static void filtered_catalog_remains_queryable(int scenario, bool automatic) {
     }
   }
   for (const auto& message : filtered) client.on_message(message.data(), message.size());
-  assert(client.catalogCount() == (scenario == 4 ? 1 : scenario == 6 ? 0 : 15));
+  assert(client.catalogCount() == (scenario == 4 ? 1 : scenario == 6 ? 0 :
+      automatic ? 15 : OTA_INLINE_CATALOG));
   if (scenario == 8) {
     // Passive rows arriving before a beacon must not confer completeness on its new digest.
     client.on_message(wire, encode_adv(wire, sizeof(wire), adv));
@@ -114,7 +115,7 @@ static void filtered_catalog_remains_queryable(int scenario, bool automatic) {
   QueryMsg recovery{};
   assert(decode_query(from_client[0].data(), from_client[0].size(), recovery));
   assert(recovery.filter_target == 0);
-  assert(recovery.want_fragments == (scenario == 4 ? 1u : scenario == 5 ? 6u : scenario == 8 ? 0u : 7u));
+  assert(recovery.want_fragments == (scenario == 4 ? 1u : scenario == 5 && automatic ? 6u : scenario == 8 ? 0u : 7u));
   from_server.clear();
   server.on_message(from_client[0].data(), from_client[0].size());
   for (const auto& message : from_server) client.on_message(message.data(), message.size());
@@ -153,6 +154,7 @@ int main(int argc, char** argv) {
     assert(!row(manager, 2));
     assert(manager.sourceCount() == OTA_MAX_SOURCES);
   } else if (scenario == 1) {
+    manager.queryAll(); // large catalogs are explicit operator browse policy
     for (unsigned i = 1; i <= OTA_MAX_CATALOG; ++i) {
       manager.set_clock(old + i * 100);
       have(manager, 1, i);

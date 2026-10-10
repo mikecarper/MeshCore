@@ -774,8 +774,8 @@ function boot(){
     return st.hasMqtt?api("/api/presets").catch(function(){return{presets:[]}}):{presets:[]};
   }).then(function(p){
     st.presets=p.presets||[];
-    if(st.mode==="setup"){showWizard()}
-    else if(!st.authed){showLogin()}
+    if(!st.authed){showLogin()}
+    else if(st.mode==="setup"){showWizard()}
     else{enterApp()}
   }).catch(function(e){
     if(e.message!=="auth"){$("#h-sub").textContent="connection failed - retrying";setTimeout(boot,2000)}
@@ -796,7 +796,7 @@ $("#login-form").addEventListener("submit",function(ev){
   .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
   .then(function(x){
     btn.disabled=false;
-    if(x.s===200){st.authed=true;$("#login-pwd").value="";enterApp()}
+    if(x.s===200){st.authed=true;$("#login-pwd").value="";if(st.mode==="setup"){showWizard()}else{enterApp()}}
     else $("#login-err").textContent=x.j.error||"login failed";
   }).catch(function(){btn.disabled=false;$("#login-err").textContent="connection error"});
 });

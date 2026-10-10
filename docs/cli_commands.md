@@ -288,6 +288,13 @@ them entirely. Sign in with the node's admin password. If the node has no saved
 WiFi SSID, the command starts the open `MeshCore-Setup-XXXX` captive AP at
 <http://192.168.4.1/> instead.
 
+If a saved WiFi network is unavailable and the node falls back to its setup
+AP, sign in with the existing admin password before changing settings. Joining
+that AP does not grant permission to replace the password. First-time setup
+without a saved SSID keeps its AP provisioning flow. Images deliberately
+configured without an admin password, including passwordless Companions,
+retain their local no-password policy; use them only on a trusted network.
+
 `start webconfig ap` forces captive-AP mode. It will not interrupt an active
 MQTT bridge, so run `set mqtt.enabled off` first. Use `stop webconfig` to
 close either mode for the current boot. (`stop webconfig` does not change a
@@ -4886,6 +4893,13 @@ MQTT while keeping broker presets and credentials. Turning it on allows those
 brokers to reconnect. `get mqtt.running` checks the service's runtime state;
 `get mqtt.status` reports individual broker connections. Enabling MQTT does
 not imply that a broker is connected.
+
+Custom `mqtts://` and `wss://` brokers require an image with the embedded CA
+bundle. Without it, the slot stays disconnected and sends no credentials;
+use a build with the bundle or a supported preset with its pinned CA.
+Portable MQTT images retain those presets but do not include the general
+bundle for custom TLS brokers. Explicit `mqtt://` and `ws://` configurations
+remain available for trusted networks and use plaintext transport.
 
 On ESP32 Repeater and Room Server images, `set mqtt.enabled off` acknowledges
 the stop request while the MQTT task disconnects and destroys its clients.

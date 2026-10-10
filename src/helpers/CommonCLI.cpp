@@ -5137,7 +5137,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     strcpy(reply, "Error: extra.sf requires an LR2021 radio");
 #endif
   } else {
-    sprintf(reply, "unknown config: %s", config);
+    strcpy(reply, "unknown config");
   }
 }
 

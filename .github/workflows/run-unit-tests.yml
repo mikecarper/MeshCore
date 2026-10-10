@@ -91,7 +91,10 @@ jobs:
         uses: ./.github/actions/setup-build-environment
 
       - name: Install signed-package verification dependency
-        run: python3 -m pip install cryptography
+        run: |
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
 
       - name: Verify ArduinoJson pin
         run: |
@@ -110,6 +113,8 @@ jobs:
       - name: Verify parser, delivery, storage, permissions, clock and radio stability
         run: |
           python3 -B test/test_protocol_parser_bounds.py -v
+          python3 -B test/test_cli_error_bounds.py -v
+          python3 -B test/test_ota_security.py -v
           python3 -B test/test_companion_offline_delivery.py -v
           python3 -B test/test_room_receive_admission.py -v
           python3 -B test/test_companion_lfs_traversal.py -v
@@ -153,7 +158,9 @@ jobs:
         run: python3 -B test/test_build_output_safety.py -v
 
       - name: Verify serial mOTA response deadlines and RX fairness
-        run: python3 -B test/test_mota_serial_deadline.py -v
+        run: |
+          python3 -B test/test_mota_serial_deadline.py -v
+          python3 -B test/test_mota_folder_deadline.py -v
 
       - name: Verify filter playground modes and built-in defaults
         run: node scripts/test_filter_tool.js
@@ -177,15 +184,15 @@ jobs:
         run: python3 -B test/test_telemetry_tx_persistence.py -v
 
       - name: Verify MQTT start results and connection-attempt accounting
-        run: python3 -B test/test_mqtt_transport_results.py -v
+        run: |
+          python3 -B test/test_mqtt_transport_results.py -v
+          python3 -B test/test_mqtt_tls_security.py -v
 
       - name: Verify DNS lease restoration and bounded diagnostics
         run: python3 -B test/test_network_dns.py -v
 
       - name: Verify Companion contact and channel TX routing
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev
           python3 -B test/test_companion_tx_routing.py -v
           python3 -B test/test_companion_discovery.py -v
           python3 -B test/test_repeater_discovery.py -v
@@ -335,6 +342,7 @@ jobs:
         run: |
           python3 -B test/test_wifi_ota_start.py -v
           python3 -B test/test_webconfig_ap_start.py -v
+          python3 -B test/test_webconfig_recovery_auth.py -v
           python3 -B test/test_esp32_wifi_scan_fix.py -v
           python3 -B test/test_esp32_wifi_scan_recipes.py -v
 

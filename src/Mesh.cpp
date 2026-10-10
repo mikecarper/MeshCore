@@ -173,7 +173,8 @@ static uint8_t otaTrafficPriority(const uint8_t* msg, uint16_t len) {
 
 static bool isPacedOtaResponse(const uint8_t* msg, uint16_t len) {
   if (!msg || len == 0) return false;
-  return msg[0] == ota::OTA_DATA || msg[0] == ota::OTA_PROOF;
+  return msg[0] == ota::OTA_DATA || msg[0] == ota::OTA_PROOF
+      || msg[0] == ota::OTA_LEAVES || msg[0] == ota::OTA_MANIFEST;
 }
 
 #if defined(ENABLE_OTA)
@@ -191,7 +192,7 @@ static int queuedPacedOtaResponses(PacketManager* manager) {
 }
 
 // Adapter so the portable OtaManager can emit packets through the mesh (message-priority, hop-capped).
-// DATA/PROOF admission is credit-limited; false leaves the manager's response descriptor intact.
+// Transfer response admission is credit-limited; false retains the response descriptor.
 bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   Mesh* m = (Mesh*)ctx;
   if (!m->isAnyTempRadioActive()) return false;

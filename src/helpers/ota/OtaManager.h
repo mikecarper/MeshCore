@@ -41,6 +41,10 @@ struct OtaReplyRoute {
 };
 typedef bool (*OtaReplyRouteValid)(void* ctx, const OtaReplyRoute& route);
 
+// Device admission is separate from portable block transport. Signed-only
+// automatic fetches must authenticate the manifest before touching staging.
+typedef bool (*OtaManifestAdmit)(void* ctx, const MotaManifest& manifest);
+
 // Read `len` payload bytes at offset `off` from the serve source (flash-backed self-serve); false on
 // error. nullptr means the payload is a contiguous RAM buffer (the staged `.mota`).
 typedef bool (*ServeReadFn)(void* ctx, uint32_t off, uint8_t* buf, uint32_t len);
@@ -104,6 +108,16 @@ static constexpr uint16_t ota_max_block_capability() { return (uint16_t)OTA_MAX_
 #ifndef OTA_MANIFEST_MAX_RETRY
 #define OTA_MANIFEST_MAX_RETRY 20   // give up (FAILED) after this many GET_MANIFEST retries - frees the slot
 #endif
+#ifndef OTA_AUTOFETCH_FAILURE_BACKOFF_MS
+#define OTA_AUTOFETCH_FAILURE_BACKOFF_MS 60000u
+#endif
+#ifndef OTA_AUTOFETCH_FAILURE_MAX_BACKOFF_MS
+#define OTA_AUTOFETCH_FAILURE_MAX_BACKOFF_MS 900000u
+#endif
+static_assert(OTA_AUTOFETCH_FAILURE_BACKOFF_MS > 0u &&
+              OTA_AUTOFETCH_FAILURE_BACKOFF_MS <= OTA_AUTOFETCH_FAILURE_MAX_BACKOFF_MS &&
+              OTA_AUTOFETCH_FAILURE_MAX_BACKOFF_MS < 0x80000000u,
+              "OTA automatic failure cooldown must support wrap-safe elapsed time");
 #ifndef OTA_MANIFEST_SERVE_QUEUE
 #define OTA_MANIFEST_SERVE_QUEUE 4  // bounded manifest response descriptors (fragments are emitted one at a time)
 #endif
@@ -472,6 +486,9 @@ public:
   // Auto-fetch policy (manual `ota pull` always works regardless): 0=off (discover only), 1=any
   // compatible own-target advert, 2=only signed adverts. Conservative default = off.
   static const uint8_t AUTOFETCH_OFF = 0, AUTOFETCH_ANY = 1, AUTOFETCH_SIGNED = 2;
+  void set_manifest_admission(OtaManifestAdmit admit, void* ctx) {
+    _admit_manifest = admit; _admit_manifest_ctx = ctx;
+  }
   void set_autofetch(uint8_t p) { _autofetch = p; reDiscover(); }
   uint8_t autofetch() const { return _autofetch; }
   // One-way release migration for a legacy identity. Automatic OTA follows the
@@ -563,15 +580,18 @@ public:
   struct CatRow {
     uint8_t  mid[4];
     uint32_t target_id, fw_version;
-    uint8_t  codec, flags;
-    uint8_t  seeders[OTA_CAT_SEEDERS][4];  // distinct sources advertising this mid (deduped; capped)
-    uint16_t seeder_have[OTA_CAT_SEEDERS];  // progress reported by each tracked source
-    uint32_t seeder_last_ms[OTA_CAT_SEEDERS]; // age of each tracked source's latest HAVE
-    uint8_t  n_seeders;                    // count of the above (capped at OTA_CAT_SEEDERS) - "N+ nodes have it"
-    uint32_t have_max;                     // best block-count any source reported (== total when a full copy exists)
     uint32_t last_ms;
     uint32_t retry_after_ms;                // per-image archive retry deadline (0 = eligible)
+    uint32_t seeder_last_ms[OTA_CAT_SEEDERS]; // age of each tracked source's latest HAVE
+    uint8_t  seeders[OTA_CAT_SEEDERS][4];  // distinct sources advertising this mid (deduped; capped)
+    uint16_t seeder_have[OTA_CAT_SEEDERS];  // progress reported by each tracked source
+    uint16_t have_max;                    // HAVE carries a uint16 block count
+    uint8_t  codec;
+    uint8_t  flags : 3;                   // MFLAG_KNOWN, validated before caching
+    uint8_t  n_seeders : 3;               // bounded by OTA_CAT_SEEDERS = 4
   };
+  static_assert(sizeof(CatRow) * OTA_MAX_CATALOG <= 16384u,
+                "Maximum OTA catalog exceeds its qualified 16 KiB heap budget");
   uint8_t catalogCount() const { return _n_cat; }
   const CatRow* catalogRow(uint8_t i) const { return i < _n_cat ? &catalogData()[i] : nullptr; }
   uint8_t sourceCount() const { return _n_src; }   // distinct OTA sources (beacon senders) heard
@@ -585,6 +605,7 @@ private:
   const CatRow* catalogData() const { return _catalog_heap ? _catalog_heap : _catalog_inline; }
   uint16_t catalogCapacity() const { return _catalog_heap ? OTA_MAX_CATALOG : OTA_INLINE_CATALOG; }
   bool expandCatalog();
+  void releaseSmallCatalog();
 
   bool emit(const uint8_t* b, uint16_t n, bool flood, const OtaReplyRoute* route = nullptr) {
     const OtaReplyRoute* previous = _reply_route;
@@ -599,7 +620,7 @@ private:
   void handleHave(const uint8_t* m, uint16_t n);    // peer: catalog rows (+ startFetch if a row matches)
   bool handleGetManifest(const uint8_t* m, uint16_t n);
   void handleManifest(const uint8_t* m, uint16_t n);
-  void handleGetLeaves(const uint8_t* m, uint16_t n);    // serve: send the requested leaf fragments
+  bool handleGetLeaves(const uint8_t* m, uint16_t n);    // serve: send the requested leaf fragments
   void handleLeaves(const uint8_t* m, uint16_t n);       // fetcher (validate): reassemble the target leaves
   bool beginLeafDiff();                                  // enter WANT_LEAVES if a seed diff is viable
   void diffStep();                                       // diff one batch of seed blocks per loop tick
@@ -612,6 +633,7 @@ private:
   bool wantRow(const uint8_t* mid, uint32_t target, uint32_t fw_version,
                uint8_t codec, uint8_t flags) const;  // fetch this row?
   bool fetchActive() const;
+  bool resumeStagedFor(const uint8_t* want_mid, bool automatic);
   void clearFetchIntent();
   void failFetch(FetchError error);
   void completeFetch();
@@ -639,7 +661,7 @@ private:
                      bool extended_length = false);
   void noteServedRequestPacing(const uint8_t* mid, uint16_t block,
                                uint16_t want, uint16_t full_mask);
-  bool queueManifestJob(const uint8_t* mid, uint16_t want_mask);
+  bool queueManifestJob(const uint8_t* mid, uint16_t want_mask, bool leaves = false);
   uint32_t manifestEgressGapMs() const;
   uint32_t proofEgressGapMs() const;
   bool serviceManifestEgress(OtaReplyRouteValid route_valid, void* route_ctx);
@@ -730,6 +752,7 @@ private:
     uint16_t pending_mask;
     uint16_t emitted_mask;
     uint32_t ready_at;
+    bool leaves;
   };
   ManifestServeJob _manifest_jobs[OTA_MANIFEST_SERVE_QUEUE];
   uint8_t    _n_manifest_jobs = 0;
@@ -773,6 +796,10 @@ private:
   bool       _archive_fetch = false;                    // capture-only pull: accept any target/codec
   bool       _archive_interest = false;                 // query full catalogs for the persistent archive
   uint8_t    _seeder_id[4] = {0,0,0,0};        // our node id (pubkey[0:4]) for advert seeder counting
+  OtaManifestAdmit _admit_manifest = nullptr;
+  void*      _admit_manifest_ctx = nullptr;
+  uint32_t   _auto_failure_at = 0;
+  uint32_t   _auto_failure_delay = 0;
   uint8_t    _autofetch = AUTOFETCH_OFF;       // auto-fetch policy (persisted in NodePrefs)
   uint32_t   _running_fw_version = 0;           // trusted EndF version used only for automatic admission
   bool       _enforce_auto_version = false;     // OtaContext enables this even when EndF/version is unknown
@@ -794,6 +821,7 @@ private:
     uint16_t mask = 0;                         // received FRAG_DATA-slice bitmap
     uint16_t need = 0;                         // full bitmap for this block
     bool awaiting_proof = false;
+    bool proof_failed = false;                 // preserve DATA until the normal recovery deadline
     uint32_t proof_request_at = 0;              // proactive-proof grace deadline; 0 after fallback is sent
     uint16_t encoded_len = 0;                   // v2 wire length; zero until the first DATA fragment establishes it
     bool wire_v2 = false;
@@ -856,6 +884,7 @@ private:
   CatRow     _catalog_inline[OTA_INLINE_CATALOG];
   CatRow*    _catalog_heap = nullptr;
   uint8_t    _n_cat = 0;
+  bool       _catalog_browse_requested = false;
   uint32_t   _now_ms = 0;                       // coarse clock (fed by set_clock; for ages/LRU/jitter)
 };
 

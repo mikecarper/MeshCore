@@ -825,8 +825,8 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   // Keep STA and the driver alive so an ESP-NOW owner is not torn down.
   // softAPConfig() adds AP to this STA interface for the SSID picker below.
   bool mode_ok = WiFi.mode(WIFI_STA);
-  // Setup mode has no login. Drop any STA association so the open setup API is
-  // reachable only from the setup AP, not from the operator's LAN.
+  // Drop any STA association so setup/recovery stays on the physical AP.
+  // A saved-network recovery AP still requires the existing admin login.
   WiFi.setAutoReconnect(false);
   bool disconnect_ok = WiFi.disconnect(false, true);
   delay(100);
@@ -1809,13 +1809,15 @@ void WebConfigServer::collectBody(AsyncWebServerRequest* req, uint8_t* data, siz
 bool WebConfigServer::checkAuth(AsyncWebServerRequest* req) {
   _last_activity = millis();
   if (_mode == MODE_SETUP) {
-    // AP+STA is used for scans and saved-network recovery. Keep the unauthenticated
-    // setup API reachable only through the physical setup AP, never through a
-    // briefly recovered LAN interface before tick() promotes the mode.
-    return req && req->client()
-        && req->client()->localIP() == WiFi.softAPIP();
+    // AP+STA is used for scans and saved-network recovery. A first-time setup
+    // may provision a new password from the physical AP. Losing access to a
+    // saved WiFi network must not grant that same password-reset privilege.
+    if (!req || !req->client()
+        || req->client()->localIP() != WiFi.softAPIP()) return false;
+    if (_initial_setup || _wifi_ssid[0] == 0) return true;
+  } else if (_mode != MODE_LAN) {
+    return false;
   }
-  if (_mode != MODE_LAN) return false;
   NodeSnapshot node = {};
   {
     WCLock lock(_mux);
@@ -1980,9 +1982,15 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
 void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
   if (_mode == MODE_OFF) { req->send(503); return; }
   _last_activity = millis();
-  if (_mode == MODE_SETUP) {  // no auth in setup mode
-    req->send(200, "application/json", "{\"ok\":true}");
-    return;
+  if (_mode == MODE_SETUP) {
+    if (!req->client() || req->client()->localIP() != WiFi.softAPIP()) {
+      req->send(401, "application/json", "{\"error\":\"auth\"}");
+      return;
+    }
+    if (_initial_setup || _wifi_ssid[0] == 0) {
+      req->send(200, "application/json", "{\"ok\":true}");
+      return;
+    }
   }
   NodeSnapshot node = {};
   {
@@ -2028,6 +2036,7 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
 
 void WebConfigServer::handleLogout(AsyncWebServerRequest* req) {
   if (_mode == MODE_OFF) { req->send(503); return; }
+  if (!checkAuth(req)) { req->send(401, "application/json", "{\"error\":\"auth\"}"); return; }
   _session_token[0] = 0;
   AsyncWebServerResponse* res = req->beginResponse(200, "application/json", "{\"ok\":true}");
   res->addHeader("Set-Cookie", "wcs=; Max-Age=0; Path=/");

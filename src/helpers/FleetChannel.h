@@ -99,10 +99,19 @@ class FleetChannel {
   bool broadcast_ = false;
   bool ack_profile_mutation_ = false;
   uint8_t incoming_[MAX_PACKET_PAYLOAD]{};
-  uint8_t assembly_[FleetCommand::MaxEnvelopeLength]{};
-  uint32_t assembly_sequence_ = 0, assembly_deadline_ = 0;
-  uint16_t assembly_length_ = 0;
-  uint8_t assembly_parts_ = 0;
+  // Fragment metadata has only channel-key authentication, not the
+  // publisher's signature. Two bounded slots avoid making an unsigned future
+  // sequence authoritative over every other command's assembly.
+  struct Assembly {
+    uint8_t data[FleetCommand::MaxEnvelopeLength]{};
+    uint32_t sequence = 0, deadline = 0;
+    uint16_t length = 0;
+    uint8_t parts = 0;
+  };
+  static constexpr uint32_t AssemblyLifetimeMillis = 300000;
+  static_assert(sizeof(Assembly) <= FleetCommand::MaxEnvelopeLength + 12,
+                "fleet fragment slots must stay bounded");
+  Assembly assemblies_[2]{};
   uint8_t incoming_len_ = 0, rx_profile_ = 0, path_hash_size_ = 1;
   uint32_t rx_generation_ = 0;
   TransportKey reply_scope_{};
@@ -115,6 +124,8 @@ class FleetChannel {
   enum class DecodeResult { Rejected, Partial, Accepted };
   DecodeResult decode(Mesh& mesh, FleetCommand::Decoded& command);
   void clearAssembly();
+  void clearAssembly(Assembly& assembly);
+  unsigned assemblyPartCount() const;
   void serviceAssemblyDeadline();
   bool acknowledge(Mesh& mesh, const char* name, uint32_t sequence,
                    const char* reply, bool radio_mutation);

@@ -89,6 +89,10 @@ typedef bool (*OtaSend)(void*, const uint8_t*, uint16_t, bool);
 struct SelfFwInfo { bool valid = false; uint32_t target_id = 0, fw_version = 0; char hw_id[33] = {}; };
 static bool ota_self_firmware(SelfFwInfo& info) { info = SelfFwInfo(); return false; }
 static int ota_transport_inflate;
+struct MotaManifest {};
+static bool ota_manifest_trusted(const MotaManifest&, int) { return false; }
+struct Context;
+using OtaContext = Context;
 enum { CODEC_DETOOLS_INPLACE = 1, CODEC_DETOOLS_SEQUENTIAL = 2 };
 struct Store {
   bool external = false;
@@ -100,6 +104,7 @@ struct Manager {
   bool accept_full = false;
   void begin(uint32_t, OtaSend, void*) {}
   void set_transport_deflate_decoder(int) {}
+  template<class Callback> void set_manifest_admission(Callback, void*) {}
   void set_auto_version_floor(uint32_t, bool) {}
   void set_accept_full(bool value) { accept_full = value; }
   void set_autofetch(uint8_t) {}
@@ -112,6 +117,7 @@ struct Manager {
 using OtaManager = Manager;
 struct Context {
   Manager manager;
+  int allow = 0;
   Store fetch_store;
   bool self_serve_supported = false, fetch_to_folder = false;
   static const uint8_t AUTOINSTALL_OFF = 0;
