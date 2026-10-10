@@ -602,12 +602,15 @@ bool MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
   return false;
 }
 
-int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
-  if (offline_queue_len > 0) {         // check offline queue
-    Frame& head = offlineQueueFrameAt(0);
-    size_t len = head.len; // take from top of queue
-    memcpy(frame, head.buf, len);
+int MyMesh::peekOfflineQueue(uint8_t frame[]) {
+  if (!frame || offline_queue_len <= 0) return 0;
+  Frame& head = offlineQueueFrameAt(0);
+  memcpy(frame, head.buf, head.len);
+  return head.len;
+}
 
+void MyMesh::popOfflineQueue() {
+  if (offline_queue_len > 0) {
     offline_queue_len--;
 #if ONE_KEY_DM_SHARED_OFFLINE_QUEUE
     for (int i = 0; i < offline_queue_len; ++i) {
@@ -623,9 +626,38 @@ int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
 #ifdef DISPLAY_CLASS
     if (_ui) _ui->syncMessageQueue(offline_queue_len, 0);
 #endif
-    return len;
   }
-  return 0; // queue is empty
+}
+
+int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
+  // Explicit OTA queue draining intentionally consumes frames without app
+  // delivery. Normal app downloads commit only after transport acceptance.
+  const int len = peekOfflineQueue(frame);
+  if (len > 0) popOfflineQueue();
+  return len;
+}
+
+void MyMesh::syncNextOfflineMessage() {
+  BaseSerialInterface* reply_route = _serial->captureReplyRoute();
+  const Frame* head = offline_queue_len > 0 ? &offlineQueueFrameAt(0) : nullptr;
+  size_t out_len = head ? head->len : 0;
+  const bool have_message = out_len > 0;
+  const uint8_t* reply_frame = out_frame;
+  if (have_message) {
+    // A full or disconnected requester must leave this message pending.
+    // Another connected transport cannot accept its reply on its behalf.
+    // Transports consume or copy the frame before returning, so the retained
+    // queue head can be sent directly and is only removed after acceptance.
+    if (!_serial->isReplyRouteAvailable(reply_route)) return;
+    reply_frame = head->buf;
+  } else {
+    out_frame[0] = RESP_CODE_NO_MORE_MESSAGES;
+    out_len = 1;
+  }
+  const size_t accepted = _serial->writeFrameToRoute(reply_route, reply_frame, out_len);
+  if (have_message && accepted == out_len) {
+    popOfflineQueue();
+  }
 }
 
 float MyMesh::getAirtimeBudgetFactor() const {
@@ -5908,13 +5940,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
   } else if (cmd_frame[0] == CMD_SYNC_NEXT_MESSAGE) {
-    int out_len;
-    if ((out_len = getFromOfflineQueue(out_frame)) > 0) {
-      _serial->writeFrame(out_frame, out_len);
-    } else {
-      out_frame[0] = RESP_CODE_NO_MORE_MESSAGES;
-      _serial->writeFrame(out_frame, 1);
-    }
+    syncNextOfflineMessage();
   } else if (cmd_frame[0] == CMD_SET_RADIO_PARAMS) {
     if (len < 11) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);

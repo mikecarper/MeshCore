@@ -11,19 +11,18 @@ HARNESS = r'''
 #include <Arduino.h>
 #include <helpers/CarrierWaveCLI.h>
 #include <cassert>
+#include <helpers/radiolib/RadioInterruptEvents.h>
 #include <cstdio>
 #include <initializer_list>
 #define STATE_IDLE 0
 #define STATE_RX 1
 #define STATE_TX_WAIT 3
-#define STATE_INT_READY 16
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_ERR_INVALID_OUTPUT_POWER -1
 #define SX127X_CURRENT_LIMIT 120
 #define LORA_TX_POWER 17
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
-static uint8_t state;
-static void setFlag() { state |= STATE_INT_READY; }
+static void setFlag() {}
 struct Board {
   bool awake=false; unsigned before=0, after=0;
   void setRadioTestActive(bool value) { awake=value; }
@@ -56,6 +55,10 @@ struct Chip {
 };
 using CustomSX1276=Chip;
 struct RadioLibWrapper : mesh::Radio {
+  uint8_t state = STATE_RX;
+  RadioInterruptEvents events;
+  bool hasPendingRadioInterrupt() const { return events.pending(); }
+  bool registerInterruptAction() { chip.setPacketReceivedAction(setFlag); events.claim(); return true; }
   Chip chip; Chip* _radio=&chip;
   Board board; Board* _board=&board;
   mesh::RadioProfiles _profiles;
@@ -94,7 +97,7 @@ struct RadioLibWrapper : mesh::Radio {
   void endReconfigure(bool resume) { if (resume) startRecv(); }
   bool isChipBusy() { return busy; }
   bool isReceivingPacket() { return packet; }
-  bool isInRecvMode() const override { return (state & ~STATE_INT_READY)==STATE_RX; }
+  bool isInRecvMode() const override { return state==STATE_RX; }
   void stopReceiveDutyCycle() { ++rtc_stops; _rx_ps_armed=false; }
   mesh::RadioParamApplyResult tuneProfile(uint8_t target) {
     ++tunes;
@@ -164,8 +167,8 @@ int main() {
   // No mutation of packets already transmitting, completed RX, busy or receiving hardware.
   for (int reason : {0,1,2,3}) {
     RadioLibWrapper w;
-    if(reason==0) state=STATE_TX_WAIT;
-    if(reason==1) state|=STATE_INT_READY;
+    if(reason==0) w.state=STATE_TX_WAIT;
+    if(reason==1) w.events.record();
     if(reason==2) w.busy=true;
     if(reason==3) w.packet=true;
     assert(w.setCarrierWave(1,100)==Result::BUSY);

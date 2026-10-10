@@ -105,6 +105,7 @@ private:
     mesh::Packet packet;
     uint8_t next_frame;
     bool started;
+    uint8_t start_retries;
   };
   QueuedTransmit _tx_queue[TX_QUEUE_DEPTH];
   portMUX_TYPE _tx_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -116,6 +117,11 @@ private:
   volatile int _tx_callback_status;
   volatile uint32_t _tx_dropped;
   uint32_t _tx_dropped_reported;
+  uint32_t _tx_started_at = 0, _tx_retry_at = 0;
+  bool _sdk_teardown_failed = false;
+  static constexpr uint32_t TX_CALLBACK_TIMEOUT_MS = 1000;
+  static constexpr uint32_t TX_RETRY_DELAY_MS = 20;
+  static constexpr uint8_t TX_MAX_START_RETRIES = 3;
 
   /** Raw-mode fragment assemblies, keyed by source MAC. */
   mesh::espnow::ESPNowRawReassembler _raw_reassembler;
@@ -138,7 +144,7 @@ private:
   bool xorCrypt(uint8_t *data, size_t len);
 
   /** Parse and queue one serialized MeshCore packet. */
-  void receiveMeshPacket(const uint8_t *data, size_t len);
+  void receiveMeshPacket(mesh::Packet* packet, const uint8_t *data, size_t len);
 
   /**
    * ESP-NOW receive callback
@@ -151,8 +157,8 @@ private:
   void queueReceivedFrame(const uint8_t *mac, const uint8_t *data, int len);
 
   /** Parse a queued frame from loop(), never from the WiFi callback. */
-  void processReceivedFrame(const uint8_t *mac, const uint8_t *data,
-                            size_t len);
+  bool processReceivedFrame(mesh::Packet* packet, const uint8_t *mac,
+                            const uint8_t *data, size_t len);
 
   /** Atomically append one logical packet's one or two transport frames. */
   bool queueTransmitFrames(const mesh::espnow::ESPNowRawFrames& frames,

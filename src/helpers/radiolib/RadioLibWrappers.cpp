@@ -1,12 +1,12 @@
 
 #define RADIOLIB_STATIC_ONLY 1
 #include "RadioLibWrappers.h"
+#include "RadioInterruptEvents.h"
 
 #define STATE_IDLE       0
 #define STATE_RX         1
 #define STATE_TX_WAIT    3
 #define STATE_TX_DONE    4
-#define STATE_INT_READY 16
 
 // Bounded noise-floor calibration in continuous RX, including RXPS refreshes.
 // Requests are coalesced so retries cannot repeatedly force continuous RX.
@@ -19,7 +19,24 @@
 // sample set every fifteen minutes instead.
 #define NF_FAST_PROFILE_REFRESH_INTERVAL_MS (15UL * 60UL * 1000UL)
 
-static volatile uint8_t state = STATE_IDLE;
+// RadioLib callbacks carry no context. The internal STM32WLx radio needs one
+// physical slot; other classes retain two, including external STM32 radios.
+// Dual-profile scanning uses one slot. ISR storage has static lifetime, so a
+// callback already in flight cannot access a destroyed/rebound wrapper.
+#define RADIO_INTERRUPT_INTERNAL_CustomSTM32WLx 1
+#define RADIO_INTERRUPT_INTERNAL_(radio) RADIO_INTERRUPT_INTERNAL_##radio
+#define RADIO_INTERRUPT_INTERNAL(radio) RADIO_INTERRUPT_INTERNAL_(radio)
+#if RADIO_INTERRUPT_INTERNAL(RADIO_CLASS)
+  #define RADIO_INTERRUPT_SLOT_COUNT 1
+#else
+  #define RADIO_INTERRUPT_SLOT_COUNT 2
+#endif
+#undef RADIO_INTERRUPT_INTERNAL
+#undef RADIO_INTERRUPT_INTERNAL_
+#undef RADIO_INTERRUPT_INTERNAL_CustomSTM32WLx
+static RadioInterruptEvents radio_interrupt_events[RADIO_INTERRUPT_SLOT_COUNT];
+static RadioLibWrapper* radio_interrupt_owners[RADIO_INTERRUPT_SLOT_COUNT] = {};
+
 
 // The Adafruit nRF52 core's micros() falls back to 1024 Hz RTOS ticks when
 // DWT is disabled. A sub-millisecond retune then appears to take exactly
@@ -66,15 +83,76 @@ static uint32_t profileElapsedUs(uint32_t since, uint32_t now, bool dual_profile
 #endif
 }
 
-// this function is called when a complete packet
-// is transmitted by the module
 static
 #if defined(ESP8266) || defined(ESP32)
   ICACHE_RAM_ATTR
 #endif
-void setFlag(void) {
-  // we sent a packet, set the flag
-  state |= STATE_INT_READY;
+void setFlag0() { radio_interrupt_events[0].record(); }
+#if RADIO_INTERRUPT_SLOT_COUNT > 1
+static
+#if defined(ESP8266) || defined(ESP32)
+  ICACHE_RAM_ATTR
+#endif
+void setFlag1() { radio_interrupt_events[1].record(); }
+#endif
+
+bool RadioLibWrapper::registerInterruptAction() {
+  _loop_event_pending = false;
+#if RADIO_INTERRUPT_SLOT_COUNT == 1
+  // There is only one integrated radio. Ownership is still checked so a
+  // second wrapper cannot steal its callback or consume its pending event.
+  if (radio_interrupt_owners[0] != nullptr && radio_interrupt_owners[0] != this) {
+    _interrupt_slot = 0xff;
+    return false;
+  }
+  radio_interrupt_owners[0] = this;
+  _interrupt_slot = 0;
+  _radio->clearPacketReceivedAction();
+  radio_interrupt_events[0].claim();
+  _radio->setPacketReceivedAction(setFlag0);
+#else
+  if (_interrupt_slot >= RADIO_INTERRUPT_SLOT_COUNT || radio_interrupt_owners[_interrupt_slot] != this) {
+    _interrupt_slot = 0xff;
+    for (uint8_t i = 0; i < RADIO_INTERRUPT_SLOT_COUNT; ++i) {
+      if (radio_interrupt_owners[i] == nullptr) {
+        radio_interrupt_owners[i] = this;
+        _interrupt_slot = i;
+        break;
+      }
+    }
+  }
+  if (_interrupt_slot >= RADIO_INTERRUPT_SLOT_COUNT) return false;
+  _radio->clearPacketReceivedAction();
+  radio_interrupt_events[_interrupt_slot].claim();
+  _radio->setPacketReceivedAction(_interrupt_slot == 0 ? setFlag0 : setFlag1);
+#endif
+  return true;
+}
+
+void RadioLibWrapper::unregisterInterruptAction() {
+#if RADIO_INTERRUPT_SLOT_COUNT == 1
+  if (radio_interrupt_owners[0] == this) {
+    _radio->clearPacketReceivedAction();
+    radio_interrupt_owners[0] = nullptr;
+  }
+#else
+  if (_interrupt_slot < RADIO_INTERRUPT_SLOT_COUNT && radio_interrupt_owners[_interrupt_slot] == this) {
+    _radio->clearPacketReceivedAction();
+    radio_interrupt_owners[_interrupt_slot] = nullptr;
+  }
+#endif
+  _interrupt_slot = 0xff;
+}
+
+bool RadioLibWrapper::hasPendingRadioInterrupt() const {
+  return _loop_event_pending || (_interrupt_slot < RADIO_INTERRUPT_SLOT_COUNT && radio_interrupt_events[_interrupt_slot].pending());
+}
+
+bool RadioLibWrapper::claimRadioInterrupt() {
+  const bool startup = _loop_event_pending;
+  _loop_event_pending = false;
+  const bool interrupt = _interrupt_slot < RADIO_INTERRUPT_SLOT_COUNT && radio_interrupt_events[_interrupt_slot].claim();
+  return startup || interrupt;
 }
 
 void RadioLibWrapper::begin() {
@@ -84,7 +162,10 @@ void RadioLibWrapper::begin() {
   // still initializes lazily if an earlier crypto operation runs first.
   (void) mesh::initializeCC310Crypto();
 #endif
-  _radio->setPacketReceivedAction(setFlag);  // this is also SentComplete interrupt
+  if (!registerInterruptAction()) {
+    MESH_DEBUG_PRINTLN("RadioLibWrapper: no interrupt callback slot");
+    return;
+  }
   _radio->setPreambleLength(currentPreambleLength()); // longer preamble for lower SF improves reliability
 #if defined(LORA_FREQ) && defined(LORA_BW) && defined(LORA_SF)
   if (!_params_valid) {
@@ -109,7 +190,7 @@ void RadioLibWrapper::begin() {
   state = STATE_IDLE;
 
   if (_board->getStartupReason() == BD_STARTUP_RX_PACKET) {  // received a LoRa packet (while in deep sleep)
-    setFlag(); // LoRa packet is already received
+    _loop_event_pending = true; // Main-owned wake event; ISR remains sole publisher
   }
 
   _noise_floor = 0;
@@ -176,11 +257,11 @@ bool RadioLibWrapper::setTxPower(int8_t dbm) {
 
 uint8_t RadioLibWrapper::beginReconfigure() {
   if (_cw_active) return 2;
-  const uint8_t base_state = state & ~STATE_INT_READY;
+  const uint8_t base_state = state;
   // On SX126x/LR11xx duty-cycle RX, BUSY may remain asserted during the sleep
   // side of the cycle. Do not issue an IRQ/preamble query over SPI then; due
   // scheduled work will retry as soon as the next safe listen window opens.
-  if ((state & STATE_INT_READY) != 0 || base_state == STATE_TX_WAIT
+  if (hasPendingRadioInterrupt() || base_state == STATE_TX_WAIT
       || isChipBusy() || isReceivingPacket()) {
     return 2;
   }
@@ -191,6 +272,10 @@ uint8_t RadioLibWrapper::beginReconfigure() {
   } else if (resume_rx) {
     _radio->standby();
   }
+  // An RX completion during standby still owns its FIFO and old profile.
+  // Defer reconfiguration until recvRaw consumes it, rather than rearming and
+  // clearing that completion as part of endReconfigure().
+  if (hasPendingRadioInterrupt()) return 2;
   state = STATE_IDLE;
   return resume_rx;
 }
@@ -204,7 +289,7 @@ bool RadioLibWrapper::restoreAfterDeepInit() {
 
   _rx_ps_armed = false;
   state = STATE_IDLE;
-  _radio->setPacketReceivedAction(setFlag);
+  if (!registerInterruptAction()) return false;
 
   bool restored;
   if (_params_valid) {
@@ -663,8 +748,8 @@ void RadioLibWrapper::resetAGC() {
 
 bool RadioLibWrapper::recoverRadio(bool hard) {
   if (_cw_active) return false;
-  const uint8_t base_state = state & ~STATE_INT_READY;
-  if ((state & STATE_INT_READY) != 0 || base_state == STATE_TX_WAIT) return false;
+  const uint8_t base_state = state;
+  if (hasPendingRadioInterrupt() || base_state == STATE_TX_WAIT) return false;
 
 #ifdef RADIO_LIVENESS_SOFT_ONLY
   // STM32WL integrates the radio into the MCU and has no independent reset.
@@ -709,7 +794,7 @@ void RadioLibWrapper::rxPsWatchdogCheck() {
   // don't interfere mid-transmit or with a completed-but-unread packet
   // (a pending DIO1 event is itself proof the radio is alive; recvRaw() will
   // re-arm and re-base the watchdog)
-  if ((state & STATE_INT_READY) != 0 || (state & ~STATE_INT_READY) == STATE_TX_WAIT) {
+  if (hasPendingRadioInterrupt() || state == STATE_TX_WAIT) {
     _wd_observe_until = 0;
     return;
   }
@@ -780,15 +865,11 @@ void RadioLibWrapper::rxPsWatchdogCheck() {
 void RadioLibWrapper::requestRestartRecv() {
   // An RX interrupt can arrive between the caller's idle check and this state
   // transition. Preserve that flag so the completed packet is still consumed.
-  noInterrupts();
-  if ((state & ~STATE_INT_READY) != STATE_TX_WAIT) {
-    state &= STATE_INT_READY;
-  }
-  interrupts();
+  if (state != STATE_TX_WAIT) state = STATE_IDLE;
 }
 
 bool RadioLibWrapper::isPacketPendingOrReceiving() {
-  return (state & STATE_INT_READY) != 0 || isReceivingPacket();
+  return hasPendingRadioInterrupt() || isReceivingPacket();
 }
 
 void RadioLibWrapper::noiseFloorCalibCheck(unsigned long now) {
@@ -828,7 +909,7 @@ void RadioLibWrapper::endNoiseFloorCalib(unsigned long now) {
   // force a receive re-arm back into duty-cycle mode, but don't clobber a
   // completed-but-unread packet or an in-flight TX (recvRaw()/onSendFinished()
   // will re-arm right after those anyway; same guard style as setRxPowerSaving)
-  if ((state & ~STATE_INT_READY) != STATE_TX_WAIT
+  if (state != STATE_TX_WAIT
       && !isPacketPendingOrReceiving()) {
     requestRestartRecv();
   }
@@ -924,11 +1005,14 @@ bool RadioLibWrapper::stopCarrierWave() {
     _cw_retry_at = static_cast<uint32_t>(millis()) + 100;
     return false;  // hold normal work until stopping the carrier is confirmed
   }
+  if (!registerInterruptAction()) {
+    _cw_retry_at = static_cast<uint32_t>(millis()) + 100;
+    return false;
+  }
   _cw_active = false;
   _cw_stopping = false;
   _rx_ps_armed = false;
   state = STATE_IDLE;
-  _radio->setPacketReceivedAction(setFlag);
   _profile_refresh_required = true;
   const uint8_t restore = _profiles.enabled() ? _cw_restore_profile : 0;
   const bool tuned = tuneProfile(restore) == mesh::RadioParamApplyResult::APPLIED;
@@ -1103,9 +1187,7 @@ void RadioLibWrapper::startRecv() {
     // A very short frame may complete while startReceiveMode() returns.
     _profile_visit_stamp = profileTimestamp(_profiles.enabled());
     // Retain that RX interrupt instead of overwriting it with software state.
-    noInterrupts();
-    state = (state & STATE_INT_READY) | STATE_RX;
-    interrupts();
+    state = STATE_RX;
     // RSSI is unsettled after every RX entry, including CAD/TX completion.
     // Keep the partial block, but wait for the frontend before its next sample.
     _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
@@ -1145,18 +1227,25 @@ void RadioLibWrapper::stopReceiveDutyCycle() {
 }
 
 bool RadioLibWrapper::isPacketReady() {
-  if (!_rx_ps_armed) return true;   // continuous RX: DIO1 only fires for RxDone/TxDone here
-
   // In duty-cycle RX the DIO1 interrupt also fires for RX timeout (false
   // preamble detect) and header errors. GetRxBufferStatus still reports the
   // *previous* packet's length then, so reading the buffer would re-deliver
   // stale bytes as a ghost packet. Only read when the radio reports RxDone.
-  // (checkIrq errors are treated as ready, falling back to old behaviour.)
-  return _radio->checkIrq(RADIOLIB_IRQ_RX_DONE) != 0;
+  // An unsupported probe retains the legacy event-only behavior.
+  const int16_t ready = _radio->checkIrq(RADIOLIB_IRQ_RX_DONE);
+  if (ready <= 0 && ready != RADIOLIB_ERR_UNSUPPORTED) {
+    // DIO can remain high after a transient SPI error, so no second edge will
+    // wake us. Retry the probe without treating the error as a valid packet.
+    _loop_event_pending = ++_irq_probe_failures < 3;
+    if (!_loop_event_pending) _irq_probe_failures = 0;
+    return false;
+  }
+  _irq_probe_failures = 0;
+  return ready > 0 || ready == RADIOLIB_ERR_UNSUPPORTED;
 }
 
 bool RadioLibWrapper::isInRecvMode() const {
-  return (state & ~STATE_INT_READY) == STATE_RX;
+  return state == STATE_RX;
 }
 
 // RX PowerSaving
@@ -1187,9 +1276,23 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
 int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
   if (_cw_active) return 0;
   int len = 0;
-  if (state & STATE_INT_READY) {
+  #if defined(USE_LR2021)
+  bool receiver_stopped = false;
+  #endif
+  if (claimRadioInterrupt()) {
     last_radio_interrupt_millis = millis();   // ISR fired -> radio hardware is alive
     if (isPacketReady()) {
+      #if defined(USE_LR2021)
+      // The LR2021 base reader clears FIFO/IRQs while otherwise staying in
+      // continuous RX. Freeze reception before taking length/status/FIFO
+      // snapshots so a new packet cannot be cleared halfway through the read.
+      if (_radio->standby() != RADIOLIB_ERR_NONE) {
+        n_recv_errors++;
+        state = STATE_IDLE;
+        return 0;
+      }
+      receiver_stopped = true;
+      #endif
       if (_rx_ps_armed) {
         // RxDone stops the active receive window, but the duty-cycle RTC can
         // still be running. Stop it before reading and re-arming another mode.
@@ -1214,11 +1317,21 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
         }
       }
     }
+    // Retry a transient IRQ-status probe before rearming/clearing hardware.
+    if (_loop_event_pending) return 0;
     #if defined(USE_LR2021)
-    state = STATE_RX;     // LR2021 stays in Rx after readData, calling startReceive while still in Rx throws -706 errors
-    #else
-    state = STATE_IDLE;   // need another startReceive()
+    // An early FIFO/SPI failure must not leave RX_DONE asserted. Standby also
+    // covers spurious events for which no packet was read. No new hardware RX
+    // event can arrive during this acknowledgement; rearm happens afterwards.
+    if ((!receiver_stopped && _radio->standby() != RADIOLIB_ERR_NONE)
+        || static_cast<LR2021*>(_radio)->clearRxFifo() != RADIOLIB_ERR_NONE
+        || _radio->clearIrqFlags(RADIOLIB_LR2021_IRQ_RX_DONE) != RADIOLIB_ERR_NONE) {
+      n_recv_errors++;
+      state = STATE_IDLE;
+      return 0;
+    }
     #endif
+    state = STATE_IDLE;   // need another startReceive()
   }
 
   if (len > 0 && _rx_ps_enabled && !_rx_ps_continuous_fallback) {
@@ -1247,13 +1360,13 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
 void RadioLibWrapper::finishReceiveProcessing() {
   if (!_rx_hold_continuous) return;
 
-  if ((state & ~STATE_INT_READY) == STATE_TX_WAIT) {
+  if (state == STATE_TX_WAIT) {
     _rx_hold_continuous = false;
     return;
   }
   // A second packet may have completed while Dispatcher handled the first.
   // Leave continuous RX intact until recvRaw() consumes that pending packet.
-  if ((state & STATE_INT_READY) != 0 || isReceivingPacket()) {
+  if (hasPendingRadioInterrupt() || isReceivingPacket()) {
     return;
   }
 
@@ -1277,7 +1390,7 @@ uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
 }
 
 bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
-  if (_cw_active) return false;
+  if (_cw_active || hasPendingRadioInterrupt()) return false;
   _rx_hold_continuous = false;
   if (_rx_ps_armed) {
     // stop the duty-cycle sequencer before SetTx, otherwise its next RTC
@@ -1285,6 +1398,11 @@ bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
     stopReceiveDutyCycle();
   }
   _board->onBeforeTransmit();
+  if (hasPendingRadioInterrupt()) {
+    _board->onAfterTransmit();
+    return false;
+  }
+  _irq_probe_failures = 0;
   int err = _radio->startTransmit((uint8_t *) bytes, len);
   if (err == RADIOLIB_ERR_NONE) {
     state = STATE_TX_WAIT;
@@ -1302,7 +1420,15 @@ bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
 }
 
 bool RadioLibWrapper::isSendComplete() {
-  if (state & STATE_INT_READY) {
+  if (state == STATE_TX_WAIT && claimRadioInterrupt()) {
+    const int16_t done = _radio->checkIrq(RADIOLIB_IRQ_TX_DONE);
+    if (done <= 0 && done != RADIOLIB_ERR_UNSUPPORTED) {
+      // getIrqFlags() may hide a failed SPI read as zero. Once DIO fired,
+      // keep probing until TX_DONE is observed or Dispatcher expires this TX.
+      _loop_event_pending = true;
+      return false;
+    }
+    _irq_probe_failures = 0;
     state = STATE_IDLE;
     n_sent++;
     return true;
@@ -1312,6 +1438,10 @@ bool RadioLibWrapper::isSendComplete() {
 
 void RadioLibWrapper::onSendFinished() {
   _radio->finishTransmit();
+  // Receive has not been rearmed yet: these are completion/probe events for
+  // the retired TX. They must not block the Dispatcher's timeout recovery.
+  claimRadioInterrupt();
+  _irq_probe_failures = 0;
   _board->onAfterTransmit();
   state = STATE_IDLE;
 }
@@ -1347,7 +1477,7 @@ int16_t RadioLibWrapper::performChannelScanWithTimeout(unsigned long timeout_ms)
 
 bool RadioLibWrapper::isChannelActive() {
   if (_cw_active) return true;
-  if (isPacketPendingOrReceiving() || (state & ~STATE_INT_READY) == STATE_TX_WAIT) return true;
+  if (isPacketPendingOrReceiving() || state == STATE_TX_WAIT) return true;
   // int.thresh: RSSI-based interference detection (relative to noise floor).
   // In RX duty-cycle mode only checked while the chip is in a listen window
   // (during the sleep window the frontend is off and the read would stall).
@@ -1362,12 +1492,12 @@ bool RadioLibWrapper::isChannelActive() {
       stopReceiveDutyCycle();
     }
     int16_t result = performChannelScan();
-    // scanChannel() triggers DIO interrupt (CAD done) which sets STATE_INT_READY
-    // via setFlag() ISR. Clear it before restarting RX so recvRaw() doesn't
+    // CAD also publishes an IRQ event. Consume it before restarting RX so recvRaw() doesn't
     // try to read a non-existent packet and count a spurious recv error.
+    claimRadioInterrupt();
     state = STATE_IDLE;
     startRecv();
-    if (result != RADIOLIB_CHANNEL_FREE || (state & ~STATE_INT_READY) != STATE_RX
+    if (result != RADIOLIB_CHANNEL_FREE || state != STATE_RX
         || isPacketPendingOrReceiving()) {
       _board->n_cad_busy++;
       return true;

@@ -10,6 +10,7 @@ protected:
   int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
 
 public:
+  ~CustomLLCC68Wrapper() { unregisterInterruptAction(); }
   CustomLLCC68Wrapper(CustomLLCC68& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void powerOff() { _radio->standby(); _radio->sleep(); }

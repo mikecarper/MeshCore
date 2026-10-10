@@ -127,16 +127,39 @@ void BaseChatMesh::sendAckTo(const ContactInfo& dest, const uint8_t* ack_hash, u
   }
 }
 
+static uint32_t contactClockBootstrapLimit(uint32_t current_time) {
+  // A corrupt contact must not permanently move the clock into the far future.
+  // Use the build year while the RTC is unset, and a rolling bound when a
+  // long-lived installation already has a clock beyond that build horizon.
+  constexpr const char* date = __DATE__;
+  constexpr unsigned year = (date[7] - '0') * 1000 + (date[8] - '0') * 100
+                          + (date[9] - '0') * 10 + (date[10] - '0') + 4;
+  constexpr unsigned previous_year = year - 1;
+  // Gregorian leap days before this year, minus the 477 before 1970.
+  // Fold the build horizon at compile time instead of linking a calendar loop.
+  constexpr uint64_t days = 365ULL * (year - 1970)
+      + previous_year / 4 - previous_year / 100 + previous_year / 400 - 477;
+  constexpr uint64_t build_limit = days * 86400ULL;
+  constexpr uint32_t build_bound = build_limit < UINT32_MAX
+      ? uint32_t(build_limit) : UINT32_MAX;
+  constexpr uint32_t clock_window = 366UL * 86400UL;
+  const uint32_t clock_bound = current_time > UINT32_MAX - clock_window
+      ? UINT32_MAX : current_time + clock_window;
+  return clock_bound > build_bound ? clock_bound : build_bound;
+}
+
 void BaseChatMesh::bootstrapRTCfromContacts() {
+  const uint32_t current_time = getRTCClock()->getCurrentTime();
+  const uint32_t max_time = contactClockBootstrapLimit(current_time);
   uint32_t latest = 0;
   for (int i = 0; i < num_contacts; i++) {
-    if (contacts[i].lastmod > latest) {
+    if (contacts[i].lastmod > latest && contacts[i].lastmod < max_time) {
       latest = contacts[i].lastmod;
     }
   }
   if (latest != 0 && latest != UINT32_MAX) {
     const uint32_t contact_floor = latest + 1;
-    if (contact_floor > getRTCClock()->getCurrentTime()) {
+    if (contact_floor > current_time) {
       getRTCClock()->setCurrentTime(contact_floor);
     }
   }

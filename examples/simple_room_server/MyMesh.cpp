@@ -913,36 +913,30 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     bool send_ack = false;
 
     if (flags == TXT_TYPE_PLAIN) {
-      const bool is_guest =
-          (client->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST;
-      if (is_guest) {
-        if (sender_timestamp < client->extra.room.last_post_timestamp) {
-          MESH_DEBUG_PRINTLN("onPeerDataRecv: stale room post detected");
-          return;
-        }
-        client->extra.room.last_post_timestamp = sender_timestamp;
-      } else {
-        uint8_t message_fingerprint[MAX_HASH_SIZE];
-        mesh::Utils::sha256(message_fingerprint, sizeof(message_fingerprint),
-                            client->id.pub_key, PUB_KEY_SIZE,
-                            (const uint8_t*)text, text_len);
-        const auto replay_decision = recent_room_posts.classifyAndRemember(
-            message_fingerprint, sender_timestamp,
-            client->extra.room.last_post_timestamp);
+      const uint8_t role = client->permissions & PERM_ACL_ROLE_MASK;
+      // Management roles grant their specific CLI permissions, not room posting.
+      if (role != PERM_ACL_READ_WRITE && role != PERM_ACL_ADMIN) return;
 
-        using ReplayDecision =
-            mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE>::ReplayDecision;
-        if (replay_decision == ReplayDecision::StaleOrMismatched) {
-          MESH_DEBUG_PRINTLN("onPeerDataRecv: stale or mismatched room post detected");
-          return;
-        }
-        if (replay_decision == ReplayDecision::NewMessage) {
-          addPost(client, text);
-        }
-        // Exact retries are ACKed again regardless of whether newer posts have
-        // advanced this client's room-post replay timestamp.
-        send_ack = true;
+      uint8_t message_fingerprint[MAX_HASH_SIZE];
+      mesh::Utils::sha256(message_fingerprint, sizeof(message_fingerprint),
+                          client->id.pub_key, PUB_KEY_SIZE,
+                          (const uint8_t*)text, text_len);
+      const auto replay_decision = recent_room_posts.classifyAndRemember(
+          message_fingerprint, sender_timestamp,
+          client->extra.room.last_post_timestamp);
+
+      using ReplayDecision =
+          mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE>::ReplayDecision;
+      if (replay_decision == ReplayDecision::StaleOrMismatched) {
+        MESH_DEBUG_PRINTLN("onPeerDataRecv: stale or mismatched room post detected");
+        return;
       }
+      if (replay_decision == ReplayDecision::NewMessage) {
+        addPost(client, text);
+      }
+      // Exact retries are ACKed again regardless of whether newer posts have
+      // advanced this client's room-post replay timestamp.
+      send_ack = true;
     } else { // TXT_TYPE_CLI_DATA or TXT_TYPE_CLI_COMMAND
       uint32_t request_id = sender_timestamp;
       mesh::RemoteCliRequest::parse(data, len, 5, request_id);

@@ -218,6 +218,7 @@ public:
  int _active_format=0,_rx_mux=0,_rx_head=0,_rx_tail=0,_rx_count=0,_rx_dropped=0,_rx_dropped_reported=0;
  int _tx_mux=0,_tx_head=0,_tx_tail=0,_tx_count=0,_tx_waiting=0,_tx_callback_done=0;
  int _tx_callback_status=0,_tx_dropped=0,_tx_dropped_reported=0;
+ uint32_t _tx_started_at=0,_tx_retry_at=0;bool _sdk_teardown_failed=false;
  mesh::espnow::ESPNowRawReassembler _raw_reassembler;
  struct QueuedTransmit {bool started=false;int packet=0;};
  static constexpr int TX_QUEUE_DEPTH=2;

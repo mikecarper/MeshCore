@@ -156,6 +156,13 @@ class CustomLR2021 : public LR2021 {
     }
 
     int16_t startReceive() override {
+      // setRxPath requires standby, including retries after failed read cleanup.
+      int16_t status = standby();
+      if (status != RADIOLIB_ERR_NONE) return status;
+      // Failed cleanup can leave bytes behind; no new RX window may inherit
+      // the preceding FIFO even when the first discard attempt failed.
+      status = clearRxFifo();
+      if (status != RADIOLIB_ERR_NONE) return status;
       // include the PREAMBLE_DETECTED irq bit in reported flags
       return LR2021::startReceive(RADIOLIB_LR2021_RX_TIMEOUT_INF, RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED), RADIOLIB_IRQ_RX_DEFAULT_MASK, 0);
     }
@@ -165,18 +172,10 @@ class CustomLR2021 : public LR2021 {
       uint32_t irq = getIrqStatus();
       bool preamble = irq & RADIOLIB_LR2021_IRQ_PREAMBLE_DETECTED;  // bit 5
       bool header   = irq & RADIOLIB_LR2021_IRQ_LORA_HEADER_VALID;  // bit 6
-      bool hdrErr   = irq & RADIOLIB_LR2021_IRQ_LORA_HDR_CRC_ERROR; // bit 9
       uint32_t now  = millis();
-      if (hdrErr) {
-        clearIrqFlags(RADIOLIB_LR2021_IRQ_PREAMBLE_DETECTED | RADIOLIB_LR2021_IRQ_LORA_HEADER_VALID | RADIOLIB_LR2021_IRQ_LORA_HDR_CRC_ERROR);
-        _activityAt = 0;
-        _headerSeen = false;
-        return false;
-      }
       if (!header && _headerSeen) {
         // something cleared the header flag, reset our state.
         _activityAt = 0; _headerSeen = false;
-        return false;
       }
 
       if (header) {
@@ -201,6 +200,22 @@ class CustomLR2021 : public LR2021 {
       }
       _activityAt = 0; _headerSeen = false;
       return false;
+    }
+
+    int16_t readData(uint8_t* data, size_t len) override {
+      uint16_t fifo_level = 0;
+      const int16_t status = getRxFifoLevel(&fifo_level);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      const size_t expected = len != 0 ? len : getPacketLength();
+      if (fifo_level != expected || expected == 0) {
+        // RX_DONE with an empty FIFO, or overlapping continuous-RX packets,
+        // must not turn repeated padding or mixed bytes into a mesh packet.
+        // Consume the suspect FIFO so a subsequent clean frame can recover.
+        const int16_t cleared = clearRxFifo();
+        if (cleared != RADIOLIB_ERR_NONE) return cleared;
+        return RADIOLIB_ERR_PACKET_TOO_SHORT;
+      }
+      return LR2021::readData(data, len);
     }
 
     void setPreambleMillis(uint32_t preambleMillis) {

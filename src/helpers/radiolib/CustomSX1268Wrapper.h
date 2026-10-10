@@ -14,6 +14,7 @@ protected:
   int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
 
 public:
+  ~CustomSX1268Wrapper() { unregisterInterruptAction(); }
   CustomSX1268Wrapper(CustomSX1268& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void powerOff() { _radio->standby(); _radio->sleep(); }

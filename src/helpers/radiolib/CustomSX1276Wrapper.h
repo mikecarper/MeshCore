@@ -9,6 +9,7 @@
 
 class CustomSX1276Wrapper : public RadioLibWrapper {
 public:
+  ~CustomSX1276Wrapper() { unregisterInterruptAction(); }
   CustomSX1276Wrapper(CustomSX1276& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsCarrierWave() const override { return supportsRadioDeepInit(); }
 

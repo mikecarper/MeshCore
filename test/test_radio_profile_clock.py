@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src/helpers/radiolib/RadioLibWrappers.cpp").read_text()
 CLOCK = "static void syncProfileClock(bool dual_profile) {" + SOURCE.split(
     "static void syncProfileClock(bool dual_profile) {", 1
-)[1].split("// this function is called", 1)[0]
+)[1].split("\nstatic\n#if defined(ESP8266)", 1)[0]
 
 HARNESS = r'''
 #include <cassert>

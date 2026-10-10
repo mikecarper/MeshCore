@@ -14,6 +14,14 @@ pio test -e native                      # all suites except KISS modem
 pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_radio_receive_contract.py # real CAD/re-arm/calibration/mode-watchdog methods
+python3 -B test/test_protocol_parser_bounds.py -v # malformed anonymous requests/adverts, ASan/UBSan
+python3 -B test/test_companion_offline_delivery.py -v # full/disconnected requester and shared inbox delivery
+python3 -B test/test_companion_lfs_traversal.py -v # raw LittleFS traversal lock and error cleanup
+python3 -B test/test_room_post_permissions.py -v # all ACL roles, revocation and exact retry ACKs
+python3 -B test/test_contact_clock_bootstrap.py -v # future contact corruption and long-lived clock bounds
+python3 -B test/test_rtc_discovery.py -v # register screening, I2C faults and fallback without device writes
+python3 -B test/test_radio_interrupt_recovery.py -v # real ISR handoff, RX/TX races, LR2021 FIFO/IRQ recovery
+python3 -B test/test_bridge_recovery.py -v # packet-pool exhaustion, ESP-NOW start failure and callback timeout
 python3 test/test_sx126x_receive_mode.py    # pinned RadioLib SPI transport/status-byte regression
 python3 test/test_firmware_ram.py        # every firmware hook, ELF heaps, reservations, RAM report binding
 python3 test/test_indicator_display_profile.py  # Indicator RAM/scale contract
@@ -297,3 +305,14 @@ unbonded-central rejection test, or a true all-power-removed cold boot. See the
 - Keep logic testable by extracting pure functions into headers (as
   `MQTTObserverValidation.h` / `WebConfigKeys.h` / `MQTTTopicTemplate.h` do) and
   having the firmware call the same functions.
+- nRF52 build recipes: `python3 -B test/test_nrf52_size_profile.py -v` sources
+  the real shell helper without running PlatformIO. It checks repeater, Full
+  Companion, Ethernet, and constrained OTA eligibility; the effective `-Oz`
+  optimizer; retained features and the 8 KiB stack; unchanged excluded targets;
+  the existing measured flood-table limits; and lossless target-name compression
+  scoped to nRF52 Full Companion seeders. `test/test_ota_target_names.py` verifies
+  every decoded name, target ID, bounded chunk, and malformed-record rejection.
+  `test/test_ota_cli_listing.py` runs the actual OTA status/listing dispatcher
+  with plain and compressed tables in seeder and receiver profiles. It checks
+  all target names, bounded replies, pagination and aliases, and keeps decoder
+  calls separate from unrelated control-command stack buffers.

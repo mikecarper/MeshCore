@@ -8,7 +8,7 @@
 #ifdef ESP32
 // check_firmware_ram.py reserves this object plus the UART driver's runtime
 // allocation even when a combined Full image starts with the UART disabled.
-static_assert(sizeof(RS232Bridge) <= 4096, "Update the ESP32 UART heap budget");
+static_assert(sizeof(RS232Bridge) <= 2304, "Update the ESP32 UART heap budget");
 #endif
 #if defined(NRF52_PLATFORM) && defined(RAK4631_COMBINED_ETHERNET)
 // The combined RAK RAM policy reserves this object plus allocator metadata
@@ -24,6 +24,8 @@ RS232Bridge::RS232Bridge(NodePrefs *prefs, Stream &serial, int16_t rx_pin,
 
 void RS232Bridge::begin() {
   _initialized = false;
+  _rx_buffer_pos = 0;
+  _rx_packet_ready = false;
   BRIDGE_DEBUG_PRINTLN("Initializing at %d baud...\n", _prefs->bridge_baud);
 #if defined(ESP32)
   if (!((HardwareSerial *)_serial)->setPins(_rx_pin, _tx_pin)) return;
@@ -58,6 +60,20 @@ void RS232Bridge::end() {
 
   // Update bridge state
   _initialized = false;
+  _rx_buffer_pos = 0;
+  _rx_packet_ready = false;
+}
+
+void RS232Bridge::drainReceivedPackets() {
+  if (!_rx_packet_ready) return;
+  mesh::Packet* pkt = _mgr->allocNew();
+  if (!pkt) return;
+  const uint16_t len = (_rx_buffer[2] << 8) | _rx_buffer[3];
+  const bool valid = pkt->readFrom(_rx_buffer + 4, len);
+  _rx_buffer_pos = 0;
+  _rx_packet_ready = false;
+  if (valid) onPacketReceived(pkt);
+  else _mgr->free(pkt);
 }
 
 void RS232Bridge::loop() {
@@ -66,8 +82,14 @@ void RS232Bridge::loop() {
     return;
   }
 
-  while (_serial->available()) {
-    uint8_t b = _serial->read();
+  drainReceivedPackets();
+  // Snapshot bounded work; a noisy UART must not starve mesh/radio service.
+  int remaining = _serial->available();
+  if (remaining > 512) remaining = 512;
+  while (remaining-- > 0 && !_rx_packet_ready) {
+    const int value = _serial->read();
+    if (value < 0) break;
+    const uint8_t b = static_cast<uint8_t>(value);
 
     if (_rx_buffer_pos < 2) {
       // Waiting for magic word
@@ -90,7 +112,7 @@ void RS232Bridge::loop() {
         uint16_t len = (_rx_buffer[2] << 8) | _rx_buffer[3];
 
         // Validate length field
-        if (len > (MAX_TRANS_UNIT + 1)) {
+        if (len == 0 || len > (MAX_TRANS_UNIT + 1)) {
           BRIDGE_DEBUG_PRINTLN("RX invalid length %d, resetting\n", len);
           _rx_buffer_pos = 0; // Invalid length, reset
           continue;
@@ -101,25 +123,17 @@ void RS232Bridge::loop() {
 
           if (validateChecksum(_rx_buffer + 4, len, received_checksum)) {
             BRIDGE_DEBUG_PRINTLN("RX, len=%d crc=0x%04x\n", len, received_checksum);
-            mesh::Packet *pkt = _mgr->allocNew();
-            if (pkt) {
-              if (pkt->readFrom(_rx_buffer + 4, len)) {
-                onPacketReceived(pkt);
-              } else {
-                BRIDGE_DEBUG_PRINTLN("RX failed to parse packet\n");
-                _mgr->free(pkt);
-              }
-            } else {
-              BRIDGE_DEBUG_PRINTLN("RX failed to allocate packet\n");
-            }
+            _rx_packet_ready = true;
+            drainReceivedPackets(); // continue this bounded batch when the pool is available
           } else {
             BRIDGE_DEBUG_PRINTLN("RX checksum mismatch, rcv=0x%04x\n", received_checksum);
           }
-          _rx_buffer_pos = 0; // Reset for next packet
+          if (!_rx_packet_ready) _rx_buffer_pos = 0; // Keep a complete valid frame
         }
       }
     }
   }
+  drainReceivedPackets();
 }
 
 void RS232Bridge::sendPacket(mesh::Packet *packet) {
@@ -137,8 +151,8 @@ void RS232Bridge::sendPacket(mesh::Packet *packet) {
   if (!allowsPacket(packet)) return;
 
   if (!_seen_packets.wasSeen(packet)) {
-    _seen_packets.markSeen(packet);
-
+    const int expected = packet->getRawLength();
+    if (expected <= 0 || expected > MAX_TRANS_UNIT + 1) return;
     uint8_t buffer[MAX_SERIAL_PACKET_SIZE];
     uint16_t len = packet->writeTo(buffer + 4);
 
@@ -160,7 +174,9 @@ void RS232Bridge::sendPacket(mesh::Packet *packet) {
     buffer[5 + len] = checksum & 0xFF;        // Checksum low byte
 
     // Send complete packet
-    _serial->write(buffer, len + SERIAL_OVERHEAD);
+    if (_serial->write(buffer, len + SERIAL_OVERHEAD) == static_cast<size_t>(len + SERIAL_OVERHEAD)) {
+      _seen_packets.markSeen(packet);
+    }
 
     BRIDGE_DEBUG_PRINTLN("TX, len=%d crc=0x%04x\n", len, checksum);
   }

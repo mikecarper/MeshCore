@@ -142,6 +142,11 @@ private:
   /** Buffer for building received packets */
   uint8_t _rx_buffer[MAX_SERIAL_PACKET_SIZE];
 
+  // Retain the completed parser buffer while the shared pool is exhausted;
+  // unread bytes remain in the UART driver until this frame is delivered.
+  bool _rx_packet_ready = false;
+  void drainReceivedPackets();
+
   /** Current position in the receive buffer */
   uint16_t _rx_buffer_pos = 0;
 };

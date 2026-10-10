@@ -35,6 +35,7 @@ protected:
   }
 
 public:
+  ~CustomSX1262Wrapper() { unregisterInterruptAction(); }
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsCarrierWave() const override { return true; }
 

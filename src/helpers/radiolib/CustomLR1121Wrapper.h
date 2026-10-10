@@ -6,6 +6,7 @@
 
 class CustomLR1121Wrapper : public RadioLibWrapper {
 public:
+  ~CustomLR1121Wrapper() { unregisterInterruptAction(); }
   CustomLR1121Wrapper(CustomLR1121& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void powerOff() {

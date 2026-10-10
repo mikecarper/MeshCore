@@ -101,6 +101,17 @@ jobs:
       - name: Run Unit Tests
         run: pio test -e native -e native_kiss_modem -e native_ota_channel -vv
 
+      - name: Verify parser, delivery, storage, permissions, clock and radio stability
+        run: |
+          python3 -B test/test_protocol_parser_bounds.py -v
+          python3 -B test/test_companion_offline_delivery.py -v
+          python3 -B test/test_companion_lfs_traversal.py -v
+          python3 -B test/test_room_post_permissions.py -v
+          python3 -B test/test_contact_clock_bootstrap.py -v
+          python3 -B test/test_rtc_discovery.py -v
+          python3 -B test/test_radio_interrupt_recovery.py -v
+          python3 -B test/test_bridge_recovery.py -v
+
       - name: Verify signed private fleet management
         run: |
           python3 -B test/test_fleet_command_crypto.py -v
@@ -471,8 +482,10 @@ jobs:
       - name: Verify nRF52 infrastructure trims and unchanged Companion scope
         run: |
           python3 -B test/test_nrf52_flash_trim.py -v
+          python3 -B test/test_nrf52_size_profile.py -v
           python3 -B test/test_nrf52_tft_font_trim.py -v
           python3 -B test/test_ota_target_names.py -v
+          python3 -B test/test_ota_cli_listing.py -v
 
       - name: Verify compact same-size fonts and lossless rendering
         run: |

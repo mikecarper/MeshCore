@@ -11,6 +11,7 @@ protected:
   int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
 
 public:
+  ~CustomSTM32WLxWrapper() { unregisterInterruptAction(); }
   CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
 protected:

@@ -29,6 +29,15 @@ struct PacketMillis {
 
 class RadioLibWrapper : public mesh::Radio {
 protected:
+  // Mode is owned by this loop, not by the ISR or another wrapper.
+  uint8_t state = 0;
+  uint8_t _interrupt_slot = 0xff;
+  bool _loop_event_pending = false;
+  uint8_t _irq_probe_failures = 0;
+  bool registerInterruptAction();
+  void unregisterInterruptAction();
+  bool hasPendingRadioInterrupt() const;
+  bool claimRadioInterrupt();
   PhysicalLayer* _radio;
   mesh::MainBoard* _board;
   uint32_t n_recv, n_sent, n_recv_errors;
@@ -217,7 +226,7 @@ protected:
   void checkReceiveMode(uint32_t now);
   virtual void doResetAGC();
 
-public:
+protected:
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board)
       : _radio(&radio), _board(&board), _noise_floor_valid(false), _nf_refresh_requested(true),
         _rx_ps_enabled(false), _rx_ps_armed(false),
@@ -237,6 +246,12 @@ public:
           _cad_scan_timeout_override_ms = 0;
         }
 
+  // Concrete wrappers detach their callbacks before base destruction. Keep
+  // this destructor trivial so compact targets do not need a base vtable; a
+  // protected lifetime also rejects deletion through a borrowed base pointer.
+  ~RadioLibWrapper() = default;
+
+public:
   void begin() override;
   mesh::RadioParamApplyResult setCarrierWave(uint8_t profile, uint32_t duration_ms) override;
   bool isCarrierWaveActive() const override { return _cw_active; }

@@ -13,6 +13,7 @@ class CustomLR1110Wrapper : public RadioLibWrapper {
   DeepInitCallback _deep_init;
 
 public:
+  ~CustomLR1110Wrapper() { unregisterInterruptAction(); }
   CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board)
       : RadioLibWrapper(radio, board), _deep_init(NULL) { }
   bool supportsCarrierWave() const override { return true; }

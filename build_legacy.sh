@@ -3835,18 +3835,13 @@ apply_nrf52_size_profile() {
     return 0
   fi
 
-  # The Adafruit nRF52 platform defaults release builds to -Ofast. Once the
-  # runtime software Ed25519 fallback is linked alongside CC310, that setting
-  # fully expands repeated Curve25519 arithmetic and wastes tens of kilobytes.
-  # Keep hardware crypto, RNG mixing, the software fallback, and board features;
-  # select the size optimizer for repeaters, constrained self-updating images
-  # and Full Companion source images, especially their diagnostic profile.
-  # Full-sensor repeaters also need this after adding the second radio profile;
-  # changing optimization preserves their sensors and protocol features.
-  # The legacy RAK4631 Ethernet Companion also needs -Os to fit its declared
-  # application limit; keep its sensors, transports, OTA and layout unchanged.
+  # The framework defaults to -Ofast, which expands repeated Curve25519
+  # arithmetic when software Ed25519 is linked alongside CC310. Inherit the
+  # canonical nrf52_base -Oz optimizer rather than appending a weaker -Os
+  # override for repeaters, Full Companion, Ethernet, and constrained OTA
+  # recipes. Keep hardware crypto, software fallback, sensors, transports,
+  # OTA, the 8 KiB loop stack, and each board's application/storage layout.
   append_platformio_build_unflags "-Ofast"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -Os"
 
   # These color-display repeaters reserve a 64 KiB reset-retained OTA arena
   # plus a 25 KiB framebuffer. With the 8 KiB loop stack, the complete sensor
@@ -4180,6 +4175,9 @@ apply_companion_radio_full_profile() {
     # Apply the proven bootstrap to every nRF52 Full Companion rather than
     # making a board-specific Bluetooth reliability promise.
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_FOLDER_SERIAL=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_BLE_MOTA_SOURCE=1 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1 -DCFG_DEBUG=1 -DRECOVERABLE_EXTERNAL_RADIO=1"
+    # Lossless name compression retains every seeder target and its wire ID
+    # while recovering flash headroom; reuse the existing bounded OTA decoder.
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_TARGET_NAME_FRONT_CODED=1"
     if [ "$env_name" = "t1000e_companion_radio_full" ]; then
       # The T1000-E's primary CDC transport is the only USB interface. Its
       # `usb.logging on` selects an input-capable ASCII logging terminal on

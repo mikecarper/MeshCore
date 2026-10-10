@@ -152,7 +152,8 @@ class CompanionWiFiNtpIntegrationTests(unittest.TestCase):
             implementation.index("ContactInfo* BaseChatMesh::allocateContactSlot")
         ]
         self.assertIn("latest != 0 && latest != UINT32_MAX", bootstrap)
-        self.assertIn("contact_floor > getRTCClock()->getCurrentTime()", bootstrap)
+        self.assertIn("const uint32_t current_time = getRTCClock()->getCurrentTime();", bootstrap)
+        self.assertIn("contact_floor > current_time", bootstrap)
 
 
 if __name__ == "__main__":

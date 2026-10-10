@@ -68,12 +68,13 @@ def requirements(platform, defines, target):
     if combined_rak_ethernet and (platform != "NRF52_PLATFORM"
                                  or not {"RAK_4631", "ETHERNET_ENABLED", "OTA_RAK_AUTO_STORE"}.issubset(defines)):
         raise ValueError("combined RAK Ethernet budget requires RAK4631 adaptive nRF52 storage")
-    if combined_rak_ethernet and display == "SSD1306Display":
+    if (combined_rak_ethernet or platform == "ESP32_PLATFORM") and display == "SSD1306Display":
         # The fixed 128x64 driver allocates one 1024-byte framebuffer and
         # reuses it after power cycling. Its linked source assertion binds
         # framebuffer + complete driver object + allocator overhead to 2 KiB.
-        # The actual linked ARM driver is 156 bytes; it is already static,
-        # so including it here again retains a conservative allocation bound.
+        # The driver is already linked as a global (124 bytes on ESP32), so
+        # including it again retains a conservative allocation bound. Other
+        # display drivers and ordinary non-ESP32 policies are unchanged.
         display_heap = 2048
     if platform == "NRF52_PLATFORM":
         parts["loop_and_callback_stacks"] = integer(defines, "MESH_NRF52_LOOP_STACK_WORDS", 2048) * 4 + 3072
@@ -95,9 +96,10 @@ def requirements(platform, defines, target):
             parts["mqtt_connections_buffers"] = 24576
         if "WITH_RS232_BRIDGE" in defines:
             # The UART bridge is allocated on enable, alongside WiFi/MQTT.
-            # RS232Bridge.cpp bounds its object to 4 KiB; reserve another
-            # 4 KiB for the SDK UART task, buffers and allocator overhead.
-            parts["uart_bridge_and_driver"] = 8192
+            # RS232Bridge.cpp bounds its object to 2304 bytes. Reserve 2560
+            # including allocation metadata, plus the unchanged 4 KiB for
+            # the SDK UART task, buffers and allocator overhead.
+            parts["uart_bridge_and_driver"] = 2560 + 4096
         if "ENABLE_OTA" in defines:
             # Existing own-image/manual-source allowance is independent of
             # the generic folder leaf/output buffers counted below.

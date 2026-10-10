@@ -181,8 +181,8 @@ class FirmwareRamTest(unittest.TestCase):
         combined = ram.requirements("ESP32_PLATFORM", {
             **defines, "WITH_RS232_BRIDGE": "Serial2", "RS232_BRIDGE_MERGED": 1,
         }, "v3_repeater")
-        self.assertEqual(combined["required_heap_bytes"] - mqtt["required_heap_bytes"], 8192)
-        self.assertEqual(combined["components"]["uart_bridge_and_driver"], 8192)
+        self.assertEqual(combined["required_heap_bytes"] - mqtt["required_heap_bytes"], 2560 + 4096)
+        self.assertEqual(combined["components"]["uart_bridge_and_driver"], 2560 + 4096)
         # A selectable alternate port does not create two UART owners.
         alternate = ram.requirements("ESP32_PLATFORM", {
             **defines, "WITH_RS232_BRIDGE": "Serial2", "RS232_BRIDGE_MERGED": 1,
@@ -302,6 +302,65 @@ class FirmwareRamTest(unittest.TestCase):
             "DISPLAY_CLASS": "SSD1306Display",
         }, "RAK_4631_repeater")
         self.assertEqual(ordinary["components"]["display_pixels_and_driver"], 4096)
+
+    def test_esp32_fixed_oled_and_uart_bounds_preserve_full_runtime_reserves(self):
+        defines = {
+            "WIFI_OTA_SEEDER": 1, "WITH_MQTT_BRIDGE": 1,
+            "WITH_RS232_BRIDGE": "Serial2", "WITH_ESPNOW_BRIDGE": 1,
+            "ENABLE_OTA": 1, "ADMIN_PASSWORD": "test",
+            "MESHCORE_OTA_DEVICE_DEFLATE": 1,
+            "MESH_CLIENT_REPEATER_ONLY": 1,
+            "DISPLAY_CLASS": "SSD1306Display",
+        }
+        full = ram.requirements("ESP32_PLATFORM", defines, "Heltec_v3_repeater_observer_mqtt")
+        parts = full["components"]
+        self.assertEqual(full["required_heap_bytes"], 209184)
+        self.assertEqual(parts["display_pixels_and_driver"], 2048)
+        self.assertEqual(parts["uart_bridge_and_driver"], 2560 + 4096)
+        self.assertEqual(parts["wireless_stacks"], 49152)
+        self.assertEqual(parts["mqtt_connections_buffers"], 24576)
+        self.assertEqual(parts["allocation_and_transient_margin"], 16384)
+        self.assertEqual(full["required_contiguous_bytes"], 18464)
+        for driver, expected in (("SH1106Display", 4096), ("SH1107Display", 4096),
+                                 ("ST7735Display", 25602)):
+            with self.subTest(driver=driver):
+                other = ram.requirements("ESP32_PLATFORM", {
+                    **defines, "DISPLAY_CLASS": driver,
+                }, "Heltec_v3_repeater_observer_mqtt")
+                self.assertEqual(other["components"]["display_pixels_and_driver"], expected)
+
+    def test_source_allocation_guards_reject_growth_at_the_budget_boundary(self):
+        # Compile the production guards themselves with exact-size stand-ins.
+        # Actual firmware compilation additionally checks the real classes;
+        # these negative cases prove future growth cannot silently bypass them.
+        sources = (
+            ("src/helpers/bridges/RS232Bridge.cpp", "RS232Bridge::RS232Bridge(",
+             "struct RS232Bridge { unsigned char bytes[OBJECT_BYTES]; };\n",
+             ((2304, 0, True), (2305, 0, False))),
+            ("src/helpers/ui/SSD1306Display.cpp", "bool SSD1306Display::i2c_probe(",
+             "struct SSD1306Display { unsigned char bytes[OBJECT_BYTES]; "
+             "static constexpr unsigned FRAMEBUFFER_BYTES = FRAME_BYTES; };\n",
+             ((992, 1024, True), (993, 1024, False), (124, 1025, False))),
+        )
+        for path, end, stand_in, cases in sources:
+            prefix = (ROOT / path).read_text().split(end, 1)[0]
+            prefix = "\n".join(line for line in prefix.splitlines()
+                               if not line.lstrip().startswith("#include"))
+            if path.endswith("RS232Bridge.cpp"):
+                prefix += "\n#endif\n"  # WITH_RS232_BRIDGE also encloses the methods below.
+            for platform in (("ESP32=1", "ESP32_PLATFORM=1"),
+                             ("NRF52_PLATFORM=1", "RAK4631_COMBINED_ETHERNET=1"),
+                             ("NRF52_PLATFORM=1",)):
+                for size, frame, bounded in cases:
+                    with self.subTest(path=path, platform=platform, size=size, frame=frame):
+                        result = subprocess.run([
+                            "c++", "-std=c++17", "-fsyntax-only", "-x", "c++", "-",
+                            "-DWITH_RS232_BRIDGE=1", f"-DOBJECT_BYTES={size}",
+                            f"-DFRAME_BYTES={frame}", *["-D" + flag for flag in platform],
+                        ], input=stand_in + prefix, text=True, capture_output=True)
+                        enforced = "ESP32=1" in platform or "RAK4631_COMBINED_ETHERNET=1" in platform
+                        self.assertEqual(result.returncode == 0, bounded or not enforced,
+                                         result.stderr)
 
     def test_combined_rak_budget_rejects_unmatched_hardware_or_short_task_stack(self):
         defines = {

@@ -676,12 +676,18 @@ static int cmp_neighbours_weakest_to_strongest(const void* a, const void* b) {
   return 0;
 }
 
-uint8_t MyMesh::handleAnonRegionsReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data) {
+static bool hasCompleteAnonReplyPath(const uint8_t* data, size_t data_len) {
+  if (data == nullptr || data_len == 0 || !mesh::Packet::isValidPathLen(data[0])) return false;
+  const size_t path_bytes = (data[0] & 63U) * ((data[0] >> 6) + 1U);
+  return path_bytes <= data_len - 1;
+}
+
+uint8_t MyMesh::handleAnonRegionsReq(const mesh::Identity& sender, uint32_t sender_timestamp,
+                                    const uint8_t* data, size_t data_len) {
+  if (!hasCompleteAnonReplyPath(data, data_len)) return 0;
   if (anon_limiter.allow(rtc_clock.getCurrentTime())) {
     // request data has: {reply-path-len}{reply-path}
     reply_path_len = *data++;
-    if (!mesh::Packet::isValidPathLen(reply_path_len)) return 0;  // reject - bad encoding
-
     mesh::Packet::writePath(reply_path, data, reply_path_len);
     // data += (uint8_t)reply_path_len * reply_path_hash_size;
 
@@ -696,12 +702,12 @@ uint8_t MyMesh::handleAnonRegionsReq(const mesh::Identity& sender, uint32_t send
   return 0;
 }
 
-uint8_t MyMesh::handleAnonOwnerReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data) {
+uint8_t MyMesh::handleAnonOwnerReq(const mesh::Identity& sender, uint32_t sender_timestamp,
+                                  const uint8_t* data, size_t data_len) {
+  if (!hasCompleteAnonReplyPath(data, data_len)) return 0;
   if (anon_limiter.allow(rtc_clock.getCurrentTime())) {
     // request data has: {reply-path-len}{reply-path}
     reply_path_len = *data++;
-    if (!mesh::Packet::isValidPathLen(reply_path_len)) return 0;  // reject - bad encoding
-
     mesh::Packet::writePath(reply_path, data, reply_path_len);
     // data += (uint8_t)reply_path_len * reply_path_hash_size;
 
@@ -715,12 +721,12 @@ uint8_t MyMesh::handleAnonOwnerReq(const mesh::Identity& sender, uint32_t sender
   return 0;
 }
 
-uint8_t MyMesh::handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data) {
+uint8_t MyMesh::handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp,
+                                  const uint8_t* data, size_t data_len) {
+  if (!hasCompleteAnonReplyPath(data, data_len)) return 0;
   if (anon_limiter.allow(rtc_clock.getCurrentTime())) {
     // request data has: {reply-path-len}{reply-path}
     reply_path_len = *data++;
-    if (!mesh::Packet::isValidPathLen(reply_path_len)) return 0;  // reject - bad encoding
-
     mesh::Packet::writePath(reply_path, data, reply_path_len);
     // data += (uint8_t)reply_path_len * reply_path_hash_size;
 
@@ -2679,9 +2685,12 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
 
 void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const mesh::Identity &sender,
                             uint8_t *data, size_t len) {
+  if (packet == nullptr) return;
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) { // received an initial request by a possible admin
                                                            // client (unknown at this stage)
-    if (len < 4) {
+    // A timestamp-only request is a valid empty-password login. The bounded
+    // terminator below supplies data[4]; typed requests still need their path.
+    if (data == nullptr || len < 4 || len >= MAX_PACKET_PAYLOAD) {
       MESH_DEBUG_PRINTLN("Rejected incomplete anonymous request");
       return;
     }
@@ -2695,11 +2704,11 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     if (data[4] == 0 || data[4] >= ' ') {   // is password, ie. a login request
       reply_len = handleLoginReq(sender, secret, timestamp, &data[4], packet->isRouteFlood());
     } else if (data[4] == ANON_REQ_TYPE_REGIONS && packet->isRouteDirect()) {
-      reply_len = handleAnonRegionsReq(sender, timestamp, &data[5]);
+      reply_len = handleAnonRegionsReq(sender, timestamp, &data[5], len - 5);
     } else if (data[4] == ANON_REQ_TYPE_OWNER && packet->isRouteDirect()) {
-      reply_len = handleAnonOwnerReq(sender, timestamp, &data[5]);
+      reply_len = handleAnonOwnerReq(sender, timestamp, &data[5], len - 5);
     } else if (data[4] == ANON_REQ_TYPE_BASIC && packet->isRouteDirect()) {
-      reply_len = handleAnonClockReq(sender, timestamp, &data[5]);
+      reply_len = handleAnonClockReq(sender, timestamp, &data[5], len - 5);
     } else {
       reply_len = 0;  // unknown/invalid request type
     }

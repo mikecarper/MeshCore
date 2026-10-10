@@ -79,7 +79,7 @@ struct BridgeBase : AbstractBridge {
  void handleReceivedPacket(mesh::Packet*);
  uint16_t fletcher16(const uint8_t*,size_t) {return 0;}
 };
-struct Serial {unsigned writes=0;void write(const uint8_t*,size_t) {++writes;}};
+struct Serial {unsigned writes=0;size_t write(const uint8_t*,size_t length) {++writes;return length;}};
 struct RS232Bridge : BridgeBase {
  Serial serial; Serial* _serial=&serial;
  void sendPacket(mesh::Packet*) override;

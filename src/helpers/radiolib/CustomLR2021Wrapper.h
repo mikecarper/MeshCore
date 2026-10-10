@@ -16,6 +16,7 @@
 
 class CustomLR2021Wrapper : public RadioLibWrapper {
 public:
+  ~CustomLR2021Wrapper() { unregisterInterruptAction(); }
   CustomLR2021Wrapper(CustomLR2021& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 
   void powerOff() { _radio->standby(); _radio->sleep(); }

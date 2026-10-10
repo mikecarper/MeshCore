@@ -271,6 +271,11 @@ public:
   void setNotificationOutputMute(mesh::notify::Output, bool) {}
   #endif
   bool handleNotificationCommand(const char* command, char* reply, size_t size);
+#if defined(STM32_PLATFORM)
+  // Keep this large dispatcher separate from contact streaming on flash-
+  // constrained STM32 targets; merging their branches increases code size.
+  __attribute__((noinline))
+#endif
   void handleCmdFrame(size_t len);
   bool advert();
   void enterCLIRescue();
@@ -496,7 +501,10 @@ private:
   void stopContactsIterator();
   bool updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, const uint8_t *frame, int len);
   bool addToOfflineQueue(const uint8_t frame[], int len);
+  int peekOfflineQueue(uint8_t frame[]);
+  void popOfflineQueue();
   int getFromOfflineQueue(uint8_t frame[]);
+  void syncNextOfflineMessage();
   int getBlobByKey(const uint8_t key[], int key_len, uint8_t dest_buf[]) override { 
     return _store->getBlobByKey(key, key_len, dest_buf);
   }

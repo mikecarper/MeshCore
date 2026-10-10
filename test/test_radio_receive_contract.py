@@ -22,11 +22,11 @@ HARNESS = r'''
 #include <cstdint>
 #include <initializer_list>
 #include <RadioProfiles.h>
+#include <helpers/radiolib/RadioInterruptEvents.h>
 #include <helpers/radiolib/NoiseFloorEstimator.h>
 #define STATE_IDLE 0
 #define STATE_RX 1
 #define STATE_TX_WAIT 3
-#define STATE_INT_READY 16
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_CHANNEL_FREE -15
 #define RADIOLIB_ERR_UNKNOWN -16
@@ -38,7 +38,6 @@ HARNESS = r'''
 #define NF_CONTINUOUS_TIMEOUT_MS NoiseFloorEstimator::WINDOW_TIMEOUT_MS
 #define NF_CALIB_SETTLE_MS 7UL
 #define NF_FAST_PROFILE_REFRESH_INTERVAL_MS (15UL * 60UL * 1000UL)
-static volatile uint8_t state = STATE_RX;
 static uint32_t now_ms = 0;
 uint32_t millis() { return now_ms; }
 uint32_t micros() { return now_ms * 1000UL; }
@@ -54,15 +53,20 @@ struct Board {
   void serviceWatchdog() { ++services; }
 };
 struct Radio {
+  RadioInterruptEvents* events;
   int scan_result = RADIOLIB_CHANNEL_FREE, start_result = 0;
   unsigned scans = 0;
   int startChannelScan() { ++scans; return start_result; }
   int getChannelScanResult() {
-    if (scan_result != RADIOLIB_ERR_UNKNOWN) state |= STATE_INT_READY;
+    if (scan_result != RADIOLIB_ERR_UNKNOWN) events->record();
     return scan_result;
   }
 };
 struct RadioLibWrapper {
+  uint8_t state = STATE_RX;
+  RadioInterruptEvents events;
+  bool hasPendingRadioInterrupt() const { return events.pending(); }
+  bool claimRadioInterrupt() { return events.claim(); }
   bool _cw_active = false;
   bool serviceCarrierWave() { return false; } // dedicated CW harness owns this path
   mesh::RadioProfiles _profiles;
@@ -72,7 +76,7 @@ struct RadioLibWrapper {
   bool _profile_rxps_suspended = false;
   void serviceProfileScan() {} // separate profile-scan harness exercises tuning
   Board board; Board* _board = &board;
-  Radio radio; Radio* _radio = &radio;
+  Radio radio{&events}; Radio* _radio = &radio;
   bool _rx_ps_enabled = false, _rx_ps_armed = false, _rx_ps_continuous_fallback = false;
   bool _nf_calib_active = false, _nf_refresh_requested = true, _noise_floor_valid = true,
       _noise_floor_secondary_valid = true;
@@ -101,7 +105,7 @@ struct RadioLibWrapper {
   float getCurrentRSSI() { ++reads; return rssi; }
   int8_t readReceiveMode() {
     ++mode_reads;
-    if (inject_mode_irq) state |= STATE_INT_READY;
+    if (inject_mode_irq) events.record();
     return chip_mode;
   }
   bool recoverRadio(bool use_hard) { use_hard ? ++hard : ++soft; return true; }
@@ -113,7 +117,7 @@ struct RadioLibWrapper {
   int startReceiveMode() {
     ++arms;
     if (!arm_result) _rx_ps_armed = _rx_ps_enabled && !_nf_calib_active;
-    if (inject_arm_irq) state |= STATE_INT_READY;
+    if (inject_arm_irq) events.record();
     return arm_result;
   }
   int16_t performChannelScan() { return performChannelScanWithTimeout(2500); }
@@ -137,9 +141,9 @@ int main() {
   // A completed packet, current frame, or TX owns the radio; CAD cannot erase it.
   for (int owned : {1, 2, 3}) {
     RadioLibWrapper w;
-    if (owned == 1) state |= STATE_INT_READY;
+    if (owned == 1) w.events.record();
     if (owned == 2) w.packet = true;
-    if (owned == 3) state = STATE_TX_WAIT;
+    if (owned == 3) w.state = STATE_TX_WAIT;
     assert(w.isChannelActive());
     assert(w.radio.scans == 0 && w.arms == 0);
   }
@@ -151,7 +155,7 @@ int main() {
       const bool active = w.isChannelActive();
       assert(active == (result != RADIOLIB_CHANNEL_FREE));
       assert(w.stops == unsigned(ps));
-      assert(w.arms == 1 && state == STATE_RX);
+      assert(w.arms == 1 && w.state == STATE_RX);
       assert(w._rx_ps_armed == ps);
       if (result == RADIOLIB_ERR_UNKNOWN) {
         assert(now_ms == 2600 && w.board.services == 2);
@@ -162,19 +166,19 @@ int main() {
     RadioLibWrapper w;
     w.radio.start_result = -5;
     assert(w.isChannelActive());
-    assert(w.arms == 1 && state == STATE_RX);
+    assert(w.arms == 1 && w.state == STATE_RX);
   }
   {
     RadioLibWrapper w;
     w.arm_result = -5;
     assert(w.isChannelActive()); // a free CAD with failed RX restoration is not success
-    assert(state == STATE_IDLE);
+    assert(w.state == STATE_IDLE);
   }
   {
     RadioLibWrapper w;
     w.inject_arm_irq = true;
     assert(w.isChannelActive());
-    assert(state == (STATE_RX | STATE_INT_READY)); // preserves the new packet
+    assert(w.state == STATE_RX && w.hasPendingRadioInterrupt()); // preserves the new packet
   }
   // A quiet bounded window completes in ~3.2 s and powersaving resumes.
   for (bool ps : {false, true}) {
@@ -184,7 +188,7 @@ int main() {
     w._nf_last_calib = 0;
     for (; now_ms < 4000; ++now_ms) {
       w.loop();
-      if (state == STATE_IDLE) w.startRecv();
+      if (w.state == STATE_IDLE) w.startRecv();
     }
     assert(!w._nf_refresh_requested && !w._nf_calib_active);
     assert(w._noise_floor_valid && w._noise_floor_centi_dbm == -10000);
@@ -345,7 +349,7 @@ int main() {
     if (skip == 1) w.busy = true;
     if (skip == 2) w._rx_ps_armed = true;
     if (skip == 3) w.packet = true;
-    if (skip == 4) state |= STATE_INT_READY;
+    if (skip == 4) w.events.record();
     for (uint32_t t : {10000U,20000U,30000U}) w.checkReceiveMode(t);
     assert(w.soft == 0 && w.hard == 0);
   }

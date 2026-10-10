@@ -338,8 +338,19 @@ int _countLfsBlock(void *p, lfs_block_t block){
 }
 
 lfs_ssize_t _getLfsUsedBlockCount(FILESYSTEM* fs) {
-  LfsTraversalState state = {0, fs->_getFS()->cfg->block_count};
-  int err = lfs_traverse(fs->_getFS(), _countLfsBlock, &state);
+  if (fs == nullptr) return -1;
+  // Raw LittleFS traversal touches the same metadata/cache as file writes.
+  // Hold this filesystem's lock, separately from the physical flash lock.
+  fs->_lockFS();
+  lfs_t* raw_fs = fs->_getFS();
+  if (raw_fs == nullptr || raw_fs->cfg == nullptr
+      || raw_fs->cfg->block_count == 0) {
+    fs->_unlockFS();
+    return -1;
+  }
+  LfsTraversalState state = {0, raw_fs->cfg->block_count};
+  int err = lfs_traverse(raw_fs, _countLfsBlock, &state);
+  fs->_unlockFS();
   if (err) {
     MESH_DEBUG_PRINTLN("ERROR: lfs_traverse() error: %d", err);
     return -1;

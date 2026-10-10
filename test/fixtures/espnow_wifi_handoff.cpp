@@ -169,6 +169,8 @@ public:
   struct { void clear(const int*) {} } _seen_packets;
   static void recv_cb() {}
   static void send_cb() {}
+  uint32_t _tx_started_at = 0, _tx_retry_at = 0;
+  bool _sdk_teardown_failed = false;
   void begin();
   void end();
 };

@@ -77,6 +77,10 @@ void ESPNowBridge::begin() {
   BRIDGE_DEBUG_PRINTLN("Initializing...\n");
 
   if (_initialized) return;
+  if (_sdk_teardown_failed) {
+    end();
+    if (_sdk_teardown_failed) return;
+  }
 
   _active_format = mesh::bridge::isValidEspNowFormat(_prefs->bridge_format)
       ? _prefs->bridge_format : mesh::bridge::ESPNOW_FORMAT_WRAPPED;
@@ -103,6 +107,7 @@ void ESPNowBridge::begin() {
   _tx_dropped = 0;
   portEXIT_CRITICAL(&_tx_mux);
   _tx_dropped_reported = 0;
+  _tx_started_at = _tx_retry_at = 0;
 
   if (!mesh::bridge::isValidEspNowBridgeChannel(
           _prefs->bridge_channel, _active_format)) {
@@ -215,7 +220,7 @@ void ESPNowBridge::begin() {
 }
 
 void ESPNowBridge::end() {
-  if (!_initialized) return;
+  if (!_initialized && !_sdk_teardown_failed) return;
   BRIDGE_DEBUG_PRINTLN("Stopping...\n");
 
   // Remove broadcast peer
@@ -229,7 +234,8 @@ void ESPNowBridge::end() {
   esp_now_register_send_cb(nullptr);
 
   // Deinitialize ESP-NOW
-  if (esp_now_deinit() != ESP_OK) {
+  _sdk_teardown_failed = esp_now_deinit() != ESP_OK;
+  if (_sdk_teardown_failed) {
     BRIDGE_DEBUG_PRINTLN("Error deinitializing ESP-NOW\n");
   }
 
@@ -267,11 +273,17 @@ void ESPNowBridge::end() {
 }
 
 void ESPNowBridge::loop() {
+  if (!_initialized) return;
   pumpTransmitQueue();
+  if (!_initialized) return;
 
   uint8_t frame[MAX_ESPNOW_PACKET_SIZE];
   uint8_t source[mesh::espnow::ESPNOW_RAW_SOURCE_MAC_SIZE];
   for (uint8_t processed = 0; processed < RX_QUEUE_DEPTH; ++processed) {
+    // Reserve a mesh slot before removing a callback frame. Even a completing
+    // raw fragment must remain queued until the reconstructed packet can live.
+    mesh::Packet* packet = _mgr->allocNew();
+    if (packet == nullptr) break;
     size_t frame_len = 0;
     uint32_t dropped = 0;
 
@@ -295,8 +307,10 @@ void ESPNowBridge::loop() {
                            (unsigned long)dropped);
       _rx_dropped_reported = dropped;
     }
-    if (frame_len == 0) break;
-    processReceivedFrame(source, frame, frame_len);
+    if (frame_len == 0) { _mgr->free(packet); break; }
+    if (!processReceivedFrame(packet, source, frame, frame_len)) {
+      _mgr->free(packet);
+    }
   }
 }
 
@@ -321,6 +335,7 @@ bool ESPNowBridge::queueTransmitFrames(
     queued_tx.packet = packet;
     queued_tx.next_frame = 0;
     queued_tx.started = false;
+    queued_tx.start_retries = 0;
     _tx_head = static_cast<uint8_t>((_tx_head + 1) % TX_QUEUE_DEPTH);
     _tx_count++;
     queued = true;
@@ -339,6 +354,24 @@ void ESPNowBridge::pumpTransmitQueue() {
   bool clear_unsent_seen = false;
   mesh::Packet unsent_packet;
   uint32_t dropped = 0;
+  const uint32_t now = millis();
+  bool timed_out = false;
+
+  portENTER_CRITICAL(&_tx_mux);
+  timed_out = _tx_waiting && !_tx_callback_done
+      && static_cast<uint32_t>(now - _tx_started_at) >= TX_CALLBACK_TIMEOUT_MS;
+  portEXIT_CRITICAL(&_tx_mux);
+  if (timed_out) {
+    // A completion carries no frame identity. Continuing after timeout could
+    // mistake a late callback for the next fragment. Tear down that SDK session
+    // before accepting another frame; never transmit an orphan sibling.
+    BRIDGE_DEBUG_PRINTLN("TX callback timeout; restarting ESP-NOW\n");
+    end();
+    // Fail closed if the old session could still own an accepted frame. A
+    // later explicit begin retries teardown before accepting new traffic.
+    if (!_sdk_teardown_failed) begin();
+    return;
+  }
 
   portENTER_CRITICAL(&_tx_mux);
   dropped = _tx_dropped;
@@ -352,21 +385,27 @@ void ESPNowBridge::pumpTransmitQueue() {
       QueuedTransmit& queued_tx = _tx_queue[_tx_tail];
       if (completed_status == ESP_NOW_SEND_SUCCESS) {
         queued_tx.next_frame++;
+        queued_tx.start_retries = 0;
         if (queued_tx.next_frame >= queued_tx.frames.count) {
           _tx_tail = static_cast<uint8_t>(
               (_tx_tail + 1) % TX_QUEUE_DEPTH);
           _tx_count--;
         }
+      } else if (queued_tx.start_retries < TX_MAX_START_RETRIES) {
+        // This completion is definite, unlike a missing callback. Retry the
+        // same frame within the shared start/callback budget; its sibling
+        // cannot be submitted until this frame succeeds.
+        ++queued_tx.start_retries;
+        _tx_retry_at = now + TX_RETRY_DELAY_MS;
       } else {
-        // esp_now_send() accepted at least one frame, matching the old bridge
-        // definition of "seen", but never submit any remaining fragments from
-        // a logical packet whose preceding frame failed.
         _tx_tail = static_cast<uint8_t>((_tx_tail + 1) % TX_QUEUE_DEPTH);
         _tx_count--;
       }
     }
   }
-  if (!_tx_waiting && _tx_count > 0) {
+  if (!_tx_waiting && _tx_count > 0
+      && (_tx_queue[_tx_tail].start_retries == 0
+          || static_cast<int32_t>(now - _tx_retry_at) >= 0)) {
     QueuedTransmit& queued_tx = _tx_queue[_tx_tail];
     if (queued_tx.next_frame < queued_tx.frames.count) {
       frame_len = queued_tx.frames.lengths[queued_tx.next_frame];
@@ -379,6 +418,8 @@ void ESPNowBridge::pumpTransmitQueue() {
     if (frame_len > 0) {
       _tx_waiting = true;
       _tx_callback_done = false;
+      _tx_started_at = now;
+      _tx_retry_at = 0;
     }
   }
   portEXIT_CRITICAL(&_tx_mux);
@@ -404,12 +445,19 @@ void ESPNowBridge::pumpTransmitQueue() {
     _tx_callback_done = false;
     if (_tx_count > 0) {
       QueuedTransmit& queued_tx = _tx_queue[_tx_tail];
-      if (!queued_tx.started) {
-        unsent_packet = queued_tx.packet;
-        clear_unsent_seen = true;
+      if (result == ESP_ERR_ESPNOW_NO_MEM
+          && queued_tx.start_retries < TX_MAX_START_RETRIES) {
+        ++queued_tx.start_retries;
+        _tx_retry_at = now + TX_RETRY_DELAY_MS;
+      } else {
+        if (!queued_tx.started) {
+          unsent_packet = queued_tx.packet;
+          clear_unsent_seen = true;
+        }
+        _tx_tail = static_cast<uint8_t>((_tx_tail + 1) % TX_QUEUE_DEPTH);
+        _tx_count--;
+        _tx_retry_at = 0;
       }
-      _tx_tail = static_cast<uint8_t>((_tx_tail + 1) % TX_QUEUE_DEPTH);
-      _tx_count--;
     }
     portEXIT_CRITICAL(&_tx_mux);
     // Admission marks the packet to suppress duplicate queue entries. Restore
@@ -436,9 +484,7 @@ bool ESPNowBridge::xorCrypt(uint8_t *data, size_t len) {
   return true;
 }
 
-void ESPNowBridge::receiveMeshPacket(const uint8_t *data, size_t len) {
-  mesh::Packet *pkt = _mgr->allocNew();
-  if (!pkt) return;
+void ESPNowBridge::receiveMeshPacket(mesh::Packet* pkt, const uint8_t *data, size_t len) {
 
   if (pkt->readFrom(data, len)) {
     onPacketReceived(pkt);
@@ -481,10 +527,10 @@ void ESPNowBridge::queueReceivedFrame(const uint8_t *mac, const uint8_t *data,
   portEXIT_CRITICAL(&_rx_mux);
 }
 
-void ESPNowBridge::processReceivedFrame(const uint8_t *mac,
+bool ESPNowBridge::processReceivedFrame(mesh::Packet* packet_slot, const uint8_t *mac,
                                         const uint8_t *data, size_t len) {
   if (data == nullptr || len == 0 || len > MAX_ESPNOW_PACKET_SIZE) {
-    return;
+    return false;
   }
 
   if (_active_format == mesh::bridge::ESPNOW_FORMAT_RAW) {
@@ -500,28 +546,29 @@ void ESPNowBridge::processReceivedFrame(const uint8_t *mac,
                            (unsigned)packet_len,
                            result == mesh::espnow::ESPNowRawReassemblyResult::PACKET_COMPLETE
                                ? " (reassembled)" : "");
-      receiveMeshPacket(packet, packet_len);
+      receiveMeshPacket(packet_slot, packet, packet_len);
+      return true;
     } else if (result == mesh::espnow::ESPNowRawReassemblyResult::REJECTED
                || result ==
                    mesh::espnow::ESPNowRawReassemblyResult::OUTPUT_TOO_SMALL) {
       BRIDGE_DEBUG_PRINTLN("RX raw fragment rejected, result=%u len=%u\n",
                            (unsigned)result, (unsigned)len);
     }
-    return;
+    return false;
   }
 
   // Wrapped mode is strict: ignore packets too small to contain its header
   // and checksum rather than trying to auto-detect raw MeshCore traffic.
   if (len < (BRIDGE_MAGIC_SIZE + BRIDGE_CHECKSUM_SIZE)) {
     BRIDGE_DEBUG_PRINTLN("RX packet too small, len=%u\n", (unsigned)len);
-    return;
+    return false;
   }
 
   // Check packet header magic
   uint16_t received_magic = (data[0] << 8) | data[1];
   if (received_magic != BRIDGE_PACKET_MAGIC) {
     BRIDGE_DEBUG_PRINTLN("RX invalid magic 0x%04X\n", received_magic);
-    return;
+    return false;
   }
 
   // Make a copy we can decrypt
@@ -530,7 +577,7 @@ void ESPNowBridge::processReceivedFrame(const uint8_t *mac,
   memcpy(decrypted, data + BRIDGE_MAGIC_SIZE, encryptedDataLen);
 
   // Try to decrypt (checksum + payload)
-  if (!xorCrypt(decrypted, encryptedDataLen)) return;
+  if (!xorCrypt(decrypted, encryptedDataLen)) return false;
 
   // Validate checksum
   uint16_t received_checksum = (decrypted[0] << 8) | decrypted[1];
@@ -539,11 +586,12 @@ void ESPNowBridge::processReceivedFrame(const uint8_t *mac,
   if (!validateChecksum(decrypted + BRIDGE_CHECKSUM_SIZE, payloadLen, received_checksum)) {
     // Failed to decrypt - likely from a different network
     BRIDGE_DEBUG_PRINTLN("RX checksum mismatch, rcv=0x%04X\n", received_checksum);
-    return;
+    return false;
   }
 
   BRIDGE_DEBUG_PRINTLN("RX, payload_len=%u\n", (unsigned)payloadLen);
-  receiveMeshPacket(decrypted + BRIDGE_CHECKSUM_SIZE, payloadLen);
+  receiveMeshPacket(packet_slot, decrypted + BRIDGE_CHECKSUM_SIZE, payloadLen);
+  return true;
 }
 
 void ESPNowBridge::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {

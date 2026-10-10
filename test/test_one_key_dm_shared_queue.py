@@ -46,6 +46,8 @@ class OneKeyDMSharedQueueTest(unittest.TestCase):
             "MyMesh::Frame& MyMesh::heldDMFrameAt(uint8_t index)",
             "void MyMesh::removeHeldOneKeyDM(uint8_t index)",
             "bool MyMesh::addToOfflineQueue(const uint8_t frame[], int len)",
+            "int MyMesh::peekOfflineQueue(uint8_t frame[])",
+            "void MyMesh::popOfflineQueue()",
             "int MyMesh::getFromOfflineQueue(uint8_t frame[])",
         ))
         harness = r'''
@@ -77,6 +79,8 @@ public:
   Frame& heldDMFrameAt(uint8_t index);
   void removeHeldOneKeyDM(uint8_t index);
   bool addToOfflineQueue(const uint8_t frame[], int len);
+  int peekOfflineQueue(uint8_t frame[]);
+  void popOfflineQueue();
   int getFromOfflineQueue(uint8_t frame[]);
 };
 static_assert(sizeof(MyMesh::Frame) == 177);
@@ -161,6 +165,8 @@ int main() {
             "MyMesh::Frame& MyMesh::heldDMFrameAt(uint8_t index)",
             "void MyMesh::removeHeldOneKeyDM(uint8_t index)",
             "bool MyMesh::addToOfflineQueue(const uint8_t frame[], int len)",
+            "int MyMesh::peekOfflineQueue(uint8_t frame[])",
+            "void MyMesh::popOfflineQueue()",
             "int MyMesh::getFromOfflineQueue(uint8_t frame[])",
             "bool MyMesh::onAddressedTextPacket(mesh::Packet* packet, uint8_t src_hash,",
             "void MyMesh::releaseHeldOneKeyDMs()",
@@ -237,6 +243,8 @@ public:
   Frame& heldDMFrameAt(uint8_t index);
   void removeHeldOneKeyDM(uint8_t index);
   bool addToOfflineQueue(const uint8_t frame[], int len);
+  int peekOfflineQueue(uint8_t frame[]);
+  void popOfflineQueue();
   int getFromOfflineQueue(uint8_t frame[]);
   bool onAddressedTextPacket(mesh::Packet*, uint8_t, const uint8_t*, size_t);
   void releaseHeldOneKeyDMs();
