@@ -2281,19 +2281,32 @@ Classic ESP32 additionally retains its existing 8 KiB <strong>static DRAM</stron
 <p>The policy adds allowances for task stacks, radio packet pools, screen objects
 and pixel buffers, filesystem/sensor allocations, enabled wireless stacks,
 MQTT connections, OTA scratch and transient allocations. ESP32 images with
-RS-232 reserve another 8 KiB even when UART defaults off: 4 KiB for the
-source-bounded bridge object and 4 KiB for the UART driver and buffers. This
+RS-232 reserve another 6,656 bytes even when UART defaults off: 2,560 bytes for
+the source-bounded bridge object and allocation metadata, plus an unchanged
+4 KiB for the UART driver and buffers. This
 keeps runtime UART enablement in the budget beside MQTT and ESP-NOW.
 T-LoRa V2.1-1.6 cannot fit all three transports: the qualified linked triple
-image had 190,488 available internal bytes against 196,984 required bytes.
+image had 190,488 available internal bytes against 196,984 required bytes
+under the earlier allocation estimates. The corrected equivalent requirement
+is 193,400 bytes, still 2,912 bytes above capacity.
 Its ordinary release retains separate UART/ESP-NOW and MQTT/ESP-NOW Full
-images; the memory policy and routing capacities remain unchanged.
+images; routing capacities remain unchanged.
 A 160x80 ST7735
-framebuffer needs 25,602 bytes; an OLED allowance is 4 KiB. nRF52 Full with that
+framebuffer needs 25,602 bytes. ESP32 SSD1306 uses a source-bounded 2 KiB
+allowance for its fixed 1,024-byte framebuffer, driver and metadata; other
+OLED and ordinary non-ESP32 allowances remain unchanged. nRF52 Full with that
 color framebuffer must have at least 72 KiB available before startup allocations.
 Headless and OLED devices use their own smaller totals. The JSON lists each
 component and checks the largest available region against the largest planned
 single allocation.</p>
+<p>The W12 Full MQTT profile remains unqualified: the current linked image has
+182,768 internal bytes available against 198,432 required, including the
+unchanged 16 KiB transient margin. Its standard repeater compiles and passes
+the RAM check, but the 1,322,304-byte application exceeds the 1,310,720-byte
+portable LoRa-OTA slot. Both limits also occur in the pre-stability baseline
+(Full: 182,800 available against 200,480 required under the earlier OLED
+estimate; standard application: 1,321,088 bytes). LR2021 compile and fault-test
+coverage does not qualify either package for release.</p>
 <p>The experimental RAK4631 combined Ethernet/UART2/adaptive-storage config adds
 an explicit 2,560-byte allowance for the UART bridge and its TX semaphore.
 Its Ethernet worker reserves 1,024 stack words (4,096 bytes) plus 256 bytes for
