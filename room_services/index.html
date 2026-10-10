@@ -1380,6 +1380,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#choose-where-chat-catch-up-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose where chat catch-up starts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#administrator-controls-for-any-radio-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Administrator controls for any radio user
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#local-wi-fi-chat-on-esp32" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1387,6 +1409,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Local Wi-Fi chat on ESP32">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wi-fi-room-administration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wi-Fi room administration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2376,6 +2415,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#choose-where-chat-catch-up-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose where chat catch-up starts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#administrator-controls-for-any-radio-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Administrator controls for any radio user
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#local-wi-fi-chat-on-esp32" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2383,6 +2444,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Local Wi-Fi chat on ESP32">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wi-fi-room-administration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wi-Fi room administration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2581,6 +2659,46 @@ public-reader sessions keep route selections only for the current session;
 changing a route never makes their permissions permanent. Failed saves restore
 the previous route and report an error. Repeating an unchanged selection or an
 exact request retry does not cause another settings write.</p>
+<h2 id="choose-where-chat-catch-up-starts">Choose where chat catch-up starts</h2>
+<p>Room readers, writers and administrators can skip older unread messages for
+their own radio using the same encrypted CLI request framing as route commands:</p>
+<pre><code class="language-text">get room.catchup
+room.catchup keep 20
+room.catchup keep 0
+room.catchup before 2026-10-10
+room.catchup before 2026-10-10T18:30:00Z
+room.catchup before 1791655200
+</code></pre>
+<p><code>keep 20</code> leaves the newest 20 unread retained messages to deliver and skips
+the older backlog. <code>keep 0</code> skips all currently retained unread chat. Own posts
+do not count toward unread messages. A date skips unread messages strictly
+older than that cutoff; date-only values mean midnight UTC. A numeric cutoff
+is a Unix timestamp in seconds. A count larger than the backlog is a no-op.</p>
+<p>Skipping advances only the requesting user's delivery cursor. It never deletes
+room history, rewinds a cursor or suppresses another user's delivery. A future
+date advances only through actual retained messages; new messages remain
+deliverable. Pending delivery and retries for a skipped post are cancelled;
+an outstanding topic remains pending. Delayed ACKs, routine keep-alives and
+normal reconnects cannot restore the skipped backlog. A copy already queued
+or transmitted can still arrive; skipping stops subsequent catch-up delivery.</p>
+<p>Saved ACL users persist an advanced catch-up cursor through the existing
+filtered contacts store. Failed saves restore delivery state and report an
+error. Transient sessions retain changes only for the current session. History
+retention remains 32 posts; this command cannot recover older discarded chat.</p>
+<h2 id="administrator-controls-for-any-radio-user">Administrator controls for any radio user</h2>
+<p>From a local console or authenticated administrator CLI session, use a user's
+complete 64-character public key to edit either route or their catch-up position:</p>
+<pre><code class="language-text">room.user &lt;complete-64-hex-public-key&gt; outpath A1B2C3,D4E5F6
+room.user &lt;complete-64-hex-public-key&gt; altpath 71CE82,BA09F0
+room.user &lt;complete-64-hex-public-key&gt; altpath clear
+room.user &lt;complete-64-hex-public-key&gt; keep 20
+room.user &lt;complete-64-hex-public-key&gt; before 2026-10-10T18:30:00Z
+</code></pre>
+<p>Names and shortened keys cannot select a user. Administrators can change any
+existing radio user's routes without changing that user's role. Route and
+catch-up persistence follows the same rules as the user's own commands.
+The browser dashboard below provides activity, delivery and route details for
+all radio users; these views require administrator credentials.</p>
 <h2 id="local-wi-fi-chat-on-esp32">Local Wi-Fi chat on ESP32</h2>
 <p>ESP32 Room Server images with WebConfig have an offline browser room page.
 It is <strong>disabled by default</strong> and uses the existing WebConfig listener:</p>
@@ -2612,6 +2730,38 @@ uncertain result, refresh and check before submitting again.</p>
 only admit a bounded request and return its owned result. No arbitrary CLI
 operation is exposed. Disable room access with <code>set room.web off</code>; stop the
 portal with <code>stop webconfig</code>.</p>
+<h3 id="wi-fi-room-administration">Wi-Fi room administration</h3>
+<p>Connect to <code>/room</code> with the room administrator password and open <strong>Room
+administration</strong>, or visit <code>http://&lt;reported-radio-IP&gt;/room#admin-panel</code>.
+This management area offers:</p>
+<ul>
+<li>Radio users in pages of two, with saved roles, time since activity, unread
+  retained posts, current delivery and failure counts.</li>
+<li>A selected user's primary, alternate and observed routes, catch-up cursor,
+  pending chat or topic, and remaining ACK wait. <strong>Heard this boot</strong> records
+  authenticated activity; it does not prove that a radio is currently reachable.</li>
+<li>Editing primary and alternate routes, keeping the newest N unread messages,
+  or skipping chat older than a chosen date. Browser date inputs use local time
+  and send the corresponding Unix timestamp.</li>
+<li>Assigning or removing saved access, blocking and unblocking full identities,
+  editing the topic, enabling persistent history, and changing post/poll limits.</li>
+<li>Optional refresh every 15 seconds. Unsaved route edits remain in place while
+  live status refreshes.</li>
+</ul>
+<p>The dashboard rechecks administrator credentials for each operation and
+rejects a write from an earlier boot. Route, catch-up, access, topic and history
+edits include the loaded value; a changed value requires a refresh instead of
+silently overwriting someone else's change. Each setting saves independently.
+Access changes use the existing delayed ACL save; the page reminds you to leave
+power on for at least five seconds. Removing a saved assignment does not ban
+guest-password access; use <strong>Block</strong> to deny that identity altogether.</p>
+<p>Readers and writers cannot retrieve these radio-user activity/delivery views
+or management operations. Losing administrator access clears cached management
+data from the page. User names, messages and routes are rendered as text.</p>
+<p><strong>Choose chat shown in this browser</strong> filters the local display to the newest
+N retained messages or a chosen start date. It changes only the browser view;
+it does not move a radio user's cursor or delete posts. The administrator's
+selected-user catch-up controls do change that radio user's delivery position.</p>
 <h2 id="information-board">Information board</h2>
 <p>Eight persistent article slots have titles up to 63 UTF-8 bytes and bodies up
 to 2,048 bytes. Index revisions and article versions survive reboot. Bodies
