@@ -2816,6 +2816,9 @@ rows; an unpaged local serial query prints the full table.</p>
 <h2 id="direct-path-overrides">Direct Path Overrides</h2>
 <p><code>outpath</code> and <code>altpath</code> apply to the current remote client ACL entry. They need
 remote client context, so they are not useful from the local serial CLI.</p>
+<p>Room Server also supports these commands for readers and writers, restricted
+to the caller's own routes. See <a href="../room_services/#your-own-return-routes">room return routes</a>
+for session persistence, alternate chat delivery and client requirements.</p>
 <p>Set paths with comma-separated hop hashes. Each hop must be <code>2</code>, <code>4</code>, or <code>6</code>
 hex characters, and all hops in one path must use the same width. Hex input is
 case-insensitive. Replies use uppercase hex and retain the commas, so the value

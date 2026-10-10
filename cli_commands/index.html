@@ -8971,6 +8971,9 @@ running and therefore retains idle behavior rather than manual light sleep.</p>
 - <code>hopN_hex</code>: Hop hash with <code>2</code>, <code>4</code>, or <code>6</code> hexadecimal characters. Every hop must use the same width.</p>
 <p><strong>Notes:</strong>
 - These commands require remote client context and update the caller's ACL entry.
+- Room Server readers and writers may manage their own <code>outpath</code> and <code>altpath</code>
+  without administrator permission. See <a href="../room_services/#your-own-return-routes">room return routes</a>
+  for the command list, session persistence and alternate delivery behavior.
 - <code>get outpath path</code> reports the reciprocal <code>PAYLOAD_TYPE_PATH</code> received after
   the caller's latest flood login without changing the selected output route.
   Because that packet is asynchronous, an immediate query can report
