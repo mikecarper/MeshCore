@@ -33,6 +33,10 @@ Classic ESP32 additionally retains its existing 8 KiB **static DRAM** check.
 The policy adds allowances for task stacks, radio packet pools, screen objects
 and pixel buffers, filesystem/sensor allocations, enabled wireless stacks,
 MQTT connections, OTA scratch and transient allocations. ESP32 images with
+MQTT reserve the same 49,152-byte WiFi allowance even without `WIFI_SSID` or
+`WIFI_OTA_SEEDER`: saved runtime credentials can activate WiFi. Multiple WiFi
+features count that allowance once; PSRAM-backed TLS does not remove it.
+ESP32 images with
 RS-232 reserve another 6,656 bytes even when UART defaults off: 2,560 bytes for
 the source-bounded bridge object and allocation metadata, plus an unchanged
 4 KiB for the UART driver and buffers. This

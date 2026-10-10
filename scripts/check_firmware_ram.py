@@ -142,7 +142,10 @@ def requirements(platform, defines, target):
             parts["uart_bridge_and_driver"] = 2560
     elif platform == "ESP32_PLATFORM":
         parts["core_tasks_usb_filesystems"] = 24576
-        wifi = 49152 if "WIFI_SSID" in defines or "WIFI_OTA_SEEDER" in defines else 0
+        # MQTT joins with saved runtime credentials even without a compiled SSID
+        # or OTA seeder. Count its mandatory WiFi stack once with other WiFi uses.
+        wifi = 49152 if any(name in defines for name in (
+            "WIFI_SSID", "WIFI_OTA_SEEDER", "WITH_MQTT_BRIDGE")) else 0
         ble = 32768 if "BLE_PIN_CODE" in defines else 0
         parts["wireless_stacks"] = max(wifi, ble) if "COMPANION_EXCLUSIVE_WIFI_BLE" in defines else wifi + ble
         if "WITH_MQTT_BRIDGE" in defines:

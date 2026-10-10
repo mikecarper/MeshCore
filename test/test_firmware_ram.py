@@ -233,6 +233,48 @@ class FirmwareRamTest(unittest.TestCase):
         ordinary = ram.requirements("ESP32_PLATFORM", {"BOARD_HAS_PSRAM": 1}, "v4_companion")
         self.assertNotIn("mqtt", ordinary)
 
+    def test_mqtt_without_build_time_wifi_credentials_reserves_wifi_stack_exactly_once(self):
+        # MQTT can use persisted station credentials without either compile-time
+        # WiFi option. Isolate the wireless budget from optional browser sessions.
+        base = {"WEBCONFIG_DISABLED": 1}
+        for target in ("Tbeam_SX1262_repeater_observer_mqtt", "v4_companion"):
+            ordinary = ram.requirements("ESP32_PLATFORM", base, target)
+            self.assertEqual(ordinary["components"]["wireless_stacks"], 0)
+            mqtt = ram.requirements("ESP32_PLATFORM", {**base, "WITH_MQTT_BRIDGE": 1}, target)
+            self.assertEqual(mqtt["components"]["wireless_stacks"], 49152)
+            self.assertEqual(mqtt["required_heap_bytes"] - ordinary["required_heap_bytes"],
+                             49152 + 24576)
+            for extra in ({"WIFI_SSID": ""}, {"WIFI_OTA_SEEDER": 1},
+                          {"WIFI_SSID": "saved-at-runtime", "WIFI_OTA_SEEDER": 1}):
+                with self.subTest(target=target, extra=extra):
+                    combined = ram.requirements("ESP32_PLATFORM", {
+                        **base, "WITH_MQTT_BRIDGE": 1, **extra,
+                    }, target)
+                    self.assertEqual(combined, mqtt)
+
+    def test_mqtt_only_elf_gate_rejects_the_previously_omitted_wifi_allowance(self):
+        defines = {"WITH_MQTT_BRIDGE": 1, "WEBCONFIG_DISABLED": 1}
+        target = "Tbeam_SX1262_repeater_observer_mqtt"
+        policy = ram.requirements("ESP32_PLATFORM", defines, target)
+        self.assertEqual(policy["components"]["wireless_stacks"], 49152)
+        required = policy["required_heap_bytes"]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "firmware.elf"
+            report = Path(temporary) / "firmware.memory.json"
+            # The old WiFi-omitted policy accepted the first linked capacity.
+            # The corrected gate must reject it and enforce the exact new bound.
+            for capacity, expected in ((required - 49152, False),
+                                       (required - 1, False), (required, True)):
+                with self.subTest(capacity=capacity), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    esp_fixture(path, modern=True, internal_length=capacity + 0x4000)
+                    status = ram.check_firmware(path, "ESP32_PLATFORM", "esp32s3",
+                                                defines, target, report)
+                    result = json.loads(report.read_text())
+                    self.assertEqual(status == 0, expected)
+                    self.assertEqual(result["passed"], expected)
+                    self.assertEqual(result["available_internal_bytes"], capacity)
+                    self.assertEqual(result["required_heap_bytes"], required)
+
     def test_mqtt_worker_stack_growth_raises_gate_and_contiguous_requirement(self):
         flags = {"WITH_MQTT_BRIDGE": 1, "BOARD_HAS_PSRAM": 1}
         base = ram.requirements("ESP32_PLATFORM", flags, "v4_companion")
