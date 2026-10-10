@@ -4,6 +4,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "../room_history_store/filesystem.h"
+#include <helpers/RoomAccessPolicy.h>
 
 #define PUB_KEY_SIZE 32
 #define MAX_PATH_SIZE 64
@@ -55,7 +57,7 @@ static bool saveRoomTopic(Store* store, const char* text) {
 }
 }
 #include "state.inc"
-static_assert(sizeof(((ClientInfo*)0)->extra.room) <= sizeof(((ClientInfo*)0)->extra.sensor),
+static_assert(sizeof(void*) != 4 || sizeof(((ClientInfo*)0)->extra.room) <= sizeof(((ClientInfo*)0)->extra.sensor),
               "topic state must fit the existing shared union");
 struct Clock : mesh::RTCClock {
   uint32_t now = 1000;
@@ -79,6 +81,8 @@ struct Sent {
 };
 struct MyMesh {
   ACL acl;
+  MemoryFS policy_fs;
+  mesh::RoomAccessPolicy room_access;
   Clock clock;
   Random rng;
   mesh::Identity self_id;
@@ -95,9 +99,13 @@ struct MyMesh {
   uint16_t _num_post_pushes = 0;
   char room_topic[MAX_POST_TEXT_LEN + 1] = {};
   PostInfo posts[MAX_UNSYNCED_POSTS] = {};
+  uint32_t post_ready_at[MAX_UNSYNCED_POSTS] = {};
+  uint32_t post_ready_mask = UINT32_MAX;
   struct { uint8_t path_hash_mode = 0; } _prefs;
   int default_scope = 0;
   MyMesh() {
+    metadata_filesystem = &policy_fs;
+    assert(room_access.load(&policy_fs));
     self_id.pub_key[0] = 77;
     acl.clients[0].id.pub_key[0] = 1;
     acl.clients[0].last_activity = 1000;
@@ -200,9 +208,10 @@ int main() {
   }
   {
     MyMesh m; m.topic("topic"); m.clock.now = 1003;
-    m.post(0, 1000, "unaged"); m.tick(6000);
+    m.post(0, 1000, "unaged"); m.post_ready_mask &= ~UINT32_C(1);
+    m.post_ready_at[0] = futureMillis(10000); m.tick(6000);
     assert(m.sent.empty()); // Unaged older posts still protect app forceSince.
-    m.clock.now = 1007; m.tick(); assert(m.sent.back().text == "unaged");
+    m.tick(4000); assert(m.sent.back().text == "unaged");
     m.ack(); m.tick(); assert(m.sent.back().text == "topic");
   }
   for (bool flood : {false, true}) for (bool pool : {false, true}) {
@@ -265,6 +274,30 @@ int main() {
     m.acl.clients[0].extra.room.topic_seen_revision = 0;
     m.tick(UINT32_C(0x80000000));
     assert(m.sent.size() == 2); m.ack();
+  }
+  {
+    MyMesh m; m.topic("banned topic"); m.post(0, 900, "banned post");
+    assert(m.room_access.addBan(&m.policy_fs, m.acl.clients[0].id.pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+    m.tick(6000); assert(m.sent.empty());
+    assert(m.acl.clients[0].extra.room.pending_ack == 0);
+    assert(m.room_access.removeBan(&m.policy_fs, m.acl.clients[0].id.pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+    m.tick(); assert(m.sent.back().text == "banned post"); m.ack();
+    m.tick(); assert(m.sent.back().text == "banned topic"); m.ack();
+  }
+  {
+    // A banned first slot cannot swallow an ACK for a later allowed identity.
+    MyMesh m; m.acl.count = 2;
+    auto& banned = m.acl.clients[0]; auto& allowed = m.acl.clients[1];
+    allowed.id.pub_key[0] = 2;
+    banned.extra.room.pending_ack = allowed.extra.room.pending_ack = 0x12345678;
+    banned.extra.room.push_post_timestamp = 200;
+    allowed.extra.room.push_post_timestamp = 300;
+    assert(m.room_access.addBan(&m.policy_fs, banned.id.pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+    const auto ban_before = banned;
+    const uint32_t ack = 0x12345678;
+    assert(m.processAck(reinterpret_cast<const uint8_t*>(&ack)));
+    assert(memcmp(&ban_before, &banned, sizeof(banned)) == 0);
+    assert(allowed.extra.room.pending_ack == 0 && allowed.extra.room.sync_since == 300);
   }
   puts("room topic delivery regressions passed");
 }

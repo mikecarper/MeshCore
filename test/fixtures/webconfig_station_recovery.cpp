@@ -2,7 +2,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <string>
+#include <helpers/RoomWebMailbox.h>
 #include <helpers/WiFiReconnectPolicy.h>
 static uint32_t clock_ms = 1000;
 uint32_t millis() { return clock_ms; }
@@ -77,7 +79,7 @@ struct DNS { void stop() {} };
 class WebConfigServer {
 public:
   enum Mode { MODE_OFF, MODE_SETUP, MODE_CONNECTING, MODE_LAN };
-  struct Callbacks {};
+  struct Callbacks { bool supportsRoomService() const { return false; } };
   Callbacks* _cb;
   void* _mqtt_prefs;
   bool _owns_wifi;
@@ -86,6 +88,7 @@ public:
   const uint8_t* _pub_key;
   const char *_fw_ver, *_build_date, *_role, *_board_name;
   void* _mux = nullptr;
+  mesh::RoomWebMailbox* _room_mailbox = nullptr;
   bool _cli_enabled = false;
   char _wifi_ssid[32] = {}, _wifi_password[65] = {};
   uint8_t _wifi_power_save = 0;
@@ -130,6 +133,7 @@ public:
   void createServer() { ++server_starts; }
   void probeBoardCommands() { _board_cmds_probed = true; }
   void serviceTerminal(uint32_t) {}
+  void serviceRoom(uint32_t) {}
   bool bluetoothWiFiCoexistenceRequired() { return false; }
   bool acceptWiFi(Entry& e, const char* value) {
 @CREDENTIAL_BATCH@

@@ -3813,8 +3813,12 @@ a packet already queued for transmission can still arrive.
 Topic saves are verified before publication. A failed save reports an error
 and retains the previous live topic. Corrupt, unreadable, or unsupported stored
 topic files are preserved and block replacement until their storage issue is
-repaired. Topics do not make ordinary room history persistent: retained posts
-still use the existing bounded RAM ring and are lost on reboot.
+repaired. Ordinary room history uses the bounded RAM ring by default. Enable
+optional retention of the newest 32 posts with `set room.history on`.
+
+See [Room history, moderation, and information board](room_services.md) for
+persistent history, saved ACL roles, full-key bans, per-user post/request
+limits, the ESP32 `/room` browser page, and versioned article downloads.
 
 ---
 

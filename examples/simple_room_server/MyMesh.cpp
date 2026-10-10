@@ -23,6 +23,7 @@
 #include <helpers/ClientLoginPersistence.h>
 #include <helpers/RoomLoginAuthorization.h>
 #include <helpers/RoomTopicStore.h>
+#include <helpers/RoomBoardProtocol.h>
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/LazyPersistence.h>
 #if MESH_PACKET_LOGGING
@@ -36,6 +37,9 @@
 #include <helpers/RxReservePacketManager.h>
 #ifdef WITH_WEBCONFIG
 #include <WiFi.h>
+#include <Preferences.h>
+#include <ArduinoJson.h>
+#include <helpers/RoomWebJson.h>
 #endif
 #include <helpers/OtaChannel.h>
 
@@ -97,25 +101,42 @@ struct ServerStats {
   uint16_t n_posted, n_post_push;
 };
 
-void MyMesh::addPost(ClientInfo *client, const char *postData) {
-  storePost(client->id, postData);
+bool MyMesh::addPost(ClientInfo *client, const char *postData) {
+  return storePost(client->id, postData);
 }
 
-void MyMesh::addSystemPost(const char *postData) {
-  if (!postData || postData[0] == 0) return;
+bool MyMesh::addSystemPost(const char *postData) {
+  if (!postData || postData[0] == 0) return false;
 
   MESH_DEBUG_PRINTLN("room.post: addSystemPost: %s", postData);
 
-  storePost(self_id, postData);
+  return storePost(self_id, postData);
 }
 
-void MyMesh::storePost(const mesh::Identity &author, const char *postData) {
+bool MyMesh::storePost(const mesh::Identity &author, const char *postData) {
+  if (!postData || !postData[0] || strlen(postData) > MAX_POST_TEXT_LEN
+      || !room_history_available || last_room_timestamp == UINT32_MAX) return false;
+  uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  // Keep catch-up cursors increasing after reboot and backward RTC corrections,
+  // without setting the radio's wall clock from archived messages.
+  if (timestamp <= last_room_timestamp) timestamp = last_room_timestamp + 1;
+  if (timestamp == 0) return false;
+  if (room_history_enabled) {
+    if ((room_history_state.needs_repair
+          || room_history_state.total_records >= mesh::ROOM_HISTORY_JOURNAL_RECORDS)
+        && !snapshotRoomHistory()) return false;
+    if (!mesh::appendRoomHistory(_fs, room_history_state, author.pub_key,
+                                timestamp, postData)) return false;
+  }
   int idx = next_post_idx;
   // TODO: suggested postData format: <title>/<descrption>
   posts[idx].author = author; // add to cyclic queue
-  StrHelper::strncpy(posts[idx].text, postData, MAX_POST_TEXT_LEN);
+  StrHelper::strncpy(posts[idx].text, postData, sizeof(posts[idx].text));
 
-  posts[idx].post_timestamp = getRTCClock()->getCurrentTimeUnique();
+  posts[idx].post_timestamp = timestamp;
+  last_room_timestamp = timestamp;
+  post_ready_at[idx] = futureMillis(POST_SYNC_DELAY_SECS * 1000UL);
+  post_ready_mask &= ~(UINT32_C(1) << idx);
   MESH_DEBUG_PRINTLN("room.post: storePost idx=%d text=%s", idx, posts[idx].text);
   MESH_DEBUG_PRINTLN("room.post: timestamp=%u", posts[idx].post_timestamp);
   next_post_idx = (next_post_idx + 1) % MAX_UNSYNCED_POSTS;
@@ -123,12 +144,313 @@ void MyMesh::storePost(const mesh::Identity &author, const char *postData) {
   next_push = futureMillis(PUSH_NOTIFY_DELAY_MILLIS);
   _num_posted++; // stats
   MESH_DEBUG_PRINTLN("room.post: next_post_idx=%d num_posted=%d push scheduled", next_post_idx, _num_posted);
+  return true;
+}
+
+bool MyMesh::snapshotRoomHistory() {
+  uint8_t count = 0;
+  for (const auto& post : posts) if (post.post_timestamp != 0) ++count;
+  return mesh::saveRoomHistorySnapshot(_fs, room_history_state, count,
+      [this](uint8_t ordinal, mesh::RoomHistoryRecord& record) {
+        for (int k = 0, idx = next_post_idx; k < MAX_UNSYNCED_POSTS; ++k,
+             idx = (idx + 1) % MAX_UNSYNCED_POSTS) {
+          if (posts[idx].post_timestamp == 0) continue;
+          if (ordinal-- != 0) continue;
+          memcpy(record.author, posts[idx].author.pub_key, PUB_KEY_SIZE);
+          record.timestamp = posts[idx].post_timestamp;
+          memcpy(record.text, posts[idx].text, sizeof(record.text));
+          return true;
+        }
+        return false;
+      });
+}
+
+void MyMesh::loadRoomHistory() {
+  room_history_available = mesh::loadRoomHistoryConfig(_fs, room_history_enabled);
+  if (!room_history_available || !room_history_enabled) return;
+  room_history_available = mesh::loadRoomHistory(_fs, room_history_state,
+      [this](uint8_t ordinal, const mesh::RoomHistoryRecord& record) {
+        if (ordinal >= MAX_UNSYNCED_POSTS || record.timestamp <= last_room_timestamp) return false;
+        auto& post = posts[ordinal];
+        memcpy(post.author.pub_key, record.author, PUB_KEY_SIZE);
+        post.post_timestamp = record.timestamp;
+        memcpy(post.text, record.text, sizeof(post.text));
+        last_room_timestamp = record.timestamp;
+        next_post_idx = (ordinal + 1) % MAX_UNSYNCED_POSTS;
+        return true;
+      });
+  if (!room_history_available) {
+    for (auto& post : posts) post.post_timestamp = 0;
+    next_post_idx = 0;
+    last_room_timestamp = 0;
+    MESH_DEBUG_PRINTLN("Room history unavailable; stored journal preserved");
+  }
+}
+
+bool MyMesh::handleRoomHistoryCommand(const char* command, char* reply) {
+  if (strcmp(command, "get room.history") == 0) {
+    snprintf(reply, 157, "> %s; storage %s; retained %u/32",
+        room_history_enabled ? "on" : "off", room_history_available ? "ready" : "unavailable",
+        unsigned(room_history_state.count));
+    return true;
+  }
+  if (strcmp(command, "room.history.clear") == 0) {
+    if (!room_history_available || !mesh::clearRoomHistory(_fs, room_history_state)) {
+      strcpy(reply, "Err - history clear failed; previous history retained"); return true;
+    }
+    for (auto& post : posts) post.post_timestamp = 0;
+    next_post_idx = 0;
+    // Do not lower cursors already sent to companions in this boot.
+    recent_room_posts.clear();
+    strcpy(reply, "OK - room history cleared");
+    return true;
+  }
+  if (strncmp(command, "set room.history ", 17) != 0) return false;
+  const char* value = command + 17;
+  bool enabled = strcmp(value, "on") == 0 || strcmp(value, "1") == 0;
+  if (!enabled && strcmp(value, "off") != 0 && strcmp(value, "0") != 0) {
+    strcpy(reply, "Err - room.history requires on/off"); return true;
+  }
+  if (!room_history_available || (enabled && !snapshotRoomHistory())
+      || !mesh::saveRoomHistoryConfig(_fs, enabled)) {
+    strcpy(reply, "Err - history save failed; previous setting retained"); return true;
+  }
+  room_history_enabled = enabled;
+  strcpy(reply, enabled ? "OK - persistent room history enabled (32 posts)"
+                       : "OK - persistent room history disabled; archive retained");
+  return true;
+}
+
+void MyMesh::serviceRoomQuotas() {
+  room_access.serviceQuotaWindow(millis(), [this]() {
+    for (int i = 0; i < acl.getNumClients(); ++i) {
+      auto client = acl.getClientByIdx(i);
+      client->extra.room.post_quota_used = 0;
+      client->extra.room.poll_quota_used = 0;
+    }
+#ifdef WITH_WEBCONFIG
+    for (auto& user : room_web_users) { user.posts = 0; user.polls = 0; }
+#endif
+  });
 }
 
 bool MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
   MESH_DEBUG_PRINTLN("room.post: pushPostToClient text=%s", post.text);
   return pushRoomTextToClient(client, post.post_timestamp, post.author, post.text);
 }
+
+#ifdef WITH_WEBCONFIG
+bool MyMesh::handleRoomWebCommand(const char* command, char* reply) {
+  if (strcmp(command, "get room.web") == 0) {
+    snprintf(reply, 157, "> %s; browser path /room", room_web_enabled ? "on" : "off");
+    return true;
+  }
+  if (strncmp(command, "set room.web ", 13) != 0) return false;
+  const char* value = command + 13;
+  const bool enabled = strcmp(value, "on") == 0 || strcmp(value, "1") == 0;
+  if (!enabled && strcmp(value, "off") != 0 && strcmp(value, "0") != 0) {
+    strcpy(reply, "Err - room.web requires on/off"); return true;
+  }
+  Preferences settings;
+  if (!settings.begin("mesh-room", false)) {
+    strcpy(reply, "Err - room browser setting unavailable"); return true;
+  }
+  const bool saved = settings.putBool("web", enabled) == sizeof(bool)
+      && settings.getBool("web", !enabled) == enabled;
+  settings.end();
+  if (!saved) { strcpy(reply, "Err - room browser setting save failed"); return true; }
+  room_web_enabled = enabled;
+  strcpy(reply, enabled ? "OK - room browser enabled; start webconfig, then open /room"
+                       : "OK - room browser disabled");
+  return true;
+}
+
+static const char* roomWebString(JsonVariantConst value, size_t maximum) {
+  if (!value.is<const char*>()) return nullptr;
+  const JsonString text = value.as<JsonString>();
+  if (text.size() > maximum || strlen(text.c_str()) != text.size()) return nullptr;
+  return text.c_str();
+}
+
+void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* request,
+                               char* response, size_t capacity) {
+  room_web_request_authenticated = false;
+  auto error = [response, capacity](const char* message) {
+    mesh::RoomJsonWriter json(response, capacity);
+    json.raw("{\"error\":"); json.string(message); json.raw("}"); json.finish();
+  };
+  if (!room_web_enabled) { error("room browser disabled; use set room.web on"); return; }
+  if (!token || !sequence || !request || strlen(request) > 4096) { error("invalid request"); return; }
+  uint8_t nonzero = 0;
+  for (size_t i = 0; i < 32; ++i) nonzero |= token[i];
+  if (!nonzero) { error("invalid browser identity"); return; }
+  mesh::RoomJsonAllocator allocator;
+  JsonDocument input(&allocator);
+  if (deserializeJson(input, request, DeserializationOption::NestingLimit(4))
+      != DeserializationError::Ok || !input.is<JsonObject>()) { error("invalid JSON"); return; }
+  const char* operation = roomWebString(input["op"], 20);
+  const char* password = roomWebString(input["password"], 64);
+  if (!operation || !password) { error("missing operation or password"); return; }
+
+  // A browser proves possession of its own random web token. It cannot claim
+  // a radio public key or inherit that key's ACL permission without its secret.
+  mesh::Identity author;
+  mesh::Utils::sha256(author.pub_key, PUB_KEY_SIZE, token, 32, self_id.pub_key, PUB_KEY_SIZE);
+  if (!room_access.allowsIdentity(author.pub_key)) { error("room access denied"); return; }
+  const auto authorization = mesh::authorizeRoomLogin(password, _prefs.password,
+      _prefs.guest_password, false, 0, _prefs.allow_read_only, PERM_ACL_ROLE_MASK,
+      PERM_ACL_GUEST, PERM_ACL_READ_WRITE, PERM_ACL_ADMIN);
+  if (!authorization.accepted) { error("incorrect room password"); return; }
+  room_web_request_authenticated = true;
+  const uint8_t role = authorization.role & PERM_ACL_ROLE_MASK;
+  const bool writing = strcmp(operation, "post") == 0
+      || strcmp(operation, "board.save") == 0 || strcmp(operation, "board.delete") == 0;
+  if (writing && (!input["boot"].is<uint32_t>()
+      || input["boot"].as<uint32_t>() != room_web_boot_id)) {
+    error("radio restarted; refresh before sending"); return;
+  }
+  if (strcmp(operation, "post") == 0 && role != PERM_ACL_READ_WRITE && role != PERM_ACL_ADMIN) {
+    error("read-only room access"); return;
+  }
+  if ((strcmp(operation, "board.save") == 0 || strcmp(operation, "board.delete") == 0)
+      && role != PERM_ACL_ADMIN) { error("admin permission required"); return; }
+  if (strcmp(operation, "status") != 0 && strcmp(operation, "posts") != 0
+      && strcmp(operation, "post") != 0 && strcmp(operation, "board.index") != 0
+      && strcmp(operation, "board.read") != 0 && strcmp(operation, "board.save") != 0
+      && strcmp(operation, "board.delete") != 0) { error("unknown room operation"); return; }
+
+  const uint32_t now = millis();
+  RoomWebUser* user = nullptr;
+  RoomWebUser* available = nullptr;
+  for (auto& entry : room_web_users) {
+    if (entry.id.matches(author) && entry.last_sequence != 0) user = &entry;
+    if (entry.last_sequence == 0 || uint32_t(now - entry.last_seen) >= 1200000UL) available = &entry;
+  }
+  if (!user) {
+    if (!available) { error("room browser busy; try later"); return; }
+    user = available; *user = RoomWebUser{}; user->id = author;
+  } else if (sequence <= user->last_sequence) { error("request already completed; refresh to check its result"); return; }
+  // Preserve the floor even if WebConfig is stopped and restarted. Failed
+  // requests also have a result; a retry must reuse the mailbox's cached result.
+  user->last_sequence = sequence; user->last_seen = now;
+  serviceRoomQuotas();
+  const uint16_t prior_posts = user->posts;
+  if (!(strcmp(operation, "post") == 0 ? room_access.consumePost(user->posts)
+                                      : room_access.consumeKeepAlive(user->polls))) {
+    error("room rate limit reached; try after the next minute"); return;
+  }
+  char key[65]; mesh::Utils::toHex(key, author.pub_key, PUB_KEY_SIZE);
+  mesh::RoomJsonWriter json(response, capacity);
+  if (strcmp(operation, "status") == 0) {
+    json.raw("{\"name\":"); json.string(_prefs.node_name);
+    json.raw(",\"topic\":"); json.string(room_topic);
+    json.raw(",\"boot\":"); json.number(room_web_boot_id);
+    json.raw(",\"role\":"); json.number(role);
+    json.raw(",\"web_key\":"); json.string(key);
+    json.raw(",\"persistent_history\":"); json.raw(room_history_enabled ? "true" : "false");
+    json.raw("}"); json.finish(); return;
+  }
+  if (strcmp(operation, "post") == 0) {
+    const char* name = roomWebString(input["name"], 24);
+    const char* text = roomWebString(input["text"], MAX_POST_TEXT_LEN);
+    if (!name || !*name || !text || !*text) { user->posts = prior_posts; error("name and message required"); return; }
+    for (const unsigned char* p = (const unsigned char*)name; *p; ++p) {
+      if (*p < 0x20 || *p == 0x7f || *p == ':') { user->posts = prior_posts; error("invalid display name"); return; }
+    }
+    char post[MAX_POST_TEXT_LEN + 1];
+    const int length = snprintf(post, sizeof(post), "%s: %s", name, text);
+    if (length < 0 || size_t(length) >= sizeof(post)) { user->posts = prior_posts; error("message with name exceeds 151 UTF-8 bytes"); return; }
+    if (!storePost(author, post)) { user->posts = prior_posts; error("post not retained; storage unavailable"); return; }
+    json.raw("{\"ok\":true,\"timestamp\":"); json.number(last_room_timestamp);
+    json.raw("}"); json.finish(); return;
+  }
+  if (strcmp(operation, "posts") == 0) {
+    if (!input["after"].is<uint32_t>()) { error("invalid message cursor"); return; }
+    const uint32_t after = input["after"].as<uint32_t>();
+    const PostInfo* selected = nullptr;
+    for (int k = 0, idx = next_post_idx; k < MAX_UNSYNCED_POSTS; ++k, idx = (idx + 1) % MAX_UNSYNCED_POSTS) {
+      if (posts[idx].post_timestamp > after) { selected = &posts[idx]; break; }
+    }
+    json.raw("{\"post\":");
+    if (!selected) json.raw("null");
+    else {
+      mesh::Utils::toHex(key, selected->author.pub_key, PUB_KEY_SIZE);
+      json.raw("{\"timestamp\":"); json.number(selected->post_timestamp);
+      json.raw(",\"author\":"); json.string(key);
+      json.raw(",\"text\":"); json.string(selected->text); json.raw("}");
+    }
+    json.raw("}"); json.finish(); return;
+  }
+
+  mesh::RoomBoardIndex board;
+  if (!mesh::loadRoomBoard(_fs, board)) { error("information board storage unavailable"); return; }
+  if (strcmp(operation, "board.index") == 0) {
+    if (!input["revision"].is<uint32_t>() || !input["cursor"].is<uint8_t>()) { error("invalid board cursor"); return; }
+    const uint32_t revision = input["revision"].as<uint32_t>();
+    const uint8_t cursor = input["cursor"].as<uint8_t>();
+    if (cursor > board.count || (revision != board.revision && (revision != 0 || cursor != 0))) {
+      error("board changed; reload index"); return;
+    }
+    json.raw("{\"revision\":"); json.number(board.revision);
+    json.raw(",\"articles\":[");
+    uint8_t next = cursor;
+    for (; next < board.count && next < cursor + 2; ++next) {
+      if (next != cursor) json.raw(",");
+      const auto& article = board.articles[next];
+      json.raw("{\"id\":"); json.number(article.id);
+      json.raw(",\"version\":"); json.number(article.version);
+      json.raw(",\"length\":"); json.number(article.body_length);
+      json.raw(",\"title\":"); json.string(article.title); json.raw("}");
+    }
+    json.raw("],\"next\":"); json.number(next < board.count ? next : 255);
+    json.raw("}"); json.finish(); return;
+  }
+  if (!input["id"].is<uint8_t>() || !input["version"].is<uint32_t>()) { error("invalid article identity/version"); return; }
+  const uint8_t id = input["id"].as<uint8_t>();
+  const uint32_t version = input["version"].as<uint32_t>();
+  const mesh::RoomBoardArticle* article = nullptr;
+  for (uint8_t i = 0; i < board.count; ++i) if (board.articles[i].id == id) article = &board.articles[i];
+  if (strcmp(operation, "board.read") == 0) {
+    if (!input["offset"].is<uint16_t>()) { error("invalid article offset"); return; }
+    const uint16_t offset = input["offset"].as<uint16_t>();
+    uint8_t chunk[mesh::ROOM_BOARD_READ_MAX_CHUNK];
+    size_t length = 0;
+    const auto result = mesh::readRoomBoardArticle(_fs, id, version, offset, chunk, sizeof(chunk), length);
+    if (result != mesh::RoomBoardResult::Success || !article) { error("article changed or unavailable; reload index"); return; }
+    char encoded[4 * ((sizeof(chunk) + 2) / 3) + 1]; mesh::roomEncodeBase64(chunk, length, encoded);
+    json.raw("{\"version\":"); json.number(version);
+    json.raw(",\"offset\":"); json.number(offset);
+    json.raw(",\"next\":"); json.number(uint32_t(offset) + length);
+    json.raw(",\"total\":"); json.number(article->body_length);
+    json.raw(",\"data64\":"); json.string(encoded); json.raw("}"); json.finish(); return;
+  }
+  mesh::RoomBoardResult result;
+  if (strcmp(operation, "board.delete") == 0) {
+    if (version == 0) { error("deletion requires the current article version"); return; }
+    result = mesh::deleteRoomBoardArticle(_fs, id, version);
+  } else {
+    const char* title = roomWebString(input["title"], 63);
+    const char* encoded = roomWebString(input["body64"], 2732);
+    if (!title || !encoded || (article ? article->version != version : version != 0)) {
+      error("article changed; reload index before editing"); return;
+    }
+    auto* body = new (std::nothrow) uint8_t[mesh::ROOM_BOARD_MAX_BODY_LENGTH];
+    if (!body) { error("insufficient memory; article retained"); return; }
+    size_t length = 0;
+    if (!mesh::roomDecodeBase64(encoded, body, mesh::ROOM_BOARD_MAX_BODY_LENGTH, length)) {
+      delete[] body; error("invalid article encoding"); return;
+    }
+    result = mesh::saveRoomBoardArticle(_fs, id, title, length,
+        [body](size_t offset, uint8_t* out, size_t count) {
+          memcpy(out, body + offset, count); return count;
+        }, version);
+    delete[] body;
+  }
+  if (result != mesh::RoomBoardResult::Success) { error("article save failed or version changed; previous article retained"); return; }
+  json.raw("{\"ok\":true,\"version\":"); json.number(board.revision + 1);
+  json.raw("}"); json.finish();
+}
+#endif
 
 bool MyMesh::pushRoomTextToClient(ClientInfo *client, uint32_t timestamp,
                                  const mesh::Identity& author, const char* text,
@@ -209,6 +531,7 @@ uint8_t MyMesh::getUnsyncedCount(ClientInfo *client) {
 bool MyMesh::processAck(const uint8_t *data) {
   for (int i = 0; i < acl.getNumClients(); i++) {
     auto client = acl.getClientByIdx(i);
+    if (!room_access.allowsIdentity(client->id.pub_key)) continue;
     if (client->extra.room.pending_ack && memcmp(data, &client->extra.room.pending_ack, 4) == 0) { // got an ACK from Client!
       client->extra.room.pending_ack = 0; // clear this, so next push can happen
       if (client->extra.room.pending_topic_revision != 0) {
@@ -268,6 +591,10 @@ bool MyMesh::handleRoomTopicCommand(const char* command, char* reply) {
 }
 
 void MyMesh::serviceRoomPush() {
+  for (int idx = 0; idx < MAX_UNSYNCED_POSTS; ++idx) {
+    if (!(post_ready_mask & (UINT32_C(1) << idx))
+        && millisHasNowPassed(post_ready_at[idx])) post_ready_mask |= UINT32_C(1) << idx;
+  }
   // Latch this even without subscribers. An unchanged topic remains ready
   // beyond the signed timer comparison's half-range (~25 days).
   if (!room_topic_ready && millisHasNowPassed(room_topic_ready_at)) room_topic_ready = true;
@@ -298,7 +625,8 @@ void MyMesh::serviceRoomPush() {
   auto client = acl.getClientByIdx(next_client_idx);
   bool did_push = false;
   if (client->extra.room.pending_ack == 0 && client->last_activity != 0
-      && client->extra.room.push_failures < 3) {
+      && client->extra.room.push_failures < 3
+      && room_access.allowsIdentity(client->id.pub_key)) {
     const uint32_t now = getRTCClock()->getCurrentTime();
     if (room_topic[0] != 0 && room_topic_ready
         && client->extra.room.topic_seen_revision != room_topic_revision
@@ -316,8 +644,7 @@ void MyMesh::serviceRoomPush() {
         // Companions echo the latest received timestamp as keep-alive forceSince.
         // Even an unaged older post must precede the topic on the wire.
         if (post->post_timestamp <= room_topic_timestamp) has_older_topic_posts = true;
-        if (next_post == NULL && now >= post->post_timestamp
-            && now - post->post_timestamp >= POST_SYNC_DELAY_SECS) next_post = post;
+        if (next_post == NULL && (post_ready_mask & (UINT32_C(1) << idx))) next_post = post;
       }
       idx = (idx + 1) % MAX_UNSYNCED_POSTS;
     }
@@ -360,6 +687,11 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
   // uint32_t now = getRTCClock()->getCurrentTimeUnique();
   // memcpy(reply_data, &now, 4);   // response packets always prefixed with timestamp
   memcpy(reply_data, &sender_timestamp, 4); // reflect sender_timestamp back in response packet (kind of like a 'tag')
+  if (payload[0] == mesh::ROOM_BOARD_REQUEST_SUBTYPE) {
+    const size_t length = mesh::handleRoomBoardRequest(_fs, payload, payload_len,
+                                                       reply_data + 4, reply_capacity - 4);
+    return length ? 4 + length : 0;
+  }
 
   if (payload[0] == REQ_TYPE_GET_STATUS) {
     ServerStats stats;
@@ -417,7 +749,7 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
       // Preserve the legacy seven-byte entries within the encrypted route budget.
       for (int i = 0; i < acl.getNumClients() && ofs + 7 <= reply_capacity; i++) {
         auto c = acl.getClientByIdx(i);
-        if (!c->isAdmin()) continue;  // skip non-Admin entries
+        if (!saveFilter(c)) continue;  // operator assignments plus password-created Admins
         memcpy(&reply_data[ofs], c->id.pub_key, 6); ofs += 6;  // just 6-byte pub_key prefix
         reply_data[ofs++] = c->permissions;
       }
@@ -831,6 +1163,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
 
 void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const mesh::Identity &sender,
                             uint8_t *data, size_t len) {
+  if (!room_access.allowsIdentity(sender.pub_key)) return;
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) { // received an initial request by a possible admin
                                                            // client (unknown at this stage)
     if (len < 8) {
@@ -996,6 +1329,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     return;
   }
   auto client = acl.getClientByIdx(i);
+  if (!room_access.allowsIdentity(client->id.pub_key)) return;
 #if defined(WITH_MQTT_NEIGHBORS)
   // A neighbour that IS an ACL client resolves to a normal index above, so a
   // scope-query response from it lands here -- match it against the overlay.
@@ -1037,18 +1371,17 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
       mesh::Utils::sha256(message_fingerprint, sizeof(message_fingerprint),
                           client->id.pub_key, PUB_KEY_SIZE,
                           (const uint8_t*)text, text_len);
-      const auto replay_decision = recent_room_posts.classifyAndRemember(
-          message_fingerprint, sender_timestamp,
-          client->extra.room.last_post_timestamp);
-
-      using ReplayDecision =
-          mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE>::ReplayDecision;
-      if (replay_decision == ReplayDecision::StaleOrMismatched) {
-        MESH_DEBUG_PRINTLN("onPeerDataRecv: stale or mismatched room post detected");
-        return;
-      }
-      if (replay_decision == ReplayDecision::NewMessage) {
-        addPost(client, text);
+      if (!recent_room_posts.find(message_fingerprint, sender_timestamp)) {
+        if (sender_timestamp <= client->extra.room.last_post_timestamp) return;
+        serviceRoomQuotas();
+        const uint16_t prior_quota = client->extra.room.post_quota_used;
+        if (!room_access.consumePost(client->extra.room.post_quota_used)) return;
+        if (!addPost(client, text)) {
+          client->extra.room.post_quota_used = prior_quota;
+          return;
+        }
+        client->extra.room.last_post_timestamp = sender_timestamp;
+        recent_room_posts.remember(message_fingerprint, sender_timestamp);
       }
       // Exact retries are ACKed again regardless of whether newer posts have
       // advanced this client's room-post replay timestamp.
@@ -1161,10 +1494,45 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
   } else if (type == PAYLOAD_TYPE_REQ && len >= 5) {
     uint32_t sender_timestamp;
     memcpy(&sender_timestamp, data, 4); // timestamp (by sender's RTC clock - which could be wrong)
-    if (sender_timestamp < client->last_timestamp) { // prevent replay attacks
+    const bool keep_alive = data[4] == REQ_TYPE_KEEP_ALIVE;
+    uint32_t since = 0;
+    uint8_t canonical_poll[5];
+    const uint8_t* request_bytes = data + 4;
+    size_t request_length = len - 4;
+    if (keep_alive) {
+      if (!packet->isRouteDirect()) return;
+      if (len >= 9) memcpy(&since, data + 5, 4);
+      canonical_poll[0] = data[4]; memcpy(canonical_poll + 1, &since, 4);
+      request_bytes = canonical_poll; request_length = sizeof(canonical_poll);
+    }
+    uint8_t fingerprint[MAX_HASH_SIZE];
+    mesh::Utils::sha256(fingerprint, sizeof(fingerprint), client->id.pub_key, PUB_KEY_SIZE,
+                        request_bytes, request_length);
+    const bool request_retry = recent_room_polls.find(fingerprint, sender_timestamp);
+    if (sender_timestamp < client->last_timestamp && !request_retry) return;
+    serviceRoomQuotas();
+    if (!request_retry && !room_access.consumeKeepAlive(client->extra.room.poll_quota_used)) return;
+    recent_room_polls.remember(fingerprint, sender_timestamp);
+    // All accepted keep-alive retries get an ACK without rewinding catch-up or
+    // cancelling a newer pending delivery, even if no new request advanced RTC.
+    if (keep_alive && request_retry) {
+        uint32_t ack_hash;
+        uint8_t ack_data[9];
+        memcpy(ack_data, data, 5); memcpy(ack_data + 5, &since, 4);
+        mesh::Utils::sha256((uint8_t*)&ack_hash, 4, ack_data, 9, client->id.pub_key, PUB_KEY_SIZE);
+        if (mesh::Packet::isValidPathLen(client->out_path_len)) {
+          auto reply = createAck(ack_hash);
+          if (reply) {
+            reply->payload[reply->payload_len++] = getUnsyncedCount(client);
+            sendDirect(reply, client->out_path, client->out_path_len, SERVER_RESPONSE_DELAY);
+          }
+        }
+        return;
+    }
+    if (sender_timestamp < client->last_timestamp && !request_retry) { // prevent replay attacks
       MESH_DEBUG_PRINTLN("onPeerDataRecv: possible replay attack detected");
     } else {
-      client->last_timestamp = sender_timestamp;
+      if (sender_timestamp > client->last_timestamp) client->last_timestamp = sender_timestamp;
 
       uint32_t now = getRTCClock()->getCurrentTime();
       client->last_activity = now; // <-- THIS will keep client connection alive
@@ -1183,9 +1551,6 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
 
         client->extra.room.pending_ack = 0;
         client->extra.room.pending_topic_revision = 0;
-
-        // TODO: Throttle KEEP_ALIVE requests!
-        // if client sends too quickly, evict()
 
         // RULE: only send keep_alive response DIRECT!
         if (mesh::Packet::isValidPathLen(client->out_path_len)) {
@@ -1232,6 +1597,7 @@ bool MyMesh::onPeerPathRecv(mesh::Packet *packet, int sender_idx, const uint8_t 
   if (i >= 0 && i < acl.getNumClients()) { // get from our known_clients table (sender SHOULD already be known in this context)
     MESH_DEBUG_PRINTLN("PATH to client, path_len=%d", (uint32_t)path_len);
     auto client = acl.getClientByIdx(i);
+    if (!room_access.allowsIdentity(client->id.pub_key)) return false;
     // PATH has no durable replay freshness signal. Keep it RAM-only and do not
     // let a replay replace an operator-selected force-flood route.
     const bool persistence_allowed = mesh::clientPathPersistenceAllowed(
@@ -1529,6 +1895,18 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _cli.beginManagement(*this, _fs);
 
   acl.load(_fs, self_id);
+  acl.protectExplicitPermissions();
+  room_access.load(_fs);
+  loadRoomHistory();
+#ifdef WITH_WEBCONFIG
+  Preferences room_settings;
+  if (room_settings.begin("mesh-room", true)) {
+    room_web_enabled = room_settings.getBool("web", false);
+    room_settings.end();
+  }
+  getRNG()->random((uint8_t*)&room_web_boot_id, sizeof(room_web_boot_id));
+  if (room_web_boot_id == 0) room_web_boot_id = 1;
+#endif
   region_map.load(_fs);
   _clock_sync.begin(_fs);
   if (mesh::loadRoomTopic(_fs, room_topic)) {
@@ -2689,6 +3067,12 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
   mesh::cli::normalizeCommandVerb(command);
 
   if (handleRoomTopicCommand(command, reply)) return;
+  if (handleRoomHistoryCommand(command, reply)) return;
+  if (room_access.handleConfig(_fs, command, reply, 157)) return;
+  if (mesh::handleRoomBoardCommand(_fs, command, reply, 157)) return;
+#ifdef WITH_WEBCONFIG
+  if (handleRoomWebCommand(command, reply)) return;
+#endif
 
 #if MESH_ENABLE_TELEMETRY_HISTORY
   if (handleTelemetryHistoryCommand(command, reply)) return;
@@ -2791,8 +3175,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     if (*msg == 0) {
       snprintf(reply, MAX_POST_TEXT_LEN, "ERR empty message");
     } else {
-      addSystemPost(msg);
-      snprintf(reply, MAX_POST_TEXT_LEN, "OK");
+      snprintf(reply, MAX_POST_TEXT_LEN, addSystemPost(msg) ? "OK" : "Err - post not retained");
     }
   }
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
@@ -2815,7 +3198,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
 }
 
 bool MyMesh::saveFilter(ClientInfo* client) {
-  return client->isAdmin();    // only save Admins
+  return mesh::roomAclShouldPersist(client->permissions, client->permissions_are_explicit,
+                                   PERM_ACL_ROLE_MASK, PERM_ACL_ADMIN);
 }
 
 void MyMesh::loop() {

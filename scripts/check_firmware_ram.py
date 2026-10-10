@@ -112,6 +112,12 @@ def requirements(platform, defines, target):
                 # Larger replies grow on demand only while preserving 32 KiB
                 # of free internal heap, and shrink after the browser reads.
                 parts["browser_terminal_scrollback"] = 4096
+            if "room_server" in target.lower():
+                # The mailbox is exclusive to Room Server callbacks. JSON's
+                # real allocator cap and one decoded maximum article coexist;
+                # ordinary HTTP bodies/responses use the transient margin.
+                parts["room_browser_mailbox"] = 6656 + 16
+                parts["room_browser_request_workspace"] = 8192 + 2048 + 16
         if repeater:
             # Match MyMesh's platform defaults. The post-hook supplies the
             # MCU-specific classic ESP32 default before sdkconfig is included.
@@ -232,6 +238,8 @@ def requirements(platform, defines, target):
                  "ota_context", "screen_objects_and_history", "ota_encoder_workspace",
                  "ota_generic_source_buffers", "ethernet_or_external_ota_workspaces"):
         largest = max(largest, parts.get(name, 0))
+    if "room_browser_mailbox" in parts:
+        largest = max(largest, 8192, parts["room_browser_mailbox"])
     return {"required_heap_bytes": required, "required_contiguous_bytes": largest,
             "components": parts, "display": display, "full_companion": full}
 

@@ -27,6 +27,11 @@ def production_methods(role, transform=None):
     begin = handler.index("  if (req_type == REQ_TYPE_GET_TELEMETRY_DATA" if sensor
                           else "  if (payload[0] == REQ_TYPE_GET_STATUS)")
     prefix = handler[:begin]
+    # The new board protocol has its own admission/storage regression suite.
+    # Keep this legacy ACL/telemetry fixture on its original request families.
+    if not sensor and "if (payload[0] == mesh::ROOM_BOARD_REQUEST_SUBTYPE)" in prefix:
+        board = extract_braced(prefix, "if (payload[0] == mesh::ROOM_BOARD_REQUEST_SUBTYPE)")
+        prefix = prefix.replace(board, "", 1)
     acl = extract_braced(handler, "if (req_type == REQ_TYPE_GET_ACCESS_LIST" if sensor
                          else "if (payload[0] == REQ_TYPE_GET_ACCESS_LIST")
     generated = prefix + ("  (void)perms;\n" if sensor else "") + acl + "\nreturn 0;\n}\n"
@@ -36,6 +41,7 @@ def production_methods(role, transform=None):
     generated += "ClientInfo* " + ("from" if sensor else "client") + " = &sender;\n"
     generated += "const uint8_t type = PAYLOAD_TYPE_REQ; uint8_t secret[PUB_KEY_SIZE] = {};\n" + receive + "\n}\n"
     if not sensor:
+        generated += extract_braced(source, "bool MyMesh::saveFilter(") + "\n"
         telemetry = extract_braced(handler, "if (payload[0] == REQ_TYPE_GET_TELEMETRY_DATA)")
         telemetry_prefix = telemetry[:telemetry.index("    telemetry.reset();")]
         generated += "int MyMesh::telemetryPrefix(uint8_t* payload, size_t payload_len) {\n"
@@ -67,7 +73,7 @@ class ClientAclInfrastructureTest(unittest.TestCase):
             (work / "production.inc").write_text(production_methods(role, transform), encoding="ascii")
             binary = work / "acl.exe"
             command = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-                       "-I" + str(work), "-I" + str(ROOT / "src"), str(FIXTURE), "-o", str(binary)]
+                       "-I" + str(work), "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"), str(FIXTURE), "-o", str(binary)]
             if role == "sensor": command.insert(1, "-DTEST_SENSOR=1")
             if sys.platform.startswith("linux"):
                 command[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]

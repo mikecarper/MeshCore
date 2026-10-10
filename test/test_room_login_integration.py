@@ -19,6 +19,12 @@ HARNESS = r'''
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include "filesystem.h"
+#include <helpers/RoomAccessPolicy.h>
+#include <helpers/RemoteCliReplyCache.h>
+#include <helpers/RemoteCliRequest.h>
+#include <helpers/ClientACLResponse.h>
+#include <helpers/ClientPathPersistence.h>
 #include <Packet.h>
 #include <helpers/RoomLoginAuthorization.h>
 #include <helpers/ClientLoginPersistence.h>
@@ -80,6 +86,8 @@ struct FakeACL : ClientACL {
   bool known = false, allocate_ok = true;
   unsigned lookups = 0, authorizations = 0, allocations = 0;
   uint8_t authorized_role = 255;
+  int getNumClients() const { return known ? 1 : 0; }
+  ClientInfo* getClientByIdx(int i) { assert(i == 0 && known); return &client; }
   ClientInfo* getClient(const uint8_t* key, size_t length) {
     ++lookups;
     assert(length == PUB_KEY_SIZE);
@@ -117,8 +125,28 @@ struct FakeRng {
     memset(out, 0xB5, length);
   }
 };
+static uint32_t ticks = 0;
+static uint32_t millis() { return ticks; }
 struct MyMesh {
   FakeACL acl;
+  MemoryFS policy_fs;
+  mesh::RoomAccessPolicy room_access;
+  MyMesh() { metadata_filesystem = &policy_fs; assert(room_access.load(&policy_fs)); }
+  int matching_peer_indexes[1] = {0};
+  mesh::RemoteCliReplyCache remote_cli_reply_cache;
+  mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_polls;
+  void serviceRoomQuotas();
+  static bool saveFilter(ClientInfo*);
+  unsigned path_acks = 0;
+  bool processAck(const uint8_t*) { ++path_acks; return true; }
+  uint8_t getUnsyncedCount(ClientInfo*) { return 2; }
+  int getExtraAckTransmitCount() { return 0; }
+  unsigned requests = 0;
+  uint8_t last_request_type = 0;
+  int handleRequest(ClientInfo*, uint32_t, uint8_t* payload, size_t, size_t) { ++requests; last_request_type = payload[0]; return 0; }
+  void handleCommand(uint32_t, char*, char* reply, int, uint8_t) { strcpy(reply, "OK"); }
+  mesh::Packet* createAck(uint32_t ack) { ++post_acks; response.payload_len = 4; memcpy(response.payload, &ack, 4); return &response; }
+  mesh::Packet* createMultiAck(uint32_t ack, uint8_t) { return createAck(ack); }
   struct Prefs {
     char password[32] = "admin";
     char guest_password[32] = "guest";
@@ -145,7 +173,8 @@ struct MyMesh {
   mesh::Packet* createDatagram(uint8_t type, const mesh::Identity& sender,
                                const uint8_t* secret, const uint8_t* data, size_t len) {
     ++creations;
-    assert(type == PAYLOAD_TYPE_RESPONSE && len == 13);
+    assert(type == PAYLOAD_TYPE_RESPONSE || type == PAYLOAD_TYPE_TXT_MSG);
+    assert(len <= sizeof(captured_reply));
     memcpy(response_key, sender.pub_key, PUB_KEY_SIZE);
     memcpy(response_secret, secret, PUB_KEY_SIZE);
     memcpy(captured_reply, data, len);
@@ -161,29 +190,48 @@ struct MyMesh {
   }
   void sendDirect(mesh::Packet* packet, const uint8_t* path, uint8_t path_len,
                   unsigned long delay) {
-    assert(packet == &response && delay == SERVER_RESPONSE_DELAY);
+    assert(packet == &response && (delay == SERVER_RESPONSE_DELAY || delay == TXT_ACK_DELAY));
     assert(mesh::Packet::isValidPathLen(path_len));
     ++direct_sends;
     direct_path_len = path_len;
     memcpy(direct_path, path, (path_len & 63) * ((path_len >> 6) + 1));
   }
   void sendFloodReply(mesh::Packet* packet, unsigned long delay, uint8_t hash_size) {
-    assert(packet == &response && delay == SERVER_RESPONSE_DELAY);
+    assert(packet == &response && (delay == SERVER_RESPONSE_DELAY || delay == TXT_ACK_DELAY));
     ++flood_sends;
     reply_hash_size = hash_size;
   }
-  void addPost(ClientInfo*, const char*) { ++posts; }
-  void post(ClientInfo* client, const char* text, uint32_t sender_timestamp) {
-    const uint8_t flags = TXT_TYPE_PLAIN;
-    const size_t text_len = strlen(text);
-    bool send_ack = false;
-    @POST_GATE@
-    if (send_ack) ++post_acks;
+  bool store_ok = true;
+  bool addPost(ClientInfo*, const char*) { if (!store_ok) return false; ++posts; return true; }
+  void post(ClientInfo*, const char* text, uint32_t sender_timestamp) {
+    std::vector<uint8_t> data(5 + strlen(text) + 1);
+    memcpy(data.data(), &sender_timestamp, 4); data[4] = TXT_TYPE_PLAIN << 2;
+    memcpy(data.data() + 5, text, strlen(text));
+    mesh::Packet packet; packet.header = ROUTE_TYPE_DIRECT;
+    onPeerDataRecv(&packet, PAYLOAD_TYPE_TXT_MSG, 0, acl.client.shared_secret, data.data(), data.size() - 1);
   }
+  void poll(uint32_t timestamp, uint32_t since = 0, bool flood = false) {
+    uint8_t data[10] = {}; memcpy(data, &timestamp, 4); data[4] = REQ_TYPE_KEEP_ALIVE;
+    memcpy(data + 5, &since, 4);
+    mesh::Packet packet; packet.header = flood ? ROUTE_TYPE_FLOOD : ROUTE_TYPE_DIRECT;
+    onPeerDataRecv(&packet, PAYLOAD_TYPE_REQ, 0, acl.client.shared_secret, data, 9);
+  }
+  void request(uint32_t timestamp, uint8_t subtype, uint8_t argument = 0) {
+    uint8_t data[8] = {}; memcpy(data, &timestamp, 4); data[4] = subtype;
+    data[5] = argument;
+    mesh::Packet packet; packet.header = ROUTE_TYPE_DIRECT;
+    onPeerDataRecv(&packet, PAYLOAD_TYPE_REQ, 0, acl.client.shared_secret, data, sizeof(data));
+  }
+  void onPeerDataRecv(mesh::Packet*, uint8_t, int, const uint8_t*, uint8_t*, size_t);
+  bool onPeerPathRecv(mesh::Packet*, int, const uint8_t*, uint8_t*, uint8_t, uint8_t, uint8_t*, uint8_t);
   void onAnonDataRecv(mesh::Packet*, const uint8_t*, const mesh::Identity&,
                        uint8_t*, size_t);
 };
 @LOGIN_HANDLER@
+@PEER_HANDLER@
+@PATH_HANDLER@
+@QUOTA_SERVICE@
+@SAVE_FILTER@
 
 static mesh::Identity identity(uint8_t n = 1) {
   mesh::Identity sender{};
@@ -210,6 +258,8 @@ static void seedKnown(MyMesh& mesh, uint8_t permissions = PERM_ACL_ADMIN) {
   client.extra.room.topic_seen_revision = 11;
   client.extra.room.pending_topic_revision = 12;
   client.extra.room.topic_failures = 2;
+  client.extra.room.post_quota_used = 9;
+  client.extra.room.poll_quota_used = 8;
   mesh.acl.known = true;
 }
 static mesh::Packet incoming(bool flood = false) {
@@ -235,7 +285,7 @@ static void login(MyMesh& mesh, const char* password = "guest", uint32_t timesta
   memset(secret, 0x77, sizeof(secret));
   auto packet = incoming(flood);
   mesh.onAnonDataRecv(&packet, secret, identity(), data.data(), data.size() - 1);
-  assert(data.back() == 0);
+  if (mesh.room_access.allowsIdentity(identity().pub_key)) assert(data.back() == 0);
 }
 static void checkReply(const MyMesh& mesh, uint8_t permissions) {
   assert(mesh.creations == 1 && mesh.captured_reply_length == 13);
@@ -325,8 +375,10 @@ static void preservedRoles() {
         MyMesh mesh;
         seedKnown(mesh, permissions);
         mesh._prefs.allow_read_only = reader;
+        mesh.acl.client.permissions_are_explicit = reader;
         login(mesh, password);
         assert(mesh.acl.client.permissions == permissions);
+        assert(mesh.acl.client.permissions_are_explicit == reader);
         assert(mesh.acl.authorized_role == (permissions & PERM_ACL_ROLE_MASK));
         assert(mesh.acl.allocations == 0 && mesh.acl.client.last_timestamp == 100);
         checkReply(mesh, permissions);
@@ -345,9 +397,11 @@ static void preservedRoles() {
     // A valid explicit Admin credential replaces delegated labels 4/5, too.
     MyMesh mesh;
     seedKnown(mesh, permissions);
+    mesh.acl.client.permissions_are_explicit = true;
     login(mesh, "admin");
     const uint8_t expected = (permissions & ~PERM_ACL_ROLE_MASK) | PERM_ACL_ADMIN;
     assert(mesh.acl.client.permissions == expected);
+    assert(mesh.acl.client.permissions_are_explicit);
     checkReply(mesh, expected);
   }
   assert(preserved == 2048);
@@ -438,6 +492,7 @@ static void sessionRefresh() {
       assert(client.extra.room.pending_ack == 0 && client.extra.room.push_failures == 0);
       assert(client.extra.room.topic_seen_revision == 0 && client.extra.room.pending_topic_revision == 0);
       assert(client.extra.room.topic_failures == 0);
+      assert(client.extra.room.post_quota_used == 9 && client.extra.room.poll_quota_used == 8);
       for (uint8_t value : client.shared_secret) assert(value == 0x77);
       assert(mesh.next_push == mesh.millis_now + PUSH_NOTIFY_DELAY_MILLIS);
       assert(mesh.dirty_contacts_expiry == mesh.millis_now + LAZY_CONTACTS_WRITE_DELAY);
@@ -514,6 +569,119 @@ static void readOnlyPosting() {
   puts("actual room post gate blocks logged-in readers/managers and accepts RW/Admin once passed");
 }
 
+
+static void moderationCases() {
+  for (bool known : {false, true}) for (const char* password : {"", "guest", "admin"}) {
+    MyMesh mesh;
+    if (known) seedKnown(mesh, PERM_ACL_ADMIN);
+    mesh._prefs.allow_read_only = true;
+    assert(mesh.room_access.addBan(&mesh.policy_fs, identity().pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+    const ClientInfo before = mesh.acl.client;
+    login(mesh, password);
+    checkRejectedSession(mesh, before);
+    assert(mesh.acl.authorizations == 0 && mesh.acl.allocations == 0 && mesh.acl.lookups == 0);
+    assert(mesh.acl.storage.reads == 0 && mesh.acl.storage.writes == 0);
+    if (known) {
+      mesh.post(&mesh.acl.client, "banned", 1000);
+      mesh.poll(1000, 900);
+      assert(mesh.posts == 0 && mesh.post_acks == 0);
+      assert(memcmp(&mesh.acl.client, &before, sizeof(before)) == 0);
+      auto packet = incoming(); uint8_t path[] = {0x11, 0x22}, ack[4] = {};
+      assert(!mesh.onPeerPathRecv(&packet, 0, mesh.acl.client.shared_secret,
+                                 path, 2, PAYLOAD_TYPE_ACK, ack, sizeof(ack)));
+      assert(mesh.path_acks == 0 && memcmp(&mesh.acl.client, &before, sizeof(before)) == 0);
+    }
+    assert(mesh.room_access.removeBan(&mesh.policy_fs, identity().pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+    login(mesh, password);
+    assert(mesh.acl.known && mesh.creations == 1);
+  }
+  // A 31-byte collision is a different identity; bans always use the full key.
+  MyMesh collision; auto other = identity(); other.pub_key[31] ^= 1;
+  assert(collision.room_access.addBan(&collision.policy_fs, other.pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+  login(collision, "admin"); assert(collision.acl.known && collision.creations == 1);
+  // A bad policy image must not silently admit an Admin or public reader.
+  MyMesh unavailable;
+  unavailable.policy_fs.put(mesh::ROOM_ACCESS_PRIMARY_PATH, {1,2,3});
+  assert(!unavailable.room_access.load(&unavailable.policy_fs));
+  unavailable._prefs.allow_read_only = true;
+  login(unavailable, "admin");
+  assert(!unavailable.acl.known && unavailable.acl.lookups == 0 && unavailable.creations == 0);
+  puts("actual room gates deny full-key bans on login, posts, polls, and paths passed");
+}
+
+static void quotaCases() {
+  MyMesh mesh; ticks = 100; seedKnown(mesh, PERM_ACL_ADMIN);
+  assert(mesh.room_access.setRates(&mesh.policy_fs, 1, 1));
+  mesh.post(&mesh.acl.client, "one", 1000);
+  assert(mesh.posts == 1 && mesh.post_acks == 1 && mesh.acl.client.extra.room.post_quota_used == 1);
+  assert(mesh.acl.client.extra.room.poll_quota_used == 0);
+  login(mesh, "guest", 100);
+  assert(mesh.acl.client.extra.room.post_quota_used == 1); // Re-login never bypasses a posting quota.
+  mesh.post(&mesh.acl.client, "two", 1001);
+  assert(mesh.posts == 1 && mesh.post_acks == 1 && mesh.acl.client.extra.room.last_post_timestamp == 1000);
+  mesh.post(&mesh.acl.client, "one", 1000);
+  assert(mesh.posts == 1 && mesh.post_acks == 2 && mesh.acl.client.extra.room.post_quota_used == 1);
+  mesh.poll(1001, 50);
+  assert(mesh.post_acks == 3 && mesh.acl.client.extra.room.poll_quota_used == 1);
+  assert(mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.sync_since == 50);
+  mesh.acl.client.extra.room.pending_ack = 0x12345678;
+  mesh.acl.client.extra.room.pending_topic_revision = 55;
+  const auto poll_retry_before = mesh.acl.client;
+  mesh.poll(1001, 50); // Even equal-time retries cannot cancel a newer outstanding delivery.
+  assert(mesh.post_acks == 4 && mesh.acl.client.extra.room.poll_quota_used == 1);
+  assert(memcmp(&poll_retry_before, &mesh.acl.client, sizeof(poll_retry_before)) == 0);
+  mesh.poll(1002, 60);
+  assert(mesh.post_acks == 4 && mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.sync_since == 50);
+  login(mesh, "guest", 1002, 80);
+  assert(mesh.acl.client.extra.room.post_quota_used == 1 && mesh.acl.client.extra.room.poll_quota_used == 1);
+  mesh.poll(1001, 50); // Old exact retry ACK cannot rewind a refreshed/newer cursor.
+  assert(mesh.post_acks == 5 && mesh.acl.client.extra.room.sync_since == 80);
+  mesh.poll(1001, 99); // Changed content at an old timestamp isn't a cached retry.
+  assert(mesh.post_acks == 5 && mesh.acl.client.extra.room.sync_since == 80);
+  ticks = 60100;
+  mesh.post(&mesh.acl.client, "two", 1001);
+  assert(mesh.posts == 2 && mesh.post_acks == 6 && mesh.acl.client.extra.room.last_post_timestamp == 1001);
+  assert(mesh.acl.client.extra.room.post_quota_used == 1 && mesh.acl.client.extra.room.poll_quota_used == 0);
+  mesh.poll(1002, 60); // Earlier quota rejection must not have entered the retry cache.
+  assert(mesh.post_acks == 7 && mesh.acl.client.extra.room.poll_quota_used == 1);
+  assert(mesh.acl.client.extra.room.sync_since == 60);
+  ticks = 120100; mesh.store_ok = false;
+  const auto post_floor = mesh.acl.client.extra.room.last_post_timestamp;
+  const auto last_activity = mesh.acl.client.last_activity;
+  mesh.post(&mesh.acl.client, "storage-fails", 1003);
+  assert(mesh.posts == 2 && mesh.post_acks == 7 && mesh.acl.client.extra.room.post_quota_used == 0);
+  assert(mesh.acl.client.extra.room.last_post_timestamp == post_floor && mesh.acl.client.last_activity == last_activity);
+  mesh.store_ok = true; mesh.post(&mesh.acl.client, "storage-fails", 1003);
+  assert(mesh.posts == 3 && mesh.post_acks == 8 && mesh.acl.client.extra.room.post_quota_used == 1);
+  const auto before = mesh.acl.client;
+  mesh.poll(1004, 1000, true); // Flood polls do not consume allowance or refresh replay/session state.
+  assert(mesh.post_acks == 8 && memcmp(&before, &mesh.acl.client, sizeof(before)) == 0);
+  puts("actual room quotas survive relogin, exempt exact retries, and reject without replay or ACK passed");
+}
+
+static void allRequestQuotaCases() {
+  for (uint8_t subtype : {uint8_t(REQ_TYPE_GET_STATUS), uint8_t(REQ_TYPE_GET_TELEMETRY_DATA),
+                          uint8_t(REQ_TYPE_GET_ACCESS_LIST), uint8_t(ROOM_BOARD_REQUEST_SUBTYPE)}) {
+    MyMesh mesh; ticks = 100; seedKnown(mesh, PERM_ACL_ADMIN);
+    assert(mesh.room_access.setRates(&mesh.policy_fs, 0, 1));
+    mesh.request(1000, subtype, 8);
+    assert(mesh.requests == 1 && mesh.last_request_type == subtype && mesh.acl.client.extra.room.poll_quota_used == 1);
+    assert(mesh.acl.client.last_timestamp == 1000);
+    mesh.request(1000, subtype, 8); // Exact accepted request is re-readable without a second charge.
+    assert(mesh.requests == 2 && mesh.acl.client.extra.room.poll_quota_used == 1);
+    const auto before_reject = mesh.acl.client;
+    mesh.request(1001, subtype, 8); // New timestamp consumes a new allowance and is denied.
+    mesh.request(1000, subtype, 9); // Changed payload cannot masquerade as an exact retry.
+    assert(mesh.requests == 2 && memcmp(&before_reject, &mesh.acl.client, sizeof(before_reject)) == 0);
+    ticks = 60100; mesh.request(1001, subtype, 8);
+    assert(mesh.requests == 3 && mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.poll_quota_used == 1);
+    mesh.request(1000, subtype, 8); // Older accepted read may repeat without lowering the session replay floor.
+    assert(mesh.requests == 4 && mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.poll_quota_used == 1);
+    mesh.request(1000, subtype, 9);
+    assert(mesh.requests == 4 && mesh.acl.client.last_timestamp == 1001);
+  }
+  puts("actual request quota covers status, telemetry, ACL, board, and exact payload retries passed");
+}
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "authorization")) authorizationCases();
@@ -521,6 +689,9 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "storage")) storageFailures();
   else if (!strcmp(argv[1], "refresh")) sessionRefresh();
   else if (!strcmp(argv[1], "post")) readOnlyPosting();
+  else if (!strcmp(argv[1], "moderation")) moderationCases();
+  else if (!strcmp(argv[1], "quotas")) quotaCases();
+  else if (!strcmp(argv[1], "requests")) allRequestQuotaCases();
   else assert(false);
 }
 '''
@@ -542,7 +713,8 @@ class RoomLoginIntegrationTests(unittest.TestCase):
         constants = "\n".join(line for line in acl_header.splitlines()
                               if line.startswith(("#define PERM_ACL_", "#define OUT_PATH_")))
         for name in ("PUSH_NOTIFY_DELAY_MILLIS", "FIRMWARE_VER_LEVEL", "RESP_SERVER_LOGIN_OK",
-                     "LAZY_CONTACTS_WRITE_DELAY", "ROOM_MESSAGE_CACHE_SIZE", "TXT_TYPE_PLAIN"):
+                     "LAZY_CONTACTS_WRITE_DELAY", "ROOM_MESSAGE_CACHE_SIZE", "TXT_TYPE_PLAIN",
+                     "TXT_TYPE_CLI_DATA", "TXT_TYPE_CLI_COMMAND", "TXT_ACK_DELAY", "REPLY_DELAY_MILLIS", "REQ_TYPE_KEEP_ALIVE", "REQ_TYPE_GET_STATUS", "REQ_TYPE_GET_TELEMETRY_DATA", "REQ_TYPE_GET_ACCESS_LIST"):
             match = re.search(r"^\s*#define\s+" + name + r"\s+.*$", room, re.MULTILINE)
             if match is None:
                 for path in (ROOT / "examples/simple_room_server/MyMesh.h", ROOT / "src/Mesh.h",
@@ -554,6 +726,11 @@ class RoomLoginIntegrationTests(unittest.TestCase):
             if match is None:
                 raise AssertionError("production constant not found: " + name)
             constants += "\n" + match.group()
+        board = (ROOT / "src/helpers/RoomBoardProtocol.h").read_text()
+        board_subtype = re.search(r"static constexpr uint8_t ROOM_BOARD_REQUEST_SUBTYPE = ([^;]+);", board)
+        if board_subtype is None:
+            raise AssertionError("production board request subtype not found")
+        constants += "\n#define ROOM_BOARD_REQUEST_SUBTYPE " + board_subtype[1]
         delay = re.search(r"^\s*#define\s+SERVER_RESPONSE_DELAY\s+.*$", room_header, re.MULTILINE)
         if delay is None:
             raise AssertionError("production SERVER_RESPONSE_DELAY not found")
@@ -564,8 +741,10 @@ class RoomLoginIntegrationTests(unittest.TestCase):
             "@PACKET_PATH_CHECK@": extract_braced(packet, "bool Packet::isValidPathLen("),
             "@CLIENT_INFO@": extract_braced(acl_header, "struct ClientInfo {"),
             "@REPLAY_HANDLER@": extract_braced(acl_source, "bool ClientACL::authorizeLoginTimestamp("),
-            "@POST_GATE@": extract_braced(extract_braced(room, "void MyMesh::onPeerDataRecv("),
-                                         "if (flags == TXT_TYPE_PLAIN)"),
+            "@PEER_HANDLER@": extract_braced(room, "void MyMesh::onPeerDataRecv("),
+            "@PATH_HANDLER@": extract_braced(room, "bool MyMesh::onPeerPathRecv("),
+            "@QUOTA_SERVICE@": extract_braced(room, "void MyMesh::serviceRoomQuotas("),
+            "@SAVE_FILTER@": extract_braced(room, "bool MyMesh::saveFilter("),
             "@LOGIN_HANDLER@": extract_braced(room, "void MyMesh::onAnonDataRecv("),
         }
         generated = HARNESS
@@ -578,7 +757,7 @@ class RoomLoginIntegrationTests(unittest.TestCase):
         source.write_text(generated)
         cls.binary = work / "room-login"
         command = [compiler, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
-                   "-Wno-unused-parameter", "-I" + str(ROOT / "src"),
+                   "-Wno-unused-parameter", "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"),
                    str(source), "-o", str(cls.binary)]
         if sys.platform.startswith("linux"):
             command[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
@@ -603,6 +782,15 @@ class RoomLoginIntegrationTests(unittest.TestCase):
 
     def test_successful_relogin_refreshes_session_and_routes_without_resetting_post_floor(self):
         self.run_case("refresh", "real-handler successful reconnect refreshes cursor, activity, secret, topic state, and route passed")
+
+    def test_all_room_request_types_consume_poll_budget_and_preserve_exact_retries(self):
+        self.run_case("requests", "actual request quota covers status, telemetry, ACL, board, and exact payload retries passed")
+
+    def test_full_identity_bans_apply_to_new_and_existing_sessions(self):
+        self.run_case("moderation", "actual room gates deny full-key bans on login, posts, polls, and paths passed")
+
+    def test_actual_post_and_poll_quotas_retries_and_relogin(self):
+        self.run_case("quotas", "actual room quotas survive relogin, exempt exact retries, and reject without replay or ACK passed")
 
     def test_read_only_login_never_grants_post_permission(self):
         self.run_case("post", "actual room post gate blocks logged-in readers/managers and accepts RW/Admin once passed")

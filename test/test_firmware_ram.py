@@ -156,6 +156,19 @@ class FirmwareRamTest(unittest.TestCase):
             self.assertEqual(local["components"]["browser_terminal_session"], 2048)
             self.assertEqual(local["components"]["browser_terminal_scrollback"], 4096)
 
+    def test_room_browser_workspaces_are_bounded_and_only_budgeted_on_eligible_rooms(self):
+        flags = {"ADMIN_PASSWORD": "test"}
+        enabled = ram.requirements("ESP32_PLATFORM", flags, "v4_room_server")
+        disabled = ram.requirements("ESP32_PLATFORM", {**flags, "WEBCONFIG_DISABLED": 1}, "v4_room_server")
+        self.assertEqual(enabled["components"]["room_browser_mailbox"], 6656 + 16)
+        self.assertEqual(enabled["components"]["room_browser_request_workspace"], 8192 + 2048 + 16)
+        self.assertGreaterEqual(enabled["required_contiguous_bytes"], 8192)
+        for policy in (disabled, ram.requirements("ESP32_PLATFORM", flags, "v4_repeater"),
+                       ram.requirements("ESP32_PLATFORM", flags, "v4_companion"),
+                       ram.requirements("NRF52_PLATFORM", flags, "RAK_4631_room_server")):
+            self.assertNotIn("room_browser_mailbox", policy["components"])
+            self.assertNotIn("room_browser_request_workspace", policy["components"])
+
     def test_longer_display_previews_reserve_heap_and_contiguous_history(self):
         defines = {"DISPLAY_CLASS": "SSD1306Display", "UI_SMALL_MESSAGE_FONT": 0}
         base = ram.requirements("ESP32_PLATFORM", defines, "v4_companion")

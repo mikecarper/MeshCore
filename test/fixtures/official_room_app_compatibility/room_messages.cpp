@@ -16,7 +16,7 @@ struct WirePresentation {
   int app_target_ver;
   uint8_t out_frame[MAX_FRAME_SIZE] = {};
   std::vector<uint8_t> frame;
-  void queueMessage(const RoomContact&, uint8_t, CompanionPacket*, uint32_t,
+  bool queueMessage(const RoomContact&, uint8_t, CompanionPacket*, uint32_t,
                     const uint8_t*, int, const char*, bool, uint32_t);
 };
 #include "presentation.inc"

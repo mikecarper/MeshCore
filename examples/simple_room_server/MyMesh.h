@@ -30,6 +30,9 @@
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/LocalCliOutput.h>
 #include <helpers/ClientACL.h>
+#include <helpers/RoomAccessPolicy.h>
+#include <helpers/RoomHistoryStore.h>
+#include <helpers/RoomBoardStore.h>
 #include <helpers/LogicalMessageCache.h>
 #include <helpers/RemoteCliReplyCache.h>
 #include <helpers/RemoteCliRequest.h>
@@ -211,6 +214,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
 #endif
   ClientACL acl;
   mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_posts;
+  mesh::LogicalMessageCache<16> recent_room_polls;
+  mesh::RoomAccessPolicy room_access;
   mesh::RemoteCliReplyCache remote_cli_reply_cache;
   CommonCLI _cli;
   mesh::MeshClockSync _clock_sync;
@@ -225,6 +230,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   int next_client_idx;  // for round-robin polling
   int next_post_idx;
   PostInfo posts[MAX_UNSYNCED_POSTS];   // cyclic queue
+  static_assert(MAX_UNSYNCED_POSTS <= 32, "Room readiness bitmap holds 32 posts");
+  uint32_t post_ready_at[MAX_UNSYNCED_POSTS] = {};
+  uint32_t post_ready_mask = UINT32_MAX;
+  uint32_t last_room_timestamp = 0;
+  mesh::RoomHistoryState room_history_state;
+  bool room_history_enabled = false;
+  bool room_history_available = true;
   char room_topic[MAX_POST_TEXT_LEN + 1] = {};
   uint32_t room_topic_revision = 0;
   uint32_t room_topic_timestamp = 0;
@@ -325,6 +337,15 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
 #endif
 #ifdef WITH_WEBCONFIG
   WebConfigServer* _webconfig = nullptr;
+  bool room_web_enabled = false;
+  bool room_web_request_authenticated = false;
+  uint32_t room_web_boot_id = 0;
+  struct RoomWebUser {
+    mesh::Identity id;
+    uint32_t last_seen = 0, last_sequence = 0;
+    uint16_t posts = 0, polls = 0;
+  } room_web_users[8] = {};
+  bool handleRoomWebCommand(const char* command, char* reply);
   bool _unconfigured_setup_espnow_suspended = false;
   void suspendUnconfiguredSetupBridges();
   bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
@@ -336,9 +357,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   void serviceIdleWiFi();
 #endif
 
-  void addPost(ClientInfo* client, const char* postData);
+  bool addPost(ClientInfo* client, const char* postData);
   bool applySavedRadioParams();
-  void storePost(const mesh::Identity& author, const char* postData);
+  bool storePost(const mesh::Identity& author, const char* postData);
+  bool snapshotRoomHistory();
+  void loadRoomHistory();
+  bool handleRoomHistoryCommand(const char* command, char* reply);
+  void serviceRoomQuotas();
   bool pushPostToClient(ClientInfo* client, PostInfo& post);
   bool pushRoomTextToClient(ClientInfo* client, uint32_t timestamp,
                             const mesh::Identity& author, const char* text,
@@ -455,7 +480,7 @@ public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
 
   void begin(FILESYSTEM* fs);
-  void addSystemPost(const char* postData);
+  bool addSystemPost(const char* postData);
 
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
@@ -950,6 +975,10 @@ public:
   }
   void getNodeSnapshot(WebConfigServer::NodeSnapshot& snapshot) override;
   void execCommand(char* cmd, char* reply) override { handleCommand(0, cmd, reply); }
+  bool supportsRoomService() const override { return true; }
+  bool roomRequestAuthenticated() const override { return room_web_request_authenticated; }
+  void processRoomRequest(const uint8_t* token, uint32_t sequence, char* request,
+                          char* response, size_t capacity) override;
   bool supportsCliTerminal() const override { return true; }
   void execAdminCommand(char* cmd, char* reply) override {
     if (strcmp(cmd, "get acl") == 0 || strcmp(cmd, "log") == 0

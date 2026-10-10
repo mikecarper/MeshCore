@@ -33,6 +33,7 @@
 #include <helpers/CompanionWiFiStatus.h>
 #include <helpers/WebConfigBatch.h>
 #include <helpers/TerminalSession.h>
+#include <helpers/RoomWebMailbox.h>
 #include <helpers/WiFiPowerSave.h>
 #include <helpers/WiFiReconnectPolicy.h>
 #include <helpers/ui/DisplayBuildFlags.h>
@@ -161,6 +162,12 @@ public:
     virtual void buildStatsJson(char* buf, size_t buf_size) = 0;
     // Teardown finished (server + DNS freed, WiFi mode restored).
     virtual void onWebConfigStopped() {}
+    virtual bool supportsRoomService() const { return false; }
+    // Input may be parsed in place. Authentication, storage and radio work
+    // happen only on tick(), never on async_tcp.
+    virtual void processRoomRequest(const uint8_t* token, uint32_t sequence,
+                                    char* request, char* response, size_t capacity) {}
+    virtual bool roomRequestAuthenticated() const { return false; }
   };
 
   // mqtt_prefs is an MQTTPrefs* on WITH_MQTT_BRIDGE builds and NULL otherwise.
@@ -339,6 +346,7 @@ private:
   char _setup_wifi_handoff_ip[16] = {0};
   BatchEntry _batch[MAX_BATCH];
   WebTerminalStream* _terminal = NULL;
+  mesh::RoomWebMailbox* _room_mailbox = NULL;
 
   // LAN-mode session (single slot; new login evicts the old session)
   char _session_token[33] = {0};
@@ -378,6 +386,7 @@ private:
   void drainBatch(uint32_t now);
   void probeBoardCommands();
   void serviceTerminal(uint32_t now);
+  void serviceRoom(uint32_t now);
   void closeTerminal();
   void serviceSetupWiFiHandoff(uint32_t now);
   void finishBatch(uint32_t now);
@@ -404,6 +413,9 @@ private:
   void handlePresets(AsyncWebServerRequest* req);
   void handleReboot(AsyncWebServerRequest* req);
   void handlePortalExit(AsyncWebServerRequest* req);
+  void handleRoomPage(AsyncWebServerRequest* req);
+  void handleRoomPost(AsyncWebServerRequest* req);
+  void handleRoomResult(AsyncWebServerRequest* req);
   void handleNotFound(AsyncWebServerRequest* req);
 };
 

@@ -78,8 +78,8 @@ public:
   void onMessageRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*) override {}
   void onCommandDataRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*) override {}
   void onCLICommandRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*, char*) override {}
-  void onSignedMessageRecv(const ContactInfo&, mesh::Packet*, uint32_t,
-                           const uint8_t*, const char*) override {}
+  bool onSignedMessageRecv(const ContactInfo&, mesh::Packet*, uint32_t,
+                           const uint8_t*, const char*) override { return true; }
   uint32_t calcFloodTimeoutMillisFor(uint32_t) const override { return 100; }
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const override { return 100; }
   void onSendTimeout() override {}

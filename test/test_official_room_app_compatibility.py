@@ -50,11 +50,11 @@ def room_outputs(work, compiler):
     codes = "\n".join(line for line in companion.splitlines()
                       if line.startswith("#define RESP_CODE_CONTACT_MSG_RECV"))
     (work / "frame_codes.inc").write_text(codes, encoding="ascii")
-    presentation = extract_braced(companion, "void MyMesh::queueMessage(")
+    presentation = extract_braced(companion, "bool MyMesh::queueMessage(")
     # The entire original framing prefix runs unchanged; the offline queue/UI
     # boundary is replaced by capture of those exact bytes, not a serializer.
     presentation = presentation[:presentation.index("  const char* sensitive_reply = text;")]
-    presentation += "  (void)path_len;\n  frame.assign(out_frame, out_frame + i);\n}\n"
+    presentation += "  (void)path_len;\n  frame.assign(out_frame, out_frame + i);\n  return true;\n}\n"
     presentation = presentation.replace("MyMesh::queueMessage", "WirePresentation::queueMessage")
     presentation = presentation.replace("const ContactInfo &from", "const RoomContact &from")
     presentation = presentation.replace("mesh::Packet *pkt", "CompanionPacket *pkt")
@@ -62,7 +62,9 @@ def room_outputs(work, compiler):
     binary = work / "room-messages"
     checked([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
              "-Wno-unused-parameter", "-Wno-missing-field-initializers", *SANITIZERS,
-             f"-I{work}", f"-I{ROOT / 'src'}", str(FIXTURES / "room_messages.cpp"), "-o", str(binary)])
+             f"-I{work}", f"-I{ROOT / 'src'}",
+             f"-I{ROOT / 'test/fixtures/room_topic_delivery'}",
+             str(FIXTURES / "room_messages.cpp"), "-o", str(binary)])
     records = []
     for line in checked([str(binary)], timeout=20).splitlines():
         kind, group, index, version, flood, timestamp, author, text, frame = line.split(":")

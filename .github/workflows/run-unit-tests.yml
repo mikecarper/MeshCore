@@ -111,12 +111,22 @@ jobs:
         run: |
           python3 -B test/test_protocol_parser_bounds.py -v
           python3 -B test/test_companion_offline_delivery.py -v
+          python3 -B test/test_room_receive_admission.py -v
           python3 -B test/test_companion_lfs_traversal.py -v
           python3 -B test/test_room_post_permissions.py -v
           python3 -B test/test_room_login_authorization.py -v
           python3 -B test/test_room_login_integration.py -v
           python3 -B test/test_room_topic_store.py -v
           python3 -B test/test_room_topic_delivery.py -v
+          python3 -B test/test_room_acl_persistence.py -v
+          python3 -B test/test_room_access_policy.py -v
+          python3 -B test/test_room_history_store.py -v
+          python3 -B test/test_room_history_integration.py -v
+          python3 -B test/test_room_board_store.py -v
+          python3 -B test/test_room_board_protocol.py -v
+          python3 -B test/test_room_web_mailbox.py -v
+          python3 -B test/test_room_web_http.py -v
+          python3 -B test/test_room_web_service.py -v
           python3 -B test/test_contact_clock_bootstrap.py -v
           python3 -B test/test_rtc_discovery.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
@@ -537,6 +547,7 @@ jobs:
           python3 -B test/test_heltec_v4_wifi_setup_page.py -v
           python3 -B test/test_sensor_webconfig_capabilities.py -v
           python3 -B test/test_webconfig_ui_runtime.py
+          MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_web_ui.py -v
 
       - name: Upload Test Results
         # Upload test results even if the test step failed.

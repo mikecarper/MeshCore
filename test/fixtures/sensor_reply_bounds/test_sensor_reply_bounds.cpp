@@ -7,6 +7,8 @@
 #include <vector>
 #include <helpers/ClientACLResponse.h>
 #include <helpers/sensors/LPPDataHelpers.h>
+#include "../room_history_store/filesystem.h"
+#include <helpers/RoomBoardProtocol.h>
 
 #include "telemetry_capacity.inc"
 #include "telemetry_access.inc"
@@ -127,7 +129,12 @@ public:
 };
 class MyMesh : public SensorMesh {
 public:
-  MyMesh() { telemetry.max_len = ROOM_TELEMETRY_CAPACITY; telemetry.data.reserve(telemetry.max_len); }
+  MemoryFS room_fs;
+  MemoryFS* _fs = &room_fs;
+  MyMesh() {
+    telemetry.max_len = ROOM_TELEMETRY_CAPACITY; telemetry.data.reserve(telemetry.max_len);
+    metadata_filesystem = _fs;
+  }
   int handleRequest(ClientInfo*, uint32_t, uint8_t*, size_t,
                     size_t = mesh::CLIENT_ACL_DIRECT_REPLY_CAPACITY);
 };
@@ -245,6 +252,30 @@ static void room_telemetry_checks() {
   assert(target.handleRequest(nullptr, 51, query, sizeof(query)) == 0);
 }
 
+static void room_board_dispatch_checks() {
+  ClientInfo client;
+  uint8_t malformed[] = {mesh::ROOM_BOARD_REQUEST_SUBTYPE, 0};
+  for (size_t capacity = 0; capacity <= MAX_PACKET_PAYLOAD; ++capacity) {
+    MyMesh target;
+    memset(target.reply_data, 0xee, sizeof(target.reply_data));
+    const int length = target.handleRequest(&client, 51, malformed, sizeof(malformed), capacity);
+    assert(length == (capacity < 7 ? 0 : 7));
+    assert(size_t(length) <= capacity);
+    for (size_t i = capacity; i < sizeof(target.reply_data); ++i) assert(target.reply_data[i] == 0xee);
+    if (length) {
+      uint32_t tag = 0; memcpy(&tag, target.reply_data, sizeof(tag));
+      assert(tag == 51 && target.reply_data[4] == mesh::ROOM_BOARD_REQUEST_SUBTYPE);
+      assert(target.reply_data[5] == 0 && target.reply_data[6] == 1);
+    }
+  }
+  uint8_t index[] = {mesh::ROOM_BOARD_REQUEST_SUBTYPE, 0, 0, 0, 0, 0, 0};
+  MyMesh target;
+  assert(target.handleRequest(&client, 51, index, sizeof(index), 13) == 7);
+  assert(target.reply_data[6] == 1);
+  assert(target.handleRequest(&client, 51, index, sizeof(index), 14) == 14);
+  assert(target.reply_data[6] == 0);
+}
+
 static void history_checks() {
   ClientInfo client;
   uint8_t query[10] = {};
@@ -313,6 +344,7 @@ static void history_checks() {
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "room")) room_telemetry_checks();
+  else if (!strcmp(argv[1], "room.board")) room_board_dispatch_checks();
   else if (!strcmp(argv[1], "telemetry")) telemetry_checks();
   else if (!strcmp(argv[1], "history")) history_checks();
   else if (!strcmp(argv[1], "empty")) {

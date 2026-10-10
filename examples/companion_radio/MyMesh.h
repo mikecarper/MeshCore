@@ -395,7 +395,7 @@ protected:
   bool onAddressedTextPacket(mesh::Packet* packet, uint8_t src_hash,
                              const uint8_t* mac_and_data, size_t len) override;
 #endif
-  void queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt, uint32_t sender_timestamp,
+  bool queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt, uint32_t sender_timestamp,
                     const uint8_t *extra, int extra_len, const char *text,
                     bool terminal_command_reply=false,
                     uint32_t terminal_command_elapsed_millis=0);
@@ -406,7 +406,7 @@ protected:
                          const char *text) override;
   void onCLICommandRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                          const char *text, char* reply) override;
-  void onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
+  bool onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                            const uint8_t *sender_prefix, const char *text) override;
   void onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint32_t timestamp,
                             const char *text) override;

@@ -32,6 +32,8 @@ static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
 #endif
 
 #include "WebConfigHtml.h"
+#include "RoomWebHtml.h"
+#include <Utils.h>
 #include <helpers/HttpContentEncoding.h>
 #include "WebTerminalStream.h"
 #include <helpers/CLICommandUtils.h>
@@ -339,6 +341,9 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
       _standalone_wifi(standalone_wifi || mqtt_prefs == nullptr || !owns_wifi), _pub_key(pub_key),
       _fw_ver(fw_ver), _build_date(build_date), _role(role), _board_name(board_name) {
   _mux = xSemaphoreCreateMutex();
+  if (_mux && _cb && _cb->supportsRoomService()) {
+    _room_mailbox = new (std::nothrow) mesh::RoomWebMailbox;
+  }
   _cli_enabled = loadCliEnabled(true);
 
 #ifdef WITH_MQTT_BRIDGE
@@ -364,6 +369,7 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
 WebConfigServer::~WebConfigServer() {
   detachRoutes();
   closeTerminal();
+  delete _room_mailbox;
   if (_mux) vSemaphoreDelete(_mux);
 }
 
@@ -1043,6 +1049,8 @@ bool WebConfigServer::stopForOTA(char reply[]) {
 
 void WebConfigServer::finalizeTeardown() {
   closeTerminal();
+  delete _room_mailbox;
+  _room_mailbox = nullptr;
   // Async requests keep a pointer to their server until disconnect. Retain the
   // listener and route table for the firmware lifetime; only detach and reclaim
   // the per-session state.
@@ -1127,6 +1135,7 @@ void WebConfigServer::tick(uint32_t now) {
   if (!_board_cmds_probed) probeBoardCommands();
 
   serviceTerminal(now);
+  serviceRoom(now);
 
   // A primary ESP-NOW radio and its WiFi station cannot remain on different
   // channels. Reject a router-driven channel move (for example a CSA) and put
@@ -1613,6 +1622,15 @@ void WebConfigServer::dispatchRequest(AsyncWebServerRequest* req,
 }
 
 void WebConfigServer::registerRoutes() {
+  _server->on("/room", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleRoomPage);
+  });
+  _server->on("/api/room/result", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleRoomResult);
+  });
+  _server->on("/api/room", HTTP_POST, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleRoomPost);
+  }, NULL, collectBody);
   _server->on("/ui", HTTP_GET, [](AsyncWebServerRequest* r) {
     dispatchRequest(r, &WebConfigServer::handleUi);
   });
@@ -1674,6 +1692,105 @@ void WebConfigServer::registerRoutes() {
   _server->onNotFound([](AsyncWebServerRequest* r) {
     dispatchRequest(r, &WebConfigServer::handleNotFound);
   });
+}
+
+void WebConfigServer::serviceRoom(uint32_t now) {
+  if (!_room_mailbox && _mux && _cb && _cb->supportsRoomService()) {
+    WCLock lock(_mux);
+    _room_mailbox = new (std::nothrow) mesh::RoomWebMailbox;
+  }
+  mesh::RoomWebMailbox* operation = nullptr;
+  {
+    WCLock lock(_mux);
+    if (_room_mailbox && _room_mailbox->begin()) operation = _room_mailbox;
+  }
+  if (!operation) return;
+  // Async submit/read may run here, but cannot recycle a Running operation.
+  // No filesystem, room client or radio mutation runs on async_tcp.
+  _cb->processRoomRequest(operation->token(), operation->sequence(), operation->input(),
+                          operation->output(), mesh::RoomWebMailbox::OUTPUT_CAPACITY);
+  {
+    WCLock lock(_mux);
+    operation->finish(now, _cb->roomRequestAuthenticated());
+  }
+}
+
+static bool roomRequestIdentity(AsyncWebServerRequest* req, uint8_t (&token)[32], uint32_t& sequence) {
+  if (!req || !req->hasHeader("X-Room-Token") || !req->hasHeader("X-Room-Seq")) return false;
+  if (req->hasHeader("Origin")) {
+    if (!req->hasHeader("Host") || req->getHeader("Origin")->value()
+        != String("http://") + req->getHeader("Host")->value()) return false;
+  }
+  return mesh::RoomWebMailbox::decodeToken(req->getHeader("X-Room-Token")->value().c_str(), token)
+      && mesh::cli::parseUnsignedIntegerStrict(req->getHeader("X-Room-Seq")->value().c_str(), sequence)
+      && sequence != 0;
+}
+
+void WebConfigServer::handleRoomPage(AsyncWebServerRequest* req) {
+  if (_mode == MODE_OFF || !_cb || !_cb->supportsRoomService()) { req->send(404); return; }
+  _last_activity = millis();
+  auto* response = new (std::nothrow) WebConfigPacedProgmemResponse(
+      "text/html; charset=utf-8", reinterpret_cast<const uint8_t*>(ROOM_WEB_HTML), sizeof(ROOM_WEB_HTML) - 1);
+  if (!response) { req->send(503); return; }
+  response->addHeader("Cache-Control", "no-store");
+  response->addHeader("X-Content-Type-Options", "nosniff");
+  response->addHeader("Referrer-Policy", "no-referrer");
+  req->send(response);
+}
+
+void WebConfigServer::handleRoomPost(AsyncWebServerRequest* req) {
+  uint8_t token[32]; uint32_t sequence;
+  if (!roomRequestIdentity(req, token, sequence)) {
+    req->send(400, "application/json", "{\"error\":\"invalid room identity\"}"); return;
+  }
+  if (req->contentType() != "application/json" || !req->_tempObject
+      || req->contentLength() == 0 || req->contentLength() > MAX_BODY) {
+    req->send(400, "application/json", "{\"error\":\"invalid room body\"}"); return;
+  }
+  uint8_t digest[32];
+  mesh::Utils::sha256(digest, sizeof(digest), (const uint8_t*)req->_tempObject, req->contentLength());
+  mesh::RoomWebMailbox::Result result;
+  {
+    WCLock lock(_mux);
+    if (!_room_mailbox || _stopping || _mode == MODE_OFF) {
+      req->send(503, "application/json", "{\"error\":\"room service unavailable\"}"); return;
+    }
+    result = _room_mailbox->submit(token, sequence, digest, (const char*)req->_tempObject,
+                                   req->contentLength(), millis());
+    // Do not keep a second password/article buffer while tick parses the
+    // accepted copy. The request destructor tolerates a null temporary object.
+    memset(req->_tempObject, 0, req->contentLength());
+    free(req->_tempObject);
+    req->_tempObject = nullptr;
+  }
+  if (result == mesh::RoomWebMailbox::Result::Accepted) {
+    _last_activity = millis();
+    req->send(202, "application/json", "{\"accepted\":true}");
+  } else if (result == mesh::RoomWebMailbox::Result::Busy) {
+    req->send(429, "application/json", "{\"error\":\"room service busy\"}");
+  } else {
+    req->send(409, "application/json", "{\"error\":\"request already completed or changed; refresh to check\"}");
+  }
+}
+
+void WebConfigServer::handleRoomResult(AsyncWebServerRequest* req) {
+  uint8_t token[32]; uint32_t sequence;
+  if (!roomRequestIdentity(req, token, sequence)) { req->send(400); return; }
+  WCLock lock(_mux);
+  if (!_room_mailbox || _stopping || _mode == MODE_OFF) { req->send(503); return; }
+  bool pending;
+  const char* result = _room_mailbox->read(token, sequence, pending);
+  if (pending) req->send(202, "application/json", "{\"pending\":true}");
+  else if (!result) req->send(404, "application/json", "{\"error\":\"room result unavailable; refresh to check\"}");
+  else {
+    String body(result);
+    if (body.length() != strlen(result)) { req->send(503); return; }
+    auto* response = req->beginResponse(200, "application/json", body);
+    if (!response) { req->send(503); return; }
+    response->addHeader("Cache-Control", "no-store");
+    req->send(response);
+    _room_mailbox->delivered(token, sequence);
+  }
 }
 
 // Accumulate a small JSON body into request->_tempObject (freed automatically

@@ -36,7 +36,7 @@ class RoomTopicDeliveryTests(unittest.TestCase):
             (work / "production.inc").write_text(definitions)
             binary = work / "delivery"
             command = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                       "-Wno-unused-parameter", "-I" + str(work),
+                       "-Wno-unused-parameter", "-I" + str(work), "-I" + str(ROOT / "src"),
                        str(FIXTURE), "-o", str(binary)]
             if sys.platform.startswith("linux"):
                 command[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",

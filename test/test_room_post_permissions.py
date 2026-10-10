@@ -16,6 +16,8 @@ HARNESS = r'''
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
+#include "filesystem.h"
+#include <helpers/RoomAccessPolicy.h>
 #include <helpers/LogicalMessageCache.h>
 #define TXT_TYPE_PLAIN 0
 #define ROOM_MESSAGE_CACHE_SIZE 8
@@ -35,13 +37,22 @@ struct Utils {
 struct ClientInfo {
   struct { uint8_t pub_key[PUB_KEY_SIZE] = {1}; } id;
   uint8_t permissions = 0;
-  struct { struct { uint32_t last_post_timestamp = 0; } room; } extra;
+  struct { struct { uint32_t last_post_timestamp = 0; uint16_t post_quota_used = 0, poll_quota_used = 0; } room; } extra;
 };
 struct MyMesh {
+  MemoryFS fs;
+  mesh::RoomAccessPolicy room_access;
+  uint32_t ticks = 0;
+  ClientInfo* active = nullptr;
+  MyMesh() { metadata_filesystem = &fs; assert(room_access.load(&fs)); }
+  void serviceRoomQuotas() { room_access.serviceQuotaWindow(ticks, [this] { active->extra.room.post_quota_used = active->extra.room.poll_quota_used = 0; }); }
   mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_posts;
   unsigned posts = 0, acks = 0;
-  void addPost(ClientInfo*, const char*) { ++posts; }
+  bool store_ok = true;
+  bool addPost(ClientInfo*, const char*) { if (!store_ok) return false; ++posts; return true; }
   void receive(ClientInfo* client, const char* text, uint32_t sender_timestamp) {
+    active = client;
+    @IDENTITY_GATE@
     const uint8_t flags = TXT_TYPE_PLAIN;
     const size_t text_len = strlen(text);
     bool send_ack = false;
@@ -77,6 +88,31 @@ int main() {
       assert(mesh.posts == 2 && mesh.acks == 4);
     }
   }
+  {
+    MyMesh mesh; ClientInfo client; client.permissions = PERM_ACL_READ_WRITE;
+    assert(mesh.room_access.setRates(&mesh.fs, 1, 2));
+    mesh.receive(&client, "quota-one", 100);
+    assert(mesh.posts == 1 && mesh.acks == 1 && client.extra.room.post_quota_used == 1);
+    mesh.receive(&client, "quota-one", 100);
+    assert(mesh.posts == 1 && mesh.acks == 2 && client.extra.room.post_quota_used == 1);
+    mesh.receive(&client, "quota-two", 101);
+    assert(mesh.posts == 1 && mesh.acks == 2 && client.extra.room.last_post_timestamp == 100);
+    mesh.ticks = 60000; mesh.receive(&client, "quota-two", 101);
+    assert(mesh.posts == 2 && mesh.acks == 3 && client.extra.room.last_post_timestamp == 101);
+    assert(client.extra.room.post_quota_used == 1); // Rejected post was not remembered.
+    mesh.ticks = 120000; mesh.store_ok = false; mesh.receive(&client, "failed-store", 102);
+    assert(mesh.posts == 2 && mesh.acks == 3 && client.extra.room.post_quota_used == 0);
+    assert(client.extra.room.last_post_timestamp == 101);
+    mesh.store_ok = true; mesh.receive(&client, "failed-store", 102);
+    assert(mesh.posts == 3 && mesh.acks == 4 && client.extra.room.post_quota_used == 1);
+    assert(mesh.room_access.addBan(&mesh.fs, client.id.pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+    mesh.receive(&client, "failed-store", 102); // Ban blocks an already cached exact retry.
+    mesh.receive(&client, "banned-new", 103);
+    assert(mesh.posts == 3 && mesh.acks == 4 && client.extra.room.last_post_timestamp == 102);
+    assert(mesh.room_access.removeBan(&mesh.fs, client.id.pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+    mesh.ticks = 180000; mesh.receive(&client, "banned-new", 103);
+    assert(mesh.posts == 4 && mesh.acks == 5);
+  }
   puts("256 room permission and replay scenarios passed");
 }
 '''
@@ -92,13 +128,14 @@ class RoomPostPermissionTests(unittest.TestCase):
         header = (ROOT / "src/helpers/ClientACL.h").read_text()
         roles = "\n".join(line for line in header.splitlines()
                           if line.startswith("#define PERM_ACL_"))
-        generated = HARNESS.replace("@POST_GATE@", gate).replace("@ROLES@", roles)
+        identity_gate = next(line.strip() for line in receive.splitlines() if "if (!room_access.allowsIdentity(" in line)
+        generated = HARNESS.replace("@POST_GATE@", gate).replace("@ROLES@", roles).replace("@IDENTITY_GATE@", identity_gate)
         with tempfile.TemporaryDirectory(prefix="room-post-permissions-") as directory:
             work = Path(directory)
             (work / "test.cpp").write_text(generated)
             binary = work / "room-posts"
             cmd = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-                   "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
+                   "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
                    str(work / "test.cpp"), "-o", str(binary)]
             if sys.platform.startswith("linux"):
                 cmd[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",

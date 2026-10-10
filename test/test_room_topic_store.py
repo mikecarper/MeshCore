@@ -49,6 +49,9 @@ public:
 };
 class MemoryFS {
 public:
+  void _lockFS() {}
+  void _unlockFS() {}
+  MemoryFS* _getFS() { return this; }
   std::map<std::string, std::shared_ptr<std::vector<uint8_t>>> files;
   std::set<std::string> faults, directories;
   std::vector<std::string> trace;
@@ -136,6 +139,17 @@ void File::close() {
   valid = false; fs->end(op);
 }
 #define FILE_O_WRITE 1
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+struct lfs_info {};
+static constexpr int LFS_ERR_NOENT = -2;
+static int lfs_stat(MemoryFS* fs, const char* path, lfs_info*) {
+  const std::string op = std::string("stat:") + path;
+  const bool okay = fs->begin(op);
+  const bool present = fs->files.count(path) || fs->directories.count(path);
+  fs->end(op);
+  return !okay ? -5 : present ? 0 : LFS_ERR_NOENT;
+}
+#endif
 #include <helpers/RoomTopicStore.h>
 
 static const char* P = mesh::ROOM_TOPIC_PRIMARY_PATH;
@@ -255,7 +269,7 @@ int main() {
     MemoryFS directory; directory.put(path, OLD); directory.directories.insert(path);
     assert(!load(directory, text) && !save(directory, "New topic")); assert(directory.get(path) == OLD); ++scenarios;
   }
-#if defined(ESP32_PLATFORM)
+#if defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   for (bool present : {false, true}) {
     MemoryFS fs; if (present) fs.put(P, OLD);
     fs.faults.insert(std::string("stat:") + P); char text[152];

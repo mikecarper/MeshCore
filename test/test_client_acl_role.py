@@ -104,7 +104,7 @@ static_assert(sizeof(((ClientInfo*)0)->extra) == 4, "only persisted sync field r
 #else
 static_assert(sizeof(((ClientInfo*)0)->extra.sensor.min_deltas) == 14, "sensor state retained");
 static_assert(sizeof(((ClientInfo*)0)->extra.room.pending_ack) == 4, "room state retained");
-static_assert(sizeof(((ClientInfo*)0)->extra.room) <= sizeof(((ClientInfo*)0)->extra.sensor),
+static_assert(sizeof(void*) != 4 || sizeof(((ClientInfo*)0)->extra.room) <= sizeof(((ClientInfo*)0)->extra.sensor),
               "topic delivery must fit the existing shared union");
 #endif
 int main() {

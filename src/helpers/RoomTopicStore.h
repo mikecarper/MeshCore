@@ -3,9 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#if defined(ESP32_PLATFORM)
 #include "FilePresence.h"
-#endif
 
 namespace mesh {
 
@@ -30,12 +28,7 @@ inline uint32_t crcByte(uint32_t crc, uint8_t value) {
 
 template <typename Filesystem>
 bool presence(Filesystem* fs, const char* path, bool& present) {
-#if defined(ESP32_PLATFORM)
   return filePresence(fs, path, present);
-#else
-  present = fs->exists(path);
-  return true;
-#endif
 }
 
 template <typename Filesystem>

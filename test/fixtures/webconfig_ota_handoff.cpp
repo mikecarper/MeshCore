@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <helpers/RoomWebMailbox.h>
 
 static uint32_t millis() { return 123; }
 struct WebConfigBatch {
@@ -34,6 +35,7 @@ struct WebConfigServer {
   DNS* _dns = nullptr;
   Callbacks callbacks;
   Callbacks* _cb = &callbacks;
+  mesh::RoomWebMailbox* _room_mailbox = new mesh::RoomWebMailbox;
   Mode _mode = MODE_LAN;
   bool _stopping = false, _keep_wifi_on_stop = false, _was_setup_ap = false;
   bool _owns_wifi = true, _stop_warned = false, _initial_setup = false;
@@ -54,6 +56,7 @@ struct WebConfigServer {
   void requestStop();
   bool stopForOTA(char*);
   void finalizeTeardown();
+  ~WebConfigServer() { delete _room_mailbox; }
 };
 @METHODS@
 
@@ -79,6 +82,7 @@ int main() {
       WiFi.ap = true;
       portal.requestStop(); // A duplicate stop cannot revoke the handoff.
       portal.finalizeTeardown(); // Existing requests have finally drained.
+      assert(portal._room_mailbox == nullptr);
       assert(WiFi.ap && WiFi.sta && WiFi.stops == 0);
       assert(WiFi.ap_stops == unsigned(setup));
       assert(portal.callbacks.stops == 1 && !portal._keep_wifi_on_stop);
@@ -88,6 +92,7 @@ int main() {
   WiFi = WiFiFake{};
   ordinary.requestStop();
   ordinary.finalizeTeardown();
+  assert(ordinary._room_mailbox == nullptr);
   assert(WiFi.stops == 1 && !WiFi.sta); // Normal stop keeps its old behavior.
   WebConfigServer failed;
   failed._was_setup_ap = true;

@@ -75,6 +75,7 @@ nav:
       - Radio, networking, and power:
           - radio_profiles.md
           - fleet_management.md
+          - room_services.md
           - carrier_wave.md
           - espnow_bridge_setup.md
           - WiFi.md

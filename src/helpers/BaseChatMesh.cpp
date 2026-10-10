@@ -428,13 +428,26 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
         }
       }
     } else if (flags == TXT_TYPE_SIGNED_PLAIN) {
-      if (canMutateContacts()) {
+      if (len < 9) return; // timestamp, flags and complete author prefix
+      const uint32_t previous_sync_since = from.sync_since;
+      const uint32_t previous_lastmod = from.lastmod;
+      const bool mutate_contact = canMutateContacts();
+      if (mutate_contact) {
         if (sender_timestamp > from.sync_since) {  // make sure 'sync_since' is up-to-date
           from.sync_since = sender_timestamp;
         }
         from.lastmod = getRTCClock()->getCurrentTime(); // update last heard time
       }
-      onSignedMessageRecv(from, packet, sender_timestamp, &data[5], (const char *) &data[9]);  // let UI know
+      // The accepted callback can persist the updated live contact. Rejected
+      // admission must not persist it or report delivery; restore its cursor
+      // so a subsequent keep-alive still requests this post.
+      if (!onSignedMessageRecv(from, packet, sender_timestamp, &data[5], (const char *) &data[9])) {
+        if (mutate_contact) {
+          from.sync_since = previous_sync_since;
+          from.lastmod = previous_lastmod;
+        }
+        return;
+      }
 
       uint32_t ack_hash;    // calc truncated hash of the message timestamp + text + OUR pub_key, to prove to sender that we got it
       mesh::Utils::sha256((uint8_t *) &ack_hash, 4, data, 9 + strlen((char *)&data[9]), self_id.pub_key, PUB_KEY_SIZE);

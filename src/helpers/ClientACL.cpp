@@ -715,6 +715,7 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
           c.last_timestamp = UINT32_MAX;
         }
         self_id.calcSharedSecret(c.shared_secret, pub_key);  // recalculate shared secrets in case our private key changed
+        c.permissions_are_explicit = true; // this record was deliberately retained by the role's save policy
         clients[num_clients++] = c;
       }
       file.close();
@@ -908,7 +909,9 @@ ClientInfo* ClientACL::putClient(const mesh::Identity& id, uint8_t init_perms) {
   ClientInfo* oldest = NULL;
   for (int i = 0; i < num_clients; i++) {
     if (id.matches(clients[i].id)) return &clients[i];  // already known
-    if (!clients[i].isProtectedManager() && clients[i].last_activity < min_time) {
+    if (!clients[i].isProtectedManager()
+        && !(protect_explicit_permissions && clients[i].permissions_are_explicit)
+        && clients[i].last_activity < min_time) {
       oldest = &clients[i];
       min_time = oldest->last_activity;
     }
@@ -953,6 +956,7 @@ bool ClientACL::applyPermissions(const mesh::LocalIdentity& self_id, const uint8
     if (c == NULL) return false;
 
     c->permissions = perms;  // update their permissions
+    c->permissions_are_explicit = true;
     self_id.calcSharedSecret(c->shared_secret, pubkey);
   }
   return true;

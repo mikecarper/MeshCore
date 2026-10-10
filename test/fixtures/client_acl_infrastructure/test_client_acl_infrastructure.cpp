@@ -3,6 +3,9 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include "filesystem.h"
+#include <helpers/RoomAccessPolicy.h>
+#include <helpers/LogicalMessageCache.h>
 #include <helpers/ClientACLResponse.h>
 #include <helpers/RoutingPolicy.h>
 
@@ -87,11 +90,13 @@ struct RegionMap {
 struct ClientInfo {
   mesh::Identity id;
   uint8_t permissions = 3;
+  bool permissions_are_explicit = false;
   uint8_t out_path_len = 0, out_path[MAX_PATH_SIZE] = {};
   uint32_t last_timestamp = 0, last_activity = 0;
   struct { struct {
     uint32_t sync_since = 0, pending_ack = 0, pending_topic_revision = 0;
     uint8_t push_failures = 0;
+    uint16_t poll_quota_used = 0, post_quota_used = 0;
   } room; } extra;
   bool isAdmin() const { return (permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_ADMIN; }
 };
@@ -106,6 +111,7 @@ struct Clock : mesh::RTCClock {
 };
 #ifdef TEST_SENSOR
 #define TARGET_CLASS SensorMesh
+struct MetadataFixtureUse { MetadataFixtureUse() { (void)metadata_filesystem; } } metadata_fixture_use;
 #else
 #define TARGET_CLASS MyMesh
 #endif
@@ -130,6 +136,12 @@ public:
   int handleRequest(ClientInfo*, uint32_t, uint8_t*, size_t,
                     size_t = mesh::CLIENT_ACL_DIRECT_REPLY_CAPACITY);
   int telemetryPrefix(uint8_t*, size_t);
+  MemoryFS fs;
+  mesh::RoomAccessPolicy room_access;
+  mesh::LogicalMessageCache<8> recent_room_polls;
+  TARGET_CLASS() { metadata_filesystem = &fs; assert(room_access.load(&fs)); }
+  static bool saveFilter(ClientInfo*);
+  void serviceRoomQuotas() { room_access.serviceQuotaWindow(0, [] {}); }
 #endif
   void receive(mesh::Packet*, uint8_t*, size_t);
   bool admit(mesh::Packet* packet) {

@@ -108,6 +108,14 @@ class SensorReplyBoundsTest(unittest.TestCase):
     def test_room_telemetry_entries_fit_all_routes_and_preserve_composites(self):
         self.check_case("room")
 
+    def test_room_board_short_response_never_returns_a_tag_only_reply(self):
+        self.check_case("room.board")
+
+    def test_old_room_board_tag_only_response_is_rejected(self):
+        def old(source):
+            return source.replace("return length ? 4 + length : 0;", "return 4 + length;", 1)
+        self.assertNotEqual(self.execute("room.board", room_transform=old).returncode, 0)
+
     def test_old_room_unbounded_copy_is_rejected(self):
         def old(source):
             begin = source.index("    const uint8_t* tbuf = telemetry.getBuffer();")

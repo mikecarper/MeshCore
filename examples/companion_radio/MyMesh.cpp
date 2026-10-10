@@ -1517,7 +1517,7 @@ void MyMesh::releaseHeldOneKeyDMs() {
 }
 #endif // MESH_ENABLE_ONE_KEY_DM
 
-void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt,
+bool MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt,
                           uint32_t sender_timestamp, const uint8_t *extra,
                           int extra_len, const char *text,
                           bool terminal_command_reply,
@@ -1570,9 +1570,12 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
     memset(private_key_backup_nonce, 0, sizeof(private_key_backup_nonce));
     memset(private_key_backup_sender, 0, sizeof(private_key_backup_sender));
     memset(out_frame, 0, i);
-    return;
+    return false;
   }
   const bool queued = addToOfflineQueue(out_frame, i);
+  // Signed room posts are retried by the server until retained. Do not make
+  // an unretained post visible as delivered or notify the user about it.
+  if (txt_type == TXT_TYPE_SIGNED_PLAIN && !queued) return false;
 
   if (_serial->isConnected()) {
     uint8_t frame[1];
@@ -1618,6 +1621,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   }
 #endif
   if (_ui) _ui->setMessageNotificationOverride(false);
+  return queued;
 }
 
 static uint16_t emergencyClientRepeatKey(const mesh::Packet* packet) {
@@ -1845,12 +1849,13 @@ void MyMesh::onCLICommandRecv(const ContactInfo &from, mesh::Packet *pkt, uint32
   }
 }
 
-void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
+bool MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                                  const uint8_t *sender_prefix, const char *text) {
+  if (!queueMessage(from, TXT_TYPE_SIGNED_PLAIN, pkt, sender_timestamp, sender_prefix, 4, text)) return false;
   markConnectionActive(from);
   // from.sync_since change needs to be persisted
   scheduleContactWrite(from);
-  queueMessage(from, TXT_TYPE_SIGNED_PLAIN, pkt, sender_timestamp, sender_prefix, 4, text);
+  return true;
 }
 
 void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint32_t timestamp,

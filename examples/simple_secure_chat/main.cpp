@@ -271,7 +271,8 @@ protected:
   void onCLICommandRecv(const ContactInfo& contact, mesh::Packet* pkt, uint32_t sender_timestamp, const char *text, char* reply) override {
   }
 
-  void onSignedMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const uint8_t *sender_prefix, const char *text) override {
+  bool onSignedMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t sender_timestamp, const uint8_t *sender_prefix, const char *text) override {
+    return false; // This minimal example does not retain room posts.
   }
 
   void onChannelMessageRecv(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t timestamp, const char *text) override {

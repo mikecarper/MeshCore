@@ -32,6 +32,7 @@ struct ClientInfo {
   uint8_t out_path_len;
   uint8_t out_path[MAX_PATH_SIZE];
   bool out_path_is_persistable;  // live route may replace, but not erase, durable route
+  bool permissions_are_explicit; // operator assignment; room login caches remain transient
   uint8_t alt_path_len;
   uint8_t alt_path[MAX_PATH_SIZE];
   uint8_t observed_path_len;       // reciprocal login PATH (transient)
@@ -55,6 +56,8 @@ struct ClientInfo {
       uint32_t topic_seen_revision;
       uint32_t pending_topic_revision;
       uint8_t topic_failures;
+      uint16_t post_quota_used;
+      uint16_t poll_quota_used;
 #endif
     } room;
 #if !MESH_CLIENT_REPEATER_ONLY
@@ -96,6 +99,7 @@ class ClientACL {
   int num_clients;
   bool login_replay_store_available;
   bool acl_load_complete;
+  bool protect_explicit_permissions = false;
 
 public:
   // MAX_CLIENTS entries run to several kilobytes. Classic ESP32's link-time
@@ -117,6 +121,7 @@ public:
   ClientACL(const ClientACL&) = delete;
   ClientACL& operator=(const ClientACL&) = delete;
   void load(FILESYSTEM* _fs, const mesh::LocalIdentity& self_id);
+  void protectExplicitPermissions(bool protect = true) { protect_explicit_permissions = protect; }
   bool save(FILESYSTEM* _fs, bool (*filter)(ClientInfo*)=NULL);
   bool clear();
 
