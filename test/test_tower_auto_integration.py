@@ -34,6 +34,16 @@ CONTEXT_SETUP = r'''
 #include "helpers/ota/OtaSelfServePolicy.h"
 using namespace mesh::ota;
 using OtaSend = void (*)();
+struct MotaManifest { bool signature_valid = false; };
+struct SignerPolicy { bool allowed = true; mutable unsigned checks = 0; };
+[[maybe_unused]] static bool ota_manifest_trusted(const MotaManifest& manifest,
+                                                const SignerPolicy& allow) {
+  ++allow.checks;
+  return allow.allowed && manifest.signature_valid;
+}
+using OtaManifestAdmit = bool (*)(void*, const MotaManifest&);
+struct Context;
+using OtaContext = Context;
 using CodecFunction = void (*)();
 static constexpr uint8_t CODEC_DETOOLS_INPLACE = 2;
 static constexpr size_t MOTA_MFL = 197;
@@ -76,6 +86,11 @@ struct Manager {
   uint32_t target = 0, migration = 0, floor = 0;
   CodecFunction encoder = ota_transport_deflate, decoder = nullptr;
   TowerStore* destination = nullptr;
+  OtaManifestAdmit admission = nullptr;
+  void* admission_context = nullptr;
+  void set_manifest_admission(OtaManifestAdmit callback, void* context) {
+    admission = callback; admission_context = context;
+  }
   const uint8_t* primary = nullptr;
   unsigned clear_calls = 0, folder_sources = 3;
   void begin(uint32_t id, OtaSend, void*) { target = id; }
@@ -92,6 +107,7 @@ struct Manager {
   void clear_primary() { ++clear_calls; primary = nullptr; }
 };
 struct Context {
+  SignerPolicy allow;
   TowerStore fetch_store;
   Cache sd_cache;
   Manager manager;
@@ -113,6 +129,14 @@ int main() {
   strcpy(current.hw_id, "Heltec_tower_v2");
   Context sd;
   sd.begin(0x55, send, nullptr, "fallback");
+  assert(sd.manager.admission && sd.manager.admission_context == &sd);
+  const MotaManifest signed_manifest{true}, forged_manifest{false};
+  assert(sd.manager.admission(sd.manager.admission_context, signed_manifest));
+  assert(!sd.manager.admission(sd.manager.admission_context, forged_manifest));
+  sd.allow.allowed = false;
+  assert(!sd.manager.admission(sd.manager.admission_context, signed_manifest));
+  sd.allow.allowed = true;
+  assert(sd.allow.checks == 3);
   assert(sd.fetch_store.probes == 0 && sd.fetch_store.selection_calls == 0);
   assert(sd.caps_reads == 0 && !sd.manager.full && !sd.manager.bootloader);
   assert(!sd.self_serve_supported && sd.manager.encoder == nullptr);
@@ -173,6 +197,11 @@ int main() {
   Context unsafe;
   unsafe.fetch_store.fitted = TowerStore::Unsafe;
   unsafe.begin(0x55, send, nullptr);
+  assert(unsafe.manager.admission && unsafe.manager.admission_context == &unsafe);
+  unsafe.allow.allowed = false;
+  assert(!unsafe.manager.admission(unsafe.manager.admission_context, signed_manifest));
+  assert(sd.manager.admission(sd.manager.admission_context, signed_manifest));
+  assert(unsafe.allow.checks == 1 && sd.allow.checks == 4);
   assert(!unsafe.prepareTowerStorage());
   assert(!unsafe.manager.full && !unsafe.manager.bootloader && !unsafe.manager.archive);
   assert(!unsafe.self_serve_supported && unsafe.manager.encoder == nullptr);
@@ -276,6 +305,15 @@ class TowerAutoIntegrationTest(unittest.TestCase):
         ))
         source = CONTEXT_SETUP + methods + CONTEXT_CASES
         self.compile_run(source)
+        admission = """    manager.set_manifest_admission([](void* context, const MotaManifest& manifest) {
+      return ota_manifest_trusted(manifest, static_cast<OtaContext*>(context)->allow);
+    }, this);"""
+        missing_admission = methods.replace(admission, "")
+        self.assertNotEqual(missing_admission, methods)
+        self.compile_run(CONTEXT_SETUP + missing_admission + CONTEXT_CASES, expected=False)
+        wrong_context = methods.replace("}, this);", "}, nullptr);")
+        self.assertNotEqual(wrong_context, methods)
+        self.compile_run(CONTEXT_SETUP + wrong_context + CONTEXT_CASES, expected=False)
         # Negative controls prove the fixture catches the original startup
         # probe hazard and policy that accidentally advertises incompatible SD.
         eager = methods.replace("manager.begin(target_id, send, ctx);",
