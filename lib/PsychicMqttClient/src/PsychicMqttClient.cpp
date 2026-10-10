@@ -657,6 +657,11 @@ unsigned long PsychicMqttClient::getPublishOk()
     return _publish_ok;
 }
 
+unsigned long PsychicMqttClient::getPublishAck()
+{
+    return _publish_ack.load(std::memory_order_relaxed);
+}
+
 unsigned long PsychicMqttClient::getPublishErr()
 {
     return _publish_err;
@@ -832,6 +837,7 @@ void PsychicMqttClient::_onMessage(esp_mqtt_event_handle_t &event)
 
 void PsychicMqttClient::_onPublish(esp_mqtt_event_handle_t &event)
 {
+    _publish_ack.fetch_add(1, std::memory_order_relaxed);
     ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
     for (uint8_t i = 0; i < _onPublishUserCallbackCount; ++i)
     {

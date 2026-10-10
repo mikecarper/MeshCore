@@ -721,6 +721,19 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
                  static_cast<unsigned long>(MQTTConnectionHealth::clampFailureTotal(cf)));
   }
 
+  // Keep error details first and never clip an acknowledgment count into a
+  // different number. Accepted/enqueued publishes and outbox expiry do not
+  // advance this broker acknowledgment counter.
+  if (slot.client) {
+    char ack_text[32];
+    const int ack_len = snprintf(ack_text, sizeof(ack_text), ", pub_ack:%lu",
+                                 slot.client->getPublishAck());
+    const int remaining = pos < (int)bufsize ? (int)bufsize - 1 - pos : 0;
+    if (ack_len > 0 && ack_len < (int)sizeof(ack_text) && ack_len <= remaining) {
+      replyAppendf(buf, bufsize, &pos, "%s", ack_text);
+    }
+  }
+
   // Appended last so it never displaces connection diagnostics. replyAppendf
   // clamps rather than overflows, but a clipped type list is worse than no
   // list: "...,13,14," parses as a real, different allowlist, and this is the

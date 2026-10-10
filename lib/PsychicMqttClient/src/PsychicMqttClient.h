@@ -31,6 +31,7 @@
  *   SOFTWARE.
  */
 
+#include <atomic>
 #include <functional>
 
 #include "Arduino.h"
@@ -472,6 +473,13 @@ public:
     unsigned long getPublishOk();
 
     /**
+     * @brief Cumulative QoS 1/2 publishes acknowledged by the broker during
+     * this client's lifetime. Counts MQTT_EVENT_PUBLISHED, not accepted writes
+     * or outbox expiry. MeshCore's QoS 1 status messages complete on PUBACK.
+     */
+    unsigned long getPublishAck();
+
+    /**
      * @brief Cumulative count of publishes that failed (negative return from the
      * synchronous write or async enqueue -- socket error / network timeout). Monotonic.
      * A rising value indicates the uplink is dropping publishes.
@@ -495,6 +503,8 @@ private:
     // Cumulative publish accept/fail counts (any QoS, sync or async path).
     unsigned long _publish_ok = 0;
     unsigned long _publish_err = 0;
+    // Written by the SDK event task and read by the bridge/CLI task.
+    std::atomic<unsigned long> _publish_ack{0};
 
     // Multipart message reassembly. _buffer is lazily allocated at connect() time
     // to match the configured buffer size, then reused for the client's lifetime.

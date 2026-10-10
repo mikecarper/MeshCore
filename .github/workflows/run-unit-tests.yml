@@ -196,6 +196,7 @@ jobs:
           python3 -B test/test_mqtt_connection_admission.py -v
           python3 -B test/test_mqtt_handshake_scheduler.py -v
           python3 -B test/test_mqtt_diagnostics.py -v
+          python3 -B test/test_mqtt_publish_ack.py -v
 
       - name: Verify DNS lease restoration and bounded diagnostics
         run: python3 -B test/test_network_dns.py -v

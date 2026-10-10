@@ -53,6 +53,9 @@ room-server and companion images that enable it.
 - Require byte-addressable internal memory for string/JSON/queue buffer
   fallbacks. The internal-memory capability alone also admits instruction RAM
   that only supports aligned 32-bit access.
+- Count broker QoS acknowledgments separately from accepted writes and expose
+  them as `pub_ack` in `get mqttN.diag`. This lets hardware tests verify
+  delivery without treating an expired outbox entry as an acknowledgment.
 - Add DMA free/largest readings to `get mqtt.stats` and diagnostic logs.
   Correct the operator-facing TLS error labels against SDK constants.
 
@@ -69,14 +72,46 @@ PSRAM and internal-only modes, fragmented heap, exhausted PSRAM, delayed
 connection callbacks, retry timing and bounded replies. They do not execute
 an ESP32 AES peripheral or qualify physical WiFi behavior.
 
-All 1,794 native tests and the 31 memory-budget tests passed. The focused
-MQTT tests are also connected to the GitHub unit-test workflow.
+All 42 focused Python MQTT tests, 1,794 native tests and 31 memory-budget tests
+passed. The focused MQTT tests are also connected to the GitHub unit-test
+workflow.
 
-The VM reached both reported broker TLS endpoints with certificate
-verification enabled. That is an endpoint check, not an ESP32 MQTT test.
+Three Full MQTT repeater builds with USB packet logging passed on 10 October
+2026 at revision `7acc63746`. Their build logs report:
 
-MercerWoodMesh reported offline and its SSH connection timed out during this
-run. No live V4 flash, MQTT publication or soak result is claimed. The next
-hardware check must exercise the reported WSS presets together, verify rising
-publish counters and DMA headroom, then include a broker/WiFi reconnection
-and power-saving idle run with no reset or AES allocation error.
+| Build | Application flash bytes | Available internal heap bytes | Required heap bytes | Largest internal region bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Heltec V4 | 2,182,125 | 205,080 | 198,432 | 172,312 |
+| Heltec V3 | 2,125,149 | 211,296 | 209,184 | 178,528 |
+| Station G2 | 2,017,685 | 201,280 | 200,480 | 168,512 |
+
+Application flash is the PlatformIO size-check reading. Internal heap is
+linked capacity before dynamic allocation, not free heap measured after boot.
+All three RAM gates passed the startup policy; they do not qualify maximum
+TLS/WSS/outbox load. The default MQTT startup allowance remains 24,576 bytes,
+with runtime admission for additional connections. See
+[firmware memory checks](../research/firmware_memory_budget.md#mqtt-startup-minimum-and-runtime-qualification)
+for the separate maximum-slot estimate and qualification limits.
+
+Live TLS 1.2 certificate chains from 12 audited preset endpoints were
+verified with the exact CA PEMs extracted from `MQTTPresets.h` using a native
+host build of the pinned mbedTLS 2.28.7 submodule from ESP-IDF 4.4.7, commit
+`2b8e772fc1cb0732cda3bae7d1e9d6f4cfaf63d9`. Hostname verification was enabled.
+All 11 GTS Root R4 endpoints and the ISRG Root X1 Cascadia endpoint returned
+verification result 0 and flags `0x00000000`. Wrong-hostname and unrelated-anchor
+negative checks were rejected. WAEV also passed with the server root omitted
+from its supplied chain.
+
+The existing cross-signed GTS Root R4 PEM is a valid trust anchor for that
+pinned mbedTLS verifier. Ordinary OpenSSL root-only verification rejected it,
+while partial-chain verification with the same PEM passed all 11 GTS endpoints.
+This host-probe policy difference does not establish a firmware CA failure or
+require a CA replacement for the reported AES allocation errors. The verifier
+used the native default mbedTLS configuration; this establishes pinned X.509
+chain and trust-anchor behavior, not an ESP32 hardware handshake.
+
+MercerWoodMesh is now reachable and live V4 testing is in progress. Live flash,
+MQTT publication, reconnect and soak outcomes remain pending. The hardware
+check must exercise the reported WSS presets together, verify rising publish
+counters and DMA headroom, then include a broker/WiFi reconnection and
+power-saving idle run with no reset or AES allocation error.
