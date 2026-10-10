@@ -225,6 +225,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   int next_client_idx;  // for round-robin polling
   int next_post_idx;
   PostInfo posts[MAX_UNSYNCED_POSTS];   // cyclic queue
+  char room_topic[MAX_POST_TEXT_LEN + 1] = {};
+  uint32_t room_topic_revision = 0;
+  uint32_t room_topic_timestamp = 0;
+  unsigned long room_topic_ready_at = 0;
+  bool room_topic_ready = true;
   CayenneLPP telemetry;
 #if MESH_ENABLE_TELEMETRY_HISTORY
   mesh::TelemetryHistory telemetry_history;
@@ -334,7 +339,13 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   void addPost(ClientInfo* client, const char* postData);
   bool applySavedRadioParams();
   void storePost(const mesh::Identity& author, const char* postData);
-  void pushPostToClient(ClientInfo* client, PostInfo& post);
+  bool pushPostToClient(ClientInfo* client, PostInfo& post);
+  bool pushRoomTextToClient(ClientInfo* client, uint32_t timestamp,
+                            const mesh::Identity& author, const char* text,
+                            uint32_t topic_revision = 0);
+  bool handleRoomTopicCommand(const char* command, char* reply);
+  void activateRoomTopic();
+  void serviceRoomPush();
   uint8_t getUnsyncedCount(ClientInfo* client);
   bool processAck(const uint8_t *data);
   mesh::Packet* createSelfAdvert();

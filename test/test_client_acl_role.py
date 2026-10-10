@@ -104,6 +104,8 @@ static_assert(sizeof(((ClientInfo*)0)->extra) == 4, "only persisted sync field r
 #else
 static_assert(sizeof(((ClientInfo*)0)->extra.sensor.min_deltas) == 14, "sensor state retained");
 static_assert(sizeof(((ClientInfo*)0)->extra.room.pending_ack) == 4, "room state retained");
+static_assert(sizeof(((ClientInfo*)0)->extra.room) <= sizeof(((ClientInfo*)0)->extra.sensor),
+              "topic delivery must fit the existing shared union");
 #endif
 int main() {
   CHECK(full_fixture_main() == 0); // replay, corruption, OOM and rollback coverage
@@ -121,6 +123,9 @@ int main() {
     c->alt_path_len = 1; c->alt_path[0] = uint8_t(i + 5);
 #if !MESH_CLIENT_REPEATER_ONLY
     c->extra.room.pending_ack = 99; c->extra.room.push_failures = 3;
+    c->extra.room.topic_seen_revision = 7;
+    c->extra.room.pending_topic_revision = 8;
+    c->extra.room.topic_failures = 2;
 #endif
   }
   CHECK(acl.save(&fs));
@@ -133,6 +138,11 @@ int main() {
     CHECK(c->out_path_len == 1 && c->out_path[0] == i + 3);
     CHECK(c->alt_path_len == 1 && c->alt_path[0] == i + 5);
     CHECK(c->isAdmin());
+#if !MESH_CLIENT_REPEATER_ONLY
+    CHECK(c->extra.room.topic_seen_revision == 0);
+    CHECK(c->extra.room.pending_topic_revision == 0);
+    CHECK(c->extra.room.topic_failures == 0);
+#endif
   }
   std::printf("SIZE:%zu\nCONTACTS:", sizeof(ClientInfo));
   for (auto byte : fs.files["/s_contacts"]) std::printf("%02x", unsigned(byte));

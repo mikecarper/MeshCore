@@ -113,6 +113,11 @@ jobs:
           python3 -B test/test_companion_offline_delivery.py -v
           python3 -B test/test_companion_lfs_traversal.py -v
           python3 -B test/test_room_post_permissions.py -v
+          python3 -B test/test_room_login_authorization.py -v
+          python3 -B test/test_room_login_integration.py -v
+          python3 -B test/test_room_topic_store.py -v
+          python3 -B test/test_room_topic_delivery.py -v
+          python3 -B test/test_official_room_app_compatibility.py -v
           python3 -B test/test_contact_clock_bootstrap.py -v
           python3 -B test/test_rtc_discovery.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v

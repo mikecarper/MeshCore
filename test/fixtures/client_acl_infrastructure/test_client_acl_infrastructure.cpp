@@ -89,7 +89,10 @@ struct ClientInfo {
   uint8_t permissions = 3;
   uint8_t out_path_len = 0, out_path[MAX_PATH_SIZE] = {};
   uint32_t last_timestamp = 0, last_activity = 0;
-  struct { struct { uint32_t sync_since = 0, pending_ack = 0; uint8_t push_failures = 0; } room; } extra;
+  struct { struct {
+    uint32_t sync_since = 0, pending_ack = 0, pending_topic_revision = 0;
+    uint8_t push_failures = 0;
+  } room; } extra;
   bool isAdmin() const { return (permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_ADMIN; }
 };
 struct ACL {

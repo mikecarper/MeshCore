@@ -3763,13 +3763,58 @@ setperm <PUBKEY_USER_1> 2
 ```
 
 With read-only mode on, a client without a valid room password can join as a
-read-only guest. Permission `2` gives the specified public key read-write
+read-only guest, including with a blank password. Empty configured admin and
+room passwords disable those password credentials; they never grant Admin or
+Read-Write access. Permission `2` gives the specified public key read-write
 access. Replace `<PUBKEY_USER_1>` with the user's full public key and repeat
 `setperm` for every approved writer.
+
+An existing ACL identity keeps its assigned role when logging in with a blank,
+stale, or room password. A valid nonempty admin password can explicitly upgrade
+it to Admin. This prevents a guest-password login from demoting an admin, and
+prevents a room password from overriding an explicit read-only assignment.
+Only Read-Write (`2`) and Admin (`3`) clients can post.
 
 This does not remove write access from clients that already know the room
 password. Keep that password private, or replace it, if write access should be
 limited to the explicitly permitted users.
+
+---
+
+#### View or change the room topic
+
+**Availability:** Room Server firmware. Local consoles and authenticated remote
+admins can use these commands.
+
+```text
+set topic Welcome to the Bellevue room. Please keep posts local.
+get topic
+set topic
+```
+
+`set topic <text>` saves an announcement of up to 151 UTF-8 bytes. Individual
+command transports can impose a smaller input limit. `get topic` returns the
+current text prefixed with `> `. `set topic` with no text clears it.
+
+The topic survives reboot and appears as a normal room post authored by the
+server, using the existing app message format. It does not require an app
+update or provide a separate pinned-header display. Older unread retained posts
+are delivered before the topic, so the companion's automatic catch-up cursor
+cannot jump past them. A topic ACK updates only topic delivery state, leaving
+the server's message-history cursor unchanged.
+
+The server waits six seconds before delivering a new topic and attempts an
+unacknowledged announcement up to three times per client. It then continues
+ordinary post delivery; reconnecting or changing the topic renews that budget.
+Changing a topic while its predecessor is awaiting an ACK does not mark the
+replacement as received. Clearing the topic stops further announcement pushes;
+a packet already queued for transmission can still arrive.
+
+Topic saves are verified before publication. A failed save reports an error
+and retains the previous live topic. Corrupt, unreadable, or unsupported stored
+topic files are preserved and block replacement until their storage issue is
+repaired. Topics do not make ordinary room history persistent: retained posts
+still use the existing bounded RAM ring and are lost on reboot.
 
 ---
 

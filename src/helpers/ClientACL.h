@@ -50,6 +50,11 @@ struct ClientInfo {
       uint32_t push_post_timestamp;
       unsigned long ack_timeout;
       uint8_t  push_failures;
+      // Topic delivery is transient and independent of the post cursor. These
+      // fields fit inside the existing sensor-sized union on shared profiles.
+      uint32_t topic_seen_revision;
+      uint32_t pending_topic_revision;
+      uint8_t topic_failures;
 #endif
     } room;
 #if !MESH_CLIENT_REPEATER_ONLY

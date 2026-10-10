@@ -21,6 +21,8 @@
 #include <helpers/ClientACLResponse.h>
 #include <helpers/sensors/LPPDataHelpers.h>
 #include <helpers/ClientLoginPersistence.h>
+#include <helpers/RoomLoginAuthorization.h>
+#include <helpers/RoomTopicStore.h>
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/LazyPersistence.h>
 #if MESH_PACKET_LOGGING
@@ -123,10 +125,16 @@ void MyMesh::storePost(const mesh::Identity &author, const char *postData) {
   MESH_DEBUG_PRINTLN("room.post: next_post_idx=%d num_posted=%d push scheduled", next_post_idx, _num_posted);
 }
 
-void MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
+bool MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
   MESH_DEBUG_PRINTLN("room.post: pushPostToClient text=%s", post.text);
+  return pushRoomTextToClient(client, post.post_timestamp, post.author, post.text);
+}
+
+bool MyMesh::pushRoomTextToClient(ClientInfo *client, uint32_t timestamp,
+                                 const mesh::Identity& author, const char* text,
+                                 uint32_t topic_revision) {
   int len = 0;
-  memcpy(&reply_data[len], &post.post_timestamp, 4);
+  memcpy(&reply_data[len], &timestamp, 4);
   len += 4; // this is a PAST timestamp... but should be accepted by client
 
   uint8_t attempt;
@@ -134,24 +142,24 @@ void MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
   reply_data[len++] = (TXT_TYPE_SIGNED_PLAIN << 2) | (attempt & 3); // 'signed' plain text
 
   // encode prefix of post.author.pub_key
-  memcpy(&reply_data[len], post.author.pub_key, 4);
+  memcpy(&reply_data[len], author.pub_key, 4);
   len += 4; // just first 4 bytes
 
-  int text_len = strlen(post.text);
-  memcpy(&reply_data[len], post.text, text_len);
+  int text_len = strlen(text);
+  memcpy(&reply_data[len], text, text_len);
   len += text_len;
 
   uint8_t message_participants[2 * PUB_KEY_SIZE];
   memcpy(message_participants, client->id.pub_key, PUB_KEY_SIZE);
-  memcpy(&message_participants[PUB_KEY_SIZE], post.author.pub_key, PUB_KEY_SIZE);
+  memcpy(&message_participants[PUB_KEY_SIZE], author.pub_key, PUB_KEY_SIZE);
   uint8_t message_retry_key[MAX_HASH_SIZE];
   mesh::Utils::sha256(message_retry_key, sizeof(message_retry_key),
                       message_participants, sizeof(message_participants),
-                      (const uint8_t*)post.text, text_len);
+                      (const uint8_t*)text, text_len);
 
   // calc expected ACK reply
   mesh::Utils::sha256((uint8_t *)&client->extra.room.pending_ack, 4, reply_data, len, client->id.pub_key, PUB_KEY_SIZE);
-  client->extra.room.push_post_timestamp = post.post_timestamp;
+  client->extra.room.pending_topic_revision = 0;
 
   auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, client->shared_secret, reply_data, len);
   bool sent = false;
@@ -174,7 +182,9 @@ void MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
       }
     }
     if (sent) {
-      replaceActiveMessageRetries(reply, message_retry_key, post.post_timestamp);
+      client->extra.room.push_post_timestamp = timestamp;
+      client->extra.room.pending_topic_revision = topic_revision;
+      replaceActiveMessageRetries(reply, message_retry_key, timestamp);
       _num_post_pushes++; // stats
     }
   }
@@ -182,6 +192,7 @@ void MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
     client->extra.room.pending_ack = 0;
     MESH_DEBUG_PRINTLN("Unable to push post to client");
   }
+  return sent;
 }
 
 uint8_t MyMesh::getUnsyncedCount(ClientInfo *client) {
@@ -200,12 +211,127 @@ bool MyMesh::processAck(const uint8_t *data) {
     auto client = acl.getClientByIdx(i);
     if (client->extra.room.pending_ack && memcmp(data, &client->extra.room.pending_ack, 4) == 0) { // got an ACK from Client!
       client->extra.room.pending_ack = 0; // clear this, so next push can happen
-      client->extra.room.push_failures = 0;
-      client->extra.room.sync_since = client->extra.room.push_post_timestamp; // advance Client's SINCE timestamp, to sync next post
+      if (client->extra.room.pending_topic_revision != 0) {
+        client->extra.room.topic_seen_revision = client->extra.room.pending_topic_revision;
+        client->extra.room.pending_topic_revision = 0;
+        client->extra.room.topic_failures = 0;
+      } else {
+        client->extra.room.push_failures = 0;
+        client->extra.room.sync_since = client->extra.room.push_post_timestamp; // advance only the post cursor
+      }
       return true;
     }
   }
   return false;
+}
+
+void MyMesh::activateRoomTopic() {
+  // A revision identifies ACK state independently of wall-clock corrections.
+  if (++room_topic_revision == 0) ++room_topic_revision;
+  room_topic_timestamp = getRTCClock()->getCurrentTimeUnique();
+  room_topic_ready_at = futureMillis(POST_SYNC_DELAY_SECS * 1000UL);
+  room_topic_ready = false;
+  for (int i = 0; i < acl.getNumClients(); ++i) {
+    auto client = acl.getClientByIdx(i);
+    client->extra.room.topic_seen_revision = 0;
+    client->extra.room.topic_failures = 0;
+    // An outstanding topic ACK still belongs to its captured old revision.
+  }
+}
+
+bool MyMesh::handleRoomTopicCommand(const char* command, char* reply) {
+  if (strcmp(command, "get topic") == 0) {
+    // 151 bytes + "> " + NUL fits even after the reflected three-byte prefix.
+    snprintf(reply, 160 - 3, "> %s", room_topic);
+    return true;
+  }
+  if (strncmp(command, "set topic", 9) != 0
+      || (command[9] != 0 && command[9] != ' ')) return false;
+
+  const char* text = command + 9;
+  while (*text == ' ') ++text;
+  if (strlen(text) > MAX_POST_TEXT_LEN) {
+    strcpy(reply, "Err - topic exceeds 151 bytes");
+    return true;
+  }
+  if (!mesh::saveRoomTopic(_fs, text)) {
+    strcpy(reply, "Err - topic save failed; previous topic retained");
+    return true;
+  }
+  if (strcmp(room_topic, text) != 0) {
+    memcpy(room_topic, text, strlen(text) + 1);
+    activateRoomTopic();
+    next_push = futureMillis(PUSH_NOTIFY_DELAY_MILLIS);
+  }
+  strcpy(reply, room_topic[0] ? "OK - room topic saved" : "OK - room topic cleared");
+  return true;
+}
+
+void MyMesh::serviceRoomPush() {
+  // Latch this even without subscribers. An unchanged topic remains ready
+  // beyond the signed timer comparison's half-range (~25 days).
+  if (!room_topic_ready && millisHasNowPassed(room_topic_ready_at)) room_topic_ready = true;
+  if (!millisHasNowPassed(next_push) || acl.getNumClients() == 0) return;
+
+  for (int i = 0; i < acl.getNumClients(); ++i) {
+    auto client = acl.getClientByIdx(i);
+    if (client->extra.room.pending_ack
+        && millisHasNowPassed(client->extra.room.ack_timeout)) {
+      const uint32_t topic_revision = client->extra.room.pending_topic_revision;
+      if (topic_revision != 0) {
+        if (topic_revision == room_topic_revision
+            && ++client->extra.room.topic_failures >= 3) {
+          // A lost announcement must not suspend delivery of ordinary posts.
+          // Re-login or a new topic gives this client another retry budget.
+          client->extra.room.topic_seen_revision = topic_revision;
+        }
+      } else {
+        client->extra.room.push_failures++;
+      }
+      client->extra.room.pending_ack = 0;
+      client->extra.room.pending_topic_revision = 0;
+    }
+  }
+
+  // ACL removals can shorten the table between scheduler visits.
+  next_client_idx %= acl.getNumClients();
+  auto client = acl.getClientByIdx(next_client_idx);
+  bool did_push = false;
+  if (client->extra.room.pending_ack == 0 && client->last_activity != 0
+      && client->extra.room.push_failures < 3) {
+    const uint32_t now = getRTCClock()->getCurrentTime();
+    if (room_topic[0] != 0 && room_topic_ready
+        && client->extra.room.topic_seen_revision != room_topic_revision
+        && room_topic_timestamp > now) {
+      // A clock correction can reset its unique-time floor after activation.
+      // Never newly push the old future epoch into a companion's catch-up cursor.
+      room_topic_timestamp = now;
+    }
+    PostInfo* next_post = NULL;
+    bool has_older_topic_posts = false;
+    for (int k = 0, idx = next_post_idx; k < MAX_UNSYNCED_POSTS; ++k) {
+      auto post = &posts[idx];
+      if (post->post_timestamp > client->extra.room.sync_since
+          && !post->author.matches(client->id)) {
+        // Companions echo the latest received timestamp as keep-alive forceSince.
+        // Even an unaged older post must precede the topic on the wire.
+        if (post->post_timestamp <= room_topic_timestamp) has_older_topic_posts = true;
+        if (next_post == NULL && now >= post->post_timestamp
+            && now - post->post_timestamp >= POST_SYNC_DELAY_SECS) next_post = post;
+      }
+      idx = (idx + 1) % MAX_UNSYNCED_POSTS;
+    }
+    if (room_topic[0] != 0
+        && client->extra.room.topic_seen_revision != room_topic_revision
+        && room_topic_ready && !has_older_topic_posts) {
+      did_push = pushRoomTextToClient(client, room_topic_timestamp, self_id,
+                                      room_topic, room_topic_revision);
+    } else if (next_post != NULL) {
+      did_push = pushPostToClient(client, *next_post);
+    }
+  }
+  next_client_idx = (next_client_idx + 1) % acl.getNumClients();
+  next_push = futureMillis(did_push ? SYNC_PUSH_INTERVAL : SYNC_PUSH_INTERVAL / 8);
 }
 
 mesh::Packet *MyMesh::createSelfAdvert() {
@@ -720,29 +846,16 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     ClientInfo* existing_client =
         acl.getClient(sender.pub_key, PUB_KEY_SIZE);
     ClientInfo* client = existing_client;
-    uint8_t perm;
-    if (data[8] == 0) {   // blank password, just check if sender is in ACL
-      if (client == NULL) {
-      #if MESH_DEBUG
-        MESH_DEBUG_PRINTLN("Login, sender not in ACL");
-      #endif
-        return;
-      }
-      perm = client->permissions & PERM_ACL_ROLE_MASK;
-    } else {
-      if (strcmp((char *)&data[8], _prefs.password) == 0) { // check for valid admin password
-        perm = PERM_ACL_ADMIN;
-      } else {
-        if (strcmp((char *)&data[8], _prefs.guest_password) == 0) {   // check the room/public password
-          perm = PERM_ACL_READ_WRITE;
-        } else if (_prefs.allow_read_only) {
-          perm = PERM_ACL_GUEST;
-        } else {
-          MESH_DEBUG_PRINTLN("Incorrect room password");
-          return; // no response. Client will timeout
-        }
-      }
+    const auto authorization = mesh::authorizeRoomLogin(
+        (const char*)&data[8], _prefs.password, _prefs.guest_password,
+        existing_client != NULL, existing_client ? existing_client->permissions : 0,
+        _prefs.allow_read_only, PERM_ACL_ROLE_MASK, PERM_ACL_GUEST,
+        PERM_ACL_READ_WRITE, PERM_ACL_ADMIN);
+    if (!authorization.accepted) {
+      MESH_DEBUG_PRINTLN("Incorrect room password");
+      return;
     }
+    const uint8_t perm = authorization.role;
 
     const bool client_existed = existing_client != NULL;
     const uint32_t previous_timestamp =
@@ -774,6 +887,9 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     client->extra.room.sync_since = sender_sync_since;
     client->extra.room.pending_ack = 0;
     client->extra.room.push_failures = 0;
+    client->extra.room.topic_seen_revision = 0;
+    client->extra.room.pending_topic_revision = 0;
+    client->extra.room.topic_failures = 0;
     persisted_changed = persisted_changed
         || previous_sync_since != sender_sync_since;
     if (mesh::successfulClientLoginNeedsPersistence(
@@ -1066,6 +1182,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         }
 
         client->extra.room.pending_ack = 0;
+        client->extra.room.pending_topic_revision = 0;
 
         // TODO: Throttle KEEP_ALIVE requests!
         // if client sends too quickly, evict()
@@ -1414,6 +1531,11 @@ void MyMesh::begin(FILESYSTEM *fs) {
   acl.load(_fs, self_id);
   region_map.load(_fs);
   _clock_sync.begin(_fs);
+  if (mesh::loadRoomTopic(_fs, room_topic)) {
+    if (room_topic[0] != 0) activateRoomTopic();
+  } else {
+    MESH_DEBUG_PRINTLN("Room topic unavailable; stored image preserved");
+  }
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   flood_rules.begin(_fs, &region_map);
 #endif
@@ -2566,6 +2688,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
 
   mesh::cli::normalizeCommandVerb(command);
 
+  if (handleRoomTopicCommand(command, reply)) return;
+
 #if MESH_ENABLE_TELEMETRY_HISTORY
   if (handleTelemetryHistoryCommand(command, reply)) return;
 #endif
@@ -2733,48 +2857,7 @@ void MyMesh::loop() {
   else startSharedEspNowBridgeIfReady();
 #endif
 
-  if (millisHasNowPassed(next_push) && acl.getNumClients() > 0) {
-    // check for ACK timeouts
-    for (int i = 0; i < acl.getNumClients(); i++) {
-      auto c = acl.getClientByIdx(i);
-      if (c->extra.room.pending_ack && millisHasNowPassed(c->extra.room.ack_timeout)) {
-        c->extra.room.push_failures++;
-        c->extra.room.pending_ack = 0; // reset  (TODO: keep prev expected_ack's in a list, incase they arrive LATER, after we retry)
-        MESH_DEBUG_PRINTLN("pending ACK timed out: push_failures: %d", (uint32_t)c->extra.room.push_failures);
-      }
-    }
-    // check next Round-Robin client, and sync next new post
-    auto client = acl.getClientByIdx(next_client_idx);
-    bool did_push = false;
-    if (client->extra.room.pending_ack == 0 && client->last_activity != 0 &&
-        client->extra.room.push_failures < 3) { // not already waiting for ACK, AND not evicted, AND retries not max
-      MESH_DEBUG_PRINTLN("loop - checking for client %02X", (uint32_t)client->id.pub_key[0]);
-      uint32_t now = getRTCClock()->getCurrentTime();
-      for (int k = 0, idx = next_post_idx; k < MAX_UNSYNCED_POSTS; k++) {
-        auto p = &posts[idx];
-        if (now >= p->post_timestamp + POST_SYNC_DELAY_SECS &&
-            p->post_timestamp > client->extra.room.sync_since // is new post for this Client?
-            && !p->author.matches(client->id)) {   // don't push posts to the author
-          // push this post to Client, then wait for ACK
-          pushPostToClient(client, *p);
-          did_push = true;
-          MESH_DEBUG_PRINTLN("loop - pushed to client %02X: %s", (uint32_t)client->id.pub_key[0], p->text);
-          break;
-        }
-        idx = (idx + 1) % MAX_UNSYNCED_POSTS; // wrap to start of cyclic queue
-      }
-    } else {
-      MESH_DEBUG_PRINTLN("loop - skipping busy (or evicted) client %02X", (uint32_t)client->id.pub_key[0]);
-    }
-    next_client_idx = (next_client_idx + 1) % acl.getNumClients(); // round robin polling for each client
-
-    if (did_push) {
-      next_push = futureMillis(SYNC_PUSH_INTERVAL);
-    } else {
-      // were no unsynced posts for curr client, so process next client much quicker! (in next loop())
-      next_push = futureMillis(SYNC_PUSH_INTERVAL / 8);
-    }
-  }
+  serviceRoomPush();
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
     mesh::Packet *pkt = createSelfAdvert();
