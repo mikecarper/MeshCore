@@ -13428,6 +13428,11 @@ void MyMesh::resetNeighborDiscoverJsonBudget() {
 // progress metadata; UINT32_MAX likewise reserves the widest heard-age value.
 // If this result cannot fit, stop before transmitting another scope request.
 bool MyMesh::completeNeighborDiscoverEntry() {
+  if ((size_t)neighbor_discover_next >= NEIGHBOR_SCOPE_RESULTS) {
+    neighbor_discover_truncated = true;
+    finishNeighborDiscover();
+    return false;
+  }
   NeighborDiscoverEntry& entry = neighbor_discover[neighbor_discover_next];
   char pubkey_hex[65];
   mesh::Utils::toHex(pubkey_hex, entry.id.pub_key, PUB_KEY_SIZE);

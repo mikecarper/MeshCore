@@ -677,6 +677,18 @@ public:
   static const int NEIGHBORS_MAX_PUBLISH_ENTRIES = 20;
   #endif
 
+  // Discovery budgets each row with a 64-character public key, UINT32_MAX
+  // heard age and a status of at least "timeout". Its shortest measured JSON
+  // is 144 bytes. Reserve scope results only for rows that could fit the
+  // existing JSON buffer, plus one overflow sentinel. Serializer tests keep
+  // this lower bound tied to completeNeighborDiscoverEntry's measurement.
+  // The neighbor cache and actual per-publish entry limit remain unchanged.
+  static const size_t NEIGHBORS_MIN_DISCOVERY_ENTRY_JSON_BYTES = 144;
+  static const size_t NEIGHBORS_SCOPE_RESULT_CAPACITY =
+      (NEIGHBORS_MAX_PUBLISH_ENTRIES < NEIGHBORS_JSON_BUFFER_SIZE / NEIGHBORS_MIN_DISCOVERY_ENTRY_JSON_BYTES
+          ? NEIGHBORS_MAX_PUBLISH_ENTRIES
+          : NEIGHBORS_JSON_BUFFER_SIZE / NEIGHBORS_MIN_DISCOVERY_ENTRY_JSON_BYTES) + 1;
+
   // Called by the mesh (Core 1) once a neighbor-discovery pass has built the
   // table JSON. Copies it into the persistent PSRAM buffer and raises the
   // publish-pending flag for the MQTT task; a request is dropped if one is

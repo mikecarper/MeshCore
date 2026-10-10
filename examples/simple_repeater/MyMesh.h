@@ -701,9 +701,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   struct NeighborDiscoverEntry {
     mesh::Identity id;       // immutable snapshot: neighbour table can change mid-pass
     uint32_t heard_timestamp;
-    int8_t snr;              // multiplied by 4
-    int16_t rssi;            // dBm from the last packet heard from this neighbour
     uint32_t tag;            // anon-regions request tag we're waiting on
+    int16_t rssi;            // dBm from the last packet heard from this neighbour
+    int8_t snr;              // multiplied by 4
     uint8_t status;          // NeighborDiscoverStatus
   };
   NeighborDiscoverEntry neighbor_discover[MAX_NEIGHBOURS];
@@ -711,8 +711,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   // receives scope queries. Keep every neighbor snapshot, without reserving
   // 96 response bytes for each entry that will never be queried.
   static constexpr size_t NEIGHBOR_SCOPE_RESULTS =
-      MAX_NEIGHBOURS < MQTTBridge::NEIGHBORS_MAX_PUBLISH_ENTRIES + 1
-          ? MAX_NEIGHBOURS : MQTTBridge::NEIGHBORS_MAX_PUBLISH_ENTRIES + 1;
+      MAX_NEIGHBOURS < MQTTBridge::NEIGHBORS_SCOPE_RESULT_CAPACITY
+          ? MAX_NEIGHBOURS : MQTTBridge::NEIGHBORS_SCOPE_RESULT_CAPACITY;
   char neighbor_discover_scopes[NEIGHBOR_SCOPE_RESULTS][96];
   uint8_t neighbor_discover_count;
   uint8_t neighbor_discover_next;            // newest-first entry currently being queried
