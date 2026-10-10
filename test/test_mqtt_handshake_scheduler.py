@@ -241,16 +241,56 @@ int main() {
         self.compile_run(r'''
 int main() {
   MQTTBridge bridge;
-  bridge.only(0); clock_ms = 1000; dma_free = 16383;
+  bridge.only(0); clock_ms = 1000; dma_free = 32767;
   bridge.maintainSlotConnections();
   assert(bridge.setups.empty() && bridge._slots[0].last_reconnect_attempt == 0);
   assert(bridge._slots[0].enabled && bridge.activatedSlotCount() == 0);
-  dma_free = 100000; dma_largest = 4095;
+  dma_free = 32768; dma_largest = 8191;
   bridge.maintainSlotConnections();
-  assert(bridge.setups.empty());
-  dma_largest = 4096;
+  assert(bridge.setups.empty() && bridge._slots[0].last_reconnect_attempt == 0);
+  assert(!bridge.hasPendingSlotConnection() && bridge.activatedSlotCount() == 0);
+  dma_largest = 8192;
   bridge.maintainSlotConnections();
   assert(bridge.setups == std::vector<int>{0} && bridge.activatedSlotCount() == 1);
+  assert(bridge.clients[0].starts == 1 && bridge.clients[0].reconnects == 0);
+}
+''')
+
+    def test_stopped_client_defers_while_retained_task_reconnects_at_warm_budget(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  for (int i = 2; i < RUNTIME_MQTT_SLOTS; ++i) bridge._slots[i].enabled = false;
+  clock_ms = 70000;
+  dma_free = 16384; dma_largest = 4096;
+  auto& stopped = bridge._slots[0];
+  auto& retained = bridge._slots[1];
+  stopped.client = &bridge.clients[0];
+  retained.client = &bridge.clients[1];
+  stopped.initial_connect_done = retained.initial_connect_done = true;
+  retained.client->started = true;
+
+  // An existing handle with a stopped task needs the cold-start allowance.
+  // Its deferral must leave this cycle available for the retained SDK task.
+  assert(!bridge.canStartSlotConnection(0));
+  assert(bridge.canStartSlotConnection(1));
+  bridge.maintainSlotConnections();
+  assert(stopped.client->starts == 0 && stopped.client->reconnects == 0);
+  assert(stopped.last_reconnect_attempt == 0 && stopped.reconnect_backoff == 0);
+  assert(stopped.start_failures == 0 && !bridge._slot_attempt_pending[0]);
+  assert(retained.client->starts == 0 && retained.client->reconnects == 1);
+  assert(bridge._slot_attempt_pending[1]);
+
+  // Completion and newly available cold-start headroom allow a real SDK start,
+  // with no extra delay introduced by the earlier memory-only deferral.
+  bridge.complete(1);
+  clock_ms += 15000;
+  dma_free = 32768; dma_largest = 8192;
+  bridge.maintainSlotConnections();
+  assert(stopped.client->starts == 1 && stopped.client->reconnects == 0);
+  assert(stopped.client->isStarted() && bridge._slot_attempt_pending[0]);
+  assert(stopped.last_reconnect_attempt == clock_ms);
+  assert(retained.client->reconnects == 1 && bridge.setups.empty());
 }
 ''')
 

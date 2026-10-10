@@ -58,7 +58,8 @@ single allocation.
 
 The `mqtt_startup_allowance` component keeps a 24,576-byte internal startup
 minimum for the default 8,192-byte MQTTBridge worker stack and two active
-clients. Each SDK client task defaults to 6,144 bytes and its maximum configured
+clients. Each SDK client task is explicitly configured with a 6,144-byte stack
+and priority 5 on IDF 4 and 5; its maximum configured
 receive/transmit buffers total 1,792 bytes. These stacks and buffers total
 24,064 bytes for two clients, leaving 512 bytes within the existing allowance.
 This is a minimum allowance, not a complete allocation bound for the clients,
@@ -85,8 +86,16 @@ qualification of five simultaneous PSRAM connections or two internal TLS
 connections.
 
 The `mqtt` report also names the production runtime admission thresholds.
-Each attempt requires at least 16 KiB of DMA-capable internal free heap and a
-4 KiB contiguous DMA block. A TLS attempt without PSRAM requires at least
+A cold SDK start requires at least 32 KiB of DMA-capable internal free heap
+and an 8 KiB contiguous DMA block. This includes a separate 16 KiB allowance
+for its SDK task stack/TCB, receive/transmit/reassembly buffers and transport
+or configuration objects, alongside the 16 KiB AES reserve. Those ordinary
+SDK allocations occur after admission and do not use the TLS allocation guard.
+A retained SDK handle with a stopped task receives the same cold allowance.
+A warm reconnect keeps its running task and buffers; it requires at least
+16 KiB free and a 4 KiB contiguous DMA block. The per-client SDK stack is
+independent of `MQTT_TASK_STACK_SIZE`, which sizes the existing bridge worker.
+A TLS attempt without PSRAM requires at least
 60 KiB free and a 17,408-byte contiguous block. PSRAM allocation fallback must
 leave the 16 KiB DMA reserve available. These thresholds describe free heap at
 the time of admission; they are not additional linked capacity and the TLS

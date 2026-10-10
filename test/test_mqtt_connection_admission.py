@@ -53,8 +53,13 @@ CONNECTION_PREAMBLE = HEAP_PREAMBLE + r'''
 constexpr int RUNTIME_MQTT_SLOTS = 6;
 struct { size_t size = 0; size_t getPsramSize() const { return size; } } ESP;
 struct Preset { const char* server_url; };
+struct Client {
+  bool started = false;
+  bool isStarted() const { return started; }
+};
 struct MQTTBridge {
   struct MQTTSlot {
+    Client* client = nullptr;
     const Preset* preset = nullptr;
     char broker_uri[128] = {}, host[64] = "broker";
     uint16_t port = 8883;
@@ -87,18 +92,35 @@ class MqttConnectionAdmissionTest(unittest.TestCase):
         self.compile_run(POLICY_PREAMBLE + r'''
 int main() {
   // A large aggregate heap cannot compensate for a fragmented DMA region.
-  assert(!Admission::canStart(true, true, 100000, 4095));
-  assert(!Admission::canStart(true, true, 16383, 20000));
-  assert(Admission::canStart(true, true, 16384, 4096));
-  assert(Admission::canStart(false, false, 16384, 4096));
-  assert(!Admission::canStart(false, false, 16383, 4096));
-  assert(!Admission::canStart(false, false, 16384, 4095));
+  assert(!Admission::canStart(true, true, false, 100000, 4095));
+  assert(!Admission::canStart(true, true, false, 16383, 20000));
+  assert(Admission::canStart(true, true, false, 16384, 4096));
+  assert(Admission::canStart(false, false, false, 16384, 4096));
+  assert(!Admission::canStart(false, false, false, 16383, 4096));
+  assert(!Admission::canStart(false, false, false, 16384, 4095));
 
   // Without PSRAM, TLS also needs a full record allocation and session budget.
-  assert(!Admission::canStart(false, true, 61439, 20000));
-  assert(!Admission::canStart(false, true, 100000, 17407));
-  assert(Admission::canStart(false, true, 61440, 17408));
-  assert(Admission::canStart(true, false, 16384, 4096));
+  for (int cold = 0; cold <= 1; ++cold) {
+    assert(!Admission::canStart(false, true, cold, 61439, 20000));
+    assert(!Admission::canStart(false, true, cold, 100000, 17407));
+    assert(Admission::canStart(false, true, cold, 61440, 17408));
+  }
+  assert(Admission::canStart(true, false, false, 16384, 4096));
+
+  // A new SDK task needs its stack and ordinary startup allocations in
+  // addition to the DMA reserve, including plaintext and PSRAM-backed TLS.
+  assert(Admission::kClientTaskStackBytes == 6144);
+  assert(Admission::kClientTaskPriority == 5);
+  assert(Admission::kColdStartAllowanceBytes == 16384);
+  assert(Admission::kColdStartLargestBytes == 8192);
+  for (int psram = 0; psram <= 1; ++psram) {
+    for (int tls = 0; tls <= 1; ++tls) {
+      if (!psram && tls) continue;  // Larger TLS thresholds checked above.
+      assert(!Admission::canStart(psram, tls, true, 32767, 20000));
+      assert(!Admission::canStart(psram, tls, true, 100000, 8191));
+      assert(Admission::canStart(psram, tls, true, 32768, 8192));
+    }
+  }
 }
 ''')
 
@@ -256,6 +278,19 @@ int main() {
   dma_free = 100000; dma_largest = 17407;
   assert(!bridge.canStartSlotConnection(0));
   ESP.size = 2097152; dma_free = 16384; dma_largest = 4096;
+  assert(!bridge.canStartSlotConnection(0));
+  Client client;
+  bridge._slots[0].client = &client;
+  assert(!bridge.canStartSlotConnection(0));  // Allocated, but task not started.
+  dma_free = 32767; dma_largest = 20000;
+  assert(!bridge.canStartSlotConnection(0));
+  dma_free = 32768; dma_largest = 8191;
+  assert(!bridge.canStartSlotConnection(0));
+  dma_largest = 8192;
+  assert(bridge.canStartSlotConnection(0));
+
+  // A warm reconnect retains the SDK task/buffers and uses the smaller floor.
+  client.started = true; dma_free = 16384; dma_largest = 4096;
   assert(bridge.canStartSlotConnection(0));
   dma_largest = 4095;
   assert(!bridge.canStartSlotConnection(0));

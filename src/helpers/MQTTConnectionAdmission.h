@@ -11,12 +11,24 @@ namespace MQTTConnectionAdmission {
 
 static const size_t kDmaReserveBytes = 16384;
 static const size_t kDmaLargestBytes = 4096;
+// A stopped SDK client needs a new internal task stack/TCB. First starts also
+// allocate receive/transmit/reassembly buffers and SDK transport/config objects
+// after admission. Budget that ordinary allocation separately from AES headroom.
+// Pin the actual SDK stack/priority in the optimizer rather than relying on an
+// SDK default or confusing this per-client task with the MQTTBridge worker.
+static const size_t kClientTaskStackBytes = 6144;
+static const int kClientTaskPriority = 5;
+static const size_t kColdStartAllowanceBytes = 16384;
+static const size_t kColdStartLargestBytes = 8192;
 static const size_t kTlsInternalFreeBytes = 61440;
 static const size_t kTlsRecordAllocationBytes = 17408;
 
-static inline bool canStart(bool psram, bool tls, size_t dma_free,
-                            size_t dma_largest) {
-  if (dma_free < kDmaReserveBytes || dma_largest < kDmaLargestBytes) {
+static inline bool canStart(bool psram, bool tls, bool cold_start,
+                            size_t dma_free, size_t dma_largest) {
+  const size_t free_required = kDmaReserveBytes +
+      (cold_start ? kColdStartAllowanceBytes : 0);
+  const size_t largest_required = cold_start ? kColdStartLargestBytes : kDmaLargestBytes;
+  if (dma_free < free_required || dma_largest < largest_required) {
     return false;
   }
   return !tls || psram ||

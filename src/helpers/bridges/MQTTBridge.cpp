@@ -2088,9 +2088,14 @@ bool MQTTBridge::canStartSlotConnection(int index) const {
   const char* uri = slot.preset ? slot.preset->server_url
       : (slot.broker_uri[0] ? slot.broker_uri : slot.host);
   const bool tls = MQTTConnectionAdmission::requiresTls(uri, slot.port);
+  // A never-created or stopped SDK client still allocates a task and ordinary
+  // SDK buffers after this check. Retained handles with a stopped task are
+  // conservatively charged the same allowance as first starts. A started
+  // reconnect keeps that task/buffer memory and needs only handshake headroom.
+  const bool cold_start = slot.client == nullptr || !slot.client->isStarted();
   const uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
   return MQTTConnectionAdmission::canStart(
-      ESP.getPsramSize() > 0, tls, heap_caps_get_free_size(caps),
+      ESP.getPsramSize() > 0, tls, cold_start, heap_caps_get_free_size(caps),
       heap_caps_get_largest_free_block(caps));
 #else
   return true;
@@ -5078,6 +5083,12 @@ void MQTTBridge::getClientVersion(char* buffer, size_t buffer_size) const {
 
 void MQTTBridge::optimizeMqttClientConfig(PsychicMqttClient* client, bool needs_large_buffer) {
   if (!client) return;
+
+  // Admission reserves this SDK client's internal stack and startup allocations
+  // separately from the long-lived MQTTBridge worker stack. Keep IDF4 and IDF5
+  // on the same explicit settings so a changed SDK default cannot bypass it.
+  client->setTaskStackAndPriority(MQTTConnectionAdmission::kClientTaskStackBytes,
+                                  MQTTConnectionAdmission::kClientTaskPriority);
 
   // Cloudflare closes WebSocket connections after 100s idle (non-configurable).
 #if defined(BOARD_HAS_PSRAM)

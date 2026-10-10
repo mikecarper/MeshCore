@@ -34,7 +34,7 @@ DISPLAY_HEAP = {
     "GxEPDDisplay": 0, "E213Display": 8192, "E290Display": 8192,
 }
 
-# Match MQTTBridge's default worker and the pinned ESP-MQTT client task/buffers.
+# Match MQTTBridge's default worker and its explicit SDK client task/buffers.
 # The legacy 24 KiB allowance covers two clients with 512 bytes beyond the known
 # stacks/buffers. It is a startup minimum, not a bound on TLS/WSS/outbox memory.
 MQTT_STARTUP_ALLOWANCE = 24576
@@ -77,8 +77,12 @@ def mqtt_requirements(defines):
         "maximum_active_slots_without_psram": min(slots, 2),
         "worker_stack_bytes": worker_stack,
         "client_task_stack_bytes": MQTT_CLIENT_STACK_BYTES,
+        "client_task_priority": 5,
         "client_rx_tx_buffer_bytes": MQTT_CLIENT_BUFFER_BYTES,
         "maximum_slot_stack_buffer_allowance_bytes": potential,
+        "cold_start_allocation_allowance_bytes": 16384,
+        "cold_start_dma_admission_free_bytes": 32768,
+        "cold_start_dma_admission_contiguous_bytes": 8192,
         "dma_admission_free_bytes": 16384,
         "dma_admission_contiguous_bytes": 4096,
         "tls_internal_admission_free_bytes": 61440,

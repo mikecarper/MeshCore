@@ -17,15 +17,18 @@ ROOT = Path(__file__).resolve().parents[1]
 PREAMBLE = r'''
 #include <cassert>
 #include <cstddef>
+#include "helpers/MQTTConnectionAdmission.h"
 #include "helpers/MQTTConnectionPolicy.h"
 struct esp_mqtt_client_config_t {
 #if ESP_IDF_VERSION_MAJOR == 5
   struct { int keepalive = 0, message_retransmit_timeout = 0; } session;
   struct { int timeout_ms = 0; } network;
   struct { int size = 0, out_size = 0; } buffer;
+  struct { int stack_size = 0, priority = 0; } task;
 #else
   int keepalive = 0, message_retransmit_timeout = 0;
   int network_timeout_ms = 0, buffer_size = 0;
+  int task_stack = 0, task_prio = 0;
 #endif
 };
 struct PsychicMqttClient {
@@ -37,6 +40,7 @@ struct PsychicMqttClient {
   PsychicMqttClient& setBufferSize(int);
   PsychicMqttClient& setNetworkTimeout(int);
   PsychicMqttClient& setOutboxLimit(size_t);
+  PsychicMqttClient& setTaskStackAndPriority(int, int);
   esp_mqtt_client_config_t* getMqttConfig();
 };
 struct MQTTBridge {
@@ -53,6 +57,7 @@ int main() {
   // for both small user/password and large JWT CONNECT buffers.
   for (bool needs_large : {false, true, false}) {
     client.setNetworkTimeout(2500);
+    client.setTaskStackAndPriority(2048, 1);
     client._config_dirty = false;
     bridge.optimizeMqttClientConfig(&client, needs_large);
     assert(client._config_dirty);
@@ -60,16 +65,23 @@ int main() {
     const int timeout = client._mqtt_cfg.network.timeout_ms;
     const int buffer_size = client._mqtt_cfg.buffer.size;
     const int keepalive = client._mqtt_cfg.session.keepalive;
+    const int stack = client._mqtt_cfg.task.stack_size;
+    const int priority = client._mqtt_cfg.task.priority;
     assert(client._mqtt_cfg.buffer.out_size == buffer_size);
     assert(client._mqtt_cfg.session.message_retransmit_timeout == 15000);
 #else
     const int timeout = client._mqtt_cfg.network_timeout_ms;
     const int buffer_size = client._mqtt_cfg.buffer_size;
     const int keepalive = client._mqtt_cfg.keepalive;
+    const int stack = client._mqtt_cfg.task_stack;
+    const int priority = client._mqtt_cfg.task_prio;
     assert(client._mqtt_cfg.message_retransmit_timeout == 15000);
 #endif
     assert(timeout == 10000);
     assert(timeout == MQTTConnectionPolicy::kNetworkTimeoutMs);
+    assert(stack == 6144 && priority == 5);
+    assert(stack == MQTTConnectionAdmission::kClientTaskStackBytes);
+    assert(priority == MQTTConnectionAdmission::kClientTaskPriority);
 #ifdef BOARD_HAS_PSRAM
     assert(buffer_size == 896 && keepalive == 45);
     assert(client._outbox_limit == 16384);
@@ -92,6 +104,7 @@ class MqttNetworkTimeoutTest(unittest.TestCase):
             "PsychicMqttClient &PsychicMqttClient::setBufferSize(",
             "PsychicMqttClient &PsychicMqttClient::setNetworkTimeout(",
             "PsychicMqttClient &PsychicMqttClient::setOutboxLimit(",
+            "PsychicMqttClient &PsychicMqttClient::setTaskStackAndPriority(",
             "esp_mqtt_client_config_t *PsychicMqttClient::getMqttConfig("))
         source += method("src/helpers/bridges/MQTTBridge.cpp",
                          "void MQTTBridge::optimizeMqttClientConfig(")

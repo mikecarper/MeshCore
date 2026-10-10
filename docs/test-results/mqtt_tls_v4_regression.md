@@ -42,8 +42,12 @@ room-server and companion images that enable it.
 - Schedule initial connections through the normal maintenance loop. Check
   the actual pending attempt across SDK tasks, rather than assuming a
   five-second startup delay or 15-second reconnect gap finished a handshake.
-- Defer a new connection if DMA-capable internal memory has less than
-  16 KiB free or a largest block below 4 KiB. TLS without working PSRAM
+- Reserve 32 KiB free DMA-capable internal memory and an 8 KiB largest block
+  before starting an SDK client task. This includes a 16 KiB startup allowance
+  above the 16 KiB AES reserve. Retained, running clients need 16 KiB free and
+  a 4 KiB largest block to reconnect. Pin SDK client tasks to their existing
+  6,144-byte default stack; the separate bridge worker remains 8 KiB.
+  TLS without working PSRAM
   additionally needs 60 KiB free and a 17 KiB largest block. These are
   conservative admission bounds, not a promise that future allocations succeed.
 - Prefer PSRAM for TLS allocations and reject an internal fallback that
@@ -72,7 +76,7 @@ PSRAM and internal-only modes, fragmented heap, exhausted PSRAM, delayed
 connection callbacks, retry timing and bounded replies. They do not execute
 an ESP32 AES peripheral or qualify physical WiFi behavior.
 
-All 42 focused Python MQTT tests, 1,794 native tests and 31 memory-budget tests
+All 43 focused Python MQTT tests, 1,794 native tests and 31 memory-budget tests
 passed. The focused MQTT tests are also connected to the GitHub unit-test
 workflow.
 
