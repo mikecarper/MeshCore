@@ -96,10 +96,11 @@ The new memory tests include a linked-ELF boundary that the previous
 WiFi-omitted policy incorrectly accepted.
 
 Full MQTT repeater and room-server builds with USB packet logging passed on
-10 October 2026 at revision `937f8610c`. The V4 Full Companion build passed at `d11bf3615`. The RC32 build at the
-same revision also passed using Arduino 3.3.11 and ESP-IDF 5.5.5, exercising
-the newer SDK in an actual firmware build. The only intervening change corrected the host-side
-WiFi memory accounting. Their build logs report:
+10 October 2026 at revision `937f8610c`. The V4 Full Companion build passed
+at `d11bf3615`. The RC32 build at the same revision also passed using Arduino
+3.3.11 and ESP-IDF 5.5.5, exercising the newer SDK in an actual firmware build.
+The only intervening change corrected the host-side WiFi memory accounting.
+Their build logs report:
 
 | Build | Application flash bytes | Available internal heap bytes | Required heap bytes | Largest internal region bytes |
 | --- | ---: | ---: | ---: | ---: |
@@ -191,8 +192,9 @@ radios disconnected together and subsequently reappeared. That interruption
 is retained as a host-lab failure, not attributed to a V4 firmware crash.
 
 After the final live check, the original NVS and filesystem backup regions
-were restored and their writes verified, preserving the final firmware. All
-52 saved preference checks matched and the public-key hash was unchanged.
+were restored and their writes verified, preserving the final firmware. Saved
+configuration replies matched, and a separate `get public.key` check verified
+that the public-key hash was unchanged.
 Comparison removes console echo/prompt framing and treats the old blank
 `get wifi.ssid` response as the new `(not configured)` response. MQTT and
 power saving were both returned to their original off state. No release assets
