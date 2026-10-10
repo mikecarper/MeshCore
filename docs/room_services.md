@@ -160,6 +160,58 @@ changing a route never makes their permissions permanent. Failed saves restore
 the previous route and report an error. Repeating an unchanged selection or an
 exact request retry does not cause another settings write.
 
+## Choose where chat catch-up starts
+
+Room readers, writers and administrators can skip older unread messages for
+their own radio using the same encrypted CLI request framing as route commands:
+
+~~~text
+get room.catchup
+room.catchup keep 20
+room.catchup keep 0
+room.catchup before 2026-10-10
+room.catchup before 2026-10-10T18:30:00Z
+room.catchup before 1791655200
+~~~
+
+`keep 20` leaves the newest 20 unread retained messages to deliver and skips
+the older backlog. `keep 0` skips all currently retained unread chat. Own posts
+do not count toward unread messages. A date skips unread messages strictly
+older than that cutoff; date-only values mean midnight UTC. A numeric cutoff
+is a Unix timestamp in seconds. A count larger than the backlog is a no-op.
+
+Skipping advances only the requesting user's delivery cursor. It never deletes
+room history, rewinds a cursor or suppresses another user's delivery. A future
+date advances only through actual retained messages; new messages remain
+deliverable. Pending delivery and retries for a skipped post are cancelled;
+an outstanding topic remains pending. Delayed ACKs, routine keep-alives and
+normal reconnects cannot restore the skipped backlog. A copy already queued
+or transmitted can still arrive; skipping stops subsequent catch-up delivery.
+
+Saved ACL users persist an advanced catch-up cursor through the existing
+filtered contacts store. Failed saves restore delivery state and report an
+error. Transient sessions retain changes only for the current session. History
+retention remains 32 posts; this command cannot recover older discarded chat.
+
+## Administrator controls for any radio user
+
+From a local console or authenticated administrator CLI session, use a user's
+complete 64-character public key to edit either route or their catch-up position:
+
+~~~text
+room.user <complete-64-hex-public-key> outpath A1B2C3,D4E5F6
+room.user <complete-64-hex-public-key> altpath 71CE82,BA09F0
+room.user <complete-64-hex-public-key> altpath clear
+room.user <complete-64-hex-public-key> keep 20
+room.user <complete-64-hex-public-key> before 2026-10-10T18:30:00Z
+~~~
+
+Names and shortened keys cannot select a user. Administrators can change any
+existing radio user's routes without changing that user's role. Route and
+catch-up persistence follows the same rules as the user's own commands.
+The browser dashboard below provides activity, delivery and route details for
+all radio users; these views require administrator credentials.
+
 ## Local Wi-Fi chat on ESP32
 
 ESP32 Room Server images with WebConfig have an offline browser room page.
@@ -199,6 +251,42 @@ Authentication, storage and radio work run on the mesh loop. HTTP callbacks
 only admit a bounded request and return its owned result. No arbitrary CLI
 operation is exposed. Disable room access with `set room.web off`; stop the
 portal with `stop webconfig`.
+
+### Wi-Fi room administration
+
+Connect to `/room` with the room administrator password and open **Room
+administration**, or visit `http://<reported-radio-IP>/room#admin-panel`.
+This management area offers:
+
+- Radio users in pages of two, with saved roles, time since activity, unread
+  retained posts, current delivery and failure counts.
+- A selected user's primary, alternate and observed routes, catch-up cursor,
+  pending chat or topic, and remaining ACK wait. **Heard this boot** records
+  authenticated activity; it does not prove that a radio is currently reachable.
+- Editing primary and alternate routes, keeping the newest N unread messages,
+  or skipping chat older than a chosen date. Browser date inputs use local time
+  and send the corresponding Unix timestamp.
+- Assigning or removing saved access, blocking and unblocking full identities,
+  editing the topic, enabling persistent history, and changing post/poll limits.
+- Optional refresh every 15 seconds. Unsaved route edits remain in place while
+  live status refreshes.
+
+The dashboard rechecks administrator credentials for each operation and
+rejects a write from an earlier boot. Route, catch-up, access, topic and history
+edits include the loaded value; a changed value requires a refresh instead of
+silently overwriting someone else's change. Each setting saves independently.
+Access changes use the existing delayed ACL save; the page reminds you to leave
+power on for at least five seconds. Removing a saved assignment does not ban
+guest-password access; use **Block** to deny that identity altogether.
+
+Readers and writers cannot retrieve these radio-user activity/delivery views
+or management operations. Losing administrator access clears cached management
+data from the page. User names, messages and routes are rendered as text.
+
+**Choose chat shown in this browser** filters the local display to the newest
+N retained messages or a chosen start date. It changes only the browser view;
+it does not move a radio user's cursor or delete posts. The administrator's
+selected-user catch-up controls do change that radio user's delivery position.
 
 ## Information board
 

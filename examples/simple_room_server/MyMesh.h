@@ -36,11 +36,14 @@
 #include <helpers/LogicalMessageCache.h>
 #include <helpers/RemoteCliReplyCache.h>
 #include <helpers/RemoteCliRequest.h>
+#include <helpers/RoomClientPathCommand.h>
 #include <helpers/RegionMap.h>
 #include "FloodRuleEngine.h"
 #include <helpers/RoutingPolicy.h>
 #include <RTClib.h>
 #include <target.h>
+
+namespace mesh { class RoomJsonWriter; }
 
 #ifndef MESH_ENABLE_TELEMETRY_HISTORY
   // LoRa-E5-class STM32 room images do not have enough flash for history.
@@ -599,6 +602,15 @@ public:
                      int gpio_client_index = -1,
                      uint8_t gpio_path_hash_size = 1);
   bool handleClientPathCommand(ClientInfo* client, char* command, char* reply);
+  bool executeClientPathCommand(ClientInfo* client, mesh::RoomClientPathCommand operation,
+                                 const char* body, char* reply);
+  bool setRoomClientPath(ClientInfo* client, const char* which, const char* value, char* reply);
+  bool handleRoomCatchUpCommand(ClientInfo* client, char* command, char* reply);
+  bool applyRoomCatchUpCommand(ClientInfo* client, const char* mode, uint32_t value, char* reply);
+  bool handleRoomManagementCommand(char* command, char* reply);
+#ifdef WITH_WEBCONFIG
+  void writeRoomClientJson(mesh::RoomJsonWriter& json, ClientInfo* client, bool detail);
+#endif
   bool sendClientReply(ClientInfo* client, mesh::Packet* packet,
                        unsigned long delay_millis, uint8_t path_hash_size);
   bool _wireless_usb_command = false;

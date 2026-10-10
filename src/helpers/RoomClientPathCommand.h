@@ -37,6 +37,20 @@ inline RoomClientPathCommand classifyRoomClientPathCommand(const char* command) 
   return RoomClientPathCommand::None;
 }
 
+// One outstanding delivery per recipient, with separate namespaces for topic
+// and chat. The complete room/recipient identities participate in the key.
+template <typename Hash>
+inline void roomDeliveryRetryKey(uint8_t* output, size_t size,
+                                 const uint8_t* room, const uint8_t* recipient,
+                                 bool topic, Hash hash) {
+  const uint8_t domain[] = {'r','o','o','m', topic ? uint8_t(1) : uint8_t(0)};
+  uint8_t material[5 + 64];
+  memcpy(material, domain, sizeof(domain));
+  memcpy(material + sizeof(domain), room, 32);
+  memcpy(material + sizeof(domain) + 32, recipient, 32);
+  hash(output, size, material, sizeof(material));
+}
+
 inline void formatRoomClientPathReply(const uint8_t* path, uint8_t length,
                                       char* reply, size_t capacity) {
   if (length == 0xfe) { snprintf(reply, capacity, "> flood"); return; }

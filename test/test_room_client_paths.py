@@ -78,7 +78,7 @@ static void exactAllowlist() {
   assert(normalized.reply() == "AA|> B1,B2" && normalized.general_commands == 0);
   MyMesh chat;
   chat.command("set outpath B1", 100, 0, 0, TXT_TYPE_PLAIN);
-  assert(chat.posts == 1 && chat.acl.clients[0].out_path[0] == 0xA1);
+  assert(chat.post_count == 1 && chat.acl.clients[0].out_path[0] == 0xA1);
   MyMesh banned;
   assert(banned.room_access.addBan(&banned.policy_fs, banned.acl.clients[0].id.pub_key)
          == mesh::RoomAccessPolicy::BanResult::Saved);
@@ -260,6 +260,150 @@ static void pushCases() {
   assert(failed.acl.clients[0].extra.room.pending_ack == 0);
   puts("actual room post and topic pushes share copies, ACK state, and primary retry ownership passed");
 }
+
+static void backlog(MyMesh& mesh) {
+  const unsigned indexes[] = {23, 0, 12, 9, 31};
+  const uint32_t timestamps[] = {100, 200, 300, 400, 500};
+  for (unsigned index = 0; index < 5; ++index) {
+    auto& post = mesh.posts[indexes[index]];
+    post.post_timestamp = timestamps[index];
+    post.author = mesh.acl.clients[index == 1 || index == 3 ? 0 : 1].id;
+    strcpy(post.text, "unread post");
+  }
+  mesh.acl.clients[0].extra.room.sync_since = 50;
+}
+
+static void catchupRadio() {
+  for (unsigned permissions = 0; permissions < 256; ++permissions) {
+    for (bool active : {false, true}) {
+      MyMesh mesh; backlog(mesh); auto& own = mesh.acl.clients[0];
+      own.permissions = permissions; own.last_activity = active ? 800 : 0;
+      own.extra.room.post_quota_used = 9; own.extra.room.poll_quota_used = 11;
+      const ClientInfo other = mesh.acl.clients[1];
+      const uint8_t role = permissions & PERM_ACL_ROLE_MASK;
+      const bool allowed = role == PERM_ACL_READ_ONLY || role == PERM_ACL_READ_WRITE
+          || role == PERM_ACL_ADMIN || (role == PERM_ACL_GUEST && active);
+      mesh.command("room.catchup keep 1");
+      assert(mesh.general_commands == 0 && own.permissions == permissions && !own.permissions_are_explicit);
+      assert(memcmp(&mesh.acl.clients[1], &other, sizeof(other)) == 0);
+      assert(own.extra.room.post_quota_used == 9 && own.extra.room.poll_quota_used == 11);
+      assert(own.extra.room.sync_since == (allowed ? 300U : 50U));
+      assert(mesh.acl.saves == (allowed && role == PERM_ACL_ADMIN ? 1U : 0U));
+      if (allowed) assert(mesh.reply() == "OK - skipped=2 unread=1 since=300");
+      else if (role == PERM_ACL_GUEST) assert(mesh.sent.empty() && own.last_activity == 0);
+      else assert(mesh.reply().find("Err") != std::string::npos);
+    }
+  }
+  MyMesh mesh; backlog(mesh);
+  auto& own = mesh.acl.clients[0]; own.extra.room.pending_ack = 0x778899;
+  own.extra.room.push_post_timestamp = 100; own.extra.room.ack_timeout = 5000;
+  mesh.command("  AB|GET room.catchup ", 100);
+  assert(mesh.reply() == "AB|> since=50 unread=3");
+  mesh.command("AB|room.catchup before 1970-01-01T00:05:00Z", 101);
+  assert(mesh.reply() == "AB|OK - skipped=1 unread=2 since=100");
+  assert(own.extra.room.pending_ack == 0 && mesh.message_cancellations == 1
+         && mesh.cancelled_timestamp == 100);
+  mesh.command("room.catchup before 4294967295", 102);
+  assert(own.extra.room.sync_since == 500 && mesh.reply() == "OK - skipped=2 unread=0 since=500");
+  assert(mesh.message_cancellations == 1); // No repeated cancel after the post was cleared.
+  MyMesh evicted; backlog(evicted); evicted.acl.clients[0].extra.room.pending_ack = 55;
+  evicted.acl.clients[0].extra.room.push_post_timestamp = 75; // The retained posts no longer include this one.
+  evicted.command("room.catchup keep 1");
+  assert(evicted.message_cancellations == 1 && evicted.cancelled_timestamp == 75);
+  MyMesh topic; backlog(topic); topic.acl.clients[0].extra.room.pending_ack = 55;
+  topic.acl.clients[0].extra.room.push_post_timestamp = 100;
+  topic.acl.clients[0].extra.room.pending_topic_revision = 22;
+  topic.command("room.catchup keep 1");
+  assert(topic.message_cancellations == 0 && topic.acl.clients[0].extra.room.pending_ack == 55
+         && topic.acl.clients[0].extra.room.pending_topic_revision == 22);
+  puts("actual radio catch-up keeps newest, skips before UTC dates, and only changes own client passed");
+}
+
+static void catchupRetriesAndDenials() {
+  MyMesh mesh; backlog(mesh); auto& own = mesh.acl.clients[0]; own.permissions_are_explicit = true;
+  mesh.command("AB|room.catchup keep 1", 100, 0, 777);
+  assert(own.extra.room.sync_since == 300 && mesh.acl.saves == 1);
+  const std::string first_reply = mesh.reply();
+  mesh.command("room.catchup keep 0", 101);
+  assert(own.extra.room.sync_since == 500 && mesh.acl.saves == 2);
+  mesh.command("AB|room.catchup keep 1", 102, 0, 777);
+  assert(own.extra.room.sync_since == 500 && mesh.acl.saves == 2 && mesh.reply() == first_reply);
+  const size_t replies = mesh.sent.size();
+  mesh.command("room.catchup keep 0", 99);
+  mesh.command("room.catchup keep 2", 102);
+  assert(mesh.sent.size() == replies && own.extra.room.sync_since == 500);
+  own.permissions = PERM_ACL_FILTER_MGR;
+  mesh.command("AB|room.catchup keep 1", 103, 0, 777);
+  assert(mesh.reply().find("Err") != std::string::npos && own.extra.room.sync_since == 500);
+  const char* rejected[] = {"room.catchupx keep 0", "room.catchup", "get room.catchup extra",
+    "room.catchup keep -1", "room.catchup keep 4294967296", "room.catchup keep 1;erase",
+    "room.catchup before 2026-02-29", "room.catchup before 2106-02-08", "room.catchup set 0",
+    "room.catchup skip 1", "AA|BB|room.catchup keep 0", "get room.catchup;erase"};
+  for (const char* text : rejected) {
+    MyMesh rejected; backlog(rejected); rejected.command(text);
+    assert(rejected.acl.clients[0].extra.room.sync_since == 50 && rejected.general_commands == 0);
+    assert(rejected.reply().find("Err") != std::string::npos && rejected.acl.saves == 0);
+  }
+  MyMesh plain; backlog(plain); plain.command("room.catchup keep 0", 100, 0, 0, TXT_TYPE_PLAIN);
+  assert(plain.post_count == 1 && plain.acl.clients[0].extra.room.sync_since == 50);
+  MyMesh failed; backlog(failed); failed.acl.clients[0].permissions_are_explicit = true;
+  failed.acl.clients[0].extra.room.pending_ack = 0x778899;
+  failed.acl.clients[0].extra.room.push_post_timestamp = 100;
+  failed.acl.clients[0].extra.room.ack_timeout = 5000;
+  const auto before = failed.acl.clients[0].extra.room;
+  failed.acl.save_ok = false; failed.command("room.catchup keep 1");
+  assert(memcmp(&before, &failed.acl.clients[0].extra.room, sizeof(before)) == 0);
+  assert(failed.reply().find("save failed") != std::string::npos && failed.message_cancellations == 0);
+  puts("catch-up cache executes once, role revocation and invalid families deny, and storage failure rolls back passed");
+}
+
+static void adminClients() {
+  const std::string target_key(64, '2');
+  // The fixture identity is repeated byte0x02, which encodes as repeated "02".
+  std::string full_key;
+  for (unsigned byte = 0; byte < PUB_KEY_SIZE; ++byte) full_key += "02";
+  for (uint8_t target_role : {uint8_t(PERM_ACL_GUEST), uint8_t(PERM_ACL_FILTER_MGR), uint8_t(PERM_ACL_ADMIN)}) {
+    MyMesh mesh; mesh.acl.clients[0].permissions = PERM_ACL_ADMIN;
+    mesh.acl.clients[1].permissions = target_role;
+    const auto permissions = mesh.acl.clients[1].permissions;
+    mesh.command(("room.user " + full_key + " outpath C1,C2").c_str());
+    assert(mesh.general_commands == 1 && mesh.acl.clients[1].out_path_len == 2);
+    assert(mesh.acl.clients[1].out_path[0] == 0xC1 && mesh.acl.clients[0].out_path[0] == 0xA1);
+    assert(mesh.acl.clients[1].permissions == permissions && !mesh.acl.clients[1].permissions_are_explicit);
+    assert(mesh.acl.saves == (target_role == PERM_ACL_ADMIN ? 1U : 0U));
+  }
+  for (const std::string& key : {full_key.substr(0, 8), full_key.substr(0, 12), target_key,
+                                full_key.substr(0, 62) + "GG", full_key + "00"}) {
+    MyMesh mesh; mesh.acl.clients[0].permissions = PERM_ACL_ADMIN;
+    mesh.command(("room.user " + key + " outpath C1").c_str());
+    assert(mesh.acl.clients[1].out_path[0] == 0xA2 && mesh.reply().find("Err") != std::string::npos);
+  }
+  MyMesh admin; backlog(admin); admin.acl.clients[0].permissions = PERM_ACL_ADMIN;
+  admin.acl.clients[1].extra.room.sync_since = 50;
+  // Other authors leave all five retained posts unread to the target.
+  for (auto& post : admin.posts) if (post.post_timestamp) memset(post.author.pub_key, 3, PUB_KEY_SIZE);
+  admin.command(("room.user " + full_key + " keep 2").c_str());
+  assert(admin.acl.clients[1].extra.room.sync_since == 300 && admin.acl.clients[0].extra.room.sync_since == 50);
+  MyMesh user; user.command(("room.user " + full_key + " outpath C1").c_str());
+  assert(user.general_commands == 0 && user.acl.clients[1].out_path[0] == 0xA2);
+  puts("admin targets full identities without role promotion while ordinary users cannot edit another client passed");
+}
+static void catchupPolls() {
+  MyMesh mesh; backlog(mesh); mesh.command("room.catchup keep 0");
+  auto& own = mesh.acl.clients[0]; assert(own.extra.room.sync_since == 500);
+  const size_t replies = mesh.sent.size();
+  mesh.poll(101, 300);
+  assert(own.extra.room.sync_since == 500 && own.last_timestamp == 101);
+  assert(mesh.sent.size() == replies + 1 && mesh.sent.back().packet.getPayloadType() == PAYLOAD_TYPE_ACK);
+  mesh.poll(102, 700);
+  assert(own.extra.room.sync_since == 700 && mesh.sent.size() == replies + 2);
+  mesh.poll(101, 300); // Exact poll retry returns an ACK without rewinding.
+  assert(own.extra.room.sync_since == 700 && own.last_timestamp == 102 && mesh.sent.size() == replies + 3);
+  mesh.poll(103, 0);
+  assert(own.extra.room.sync_since == 700 && mesh.sent.size() == replies + 4);
+  puts("normal keep-alive echoes preserve selected catch-up while forward cursors and exact ACK retries work passed");
+}
+
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "roles")) roleCases();
@@ -269,6 +413,10 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "retries")) retryCases();
   else if (!strcmp(argv[1], "alternate")) alternateCases();
   else if (!strcmp(argv[1], "push")) pushCases();
+  else if (!strcmp(argv[1], "catchup")) catchupRadio();
+  else if (!strcmp(argv[1], "catchup-retry")) catchupRetriesAndDenials();
+  else if (!strcmp(argv[1], "admin-clients")) adminClients();
+  else if (!strcmp(argv[1], "catchup-poll")) catchupPolls();
   else assert(false);
 }
 '''
@@ -286,7 +434,7 @@ def production_source():
     for name in ("ROOM_MESSAGE_CACHE_SIZE", "TXT_TYPE_PLAIN", "TXT_TYPE_CLI_DATA", "TXT_TYPE_CLI_COMMAND",
                  "TXT_TYPE_SIGNED_PLAIN", "TXT_ACK_DELAY", "REPLY_DELAY_MILLIS", "REQ_TYPE_KEEP_ALIVE",
                  "SERVER_RESPONSE_DELAY", "LAZY_CONTACTS_WRITE_DELAY", "PUSH_TIMEOUT_BASE",
-                 "PUSH_ACK_TIMEOUT_FACTOR", "PUSH_ACK_TIMEOUT_FLOOD"):
+                 "PUSH_ACK_TIMEOUT_FACTOR", "PUSH_ACK_TIMEOUT_FLOOD", "MAX_UNSYNCED_POSTS", "MAX_POST_TEXT_LEN"):
         found = None
         for text in sources:
             found = re.search(r"^\s*#define\s+" + name + r"\s+.*$", text, re.MULTILINE)
@@ -296,7 +444,11 @@ def production_source():
             raise AssertionError("missing production constant " + name)
         constants += "\n" + found[0]
     methods = "\n".join(extract_braced(room, signature) for signature in (
-        "bool MyMesh::handleClientPathCommand(", "bool MyMesh::sendClientReply(",
+        "bool MyMesh::handleClientPathCommand(", "bool MyMesh::executeClientPathCommand(",
+        "bool MyMesh::sendClientReply(",
+        "bool MyMesh::handleRoomCatchUpCommand(", "bool MyMesh::applyRoomCatchUpCommand(",
+        "bool MyMesh::setRoomClientPath(", "bool MyMesh::handleRoomManagementCommand(",
+        "uint8_t MyMesh::getUnsyncedCount(",
         "void MyMesh::onPeerDataRecv(", "bool MyMesh::pushRoomTextToClient(",
         "void MyMesh::serviceRoomQuotas(", "bool MyMesh::saveFilter("))
     replacements = {
@@ -304,6 +456,7 @@ def production_source():
         "@STR_HELPER@": extract_braced((ROOT / "src/helpers/TxtDataHelpers.cpp").read_text(),
                                        "void StrHelper::strncpy("),
         "@CLIENT_INFO@": extract_braced(acl, "struct ClientInfo {"),
+        "@POST_INFO@": extract_braced(header, "struct PostInfo {"),
         "@PACKET_METHODS@": "\n".join(extract_braced(packet, signature) for signature in (
             "Packet::Packet()", "bool Packet::isValidPathLen(", "uint8_t Packet::copyPath(",
             "size_t Packet::writePath(")),
@@ -370,6 +523,26 @@ class RoomClientPathTests(unittest.TestCase):
     def test_actual_post_and_topic_pushes_share_ack_and_retry_state(self):
         self.run_case("push", "actual room post and topic pushes share copies, ACK state, and primary retry ownership passed")
 
+    def test_actual_radio_catchup_frames_are_own_only_and_keep_newest(self):
+        self.run_case("catchup", "actual radio catch-up keeps newest, skips before UTC dates, and only changes own client passed")
+
+    def test_catchup_correlated_retries_revoked_roles_invalid_commands_and_save_failure(self):
+        self.run_case("catchup-retry", "catch-up cache executes once, role revocation and invalid families deny, and storage failure rolls back passed")
+
+    def test_admin_full_identity_routes_and_catchup_without_promoting_target_role(self):
+        self.run_case("admin-clients", "admin targets full identities without role promotion while ordinary users cannot edit another client passed")
+
+    def test_actual_general_cli_dispatches_management_after_remote_admin_admission(self):
+        source = (ROOT / "examples/simple_room_server/MyMesh.cpp").read_text()
+        command = extract_braced(source, "void MyMesh::handleCommand(uint32_t sender_timestamp,")
+        self.assertIn("if (handleRoomManagementCommand(command, reply)) return;", command)
+        receive = extract_braced(source, "void MyMesh::onPeerDataRecv(")
+        admin = extract_braced(receive, "if (client->isAdmin()) {")
+        self.assertIn("handleCommand(sender_timestamp,", admin)
+
+    def test_actual_keepalive_echo_cannot_undo_skip_and_exact_retries_still_ack(self):
+        self.run_case("catchup-poll", "normal keep-alive echoes preserve selected catch-up while forward cursors and exact ACK retries work passed")
+
     def test_negative_controls_detect_rollback_cache_authorization_and_retry_regressions(self):
         controls = (
             ("rollback", "memcpy(selected, previous, sizeof(previous));",
@@ -378,6 +551,8 @@ class RoomClientPathTests(unittest.TestCase):
              "if (false && cached_retry && !client->isAdmin() && !own_path_allowed) {", "retries"),
             ("alternate-retries", "_prefs.direct_retry_enabled = 0;",
              "_prefs.direct_retry_enabled = 1;", "alternate"),
+            ("poll-rewind", "if (forceSince > client->extra.room.sync_since) {",
+             "if (forceSince > 0) {", "catchup-poll"),
         )
         for name, before, after, case in controls:
             with self.subTest(control=name):

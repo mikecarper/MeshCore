@@ -19,6 +19,7 @@ HARNESS = r'''
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <algorithm>
 #include "filesystem.h"
 #include <helpers/RoomAccessPolicy.h>
 #include <helpers/RemoteCliReplyCache.h>
@@ -27,6 +28,7 @@ HARNESS = r'''
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/ClientPathObservation.h>
 #include <helpers/RoomClientPathCommand.h>
+#include <helpers/RoomCatchUp.h>
 #include <helpers/TxtDataHelpers.h>
 #include <Packet.h>
 #include <helpers/RoomLoginAuthorization.h>
@@ -37,8 +39,16 @@ HARNESS = r'''
 @STR_HELPER@
 #define MESH_CLIENT_REPEATER_ONLY 0
 namespace mesh {
-struct Identity { uint8_t pub_key[PUB_KEY_SIZE]; };
+struct Identity {
+  uint8_t pub_key[PUB_KEY_SIZE];
+  bool matches(const Identity& other) const {
+    return memcmp(pub_key, other.pub_key, PUB_KEY_SIZE) == 0;
+  }
+};
 struct Utils {
+  static void sha256(uint8_t* out, size_t n, const uint8_t* data, size_t length) {
+    sha256(out, n, data, length, nullptr, 0);
+  }
   static void sha256(uint8_t* out, size_t n, const uint8_t* key, size_t key_n,
                      const uint8_t* text, size_t text_n) {
     // Posting authorization and replay are tested here, not the hash primitive.
@@ -51,6 +61,7 @@ struct Utils {
 @PACKET_PATH_CHECK@
 }
 @CLIENT_INFO@;
+@POST_INFO@;
 
 struct ReplayStorage {
   uint8_t key[PUB_KEY_SIZE] = {};
@@ -138,6 +149,8 @@ static uint32_t ticks = 0;
 static uint32_t millis() { return ticks; }
 struct MyMesh {
   FakeACL acl;
+  mesh::Identity self_id{};
+  PostInfo retained_posts[MAX_UNSYNCED_POSTS]{};
   MemoryFS policy_fs;
   MemoryFS* _fs = &policy_fs;
   mesh::RoomAccessPolicy room_access;
@@ -148,10 +161,14 @@ struct MyMesh {
   void serviceRoomQuotas();
   static bool saveFilter(ClientInfo*);
   bool handleClientPathCommand(ClientInfo*, char*, char*);
+  bool executeClientPathCommand(ClientInfo*, mesh::RoomClientPathCommand, const char*, char*);
+  bool handleRoomCatchUpCommand(ClientInfo*, char*, char*);
+  bool applyRoomCatchUpCommand(ClientInfo*, const char*, uint32_t, char*);
+  bool cancelActiveMessageRetries(const uint8_t*, uint32_t) { return true; }
   bool sendClientReply(ClientInfo*, mesh::Packet*, unsigned long, uint8_t);
   unsigned path_acks = 0;
   bool processAck(const uint8_t*) { ++path_acks; return true; }
-  uint8_t getUnsyncedCount(ClientInfo*) { return 2; }
+  uint8_t getUnsyncedCount(ClientInfo*);
   int getExtraAckTransmitCount() { return 0; }
   unsigned requests = 0;
   uint8_t last_request_type = 0;
@@ -250,7 +267,11 @@ struct MyMesh {
 @QUOTA_SERVICE@
 @SAVE_FILTER@
 @CLIENT_PATH_HANDLER@
+@CLIENT_PATH_EXECUTE@
 @SEND_CLIENT_REPLY@
+@ROOM_CATCHUP_HANDLER@
+@ROOM_CATCHUP_APPLY@
+@ROOM_UNSYNCED_COUNT@
 
 static mesh::Identity identity(uint8_t n = 1) {
   mesh::Identity sender{};
@@ -618,6 +639,20 @@ static void observedLoginPath() {
   puts("actual flood login opens observed window, PATH captures, direct login clears, and expiry rejects passed");
 }
 
+static void reconnectCursor() {
+  for (uint32_t supplied : {uint32_t(0), uint32_t(300), uint32_t(500), uint32_t(700)}) {
+    MyMesh mesh; seedKnown(mesh, PERM_ACL_READ_WRITE);
+    mesh.acl.client.extra.room.sync_since = 500;
+    login(mesh, "guest", 100, supplied);
+    const uint32_t expected = supplied > 500 ? supplied : 500;
+    assert(mesh.acl.client.extra.room.sync_since == expected && mesh.creations == 1);
+  }
+  MyMesh new_client;
+  login(new_client, "guest", 100, 300);
+  assert(new_client.acl.client.extra.room.sync_since == 300 && new_client.creations == 1);
+  puts("existing reconnect retains catch-up floor and accepts newer cursors while new clients honor supplied history passed");
+}
+
 static void readOnlyPosting() {
   for (const char* password : {"", "wrong"}) {
     MyMesh mesh;
@@ -704,7 +739,7 @@ static void quotaCases() {
   assert(mesh.posts == 1 && mesh.post_acks == 2 && mesh.acl.client.extra.room.post_quota_used == 1);
   mesh.poll(1001, 50);
   assert(mesh.post_acks == 3 && mesh.acl.client.extra.room.poll_quota_used == 1);
-  assert(mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.sync_since == 50);
+  assert(mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.sync_since == 80);
   mesh.acl.client.extra.room.pending_ack = 0x12345678;
   mesh.acl.client.extra.room.pending_topic_revision = 55;
   const auto poll_retry_before = mesh.acl.client;
@@ -712,7 +747,7 @@ static void quotaCases() {
   assert(mesh.post_acks == 4 && mesh.acl.client.extra.room.poll_quota_used == 1);
   assert(memcmp(&poll_retry_before, &mesh.acl.client, sizeof(poll_retry_before)) == 0);
   mesh.poll(1002, 60);
-  assert(mesh.post_acks == 4 && mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.sync_since == 50);
+  assert(mesh.post_acks == 4 && mesh.acl.client.last_timestamp == 1001 && mesh.acl.client.extra.room.sync_since == 80);
   login(mesh, "guest", 1002, 80);
   assert(mesh.acl.client.extra.room.post_quota_used == 1 && mesh.acl.client.extra.room.poll_quota_used == 1);
   mesh.poll(1001, 50); // Old exact retry ACK cannot rewind a refreshed/newer cursor.
@@ -725,7 +760,7 @@ static void quotaCases() {
   assert(mesh.acl.client.extra.room.post_quota_used == 1 && mesh.acl.client.extra.room.poll_quota_used == 0);
   mesh.poll(1002, 60); // Earlier quota rejection must not have entered the retry cache.
   assert(mesh.post_acks == 7 && mesh.acl.client.extra.room.poll_quota_used == 1);
-  assert(mesh.acl.client.extra.room.sync_since == 60);
+  assert(mesh.acl.client.extra.room.sync_since == 80);
   ticks = 120100; mesh.store_ok = false;
   const auto post_floor = mesh.acl.client.extra.room.last_post_timestamp;
   const auto last_activity = mesh.acl.client.last_activity;
@@ -774,6 +809,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "quotas")) quotaCases();
   else if (!strcmp(argv[1], "requests")) allRequestQuotaCases();
   else if (!strcmp(argv[1], "observed")) observedLoginPath();
+  else if (!strcmp(argv[1], "reconnect")) reconnectCursor();
   else assert(false);
 }
 '''
@@ -795,7 +831,7 @@ class RoomLoginIntegrationTests(unittest.TestCase):
         constants = "\n".join(line for line in acl_header.splitlines()
                               if line.startswith(("#define PERM_ACL_", "#define OUT_PATH_")))
         for name in ("PUSH_NOTIFY_DELAY_MILLIS", "FIRMWARE_VER_LEVEL", "RESP_SERVER_LOGIN_OK",
-                     "LAZY_CONTACTS_WRITE_DELAY", "ROOM_MESSAGE_CACHE_SIZE", "TXT_TYPE_PLAIN",
+                     "LAZY_CONTACTS_WRITE_DELAY", "ROOM_MESSAGE_CACHE_SIZE", "MAX_POST_TEXT_LEN", "MAX_UNSYNCED_POSTS", "TXT_TYPE_PLAIN",
                      "TXT_TYPE_CLI_DATA", "TXT_TYPE_CLI_COMMAND", "TXT_ACK_DELAY", "REPLY_DELAY_MILLIS", "REQ_TYPE_KEEP_ALIVE", "REQ_TYPE_GET_STATUS", "REQ_TYPE_GET_TELEMETRY_DATA", "REQ_TYPE_GET_ACCESS_LIST"):
             match = re.search(r"^\s*#define\s+" + name + r"\s+.*$", room, re.MULTILINE)
             if match is None:
@@ -824,13 +860,22 @@ class RoomLoginIntegrationTests(unittest.TestCase):
             "@PACKET_CONSTRUCTOR@": extract_braced(packet, "Packet::Packet()"),
             "@PACKET_PATH_CHECK@": extract_braced(packet, "bool Packet::isValidPathLen("),
             "@CLIENT_INFO@": extract_braced(acl_header, "struct ClientInfo {"),
+            "@POST_INFO@": extract_braced(room_header, "struct PostInfo {"),
             "@REPLAY_HANDLER@": extract_braced(acl_source, "bool ClientACL::authorizeLoginTimestamp("),
             "@PEER_HANDLER@": extract_braced(room, "void MyMesh::onPeerDataRecv("),
             "@PATH_HANDLER@": extract_braced(room, "bool MyMesh::onPeerPathRecv("),
             "@QUOTA_SERVICE@": extract_braced(room, "void MyMesh::serviceRoomQuotas("),
             "@SAVE_FILTER@": extract_braced(room, "bool MyMesh::saveFilter("),
             "@CLIENT_PATH_HANDLER@": extract_braced(room, "bool MyMesh::handleClientPathCommand("),
+            "@CLIENT_PATH_EXECUTE@": extract_braced(room, "bool MyMesh::executeClientPathCommand("),
             "@SEND_CLIENT_REPLY@": extract_braced(room, "bool MyMesh::sendClientReply("),
+            "@ROOM_CATCHUP_HANDLER@": extract_braced(room, "bool MyMesh::handleRoomCatchUpCommand("),
+            # Only the field name changes: retain the posting counter used by
+            # this older login fixture while executing the real retention code.
+            "@ROOM_CATCHUP_APPLY@": re.sub(r"\bposts\b", "retained_posts", extract_braced(
+                room, "bool MyMesh::applyRoomCatchUpCommand(")),
+            "@ROOM_UNSYNCED_COUNT@": re.sub(r"\bposts\b", "retained_posts", extract_braced(
+                room, "uint8_t MyMesh::getUnsyncedCount(")),
             "@LOGIN_HANDLER@": extract_braced(room, "void MyMesh::onAnonDataRecv("),
         }
         generated = HARNESS
@@ -851,6 +896,9 @@ class RoomLoginIntegrationTests(unittest.TestCase):
         compiled = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if compiled.returncode != 0:
             raise AssertionError(compiled.stdout + compiled.stderr)
+        cls.generated = generated
+        cls.compile_command = command
+        cls.source = source
 
     def run_case(self, case, expected):
         checked = subprocess.run([str(self.binary), case], capture_output=True, text=True, timeout=15)
@@ -871,6 +919,23 @@ class RoomLoginIntegrationTests(unittest.TestCase):
 
     def test_observed_route_uses_actual_login_and_path_handlers_with_timeout(self):
         self.run_case("observed", "actual flood login opens observed window, PATH captures, direct login clears, and expiry rejects passed")
+
+    def test_existing_reconnect_preserves_skip_floor_and_new_clients_choose_history_cursor(self):
+        self.run_case("reconnect", "existing reconnect retains catch-up floor and accepts newer cursors while new clients honor supplied history passed")
+
+    def test_negative_control_detects_old_reconnect_cursor_assignment(self):
+        before = "client->extra.room.sync_since = std::max(previous_sync_since, sender_sync_since);"
+        self.assertEqual(self.generated.count(before), 1)
+        source = self.source.parent / "negative-reconnect.cpp"
+        source.write_text(self.generated.replace(before, "client->extra.room.sync_since = sender_sync_since;"), encoding="ascii")
+        binary = self.source.parent / "negative-reconnect"
+        command = [str(source) if arg == str(self.source) else str(binary) if arg == str(self.binary)
+                   else arg for arg in self.compile_command]
+        compiled = subprocess.run(command, capture_output=True, text=True, timeout=60)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        checked = subprocess.run([str(binary), "reconnect"], capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(checked.returncode, 0, "old reconnect assignment must undo a selected skip")
+        self.assertIn("Assertion", checked.stderr, checked.stdout + checked.stderr)
 
     def test_all_room_request_types_consume_poll_budget_and_preserve_exact_retries(self):
         self.run_case("requests", "actual request quota covers status, telemetry, ACL, board, and exact payload retries passed")

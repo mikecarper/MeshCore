@@ -30,9 +30,28 @@ class RoomWebServiceTest(unittest.TestCase):
         production = "\n".join(extract_braced(source, signature) for signature in (
             "bool MyMesh::handleRoomWebCommand(", "static const char* roomWebString(",
             "void MyMesh::processRoomRequest(", "void MyMesh::serviceRoomQuotas(",
-            "bool MyMesh::storePost(", "bool MyMesh::snapshotRoomHistory("))
-        roles = "\n".join(line for line in (ROOT / "src/helpers/ClientACL.h").read_text().splitlines()
-                          if line.startswith("#define PERM_ACL_"))
+            "bool MyMesh::storePost(", "bool MyMesh::snapshotRoomHistory(",
+            "bool MyMesh::executeClientPathCommand(", "bool MyMesh::setRoomClientPath(",
+            "bool MyMesh::applyRoomCatchUpCommand(", "bool MyMesh::saveFilter(",
+            "void MyMesh::writeRoomClientJson(",
+            "uint8_t MyMesh::getUnsyncedCount(", "bool MyMesh::handleRoomHistoryCommand(",
+            "bool MyMesh::handleRoomTopicCommand(", "void MyMesh::activateRoomTopic("))
+        packet = (ROOT / "src/Packet.cpp").read_text()
+        production = "namespace mesh {\n" + extract_braced(
+            packet, "bool Packet::isValidPathLen(") + "\n}\n" + production
+        utils = (ROOT / "src/Utils.cpp").read_text()
+        production = "namespace mesh {\n" + "\n".join(extract_braced(utils, signature)
+            for signature in ("static uint8_t hexVal(", "bool Utils::isHexChar(",
+                              "bool Utils::fromHex(")) + "\n}\n" + production
+        production = next(line for line in source.splitlines()
+                          if line.startswith("#define LAZY_CONTACTS_WRITE_DELAY")) + "\n" + production
+        acl = (ROOT / "src/helpers/ClientACL.h").read_text()
+        acl_source = (ROOT / "src/helpers/ClientACL.cpp").read_text()
+        production += "\n" + "\n".join(extract_braced(acl_source, signature).replace(
+            "ClientACL::", "ACL::") for signature in (
+                "ClientInfo* ClientACL::putClient(", "bool ClientACL::applyPermissions("))
+        roles = "\n".join(line for line in acl.splitlines()
+                          if line.startswith(("#define PERM_ACL_", "#define OUT_PATH_")))
         sanitizers = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
                       if sys.platform.startswith("linux") else [])
         # 64-bit host slots are twice ESP32's size. This reproduces the real
@@ -45,6 +64,7 @@ class RoomWebServiceTest(unittest.TestCase):
             (work / "filesystem.h").write_text((ROOT / "test/fixtures/room_history_store/filesystem.h").read_text())
             (work / "production.inc").write_text(production)
             (work / "roles.inc").write_text(roles)
+            (work / "client.inc").write_text(extract_braced(acl, "struct ClientInfo") + ";")
             (work / "post.inc").write_text(extract_braced(header, "struct PostInfo {") + ";")
             web_user = extract_braced(header, "struct RoomWebUser {")
             (work / "web_user.inc").write_text(web_user + " room_web_users[8] = {};")
@@ -59,6 +79,9 @@ class RoomWebServiceTest(unittest.TestCase):
             checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertIn("actual room web service", checked.stdout)
+            for group in ("ADMIN_AUTH", "ADMIN_ROUTES", "ADMIN_CATCHUP", "ADMIN_USERS",
+                          "ADMIN_SETTINGS", "ADMIN_INVALID"):
+                self.assertRegex(checked.stdout, r"(?m)^" + group + ":")
             for kind in ("STATUS", "INDEX", "READ"):
                 match = re.search(r"^BOUNDARY_" + kind + r" (.+)$", checked.stdout, re.M)
                 self.assertIsNotNone(match)

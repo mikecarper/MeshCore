@@ -323,6 +323,10 @@ protected:
    * \returns true if at least one active retry sequence was cancelled.
    */
   bool cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]);
+  // Cancel one locally identified message delivery across both radio profiles.
+  // This does not rely on the retained text or a short destination path hash.
+  bool cancelActiveMessageRetries(const uint8_t message_key[MAX_HASH_SIZE],
+                                  uint32_t message_timestamp);
 
   /**
    * \brief  After a replacement packet is queued, retire the prior retry

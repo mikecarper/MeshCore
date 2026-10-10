@@ -2299,6 +2299,29 @@ bool Mesh::cancelActiveRetries(const uint8_t retry_key[MAX_HASH_SIZE]) {
   return cancelled;
 }
 
+bool Mesh::cancelActiveMessageRetries(const uint8_t message_key[MAX_HASH_SIZE],
+                                      uint32_t message_timestamp) {
+  if (message_key == NULL) return false;
+  uint8_t key[MAX_HASH_SIZE];
+  memcpy(key, message_key, sizeof(key));
+  bool cancelled = false;
+  for (int i = 0; i < TOTAL_DIRECT_RETRY_SLOTS; i++) {
+    if (_direct_retries[i].active && _direct_retries[i].has_message_replacement_key
+        && _direct_retries[i].message_timestamp == message_timestamp
+        && memcmp(key, _direct_retries[i].message_replacement_key, sizeof(key)) == 0) {
+      retireDirectRetrySlot(i); cancelled = true;
+    }
+  }
+  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
+    if (_flood_retries[i].active && _flood_retries[i].has_message_replacement_key
+        && _flood_retries[i].message_timestamp == message_timestamp
+        && memcmp(key, _flood_retries[i].message_replacement_key, sizeof(key)) == 0) {
+      retireFloodRetrySlot(i); cancelled = true;
+    }
+  }
+  return cancelled;
+}
+
 void Mesh::replaceActiveRetries(const Packet* replacement_packet,
                                 const uint8_t retry_key[MAX_HASH_SIZE]) {
   cancelActiveRetries(retry_key);

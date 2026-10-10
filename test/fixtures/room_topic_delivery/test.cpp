@@ -7,6 +7,7 @@
 #include "../room_history_store/filesystem.h"
 #include <helpers/RoomAccessPolicy.h>
 #include <helpers/ClientPathPersistence.h>
+#include <helpers/RoomClientPathCommand.h>
 
 #define PUB_KEY_SIZE 32
 #define MAX_PATH_SIZE 64
@@ -43,6 +44,9 @@ struct Packet {
   static bool isValidPathLen(uint8_t path);
 };
 struct Utils {
+  static void sha256(uint8_t* out, size_t n, const uint8_t* a, size_t na) {
+    sha256(out, n, a, na, nullptr, 0);
+  }
   static void sha256(uint8_t* out, size_t n, const uint8_t* a, size_t na,
                      const uint8_t* b, size_t nb) {
     // Deterministic fixture fingerprint; no cryptography is replaced in firmware.

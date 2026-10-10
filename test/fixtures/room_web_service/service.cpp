@@ -27,8 +27,17 @@ static void* trackedRealloc(void* ptr, size_t size) {
 #include <helpers/RoomHistoryStore.h>
 #include <helpers/RoomAccessPolicy.h>
 #include <helpers/RoomLoginAuthorization.h>
+#include <helpers/ClientPathPersistence.h>
+#include <helpers/ClientPathObservation.h>
+#include <helpers/RoomClientPathCommand.h>
+#include <helpers/LazyPersistence.h>
+#include <helpers/RoomTopicStore.h>
+#include <helpers/RoomCatchUp.h>
 #define WITH_WEBCONFIG 1
 #define PUB_KEY_SIZE 32
+#define MAX_PATH_SIZE 64
+#define MAX_HASH_SIZE 8
+#define MESH_CLIENT_REPEATER_ONLY 0
 #define MAX_POST_TEXT_LEN 151
 #define MAX_UNSYNCED_POSTS 32
 #define POST_SYNC_DELAY_SECS 2
@@ -39,11 +48,21 @@ static uint32_t ticks = 100;
 static uint32_t millis() { return ticks; }
 static uint32_t futureMillis(uint32_t duration) { return millis() + duration; }
 namespace mesh {
+struct Packet { static bool isValidPathLen(uint8_t length); };
 struct Identity {
-  uint8_t pub_key[32] = {};
+  uint8_t pub_key[32];
+  Identity() = default;
+  explicit Identity(const uint8_t* key) { memcpy(pub_key, key, PUB_KEY_SIZE); }
   bool matches(const Identity& other) const { return memcmp(pub_key, other.pub_key, 32) == 0; }
 };
+struct LocalIdentity : Identity {
+  void calcSharedSecret(uint8_t* output, const uint8_t* key) const {
+    for (size_t i = 0; i < PUB_KEY_SIZE; ++i) output[i] = key[i] ^ pub_key[i];
+  }
+};
 struct Utils {
+  static bool isHexChar(char);
+  static bool fromHex(uint8_t*, int, const char*);
   // Cryptography is a boundary mock: every fixture token has a distinct key.
   static void sha256(uint8_t* out, size_t length, const uint8_t* token, size_t token_length,
                      const uint8_t* server, size_t server_length) {
@@ -54,6 +73,10 @@ struct Utils {
     static const char digits[] = "0123456789abcdef";
     for (size_t i = 0; i < length; ++i) { output[2 * i] = digits[key[i] >> 4]; output[2 * i + 1] = digits[key[i] & 15]; }
     output[length * 2] = 0;
+  }
+  static void sha256(uint8_t* output, size_t size, const uint8_t* bytes, size_t length) {
+    memset(output, 0, size);
+    for (size_t i = 0; i < length; ++i) output[i % size] ^= bytes[i];
   }
 };
 }
@@ -68,24 +91,49 @@ struct Preferences {
   void end() {}
 };
 bool Preferences::value = false, Preferences::fail_open = false, Preferences::fail_write = false;
-struct ClientInfo {
-  mesh::Identity id;
-  uint8_t permissions = PERM_ACL_ADMIN;
-  struct { struct { uint16_t post_quota_used = 0, poll_quota_used = 0; uint32_t last_post_timestamp = 0; } room; } extra;
-};
+#include "client.inc"
 struct ACL {
-  ClientInfo radio_admin;
-  unsigned lookups = 0;
-  int getNumClients() const { return 1; }
-  ClientInfo* getClientByIdx(int i) { assert(i == 0); return &radio_admin; }
-  ClientInfo* getClient(const mesh::Identity&) { ++lookups; return &radio_admin; }
+  ClientInfo clients[8]{};
+  ClientInfo durable[8]{};
+  bool retained[8]{};
+  ClientInfo& radio_admin = clients[0];
+  unsigned lookups = 0, saves = 0;
+  int count = 1;
+  int& num_clients = count;
+  static constexpr int capacity = 8;
+  bool acl_load_complete = true, protect_explicit_permissions = true;
+  bool save_ok = true;
+  int getNumClients() const { return count; }
+  ClientInfo* getClientByIdx(int i) { assert(i >= 0 && i < count); return &clients[i]; }
+  ClientInfo* getClient(const uint8_t* key, int length) {
+    ++lookups; assert(length == PUB_KEY_SIZE);
+    for (int i = 0; i < count; ++i) {
+      if (memcmp(clients[i].id.pub_key, key, PUB_KEY_SIZE) == 0) return &clients[i];
+    }
+    return nullptr;
+  }
+  bool save(MemoryFS* fs, bool (*filter)(ClientInfo*)) {
+    assert(fs && filter); ++saves;
+    if (!save_ok) return false;
+    for (int i = 0; i < count; ++i) {
+      retained[i] = (clients[i].permissions & PERM_ACL_ROLE_MASK) != PERM_ACL_GUEST && filter(&clients[i]);
+      if (retained[i]) durable[i] = clients[i];
+    }
+    return true;
+  }
+  ClientInfo* putClient(const mesh::Identity& id, uint8_t permissions);
+  bool applyPermissions(const mesh::LocalIdentity& self, const uint8_t* key, int length, uint8_t permissions);
 };
-struct Clock { uint32_t now = 1000; uint32_t getCurrentTimeUnique() { return now++; } };
+struct Clock {
+  uint32_t now = 1000;
+  uint32_t getCurrentTime() const { return now; }
+  uint32_t getCurrentTimeUnique() { return now++; }
+};
 #include "post.inc"
 struct MyMesh {
   MemoryFS storage; MemoryFS* _fs = &storage;
   mesh::RoomAccessPolicy room_access;
-  mesh::Identity self_id;
+  mesh::LocalIdentity self_id{};
   struct { char password[65] = "admin-secret", guest_password[65] = "write-secret", node_name[64] = "Test room"; bool allow_read_only = true; } _prefs;
   bool room_web_enabled = false;
   bool room_web_request_authenticated = false;
@@ -100,13 +148,39 @@ struct MyMesh {
   mesh::RoomHistoryState room_history_state;
   bool room_history_enabled = false, room_history_available = true;
   char room_topic[152] = "Topic <img src=x onerror=attack()>";
-  MyMesh() { self_id.pub_key[0] = 4; metadata_filesystem = &storage; assert(room_access.load(_fs)); }
+  unsigned long dirty_contacts_expiry = 0;
+  uint8_t contacts_save_failures = 0;
+  uint32_t room_topic_revision = 0, room_topic_timestamp = 0, room_topic_ready_at = 0;
+  bool room_topic_ready = false;
+  struct { unsigned clears = 0; void clear() { ++clears; } } recent_room_posts;
+  unsigned retry_cancellations = 0;
+  uint32_t cancelled_retry_timestamp = 0;
+  MyMesh() {
+    self_id.pub_key[0] = 4; metadata_filesystem = &storage; assert(room_access.load(_fs));
+    acl.radio_admin.permissions = PERM_ACL_ADMIN;
+    for (auto& client : acl.clients) {
+      client.out_path_len = client.alt_path_len = client.observed_path_len = OUT_PATH_UNKNOWN;
+      client.out_path_is_persistable = true;
+    }
+  }
   Clock* getRTCClock() { return &clock; }
   bool handleRoomWebCommand(const char*, char*);
   void processRoomRequest(const uint8_t*, uint32_t, char*, char*, size_t);
   void serviceRoomQuotas();
   bool storePost(const mesh::Identity&, const char*);
   bool snapshotRoomHistory();
+  bool executeClientPathCommand(ClientInfo*, mesh::RoomClientPathCommand, const char*, char*);
+  bool setRoomClientPath(ClientInfo*, const char*, const char*, char*);
+  bool applyRoomCatchUpCommand(ClientInfo*, const char*, uint32_t, char*);
+  static bool saveFilter(ClientInfo*);
+  uint8_t getUnsyncedCount(ClientInfo*);
+  bool handleRoomHistoryCommand(const char*, char*);
+  bool handleRoomTopicCommand(const char*, char*);
+  void activateRoomTopic();
+  void writeRoomClientJson(mesh::RoomJsonWriter&, ClientInfo*, bool);
+  void cancelActiveMessageRetries(const uint8_t*, uint32_t timestamp) {
+    ++retry_cancellations; cancelled_retry_timestamp = timestamp;
+  }
 };
 #include "production.inc"
 
@@ -144,6 +218,371 @@ static std::string saveRequest(uint8_t id, uint32_t version, const std::string& 
 }
 static void enable(MyMesh& m) { char reply[160]; assert(m.handleRoomWebCommand("set room.web on", reply)); assert(m.room_web_enabled); }
 static unsigned floors(const MyMesh& m) { unsigned total = 0; for (const auto& user : m.room_web_users) total += user.last_sequence; return total; }
+static std::string clientKey(const ClientInfo& client) {
+  char key[65]; mesh::Utils::toHex(key, client.id.pub_key, PUB_KEY_SIZE); return key;
+}
+static void seedClients(MyMesh& m, unsigned count = 5) {
+  assert(count <= 8); m.acl.count = count;
+  for (unsigned i = 0; i < count; ++i) {
+    auto& client = m.acl.clients[i];
+    memset(client.id.pub_key, i + 1, PUB_KEY_SIZE);
+    client.permissions = i == 0 ? PERM_ACL_ADMIN : PERM_ACL_READ_WRITE;
+    client.permissions_are_explicit = i < 2;
+    client.last_activity = 900 + i;
+    client.out_path_len = 1; client.out_path[0] = 0xA1 + i;
+    client.out_path_is_persistable = true;
+    client.alt_path_len = OUT_PATH_UNKNOWN;
+    client.extra.room.sync_since = 100 + i;
+  }
+}
+static void adminAuthorizationCases() {
+  const char* operations[] = {"admin.users", "admin.user", "admin.route", "admin.catchup",
+      "admin.access", "admin.ban", "admin.settings", "admin.topic", "admin.history", "admin.rates"};
+  unsigned denied = 0;
+  for (const char* password : {"", "wrong-password", "write-secret"}) {
+    for (const char* operation : operations) {
+      MyMesh m; enable(m); seedClients(m);
+      const std::vector<ClientInfo> before(m.acl.clients, m.acl.clients + m.acl.count);
+      const unsigned writes = m.storage.write_opens;
+      const auto reply = result(m, request(operation, password,
+          ",\"boot\":71,\"cursor\":0,\"key\":\"" + clientKey(m.acl.clients[1])
+          + "\",\"which\":\"outpath\",\"value\":\"B1\",\"expected\":\"> A2\","
+            "\"mode\":\"keep\",\"count\":1,\"expected_sync\":101,"
+            "\"role\":3,\"expected_role\":2,\"banned\":true"), 999);
+      assert(reply["error"].is<const char*>() && strstr(reply["error"].as<const char*>(), "admin"));
+      assert(reply.as<JsonObjectConst>().size() == 1);
+      assert(floors(m) == 0 && m.acl.lookups == 0 && m.acl.saves == 0);
+      assert(m.storage.write_opens == writes && m.room_access.banCount() == 0);
+      assert(memcmp(before.data(), m.acl.clients, before.size() * sizeof(ClientInfo)) == 0);
+      assert(m._num_posted == 0 && m.last_room_timestamp == 0);
+      ++denied;
+    }
+  }
+  MyMesh closed; enable(closed); closed._prefs.allow_read_only = false;
+  error(closed, request("admin.users", "wrong-password", ",\"cursor\":0"), 100, "incorrect");
+  assert(floors(closed) == 0 && !closed.room_web_request_authenticated && closed.acl.lookups == 0);
+  MyMesh empty; enable(empty); empty._prefs.password[0] = 0;
+  error(empty, request("admin.users", "admin-secret", ",\"cursor\":0"), 100, "admin");
+  assert(floors(empty) == 0 && empty.acl.lookups == 0);
+  printf("ADMIN_AUTH: %u rejected low-trust operations leave state and identity data unchanged\n", denied + 2);
+}
+static std::string adminClientRequest(const char* operation, const ClientInfo& client,
+                                       const std::string& fields = "", uint32_t boot = 71) {
+  return request(operation, "admin-secret", ",\"boot\":" + std::to_string(boot)
+      + ",\"key\":\"" + clientKey(client) + "\"" + fields);
+}
+static std::string routeFields(const char* which, const char* value, const char* expected) {
+  if (strncmp(expected, "> ", 2) == 0) expected += 2;
+  return std::string(",\"which\":\"") + which + "\",\"value\":\"" + value
+      + "\",\"expected\":\"" + expected + "\"";
+}
+static void adminRouteCases() {
+  MyMesh m; enable(m); seedClients(m);
+  auto& retained = m.acl.clients[1];
+  const ClientInfo other = m.acl.clients[0];
+  uint32_t sequence = 1;
+  error(m, adminClientRequest("admin.route", retained,
+      routeFields("outpath", "B1", "> A2"), 70), sequence++, "restarted");
+  assert(m.acl.saves == 0 && floors(m) == 0);
+  assert(result(m, adminClientRequest("admin.route", retained,
+      routeFields("outpath", "B1", "> A2")), sequence++)["ok"] == true);
+  assert(retained.out_path_len == 1 && retained.out_path[0] == 0xB1 && m.acl.saves == 1);
+  assert(m.acl.retained[1] && !m.acl.retained[2]);
+  assert(memcmp(&other, &m.acl.clients[0], sizeof(other)) == 0);
+  assert(retained.permissions == PERM_ACL_READ_WRITE && retained.permissions_are_explicit);
+  assert(result(m, adminClientRequest("admin.route", retained,
+      routeFields("outpath", "B1", "> B1")), sequence++)["ok"] == true);
+  assert(m.acl.saves == 1);
+  const ClientInfo selected = retained;
+  const auto stale = result(m, adminClientRequest("admin.route", retained,
+      routeFields("outpath", "C1", "> A2")), sequence++);
+  assert(stale["error"].is<const char*>() && m.acl.saves == 1);
+  assert(memcmp(&retained, &selected, sizeof(selected)) == 0);
+  for (const char* value : {"B1,", "B1,,B2", "B1,1234", "direct;erase", "get prv.key", "path"}) {
+    const auto invalid = result(m, adminClientRequest("admin.route", retained,
+        routeFields("outpath", value, "> B1")), sequence++);
+    assert(invalid["error"].is<const char*>());
+    assert(memcmp(&retained, &selected, sizeof(selected)) == 0 && m.acl.saves == 1);
+  }
+  auto& transient = m.acl.clients[2];
+  assert(result(m, adminClientRequest("admin.route", transient,
+      routeFields("altpath", "C1,C2", "> unknown")), sequence++)["ok"] == true);
+  assert(transient.alt_path_len == 2 && transient.alt_path[0] == 0xC1 && m.acl.saves == 1);
+  assert(transient.permissions == PERM_ACL_READ_WRITE && !transient.permissions_are_explicit);
+  m.acl.save_ok = false;
+  m.dirty_contacts_expiry = 50000; m.contacts_save_failures = 3;
+  error(m, adminClientRequest("admin.route", retained,
+      routeFields("altpath", "D1", "> unknown")), sequence++, "save failed");
+  assert(m.acl.saves == 2 && memcmp(&retained, &selected, sizeof(selected)) == 0);
+  assert(m.dirty_contacts_expiry == 50000 && m.contacts_save_failures == 3);
+  m.acl.save_ok = true;
+  const std::string key = clientKey(retained);
+  for (const std::string& invalid_key : {key.substr(0, 8), key.substr(0, 12), std::string(64, '0'), std::string(64, 'g')}) {
+    const auto denied = result(m, request("admin.route", "admin-secret",
+        ",\"boot\":71,\"key\":\"" + invalid_key + "\"" + routeFields("outpath", "D1", "> B1")), sequence++);
+    assert(denied["error"].is<const char*>() && m.acl.saves == 2);
+    assert(memcmp(&retained, &selected, sizeof(selected)) == 0);
+  }
+  puts("ADMIN_ROUTES: exact identities, stale guards, filtered saves, no-op writes, transient roles and rollback passed");
+}
+static void unreadPosts(MyMesh& m, const ClientInfo& client) {
+  m.posts[0].post_timestamp = 150; m.posts[1].post_timestamp = 200;
+  m.posts[2].post_timestamp = 250; m.posts[3].post_timestamp = 300;
+  for (unsigned i = 0; i < 4; ++i) memset(m.posts[i].author.pub_key, 0x99, PUB_KEY_SIZE);
+  m.posts[4].post_timestamp = 1000; m.posts[4].author = client.id;
+  m.last_room_timestamp = 1000;
+}
+static void adminCatchUpCases() {
+  MyMesh m; enable(m); seedClients(m);
+  auto& client = m.acl.clients[1]; unreadPosts(m, client);
+  client.extra.room.pending_ack = 0x12345678;
+  client.extra.room.push_post_timestamp = 150;
+  client.extra.room.ack_timeout = 9999;
+  client.extra.room.push_failures = 2;
+  const ClientInfo other = m.acl.clients[0];
+  uint32_t sequence = 1;
+  assert(result(m, adminClientRequest("admin.catchup", client,
+      ",\"mode\":\"keep\",\"count\":2,\"expected_sync\":101"), sequence++)["ok"] == true);
+  assert(client.extra.room.sync_since == 200 && client.extra.room.pending_ack == 0);
+  assert(client.extra.room.push_post_timestamp == 0 && client.extra.room.ack_timeout == 0);
+  assert(client.extra.room.push_failures == 0 && m.acl.saves == 1);
+  assert(m.retry_cancellations == 1 && m.cancelled_retry_timestamp == 150);
+  assert(memcmp(&other, &m.acl.clients[0], sizeof(other)) == 0);
+  const ClientInfo advanced = client;
+  const auto stale = result(m, adminClientRequest("admin.catchup", client,
+      ",\"mode\":\"keep\",\"count\":0,\"expected_sync\":101"), sequence++);
+  assert(stale["error"].is<const char*>() && m.acl.saves == 1);
+  assert(memcmp(&client, &advanced, sizeof(advanced)) == 0);
+  assert(m.retry_cancellations == 1);
+  assert(result(m, adminClientRequest("admin.catchup", client,
+      ",\"mode\":\"keep\",\"count\":99,\"expected_sync\":200"), sequence++)["ok"] == true);
+  assert(memcmp(&client, &advanced, sizeof(advanced)) == 0 && m.acl.saves == 1);
+  m.acl.save_ok = false;
+  const auto failed = result(m, adminClientRequest("admin.catchup", client,
+      ",\"mode\":\"keep\",\"count\":0,\"expected_sync\":200"), sequence++);
+  assert(failed["error"].is<const char*>() && m.acl.saves == 2);
+  assert(memcmp(&client, &advanced, sizeof(advanced)) == 0);
+  m.acl.save_ok = true;
+  assert(result(m, adminClientRequest("admin.catchup", client,
+      ",\"mode\":\"before\",\"before\":4294967295,\"expected_sync\":200"), sequence++)["ok"] == true);
+  assert(client.extra.room.sync_since == 300 && m.acl.saves == 3);
+  // A retained own-author post must not create a future catch-up cursor.
+  assert(client.extra.room.sync_since < m.posts[4].post_timestamp);
+  auto& transient = m.acl.clients[2]; unreadPosts(m, transient);
+  transient.extra.room.pending_ack = 0x87654321;
+  transient.extra.room.pending_topic_revision = 7;
+  transient.extra.room.push_post_timestamp = 150;
+  assert(result(m, adminClientRequest("admin.catchup", transient,
+      ",\"mode\":\"keep\",\"count\":0,\"expected_sync\":102"), sequence++)["ok"] == true);
+  assert(transient.extra.room.sync_since == 300 && transient.extra.room.pending_ack == 0x87654321);
+  assert(transient.extra.room.pending_topic_revision == 7 && m.acl.saves == 3);
+  assert(!transient.permissions_are_explicit && transient.permissions == PERM_ACL_READ_WRITE);
+  puts("ADMIN_CATCHUP: newest counts, stale cursors, future dates, own posts, topic ACKs, rollback and transient policy passed");
+}
+static void adminListingCases() {
+  MyMesh m; enable(m); seedClients(m);
+  auto& selected = m.acl.clients[1]; unreadPosts(m, selected);
+  selected.extra.room.pending_ack = 1234;
+  selected.extra.room.push_post_timestamp = 150;
+  selected.extra.room.ack_timeout = ticks + 3000;
+  selected.observed_path_len = 0x41;
+  selected.observed_path[0] = 0x12; selected.observed_path[1] = 0x34;
+  m.acl.clients[2].last_activity = 0;
+  m.acl.clients[3].last_activity = m.clock.now + 1;
+  m.acl.clients[3].extra.room.push_failures = 3;
+  assert(m.room_access.addBan(m._fs, m.acl.clients[4].id.pub_key) == mesh::RoomAccessPolicy::BanResult::Saved);
+  uint32_t sequence = 1;
+  for (unsigned cursor : {0, 2, 4}) {
+    const std::string output = execute(m, request("admin.users", "admin-secret",
+        ",\"cursor\":" + std::to_string(cursor)), sequence++);
+    assert(output.size() < 2048);
+    JsonDocument page; assert(deserializeJson(page, output) == DeserializationError::Ok);
+    assert(page["total"] == 5 && page["boot"] == 71);
+    assert(page["active"] == 3 && page["backlog"] == 24);
+    assert(page["pending"] == 1 && page["failed"] == 1);
+    const unsigned expected = cursor == 4 ? 1 : 2;
+    assert(page["users"].is<JsonArray>() && page["users"].size() == expected);
+    for (unsigned i = 0; i < expected; ++i) {
+      const auto user = page["users"][i];
+      assert(user["key"].as<std::string>() == clientKey(m.acl.clients[cursor + i]));
+      assert(user["shared_secret"].isUnbound() && user["last_timestamp"].isUnbound());
+      assert(user["outpath"].isUnbound() && user["altpath"].isUnbound());
+    }
+    if (cursor < 4) assert(page["next"] == cursor + 2);
+    else assert(page["next"].isNull());
+  }
+  const auto detail = result(m, adminClientRequest("admin.user", selected), sequence++);
+  assert(detail["boot"] == 71 && detail["user"]["key"].as<std::string>() == clientKey(selected));
+  assert(detail["user"]["outpath"] == "A2" && detail["user"]["altpath"] == "unknown");
+  assert(detail["user"]["observed"] == "1234" && detail["user"]["sync_since"] == 101);
+  assert(detail["user"]["delivery"] == "post" && detail["user"]["ack_wait_ms"] == 3000);
+  assert(detail["user"]["shared_secret"].isUnbound() && m.acl.saves == 0);
+  const auto inactive = result(m, adminClientRequest("admin.user", m.acl.clients[2]), sequence++);
+  assert(inactive["user"]["active"] == false && inactive["user"]["heard_ago"].isNull());
+  const auto future = result(m, adminClientRequest("admin.user", m.acl.clients[3]), sequence++);
+  assert(future["user"]["heard_ago"].isNull());
+  const auto banned = result(m, adminClientRequest("admin.user", m.acl.clients[4]), sequence++);
+  assert(banned["user"]["banned"] == true && banned["user"]["active"] == false);
+  selected.out_path_len = selected.alt_path_len = selected.observed_path_len = 0x60;
+  memset(selected.out_path, 0xA1, MAX_PATH_SIZE);
+  memset(selected.alt_path, 0xB2, MAX_PATH_SIZE);
+  memset(selected.observed_path, 0xC3, MAX_PATH_SIZE);
+  const std::string maximum = execute(m, adminClientRequest("admin.user", selected), sequence++);
+  JsonDocument complete; assert(deserializeJson(complete, maximum) == DeserializationError::Ok);
+  assert(complete["user"]["outpath"].as<std::string>().size() == 128 && maximum.size() < 2048);
+  for (size_t capacity = 0; capacity < 750; ++capacity) {
+    execute(m, adminClientRequest("admin.user", selected), sequence++, 1, capacity);
+  }
+  assert(m.acl.saves == 0);
+  puts("ADMIN_USERS: two-row pages, delivery detail, full routes, inactive/future/banned states and bounded JSON passed");
+}
+static void adminAccessAndSettingsCases() {
+  MyMesh m; enable(m); seedClients(m);
+  uint32_t sequence = 1;
+  auto& selected = m.acl.clients[1];
+  const std::string target_key = clientKey(selected);
+  const ClientInfo following = m.acl.clients[2];
+  const auto changed_access = result(m, adminClientRequest("admin.access", selected,
+      ",\"role\":1,\"expected_role\":2"), sequence++);
+  assert(changed_access["ok"] == true && changed_access["pending_save"] == true);
+  assert(selected.permissions == PERM_ACL_READ_ONLY && selected.permissions_are_explicit);
+  assert(m.dirty_contacts_expiry != 0 && m.acl.saves == 0);
+  const auto stale = result(m, adminClientRequest("admin.access", selected,
+      ",\"role\":3,\"expected_role\":2"), sequence++);
+  assert(stale["error"].is<const char*>() && selected.permissions == PERM_ACL_READ_ONLY);
+  assert(result(m, adminClientRequest("admin.access", selected,
+      ",\"role\":0,\"expected_role\":1"), sequence++)["ok"] == true);
+  assert(m.acl.count == 4 && m.acl.getClient(following.id.pub_key, PUB_KEY_SIZE) != nullptr);
+  assert(clientKey(m.acl.clients[1]) == clientKey(following));
+  uint8_t removed[PUB_KEY_SIZE]; memset(removed, 2, sizeof(removed));
+  assert(m.acl.getClient(removed, PUB_KEY_SIZE) == nullptr);
+  const unsigned before_ban = m.storage.write_opens;
+  assert(result(m, request("admin.ban", "admin-secret", ",\"boot\":71,\"key\":\""
+      + target_key + "\",\"banned\":true"), sequence++)["ok"] == true);
+  assert(m.room_access.isBanned(removed) && m.storage.write_opens > before_ban);
+  const unsigned after_ban = m.storage.write_opens;
+  assert(result(m, request("admin.ban", "admin-secret", ",\"boot\":71,\"key\":\""
+      + target_key + "\",\"banned\":true"), sequence++)["ok"] == true);
+  assert(m.storage.write_opens == after_ban);
+  assert(result(m, request("admin.ban", "admin-secret", ",\"boot\":71,\"key\":\""
+      + target_key + "\",\"banned\":false"), sequence++)["ok"] == true);
+  assert(!m.room_access.isBanned(removed));
+  const unsigned reads_only = m.storage.write_opens;
+  const auto settings = result(m, request("admin.settings", "admin-secret"), sequence++);
+  assert(settings["boot"] == 71 && settings["topic"] == m.room_topic);
+  assert(settings["persistent_history"] == false && settings["post_rate"] == 0 && settings["poll_rate"] == 0);
+  assert(m.storage.write_opens == reads_only);
+  const std::string old_topic = m.room_topic;
+  const auto topic = result(m, request("admin.topic", "admin-secret", ",\"boot\":71,\"value\":\"New topic\",\"expected\":\""
+      + old_topic + "\""), sequence++);
+  assert(topic["ok"] == true && strcmp(m.room_topic, "New topic") == 0);
+  const uint32_t revision = m.room_topic_revision;
+  const auto stale_topic = result(m, request("admin.topic", "admin-secret", ",\"boot\":71,\"value\":\"Stale\",\"expected\":\""
+      + old_topic + "\""), sequence++);
+  assert(stale_topic["error"].is<const char*>() && strcmp(m.room_topic, "New topic") == 0 && m.room_topic_revision == revision);
+  assert(result(m, request("admin.history", "admin-secret", ",\"boot\":71,\"enabled\":true,\"expected\":false"), sequence++)["ok"] == true);
+  assert(m.room_history_enabled);
+  const auto stale_history = result(m, request("admin.history", "admin-secret", ",\"boot\":71,\"enabled\":false,\"expected\":false"), sequence++);
+  assert(stale_history["error"].is<const char*>() && m.room_history_enabled);
+  assert(result(m, request("admin.rates", "admin-secret", ",\"boot\":71,\"post_rate\":12,\"poll_rate\":60"), sequence++)["ok"] == true);
+  assert(m.room_access.postRate() == 12 && m.room_access.pollRate() == 60);
+  const unsigned rate_writes = m.storage.write_opens;
+  assert(result(m, request("admin.rates", "admin-secret", ",\"boot\":71,\"post_rate\":12,\"poll_rate\":60"), sequence++)["ok"] == true);
+  assert(m.storage.write_opens == rate_writes);
+  ticks += 60000;
+  m.storage.capacity = 0;
+  const auto failed_topic = result(m, request("admin.topic", "admin-secret", ",\"boot\":71,\"value\":\"Not saved\",\"expected\":\"New topic\""), sequence++);
+  assert(failed_topic["error"].is<const char*>() && strcmp(m.room_topic, "New topic") == 0);
+  m.storage.reset(); m.storage.faults.insert("open:w:/room_hist_cfg.tmp");
+  const auto failed_history = result(m, request("admin.history", "admin-secret", ",\"boot\":71,\"enabled\":false,\"expected\":true"), sequence++);
+  assert(failed_history["error"].is<const char*>() && m.room_history_enabled);
+  m.storage.reset(); m.storage.capacity = 0;
+  const auto failed_rates = result(m, request("admin.rates", "admin-secret", ",\"boot\":71,\"post_rate\":13,\"poll_rate\":61"), sequence++);
+  assert(failed_rates["error"].is<const char*>() && m.room_access.postRate() == 12 && m.room_access.pollRate() == 60);
+  puts("ADMIN_SETTINGS: queued ACL semantics, role revocation, bans, topic/history/rates stale guards and storage failure passed");
+}
+static void adminInvalidAndSessionCases() {
+  struct Invalid { const char* operation; const char* fields; };
+  const Invalid invalid[] = {
+    {"admin.users", ""}, {"admin.users", ",\"cursor\":-1"},
+    {"admin.users", ",\"cursor\":\"0\""}, {"admin.users", ",\"cursor\":1.5"},
+    {"admin.users", ",\"cursor\":false"}, {"admin.users", ",\"cursor\":6"},
+    {"admin.user", ",\"key\":9"}, {"admin.user", ",\"key\":\"02020202\""},
+    {"admin.user", ",\"key\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\""},
+    {"admin.route", ",\"which\":\"secret\",\"value\":\"B1\",\"expected\":\"A2\""},
+    {"admin.route", ",\"which\":false,\"value\":\"B1\",\"expected\":\"A2\""},
+    {"admin.route", ",\"which\":\"outpath\",\"value\":[],\"expected\":\"A2\""},
+    {"admin.route", ",\"which\":\"outpath\",\"value\":\"B1\",\"expected\":2"},
+    {"admin.route", ",\"which\":\"outpath\",\"value\":\"B1\",\"expected\":\"A2\\u0000\""},
+    {"admin.catchup", ",\"mode\":\"skip\",\"count\":0,\"expected_sync\":101"},
+    {"admin.catchup", ",\"mode\":\"keep\",\"count\":-1,\"expected_sync\":101"},
+    {"admin.catchup", ",\"mode\":\"keep\",\"count\":65536,\"expected_sync\":101"},
+    {"admin.catchup", ",\"mode\":\"keep\",\"count\":\"0\",\"expected_sync\":101"},
+    {"admin.catchup", ",\"mode\":\"keep\",\"count\":1.5,\"expected_sync\":101"},
+    {"admin.catchup", ",\"mode\":\"keep\",\"count\":0,\"expected_sync\":\"101\""},
+    {"admin.catchup", ",\"mode\":\"before\",\"before\":-1,\"expected_sync\":101"},
+    {"admin.catchup", ",\"mode\":\"before\",\"before\":4294967296,\"expected_sync\":101"},
+    {"admin.access", ",\"role\":4,\"expected_role\":2"},
+    {"admin.access", ",\"role\":5,\"expected_role\":2"},
+    {"admin.access", ",\"role\":256,\"expected_role\":2"},
+    {"admin.access", ",\"role\":-1,\"expected_role\":2"},
+    {"admin.access", ",\"role\":2.5,\"expected_role\":2"},
+    {"admin.access", ",\"role\":\"3\",\"expected_role\":2"},
+    {"admin.access", ",\"role\":3,\"expected_role\":\"2\""},
+    {"admin.ban", ",\"banned\":\"true\""}, {"admin.ban", ",\"banned\":1"},
+    {"admin.history", ",\"enabled\":1,\"expected\":false"},
+    {"admin.history", ",\"enabled\":true,\"expected\":\"false\""},
+    {"admin.topic", ",\"value\":7,\"expected\":\"unchanged\""},
+    {"admin.topic", ",\"value\":\"New\\u0000topic\",\"expected\":\"unchanged\""},
+    {"admin.rates", ",\"post_rate\":-1,\"poll_rate\":60"},
+    {"admin.rates", ",\"post_rate\":65536,\"poll_rate\":60"},
+    {"admin.rates", ",\"post_rate\":1.5,\"poll_rate\":60"},
+    {"admin.rates", ",\"post_rate\":12,\"poll_rate\":\"60\""},
+    {"admin.cli", ",\"value\":\"erase\""}, {"admin.userdetail", ""},
+    {"admin.users\\u0000post", ",\"cursor\":0"},
+  };
+  for (const auto& entry : invalid) {
+    MyMesh m; enable(m); seedClients(m); strcpy(m.room_topic, "unchanged");
+    const std::vector<ClientInfo> clients(m.acl.clients, m.acl.clients + m.acl.count);
+    const unsigned writes = m.storage.write_opens;
+    const auto denied = result(m, adminClientRequest(entry.operation, m.acl.clients[1], entry.fields), 1);
+    assert(denied["error"].is<const char*>() && denied.as<JsonObjectConst>().size() == 1);
+    assert(m.acl.count == 5 && memcmp(clients.data(), m.acl.clients, clients.size() * sizeof(ClientInfo)) == 0);
+    assert(m.acl.saves == 0 && m.dirty_contacts_expiry == 0 && m.retry_cancellations == 0);
+    assert(m.storage.write_opens == writes && m.room_access.banCount() == 0);
+    assert(!m.room_history_enabled && strcmp(m.room_topic, "unchanged") == 0);
+    assert(m.room_access.postRate() == 0 && m.room_access.pollRate() == 0);
+  }
+  const char* writes[] = {"admin.route", "admin.catchup", "admin.access", "admin.ban",
+      "admin.topic", "admin.history", "admin.rates"};
+  for (const char* operation : writes) {
+    MyMesh m; enable(m); seedClients(m);
+    error(m, adminClientRequest(operation, m.acl.clients[1], "", 70), 99, "restarted");
+    error(m, request(operation, "admin-secret", ",\"boot\":\"71\""), 99, "restarted");
+    error(m, request(operation, "admin-secret"), 99, "restarted");
+    assert(floors(m) == 0 && m.acl.lookups == 0 && m.acl.saves == 0);
+  }
+  MyMesh m; enable(m); seedClients(m);
+  const auto mutation = adminClientRequest("admin.route", m.acl.clients[1], routeFields("outpath", "B1", "A2"));
+  assert(result(m, mutation, 1)["ok"] == true && m.acl.saves == 1);
+  error(m, mutation, 1, "completed"); assert(m.acl.saves == 1);
+  error(m, request("admin.users", "write-secret", ",\"cursor\":0"), 100, "admin");
+  assert(floors(m) == 1);
+  assert(result(m, request("admin.users", "admin-secret", ",\"cursor\":0"), 2)["users"].size() == 2);
+  MyMesh full; enable(full);
+  for (uint8_t owner = 1; owner <= 8; ++owner) {
+    assert(result(full, request("admin.settings", "admin-secret"), 1, owner)["boot"] == 71);
+  }
+  error(full, request("admin.settings", "admin-secret"), 1, "busy", 9);
+  assert(floors(full) == 8 && full.acl.lookups == 0);
+  MyMesh banned; enable(banned);
+  uint8_t author[PUB_KEY_SIZE]; const auto identity = token();
+  mesh::Utils::sha256(author, sizeof(author), identity.data(), identity.size(), banned.self_id.pub_key, PUB_KEY_SIZE);
+  assert(banned.room_access.addBan(banned._fs, author) == mesh::RoomAccessPolicy::BanResult::Saved);
+  error(banned, request("admin.settings", "admin-secret"), 1, "access denied");
+  assert(floors(banned) == 0 && banned.acl.lookups == 0 && !banned.room_web_request_authenticated);
+  printf("ADMIN_INVALID: %zu strict schemas, 21 boot guards, replay/auth floors, bounded sessions and banned browser passed\n", std::size(invalid));
+}
 int main() {
   unsigned scenarios = 0;
   {
@@ -269,11 +708,17 @@ int main() {
     for (unsigned i = 0; i < 40; ++i) assert(result(m, request("post", "write-secret", ",\"boot\":71,\"name\":\"A\",\"text\":\"bounded ring\""), 300 + i, 9)["ok"] == true);
     assert(m._num_posted == 40 && m.next_post_idx == 8 && m.last_room_timestamp == 1039); ++scenarios;
   }
+  adminAuthorizationCases();
+  adminRouteCases();
+  adminCatchUpCases();
+  adminListingCases();
+  adminAccessAndSettingsCases();
+  adminInvalidAndSessionCases();
   // Deliver concrete backend responses for the browser boundary fixture.
   MyMesh boundary; enable(boundary);
   printf("BOUNDARY_STATUS %s\n", execute(boundary, request("status"), 1).c_str());
   assert(result(boundary, saveRequest(1, 0, "Instructions", "Read only this article"), 2)["ok"] == true);
   printf("BOUNDARY_INDEX %s\n", execute(boundary, request("board.index", "write-secret", ",\"revision\":0,\"cursor\":0"), 3).c_str());
   printf("BOUNDARY_READ %s\n", execute(boundary, request("board.read", "write-secret", ",\"id\":1,\"version\":1,\"offset\":0"), 4).c_str());
-  printf("PASS: %u actual room web service authorization, storage, quota, JSON and boundary scenarios\n", scenarios);
+  printf("PASS: %u base and 6 admin actual room web service authorization, storage, quota, JSON and boundary groups\n", scenarios);
 }
