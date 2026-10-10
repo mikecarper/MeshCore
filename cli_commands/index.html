@@ -1285,6 +1285,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../room_services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Room services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../carrier_wave/" class="md-nav__link">
         
   
@@ -10180,8 +10208,11 @@ a packet already queued for transmission can still arrive.</p>
 <p>Topic saves are verified before publication. A failed save reports an error
 and retains the previous live topic. Corrupt, unreadable, or unsupported stored
 topic files are preserved and block replacement until their storage issue is
-repaired. Topics do not make ordinary room history persistent: retained posts
-still use the existing bounded RAM ring and are lost on reboot.</p>
+repaired. Ordinary room history uses the bounded RAM ring by default. Enable
+optional retention of the newest 32 posts with <code>set room.history on</code>.</p>
+<p>See <a href="../room_services/">Room history, moderation, and information board</a> for
+persistent history, saved ACL roles, full-key bans, per-user post/request
+limits, the ESP32 <code>/room</code> browser page, and versioned article downloads.</p>
 <hr />
 <h3 id="region-management-v110">Region Management (v1.10.+)</h3>
 <h4 id="bulk-load-region-lists">Bulk-load region lists</h4>

@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/upgrading_1.17.1.8_to_1.17.1.9/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/room_services/">
       
       
-        <link rel="prev" href="../halo_keymind_settings/">
+        <link rel="prev" href="../fleet_management/">
       
       
-        <link rel="next" href="../ota_user_guide/">
+        <link rel="next" href="../carrier_wave/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Upgrading 1.17.1.8 to 1.17.1.9 - MeshCore Docs</title>
+        <title>Room services - MeshCore Docs</title>
       
     
     
@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#upgrading-from-11718-to-11719-over-wifi" class="md-skip">
+        <a href="#room-history-moderation-and-information-board" class="md-skip">
           Skip to content
         </a>
       
@@ -121,7 +121,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Upgrading 1.17.1.8 to 1.17.1.9
+              Room services
             
           </span>
         </div>
@@ -816,20 +816,18 @@
                 
   
   
-    
   
   
-  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
         
           
           <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
@@ -850,7 +848,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -865,37 +863,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Upgrading 1.17.1.8 to 1.17.1.9
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../upgrading_1.17.1.8_to_1.17.1.9/" class="md-nav__link">
         
   
   
@@ -911,92 +882,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#choose-the-installation-route" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Choose the installation route
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#recommended-11718-v4-example-use-the-nodes-ap" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Recommended 1.17.1.8 V4 example: use the node's AP
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#lan-and-phone-examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        LAN and phone examples
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#when-partition-expansion-is-required" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When partition expansion is required
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#stock-g2-migration-limitation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stock G2 migration limitation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#measured-upgrade-scope" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Measured upgrade scope
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1294,18 +1179,20 @@
                 
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
@@ -1326,7 +1213,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1397,10 +1284,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../room_services/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Room services
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1416,6 +1330,98 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#optional-persistent-chat-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional persistent chat history
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#saved-acl-roles-and-moderation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saved ACL roles and moderation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-wi-fi-chat-on-esp32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Wi-Fi chat on ESP32
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#information-board" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Information board
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Information board">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lora-board-read-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa board read protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#regression-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regression coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2326,10 +2332,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#choose-the-installation-route" class="md-nav__link">
+  <a href="#optional-persistent-chat-history" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Choose the installation route
+        Optional persistent chat history
       
     </span>
   </a>
@@ -2337,10 +2343,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#recommended-11718-v4-example-use-the-nodes-ap" class="md-nav__link">
+  <a href="#saved-acl-roles-and-moderation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Recommended 1.17.1.8 V4 example: use the node's AP
+        Saved ACL roles and moderation
       
     </span>
   </a>
@@ -2348,10 +2354,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#lan-and-phone-examples" class="md-nav__link">
+  <a href="#local-wi-fi-chat-on-esp32" class="md-nav__link">
     <span class="md-ellipsis">
       
-        LAN and phone examples
+        Local Wi-Fi chat on ESP32
       
     </span>
   </a>
@@ -2359,32 +2365,38 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-partition-expansion-is-required" class="md-nav__link">
+  <a href="#information-board" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When partition expansion is required
+        Information board
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Information board">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lora-board-read-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa board read protocol
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#stock-g2-migration-limitation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stock G2 migration limitation
-      
-    </span>
-  </a>
+        
+      </ul>
+    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#measured-upgrade-scope" class="md-nav__link">
+  <a href="#regression-coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Measured upgrade scope
+        Regression coverage
       
     </span>
   </a>
@@ -2408,7 +2420,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/upgrading_1.17.1.8_to_1.17.1.9.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/room_services.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2417,162 +2429,193 @@
 
 
 <!-- meshcore-hosted-doc-link:start -->
-<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/upgrading_1.17.1.8_to_1.17.1.9/">View this page on MeshCore Docs</a>.</p>
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/room_services/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-<h1 id="upgrading-from-11718-to-11719-over-wifi">Upgrading from 1.17.1.8 to 1.17.1.9 over WiFi</h1>
-<p>For a supported ESP32 node that already has compatible application slots,
-use its own <code>MeshCore-OTA</code> access point and the matching application-only
-image. This measured V4 route avoids dependence on the site's WiFi credentials
-and LAN reachability. USA Cascade defaults remain 910.525 MHz, 62.5 kHz, SF7 and CR5; existing saved radio settings take
-precedence after an update.</p>
-<p>Select the exact board, hardware variant and role in the
-<a href="../firmware_picker/">firmware picker</a>. Download the image before connecting
-to the node's update network. The release's manifests and SHA-256 inventory
-identify the exact files. Preserve identity and settings using the tools
-appropriate to the installed role before an upgrade.</p>
-<h2 id="choose-the-installation-route">Choose the installation route</h2>
+<h1 id="room-history-moderation-and-information-board">Room history, moderation, and information board</h1>
+<p>Room Server firmware keeps one room per radio. Existing app login, chat,
+catch-up, and Access Control formats remain supported. The information board
+and local Wi-Fi chat use the browser page below; the stock mobile app does not
+have an information-board screen.</p>
+<h2 id="optional-persistent-chat-history">Optional persistent chat history</h2>
+<p>History uses RAM by default. From a local console or authenticated remote
+administrator session:</p>
+<pre><code class="language-text">get room.history
+set room.history on
+set room.history off
+room.history.clear
+</code></pre>
+<p>Enabling persistence first saves the current RAM ring. The newest <strong>32 posts</strong>
+then survive reboot. Disabling retains the archive and stops disk writes; the
+next enable replaces it with the current RAM ring. Clearing removes disk and
+RAM posts, leaving the topic and information board alone.</p>
+<p>Accepted posts append 192-byte records. At 64 records the journal compacts to
+the newest 32. Its maximum size is 12,300 bytes; compaction temporarily also
+needs a verified snapshot of about 6.2 KB. This is bounded recent history,
+and its filesystem records are not encrypted at rest.</p>
+<p>A post is saved before the server sends its ACK or advances the live ring,
+retry cache, or sender replay timestamp. Full storage and unsuccessful writes
+retain the previous chat and withhold the ACK. A recoverable incomplete or
+corrupt final append keeps its verified earlier records. Corruption before
+later complete records preserves the entire journal and blocks replacement.
+Unreadable, unsupported, or corrupt primary metadata is also preserved until
+storage is repaired.</p>
+<p>A reboot after storage completes but before the sender receives the ACK can
+recover a valid post without confirming it to the sender. Exactly-once delivery
+across that crash boundary is not guaranteed.</p>
+<p>Catch-up timestamps stay increasing across restored history and backward clock
+corrections without setting the radio's RTC from archived posts. New posts use
+a six-second monotonic delivery delay; restored posts can be delivered
+immediately. Set the clock correctly for useful displayed dates.</p>
+<p>The Companion also withholds a room-message ACK when its receive queue cannot
+retain the message. Rejected delivery does not advance catch-up, schedule
+receipt persistence, or emit a new-message notification.</p>
+<h2 id="saved-acl-roles-and-moderation">Saved ACL roles and moderation</h2>
+<p>An operator's nonzero <code>setperm</code> assignment survives reboot and is protected
+from automatic room-client eviction. Assigned read-only and read/write users
+appear in Access Control alongside administrators. Automatic guest-password
+read/write sessions remain transient; password-created administrators remain
+retained. The existing permission byte is unchanged.</p>
+<p>ACL updates use the existing delayed settings save. Allow at least five seconds
+after <code>setperm</code> before removing power so the assignment reaches storage.</p>
+<pre><code class="language-text">setperm &lt;complete-64-hex-public-key&gt; 1
+setperm &lt;complete-64-hex-public-key&gt; 2
+setperm &lt;complete-64-hex-public-key&gt; 3
+setperm &lt;complete-64-hex-public-key&gt; 0
+room.ban &lt;complete-64-hex-public-key&gt;
+room.unban &lt;complete-64-hex-public-key&gt;
+get room.bans
+get room.bans 2
+set room.post.rate 12
+set room.poll.rate 60
+get room.post.rate
+get room.poll.rate
+</code></pre>
+<p>Roles are <code>1</code> read-only, <code>2</code> read/write, and <code>3</code> administrator; <code>0</code> removes
+the assignment. Guest-password login cannot demote an explicit administrator
+or upgrade an explicit read-only user. Empty passwords are not enabled
+credentials; public passwordless read-only login still requires its existing
+setting.</p>
+<p>The persistent ban list accepts up to 32 complete identities, never names or
+prefixes. It excludes new logins and existing sessions, including posts,
+requests, path updates, ACKs, and pushes. It leaves existing posts and ACL
+assignments intact. Use another authorized administrator or a local console
+to undo a ban on your own identity.</p>
+<p>Rates are per identity per shared monotonic minute. <code>0</code> disables a limit
+(the default); the maximum is 65,535. The post limit covers new chat posts.
+The poll limit covers room requests, including keep-alive, status, telemetry,
+ACL and board reads, and authenticated browser operations.
+Login does not reset counts. Exact accepted retries are not charged again.
+Old keep-alive retries cannot rewind catch-up or cancel a newer pending push.
+Rejected posts do not enter the retry cache.</p>
+<p>Changing to a different identity creates a different user. These controls
+complement forwarding and airtime policies.</p>
+<h2 id="local-wi-fi-chat-on-esp32">Local Wi-Fi chat on ESP32</h2>
+<p>ESP32 Room Server images with WebConfig have an offline browser room page.
+It is <strong>disabled by default</strong> and uses the existing WebConfig listener:</p>
+<pre><code class="language-text">set room.web on
+start webconfig
+</code></pre>
+<p>Open <code>http://&lt;reported-radio-IP&gt;/room</code>. Without a usable router, use
+<code>start webconfig ap</code>, connect the phone to its access point, and append
+<code>/room</code> to the reported address. Existing setup AP time limits and Wi-Fi/OTA
+ownership rules apply. Starting OTA shuts down this listener. Compact images
+and boards without WebConfig retain LoRa chat and CLI access.</p>
+<p>Enter the guest or administrator room password, or leave it empty for
+explicitly enabled public read-only access. Readers cannot post or edit
+notices; only administrators can publish or delete them. Each operation
+rechecks credentials and bans. Use private Wi-Fi: the local page uses HTTP,
+and network access alone does not grant administrator permission.</p>
+<p>The browser generates a secret token and its own moderation identity. It
+does not import a radio private key or inherit a claimed radio key's ACL role.
+The Access and history panel shows the complete browser identity for banning.
+Posts share the LoRa chat history and include the display name; combined name
+and text must fit 151 UTF-8 bytes.</p>
+<p>Passwords stay in page memory. The token, sequence and display name are saved
+locally; use one active room tab per browser identity. Interrupted submissions
+retry the same sequence and body, then poll the owned result. Retry floors
+are bounded to twenty minutes and the current boot. The page stops retrying
+after twenty seconds and preserves an unconfirmed draft. After a restart or
+uncertain result, refresh and check before submitting again.</p>
+<p>Authentication, storage and radio work run on the mesh loop. HTTP callbacks
+only admit a bounded request and return its owned result. No arbitrary CLI
+operation is exposed. Disable room access with <code>set room.web off</code>; stop the
+portal with <code>stop webconfig</code>.</p>
+<h2 id="information-board">Information board</h2>
+<p>Eight persistent article slots have titles up to 63 UTF-8 bytes and bodies up
+to 2,048 bytes. Index revisions and article versions survive reboot. Bodies
+use two bounded file banks per slot, streamed verification, and atomic index
+publication.</p>
+<p>Available filesystem space determines how much fits. Small internal nRF52
+filesystems cannot hold every article at maximum size alongside persistent
+history and settings. Leave space for the history snapshot and article/index
+replacement; a full filesystem rejects the change and retains existing data.</p>
+<p>In <code>/room</code>, refresh the notice index and select an article to download.
+Unselected bodies are not pushed or downloaded. Chunks are at most 128 bytes;
+completed chunks remain available within the page after a lost connection.
+A new article version starts a new transfer. The administrator editor checks
+the version of the loaded article before saving to prevent lost edits.</p>
+<p>Small notices also support administrator/local CLI management:</p>
+<pre><code class="language-text">room.board.put 1 Trail conditions|Bridge closed until Saturday.
+get room.board
+get room.board 1
+get room.board.read 1 &lt;version&gt; 0
+room.board.del 1 &lt;version&gt;
+</code></pre>
+<p>Index arguments are zero-based entry cursors; follow the returned <code>next=</code>.
+Long titles can reduce a reply to one entry. Put uses <code>TITLE|BODY</code> and still
+obeys the command transport's total length limit; use the browser for a full
+2 KB article. Read replies contain bounded Base64 and ID, version, offset,
+total length and byte count. Continue at offset plus count. Deletion requires
+a current nonzero version; reusing a deleted slot assigns a newer version.</p>
+<h3 id="lora-board-read-protocol">LoRa board read protocol</h3>
+<p>Logged-in readers, including read-only guests, can use encrypted
+<code>PAYLOAD_TYPE_REQ</code> requests to the existing single room. The usual four-byte
+tag precedes these payloads and is echoed before responses. Multi-byte
+integers are little-endian.</p>
 <table>
 <thead>
 <tr>
-<th>Installed node</th>
-<th>File and route</th>
+<th>Operation</th>
+<th>Payload after tag</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Exact ESP32 board/role with compatible dual-OTA slots</td>
-<td>Matching application-only <code>.bin</code> through its working browser updater.</td>
+<td>Index</td>
+<td><code>0a 00</code> + expected revision <code>u32</code> + entry cursor <code>u8</code></td>
 </tr>
 <tr>
-<td>Supported legacy dual-OTA layout needing expansion</td>
-<td>Exact board/role migration ZIP from the selected release's utility page; follow its README and use its supplied Full application.</td>
-</tr>
-<tr>
-<td>Layout without a matching migration package, single application slot, or no working supported updater</td>
-<td>Matching <code>-merged.bin</code> through that board's USB/serial flashing procedure.</td>
-</tr>
-<tr>
-<td>nRF52</td>
-<td>Matching application UF2/DFU ZIP or a separately documented LoRa OTA route; this ESP32 browser procedure does not apply.</td>
+<td>Article</td>
+<td><code>0a 01</code> + article ID <code>u8</code> + expected version <code>u32</code> + offset <code>u16</code></td>
 </tr>
 </tbody>
 </table>
-<p>An application-only update cannot replace a partition table. Where available,
-<code>get storage.layout</code> reports the live layout; a version label does not establish
-it. For older firmware, use the <a href="../esp32_partition_catalog/">partition lookup guide</a>.
-The tested V4 already had two 6.25 MiB slots in the expanded 16 MiB layout.
-That result does not qualify a migration from legacy 1.25 MiB slots.</p>
-<p>Never upload a <code>-merged.bin</code> or <code>target-partitions.bin</code> to an application-only
-browser updater. A merged image includes bootloader and partition-table
-offsets for USB/serial installation. A migration package's target table is
-a verification artifact, not an application.</p>
-<h2 id="recommended-11718-v4-example-use-the-nodes-ap">Recommended 1.17.1.8 V4 example: use the node's AP</h2>
-<p>The actual published Full V4 build tested was <code>9053038f</code>. From an authenticated
-USB, Bluetooth or LoRa command session, send these commands one at a time,
-waiting for each reply:</p>
-<pre><code class="language-text">stop webconfig
-stop ota
-start ota ap
-</code></pre>
-<p>Stopping WebConfig explicitly is needed for this old build's HTTP-port
-handoff. Stopping a previously running uploader ensures the old <code>start ota ap</code>
-starts the AP route. The new 1.17.1.9 startup behavior should not be assumed
-on the old receiver.</p>
-<p>Join the node's <code>MeshCore-OTA</code> WiFi network. Open the exact URL returned by
-the command, normally <code>http://192.168.4.1/update</code> for an infrastructure node.
-Confirm that the page identifies the intended node, select its matching
-1.17.1.9 application-only <code>.bin</code>, and upload once. Keep the node powered
-through the transfer and its automatic restart.</p>
-<p>After restart, reconnect with the normal configuration app or console and
-run:</p>
-<pre><code class="language-text">ver
-get storage.layout
-</code></pre>
-<p>Compare <code>ver</code> with the selected image and confirm identity, ACL, radio settings
-and the other saved settings used by the node. A command unsupported by the
-installed image is not proof of an incorrect layout; use the lookup guide
-when necessary.</p>
-<p>The old 1.17.1.8 page can remain at 100% or miss HTTP completion even after
-the new application installs and the node restarts. Check the running version
-before repeating an upload. Browser transmission progress alone does not
-prove successful installation.</p>
-<p>For 1.17.1.9 receivers, <code>start ota</code> starts WiFi when needed, stops WebConfig
-to free its HTTP port, and reports the IP address and network to use.
-<code>start ota ap</code> explicitly selects the node AP even if a LAN uploader is
-already running. WebConfig's own terminal explains that the handoff closes
-the portal; send it through USB, Bluetooth or LoRa instead. On a compatible
-two-slot Full Companion, use the returned port-8080 URL; single-slot Full
-Companions require USB for self-update. Use <code>stop ota</code> if abandoning an update.</p>
-<h2 id="lan-and-phone-examples">LAN and phone examples</h2>
-<p>If an old 1.17.1.8 infrastructure node is already reachable on the intended
-WiFi LAN, retain that connection. Otherwise configure it through its existing
-WebConfig UI, then verify the live address with <code>get webui</code>. From a separate
-USB, Bluetooth or LoRa session:</p>
-<pre><code class="language-text">stop webconfig
-stop ota
-start ota
-</code></pre>
-<p>Open the exact returned LAN URL, for example <code>http://192.168.1.40/update</code>.
-The upload computer or phone must be able to reach that address. On
-1.17.1.8, confirm the actual connection after changing credentials; a serial
-WiFi setter alone does not prove that WebConfig uses the new pair. If the LAN
-is weak or blocks client-to-client traffic, use the node AP route above.</p>
-<p>A phone near the node can download the correct application while it has
-Internet access, join <code>MeshCore-OTA</code>, and use its browser at the returned
-address. Keep that WiFi connection even if the phone warns it has no Internet.
-This is the same intended node-AP route, but an actual phone browser upload
-was not physically tested in this run.</p>
-<p>A phone hotspot is useful only if the node and uploading device can both
-join it and reach one another. Confirm the node's reported LAN URL before
-uploading; hotspot client isolation can prevent this. The controlled shared
-LAN test used a Pi access point, not a real phone hotspot, so a phone hotspot
-is not the qualified default recommendation. For a node with only LoRa
-reachability, use the <a href="../lora_ota_automation/">LoRa OTA guide</a> and exact matching
-target/storage package.</p>
-<h2 id="when-partition-expansion-is-required">When partition expansion is required</h2>
-<p>Use the exact migration ZIP selected for this board and role. Its README
-defines the supported old updater, live-source checks and preservation set:</p>
-<ol>
-<li>Upload that package's <code>wifi-bridge.bin</code> through the supported old updater.</li>
-<li>Join the migration network described in its README and wait for
-   <strong>Expanded layout ready</strong>.</li>
-<li>Upload the same package's <code>full-application.bin</code> through its <code>/update</code> page.</li>
-<li>Verify the new layout, version, identity, ACL and supported saved settings.</li>
-</ol>
-<p>Do not substitute a loose release application for the ZIP's supplied Full
-application: migration packages can carry a required older target identity.
-Do not combine stages from different packages. The bridge writes the
-partition-table sector; loss of power during that write can require cable
-recovery. See the <a href="../esp32_wifi_partition_migration/">complete migration directions</a>
-for the exact preservation limits and supported WiFi/LoRa routes. Actual
-legacy-layout V4 migration was not physically tested in this run.</p>
-<h2 id="stock-g2-migration-limitation">Stock G2 migration limitation</h2>
-<p>The separate stock 1.14.1 G2 trial reached the <code>1e421ff4</code> Full application
-over WiFi after partition expansion, but its final isolated
-network check reached the client/DHCP deadline without a verified G2 client
-or any HTTP request. The complete cable-free migration is therefore not
-qualified. Plan for USB recovery if starting from that stock image.</p>
-<p>The G2 was subsequently updated and verified through separate USB maintenance
-on release source <code>88c851080</code>, with its original identity, ACLs, 22 common
-settings and saved extras preserved. That result does not qualify the failed
-WiFi-only final check. A legacy RX-gain loading correction preserves an
-unambiguous saved gain of on from compact stock preferences; ambiguous older
-zero padding retains the board default.</p>
-<p>The <a href="../test-results/hardware_validation_esp32_web_console_ota_2026-10-05/#release-candidate-follow-up-recorded-2026-10-07">detailed test report</a>
-retains the original failures, host/network recovery and exact source revisions.
-Latest-source physical V4 testing was unavailable; the measured older upgrade
-routes below do not establish every board or starting version.</p>
-<h2 id="measured-upgrade-scope">Measured upgrade scope</h2>
-<p>The published 1.17.1.8 Full V4 installed newer applications over node AP and
-a controlled shared LAN, with automatic restart and preserved identity and
-ACL, despite missing old-page HTTP completion. On the earlier <code>c5fe8a0e</code> source,
-the unchanged native AP pages returned HTTP 200/OK for G2 and V4 uploads;
-the V4 upload completed in 16.392 seconds and its first ordinary clock reply
-took 1.010 seconds against the unchanged 5-second console deadline. These
-tests used compatible expanded layouts and do not qualify every board,
-browser, phone or starting version. See the
-<a href="../releases/1.17.1.9/#verification-scope">1.17.1.9 verification scope</a>.</p>
+<p>First index page: revision <code>0</code>, cursor <code>0</code>. Subsequent pages require the
+returned revision. Response: subtype, operation, status, revision <code>u32</code>,
+total count, start cursor, next cursor, then up to two complete entries.
+Each entry is ID <code>u8</code>, version <code>u32</code>, body length <code>u16</code>, title length <code>u8</code>
+and title bytes. Next cursor <code>255</code> means complete.</p>
+<p>Article response: subtype, operation, status, ID <code>u8</code>, version <code>u32</code>,
+offset <code>u16</code>, total body length <code>u16</code>, chunk length <code>u8</code>, then raw bytes.
+The route's encrypted reply capacity may reduce the chunk. Continue at offset
+plus length; offset equal to total returns successful EOF. Never combine
+different versions.</p>
+<p>Statuses: <code>0</code> success, <code>1</code> invalid, <code>2</code> storage unavailable, <code>3</code> write
+failure, <code>4</code> not found, <code>5</code> stale version. A capacity too small for a full
+header may return only subtype, operation, and invalid status. On stale
+revision/version, reload the index and restart the affected transfer.</p>
+<h2 id="regression-coverage">Regression coverage</h2>
+<p>Production handlers and stores are tested across ESP32, nRF52, STM32, Pico
+and generic filesystem APIs, including full storage, corruption, interrupted
+publication, queue rejection, ACL reboot/eviction, quotas, clock correction
+and allocation failure. ARM checks verify the new counters fit the existing
+client union.</p>
+<p>The pinned official app JavaScript consumes real firmware room frames and
+login responses. Chromium executes the bundled browser page with real backend
+response fixtures, testing untrusted text, lost replies, draft preservation,
+selective reads, resume and UTF-8 limits. These browser fixtures do not claim
+a physical LoRa/Wi-Fi transfer.</p>
 
 
 
