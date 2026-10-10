@@ -7,6 +7,7 @@
 #include <helpers/RoomAccessPolicy.h>
 #include <helpers/LogicalMessageCache.h>
 #include <helpers/ClientACLResponse.h>
+#include <helpers/ClientPathPersistence.h>
 #include <helpers/RoutingPolicy.h>
 
 #define REQ_TYPE_GET_ACCESS_LIST 0x05
@@ -92,6 +93,7 @@ struct ClientInfo {
   uint8_t permissions = 3;
   bool permissions_are_explicit = false;
   uint8_t out_path_len = 0, out_path[MAX_PATH_SIZE] = {};
+  uint8_t alt_path_len = OUT_PATH_UNKNOWN, alt_path[MAX_PATH_SIZE] = {};
   uint32_t last_timestamp = 0, last_activity = 0;
   struct { struct {
     uint32_t sync_since = 0, pending_ack = 0, pending_topic_revision = 0;
@@ -122,7 +124,9 @@ public:
   ClientInfo sender;
   Clock clock;
   unsigned queued = 0, direct_sent = 0, flood_sent = 0;
+  unsigned queue_capacity = 0xFFFFFFFFU;
   bool refuse_queue = false;
+  std::vector<mesh::Packet*> sent_packets;
   TransportKey default_scope;
   RegionEntry region;
   RegionEntry* recv_pkt_region = nullptr;
@@ -142,14 +146,21 @@ public:
   TARGET_CLASS() { metadata_filesystem = &fs; assert(room_access.load(&fs)); }
   static bool saveFilter(ClientInfo*);
   void serviceRoomQuotas() { room_access.serviceQuotaWindow(0, [] {}); }
+  struct { uint8_t direct_retry_enabled = 1; } _prefs;
+  std::vector<uint8_t> reply_retry_flags;
+  bool sendClientReply(ClientInfo*, mesh::Packet*, unsigned long, uint8_t);
 #endif
   void receive(mesh::Packet*, uint8_t*, size_t);
   bool admit(mesh::Packet* packet) {
-    if (!packet || refuse_queue) return false;
+    if (!packet || refuse_queue || queued >= queue_capacity) return false;
     assert(packet->payload_len <= MAX_PACKET_PAYLOAD);
     last_reply = packet;
     ++queued;
     if (packet->isRouteDirect()) ++direct_sent; else ++flood_sent;
+    sent_packets.push_back(packet);
+#ifndef TEST_SENSOR
+    reply_retry_flags.push_back(_prefs.direct_retry_enabled);
+#endif
     return true;
   }
   bool sendPacket(mesh::Packet* packet, uint8_t, uint32_t) override { return admit(packet); }
@@ -352,5 +363,77 @@ int main() {
       }
     }
   }
+#ifndef TEST_SENSOR
+  for (uint8_t stored_path : {0, 1, 0x41, 0x95, 0xFE, 0xFF, 0xC0}) {
+    for (unsigned alternate_case = 0; alternate_case < 5; ++alternate_case) {
+      TARGET_CLASS receiver;
+      fill(receiver.acl, 256, true);
+      receiver.sender.out_path_len = stored_path;
+      memset(receiver.sender.out_path, 0x12, MAX_PATH_SIZE);
+      receiver.sender.alt_path_len = stored_path;
+      memcpy(receiver.sender.alt_path, receiver.sender.out_path, MAX_PATH_SIZE);
+      const size_t path_bytes = mesh::encodedClientPathByteLength(stored_path);
+      if (alternate_case == 0) receiver.sender.alt_path_len = OUT_PATH_UNKNOWN;
+      if (alternate_case == 1 && path_bytes < MAX_PATH_SIZE) {
+        // Unused route capacity is not part of an otherwise identical path.
+        receiver.sender.alt_path[path_bytes] = 0x34;
+      }
+      if (alternate_case == 2) receiver.sender.alt_path_len = 2;
+      if (alternate_case == 3) {
+        if (path_bytes > 0 && path_bytes <= MAX_PATH_SIZE) {
+          receiver.sender.alt_path[path_bytes - 1] = 0x34;
+        } else {
+          receiver.sender.alt_path_len = 1;
+        }
+      }
+      if (alternate_case == 4) receiver.sender.alt_path_len = 0xC0;
+      const bool direct = mesh::Packet::isValidPathLen(stored_path);
+      const bool alternate = direct && (alternate_case == 2 || alternate_case == 3);
+      mesh::Packet incoming;
+      incoming.header = ROUTE_TYPE_DIRECT;
+      uint8_t data[] = {51, 0, 0, 0, REQ_TYPE_GET_ACCESS_LIST, 0, 0};
+      receiver.receive(&incoming, data, sizeof(data));
+      assert(receiver.queued == 1U + unsigned(alternate));
+      assert(receiver.direct_sent == (direct ? receiver.queued : 0));
+      assert(receiver.flood_sent == unsigned(!direct));
+      assert(receiver._prefs.direct_retry_enabled == 1);
+      assert(receiver.reply_retry_flags[0] == 1);
+      if (!direct) continue;
+      const auto* primary = receiver.sent_packets[0];
+      assert(primary->path_len == stored_path);
+      assert(!memcmp(primary->path, receiver.sender.out_path, path_bytes));
+      const size_t capacity = mesh::CLIENT_ACL_DIRECT_REPLY_CAPACITY;
+      verify(receiver, 4 + 7 * ((capacity - 4) / 7), capacity);
+      if (alternate) {
+        const auto* extra = receiver.sent_packets[1];
+        assert(extra != primary && extra->payload_len == primary->payload_len);
+        assert(!memcmp(extra->payload, primary->payload, primary->payload_len));
+        assert(extra->path_len == receiver.sender.alt_path_len);
+        assert(!memcmp(extra->path, receiver.sender.alt_path,
+                       mesh::encodedClientPathByteLength(extra->path_len)));
+        assert(receiver.reply_retry_flags[1] == 0);
+      }
+    }
+  }
+  for (unsigned refusal = 0; refusal < 4; ++refusal) {
+    TARGET_CLASS receiver;
+    fill(receiver.acl, 32, true);
+    receiver.sender.out_path_len = receiver.sender.alt_path_len = 1;
+    receiver.sender.out_path[0] = 0x12;
+    receiver.sender.alt_path[0] = 0x34;
+    const int length = request(receiver, &receiver.sender, query, sizeof(query));
+    auto* reply = receiver.createDatagram(PAYLOAD_TYPE_RESPONSE, receiver.sender.id,
+                                          secret, receiver.reply_data, length);
+    assert(reply != nullptr);
+    receiver.refuse_allocation = refusal == 1;
+    receiver.refuse_queue = refusal == 2;
+    if (refusal == 3) receiver.queue_capacity = 1;
+    const bool sent = receiver.sendClientReply(&receiver.sender, reply, SERVER_RESPONSE_DELAY, 1);
+    assert(sent == (refusal != 2));
+    assert(receiver.queued == (refusal == 0 ? 2U : refusal == 2 ? 0U : 1U));
+    assert(receiver.released == unsigned(refusal == 2));
+    assert(receiver._prefs.direct_retry_enabled == 1);
+  }
+#endif
   std::cout << "Room/Sensor ACL route, input, and permission checks passed\n";
 }

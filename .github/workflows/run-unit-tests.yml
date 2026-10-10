@@ -122,6 +122,8 @@ jobs:
           python3 -B test/test_room_login_authorization.py -v
           python3 -B test/test_room_login_integration.py -v
           python3 -B test/test_room_client_paths.py -v
+          python3 -B test/test_client_acl_infrastructure.py -v
+          python3 -B test/test_stored_client_reply_routes.py -v
           python3 -B test/test_room_catchup.py -v
           python3 -B test/test_room_catchup_transport.py -v
           python3 -B test/test_room_topic_store.py -v
@@ -299,8 +301,6 @@ jobs:
           python3 -B test/test_client_acl_metadata.py -v
           python3 -B test/test_client_acl_cli.py -v
           python3 -B test/test_client_acl_response.py -v
-          python3 -B test/test_client_acl_infrastructure.py -v
-          python3 -B test/test_stored_client_reply_routes.py -v
 
       - name: Setup Node for official app compatibility tests
         uses: actions/setup-node@v4

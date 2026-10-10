@@ -41,6 +41,7 @@ def production_methods(role, transform=None):
     generated += "ClientInfo* " + ("from" if sensor else "client") + " = &sender;\n"
     generated += "const uint8_t type = PAYLOAD_TYPE_REQ; uint8_t secret[PUB_KEY_SIZE] = {};\n" + receive + "\n}\n"
     if not sensor:
+        generated += extract_braced(source, "bool MyMesh::sendClientReply(") + "\n"
         generated += extract_braced(source, "bool MyMesh::saveFilter(") + "\n"
         telemetry = extract_braced(handler, "if (payload[0] == REQ_TYPE_GET_TELEMETRY_DATA)")
         telemetry_prefix = telemetry[:telemetry.index("    telemetry.reset();")]
@@ -131,11 +132,11 @@ class ClientAclInfrastructureTest(unittest.TestCase):
         for role, client in (("room", "client"), ("sensor", "from")):
             def old(source):
                 guard = "mesh::Packet::isValidPathLen(" + client + "->out_path_len)"
-                signature = ("if (type == PAYLOAD_TYPE_REQ && len >= 5)" if role == "room"
+                signature = ("bool MyMesh::sendClientReply(" if role == "room"
                              else "if (type == PAYLOAD_TYPE_REQ) {  // request")
                 receive = extract_braced(source, signature)
                 self.assertIn(guard, receive)
-                altered = receive.replace(guard, client + "->out_path_len != OUT_PATH_UNKNOWN")
+                altered = receive.replace(guard, "(" + client + "->out_path_len != OUT_PATH_UNKNOWN)")
                 return source.replace(receive, altered, 1)
             with self.subTest(role=role):
                 self.assertNotEqual(self.execute(role, old).returncode, 0)
