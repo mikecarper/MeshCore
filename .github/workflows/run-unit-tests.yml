@@ -117,7 +117,6 @@ jobs:
           python3 -B test/test_room_login_integration.py -v
           python3 -B test/test_room_topic_store.py -v
           python3 -B test/test_room_topic_delivery.py -v
-          python3 -B test/test_official_room_app_compatibility.py -v
           python3 -B test/test_contact_clock_bootstrap.py -v
           python3 -B test/test_rtc_discovery.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
@@ -294,10 +293,11 @@ jobs:
           path: ~/.cache/meshcore-tests
           key: official-clients-84bc39a950735aaffa93d912556852a4c22e235d0cc4e4d04790113207f13a68-aff42ad8ef2b332f24d644ff6a783f8272a88ff2
 
-      - name: Verify stock app radio and Access Control compatibility
+      - name: Verify stock app radio, Access Control and room compatibility
         run: |
           node --version
           python3 -B test/test_official_app_compatibility.py -v
+          python3 -B test/test_official_room_app_compatibility.py -v
 
       - name: Verify ESP32 USB reboot sleep grace and G3 button wake
         run: |
