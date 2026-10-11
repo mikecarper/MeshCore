@@ -9,6 +9,8 @@
 #include <helpers/sensors/LPPDataHelpers.h>
 #include "../room_history_store/filesystem.h"
 #include <helpers/RoomBoardProtocol.h>
+#include <helpers/RoomMailProtocol.h>
+#include <helpers/RoomAccessPolicy.h>
 
 #include "telemetry_capacity.inc"
 #include "telemetry_access.inc"
@@ -17,6 +19,8 @@
 #define REQ_TYPE_GET_AVG_MIN_MAX 0x04
 #define PERM_ACL_ROLE_MASK 7
 #define PERM_ACL_READ_ONLY 1
+#define PERM_ACL_READ_WRITE 2
+#define PERM_ACL_ADMIN 3
 #define TELEM_PERM_BASE 1
 #define TELEM_PERM_LOCATION 2
 #define TELEM_PERM_ENVIRONMENT 4
@@ -60,6 +64,7 @@ public:
 struct ClientInfo {
   mesh::Identity id;
   uint8_t permissions = 3;
+  uint32_t last_activity = 0;
   bool isAdmin() const { return (permissions & PERM_ACL_ROLE_MASK) == 3; }
 };
 struct Clock : mesh::RTCClock {
@@ -131,9 +136,11 @@ class MyMesh : public SensorMesh {
 public:
   MemoryFS room_fs;
   MemoryFS* _fs = &room_fs;
+  mesh::RoomAccessPolicy room_access;
   MyMesh() {
     telemetry.max_len = ROOM_TELEMETRY_CAPACITY; telemetry.data.reserve(telemetry.max_len);
     metadata_filesystem = _fs;
+    assert(room_access.load(_fs));
   }
   int handleRequest(ClientInfo*, uint32_t, uint8_t*, size_t,
                     size_t = mesh::CLIENT_ACL_DIRECT_REPLY_CAPACITY);
@@ -276,6 +283,64 @@ static void room_board_dispatch_checks() {
   assert(target.reply_data[6] == 0);
 }
 
+static void room_mail_dispatch_checks() {
+  uint8_t settings[] = {mesh::ROOM_MAIL_REQUEST_SUBTYPE, 0, 0, 0, 0, 0, 0};
+  for (uint8_t permissions : {uint8_t(0), uint8_t(1), uint8_t(2), uint8_t(3), uint8_t(4), uint8_t(131)}) {
+    for (uint32_t activity : {uint32_t(0), uint32_t(1000)}) {
+      const uint8_t role = permissions & PERM_ACL_ROLE_MASK;
+      const bool allowed = role == PERM_ACL_READ_ONLY || role == PERM_ACL_READ_WRITE
+          || role == PERM_ACL_ADMIN || (role == PERM_ACL_GUEST && activity != 0);
+      for (size_t capacity = 0; capacity <= MAX_PACKET_PAYLOAD; ++capacity) {
+        MyMesh target;
+        ClientInfo client; client.id.pub_key[0] = 1;
+        client.permissions = permissions; client.last_activity = activity;
+        memset(target.reply_data, 0xee, sizeof(target.reply_data));
+        const unsigned writes = target.room_fs.write_opens;
+        const int length = target.handleRequest(&client, 51, settings, sizeof(settings), capacity);
+        const int expected = !allowed || capacity < 7 ? 0 : capacity < 17 ? 7 : 17;
+        assert(length == expected && size_t(length) <= capacity);
+        for (size_t i = capacity; i < sizeof(target.reply_data); ++i) assert(target.reply_data[i] == 0xee);
+        assert(target.room_fs.write_opens == writes); // Checking must not provision an inbox.
+        if (length) {
+          uint32_t tag = 0; memcpy(&tag, target.reply_data, 4);
+          assert(tag == 51 && target.reply_data[4] == mesh::ROOM_MAIL_REQUEST_SUBTYPE);
+          assert(target.reply_data[5] == 0 && target.reply_data[6] == (capacity < 17 ? 1 : 0));
+        }
+      }
+    }
+  }
+  for (size_t capacity : {size_t(10), size_t(11)}) {
+    MyMesh target;
+    ClientInfo owner; owner.permissions = PERM_ACL_READ_ONLY; owner.id.pub_key[0] = 1;
+    uint8_t policy[] = {mesh::ROOM_MAIL_REQUEST_SUBTYPE, 8, 0, 0, 0, 0, 1};
+    const int length = target.handleRequest(&owner, 51, policy, sizeof(policy), capacity);
+    assert(length == (capacity < 11 ? 7 : 11));
+    mesh::RoomMailStatus status;
+    const auto result = mesh::getRoomMailStatus(&target.room_fs, owner.id.pub_key, status);
+    assert(result == (capacity < 11 ? mesh::RoomMailResult::NotFound : mesh::RoomMailResult::Success));
+    if (capacity >= 11) assert(status.settings.mode == mesh::RoomMailMode::Public);
+  }
+  for (uint8_t role : {uint8_t(PERM_ACL_READ_ONLY), uint8_t(PERM_ACL_READ_WRITE), uint8_t(PERM_ACL_ADMIN)}) {
+    MyMesh target;
+    ClientInfo sender; sender.permissions = role; sender.id.pub_key[0] = 1;
+    uint8_t recipient[32] = {}; recipient[0] = 2;
+    mesh::RoomMailSettings public_box; public_box.mode = mesh::RoomMailMode::Public;
+    assert(mesh::saveRoomMailSettings(&target.room_fs, recipient, public_box, 0) == mesh::RoomMailResult::Success);
+    uint8_t send[37] = {mesh::ROOM_MAIL_REQUEST_SUBTYPE, 3};
+    memcpy(send + 2, recipient, 32); send[34] = 1; send[36] = 'x';
+    assert(target.handleRequest(&sender, 51, send, sizeof(send), 11) == 11);
+    assert(target.reply_data[6] == (role == PERM_ACL_READ_ONLY ? 6 : 0));
+    mesh::RoomMailStatus status;
+    assert(mesh::getRoomMailStatus(&target.room_fs, recipient, status) == mesh::RoomMailResult::Success);
+    assert(status.count == (role == PERM_ACL_READ_ONLY ? 0 : 1));
+    assert(target.room_access.addBan(&target.room_fs, recipient) == mesh::RoomAccessPolicy::BanResult::Saved);
+    for (size_t capacity = 0; capacity <= 11; ++capacity) {
+      assert(target.handleRequest(&sender, 52, send, sizeof(send), capacity) == (capacity < 7 ? 0 : 7));
+      if (capacity >= 7) assert(target.reply_data[6] == 6);
+    }
+  }
+}
+
 static void history_checks() {
   ClientInfo client;
   uint8_t query[10] = {};
@@ -345,6 +410,7 @@ int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "room")) room_telemetry_checks();
   else if (!strcmp(argv[1], "room.board")) room_board_dispatch_checks();
+  else if (!strcmp(argv[1], "room.mail")) room_mail_dispatch_checks();
   else if (!strcmp(argv[1], "telemetry")) telemetry_checks();
   else if (!strcmp(argv[1], "history")) history_checks();
   else if (!strcmp(argv[1], "empty")) {

@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from test_replay_reset_integration import extract_braced
+from test_client_acl_infrastructure import room_mail_crypto_arguments
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "test/fixtures/sensor_reply_bounds/test_sensor_reply_bounds.cpp"
@@ -92,7 +93,8 @@ class SensorReplyBoundsTest(unittest.TestCase):
             (work / "history_types.inc").write_text(history_types, encoding="ascii")
             binary = work / "sensor.exe"
             command = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-reorder",
-                       "-I" + str(work), "-I" + str(ROOT / "src"), str(FIXTURE), "-o", str(binary)]
+                       "-I" + str(work), "-I" + str(ROOT / "src"), str(FIXTURE),
+                       *room_mail_crypto_arguments("room"), "-o", str(binary)]
             if sys.platform.startswith("linux"):
                 command[1:1] = ["-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
                                 "-fno-pie", "-no-pie"]
@@ -113,8 +115,22 @@ class SensorReplyBoundsTest(unittest.TestCase):
 
     def test_old_room_board_tag_only_response_is_rejected(self):
         def old(source):
-            return source.replace("return length ? 4 + length : 0;", "return 4 + length;", 1)
+            branch = extract_braced(source, "if (payload[0] == mesh::ROOM_BOARD_REQUEST_SUBTYPE)")
+            changed = branch.replace("return length ? 4 + length : 0;", "return 4 + length;", 1)
+            self.assertNotEqual(changed, branch)
+            return source.replace(branch, changed, 1)
         self.assertNotEqual(self.execute("room.board", room_transform=old).returncode, 0)
+
+    def test_room_mailbox_admission_and_complete_reply_boundaries(self):
+        self.check_case("room.mail")
+
+    def test_old_room_mail_tag_only_response_is_rejected(self):
+        def old(source):
+            branch = extract_braced(source, "if (payload[0] == mesh::ROOM_MAIL_REQUEST_SUBTYPE)")
+            changed = branch.replace("return length ? 4 + length : 0;", "return 4 + length;")
+            self.assertNotEqual(changed, branch)
+            return source.replace(branch, changed, 1)
+        self.assertNotEqual(self.execute("room.mail", room_transform=old).returncode, 0)
 
     def test_old_room_unbounded_copy_is_rejected(self):
         def old(source):
