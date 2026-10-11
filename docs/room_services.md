@@ -339,7 +339,9 @@ First index page: revision `0`, cursor `0`. Subsequent pages require the
 returned revision. Response: subtype, operation, status, revision `u32`,
 total count, start cursor, next cursor, then up to two complete entries.
 Each entry is ID `u8`, version `u32`, body length `u16`, title length `u8`
-and title bytes. Next cursor `255` means complete.
+and title bytes. Continue while the next cursor is less than the total count;
+the index is complete when the next cursor equals the total count. An empty
+board returns total count `0` and next cursor `0`.
 
 Article response: subtype, operation, status, ID `u8`, version `u32`,
 offset `u16`, total body length `u16`, chunk length `u8`, then raw bytes.
