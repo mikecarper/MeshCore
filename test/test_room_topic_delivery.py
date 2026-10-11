@@ -30,7 +30,12 @@ class RoomTopicDeliveryTests(unittest.TestCase):
             "bool MyMesh::sendClientReply(",
             "bool MyMesh::pushPostToClient(", "bool MyMesh::pushRoomTextToClient(",
             "bool MyMesh::processAck(", "void MyMesh::activateRoomTopic(",
-            "bool MyMesh::handleRoomTopicCommand(", "void MyMesh::serviceRoomPush("))
+            "bool MyMesh::handleRoomTopicCommand(", "void MyMesh::serviceRoomPush(",
+            "uint8_t MyMesh::getUnsyncedCount("))
+        # The legacy topic fixture has a separate adapter for topic-only saves.
+        # Mail policy uses its real filesystem, without replacing its handler.
+        definitions += "\n" + extract_braced(source, "bool MyMesh::roomClientChatEnabled(").replace(
+            "getRoomMailboxOnly(_fs,", "getRoomMailboxOnly(&policy_fs,")
         packet = (ROOT / "src/Packet.cpp").read_text()
         definitions = "namespace mesh {\n" + extract_braced(
             packet, "bool Packet::isValidPathLen(") + "\n}\n" + definitions
@@ -41,6 +46,7 @@ class RoomTopicDeliveryTests(unittest.TestCase):
             binary = work / "delivery"
             command = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
                        "-Wno-unused-parameter", "-I" + str(work), "-I" + str(ROOT / "src"),
+                       "-I" + str(ROOT / "test/mocks"),
                        str(FIXTURE), "-o", str(binary)]
             if sys.platform.startswith("linux"):
                 command[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",

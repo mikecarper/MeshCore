@@ -16,9 +16,10 @@ button:disabled{opacity:.45;cursor:default}label{display:block}.muted{color:#b5b
 .post{padding:10px 0;border-bottom:1px solid #364351}.post small{display:block;color:#b5beca}
 details{margin:18px 0}summary{cursor:pointer}code{overflow-wrap:anywhere}a{color:#a8d5ff}[hidden]{display:none!important}
 .panel{border:1px solid #526273;border-radius:10px;padding:18px;margin:20px 0}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.card{background:#202b38;padding:12px;border-radius:6px}.card strong{display:block;font-size:1.3em}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.92em}th,td{text-align:left;padding:9px 7px;border-bottom:1px solid #364351;vertical-align:top}th{color:#b5beca}.key{font-family:monospace;overflow-wrap:anywhere}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}.notice{padding:10px;background:#273947;border-radius:6px}.warning{color:#ffd3a3}.success{color:#a5e1b1}dl{display:grid;grid-template-columns:minmax(110px,1fr) 2fr;gap:8px}dt{color:#b5beca}dd{margin:0;overflow-wrap:anywhere}select{max-width:100%}.inline{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.inline label{display:inline}.inline input{width:auto;margin:0}fieldset{border:1px solid #526273;border-radius:6px;margin:14px 0;padding:12px}.small{font-size:.9em}
+#mail-panel fieldset,#mail-panel .grid>form{min-width:0}#mail-panel select{width:100%}
 </style></head><body>
 <h1 id="room-name">MeshCore Room</h1>
-<p class="muted">Chat and selected notices over local Wi-Fi. This page also works without internet access.</p>
+<p class="muted">Chat, personal mail and selected notices over local Wi-Fi. This page also works without internet access.</p>
 <form id="join"><label for="password">Room password (leave empty for public read-only access)</label>
 <input id="password" type="password" autocomplete="current-password" maxlength="64">
 <label for="name">Your display name</label><input id="name" autocomplete="nickname" value="Web">
@@ -36,6 +37,26 @@ details{margin:18px 0}summary{cursor:pointer}code{overflow-wrap:anywhere}a{color
 <p id="browser-catchup-result" class="muted" role="status"></p></details>
 <form id="compose"><label for="message">Message</label><textarea id="message"></textarea>
 <p id="budget" class="muted"></p><button id="send" type="submit">Send</button></form>
+<section class="panel" aria-labelledby="mail-heading"><h2 id="mail-heading">Personal mailbox</h2>
+<p class="muted">Mail waits on this room until you collect it. Your browser mailbox uses its own identity, separate from your radio.</p>
+<p id="mail-summary" class="notice" hidden></p>
+<button id="mail-open" type="button">Open my mailbox</button>
+<section id="mail-panel" hidden><p>Your complete mailbox address: <code id="mail-key" class="key"></code> <button id="mail-copy" type="button">Copy address</button></p>
+<p id="mail-state" class="notice" role="status"></p>
+<div class="grid"><form id="mail-policy"><fieldset><legend>Who can send you mail</legend>
+<label for="mail-mode">Mailbox access</label><select id="mail-mode"><option value="closed">Closed - receive no new mail</option><option value="public">Public - room writers may send</option><option value="private">Private - approved senders only</option></select>
+<label for="mail-allowlist">Approved sender addresses (up to 8 complete public keys, one per line)</label><textarea id="mail-allowlist" class="key" spellcheck="false" autocomplete="off"></textarea>
+<label class="inline"><input id="mail-only" type="checkbox"> Mailbox only: pause automatic chat downloads</label>
+<p class="muted small">A closed mailbox is the default. Reading mail leaves it queued; confirm receipt after a complete download to remove it from the server.</p>
+<button id="mail-policy-save" type="submit">Save mailbox settings</button><button id="mail-policy-reload" type="button">Reload settings</button><p id="mail-policy-result" role="status"></p></fieldset></form>
+<form id="mail-compose"><fieldset><legend>Send personal mail</legend><label for="mail-recipient">Recipient's complete mailbox address</label><input id="mail-recipient" class="key" maxlength="64" spellcheck="false" autocomplete="off">
+<label for="mail-text">Message (up to 512 UTF-8 bytes)</label><textarea id="mail-text"></textarea><p id="mail-budget" class="muted"></p>
+<button id="mail-send" type="submit">Send mail</button><p id="mail-send-result" role="status"></p></fieldset></form></div>
+<h3>Inbox</h3><button id="mail-refresh" type="button">Check and refresh inbox</button><p id="mail-count" role="status"></p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Sender</th><th scope="col">Sent</th><th scope="col">Receipt</th><th scope="col">Message</th></tr></thead><tbody id="mail-rows"></tbody></table></div>
+<div class="inline"><button id="mail-previous" type="button" disabled>Previous mail</button><button id="mail-next" type="button" disabled>Next mail</button><span id="mail-page" class="muted"></span></div>
+<section id="mail-selected" hidden><h3>Selected mail</h3><p id="mail-selected-meta" class="key"></p><pre id="mail-body" class="notice" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+<p id="mail-read-state" role="status"></p><button id="mail-resume" type="button">Read or resume download</button><button id="mail-ack" type="button" disabled>Confirm received and remove</button><button id="mail-delete" type="button">Delete this mail</button></section></section></section>
 <h2>Information board</h2><button id="refresh-board" type="button">Refresh notices</button>
 <div id="notices"></div><h3 id="article-title" hidden></h3><pre id="article" hidden></pre>
 <section id="editor" hidden><h3>Publish or edit a notice</h3><form id="publish">
@@ -46,6 +67,14 @@ details{margin:18px 0}summary{cursor:pointer}code{overflow-wrap:anywhere}a{color
 <button type="submit">Save notice</button><button id="delete" type="button">Delete selected notice</button></form></section>
 <section id="admin-panel" class="panel" hidden><h2>Room administration</h2>
 <p class="muted">Manage radio users, their room-to-user routes, and chat delivery. Activity and delivery details are available only with admin access.</p>
+<details id="admin-mail"><summary>Mailbox owners and delivery</summary><p class="muted">Review mailbox policies and counts. Private message bodies are available only to their recipients.</p><button id="admin-mail-refresh" type="button">Load mailbox owners</button><p id="admin-mail-state" role="status"></p>
+<label for="admin-mail-owner">Manage a radio or browser mailbox by its complete public key</label><input id="admin-mail-owner" class="key" maxlength="64" spellcheck="false" autocomplete="off"><button id="admin-mail-load-owner" type="button">Load mailbox by address</button><p class="muted small">A new address starts closed. Save its policy to create the mailbox.</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Complete owner address</th><th scope="col">Access</th><th scope="col">Mail</th><th scope="col">Manage</th></tr></thead><tbody id="admin-mail-rows"></tbody></table></div>
+<div class="inline"><button id="admin-mail-previous" type="button" disabled>Previous mailboxes</button><button id="admin-mail-next" type="button" disabled>Next mailboxes</button><span id="admin-mail-page" class="muted"></span></div>
+<form id="admin-mail-policy" hidden><fieldset><legend>Selected mailbox policy</legend><p id="admin-mail-key" class="key"></p><label for="admin-mail-mode">Mailbox access</label><select id="admin-mail-mode"><option value="closed">Closed</option><option value="public">Public</option><option value="private">Private</option></select>
+<label for="admin-mail-allowlist">Approved senders (up to 8 complete public keys, one per line)</label><textarea id="admin-mail-allowlist" class="key" spellcheck="false" autocomplete="off"></textarea>
+<label class="inline"><input id="admin-mail-only" type="checkbox"> Mailbox only</label><button id="admin-mail-save" type="submit">Save selected policy</button><button id="admin-mail-reload" type="button">Reload selected policy</button><button id="admin-mail-block" type="button">Block owner</button>
+<label for="admin-mail-delete-id">Message ID to delete</label><input id="admin-mail-delete-id" type="number" min="1" max="4294967295"><button id="admin-mail-delete" type="button">Review message deletion</button><button id="admin-mail-purge" type="button">Review inbox purge</button><p id="admin-mail-result" role="status"></p></fieldset></form></details>
 <div class="inline"><button id="admin-refresh" type="button">Load users and delivery</button><label><input id="admin-live" type="checkbox"> Refresh every 15 seconds</label></div>
 <p id="admin-state" role="status" class="muted">Load users to begin.</p>
 <div id="admin-cards" class="cards" hidden></div>
@@ -74,6 +103,8 @@ let chain=Promise.resolve(), notices=new Map(), transfers=new Map();
 let sending=false, editId=1, editVersion=0;
 let adminLoaded=false, adminLoading=false, adminBusy=false, adminCursor=0, adminNext=null, adminPages=[];
 let selectedKey='', selectedUser=null, adminSettings=null;
+let mailPolicy=null,mailDirty=false,mailBusy=false,mailCursor=0,mailNext=null,mailPages=[],mailItems=new Map(),mailTransfers=new Map(),mailSelected=null,mailGeneration=0,mailboxOnly=false,mailSnapshot=0;
+let adminMailPolicy=null,adminMailDirty=false,adminMailBusy=false,adminMailCursor=0,adminMailNext=null,adminMailPages=[],adminMailSnapshot=0;
 const routeDirty={outpath:false,altpath:false},routeBaseline={outpath:'',altpath:''};
 function saved(key,fallback){try{return localStorage.getItem(key)||fallback}catch(e){return fallback}}
 function remember(key,value){try{localStorage.setItem(key,String(value))}catch(e){}}
@@ -132,8 +163,10 @@ function updateBudget(){
 }
 async function status(){
   const result=await api('status');
-  if(boot&&boot!==result.boot){after=0;$('posts').replaceChildren();transfers.clear();notices.clear();clearAdmin()}
+  if(boot&&boot!==result.boot){after=0;$('posts').replaceChildren();transfers.clear();notices.clear();clearAdmin();clearMail()}
+  if(role>result.role)clearMail();
   boot=result.boot;role=result.role;
+  mailboxOnly=result.mailbox_only===true;updateMailSummary();
   $('room-name').textContent=result.name;$('topic').textContent=result.topic;
   $('web-key').textContent=result.web_key;
   $('history').textContent=result.persistent_history?'Radio retains its newest 32 posts across reboots.':'Radio history is in RAM and is lost on reboot.';
@@ -141,10 +174,11 @@ async function status(){
   $('editor').hidden=role!==3;$('admin-panel').hidden=role!==3;
   if(role!==3)clearAdmin();updateAdminButtons();updateBudget();
 }
-async function refreshChat(){
+async function refreshChat(automatic=false){
   if(polling||!joined)return;polling=true;
   try{
     await status();
+    if(automatic&&mailboxOnly)return;
     for(let i=0;i<32;i++){
       const result=await api('posts',{after:after}), post=result.post;if(!post)break;
       if(!Number.isInteger(post.timestamp)||post.timestamp<=after)throw Error('Invalid message cursor.');
@@ -212,6 +246,7 @@ async function browserCatchup(mode){
 }
 function requireAdmin(){if(!joined||role!==3)throw Error('Admin permission required. Reconnect with the room admin password.');}
 function clearAdmin(){
+  clearAdminMail();
   adminLoaded=false;adminCursor=0;adminNext=null;adminPages=[];selectedKey='';selectedUser=null;adminSettings=null;
   routeDirty.outpath=false;routeDirty.altpath=false;routeBaseline.outpath='';routeBaseline.altpath='';
   $('admin-user-rows').replaceChildren();$('admin-details').replaceChildren();$('admin-cards').replaceChildren();
@@ -238,6 +273,7 @@ function updateAdminButtons(){
   $('admin-previous').disabled=locked||!adminPages.length;$('admin-next').disabled=locked||adminNext===null;
   for(const input of $('admin-panel').querySelectorAll('input,select,textarea'))if(input.id!=='admin-live')input.disabled=locked;
   for(const prefix of ['admin-out','admin-alt'])$(prefix+'-value').disabled=locked||$(prefix+'-mode').value!=='path';
+  updateMailButtons();
 }
 function validKey(key){return typeof key==='string'&&/^[0-9a-fA-F]{64}$/.test(key)&&!/^0+$/.test(key);}
 function renderAdminCards(result){
@@ -356,6 +392,176 @@ async function saveAdminSetting(which){
   await adminMutation(async()=>{await api('admin.'+which,values);await loadAdminSettings();},'Room '+which+' saved.');
   $('admin-settings-result').textContent='Saved. Changes are confirmed by the radio.';
 }
+function clearMail(){
+  mailGeneration++;
+  mailboxOnly=false;updateMailSummary();
+  mailPolicy=null;mailDirty=false;mailCursor=0;mailNext=null;mailPages=[];mailSnapshot=0;mailItems.clear();mailTransfers.clear();mailSelected=null;
+  $('mail-panel').hidden=true;$('mail-selected').hidden=true;$('mail-rows').replaceChildren();$('mail-key').textContent='';$('mail-body').textContent='';$('mail-selected-meta').textContent='';
+  for(const id of ['mail-state','mail-policy-result','mail-send-result','mail-count','mail-page','mail-read-state'])$(id).textContent='';
+  $('mail-mode').value='closed';$('mail-allowlist').value='';$('mail-only').checked=false;$('mail-recipient').value='';$('mail-text').value='';updateMailButtons();
+}
+function clearAdminMail(){
+  adminMailPolicy=null;adminMailDirty=false;adminMailCursor=0;adminMailNext=null;adminMailPages=[];adminMailSnapshot=0;
+  $('admin-mail-rows').replaceChildren();$('admin-mail-policy').hidden=true;$('admin-mail-key').textContent='';$('admin-mail-owner').value='';$('admin-mail-allowlist').value='';$('admin-mail-delete-id').value='';
+  for(const id of ['admin-mail-state','admin-mail-page','admin-mail-result'])$(id).textContent='';updateMailButtons();
+}
+function requireMail(){if(!joined||![1,2,3].includes(role))throw Error('Connect to the room before opening mail.');}
+function updateMailSummary(){$('mail-summary').hidden=!mailboxOnly;$('mail-summary').textContent=mailboxOnly?'Mailbox only: automatic chat downloads are paused. Refresh chat downloads once.':'';}
+function mailApi(op,values={}){const generation=mailGeneration;return api(op,values).then(result=>{requireMail();if(generation!==mailGeneration)throw Error('Mailbox session changed; open your mailbox again.');return result;});}
+function policyValues(prefix){
+  const mode=$(prefix+'mode').value,raw=$(prefix+'allowlist').value.trim();
+  const allowlist=raw?raw.split(/[\s,]+/).map(key=>key.toLowerCase()):[];
+  if(!['closed','public','private'].includes(mode)||allowlist.length>8||allowlist.some(key=>!validKey(key))||new Set(allowlist).size!==allowlist.length)throw Error('Choose up to 8 different complete nonzero public keys.');
+  return {mode:mode,mailbox_only:$(prefix+'only').checked,allowlist:allowlist};
+}
+function checkedMailPolicy(result,owner){
+  if(!result||!validKey(result.owner)||(owner&&result.owner.toLowerCase()!==owner.toLowerCase())||!Number.isInteger(result.revision)||result.revision<0
+      ||!['closed','public','private'].includes(result.mode)||!Array.isArray(result.allowlist)||result.allowlist.length>8||result.allowlist.some(key=>!validKey(key)))throw Error('Invalid mailbox settings; reload before editing.');
+  return result;
+}
+function updateMailButtons(){
+  const locked=!joined||mailBusy,writer=role===2||role===3,size=encoder.encode($('mail-text').value).length;
+  $('mail-budget').textContent=size+' / 512 UTF-8 bytes'+(writer?'':' - read-only access cannot send mail');
+  for(const button of $('mail-panel').querySelectorAll('button'))button.disabled=locked;
+  $('mail-open').disabled=!joined||mailBusy;$('mail-send').disabled=locked||!writer||!validKey($('mail-recipient').value.trim())||size>512||!$('mail-text').value.trim();
+  $('mail-previous').disabled=locked||!mailPages.length;$('mail-next').disabled=locked||mailNext===null;
+  const transfer=mailSelected&&mailTransfers.get(mailSelected.id);
+  $('mail-ack').disabled=locked||!mailSelected||!transfer||transfer.next!==mailSelected.length||!transfer.complete;
+  $('mail-resume').disabled=locked||!mailSelected;$('mail-delete').disabled=locked||!mailSelected;
+  const adminLocked=!joined||role!==3||adminBusy||adminLoading||adminMailBusy;
+  for(const button of $('admin-mail').querySelectorAll('button'))button.disabled=adminLocked;
+  for(const field of $('admin-mail').querySelectorAll('input,select,textarea'))field.disabled=adminLocked;
+  $('admin-mail-previous').disabled=adminLocked||!adminMailPages.length;$('admin-mail-next').disabled=adminLocked||adminMailNext===null;
+}
+function renderMailPolicy(result,force=false){
+  const previous=mailPolicy;checkedMailPolicy(result,$('web-key').textContent);
+  mailboxOnly=result.mailbox_only===true;updateMailSummary();
+  $('mail-key').textContent=result.owner;$('mail-panel').hidden=false;
+  $('mail-state').textContent='Mailbox '+result.mode+'. '+(result.mailbox_only?'Automatic chat downloads are paused; Refresh chat still works.':'Automatic chat downloads are enabled.')+' Settings revision '+result.revision+'.';
+  if(!mailDirty||force){mailPolicy=result;$('mail-mode').value=result.mode;$('mail-allowlist').value=result.allowlist.join('\n');$('mail-only').checked=result.mailbox_only;mailDirty=false;}
+  else if(previous&&previous.revision!==result.revision)$('mail-policy-result').textContent='Settings changed on the radio. Your draft is preserved; reload before replacing them.';
+  updateMailButtons();
+}
+async function loadMailSettings(force=false){
+  requireMail();if(force&&mailDirty&&!confirm('Replace your unsaved mailbox settings with the current radio settings?'))return;
+  const result=await mailApi('mail.settings');requireMail();renderMailPolicy(result,force);
+}
+async function openMailbox(){
+  requireMail();if(mailBusy)return;mailBusy=true;updateMailButtons();
+  try{await loadMailSettings();await refreshMail();}finally{mailBusy=false;updateMailButtons();}
+}
+async function saveMailPolicy(){
+  requireMail();if(!mailPolicy)throw Error('Load your mailbox settings first.');if(mailBusy)return;
+  const values=Object.assign(policyValues('mail-'),{expected_revision:mailPolicy.revision}),generation=connectionGeneration;
+  mailBusy=true;updateMailButtons();$('mail-policy-result').textContent='Saving mailbox settings...';
+  try{const result=await mailApi('mail.policy',values);requireMail();if(generation!==connectionGeneration)return;renderMailPolicy(result,true);$('mail-policy-result').textContent='Mailbox settings saved and confirmed.';}
+  catch(error){$('mail-policy-result').textContent=String(error.message||error);throw error;}
+  finally{mailBusy=false;updateMailButtons();}
+}
+async function sendMail(){
+  requireMail();if(role!==2&&role!==3)throw Error('Read and write room access is required to send mail.');if(mailBusy)return;
+  const recipient=$('mail-recipient').value.trim().toLowerCase(),text=$('mail-text').value;
+  if(!validKey(recipient)||!text.trim()||encoder.encode(text).length>512)throw Error('Use a complete recipient address and a message up to 512 UTF-8 bytes.');
+  mailBusy=true;updateMailButtons();$('mail-send-result').textContent='Waiting for the radio to save your mail...';
+  try{const result=await mailApi('mail.send',{recipient:recipient,text:text});requireMail();
+    if(result.ok!==true||!Number.isInteger(result.id)||result.id<1)throw Error('Mail was not confirmed; check before retrying.');
+    if($('mail-text').value===text)$('mail-text').value='';$('mail-send-result').textContent='Mail '+result.id+' saved for '+recipient+'.';}
+  catch(error){$('mail-send-result').textContent=String(error.message||error);throw error;}
+  finally{mailBusy=false;updateMailButtons();}
+}
+function checkedMailItem(item){
+  if(!item||!Number.isInteger(item.id)||item.id<1||!validKey(item.sender)||!Number.isInteger(item.created)||item.created<0||!Number.isInteger(item.length)||item.length<1||item.length>512)throw Error('Invalid inbox entry; refresh mail.');
+  return item;
+}
+async function refreshMail(cursor=mailCursor){
+  requireMail();const count=await mailApi('mail.check');requireMail();
+  if(!Number.isInteger(count.total)||!Number.isInteger(count.unread))throw Error('Invalid mailbox counts.');
+  $('mail-count').textContent=count.unread+' waiting for receipt; '+count.total+' queued messages.';
+  const result=await mailApi('mail.list',{cursor:cursor,revision:cursor?mailSnapshot:0});requireMail();
+  if(!Number.isInteger(result.revision)||result.revision<0||!Array.isArray(result.messages)||result.messages.length>16||(result.next!==null&&(!Number.isInteger(result.next)||result.next<=cursor)))throw Error('Invalid inbox page.');
+  if(cursor&&result.revision!==mailSnapshot)throw Error('Mailbox changed; check and refresh the inbox before continuing.');
+  const items=result.messages.map(checkedMailItem);mailCursor=cursor;mailNext=result.next;mailSnapshot=result.revision;mailItems=new Map(items.map(item=>[item.id,item]));$('mail-rows').replaceChildren();
+  if(!items.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=4;cell.textContent='No mail on this page.';row.append(cell);$('mail-rows').append(row);}
+  for(const item of items){const row=document.createElement('tr');
+    for(const text of [item.sender,new Date(item.created*1000).toLocaleString(),'Waiting for receipt']){const cell=document.createElement('td');cell.textContent=text;if(text===item.sender)cell.className='key';row.append(cell);}
+    const cell=document.createElement('td'),button=document.createElement('button');button.type='button';button.textContent='Read '+item.id+' ('+item.length+' bytes)';button.addEventListener('click',()=>openMail(item).catch(message));cell.append(button);row.append(cell);$('mail-rows').append(row);}
+  $('mail-page').textContent='Page '+(mailPages.length+1);updateMailButtons();
+}
+async function openMail(item=mailSelected){
+  requireMail();checkedMailItem(item);if(mailBusy)return;mailBusy=true;mailSelected=item;$('mail-selected').hidden=false;
+  $('mail-selected-meta').textContent='Message '+item.id+' from '+item.sender+' - '+new Date(item.created*1000).toLocaleString();$('mail-body').textContent='';
+  let transfer=mailTransfers.get(item.id);
+  if(!transfer||transfer.sender!==item.sender||transfer.created!==item.created||transfer.bytes.length!==item.length){transfer={sender:item.sender,created:item.created,next:0,bytes:new Uint8Array(item.length),complete:false};mailTransfers.set(item.id,transfer);}
+  updateMailButtons();
+  try{while(transfer.next<item.length){
+    $('mail-read-state').textContent='Downloaded '+transfer.next+' / '+item.length+' bytes. Receipt has not been confirmed.';
+    const result=await mailApi('mail.read',{id:item.id,offset:transfer.next});requireMail();
+    const bytes=Uint8Array.from(atob(result.data64),c=>c.charCodeAt(0));
+    if(result.id!==item.id||result.sender!==item.sender||result.created!==item.created||result.length!==item.length||result.offset!==transfer.next||result.count!==bytes.length
+        ||!bytes.length||bytes.length>128||result.next!==transfer.next+bytes.length||result.next>item.length)throw Error('Mail changed or its download is invalid; refresh the inbox.');
+    transfer.bytes.set(bytes,transfer.next);transfer.next=result.next;
+  }
+  const text=new TextDecoder('utf-8',{fatal:true}).decode(transfer.bytes);transfer.complete=true;$('mail-body').textContent=text;
+  $('mail-read-state').textContent='Complete. Confirm receipt to remove the server copy, or keep it queued for later.';
+  }catch(error){$('mail-read-state').textContent='Downloaded '+transfer.next+' / '+item.length+' bytes. '+String(error.message||error)+' Click Read or resume download to continue.';throw error;}
+  finally{mailBusy=false;updateMailButtons();}
+}
+async function removeMail(received){
+  requireMail();if(!mailSelected||mailBusy)return;const item=mailSelected,transfer=mailTransfers.get(item.id);
+  if(received&&(!transfer||!transfer.complete))throw Error('Read the complete message before confirming receipt.');
+  if(!confirm((received?'Confirm receipt and remove':'Delete without confirming receipt')+' for message '+item.id+'?'))return;
+  mailBusy=true;updateMailButtons();
+  try{const result=await mailApi(received?'mail.ack':'mail.delete',{id:item.id});requireMail();if(result.ok!==true)throw Error('Mail removal was not confirmed.');
+    mailTransfers.delete(item.id);mailSelected=null;$('mail-body').textContent='';$('mail-selected').hidden=true;mailPages=[];await refreshMail(0);
+    $('mail-count').textContent+=(received?' Receipt confirmed.':' Message deleted.');}
+  finally{mailBusy=false;updateMailButtons();}
+}
+async function loadAdminMail(cursor=adminMailCursor){
+  requireAdmin();if(adminMailBusy)return;adminMailBusy=true;updateMailButtons();
+  try{const result=await api('admin.mail.list',{cursor:cursor,revision:cursor?adminMailSnapshot:0});requireAdmin();
+    if(!Number.isInteger(result.revision)||result.revision<0||!Array.isArray(result.mailboxes)||result.mailboxes.length>16||(result.next!==null&&(!Number.isInteger(result.next)||result.next<=cursor)))throw Error('Invalid mailbox owner page.');
+    if(cursor&&result.revision!==adminMailSnapshot)throw Error('Mailboxes changed; load mailbox owners again before continuing.');
+    adminMailCursor=cursor;adminMailNext=result.next;adminMailSnapshot=result.revision;$('admin-mail-rows').replaceChildren();
+    for(const owner of result.mailboxes){if(!validKey(owner.owner))throw Error('Invalid mailbox identity.');const row=document.createElement('tr');
+      for(const text of [owner.owner,(owner.blocked?'Blocked; ':'')+owner.mode+' (revision '+owner.revision+')',owner.unread+' unread / '+owner.total+' queued']){const cell=document.createElement('td');cell.textContent=text;if(text===owner.owner)cell.className='key';row.append(cell);}
+      const cell=document.createElement('td'),button=document.createElement('button');button.type='button';button.textContent='Manage policy';button.addEventListener('click',()=>selectAdminMail(owner.owner).catch(message));cell.append(button);row.append(cell);$('admin-mail-rows').append(row);}
+    $('admin-mail-page').textContent='Page '+(adminMailPages.length+1);$('admin-mail-state').textContent=result.mailboxes.length?'Mailbox policies and counts loaded. No message bodies were downloaded.':'No configured mailboxes.';
+  }finally{adminMailBusy=false;updateMailButtons();}
+}
+async function selectAdminMail(owner,force=false){
+  requireAdmin();if(!validKey(owner))throw Error('Use a complete mailbox owner key.');
+  if(adminMailDirty&&!confirm('Replace the unsaved selected mailbox policy?'))return;
+  const result=await api('admin.mail.settings',{owner:owner});requireAdmin();adminMailPolicy=checkedMailPolicy(result,owner);adminMailDirty=false;
+  $('admin-mail-key').textContent=result.owner;$('admin-mail-mode').value=result.mode;$('admin-mail-allowlist').value=result.allowlist.join('\n');$('admin-mail-only').checked=result.mailbox_only;
+  $('admin-mail-block').textContent=result.blocked?'Unblock owner':'Block owner';$('admin-mail-delete-id').value='';$('admin-mail-result').textContent='Loaded policy revision '+result.revision+'.';$('admin-mail-policy').hidden=false;updateMailButtons();
+}
+async function saveAdminMailPolicy(){
+  requireAdmin();if(!adminMailPolicy||adminMailBusy)return;const owner=adminMailPolicy.owner,values=Object.assign(policyValues('admin-mail-'),{owner:owner,expected_revision:adminMailPolicy.revision});
+  if(!confirm('Save '+values.mode+' mailbox policy for '+owner+'?'))return;
+  adminMailBusy=true;updateMailButtons();
+  try{const result=await api('admin.mail.policy',values);requireAdmin();adminMailPolicy=checkedMailPolicy(result,owner);adminMailDirty=false;
+    $('admin-mail-result').textContent='Policy saved and confirmed at revision '+result.revision+'.';if(mailPolicy&&mailPolicy.owner===owner)renderMailPolicy(result);}
+  catch(error){$('admin-mail-result').textContent=String(error.message||error);throw error;}
+  finally{adminMailBusy=false;updateMailButtons();}
+}
+async function deleteAdminMail(all=false){
+  requireAdmin();if(!adminMailPolicy||adminMailBusy)return;const owner=adminMailPolicy.owner,value=$('admin-mail-delete-id').value,id=all?0:Number(value);
+  if(!all&&(!/^\d+$/.test(value)||!Number.isInteger(id)||id<1||id>4294967295))throw Error('Enter a valid message ID.');
+  if(!confirm((all?'Purge every queued message':'Delete queued message '+id)+' for mailbox '+owner+'?\nThis permanently removes server copies without confirming receipt.'))return;
+  adminMailBusy=true;updateMailButtons();
+  try{const result=await api('admin.mail.delete',{owner:owner,id:id});requireAdmin();if(result.ok!==true)throw Error('Mailbox deletion was not confirmed.');$('admin-mail-result').textContent=all?'Inbox purge confirmed.':'Message deletion confirmed.';
+    if(mailPolicy&&mailPolicy.owner===owner){mailTransfers.clear();mailSelected=null;$('mail-body').textContent='';$('mail-selected').hidden=true;await refreshMail(0);}}
+  finally{adminMailBusy=false;updateMailButtons();}
+  await loadAdminMail();
+}
+async function blockAdminMail(){
+  requireAdmin();if(!adminMailPolicy||adminMailBusy)return;const owner=adminMailPolicy.owner,banned=!adminMailPolicy.blocked;
+  if(!confirm((banned?'Block ':'Unblock ')+owner+' for room access and mailbox operations?'))return;
+  adminMailBusy=true;updateMailButtons();
+  try{await api('admin.ban',{key:owner,banned:banned});requireAdmin();adminMailPolicy.blocked=banned;$('admin-mail-block').textContent=banned?'Unblock owner':'Block owner';$('admin-mail-result').textContent=banned?'Owner blocked for room access.':'Owner unblocked.';}
+  finally{adminMailBusy=false;updateMailButtons();}
+  await loadAdminMail();
+}
 async function openArticle(item){
   if(!Number.isInteger(item.length)||item.length<0||item.length>2048)throw Error("Article exceeds the radio's limit.");
   let transfer=transfers.get(item.id);
@@ -383,7 +589,8 @@ async function openArticle(item){
 $('join').addEventListener('submit',async event=>{
   event.preventDefault();message('');
   connectionGeneration++;joined=false;role=0;clearAdmin();$('editor').hidden=true;$('admin-panel').hidden=true;$('room').hidden=true;updateBudget();
-  try{makeIdentity();password=$('password').value;$('password').value='';await status();joined=true;$('room').hidden=false;updateBudget();await refreshChat();await refreshBoard()}
+  clearMail();
+  try{makeIdentity();password=$('password').value;$('password').value='';await status();joined=true;$('room').hidden=false;updateBudget();await refreshChat(true);await refreshBoard()}
   catch(e){message(e)}
 });
 $('name').value=saved('mc-room-name','Web');
@@ -398,7 +605,37 @@ $('compose').addEventListener('submit',async event=>{
 $('refresh').addEventListener('click',()=>refreshChat().catch(message));
 $('disconnect').addEventListener('click',()=>{
   connectionGeneration++;joined=false;role=0;password='';clearAdmin();$('room').hidden=true;$('admin-panel').hidden=true;$('editor').hidden=true;$('state').textContent='Disconnected';updateBudget();
+  clearMail();
 });
+$('mail-open').addEventListener('click',()=>openMailbox().catch(message));
+$('mail-copy').addEventListener('click',async()=>{
+  try{requireMail();const key=$('mail-key').textContent;if(!validKey(key))throw Error('Open your mailbox first.');
+    if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(key);
+    else{const range=document.createRange();range.selectNodeContents($('mail-key'));const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);if(!document.execCommand('copy'))throw Error('Select and copy the complete mailbox address above.');selection.removeAllRanges();}
+    $('mail-state').textContent='Complete mailbox address copied.';
+  }catch(error){message(error)}
+});
+for(const id of ['mail-mode','mail-only','mail-allowlist'])$(id).addEventListener(id==='mail-allowlist'?'input':'change',()=>{mailDirty=true});
+for(const id of ['mail-recipient','mail-text'])$(id).addEventListener('input',updateMailButtons);
+$('mail-policy').addEventListener('submit',event=>{event.preventDefault();saveMailPolicy().catch(message)});
+$('mail-policy-reload').addEventListener('click',()=>loadMailSettings(true).catch(message));
+$('mail-compose').addEventListener('submit',event=>{event.preventDefault();sendMail().catch(message)});
+$('mail-refresh').addEventListener('click',()=>{if(mailBusy)return;mailPages=[];refreshMail(0).catch(message)});
+$('mail-next').addEventListener('click',()=>{if(mailNext===null||mailBusy)return;const previous=mailCursor;mailPages.push(previous);refreshMail(mailNext).catch(error=>{mailPages.pop();message(error);updateMailButtons()})});
+$('mail-previous').addEventListener('click',()=>{if(!mailPages.length||mailBusy)return;const cursor=mailPages.pop();refreshMail(cursor).catch(error=>{mailPages.push(cursor);message(error);updateMailButtons()})});
+$('mail-resume').addEventListener('click',()=>openMail().catch(message));
+$('mail-ack').addEventListener('click',()=>removeMail(true).catch(message));
+$('mail-delete').addEventListener('click',()=>removeMail(false).catch(message));
+$('admin-mail-refresh').addEventListener('click',()=>{adminMailPages=[];loadAdminMail(0).catch(message)});
+$('admin-mail-load-owner').addEventListener('click',()=>selectAdminMail($('admin-mail-owner').value.trim().toLowerCase()).catch(message));
+$('admin-mail-next').addEventListener('click',()=>{if(adminMailNext===null||adminMailBusy)return;const previous=adminMailCursor;adminMailPages.push(previous);loadAdminMail(adminMailNext).catch(error=>{adminMailPages.pop();message(error);updateMailButtons()})});
+$('admin-mail-previous').addEventListener('click',()=>{if(!adminMailPages.length||adminMailBusy)return;const cursor=adminMailPages.pop();loadAdminMail(cursor).catch(error=>{adminMailPages.push(cursor);message(error);updateMailButtons()})});
+for(const id of ['admin-mail-mode','admin-mail-only','admin-mail-allowlist'])$(id).addEventListener(id==='admin-mail-allowlist'?'input':'change',()=>{adminMailDirty=true});
+$('admin-mail-policy').addEventListener('submit',event=>{event.preventDefault();saveAdminMailPolicy().catch(message)});
+$('admin-mail-reload').addEventListener('click',()=>{if(adminMailPolicy)selectAdminMail(adminMailPolicy.owner,true).catch(message)});
+$('admin-mail-delete').addEventListener('click',()=>deleteAdminMail(false).catch(message));
+$('admin-mail-purge').addEventListener('click',()=>deleteAdminMail(true).catch(message));
+$('admin-mail-block').addEventListener('click',()=>blockAdminMail().catch(message));
 $('browser-catchup-form').addEventListener('submit',event=>event.preventDefault());
 $('browser-skip-before').addEventListener('click',()=>browserCatchup('before').catch(message));
 $('browser-skip-number').addEventListener('click',()=>browserCatchup('keep').catch(message));
@@ -449,7 +686,7 @@ $('delete').addEventListener('click',async()=>{
   try{await api('board.delete',{id:id,version:entry.version});transfers.delete(id);await refreshBoard();$('article').hidden=true;$('article-title').hidden=true}
   catch(e){message(e)}
 });
-setInterval(()=>{if(joined)refreshChat().catch(message);if(joined&&role===3&&adminLoaded&&$('admin-live').checked)loadAdmin().catch(message)},15000);
+setInterval(()=>{if(joined)refreshChat(true).catch(message);if(joined&&role===3&&adminLoaded&&$('admin-live').checked)loadAdmin().catch(message)},15000);
 updateBudget();
 updateAdminButtons();
 </script></body></html>)roomhtml";

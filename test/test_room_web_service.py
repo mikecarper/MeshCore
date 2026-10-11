@@ -34,7 +34,7 @@ class RoomWebServiceTest(unittest.TestCase):
             "bool MyMesh::executeClientPathCommand(", "bool MyMesh::setRoomClientPath(",
             "bool MyMesh::applyRoomCatchUpCommand(", "bool MyMesh::saveFilter(",
             "void MyMesh::writeRoomClientJson(",
-            "uint8_t MyMesh::getUnsyncedCount(", "bool MyMesh::handleRoomHistoryCommand(",
+            "bool MyMesh::roomClientChatEnabled(", "uint8_t MyMesh::getUnsyncedCount(", "bool MyMesh::handleRoomHistoryCommand(",
             "bool MyMesh::handleRoomTopicCommand(", "void MyMesh::activateRoomTopic("))
         packet = (ROOT / "src/Packet.cpp").read_text()
         production = "namespace mesh {\n" + extract_braced(
@@ -73,6 +73,7 @@ class RoomWebServiceTest(unittest.TestCase):
                                     "-Wno-misleading-indentation", *sanitizers, "-DESP32_PLATFORM=1",
                                     "-DARDUINOJSON_POOL_CAPACITY=64",
                                     "-I" + str(work), "-I" + str(ROOT / "src"), "-I" + str(json_header.parent),
+                                    "-I" + str(ROOT / "test/mocks"),
                                     str(FIXTURES / "service.cpp"), "-o", str(binary)],
                                    capture_output=True, text=True, timeout=60)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
@@ -80,7 +81,8 @@ class RoomWebServiceTest(unittest.TestCase):
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertIn("actual room web service", checked.stdout)
             for group in ("ADMIN_AUTH", "ADMIN_ROUTES", "ADMIN_CATCHUP", "ADMIN_USERS",
-                          "ADMIN_SETTINGS", "ADMIN_INVALID"):
+                          "ADMIN_SETTINGS", "ADMIN_INVALID", "MAIL_AUTH", "MAIL_DELIVERY",
+                          "MAIL_ADMIN", "MAIL_PAGING", "MAIL_STORAGE", "MAIL_GLOBAL"):
                 self.assertRegex(checked.stdout, r"(?m)^" + group + ":")
             for kind in ("STATUS", "INDEX", "READ"):
                 match = re.search(r"^BOUNDARY_" + kind + r" (.+)$", checked.stdout, re.M)

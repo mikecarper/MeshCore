@@ -48,6 +48,11 @@ public:
     if (!output || !capacity) valid_ = false;
     else output[0] = 0;
   }
+  void reset() {
+    used_ = 0; valid_ = output_ && capacity_;
+    if (valid_) output_[0] = 0;
+  }
+  size_t capacity() const { return capacity_; }
   void raw(const char* text) {
     const size_t length = strlen(text);
     if (!valid_ || length >= capacity_ - used_) { valid_ = false; return; }

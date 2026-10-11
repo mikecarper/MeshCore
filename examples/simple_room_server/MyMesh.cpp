@@ -24,6 +24,7 @@
 #include <helpers/RoomLoginAuthorization.h>
 #include <helpers/RoomTopicStore.h>
 #include <helpers/RoomBoardProtocol.h>
+#include <helpers/RoomMailProtocol.h>
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/ClientPathObservation.h>
 #include <helpers/RoomClientPathCommand.h>
@@ -43,6 +44,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <helpers/RoomWebJson.h>
+#include <helpers/RoomMailWeb.h>
 #endif
 #include <helpers/OtaChannel.h>
 
@@ -242,6 +244,94 @@ bool MyMesh::pushPostToClient(ClientInfo *client, PostInfo &post) {
   return pushRoomTextToClient(client, post.post_timestamp, post.author, post.text);
 }
 
+bool MyMesh::roomClientChatEnabled(ClientInfo* client) {
+  bool mailbox_only = false;
+  // An unreadable saved policy must never turn a private-only subscriber back
+  // into a public chat subscriber. Existing users without a mailbox keep chat.
+  return mesh::getRoomMailboxOnly(_fs, client->id.pub_key, mailbox_only)
+      == mesh::RoomMailResult::Success && !mailbox_only;
+}
+
+bool MyMesh::handleRoomMailClientCommand(ClientInfo* client, const char* text,
+                                        uint64_t request_id, char* reply, size_t capacity) {
+  char command[mesh::RemoteCliReplyCache::MAX_REPLY_TEXT + 1];
+  if (strlen(text) >= sizeof(command)) {
+    snprintf(reply, capacity, "Error command too long"); return true;
+  }
+  StrHelper::strncpy(command, text, sizeof(command));
+  char prefix[4] = {};
+  const char* body = mesh::normalizeRoomClientPathCommand(command, prefix);
+  const uint8_t role = client->permissions & PERM_ACL_ROLE_MASK;
+  if (role != PERM_ACL_READ_ONLY && role != PERM_ACL_READ_WRITE && role != PERM_ACL_ADMIN
+      && !(role == PERM_ACL_GUEST && client->last_activity != 0)) return false;
+  if (prefix[0]) {
+    if (capacity < 4) return true;
+    memcpy(reply, prefix, 3); reply += 3; capacity -= 3;
+  }
+  const char* action = mesh::room_mail_protocol_detail::prefix(body, "mail")
+      ? mesh::room_mail_protocol_detail::spaces(body + 4) : "";
+  const char* target_text = mesh::room_mail_protocol_detail::prefix(action, "send")
+      ? mesh::room_mail_protocol_detail::spaces(action + 4) : "";
+  if (strlen(target_text) >= 64) {
+    char target[65]; memcpy(target, target_text, 64); target[64] = 0;
+    uint8_t key[32];
+    if (mesh::room_mail_protocol_detail::key(target, key)
+        && !room_access.allowsIdentity(key)) {
+      snprintf(reply, capacity, "Err - recipient is blocked"); return true;
+    }
+  }
+  const bool can_send = role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN;
+  if (mesh::handleRoomMailCommand(_fs, client->id.pub_key, can_send, request_id,
+                                  body, reply, capacity, getRTCClock()->getCurrentTime())) return true;
+  if (strncmp(body, "get room.board", 14) == 0) {
+    return mesh::handleRoomBoardCommand(_fs, body, reply, capacity);
+  }
+  return false;
+}
+
+bool MyMesh::handleRoomMailText(ClientInfo* client, mesh::Packet* packet,
+                               const uint8_t* secret, uint8_t* data, size_t len) {
+  const char* text = reinterpret_cast<const char*>(data + 5);
+  if (strncmp(text, "!mail", 5) != 0 || (text[5] != 0 && text[5] != ' ')) return false;
+  const uint8_t role = client->permissions & PERM_ACL_ROLE_MASK;
+  if (role != PERM_ACL_READ_ONLY && role != PERM_ACL_READ_WRITE && role != PERM_ACL_ADMIN
+      && !(role == PERM_ACL_GUEST && client->last_activity != 0)) return true;
+  uint32_t timestamp; memcpy(&timestamp, data, 4);
+  const uint32_t fingerprint = mesh::RemoteCliReplyCache::fingerprint(text, strlen(text));
+  const char* cached = nullptr;
+  const bool retry = remote_cli_reply_cache.lookup(client->id.pub_key, timestamp, fingerprint, &cached);
+  if (!retry && timestamp <= client->last_timestamp) return true;
+  serviceRoomQuotas();
+  if (!retry && !room_access.consumeKeepAlive(client->extra.room.poll_quota_used)) return true;
+  char reply[160] = {};
+  const size_t route_capacity = mesh::clientACLReplyCapacity(packet->isRouteFlood(), packet->path_len);
+  const size_t capacity = route_capacity > 5 ? std::min(sizeof(reply), route_capacity - 5) : 0;
+  if (!capacity) return true;
+  if (retry) StrHelper::strncpy(reply, cached, capacity);
+  else {
+    client->last_timestamp = timestamp;
+    if (!handleRoomMailClientCommand(client, text + 1, timestamp, reply, capacity)) {
+      snprintf(reply, capacity, "Err - use !mail settings, mode, allow, deny, delivery, send, list, read, ack or delete");
+    }
+    remote_cli_reply_cache.remember(client->id.pub_key, timestamp, fingerprint, reply);
+  }
+  client->last_activity = getRTCClock()->getCurrentTime();
+  uint32_t ack_hash;
+  mesh::Utils::sha256(reinterpret_cast<uint8_t*>(&ack_hash), sizeof(ack_hash), data,
+                      5 + strlen(text), client->id.pub_key, PUB_KEY_SIZE);
+  auto ack = createAck(ack_hash);
+  if (ack) sendClientReply(client, ack, TXT_ACK_DELAY, packet->getPathHashSize());
+  uint8_t output[165];
+  const uint32_t now = getRTCClock()->getCurrentTimeUnique();
+  memcpy(output, &now, 4); output[4] = TXT_TYPE_PLAIN << 2;
+  const size_t length = strlen(reply); memcpy(output + 5, reply, length);
+  auto response = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret, output, 5 + length);
+  if (response) sendClientReply(client, response, TXT_ACK_DELAY + REPLY_DELAY_MILLIS,
+                                packet->getPathHashSize());
+  (void)len;
+  return true;
+}
+
 #ifdef WITH_WEBCONFIG
 bool MyMesh::handleRoomWebCommand(const char* command, char* reply) {
   if (strcmp(command, "get room.web") == 0) {
@@ -356,14 +446,20 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
     error("admin permission required"); return;
   }
   const bool admin_read = strcmp(operation, "admin.users") == 0
-      || strcmp(operation, "admin.user") == 0 || strcmp(operation, "admin.settings") == 0;
+      || strcmp(operation, "admin.user") == 0 || strcmp(operation, "admin.settings") == 0
+      || strcmp(operation, "admin.mail.list") == 0 || strcmp(operation, "admin.mail.settings") == 0;
   const bool admin_write = strcmp(operation, "admin.route") == 0
       || strcmp(operation, "admin.catchup") == 0 || strcmp(operation, "admin.access") == 0
       || strcmp(operation, "admin.ban") == 0 || strcmp(operation, "admin.topic") == 0
-      || strcmp(operation, "admin.history") == 0 || strcmp(operation, "admin.rates") == 0;
+      || strcmp(operation, "admin.history") == 0 || strcmp(operation, "admin.rates") == 0
+      || strcmp(operation, "admin.mail.policy") == 0 || strcmp(operation, "admin.mail.delete") == 0;
+  const bool mail_read = strcmp(operation, "mail.settings") == 0 || strcmp(operation, "mail.check") == 0
+      || strcmp(operation, "mail.list") == 0 || strcmp(operation, "mail.read") == 0;
+  const bool mail_write = strcmp(operation, "mail.policy") == 0 || strcmp(operation, "mail.send") == 0
+      || strcmp(operation, "mail.ack") == 0 || strcmp(operation, "mail.delete") == 0;
   const bool writing = strcmp(operation, "post") == 0
       || strcmp(operation, "board.save") == 0 || strcmp(operation, "board.delete") == 0
-      || admin_write;
+      || admin_write || mail_write;
   if (writing && (!input["boot"].is<uint32_t>()
       || input["boot"].as<uint32_t>() != room_web_boot_id)) {
     error("radio restarted; refresh before sending"); return;
@@ -376,7 +472,8 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
   if (strcmp(operation, "status") != 0 && strcmp(operation, "posts") != 0
       && strcmp(operation, "post") != 0 && strcmp(operation, "board.index") != 0
       && strcmp(operation, "board.read") != 0 && strcmp(operation, "board.save") != 0
-      && strcmp(operation, "board.delete") != 0 && !admin_read && !admin_write) {
+      && strcmp(operation, "board.delete") != 0 && !admin_read && !admin_write
+      && !mail_read && !mail_write) {
     error("unknown room operation"); return;
   }
 
@@ -402,6 +499,10 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
   }
   char key[65]; mesh::Utils::toHex(key, author.pub_key, PUB_KEY_SIZE);
   mesh::RoomJsonWriter json(response, capacity);
+  if (mesh::handleRoomMailWeb(_fs, author.pub_key,
+      role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN, role == PERM_ACL_ADMIN,
+      sequence, getRTCClock()->getCurrentTime(), input.as<JsonObjectConst>(), json,
+      [this](const uint8_t* identity) { return room_access.allowsIdentity(identity); })) return;
   if (admin_operation) {
     if (strcmp(operation, "admin.settings") == 0) {
       json.raw("{\"topic\":"); json.string(room_topic);
@@ -545,12 +646,17 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
     json.raw("{\"ok\":true}"); json.finish(); return;
   }
   if (strcmp(operation, "status") == 0) {
+    bool mailbox_only = false;
+    if (mesh::getRoomMailboxOnly(_fs, author.pub_key, mailbox_only) != mesh::RoomMailResult::Success) {
+      mailbox_only = true;
+    }
     json.raw("{\"name\":"); json.string(_prefs.node_name);
     json.raw(",\"topic\":"); json.string(room_topic);
     json.raw(",\"boot\":"); json.number(room_web_boot_id);
     json.raw(",\"role\":"); json.number(role);
     json.raw(",\"web_key\":"); json.string(key);
     json.raw(",\"persistent_history\":"); json.raw(room_history_enabled ? "true" : "false");
+    json.raw(",\"mailbox_only\":"); json.raw(mailbox_only ? "true" : "false");
     json.raw("}"); json.finish(); return;
   }
   if (strcmp(operation, "post") == 0) {
@@ -959,6 +1065,7 @@ bool MyMesh::pushRoomTextToClient(ClientInfo *client, uint32_t timestamp,
 }
 
 uint8_t MyMesh::getUnsyncedCount(ClientInfo *client) {
+  if (!roomClientChatEnabled(client)) return 0;
   uint8_t count = 0;
   for (int k = 0; k < MAX_UNSYNCED_POSTS; k++) {
     if (posts[k].post_timestamp > client->extra.room.sync_since // is new post for this Client?
@@ -1043,6 +1150,18 @@ void MyMesh::serviceRoomPush() {
 
   for (int i = 0; i < acl.getNumClients(); ++i) {
     auto client = acl.getClientByIdx(i);
+    if (client->extra.room.pending_ack && !roomClientChatEnabled(client)) {
+      uint8_t retry_key[MAX_HASH_SIZE];
+      mesh::roomDeliveryRetryKey(retry_key, sizeof(retry_key), self_id.pub_key,
+          client->id.pub_key, client->extra.room.pending_topic_revision != 0,
+          [](uint8_t* out, size_t size, const uint8_t* bytes, size_t length) {
+            mesh::Utils::sha256(out, size, bytes, length);
+          });
+      cancelActiveMessageRetries(retry_key, client->extra.room.push_post_timestamp);
+      client->extra.room.pending_ack = 0;
+      client->extra.room.pending_topic_revision = 0;
+      continue;
+    }
     if (client->extra.room.pending_ack
         && millisHasNowPassed(client->extra.room.ack_timeout)) {
       const uint32_t topic_revision = client->extra.room.pending_topic_revision;
@@ -1067,7 +1186,7 @@ void MyMesh::serviceRoomPush() {
   bool did_push = false;
   if (client->extra.room.pending_ack == 0 && client->last_activity != 0
       && client->extra.room.push_failures < 3
-      && room_access.allowsIdentity(client->id.pub_key)) {
+      && room_access.allowsIdentity(client->id.pub_key) && roomClientChatEnabled(client)) {
     const uint32_t now = getRTCClock()->getCurrentTime();
     if (room_topic[0] != 0 && room_topic_ready
         && client->extra.room.topic_seen_revision != room_topic_revision
@@ -1128,6 +1247,21 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
   // uint32_t now = getRTCClock()->getCurrentTimeUnique();
   // memcpy(reply_data, &now, 4);   // response packets always prefixed with timestamp
   memcpy(reply_data, &sender_timestamp, 4); // reflect sender_timestamp back in response packet (kind of like a 'tag')
+  if (payload[0] == mesh::ROOM_MAIL_REQUEST_SUBTYPE) {
+    const uint8_t role = sender->permissions & PERM_ACL_ROLE_MASK;
+    if (role != PERM_ACL_READ_ONLY && role != PERM_ACL_READ_WRITE && role != PERM_ACL_ADMIN
+        && !(role == PERM_ACL_GUEST && sender->last_activity != 0)) return 0;
+    if (payload_len >= 34 && payload[1] == 3 && !room_access.allowsIdentity(payload + 2)) {
+      const size_t length = mesh::room_mail_protocol_detail::header(payload[1],
+          mesh::RoomMailResult::Forbidden, reply_data + 4, reply_capacity - 4);
+      return length ? 4 + length : 0;
+    }
+    const size_t length = mesh::handleRoomMailRequest(_fs, sender->id.pub_key,
+        role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN, sender_timestamp,
+        payload, payload_len, reply_data + 4, reply_capacity - 4,
+        getRTCClock()->getCurrentTime());
+    return length ? 4 + length : 0;
+  }
   if (payload[0] == mesh::ROOM_BOARD_REQUEST_SUBTYPE) {
     const size_t length = mesh::handleRoomBoardRequest(_fs, payload, payload_len,
                                                        reply_data + 4, reply_capacity - 4);
@@ -1807,6 +1941,7 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     data[len] = 0; // need to make a C string again, with null terminator
     const char* text = (const char*)&data[5];
     const size_t text_len = strlen(text);
+    if (flags == TXT_TYPE_PLAIN && handleRoomMailText(client, packet, secret, data, len)) return;
 
     uint8_t temp[5 + mesh::RemoteCliReplyCache::MAX_REPLY_TEXT + 1];
     temp[5] = 0;
@@ -1865,7 +2000,9 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
       const uint8_t role = client->permissions & PERM_ACL_ROLE_MASK;
       const bool own_path_allowed =
           (mesh::classifyRoomClientPathCommand(body) != mesh::RoomClientPathCommand::None
-              || strcmp(body, "get room.catchup") == 0 || strncmp(body, "room.catchup ", 13) == 0)
+              || strcmp(body, "get room.catchup") == 0 || strncmp(body, "room.catchup ", 13) == 0
+              || strncmp(body, "mail ", 5) == 0 || strcmp(body, "mail") == 0
+              || strncmp(body, "get room.board", 14) == 0)
           && (role == PERM_ACL_READ_ONLY || role == PERM_ACL_READ_WRITE
               || role == PERM_ACL_ADMIN
               || (role == PERM_ACL_GUEST && client->last_activity != 0));
@@ -1886,7 +2023,9 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         return;
       } else {
         if (!handleClientPathCommand(client, (char*)text, (char*)&temp[5])
-            && !handleRoomCatchUpCommand(client, (char*)text, (char*)&temp[5])) {
+            && !handleRoomCatchUpCommand(client, (char*)text, (char*)&temp[5])
+            && !handleRoomMailClientCommand(client, text, request_id, (char*)&temp[5],
+                                            mesh::RemoteCliReplyCache::MAX_REPLY_TEXT + 1)) {
           if (client->isAdmin()) {
             handleCommand(sender_timestamp, (char*)text, (char*)&temp[5],
                           i, packet->getPathHashSize());
@@ -3532,6 +3671,25 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
 
   mesh::cli::normalizeCommandVerb(command);
 
+  if (mesh::room_mail_protocol_detail::prefix(command, "mail")) {
+    uint64_t mail_request_id = sender_timestamp;
+    if (!mail_request_id) {
+      getRNG()->random(reinterpret_cast<uint8_t*>(&mail_request_id), sizeof(mail_request_id));
+      if (!mail_request_id) { strcpy(reply, "Err - mail request ID unavailable"); return; }
+    }
+    const char* mail_action = mesh::room_mail_protocol_detail::spaces(command + 4);
+    const char* mail_target = mesh::room_mail_protocol_detail::prefix(mail_action, "send")
+        ? mesh::room_mail_protocol_detail::spaces(mail_action + 4) : "";
+    if (strlen(mail_target) >= 64) {
+      char target[65]; memcpy(target, mail_target, 64); target[64] = 0;
+      uint8_t key[32];
+      if (mesh::room_mail_protocol_detail::key(target, key) && !room_access.allowsIdentity(key)) {
+        strcpy(reply, "Err - recipient is blocked"); return;
+      }
+    }
+    if (mesh::handleRoomMailCommand(_fs, self_id.pub_key, true, mail_request_id,
+                                    command, reply, 157, getRTCClock()->getCurrentTime())) return;
+  }
   if (handleRoomManagementCommand(command, reply)) return;
   if (handleRoomTopicCommand(command, reply)) return;
   if (handleRoomHistoryCommand(command, reply)) return;

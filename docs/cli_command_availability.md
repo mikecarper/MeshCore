@@ -19,6 +19,15 @@ Infrastructure `get password` is available locally in every profile; LoRa
 requests cannot read it. `get acl` and stored packet `log` are infrastructure
 features, not Companion contact or live USB-logging commands.
 
+Room users also have an owner-only command set described in
+[Personal mailboxes](room_services.md#personal-mailboxes): `mail settings`,
+`mail mode`, `mail allow`, `mail deny`, `mail delivery`, `mail check`,
+`mail inbox`/`mail list`, `mail read`, `mail ack`, and `mail delete`.
+Authenticated room writers can use `mail send`; readers cannot send.
+These work as encrypted CLI requests or ordinary direct `!mail ...` messages
+to the room. Regular users can also read `get room.board` and
+`get room.board.read`; board publishing and deletion remain administrative.
+
 Build columns mean:
 
 - **Standard** - the ordinary non-MQTT artifact, without an explicit `ota`

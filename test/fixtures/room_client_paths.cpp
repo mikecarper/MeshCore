@@ -7,6 +7,8 @@
 #include "filesystem.h"
 #include <Packet.h>
 #include <helpers/RoomAccessPolicy.h>
+#include <helpers/RoomMailProtocol.h>
+#include <helpers/RoomBoardProtocol.h>
 #include <helpers/RoomClientPathCommand.h>
 #include <helpers/RoomCatchUp.h>
 #include <helpers/ClientPathObservation.h>
@@ -93,6 +95,7 @@ static uint32_t ticks = 100;
 static uint32_t millis() { return ticks; }
 struct Sent {
   mesh::Packet packet;
+  uint8_t recipient[PUB_KEY_SIZE]{};
   uint8_t path[MAX_PATH_SIZE]{};
   uint8_t path_len = 0;
   unsigned long delay = 0;
@@ -115,6 +118,7 @@ struct MyMesh {
   FakeRng rng;
   uint8_t reply_data[MAX_PACKET_PAYLOAD]{};
   mesh::Packet pool[64];
+  mesh::Identity datagram_recipients[64]{};
   unsigned used = 0, allocations = 0, releases = 0, fail_allocation = UINT32_MAX;
   bool send_ok = true;
   unsigned general_commands = 0, post_count = 0, retry_replacements = 0, _num_post_pushes = 0;
@@ -155,10 +159,12 @@ struct MyMesh {
     return &pool[used++];
   }
   void releasePacket(mesh::Packet* p) { assert(p != nullptr); ++releases; }
-  mesh::Packet* createDatagram(uint8_t type, const mesh::Identity&, const uint8_t*,
+  mesh::Packet* createDatagram(uint8_t type, const mesh::Identity& recipient, const uint8_t*,
                                const uint8_t* data, size_t n) {
     auto p = obtainNewPacket();
     if (p) {
+      assert(n <= sizeof(p->payload));
+      datagram_recipients[p - pool] = recipient;
       p->header = type << PH_TYPE_SHIFT;
       p->payload_len = n;
       memcpy(p->payload, data, n);
@@ -177,6 +183,7 @@ struct MyMesh {
   bool sendDirect(mesh::Packet* p, const uint8_t* path, uint8_t n, unsigned long delay = 0) {
     assert(p && mesh::Packet::isValidPathLen(n));
     Sent value; value.packet = *p; value.path_len = n; value.delay = delay;
+    memcpy(value.recipient, datagram_recipients[p - pool].pub_key, PUB_KEY_SIZE);
     value.retry_enabled = _prefs.direct_retry_enabled != 0;
     memcpy(value.path, path, mesh::encodedClientPathByteLength(n));
     sent.push_back(value);
@@ -184,6 +191,7 @@ struct MyMesh {
   }
   bool sendFloodReply(mesh::Packet* p, unsigned long delay, uint8_t hash_size) {
     Sent value; value.packet = *p; value.delay = delay; value.direct = false;
+    memcpy(value.recipient, datagram_recipients[p - pool].pub_key, PUB_KEY_SIZE);
     value.path_len = (hash_size - 1) << 6;
     sent.push_back(value);
     return send_ok;
@@ -210,6 +218,9 @@ struct MyMesh {
   int handleRequest(ClientInfo*, uint32_t, uint8_t*, size_t, size_t) { return 0; }
   static bool saveFilter(ClientInfo*);
   bool handleClientPathCommand(ClientInfo*, char*, char*);
+  bool roomClientChatEnabled(ClientInfo*);
+  bool handleRoomMailClientCommand(ClientInfo*, const char*, uint64_t, char*, size_t);
+  bool handleRoomMailText(ClientInfo*, mesh::Packet*, const uint8_t*, uint8_t*, size_t);
   bool executeClientPathCommand(ClientInfo*, mesh::RoomClientPathCommand, const char*, char*);
   bool handleRoomCatchUpCommand(ClientInfo*, char*, char*);
   bool applyRoomCatchUpCommand(ClientInfo*, const char*, uint32_t, char*);
@@ -220,6 +231,7 @@ struct MyMesh {
   void onPeerDataRecv(mesh::Packet*, uint8_t, int, const uint8_t*, uint8_t*, size_t);
   void command(const char* text, uint32_t timestamp = 100, unsigned sender = 0,
                uint32_t logical = 0, uint8_t flags = TXT_TYPE_CLI_COMMAND) {
+    metadata_filesystem = &policy_fs;
     std::vector<uint8_t> data(5 + strlen(text) + mesh::RemoteCliRequest::EXTENSION_SIZE + 1);
     memcpy(data.data(), &timestamp, 4); data[4] = flags << 2;
     memcpy(data.data() + 5, text, strlen(text));

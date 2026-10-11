@@ -2,12 +2,169 @@
 <p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/room_services/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-# Room history, moderation, and information board
+# Room history, personal mailboxes, and information board
 
 Room Server firmware keeps one room per radio. Existing app login, chat,
 catch-up, and Access Control formats remain supported. The information board
 and local Wi-Fi chat use the browser page below; the stock mobile app does not
 have an information-board screen.
+
+## Personal mailboxes
+
+The single room also provides personal mailboxes. Each mailbox belongs to a
+complete public-key identity, independently of the public chat backlog. Regular
+room readers and writers can choose their own access policy and delivery mode;
+administrator permission is not required.
+
+| Access | Who may leave mail |
+| --- | --- |
+| Closed (default) | The owner only |
+| Public | Any authenticated room writer or administrator |
+| Private | Up to eight selected full public-key identities, plus the owner |
+
+Read-only users can manage and read their own mailbox but cannot send mail.
+Room bans still apply to both senders and recipients. A private allow list does
+not grant room login or writing permission; approved senders must also have
+room writer access. Reading, acknowledging and deleting mail always use the
+authenticated owner's identity, never a name or shortened key supplied in a
+request. Changing access does not delete already accepted mail.
+
+Mailboxes start closed and are created only when the owner saves a policy.
+There are at most 32 mailbox owners, 16 queued messages across the radio, four
+queued messages per owner, and eight selected senders per mailbox. Messages
+contain 1-512 UTF-8 bytes. A full queue rejects new mail without replacing old
+mail. Available filesystem space can impose a smaller limit.
+
+The server stores mail separately from public chat. Mail is encrypted on each
+LoRa connection, but is plaintext in the server's filesystem: the room operator
+is trusted. This is not end-to-end encryption between sender and recipient.
+Other ordinary users cannot list or read your inbox. Mail bodies are not
+included in public chat, notices, or the Wi-Fi administrator dashboard. Wi-Fi
+room access uses local HTTP, so use a trusted Wi-Fi network.
+
+### Mail commands for regular users
+
+Use an encrypted CLI request to the room, or send the same command as a direct
+message prefixed with `!mail` from a normal Companion app. These direct messages
+are reserved mailbox commands and never become public room posts:
+
+~~~text
+!mail mode private
+!mail allow <complete-64-hex-sender-public-key>
+!mail deny <complete-64-hex-sender-public-key>
+!mail mode public
+!mail mode closed
+!mail delivery mailbox
+!mail delivery chat
+!mail settings
+!mail settings 1
+!mail send <complete-64-hex-recipient-public-key> dog lost
+!mail check
+!mail inbox
+!mail list 1
+!mail read <message-id>
+!mail read <message-id> <next-offset>
+!mail ack <message-id>
+!mail delete <message-id>
+~~~
+
+In a CLI-capable client, use `mail ...` without `!`. These commands affect only
+the requesting identity. CLI list/settings replies use entry cursors; continue
+at the returned `next=` while it is below `total=` or `allowed=`. List entries
+show the immutable message ID, byte length and sender key; a short route may
+show a sender prefix. Reads return readable text with `id`, `off`, `next` and
+`total`; continue at `next` until it equals `total`. Text chunks end on a UTF-8
+character boundary. The route and command framing limit LoRa submissions to
+less than the 512-byte storage limit; the browser can submit a full 512 bytes.
+
+Reading never removes a message. `ack` confirms receipt and durably removes it;
+`delete` deliberately discards it. Both retain a bounded retry receipt. Exact
+sender/request/body retries return the original ID, including after receipt or
+reboot; conflicting reuse of that request ID is rejected. Each owner retains
+up to eight submission receipts. Queued receipts stay retained; the oldest
+retired receipt is evicted when needed. A very old retry after its retired
+receipt has been evicted can enqueue again.
+
+`mail delivery mailbox` suppresses automatic public chat and topic delivery to
+that identity, including retries and public backlog counts. It does not prevent
+explicit public-board reads, change routes or erase chat. Returning to `chat`
+resumes from the existing catch-up cursor. A copy already transmitted or queued
+can still arrive while switching modes. Unreadable saved mailbox policy blocks
+automatic chat rather than silently enabling it.
+
+### Sleeping tracker example
+
+A dog tracker can keep its mailbox private, approve its owner's sender identity,
+and select mailbox-only delivery. The owner leaves `dog lost` while the tracker
+is asleep. At its next scheduled check-in, the tracker authenticates to the
+room, checks its inbox, retrieves that message in resumable chunks and confirms
+receipt only after handling it. Lost replies and another sleep cycle do not
+remove unread mail. Chat history and topics are not downloaded automatically.
+
+Room Server provides the room-side queue and polling protocol. A tracker still
+needs client firmware that schedules check-ins and interprets authenticated
+commands. Ordinary mailbox text is never executed as a CLI command, and does
+not itself enable a tracker, wake it remotely or change its GPS reporting rate.
+
+### Wi-Fi mailbox management
+
+Open `/room`, join with your room credentials, and open **Personal mailbox**.
+The page shows your complete browser mailbox address, public/private/closed
+access, selected senders and mailbox-only delivery. It provides sending, paged
+inbox metadata, selective body downloads, resumable reads, explicit receipt
+confirmation and deletion. Unsaved drafts survive failed requests. The page
+honors saved mailbox-only mode before its initial chat download; **Refresh
+chat** remains an explicit choice.
+
+The browser has its own identity derived from its secret token and the server
+identity. It cannot claim your radio's mailbox using a shared room password.
+Mail sent to a radio key is retrieved by that radio; mail sent to the browser
+address is retrieved using that browser token. Keep that token to retain access
+to the same mailbox. Disconnecting clears downloaded private content from the
+page's memory; the queued server mail remains.
+
+Administrators have a **Mailboxes** panel with paged owner metadata, queued
+counts, access policy, selected senders, blocking, and confirmed deletion or
+purge. Enter a full owner address to provision a radio's mailbox before it
+checks in. Policy changes compare the loaded revision, including creation revision
+zero; concurrent changes require a refresh. The dashboard does not download
+other users' message bodies. Inbox and administrator index pages use snapshot
+revisions to reject mixed pages after a concurrent change.
+
+### LoRa mailbox protocol
+
+Authenticated room users send encrypted `PAYLOAD_TYPE_REQ` requests. The usual
+four-byte request tag precedes each payload and is echoed before the response.
+All multi-byte integers are little-endian. Subtype `0x0b` is separate from chat
+catch-up and board subtype `0x0a`.
+
+| Operation | Payload after tag |
+| --- | --- |
+| Settings/check | `0b 00` + expected revision `u32` + allow-list cursor `u8` |
+| Inbox index | `0b 01` + expected revision `u32` + entry cursor `u8` |
+| Read | `0b 02` + immutable message ID `u32` + offset `u16` |
+| Send | `0b 03` + full recipient key (32 bytes) + body length `u16` + complete body |
+| Confirm receipt | `0b 04` + message ID `u32` |
+| Delete | `0b 05` + message ID `u32` |
+| Allow sender | `0b 06` + expected revision `u32` + full sender key (32 bytes) |
+| Deny sender | `0b 07` + expected revision `u32` + full sender key (32 bytes) |
+| Access | `0b 08` + expected revision `u32` + mode `u8` (closed=0, public=1, private=2) |
+| Delivery | `0b 09` + expected revision `u32` + mailbox-only `u8` (0 or 1) |
+
+Start index/settings at revision zero and cursor zero, then use the returned
+revision on subsequent pages. `next=255` means complete. Sends are single
+requests, without fragmented uploads; the complete body must fit the encrypted
+request route. Read responses contain raw bytes in chunks of at most 128, reduced
+as needed by the reply route. Continue by offset plus copied byte count. Reads
+never acknowledge receipt implicitly. Logical requests allow only zero trailing
+encryption padding.
+
+Responses begin with subtype, operation and status. Statuses are: `0` success,
+`1` invalid, `2` storage unavailable, `3` write failure, `4` not found, `5` stale
+revision, `6` forbidden, `7` full, `8` successful duplicate, `9` conflicting
+request ID. Full response layouts are documented in
+[RoomMailProtocol.h](https://github.com/mikecarper/MeshCore/blob/keymindCascade/src/helpers/RoomMailProtocol.h).
+Mutations require space for their complete confirmation before writing.
 
 ## Optional persistent chat history
 
@@ -268,6 +425,8 @@ This management area offers:
   and send the corresponding Unix timestamp.
 - Assigning or removing saved access, blocking and unblocking full identities,
   editing the topic, enabling persistent history, and changing post/poll limits.
+- Personal mailbox owner lists, policies, sender permissions and confirmed
+  message deletion or purge. Private mail bodies are not downloaded here.
 - Optional refresh every 15 seconds. Unsaved route edits remain in place while
   live status refreshes.
 

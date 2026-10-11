@@ -602,6 +602,11 @@ public:
                      int gpio_client_index = -1,
                      uint8_t gpio_path_hash_size = 1);
   bool handleClientPathCommand(ClientInfo* client, char* command, char* reply);
+  bool roomClientChatEnabled(ClientInfo* client);
+  bool handleRoomMailClientCommand(ClientInfo* client, const char* text, uint64_t request_id,
+                                   char* reply, size_t capacity);
+  bool handleRoomMailText(ClientInfo* client, mesh::Packet* packet, const uint8_t* secret,
+                          uint8_t* data, size_t len);
   bool executeClientPathCommand(ClientInfo* client, mesh::RoomClientPathCommand operation,
                                  const char* body, char* reply);
   bool setRoomClientPath(ClientInfo* client, const char* which, const char* value, char* reply);

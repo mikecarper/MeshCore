@@ -1,5 +1,5 @@
 {
-  "status": {"name":"Test room","topic":"Topic <img src=x onerror=attack()>","boot":71,"role":2,"web_key":"5f5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a","persistent_history":false},
+  "status": {"name":"Test room","topic":"Topic <img src=x onerror=attack()>","boot":71,"role":2,"web_key":"5f5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a","persistent_history":false,"mailbox_only":false},
   "index": {"revision":1,"articles":[{"id":1,"version":1,"length":22,"title":"Instructions"}],"next":255},
   "read": {"version":1,"offset":0,"next":22,"total":22,"data64":"UmVhZCBvbmx5IHRoaXMgYXJ0aWNsZQ=="}
 }

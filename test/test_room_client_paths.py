@@ -404,6 +404,192 @@ static void catchupPolls() {
   puts("normal keep-alive echoes preserve selected catch-up while forward cursors and exact ACK retries work passed");
 }
 
+static std::string mailKey(const MyMesh& mesh, unsigned index) {
+  char key[65]; mesh::room_mail_protocol_detail::hex(mesh.acl.clients[index].id.pub_key, key); return key;
+}
+static mesh::RoomMailStatus mailStatus(MyMesh& mesh, unsigned index, bool provisioned = true) {
+  metadata_filesystem = &mesh.policy_fs; mesh::RoomMailStatus status;
+  const auto result = mesh::getRoomMailStatus(&mesh.policy_fs, mesh.acl.clients[index].id.pub_key, status);
+  assert(result == (provisioned ? mesh::RoomMailResult::Success : mesh::RoomMailResult::NotFound));
+  return status;
+}
+static uint32_t mailId(const std::string& reply) {
+  unsigned long id = 0; assert(sscanf(reply.c_str(), "OK id=%lu", &id) == 1 && id <= UINT32_MAX && id);
+  return uint32_t(id);
+}
+static void mailPlain(MyMesh& mesh, const std::string& command, uint32_t timestamp, unsigned sender = 0) {
+  const size_t before = mesh.sent.size();
+  mesh.command(command.c_str(), timestamp, sender, 0, TXT_TYPE_PLAIN);
+  if (mesh.sent.size() > before && mesh.sent.back().packet.getPayloadType() == PAYLOAD_TYPE_TXT_MSG) {
+    assert(mesh.sent.back().packet.payload[4] >> 2 == TXT_TYPE_PLAIN);
+    assert(memcmp(mesh.sent.back().recipient, mesh.acl.clients[sender].id.pub_key, PUB_KEY_SIZE) == 0);
+  }
+}
+static void mailPlainCommands() {
+  MyMesh mesh; auto& reader = mesh.acl.clients[0]; reader.permissions = PERM_ACL_READ_ONLY;
+  assert(mesh.roomClientChatEnabled(&reader));
+  mailPlain(mesh, "!mail mode public", 100); assert(mesh.reply() == "OK");
+  assert(mesh.sent.size() == 2 && mesh.sent[0].packet.getPayloadType() == PAYLOAD_TYPE_ACK);
+  mailPlain(mesh, "!mail delivery mailbox", 101);
+  assert(mailStatus(mesh, 0).settings.mailbox_only && !mesh.roomClientChatEnabled(&reader));
+  assert(mesh.roomClientChatEnabled(&mesh.acl.clients[1]));
+  mailPlain(mesh, "!mail settings", 102); assert(mesh.reply().find("delivery=mailbox") != std::string::npos);
+  mailPlain(mesh, "!mail bogus", 103); assert(mesh.reply().find("Error ") == 0);
+  mailPlain(mesh, "!mail", 104); assert(mesh.reply().find("Error ") == 0);
+  mailPlain(mesh, "!mail read 0", 105); assert(mesh.reply().find("Error ") == 0);
+  mesh.command("AB|mail delivery chat", 106);
+  assert(mesh.reply() == "AB|OK" && mesh.sent.back().packet.payload[4] >> 2 == TXT_TYPE_CLI_DATA);
+  assert(!mailStatus(mesh, 0).settings.mailbox_only && mesh.roomClientChatEnabled(&reader));
+  assert(mesh.post_count == 0 && mesh.general_commands == 0 && mesh.acl.saves == 0);
+  assert(reader.permissions == PERM_ACL_READ_ONLY && mesh.acl.clients[1].permissions == PERM_ACL_READ_WRITE);
+  MyMesh ordinary;
+  ordinary.command("dog lost: please call home", 100, 0, 0, TXT_TYPE_PLAIN);
+  ordinary.command("!mailbox is just chat", 101, 0, 0, TXT_TYPE_PLAIN);
+  assert(ordinary.post_count == 2 && ordinary.general_commands == 0);
+  // A saved mailbox-only preference survives cache replacement and blocks
+  // public unread counts without discarding retained chat.
+  mailPlain(mesh, "!mail delivery mailbox", 107);
+  mesh.remote_cli_reply_cache.clear(); assert(!mesh.roomClientChatEnabled(&reader));
+  backlog(mesh); assert(mesh.getUnsyncedCount(&reader) == 0);
+  assert(mesh.posts[0].post_timestamp != 0);
+  auto corrupt = mesh.policy_fs.get(mesh::ROOM_MAIL_PRIMARY_PATH); corrupt[0] ^= 1;
+  mesh.policy_fs.put(mesh::ROOM_MAIL_PRIMARY_PATH, corrupt);
+  assert(!mesh.roomClientChatEnabled(&reader)); // Corrupt settings fail closed.
+  puts("plain !mail commands privately reply, reserve unknown commands, preserve owner policy and mailbox-only chat admission passed");
+}
+static void mailOwnershipAndDog() {
+  MyMesh mesh; mesh.acl.clients[0].permissions = PERM_ACL_READ_ONLY;
+  mailPlain(mesh, "!mail mode public", 100);
+  mailPlain(mesh, "!mail delivery mailbox", 101);
+  const std::string dog = "dog lost: please call home; set password is ordinary text";
+  mailPlain(mesh, "!mail send " + mailKey(mesh, 0) + " " + dog, 100, 1);
+  const uint32_t id = mailId(mesh.reply()); assert(mailStatus(mesh, 0).count == 1);
+  assert(mesh.post_count == 0 && mesh.general_commands == 0);
+  mailPlain(mesh, "!mail inbox", 102); assert(mesh.reply().find(std::to_string(id) + "/") != std::string::npos);
+  // A sleeping radio checks later; reading retains the item until explicit ACK.
+  mesh.clock.now += 1800;
+  mailPlain(mesh, "!mail read " + std::to_string(id), 103);
+  assert(mesh.reply().find("text=" + dog) != std::string::npos && mailStatus(mesh, 0).count == 1);
+  mailPlain(mesh, "!mail read " + std::to_string(id), 101, 1);
+  assert(mesh.reply().find(dog) == std::string::npos && mesh.reply() == "Error not found");
+  mailPlain(mesh, "!mail ack " + std::to_string(id), 102, 1);
+  assert(mesh.reply() == "Error not found" && mailStatus(mesh, 0).count == 1);
+  mailPlain(mesh, "!mail delete " + std::to_string(id), 103, 1);
+  assert(mesh.reply() == "Error not found" && mailStatus(mesh, 0).count == 1);
+  mailPlain(mesh, "!mail mode closed", 104);
+  mailPlain(mesh, "!mail ack " + std::to_string(id), 105);
+  assert(mailStatus(mesh, 0).count == 0);
+  mailPlain(mesh, "!mail ack " + std::to_string(id), 105); assert(mailStatus(mesh, 0).count == 0);
+  mailPlain(mesh, "!mail delete " + std::to_string(id), 106); assert(mesh.reply().find("OK id=") == 0);
+  mailPlain(mesh, "!mail read " + std::to_string(id), 107); assert(mesh.reply() == "Error not found");
+  assert(mesh.post_count == 0 && mesh.general_commands == 0 && mesh.acl.saves == 0);
+  // Even administrators use their authenticated own inbox in these commands.
+  mesh.acl.clients[1].permissions = PERM_ACL_ADMIN;
+  mailPlain(mesh, "!mail settings", 104, 1); assert(mesh.reply().find("mode=closed") != std::string::npos);
+  assert(mailStatus(mesh, 1, false).count == 0);
+  puts("later dog-lost check and owner-only inbox read ACK delete keep bodies private and treat command-looking body as text passed");
+}
+static void mailModesRolesAndBans() {
+  MyMesh policy; policy.acl.clients[0].permissions = PERM_ACL_READ_ONLY;
+  mailPlain(policy, "!mail mode private", 100);
+  mailPlain(policy, "!mail send " + mailKey(policy, 0) + " forbidden", 100, 1);
+  assert(policy.reply() == "Error permission denied");
+  mailPlain(policy, "!mail allow " + mailKey(policy, 1), 101);
+  mailPlain(policy, "!mail send " + mailKey(policy, 0) + " allowed", 101, 1);
+  assert(policy.reply().find("OK id=") == 0 && mailStatus(policy, 0).count == 1);
+  mailPlain(policy, "!mail deny " + mailKey(policy, 1), 102);
+  mailPlain(policy, "!mail send " + mailKey(policy, 0) + " denied", 102, 1);
+  assert(policy.reply() == "Error permission denied" && mailStatus(policy, 0).count == 1);
+  mailPlain(policy, "!mail mode public", 103);
+  mailPlain(policy, "!mail send " + mailKey(policy, 0) + " public", 103, 1);
+  assert(policy.reply().find("OK id=") == 0 && mailStatus(policy, 0).count == 2);
+  mailPlain(policy, "!mail mode closed", 104);
+  mailPlain(policy, "!mail send " + mailKey(policy, 0) + " closed", 104, 1);
+  assert(policy.reply() == "Error permission denied" && mailStatus(policy, 0).count == 2);
+  for (uint8_t role : {uint8_t(PERM_ACL_GUEST), uint8_t(PERM_ACL_READ_ONLY), uint8_t(PERM_ACL_READ_WRITE),
+      uint8_t(PERM_ACL_ADMIN), uint8_t(PERM_ACL_FILTER_MGR), uint8_t(PERM_ACL_REGION_MGR)}) {
+    for (bool active : {false, true}) {
+      MyMesh mesh; mesh.acl.clients[0].permissions = role; mesh.acl.clients[0].last_activity = active ? 900 : 0;
+      mailPlain(mesh, "!mail mode public", 100, 1); mesh.sent.clear();
+      mailPlain(mesh, "!mail send " + mailKey(mesh, 1) + " role test", 100);
+      const bool writer = role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN;
+      assert(mailStatus(mesh, 1).count == (writer ? 1U : 0U));
+      assert(mesh.post_count == 0 && mesh.general_commands == 0);
+      mailPlain(mesh, "!mail mode private", 101);
+      const bool own = writer || role == PERM_ACL_READ_ONLY || (role == PERM_ACL_GUEST && active);
+      if (own) assert(mailStatus(mesh, 0).settings.mode == mesh::RoomMailMode::Private);
+      else assert(mailStatus(mesh, 0, false).revision == 0);
+    }
+  }
+  MyMesh blocked; mailPlain(blocked, "!mail mode public", 100, 1);
+  assert(blocked.room_access.addBan(&blocked.policy_fs, blocked.acl.clients[1].id.pub_key)
+      == mesh::RoomAccessPolicy::BanResult::Saved);
+  mailPlain(blocked, "!mail send  " + mailKey(blocked, 1) + " banned recipient", 100);
+  assert(blocked.reply().find("recipient is blocked") != std::string::npos && mailStatus(blocked, 1).count == 0);
+  assert(blocked.room_access.addBan(&blocked.policy_fs, blocked.acl.clients[0].id.pub_key)
+      == mesh::RoomAccessPolicy::BanResult::Saved);
+  const size_t replies = blocked.sent.size(); mailPlain(blocked, "!mail settings", 101);
+  assert(blocked.sent.size() == replies && blocked.post_count == 0 && blocked.general_commands == 0);
+  puts("private allow deny public closed policies honor writer reader guest roles and sender recipient bans passed");
+}
+static void mailTransportRetries() {
+  MyMesh mesh; mailPlain(mesh, "!mail mode public", 100);
+  const std::string submission = "!mail send " + mailKey(mesh, 0) + " dog lost";
+  mailPlain(mesh, submission, 100, 1); const uint32_t id = mailId(mesh.reply()); const std::string original = mesh.reply();
+  mailPlain(mesh, "!mail settings", 101, 1);
+  mailPlain(mesh, submission, 100, 1);
+  assert(mesh.reply() == original && mailStatus(mesh, 0).count == 1 && mesh.acl.clients[1].last_timestamp == 101);
+  const size_t replies = mesh.sent.size(); mailPlain(mesh, submission + " changed", 100, 1);
+  assert(mesh.sent.size() == replies && mailStatus(mesh, 0).count == 1);
+  mesh.acl.clients[1].permissions = PERM_ACL_READ_ONLY;
+  mailPlain(mesh, submission, 100, 1); assert(mesh.reply() == original && mailStatus(mesh, 0).count == 1);
+  mailPlain(mesh, submission + " new", 102, 1);
+  assert(mesh.reply() == "Error permission denied" && mailStatus(mesh, 0).count == 1);
+  // Restore the same persisted files with a new transport cache and replay floor.
+  MyMesh reboot;
+  for (const auto& entry : mesh.policy_fs.files)
+    reboot.policy_fs.put(entry.first.c_str(), *entry.second);
+  mailPlain(reboot, submission, 100, 1);
+  assert(mailId(reboot.reply()) == id && reboot.reply().find("duplicate") != std::string::npos);
+  assert(mailStatus(reboot, 0).count == 1);
+  mailPlain(reboot, "!mail read " + std::to_string(id), 100);
+  assert(reboot.reply().find("text=dog lost") != std::string::npos);
+  reboot.acl.clients[0].permissions = PERM_ACL_FILTER_MGR;
+  const size_t before_revoke = reboot.sent.size(); mailPlain(reboot, "!mail read " + std::to_string(id), 100);
+  assert(reboot.sent.size() == before_revoke || reboot.reply().find("dog lost") == std::string::npos);
+  reboot.acl.clients[0].permissions = PERM_ACL_READ_ONLY;
+  mailPlain(reboot, "!mail ack " + std::to_string(id), 101); assert(mailStatus(reboot, 0).count == 0);
+  reboot.remote_cli_reply_cache.clear(); reboot.acl.clients[1].last_timestamp = 99;
+  mailPlain(reboot, submission, 100, 1); assert(mailId(reboot.reply()) == id && mailStatus(reboot, 0).count == 0);
+  assert(reboot.room_access.addBan(&reboot.policy_fs, reboot.acl.clients[1].id.pub_key)
+      == mesh::RoomAccessPolicy::BanResult::Saved);
+  const size_t before_ban = reboot.sent.size(); mailPlain(reboot, submission, 100, 1);
+  assert(reboot.sent.size() == before_ban && reboot.post_count == 0 && reboot.general_commands == 0);
+  puts("plain transport retries persist once across cache reboot ACK and role or ban changes without exposing revoked mail passed");
+}
+static void mailInputLengths() {
+  MyMesh mesh; mailPlain(mesh, "!mail mode public", 100);
+  const std::string prefix = "mail send " + mailKey(mesh, 0) + " ";
+  const std::string longest = prefix + std::string(mesh::RemoteCliReplyCache::MAX_REPLY_TEXT - prefix.size(), 'x');
+  char reply[180]{};
+  assert(mesh.handleRoomMailClientCommand(&mesh.acl.clients[1], longest.c_str(), 800, reply, sizeof(reply)));
+  const uint32_t id = mailId(reply); assert(mailStatus(mesh, 0).count == 1);
+  mesh::RoomMailMessage message; uint8_t bytes[128]; size_t copied = 0;
+  assert(mesh::readRoomMail(&mesh.policy_fs, mesh.acl.clients[0].id.pub_key, id, 0,
+      bytes, sizeof(bytes), copied, message) == mesh::RoomMailResult::Success);
+  assert(message.length == longest.size() - prefix.size() && copied == message.length);
+  assert(std::string(reinterpret_cast<const char*>(bytes), copied) == longest.substr(prefix.size()));
+  for (const std::string& input : {longest + "x", prefix + std::string(200, 'y'), prefix + std::string(512, 'z')}) {
+    memset(reply, 0, sizeof(reply));
+    assert(mesh.handleRoomMailClientCommand(&mesh.acl.clients[1], input.c_str(), 801, reply, sizeof(reply)));
+    assert(strstr(reply, "Error command too long") && mailStatus(mesh, 0).count == 1);
+  }
+  mailPlain(mesh, "!" + longest + "x", 100, 1);
+  assert(mesh.reply() == "Error command too long" && mailStatus(mesh, 0).count == 1);
+  assert(mesh.post_count == 0 && mesh.general_commands == 0);
+  puts("mail transport rejects oversized commands without truncating bodies while exact buffer boundary preserves complete text passed");
+}
+
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "roles")) roleCases();
@@ -417,6 +603,11 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "catchup-retry")) catchupRetriesAndDenials();
   else if (!strcmp(argv[1], "admin-clients")) adminClients();
   else if (!strcmp(argv[1], "catchup-poll")) catchupPolls();
+  else if (!strcmp(argv[1], "mail-plain")) mailPlainCommands();
+  else if (!strcmp(argv[1], "mail-owner")) mailOwnershipAndDog();
+  else if (!strcmp(argv[1], "mail-policies")) mailModesRolesAndBans();
+  else if (!strcmp(argv[1], "mail-retries")) mailTransportRetries();
+  else if (!strcmp(argv[1], "mail-lengths")) mailInputLengths();
   else assert(false);
 }
 '''
@@ -444,6 +635,8 @@ def production_source():
             raise AssertionError("missing production constant " + name)
         constants += "\n" + found[0]
     methods = "\n".join(extract_braced(room, signature) for signature in (
+        "bool MyMesh::roomClientChatEnabled(", "bool MyMesh::handleRoomMailClientCommand(",
+        "bool MyMesh::handleRoomMailText(",
         "bool MyMesh::handleClientPathCommand(", "bool MyMesh::executeClientPathCommand(",
         "bool MyMesh::sendClientReply(",
         "bool MyMesh::handleRoomCatchUpCommand(", "bool MyMesh::applyRoomCatchUpCommand(",
@@ -478,6 +671,7 @@ class RoomClientPathTests(unittest.TestCase):
         binary = work / name
         command = [cls.compiler, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
                    "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"),
+                   "-I" + str(ROOT / "test/mocks"),
                    str(source), "-o", str(binary)]
         if sys.platform.startswith("linux"):
             command[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
@@ -542,6 +736,21 @@ class RoomClientPathTests(unittest.TestCase):
 
     def test_actual_keepalive_echo_cannot_undo_skip_and_exact_retries_still_ack(self):
         self.run_case("catchup-poll", "normal keep-alive echoes preserve selected catch-up while forward cursors and exact ACK retries work passed")
+
+    def test_actual_plain_mail_commands_are_reserved_private_and_save_delivery_policy(self):
+        self.run_case("mail-plain", "plain !mail commands privately reply, reserve unknown commands, preserve owner policy and mailbox-only chat admission passed")
+
+    def test_actual_owner_only_mail_poll_read_and_durable_ack_for_later_dog_check(self):
+        self.run_case("mail-owner", "later dog-lost check and owner-only inbox read ACK delete keep bodies private and treat command-looking body as text passed")
+
+    def test_actual_mail_sender_modes_reader_writer_roles_and_bans(self):
+        self.run_case("mail-policies", "private allow deny public closed policies honor writer reader guest roles and sender recipient bans passed")
+
+    def test_actual_plain_mail_retries_reboot_receipts_and_current_authorization(self):
+        self.run_case("mail-retries", "plain transport retries persist once across cache reboot ACK and role or ban changes without exposing revoked mail passed")
+
+    def test_actual_mail_input_length_rejection_preserves_complete_accepted_body(self):
+        self.run_case("mail-lengths", "mail transport rejects oversized commands without truncating bodies while exact buffer boundary preserves complete text passed")
 
     def test_negative_controls_detect_rollback_cache_authorization_and_retry_regressions(self):
         controls = (

@@ -37,6 +37,9 @@ def room_outputs(work, compiler):
         "bool MyMesh::pushPostToClient(", "bool MyMesh::pushRoomTextToClient(",
         "bool MyMesh::processAck(", "void MyMesh::activateRoomTopic(",
         "bool MyMesh::handleRoomTopicCommand(", "void MyMesh::serviceRoomPush("))
+    definitions += "\n" + extract_braced(source, "bool MyMesh::roomClientChatEnabled(").replace(
+        "getRoomMailboxOnly(_fs,", "getRoomMailboxOnly(&policy_fs,")
+    definitions += "\n" + extract_braced(source, "uint8_t MyMesh::getUnsyncedCount(")
     packet = (ROOT / "src/Packet.cpp").read_text()
     definitions = "namespace mesh {\n" + extract_braced(
         packet, "bool Packet::isValidPathLen(") + "\n}\n" + definitions
@@ -67,6 +70,7 @@ def room_outputs(work, compiler):
     checked([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
              "-Wno-unused-parameter", "-Wno-missing-field-initializers", *SANITIZERS,
              f"-I{work}", f"-I{ROOT / 'src'}",
+             f"-I{ROOT / 'test/mocks'}",
              f"-I{ROOT / 'test/fixtures/room_topic_delivery'}",
              str(FIXTURES / "room_messages.cpp"), "-o", str(binary)])
     records = []

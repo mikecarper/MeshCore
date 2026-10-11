@@ -8,6 +8,7 @@
 #include <helpers/RoomAccessPolicy.h>
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/RoomClientPathCommand.h>
+#include <helpers/RoomMailStore.h>
 
 #define PUB_KEY_SIZE 32
 #define MAX_PATH_SIZE 64
@@ -103,6 +104,9 @@ struct MyMesh {
   std::vector<Sent> sent;
   bool pool_available = true, queue_available = true, alternate_available = true;
   unsigned releases = 0;
+  unsigned cancellations = 0;
+  uint8_t retry_key[MAX_HASH_SIZE] = {};
+  uint32_t retry_timestamp = 0;
   uint8_t reply_data[MAX_PACKET_PAYLOAD] = {};
   unsigned long next_push = 0, room_topic_ready_at = 0;
   bool room_topic_ready = true;
@@ -158,7 +162,9 @@ struct MyMesh {
     memcpy(entry.path, path, mesh::encodedClientPathByteLength(length));
     return true;
   }
-  void replaceActiveMessageRetries(mesh::Packet*, const uint8_t*, uint32_t) {}
+  void replaceActiveMessageRetries(mesh::Packet*, const uint8_t* key, uint32_t timestamp) {
+    memcpy(retry_key, key, sizeof(retry_key)); retry_timestamp = timestamp;
+  }
   bool pushPostToClient(ClientInfo*, PostInfo&);
   bool sendClientReply(ClientInfo*, mesh::Packet*, unsigned long, uint8_t);
   bool pushRoomTextToClient(ClientInfo*, uint32_t, const mesh::Identity&, const char*, uint32_t = 0);
@@ -166,6 +172,12 @@ struct MyMesh {
   void activateRoomTopic();
   bool handleRoomTopicCommand(const char*, char*);
   void serviceRoomPush();
+  uint8_t getUnsyncedCount(ClientInfo*);
+  bool roomClientChatEnabled(ClientInfo*);
+  bool cancelActiveMessageRetries(const uint8_t* key, uint32_t timestamp) {
+    assert(memcmp(key, retry_key, sizeof(retry_key)) == 0 && timestamp == retry_timestamp);
+    ++cancellations; return true;
+  }
   void tick(uint32_t delta = 0) {
     ticks += delta + 1;
     next_push = uint32_t(ticks - 1);
@@ -361,6 +373,36 @@ int main() {
       m.ack();
     }
     assert(m._prefs.direct_retry_enabled == 1);
+  }
+  for (bool pending_topic : {false, true}) {
+    MyMesh m; auto& client = m.acl.clients[0];
+    m.topic("Public topic");
+    if (!pending_topic) m.post(0, 900, "Public chat");
+    m.tick(6000); assert(m.sent.size() == 1 && client.extra.room.pending_ack);
+    const uint32_t old_ack = client.extra.room.pending_ack;
+    mesh::RoomMailSettings settings; settings.mailbox_only = true;
+    assert(mesh::saveRoomMailSettings(&m.policy_fs, client.id.pub_key, settings) == mesh::RoomMailResult::Success);
+    assert(!m.roomClientChatEnabled(&client) && m.getUnsyncedCount(&client) == 0);
+    m.tick(); assert(!client.extra.room.pending_ack && !client.extra.room.pending_topic_revision);
+    assert(m.cancellations == 1 && !m.processAck(reinterpret_cast<const uint8_t*>(&old_ack)));
+    for (int poll = 0; poll < 10; ++poll) m.tick(12000);
+    assert(m.sent.size() == 1 && client.extra.room.sync_since == 0);
+    settings.mailbox_only = false;
+    assert(mesh::saveRoomMailSettings(&m.policy_fs, client.id.pub_key, settings) == mesh::RoomMailResult::Success);
+    m.tick(); assert(m.sent.size() == 2); m.ack();
+  }
+  {
+    // An intermittently connected mailbox subscriber never downloads chat or
+    // the topic; corrupt saved policy remains closed to automatic delivery.
+    MyMesh m; auto& client = m.acl.clients[0];
+    mesh::RoomMailSettings settings; settings.mailbox_only = true;
+    assert(mesh::saveRoomMailSettings(&m.policy_fs, client.id.pub_key, settings) == mesh::RoomMailResult::Success);
+    m.topic("Public topic"); m.post(0, 900, "Public chat");
+    for (int poll = 0; poll < 10; ++poll) m.tick(6000);
+    assert(m.sent.empty() && !m.getUnsyncedCount(&client));
+    m.policy_fs.put(mesh::ROOM_MAIL_PRIMARY_PATH, {'c','o','r','r','u','p','t'});
+    for (int poll = 0; poll < 10; ++poll) m.tick(6000);
+    assert(m.sent.empty() && !m.roomClientChatEnabled(&client));
   }
   puts("room topic delivery regressions passed");
 }

@@ -95,6 +95,8 @@ jobs:
           python3 -m pip install cryptography
           sudo apt-get update
           sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          pio pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
 
       - name: Verify ArduinoJson pin
         run: |
@@ -134,6 +136,8 @@ jobs:
           python3 -B test/test_room_history_integration.py -v
           python3 -B test/test_room_board_store.py -v
           python3 -B test/test_room_board_protocol.py -v
+          python3 -B test/test_room_mail_store.py -v
+          python3 -B test/test_room_mail_protocol.py -v
           python3 -B test/test_room_web_mailbox.py -v
           python3 -B test/test_room_web_http.py -v
           python3 -B test/test_room_web_service.py -v
@@ -564,6 +568,7 @@ jobs:
           python3 -B test/test_sensor_webconfig_capabilities.py -v
           python3 -B test/test_webconfig_ui_runtime.py
           MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_web_ui.py -v
+          MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_mail_web_ui.py -v
 
       - name: Upload Test Results
         # Upload test results even if the test step failed.

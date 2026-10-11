@@ -24,6 +24,7 @@ static void* trackedRealloc(void* ptr, size_t size) {
 #undef free
 #undef realloc
 #include <helpers/RoomBoardStore.h>
+#include <helpers/RoomMailWeb.h>
 #include <helpers/RoomHistoryStore.h>
 #include <helpers/RoomAccessPolicy.h>
 #include <helpers/RoomLoginAuthorization.h>
@@ -174,6 +175,7 @@ struct MyMesh {
   bool applyRoomCatchUpCommand(ClientInfo*, const char*, uint32_t, char*);
   static bool saveFilter(ClientInfo*);
   uint8_t getUnsyncedCount(ClientInfo*);
+  bool roomClientChatEnabled(ClientInfo*);
   bool handleRoomHistoryCommand(const char*, char*);
   bool handleRoomTopicCommand(const char*, char*);
   void activateRoomTopic();
@@ -237,7 +239,8 @@ static void seedClients(MyMesh& m, unsigned count = 5) {
 }
 static void adminAuthorizationCases() {
   const char* operations[] = {"admin.users", "admin.user", "admin.route", "admin.catchup",
-      "admin.access", "admin.ban", "admin.settings", "admin.topic", "admin.history", "admin.rates"};
+      "admin.access", "admin.ban", "admin.settings", "admin.topic", "admin.history", "admin.rates",
+      "admin.mail.list", "admin.mail.settings", "admin.mail.policy", "admin.mail.delete"};
   unsigned denied = 0;
   for (const char* password : {"", "wrong-password", "write-secret"}) {
     for (const char* operation : operations) {
@@ -554,7 +557,7 @@ static void adminInvalidAndSessionCases() {
     assert(m.room_access.postRate() == 0 && m.room_access.pollRate() == 0);
   }
   const char* writes[] = {"admin.route", "admin.catchup", "admin.access", "admin.ban",
-      "admin.topic", "admin.history", "admin.rates"};
+      "admin.topic", "admin.history", "admin.rates", "admin.mail.policy", "admin.mail.delete"};
   for (const char* operation : writes) {
     MyMesh m; enable(m); seedClients(m);
     error(m, adminClientRequest(operation, m.acl.clients[1], "", 70), 99, "restarted");
@@ -581,7 +584,205 @@ static void adminInvalidAndSessionCases() {
   assert(banned.room_access.addBan(banned._fs, author) == mesh::RoomAccessPolicy::BanResult::Saved);
   error(banned, request("admin.settings", "admin-secret"), 1, "access denied");
   assert(floors(banned) == 0 && banned.acl.lookups == 0 && !banned.room_web_request_authenticated);
-  printf("ADMIN_INVALID: %zu strict schemas, 21 boot guards, replay/auth floors, bounded sessions and banned browser passed\n", std::size(invalid));
+  printf("ADMIN_INVALID: %zu strict schemas, %zu boot guards, replay/auth floors, bounded sessions and banned browser passed\n", std::size(invalid), std::size(writes) * 3);
+}
+static std::string browserKey(const MyMesh& m, uint8_t owner) {
+  const auto identity = token(owner); uint8_t author[32]; char key[65];
+  mesh::Utils::sha256(author, sizeof(author), identity.data(), identity.size(), m.self_id.pub_key, PUB_KEY_SIZE);
+  mesh::Utils::toHex(key, author, sizeof(author)); return key;
+}
+static std::string quoted(const std::string& value) {
+  JsonDocument json; json.set(value); std::string output; serializeJson(json, output); return output;
+}
+static std::string mailPolicyFields(const char* mode, uint32_t revision, bool only = false,
+                                    const std::vector<std::string>& allowed = {}) {
+  std::string fields = ",\"boot\":71,\"mode\":" + quoted(mode) + ",\"expected_revision\":" + std::to_string(revision)
+      + ",\"mailbox_only\":" + (only ? "true" : "false") + ",\"allowlist\":[";
+  for (size_t i = 0; i < allowed.size(); ++i) { if (i) fields += ','; fields += quoted(allowed[i]); }
+  return fields + ']';
+}
+static std::string mailSendRequest(const std::string& recipient, const std::string& text,
+                                  const char* password = "write-secret") {
+  return request("mail.send", password, ",\"boot\":71,\"recipient\":" + quoted(recipient) + ",\"text\":" + quoted(text));
+}
+static std::string mailListRequest(uint8_t cursor = 0, uint32_t revision = 0,
+                                  const char* password = "") {
+  return request("mail.list", password, ",\"cursor\":" + std::to_string(cursor) + ",\"revision\":" + std::to_string(revision));
+}
+static std::string mailOwnerRequest(const char* operation, const std::string& owner,
+                                    const std::string& fields = "") {
+  return request(operation, "admin-secret", ",\"owner\":" + quoted(owner) + fields);
+}
+static uint32_t mailRevision(MyMesh& m, uint32_t& sequence, uint8_t owner) {
+  auto settings = result(m, request("mail.settings", ""), sequence++, owner);
+  assert(!settings["error"] && settings["revision"].is<uint32_t>());
+  return settings["revision"].as<uint32_t>();
+}
+static void mailAuthorizationAndPolicyCases() {
+  MyMesh m; enable(m); uint32_t sequence = 1;
+  const auto first = result(m, request("mail.settings", ""), sequence++, 1);
+  const std::string owner = first["owner"].as<std::string>(), sender = browserKey(m, 2);
+  assert(owner == browserKey(m, 1) && owner != sender);
+  assert(first["mode"] == "closed" && first["revision"] == 0 && first["total"] == 0 && first["mailbox_only"] == false);
+  const auto impersonated = result(m, request("mail.settings", "", ",\"owner\":" + quoted(owner)
+      + ",\"key\":" + quoted(clientKey(m.acl.radio_admin)) + ",\"permissions\":3"), sequence++, 2);
+  assert(impersonated["owner"] == sender && m.acl.lookups == 0);
+  auto policy = result(m, request("mail.policy", "", mailPolicyFields("public", 0, true)), sequence++, 1);
+  assert(policy["mode"] == "public" && policy["revision"].as<uint32_t>() > 0 && policy["mailbox_only"] == true);
+  const uint32_t initial_revision = policy["revision"];
+  error(m, request("mail.policy", "", mailPolicyFields("closed", 0)), sequence++, "changed", 1);
+  assert(result(m, request("mail.settings", ""), sequence++, 1)["mode"] == "public");
+  assert(result(m, request("status", ""), sequence++, 1)["mailbox_only"] == true);
+  assert(result(m, request("status", ""), sequence++, 2)["mailbox_only"] == false);
+  error(m, mailSendRequest(owner, "reader cannot send", ""), sequence++, "read-only", 2);
+  auto sent = result(m, mailSendRequest(owner, "public mail"), sequence++, 2);
+  assert(sent["ok"] == true && sent["id"].as<uint32_t>() > initial_revision);
+  const uint32_t id = sent["id"], revision = mailRevision(m, sequence, 1);
+  error(m, request("mail.read", "", ",\"owner\":" + quoted(owner) + ",\"id\":" + std::to_string(id) + ",\"offset\":0"), sequence++, "not found", 2);
+  error(m, request("mail.ack", "", ",\"boot\":71,\"owner\":" + quoted(owner) + ",\"id\":" + std::to_string(id)), sequence++, "not found", 2);
+  assert(result(m, request("mail.check", ""), sequence++, 1)["unread"] == 1);
+  policy = result(m, request("mail.policy", "", mailPolicyFields("private", revision, true, {sender})), sequence++, 1);
+  assert(policy["allowlist"].size() == 1 && policy["allowlist"][0] == sender);
+  error(m, mailSendRequest(owner, "unapproved mail"), sequence++, "not accepting", 3);
+  assert(result(m, mailSendRequest(owner, "approved mail"), sequence++, 2)["ok"] == true);
+  const uint32_t private_revision = mailRevision(m, sequence, 1);
+  policy = result(m, request("mail.policy", "", mailPolicyFields("closed", private_revision)), sequence++, 1);
+  assert(policy["mode"] == "closed");
+  error(m, mailSendRequest(owner, "closed mail"), sequence++, "not accepting", 2);
+  assert(result(m, request("mail.check", ""), sequence++, 1)["total"] == 2 && m._num_posted == 0);
+  assert(result(m, request("status", ""), sequence++, 1)["mailbox_only"] == false);
+  const auto before = m.storage.get(mesh::ROOM_MAIL_PRIMARY_PATH);
+  const uint32_t closed_revision = mailRevision(m, sequence, 1);
+  error(m, request("mail.policy", "", mailPolicyFields("private", closed_revision, false, {sender, sender})), sequence++, "invalid", 1);
+  std::vector<std::string> too_many(9, sender);
+  error(m, request("mail.policy", "", mailPolicyFields("private", closed_revision, false, too_many)), sequence++, "eight", 1);
+  assert(m.storage.get(mesh::ROOM_MAIL_PRIMARY_PATH) == before && m.acl.lookups == 0);
+  printf("MAIL_AUTH: browser token identity isolation, reader/writer gates, strict stale-zero policy, public/private/closed and sender limits passed\n");
+}
+static void mailDeliveryAndDurabilityCases() {
+  MyMesh m; enable(m); const std::string recipient = browserKey(m, 2);
+  assert(result(m, request("mail.policy", "", mailPolicyFields("public", 0, true)), 1, 2)["mode"] == "public");
+  std::string text; for (unsigned i = 0; i < 128; ++i) text += "\xF0\x9F\x93\xA1";
+  assert(text.size() == 512);
+  const auto submission = mailSendRequest(recipient, text); auto sent = result(m, submission, 200, 1);
+  assert(sent["ok"] == true); const uint32_t id = sent["id"];
+  error(m, submission, 200, "completed", 1);
+  error(m, mailSendRequest(recipient, text + "x"), 201, "1-512", 1);
+  error(m, request("mail.send", "write-secret", ",\"boot\":71,\"recipient\":" + quoted(recipient) + ",\"text\":\"before\\u0000after\""), 202, "1-512", 1);
+  error(m, mailSendRequest(recipient.substr(0, 12), "bad recipient"), 203, "complete", 1);
+  MyMesh restored; restored.storage.files = m.storage.files; enable(restored);
+  const auto duplicate = result(restored, submission, 200, 1);
+  assert(duplicate["ok"] == true && duplicate["id"] == id && restored.storage.write_opens == 0);
+  uint32_t sequence = 1;
+  auto page = result(restored, mailListRequest(), sequence++, 2);
+  assert(page["messages"].size() == 1 && page["messages"][0]["id"] == id && page["messages"][0]["sender"] == browserKey(restored, 1));
+  assert(page["messages"][0]["length"] == 512 && page["messages"][0]["acked"] == false && page["next"].isNull());
+  std::string assembled;
+  for (unsigned offset = 0; offset < 512;) {
+    auto chunk = result(restored, request("mail.read", "", ",\"id\":" + std::to_string(id) + ",\"offset\":" + std::to_string(offset)), sequence++, 2);
+    uint8_t bytes[128]; size_t length = 0;
+    assert(chunk["id"] == id && chunk["sender"] == browserKey(restored, 1) && chunk["length"] == 512 && chunk["created"] == 1000);
+    assert(chunk["offset"] == offset && chunk["acked"] == false && mesh::roomDecodeBase64(chunk["data64"], bytes, sizeof(bytes), length));
+    assert(length == 128 && chunk["count"] == length && chunk["next"] == offset + length);
+    assembled.append(reinterpret_cast<const char*>(bytes), length); offset += length;
+  }
+  assert(assembled == text);
+  auto count = result(restored, request("mail.check", ""), sequence++, 2);
+  assert(count["total"] == 1 && count["unread"] == 1 && count["mailbox_only"] == true);
+  const auto eof = result(restored, request("mail.read", "", ",\"id\":" + std::to_string(id) + ",\"offset\":512"), sequence++, 2);
+  assert(eof["count"] == 0 && eof["next"] == 512 && eof["data64"] == "");
+  assert(result(restored, request("mail.ack", "", ",\"boot\":71,\"id\":" + std::to_string(id)), sequence++, 2)["ok"] == true);
+  assert(result(restored, request("mail.check", ""), sequence++, 2)["unread"] == 0);
+  error(restored, request("mail.read", "", ",\"id\":" + std::to_string(id) + ",\"offset\":0"), sequence++, "not found", 2);
+  MyMesh after_ack; after_ack.storage.files = restored.storage.files; enable(after_ack);
+  const auto repeated = result(after_ack, submission, 200, 1);
+  assert(repeated["ok"] == true && repeated["id"] == id);
+  assert(result(after_ack, request("mail.check", ""), 1, 2)["total"] == 0);
+  assert(result(after_ack, request("mail.ack", "", ",\"boot\":71,\"id\":" + std::to_string(id)), 2, 2)["ok"] == true);
+  printf("MAIL_DELIVERY: 512-byte UTF-8, bounded chunks/EOF, read retains unread mail, explicit durable ACK and retry across reboot passed\n");
+}
+static void mailAdministratorCases() {
+  MyMesh m; enable(m); uint32_t sequence = 1; const std::string target = browserKey(m, 2), sender = browserKey(m, 1);
+  auto selected = result(m, mailOwnerRequest("admin.mail.settings", target), sequence++, 9);
+  assert(selected["owner"] == target && selected["revision"] == 0 && selected["blocked"] == false);
+  selected = result(m, mailOwnerRequest("admin.mail.policy", target, mailPolicyFields("private", 0, true, {sender})), sequence++, 9);
+  assert(selected["owner"] == target && selected["allowlist"][0] == sender && selected["mailbox_only"] == true);
+  const uint32_t revision = selected["revision"];
+  error(m, mailOwnerRequest("admin.mail.policy", target, mailPolicyFields("closed", 0)), sequence++, "changed", 9);
+  error(m, mailOwnerRequest("admin.mail.policy", target, mailPolicyFields("closed", revision - 1)), sequence++, "changed", 9);
+  const auto sent = result(m, mailSendRequest(target, "recipient-only content"), sequence++, 1); assert(sent["ok"] == true);
+  auto metadata = result(m, request("admin.mail.list", "admin-secret", ",\"cursor\":0,\"revision\":0"), sequence++, 9);
+  assert(metadata["mailboxes"].size() == 1 && metadata["mailboxes"][0]["owner"] == target && metadata["mailboxes"][0]["total"] == 1);
+  assert(!metadata["mailboxes"][0]["text"] && !metadata["mailboxes"][0]["data64"] && !metadata["mailboxes"][0]["allowlist"]);
+  error(m, mailOwnerRequest("admin.mail.read", target, ",\"id\":" + std::to_string(sent["id"].as<uint32_t>()) + ",\"offset\":0"), sequence++, "unknown", 9);
+  auto own = result(m, request("mail.list", "admin-secret", ",\"owner\":" + quoted(target) + ",\"cursor\":0,\"revision\":0"), sequence++, 9);
+  assert(own["messages"].size() == 0);
+  assert(result(m, request("admin.ban", "admin-secret", ",\"boot\":71,\"key\":" + quoted(target) + ",\"banned\":true"), sequence++, 9)["ok"] == true);
+  selected = result(m, mailOwnerRequest("admin.mail.settings", target), sequence++, 9);
+  assert(selected["blocked"] == true && selected["mode"] == "private" && selected["allowlist"][0] == sender);
+  error(m, mailSendRequest(target, "blocked recipient"), sequence++, "blocked", 1);
+  error(m, request("mail.check", ""), sequence++, "denied", 2);
+  assert(result(m, mailOwnerRequest("admin.mail.delete", target, ",\"boot\":71,\"id\":0"), sequence++, 9)["ok"] == true);
+  selected = result(m, mailOwnerRequest("admin.mail.settings", target), sequence++, 9);
+  assert(selected["total"] == 0 && selected["mode"] == "private" && selected["blocked"] == true);
+  assert(result(m, request("admin.ban", "admin-secret", ",\"boot\":71,\"key\":" + quoted(target) + ",\"banned\":false"), sequence++, 9)["ok"] == true);
+  error(m, request("mail.delete", "", ",\"boot\":71,\"id\":0"), sequence++, "identifier", 2);
+  printf("MAIL_ADMIN: selected full-key policies, metadata-only enumeration, blocked field/gates, owner-isolated admin reads and confirmed purge passed\n");
+}
+static void mailPagingAndStorageCases() {
+  MyMesh m; enable(m); uint32_t sequence = 1; const std::string target = browserKey(m, 2);
+  assert(result(m, request("mail.policy", "", mailPolicyFields("public", 0)), sequence++, 2)["mode"] == "public");
+  std::vector<uint32_t> ids;
+  for (unsigned i = 0; i < 3; ++i) { auto sent = result(m, mailSendRequest(target, "queued " + std::to_string(i)), sequence++, 1); assert(sent["ok"] == true); ids.push_back(sent["id"]); }
+  auto page = result(m, mailListRequest(), sequence++, 2); assert(page["messages"].size() == 2 && page["next"] == 2);
+  const uint32_t snapshot = page["revision"];
+  assert(result(m, mailSendRequest(target, "arrival between pages"), sequence++, 1)["ok"] == true);
+  error(m, mailListRequest(2, snapshot), sequence++, "changed", 2);
+  page = result(m, mailListRequest(), sequence++, 2);
+  const uint32_t newer = page["revision"];
+  assert(result(m, request("mail.delete", "", ",\"boot\":71,\"id\":" + std::to_string(ids[0])), sequence++, 2)["ok"] == true);
+  error(m, mailListRequest(2, newer), sequence++, "changed", 2);
+  error(m, mailListRequest(2, 0), sequence++, "revision", 2);
+  page = result(m, mailListRequest(), sequence++, 2);
+  auto last = result(m, mailListRequest(2, page["revision"]), sequence++, 2);
+  assert(last["messages"].size() == 1 && last["next"].isNull());
+  for (uint8_t owner = 3; owner <= 4; ++owner) assert(result(m, mailOwnerRequest("admin.mail.policy", browserKey(m, owner), mailPolicyFields("public", 0)), sequence++, 9)["mode"] == "public");
+  auto owners = result(m, request("admin.mail.list", "admin-secret", ",\"cursor\":0,\"revision\":0"), sequence++, 9);
+  assert(owners["mailboxes"].size() == 2 && owners["next"] == 2); const uint32_t owner_snapshot = owners["revision"];
+  assert(result(m, mailSendRequest(target, "admin snapshot mutation"), sequence++, 1)["ok"] == true);
+  error(m, request("admin.mail.list", "admin-secret", ",\"cursor\":2,\"revision\":" + std::to_string(owner_snapshot)), sequence++, "changed", 9);
+  owners = result(m, request("admin.mail.list", "admin-secret", ",\"cursor\":0,\"revision\":0"), sequence++, 9);
+  auto owners_last = result(m, request("admin.mail.list", "admin-secret", ",\"cursor\":2,\"revision\":" + std::to_string(owners["revision"].as<uint32_t>())), sequence++, 9);
+  assert(owners_last["mailboxes"].size() == 1 && owners_last["next"].isNull());
+  error(m, mailSendRequest(target, "owner queue is full"), sequence++, "full", 1);
+  const auto primary = m.storage.get(mesh::ROOM_MAIL_PRIMARY_PATH);
+  m.storage.capacity = 0;
+  error(m, request("mail.ack", "", ",\"boot\":71,\"id\":" + std::to_string(ids[1])), sequence++, "save failed", 2);
+  assert(m.storage.get(mesh::ROOM_MAIL_PRIMARY_PATH) == primary); m.storage.reset();
+  assert(result(m, request("mail.check", ""), sequence++, 2)["total"] == 4);
+  uint8_t key[32]; assert(mesh::roomMailWebKey(key, sizeof(key), target.c_str()));
+  mesh::room_mail_detail::Index index; mesh::room_mail_detail::Entry entry; mesh::room_mail_detail::Owner owner; bool found = false;
+  assert(mesh::room_mail_detail::load(m._fs, key, index, entry, owner, found, false) == mesh::RoomMailResult::Success && found);
+  char bank[24]; mesh::room_mail_detail::ownerPath(entry, bank);
+  auto corrupt = m.storage.get(bank); corrupt.back() ^= 1; m.storage.put(bank, corrupt);
+  auto denied = result(m, request("mail.read", "", ",\"id\":" + std::to_string(ids[1]) + ",\"offset\":0"), sequence++, 2);
+  assert(denied.as<JsonObjectConst>().size() == 1 && strstr(denied["error"].as<const char*>(), "storage unavailable"));
+  error(m, mailSendRequest(target, "preserve corrupt evidence"), sequence++, "storage unavailable", 1);
+  assert(m.storage.get(bank) == corrupt && m.storage.get(mesh::ROOM_MAIL_PRIMARY_PATH) == primary);
+  assert(result(m, request("status", ""), sequence++, 2)["mailbox_only"] == true);
+  printf("MAIL_PAGING: explicit revisions reject message arrivals/deletions between pages and changed admin snapshots passed\n");
+  printf("MAIL_STORAGE: full owner queue, failed ACK retention, corrupt-bank fail-closed reads/status and preserved evidence passed\n");
+}
+static void mailGlobalQueueCases() {
+  MyMesh m; enable(m); uint32_t sequence = 1;
+  for (uint8_t owner = 2; owner <= 6; ++owner) assert(result(m, mailOwnerRequest("admin.mail.policy", browserKey(m, owner), mailPolicyFields("public", 0)), sequence++, 9)["mode"] == "public");
+  for (uint8_t owner = 2; owner <= 5; ++owner) for (unsigned i = 0; i < 4; ++i) assert(result(m, mailSendRequest(browserKey(m, owner), "bounded global queue"), sequence++, 1)["ok"] == true);
+  error(m, mailSendRequest(browserKey(m, 6), "seventeenth message"), sequence++, "full", 1);
+  const auto owners = result(m, request("admin.mail.list", "admin-secret", ",\"cursor\":0,\"revision\":0"), sequence++, 9);
+  assert(owners["queued"] == 16);
+  assert(result(m, mailOwnerRequest("admin.mail.delete", browserKey(m, 2), ",\"boot\":71,\"id\":0"), sequence++, 9)["ok"] == true);
+  assert(result(m, mailSendRequest(browserKey(m, 6), "space released by purge"), sequence++, 1)["ok"] == true);
+  printf("MAIL_GLOBAL: bounded 16-message server queue rejects without acceptance and recovers capacity after explicit purge passed\n");
 }
 int main() {
   unsigned scenarios = 0;
@@ -714,11 +915,16 @@ int main() {
   adminListingCases();
   adminAccessAndSettingsCases();
   adminInvalidAndSessionCases();
+  mailAuthorizationAndPolicyCases();
+  mailDeliveryAndDurabilityCases();
+  mailAdministratorCases();
+  mailPagingAndStorageCases();
+  mailGlobalQueueCases();
   // Deliver concrete backend responses for the browser boundary fixture.
   MyMesh boundary; enable(boundary);
   printf("BOUNDARY_STATUS %s\n", execute(boundary, request("status"), 1).c_str());
   assert(result(boundary, saveRequest(1, 0, "Instructions", "Read only this article"), 2)["ok"] == true);
   printf("BOUNDARY_INDEX %s\n", execute(boundary, request("board.index", "write-secret", ",\"revision\":0,\"cursor\":0"), 3).c_str());
   printf("BOUNDARY_READ %s\n", execute(boundary, request("board.read", "write-secret", ",\"id\":1,\"version\":1,\"offset\":0"), 4).c_str());
-  printf("PASS: %u base and 6 admin actual room web service authorization, storage, quota, JSON and boundary groups\n", scenarios);
+  printf("PASS: %u base, 6 admin and 6 mail actual room web service authorization, storage, quota, JSON and boundary groups\n", scenarios);
 }

@@ -29,6 +29,7 @@ HARNESS = r'''
 #include <helpers/ClientPathObservation.h>
 #include <helpers/RoomClientPathCommand.h>
 #include <helpers/RoomCatchUp.h>
+#include <helpers/RoomMailStore.h>
 #include <helpers/TxtDataHelpers.h>
 #include <Packet.h>
 #include <helpers/RoomLoginAuthorization.h>
@@ -169,6 +170,7 @@ struct MyMesh {
   unsigned path_acks = 0;
   bool processAck(const uint8_t*) { ++path_acks; return true; }
   uint8_t getUnsyncedCount(ClientInfo*);
+  bool roomClientChatEnabled(ClientInfo*);
   int getExtraAckTransmitCount() { return 0; }
   unsigned requests = 0;
   uint8_t last_request_type = 0;
@@ -256,6 +258,8 @@ struct MyMesh {
     mesh::Packet packet; packet.header = ROUTE_TYPE_DIRECT;
     onPeerDataRecv(&packet, PAYLOAD_TYPE_REQ, 0, acl.client.shared_secret, data, sizeof(data));
   }
+  bool handleRoomMailText(ClientInfo*, mesh::Packet*, const uint8_t*, uint8_t*, size_t) { return false; }
+  bool handleRoomMailClientCommand(ClientInfo*, const char*, uint64_t, char*, size_t) { return false; }
   void onPeerDataRecv(mesh::Packet*, uint8_t, int, const uint8_t*, uint8_t*, size_t);
   bool onPeerPathRecv(mesh::Packet*, int, const uint8_t*, uint8_t*, uint8_t, uint8_t, uint8_t*, uint8_t);
   void onAnonDataRecv(mesh::Packet*, const uint8_t*, const mesh::Identity&,
@@ -272,6 +276,7 @@ struct MyMesh {
 @ROOM_CATCHUP_HANDLER@
 @ROOM_CATCHUP_APPLY@
 @ROOM_UNSYNCED_COUNT@
+@ROOM_MAIL_STATUS@
 
 static mesh::Identity identity(uint8_t n = 1) {
   mesh::Identity sender{};
@@ -876,6 +881,7 @@ class RoomLoginIntegrationTests(unittest.TestCase):
                 room, "bool MyMesh::applyRoomCatchUpCommand(")),
             "@ROOM_UNSYNCED_COUNT@": re.sub(r"\bposts\b", "retained_posts", extract_braced(
                 room, "uint8_t MyMesh::getUnsyncedCount(")),
+            "@ROOM_MAIL_STATUS@": extract_braced(room, "bool MyMesh::roomClientChatEnabled("),
             "@LOGIN_HANDLER@": extract_braced(room, "void MyMesh::onAnonDataRecv("),
         }
         generated = HARNESS
@@ -889,6 +895,7 @@ class RoomLoginIntegrationTests(unittest.TestCase):
         cls.binary = work / "room-login"
         command = [compiler, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
                    "-Wno-unused-parameter", "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"),
+                   "-I" + str(ROOT / "test/mocks"),
                    str(source), "-o", str(cls.binary)]
         if sys.platform.startswith("linux"):
             command[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
