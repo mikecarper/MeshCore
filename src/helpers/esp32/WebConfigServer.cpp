@@ -2092,6 +2092,8 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     radio["bluetooth_name"] = (const char*)node.bluetooth_name;
     radio["bluetooth_mac"] = (const char*)node.bluetooth_mac;
     radio["bluetooth_stealth"] = node.bluetooth_stealth;
+    static const char* const LOST_REPLY_MODES[] = { "off", "no", "yes" };
+    radio["lost_reply"] = LOST_REPLY_MODES[node.lost_reply <= 2 ? node.lost_reply : 0];
     radio["lat"] = node.lat;
     radio["lon"] = node.lon;
     radio["advert_interval"] = node.advert_interval;
@@ -2213,6 +2215,21 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
     serializeJson(busy, out);
     req->send(409, "application/json", out);
     return;
+  }
+
+  if (set.containsKey("lost.reply")) {
+    NodeSnapshot node = {};
+    _cb->getNodeSnapshot(node);
+    if (!(node.capabilities & CAP_LOST_REPLY)) {
+      req->send(400, "application/json", "{\"error\":\"setting unavailable\",\"key\":\"lost.reply\"}");
+      return;
+    }
+    const char* value = set["lost.reply"];
+    if (!value || (strcmp(value, "off") != 0 && strcmp(value, "no") != 0
+                  && strcmp(value, "yes") != 0)) {
+      req->send(400, "application/json", "{\"error\":\"expected off, no or yes\",\"key\":\"lost.reply\"}");
+      return;
+    }
   }
 
   if (_mode == MODE_SETUP && _initial_setup && !set.containsKey("password")

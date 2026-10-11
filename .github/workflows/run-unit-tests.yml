@@ -221,6 +221,7 @@ jobs:
           python3 -B test/test_companion_primary_radio_persistence.py -v
           python3 -B test/test_companion_response_bounds.py -v
           python3 -B test/test_companion_ack_delivery.py -v
+          python3 -B test/test_companion_lost_reply.py -v
           python3 -B test/test_companion_delayed_reply_delivery.py -v
           python3 -B test/test_companion_hardware_serial.py -v
           python3 -B test/test_companion_hardware_serial_gps.py -v
@@ -567,6 +568,7 @@ jobs:
           python3 -B test/test_heltec_v4_wifi_setup_page.py -v
           python3 -B test/test_sensor_webconfig_capabilities.py -v
           python3 -B test/test_webconfig_ui_runtime.py
+          python3 -B test/test_webconfig_lost_reply.py -v
           MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_web_ui.py -v
           MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_mail_web_ui.py -v
 

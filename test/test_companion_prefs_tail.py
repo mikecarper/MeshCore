@@ -19,6 +19,7 @@ LEGACY_TAIL = r'''
     success = success && file.write((uint8_t *)&_prefs.bluetooth_enabled, 1) == 1;
     success = success && file.write((uint8_t *)&_prefs.gps_sync_interval_hours, 2) == 2;
     success = success && file.write((uint8_t *)&_prefs.usb_debug_enabled, 1) == 1;
+    success = success && file.write((uint8_t *)&_prefs.lost_reply, 1) == 1;
 '''
 
 TESTS = r'''
@@ -30,6 +31,7 @@ int main() {
   original.flood_retry_group_max_path=2; original.flood_retry_advert_enabled=1;
   original.one_key_dm_enabled=1; original.bluetooth_enabled=0;
   original.gps_sync_interval_hours=336; original.usb_debug_enabled=1;
+  original.lost_reply=2;
 #ifdef TBEAM_1W
   strcpy(original.fan_mode,"on"); original.fan_lo=32; original.fan_hi=45;
 #endif
@@ -48,24 +50,27 @@ int main() {
     prefs.bluetooth_enabled=uint8_t(value+89);
     prefs.gps_sync_interval_hours=uint16_t(value*257);
     prefs.usb_debug_enabled=uint8_t(value+103);
+    prefs.lost_reply=uint8_t(value);
     DataStore compact, legacy;
     assert(compact.savePrefs(prefs,47.1,-122.2));
     assert(legacy.savePrefsLegacy(prefs,47.1,-122.2));
     const auto& image=compact.fs.files["/new_prefs"];
     assert(image==legacy.fs.files["/new_prefs"]);
 #if defined(TBEAM_1W)
-    assert(image.size()==242);
+    assert(image.size()==243);
 #elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
-    assert(image.size()==332);
+    assert(image.size()==333);
 #else
-    assert(image.size()==235);
+    assert(image.size()==236);
 #endif
     const uint8_t expected[]={prefs.flood_retry_attempts,prefs.flood_retry_max_path,
         prefs.flood_retry_group_max_path,prefs.flood_retry_advert_enabled,
-        prefs.one_key_dm_enabled,prefs.bluetooth_enabled,0,0,prefs.usb_debug_enabled};
-    assert(!memcmp(image.data()+image.size()-9,expected,6));
-    assert(!memcmp(image.data()+image.size()-3,&prefs.gps_sync_interval_hours,2));
-    assert(image.back()==prefs.usb_debug_enabled);
+        prefs.one_key_dm_enabled,prefs.bluetooth_enabled,0,0,prefs.usb_debug_enabled,
+        prefs.lost_reply};
+    assert(!memcmp(image.data()+image.size()-10,expected,6));
+    assert(!memcmp(image.data()+image.size()-4,&prefs.gps_sync_interval_hours,2));
+    assert(image[image.size()-2]==prefs.usb_debug_enabled);
+    assert(image.back()==prefs.lost_reply);
   }
   DataStore initial; assert(initial.savePrefs(original,47.1,-122.2));
   const auto disk=initial.fs.files["/new_prefs"];
@@ -73,6 +78,7 @@ int main() {
   strcpy(changed.node_name,"new complete image"); changed.freq=910.5f;
   changed.flood_retry_attempts=7; changed.bluetooth_enabled=1;
   changed.gps_sync_interval_hours=24; changed.usb_debug_enabled=0;
+  changed.lost_reply=1;
   auto expectOld=[&](DataStore& store) {
     assert(store.fs.files["/new_prefs"]==disk);
     assert(!store.fs.exists("/new_prefs.tmp"));
@@ -83,13 +89,14 @@ int main() {
     assert(loaded.freq==original.freq && loaded.ble_pin==original.ble_pin);
     assert(loaded.flood_retry_attempts==4 && loaded.bluetooth_enabled==0);
     assert(loaded.gps_sync_interval_hours==336 && loaded.usb_debug_enabled==1);
+    assert(loaded.lost_reply==2);
     assert(lat==47.1 && lon==-122.2);
   };
   // A short return at each boundary of the single final write must abort the
   // transaction, including either byte of the two-byte GPS field.
-  for (unsigned boundary=0; boundary<9; ++boundary) {
+  for (unsigned boundary=0; boundary<10; ++boundary) {
     DataStore store; store.fs.files["/new_prefs"]=disk;
-    store.fs.fail_write_after=int(disk.size()-9+boundary);
+    store.fs.fail_write_after=int(disk.size()-10+boundary);
     assert(!store.savePrefs(changed,42.3,-121.2)); expectOld(store);
     store.fs.fail_write_after=-1;
     assert(store.savePrefs(changed,42.3,-121.2));
@@ -97,9 +104,9 @@ int main() {
   }
   // Fully written bytes still cannot replace the live image until readback
   // verifies every final-tail boundary. LittleFS's retries also must fail.
-  for (unsigned boundary=0; boundary<9; ++boundary) {
+  for (unsigned boundary=0; boundary<10; ++boundary) {
     DataStore store; store.fs.files["/new_prefs"]=disk;
-    store.fs.fail_read_after=int(disk.size()-9+boundary);
+    store.fs.fail_read_after=int(disk.size()-10+boundary);
     assert(!store.savePrefs(changed,42.3,-121.2)); expectOld(store);
   }
   {
@@ -123,6 +130,7 @@ int main() {
   assert(!strcmp(loaded.node_name,changed.node_name));
   assert(loaded.flood_retry_attempts==7 && loaded.bluetooth_enabled==1);
   assert(loaded.gps_sync_interval_hours==24 && loaded.usb_debug_enabled==0);
+  assert(loaded.lost_reply==1);
   assert(lat==42.3 && lon==-121.2);
 }
 '''

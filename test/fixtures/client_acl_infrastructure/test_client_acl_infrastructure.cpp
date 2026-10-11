@@ -9,6 +9,9 @@
 #include <helpers/ClientACLResponse.h>
 #include <helpers/ClientPathPersistence.h>
 #include <helpers/RoutingPolicy.h>
+#ifndef TEST_SENSOR
+#include <helpers/RoomMailProtocol.h>
+#endif
 
 #define REQ_TYPE_GET_ACCESS_LIST 0x05
 #define REQ_TYPE_GET_TELEMETRY_DATA 0x04
@@ -16,6 +19,9 @@
 #define SERVER_RESPONSE_DELAY 300
 #define OUT_PATH_UNKNOWN 0xFF
 #define PERM_ACL_ROLE_MASK 7
+#define PERM_ACL_GUEST 0
+#define PERM_ACL_READ_ONLY 1
+#define PERM_ACL_READ_WRITE 2
 #define PERM_ACL_ADMIN 3
 
 namespace mesh {
@@ -141,6 +147,7 @@ public:
                     size_t = mesh::CLIENT_ACL_DIRECT_REPLY_CAPACITY);
   int telemetryPrefix(uint8_t*, size_t);
   MemoryFS fs;
+  MemoryFS* _fs = &fs;
   mesh::RoomAccessPolicy room_access;
   mesh::LogicalMessageCache<8> recent_room_polls;
   TARGET_CLASS() { metadata_filesystem = &fs; assert(room_access.load(&fs)); }
@@ -223,7 +230,75 @@ static void print_legacy(const uint8_t* body, unsigned count, size_t length) {
   for (size_t i = 0; i < length; ++i) std::cout << hex[body[i] >> 4] << hex[body[i] & 15];
   std::cout << '\n';
 }
+#ifndef TEST_SENSOR
+static void verify_mailbox_access() {
+  const uint8_t roles[] = {0, 1, 2, 3, 4, 5, 6, 7, 131, 255};
+  for (uint8_t permissions : roles) {
+    for (bool active : {false, true}) {
+      TARGET_CLASS target;
+      memset(target.sender.id.pub_key, 0xa1, PUB_KEY_SIZE);
+      target.sender.permissions = permissions;
+      target.sender.last_activity = active ? 12 : 0;
+      uint8_t settings[] = {mesh::ROOM_MAIL_REQUEST_SUBTYPE, 0, 0, 0, 0, 0, 0};
+      const int length = request(target, &target.sender, settings, sizeof(settings));
+      const uint8_t role = permissions & PERM_ACL_ROLE_MASK;
+      const bool admitted = role == PERM_ACL_READ_ONLY || role == PERM_ACL_READ_WRITE
+          || role == PERM_ACL_ADMIN || (role == PERM_ACL_GUEST && active);
+      if (!admitted) assert(length == 0);
+      else {
+        assert(length == 17 && target.reply_data[4] == mesh::ROOM_MAIL_REQUEST_SUBTYPE);
+        assert(target.reply_data[5] == 0 && target.reply_data[6] == 0);
+        assert(target.reply_data[11] == 0); // Default closed mailbox.
+      }
+      assert(target.fs.files.empty()); // A read never provisions an inbox.
+
+      uint8_t recipient[PUB_KEY_SIZE]; memset(recipient, 0xb2, sizeof(recipient));
+      uint8_t provision[] = {mesh::ROOM_MAIL_REQUEST_SUBTYPE, 8, 0, 0, 0, 0, 1};
+      uint8_t reply[32] = {};
+      assert(mesh::handleRoomMailRequest(&target.fs, recipient, false, 1,
+          provision, sizeof(provision), reply, sizeof(reply)) == 7 && reply[2] == 0);
+      std::vector<uint8_t> send(38);
+      send[0] = mesh::ROOM_MAIL_REQUEST_SUBTYPE; send[1] = 3;
+      memcpy(send.data() + 2, recipient, PUB_KEY_SIZE);
+      mesh::room_mail_protocol_detail::put16(send.data() + 34, 2);
+      send[36] = 'h'; send[37] = 'i';
+      const int sent = request(target, &target.sender, send.data(), send.size());
+      const bool can_send = role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN;
+      if (!admitted) assert(sent == 0);
+      else {
+        assert(sent == 11 && target.reply_data[5] == 3);
+        assert(target.reply_data[6] == (can_send ? 0 : 6));
+      }
+      mesh::RoomMailStatus status;
+      assert(mesh::getRoomMailStatus(&target.fs, recipient, status) == mesh::RoomMailResult::Success);
+      assert(status.count == unsigned(admitted && can_send));
+    }
+  }
+  TARGET_CLASS banned;
+  memset(banned.sender.id.pub_key, 0xa1, PUB_KEY_SIZE);
+  banned.sender.permissions = PERM_ACL_READ_WRITE;
+  uint8_t recipient[PUB_KEY_SIZE]; memset(recipient, 0xb2, sizeof(recipient));
+  assert(banned.room_access.addBan(&banned.fs, recipient) == mesh::RoomAccessPolicy::BanResult::Saved);
+  std::vector<uint8_t> send(38);
+  send[0] = mesh::ROOM_MAIL_REQUEST_SUBTYPE; send[1] = 3;
+  memcpy(send.data() + 2, recipient, PUB_KEY_SIZE);
+  mesh::room_mail_protocol_detail::put16(send.data() + 34, 2);
+  send[36] = 'h'; send[37] = 'i';
+  assert(request(banned, &banned.sender, send.data(), send.size()) == 7);
+  assert(banned.reply_data[6] == 6);
+  assert(!banned.fs.files.count(mesh::ROOM_MAIL_PRIMARY_PATH));
+  for (size_t length = 0; length < send.size(); ++length) {
+    std::vector<uint8_t> truncated(send.begin(), send.begin() + length);
+    const int used = request(banned, &banned.sender, truncated.data(), length);
+    assert(used == 0 || used == 7);
+  }
+  std::cout << "Room mailbox guest, reader, writer and recipient-ban boundaries passed\n";
+}
+#endif
 int main() {
+#ifndef TEST_SENSOR
+  verify_mailbox_access();
+#endif
   uint8_t query[] = {REQ_TYPE_GET_ACCESS_LIST, 0, 0};
   uint8_t secret[PUB_KEY_SIZE] = {};
   unsigned paths = 0;

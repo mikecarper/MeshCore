@@ -365,6 +365,9 @@ body.tab-cli{padding-bottom:0}
       <div class="f" data-cap="131072"><label>Bluetooth stealth</label>
         <select data-k="bluetooth.stealth"><option value="off">Off</option><option value="on">On</option></select>
         <div class="hint">Independent of the address setting. Advertise normally until first pairing, then accept only that bonded peer. An address rotation reopens pairing. Changes require a reboot.</div></div>
+      <div class="f" data-cap="262144" id="lost-reply-setting"><label>Lost-status auto reply</label>
+        <select data-k="lost.reply"><option value="off">Off (default)</option><option value="no">Reply No</option><option value="yes">Reply Yes</option></select>
+        <div class="hint">Reply Yes or No to "Am I lost?" from saved private chat contacts when this device is available. Replies are rate limited. Your choice is saved on this device.</div></div>
       <div class="row" data-cap="1">
         <div class="f"><label>Latitude</label><input type="number" data-k="lat" step="any"></div>
         <div class="f"><label>Longitude</label><input type="number" data-k="lon" step="any"></div>
@@ -810,6 +813,7 @@ function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
     case"name":return r.name;case"bluetooth.name":return r.bluetooth_name||"";
     case"bluetooth.mac":return r.bluetooth_mac||"";
     case"bluetooth.stealth":return r.bluetooth_stealth?"on":"off";
+    case"lost.reply":return r.lost_reply==="yes"||r.lost_reply==="no"?r.lost_reply:"off";
     case"lat":return String(r.lat);case"lon":return String(r.lon);
     case"tx":return String(r.tx);case"af":return String(r.af);
     case"rxdelay":return String(r.rxdelay);case"txdelay":return String(r.txdelay);
@@ -2084,6 +2088,7 @@ var CLI_COMPANION_VERBS=[
   ["reboot","Restart the node"]
 ];
 var CLI_COMPANION_KEYS=[
+  ["lost.reply","Lost-status auto reply to saved private chat contacts",0,"off|no|yes"],
   ["display.inbox","Companion inbox behavior",0,"history|pending|unread"],
   ["display.mode","Display on battery",0,"off|on|button|pairing|button-pairing|automatic"],
   ["display.timeout","Battery display timeout in seconds (1-3600)",0],

@@ -40,6 +40,7 @@ Completed validation reports, experiments, and test guides are collected here. O
 
 ## Companion, USB, BLE, and display
 
+- [Companion lost-status replies](companion_lost_reply.md)
 - [Contact-cache and NimBLE RAM qualification](companion_contact_cache_results.md)
 - [USB Companion ASCII default validation](companion_usb_ascii_validation.md)
 - [USB Companion client compatibility](companion_usb_client_validation.md)
@@ -54,6 +55,7 @@ Completed validation reports, experiments, and test guides are collected here. O
 
 ## Build, storage, memory, and checklists
 
+- [Personal room mailbox checks](room_mailboxes.md)
 - [Stock nRF52 bootloader version audit](bootloader_version_stock_audit.md)
 - [CLI setting dispatch audit](cli_settings_audit.md)
 - [Hardware validation checklist](hardware_validation_checklist.md)

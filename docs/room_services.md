@@ -105,6 +105,9 @@ Room Server provides the room-side queue and polling protocol. A tracker still
 needs client firmware that schedules check-ins and interprets authenticated
 commands. Ordinary mailbox text is never executed as a CLI command, and does
 not itself enable a tracker, wake it remotely or change its GPS reporting rate.
+For a reachable owner's Companion, the optional
+[lost-status auto responder](companion_lost_reply.md) can also answer a private
+`Am I lost?` question with a saved `Yes` or `No`.
 
 ### Wi-Fi mailbox management
 

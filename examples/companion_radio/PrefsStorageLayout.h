@@ -29,8 +29,8 @@ constexpr PrefField prefField() {
   static_assert(Offset < PrefsLat && Length <= UINT8_MAX,
                 "compact preference field bounds");
   static_assert(Offset + Length <=
-      __builtin_offsetof(CompanionNodePrefs, usb_debug_enabled)
-          + sizeof(CompanionNodePrefs::usb_debug_enabled),
+      __builtin_offsetof(CompanionNodePrefs, lost_reply)
+          + sizeof(CompanionNodePrefs::lost_reply),
       "preference field stays before runtime adapters");
   static_assert(Offset + Length <= sizeof(CompanionNodePrefs),
                 "preference field stays inside its object");
@@ -114,6 +114,7 @@ static constexpr PrefField PREF_FIELDS[] = {
   PREF_FIELD(bluetooth_enabled, 1),
   PREF_FIELD(gps_sync_interval_hours, 2),
   PREF_FIELD(usb_debug_enabled, 1),
+  PREF_FIELD(lost_reply, 1),
 };
 #undef PREF_FIELD
 #pragma GCC diagnostic pop
@@ -122,7 +123,7 @@ constexpr size_t wireSize(size_t count) {
   return count == 0 ? 0 : PREF_FIELDS[count - 1].length + wireSize(count - 1);
 }
 static_assert(wireSize(MANDATORY_FIELDS) == 84, "published mandatory image size");
-static_assert(wireSize(FIELD_COUNT) == 235, "published STM32 preference image size");
+static_assert(wireSize(FIELD_COUNT) == 236, "published STM32 preference image size");
 
 static const void* prefValue(const PrefField& field,
                             const CompanionNodePrefs& values,

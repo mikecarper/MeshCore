@@ -43,6 +43,9 @@
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/BaseSerialInterface.h>
 #include <helpers/CompanionDelayedReplies.h>
+#if MESH_ENABLE_LOST_REPLY
+#include <helpers/CompanionLostReply.h>
+#endif
 #include <helpers/CompanionMotaControl.h>
 #include <helpers/IdentityStore.h>
 #include <helpers/LogicalMessageCache.h>
@@ -807,6 +810,11 @@ private:
   };
   #define EXPECTED_ACK_TABLE_SIZE 8
   AckTableEntry expected_ack_table[EXPECTED_ACK_TABLE_SIZE]; // circular table
+#if MESH_ENABLE_LOST_REPLY
+  mesh::companion::LostReplyLimiter lost_reply_limiter;
+  void maybeReplyToLostQuestion(const ContactInfo& from, uint32_t sender_timestamp,
+                               const char* text);
+#endif
 #if MESH_ENABLE_ONE_KEY_DM
   // A recent ACK proves that peer can decrypt our normal text packets. Retry
   // attempts still send the introduction in case its contact was later erased.

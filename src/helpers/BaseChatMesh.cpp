@@ -671,6 +671,18 @@ int BaseChatMesh::sendMessage(const ContactInfo& recipient, uint32_t timestamp, 
   return rc;
 }
 
+int BaseChatMesh::sendMessageDetached(const ContactInfo& recipient,
+                                     uint32_t timestamp, const char* text,
+                                     uint32_t& expected_ack,
+                                     uint32_t& est_timeout,
+                                     uint8_t* packet_hash) {
+  const unsigned long previous_timeout = txt_send_timeout;
+  const int result = sendMessage(recipient, timestamp, 0, text, expected_ack,
+                                 est_timeout, packet_hash);
+  txt_send_timeout = previous_timeout;
+  return result;
+}
+
 int BaseChatMesh::sendCommandData(const ContactInfo& recipient,
                                   uint32_t timestamp, uint8_t attempt,
                                   uint8_t txt_type, const char* text,

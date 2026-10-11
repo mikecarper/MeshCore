@@ -1785,8 +1785,68 @@ bool MyMesh::sendFleetCommandData(mesh::GroupChannel& channel, const uint8_t* en
 }
 #endif
 
+#if MESH_ENABLE_LOST_REPLY
+void MyMesh::maybeReplyToLostQuestion(const ContactInfo& from,
+                                     uint32_t sender_timestamp, const char* text) {
+  if ((_prefs.lost_reply != mesh::companion::LostReplyNo
+       && _prefs.lost_reply != mesh::companion::LostReplyYes)
+      || from.type != ADV_TYPE_CHAT || isTransientContact(from)
+      || !mesh::companion::isLostReplyQuestion(text)) return;
+
+  // Contact cache references are borrowed. Preserve identity before servicing
+  // other sends, then acquire the recipient only when ready to compose it.
+  uint8_t recipient_key[PUB_KEY_SIZE];
+  memcpy(recipient_key, from.id.pub_key, sizeof(recipient_key));
+  const uint32_t now = _ms->getMillis();
+  if (!lost_reply_limiter.canReply(recipient_key, sender_timestamp, now)) return;
+
+  expireExpectedAcks();
+  AckTableEntry* available = NULL;
+  for (AckTableEntry& entry : expected_ack_table) {
+    if (entry.ack == 0) { available = &entry; break; }
+  }
+  // Automatic answers must leave ordinary sends and their ACK/RX reserve
+  // intact. A busy application can retry its question after capacity returns.
+  if (available == NULL || _mgr->getFreeCount() <= 2) return;
+  ContactInfo* recipient = lookupPersistentContactByPubKey(recipient_key, PUB_KEY_SIZE);
+  if (recipient == NULL || recipient->type != ADV_TYPE_CHAT) return;
+  const char* answer = _prefs.lost_reply == mesh::companion::LostReplyYes ? "Yes" : "No";
+  const uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  uint32_t expected_ack = 0, timeout = 0;
+  // The final argument receives the actual packet hash for ACK cancellation. No
+  // semantic message retry key is supplied, so user sends are not replaced.
+  uint8_t retry_key[MAX_HASH_SIZE] = {};
+  const int result = sendMessageDetached(*recipient, timestamp, answer,
+                                         expected_ack, timeout, retry_key);
+  // Automatic ACKs use the existing per-entry expiry service. Do not move an
+  // application or terminal send's shared BaseChatMesh timeout deadline.
+  if (result == MSG_SEND_FAILED) return;
+
+  lost_reply_limiter.rememberReply(recipient_key, sender_timestamp, now);
+  if (expected_ack != 0) {
+    clearExpectedAck(*available, false);
+    available->msg_sent = now;
+    available->expires_at = futureMillis(timeout);
+    available->ack = expected_ack;
+    available->message_timestamp = timestamp;
+    available->contact = recipient;
+    memcpy(available->retry_key, retry_key, sizeof(available->retry_key));
+    mesh::Utils::sha256(available->text_fingerprint, sizeof(available->text_fingerprint),
+                        recipient_key, PUB_KEY_SIZE,
+                        (const uint8_t*)answer, strlen(answer));
+    // No application or terminal transport owns this automatic send.
+    available->reply_route = NULL;
+    expireExpectedAcks();
+  }
+}
+#endif
+
 void MyMesh::onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                            const char *text) {
+#if MESH_ENABLE_LOST_REPLY
+  // Answer independently of app inbox capacity, including held/retried DMs.
+  maybeReplyToLostQuestion(from, sender_timestamp, text);
+#endif
 #if MESH_ENABLE_ONE_KEY_DM
   uint8_t dm_id[ONE_KEY_DM_ID_SIZE];
   makeOneKeyDMId(dm_id, sender_timestamp, text);
@@ -4551,12 +4611,18 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   s.rx_ps_rx_us = _prefs.rx_ps_rx_us;
   s.rx_ps_sleep_us = _prefs.rx_ps_sleep_us;
   s.power_saving = _prefs.powersaving_enabled;
+#if MESH_ENABLE_LOST_REPLY
+  s.lost_reply = _prefs.lost_reply;
+#endif
 #ifdef WITH_MQTT_BRIDGE
   s.mqtt_enabled = _mqtt_enabled;
 #endif
   s.repeat = _prefs.client_repeat != 0;
   s.capabilities = WebConfigServer::CAP_LOCATION | WebConfigServer::CAP_AIRTIME
       | WebConfigServer::CAP_RX_DELAY | WebConfigServer::CAP_POWER_SAVING;
+#if MESH_ENABLE_LOST_REPLY
+  s.capabilities |= WebConfigServer::CAP_LOST_REPLY;
+#endif
 #ifdef BLE_PIN_CODE
   s.capabilities |= WebConfigServer::CAP_BLUETOOTH_NAME
       | WebConfigServer::CAP_BLUETOOTH_MAC
@@ -9450,9 +9516,9 @@ void MyMesh::handleTerminalCommand(char* command) {
         "  stats-core / stats-radio / stats-radio-diag / stats-packets\r\n"
         "  get prv.key (when private key export is enabled)\r\n"
         "  get password (this role has no admin password)\r\n"
-        "  erase (erase stored settings and identity)\r\n");
-    terminalOutput().print("  board\r\n");
-    terminalOutput().print("  version\r\n");
+        "  erase (erase stored settings and identity)\r\n"
+        "  board\r\n"
+        "  version\r\n");
     terminalOutput().print("  get storage.layout\r\n");
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
     terminalOutput().print("  get flash.health\r\n");
@@ -9477,8 +9543,8 @@ void MyMesh::handleTerminalCommand(char* command) {
         "  set display.inbox <history|pending|unread>\r\n"
         "  set display.rotation <0|90|180|270>\r\n"
         "  get display.touch\r\n"
-        "  set display.touch <on|off> (this boot only)\r\n");
-    terminalOutput().print("  get public.key\r\n");
+        "  set display.touch <on|off> (this boot only)\r\n"
+        "  get public.key\r\n");
     terminalOutput().print(
         "  set {name|lat|lon|freq|tx|af} {value}\r\n"
         "  get wifi|espnow|2.4ghz\r\n"
@@ -9495,8 +9561,10 @@ void MyMesh::handleTerminalCommand(char* command) {
     terminalOutput().print("  get bluetooth.stealth\r\n");
     terminalOutput().print("  set bluetooth.stealth on|off\r\n");
 #endif
-    terminalOutput().print("  set pin <0-999999>\r\n");
-    terminalOutput().print("  powersaving [on|off]\r\n");
+#if MESH_ENABLE_LOST_REPLY
+    terminalOutput().print("  get lost.reply\r\n" "  set lost.reply <off|no|yes>\r\n");
+#endif
+    terminalOutput().print("  set pin <0-999999>\r\n" "  powersaving [on|off]\r\n");
 #if MESH_USB_LOGGING_AVAILABLE
     terminalOutput().print(
         "  get usb.logging\r\n"
@@ -9642,6 +9710,10 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
 // Called only for directly attached USB/BLE/TCP/browser clients. Commands
 // received over LoRa use handleCommand() with a nonzero sender timestamp.
 bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_size) {
+#if MESH_ENABLE_LOST_REPLY
+  if (mesh::companion::handleLostReplyCommand(
+          _prefs, command, reply, reply_size, [this]() { return savePrefs(); })) return true;
+#endif
 #ifdef MESH_BUTTON_AUDIO_HIL
   // Present only in an explicitly instrumented physical-test build.
   if (_ui && _ui->handleButtonAudioTest(command, reply, reply_size)) return true;

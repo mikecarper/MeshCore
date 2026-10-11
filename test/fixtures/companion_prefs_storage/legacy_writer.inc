@@ -138,6 +138,7 @@ bool DataStore::savePrefsLegacy(const CompanionNodePrefs& _prefs, double node_la
     success = success && file.write((uint8_t *)&_prefs.bluetooth_enabled, 1) == 1;
     success = success && file.write((uint8_t *)&_prefs.gps_sync_interval_hours, 2) == 2;
     success = success && file.write((uint8_t *)&_prefs.usb_debug_enabled, 1) == 1;
+    success = success && file.write((uint8_t *)&_prefs.lost_reply, 1) == 1;
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
     success = file.commit(success);

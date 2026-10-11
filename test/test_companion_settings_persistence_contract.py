@@ -122,7 +122,12 @@ class CompanionSettingsPersistenceContractTests(unittest.TestCase):
             "bool copyPersistedValuesFrom(const CompanionNodePrefs& source)",
         )
         self.assertIn("reinterpret_cast<uintptr_t>(&airtime_factor)", copy)
-        self.assertIn("reinterpret_cast<uintptr_t>(&usb_debug_enabled)", copy)
+        # The appended lost-reply byte is the last persisted value. Both
+        # snapshots must stop there before either runtime adapter begins.
+        self.assertIn("reinterpret_cast<uintptr_t>(&lost_reply)", copy)
+        self.assertIn("reinterpret_cast<uintptr_t>(&values.lost_reply)", copy)
+        self.assertIn("+ sizeof(lost_reply)", copy)
+        self.assertIn("end - begin == size - sizeof(values.lost_reply)", copy)
         self.assertIn("reinterpret_cast<uintptr_t>(&values.radio)", copy)
         self.assertIn("reinterpret_cast<uintptr_t>(&values.custom)", copy)
         self.assertIn("size <= radio_begin - begin", copy)

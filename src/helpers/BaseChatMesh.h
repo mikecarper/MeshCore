@@ -100,6 +100,11 @@ class BaseChatMesh : public mesh::Mesh {
 
 protected:
   void sendAckTo(const ContactInfo& dest, const uint8_t* ack_hash, uint8_t ack_len=4);
+  // Autonomous replies have independent ACK tracking and must preserve the
+  // application/terminal send's shared timeout.
+  int sendMessageDetached(const ContactInfo& recipient, uint32_t timestamp,
+                          const char* text, uint32_t& expected_ack,
+                          uint32_t& est_timeout, uint8_t* packet_hash);
   BaseChatMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
       : mesh::Mesh(radio, ms, rng, rtc, mgr, tables)
   {

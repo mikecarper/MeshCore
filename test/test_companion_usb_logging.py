@@ -55,15 +55,17 @@ int main(){
  assert(node.savePrefs());
  const auto original=node.store.fs.files["/new_prefs"];
 #if defined(TBEAM_1W)
- assert(original.size()==242);
+ assert(original.size()==243);
 #elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
- assert(original.size()==332);
+ assert(original.size()==333);
 #else
- assert(original.size()==235);
+ assert(original.size()==236);
 #endif
- assert(original.back()==0&&original[original.size()-4]==0);
- assert(original[original.size()-3]==1&&original[original.size()-2]==1);
- assert(original[original.size()-5]==1&&original[158]==1);
+ const size_t debug_offset=original.size()-2;
+ assert(original[debug_offset]==0&&original[debug_offset-3]==0);
+ assert(original[debug_offset-2]==1&&original[debug_offset-1]==1);
+ assert(original[debug_offset-4]==1&&original[158]==1);
+ assert(original.back()==0);
  char reply[160]={};
  for(const char* malformed : {"set usb.debug","set usb.debug ",
      "set usb.debug 1","set usb.debug ON","set usb.debug on ",
@@ -81,8 +83,9 @@ int main(){
  assert(!strncmp(reply,"OK - USB debug on (saved)",24));
  assert(node._prefs.usb_debug_enabled==1&&mesh::debug_enabled);
  const auto enabled_disk=node.store.fs.files["/new_prefs"];
- assert(enabled_disk.back()==1);
- for(size_t i=0;i+1<original.size();++i)assert(enabled_disk[i]==original[i]);
+ assert(enabled_disk[debug_offset]==1);
+ for(size_t i=0;i<original.size();++i)
+   if(i!=debug_offset)assert(enabled_disk[i]==original[i]);
  assert(node.command("get usb.debug",reply,sizeof(reply)));
 #if MESH_DEBUG
  assert(!strcmp(reply,"usb.debug on"));
@@ -121,7 +124,7 @@ int main(){
  }
  // Existing complete tails retain their established offsets and always start
  // quiet, even if the object was already using verbose runtime diagnostics.
- for(unsigned size : {84u,156u,215u,226u,unsigned(original.size()-1)}){
+ for(unsigned size : {84u,156u,215u,226u,unsigned(debug_offset)}){
    DataStore legacy;legacy.fs.files["/new_prefs"]=enabled_disk;
    legacy.fs.files["/new_prefs"].resize(size);
    CompanionNodePrefs loaded;loaded.usb_debug_enabled=1;
@@ -132,7 +135,7 @@ int main(){
  // Normalize the new boolean only after the entire persisted image validates.
  for(uint8_t byte : {2,255}){
    DataStore corrupt;corrupt.fs.files["/new_prefs"]=enabled_disk;
-   corrupt.fs.files["/new_prefs"].back()=byte;
+   corrupt.fs.files["/new_prefs"][debug_offset]=byte;
    CompanionNodePrefs loaded;double lat=0,lon=0;
    assert(corrupt.loadPrefsInt("/new_prefs",loaded,lat,lon));
    assert(loaded.usb_debug_enabled==0);
@@ -423,6 +426,11 @@ int main(){
    const auto& text=node.port.output;
    assert(text.find("Commands:\r\n  stats-core / stats-radio / stats-radio-diag / stats-packets\r\n")==0);
    assert(text.find("  get public.key\r\n")!=std::string::npos);
+#if MESH_ENABLE_LOST_REPLY
+   assert(text.find("  get lost.reply\r\n  set lost.reply <off|no|yes>\r\n")!=std::string::npos);
+#else
+   assert(text.find("lost.reply")==std::string::npos);
+#endif
    assert(text.find("  get usb.debug\r\n  set usb.debug <on|off>\r\n")!=std::string::npos);
 #if MESH_USB_CONSOLE_COOPERATIVE
    assert(text.find("  get usb.watchdog\r\n  get usb.watchdog.last\r\n  set usb.watchdog <off|on|auto> (saved; default auto)\r\n")!=std::string::npos);
@@ -445,10 +453,12 @@ int main(){
             work = Path(directory)
             self.prepare(work)
             for native in (0, 1):
-                with self.subTest(native=native):
-                    self.compile_and_run(work, harness,
-                        [flag + '=1' for flag in features] + ['WIFI_SSID="test"',
-                         'MESH_USB_CONSOLE_COOPERATIVE=' + str(native)])
+                for lost in (0, 1):
+                    with self.subTest(native=native, lost=lost):
+                        self.compile_and_run(work, harness,
+                            [flag + '=1' for flag in features] + ['WIFI_SSID="test"',
+                             'MESH_USB_CONSOLE_COOPERATIVE=' + str(native),
+                             'MESH_ENABLE_LOST_REPLY=' + str(lost)])
 
 
 if __name__ == '__main__':

@@ -36,9 +36,9 @@ static size_t adapterOffset(const CompanionNodePrefs& prefs) {
   // The value helper does not copy the adapters or their inter-field padding.
   // Use the complete object's byte representation for bounded observation.
   const uintptr_t first = reinterpret_cast<uintptr_t>(&prefs);
-  const uintptr_t last = reinterpret_cast<uintptr_t>(&prefs.usb_debug_enabled);
+  const uintptr_t last = reinterpret_cast<uintptr_t>(&prefs.lost_reply);
   assert(last >= first && last - first < sizeof(prefs));
-  return static_cast<size_t>(last - first) + sizeof(prefs.usb_debug_enabled);
+  return static_cast<size_t>(last - first) + sizeof(prefs.lost_reply);
 }
 
 static std::vector<uint8_t> adapterBytes(const CompanionNodePrefs& prefs) {
@@ -132,7 +132,7 @@ int main() {
               4, 32, 4, 8, 8, 4, 1, 1, 1, 1, 4, 1, 1, 1, 1,
               4, 1, 1, 1, 1, 4};
           assert(expected && READ_CALLS == mandatory);
-          unsigned optional_fields = 45;
+          unsigned optional_fields = 46;
 #ifdef TBEAM_1W
           optional_fields += 3;
 #endif
@@ -185,7 +185,7 @@ class CompanionPrefsValuesTests(unittest.TestCase):
             r'^\s*(?:float|char|u?int(?:8|16|32)_t)\s+([A-Za-z_][A-Za-z_0-9]*)',
             prefix, re.M)
         self.assertEqual(declarations[0], 'airtime_factor')
-        self.assertEqual(declarations[-1], 'usb_debug_enabled')
+        self.assertEqual(declarations[-1], 'lost_reply')
         optional = {
             'fan_mode': 'TBEAM_1W', 'fan_lo': 'TBEAM_1W', 'fan_hi': 'TBEAM_1W',
             'wifi_ssid': 'defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)',

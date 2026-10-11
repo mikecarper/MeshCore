@@ -58,6 +58,7 @@ int main(int argc,char** argv){
  original.one_key_dm_enabled=1;
  original.gps_sync_interval_hours=336;
  original.usb_debug_enabled=1;
+ original.lost_reply=2;
 #ifdef TBEAM_1W
  strcpy(original.fan_mode,"on");original.fan_lo=33;original.fan_hi=42;
 #endif
@@ -96,6 +97,7 @@ int main(int argc,char** argv){
    assert(loaded.one_key_dm_enabled==1);
    assert(loaded.gps_sync_interval_hours==336);
    assert(loaded.usb_debug_enabled==1);
+   assert(loaded.lost_reply==2);
 #ifdef TBEAM_1W
    assert(!strcmp(loaded.fan_mode,"on")&&loaded.fan_lo==33&&loaded.fan_hi==42);
 #endif
@@ -162,6 +164,7 @@ int main(int argc,char** argv){
    assert(reboot.loadPrefs(loaded,lat,lon));
    assert(loaded.freq==original.freq&&loaded.ble_pin==original.ble_pin);
    assert(lat==47.1&&lon==-122.2);
+   assert(loaded.lost_reply==2);
 #endif
  } else if(scenario==3){
    // Copy the real adapter-bearing preferences from dirty storage. This
@@ -200,7 +203,7 @@ int main(int argc,char** argv){
  } else if(scenario==7){
    // Pre-consent image: all earlier settings survive with default-off consent.
    DataStore legacy;legacy.fs.files["/new_prefs"]=disk;
-   legacy.fs.files["/new_prefs"].resize(disk.size()-5);
+   legacy.fs.files["/new_prefs"].resize(disk.size()-6);
    CompanionNodePrefs loaded;double lat=0,lon=0;
    assert(legacy.loadPrefs(loaded,lat,lon));
    assert(loaded.flood_retry_advert_enabled==0);
@@ -209,7 +212,7 @@ int main(int argc,char** argv){
    // The previous complete image loads with the board policy even when the
    // receiving prefs object previously held an explicit configured interval.
    DataStore legacy;legacy.fs.files["/new_prefs"]=disk;
-   legacy.fs.files["/new_prefs"].resize(disk.size()-3);
+   legacy.fs.files["/new_prefs"].resize(disk.size()-4);
    CompanionNodePrefs loaded;loaded.gps_sync_interval_hours=24;loaded.usb_debug_enabled=1;
    double lat=0,lon=0;
    assert(legacy.loadPrefs(loaded,lat,lon));
@@ -217,12 +220,12 @@ int main(int argc,char** argv){
    assert(loaded.usb_debug_enabled==0);
    // Half of the two-byte append is never accepted as a complete image.
    DataStore torn;torn.fs.files["/new_prefs"]=disk;
-   torn.fs.files["/new_prefs"].resize(disk.size()-2);
+   torn.fs.files["/new_prefs"].resize(disk.size()-3);
    assert(!torn.loadPrefsInt("/new_prefs",loaded,lat,lon));
    // The complete published GPS image is accepted without borrowing either
    // GPS byte as the new debug preference.
    DataStore gps_image;gps_image.fs.files["/new_prefs"]=disk;
-   gps_image.fs.files["/new_prefs"].resize(disk.size()-1);
+   gps_image.fs.files["/new_prefs"].resize(disk.size()-2);
    loaded.usb_debug_enabled=1;
    assert(gps_image.loadPrefsInt("/new_prefs",loaded,lat,lon));
    assert(loaded.gps_sync_interval_hours==336&&loaded.usb_debug_enabled==0);

@@ -180,7 +180,7 @@ class CompanionIdentityCliTests(unittest.TestCase):
         terminal = method(source, 'void MyMesh::handleTerminalCommand(')
         self.assertIn('handleLocalControlCommand(command, local_reply, sizeof(local_reply))', terminal)
         self.assertIn('terminalOutput().printf("  -> %s\\r\\n", local_reply);', terminal)
-        self.assertIn('terminalOutput().print("  get public.key\\r\\n");', terminal)
+        self.assertIn('"  get public.key\\r\\n"', terminal)
         shared = method(source, 'bool MyMesh::handleCommand(')
         self.assertIn('if (handleLocalControlCommand(command, reply, reply_capacity)) return true;', shared)
         self.assertIn('return handleCommand(command, 0, reply);',

@@ -95,6 +95,7 @@ over the normal binary USB, BLE, or TCP connection:
 | [`get public.key`](cli_commands.md#view-this-nodes-public-key) | Companion text terminal and binary command `0x42`; read-only, no private-key export feature required |
 | `get prv.key` | Local terminal and binary command `0x42`; requires private key export enabled |
 | `get password` | Reports that Companion has no admin password; infrastructure returns its password locally |
+| [`get/set lost.reply`](companion_lost_reply.md) | Local Companion CLI and framed command `0x42` when `MESH_ENABLE_LOST_REPLY` is enabled; saved `off`, `no` or `yes` private-message auto response |
 | `get wifi.pwd`, `get mqttN.password`, `get mqttN.token` | Local terminal and binary command `0x42`; corresponding WiFi/MQTT feature required |
 | [`board`](cli_commands.md#show-the-hardware-name) | Every Companion text terminal and command `0x42` |
 | [`version`](cli_commands.md#get-the-version) | Every Companion text terminal and protocol-v14 command `0x42`; returns the untruncated build identity |

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Execute Room/Sensor ACL handlers and encrypted packet assembly with bounds."""
 from pathlib import Path
+import os
 import re
 import shutil
 import subprocess
@@ -13,6 +14,18 @@ from test_client_acl_response import parse_acl
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "test/fixtures/client_acl_infrastructure/test_client_acl_infrastructure.cpp"
+
+
+def room_mail_crypto_arguments(role):
+    if role == "sensor":
+        return []
+    candidates = [Path(os.environ["MESHCORE_CRYPTO_DIR"])] if os.environ.get("MESHCORE_CRYPTO_DIR") else []
+    candidates += sorted((ROOT / ".pio/libdeps").glob("*/Crypto"))
+    crypto = next((path for path in candidates if (path / "SHA256.cpp").is_file()), None)
+    if crypto is None:
+        raise RuntimeError("Install rweather/Crypto or set MESHCORE_CRYPTO_DIR (no hash mock fallback)")
+    return ["-DHOST_BUILD", "-I" + str(crypto), str(crypto / "SHA256.cpp"),
+            str(crypto / "Hash.cpp"), str(crypto / "Crypto.cpp")]
 
 
 def production_methods(role, transform=None):
@@ -28,7 +41,8 @@ def production_methods(role, transform=None):
                           else "  if (payload[0] == REQ_TYPE_GET_STATUS)")
     prefix = handler[:begin]
     # The new board protocol has its own admission/storage regression suite.
-    # Keep this legacy ACL/telemetry fixture on its original request families.
+    # Keep the complete mailbox prefix: its role/send gates also protect this
+    # authenticated request dispatcher, and use the actual protocol and store.
     if not sensor and "if (payload[0] == mesh::ROOM_BOARD_REQUEST_SUBTYPE)" in prefix:
         board = extract_braced(prefix, "if (payload[0] == mesh::ROOM_BOARD_REQUEST_SUBTYPE)")
         prefix = prefix.replace(board, "", 1)
@@ -74,7 +88,8 @@ class ClientAclInfrastructureTest(unittest.TestCase):
             (work / "production.inc").write_text(production_methods(role, transform), encoding="ascii")
             binary = work / "acl.exe"
             command = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
-                       "-I" + str(work), "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"), str(FIXTURE), "-o", str(binary)]
+                       "-I" + str(work), "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"),
+                       str(FIXTURE), *room_mail_crypto_arguments(role), "-o", str(binary)]
             if role == "sensor": command.insert(1, "-DTEST_SENSOR=1")
             if sys.platform.startswith("linux"):
                 command[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
@@ -87,6 +102,8 @@ class ClientAclInfrastructureTest(unittest.TestCase):
         run = self.execute(role)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertIn("Room/Sensor ACL route, input, and permission checks passed", run.stdout)
+        if role == "room":
+            self.assertIn("Room mailbox guest, reader, writer and recipient-ban boundaries passed", run.stdout)
         decoded = 0
         for line in run.stdout.splitlines():
             if not line.startswith("LEGACY:"): continue
@@ -114,6 +131,24 @@ class ClientAclInfrastructureTest(unittest.TestCase):
         def old(source):
             self.assertIn("    if (payload_len < 3) return 0;", source)
             return source.replace("    if (payload_len < 3) return 0;", "", 1)
+        self.assertNotEqual(self.execute("room", old).returncode, 0)
+
+    def test_room_mailbox_inactive_guest_cannot_bypass_session_gate(self):
+        def old(source):
+            handler = extract_braced(source, "int MyMesh::handleRequest(")
+            mailbox = extract_braced(handler, "if (payload[0] == mesh::ROOM_MAIL_REQUEST_SUBTYPE)")
+            guard = "role == PERM_ACL_GUEST && sender->last_activity != 0"
+            self.assertIn(guard, mailbox)
+            return source.replace(mailbox, mailbox.replace(guard, "role == PERM_ACL_GUEST"), 1)
+        self.assertNotEqual(self.execute("room", old).returncode, 0)
+
+    def test_room_mailbox_reader_cannot_bypass_send_permission(self):
+        def old(source):
+            handler = extract_braced(source, "int MyMesh::handleRequest(")
+            mailbox = extract_braced(handler, "if (payload[0] == mesh::ROOM_MAIL_REQUEST_SUBTYPE)")
+            guard = "role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN"
+            self.assertIn(guard, mailbox)
+            return source.replace(mailbox, mailbox.replace(guard, "true"), 1)
         self.assertNotEqual(self.execute("room", old).returncode, 0)
 
     def test_old_sensor_truncated_packet_overread_is_rejected(self):

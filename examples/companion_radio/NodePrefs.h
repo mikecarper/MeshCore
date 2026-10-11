@@ -115,6 +115,8 @@ public:
   // Debug verbosity is independent of the packet/output master switch. Keep
   // this after the published GPS cadence so legacy images default to quiet.
   uint8_t usb_debug_enabled = 0;
+  // Appended opt-in private-message response: 0=off, 1=no, 2=yes.
+  uint8_t lost_reply = 0;
 
 private:
   class RadioPrefs : public CommonRadioPrefs {
@@ -253,22 +255,22 @@ public:
   // untouched, and leave a normally constructed snapshot's adapters local.
   bool copyPersistedValuesFrom(const CompanionNodePrefs& source) {
     if (&source == this) return true;
-    static_assert(sizeof(usb_debug_enabled) == sizeof(uint8_t),
-                  "The published USB debug preference is one byte");
+    static_assert(sizeof(lost_reply) == sizeof(uint8_t),
+                  "The published lost reply preference is one byte");
     const uintptr_t first = reinterpret_cast<uintptr_t>(&airtime_factor);
-    const uintptr_t last = reinterpret_cast<uintptr_t>(&usb_debug_enabled);
+    const uintptr_t last = reinterpret_cast<uintptr_t>(&lost_reply);
     if (last < first
-        || last - first > sizeof(*this) - sizeof(usb_debug_enabled)) {
+        || last - first > sizeof(*this) - sizeof(lost_reply)) {
       return false;
     }
     const size_t size = static_cast<size_t>(last - first)
-        + sizeof(usb_debug_enabled);
+        + sizeof(lost_reply);
     const auto bounded = [size](const CompanionNodePrefs& values) -> bool {
       const uintptr_t object = reinterpret_cast<uintptr_t>(&values);
       const uintptr_t begin =
           reinterpret_cast<uintptr_t>(&values.airtime_factor);
       const uintptr_t end =
-          reinterpret_cast<uintptr_t>(&values.usb_debug_enabled);
+          reinterpret_cast<uintptr_t>(&values.lost_reply);
       const uintptr_t radio_begin = reinterpret_cast<uintptr_t>(&values.radio);
       const uintptr_t custom_begin = reinterpret_cast<uintptr_t>(&values.custom);
       // Subtractions happen only after the corresponding ordering checks.
@@ -276,7 +278,7 @@ public:
       return begin >= object && begin - object <= sizeof(values)
           && size <= sizeof(values) - static_cast<size_t>(begin - object)
           && end >= begin
-          && end - begin == size - sizeof(values.usb_debug_enabled)
+          && end - begin == size - sizeof(values.lost_reply)
           && radio_begin >= begin && size <= radio_begin - begin
           && custom_begin >= begin && size <= custom_begin - begin;
     };

@@ -4192,7 +4192,7 @@ apply_companion_radio_full_profile() {
     # Every nRF52 Full Companion lends the upper half of its offline queue
     # to the cold mOTA context. Keep 256 slots for everyday use and reserve
     # runtime space for Bluetooth, displays, tasks and filesystem buffers.
-    append_platformio_build_unflags "-DOFFLINE_QUEUE_SIZE=512 -DOFFLINE_QUEUE_SIZE=128 -DOFFLINE_QUEUE_SIZE=16"
+    append_platformio_build_unflags "-DOFFLINE_QUEUE_SIZE=512 -DOFFLINE_QUEUE_SIZE=240 -DOFFLINE_QUEUE_SIZE=128 -DOFFLINE_QUEUE_SIZE=16"
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOFFLINE_QUEUE_SIZE=256 -DOTA_SHARED_COMPANION_QUEUE=1"
     case "$env_name" in
       Heltec_t096_companion_radio_full_*)

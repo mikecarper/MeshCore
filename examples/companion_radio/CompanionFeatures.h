@@ -2,6 +2,17 @@
 #include <helpers/CompanionReaderConfig.h>
 #include <helpers/ota/OtaMemoryPolicy.h>
 
+// Compact STM32 Companion images retain their existing application/filesystem
+// boundary. The persistent preference stays in the shared wire image even
+// when the optional private responder is excluded from an image.
+#ifndef MESH_ENABLE_LOST_REPLY
+  #if defined(STM32_PLATFORM)
+    #define MESH_ENABLE_LOST_REPLY 0
+  #else
+    #define MESH_ENABLE_LOST_REPLY 1
+  #endif
+#endif
+
 // STM32WL has only 224 KiB of application flash. Keep its established image
 // within that boundary; larger targets provide the programmable alert engine.
 #ifndef COMPANION_FEATURE_NOTIFICATIONS

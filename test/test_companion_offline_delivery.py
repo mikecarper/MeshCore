@@ -2,7 +2,9 @@
 """Run real Companion inbox downloads against bounded UART/TCP transports."""
 
 from pathlib import Path
+import configparser
 import re
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -24,7 +26,9 @@ HARNESS = r'''
 #include <vector>
 #define DISPLAY_CLASS TestDisplay
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
+#ifndef OFFLINE_QUEUE_SIZE
 #define OFFLINE_QUEUE_SIZE 256
+#endif
 @CONSTANTS@
 @STREAM@
 std::deque<WiFiClient> WiFiServer::incoming;
@@ -284,6 +288,33 @@ int main() {
 
 
 class CompanionOfflineDeliveryTest(unittest.TestCase):
+    def test_tag_ble_capacity_preserves_contacts_channels_and_full_queue(self):
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(ROOT / "variants/rak_wismesh_tag/platformio.ini")
+        flags = shlex.split(config["env:RAK_WisMesh_Tag_companion_radio_ble"]["build_flags"])
+        self.assertEqual(flags.count("OFFLINE_QUEUE_SIZE=240"), 1)
+        self.assertIn("MAX_CONTACTS=350", flags)
+        self.assertIn("MAX_GROUP_CHANNELS=40", flags)
+        # Run the production Full overlay without resolving or building any
+        # PlatformIO environment. It must explicitly replace a BLE override
+        # if a future Full recipe inherits the BLE base instead of USB.
+        result = subprocess.run(["bash", "-c", r'''
+set -euo pipefail
+source build.sh
+pio() { echo "unexpected PlatformIO invocation" >&2; return 127; }
+PIO_ENV_PLATFORM_BY_NAME[RAK_WisMesh_Tag_companion_radio_full]=NRF52_PLATFORM
+PLATFORMIO_BUILD_FLAGS='-DMAX_CONTACTS=350 -DMAX_GROUP_CHANNELS=40'
+pio_env_option_contains() { return 1; }
+apply_companion_radio_full_profile RAK_WisMesh_Tag_companion_radio_full RAK_WisMesh_Tag_companion_radio_usb
+printf '%s\n' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_BUILD_UNFLAGS"
+'''], cwd=ROOT, text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("-DMAX_CONTACTS=350", result.stdout)
+        self.assertIn("-DMAX_GROUP_CHANNELS=40", result.stdout)
+        self.assertIn("-DOFFLINE_QUEUE_SIZE=256", result.stdout)
+        self.assertIn("-DOTA_SHARED_COMPANION_QUEUE=1", result.stdout)
+        self.assertIn("-D OFFLINE_QUEUE_SIZE=240", result.stdout)
+
     def test_real_download_paths_in_every_queue_layout(self):
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         header = (ROOT / "examples/companion_radio/MyMesh.h").read_text()
@@ -312,6 +343,7 @@ class CompanionOfflineDeliveryTest(unittest.TestCase):
         configurations = {
             "circular": [],
             "held-dm": ["-DONE_KEY_DM_SHARED_OFFLINE_QUEUE=1"],
+            "tag-ble": ["-DONE_KEY_DM_SHARED_OFFLINE_QUEUE=1", "-DOFFLINE_QUEUE_SIZE=240"],
             "mota": ["-DOTA_SHARED_COMPANION_QUEUE=1"],
             "psram": ["-DESP32_PLATFORM=1", "-DBOARD_HAS_PSRAM=1"],
         }

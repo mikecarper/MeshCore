@@ -17,6 +17,7 @@ A reboot clears it.
 | ESP32 without PSRAM | 256 |
 | nRF52840 with at most 300 contact slots | 256 |
 | nRF52840 with more than 300 contacts and the contact cache (non-mOTA-shared queue) | 256 total: up to 15 held DMs use slots until accepted |
+| RAK WisMesh Tag ordinary BLE Companion | 240 total: up to 15 held DMs use slots until accepted |
 | nRF52840 with more than 300 contacts but no contact cache | 208 ordinary frames plus a separate 15-DM queue |
 | nRF52 Full Companion with the memory correction | 256 normally; 128 while mOTA owns shared storage |
 | RP2040 | 256 |
@@ -59,6 +60,13 @@ decryptable DM arrives. The shared pool is still volatile and clears on reboot.
 Uncached high-contact profiles keep the conservative 208-frame default and
 separate held queue. An explicit target `OFFLINE_QUEUE_SIZE` still takes
 precedence.
+
+The ordinary RAK WisMesh Tag BLE profile uses 240 frames to retain the runtime
+RAM reserve for Bluetooth, filesystem buffers, and the main task. It keeps
+350 contact slots and 40 group channels. All 240 slots are available when no
+DMs are held; 15 held DMs leave 225 ordinary slots. This saves 2,832 bytes
+compared with 256 frames. The Tag Full Companion retains 256 frames normally
+and 128 while mOTA borrows queue storage.
 
 Each queue slot currently costs 177 bytes. A 256-frame queue reserves 45,312
 bytes, while a 512-frame queue reserves 90,624 bytes. There is no 256-frame

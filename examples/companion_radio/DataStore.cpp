@@ -1052,6 +1052,8 @@ bool DataStore::loadPrefsInt(const char *filename,
     // Older images have no independent debug preference. Never inherit a
     // runtime-on value when loading one of those images.
     loaded_prefs.usb_debug_enabled = 0;
+    // Old images cannot opt in using an unrelated runtime preference value.
+    loaded_prefs.lost_reply = 0;
     double loaded_lat = node_lat;
     double loaded_lon = node_lon;
     // The original image ended after ble_pin at byte 84. Later releases only
@@ -1059,7 +1061,14 @@ bool DataStore::loadPrefsInt(const char *filename,
     // actually emitted by those releases, but reject a truncated field/group
     // or an unknown tail before any value reaches the live preferences.
     static const uint32_t MIN_PREFS_SIZE = 84;
-    static const uint16_t KNOWN_PREFS_SIZES[] = {
+#if defined(STM32_PLATFORM)
+    // All published STM32 image lengths fit in one byte. The file size below
+    // remains wide so oversized files cannot alias an accepted legacy length.
+    using PrefsImageSize = uint8_t;
+#else
+    using PrefsImageSize = uint16_t;
+#endif
+    static const PrefsImageSize KNOWN_PREFS_SIZES[] = {
         84, 85, 90, 91, 92, 93, 140, 141, 142, 143, 144, 155,
         156, 157, 158, 159,
         159 + sizeof(loaded_prefs.bluetooth_name),
@@ -1120,6 +1129,13 @@ bool DataStore::loadPrefsInt(const char *filename,
         332,
 #else
         235,
+#endif
+#ifdef TBEAM_1W
+        243,  // Opt-in lost reply, appended after independent USB debug
+#elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+        333,
+#else
+        236,
 #endif
     };
     const uint32_t prefs_size = file.size();
@@ -1281,6 +1297,7 @@ bool DataStore::loadPrefsInt(const char *filename,
                       sizeof(loaded_prefs.gps_sync_interval_hours));
     readOptionalField(&loaded_prefs.usb_debug_enabled,
                       sizeof(loaded_prefs.usb_debug_enabled));
+    readOptionalField(&loaded_prefs.lost_reply, sizeof(loaded_prefs.lost_reply));
 #endif
 
     // Any bytes left over form only part of a historically appended field.
@@ -1290,6 +1307,7 @@ bool DataStore::loadPrefsInt(const char *filename,
     file.close();
     if (!success) return false;
     loaded_prefs.usb_debug_enabled = loaded_prefs.usb_debug_enabled == 1 ? 1 : 0;
+    loaded_prefs.lost_reply = loaded_prefs.lost_reply <= 2 ? loaded_prefs.lost_reply : 0;
     if (!_prefs.copyPersistedValuesFrom(loaded_prefs)) return false;
     node_lat = loaded_lat;
     node_lon = loaded_lon;
@@ -1318,7 +1336,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
   if (file) {
 #if defined(STM32_PLATFORM) && defined(__GNUC__)
     using namespace mesh::companion_prefs;
-    uint8_t image[235];
+    uint8_t image[236];
     const uint8_t pad[4] = {};
     size_t used = 0;
     for (const PrefField& field : PREF_FIELDS) {
@@ -1337,7 +1355,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
 #if defined(STM32_PLATFORM)
     // Keep the explicit wire field list, but make one bounded atomic write.
     // Other platforms retain direct writes and their existing stack footprint.
-    uint8_t image[235];
+    uint8_t image[236];
     size_t image_length = 0;
     const auto writeField = [&](const void* data, size_t size) -> bool {
       if (image_length > sizeof(image)
@@ -1467,11 +1485,11 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
 #endif
     // Pack only the explicit persisted tail, never the class's padded layout.
     // memcpy retains the GPS field's established native byte representation.
-    uint8_t tail[9] = {
+    uint8_t tail[10] = {
         _prefs.flood_retry_attempts, _prefs.flood_retry_max_path,
         _prefs.flood_retry_group_max_path, _prefs.flood_retry_advert_enabled,
         _prefs.one_key_dm_enabled, _prefs.bluetooth_enabled, 0, 0,
-        _prefs.usb_debug_enabled};
+        _prefs.usb_debug_enabled, _prefs.lost_reply};
     memcpy(tail + 6, &_prefs.gps_sync_interval_hours,
         sizeof(_prefs.gps_sync_interval_hours));
     success = success && writeField(tail, sizeof(tail));

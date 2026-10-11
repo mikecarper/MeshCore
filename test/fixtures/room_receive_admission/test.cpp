@@ -132,6 +132,9 @@ struct MyMesh : BaseChatMesh {
   std::vector<std::pair<uint32_t, uint32_t>> saved;
   MyMesh() { contacts[0].id.pub_key[0] = 77; contacts[1].id.pub_key[0] = 77; contacts[1].id.pub_key[31] = 1; }
   void markConnectionActive(const ContactInfo&) { ++active; }
+  // This admission suite keeps the new optional responder disabled; the
+  // enabled private reply path executes separately in its production suite.
+  void maybeReplyToLostQuestion(const ContactInfo&, uint32_t, const char*) {}
   bool scheduleContactWrite(const ContactInfo& from) { saved.emplace_back(from.sync_since, from.lastmod); return true; }
   int getOfflineQueueCapacity() const;
   Frame& offlineQueueFrameAt(int);

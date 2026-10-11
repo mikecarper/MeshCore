@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from test_replay_reset_integration import extract_braced
-from test_client_acl_infrastructure import production_methods
+from test_client_acl_infrastructure import production_methods, room_mail_crypto_arguments
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,7 +142,8 @@ int main() {
             # Actual Mesh::createMultiAck has a pre-existing signed-size comparison.
             # Keep other fixture warnings fatal without changing production code.
             args = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-sign-compare",
-                    "-I" + str(work), "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"), str(work / "test.cpp"), "-o", str(binary)]
+                    "-I" + str(work), "-I" + str(ROOT / "test/fixtures/room_history_store"), "-I" + str(ROOT / "src"),
+                    str(work / "test.cpp"), *room_mail_crypto_arguments(role), "-o", str(binary)]
             if sensor: args.insert(1, "-DTEST_SENSOR=1")
             if sys.platform.startswith("linux"):
                 args[1:1] = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]

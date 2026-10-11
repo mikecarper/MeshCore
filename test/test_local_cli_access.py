@@ -20,6 +20,7 @@ PREAMBLE = r'''
 #include <helpers/CLICommandUtils.h>
 #include <helpers/RadioProfileCommandUtils.h>
 #include <helpers/BatteryChargeCLI.h>
+#include <helpers/CompanionLostReply.h>
 #include "companion_fleet_dispatch.h"
 #define ESP32 1
 #define WIFI_SSID "test"
@@ -72,6 +73,7 @@ struct Store {
   bool formatFileSystem(){++erased;return success;}
 };
 struct Prefs {
+  uint8_t lost_reply=0;
   float tx_delay_factor=0.5f, direct_tx_delay_factor=0.2f;
   uint8_t interference_threshold=0, agc_reset_interval=0;
   int8_t tz_offset=0;
@@ -164,6 +166,22 @@ SCENARIOS = r'''
 int main() {
   MyMesh node;
   char reply[160] = {};
+  assert(node.handleCommand("set lost.reply yes",0,reply));
+  assert(node._prefs.lost_reply==2 && !strcmp(reply,"> lost.reply yes"));
+  assert(node.handleCommand("get lost.reply",0,reply) && !strcmp(reply,"> yes"));
+  const int lost_saves=node.saves;
+  for(uint32_t stamp:{0u,100u}) {
+    reply[0]=0;
+    node.onCLICommandRecv(ContactInfo{},nullptr,stamp,"set lost.reply no",reply);
+    assert(node._prefs.lost_reply==2 && node.saves==lost_saves);
+    reply[0]=0;
+    node.onCLICommandRecv(ContactInfo{},nullptr,stamp,"A7|get lost.reply",reply);
+    assert(!strstr(reply,"> yes") && node.saves==lost_saves);
+  }
+  node.save_ok=false;
+  assert(node.handleCommand("set lost.reply no",0,reply));
+  assert(node._prefs.lost_reply==2 && strstr(reply,"could not save"));
+  node.save_ok=true;
   for (uint32_t timestamp : {0u, 100u}) {
     node.onCLICommandRecv(ContactInfo{}, nullptr, timestamp,
                           "fleet send 1 all set radio2 off", reply);
@@ -373,6 +391,7 @@ int main() {
                     "c++", "-std=c++17", "-x", "c++", "-", "-I"+str(ROOT / "src"),
                     "-I"+str(ROOT / "test/fixtures"),
                     "-DENABLE_PRIVATE_KEY_EXPORT="+str(export),
+                    "-DMESH_ENABLE_LOST_REPLY=1",
                     *(["-DWITH_WEBCONFIG=1"] if webconfig else []),
                     *SANITIZER_FLAGS, "-o", str(binary),
                 ], input=PREAMBLE+implementation+SCENARIOS, text=True, capture_output=True)

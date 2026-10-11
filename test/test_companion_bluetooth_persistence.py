@@ -32,13 +32,13 @@ int main(){
  assert(mesh.savePrefs());
  const auto on_disk=mesh.store.fs.files["/new_prefs"];
 #if defined(TBEAM_1W)
- assert(on_disk.size()==242);
+ assert(on_disk.size()==243);
 #elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
- assert(on_disk.size()==332);
+ assert(on_disk.size()==333);
 #else
- assert(on_disk.size()==235);
+ assert(on_disk.size()==236);
 #endif
- const size_t bluetooth_offset=on_disk.size()-4;
+ const size_t bluetooth_offset=on_disk.size()-5;
  assert(on_disk[bluetooth_offset]==1&&on_disk.back()==0);
  // Both choices survive a fresh instance reading the actual on-device image.
  for(bool enabled : {false,true,false}){
