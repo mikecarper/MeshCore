@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/test-results/cad_scan_validation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/test-results/sensor_dog_tracker/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>Cad scan validation - MeshCore Docs</title>
+        <title>Sensor dog tracker - MeshCore Docs</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#sx1262-channel-scanning-hardware-results" class="md-skip">
+        <a href="#sensor-dog-tracker-validation" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Cad scan validation
+              Sensor dog tracker
             
           </span>
         </div>
@@ -2261,10 +2261,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#configuration-and-counting" class="md-nav__link">
+  <a href="#executed-regressions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Configuration and counting
+        Executed regressions
       
     </span>
   </a>
@@ -2272,10 +2272,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#completed-trials" class="md-nav__link">
+  <a href="#firmware-builds" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Completed trials
+        Firmware builds
       
     </span>
   </a>
@@ -2283,21 +2283,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#interpretation-and-limits" class="md-nav__link">
+  <a href="#limits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Interpretation and limits
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#reproduction-and-evidence" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reproduction and evidence
+        Limits
       
     </span>
   </a>
@@ -2321,7 +2310,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/test-results/cad_scan_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/test-results/sensor_dog_tracker.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2330,241 +2319,141 @@
 
 
 <!-- meshcore-hosted-doc-link:start -->
-<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/cad_scan_validation/">View this page on MeshCore Docs</a>.</p>
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/sensor_dog_tracker/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-<h1 id="sx1262-channel-scanning-hardware-results">SX1262 channel-scanning hardware results</h1>
-<p>Hardware test on September 12, 2026 (America/Los_Angeles). Heltec V4 transmitter; XIAO ESP32-S3 with Wio SX1262 receiver. Both used standalone diagnostic firmware.</p>
-<p>The best tested scan setting was <strong>four channels with four-symbol RX-preamble windows</strong>. Three-symbol windows were unreliable even in the single-channel re-arm control. In the longer four-symbol runs, four channels received 80/80 packets, five received 79/80, and six received 52/60. These are measured limits of this implementation and test setup, not universal SX1262 channel-count limits.</p>
-<h2 id="configuration-and-counting">Configuration and counting</h2>
-<p>SF5, 125 kHz, coding rate 4/5, explicit header, payload CRC, and 32 preamble symbols. The programmed preamble is 8.192 ms. Channels start at 909.5 MHz and increase in 1 MHz steps; tests use the first N channels, up to 920.5 MHz. Test packets are transmitted individually with varied timing relative to the scanner. There are no overlapping transmitters in this experiment.</p>
-<p>A success requires a CRC-valid packet with the expected sequence, channel, length, and test payload. Every included transmission has its own successful transmitter acknowledgement; delayed serial acknowledgements are recovered by sequence, without retransmitting. The one exploratory RX scan trial with shifted acknowledgements is excluded.</p>
-<h2 id="completed-trials">Completed trials</h2>
+<h1 id="sensor-dog-tracker-validation">Sensor dog tracker validation</h1>
+<p>The opt-in <a href="../../sensor_tracker/">Sensor dog tracker</a> was checked on
+2026-10-10 using executable host tests and firmware builds. This report
+qualifies the code paths named below; no radio was flashed for these checks,
+and battery current, GPS acquisition outdoors, and live RF delivery were not
+measured.</p>
+<h2 id="executed-regressions">Executed regressions</h2>
 <table>
 <thead>
 <tr>
-<th>Trial</th>
-<th>Method/window</th>
-<th style="text-align: right;">Channels</th>
-<th style="text-align: right;">Payload bytes</th>
-<th style="text-align: right;">Received / sent</th>
-<th style="text-align: right;">Mean complete scan</th>
+<th>Suite</th>
+<th>Checks</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>baseline-fixed</td>
-<td>Fixed-channel RX</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">16 / 16</td>
-<td style="text-align: right;">—</td>
+<td><code>test_tracker_route_policy.py</code></td>
+<td>99 boundary and byte-format assertions: six-hour gates, repeater postponement, sticky four-day cutoff, invalid clocks, overflow and restart.</td>
 </tr>
 <tr>
-<td>cad-standard</td>
-<td>CAD + software RX</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">7 / 32</td>
-<td style="text-align: right;">14.469 ms</td>
+<td><code>test_sensor_tracker_store.py</code></td>
+<td>6,063 storage and failure scenarios over five filesystem API modes, including torn saves, unavailable storage, durable flood reservations and a monotonic request-tag floor.</td>
 </tr>
 <tr>
-<td>cad-auto</td>
-<td>CAD + automatic RX</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">16 / 32</td>
-<td style="text-align: right;">14.468 ms</td>
+<td><code>test_sensor_tracker_client.py</code></td>
+<td>22 tests execute actual <code>Tracker.cpp</code>, peer dispatch, route/store/codec and packet hash implementation: setup, Safe/Lost/Unknown cadence, fresh GPS, transmit-based response deadline, exact owner identity, nonce reuse across reboot, path updates and packet ownership.</td>
 </tr>
 <tr>
-<td>rxfast-4</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">32 / 32</td>
-<td style="text-align: right;">6.100 ms</td>
+<td><code>test_tracker_owner_response.py</code></td>
+<td>Actual Companion responder across four feature configurations: persistent contact authentication, flags and padding, time-bounded position updates, rate limits, and preserved ordinary message state.</td>
 </tr>
 <tr>
-<td>rxfast-4-maxpayload</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">255</td>
-<td style="text-align: right;">35 / 35</td>
-<td style="text-align: right;">6.098 ms</td>
+<td><code>test_sensor_tracker_gps.py</code></td>
+<td>5 tests: fresh parser/PVT samples, GPS ownership, 120-second bound, validated UTC recovery after a cold start, stale sync notifications and saved preference restoration.</td>
 </tr>
 <tr>
-<td>matrix-cad1-1</td>
-<td>cad 1</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">7 / 8</td>
-<td style="text-align: right;">2.643 ms</td>
+<td><code>test_sensor_tracker_sleep.py</code></td>
+<td>4 tests: actual sleep gates, nRF52 timer allocation/queue failures, warm radio pause and resume, Dispatcher watchdog anchors, and feature defaults.</td>
 </tr>
 <tr>
-<td>matrix-cad1-10</td>
-<td>cad 1</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 20</td>
-<td style="text-align: right;">28.389 ms</td>
+<td><code>test_sensor_subscriptions.py</code></td>
+<td>18 tests: existing delivery behavior plus suppression in dog mode and restoration after leaving it.</td>
 </tr>
 <tr>
-<td>matrix-cad1-11</td>
-<td>cad 1</td>
-<td style="text-align: right;">11</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">5 / 22</td>
-<td style="text-align: right;">31.297 ms</td>
-</tr>
-<tr>
-<td>matrix-cad1-12</td>
-<td>cad 1</td>
-<td style="text-align: right;">12</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">3 / 24</td>
-<td style="text-align: right;">34.145 ms</td>
-</tr>
-<tr>
-<td>matrix-cad2-10</td>
-<td>cad 2</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">3 / 40</td>
-<td style="text-align: right;">31.040 ms</td>
-</tr>
-<tr>
-<td>matrix-fixed-12</td>
-<td>Fixed-channel RX</td>
-<td style="text-align: right;">12</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">24 / 24</td>
-<td style="text-align: right;">—</td>
-</tr>
-<tr>
-<td>matrix-rx1-10</td>
-<td>rxfast 1</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 20</td>
-<td style="text-align: right;">7.555 ms</td>
-</tr>
-<tr>
-<td>matrix-rx1-11</td>
-<td>rxfast 1</td>
-<td style="text-align: right;">11</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 22</td>
-<td style="text-align: right;">8.316 ms</td>
-</tr>
-<tr>
-<td>matrix-rx1-12</td>
-<td>rxfast 1</td>
-<td style="text-align: right;">12</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 24</td>
-<td style="text-align: right;">9.072 ms</td>
-</tr>
-<tr>
-<td>matrix-rx2-10</td>
-<td>rxfast 2</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 40</td>
-<td style="text-align: right;">10.133 ms</td>
-</tr>
-<tr>
-<td>matrix-rx3-7</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 35</td>
-<td style="text-align: right;">8.892 ms</td>
-</tr>
-<tr>
-<td>matrix-rx3-8</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">1 / 40</td>
-<td style="text-align: right;">10.160 ms</td>
-</tr>
-<tr>
-<td>matrix-rx4-5</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">39 / 40</td>
-<td style="text-align: right;">7.630 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-1</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">4 / 24</td>
-<td style="text-align: right;">1.268 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-4</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 24</td>
-<td style="text-align: right;">5.080 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-5</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 25</td>
-<td style="text-align: right;">6.350 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-6</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 30</td>
-<td style="text-align: right;">7.621 ms</td>
-</tr>
-<tr>
-<td>boundary-rx4-4</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">80 / 80</td>
-<td style="text-align: right;">6.104 ms</td>
-</tr>
-<tr>
-<td>boundary-rx4-5</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">79 / 80</td>
-<td style="text-align: right;">7.630 ms</td>
-</tr>
-<tr>
-<td>boundary-rx4-6</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">52 / 60</td>
-<td style="text-align: right;">9.158 ms</td>
+<td><code>test_radio_interrupt_recovery.py</code></td>
+<td>9 tests: radio recovery preserves the no-flood-retry policy when a missing transmit-complete interrupt could conceal a transmission.</td>
 </tr>
 </tbody>
 </table>
-<p><code>rxfast N</code> means a continuous-RX preamble observation window of N symbols, with minimal reconfiguration between frequencies. It is not CAD. <code>cad N</code> uses the SX1262 CAD detector with N symbols and automatic handoff to RX. CAD has no three-symbol mode.</p>
-<p>Scan times describe uninterrupted sweeps. When reception starts, the radio stays on that frequency through the packet and cannot hear packets on the other frequencies. Serial status requests can add occasional timing outliers.</p>
-<p>The maximum-payload trial ended after 35 confirmed transmissions when a serial acknowledgement was delayed. Its last TX acknowledgement and matching RX were subsequently recovered from the serial logs; all 35 were received. It is not a completed 64-packet trial.</p>
-<h2 id="interpretation-and-limits">Interpretation and limits</h2>
-<p>The initial four-channel fast-RX test received 32/32 64-byte packets and 35/35 255-byte packets. That is a successful strong-signal bench result, not a guarantee of zero loss. Ordinary four-symbol CAD took approximately 14.47 ms to cover four frequencies and was unreliable with an 8.192 ms preamble.</p>
-<p>Reducing the observation window also reduces the time available for the modem to recognize a preamble. Dividing preamble duration by scan duration alone overestimates the number of usable channels. One- and two-symbol RX windows produced no preamble detections in the tested high-channel-count cases.</p>
-<p>The three-symbol single-channel control repeatedly re-arms RX, just as a scan would, and received only 4/24 packets. It is distinct from continuous fixed-channel reception, which passed its baseline. This isolates a detection-window limitation even without a long multi-channel sweep.</p>
-<p>CAD detection peak 18 and minimum 10 were held constant. These are the datasheet four-symbol SF5 thresholds; the one- and two-symbol CAD tests do not establish optimized thresholds or weak-signal sensitivity. CAD activity followed by no decoded packet can be a late packet detection, not necessarily a noise false positive.</p>
-<p>Received signals were strong. These tests do not establish weak-signal range, adjacent-channel rejection, simultaneous-packet capacity, production firmware scheduling performance, power consumption, FCC compliance, or months of uptime.</p>
-<h2 id="reproduction-and-evidence">Reproduction and evidence</h2>
-<p>See <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/cad_scan/README.md">the test harness</a>. Compact validated results, timing counters, and final firmware/source hashes are in <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/cad_scan/cad_scan_results.json">cad_scan_results.json</a>. Detailed sequence-level logs and private lab transport helpers are retained locally under <code>out/cad-scan/</code>.</p>
+<p>Host C++ tests use AddressSanitizer and UndefinedBehaviorSanitizer where
+available. Negative controls intentionally remove guards and verify that
+assertions detect the resulting regressions. Transport, UART, receiver and
+filesystem hardware are replaced by bounded adapters; they do not qualify
+physical RF range or current draw.</p>
+<p>The ordinary PlatformIO suites <code>native</code>, <code>native_kiss_modem</code> and
+<code>native_ota_channel</code> also passed: 1,829 test cases, with no failures.</p>
+<p>The client checks also cover:</p>
+<ul>
+<li>A backward RTC change while already asleep remains latched after the clock
+  is restored, until a matching authenticated owner response.</li>
+<li>A forward UTC correction cannot manufacture six hours of RF silence.</li>
+<li>A flood reply crossing the exact four-day boundary retains the cutoff;
+  a subsequent matching direct response clears it.</li>
+<li>A failed warm radio wake attempts peripheral recovery and restores the
+  dispatcher's watchdog ownership even when recovery fails.</li>
+<li>An unset RTC defers the request without being reported as a storage failure.</li>
+<li>The GPS manager completes its bounded position/time acquisition before the
+  client consumes the result.</li>
+</ul>
+<h2 id="firmware-builds">Firmware builds</h2>
+<p>All six firmware builds passed their flash and runtime memory checks. Values
+below are linked firmware bytes, rather than measured running heap usage.</p>
+<table>
+<thead>
+<tr>
+<th>Environment</th>
+<th>Flash used / limit</th>
+<th>Static RAM used</th>
+<th>Runtime internal RAM available / required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>t1000e_sensor</code></td>
+<td>377,520 / 811,008</td>
+<td>64,400</td>
+<td>171,112 / 54,320</td>
+</tr>
+<tr>
+<td><code>RAK_WisMesh_Tag_sensor</code></td>
+<td>421,084 / 815,104</td>
+<td>66,336</td>
+<td>169,176 / 54,320</td>
+</tr>
+<tr>
+<td><code>heltec_v4_sensor</code></td>
+<td>1,490,461 / 6,553,600</td>
+<td>97,024</td>
+<td>277,760 / 95,296</td>
+</tr>
+<tr>
+<td><code>t1000e_companion_radio_usb</code></td>
+<td>427,964 / 708,608</td>
+<td>187,272</td>
+<td>48,240 / 38,944</td>
+</tr>
+<tr>
+<td><code>RAK_3x72_companion_radio_usb</code></td>
+<td>229,000 / 229,376</td>
+<td>39,780</td>
+<td>24,728 / 17,408</td>
+</tr>
+<tr>
+<td><code>wio-e5-mini_companion_radio_usb</code></td>
+<td>229,012 / 229,376</td>
+<td>39,804</td>
+<td>24,704 / 17,408</td>
+</tr>
+</tbody>
+</table>
+<p>The compact STM32 Companion retains its existing feature exclusions and
+application/storage boundary. Its limited remaining flash is checked by the
+existing CI build. The workflow now also builds T1000-E and RAK Tag Sensors
+and the ESP32-S3 V4 Sensor, in addition to the executable tracker regressions.
+The Wio-E5 Mini check uses the complete
+<code>v1.17.1.9-halo-keymind-cascade-dev</code> version string and USA Cascade profile.</p>
+<h2 id="limits">Limits</h2>
+<p>Bluetooth Find My/OpenHaystack advertising and automatic Room mailbox polling
+are not implemented by this change. RP2040's interrupt-driven physical wake
+has not been tested on a board. The GPS/RF and current measurements still
+needed on T1000-E and RAK Tag are listed in the
+<a href="../../sensor_tracker/#remaining-work">tracker guide</a>.</p>
 
 
 

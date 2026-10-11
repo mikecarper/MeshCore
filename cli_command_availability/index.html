@@ -1481,6 +1481,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../sensor_tracker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensor tracker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../nrf52_power_management/" class="md-nav__link">
         
   
@@ -2753,6 +2781,11 @@ INA3221 A0 to SCL for <code>0x43</code>, and use a build with
 fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 <code>.mota</code> apply support.</p>
 <h2 id="companion-framed-cli">Companion framed CLI</h2>
+<p>GPS-equipped Sensor builds also provide the local-only
+<a href="../sensor_tracker/">dog tracker settings</a>: <code>get tracker</code>,
+<code>get/set tracker.owner</code>, <code>get/set tracker.mode</code>, <code>get/set tracker.interval</code>,
+<code>get/set tracker.lost.interval</code>, <code>get/set tracker.path</code>, and <code>tracker check</code>.
+They are excluded from compact STM32 defaults. LoRa CLI cannot change them.</p>
 <p>Companion builds are not represented by the role/profile matrices below. Their
 local terminal and command <code>0x42</code> (<code>CMD_RUN_CLI_COMMAND</code>) expose these settings
 over the normal binary USB, BLE, or TCP connection:</p>

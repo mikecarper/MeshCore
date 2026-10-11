@@ -10,24 +10,28 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/test-results/cad_scan_validation/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/sensor_tracker/">
       
       
+        <link rel="prev" href="../companion_lost_reply/">
+      
+      
+        <link rel="next" href="../nrf52_power_management/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Cad scan validation - MeshCore Docs</title>
+        <title>Sensor tracker - MeshCore Docs</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -46,25 +50,25 @@
       
     
     
-      <link rel="stylesheet" href="../../_stylesheets/notification_builder.css?v=20261006-channel9">
+      <link rel="stylesheet" href="../_stylesheets/notification_builder.css?v=20261006-channel9">
     
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/extra.css">
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
     
-      <link rel="stylesheet" href="../../_stylesheets/telemetry_decoder.css">
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/management_decoder.css">
+      <link rel="stylesheet" href="../_stylesheets/management_decoder.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/filter_tool.css">
+      <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
     
-      <link rel="stylesheet" href="../../_stylesheets/preset_test.css?v=20260923-2">
+      <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
     
-      <link rel="stylesheet" href="../../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
+      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -82,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#sx1262-channel-scanning-hardware-results" class="md-skip">
+        <a href="#sensor-dog-tracker" class="md-skip">
           Skip to content
         </a>
       
@@ -98,9 +102,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
       
-  <img src="../../_assets/meshcore.svg" alt="logo">
+  <img src="../_assets/meshcore.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -117,7 +121,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Cad scan validation
+              Sensor tracker
             
           </span>
         </div>
@@ -209,9 +213,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
       
-  <img src="../../_assets/meshcore.svg" alt="logo">
+  <img src="../_assets/meshcore.svg" alt="logo">
 
     </a>
     MeshCore Docs
@@ -238,7 +242,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -312,7 +316,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../firmware_picker/" class="md-nav__link">
+      <a href="../firmware_picker/" class="md-nav__link">
         
   
   
@@ -340,7 +344,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../notifications/" class="md-nav__link">
+      <a href="../notifications/" class="md-nav__link">
         
   
   
@@ -368,7 +372,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../preset_test/" class="md-nav__link">
+      <a href="../preset_test/" class="md-nav__link">
         
   
   
@@ -396,7 +400,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../filter_tool/" class="md-nav__link">
+      <a href="../filter_tool/" class="md-nav__link">
         
   
   
@@ -424,7 +428,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../telemetry_decoder/" class="md-nav__link">
+      <a href="../telemetry_decoder/" class="md-nav__link">
         
   
   
@@ -452,7 +456,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../management_decoder/" class="md-nav__link">
+      <a href="../management_decoder/" class="md-nav__link">
         
   
   
@@ -484,18 +488,20 @@
       
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
@@ -516,7 +522,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -581,7 +587,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../faq/" class="md-nav__link">
+      <a href="../faq/" class="md-nav__link">
         
   
   
@@ -609,7 +615,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../full_profiles/" class="md-nav__link">
+      <a href="../full_profiles/" class="md-nav__link">
         
   
   
@@ -637,7 +643,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../role_feature_switches/" class="md-nav__link">
+      <a href="../role_feature_switches/" class="md-nav__link">
         
   
   
@@ -665,7 +671,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../full_companion_features/" class="md-nav__link">
+      <a href="../full_companion_features/" class="md-nav__link">
         
   
   
@@ -693,7 +699,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../companion_radio_full/" class="md-nav__link">
+      <a href="../companion_radio_full/" class="md-nav__link">
         
   
   
@@ -721,7 +727,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../full_companion_usb_switcher/" class="md-nav__link">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
         
   
   
@@ -749,7 +755,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../companion_offline_queue/" class="md-nav__link">
+      <a href="../companion_offline_queue/" class="md-nav__link">
         
   
   
@@ -777,7 +783,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../halo_keymind_settings/" class="md-nav__link">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
         
   
   
@@ -860,7 +866,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../upgrading_1.17.1.8_to_1.17.1.9/" class="md-nav__link">
+      <a href="../upgrading_1.17.1.8_to_1.17.1.9/" class="md-nav__link">
         
   
   
@@ -888,7 +894,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_user_guide/" class="md-nav__link">
+      <a href="../ota_user_guide/" class="md-nav__link">
         
   
   
@@ -916,7 +922,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_easy/" class="md-nav__link">
+      <a href="../ota_easy/" class="md-nav__link">
         
   
   
@@ -944,7 +950,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../lora_ota_automation/" class="md-nav__link">
+      <a href="../lora_ota_automation/" class="md-nav__link">
         
   
   
@@ -972,7 +978,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_nrf52_bootloader_update/" class="md-nav__link">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
         
   
   
@@ -1000,7 +1006,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_nrf52_qspi/" class="md-nav__link">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
         
   
   
@@ -1028,7 +1034,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_meshtower_v2_sdcard/" class="md-nav__link">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
         
   
   
@@ -1056,7 +1062,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../esp32_partition_catalog/" class="md-nav__link">
+      <a href="../esp32_partition_catalog/" class="md-nav__link">
         
   
   
@@ -1084,7 +1090,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../esp32_wifi_partition_migration/" class="md-nav__link">
+      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
         
   
   
@@ -1112,7 +1118,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+      <a href="../heltec_v4_wifi_partition_migration/" class="md-nav__link">
         
   
   
@@ -1140,7 +1146,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../host_cli_service/" class="md-nav__link">
+      <a href="../host_cli_service/" class="md-nav__link">
         
   
   
@@ -1173,18 +1179,20 @@
                 
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
@@ -1205,7 +1213,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1223,7 +1231,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../radio_profiles/" class="md-nav__link">
+      <a href="../radio_profiles/" class="md-nav__link">
         
   
   
@@ -1251,7 +1259,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fleet_management/" class="md-nav__link">
+      <a href="../fleet_management/" class="md-nav__link">
         
   
   
@@ -1279,7 +1287,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../room_services/" class="md-nav__link">
+      <a href="../room_services/" class="md-nav__link">
         
   
   
@@ -1307,7 +1315,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../carrier_wave/" class="md-nav__link">
+      <a href="../carrier_wave/" class="md-nav__link">
         
   
   
@@ -1335,7 +1343,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../espnow_bridge_setup/" class="md-nav__link">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
         
   
   
@@ -1363,7 +1371,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../WiFi/" class="md-nav__link">
+      <a href="../WiFi/" class="md-nav__link">
         
   
   
@@ -1391,7 +1399,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../flood_filtering/" class="md-nav__link">
+      <a href="../flood_filtering/" class="md-nav__link">
         
   
   
@@ -1419,7 +1427,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../gps_tracking/" class="md-nav__link">
+      <a href="../gps_tracking/" class="md-nav__link">
         
   
   
@@ -1447,7 +1455,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../companion_lost_reply/" class="md-nav__link">
+      <a href="../companion_lost_reply/" class="md-nav__link">
         
   
   
@@ -1472,10 +1480,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../sensor_tracker/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensor tracker
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1491,6 +1526,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#set-up-the-owner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set up the owner
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#set-up-the-tracker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set up the tracker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-and-sleep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reporting and sleep
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flood-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flood fallback
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encrypted-check-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encrypted check format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remaining-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remaining work
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1503,7 +1624,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../nrf52_power_management/" class="md-nav__link">
+      <a href="../nrf52_power_management/" class="md-nav__link">
         
   
   
@@ -1586,7 +1707,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli_commands/" class="md-nav__link">
+      <a href="../cli_commands/" class="md-nav__link">
         
   
   
@@ -1614,7 +1735,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli_build_matrix/" class="md-nav__link">
+      <a href="../cli_build_matrix/" class="md-nav__link">
         
   
   
@@ -1642,7 +1763,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../cli_command_availability/" class="md-nav__link">
+      <a href="../cli_command_availability/" class="md-nav__link">
         
   
   
@@ -1670,7 +1791,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../terminal_chat_cli/" class="md-nav__link">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
         
   
   
@@ -1698,7 +1819,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../companion_protocol/" class="md-nav__link">
+      <a href="../companion_protocol/" class="md-nav__link">
         
   
   
@@ -1726,7 +1847,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../kiss_modem_protocol/" class="md-nav__link">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
         
   
   
@@ -1754,7 +1875,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../packet_format/" class="md-nav__link">
+      <a href="../packet_format/" class="md-nav__link">
         
   
   
@@ -1782,7 +1903,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../payloads/" class="md-nav__link">
+      <a href="../payloads/" class="md-nav__link">
         
   
   
@@ -1810,7 +1931,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../ota_protocol/" class="md-nav__link">
+      <a href="../ota_protocol/" class="md-nav__link">
         
   
   
@@ -1838,7 +1959,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../management_reports/" class="md-nav__link">
+      <a href="../management_reports/" class="md-nav__link">
         
   
   
@@ -1866,7 +1987,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../stats_binary_frames/" class="md-nav__link">
+      <a href="../stats_binary_frames/" class="md-nav__link">
         
   
   
@@ -1894,7 +2015,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../number_allocations/" class="md-nav__link">
+      <a href="../number_allocations/" class="md-nav__link">
         
   
   
@@ -1922,7 +2043,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../qr_codes/" class="md-nav__link">
+      <a href="../qr_codes/" class="md-nav__link">
         
   
   
@@ -1958,7 +2079,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../docs/" class="md-nav__link">
+      <a href="../docs/" class="md-nav__link">
         
   
   
@@ -1993,7 +2114,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../research/" class="md-nav__link">
+      <a href="../research/" class="md-nav__link">
         
   
   
@@ -2114,7 +2235,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../releases/1.17.1.9/" class="md-nav__link">
+      <a href="../releases/1.17.1.9/" class="md-nav__link">
         
   
   
@@ -2142,7 +2263,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../releases/1.17.1.8/" class="md-nav__link">
+      <a href="../releases/1.17.1.8/" class="md-nav__link">
         
   
   
@@ -2170,7 +2291,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+      <a href="../test-results/" class="md-nav__link">
         
   
   
@@ -2206,7 +2327,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../old-releases/" class="md-nav__link">
+      <a href="../old-releases/" class="md-nav__link">
         
   
   
@@ -2261,10 +2382,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#configuration-and-counting" class="md-nav__link">
+  <a href="#set-up-the-owner" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Configuration and counting
+        Set up the owner
       
     </span>
   </a>
@@ -2272,10 +2393,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#completed-trials" class="md-nav__link">
+  <a href="#set-up-the-tracker" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Completed trials
+        Set up the tracker
       
     </span>
   </a>
@@ -2283,10 +2404,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#interpretation-and-limits" class="md-nav__link">
+  <a href="#reporting-and-sleep" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Interpretation and limits
+        Reporting and sleep
       
     </span>
   </a>
@@ -2294,10 +2415,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reproduction-and-evidence" class="md-nav__link">
+  <a href="#flood-fallback" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reproduction and evidence
+        Flood fallback
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encrypted-check-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encrypted check format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#remaining-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remaining work
       
     </span>
   </a>
@@ -2321,7 +2464,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/test-results/cad_scan_validation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/sensor_tracker.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2330,241 +2473,274 @@
 
 
 <!-- meshcore-hosted-doc-link:start -->
-<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/cad_scan_validation/">View this page on MeshCore Docs</a>.</p>
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/sensor_tracker/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-<h1 id="sx1262-channel-scanning-hardware-results">SX1262 channel-scanning hardware results</h1>
-<p>Hardware test on September 12, 2026 (America/Los_Angeles). Heltec V4 transmitter; XIAO ESP32-S3 with Wio SX1262 receiver. Both used standalone diagnostic firmware.</p>
-<p>The best tested scan setting was <strong>four channels with four-symbol RX-preamble windows</strong>. Three-symbol windows were unreliable even in the single-channel re-arm control. In the longer four-symbol runs, four channels received 80/80 packets, five received 79/80, and six received 52/60. These are measured limits of this implementation and test setup, not universal SX1262 channel-count limits.</p>
-<h2 id="configuration-and-counting">Configuration and counting</h2>
-<p>SF5, 125 kHz, coding rate 4/5, explicit header, payload CRC, and 32 preamble symbols. The programmed preamble is 8.192 ms. Channels start at 909.5 MHz and increase in 1 MHz steps; tests use the first N channels, up to 920.5 MHz. Test packets are transmitted individually with varied timing relative to the scanner. There are no overlapping transmitters in this experiment.</p>
-<p>A success requires a CRC-valid packet with the expected sequence, channel, length, and test payload. Every included transmission has its own successful transmitter acknowledgement; delayed serial acknowledgements are recovered by sequence, without retransmitting. The one exploratory RX scan trial with shifted acknowledgements is excluded.</p>
-<h2 id="completed-trials">Completed trials</h2>
+<h1 id="sensor-dog-tracker">Sensor dog tracker</h1>
+<p>Dog tracker mode is an optional mode in the Sensor firmware. It acquires a new
+GPS position, sends an encrypted check to one configured owner's Companion,
+and waits for that owner's saved lost status. The owner's answer controls the
+tracker's reporting rate and awake window.</p>
+<p>Tracker mode starts off. It is compiled by default for GPS Sensor builds on
+nRF52, ESP32, and RP2040; compact STM32 builds exclude it by default. A build
+can override <code>MESH_ENABLE_SENSOR_TRACKER</code>. GPS hardware must be detected and
+available for position acquisition.</p>
+<h2 id="set-up-the-owner">Set up the owner</h2>
+<p>Use a Companion build with lost replies enabled. Add the tracker as a saved
+contact on the owner's Companion, using its full public key. The responder
+accepts saved Chat or Sensor contacts for the encrypted tracker check.</p>
+<p>Set the answer locally on the owner's Companion:</p>
+<pre><code class="language-text">set lost.reply no
+get lost.reply
+</code></pre>
+<p>Use <code>set lost.reply yes</code> when the dog is lost. Use <code>set lost.reply off</code> to
+return an unknown status. These are owner settings; an incoming tracker check
+cannot change them. A normal private <code>Am I lost?</code> message also receives the
+saved answer where the text responder is available, but the automatic Sensor
+tracker uses an encrypted request with a matching response tag.</p>
+<p>The owner must be reachable during the tracker's receive window. A Room or
+public message board does not substitute for the owner's Companion in this
+mode.</p>
+<h2 id="set-up-the-tracker">Set up the tracker</h2>
+<p>Configure the Sensor through its local text console. Replace the key below
+with the owner's full 64-character hexadecimal public key:</p>
+<pre><code class="language-text">set tracker.owner &lt;owner-public-key&gt;
+set tracker.interval 1800
+set tracker.lost.interval 60
+set tracker.path direct
+set tracker.mode dog
+get tracker status
+</code></pre>
+<p>Check <code>clock</code> on both devices before enabling the mode. If needed, use
+<code>time &lt;current-UTC-epoch-seconds&gt;</code> to set the tracker clock. The owner's
+Companion accepts map coordinates only when the request time is within five
+minutes of its own clock. Tracker acquisition waits for the provider's validated
+multi-sample GPS clock sync as well as its position, allowing cold-start clock
+recovery within the acquisition window. If clock sync cannot finish, an operator
+can still set the clock locally. Saved routing limits do not reset to grant
+floods after clock loss.</p>
+<p><code>direct</code> selects a direct radio path with no repeaters. If a repeater path is
+known, use comma-separated repeater prefixes, for example
+<code>set tracker.path aa,bb</code> or <code>set tracker.path aabb,ccdd</code>. All prefixes must have
+the same length: one, two, or three bytes. <code>set tracker.path clear</code> keeps the
+path unknown; the flood fallback delay
+still applies. Encrypted path replies can update the retained path.</p>
 <table>
 <thead>
 <tr>
-<th>Trial</th>
-<th>Method/window</th>
-<th style="text-align: right;">Channels</th>
-<th style="text-align: right;">Payload bytes</th>
-<th style="text-align: right;">Received / sent</th>
-<th style="text-align: right;">Mean complete scan</th>
+<th>Command</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>baseline-fixed</td>
-<td>Fixed-channel RX</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">16 / 16</td>
-<td style="text-align: right;">—</td>
+<td><code>get tracker status</code></td>
+<td>Show mode, saved owner status, intervals, flood lock, clock and storage state.</td>
 </tr>
 <tr>
-<td>cad-standard</td>
-<td>CAD + software RX</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">7 / 32</td>
-<td style="text-align: right;">14.469 ms</td>
+<td><code>get tracker.owner</code></td>
+<td>Show the configured owner's full public key.</td>
 </tr>
 <tr>
-<td>cad-auto</td>
-<td>CAD + automatic RX</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">16 / 32</td>
-<td style="text-align: right;">14.468 ms</td>
+<td><code>get tracker.path</code></td>
+<td>Show whether the route is direct, saved, or unknown, and its hop count.</td>
 </tr>
 <tr>
-<td>rxfast-4</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">32 / 32</td>
-<td style="text-align: right;">6.100 ms</td>
+<td><code>set tracker.owner &lt;full-key&gt;</code></td>
+<td>Save the destination identity.</td>
 </tr>
 <tr>
-<td>rxfast-4-maxpayload</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">255</td>
-<td style="text-align: right;">35 / 35</td>
-<td style="text-align: right;">6.098 ms</td>
+<td><code>set tracker.mode dog</code></td>
+<td>Enable automatic checks and tracker power control.</td>
 </tr>
 <tr>
-<td>matrix-cad1-1</td>
-<td>cad 1</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">7 / 8</td>
-<td style="text-align: right;">2.643 ms</td>
+<td><code>set tracker.mode off</code></td>
+<td>Stop automatic checks and restore normal Sensor operation.</td>
 </tr>
 <tr>
-<td>matrix-cad1-10</td>
-<td>cad 1</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 20</td>
-<td style="text-align: right;">28.389 ms</td>
+<td><code>set tracker.interval &lt;seconds&gt;</code></td>
+<td>Normal interval, 60 to 86400 seconds; default 1800.</td>
 </tr>
 <tr>
-<td>matrix-cad1-11</td>
-<td>cad 1</td>
-<td style="text-align: right;">11</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">5 / 22</td>
-<td style="text-align: right;">31.297 ms</td>
+<td><code>set tracker.lost.interval &lt;seconds&gt;</code></td>
+<td>Lost interval, 60 to 86400 seconds; default 60.</td>
 </tr>
 <tr>
-<td>matrix-cad1-12</td>
-<td>cad 1</td>
-<td style="text-align: right;">12</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">3 / 24</td>
-<td style="text-align: right;">34.145 ms</td>
+<td><code>set tracker.path &lt;hex\|direct\|clear&gt;</code></td>
+<td>Save a known path or mark it unknown.</td>
 </tr>
 <tr>
-<td>matrix-cad2-10</td>
-<td>cad 2</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">3 / 40</td>
-<td style="text-align: right;">31.040 ms</td>
-</tr>
-<tr>
-<td>matrix-fixed-12</td>
-<td>Fixed-channel RX</td>
-<td style="text-align: right;">12</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">24 / 24</td>
-<td style="text-align: right;">—</td>
-</tr>
-<tr>
-<td>matrix-rx1-10</td>
-<td>rxfast 1</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 20</td>
-<td style="text-align: right;">7.555 ms</td>
-</tr>
-<tr>
-<td>matrix-rx1-11</td>
-<td>rxfast 1</td>
-<td style="text-align: right;">11</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 22</td>
-<td style="text-align: right;">8.316 ms</td>
-</tr>
-<tr>
-<td>matrix-rx1-12</td>
-<td>rxfast 1</td>
-<td style="text-align: right;">12</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 24</td>
-<td style="text-align: right;">9.072 ms</td>
-</tr>
-<tr>
-<td>matrix-rx2-10</td>
-<td>rxfast 2</td>
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 40</td>
-<td style="text-align: right;">10.133 ms</td>
-</tr>
-<tr>
-<td>matrix-rx3-7</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 35</td>
-<td style="text-align: right;">8.892 ms</td>
-</tr>
-<tr>
-<td>matrix-rx3-8</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">1 / 40</td>
-<td style="text-align: right;">10.160 ms</td>
-</tr>
-<tr>
-<td>matrix-rx4-5</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">39 / 40</td>
-<td style="text-align: right;">7.630 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-1</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">4 / 24</td>
-<td style="text-align: right;">1.268 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-4</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 24</td>
-<td style="text-align: right;">5.080 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-5</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">0 / 25</td>
-<td style="text-align: right;">6.350 ms</td>
-</tr>
-<tr>
-<td>boundary-rx3-6</td>
-<td>rxfast 3</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">2 / 30</td>
-<td style="text-align: right;">7.621 ms</td>
-</tr>
-<tr>
-<td>boundary-rx4-4</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">80 / 80</td>
-<td style="text-align: right;">6.104 ms</td>
-</tr>
-<tr>
-<td>boundary-rx4-5</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">79 / 80</td>
-<td style="text-align: right;">7.630 ms</td>
-</tr>
-<tr>
-<td>boundary-rx4-6</td>
-<td>rxfast 4</td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">64</td>
-<td style="text-align: right;">52 / 60</td>
-<td style="text-align: right;">9.158 ms</td>
+<td><code>tracker check</code></td>
+<td>Schedule a check now, if no check is already pending.</td>
 </tr>
 </tbody>
 </table>
-<p><code>rxfast N</code> means a continuous-RX preamble observation window of N symbols, with minimal reconfiguration between frequencies. It is not CAD. <code>cad N</code> uses the SX1262 CAD detector with N symbols and automatic handoff to RX. CAD has no three-symbol mode.</p>
-<p>Scan times describe uninterrupted sweeps. When reception starts, the radio stays on that frequency through the packet and cannot hear packets on the other frequencies. Serial status requests can add occasional timing outliers.</p>
-<p>The maximum-payload trial ended after 35 confirmed transmissions when a serial acknowledgement was delayed. Its last TX acknowledgement and matching RX were subsequently recovered from the serial logs; all 35 were received. It is not a completed 64-packet trial.</p>
-<h2 id="interpretation-and-limits">Interpretation and limits</h2>
-<p>The initial four-channel fast-RX test received 32/32 64-byte packets and 35/35 255-byte packets. That is a successful strong-signal bench result, not a guarantee of zero loss. Ordinary four-symbol CAD took approximately 14.47 ms to cover four frequencies and was unreliable with an 8.192 ms preamble.</p>
-<p>Reducing the observation window also reduces the time available for the modem to recognize a preamble. Dividing preamble duration by scan duration alone overestimates the number of usable channels. One- and two-symbol RX windows produced no preamble detections in the tested high-channel-count cases.</p>
-<p>The three-symbol single-channel control repeatedly re-arms RX, just as a scan would, and received only 4/24 packets. It is distinct from continuous fixed-channel reception, which passed its baseline. This isolates a detection-window limitation even without a long multi-channel sweep.</p>
-<p>CAD detection peak 18 and minimum 10 were held constant. These are the datasheet four-symbol SF5 thresholds; the one- and two-symbol CAD tests do not establish optimized thresholds or weak-signal sensitivity. CAD activity followed by no decoded packet can be a late packet detection, not necessarily a noise false positive.</p>
-<p>Received signals were strong. These tests do not establish weak-signal range, adjacent-channel rejection, simultaneous-packet capacity, production firmware scheduling performance, power consumption, FCC compliance, or months of uptime.</p>
-<h2 id="reproduction-and-evidence">Reproduction and evidence</h2>
-<p>See <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/cad_scan/README.md">the test harness</a>. Compact validated results, timing counters, and final firmware/source hashes are in <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/hil/cad_scan/cad_scan_results.json">cad_scan_results.json</a>. Detailed sequence-level logs and private lab transport helpers are retained locally under <code>out/cad-scan/</code>.</p>
+<p>Tracker configuration and routing checkpoints use a separate durable store.
+Mode changes do not replace the saved manual GPS or power-saving preferences.
+If storage cannot safely retain configuration or a flood reservation, automatic
+tracker checks fail closed. Volatile filesystem recovery is unsuitable for this
+mode because a restart could otherwise reset the flood limits.</p>
+<h2 id="reporting-and-sleep">Reporting and sleep</h2>
+<p>Each check asks the GPS manager for a new position and validated GPS clock
+sync. It discards the previous parser fix and previous time-validation samples,
+then stops once both are ready or after 120 seconds.
+An old cached position is not reported as a new tracker fix. If acquisition
+gets a position but clock sync times out, the fresh position is retained. If no
+position is acquired, the encrypted check marks the failure and carries no
+position. A retained parser fix or one unvalidated time sample cannot set the
+tracker clock.</p>
+<p>The tracker then allows 20 seconds for the tagged owner response. <code>No</code> uses the
+normal reporting interval. <code>Yes</code> uses the shorter lost interval and requests a
+120-second awake window, renewed by further <code>Yes</code> responses. This permits the
+tracker to remain reachable while the owner continues to report it as lost.
+An unknown answer does not replace the last saved <code>Yes</code> or <code>No</code>. Intervals run
+from the completed check; GPS acquisition and the response window add time.</p>
+<p>Between active windows, tracker mode pauses radio reception when there is no
+queued radio work, temporary radio setting, update operation, or active console
+that needs service. The radio resumes before the next check. Unsolicited
+messages sent while reception is paused cannot be received; the owner should
+set the status and wait for the next check. A delivery ACK alone does not
+contain the owner's lost answer.</p>
+<p>Tracker mode temporarily suppresses ordinary periodic advertisements,
+subscriptions, and Sensor alerts. Manual requests can still be served while
+the radio is awake. Leaving tracker mode restores the normal Sensor behavior.</p>
+<p>This uses idle or light sleep while retaining runtime state. It does not use
+the nRF52 battery-protection SYSTEMOFF path described in
+<a href="../nrf52_power_management/">nRF52 power management</a>. Receiver power control
+depends on the hardware: T1000-E retains the GPS backup supply for faster fixes,
+and shared GPS power rails may prevent physically cutting receiver power.</p>
+<p>nRF52 tracker sleep arms a real one-shot software timer before each System ON
+wait. Failure to allocate or queue that timer keeps the loop polling. Sleep
+chunks are at most 30 seconds so clock and watchdog housekeeping continue.
+ESP32 light sleep uses the board's existing timer wake. RP2040 uses the core's
+interrupt-driven idle wait; its physical tracker wake behavior is not yet
+qualified by these host tests.</p>
+<h2 id="flood-fallback">Flood fallback</h2>
+<p>Automatic tracker checks retain a known direct path and try it while the
+owner cannot be reached. A failed check starts an outage; further failures do
+not restart that outage's six-hour clock.</p>
+<ul>
+<li>A recovery flood is eligible only after six hours without a qualifying owner
+  response, six hours without hearing a repeater, and six hours since the last
+  recovery flood.</li>
+<li>Hearing a repeater starts another six-hour wait. It does not clear the
+  four-day outage limit.</li>
+<li>At most one automatic recovery flood is reserved per six hours. It does not
+  schedule additional flood retries.</li>
+<li>After four days without qualifying owner success, automatic floods
+  stop. Known direct paths can still be tried. An authenticated matching direct
+  owner response can clear the lockout. A bare delivery ACK cannot do this.</li>
+</ul>
+<p>The cutoff and flood checkpoint survive sleep and restart. Invalid or backward
+clock changes prevent fresh flood eligibility. A forward GPS or manual clock
+correction starts another conservative six-hour quiet wait; it does not reset
+the outage or the flood checkpoint. Repeater observations and
+unrelated public traffic cannot unlock a stopped tracker. Ordinary Room
+responses, login traffic, and manual messaging keep their existing routing.</p>
+<h2 id="encrypted-check-format">Encrypted check format</h2>
+<p>This uses the existing encrypted peer <code>PAYLOAD_TYPE_REQ</code> and
+<code>PAYLOAD_TYPE_RESPONSE</code> datagrams. Request subtype <code>0x0C</code> is inside the
+encrypted body; it is separate from the packet header's OTA payload type.
+All multi-byte fields are little-endian.</p>
+<table>
+<thead>
+<tr>
+<th>Request field</th>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tag</td>
+<td>4</td>
+<td>RTC-based request identity, durably increasing across reboot.</td>
+</tr>
+<tr>
+<td>Subtype</td>
+<td>1</td>
+<td><code>0x0C</code>.</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>1</td>
+<td><code>1</code>.</td>
+</tr>
+<tr>
+<td>Flags</td>
+<td>1</td>
+<td><code>1</code> for fresh GPS, <code>2</code> for failed acquisition, or <code>0</code> for no position; other flags are rejected.</td>
+</tr>
+<tr>
+<td>Latitude</td>
+<td>4</td>
+<td>Signed degrees times 10,000,000.</td>
+</tr>
+<tr>
+<td>Longitude</td>
+<td>4</td>
+<td>Signed degrees times 10,000,000.</td>
+</tr>
+<tr>
+<td>Battery</td>
+<td>2</td>
+<td>Millivolts; carried for reporting, not a lost-status decision.</td>
+</tr>
+</tbody>
+</table>
+<p>The request has 17 logical plaintext bytes and zero padding to 32 bytes.
+Latitude and longitude must be zero when no fresh position is present.</p>
+<table>
+<thead>
+<tr>
+<th>Response field</th>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tag</td>
+<td>4</td>
+<td>Exact request tag.</td>
+</tr>
+<tr>
+<td>Subtype</td>
+<td>1</td>
+<td><code>0x0C</code>.</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>1</td>
+<td><code>1</code>.</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>1</td>
+<td><code>0</code> Unknown, <code>1</code> Safe, <code>2</code> Lost.</td>
+</tr>
+<tr>
+<td>Awake lease</td>
+<td>2</td>
+<td>Seconds; the Companion requests 120 for Lost and zero otherwise.</td>
+</tr>
+</tbody>
+</table>
+<p>The response has nine logical plaintext bytes and zero padding to 16 bytes.
+The client authenticates the configured owner's complete public key, requires
+the pending tag within its receive window, and caps an awake lease at 300
+seconds. Short, oversized, nonzero-padded and unknown-version bodies are
+rejected. An encrypted returned-path packet may bundle the same response and
+provide a route for subsequent direct checks.</p>
+<h2 id="remaining-work">Remaining work</h2>
+<p>This mode implements GPS checks and an owner's saved lost answer. It does not
+provide Bluetooth pings every 30 seconds, an automatic Room mailbox poller,
+public-board subscriptions, or a mailbox command interpreter. Room private
+mailboxes and the public board remain separate features. Mail text is not
+executed as a tracker or console command.</p>
+<p>Battery life and reliable wake behavior still need measurements on the actual
+hardware, including GPS reception, repeater availability, and the chosen
+reporting intervals.</p>
 
 
 
@@ -2614,28 +2790,28 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
-        <script src="../../_javascript/hosted_doc_links.js?v=20261007-1"></script>
+        <script src="../_javascript/hosted_doc_links.js?v=20261007-1"></script>
       
-        <script src="../../_javascript/notification_builder.js?v=20261006-channel9"></script>
+        <script src="../_javascript/notification_builder.js?v=20261006-channel9"></script>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../../_javascript/firmware_picker.js?v=20261008-rak-uart2-1"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261008-rak-uart2-1"></script>
       
-        <script src="../../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
+        <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
       
-        <script src="../../_javascript/management_decoder.js"></script>
+        <script src="../_javascript/management_decoder.js"></script>
       
-        <script src="../../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
+        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
       
-        <script src="../../_javascript/preset_test.js?v=20260923-2"></script>
+        <script src="../_javascript/preset_test.js?v=20260923-2"></script>
       
-        <script src="../../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
+        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
       
     
   </body>

@@ -337,6 +337,10 @@
          <lastmod>2026-10-11</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/sensor_tracker/</loc>
+         <lastmod>2026-10-11</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/separated_radio_modulation_cache_validation/</loc>
          <lastmod>2026-10-11</lastmod>
     </url>
@@ -666,6 +670,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/s3_memory_soak_validation/</loc>
+         <lastmod>2026-10-11</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/sensor_dog_tracker/</loc>
          <lastmod>2026-10-11</lastmod>
     </url>
     <url>
