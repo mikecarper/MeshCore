@@ -4335,6 +4335,10 @@ Byte 1: Channel index (0 through max_channels - 1)
 <pre><code>1F 01
 </code></pre>
 <p><strong>Response</strong>: <code>PACKET_CHANNEL_INFO</code> (0x12) with channel details</p>
+<p>On builds with <code>MESH_ENABLE_MESHTEXT_CHAT=1</code>, a capable client can append a
+third request byte of <code>32</code> (<code>1F &lt;index&gt; 20</code>) to retrieve the complete 32-byte
+secret for an <code>mt-</code> channel. Ordinary two-byte requests, and requests for
+MeshCore channels, retain the original 16-byte secret response.</p>
 <hr />
 <h3 id="4-set-channel">4. Set Channel</h3>
 <p><strong>Purpose</strong>: Create or update a channel on the device.</p>
@@ -4362,7 +4366,24 @@ Bytes 34-49: Secret (16 bytes)
 <pre><code>20 01 53 4D 53 00 00 ... (name padded to 32 bytes)
     [16 bytes of secret]
 </code></pre>
-<p><strong>Note</strong>: The 32-byte secret variant is unsupported and returns <code>PACKET_ERROR</code>.</p>
+<p><strong>Meshtext-only extension</strong>: With <code>MESH_ENABLE_MESHTEXT_CHAT=1</code>, a 66-byte
+<code>SET_CHANNEL</code> frame can supply 32 secret bytes at offsets 34–65 for an <code>mt-</code>
+channel. Non-MT channels and feature-disabled builds reject this variant with
+<code>PACKET_ERROR</code>; the standard 50-byte MeshCore command is unchanged. The MT
+backend uses AES-256 when the upper 16 bytes are nonzero, otherwise AES-128.</p>
+<p>A legacy 50-byte SET of an existing MT channel preserves its upper 16 key
+bytes when the supplied lower half is unchanged. This permits an old client's
+GET/edit/SET round trip without silently truncating a provisioned AES-256 key.
+To explicitly replace or downgrade that key, send the full 32-byte variant
+(zero the upper half for AES-128). A client using only the legacy GET cannot
+export a complete AES-256 key. Stock app editors do not gain 256-bit
+provisioning or sharing from this firmware extension.</p>
+<p>For local CLI provisioning without implementing the binary extension, use
+<code>set mt.channel</code> with a 32- or 64-digit hexadecimal PSK; see the
+<a href="../radio_profiles/#meshtext-channel-chat">private-channel commands</a>.</p>
+<p>MT channel changes can also fail with a bad-state error for conflicting
+presets, an unsuitable manual radio2 profile, ambiguous region or a busy
+automatic owner. See <a href="../radio_profiles/#meshtext-channel-chat">Meshtext channel chat</a>.</p>
 <p><strong>Response</strong>: <code>PACKET_OK</code> (0x00) on success, <code>PACKET_ERROR</code> (0x01) on failure</p>
 <hr />
 <h3 id="5-send-channel-message">5. Send Channel Message</h3>
@@ -4979,7 +5000,9 @@ Byte 1: Channel Index
 Bytes 2-33: Channel Name (32 bytes, null-terminated)
 Bytes 34-49: Secret (16 bytes)
 </code></pre>
-<p><strong>Note</strong>: The device returns the 16-byte channel secret in this response.</p>
+<p><strong>Note</strong>: The normal response contains the 16-byte channel secret. An opt-in
+32-byte MT GET described above extends the secret through byte 65; response
+code, index and name fields remain unchanged.</p>
 <p><strong>PACKET_DEVICE_INFO</strong> (0x0D):</p>
 <pre><code>Byte 0: 0x0D
 Byte 1: Firmware Version (uint8)

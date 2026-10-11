@@ -2491,6 +2491,17 @@ available buffer while unread, the browser reports the missing output.</p>
 <p>USB protocol-switch and USB MOTA ownership commands still apply to the USB
 connection. Use the WiFi MOTA seeder on port 5001 for a host folder over WiFi.</p>
 <h2 id="local-maintenance-commands">Local maintenance commands</h2>
+<p>Supported ESP32-S3/SX1262 Full Companions also support
+<a href="../radio_profiles/#meshtext-channel-chat">Meshtext channel chat</a>:</p>
+<pre><code class="language-text">set mt.shortname MIKE
+send mt.nodeinfo 0
+channel 0 Hello
+</code></pre>
+<p>Use a configured <code>mt-</code> channel slot. The explicit <code>send mt.nodeinfo</code> command
+queues one standard name/ID advertisement; chat carries only the entered text.
+There are no automatic NodeInfo sends or responses. The long name comes from
+the existing node name; <code>get mt.shortname</code> shows the effective four-byte short
+name. These commands are not added to smaller or feature-disabled builds.</p>
 <p>Local means a connection directly to the node: USB, BLE or WiFi/Ethernet
 Companion protocol, a TCP terminal, or the browser CLI on the LAN. These
 connections can use the following commands when the role and build include

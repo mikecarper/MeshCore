@@ -1346,6 +1346,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-channel-name-routing-aliases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion channel-name routing aliases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Companion channel-name routing aliases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#meshtext-channel-chat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Meshtext channel chat
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#choose-whether-traffic-crosses-between-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2498,6 +2526,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-channel-name-routing-aliases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion channel-name routing aliases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Companion channel-name routing aliases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#meshtext-channel-chat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Meshtext channel chat
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#choose-whether-traffic-crosses-between-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2849,6 +2905,301 @@ channel key. Replacing a channel's key or deleting/replacing a contact clears
 its choice. They use reserved bytes in existing saved records, so record
 sizes and the phone protocol are unchanged. Older firmware ignores these
 bytes and may reset the choices when it saves the records.</p>
+<h2 id="companion-channel-name-routing-aliases">Companion channel-name routing aliases</h2>
+<p>Companions recognize the case-sensitive prefixes <code>r2-</code> and <code>mt-</code>, immediately
+after the optional leading <code>#</code>. Keep the prefix in the app's displayed name.
+For MeshCore aliases, the firmware strips exactly one prefix when deriving an
+automatic hashtag key:</p>
+<pre><code class="language-text">#emergency       -&gt; hashtag key for #emergency
+#r2-emergency    -&gt; the same key for #emergency
+#mt-emergency    -&gt; the same key for #emergency only in MeshCore fallback mode
+</code></pre>
+<p>Only the app's automatic, name-derived hashtag key is normalized; a supplied
+private key is not replaced. Non-hashtag names such as <code>r2-Private</code> also retain
+their supplied key. Empty or nested prefixes (<code>r2-</code>, <code>#r2-mt-emergency</code>) are
+rejected. MeshCore hashtag names remain case-sensitive.</p>
+<p>When radio2 is configured (<code>rx</code> or <code>rxtx</code>), <code>r2-</code> binds the channel to radio2 for
+both send and receive, including emergency retransmissions. It overrides global
+crossing and cannot be changed with <code>set tx.channel</code>; rename the channel to
+remove the binding. RX-only radio2 cannot send. If radio2 is off/unconfigured,
+ignore the routing prefix and use ordinary MeshCore routing instead. The key
+stays the same as radio2 is enabled, disabled, or a temporary window expires.</p>
+<p>If both the ordinary and <code>r2-</code> slots have the same key, a packet received on
+radio2 selects the <code>r2-</code> slot; a packet received on radio1 selects the ordinary
+slot. Global packet deduplication still delivers each packet once, not once in
+each slot. Receiving a radio2-only channel on the wrong profile does not mark
+that authenticated packet seen, so it can still arrive later on radio2.</p>
+<p>The saved channel record retains the original displayed name and app-supplied
+key for editing and sharing. Runtime copies resolve the actual wire key.
+Repeater/room/sensor hashtag behavior is unchanged; those nodes can join the
+canonical MeshCore channel (<code>#emergency</code>). Older Companion firmware does not
+recognize these aliases.</p>
+<h3 id="meshtext-channel-chat">Meshtext channel chat</h3>
+<p><code>MESH_ENABLE_MESHTEXT_CHAT</code> enables the text-only Meshtext backend in the
+Companion. It defaults on only for ESP32-S3 <strong>Full Companion</strong> builds using
+SX1262 LoRa, not an ESP-NOW primary. Other builds default off. This is not
+a replacement for stock peer firmware or a cross-protocol bridge.</p>
+<p>In an enabled build, an <code>mt-</code> name always requests Meshtext, even if radio2 is
+off or setup is blocked. It never falls back to sending MeshCore frames. In a
+feature-disabled build, <code>mt-</code> remains an ordinary MeshCore naming alias while
+radio2 is off; with radio2 configured, MT channel changes/sends are unsupported.
+The <code>r2-</code> MeshCore behavior above is unchanged in either build.</p>
+<p>With the region configured, join <code>#mt-longfast</code>, for example, through the app's
+normal hashtag-channel editor. A recognized preset name selects the stock
+peer channel name (<code>LongFast</code>) and, <strong>only for an automatically
+name-derived hashtag key</strong>, the expanded public <code>AQ==</code> key. This public key is
+not a secret. An explicitly
+supplied private AES-128 or AES-256 key stays private and unchanged. A custom
+name such as <code>mt-Private</code> uses the exact tail (<code>Private</code>) as its wire name and
+the supplied key; custom wire names are limited to 11 bytes and need a manual
+radio2 profile or another MT channel with a recognized preset. Preset names
+are ASCII case-insensitive; the <code>mt-</code> marker is still case-sensitive.</p>
+<p>Recognized aliases and modulation are:</p>
+<table>
+<thead>
+<tr>
+<th>Alias tail</th>
+<th>Stock wire name</th>
+<th style="text-align: right;">BW (kHz)</th>
+<th style="text-align: right;">SF</th>
+<th style="text-align: right;">CR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>shortturbo</code></td>
+<td><code>ShortTurbo</code></td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td><code>shortfast</code></td>
+<td><code>ShortFast</code></td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td><code>shortslow</code></td>
+<td><code>ShortSlow</code></td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td><code>mediumturbo</code></td>
+<td><code>MediumTurbo</code></td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td><code>mediumfast</code></td>
+<td><code>MediumFast</code></td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td><code>mediumslow</code></td>
+<td><code>MediumSlow</code></td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td><code>longturbo</code></td>
+<td><code>LongTurbo</code></td>
+<td style="text-align: right;">500</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">8</td>
+</tr>
+<tr>
+<td><code>longfast</code></td>
+<td><code>LongFast</code></td>
+<td style="text-align: right;">250</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr>
+<td><code>longmod</code> or <code>longmoderate</code></td>
+<td><code>LongMod</code></td>
+<td style="text-align: right;">125</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">8</td>
+</tr>
+<tr>
+<td><code>longslow</code></td>
+<td><code>LongSlow</code></td>
+<td style="text-align: right;">125</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">8</td>
+</tr>
+</tbody>
+</table>
+<p>The selected region must have room for the bandwidth; for example, 500 kHz
+presets are unavailable in the supported EU868 plan. Use these CLI commands:</p>
+<pre><code class="language-text">get mt.status
+get mt.region
+get mt.slot
+get mt.hops
+get mt.node
+get mt.shortname
+set mt.node !12345678
+set mt.node default
+set mt.region auto
+set mt.region us
+set mt.slot 0
+set mt.hops 7
+set mt.shortname HALO
+set mt.shortname default
+send mt.nodeinfo 0
+get radio2
+set radio2 auto
+</code></pre>
+<p><code>mt.region</code> accepts <code>auto</code>, <code>us</code>, <code>eu868</code>, <code>eu433</code>, or <code>anz</code>. <code>auto</code> infers US
+only from a primary frequency at least 902 MHz and below 915 MHz, EU868 from
+869.4–869.65 MHz, and EU433 from 433–434 MHz. The US/ANZ overlap at 915–928 MHz
+is ambiguous: explicitly select <code>us</code> or <code>anz</code>. <code>mt.slot</code> is a 1-based frequency
+slot, or <code>0</code> for the stock preset-name-derived slot; unavailable slots are
+blocked. Check <code>get mt.status</code> after configuration; a successful settings save
+does not mean the MT backend is active.</p>
+<p>Outgoing MT messages default to a hop limit of <strong>7</strong>. <code>set mt.hops &lt;0..7&gt;</code>
+changes this budget, and <code>get mt.hops</code> or <code>get mt.status</code> shows it. <code>0</code> sends
+only the initial over-air hop with no forwarding budget; larger values permit
+protocol-compatible peers to forward within that budget. The Companion itself still
+does not relay MT packets.</p>
+<p><code>get mt.node</code> shows the effective Meshtext sender node ID. By default it is
+SHA-derived from the MeshCore public identity and remains stable for that
+identity. <code>set mt.node !12345678</code> sets a saved override; exactly eight hexadecimal
+digits are required, with or without the leading <code>!</code>. Input is hexadecimal,
+not decimal, and is never silently truncated. IDs <code>00000000</code> through <code>00000003</code>
+and <code>ffffffff</code> are reserved and rejected. <code>set mt.node default</code> clears the
+override and restores the identity-derived ID.</p>
+<p>The example ID is illustrative: choose an ID unique among your protocol-compatible
+peers. Collisions can merge different senders into one identity and interfere
+with packet deduplication. Changing the MT ID does not alter the MeshCore
+private key, reset the outgoing packet-ID sequence or send automatic traffic.
+Settings changes are refused while an MT transmission is
+pending. Neither node IDs nor text labels are authenticated.</p>
+<p><code>set mt.shortname &lt;label&gt;</code> saves a Meshtext-only NodeInfo name of 1–4 Unicode
+scalar characters, with valid UTF-8 and at most 16 encoded bytes. Combining
+characters count separately. <code>get mt.shortname</code> shows the saved/effective
+name. Stock NodeInfo accepts only four UTF-8 <strong>bytes</strong>, so the effective wire
+name is the longest complete UTF-8 prefix that fits. The saved value is not
+changed. <code>set mt.shortname default</code> clears the override and uses the last four
+hexadecimal digits of the effective MT node ID. This does not change the
+MeshCore node name, add a label to chat text or transmit anything.</p>
+<p><code>send mt.nodeinfo &lt;channel slot&gt;</code> explicitly queues <strong>one</strong> standard
+<code>NODEINFO_APP</code> broadcast on the selected configured MT channel. The slot is
+the Companion channel index, not <code>mt.slot</code> (the frequency slot). The packet
+contains the actual sender ID, the global MeshCore node name as its long name
+(UTF-8-safe truncated to 24 bytes), the effective short name, <code>CLIENT_MUTE</code>
+(no relaying), and the no-DM flag. It omits MAC, public keys and unsupported
+metadata. The usual radio2 TX-mode, pending-TX, airtime and profile guards
+apply. The reply says <strong>queued</strong>, not delivered or acknowledged.</p>
+<p>There are no automatic NodeInfo advertisements: not at boot, on a timer, when
+names change, when chat is sent, or in response to received packets. Received
+NodeInfo is still ignored; this backend does not maintain a node database.</p>
+<p>Region, frequency slot, hop limit, shortname and node-ID override are saved
+atomically together; changing one preserves the others. Current 40-byte <code>MT03</code>
+settings include both overrides. New firmware accepts valid legacy
+<code>MT01</code>/<code>MT02</code> settings and defaults the shortname to the sender-ID suffix and
+the node ID to the MeshCore identity; <code>MT01</code> also defaults the hop limit to 7.
+Older MT firmware cannot read <code>MT03</code>, so downgrading does not preserve access
+to these settings. Invalid or unsupported stored settings block MT operation
+rather than silently selecting another network.</p>
+<p>Private channels can be provisioned directly through the Companion CLI:</p>
+<pre><code class="language-text">set mt.preset &lt;longfast|shortturbo|...&gt;
+set mt.channel &lt;slot&gt; &lt;mt-name&gt; &lt;32/64 hex digits|AQ==&gt;
+get mt.channel &lt;slot&gt;
+delete mt.channel &lt;slot&gt;
+</code></pre>
+<p><code>set mt.preset</code> accepts the recognized presets above and explicitly saves a
+manual <code>rxtx</code> radio2 RF tuple using the current region and frequency slot. It
+is not an automatic owner: deleting the channel does not remove that saved RF
+configuration. Set region/slot first; changing them later does not overwrite
+the manual frequency, so rerun <code>set mt.preset</code> if you intend to retune it.</p>
+<p><code>set mt.channel</code> accepts a 32-digit hexadecimal AES-128 PSK, a 64-digit
+hexadecimal AES-256 PSK, or the literal <code>AQ==</code> for the public key. It does not
+accept arbitrary Base64 private keys. The stored format interprets an all-zero
+upper 16-byte half as AES-128, including in a 64-digit input; use a nonzero
+upper half for AES-256. Slot numbers are zero-based and build-specific, as in
+the app. <code>get mt.channel</code> reports name, wire name and AES size, never the PSK.
+The firmware console masks key input echo; keep your client-side logs and
+stored keys private as well. SET and DELETE save transactionally and restore
+the previous channel if storage fails. DELETE applies only to an MT channel,
+not a MeshCore slot.</p>
+<p>For a private channel named <code>Team</code> on a protocol-compatible peer:</p>
+<pre><code class="language-text">set mt.region us
+set mt.preset longfast
+set mt.channel 1 mt-Team &lt;your-32-or-64-hex-digit-key&gt;
+get mt.channel 1
+get mt.node
+set mt.shortname HALO
+get mt.status
+send mt.nodeinfo 1
+channel 1 Hello
+</code></pre>
+<p>Replace the key placeholder with your actual hexadecimal PSK and send after
+<code>get mt.status</code> reports active. The peer must use the same preset, frequency,
+PSK and exact case-sensitive wire name <code>Team</code>; <code>mt-</code> is only the local marker.
+Alternatively, <code>set mt.channel 1 mt-longfast &lt;your-key&gt;</code> preserves a private
+PSK but uses wire name <code>LongFast</code> and can acquire automatic RF without
+<code>set mt.preset</code>, provided radio2 automatic ownership is permitted. This route
+is available for both 128-bit and 256-bit private keys even when the stock app
+cannot provision or export the latter.</p>
+<p>When radio2 was never manually configured, a recognized preset can acquire an
+automatic <code>rxtx</code> profile. Its RF tuple is RAM-only and stays available for RX
+while the required channels exist. Removing the last MT channel, losing its
+last recognized-preset dependency, or detecting a conflict releases only the
+automatic profile. Explicit manual RF settings are retained: named aliases
+must match their BW/SF/CR and fit the selected region, but do not overwrite
+their frequency. The runtime MT overlay uses its required 16-symbol preamble;
+the saved manual preamble is retained.</p>
+<p><code>set radio2 off</code> is an explicit manual veto, including after reboot. Older
+saved off profiles are conservatively treated as manual. Local
+<code>set radio2 auto</code> clears the saved manual RF/off choice and permits automatic
+ownership after two seconds; it rejects pending changes, leases and schedules
+rather than cancelling them. <code>get radio2</code> distinguishes <code>auto-owned</code>, <code>off (manual)</code>
+and <code>off (automatic allowed)</code>. Temporary profiles, scheduled changes and reply
+commit barriers take precedence and can suspend MT operation. Automatic
+cleanup does not undo later manual edits.</p>
+<p>All MT channels share this one secondary modem profile. Different recognized
+presets, or mixing any MT and <code>r2-</code> channels, are rejected instead of selecting
+whichever channel was edited last. Loaded conflicts also block MT traffic.
+Neither <code>radio2.cross on</code> nor MeshCore channel routes cross MT frames between
+protocols.</p>
+<p>The app uses its existing channel index/text commands and receive events.
+Outgoing MT chat is plain text exactly as entered, with the sender node ID in
+the standard radio header. It contains no custom name envelope or NodeInfo.
+Incoming text uses the exact sender-ID prefix <code>!12345678:</code> before the received
+payload when passed to the MeshCore app. Changing the shortname only changes
+future manually requested NodeInfo, not chat or the packet's sender ID;
+<code>set mt.node</code> changes the actual Meshtext sender ID. Neither setting change
+emits advertisements. A successful
+send response means <strong>queued</strong>, not acknowledged by a remote node. This backend
+does not relay MT packets or provide ACKs, administrative commands, direct
+messages, automatic node-info adverts or a node database. MeshCore emergency forwarding
+does not apply to MT traffic. Interoperability is with stock peers' PSK channel
+text using AES-CTR, not AES-CCM. AES-CTR channel traffic is not authenticated;
+successful decoding is not proof of sender identity.</p>
+<p>The codec supports AES-128 and AES-256 and up to 228 UTF-8 bytes of wire text,
+without an added label/node-ID prefix. The standard app channel editor
+still provisions 16-byte keys. An MT-only 32-byte binary SET/opt-in GET
+extension is available for capable clients, with protection against legacy
+16-byte edits truncating an existing 256-bit key; see
+<a href="../companion_protocol/#4-set-channel">Companion protocol</a>. This does not give
+stock apps seamless 256-bit provisioning or sharing. Current V3 Companion
+receive events carry at most 165 text bytes <strong>including the node-ID prefix</strong>;
+longer incoming MT text is UTF-8-safe truncated for the app.</p>
+<p>Radio1 and radio2 still time-share <strong>one physical radio</strong>. The device cannot
+receive either network while tuned to the other or transmitting; long MT
+airtime, particularly LongFast, can leave substantial MeshCore receive gaps.
+The compatible protocol's fixed short preamble also does not provide the scan-aware long
+preamble described below. Do not treat this as continuous coverage of both
+networks or guaranteed message delivery.</p>
 <h2 id="choose-whether-traffic-crosses-between-profiles">Choose whether traffic crosses between profiles</h2>
 <pre><code class="language-text">get radio2.cross
 set radio2.cross auto
@@ -2896,6 +3247,8 @@ set radio2.cross off
 </tr>
 </tbody>
 </table>
+<p>This table describes MeshCore profiles. A Meshtext secondary profile is
+always isolated, including with <code>radio2.cross on</code>.</p>
 <p>These are the global rules used by Companion targets set to <code>auto</code>; an explicit
 contact/channel choice above overrides crossing for its own outbound packets.
 Ordinary crossing respects <code>rx</code>. The infrastructure-only <code>tx.reply ... force</code>
