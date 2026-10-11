@@ -225,6 +225,10 @@ DEBUG: PWRMGT: LPCOMP wake configured (AIN7, ref=3/8 VDD)
 
 ## Further power-management work (Planned)
 
+For the opt-in Sensor check-in workflow using System ON idle sleep and bounded
+GPS acquisition, see [Sensor dog tracker](sensor_tracker.md). It is separate
+from the battery-protection SYSTEMOFF shutdown described here.
+
 - A voltage state machine (Normal -> Warning -> Critical -> Shutdown)
 - Configurable wake comparator thresholds
 - Load shedding callbacks for power reduction

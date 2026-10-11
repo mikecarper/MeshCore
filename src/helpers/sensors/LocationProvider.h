@@ -29,9 +29,13 @@ protected:
     uint32_t _last_time_sync_applied_ms = 0;
     bool _time_sync_request_seen = false;
     bool _time_sync_applied_seen = false;
+    bool _fresh_time_sync_required = false;
+    uint32_t _time_sync_generation = 0;
 
     void markTimeSyncApplied() {
         _time_sync_applied = true;
+        ++_time_sync_generation;
+        _fresh_time_sync_required = false;
         _last_time_sync_applied_ms = static_cast<uint32_t>(millis());
         _time_sync_applied_seen = true;
     }
@@ -63,6 +67,14 @@ public:
         else (void)requestTimeSync(static_cast<uint64_t>(_gps_sync_interval_hours) * 3600UL);
     }
     virtual void syncTime() { _time_sync_needed = true; }
+    // A bounded tracker window needs new validated samples even when an older
+    // clock sync is still waiting to be consumed by another component.
+    virtual void beginFreshTimeSync() {
+        _fresh_time_sync_required = true;
+        syncTime();
+    }
+    void endFreshTimeSync() { _fresh_time_sync_required = false; }
+    uint32_t getTimeSyncGeneration() const { return _time_sync_generation; }
     virtual bool waitingTimeSync() { return _time_sync_needed; }
     // Telemetry requests share an in-progress acquisition and rate-limit new
     // ones using monotonic time, not an RTC which GPS/manual sync may correct.
@@ -147,6 +159,10 @@ public:
     virtual long getAltitude() = 0;
     virtual long satellitesCount() = 0;
     virtual bool isValid() = 0;
+    // Invalidate a previous position without resetting receiver ephemeris or
+    // clock policy. Call before starting a bounded fresh acquisition. Unknown
+    // providers fail closed rather than presenting retained data as new.
+    virtual bool clearPositionFix() { return false; }
     virtual long getTimestamp() = 0;
     virtual void sendSentence(const char * sentence);
     virtual bool waitFor(const char* prefix, uint32_t timeout_ms) { return false; }

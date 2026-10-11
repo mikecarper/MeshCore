@@ -116,6 +116,7 @@ For the common chat/server helpers in `BaseChatMesh`, the current request type v
 | `0x06` | get neighbors   | node neighbors query    |
 | `0x08` | subscribe   | subscribe to telemetry push    |
 | `0x09` | ubsubscribe   | unsubscribe from telemetry push    |
+| `0x0C` | tracker status | encrypted Sensor dog tracker check to a configured owner's Companion; [wire format](sensor_tracker.md#encrypted-check-format) |
 
 #### Get stats
 

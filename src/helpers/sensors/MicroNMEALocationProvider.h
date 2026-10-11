@@ -79,6 +79,7 @@ class MicroNMEALocationProvider : public LocationProvider {
     bool _uart_seen = false;
     bool _nmea_seen = false;
     bool _fix_seen = false;
+    bool _fresh_clock_sample = false;
 
     static uint32_t ageMs(unsigned long timestamp) {
         return (uint32_t)(millis() - timestamp);
@@ -170,6 +171,12 @@ public :
     }
 
     void syncTime() override { nmea.clear(); LocationProvider::syncTime(); }
+    void beginFreshTimeSync() override {
+        time_valid = 0;
+        _fresh_clock_sample = false;
+        next_check = millis();
+        LocationProvider::beginFreshTimeSync();
+    }
     mesh::RTCClock* getRTCClock() override { return _clock; }
     long getLatitude() override { return nmea.getLatitude(); }
     long getLongitude() override { return nmea.getLongitude(); }
@@ -180,6 +187,17 @@ public :
     }
     long satellitesCount() override { return nmea.getNumSatellites(); }
     bool isValid() override { return nmea.isValid(); }
+    bool clearPositionFix() override {
+        nmea.clear();
+        // Discard only bytes already queued before the acquisition begins.
+        // Snapshot the count so a noisy live UART cannot make this unbounded.
+        int buffered = _gps_serial->available();
+        if (buffered < 0 || buffered > 1024) return false;
+        while (buffered-- > 0) {
+            if (_gps_serial->read() < 0) return false;
+        }
+        return true;
+    }
 
     long getTimestamp() override {
         const uint16_t year = nmea.getYear();
@@ -256,6 +274,7 @@ public :
                         (strcmp(message_id, "GGA") == 0 || strcmp(message_id, "RMC") == 0)) {
                         _last_fix_ms = millis();
                         _fix_seen = true;
+                        _fresh_clock_sample = true;
                     }
                 } else {
                     _nmea_checksum_bad++;
@@ -274,11 +293,13 @@ public :
                 _time_sync_needed = true;
             }
             const long timestamp = getTimestamp();
-            if (isValid() && satellitesCount() >= 5 && timestamp > 0) {
+            if (isValid() && satellitesCount() >= 5 && timestamp > 0
+                && (!_fresh_time_sync_required || _fresh_clock_sample)) {
                 time_valid++;
             } else {
                 time_valid = 0;
             }
+            _fresh_clock_sample = false;
             if (_time_sync_needed && time_valid > 2) {
                 if (_clock != NULL) {
                     _clock->setCurrentTime(timestamp);

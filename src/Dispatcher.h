@@ -119,6 +119,11 @@ public:
   virtual void idle() { }
   virtual void startRecv() { }
 
+  // A tracker may stop RF reception between explicit check-in windows. The
+  // dispatcher must be made unavailable while asleep so watchdog recovery
+  // cannot restart RX. Unsupported transports decline without changing state.
+  virtual bool setTrackerSleep(bool sleeping) { (void)sleeping; return false; }
+
   // Recover a radio whose MCU driver is still running but whose RF state has
   // stopped making progress.  hard=false is a safe receive/AGC re-arm;
   // hard=true may reset only the radio peripheral.  The default remains useful

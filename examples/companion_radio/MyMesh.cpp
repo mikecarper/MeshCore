@@ -2053,6 +2053,12 @@ void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *
 
 uint8_t MyMesh::onContactRequest(const ContactInfo &contact, uint32_t sender_timestamp, const uint8_t *data,
                                  uint8_t len, uint8_t *reply) {
+  if (data == NULL || len == 0 || reply == NULL) return 0;
+#if MESH_ENABLE_LOST_REPLY
+  if (data[0] == mesh::tracker::RequestType) {
+    return handleTrackerStatusRequest(contact, sender_timestamp, data, len, reply);
+  }
+#endif
   if (data[0] == REQ_TYPE_GET_TELEMETRY_DATA) {
     uint8_t permissions = 0;
     uint8_t cp = contact.flags >> 1; // LSB used as 'favourite' bit (so only use upper bits)
@@ -2099,6 +2105,50 @@ uint8_t MyMesh::onContactRequest(const ContactInfo &contact, uint32_t sender_tim
   }
   return 0; // unknown
 }
+
+#if MESH_ENABLE_LOST_REPLY
+uint8_t MyMesh::handleTrackerStatusRequest(const ContactInfo& from, uint32_t tag,
+                                          const uint8_t* data, uint8_t len,
+                                          uint8_t* reply) {
+  mesh::tracker::StatusRequest request;
+  if (reply == NULL || !mesh::tracker::parseStatusRequest(data, len, request)
+      || isTransientContact(from)
+      || (from.type != ADV_TYPE_CHAT && from.type != ADV_TYPE_SENSOR)) return 0;
+
+  // A contact cache reference can move when another contact is loaded.
+  uint8_t key[PUB_KEY_SIZE];
+  memcpy(key, from.id.pub_key, sizeof(key));
+  ContactInfo* saved = lookupPersistentContactByPubKey(key, sizeof(key));
+  if (saved == NULL
+      || (saved->type != ADV_TYPE_CHAT && saved->type != ADV_TYPE_SENSOR)) return 0;
+  const uint32_t now = _ms->getMillis();
+  if (!lost_reply_limiter.canReply(key, tag, now)) return 0;
+
+  const uint8_t state = _prefs.lost_reply <= mesh::companion::LostReplyYes
+      ? _prefs.lost_reply : uint8_t(mesh::companion::LostReplyOff);
+  const size_t count = mesh::tracker::makeStatusResponse(
+      tag, state, state == mesh::tracker::Lost ? 120 : 0,
+      reply, mesh::tracker::ResponseLength);
+  if (count != 0) {
+    lost_reply_limiter.rememberReply(key, tag, now);
+    const uint32_t owner_time = getRTCClock()->getCurrentTime();
+    const uint32_t clock_difference = tag > owner_time
+        ? tag - owner_time : owner_time - tag;
+    // The freshest authenticated advert/report owns position. Clock-bounded
+    // reports cannot poison that durable floor with a wildly future tag.
+    if ((request.flags & mesh::tracker::FreshGps) && canMutateContacts()
+        && tag > saved->last_advert_timestamp && clock_difference <= 300) {
+      saved->gps_lat = request.latitude / 10;
+      saved->gps_lon = request.longitude / 10;
+      saved->last_advert_timestamp = tag;
+      saved->lastmod = owner_time;
+      onDiscoveredContact(*saved, false, 0, NULL);
+    }
+  }
+  // BaseChatMesh sends this response without touching the user DM ACK table.
+  return uint8_t(count);
+}
+#endif
 
 void MyMesh::onContactResponse(const ContactInfo &contact, const uint8_t *data, uint8_t len) {
   const uint32_t now = _ms->getMillis();

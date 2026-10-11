@@ -671,6 +671,19 @@ void RadioLibWrapper::idle() {
   state = STATE_IDLE;   // need another startReceive()
 }
 
+bool RadioLibWrapper::setTrackerSleep(bool sleeping) {
+  if (_cw_active || (state & 0x0f) == STATE_TX_WAIT) return false;
+  if (sleeping && isPacketPendingOrReceiving()) return false;
+  if (_radio->standby() != RADIOLIB_ERR_NONE) return false;
+  _rx_ps_armed = false;
+  _rx_hold_continuous = false;
+  state = STATE_IDLE;
+  // PhysicalLayer's no-argument sleep retains configuration on SX126x and
+  // LR11x0. The board's powerOff() intentionally uses cold sleep on some
+  // radios and must not be used for a scheduled tracker wake.
+  return !sleeping || _radio->sleep() == RADIOLIB_ERR_NONE;
+}
+
 void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
   // The Dispatcher calls this every two seconds. Repeatedly recalibrating a

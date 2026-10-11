@@ -227,6 +227,10 @@ void T1000SensorManager::setPowerSavingEnabled(bool enabled) {
   if (powersaving_enabled == enabled) return;
   powersaving_enabled = enabled;
 
+  if (isTrackerGpsModeEnabled()) {
+    _nmea->setGPSPowerSaving(false);
+    return;
+  }
   bool gps_user_enabled = isGpsTelemetryUserEnabled();
   _nmea->setGPSPowerSaving(enabled && gps_user_enabled);
   if (!gps_user_enabled) return;

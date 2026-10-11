@@ -356,6 +356,7 @@ public:
   void resetAGC() override;
 
   void loop() override;
+  bool setTrackerSleep(bool sleeping) override;
   bool recoverRadio(bool hard) override;
 
   uint32_t getPacketsRecv() const { return n_recv; }

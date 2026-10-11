@@ -381,6 +381,7 @@ void SensorMesh::sendAlert(const ClientInfo* c, Trigger* t) {
 }
 
 void SensorMesh::alertIf(bool condition, Trigger& t, AlertPriority pri, const char* text) {
+  if (isTrackerModeEnabled()) return;
   if (condition) {
     if (!t.isTriggered() && num_alert_tasks < MAX_CONCURRENT_ALERTS) {
       StrHelper::strncpy(t.text, text, sizeof(t.text));
@@ -418,6 +419,7 @@ bool SensorMesh::getCADEnabled() const {
 }
 
 bool SensorMesh::allowPacketForward(const mesh::Packet* packet) {
+  if (isTrackerModeEnabled()) return false;
   if (_prefs.disable_fwd) return false;
   if (packet->isRouteFlood() && packet->getPathHashCount() >= _prefs.flood_max) return false;
   _clock_sync.observeAcceptedFlood(packet);
@@ -440,6 +442,13 @@ uint32_t SensorMesh::getDirectRetransmitDelay(const mesh::Packet* packet) {
 
 bool SensorMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash,
                                   uint8_t next_hop_hash_len) const {
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (tracker_pending && packet != NULL) {
+    uint8_t hash[MAX_HASH_SIZE];
+    packet->calculatePacketHash(hash);
+    if (memcmp(hash, tracker_packet_hash, sizeof(hash)) == 0) return false;
+  }
+#endif
   (void)packet;
   (void)next_hop_hash;
   (void)next_hop_hash_len;
@@ -472,6 +481,7 @@ uint32_t SensorMesh::getDirectRetryAttemptDelay(const mesh::Packet* packet, uint
 }
 
 bool SensorMesh::allowFloodRetry(const mesh::Packet* packet) const {
+  if (packet != NULL && packet->flood_retry_policy == mesh::FLOOD_RETRY_POLICY_DENY) return false;
   if (_prefs.disable_fwd || _prefs.flood_retry_attempts == 0) return false;
   return packet == NULL || packet->getPayloadType() != PAYLOAD_TYPE_ADVERT
       || _prefs.flood_retry_advert_enabled;
@@ -709,6 +719,20 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
 
   mesh::cli::normalizeCommandVerb(command);
 
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (sender_timestamp == 0 && tracker.enabled) {
+    wakeTrackerRadio();
+    tracker_awake_until = futureMillis(120000);
+  }
+  if (handleTrackerCommand(sender_timestamp, command, reply)) return;
+#else
+  if (strncmp(command, "get tracker", 11) == 0
+      || strncmp(command, "set tracker.", 12) == 0) {
+    strcpy(reply, "ERR: tracker unavailable on this build");
+    return;
+  }
+#endif
+
   // first, see if this is a custom-handled CLI command (ie. in main.cpp)
   if (handleCustomCommand(sender_timestamp, command, reply)) {
     return;   // command has been handled
@@ -782,6 +806,9 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
     updateGpsTelemetryPolicy();
+#if MESH_ENABLE_SENSOR_TRACKER
+    if (tracker.enabled) configureTrackerRuntime();
+#endif
   }
 }
 
@@ -790,6 +817,20 @@ void SensorMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                               size_t app_data_len) {
   mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);
   _clock_sync.observeVerifiedAdvert(packet, id, timestamp);
+#if MESH_ENABLE_SENSOR_TRACKER
+  AdvertDataParser advert(app_data, app_data_len);
+  if (tracker.enabled && !tracker_storage_fault && advert.isValid()
+      && advert.getType() == ADV_TYPE_REPEATER && packet->getPathHashCount() == 0) {
+    // RF activity can postpone recovery, never clear an outage or its cutoff.
+    mesh::tracker::RouteState proposed;
+    mesh::tracker::noteRepeater(tracker.route, getRTCClock()->getCurrentTime(), proposed);
+    if (proposed.flags != tracker.route.flags) {
+      mesh::tracker::TrackerRecord candidate = tracker;
+      candidate.route = proposed;
+      saveTrackerRecord(candidate);
+    } else tracker.route = proposed;
+  }
+#endif
 }
 
 void SensorMesh::onGroupPacketRecv(mesh::Packet* packet) {
@@ -843,6 +884,13 @@ void SensorMesh::onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, con
 
 int SensorMesh::searchPeersByHash(const uint8_t* hash) {
   int n = 0;
+#if MESH_ENABLE_SENSOR_TRACKER
+  // Give the full configured owner its own receive slot, independent of ACL
+  // privilege. A public-key prefix match alone never authenticates a response.
+  if (tracker.enabled && memcmp(tracker.owner, hash, PATH_HASH_SIZE) == 0) {
+    matching_peer_indexes[n++] = -2;
+  }
+#endif
   for (int i = 0; i < acl.getNumClients() && n < MAX_SEARCH_RESULTS; i++) {
     if (acl.getClientByIdx(i)->id.isHashMatch(hash)) {
       matching_peer_indexes[n++] = i;  // store the INDEXES of matching contacts (for subsequent 'peer' methods)
@@ -852,7 +900,14 @@ int SensorMesh::searchPeersByHash(const uint8_t* hash) {
 }
 
 void SensorMesh::getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) {
+  if (peer_idx < 0 || peer_idx >= MAX_SEARCH_RESULTS) {
+    memset(dest_secret, 0, PUB_KEY_SIZE);
+    return;
+  }
   int i = matching_peer_indexes[peer_idx];
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (i == -2) { memcpy(dest_secret, tracker_secret, PUB_KEY_SIZE); return; }
+#endif
   if (i >= 0 && i < acl.getNumClients()) {
     // lookup pre-calculated shared_secret
     memcpy(dest_secret, acl.getClientByIdx(i)->shared_secret, PUB_KEY_SIZE);
@@ -879,7 +934,17 @@ void SensorMesh::sendAckTo(const ClientInfo& dest, uint32_t ack_hash, uint8_t pa
 }
 
 void SensorMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) {
+  if (sender_idx < 0 || sender_idx >= MAX_SEARCH_RESULTS) return;
   int i = matching_peer_indexes[sender_idx];
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (i == -2) {
+    if (handleTrackerResponse(packet, type, data, len)) return;
+    i = -1;
+    for (int index = 0; index < acl.getNumClients(); ++index) {
+      if (acl.getClientByIdx(index)->id.matches(tracker.owner)) { i = index; break; }
+    }
+  }
+#endif
   if (i < 0 || i >= acl.getNumClients()) {
     MESH_DEBUG_PRINTLN("onPeerDataRecv: Invalid sender idx: %d", i);
     return;
@@ -1030,7 +1095,17 @@ void SensorMesh::onControlDataRecv(mesh::Packet* packet) {
 }
 
 bool SensorMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) {
+  if (sender_idx < 0 || sender_idx >= MAX_SEARCH_RESULTS) return false;
   int i = matching_peer_indexes[sender_idx];
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (i == -2) {
+    if (handleTrackerPath(packet, path, path_len, extra_type, extra, extra_len)) return false;
+    i = -1;
+    for (int index = 0; index < acl.getNumClients(); ++index) {
+      if (acl.getClientByIdx(index)->id.matches(tracker.owner)) { i = index; break; }
+    }
+  }
+#endif
   if (i < 0 || i >= acl.getNumClients()) {
     MESH_DEBUG_PRINTLN("onPeerPathRecv: Invalid sender idx: %d", i);
     return false;
@@ -1185,6 +1260,16 @@ void SensorMesh::begin(FILESYSTEM* fs) {
 #if ENV_INCLUDE_GPS == 1
   applyGpsPrefs();
 #endif
+#if MESH_ENABLE_SENSOR_TRACKER
+  const auto tracker_load = tracker_storage_available
+      ? mesh::tracker::loadTracker(_fs, tracker)
+      : mesh::tracker::StoreResult::Unavailable;
+  tracker_storage_fault = tracker_load != mesh::tracker::StoreResult::Success
+      && tracker_load != mesh::tracker::StoreResult::NotFound;
+  if (tracker_storage_fault) tracker.enabled = false;
+  tracker_boot_anchor = getRTCClock()->getCurrentTime();
+  configureTrackerRuntime();
+#endif
 }
 
 bool SensorMesh::applySavedRadioParams() {
@@ -1279,6 +1364,7 @@ bool SensorMesh::sendFloodReply(mesh::Packet* packet,
 }
 
 void SensorMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
+  if (isTrackerModeEnabled()) return;
   mesh::Packet* pkt = createSelfAdvert();
   if (pkt) {
     if (flood) {
@@ -1292,6 +1378,7 @@ void SensorMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
 }
 
 void SensorMesh::updateAdvertTimer() {
+  if (isTrackerModeEnabled()) { next_local_advert = 0; return; }
   if (_prefs.advert_interval > 0) {  // schedule local advert timer
     next_local_advert = futureMillis((int)((uint32_t)_prefs.advert_interval * 2 * 60 * 1000));
   } else {
@@ -1299,6 +1386,7 @@ void SensorMesh::updateAdvertTimer() {
   }
 }
 void SensorMesh::updateFloodAdvertTimer() {
+  if (isTrackerModeEnabled()) { next_flood_advert = 0; return; }
   if (_prefs.flood_advert_interval > 0) {  // schedule flood advert timer
     next_flood_advert = futureMillis( ((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
   } else {
@@ -1348,9 +1436,15 @@ bool  SensorMesh::getGPS(uint8_t channel, float& lat, float& lon, float& alt) {
 }
 
 void SensorMesh::loop() {
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (tracker.enabled && trackerNeedsRadio()) wakeTrackerRadio();
+#endif
   _cli.loop();
   mesh::Mesh::loop();
   _clock_sync.loop();
+#if MESH_ENABLE_SENSOR_TRACKER
+  serviceTracker();
+#endif
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
     mesh::Packet* pkt = createSelfAdvert();
@@ -1446,6 +1540,7 @@ void SensorMesh::loop() {
     }
 
     for (int i = 0; i < acl.getNumClients(); i++) {
+      if (isTrackerModeEnabled()) break; // Check-in replaces background pushes.
       ClientInfo* client = acl.getClientByIdx(i);
       if ((client->permissions & PERM_ACL_ROLE_MASK) < PERM_ACL_READ_ONLY
           || client->extra.sensor.scope_region_id == 0
@@ -1481,7 +1576,7 @@ void SensorMesh::loop() {
   }
 
   // check the alert send queue
-  if (num_alert_tasks > 0) {
+  if (num_alert_tasks > 0 && !isTrackerModeEnabled()) {
     auto t = alert_tasks[0];   // process head of queue
 
     if (millisHasNowPassed(t->send_expiry)) {  // next send needed?
@@ -1555,6 +1650,11 @@ uint32_t SensorMesh::limitSleepToMillisTimer(unsigned long timestamp,
 }
 
 bool SensorMesh::hasPendingWork() const {
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (tracker.enabled && (tracker_pending || tracker_acquiring
+      || (tracker_awake_until && !millisHasNowPassed(tracker_awake_until))
+      || (!tracker_storage_fault && getRTCClock()->getCurrentTime() >= tracker_next_check))) return true;
+#endif
   if (isDualRadioActive()) return true;
   if (hasPendingOtaApply()) return true;
   if (_cli.hasActiveUserGpioTimer()) return true;
@@ -1581,6 +1681,14 @@ uint32_t SensorMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   if (max_secs == 0 || hasPendingWork()) return 0;
 
   uint32_t sleep_secs = max_secs;
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (tracker.enabled && !tracker_storage_fault) {
+    const uint32_t now = getRTCClock()->getCurrentTime();
+    if (now >= tracker_next_check) return 0;
+    const uint32_t until_check = tracker_next_check - now;
+    if (until_check < sleep_secs) sleep_secs = until_check;
+  }
+#endif
   uint32_t wake_delay_ms;
   if (getNextQueueWakeDelay(wake_delay_ms)) {
     uint32_t wake_delay_secs = (wake_delay_ms + 999UL) / 1000UL;

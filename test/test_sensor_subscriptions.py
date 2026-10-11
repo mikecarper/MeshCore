@@ -77,6 +77,16 @@ class SensorSubscriptionTest(unittest.TestCase):
     def test_subscription_collection_and_push_fit_host_packet_budget(self):
         self.passed('capacity')
 
+    def test_tracker_mode_suppresses_active_and_pending_pushes_then_restores(self):
+        self.passed('tracker')
+
+    def test_missing_tracker_push_guard_is_rejected(self):
+        def old(source):
+            guard = '      if (isTrackerModeEnabled()) break; // Check-in replaces background pushes.'
+            self.assertEqual(source.count(guard), 1)
+            return source.replace(guard, '', 1)
+        self.assertNotEqual(self.execute('tracker', old).returncode, 0)
+
     def test_scalar_writer_rejections_leave_buffer_and_length_untouched(self):
         self.passed('writer')
 

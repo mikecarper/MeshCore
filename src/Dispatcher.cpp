@@ -224,6 +224,9 @@ bool Dispatcher::startOutboundTransmit() {
 
 bool Dispatcher::scheduleOutboundRadioRetry() {
   if (outbound == NULL || outbound_radio_retry_used || outbound_cancellation != OutboundCancellation::None) return false;
+  // A lost TxDone may follow a real transmission, so a denied flood must not
+  // spend its reserved airtime again during radio recovery.
+  if (outbound->isRouteFlood() && outbound->flood_retry_policy == FLOOD_RETRY_POLICY_DENY) return false;
 
   outbound_radio_retry_used = true;
   outbound_radio_retry_pending = true;

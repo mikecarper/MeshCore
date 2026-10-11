@@ -141,6 +141,8 @@ struct Uart:Stream {
  void fix(){incoming.push_back('\n');}
 };
 struct Gnss {
+ void flushPVT(){}
+ bool getPVT(int){return true;}
  bool getGnssFixOk(int){return true;}
  long getLatitude(int){return 476100000;}
  long getLongitude(int){return -1223300000;}

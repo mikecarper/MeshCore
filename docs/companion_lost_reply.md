@@ -43,14 +43,20 @@ When the tracker sends `Am I lost?` privately to that reachable Companion, it
 receives the selected answer, even when the owner's phone is disconnected.
 The same configured answer applies to all eligible contacts on this Companion.
 
-A tracker client can use that answer to choose its reporting behavior, but its
-check-in schedule, sleep/wake policy and GPS reporting must be configured in
-the tracker client firmware. The tracker must stay awake for the separate
-private answer; a delivery ACK for the question is not that answer. These plain
-text answers have no request ID, so a delayed answer cannot be precisely
-correlated with a newer check-in. The responding Companion must be powered on
-and reachable when a question arrives. For mail that waits while a tracker sleeps,
-use [a personal room mailbox](room_services.md#sleeping-tracker-example).
+The opt-in [Sensor dog tracker](sensor_tracker.md) implements periodic fresh
+GPS acquisition, low power sleep, and owner check-ins. It uses a tagged encrypted
+request and response rather than parsing plain `Yes` or `No` text, so old answers
+cannot change a newer check-in. Store the Sensor as a persistent Sensor contact
+on the owner's Companion. The same saved `lost.reply` setting answers those
+checks; `off` returns Unknown. A fresh accepted GPS position updates the contact
+location through normal contact notifications.
+
+Other clients can still use the plain text question. They must stay awake for
+the separate private answer; a delivery ACK is not that answer. Plain text
+answers have no request ID. The responding Companion must be powered on and
+reachable. [Personal room mailboxes](room_services.md#sleeping-tracker-example)
+provide store-and-forward mail; automatic mailbox polling is not yet implemented
+in the Sensor tracker.
 
 ## Matching and traffic limits
 

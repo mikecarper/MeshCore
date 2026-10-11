@@ -109,6 +109,10 @@ For a reachable owner's Companion, the optional
 [lost-status auto responder](companion_lost_reply.md) can also answer a private
 `Am I lost?` question with a saved `Yes` or `No`.
 
+The opt-in [Sensor dog tracker](sensor_tracker.md) currently checks a reachable
+owner's Companion through tagged encrypted requests. It does not yet log in
+to a Room Server or automatically poll these mailboxes.
+
 ### Wi-Fi mailbox management
 
 Open `/room`, join with your room credentials, and open **Personal mailbox**.

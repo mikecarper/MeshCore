@@ -71,9 +71,11 @@ public:
   ACL acl;
   struct { uint8_t path_hash_mode = 0; } _prefs;
   bool refuse_allocation = false, refuse_queue = false;
+  bool tracker_mode = false;
   unsigned allocations = 0, attempts = 0, queued = 0;
   mesh::Packet owned_packet;
   Clock* getRTCClock() { return &clock; }
+  bool isTrackerModeEnabled() const { return tracker_mode; }
   bool telemHasChanged(ClientInfo*);
   void snapshotTelemetry(ClientInfo*);
   uint8_t handleRequest(ClientInfo*, uint32_t, uint8_t, uint8_t*, size_t,
@@ -211,6 +213,40 @@ static void admission_checks() {
     }
   }
 }
+static void tracker_mode_checks() {
+  for (uint8_t stored_path : {0, 0xFF}) {
+    SensorMesh target;
+    target.acl.clients.resize(1);
+    ClientInfo& client = target.acl.clients[0];
+    client.out_path_len = stored_path;
+    assert(subscribe(target, client, LPP_VOLTAGE, 2) == 12);
+    target.telemetry.bytes = {1, LPP_VOLTAGE, 1, 104};
+    const auto original = client.extra.sensor;
+    target.tracker_mode = true;
+    for (unsigned repeat = 0; repeat < 3; ++repeat) target.pushSubscriptions();
+    assert(!target.allocations && !target.attempts && !target.queued);
+    assert(!memcmp(&client.extra.sensor, &original, sizeof(original)));
+    assert(target.telemHasChanged(&client));
+
+    target.tracker_mode = false;
+    target.refuse_queue = true;
+    target.pushSubscriptions();
+    assert(target.allocations == 1 && target.attempts == 1 && !target.queued);
+    assert(target.telemHasChanged(&client)); // An admitted-later push remains pending.
+    target.refuse_queue = false;
+    target.tracker_mode = true;
+    for (unsigned repeat = 0; repeat < 3; ++repeat) target.pushSubscriptions();
+    assert(target.allocations == 1 && target.attempts == 1 && !target.queued);
+    assert(!memcmp(&client.extra.sensor, &original, sizeof(original)));
+
+    target.tracker_mode = false;
+    target.pushSubscriptions();
+    assert(target.allocations == 2 && target.attempts == 2 && target.queued == 1);
+    assert(!target.telemHasChanged(&client));
+    target.pushSubscriptions();
+    assert(target.allocations == 2 && target.queued == 1);
+  }
+}
 static void writer_checks() {
   uint8_t buffer[16];
   memset(buffer, 0xAA, sizeof(buffer));
@@ -318,6 +354,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "conversion")) conversion_checks();
   else if (!strcmp(argv[1], "capacity")) capacity_checks();
   else if (!strcmp(argv[1], "writer")) writer_checks();
+  else if (!strcmp(argv[1], "tracker")) tracker_mode_checks();
   else assert(false);
   std::cout << "Sensor subscription checks passed\n";
 }

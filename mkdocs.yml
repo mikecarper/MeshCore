@@ -82,6 +82,7 @@ nav:
           - flood_filtering.md
           - gps_tracking.md
           - companion_lost_reply.md
+          - sensor_tracker.md
           - nrf52_power_management.md
       - CLI and protocol reference:
           - cli_commands.md

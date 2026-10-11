@@ -30,6 +30,18 @@
 #include <RTClib.h>
 #include <target.h>
 
+#ifndef MESH_ENABLE_SENSOR_TRACKER
+#if !defined(STM32_PLATFORM) && ENV_INCLUDE_GPS == 1
+#define MESH_ENABLE_SENSOR_TRACKER 1
+#else
+#define MESH_ENABLE_SENSOR_TRACKER 0
+#endif
+#endif
+#if MESH_ENABLE_SENSOR_TRACKER
+#include <helpers/SensorTrackerStore.h>
+#include <helpers/TrackerProtocol.h>
+#endif
+
 #define PERM_RESERVED1         (1 << 2)
 #define PERM_RESERVED2         (1 << 3)
 #define PERM_RESERVED3         (1 << 4)
@@ -74,6 +86,20 @@ public:
   const char* getNodeName() { return _prefs.node_name; }
   NodePrefs* getNodePrefs() { return &_prefs; }
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
+  bool isTrackerModeEnabled() const {
+#if MESH_ENABLE_SENSOR_TRACKER
+    return tracker.enabled;
+#else
+    return false;
+#endif
+  }
+  void setTrackerStorageAvailable(bool available) {
+#if MESH_ENABLE_SENSOR_TRACKER
+    tracker_storage_available = available;
+#else
+    (void)available;
+#endif
+  }
   void savePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
     _cli.savePrefs(_fs, scope);
@@ -192,6 +218,10 @@ protected:
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;
+#if MESH_ENABLE_SENSOR_TRACKER
+  void onSendComplete(mesh::Packet* packet) override;
+  void onSendFail(mesh::Packet* packet) override;
+#endif
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                     uint32_t timestamp, const uint8_t* app_data,
                     size_t app_data_len) override;
@@ -199,6 +229,37 @@ protected:
   virtual bool handleIncomingMsg(ClientInfo& from, uint32_t timestamp, uint8_t* data, uint8_t flags, size_t len);
   void sendAckTo(const ClientInfo& dest, uint32_t ack_hash, uint8_t path_hash_size=1);
 private:
+#if MESH_ENABLE_SENSOR_TRACKER
+  mesh::tracker::TrackerRecord tracker;
+  uint8_t tracker_secret[PUB_KEY_SIZE] = {};
+  bool tracker_storage_available = true;
+  bool tracker_storage_fault = false;
+  bool tracker_radio_asleep = false;
+  bool tracker_acquiring = false;
+  bool tracker_pending = false;
+  bool tracker_sent = false;
+  uint8_t tracker_packet_hash[MAX_HASH_SIZE] = {};
+  uint32_t tracker_next_check = 0;
+  uint32_t tracker_pending_tag = 0;
+  unsigned long tracker_reply_until = 0;
+  unsigned long tracker_awake_until = 0;
+  uint32_t tracker_boot_anchor = 0;
+  uint32_t tracker_clock_rtc = 0;
+  unsigned long tracker_clock_millis = 0;
+  bool handleTrackerCommand(uint32_t sender_timestamp, const char* command, char* reply);
+  void configureTrackerRuntime();
+  bool saveTrackerRecord(mesh::tracker::TrackerRecord& candidate);
+  bool trackerNeedsRadio() const;
+  void wakeTrackerRadio();
+  void cancelTrackerPending(bool delivered = false);
+  void serviceTracker();
+  bool handleTrackerResponse(mesh::Packet* packet, uint8_t type,
+                             const uint8_t* data, size_t length,
+                             const uint8_t* learned_path = nullptr,
+                             uint8_t learned_path_len = 0xff);
+  bool handleTrackerPath(mesh::Packet* packet, uint8_t* path, uint8_t path_len,
+                         uint8_t extra_type, uint8_t* extra, size_t extra_len);
+#endif
   FILESYSTEM* _fs;
   uint16_t pending_preamble = 0;
   unsigned long next_local_advert, next_flood_advert;

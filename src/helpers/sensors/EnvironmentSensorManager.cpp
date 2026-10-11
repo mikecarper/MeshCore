@@ -419,6 +419,7 @@ class RAK12500LocationProvider : public LocationProvider {
   int _sats = 0;
   long _epoch = 0;
   bool _fix = false;
+  bool _fresh_position_requested = false;
   mesh::RTCClock* _clock = NULL;
   unsigned long _next_time_check = 0;
   unsigned long _last_time_sync = 0;
@@ -436,6 +437,13 @@ public:
   long getAltitude() override { return _alt; }
   long satellitesCount() override { return _sats; }
   bool isValid() override { return _fix; }
+  bool clearPositionFix() override {
+    _fix = false;
+    _fresh_position_requested = true;
+    _next_time_check = 0;
+    ublox_GNSS.flushPVT();
+    return true;
+  }
   long getTimestamp() override { return _epoch; }
   void sendSentence(const char * sentence) override { }
   void reset() override {
@@ -448,6 +456,8 @@ public:
     _sats = 0;
     _epoch = 0;
     _fix = false;
+    _fresh_position_requested = false;
+    _fresh_time_sync_required = false;
     _next_time_check = 0;
     _last_time_sync = 0;
     _valid_time_samples = 0;
@@ -463,6 +473,18 @@ public:
     if ((int32_t)(now - _next_time_check) >= 0) {
       _next_time_check = now + 1000;
 
+      if (_fresh_position_requested || _fresh_time_sync_required) {
+        // The library's scalar getters can return retained data even when
+        // their implicit PVT poll fails. Require a successfully received PVT
+        // before exposing a position for this tracker acquisition.
+        ublox_GNSS.flushPVT();
+        if (!ublox_GNSS.getPVT(8)) {
+          _fix = false;
+          _valid_time_samples = 0;
+          return;
+        }
+        _fresh_position_requested = false;
+      }
       if (ublox_GNSS.getGnssFixOk(8)) {
         _fix = true;
         _lat = ublox_GNSS.getLatitude(2) / 10;
@@ -1156,6 +1178,10 @@ void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
 
   #if ENV_INCLUDE_GPS
   if (!gps_detected) return;
+  if (isTrackerGpsModeEnabled()) {
+    _location->setGPSPowerSaving(false);
+    return;
+  }
   bool gps_user_enabled = isGpsTelemetryUserEnabled();
 #if defined(RAK_WISBLOCK_GPS) && defined(FORCE_GPS_ALIVE)
   if (serialGPSFlag) {

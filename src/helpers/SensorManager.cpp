@@ -1,6 +1,10 @@
 #include "SensorManager.h"
 #include <math.h>
 
+#if ENV_INCLUDE_GPS
+static const uint32_t GPS_TRACKER_MAX_ACQUIRE_MS = 120000UL;
+#endif
+
 bool SensorManager::getCachedGpsPosition(double& latitude, double& longitude) const {
   latitude = longitude = 0;
 #if ENV_INCLUDE_GPS
@@ -9,6 +13,82 @@ bool SensorManager::getCachedGpsPosition(double& latitude, double& longitude) co
       || gps_cache_lat < -90.0f || gps_cache_lat > 90.0f
       || gps_cache_lon < -180.0f || gps_cache_lon > 180.0f
       || (gps_cache_lat == 0 && gps_cache_lon == 0)) return false;
+  latitude = gps_cache_lat;
+  longitude = gps_cache_lon;
+  return true;
+#else
+  return false;
+#endif
+}
+
+void SensorManager::setTrackerGpsModeEnabled(bool enabled) {
+#if ENV_INCLUDE_GPS
+  if (gps_tracker_enabled == enabled) return;
+  // Leave an interrupted window through the same hardware stop/start hooks so
+  // the normal provider power cycle is rearmed when a saved GPS-on preference
+  // resumes. In particular, GPS-off must not leave the receiver running.
+  if (!enabled && gps_transport_available && telemetryGpsDetected() && telemetryGpsActive()) {
+    telemetryGpsStop();
+  }
+  gps_tracker_enabled = enabled;
+  gps_tracker_fix_ready = false;
+  const unsigned long now = millis();
+  cancelGpsTelemetryDemand(now);
+  LocationProvider* location = getLocationProvider();
+  if (location != nullptr) {
+    location->endFreshTimeSync();
+    // The provider's normal clock/power cycle must not wake GPS while the
+    // tracker is idle. The normal preference is restored when mode ends.
+    location->setGPSPowerSaving(!enabled && powersaving_enabled && gps_user_enabled);
+  }
+  if (enabled) {
+    maybeStopGpsForTelemetry(now);
+  } else if (gps_transport_available && telemetryGpsDetected() && gps_user_enabled) {
+    if (!telemetryGpsActive()) telemetryGpsStart();
+  } else if (gps_location_access_available) {
+    gps_next_cache_update_at = 0;
+  }
+#else
+  (void)enabled;
+#endif
+}
+
+bool SensorManager::beginTrackerGpsAcquisition() {
+#if ENV_INCLUDE_GPS
+  if (!gps_tracker_enabled || !gps_transport_available || !telemetryGpsDetected()) return false;
+  if (gps_acquiring) return true; // A repeated request must not extend its bound.
+  gps_tracker_fix_ready = false;
+  gps_hold_until = 0;
+  LocationProvider* location = getLocationProvider();
+  if (location == nullptr || !location->clearPositionFix()) return false;
+  gps_tracker_sync_generation = location->getTimeSyncGeneration();
+  location->beginFreshTimeSync();
+  if (location->getGPSPowerSaving()) location->setGPSPowerSaving(false);
+  beginGpsTelemetryAcquisition(millis());
+  return gps_acquiring;
+#else
+  return false;
+#endif
+}
+
+bool SensorManager::isTrackerGpsAcquisitionPending() const {
+#if ENV_INCLUDE_GPS
+  return gps_tracker_enabled && gps_acquiring;
+#else
+  return false;
+#endif
+}
+
+bool SensorManager::takeTrackerGpsPosition(double& latitude, double& longitude) {
+  latitude = longitude = 0;
+#if ENV_INCLUDE_GPS
+  const unsigned long now = millis();
+  if (gps_tracker_enabled && gps_acquiring
+      && static_cast<uint32_t>(now - gps_acquire_started_at) >= GPS_TRACKER_MAX_ACQUIRE_MS)
+    finishGpsTelemetryAcquisition(now, false);
+  if (!gps_tracker_enabled || gps_acquiring || !gps_tracker_fix_ready) return false;
+  gps_tracker_fix_ready = false;
+  if (static_cast<uint32_t>(now - gps_stable_started_at) >= GPS_TRACKER_MAX_ACQUIRE_MS) return false;
   latitude = gps_cache_lat;
   longitude = gps_cache_lon;
   return true;
@@ -66,7 +146,7 @@ void SensorManager::updateGpsTelemetryCache(float lat, float lon, float altitude
 }
 
 void SensorManager::maybeStopGpsForTelemetry(unsigned long now) {
-  if (gps_transport_available && telemetryGpsActive() && !gps_user_enabled
+  if (gps_transport_available && telemetryGpsActive() && (gps_tracker_enabled || !gps_user_enabled)
       && !gps_acquiring && !gpsTelemetryHoldActive(now)) {
     telemetryGpsStop();
     gps_next_cache_update_at = now + GPS_TELEMETRY_CACHE_INTERVAL_SEC * 1000UL;
@@ -114,6 +194,13 @@ void SensorManager::finishGpsTelemetryAcquisition(unsigned long now, bool use_we
                             now);
   }
   gps_acquiring = false;
+  if (gps_tracker_enabled) {
+    // Keep a fresh position acquired before a clock-sync timeout. Its one-shot
+    // result expires relative to completion, not the first position sample.
+    gps_stable_started_at = now;
+    LocationProvider* location = getLocationProvider();
+    if (location != nullptr) location->endFreshTimeSync();
+  }
   gps_next_cache_update_at = now + GPS_TELEMETRY_CACHE_INTERVAL_SEC * 1000UL;
   maybeStopGpsForTelemetry(now);
 }
@@ -123,6 +210,13 @@ bool SensorManager::queryGpsTelemetry(uint8_t requester_permissions, CayenneLPP&
       || !telemetryGpsDetected()) return false;
 
   unsigned long now = millis();
+  if (gps_tracker_enabled) {
+    // Ordinary telemetry can observe the cache, but may not create a two-hour
+    // hold or acquire GPS outside the tracker's scheduled window.
+    if (!gpsTelemetryCacheFresh(now)) return false;
+    telemetry.addGPS(TELEM_CHANNEL_SELF, gps_cache_lat, gps_cache_lon, gps_cache_altitude);
+    return true;
+  }
   if (!gps_transport_available) {
     // A bridge may temporarily own the GPS UART. Authorized callers can still
     // receive the last good fix while it is inside the normal freshness bound,
@@ -155,6 +249,21 @@ bool SensorManager::queryGpsTelemetry(uint8_t requester_permissions, CayenneLPP&
 
 void SensorManager::processGpsTelemetryFix(float lat, float lon, float altitude, unsigned long now) {
   if (!gps_transport_available) return;
+  if (gps_tracker_enabled) {
+    if (!gps_acquiring) return;
+    if (static_cast<uint32_t>(now - gps_acquire_started_at) >= GPS_TRACKER_MAX_ACQUIRE_MS) {
+      finishGpsTelemetryAcquisition(now, false);
+      return;
+    }
+    if (!isfinite(lat) || !isfinite(lon) || lat < -90.0f || lat > 90.0f
+        || lon < -180.0f || lon > 180.0f || (lat == 0 && lon == 0)) return;
+    updateGpsTelemetryCache(lat, lon, altitude, now);
+    gps_tracker_fix_ready = true;
+    LocationProvider* location = getLocationProvider();
+    if (location != nullptr && location->getTimeSyncGeneration() != gps_tracker_sync_generation)
+      finishGpsTelemetryAcquisition(now, false);
+    return;
+  }
   if (!gps_acquiring) {
     if (gps_user_enabled || gpsTelemetryHoldActive(now)) {
       updateGpsTelemetryCache(lat, lon, altitude, now);
@@ -196,6 +305,28 @@ void SensorManager::loopGpsTelemetry(unsigned long now) {
   // Expire the validity bit even while a bridge owns the UART. A stale fix
   // must not become fresh again when the 32-bit millis counter cycles.
   if (gps_cache_valid && !gpsTelemetryCacheFresh(now)) gps_cache_valid = false;
+  if (gps_tracker_enabled) {
+    LocationProvider* location = getLocationProvider();
+    if (location != nullptr && location->getGPSPowerSaving()) location->setGPSPowerSaving(false);
+    if (!gps_transport_available) return;
+    if (gps_acquiring
+        && static_cast<uint32_t>(now - gps_acquire_started_at) >= GPS_TRACKER_MAX_ACQUIRE_MS) {
+      finishGpsTelemetryAcquisition(now, false);
+    }
+    if (gps_acquiring && telemetryGpsActive() && location != nullptr && location->isValid()) {
+      // Tracker freshness is independent of the saved telemetry gps_interval.
+      // Derived managers have already polled this provider in their previous
+      // loop; clearPositionFix() made any retained pre-window sample invalid.
+      processGpsTelemetryFix(static_cast<float>(location->getLatitude()) / 1000000.0f,
+                             static_cast<float>(location->getLongitude()) / 1000000.0f,
+                             static_cast<float>(location->getAltitude()) / 1000.0f, now);
+    }
+    if (gps_acquiring && gps_tracker_fix_ready && location != nullptr
+        && location->getTimeSyncGeneration() != gps_tracker_sync_generation)
+      finishGpsTelemetryAcquisition(now, false);
+    maybeStopGpsForTelemetry(now);
+    return;
+  }
   if (!gps_transport_available) return;
   if (!gps_user_enabled && !gpsTelemetryHoldActive(now) && !gps_acquiring) {
     maybeStopGpsForTelemetry(now);
@@ -213,6 +344,12 @@ void SensorManager::loopGpsTelemetry(unsigned long now) {
 void SensorManager::setGpsTelemetryUserEnabled(bool enabled) {
   gps_user_enabled = enabled;
   unsigned long now = millis();
+  if (gps_tracker_enabled) {
+    LocationProvider* location = getLocationProvider();
+    if (location != nullptr && location->getGPSPowerSaving()) location->setGPSPowerSaving(false);
+    maybeStopGpsForTelemetry(now);
+    return;
+  }
   if (enabled) {
     if (gps_transport_available && telemetryGpsDetected()
         && !telemetryGpsActive()) telemetryGpsStart();
@@ -227,10 +364,13 @@ void SensorManager::setGpsTelemetryTransportAvailable(bool available) {
 
   gps_transport_available = available;
   if (!available) {
+    LocationProvider* location = getLocationProvider();
+    if (location != nullptr) location->endFreshTimeSync();
     // The UART is no longer ours. Cancel both the short acquisition and the
     // two-hour remote-query hold so neither can silently reclaim it from a
     // bridge. Preserve the user's preference and last good cache.
     gps_acquiring = false;
+    gps_tracker_fix_ready = false;
     gps_acquire_has_fix = false;
     gps_hold_until = 0;
     gps_acquire_started_at = 0;
@@ -244,7 +384,7 @@ void SensorManager::setGpsTelemetryTransportAvailable(bool available) {
   }
 
   gps_next_cache_update_at = 0;
-  if (gps_user_enabled && telemetryGpsDetected() && !telemetryGpsActive()) {
+  if (!gps_tracker_enabled && gps_user_enabled && telemetryGpsDetected() && !telemetryGpsActive()) {
     telemetryGpsStart();
   }
 }
@@ -255,6 +395,7 @@ void SensorManager::resetGpsTelemetryTransportState() {
   // new probe has established which provider, if any, is present.
   gps_transport_available = true;
   gps_acquiring = false;
+  gps_tracker_fix_ready = false;
   gps_acquire_has_fix = false;
   gps_hold_until = 0;
   gps_acquire_started_at = 0;
@@ -276,7 +417,7 @@ void SensorManager::setTelemetryLocationAccessAvailable(bool available) {
   gps_location_access_available = available;
   if (available) {
     gps_next_cache_update_at = 0;
-  } else if (gps_acquiring && !gps_user_enabled && !gpsTelemetryHoldActive(now)) {
+  } else if (!gps_tracker_enabled && gps_acquiring && !gps_user_enabled && !gpsTelemetryHoldActive(now)) {
     gps_acquiring = false;
     maybeStopGpsForTelemetry(now);
   }

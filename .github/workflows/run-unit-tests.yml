@@ -10,6 +10,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  nrf52-sensor-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Compile GPS Sensor tracker on nRF52 boards
+        run: pio run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
+
+  esp32-sensor-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Compile GPS-capable Sensor tracker on ESP32-S3
+        run: pio run -e heltec_v4_sensor
+
   management-reports:
     runs-on: ubuntu-latest
     steps:
@@ -204,6 +222,15 @@ jobs:
 
       - name: Verify DNS lease restoration and bounded diagnostics
         run: python3 -B test/test_network_dns.py -v
+
+      - name: Verify Sensor dog tracker ownership, routes, storage, GPS and sleep
+        run: |
+          python3 -B test/test_tracker_route_policy.py -v
+          python3 -B test/test_sensor_tracker_store.py -v
+          python3 -B test/test_tracker_owner_response.py -v
+          python3 -B test/test_sensor_tracker_client.py -v
+          python3 -B test/test_sensor_tracker_gps.py -v
+          python3 -B test/test_sensor_tracker_sleep.py -v
 
       - name: Verify Companion contact and channel TX routing
         run: |

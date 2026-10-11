@@ -10,6 +10,22 @@
 #include <helpers/UsbLogging.h>
 #include <helpers/UsbLoggingWatchdog.h>
 #include <helpers/UsbLoggingClientActivity.h>
+#if defined(NRF52_PLATFORM) && MESH_ENABLE_SENSOR_TRACKER
+#include <utility/SoftwareTimer.h>
+static SoftwareTimer tracker_wake_timer;
+static void trackerWakeCallback(TimerHandle_t) { }
+
+// SYSTEMON event sleep has no built-in deadline. Arm a real timer before
+// leaving the loop; allocation/queue failure keeps polling instead of hanging.
+static bool armTrackerSleepWake(uint32_t seconds) {
+  if (!tracker_wake_timer.getHandle()) {
+    tracker_wake_timer.begin(1000, trackerWakeCallback, nullptr, false);
+  }
+  const TimerHandle_t handle = tracker_wake_timer.getHandle();
+  if (!handle || seconds == 0 || seconds > 30) return false;
+  return xTimerChangePeriod(handle, pdMS_TO_TICKS(seconds * 1000UL), 0) == pdPASS;
+}
+#endif
 
 #if defined(ESP32_PLATFORM)
   #include <helpers/ESP32TrueRandom.h>
@@ -212,6 +228,9 @@ void setup() {
 
   sensors.begin();
 
+#if defined(NRF52_PLATFORM)
+  the_mesh.setTrackerStorageAvailable(!volatile_primary_fs);
+#endif
   the_mesh.begin(fs);
 
 #if defined(NRF52_PLATFORM)
@@ -321,7 +340,8 @@ void loop() {
   external_watchdog.loop();
 #endif
 
-  bool can_power_save = the_mesh.getNodePrefs()->powersaving_enabled
+  bool can_power_save = (the_mesh.getNodePrefs()->powersaving_enabled
+                        || the_mesh.isTrackerModeEnabled())
       && !board.isUsbDataConnected()
       && !mesh::isUsbLoggingWatchdogArmed();
 #if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
@@ -335,7 +355,14 @@ void loop() {
     if (sleep_secs > 0) external_watchdog.feed();
 #endif
 #if defined(NRF52_PLATFORM)
-    if (sleep_secs > 0) board.sleep(0);
+    if (sleep_secs > 0) {
+#if MESH_ENABLE_SENSOR_TRACKER
+      if (!the_mesh.isTrackerModeEnabled() || armTrackerSleepWake(sleep_secs)) board.sleep(0);
+      else delay(1);
+#else
+      board.sleep(0);
+#endif
+    }
 #else
     if (sleep_secs > 0
         && the_mesh.millisHasNowPassed(
@@ -345,7 +372,8 @@ void loop() {
 #endif
   }
 #if defined(ESP32_PLATFORM)
-  if (!can_power_save && the_mesh.getNodePrefs()->powersaving_enabled) {
+  if (!can_power_save && (the_mesh.getNodePrefs()->powersaving_enabled
+                         || the_mesh.isTrackerModeEnabled())) {
     delay(1); // Keep USB and the button wake interval serviced while idle.
   }
 #endif

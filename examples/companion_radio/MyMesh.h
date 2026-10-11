@@ -46,6 +46,7 @@
 #if MESH_ENABLE_LOST_REPLY
 #include <helpers/CompanionLostReply.h>
 #endif
+#include <helpers/TrackerProtocol.h>
 #include <helpers/CompanionMotaControl.h>
 #include <helpers/IdentityStore.h>
 #include <helpers/LogicalMessageCache.h>
@@ -814,6 +815,9 @@ private:
   mesh::companion::LostReplyLimiter lost_reply_limiter;
   void maybeReplyToLostQuestion(const ContactInfo& from, uint32_t sender_timestamp,
                                const char* text);
+  uint8_t handleTrackerStatusRequest(const ContactInfo& from, uint32_t tag,
+                                    const uint8_t* data, uint8_t len,
+                                    uint8_t* reply);
 #endif
 #if MESH_ENABLE_ONE_KEY_DM
   // A recent ACK proves that peer can decrypt our normal text packets. Retry

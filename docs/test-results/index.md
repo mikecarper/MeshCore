@@ -41,6 +41,7 @@ Completed validation reports, experiments, and test guides are collected here. O
 ## Companion, USB, BLE, and display
 
 - [Companion lost-status replies](companion_lost_reply.md)
+- [Sensor dog tracker checks](sensor_dog_tracker.md)
 - [Contact-cache and NimBLE RAM qualification](companion_contact_cache_results.md)
 - [USB Companion ASCII default validation](companion_usb_ascii_validation.md)
 - [USB Companion client compatibility](companion_usb_client_validation.md)

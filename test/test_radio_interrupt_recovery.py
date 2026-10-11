@@ -130,6 +130,45 @@ public:
 
 
 class RadioInterruptRecoveryTests(unittest.TestCase):
+    def run_dispatcher_retry(self, soft_only=False, remove_guard=False):
+        with tempfile.TemporaryDirectory(prefix="meshcore-radio-retry-") as tmp:
+            dispatcher = ROOT / "src/Dispatcher.cpp"
+            if remove_guard:
+                original = dispatcher.read_text()
+                guard = ("  if (outbound->isRouteFlood() && outbound->flood_retry_policy "
+                         "== FLOOD_RETRY_POLICY_DENY) return false;\n")
+                self.assertEqual(original.count(guard), 1)
+                dispatcher = Path(tmp) / "Dispatcher.cpp"
+                dispatcher.write_text(original.replace(guard, ""))
+            exe = Path(tmp) / "retry"
+            command = [os.environ.get("CXX", "g++"), "-std=c++17", "-O1", "-Wall", "-Wextra",
+                       "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
+                       "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src")]
+            if soft_only:
+                command.append("-DRADIO_LIVENESS_SOFT_ONLY")
+            command += [str(dispatcher), str(ROOT / "src/Packet.cpp"),
+                        str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
+                        str(ROOT / "test/fixtures/dispatcher/radio_retry_test.cpp"), "-o", str(exe)]
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            env = os.environ.copy()
+            # Firmware-lifetime production pools do not have destructors.
+            env["ASAN_OPTIONS"] = env.get("ASAN_OPTIONS", "") + ":detect_leaks=0"
+            result = subprocess.run([str(exe)], capture_output=True, text=True, env=env)
+            if remove_guard:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("a denied flood must never be retransmitted", result.stderr)
+            else:
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_actual_dispatcher_lost_tx_done_respects_flood_retry_policy(self):
+        for soft_only in (False, True):
+            with self.subTest(soft_only=soft_only):
+                self.run_dispatcher_retry(soft_only=soft_only)
+
+    def test_removed_flood_retry_guard_repeats_actual_timed_out_transmission(self):
+        self.run_dispatcher_retry(remove_guard=True)
+
     def test_actual_wrapper_header_uses_actual_radio_base(self):
         # Keep Mesh/Dispatcher and the wrapper header real: the common test
         # Mesh.h gives Radio a virtual destructor that production does not.
