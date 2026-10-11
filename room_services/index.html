@@ -2816,7 +2816,9 @@ integers are little-endian.</p>
 returned revision. Response: subtype, operation, status, revision <code>u32</code>,
 total count, start cursor, next cursor, then up to two complete entries.
 Each entry is ID <code>u8</code>, version <code>u32</code>, body length <code>u16</code>, title length <code>u8</code>
-and title bytes. Next cursor <code>255</code> means complete.</p>
+and title bytes. Continue while the next cursor is less than the total count;
+the index is complete when the next cursor equals the total count. An empty
+board returns total count <code>0</code> and next cursor <code>0</code>.</p>
 <p>Article response: subtype, operation, status, ID <code>u8</code>, version <code>u32</code>,
 offset <code>u16</code>, total body length <code>u16</code>, chunk length <code>u8</code>, then raw bytes.
 The route's encrypted reply capacity may reduce the chunk. Continue at offset
