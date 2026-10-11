@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#room-history-moderation-and-information-board" class="md-skip">
+        <a href="#room-history-personal-mailboxes-and-information-board" class="md-skip">
           Skip to content
         </a>
       
@@ -1347,6 +1347,67 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#personal-mailboxes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Personal mailboxes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Personal mailboxes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mail-commands-for-regular-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mail commands for regular users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sleeping-tracker-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sleeping tracker example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wi-fi-mailbox-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wi-Fi mailbox management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lora-mailbox-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa mailbox protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#optional-persistent-chat-history" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2382,6 +2443,67 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#personal-mailboxes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Personal mailboxes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Personal mailboxes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mail-commands-for-regular-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mail commands for regular users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sleeping-tracker-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sleeping tracker example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wi-fi-mailbox-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wi-Fi mailbox management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lora-mailbox-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LoRa mailbox protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#optional-persistent-chat-history" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2532,11 +2654,198 @@
 <p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/room_services/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-<h1 id="room-history-moderation-and-information-board">Room history, moderation, and information board</h1>
+<h1 id="room-history-personal-mailboxes-and-information-board">Room history, personal mailboxes, and information board</h1>
 <p>Room Server firmware keeps one room per radio. Existing app login, chat,
 catch-up, and Access Control formats remain supported. The information board
 and local Wi-Fi chat use the browser page below; the stock mobile app does not
 have an information-board screen.</p>
+<h2 id="personal-mailboxes">Personal mailboxes</h2>
+<p>The single room also provides personal mailboxes. Each mailbox belongs to a
+complete public-key identity, independently of the public chat backlog. Regular
+room readers and writers can choose their own access policy and delivery mode;
+administrator permission is not required.</p>
+<table>
+<thead>
+<tr>
+<th>Access</th>
+<th>Who may leave mail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Closed (default)</td>
+<td>The owner only</td>
+</tr>
+<tr>
+<td>Public</td>
+<td>Any authenticated room writer or administrator</td>
+</tr>
+<tr>
+<td>Private</td>
+<td>Up to eight selected full public-key identities, plus the owner</td>
+</tr>
+</tbody>
+</table>
+<p>Read-only users can manage and read their own mailbox but cannot send mail.
+Room bans still apply to both senders and recipients. A private allow list does
+not grant room login or writing permission; approved senders must also have
+room writer access. Reading, acknowledging and deleting mail always use the
+authenticated owner's identity, never a name or shortened key supplied in a
+request. Changing access does not delete already accepted mail.</p>
+<p>Mailboxes start closed and are created only when the owner saves a policy.
+There are at most 32 mailbox owners, 16 queued messages across the radio, four
+queued messages per owner, and eight selected senders per mailbox. Messages
+contain 1-512 UTF-8 bytes. A full queue rejects new mail without replacing old
+mail. Available filesystem space can impose a smaller limit.</p>
+<p>The server stores mail separately from public chat. Mail is encrypted on each
+LoRa connection, but is plaintext in the server's filesystem: the room operator
+is trusted. This is not end-to-end encryption between sender and recipient.
+Other ordinary users cannot list or read your inbox. Mail bodies are not
+included in public chat, notices, or the Wi-Fi administrator dashboard. Wi-Fi
+room access uses local HTTP, so use a trusted Wi-Fi network.</p>
+<h3 id="mail-commands-for-regular-users">Mail commands for regular users</h3>
+<p>Use an encrypted CLI request to the room, or send the same command as a direct
+message prefixed with <code>!mail</code> from a normal Companion app. These direct messages
+are reserved mailbox commands and never become public room posts:</p>
+<pre><code class="language-text">!mail mode private
+!mail allow &lt;complete-64-hex-sender-public-key&gt;
+!mail deny &lt;complete-64-hex-sender-public-key&gt;
+!mail mode public
+!mail mode closed
+!mail delivery mailbox
+!mail delivery chat
+!mail settings
+!mail settings 1
+!mail send &lt;complete-64-hex-recipient-public-key&gt; dog lost
+!mail check
+!mail inbox
+!mail list 1
+!mail read &lt;message-id&gt;
+!mail read &lt;message-id&gt; &lt;next-offset&gt;
+!mail ack &lt;message-id&gt;
+!mail delete &lt;message-id&gt;
+</code></pre>
+<p>In a CLI-capable client, use <code>mail ...</code> without <code>!</code>. These commands affect only
+the requesting identity. CLI list/settings replies use entry cursors; continue
+at the returned <code>next=</code> while it is below <code>total=</code> or <code>allowed=</code>. List entries
+show the immutable message ID, byte length and sender key; a short route may
+show a sender prefix. Reads return readable text with <code>id</code>, <code>off</code>, <code>next</code> and
+<code>total</code>; continue at <code>next</code> until it equals <code>total</code>. Text chunks end on a UTF-8
+character boundary. The route and command framing limit LoRa submissions to
+less than the 512-byte storage limit; the browser can submit a full 512 bytes.</p>
+<p>Reading never removes a message. <code>ack</code> confirms receipt and durably removes it;
+<code>delete</code> deliberately discards it. Both retain a bounded retry receipt. Exact
+sender/request/body retries return the original ID, including after receipt or
+reboot; conflicting reuse of that request ID is rejected. Each owner retains
+up to eight submission receipts. Queued receipts stay retained; the oldest
+retired receipt is evicted when needed. A very old retry after its retired
+receipt has been evicted can enqueue again.</p>
+<p><code>mail delivery mailbox</code> suppresses automatic public chat and topic delivery to
+that identity, including retries and public backlog counts. It does not prevent
+explicit public-board reads, change routes or erase chat. Returning to <code>chat</code>
+resumes from the existing catch-up cursor. A copy already transmitted or queued
+can still arrive while switching modes. Unreadable saved mailbox policy blocks
+automatic chat rather than silently enabling it.</p>
+<h3 id="sleeping-tracker-example">Sleeping tracker example</h3>
+<p>A dog tracker can keep its mailbox private, approve its owner's sender identity,
+and select mailbox-only delivery. The owner leaves <code>dog lost</code> while the tracker
+is asleep. At its next scheduled check-in, the tracker authenticates to the
+room, checks its inbox, retrieves that message in resumable chunks and confirms
+receipt only after handling it. Lost replies and another sleep cycle do not
+remove unread mail. Chat history and topics are not downloaded automatically.</p>
+<p>Room Server provides the room-side queue and polling protocol. A tracker still
+needs client firmware that schedules check-ins and interprets authenticated
+commands. Ordinary mailbox text is never executed as a CLI command, and does
+not itself enable a tracker, wake it remotely or change its GPS reporting rate.</p>
+<h3 id="wi-fi-mailbox-management">Wi-Fi mailbox management</h3>
+<p>Open <code>/room</code>, join with your room credentials, and open <strong>Personal mailbox</strong>.
+The page shows your complete browser mailbox address, public/private/closed
+access, selected senders and mailbox-only delivery. It provides sending, paged
+inbox metadata, selective body downloads, resumable reads, explicit receipt
+confirmation and deletion. Unsaved drafts survive failed requests. The page
+honors saved mailbox-only mode before its initial chat download; <strong>Refresh
+chat</strong> remains an explicit choice.</p>
+<p>The browser has its own identity derived from its secret token and the server
+identity. It cannot claim your radio's mailbox using a shared room password.
+Mail sent to a radio key is retrieved by that radio; mail sent to the browser
+address is retrieved using that browser token. Keep that token to retain access
+to the same mailbox. Disconnecting clears downloaded private content from the
+page's memory; the queued server mail remains.</p>
+<p>Administrators have a <strong>Mailboxes</strong> panel with paged owner metadata, queued
+counts, access policy, selected senders, blocking, and confirmed deletion or
+purge. Enter a full owner address to provision a radio's mailbox before it
+checks in. Policy changes compare the loaded revision, including creation revision
+zero; concurrent changes require a refresh. The dashboard does not download
+other users' message bodies. Inbox and administrator index pages use snapshot
+revisions to reject mixed pages after a concurrent change.</p>
+<h3 id="lora-mailbox-protocol">LoRa mailbox protocol</h3>
+<p>Authenticated room users send encrypted <code>PAYLOAD_TYPE_REQ</code> requests. The usual
+four-byte request tag precedes each payload and is echoed before the response.
+All multi-byte integers are little-endian. Subtype <code>0x0b</code> is separate from chat
+catch-up and board subtype <code>0x0a</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Payload after tag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Settings/check</td>
+<td><code>0b 00</code> + expected revision <code>u32</code> + allow-list cursor <code>u8</code></td>
+</tr>
+<tr>
+<td>Inbox index</td>
+<td><code>0b 01</code> + expected revision <code>u32</code> + entry cursor <code>u8</code></td>
+</tr>
+<tr>
+<td>Read</td>
+<td><code>0b 02</code> + immutable message ID <code>u32</code> + offset <code>u16</code></td>
+</tr>
+<tr>
+<td>Send</td>
+<td><code>0b 03</code> + full recipient key (32 bytes) + body length <code>u16</code> + complete body</td>
+</tr>
+<tr>
+<td>Confirm receipt</td>
+<td><code>0b 04</code> + message ID <code>u32</code></td>
+</tr>
+<tr>
+<td>Delete</td>
+<td><code>0b 05</code> + message ID <code>u32</code></td>
+</tr>
+<tr>
+<td>Allow sender</td>
+<td><code>0b 06</code> + expected revision <code>u32</code> + full sender key (32 bytes)</td>
+</tr>
+<tr>
+<td>Deny sender</td>
+<td><code>0b 07</code> + expected revision <code>u32</code> + full sender key (32 bytes)</td>
+</tr>
+<tr>
+<td>Access</td>
+<td><code>0b 08</code> + expected revision <code>u32</code> + mode <code>u8</code> (closed=0, public=1, private=2)</td>
+</tr>
+<tr>
+<td>Delivery</td>
+<td><code>0b 09</code> + expected revision <code>u32</code> + mailbox-only <code>u8</code> (0 or 1)</td>
+</tr>
+</tbody>
+</table>
+<p>Start index/settings at revision zero and cursor zero, then use the returned
+revision on subsequent pages. <code>next=255</code> means complete. Sends are single
+requests, without fragmented uploads; the complete body must fit the encrypted
+request route. Read responses contain raw bytes in chunks of at most 128, reduced
+as needed by the reply route. Continue by offset plus copied byte count. Reads
+never acknowledge receipt implicitly. Logical requests allow only zero trailing
+encryption padding.</p>
+<p>Responses begin with subtype, operation and status. Statuses are: <code>0</code> success,
+<code>1</code> invalid, <code>2</code> storage unavailable, <code>3</code> write failure, <code>4</code> not found, <code>5</code> stale
+revision, <code>6</code> forbidden, <code>7</code> full, <code>8</code> successful duplicate, <code>9</code> conflicting
+request ID. Full response layouts are documented in
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/src/helpers/RoomMailProtocol.h">RoomMailProtocol.h</a>.
+Mutations require space for their complete confirmation before writing.</p>
 <h2 id="optional-persistent-chat-history">Optional persistent chat history</h2>
 <p>History uses RAM by default. From a local console or authenticated remote
 administrator session:</p>
@@ -2745,6 +3054,8 @@ This management area offers:</p>
   and send the corresponding Unix timestamp.</li>
 <li>Assigning or removing saved access, blocking and unblocking full identities,
   editing the topic, enabling persistent history, and changing post/poll limits.</li>
+<li>Personal mailbox owner lists, policies, sender permissions and confirmed
+  message deletion or purge. Private mail bodies are not downloaded here.</li>
 <li>Optional refresh every 15 seconds. Unsaved route edits remain in place while
   live status refreshes.</li>
 </ul>
