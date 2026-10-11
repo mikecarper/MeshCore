@@ -1524,6 +1524,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../companion_lost_reply/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion lost reply
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../nrf52_power_management/" class="md-nav__link">
         
   
@@ -2363,6 +2391,10 @@ A reboot clears it.</p>
 <td style="text-align: right;">256 total: up to 15 held DMs use slots until accepted</td>
 </tr>
 <tr>
+<td>RAK WisMesh Tag ordinary BLE Companion</td>
+<td style="text-align: right;">240 total: up to 15 held DMs use slots until accepted</td>
+</tr>
+<tr>
 <td>nRF52840 with more than 300 contacts but no contact cache</td>
 <td style="text-align: right;">208 ordinary frames plus a separate 15-DM queue</td>
 </tr>
@@ -2423,6 +2455,12 @@ decryptable DM arrives. The shared pool is still volatile and clears on reboot.
 Uncached high-contact profiles keep the conservative 208-frame default and
 separate held queue. An explicit target <code>OFFLINE_QUEUE_SIZE</code> still takes
 precedence.</p>
+<p>The ordinary RAK WisMesh Tag BLE profile uses 240 frames to retain the runtime
+RAM reserve for Bluetooth, filesystem buffers, and the main task. It keeps
+350 contact slots and 40 group channels. All 240 slots are available when no
+DMs are held; 15 held DMs leave 225 ordinary slots. This saves 2,832 bytes
+compared with 256 frames. The Tag Full Companion retains 256 frames normally
+and 128 while mOTA borrows queue storage.</p>
 <p>Each queue slot currently costs 177 bytes. A 256-frame queue reserves 45,312
 bytes, while a 512-frame queue reserves 90,624 bytes. There is no 256-frame
 protocol limit: the queue length and indexes can represent 512 or more. The

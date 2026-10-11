@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/usb_serial_backpressure/">
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/test-results/companion_lost_reply/">
       
       
       
@@ -18,16 +18,16 @@
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Usb serial backpressure - MeshCore Docs</title>
+        <title>Companion lost reply - MeshCore Docs</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
       
 
@@ -46,25 +46,25 @@
       
     
     
-      <link rel="stylesheet" href="../_stylesheets/notification_builder.css?v=20261006-channel9">
+      <link rel="stylesheet" href="../../_stylesheets/notification_builder.css?v=20261006-channel9">
     
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     
-      <link rel="stylesheet" href="../_stylesheets/extra.css">
+      <link rel="stylesheet" href="../../_stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
+      <link rel="stylesheet" href="../../_stylesheets/firmware_picker.css?v=20261001-feedback-1">
     
-      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+      <link rel="stylesheet" href="../../_stylesheets/telemetry_decoder.css">
     
-      <link rel="stylesheet" href="../_stylesheets/management_decoder.css">
+      <link rel="stylesheet" href="../../_stylesheets/management_decoder.css">
     
-      <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
+      <link rel="stylesheet" href="../../_stylesheets/filter_tool.css">
     
-      <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
+      <link rel="stylesheet" href="../../_stylesheets/preset_test.css?v=20260923-2">
     
-      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
+      <link rel="stylesheet" href="../../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#document-moved" class="md-skip">
+        <a href="#companion-lost-status-response-validation" class="md-skip">
           Skip to content
         </a>
       
@@ -98,9 +98,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+    <a href="../.." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
       
-  <img src="../_assets/meshcore.svg" alt="logo">
+  <img src="../../_assets/meshcore.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Usb serial backpressure
+              Companion lost reply
             
           </span>
         </div>
@@ -209,9 +209,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+    <a href="../.." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
       
-  <img src="../_assets/meshcore.svg" alt="logo">
+  <img src="../../_assets/meshcore.svg" alt="logo">
 
     </a>
     MeshCore Docs
@@ -238,7 +238,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -312,7 +312,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../firmware_picker/" class="md-nav__link">
+      <a href="../../firmware_picker/" class="md-nav__link">
         
   
   
@@ -340,7 +340,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../notifications/" class="md-nav__link">
+      <a href="../../notifications/" class="md-nav__link">
         
   
   
@@ -368,7 +368,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../preset_test/" class="md-nav__link">
+      <a href="../../preset_test/" class="md-nav__link">
         
   
   
@@ -396,7 +396,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../filter_tool/" class="md-nav__link">
+      <a href="../../filter_tool/" class="md-nav__link">
         
   
   
@@ -424,7 +424,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../telemetry_decoder/" class="md-nav__link">
+      <a href="../../telemetry_decoder/" class="md-nav__link">
         
   
   
@@ -452,7 +452,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../management_decoder/" class="md-nav__link">
+      <a href="../../management_decoder/" class="md-nav__link">
         
   
   
@@ -581,7 +581,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../faq/" class="md-nav__link">
+      <a href="../../faq/" class="md-nav__link">
         
   
   
@@ -609,7 +609,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../full_profiles/" class="md-nav__link">
+      <a href="../../full_profiles/" class="md-nav__link">
         
   
   
@@ -637,7 +637,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../role_feature_switches/" class="md-nav__link">
+      <a href="../../role_feature_switches/" class="md-nav__link">
         
   
   
@@ -665,7 +665,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../full_companion_features/" class="md-nav__link">
+      <a href="../../full_companion_features/" class="md-nav__link">
         
   
   
@@ -693,7 +693,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../companion_radio_full/" class="md-nav__link">
+      <a href="../../companion_radio_full/" class="md-nav__link">
         
   
   
@@ -721,7 +721,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+      <a href="../../full_companion_usb_switcher/" class="md-nav__link">
         
   
   
@@ -749,7 +749,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../companion_offline_queue/" class="md-nav__link">
+      <a href="../../companion_offline_queue/" class="md-nav__link">
         
   
   
@@ -777,7 +777,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../halo_keymind_settings/" class="md-nav__link">
+      <a href="../../halo_keymind_settings/" class="md-nav__link">
         
   
   
@@ -860,7 +860,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../upgrading_1.17.1.8_to_1.17.1.9/" class="md-nav__link">
+      <a href="../../upgrading_1.17.1.8_to_1.17.1.9/" class="md-nav__link">
         
   
   
@@ -888,7 +888,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ota_user_guide/" class="md-nav__link">
+      <a href="../../ota_user_guide/" class="md-nav__link">
         
   
   
@@ -916,7 +916,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ota_easy/" class="md-nav__link">
+      <a href="../../ota_easy/" class="md-nav__link">
         
   
   
@@ -944,7 +944,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../lora_ota_automation/" class="md-nav__link">
+      <a href="../../lora_ota_automation/" class="md-nav__link">
         
   
   
@@ -972,7 +972,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+      <a href="../../ota_nrf52_bootloader_update/" class="md-nav__link">
         
   
   
@@ -1000,7 +1000,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+      <a href="../../ota_nrf52_qspi/" class="md-nav__link">
         
   
   
@@ -1028,7 +1028,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+      <a href="../../ota_meshtower_v2_sdcard/" class="md-nav__link">
         
   
   
@@ -1056,7 +1056,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../esp32_partition_catalog/" class="md-nav__link">
+      <a href="../../esp32_partition_catalog/" class="md-nav__link">
         
   
   
@@ -1084,7 +1084,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
+      <a href="../../esp32_wifi_partition_migration/" class="md-nav__link">
         
   
   
@@ -1112,7 +1112,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+      <a href="../../heltec_v4_wifi_partition_migration/" class="md-nav__link">
         
   
   
@@ -1140,7 +1140,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../host_cli_service/" class="md-nav__link">
+      <a href="../../host_cli_service/" class="md-nav__link">
         
   
   
@@ -1223,7 +1223,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../radio_profiles/" class="md-nav__link">
+      <a href="../../radio_profiles/" class="md-nav__link">
         
   
   
@@ -1251,7 +1251,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../fleet_management/" class="md-nav__link">
+      <a href="../../fleet_management/" class="md-nav__link">
         
   
   
@@ -1279,7 +1279,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../room_services/" class="md-nav__link">
+      <a href="../../room_services/" class="md-nav__link">
         
   
   
@@ -1307,7 +1307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../carrier_wave/" class="md-nav__link">
+      <a href="../../carrier_wave/" class="md-nav__link">
         
   
   
@@ -1335,7 +1335,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../espnow_bridge_setup/" class="md-nav__link">
+      <a href="../../espnow_bridge_setup/" class="md-nav__link">
         
   
   
@@ -1363,7 +1363,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../WiFi/" class="md-nav__link">
+      <a href="../../WiFi/" class="md-nav__link">
         
   
   
@@ -1391,7 +1391,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../flood_filtering/" class="md-nav__link">
+      <a href="../../flood_filtering/" class="md-nav__link">
         
   
   
@@ -1419,7 +1419,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../gps_tracking/" class="md-nav__link">
+      <a href="../../gps_tracking/" class="md-nav__link">
         
   
   
@@ -1447,7 +1447,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../companion_lost_reply/" class="md-nav__link">
+      <a href="../../companion_lost_reply/" class="md-nav__link">
         
   
   
@@ -1475,7 +1475,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../nrf52_power_management/" class="md-nav__link">
+      <a href="../../nrf52_power_management/" class="md-nav__link">
         
   
   
@@ -1558,7 +1558,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli_commands/" class="md-nav__link">
+      <a href="../../cli_commands/" class="md-nav__link">
         
   
   
@@ -1586,7 +1586,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli_build_matrix/" class="md-nav__link">
+      <a href="../../cli_build_matrix/" class="md-nav__link">
         
   
   
@@ -1614,7 +1614,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli_command_availability/" class="md-nav__link">
+      <a href="../../cli_command_availability/" class="md-nav__link">
         
   
   
@@ -1642,7 +1642,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../terminal_chat_cli/" class="md-nav__link">
+      <a href="../../terminal_chat_cli/" class="md-nav__link">
         
   
   
@@ -1670,7 +1670,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../companion_protocol/" class="md-nav__link">
+      <a href="../../companion_protocol/" class="md-nav__link">
         
   
   
@@ -1698,7 +1698,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../kiss_modem_protocol/" class="md-nav__link">
+      <a href="../../kiss_modem_protocol/" class="md-nav__link">
         
   
   
@@ -1726,7 +1726,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../packet_format/" class="md-nav__link">
+      <a href="../../packet_format/" class="md-nav__link">
         
   
   
@@ -1754,7 +1754,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../payloads/" class="md-nav__link">
+      <a href="../../payloads/" class="md-nav__link">
         
   
   
@@ -1782,7 +1782,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ota_protocol/" class="md-nav__link">
+      <a href="../../ota_protocol/" class="md-nav__link">
         
   
   
@@ -1810,7 +1810,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../management_reports/" class="md-nav__link">
+      <a href="../../management_reports/" class="md-nav__link">
         
   
   
@@ -1838,7 +1838,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../stats_binary_frames/" class="md-nav__link">
+      <a href="../../stats_binary_frames/" class="md-nav__link">
         
   
   
@@ -1866,7 +1866,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../number_allocations/" class="md-nav__link">
+      <a href="../../number_allocations/" class="md-nav__link">
         
   
   
@@ -1894,7 +1894,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../qr_codes/" class="md-nav__link">
+      <a href="../../qr_codes/" class="md-nav__link">
         
   
   
@@ -1930,7 +1930,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../docs/" class="md-nav__link">
+      <a href="../../docs/" class="md-nav__link">
         
   
   
@@ -1965,7 +1965,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../research/" class="md-nav__link">
+      <a href="../../research/" class="md-nav__link">
         
   
   
@@ -2086,7 +2086,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../releases/1.17.1.9/" class="md-nav__link">
+      <a href="../../releases/1.17.1.9/" class="md-nav__link">
         
   
   
@@ -2114,7 +2114,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../releases/1.17.1.8/" class="md-nav__link">
+      <a href="../../releases/1.17.1.8/" class="md-nav__link">
         
   
   
@@ -2142,7 +2142,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../test-results/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -2178,7 +2178,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../old-releases/" class="md-nav__link">
+      <a href="../../old-releases/" class="md-nav__link">
         
   
   
@@ -2226,6 +2226,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#automated-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capacity-and-reliability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capacity and reliability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#firmware-build-qualification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Firmware build qualification
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2241,7 +2282,7 @@
 
 
   
-    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/usb_serial_backpressure.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/test-results/companion_lost_reply.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2250,13 +2291,144 @@
 
 
 <!-- meshcore-hosted-doc-link:start -->
-<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/usb_serial_backpressure/">View this page on MeshCore Docs</a>.</p>
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/companion_lost_reply/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-<h1 id="document-moved">Document moved</h1>
-<script>window.location.replace(new URL("../test-results/usb_serial_backpressure/" + window.location.hash, window.location.href));</script>
-
-<p>This document is now in <a href="../test-results/usb_serial_backpressure/">Test Results</a>.</p>
+<h1 id="companion-lost-status-response-validation">Companion lost-status response validation</h1>
+<p>Validated on 2026-10-10. These are production-path host tests, browser tests
+and firmware builds. No lab radio was flashed for this feature; this report
+does not qualify a sleeping tracker client or a live LoRa exchange.</p>
+<h2 id="automated-checks">Automated checks</h2>
+<p>The responder test executes the actual private receive callback, message
+composition/send functions, ACK handling and local CLI policy. Seven compiled
+variants cover normal and shared one-key DM queues, a text terminal, explicit
+STM32 enablement, default STM32 exclusion and explicit exclusion elsewhere.
+AddressSanitizer and UndefinedBehaviorSanitizer checks passed.</p>
+<p>Coverage includes exact question matching, Yes/No loop avoidance, known full
+identities, temporary/unknown contacts, room/channel/CLI exclusions, a full
+offline inbox, duplicate requests, cooldowns, clock wrap, busy packet/ACK
+capacity, send failures and preservation of pending user messages/deadlines.
+Queueing the response preserves the shared send timer. ACK reception retains
+the existing shared-timer behavior; independent per-message expiry continues
+to protect pending user deliveries.
+Excluded builds have no responder state, automatic send, successful setting
+command, save or WebConfig capability.</p>
+<p>Saved preference tests cover all three values, all 256 stored byte values,
+legacy images loading off, reboot, atomic save failures, recovery copies and
+runtime adapter preservation. Existing CLI, delivery, inbox, notifications
+and preference regression suites passed after updating adapters for the new
+append-only preference byte.</p>
+<p>WebConfig tests execute the actual JSON and settings handlers with
+ArduinoJson. Chromium exercises Off -&gt; No -&gt; Yes -&gt; Off, Companion-only
+visibility and the absence of the control on infrastructure roles. Existing
+browser, authorization, secret masking and generated asset checks passed.
+Both new suites are included in the unit-test workflow.</p>
+<h2 id="capacity-and-reliability">Capacity and reliability</h2>
+<p>The responder cache is 184 bytes on ARM and retains four complete public keys.
+The saved preference uses an existing padding byte in the tested ARM preference
+object and one new byte in its explicit storage image. No heap allocation is
+introduced by the responder.</p>
+<p>Compact STM32 Companion images exceeded their existing application boundary
+when the responder was included. Those default to <code>MESH_ENABLE_LOST_REPLY=0</code>,
+preserving their existing features and filesystem layout. Explicit opt-in is
+tested synthetically and remains subject to the normal capacity checks.</p>
+<p>The ordinary RAK WisMesh Tag BLE queue uses 240 frames, retaining 350 contacts
+and 40 channels and saving 2,832 bytes. Source comparison showed that its prior
+256-frame recipe was already below the current runtime RAM allowance before
+the new 184-byte responder cache. Full retains its 256-frame shared queue.
+Sanitized tests exercise real FIFO wrapping, downloads and held-DM isolation
+at 240 slots, plus the production Full override.</p>
+<p>Queueing an answer suppresses that request even if later delivery fails. A
+tracker needs a fresh timestamp for a later poll, must stay awake for the
+private answer, and must authenticate its configured Companion. Plain Yes/No
+answers do not contain a poll ID, so delayed replies cannot be precisely
+correlated with a newer poll. An unanswered poll means unknown.</p>
+<h2 id="firmware-build-qualification">Firmware build qualification</h2>
+<p>All ten final builds passed flash and internal RAM policy checks. Compact
+STM32 and both Full targets were also packaged using the normal
+<code>v1.17.1.9-halo-keymind-cascade-dev</code> label. Ordinary targets used their normal
+PlatformIO recipes. Full nRF52 UF2 boundaries and applicable Bluetooth DFU
+handoff checks passed. These are local qualification artifacts, not new
+published release assets.</p>
+<table>
+<thead>
+<tr>
+<th>Companion target</th>
+<th>Responder</th>
+<th>Flash used / limit (bytes)</th>
+<th>Link-time internal RAM available / required (bytes)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAK 3x72 USB</td>
+<td>Excluded</td>
+<td>228,924 / 229,376</td>
+<td>24,728 / 17,408</td>
+</tr>
+<tr>
+<td>Tiny Relay USB</td>
+<td>Excluded</td>
+<td>228,944 / 229,376</td>
+<td>24,728 / 17,408</td>
+</tr>
+<tr>
+<td>Wio-E5 Mini USB</td>
+<td>Excluded</td>
+<td>228,888 / 229,376</td>
+<td>24,704 / 17,408</td>
+</tr>
+<tr>
+<td>Wio-E5 USB</td>
+<td>Excluded</td>
+<td>229,008 / 229,376</td>
+<td>24,736 / 17,408</td>
+</tr>
+<tr>
+<td>T1000-E Full</td>
+<td>Included</td>
+<td>607,480 / 708,608</td>
+<td>87,064 / 44,864</td>
+</tr>
+<tr>
+<td>RAK WisMesh Tag Full</td>
+<td>Included</td>
+<td>649,408 / 712,704</td>
+<td>82,112 / 44,864</td>
+</tr>
+<tr>
+<td>T1000-E USB</td>
+<td>Included</td>
+<td>426,756 / 708,608</td>
+<td>48,248 / 38,944</td>
+</tr>
+<tr>
+<td>Pico W USB</td>
+<td>Included</td>
+<td>640,180 / 1,568,768</td>
+<td>101,712 / 17,408</td>
+</tr>
+<tr>
+<td>Heltec V4 BLE</td>
+<td>Included</td>
+<td>1,550,217 / 6,553,600</td>
+<td>263,448 / 118,560</td>
+</tr>
+<tr>
+<td>RAK WisMesh Tag BLE</td>
+<td>Included</td>
+<td>459,564 / 712,704</td>
+<td>46,316 / 44,864</td>
+</tr>
+</tbody>
+</table>
+<p>The STM32 historical-size table uses byte entries while retaining a 32-bit
+input file size; exhaustive tests reject oversized aliases and partial
+images. Tiny Relay and Wio-E5 use the size option already used by neighboring
+STM32 recipes. Existing terminal help was combined into fewer writes while
+retaining its text, order and 256-byte maximum per write. Supported images
+also show the new lost-reply commands. Contacts, channels and filesystem
+boundaries are unchanged on those compact boards.</p>
 
 
 
@@ -2306,28 +2478,28 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
-        <script src="../_javascript/hosted_doc_links.js?v=20261007-1"></script>
+        <script src="../../_javascript/hosted_doc_links.js?v=20261007-1"></script>
       
-        <script src="../_javascript/notification_builder.js?v=20261006-channel9"></script>
+        <script src="../../_javascript/notification_builder.js?v=20261006-channel9"></script>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20261008-rak-uart2-1"></script>
+        <script src="../../_javascript/firmware_picker.js?v=20261008-rak-uart2-1"></script>
       
-        <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
+        <script src="../../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
       
-        <script src="../_javascript/management_decoder.js"></script>
+        <script src="../../_javascript/management_decoder.js"></script>
       
-        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
+        <script src="../../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
       
-        <script src="../_javascript/preset_test.js?v=20260923-2"></script>
+        <script src="../../_javascript/preset_test.js?v=20260923-2"></script>
       
-        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
+        <script src="../../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
       
     
   </body>
