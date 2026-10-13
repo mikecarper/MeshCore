@@ -3450,6 +3450,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#rak4631-shared-peripheral-power" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK4631 shared peripheral power
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#sync-this-nodes-clock-with-gps-time" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6314,6 +6325,17 @@
     <span class="md-ellipsis">
       
         View or change GPS state
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rak4631-shared-peripheral-power" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK4631 shared peripheral power
       
     </span>
   </a>
@@ -11025,11 +11047,42 @@ clear recent.repeater
 <p><strong>Default:</strong> <code>off</code></p>
 <p><strong>Note:</strong> These command names are shared with GPS-capable Companion builds.
 Companion reports <code>on</code> or <code>off</code>; infrastructure includes receiver details:
-- <code>off</code> when the GPS hardware is disabled
-- <code>on, {active|deactivated}, {fix|no fix}, {sat count} sats</code> when the GPS hardware is enabled</p>
+- <code>off, {powered|unpowered}</code> when GPS is manually disabled
+- <code>on, {powered|unpowered}, {fix|no fix}, {sat count} sats</code> when GPS is enabled</p>
+<p><code>powered</code> describes the supply, not proof that the receiver is tracking or
+asleep. Shared-power hardware can remain powered while GPS processing is off.</p>
 <p>On repeaters, <code>gps off</code> cancels any acquisition already in progress. A later
 authorized location-telemetry request may wake the receiver, but only until its
-first valid fix is cached; the receiver then powers down again.</p>
+first valid fix is cached; GPS processing then stops again. Whether its supply
+can also turn off depends on the board's power policy below.</p>
+<hr />
+<h4 id="rak4631-shared-peripheral-power">RAK4631 shared peripheral power</h4>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-text">get peripherals.mode
+set peripherals.mode gps-only
+set peripherals.mode shared
+reboot
+</code></pre>
+<p><strong>Default:</strong> <code>gps-only</code> on RAK4631. The saved mode takes effect only after
+reboot; setting it does not switch power immediately. <code>get peripherals.mode</code>
+reports the saved choice, which may differ from the current boot's mode.</p>
+<ul>
+<li><code>gps-only</code>: when no protected power owner exists, GPS-off and GPS sleep can
+  turn off the shared WisBlock <code>3V3_S</code> supply. Select this only when other
+  attached peripherals do not need that supply.</li>
+<li><code>shared</code>: keeps <code>3V3_S</code> powered for other peripherals. Save this mode and
+  reboot when using other WisBlock modules; firmware does not infer this choice
+  from an I2C scan.</li>
+</ul>
+<p>Ethernet/PoE builds and detected external NOR storage automatically keep the
+rail on, even in <code>gps-only</code> mode or when the network service is disabled.
+RAK3401 permanently protects the same rail because its radio frontend needs
+it; <code>peripherals.mode</code> is a RAK4631 setting, not an override of that protection.</p>
+<p>On a powered shared rail, RAK12501/L76K cannot be independently switched off:
+GPS-off stops MCU parsing, not physical GNSS operation. Other receivers may use
+internal power-saving commands, but <code>shared</code> does not promise physical sleep.
+UART1 bridge ownership remains protected; changing this mode does not grant
+permission to connect two transmitters to the GPS UART.</p>
 <hr />
 <h4 id="sync-this-nodes-clock-with-gps-time">Sync this node's clock with GPS time</h4>
 <p><strong>Usage:</strong> 
