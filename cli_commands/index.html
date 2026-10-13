@@ -3583,6 +3583,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#rs232-heartbeat-and-automatic-standby" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RS232 heartbeat and automatic standby
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#add-a-delay-to-packets-routed-through-this-bridge" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6443,6 +6454,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#rs232-heartbeat-and-automatic-standby" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RS232 heartbeat and automatic standby
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#add-a-delay-to-packets-routed-through-this-bridge" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6748,6 +6770,25 @@ for <code>mt-</code> channels and the explicit <code>send mt.nodeinfo &lt;channe
 Chat remains plain text; NodeInfo is sent only when that command is requested.</p>
 <p>See <a href="../carrier_wave/">carrier-wave RF checks</a> for <code>cw on [seconds]</code>,
 <code>cw2 on [seconds]</code>, and stopping a carrier with <code>off</code>.</p>
+<p>For keyed Morse TX, use <code>morse send TEST DE N0CALL</code> and <code>morse stop</code>.
+Defaults are <strong>902.100 MHz and 25 WPM</strong>; <code>set morse.freq &lt;MHz&gt;</code> and
+<code>set morse.wpm &lt;1–60&gt;</code> save separate frequency/speed settings.
+Small-flash STM32 production builds retain Morse TX but do not include Morse
+RX by default; listen/read/stats/clear return an unsupported-RX error there.
+<code>get morse</code> shows status. See <a href="../carrier_wave/#tx-only-morse-messages">TX-only Morse messages</a>
+for supported characters, limits, overlap checks and the temporary pause in
+packet reception. Nothing transmits automatically.</p>
+<p>For timed Morse RX, use <code>morse listen &lt;minutes&gt;</code> (fractions allowed, 1 second
+through 5 minutes). <code>morse stop</code> ends TX or RX. All roles retain the bounded
+capture in RAM for <code>morse read [offset]</code>; follow each page's <code>next</code> value until
+<code>next=END</code>. <code>morse clear</code> removes it when idle. A new successful session or
+reboot replaces/removes the capture. Buffered USB/browser Full Companion ASCII
+terminals show decoded progress; other terminals and binary clients request it
+through the CLI, without adding
+unidentified text to authenticated channel/chat messages. Normal LoRa is paused
+during listening, so a remote administrator must wait for the selected session
+to end before reading the capture over LoRa. See <a href="../carrier_wave/#timed-morse-reception-and-retained-captures">timed reception</a>
+for arming time, real chip bandwidths and truncation behavior.</p>
 <p>For copy/paste on/off recipes and the differences from Full Companion, see
 <a href="../role_feature_switches/">feature switches by role</a>. The
 <a href="https://flasher.meshcore.io/console">USB web console</a> opens the default ASCII
@@ -8964,6 +9005,8 @@ on battery. <code>set powersaving on</code> still enables sensor/GPS power-savin
 the CPU continues normal idle yielding while keeping the console available.
 A running MQTT, RS232 or ESP-NOW bridge keeps infrastructure awake even when
 <code>get powersaving</code> reports <code>on</code>; that readback alone does not prove MCU sleep.
+Negotiated RS232 standby can stop an unresponsive UART owner without changing
+its saved enabled flag; see <code>rs232.autosleep</code> below. Other sleep blockers still apply.
 Adding UART wake alone would still discard the characters that trigger wake,
 so it cannot preserve an unmodified web console's first command. See the
 <a href="https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32s3/api-reference/system/sleep_modes.html#uart-wakeup-light-sleep-only">ESP-IDF UART wake documentation</a>.</p>
@@ -11095,6 +11138,63 @@ repeater images default to <code>off</code>; dedicated bridge images may default
 RS-232. <code>bridge.baud</code> and <code>bridge.uart</code> change only UART configuration, without
 restarting MQTT or ESP-NOW. The new UART mode starts off when upgrading old
 MQTT preferences and retains explicit settings across reboots.</p>
+<hr />
+<h4 id="rs232-heartbeat-and-automatic-standby">RS232 heartbeat and automatic standby</h4>
+<p>Available on repeater builds with an RS232 bridge. This is a UART-local control
+exchange, not an advert or a LoRa packet. Room builds without RS232 are unaffected.</p>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get rs232.status</code></li>
+<li><code>get rs232.heartbeat</code></li>
+<li><code>set rs232.heartbeat on|off</code></li>
+<li><code>get rs232.autosleep</code></li>
+<li><code>set rs232.autosleep on|off|force</code></li>
+<li><code>get rs232.idle</code></li>
+<li><code>set rs232.idle &lt;seconds&gt;</code> (60 through 3600; default 300)</li>
+</ul>
+<p>Heartbeat and negotiated automatic standby are <strong>on by default</strong>, including
+upgrades. An active UART pings every 30 seconds (52 bytes per ping).
+Stock bridges ignore that traffic and still receive the original data frames;
+they are not automatically put to sleep: standby is armed only after a fresh
+heartbeat reply proves support. Fresh, session/challenge-matched replies
+prove a bidirectional peer;
+ordinary valid incoming data can keep a legacy link awake but cannot prove
+heartbeat support. The status separates saved intent, actual UART state,
+standby/probe phase, and confirmed versus legacy/unknown peer liveness.</p>
+<p>Enable on both updated peers:</p>
+<pre><code class="language-text">set rs232.enabled on
+set rs232.heartbeat on
+set powersaving on
+set rs232.idle 300
+set rs232.autosleep on
+get rs232.status
+</code></pre>
+<p>With heartbeat, autosleep, and global powersaving all on and the peer's heartbeat
+support confirmed, when no peer responds for the idle interval the UART is soft-stopped while
+<code>rs232.enabled</code> stays <code>on</code>. It wakes after 30 seconds for a 2-second probe;
+every eighth probe listens for 40 seconds. That longer window spans the other
+side's sleep interval, so two sleeping updated peers can reconnect without
+manual intervention (normally within about five minutes with working wiring
+and timely loop servicing). Healthy peers remain running; this is dead-link
+power saving, not an idle-data duty cycle.</p>
+<p>Stock receivers ignore these control frames; they are deliberately invalid
+zero-length stock frames with an ASCII-only remainder. They do not allocate a
+mesh packet or enter LoRa forwarding. Stock peers do <strong>not</strong> answer heartbeats,
+so default negotiated standby never arms on a stock-only link. Valid legacy
+data after heartbeat replies cease also disarms negotiated standby, allowing
+a replacement stock peer to stay awake. Use <code>set rs232.autosleep force</code> only
+to sleep an absent/unconfirmed UART peer; this explicitly bypasses stock
+protection and can miss one-off stock packets.
+If a previously confirmed updated peer is silently replaced with stock while
+the local UART is already sleeping, its first packet can be missed before
+replacement is detected. Set autosleep off before that change, or restart the
+local bridge to clear the old negotiated session.
+While the UART is stopped it cannot receive a wake byte; mesh traffic
+during standby is not queued for later UART delivery. Turning autosleep or
+global powersaving off resumes the saved-enabled UART; <code>rs232.enabled off</code>
+remains an explicit off and never automatically wakes.
+<code>rs232.heartbeat off</code> stops initiating heartbeats and prevents standby. An
+updated active peer can still answer a valid incoming ping in passive mode.</p>
 <hr />
 <h4 id="add-a-delay-to-packets-routed-through-this-bridge">Add a delay to packets routed through this bridge</h4>
 <p><strong>Usage:</strong>

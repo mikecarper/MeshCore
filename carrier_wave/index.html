@@ -1324,6 +1324,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Carrier wave
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1340,6 +1358,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tx-only-morse-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TX-only Morse messages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#timed-morse-reception-and-retained-captures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timed Morse reception and retained captures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#continuous-carrier-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continuous carrier checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -2272,6 +2342,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tx-only-morse-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TX-only Morse messages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#timed-morse-reception-and-retained-captures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timed Morse reception and retained captures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#continuous-carrier-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Continuous carrier checks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -2300,6 +2411,241 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="carrier-wave-rf-checks">Carrier-wave RF checks</h1>
+<h2 id="tx-only-morse-messages">TX-only Morse messages</h2>
+<p>Morse TX mode keys an unmodulated carrier into dots and dashes. It does not send
+LoRa packets or automatically retransmit channel chat or
+private messages. <strong>The default is 902.100 MHz at 25 words per minute (WPM).</strong>
+Nothing transmits until an explicit <code>morse send</code> command is accepted.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>morse send TEST DE N0CALL</code></td>
+<td>Send the text once using the saved Morse frequency and speed.</td>
+</tr>
+<tr>
+<td><code>morse stop</code></td>
+<td>Stop Morse immediately and restore packet reception.</td>
+</tr>
+<tr>
+<td><code>get morse</code></td>
+<td>Show idle/active state, frequency, WPM and remaining time.</td>
+</tr>
+<tr>
+<td><code>get morse.freq</code></td>
+<td>Show the Morse TX frequency in MHz.</td>
+</tr>
+<tr>
+<td><code>set morse.freq 902.100</code></td>
+<td>Save the separate Morse TX frequency, rounded to 1 kHz.</td>
+</tr>
+<tr>
+<td><code>get morse.wpm</code></td>
+<td>Show the saved sending speed.</td>
+</tr>
+<tr>
+<td><code>set morse.wpm 12</code></td>
+<td>Slow transmission for easier hand decoding; supported range is 1–60 WPM.</td>
+</tr>
+</tbody>
+</table>
+<p>The default 25 WPM can be changed; for an easy-to-copy test, set 10–12 WPM.
+Standard timing uses one unit for a dot, three for a dash, one between elements,
+three between letters and seven between words, with a dot of <code>1200 / WPM</code>
+milliseconds. Letters are sent case-insensitively. Messages are bounded to
+80 ASCII characters, must contain supported Morse characters, and must fit
+within 180 seconds at the chosen speed. Supported punctuation is
+<code>. , ? ' ! / ( ) &amp; : ; = + - _ " $ @</code>; tabs, newlines and non-ASCII text are
+rejected. Invalid messages are rejected before
+the transmitter is keyed. There is no automatic callsign insertion.</p>
+<p>The Morse frequency is independent of <code>radio</code>, <code>tempradio</code>, <code>radio2</code> and
+<code>tempradio2</code>. Before sending, the firmware rejects a frequency that overlaps
+either packet-radio profile, including a guard outside its occupied bandwidth.
+It does <strong>not</strong> automatically find another channel or change your mesh settings.
+Choose another <code>morse.freq</code> if 902.100 MHz overlaps either profile. A frequency
+accepted as a saved value must still be supported by the actual radio at send
+time. Morse frequency/speed changes are rejected while Morse or CW is active.</p>
+<p>There is one physical transceiver: packet reception and transmission pause
+throughout the message, including the spaces between dots and dashes. Normal
+receive/profile scanning is restored afterward. Use local USB/BLE for immediate
+status and stopping; a reply to a remote LoRa CLI command waits until the
+message finishes. Changing either packet profile during Morse can abort it to
+preserve the frequency-separation safety checks.</p>
+<p>An unmodulated carrier has no selectable LoRa bandwidth. This uses native CW
+on SX1262/SX1268/LLCC68/STM32WLx and LR1110/LR1121/LR2021 radios, and
+zero-deviation FSK CW on SX1276-family radios with reset/recovery support, rather
+than pretending the narrowest receive filter sets the transmitted bandwidth.
+Morse sidebands depend on keying speed and transmitter edges. This is not a
+guarantee of a particular occupied RF bandwidth or freedom from interference.
+Unsupported radios reject the command without beginning transmission.
+The chips' configured TX ramps use 3400 microseconds on the SX126x-family and
+304 microseconds on the LR-family to reduce keying splatter. These are driver
+settings, not measured occupied-bandwidth results. Direct FEM gain changes are
+blocked while Morse owns the radio.</p>
+<p>Frequency and speed are saved in a separate checked <code>/morse_prefs</code> file;
+identity, contacts and existing radio preferences are unchanged. An active
+message is never restored after reboot. TX uses the board's existing <code>set tx</code>
+power setting and hardware power limits.
+Unreadable or corrupt saved Morse settings without a usable backup block
+sending rather than silently
+transmitting on the default frequency. After storage recovers, verify and save
+<code>morse.freq</code> (and the desired WPM); a verified save makes sending available again.</p>
+<p>Use an appropriate antenna or dummy load, lawful frequency/power and any
+required operator identification. The default frequency is a convenience, not
+permission to transmit or a claim that the channel is clear. Check the local
+band plan and listen first.</p>
+<h2 id="timed-morse-reception-and-retained-captures">Timed Morse reception and retained captures</h2>
+<p>Supported radios can temporarily listen for keyed carriers and decode the
+power envelope into text. This is a separate manual session, not another
+MeshCore packet channel or an authenticated sender. Nothing decoded is
+automatically transmitted, relayed or inserted into a channel/DM inbox.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>morse listen 1</code></td>
+<td>Listen for one minute at the saved <code>morse.freq</code>, using <code>morse.wpm</code> as the timing hint.</td>
+</tr>
+<tr>
+<td><code>morse listen 0.5</code></td>
+<td>Listen for 30 seconds. Fractions are allowed.</td>
+</tr>
+<tr>
+<td><code>morse listen 5</code></td>
+<td>Listen for the maximum five minutes, then restore packet reception.</td>
+</tr>
+<tr>
+<td><code>morse stop</code></td>
+<td>End TX or listening early. A received capture is retained.</td>
+</tr>
+<tr>
+<td><code>get morse</code></td>
+<td>Show TX/RX state, actual RX filter bandwidth, remaining time and capture length/truncation.</td>
+</tr>
+<tr>
+<td><code>morse stats</code></td>
+<td>Show retained receiver sample counts, noise/min/max/last power, timing unit, largest sample gap and read failures.</td>
+</tr>
+<tr>
+<td><code>morse read</code></td>
+<td>Read the first retained capture page.</td>
+</tr>
+<tr>
+<td><code>morse read 128</code></td>
+<td>Read beginning at character offset 128; use the offset returned by your previous page.</td>
+</tr>
+<tr>
+<td><code>morse clear</code></td>
+<td>Clear the retained capture when no Morse session is active.</td>
+</tr>
+</tbody>
+</table>
+<p>Listening is bounded to <strong>1–300 seconds</strong> for every role. Keep the first
+0.5 seconds quiet while the receiver learns its noise floor; start the sending
+radio at least one second after listening begins. Start with matching WPM on
+the sender and receiver. Noise, fading, interference and timing mismatch can
+produce errors; decoded text has no sender identity or integrity check.</p>
+<p>The receiver uses a continuous native FSK receive filter and live received
+signal strength (RSSI) to follow the carrier's on/off envelope. It does not
+transmit or require a packet preamble, sync word, CRC or direct-data pin:</p>
+<table>
+<thead>
+<tr>
+<th>Radio family</th>
+<th style="text-align: right;">Current Morse RX filter</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SX1276-family</td>
+<td style="text-align: right;">2.6 kHz</td>
+</tr>
+<tr>
+<td>SX1262/SX1268/STM32WLx, LLCC68</td>
+<td style="text-align: right;">4.8 kHz</td>
+</tr>
+<tr>
+<td>LR1110/LR1121, LR2021</td>
+<td style="text-align: right;">4.8 kHz</td>
+</tr>
+</tbody>
+</table>
+<p>Small-flash STM32 production builds disable Morse reception by default
+(<code>MESH_ENABLE_MORSE_RX=0</code>) because the receiver does not fit alongside their
+existing features. Morse TX, frequency/WPM settings and stopping remain
+available. Their listen/read/stats/clear commands return an unsupported-RX
+error. The STM32 filter above describes an explicitly enabled custom build,
+not RX support in those default production images.</p>
+<p><code>get morse</code> reports the actual configured bandwidth; this is not a measured
+selectivity or decoder-speed guarantee. Unsupported hardware rejects listening
+without changing the radio. A board also needs a proven complete LoRa-modem
+restoration path before native FSK RX is enabled. Narrow filters require
+sufficiently aligned oscillator frequencies. Passive listening may use either packet profile's
+frequency because it does not transmit; TX overlap protections still apply.
+FEM and saved Morse settings cannot be changed while a session owns the radio.</p>
+<p>Morse sessions defer periodic sensor/GPS processing, screen redraws and
+background storage work so they do not interrupt envelope timing. Pending
+work and its deadlines are retained and resume when the session ends. Buttons,
+command connections, watchdogs and battery shutdown checks remain active.
+<code>morse stats</code> reports <code>gap</code> in milliseconds: the largest observed gap between
+receiver samples, including unavoidable safety work. Large gaps can limit
+reliable speed even when the RF signal is strong.</p>
+<p>Repeater, Room, Sensor and Companion roles retain a bounded <strong>4096-character
+RAM capture</strong> after their normal packet receiver resumes. A successful new
+listening session replaces it; a failed start does not. <code>morse clear</code> or a
+reboot removes it. If the capture fills, listening stops early and
+<code>truncated=1</code>/capture-quota status is shown instead of continuing to discard
+incoming text. This does not change node keys, ACLs, stored radio
+settings or other files.</p>
+<p>Capture replies fit one CLI response and begin with a page header such as
+<code>&gt; 0000/0250 next=0125 truncated=0</code> followed by text. Send <code>morse read 125</code> to
+continue at the returned offset; <code>next=END</code> means the last page. Exact page
+length depends on the requesting transport's reply capacity, so follow <code>next</code>
+rather than assuming a fixed page size. Captures remain readable until you
+start another listening session or clear them.</p>
+<p>A Full Companion's owned buffered USB ASCII terminal or browser terminal shows
+decoded progress as <code>[Morse RX] ...</code>, paused while USB input is being edited or
+an earlier reply is draining. Complete records use that terminal's existing
+ordered output queue. Raw UART/HWCDC/TCP terminals use <code>get morse</code>/<code>morse read</code>
+instead of unsolicited progress. Binary Companion USB/BLE frames never receive
+raw text.
+Companion apps and other clients can request the same capture through their
+CLI using <code>morse read</code>; it is not presented as an authenticated chat message.
+There is no automatic LCD/inbox injection.</p>
+<p>One transceiver cannot listen for Morse and MeshCore LoRa simultaneously.
+During listening, normal packet reception/transmission is paused. An authorized
+remote <code>morse listen</code> first queues its reply on the existing packet-radio
+settings and starts only after the exact reply copies finish transmitting,
+with at least one successful transmission. It does not infer that the remote
+client received the reply. Failed queue admission/all-copy failure, permission
+revocation, changed Morse settings or a 30-second handoff deadline cancel the
+request without starting RX. A briefly busy radio can retry admission for up
+to 10 seconds after reply transmission, within that same handoff deadline.
+For remote captures, send <code>morse listen 1</code>, start the Morse sender after the
+queued reply and initial quiet learning interval, wait beyond the selected
+minute (plus any admission delay), then request
+<code>get morse</code> and <code>morse read</code> over LoRa. Use a local console to stop early.
+Hardware recovery failures hold exclusive ownership until the receiver can
+be safely restored; <code>get morse</code> reports recovery pending.</p>
+<p>Lab images compiled with <code>MESH_MORSE_HIL=1</code> additionally provide
+<code>morse trace [offset]</code>. A page begins <code>&gt; offset/length t=total n=next x=wrapped</code>
+and contains up to eight <code>elapsed_ms,rssi_dbm,flags;</code> records. <code>n=END</code> ends the
+retained window; <code>x=1</code> means earlier entries were overwritten. Offsets address
+the oldest of the latest 512 retained records; retrieve after stopping or
+check that <code>t</code> stays unchanged between pages. Flags are raw key 1, committed
+key 2, debounce candidate 4 and noise learning 8. This diagnostic command and
+its trace storage are absent from ordinary production builds.</p>
+<h2 id="continuous-carrier-checks">Continuous carrier checks</h2>
 <p><code>cw</code> and <code>cw2</code> transmit a continuous, unmodulated carrier at the selected
 profile's frequency and the configured TX power. They are available in the
 shared ASCII CLI on SX1276-family, SX1262-family, and LR1110 builds, including repeaters,

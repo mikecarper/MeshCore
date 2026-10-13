@@ -605,6 +605,10 @@
          <lastmod>2026-10-13</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/morse_rx_hil_2026-10-12/</loc>
+         <lastmod>2026-10-13</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/mqtt_tls_v4_regression/</loc>
          <lastmod>2026-10-13</lastmod>
     </url>
