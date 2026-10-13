@@ -4047,6 +4047,11 @@ WiFi store, and enablement is saved in node preferences. WiFi/BLE builds apply
 enablement from the main loop; exclusive WiFi/BLE builds apply it after reboot.
 <code>get wifi.status</code> reports the connection state and <code>get wifi.ip</code> reports the
 station address, the setup AP address, or <code>(not connected)</code>.
+<code>get wifi.tcp</code> reports the actual app listener, interface registration, client
+connection and completed frame counters. It is read-only and available through
+the same binary CLI command over BLE or USB when TCP is unreachable. Listener
+startup failures recover automatically without resetting a healthy client or
+the WiFi connection; see <a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server">the CLI diagnostics</a>.
 <code>set freq &lt;MHz&gt;</code> works through command <code>0x42</code> and authorized LoRa CLI, like
 <code>set radio</code>; it saves the frequency and requires reboot to apply. See
 <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>

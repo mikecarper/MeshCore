@@ -7130,8 +7130,25 @@ WiFi; <code>set wifi.enabled 0</code> disables it. Saved enablement survives upg
 credentials alone do not turn it on. ESP32 simultaneous-transport builds apply
 the change from the main loop; exclusive-transport builds and Pico W apply it
 after reboot. This does not disable a primary ESP-NOW mesh radio or add Bluetooth
-to a WiFi-only build.
-See <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>
+to a WiFi-only build.</p>
+<p>ESP32 WiFi Companions also accept <code>get wifi.tcp</code> over USB, BLE, or the browser
+CLI. This checks the app's TCP listener (normally port <code>5000</code>), not just the
+WiFi association. <code>listening</code> means the socket is open; <code>waiting-ip</code> means no
+usable station or setup-AP address yet; <code>retrying</code> means listener startup
+failed and will be retried automatically; <code>off</code> means no enabled listener
+request. <code>reg=1</code> confirms the interface is registered for Companion commands.
+<code>client=1</code> means a TCP client is connected. <code>acc</code>, <code>rx</code>, and <code>tx</code> count accepted
+clients, complete received frames, and complete transmitted frames since boot;
+the value after <code>/</code> is the last frame's hexadecimal opcode. <code>fail</code>, <code>err</code>, and
+<code>retry</code> show listener failures, the last socket error, and seconds until retry.
+<code>drop</code> gives the last client-disconnect reason. These counters contain no
+message contents or credentials. An open listener does not prove a router or
+guest-network firewall permits access from the phone.</p>
+<p>Listener retries wait 1, 2, 4, 8, 16, then at most 30 seconds. They do not
+reconnect WiFi, interrupt BLE/WebConfig/OTA, replace a healthy app connection,
+or re-enable explicitly disabled WiFi. <code>get display.wifi</code> includes <code>tcp=1</code>
+only when the listener is actually open; <code>services=1</code> alone is not proof.</p>
+<p>See <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>
 for the complete access rules. WiFi-only Companions accept
 all three modes. A Full Companion that runs BLE and infrastructure WiFi
 simultaneously rejects <code>none</code> because coexistence requires modem sleep.
