@@ -16,7 +16,7 @@
         <link rel="prev" href="..">
       
       
-        <link rel="next" href="../d/">
+        <link rel="next" href="../notifications/">
       
       
         
@@ -491,34 +491,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../d/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Short firmware links
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -2591,9 +2563,6 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="firmware-picker">Firmware picker</h1>
-<p>For shorter, version-pinned firmware download URLs, use
-<a href="../d/">Short firmware links</a>. Those links serve the original verified firmware
-files and include the RAK4631 Full Companion 1.17.1.10 preview2 for MeshTalk testing.</p>
 <p>Each result now includes <strong>Restore your settings after flashing</strong>. Its commands
 follow the selected logging mode and the exact image's verified role/hardware
 controls. Click On, Off, or Check to view and copy the commands; Companion
@@ -2627,7 +2596,7 @@ OTAFIX bootloader and a package compatible with the installed target.</p>
 <p>The picker reads public release metadata from GitHub. It does not upload device
 information. Hardware names, target names, and download links come directly
 from the published firmware assets.</p>
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.9-88c85108" data-bootloaders-url="../_data/bootloader_manifest.json?v=20261002-1" data-share-url="https://mikecarper.github.io/MeshCore/firmware_picker/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.17.1.9-88c85108" data-bootloaders-url="../_data/bootloader_manifest.json?v=20261002-1" data-share-url="https://mikecarper.github.io/MeshCore/p/">
   <div class="firmware-picker-intro" role="note">
     <strong>Current release set</strong>
     <p data-role="release-set">Loading release information...</p>
@@ -2656,7 +2625,7 @@ from the published firmware assets.</p>
   <p class="firmware-picker-order-note">
     Pick in any order. Use <strong>Any</strong> to clear one choice, or clear
     everything with the button below. The address bar updates with your choices;
-    copy its URL to reopen or share the same selection.
+    use <strong>Copy link to settings</strong> for a shorter link to the same selection.
   </p>
 
   <form class="firmware-picker-form" data-role="form">
@@ -2732,7 +2701,7 @@ from the published firmware assets.</p>
     <div class="firmware-picker-form-actions firmware-picker-wide">
       <button type="reset" data-action="clear" disabled>Clear all choices</button>
       <button type="button" data-action="copy-link" disabled>Copy link to settings</button>
-      <a data-role="share-link" hidden>Link to these settings</a>
+      <a data-role="share-link" hidden>Short link to these settings</a>
       <p data-role="link-status" aria-live="polite"></p>
     </div>
   </form>
@@ -2879,28 +2848,34 @@ Companion; choose the combined <code>heltec_v4_repeater</code> Full firmware and
 ESP-NOW to make that board the LoRa/ESP-NOW gateway. Use its exact merged artifact when
 changing roles or partition layouts.</p>
 <h2 id="share-a-selection">Share a selection</h2>
-<p>Select any combination of choices, then copy the address bar or use <strong>Copy link
-to settings</strong>. Opening the link restores those choices after the release
+<p>Select any combination of choices, then use <strong>Copy link to settings</strong> for a
+short URL under <code>https://mikecarper.github.io/MeshCore/p/</code>. Opening the link
+restores those choices after the release
 catalog loads. Partial selections work too, so you can share a board and role
 while leaving other choices open. <strong>Clear all choices</strong> removes the picker
 parameters from the URL. Changes update the current browser-history entry
 without reloading the page or adding a Back-button entry for every click.</p>
-<p>For example, <a href="?hardware=RAK_3401&amp;role=repeater&amp;ota=lora-receiver&amp;feature=full&amp;variant=default">RAK3401 unified Full repeater</a>
+<p>For example, <a href="https://mikecarper.github.io/MeshCore/p/?s=1.hRAK_3401.rrepeater.olora-receiver.ffull.vdefault">RAK3401 unified Full repeater</a>
 preselects that board, role, OTA capability, and Full sensor policy. Supported
 internal or external storage is detected by the unified image.</p>
-<p>The query parameters are <code>chipFamily</code>, <code>hardwareFamily</code>, <code>hardware</code>, <code>role</code>,
+<p>Short links encode only the selected choices in a versioned <code>s</code> parameter.
+Hardware identifiers stay readable, and the link omits redundant hardware-family
+and automatically selected chip-family values. It keeps profile and install
+choices explicitly rather than relying on the current catalog's defaults.
+The address bar also uses the compact selection format; copying it works too.</p>
+<p>Existing long links still work. Their query parameters are <code>chipFamily</code>, <code>hardwareFamily</code>, <code>hardware</code>, <code>role</code>,
 <code>logging</code>, <code>ota</code>, <code>mode</code>, <code>feature</code>, <code>variant</code>, and <code>install</code>. Values use the
 picker's internal identifiers rather than the displayed labels. One Firmware
 profile button sets <code>ota</code>, <code>feature</code>, and <code>variant</code> together. Existing links
 with only some of those choices still work and show their partial selection.
-The generated
-link also records <code>chipAuto</code> so automatic chip-family selection or an explicit
+The selection also records when chip-family filtering was chosen manually so
+automatic chip-family selection or an explicit
 <strong>Any</strong> choice behaves the same after reopening. Existing section anchors and
 unrelated query parameters are preserved.</p>
 <p>Links use the current release catalog. If a linked choice is no longer available
 or conflicts with another choice, the picker identifies it and asks you to
 review the remaining selections. The downloadable HTML's <strong>Copy link to
-settings</strong> button creates a public website link that other people can open.</p>
+settings</strong> button creates a short public website link that other people can open.</p>
 <h2 id="full-versus-standard">FULL versus standard</h2>
 <p>Current ESP32 ordinary releases use one Full / complete image per exact board
 and role. Full keeps the supported feature set and CLI; runtime switches select
@@ -3268,7 +3243,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20261008-rak-uart2-1"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261012-short-picker-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
       

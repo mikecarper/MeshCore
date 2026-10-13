@@ -23,6 +23,11 @@
   ]);
 
   const FACET_FIELDS = Object.freeze(FILTER_FIELDS.concat(["install"]));
+  // Versioned picker selections stay self-contained as release catalogs change.
+  const SHORT_SELECTION_FIELDS = Object.freeze({
+    c: "chipFamily", g: "hardwareFamily", h: "hardware", r: "role",
+    l: "logging", o: "ota", m: "mode", f: "feature", v: "variant", i: "install",
+  });
   const PROFILE_FIELDS = Object.freeze(["ota", "feature", "variant"]);
   const CHOICE_FIELDS = Object.freeze([
     "chipFamily", "hardwareFamily", "hardware", "role", "logging",
@@ -1207,6 +1212,7 @@
 
   function selectionUrl(url, filters, automaticChipFamily) {
     const result = new URL(url);
+    result.searchParams.delete("s");
     FACET_FIELDS.forEach(function (field) {
       result.searchParams.delete(field);
       if (filters[field]) result.searchParams.set(field, filters[field]);
@@ -1218,8 +1224,61 @@
     return result.href;
   }
 
+  function shortSelectionUrl(url, filters, automaticChipFamily) {
+    const result = new URL(url);
+    FACET_FIELDS.concat(["chipAuto", "s"]).forEach(function (field) {
+      result.searchParams.delete(field);
+    });
+    const parts = ["1"];
+    Object.keys(SHORT_SELECTION_FIELDS).forEach(function (key) {
+      const field = SHORT_SELECTION_FIELDS[key];
+      const value = filters[field];
+      if (!value || (field === "chipFamily" && automaticChipFamily) ||
+          (field === "hardwareFamily" && value === filters.hardware)) return;
+      // Dots delimit fields; escape them even though encodeURIComponent does not.
+      parts.push(key + encodeURIComponent(value).replace(/\./g, "%2E"));
+    });
+    if ((filters.hardwareFamily || filters.hardware) && !automaticChipFamily) {
+      parts.push("a0");
+    }
+    if (parts.length > 1) result.searchParams.set("s", parts.join("."));
+    return result.href;
+  }
+
+  function shortSelectionParams(params) {
+    const parts = params.get("s").split(".");
+    const result = new URLSearchParams();
+    if (params.getAll("s").length !== 1 || parts.shift() !== "1" || !parts.length) {
+      throw new Error("unsupported or incomplete short picker link");
+    }
+    const seen = new Set();
+    parts.forEach(function (part) {
+      const key = part.charAt(0);
+      if (seen.has(key) || (key !== "a" &&
+          !Object.prototype.hasOwnProperty.call(SHORT_SELECTION_FIELDS, key))) {
+        throw new Error("duplicate or unknown short picker field");
+      }
+      seen.add(key);
+      const value = decodeURIComponent(part.slice(1));
+      if (!value || (key === "a" && value !== "0" && value !== "1")) {
+        throw new Error("invalid short picker field");
+      }
+      result.set(key === "a" ? "chipAuto" : SHORT_SELECTION_FIELDS[key], value);
+    });
+    return result;
+  }
+
   function selectionFromUrl(url, profiles) {
-    const params = new URL(url).searchParams;
+    let params = new URL(url).searchParams;
+    if (params.has("s")) {
+      try {
+        // The versioned selection is authoritative over any legacy fields.
+        params = shortSelectionParams(params);
+      } catch (error) {
+        return { filters: {}, automaticChipFamily: false,
+          unavailable: ["short link: " + error.message] };
+      }
+    }
     const requested = {};
     const filters = {};
     const unavailable = [];
@@ -1952,7 +2011,7 @@
     }
 
     function updateSelectionUrl() {
-      const url = selectionUrl(global.location.href, filters, automaticChipFamily);
+      const url = shortSelectionUrl(global.location.href, filters, automaticChipFamily);
       if (url !== global.location.href) {
         try {
           global.history.replaceState(global.history.state, "", url);
@@ -1962,9 +2021,11 @@
         }
       }
       if (shareLink) {
-        const base = global.location.protocol === "file:"
-          ? root.getAttribute("data-share-url") : url;
-        shareLink.href = selectionUrl(base || url, filters, automaticChipFamily);
+        const base = new URL(global.location.protocol === "file:"
+          ? root.getAttribute("data-share-url") || url : url);
+        base.pathname = base.pathname.replace(/\/firmware_picker\/$/, "/p/");
+        if (global.location.protocol === "file:") base.hash = global.location.hash;
+        shareLink.href = shortSelectionUrl(base.href, filters, automaticChipFamily);
         shareLink.hidden = false;
       }
       if (copyLinkButton) copyLinkButton.disabled = false;
@@ -1987,13 +2048,13 @@
     if (copyLinkButton && shareLink) copyLinkButton.addEventListener("click", function () {
       const copy = global.navigator.clipboard && global.navigator.clipboard.writeText;
       if (!copy) {
-        linkStatus.textContent = "Copy the address bar, or copy the 'Link to these settings' link.";
+        linkStatus.textContent = "Copy the address bar, or copy the 'Short link to these settings' link.";
         return;
       }
       global.navigator.clipboard.writeText(shareLink.href).then(function () {
         linkStatus.textContent = "Link copied.";
       }).catch(function () {
-        linkStatus.textContent = "Copy the address bar, or copy the 'Link to these settings' link.";
+        linkStatus.textContent = "Copy the address bar, or copy the 'Short link to these settings' link.";
       });
     });
     global.addEventListener("popstate", restoreSelectionUrl);
@@ -2513,6 +2574,7 @@
     choicesUseSameFirmware: choicesUseSameFirmware,
     selectionRequirements: selectionRequirements,
     selectionUrl: selectionUrl,
+    shortSelectionUrl: shortSelectionUrl,
     selectionFromUrl: selectionFromUrl,
     canonicalAsset: canonicalAsset,
     resolveProfileAssets: resolveProfileAssets,

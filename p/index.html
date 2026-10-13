@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MeshCore firmware picker</title>
+  <link rel="canonical" href="../firmware_picker/">
+</head>
+<body>
+  <p>Opening the firmware picker. <a id="picker-link" href="../firmware_picker/">Continue to the picker</a>.</p>
+  <script>
+    (function () {
+      "use strict";
+      const target = new URL("../firmware_picker/", window.location.href);
+      target.search = window.location.search;
+      target.hash = window.location.hash;
+      document.getElementById("picker-link").href = target.href;
+      window.location.replace(target.href);
+    })();
+  </script>
+</body>
+</html>
