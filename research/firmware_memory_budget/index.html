@@ -2300,6 +2300,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#nrf52-companion-flash-savings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nRF52 Companion flash savings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-evidence-and-regression-tests" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2684,6 +2695,81 @@ mOTA listener leaves all 256 slots available. More than 128 unread frames
 refuses the loan; sync messages with an app first. USB/TCP source detach or
 disconnect returns all 256 slots and releases the ESP32 proof/leaf scratch
 buffers. The display and simultaneous USB, Bluetooth and WiFi remain enabled.</p>
+<h2 id="nrf52-companion-flash-savings">nRF52 Companion flash savings</h2>
+<p>The common nRF52 Companion policy now retains a 960-byte Ed25519 fixed-base
+table in place of the original 30,720-byte table. It evaluates the same signed
+radix-16 digits with constant-time table selection, using more doublings instead
+of storing 32 shifted rows. Compact SHA-512 and scalar arithmetic keep the same
+outputs and wire format. The larger RAM-built table used by infrastructure
+profiles is not enabled for Companions.</p>
+<p>The policy also omits unused USB device MSC/HID/MIDI/vendor/video classes,
+SparkFun's unused automatic NMEA cache and the invisible SSD1306 vendor splash.
+For the exact hash-qualified CC310 archive, the domain wrapper retains P-256
+for BLE Secure Connections and removes unused legacy curves. CDC, DFU, USB host,
+GPS navigation, all Companion fonts, Meshtext, contacts, channels, the Reader
+corpus and the 8 KiB loop stack remain available. Explicit board/user overrides
+and <code>MESH_NRF52_COMPANION_TRIM=0</code> retain their requested values. Other platforms
+do not receive this Companion policy.</p>
+<p>The RAK4631 Full comparison uses the released 1.17.1.10 preview3 ELF at
+<code>9ce2a076</code> and the same target with these changes and Reader chapter/range
+support. Flash is initialized linked code/data; static RAM is <code>.data</code> plus
+ordinary <code>.bss</code>, excluding separately reserved arenas.</p>
+<table>
+<thead>
+<tr>
+<th>Measurement</th>
+<th style="text-align: right;">Preview3</th>
+<th style="text-align: right;">With Companion trims and Reader ranges</th>
+<th style="text-align: right;">Difference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linked flash bytes</td>
+<td style="text-align: right;">710,404</td>
+<td style="text-align: right;">652,908</td>
+<td style="text-align: right;">57,496 fewer (56.1 KiB)</td>
+</tr>
+<tr>
+<td>Static RAM bytes</td>
+<td style="text-align: right;">157,028</td>
+<td style="text-align: right;">153,876</td>
+<td style="text-align: right;">3,152 fewer (3.1 KiB)</td>
+</tr>
+<tr>
+<td>Linked heap capacity bytes</td>
+<td style="text-align: right;">78,484</td>
+<td style="text-align: right;">81,636</td>
+<td style="text-align: right;">3,152 more</td>
+</tr>
+<tr>
+<td>UF2 space below the application ceiling</td>
+<td style="text-align: right;">2,048</td>
+<td style="text-align: right;">59,648</td>
+<td style="text-align: right;">57,600 more</td>
+</tr>
+</tbody>
+</table>
+<p>Physical RAK signing averaged 14.4 ms with the original table and 35.9 ms with
+the smaller implementation. All 24 signatures per image, including SHA-512
+block-boundary message lengths, matched byte for byte and verified independently.
+The linked ARM emulator measures 1,928 bytes in signing versus 1,528 before;
+these are crypto function frames only, excluding callers, interrupts and other
+tasks. The loop stack stays at 8 KiB. A full firmware RAM check still applies.</p>
+<p>CI runs <code>scripts/check_nrf52_companion_crypto.py</code> on the actual Full RAK ELF.
+It checks the 960-byte table and retained Reader corpus, executes two RFC 8032
+vectors, and rejects crypto function stack use above 2 KiB. Host tests compare
+1,791 scalars and 128 keypair/signature/shared-secret cases against the original
+implementation, plus scalar boundary/random and sanitizer tests. Clean Full
+builds also cover T1000-E and T096. These builds are synthetic coverage for
+those boards; the physical Reader/signing tests use the RAK4631.</p>
+<p>Reader commands support <code>get reader 2</code> and <code>get reader 2:2-12</code>. Text terminals
+stream at most 96 bytes per mesh loop, preserving progress under zero/short
+writes. The TCP console uses one nonblocking socket-send attempt for the stream,
+so a peer that stops reading cannot hold the mesh loop in WiFiClient retries.
+App CLI replies remain bounded and supply a continuation command.
+The physical RAK passed all 21 chapters, ranges, app-style continuation replies,
+a paused USB reader exceeding the 4 KiB queue, and disconnect cancellation.</p>
 <h2 id="release-evidence-and-regression-tests">Release evidence and regression tests</h2>
 <p>Full Companions without PSRAM also use
 <a href="../companion_contact_cache/">16-entry path and shared-secret caches</a>.

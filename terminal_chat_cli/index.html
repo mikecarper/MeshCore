@@ -2634,9 +2634,19 @@ for the state machine and limitations.</p>
 <h2 id="commands">Commands</h2>
 <p>ESP32 and nRF52 Full Companions include an offline World English Bible lookup:</p>
 <pre><code class="language-text">get reader 3:16
+get reader 2
+get reader 2:2-12
 </code></pre>
-<p>This returns a single complete verse from the embedded corpus, using plain ASCII punctuation
-with unchanged wording and capitalization, through the local USB/TCP terminal.
+<p>These select a verse, an entire chapter, or an inclusive verse range from the
+embedded corpus. Local USB/TCP/browser terminals stream the complete selection
+in small chunks, keeping the radio loop running while the terminal drains.
+A new command or disconnected session cancels unfinished output. Text uses
+plain ASCII punctuation with unchanged wording and capitalization.</p>
+<p>In the app's USB/BLE CLI, each reply stays within the existing frame limit.
+Follow the displayed <code>Next: get reader ...</code> command to continue a long verse
+or advance through the selected chapter/range. The optional final number is
+the page within the first verse of that command, for example <code>get reader 21:17 2</code>.
+The continuation command retains the requested range's end.
 See <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/bible/README.md">Reader lookup and compression</a> for the
 source, supported build profiles and memory costs.</p>
 <pre><code>set freq {frequency}
