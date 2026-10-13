@@ -174,6 +174,12 @@ public:
   virtual bool isUserGpioAvailable(uint8_t pin) const { return false; }
   virtual uint8_t getStartupReason() const = 0;
   virtual bool getBootloaderVersion(char* version, size_t max_len) { return false; }
+  // Prepare a device-bound lightweight WiFi OTA session before leaving the
+  // current control transport. Unsupported uploaders fail without a token.
+  virtual bool getOTAIdentity(char reply[], size_t max_len) {
+    if (reply && max_len) reply[0] = 0;
+    return false;
+  }
   virtual bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) { return false; }   // not supported
   virtual bool stopOTAUpdate(char reply[]) { return false; }   // not supported
   virtual bool isOTAUpdateRunning() const { return false; }

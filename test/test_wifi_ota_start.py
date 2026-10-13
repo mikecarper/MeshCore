@@ -606,6 +606,7 @@ struct Updater {
   Server server;
   void* task = reinterpret_cast<void*>(1);
   void* board = reinterpret_cast<void*>(2);
+  struct { void clear() {} } identity;
   @END@
 };
 int main() {

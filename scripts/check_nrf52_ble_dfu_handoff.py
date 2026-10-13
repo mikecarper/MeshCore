@@ -15,10 +15,12 @@ from firmware_elf import FirmwareElf
 HELPER_NAME = "mesh_nrf52_dfu_jump"
 # Assembled Cortex-M4/Thumb helper. These instructions are entirely local: no
 # relocation or compiler-generated C stack access can change with image layout.
-# The only post-transition stack writes construct the explicit handler-mode
-# exception frame. The normal FreeRTOS thread path performs no stack access.
+# The retained peer is copied with interrupts masked, after the last call into
+# the live application. Post-transition stack writes only construct the explicit
+# handler exception frame. The FreeRTOS thread path performs no stack access.
 HELPER_CODE = bytes.fromhex(
-    "72b6eff305830168426881f30888002080f3148880f3118880f31388"
+    "72b60b4647f68071c2f200013e2213f801cb01f801cb013af9d1"
+    "eff305830168426881f30888002080f3148880f3118880f31388"
     "bff34f8fbff36f8f002b03d16ff0000e62b6104788b0009001900290"
     "039004906ff00000059006924ff0045007906ff0060e62b67047"
 )

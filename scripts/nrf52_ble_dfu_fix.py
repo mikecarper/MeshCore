@@ -2,9 +2,10 @@
 
 The original callback selects MSP while its C frame is still on PSP. GCC 14
 then emits a stack restore on MSP before reaching the bootloader jump, outside
-the nRF52840 SRAM boundary. Keep the legacy B1/retained-peer protocol, but move
-the stack transition into a naked, nonreturning assembly helper. Patch a private
-build copy; never modify PlatformIO's shared framework cache.
+the nRF52840 SRAM boundary. The fixed peer address also overlaps live application
+RAM (including the flash mutex in a Tower BLE build). Stage peer data locally
+while reading the bond, then copy it only after masking interrupts in the naked,
+nonreturning helper. Keep the B1 protocol and patch only a private build copy.
 """
 
 from pathlib import Path
@@ -16,10 +17,21 @@ HELPER = r'''// Keep all stack operations inside this assembly-only transition. 
 // the callback must return neither through its PSP frame nor through a C helper
 // after CONTROL selects MSP. Preserve handler-mode entry supported by BLEDfu.
 extern "C" __attribute__((naked, noinline, noreturn, used))
-void mesh_nrf52_dfu_jump(uint32_t start_addr)
+void mesh_nrf52_dfu_jump(uint32_t start_addr, const void* staged_peer)
 {
   __asm volatile (
       "cpsid i\n"
+      // The 60-byte peer plus 2-byte CRC is the bootloader's retained ABI.
+      // No C, flash, scheduler or SoftDevice code may run after this copy.
+      "mov r3, r1\n"
+      "movw r1, #0x7f80\n"
+      "movt r1, #0x2000\n"
+      "movs r2, #62\n"
+      "0:\n"
+      "ldrb r12, [r3], #1\n"
+      "strb r12, [r1], #1\n"
+      "subs r2, #1\n"
+      "bne 0b\n"
       "mrs r3, ipsr\n"
       "ldr r1, [r0]\n"
       "ldr r2, [r0, #4]\n"
@@ -80,13 +92,26 @@ OLD_JUMP = '''      __set_CONTROL(0); // switch to MSP, required if using FreeRT
 '''
 JUMP = '''      // The vector-table SVC above must complete before the helper masks
       // interrupts. B1 and the retained peer record preserve legacy DFU entry.
-      mesh_nrf52_dfu_jump(NRF_UICR->NRFFW[0]);
+      mesh_nrf52_dfu_jump(NRF_UICR->NRFFW[0], peer_data);
 '''
+
+OLD_PEER = '''      peer_data_t* peer_data = (peer_data_t*) (0x20007F80UL);
+      varclr(peer_data);
+'''
+PEER = '''      // The retained address can overlap live .bss or heap, including
+      // the flash mutex needed by loadBondKey(). Do not touch it here.
+      peer_data_t staged_peer;
+      peer_data_t* peer_data = &staged_peer;
+      varclr(peer_data);
+'''
+OLD_START = '    if ( request->data[0] == START_DFU )'
+START = '    if ( request->len >= 1 && request->data[0] == START_DFU )'
 
 
 def patched_source(source):
     source = source.replace("\r\n", "\n")
-    replacements = ((OLD_HELPER, HELPER), (OLD_INTERRUPTS, INTERRUPTS),
+    replacements = ((OLD_HELPER, HELPER), (OLD_PEER, PEER),
+                    (OLD_START, START), (OLD_INTERRUPTS, INTERRUPTS),
                     (OLD_JUMP, JUMP))
     if all(new in source and old not in source for old, new in replacements):
         return source

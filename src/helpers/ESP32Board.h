@@ -18,6 +18,7 @@
 #include "ESP32TrueRandom.h"
 #include "UsbLogging.h"
 #include "UsbHostSleepPolicy.h"
+#include <helpers/esp32/WiFiOtaSession.h>
 
 #ifndef MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS
   #define MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS 120000UL
@@ -46,6 +47,8 @@ protected:
 #endif
 #if defined(LIGHTWEIGHT_WIFI_OTA)
   void* ota_server = nullptr;
+  mesh::wifi::OtaSessionIdentity ota_identity;
+  friend class LightweightOTAServer;
 #else
   AsyncWebServer* ota_server = nullptr;
 #endif
@@ -246,6 +249,7 @@ public:
   }
 
   bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) override;
+  bool getOTAIdentity(char reply[], size_t max_len) override;
   bool stopOTAUpdate(char reply[]) override;
   bool isOTAUpdateRunning() const override { return ota_server != nullptr; }
   bool otaFromManifest(const char* manifest_base, const char* current_ver, bool dry_run, char reply[]) override;

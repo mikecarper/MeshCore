@@ -1,11 +1,18 @@
 <!doctype html>
 <html><head><meta name="viewport" content="width=device-width"><title>MeshCore OTA</title>
 <style>body{font-family:sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}button,input{font-size:1rem;margin:.5rem 0}pre{white-space:pre-wrap}</style></head>
-<body><h2>MeshCore firmware update</h2><input id="file" type="file" accept=".bin,application/octet-stream"><br>
-<button id="upload">Upload and reboot</button><pre id="status"></pre><script>
-const f=document.getElementById('file'),s=document.getElementById('status'),b=document.getElementById('upload');
-b.onclick=()=>{if(!f.files.length){s.textContent='Select a firmware .bin file.';return}b.disabled=true;
-const x=new XMLHttpRequest();x.open('POST','/update');x.setRequestHeader('Content-Type','application/octet-stream');
+<body><h2>MeshCore firmware update</h2><p id="node">Reading update identity...</p>
+<input id="file" type="file" accept=".bin,application/octet-stream"><br>
+<button id="upload" disabled>Upload and reboot</button><pre id="status"></pre><script>
+const f=document.getElementById('file'),s=document.getElementById('status'),b=document.getElementById('upload'),n=document.getElementById('node');
+let identity;
+function valid(i){return i&&i.version===1&&i.protocol==='lightweight'&&/^[0-9a-f]{32}$/.test(i.session)&&/^[0-9a-f]{12}$/.test(i.device)&&Number.isInteger(i.chip)&&Number.isInteger(i.slot)&&i.slot>0&&i.slot<=16777216&&/^[A-Za-z0-9_.-]{1,32}$/.test(i.hardware)}
+async function info(){const r=await fetch('/ota/info',{cache:'no-store'});if(!r.ok)throw new Error('Bound OTA identity is unavailable.');const i=await r.json();if(!valid(i))throw new Error('Invalid OTA device identity.');return i}
+info().then(i=>{identity=i;n.textContent=i.hardware+' | device '+i.device+' | available '+i.slot+' bytes';b.disabled=false}).catch(e=>{s.textContent=e.message});
+b.onclick=async()=>{if(!f.files.length){s.textContent='Select a firmware .bin file.';return}b.disabled=true;
+try{const i=await info();if(!identity||i.session!==identity.session||i.device!==identity.device||i.hardware!==identity.hardware||i.chip!==identity.chip||i.slot!==identity.slot)throw new Error('OTA node or session changed. Reload and confirm the device.');if(f.files[0].size===0||f.files[0].size>i.slot)throw new Error('Firmware does not fit this OTA slot.');
+const x=new XMLHttpRequest();x.open('POST','/update');x.setRequestHeader('Content-Type','application/octet-stream');x.setRequestHeader('X-MeshCore-OTA-Session',identity.session);
 x.upload.onprogress=e=>{if(e.lengthComputable)s.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%'};
-x.onload=()=>{s.textContent=x.responseText;b.disabled=false};x.onerror=()=>{s.textContent='Upload failed';b.disabled=false};x.send(f.files[0])};
+x.onload=()=>{s.textContent=x.responseText;b.disabled=false};x.onerror=()=>{s.textContent='Upload failed';b.disabled=false};x.send(f.files[0])
+}catch(e){s.textContent=e.message;b.disabled=false}};
 </script></body></html>

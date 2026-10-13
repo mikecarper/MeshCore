@@ -56,6 +56,15 @@ bool ESP32Board::isUserGpioAvailable(uint8_t pin) const {
   return !UserGpioPinPolicy::isFirmwareReserved(pin);
 }
 
+#if !defined(LIGHTWEIGHT_WIFI_OTA) || \
+    (!defined(ADMIN_PASSWORD) && !defined(COMPANION_RADIO_FULL))
+bool ESP32Board::getOTAIdentity(char reply[], size_t max_len) {
+  if (reply && max_len) snprintf(reply, max_len,
+      "ERR: bound WiFi OTA identity unavailable; use supported firmware or USB");
+  return false;
+}
+#endif
+
 #if defined(LIGHTWEIGHT_WIFI_OTA) && \
     (defined(ADMIN_PASSWORD) || defined(COMPANION_RADIO_FULL))
 #include <WiFi.h>
@@ -64,6 +73,12 @@ bool ESP32Board::isUserGpioAvailable(uint8_t pin) const {
 #include <helpers/esp32/StaticHtml.h>
 #include <Update.h>
 #include <esp_ota_ops.h>
+#if __has_include(<esp_mac.h>)
+#include <esp_mac.h>
+#endif
+#include <helpers/ota/OtaSelf.h>
+#include <helpers/esp32/WiFiOtaStreamValidator.h>
+#include <SHA256.h>
 #include <SPIFFS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -82,6 +97,7 @@ class LightweightOTAServer {
   TaskHandle_t task = nullptr;
   volatile bool running = false;
   ESP32Board* board = nullptr;
+  mesh::wifi::OtaSessionIdentity identity;
 
   static void sendResponse(WiFiClient& client, int code, const char* reason,
                            const char* content_type, const char* body, size_t length) {
@@ -99,11 +115,15 @@ class LightweightOTAServer {
         int c = client.read();
         if (c < 0) break;
         if (c == '\n') {
-          if (length && line[length - 1] == '\r') length--;
+          if (!length || line[length - 1] != '\r') return false;
+          length--;
           line[length] = 0;
           return true;
         }
-        if (length + 1 < capacity) line[length++] = static_cast<char>(c);
+        if (c == 0 || (c < 32 && c != '\r' && c != '\t') ||
+            length + 1 >= capacity) return false;
+        if (length && line[length - 1] == '\r') return false;
+        line[length++] = static_cast<char>(c);
       }
       if (static_cast<int32_t>(millis() - deadline) >= 0) break;
       delay(1);
@@ -117,6 +137,16 @@ class LightweightOTAServer {
                   "Connection: close\r\nCache-Control: no-store\r\n\r\n",
                   static_cast<unsigned>(MESH_HTML_LIGHTWEIGHT_OTA_LEN));
     client.write(MESH_HTML_LIGHTWEIGHT_OTA, MESH_HTML_LIGHTWEIGHT_OTA_LEN);
+  }
+
+  void sendInfo(WiFiClient& client) {
+    char json[256];
+    if (!identity.writeJson(json, sizeof(json))) {
+      static const char missing[] = "bound OTA identity unavailable";
+      sendResponse(client, 503, "Service Unavailable", "text/plain", missing, sizeof(missing) - 1);
+      return;
+    }
+    sendResponse(client, 200, "OK", "application/json", json, strlen(json));
   }
 
   void sendLog(WiFiClient& client) {
@@ -151,6 +181,13 @@ class LightweightOTAServer {
       return;
     }
 
+    mesh::wifi::OtaStreamValidator<SHA256> validator(identity, total);
+    if (!validator.valid()) {
+      static const char invalid[] = "firmware image does not fit the bound OTA session";
+      sendResponse(client, 400, "Bad Request", "text/plain", invalid, sizeof(invalid) - 1);
+      return;
+    }
+
     board->setInhibitSleep(true);
     if (!Update.begin(total, U_FLASH)) {
       sendUpdateError(client, 400, "Bad Request");
@@ -173,6 +210,12 @@ class LightweightOTAServer {
       int received = client.read(buf, wanted);
       if (received <= 0) break;
       deadline = millis() + 15000;
+      if (!validator.update(buf, static_cast<size_t>(received))) {
+        Update.abort();
+        static const char invalid[] = "firmware application header, chip or checksum is invalid";
+        sendResponse(client, 400, "Bad Request", "text/plain", invalid, sizeof(invalid) - 1);
+        return;
+      }
       if (Update.write(buf, static_cast<size_t>(received)) != static_cast<size_t>(received)) {
         sendUpdateError(client, 500, "Internal Server Error");
         Update.abort();
@@ -181,10 +224,16 @@ class LightweightOTAServer {
       received_total += static_cast<size_t>(received);
     }
 
-    if (received_total != total) {
+    if (received_total != total || client.available() > 0) {
       Update.abort();
-      static const char incomplete[] = "firmware upload incomplete";
+      static const char incomplete[] = "firmware upload incomplete or trailing data";
       sendResponse(client, 408, "Request Timeout", "text/plain", incomplete, sizeof(incomplete) - 1);
+      return;
+    }
+    if (!validator.finish()) {
+      Update.abort();
+      static const char invalid[] = "firmware EndF identity, body hash or image structure is invalid; use exact-board USB";
+      sendResponse(client, 400, "Bad Request", "text/plain", invalid, sizeof(invalid) - 1);
       return;
     }
     if (!Update.end()) {
@@ -201,23 +250,42 @@ class LightweightOTAServer {
 
   void handleClient(WiFiClient& client) {
     char line[256];
-    if (!readLine(client, line, sizeof(line))) return;
-    bool get_page = strncmp(line, "GET / ", 6) == 0 || strncmp(line, "GET /update ", 12) == 0;
-    bool get_log = strncmp(line, "GET /log ", 9) == 0;
-    bool post_update = strncmp(line, "POST /update ", 13) == 0;
-
-    size_t content_length = 0;
+    static const char malformed[] = "invalid or unsupported OTA HTTP framing";
+    if (!readLine(client, line, sizeof(line))) {
+      sendResponse(client, 400, "Bad Request", "text/plain", malformed, sizeof(malformed) - 1);
+      return;
+    }
+    const auto requestIs = [&](const char* method_path) {
+      const size_t length = strlen(method_path);
+      return strncmp(line, method_path, length) == 0 &&
+          (strcmp(line + length, "HTTP/1.1") == 0 || strcmp(line + length, "HTTP/1.0") == 0);
+    };
+    const bool get_page = requestIs("GET / ") || requestIs("GET /update ");
+    const bool get_log = requestIs("GET /log ");
+    const bool get_info = requestIs("GET /ota/info ");
+    const bool post_update = requestIs("POST /update ");
+    mesh::wifi::OtaRequestHeaders headers;
     do {
-      if (!readLine(client, line, sizeof(line))) return;
-      if (strncasecmp(line, "Content-Length:", 15) == 0) {
-        content_length = static_cast<size_t>(strtoul(line + 15, nullptr, 10));
+      if (!readLine(client, line, sizeof(line)) || (line[0] && !headers.add(line))) {
+        sendResponse(client, 400, "Bad Request", "text/plain", malformed, sizeof(malformed) - 1);
+        return;
       }
     } while (line[0]);
 
     if (!running) return;
-    if (get_page) sendPage(client);
+    if (post_update) {
+      const int available = client.available();
+      if (!headers.allowsUpdate(identity, available > 0 ? static_cast<size_t>(available) : 0)) {
+        static const char rejected[] = "OTA session, length or content type does not match this node";
+        sendResponse(client, 403, "Forbidden", "text/plain", rejected, sizeof(rejected) - 1);
+        return;
+      }
+      receiveUpdate(client, headers.content_length);
+    } else if (headers.has_length && headers.content_length != 0) {
+      sendResponse(client, 400, "Bad Request", "text/plain", malformed, sizeof(malformed) - 1);
+    } else if (get_page) sendPage(client);
     else if (get_log) sendLog(client);
-    else if (post_update) receiveUpdate(client, content_length);
+    else if (get_info) sendInfo(client);
     else {
       static const char missing[] = "not found";
       sendResponse(client, 404, "Not Found", "text/plain", missing, sizeof(missing) - 1);
@@ -244,6 +312,9 @@ public:
   bool begin(ESP32Board* owner) {
     if (running) return true;
     if (task != nullptr) return false;
+    char identity_reply[160];
+    if (!owner || !owner->getOTAIdentity(identity_reply, sizeof(identity_reply))) return false;
+    identity = owner->ota_identity;
     board = owner;
     server.begin();
     server.setNoDelay(true);
@@ -252,6 +323,8 @@ public:
       running = false;
       server.stop();
       task = nullptr;
+      board = nullptr;
+      identity.clear();
       return false;
     }
     return true;
@@ -267,11 +340,59 @@ public:
     // board/session alive until the task exits; a retry can finish cleanup.
     if (task != nullptr) return false;
     board = nullptr;
+    identity.clear();
     return true;
   }
 };
 
 static LightweightOTAServer lightweight_ota_server;
+
+bool ESP32Board::getOTAIdentity(char reply[], size_t max_len) {
+  if (!reply || !max_len) return false;
+  if (ota_server != nullptr && !lightweight_ota_server.isRunning()) {
+    snprintf(reply, max_len, "ERR: OTA stopping; retry stop ota first");
+    return false;
+  }
+  const esp_partition_t* active = esp_ota_get_running_partition();
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  if (!active || !next || active->address == next->address || !next->size) {
+    snprintf(reply, max_len, "ERR: bound OTA needs two app partitions; use USB");
+    return false;
+  }
+  mesh::ota::SelfFwInfo self;
+  if (!mesh::ota::ota_self_firmware(self) || !self.valid ||
+      !mesh::wifi::OtaSessionIdentity::validHardware(self.hw_id)) {
+    snprintf(reply, max_len, "ERR: running firmware has no canonical OTA hardware identity");
+    return false;
+  }
+  uint16_t chip;
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  chip = 0;
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  chip = 2;
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  chip = 9;
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+  chip = 5;
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+  chip = 13;
+#else
+  snprintf(reply, max_len, "ERR: unsupported OTA MCU identity");
+  return false;
+#endif
+  uint8_t mac[6], nonce[16] = {};
+  if (esp_efuse_mac_get_default(mac) != ESP_OK) {
+    snprintf(reply, max_len, "ERR: physical OTA device identity unavailable");
+    return false;
+  }
+  if (!ota_identity.prepared()) esp_fill_random(nonce, sizeof(nonce));
+  if (!ota_identity.prepare(nonce, mac, chip, next->size, self.hw_id) ||
+      !ota_identity.writeCli(reply, max_len)) {
+    snprintf(reply, max_len, "ERR: OTA identity changed or reply buffer too small; stop ota");
+    return false;
+  }
+  return true;
+}
 
 bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   (void)id;
@@ -349,6 +470,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
     mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);
     ota_started_radio = false;
     inhibit_sleep = false;
+    ota_identity.clear();
     strcpy(reply, "OK - OTA not running");
     return true;
   }
@@ -358,6 +480,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
     return false;
   }
   ota_server = nullptr;
+  ota_identity.clear();
   if (ota_started_ap) WiFi.softAPdisconnect(true);
   ota_started_ap = false;
   mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);

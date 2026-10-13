@@ -192,6 +192,7 @@ struct ESP32Board {
   bool ota_started_radio = false;
 #ifdef LIGHTWEIGHT_WIFI_OTA
   void* ota_server = nullptr;
+  struct { void clear() {} } ota_identity;
 #else
   AsyncWebServer* ota_server = nullptr;
 #endif

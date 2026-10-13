@@ -29,7 +29,7 @@ except ImportError:
 
 
 FIXTURE_BODY = r'''
-extern "C" void bledfu_control_wr_authorize_cb_fixture(uint32_t address) {
+extern "C" void bledfu_control_wr_authorize_cb_fixture(uint32_t address, const void* peer) {
   volatile uint32_t frame[26];
   // The real callback saves these registers while preparing peer/bond data.
   // Keep that C epilogue so the old path reproduces its invalid MSP pop.
@@ -62,6 +62,7 @@ def arm_compiler():
 class DfuSourcePatchTest(unittest.TestCase):
     def fixture(self):
         return (patch.OLD_HELPER + "// retained peer preparation and B1 stay here\n"
+                + patch.OLD_START + "\n" + patch.OLD_PEER
                 + patch.OLD_INTERRUPTS
                 + "      VERIFY_STATUS( sd_softdevice_vector_table_base_set(NRF_UICR->NRFFW[0]), );\n"
                 + patch.OLD_JUMP)
@@ -71,6 +72,9 @@ class DfuSourcePatchTest(unittest.TestCase):
         self.assertEqual(patch.patched_source(fixed), fixed)
         self.assertIn("retained peer preparation and B1 stay here", fixed)
         self.assertNotIn("__set_CONTROL(0)", fixed)
+        self.assertNotIn("(0x20007F80UL)", fixed)
+        self.assertIn("peer_data_t* peer_data = &staged_peer;", fixed)
+        self.assertIn("request->len >= 1", fixed)
         self.assertIn("sd_softdevice_vector_table_base_set", fixed)
         self.assertLess(fixed.index("NVIC->ICER[1]"),
                         fixed.index("sd_softdevice_vector_table_base_set"))
@@ -108,7 +112,7 @@ class DfuCompiledHandoffTest(unittest.TestCase):
             for fixed in (False, True):
                 name = f"{'fixed' if fixed else 'broken'}-{optimize[1:]}-{'lto' if lto else 'plain'}"
                 source, elf = cls.path / (name + ".cpp"), cls.path / (name + ".elf")
-                handoff = ("mesh_nrf52_dfu_jump(bootloader);" if fixed else
+                handoff = ("mesh_nrf52_dfu_jump(bootloader, peer);" if fixed else
                            '__asm volatile ("movs r1, #0\\nmsr control, r1\\n" ::: "r1");\n'
                            "  bootloader_util_app_start(bootloader);")
                 source.write_text("#include <stdint.h>\n" + (patch.HELPER if fixed else BROKEN_HELPER)
@@ -186,7 +190,13 @@ class DfuCompiledHandoffTest(unittest.TestCase):
                 machine.mem_write(section[3], elf.section_bytes(section))
         machine.mem_write(0xF4000, struct.pack("<II", 0x20030000, 0xF4101))
         peer = bytes(range(62))
-        machine.mem_write(0x20007F80, peer)
+        # This address really overlaps shared_flash_lock_storage in the Tower
+        # standard BLE ELF. Leave the live mutex untouched until the last jump.
+        old_mutex = bytes([0xA5]) * 62
+        machine.mem_write(0x20007F80, old_mutex)
+        machine.mem_write(0x20001000, peer)
+        machine.mem_write(0x20007F7C, b"safe")
+        machine.mem_write(0x20007FBE, b"ok")
         reg = arm_const
         machine.reg_write(reg.UC_ARM_REG_MSP, 0x20040000)
         machine.reg_write(reg.UC_ARM_REG_PSP, 0x20002000)
@@ -194,6 +204,7 @@ class DfuCompiledHandoffTest(unittest.TestCase):
         machine.reg_write(reg.UC_ARM_REG_BASEPRI, 0x80)
         machine.reg_write(reg.UC_ARM_REG_FAULTMASK, 1)
         machine.reg_write(reg.UC_ARM_REG_R0, 0xF4000)
+        machine.reg_write(reg.UC_ARM_REG_R1, 0x20001000)
         if handler:
             machine.reg_write(reg.UC_ARM_REG_IPSR, 16)
             entry = elf.address(HELPER_NAME)
@@ -201,17 +212,29 @@ class DfuCompiledHandoffTest(unittest.TestCase):
             entry = elf.address("bledfu_control_wr_authorize_cb_fixture")
         stop = ((elf.address(HELPER_NAME) & ~1) + len(HELPER_CODE) - 2
                 if handler else 0xF4100)
+        helper_entry = elf.address(HELPER_NAME) & ~1 if HELPER_NAME in elf.symbols else None
         def stop_at_branch(uc, address, size, context):
+            if address == helper_entry:
+                self.assertEqual(bytes(uc.mem_read(0x20007F80, 62)), old_mutex)
             if address == stop:
                 uc.emu_stop()
+        peer_writes = []
+        def check_peer_write(uc, access, address, size, value, context):
+            if 0x20007F80 <= address < 0x20007FBE:
+                self.assertEqual(uc.reg_read(reg.UC_ARM_REG_PRIMASK), 1)
+                peer_writes.append(address)
         machine.hook_add(unicorn.UC_HOOK_CODE, stop_at_branch)
-        machine.emu_start(entry | 1, 0, count=100)
+        machine.hook_add(unicorn.UC_HOOK_MEM_WRITE, check_peer_write)
+        machine.emu_start(entry | 1, 0, count=1024)
         self.assertEqual(machine.reg_read(reg.UC_ARM_REG_PC), stop)
         self.assertEqual(machine.reg_read(reg.UC_ARM_REG_CONTROL), 0)
         self.assertEqual(machine.reg_read(reg.UC_ARM_REG_PRIMASK), 0)
         self.assertEqual(machine.reg_read(reg.UC_ARM_REG_BASEPRI), 0)
         self.assertEqual(machine.reg_read(reg.UC_ARM_REG_FAULTMASK), 0)
         self.assertEqual(bytes(machine.mem_read(0x20007F80, 62)), peer)
+        self.assertEqual(peer_writes, list(range(0x20007F80, 0x20007FBE)))
+        self.assertEqual(bytes(machine.mem_read(0x20007F7C, 4)), b"safe")
+        self.assertEqual(bytes(machine.mem_read(0x20007FBE, 2)), b"ok")
         return machine
 
     def test_freertos_psp_and_msp_callers_reach_bootloader_without_fault(self):
