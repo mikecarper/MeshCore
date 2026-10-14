@@ -2362,9 +2362,25 @@ Receive restoration retains exclusive ownership until it is confirmed.
 An unavailable/suspended radio does not transmit a beacon.</p>
 <p>The feature is available on supported ESP32, nRF52, and RP2040 LoRa builds
 where flash and runtime RAM qualification pass. Tiny STM32 images leave it
-disabled to preserve existing features and filesystem space. Meshtext TX is
-supported only by the direct SX1262 modem implementation; an unsupported
-modem rejects Meshtext slots rather than transmitting MeshCore in their place.
+disabled to preserve existing features and filesystem space. The Meshtext
+packet-format adapters cover SX1262 (including the Indicator LoRa variant),
+SX1268, LLCC68, SX1276 (including external-PA variants), LR1110, LR1121,
+LR2021, and STM32WLx. The STM32WLx adapter is available to explicitly enabled
+builds, but does not enable beacons in the space-constrained STM32 artifacts.
+An opt-in Wio-E5 Mini USB Companion link exceeded its unchanged application
+limit by 19,820 bytes; the three existing STM32 Sensor targets exceeded theirs
+by 37,000-42,736 bytes. Enabling those artifacts needs separate size work,
+not just a radio capability flag or a smaller filesystem.
+ESP-NOW-only boards have no LoRa transmitter and cannot send these packets.</p>
+<p>Choose a region and preset the physical chip, board RF path, and antenna
+support. In particular, SX1268 requires a compatible band such as EU433, not
+US or ANZ. LLCC68 supports MediumFast (SF9/BW250), but not LongFast
+(SF11/BW250). Invalid modem combinations are rejected, not silently changed
+to a different preset or transmitted as MeshCore. Local RF rules and the
+board's power limits still apply.</p>
+<p>Protocol entry and restoration use each chip's checked sync-word, CRC,
+explicit-header, and normal-IQ configuration. Beacon TX temporarily disables
+LR2021 receive side detectors and restores their saved configuration afterward.
 Enabling this feature does not enable Companion Meshtext receive/chat support
 on other roles.</p>
 <p>Schedules are best effort. A busy or sleeping node can miss an opportunity;
