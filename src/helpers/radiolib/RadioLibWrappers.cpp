@@ -19,7 +19,10 @@ extern "C" caddr_t _sbrk(int increment);
 
 // Bounded noise-floor calibration in continuous RX, including RXPS refreshes.
 // Requests are coalesced so retries cannot repeatedly force continuous RX.
-#define NF_CALIB_INTERVAL_MS  2000UL    // match the original 2-second refresh cadence
+#define NF_CALIB_INTERVAL_MS  2000UL    // continuous-RX refresh / forced-window cooldown
+// A quiet block needs about 3.2 s of continuous RX. Do not reopen one after
+// only 2 s of duty cycling: routine maintenance would defeat RX power saving.
+#define NF_RXPS_REFRESH_INTERVAL_MS (60UL * 1000UL)
 #define NF_CALIB_TIMEOUT_MS   NoiseFloorEstimator::WINDOW_TIMEOUT_MS
 #define NF_CONTINUOUS_TIMEOUT_MS NoiseFloorEstimator::WINDOW_TIMEOUT_MS
 #define NF_CALIB_SETTLE_MS    RadioLibWrapper::NoiseFloorSettleMillis
@@ -754,7 +757,13 @@ void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
     }
     return;
   }
-  requestNoiseFloorRefresh();
+  if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
+    requestPeriodicNoiseFloorRefresh();
+  } else {
+    // RX is already continuous. Keep the original maintenance-tick behavior;
+    // only passive retry probes apply the existing two-second age check.
+    requestNoiseFloorRefresh();
+  }
 }
 
 void RadioLibWrapper::recalibrateNoiseFloor() {
@@ -777,6 +786,18 @@ void RadioLibWrapper::recalibrateNoiseFloor() {
     // Continuous RX starts its deadline in loop(); RX power saving opens a
     // bounded continuous-RX window in noiseFloorCalibCheck().
     _nf_calib_deadline = 0;
+  }
+}
+
+void RadioLibWrapper::requestPeriodicNoiseFloorRefresh() {
+  const uint32_t interval = _rx_ps_enabled && !_rx_ps_continuous_fallback
+      ? NF_RXPS_REFRESH_INTERVAL_MS : NF_CALIB_INTERVAL_MS;
+  // Startup must not wait for a maintenance tick. Subsequent attempts, even
+  // failed ones, need a real rest interval. Forced RF-path/AGC recalibration
+  // bypasses this routine policy and retains its existing prompt behavior.
+  if (_profiles.enabled() || (!_noise_floor_valid && _nf_last_calib == 0)
+      || static_cast<uint32_t>(millis() - _nf_last_calib) >= interval) {
+    requestNoiseFloorRefresh();
   }
 }
 
@@ -1923,11 +1944,7 @@ bool RadioLibWrapper::isReceivingPassive(int interference_margin_db) {
   // calibration. Keep retries in RX and use the preamble/header IRQs here.
   if (_profiles.enabled()) return false;
 
-  unsigned long now = millis();
-  if ((!_noise_floor_valid && _nf_last_calib == 0)
-      || now - _nf_last_calib >= NF_CALIB_INTERVAL_MS) {
-    requestNoiseFloorRefresh();
-  }
+  requestPeriodicNoiseFloorRefresh();
   // Until the startup baseline is ready, defer rather than compare against the
   // zero-initialized floor and transmit blind. Dispatcher retains its bounded
   // busy timeout if sampling cannot complete.

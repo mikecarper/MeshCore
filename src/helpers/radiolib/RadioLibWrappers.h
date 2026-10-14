@@ -201,6 +201,7 @@ protected:
   void idle() override;
   void startRecv() override;
   void rxPsWatchdogCheck();
+  void requestPeriodicNoiseFloorRefresh();
   void requestNoiseFloorRefresh();
   void requestRestartRecv();
   bool isPacketPendingOrReceiving();
