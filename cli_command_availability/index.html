@@ -5984,6 +5984,14 @@ clear, set, or toggle selected bits.</p>
 <h3 id="get-mqttndiag"><code>get mqttN.diag</code></h3>
 <p>Prints the runtime diagnostic summary for MQTT slot N, including its connection
 state and failure history.</p>
+<p><code>pub_ack</code> counts actual broker acknowledgments, not merely accepted writes.
+Recent firmware also shows <code>rec:&lt;count&gt;/&lt;reason&gt;</code> for transport recovery and
+<code>ack_wait:&lt;seconds&gt;s</code> while an accepted QoS 1 publication awaits acknowledgment.
+Reasons include <code>error</code>, <code>state</code>, <code>handshake</code>, <code>write</code>, and <code>puback</code>. <code>recover</code>
+means cleanup is pending, not that the broker is healthy. Optional fields are
+omitted if they cannot fit completely in the reply. <code>rec</code> counts completed
+client cleanup; a higher count alone does not prove the subsequent connection
+or delivery succeeded.</p>
 <p><a id="mqtt-stats"></a></p>
 <h3 id="get-mqttstats"><code>get mqtt.stats</code></h3>
 <p>Prints the MQTT bridge runtime statistics summary.</p>
