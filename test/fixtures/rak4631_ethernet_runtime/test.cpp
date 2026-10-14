@@ -264,7 +264,14 @@ static void finish_off() {
   assert(!ethernet_get_enabled() && !ethernet_is_running());
   assert(ethernet_task_handle == nullptr);
 }
-static void unblock(std::atomic<bool>& flag) { flag.store(false); library_changed.notify_all(); }
+static void unblock(std::atomic<bool>& flag) {
+  {
+    // Pair the predicate update with wait() so its notification cannot be lost.
+    std::lock_guard<std::mutex> lock(library_mutex);
+    flag.store(false);
+  }
+  library_changed.notify_all();
+}
 static std::string output() {
   std::lock_guard<std::mutex> lock(mock_output_mutex);
   return mock_ethernet_output;
