@@ -172,6 +172,19 @@ class CustomLR1110 : public LR1110 {
       return LR1110::setCodingRate(cr, longInterleave);
     }
 
+    // Protocol changes are outside the acknowledged fast-RX context. Use
+    // checked RadioLib setters so cached packet fields and hardware agree,
+    // including after a partial failure and a later MeshCore restoration.
+    int16_t setProfileProtocol(uint8_t syncWord) {
+      _profileSwitch.invalidate();
+      _profilePacketDirty = false;
+      int16_t status = LR1110::setSyncWord(syncWord);
+      if (status == RADIOLIB_ERR_NONE) status = LR1110::setCRC(2);
+      if (status == RADIOLIB_ERR_NONE) status = LR1110::explicitHeader();
+      if (status == RADIOLIB_ERR_NONE) status = LR1110::invertIQ(false);
+      return status;
+    }
+
     // A single acknowledged SetModulationParams replaces three RadioLib
     // setters. Keep RadioLib's cached tuple and automatic LDRO calculation.
     int16_t setLoRaModulationParams(float bw, uint8_t sf, uint8_t cr) {

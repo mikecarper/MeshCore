@@ -16,6 +16,15 @@ class CustomLLCC68 : public LLCC68 {
 
   public:
     CustomLLCC68(Module *mod) : LLCC68(mod) { }
+    int16_t setProfileProtocol(uint8_t syncWord) {
+      // Retain RadioLib's ordinary setters: this wrapper does not own the
+      // CustomSX1262 fast RX packet cache, despite sharing its chip family.
+      int16_t status = LLCC68::setSyncWord(syncWord);
+      if (status == RADIOLIB_ERR_NONE) status = LLCC68::setCRC(1);
+      if (status == RADIOLIB_ERR_NONE) status = LLCC68::explicitHeader();
+      if (status == RADIOLIB_ERR_NONE) status = LLCC68::invertIQ(false);
+      return status;
+    }
     int16_t setMorseFastRssi() {
       return setSX126xMorseRssiWindow(this);
     }

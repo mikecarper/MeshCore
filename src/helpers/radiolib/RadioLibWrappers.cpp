@@ -2,6 +2,7 @@
 #define RADIOLIB_STATIC_ONLY 1
 #include "RadioLibWrappers.h"
 #include "RadioInterruptEvents.h"
+#include "RadioProfileChip.h"
 #include <new>
 #if defined(ESP32_PLATFORM)
 #include <esp_heap_caps.h>
@@ -440,19 +441,19 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
 bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
   if (!mesh::RadioProfiles::valid(p)) return false;
   if (p.protocol == mesh::RadioProfileProtocol::Meshtext && !supportsMeshtext()) return false;
-#if defined(USE_SX1276)
+#if MESH_RADIO_PROFILE_CHIP == 1276
   return p.freq >= 137 && p.freq <= 1020 && p.sf >= 7 && p.bw <= 500;
-#elif defined(USE_SX1272)
+#elif MESH_RADIO_PROFILE_CHIP == 1272
   return p.freq >= 860 && p.freq <= 1020 && p.sf >= 7 && p.bw >= 125 && p.bw <= 500;
-#elif defined(USE_LLCC68)
+#elif MESH_RADIO_PROFILE_CHIP == 68
   return p.freq >= 150 && p.freq <= 960
       && ((p.bw == 125 && p.sf <= 9) || (p.bw == 250 && p.sf <= 10)
           || (p.bw == 500 && p.sf <= 11));
-#elif defined(USE_LR2021)
+#elif MESH_RADIO_PROFILE_CHIP == 2021
   return (p.freq <= 1090 || p.freq >= 1900) && p.bw >= 31.25 && p.bw <= 1000;
-#elif defined(USE_LR1110)
+#elif MESH_RADIO_PROFILE_CHIP == 1110
   return p.freq <= 960 && p.bw >= 62.5 && p.bw <= 500;
-#elif defined(USE_SX1268)
+#elif MESH_RADIO_PROFILE_CHIP == 1268
   return p.freq >= 410 && p.freq <= 810 && p.bw <= 500;
 #else
   return p.freq <= 960 && p.bw <= 500;

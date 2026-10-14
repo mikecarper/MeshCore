@@ -15,6 +15,17 @@ class CustomSX1276 : public SX1276 {
   public:
     CustomSX1276(Module *mod) : SX1276(mod) { }
 
+    int16_t setProfileProtocol(uint8_t syncWord) {
+      // Both wire protocols use CRC-on, explicit-header, normal-IQ LoRa.
+      // Use RadioLib's setters so its CRC/header caches and IQ workaround
+      // registers agree with the hardware before the next RX or TX.
+      int16_t status = SX1276::setSyncWord(syncWord);
+      if (status == RADIOLIB_ERR_NONE) status = SX1276::setCRC(true);
+      if (status == RADIOLIB_ERR_NONE) status = SX1276::explicitHeader();
+      if (status == RADIOLIB_ERR_NONE) status = SX1276::invertIQ(false);
+      return status;
+    }
+
     int16_t beginMorseReceive(float frequency_mhz) {
       int16_t status = SX1276::beginFSK(frequency_mhz,
           mesh::MorseRx::ReceiverBitRateKbps, 0.6f, 2.6f, 2, 16, false);
@@ -110,25 +121,27 @@ class CustomSX1276 : public SX1276 {
       int16_t state = startChannelScan();
       RADIOLIB_ASSERT(state);
 
-      // SX127x getChannelScanResult() reports a free channel before CAD has
-      // completed, so wait on its IRQ pins with the same bounded policy used
-      // by the generic wrapper.
-      const unsigned long started = millis();
-      unsigned long last_watchdog_service = started;
-      while(!this->mod->hal->digitalRead(this->mod->getIrq())) {
-        this->mod->hal->yield();
+      // SX127x getChannelScanResult() reports FREE even before CAD completes.
+      // DIO0 proves CAD_DONE; then read CAD_DETECTED from the actual IRQ flags,
+      // including when completion/detection already happened before this poll.
+      const uint32_t started = millis();
+      uint32_t last_watchdog_service = started;
+      for (;;) {
+        if(this->mod->hal->digitalRead(this->mod->getIrq())) {
+          return getChannelScanResult();
+        }
         if(this->mod->hal->digitalRead(this->mod->getGpio())) {
           return(RADIOLIB_PREAMBLE_DETECTED);
         }
-        const unsigned long now = millis();
-        if(now - last_watchdog_service >= 1000UL) {
+        const uint32_t now = millis();
+        if(uint32_t(now - started) >= timeout_ms) {
+          return(RADIOLIB_ERR_RX_TIMEOUT);
+        }
+        if(uint32_t(now - last_watchdog_service) >= 1000UL) {
           board.serviceWatchdog();
           last_watchdog_service = now;
         }
-        if(now - started >= timeout_ms) {
-          return(RADIOLIB_ERR_RX_TIMEOUT);
-        }
+        this->mod->hal->yield();
       }
-      return(RADIOLIB_CHANNEL_FREE);
     }
 };

@@ -1333,7 +1333,10 @@ void EnvironmentSensorManager::initBasicGPS() {
   gps_active = false; //Set GPS visibility off until setting is changed
 #endif
 }
+#endif // ENV_INCLUDE_GPS
 
+// These hooks also exist in no-GPS images. WisBlock slot power can still
+// supply storage, Ethernet, or another peripheral without a GPS provider.
 bool EnvironmentSensorManager::supportsSharedPeripheralMode() const {
 #if defined(RAK_4631) && !defined(RAK_WISMESH_TAG)
   return true;
@@ -1395,6 +1398,7 @@ bool EnvironmentSensorManager::isGpsPowered() const {
 #endif
 }
 
+#if ENV_INCLUDE_GPS
 // gps code for rak might be moved to MicroNMEALoactionProvider
 // or make a new location provider ...
 #ifdef RAK_WISBLOCK_GPS

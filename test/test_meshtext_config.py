@@ -164,7 +164,7 @@ int main() {
 '''.replace("@CAPABILITY@", capability).replace("@PROTOCOL@", protocol)
         cases = [
             (["NRF52_PLATFORM", "USE_SX1262"], True),
-            (["NRF52_PLATFORM", "USE_SX1262", "SENSECAP_INDICATOR_LORA"], False),
+            (["NRF52_PLATFORM", "USE_SX1262", "SENSECAP_INDICATOR_LORA"], True),
             (["NRF52_PLATFORM", "USE_SX1262", "SENSECAP_INDICATOR_LORA",
               "MESH_ENABLE_MESHTEXT_CHAT=1"], True),
             (["NRF52_PLATFORM", "USE_SX1262", "MESH_ENABLE_MESHTEXT_WIRE=0"], False),

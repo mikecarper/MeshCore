@@ -20,6 +20,9 @@ public:
   CustomLR2021Wrapper(CustomLR2021& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsMorseTx() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool supportsMeshtext() const override { return true; }
+#endif
 
   void powerOff() {
     if (isCarrierWaveActive()) setCarrierWave(0, 0);
@@ -27,6 +30,14 @@ public:
   }
 
 protected:
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
+    if (protocol != mesh::RadioProfileProtocol::MeshCore
+        && protocol != mesh::RadioProfileProtocol::Meshtext) return false;
+    const uint8_t sync = protocol == mesh::RadioProfileProtocol::Meshtext ? 0x2b : 0x12;
+    return static_cast<CustomLR2021*>(_radio)->setProfileProtocol(sync) == RADIOLIB_ERR_NONE;
+  }
+#endif
   int16_t startMorseReceiver() override {
     return static_cast<CustomLR2021*>(_radio)->LR2021::startReceive(
         RADIOLIB_LR2021_RX_TIMEOUT_INF, 0, 0, 0);
@@ -97,8 +108,9 @@ protected:
   }
 
   int16_t applyCachedTxPower(int8_t dbm) override {
-    const float frequency = _params_valid
-        ? _cur_freq : ((CustomLR2021 *)_radio)->getFreqMHz();
+    // A TX-only excursion deliberately preserves the normal wrapper cache.
+    // Clamp for the physically selected band, not that normal RX frequency.
+    const float frequency = ((CustomLR2021 *)_radio)->getFreqMHz();
     return _radio->setOutputPower(mesh::clampLoRaTxPower(dbm, frequency));
   }
 
@@ -158,6 +170,14 @@ protected:
   }
 
   bool applySideDetectorConfig(uint8_t primary_sf, float bw) {
+#if MESH_ENABLE_TX_BEACONS
+    // Saved RX side detectors are not part of an independent TX-only tuple.
+    // Disable them without changing their configuration, then restore the
+    // normal set when the owner's receive-restoration transaction runs.
+    if (isBeaconRadioOwned() && !_beacon_restoring) {
+      return ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0) == RADIOLIB_ERR_NONE;
+    }
+#endif
     if (_profiles.enabled()) {
       return ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0) == RADIOLIB_ERR_NONE;
     }

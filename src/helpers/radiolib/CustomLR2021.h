@@ -52,6 +52,14 @@ class CustomLR2021 : public LR2021 {
   public:
     CustomLR2021(Module *mod) : LR2021(mod) { irqDioNum = LR2021_IRQ_DIO; }
 
+    int16_t setProfileProtocol(uint8_t syncWord) {
+      int16_t status = LR2021::setSyncWord(syncWord);
+      if (status == RADIOLIB_ERR_NONE) status = LR2021::setCRC(2);
+      if (status == RADIOLIB_ERR_NONE) status = LR2021::explicitHeader();
+      if (status == RADIOLIB_ERR_NONE) status = LR2021::invertIQ(false);
+      return status;
+    }
+
     int16_t beginMorseReceive(float frequency_mhz) {
       const uint8_t gain = mesh::lr2021::isHighBand(frequency_mhz) ? gainModeHf : gainModeLf;
       int16_t status = LR2021::beginGFSK(frequency_mhz,

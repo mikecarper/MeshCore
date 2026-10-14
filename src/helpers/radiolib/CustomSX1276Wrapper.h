@@ -13,6 +13,9 @@ public:
   CustomSX1276Wrapper(CustomSX1276& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsCarrierWave() const override { return supportsRadioDeepInit(); }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool supportsMeshtext() const override { return true; }
+#endif
 
   void powerOff() {
     if (isCarrierWaveActive()) setCarrierWave(0, 0);
@@ -20,6 +23,14 @@ public:
   }
 
 protected:
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
+    if (protocol != mesh::RadioProfileProtocol::MeshCore
+        && protocol != mesh::RadioProfileProtocol::Meshtext) return false;
+    const uint8_t sync = protocol == mesh::RadioProfileProtocol::Meshtext ? 0x2b : 0x12;
+    return static_cast<CustomSX1276*>(_radio)->setProfileProtocol(sync) == RADIOLIB_ERR_NONE;
+  }
+#endif
   int16_t startMorseReceiver() override {
     return static_cast<CustomSX1276*>(_radio)->receiveDirect();
   }
@@ -109,6 +120,13 @@ protected:
   int16_t performChannelScan() override {
     return ((CustomSX1276 *)_radio)->tryScanChannel(cadScanTimeoutMillis(), *_board);
   }
+#if MESH_ENABLE_TX_BEACONS
+  int16_t performChannelScanWithTimeout(unsigned long timeout_ms) override {
+    // Beacon CAD has its own modulation-derived deadline. Preserve SX127x's
+    // DIO0 completion rule instead of the generic UNKNOWN-result poll.
+    return static_cast<CustomSX1276*>(_radio)->tryScanChannel(timeout_ms, *_board);
+  }
+#endif
 
   bool radioDeepInit() override {
     if (!prepareRadioHardReset()) return false;

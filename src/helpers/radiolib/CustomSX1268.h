@@ -16,6 +16,15 @@ class CustomSX1268 : public SX1268 {
 
   public:
     CustomSX1268(Module *mod) : SX1268(mod) { }
+    int16_t setProfileProtocol(uint8_t syncWord) {
+      // This driver has no owned fast packet cache. Apply the complete
+      // RadioLib packet tuple, including its normal-IQ register workaround.
+      int16_t status = SX1268::setSyncWord(syncWord);
+      if (status == RADIOLIB_ERR_NONE) status = SX1268::setCRC(1);
+      if (status == RADIOLIB_ERR_NONE) status = SX1268::explicitHeader();
+      if (status == RADIOLIB_ERR_NONE) status = SX1268::invertIQ(false);
+      return status;
+    }
     int16_t setMorseFastRssi() {
       return setSX126xMorseRssiWindow(this);
     }

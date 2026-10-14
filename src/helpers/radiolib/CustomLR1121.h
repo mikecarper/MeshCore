@@ -16,6 +16,14 @@ class CustomLR1121 : public LR1121 {
   public:
     CustomLR1121(Module *mod) : LR1121(mod) { }
 
+    int16_t setProfileProtocol(uint8_t syncWord) {
+      int16_t status = LR1121::setSyncWord(syncWord);
+      if (status == RADIOLIB_ERR_NONE) status = LR1121::setCRC(2);
+      if (status == RADIOLIB_ERR_NONE) status = LR1121::explicitHeader();
+      if (status == RADIOLIB_ERR_NONE) status = LR1121::invertIQ(false);
+      return status;
+    }
+
     void setRfSwitchTable(const uint32_t (&pins)[Module::RFSWITCH_MAX_PINS],
                           const Module::RfSwitchMode_t table[]) {
       _morse_rf_switch.capture(this->mod, pins, table);

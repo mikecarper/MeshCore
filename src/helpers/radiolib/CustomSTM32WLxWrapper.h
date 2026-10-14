@@ -18,12 +18,24 @@ public:
   ~CustomSTM32WLxWrapper() { unregisterInterruptAction(); }
   CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsMorseTx() const override { return true; }
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool supportsMeshtext() const override { return true; }
+#endif
 #if MESH_ENABLE_MORSE_RX
   bool supportsMorseRx() const override { return supportsRadioDeepInit(); }
 #endif
   void setDeepInitCallback(DeepInitCallback callback) { _deep_init = callback; }
 
 protected:
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
+    uint8_t sync;
+    if (protocol == mesh::RadioProfileProtocol::MeshCore) sync = 0x12;
+    else if (protocol == mesh::RadioProfileProtocol::Meshtext) sync = 0x2b;
+    else return false;
+    return static_cast<CustomSTM32WLx*>(_radio)->setProfileProtocol(sync) == RADIOLIB_ERR_NONE;
+  }
+#endif
 #if MESH_ENABLE_MORSE_RX
   float morseReceiverBandwidthKHz() const override { return 4.8f; }
   int16_t prepareMorseReceiver(float frequency_mhz) override {
@@ -71,6 +83,9 @@ protected:
 
 public:
   bool setCodingRate(uint8_t cr) override {
+#if MESH_ENABLE_TX_BEACONS
+    if (isBeaconRadioOwned()) return false;
+#endif
     if (isCarrierWaveActive()) return false;
     return ((CustomSTM32WLx *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }

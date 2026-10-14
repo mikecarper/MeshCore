@@ -233,7 +233,13 @@ protected:
     const float bw = _params_valid ? _cur_bw : static_cast<float>(LORA_BW);
     return cadScanTimeoutMillis(sf, bw);
   }
+#if MESH_ENABLE_TX_BEACONS
+  // A TX-only excursion supplies its own timeout without using the cached
+  // normal RX tuple. Chips with different CAD completion rules override it.
+  virtual int16_t performChannelScanWithTimeout(unsigned long timeout_ms);
+#else
   int16_t performChannelScanWithTimeout(unsigned long timeout_ms);
+#endif
   virtual int startReceiveMode();
   virtual void stopReceiveDutyCycle();
   virtual bool isPacketReady();

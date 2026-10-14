@@ -342,6 +342,8 @@ int main() {
   for (unsigned fail=1;fail<=4;++fail) {
     RadioLibWrapper w;w.chip.fail_at=fail;assert(!w.applyProtocol(Protocol::Meshtext));
   }
+  RadioLibWrapper invalid;
+  assert(!invalid.applyProtocol(static_cast<Protocol>(99)) && invalid.chip.step==0);
   RadioLibWrapper w;assert(w.restoreAfterDeepInit());
   assert(w.chip.sync==0x2b && w.chip.crc && w.chip.explicit_header && !w.chip.iq);
   assert(!w._rx_ps_armed && w.state==STATE_IDLE);

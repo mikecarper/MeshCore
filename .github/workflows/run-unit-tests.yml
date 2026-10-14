@@ -316,6 +316,13 @@ jobs:
           python3 -B test/test_beacon_manager.py -v
           python3 -B test/test_beacon_radio.py -v
           python3 -B test/test_beacon_dispatcher.py -v
+          python3 -B test/test_beacon_legacy_lora_protocol.py -v
+          python3 -B test/test_lr_meshtext_wire.py -v
+          python3 -B test/test_stm32wl_meshtext_protocol.py -v
+          python3 -B test/test_meshtext_modem_profiles.py -v
+          python3 -B test/test_environment_no_gps_link.py -v
+          python3 -B test/test_beacon_file_api.py -v
+          python3 -B test/test_beacon_sx1276_cad.py -v
           python3 -B test/test_radio_profile_auto.py -v
           python3 -B test/test_companion_meshtext.py -v
           python3 -B test/test_companion_meshtext_storage.py -v

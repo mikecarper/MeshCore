@@ -377,8 +377,8 @@ class BeaconRadioTest(unittest.TestCase):
             (["STM32_PLATFORM"], 0, 0),
             (["USE_SX1262"], 0, 0),
             (["NRF52_PLATFORM", "USE_SX1262"], 0, 1),
-            # The codec is stable across translation units; the concrete
-            # unqualified Indicator driver still declines Meshtext TX.
+            # The codec is stable across translation units, including the
+            # Indicator's SPI LoRa radio with expander-controlled GPIOs.
             (["NRF52_PLATFORM", "USE_SX1262", "SENSECAP_INDICATOR_LORA"], 0, 1),
             (["USE_SX1262", "MESH_ENABLE_TX_BEACONS=0"], 0, 0),
             (["USE_SX1262", "MESH_PRIMARY_ESPNOW=1"], 0, 0),

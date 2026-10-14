@@ -18,10 +18,21 @@ public:
       : RadioLibWrapper(radio, board), _deep_init(NULL) { }
   bool supportsCarrierWave() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool supportsMeshtext() const override { return true; }
+#endif
 
   void setDeepInitCallback(DeepInitCallback callback) { _deep_init = callback; }
 
 protected:
+#if MESH_ENABLE_MESHTEXT_WIRE
+  bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
+    if (protocol != mesh::RadioProfileProtocol::MeshCore
+        && protocol != mesh::RadioProfileProtocol::Meshtext) return false;
+    const uint8_t sync = protocol == mesh::RadioProfileProtocol::Meshtext ? 0x2b : 0x12;
+    return static_cast<CustomLR1110*>(_radio)->setProfileProtocol(sync) == RADIOLIB_ERR_NONE;
+  }
+#endif
   int16_t startMorseReceiver() override {
     return static_cast<CustomLR1110*>(_radio)->LR1110::startReceive(
         RADIOLIB_LR11X0_RX_TIMEOUT_INF, 0, 0, 0);

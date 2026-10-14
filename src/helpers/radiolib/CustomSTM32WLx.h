@@ -12,6 +12,16 @@ class CustomSTM32WLx : public STM32WLx {
 
   public:
     CustomSTM32WLx(STM32WLx_Module *mod) : STM32WLx(mod) { }
+    // STM32WLx inherits the SX126x LoRa packet setters. Unlike CustomSX1262,
+    // this driver has no acknowledged fast-hop cache: every protocol change
+    // repairs the complete CRC/header/IQ tuple through the ordinary API.
+    int16_t setProfileProtocol(uint8_t syncWord) {
+      int16_t status = STM32WLx::setSyncWord(syncWord);
+      if (status == RADIOLIB_ERR_NONE) status = STM32WLx::setCRC(1);
+      if (status == RADIOLIB_ERR_NONE) status = STM32WLx::explicitHeader();
+      if (status == RADIOLIB_ERR_NONE) status = STM32WLx::invertIQ(false);
+      return status;
+    }
     int16_t setMorseFastRssi() {
       return setSX126xMorseRssiWindow(this);
     }

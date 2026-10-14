@@ -41,8 +41,7 @@ public:
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsCarrierWave() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
-#if MESH_ENABLE_MESHTEXT_WIRE && (MESH_ENABLE_MESHTEXT_CHAT \
-    || (MESH_ENABLE_TX_BEACONS && !defined(SENSECAP_INDICATOR_LORA)))
+#if MESH_ENABLE_MESHTEXT_WIRE
   bool supportsMeshtext() const override { return true; }
 #endif
 
@@ -73,8 +72,10 @@ protected:
   }
 #if MESH_ENABLE_MESHTEXT_WIRE
   bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
-    // Compiling a shared codec must not change unqualified MC-only modem
-    // behavior or require its foreign sync-word SPI path.
+    if (protocol != mesh::RadioProfileProtocol::MeshCore
+        && protocol != mesh::RadioProfileProtocol::Meshtext) return false;
+    // Respect an explicitly disabled wire implementation, including builds
+    // that retain other beacon or Companion features.
     if (!supportsMeshtext()) return protocol == mesh::RadioProfileProtocol::MeshCore;
     auto* radio = static_cast<CustomSX1262*>(_radio);
     const uint8_t sync = protocol == mesh::RadioProfileProtocol::Meshtext ? 0x2b : 0x12;

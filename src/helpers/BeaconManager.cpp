@@ -155,7 +155,7 @@ bool textValue(const char* text, char* output) {
   return true;
 }
 File makeFile(FILESYSTEM* fs) {
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   return File(*fs);
 #else
   (void)fs;
@@ -163,11 +163,9 @@ File makeFile(FILESYSTEM* fs) {
 #endif
 }
 bool openRead(FILESYSTEM* fs, const char* path, File& file) {
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   (void)fs;
   return file.open(path, FILE_O_READ);
-#elif defined(STM32_PLATFORM)
-  file = fs->open(path, FILE_O_READ);
 #else
   file = fs->open(path, "r");
 #endif
@@ -176,10 +174,8 @@ bool openRead(FILESYSTEM* fs, const char* path, File& file) {
 bool openWrite(FILESYSTEM* fs, const char* path, File& file) {
   bool present = false;
   if (!filePresence(fs, path, present) || (present && !fs->remove(path))) return false;
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   return file.open(path, FILE_O_WRITE);
-#elif defined(STM32_PLATFORM)
-  file = fs->open(path, FILE_O_WRITE);
 #else
   file = fs->open(path, "w");
 #endif
